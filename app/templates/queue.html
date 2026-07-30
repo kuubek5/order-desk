@@ -5,6 +5,60 @@
 {% block content %}
 <main>
     <h1>{{ page_title }}</h1>
-    <p>в розробці</p>
+
+    {% if orders %}
+        <div class="queue-summary">
+            Всього робіт: <strong>{{ orders|length }}</strong>
+        </div>
+
+        <table class="queue-table">
+            <thead>
+                <tr>
+                    <th>Номер наряду</th>
+                    <th>Матеріал / Колір</th>
+                    <th>Вид роботи</th>
+                    <th>Кількість</th>
+                    <th>Здати до</th>
+                    <th>Job Code</th>
+                    <th>Технік</th>
+                    <th>Статус</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr class="queue-row">
+                    <td class="order-id">{{ order.work_order_no or '—' }}</td>
+                    <td class="material-cell">
+                        {% if order.material_color %}
+                            <span class="chip">{{ order.material_color }}</span>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="kind-cell">
+                        {% if order.kind %}
+                            <span class="chip">{{ order.kind }}</span>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="quantity">{{ order.quantity or '—' }}</td>
+                    <td class="due-time">{{ order.due_time or '—' }}</td>
+                    <td class="job-code"><span class="mono">{{ order.job_code or '—' }}</span></td>
+                    <td class="technician">{{ order.technician_name or '—' }}</td>
+                    <td class="status">
+                        <span class="status-badge status-{{ order.status|replace(' ', '-')|lower }}">
+                            {{ order.status }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="card queue-empty">
+            <p>Черга порожня — ще не синхронізовано жодної роботи.</p>
+        </div>
+    {% endif %}
 </main>
 {% endblock %}
