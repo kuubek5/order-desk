@@ -139,3 +139,13 @@ class SyncLog(Base):
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()
     )
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now(), onupdate=func.now()
+    )

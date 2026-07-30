@@ -12,10 +12,11 @@ from starlette.requests import Request
 
 from app.auth import verify_password
 from app.client_matcher import match_client_name
-from app.config import EXPORT_FOLDER_PATH, SESSION_SECRET_KEY
+from app.config import SESSION_SECRET_KEY
 from app.db import SessionLocal
 from app.export_scanner import scan_export_folder
 from app.models import ClientNameAlias, Order, StatusEvent, SyncLog, User
+from app.settings_store import SETTING_FIELDS, get_all_settings, get_export_folder_path, set_setting
 from app.sheet_writer import write_order_fields
 from app.sheets import get_worksheet_by_name, open_spreadsheet
 from app.statuses import STATUSES
@@ -28,6 +29,7 @@ def _parse_sheet_tab(sheet_tab: str | None) -> date | None:
         return datetime.strptime(sheet_tab, "%d.%m.%y").date()
     except ValueError:
         return None
+
 
 app = FastAPI(title="Order Desk")
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY)
@@ -152,7 +154,7 @@ async def set_sum3d_id(
     db.refresh(order)
 
     try:
-        worksheet = get_worksheet_by_name(open_spreadsheet(), order.sheet_tab)
+        worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
         if worksheet is None:
             raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
         write_order_fields(worksheet, order, {"sum3d_id"})
@@ -238,7 +240,7 @@ async def get_handout(request: Request, db: Session = Depends(get_db)):
             continue
         groups.setdefault(order.client_name, []).append(order)
 
-    entries = scan_export_folder(Path(EXPORT_FOLDER_PATH))
+    entries = scan_export_folder(Path(get_export_folder_path(db)))
     folder_names = sorted({e.client_folder_name for e in entries})
     aliases = {
         a.sheet_name: a.export_folder_name
@@ -317,3 +319,44 @@ async def confirm_alias(
     db.commit()
 
     return RedirectResponse("/handout", status_code=303)
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def get_settings(
+    request: Request, saved: str | None = None, db: Session = Depends(get_db)
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    values = get_all_settings(db)
+    return templates.TemplateResponse(
+        request,
+        "settings.html",
+        {
+            "fields": SETTING_FIELDS,
+            "values": values,
+            "user": user,
+            "saved": saved is not None,
+        },
+    )
+
+
+@app.post("/settings", response_class=HTMLResponse)
+async def post_settings(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    form = await request.form()
+    for field in SETTING_FIELDS:
+        value = form.get(field.key, "").strip()
+        if value:
+            set_setting(db, field.key, value)
+    db.commit()
+
+    return RedirectResponse("/settings?saved=1", status_code=303)

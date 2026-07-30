@@ -17,22 +17,22 @@ def main() -> None:
 
     Base.metadata.create_all(engine)
 
-    spreadsheet = open_spreadsheet()
-    today = date.today()
-    tab_name = tab_name_for(today)
-    worksheet = get_worksheet_by_date(spreadsheet, today)
-
-    if worksheet is None:
-        titles = [ws.title for ws in spreadsheet.worksheets()]
-        if not titles:
-            print("Таблиця порожня.")
-            return
-        tab_name = titles[-1]
-        worksheet = spreadsheet.worksheet(tab_name)
-        print(f"Вкладку сьогодні не знайдено, синхронізую останню: '{tab_name}'")
-
-    rows = parse_rows(worksheet.get_all_values())
     with get_session() as session:
+        spreadsheet = open_spreadsheet(db=session)
+        today = date.today()
+        tab_name = tab_name_for(today)
+        worksheet = get_worksheet_by_date(spreadsheet, today)
+
+        if worksheet is None:
+            titles = [ws.title for ws in spreadsheet.worksheets()]
+            if not titles:
+                print("Таблиця порожня.")
+                return
+            tab_name = titles[-1]
+            worksheet = spreadsheet.worksheet(tab_name)
+            print(f"Вкладку сьогодні не знайдено, синхронізую останню: '{tab_name}'")
+
+        rows = parse_rows(worksheet.get_all_values())
         result = sync_tab(session, tab_name, rows)
 
     print(

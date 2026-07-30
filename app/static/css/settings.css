@@ -1,0 +1,95 @@
+/* Settings Page Styles — Order Desk */
+/* Admin configuration screen with grouped input fields */
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-top: var(--space-5);
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-group h2 {
+  margin-bottom: var(--space-2);
+  font-size: 1.25rem;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings-field label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.settings-help {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin: 0;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.settings-textarea {
+  min-height: 8rem;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  padding: var(--space-3) var(--space-4);
+  white-space: pre;
+  overflow-wrap: break-word;
+}
+
+.settings-textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.settings-submit {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+}
+
+/* Success banner */
+.settings-success {
+  position: fixed;
+  top: var(--space-6);
+  right: var(--space-6);
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-card);
+  padding: var(--space-3) var(--space-5);
+  color: var(--color-accent);
+  font-size: 0.95rem;
+  font-weight: 600;
+  animation: fadeInSettings 0.3s ease forwards;
+  z-index: 100;
+}
+
+.settings-success p {
+  margin: 0;
+}
+
+@keyframes fadeInSettings {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

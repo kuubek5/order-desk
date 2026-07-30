@@ -1,7 +1,7 @@
 """Tests for app/export_scanner.py — scanning the physical export folder tree."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from app.export_scanner import scan_export_folder, ExportEntry
@@ -187,22 +187,25 @@ class TestCreatedAtTimestamp:
 
     def test_created_at_is_reasonable_value(self, tmp_path):
         """created_at should be a reasonable timestamp (recent, not epoch zero)."""
+        before = datetime.now()
+
         client_path = tmp_path / "Client"
         batch_path = client_path / "Batch"
         mat_path = batch_path / "Material"
         mat_path.mkdir(parents=True)
         (mat_path / "file.stl").write_text("x")
 
-        import time
-        before = datetime.now()
         result = scan_export_folder(tmp_path)
         after = datetime.now()
 
         assert len(result) == 1
         entry = result[0]
-        # created_at should be within the time range of test execution
-        # (batch was created during this test)
-        assert before <= entry.created_at <= after
+        # Windows' file-time clock and datetime.now() aren't read from the
+        # same timer, so they can disagree by a sub-millisecond hair even
+        # though the folder was genuinely created during this test — allow
+        # a small margin instead of an exact before/after bracket.
+        margin = timedelta(milliseconds=50)
+        assert before - margin <= entry.created_at <= after + margin
 
 
 class TestErrorHandling:

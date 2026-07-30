@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Налаштування — Order Desk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/login.css">
+<link rel="stylesheet" href="/static/css/settings.css">
+{% endblock %}
+
+{% block content %}
+<main>
+    <div class="topbar">
+        <h1>Налаштування</h1>
+        <div class="topbar-user">
+            <a href="/">Робочі замовлення</a>
+            <span class="text-muted">{{ user.full_name or user.username }}</span>
+            <form method="post" action="/logout">
+                <button type="submit" class="link-button">Вийти</button>
+            </form>
+        </div>
+    </div>
+
+    {% if saved %}
+    <div class="settings-success">
+        <p>Збережено</p>
+    </div>
+    {% endif %}
+
+    <form method="post" action="/settings" class="settings-form">
+        <!-- Google Sheets Section -->
+        <div class="card settings-group">
+            <h2>Google Sheets</h2>
+
+            <div class="settings-field">
+                <label for="google_sheet_id">{{ fields[0].label }}</label>
+                {% if fields[0].help_text %}
+                <p class="settings-help">{{ fields[0].help_text }}</p>
+                {% endif %}
+                <div class="login-glow">
+                    <div class="login-input-wrap">
+                        <input
+                            type="text"
+                            id="google_sheet_id"
+                            name="google_sheet_id"
+                            class="login-input"
+                            value="{{ values['google_sheet_id'] or '' }}"
+                            placeholder="ID таблиці"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-field">
+                <label for="google_service_account_json">{{ fields[1].label }}</label>
+                {% if fields[1].help_text %}
+                <p class="settings-help">{{ fields[1].help_text }}</p>
+                {% endif %}
+                <div class="login-glow">
+                    <div class="login-input-wrap">
+                        <textarea
+                            id="google_service_account_json"
+                            name="google_service_account_json"
+                            class="login-input settings-textarea"
+                            placeholder="{% if values['google_service_account_json'] %}•••••••• (збережено){% else %}не задано{% endif %}"
+                        ></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Email/IMAP Section -->
+        <div class="card settings-group">
+            <h2>Пошта (IMAP)</h2>
+
+            <div class="settings-field">
+                <label for="imap_login">{{ fields[2].label }}</label>
+                {% if fields[2].help_text %}
+                <p class="settings-help">{{ fields[2].help_text }}</p>
+                {% endif %}
+                <div class="login-glow">
+                    <div class="login-input-wrap">
+                        <input
+                            type="text"
+                            id="imap_login"
+                            name="imap_login"
+                            class="login-input"
+                            value="{{ values['imap_login'] or '' }}"
+                            placeholder="example@ukr.net"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-field">
+                <label for="imap_password">{{ fields[3].label }}</label>
+                {% if fields[3].help_text %}
+                <p class="settings-help">{{ fields[3].help_text }}</p>
+                {% endif %}
+                <div class="login-glow">
+                    <div class="login-input-wrap">
+                        <input
+                            type="password"
+                            id="imap_password"
+                            name="imap_password"
+                            class="login-input"
+                            placeholder="{% if values['imap_password'] %}•••••••• (збережено){% else %}не задано{% endif %}"
+                        >
+                        <button type="button" class="login-toggle-password" aria-label="Показати пароль">
+                            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-3.19 4.02M6.1 6.1C3.29 7.9 1 12 1 12s4 7 11 7a9.15 9.15 0 0 0 4.9-1.42"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- File Paths Section -->
+        <div class="card settings-group">
+            <h2>Шляхи папок</h2>
+
+            <div class="settings-field">
+                <label for="export_folder_path">{{ fields[4].label }}</label>
+                {% if fields[4].help_text %}
+                <p class="settings-help">{{ fields[4].help_text }}</p>
+                {% endif %}
+                <div class="login-glow">
+                    <div class="login-input-wrap">
+                        <input
+                            type="text"
+                            id="export_folder_path"
+                            name="export_folder_path"
+                            class="login-input"
+                            value="{{ values['export_folder_path'] or '' }}"
+                            placeholder="C:\export"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-field">
+                <label for="technician_files_path">{{ fields[5].label }}</label>
+                {% if fields[5].help_text %}
+                <p class="settings-help">{{ fields[5].help_text }}</p>
+                {% endif %}
+                <div class="login-glow">
+                    <div class="login-input-wrap">
+                        <input
+                            type="text"
+                            id="technician_files_path"
+                            name="technician_files_path"
+                            class="login-input"
+                            value="{{ values['technician_files_path'] or '' }}"
+                            placeholder="C:\technician_files"
+                        >
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="login-submit settings-submit">Зберегти</button>
+    </form>
+</main>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/login.js"></script>
+{% endblock %}

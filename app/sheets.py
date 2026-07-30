@@ -1,13 +1,17 @@
+import json
 import ssl
 from datetime import date
+from typing import Optional
 
 import gspread
 import requests
 from google.auth.transport.requests import AuthorizedSession, Request
 from google.oauth2.service_account import Credentials
 from requests.adapters import HTTPAdapter
+from sqlalchemy.orm import Session
 
 from app.config import GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SHEET_ID
+from app.settings_store import get_google_service_account_json, get_google_sheet_id
 
 _SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -36,8 +40,19 @@ class _LegacyRenegotiationAdapter(HTTPAdapter):
         conn.cert_reqs = "CERT_REQUIRED"
 
 
-def get_client() -> gspread.Client:
-    creds = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_JSON, scopes=_SCOPES)
+def get_client(db: Optional[Session] = None) -> gspread.Client:
+    # Try to get credentials from DB if a session is provided
+    if db is not None:
+        json_content = get_google_service_account_json(db)
+        if json_content is not None:
+            service_account_info = json.loads(json_content)
+            creds = Credentials.from_service_account_info(service_account_info, scopes=_SCOPES)
+        else:
+            # Fall back to file-based credentials
+            creds = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_JSON, scopes=_SCOPES)
+    else:
+        # No DB provided, use file-based credentials
+        creds = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_JSON, scopes=_SCOPES)
 
     # Token refresh (POST to oauth2.googleapis.com) runs over its own
     # internal session unless we hand it one explicitly, so the adapter
@@ -56,9 +71,13 @@ def tab_name_for(d: date) -> str:
     return d.strftime("%d.%m.%y")
 
 
-def open_spreadsheet() -> gspread.Spreadsheet:
-    client = get_client()
-    return client.open_by_key(GOOGLE_SHEET_ID)
+def open_spreadsheet(db: Optional[Session] = None) -> gspread.Spreadsheet:
+    client = get_client(db)
+    if db is not None:
+        sheet_id = get_google_sheet_id(db)
+    else:
+        sheet_id = GOOGLE_SHEET_ID
+    return client.open_by_key(sheet_id)
 
 
 def get_worksheet_by_date(spreadsheet: gspread.Spreadsheet, d: date) -> gspread.Worksheet | None:
