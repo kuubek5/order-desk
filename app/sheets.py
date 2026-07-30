@@ -62,7 +62,10 @@ def open_spreadsheet() -> gspread.Spreadsheet:
 
 
 def get_worksheet_by_date(spreadsheet: gspread.Spreadsheet, d: date) -> gspread.Worksheet | None:
-    name = tab_name_for(d)
+    return get_worksheet_by_name(spreadsheet, tab_name_for(d))
+
+
+def get_worksheet_by_name(spreadsheet: gspread.Spreadsheet, name: str) -> gspread.Worksheet | None:
     try:
         return spreadsheet.worksheet(name)
     except gspread.WorksheetNotFound:

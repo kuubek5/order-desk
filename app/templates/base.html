@@ -6,9 +6,11 @@
     <title>{% block title %}Order Desk{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/tokens.css">
     <link rel="stylesheet" href="/static/css/base.css">
+    {% block extra_head %}{% endblock %}
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 </head>
 <body>
     {% block content %}{% endblock %}
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

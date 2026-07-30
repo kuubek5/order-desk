@@ -7,6 +7,20 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    full_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    role: Mapped[str] = mapped_column(String(50), default="оператор")
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now()
+    )
+
+
 class Order(Base):
     __tablename__ = "orders"
 
@@ -52,6 +66,7 @@ class StatusEvent(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), index=True)
+    operator_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     status: Mapped[str] = mapped_column(String(100))
     actor: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -60,6 +75,7 @@ class StatusEvent(Base):
     )
 
     order: Mapped["Order"] = relationship("Order", back_populates="status_events")
+    operator: Mapped[Optional["User"]] = relationship("User")
 
 
 class Comment(Base):

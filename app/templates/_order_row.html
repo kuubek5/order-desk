@@ -1,0 +1,32 @@
+<tr class="queue-row" id="order-row-{{ order.id }}">
+    <td class="order-id">{{ order.work_order_no or '—' }}</td>
+    <td class="material-cell">
+        {% if order.material_color %}
+            <span class="chip">{{ order.material_color }}</span>
+        {% else %}
+            <span class="text-muted">—</span>
+        {% endif %}
+    </td>
+    <td class="kind-cell">
+        {% if order.kind %}
+            <span class="chip">{{ order.kind }}</span>
+        {% else %}
+            <span class="text-muted">—</span>
+        {% endif %}
+    </td>
+    <td class="quantity">{{ order.quantity or '—' }}</td>
+    <td class="due-time">{{ order.due_time or '—' }}</td>
+    <td class="job-code"><span class="mono">{{ order.job_code or '—' }}</span></td>
+    <td class="sum3d-id">
+        <form class="sum3d-form" hx-post="/orders/{{ order.id }}/sum3d-id" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
+            <input type="text" name="sum3d_id" value="{{ order.sum3d_id or '' }}" class="mono sum3d-input" placeholder="ID">
+            <button type="submit" class="sum3d-save" title="Зберегти й записати в таблицю">✓</button>
+        </form>
+    </td>
+    <td class="technician">{{ order.technician_name or '—' }}</td>
+    <td class="status">
+        <span class="status-badge status-{{ order.status|replace(' ', '-')|lower }}">
+            {{ order.status }}
+        </span>
+    </td>
+</tr>
