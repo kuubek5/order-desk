@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }} — Order Desk{% endblock %}
+
+{% block content %}
+<main>
+    <div class="topbar">
+        <h1>{{ page_title }}</h1>
+        <div class="topbar-user">
+            <a href="/mail">Нові з пошти</a>
+            <a href="/handout">Ранкова видача</a>
+            <a href="/stats">Статистика</a>
+            {% if user.role == "адмін" %}
+            <a href="/settings">Налаштування</a>
+            {% endif %}
+            <a href="/account" class="text-muted">{{ user.full_name or user.username }}</a>
+            <form method="post" action="/logout">
+                <button type="submit" class="link-button">Вийти</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Stats by Period -->
+    <div class="stats-grid">
+        <div class="card stat-card">
+            <div class="stat-value">{{ stats.today.orders }}</div>
+            <div class="stat-label">роботи сьогодні</div>
+            <div class="stat-units">{{ stats.today.units }} одиниць</div>
+        </div>
+
+        <div class="card stat-card">
+            <div class="stat-value">{{ stats.week.orders }}</div>
+            <div class="stat-label">роботи цього тижня</div>
+            <div class="stat-units">{{ stats.week.units }} одиниць</div>
+        </div>
+
+        <div class="card stat-card">
+            <div class="stat-value">{{ stats.month.orders }}</div>
+            <div class="stat-label">роботи цього місяця</div>
+            <div class="stat-units">{{ stats.month.units }} одиниць</div>
+        </div>
+
+        <div class="card stat-card">
+            <div class="stat-value">{{ stats.all_time.orders }}</div>
+            <div class="stat-label">роботи всього</div>
+            <div class="stat-units">{{ stats.all_time.units }} одиниць</div>
+        </div>
+    </div>
+
+    <!-- Average Time -->
+    <div class="card stat-card-large">
+        <div class="stat-large-label">Середній час<br><span class="stat-large-sublabel">нове → відфрезеровано</span></div>
+        <div class="stat-large-value">{{ avg_time }}</div>
+    </div>
+
+    <!-- Rework by Blame -->
+    <div class="card">
+        <h2 class="detail-section-title">Переробки по причинам</h2>
+        {% if rework_stats %}
+            <table class="queue-table stats-table">
+                <thead>
+                    <tr>
+                        <th>Причина (винуватець)</th>
+                        <th>Кількість</th>
+                        <th>Одиниці</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for blame, data in rework_stats.items() | sort %}
+                        <tr>
+                            <td>{{ blame }}</td>
+                            <td class="text-center">{{ data.incidents }}</td>
+                            <td class="text-center">{{ data.units }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p class="text-muted">Немає записів про переробки.</p>
+        {% endif %}
+    </div>
+</main>
+{% endblock %}

@@ -10,12 +10,12 @@ from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 
-from app.auth import verify_password
+from app.auth import hash_password, verify_password
 from app.client_matcher import match_client_name
 from app.config import SESSION_SECRET_KEY
 from app.db import Base, SessionLocal, engine
 from app.export_scanner import scan_export_folder
-from app.models import ClientNameAlias, EmailMessage, Order, StatusEvent, SyncLog, User
+from app.models import ClientNameAlias, EmailMessage, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.settings_store import SETTING_FIELDS, get_all_settings, get_export_folder_path, set_setting
 from app.sheet_writer import write_order_fields
 from app.sheets import get_worksheet_by_name, open_spreadsheet
@@ -364,6 +364,44 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse("/settings?saved=1", status_code=303)
 
 
+@app.get("/account", response_class=HTMLResponse)
+async def get_account(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    return templates.TemplateResponse(request, "account.html", {"user": user})
+
+
+@app.post("/account/password", response_class=HTMLResponse)
+async def post_account_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    error = None
+    if not verify_password(current_password, user.password_hash):
+        error = "Поточний пароль невірний"
+    elif len(new_password) < 6:
+        error = "Новий пароль має бути не коротшим за 6 символів"
+    elif new_password != confirm_password:
+        error = "Паролі не збігаються"
+
+    if error:
+        return templates.TemplateResponse(request, "account.html", {"user": user, "error": error})
+
+    user.password_hash = hash_password(new_password)
+    db.commit()
+
+    return templates.TemplateResponse(request, "account.html", {"user": user, "saved": True})
+
+
 @app.get("/mail", response_class=HTMLResponse)
 async def get_mail(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
@@ -466,3 +504,114 @@ async def reject_email(
     db.commit()
 
     return RedirectResponse("/mail", status_code=303)
+
+
+@app.get("/stats", response_class=HTMLResponse)
+async def get_stats(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    # Helper function to parse quantity defensively
+    def parse_qty(value):
+        if value is None:
+            return 0
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return 0
+
+    # Helper function to format timedelta as human-readable string
+    def format_timedelta(td):
+        if not isinstance(td, timedelta):
+            return "Немає даних"
+        total_seconds = int(td.total_seconds())
+        days = total_seconds // 86400
+        hours = (total_seconds % 86400) // 3600
+        minutes = (total_seconds % 3600) // 60
+
+        if days > 0:
+            return f"{days} дн {hours} год"
+        else:
+            return f"{hours} год {minutes} хв"
+
+    today = date.today()
+
+    # 1. Counts by period
+    all_orders = db.scalars(select(Order)).all()
+
+    stats = {
+        "today": {"orders": 0, "units": 0},
+        "week": {"orders": 0, "units": 0},
+        "month": {"orders": 0, "units": 0},
+        "all_time": {"orders": 0, "units": 0},
+    }
+
+    for order in all_orders:
+        qty = parse_qty(order.quantity)
+        stats["all_time"]["orders"] += 1
+        stats["all_time"]["units"] += qty
+
+        order_date = order.created_at.date() if order.created_at else None
+        if order_date == today:
+            stats["today"]["orders"] += 1
+            stats["today"]["units"] += qty
+            stats["week"]["orders"] += 1
+            stats["week"]["units"] += qty
+            stats["month"]["orders"] += 1
+            stats["month"]["units"] += qty
+        elif order_date and (today - order_date).days < 7:
+            stats["week"]["orders"] += 1
+            stats["week"]["units"] += qty
+            stats["month"]["orders"] += 1
+            stats["month"]["units"] += qty
+        elif order_date and (today - order_date).days < 30:
+            stats["month"]["orders"] += 1
+            stats["month"]["units"] += qty
+
+    # 2. Rework by blame
+    rework_records = db.scalars(select(ReworkRecord)).all()
+    rework_stats = {}
+    for rework in rework_records:
+        blame = rework.blame or "невідомо"
+        qty = parse_qty(rework.blame_quantity)
+        if blame not in rework_stats:
+            rework_stats[blame] = {"incidents": 0, "units": 0}
+        rework_stats[blame]["incidents"] += 1
+        rework_stats[blame]["units"] += qty
+
+    # 3. Average time нове → відфрезеровано
+    timedeltas = []
+    for order in all_orders:
+        status_events = sorted(order.status_events, key=lambda e: e.occurred_at)
+
+        # Find first "нове" and first "відфрезеровано"
+        first_nove = None
+        first_milled = None
+
+        for event in status_events:
+            if event.status == "нове" and first_nove is None:
+                first_nove = event
+            if event.status == "відфрезеровано" and first_milled is None:
+                first_milled = event
+
+        if first_nove and first_milled and first_milled.occurred_at > first_nove.occurred_at:
+            timedeltas.append(first_milled.occurred_at - first_nove.occurred_at)
+
+    if timedeltas:
+        avg_td = timedelta(seconds=sum(td.total_seconds() for td in timedeltas) / len(timedeltas))
+        avg_time = format_timedelta(avg_td)
+    else:
+        avg_time = "Немає даних"
+
+    return templates.TemplateResponse(
+        request,
+        "stats.html",
+        {
+            "page_title": "Статистика",
+            "user": user,
+            "stats": stats,
+            "rework_stats": rework_stats,
+            "avg_time": avg_time,
+        },
+    )

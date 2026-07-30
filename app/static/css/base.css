@@ -741,3 +741,125 @@ li {
   border-color: rgba(232, 180, 168, 0.3);
   color: var(--color-accent);
 }
+
+/* Stats Page Styles */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 140px;
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--color-accent);
+  margin-bottom: var(--space-2);
+}
+
+.stat-label {
+  font-size: 0.95rem;
+  color: var(--color-text);
+  font-weight: 500;
+  margin-bottom: var(--space-1);
+}
+
+.stat-units {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.stat-card-large {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  margin-bottom: var(--space-5);
+  min-height: 160px;
+}
+
+.stat-large-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.4;
+}
+
+.stat-large-sublabel {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  margin-top: var(--space-2);
+}
+
+.stat-large-value {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
+.stats-table th {
+  text-align: left;
+}
+
+.stats-table th:nth-child(2),
+.stats-table th:nth-child(3) {
+  text-align: center;
+}
+
+.stats-table td {
+  font-size: 0.95rem;
+}
+
+.text-center {
+  text-align: center;
+}
+
+/* Copy Path Button */
+.copy-path-btn {
+  background: none;
+  border: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  margin-left: var(--space-2);
+  cursor: pointer;
+  color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-chip);
+  transition: color 0.2s ease, background-color 0.2s ease;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.copy-path-btn:hover {
+  color: var(--color-accent);
+  background-color: rgba(232, 180, 168, 0.1);
+}
+
+.copy-path-btn.copied {
+  color: var(--color-accent);
+  background-color: rgba(232, 180, 168, 0.15);
+}
+
+.copy-path-btn svg {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 2.5;
+}

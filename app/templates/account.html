@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Мій обліковий запис — Order Desk{% endblock %}
+
+{% block content %}
+<main>
+    <div class="topbar">
+        <h1>Мій обліковий запис</h1>
+        <div class="topbar-user">
+            <a href="/">← До черги</a>
+            <span class="text-muted">{{ user.full_name or user.username }}</span>
+            <form method="post" action="/logout">
+                <button type="submit" class="link-button">Вийти</button>
+            </form>
+        </div>
+    </div>
+
+    {% if saved %}
+    <div class="card" style="border-color: var(--color-accent); margin-bottom: var(--space-4);">
+        <p style="margin-bottom: 0;">Пароль змінено</p>
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="card" style="border-color: #e8a8a8; margin-bottom: var(--space-4);">
+        <p style="margin-bottom: 0; color: #e8a8a8;">{{ error }}</p>
+    </div>
+    {% endif %}
+
+    <div class="card" style="max-width: 24rem;">
+        <h2>Змінити пароль</h2>
+        <form method="post" action="/account/password" class="mail-form">
+            <div class="form-group">
+                <label for="current_password">Поточний пароль</label>
+                <input type="password" id="current_password" name="current_password" class="form-input" required>
+            </div>
+            <div class="form-group">
+                <label for="new_password">Новий пароль</label>
+                <input type="password" id="new_password" name="new_password" class="form-input" required minlength="6">
+            </div>
+            <div class="form-group">
+                <label for="confirm_password">Повторіть новий пароль</label>
+                <input type="password" id="confirm_password" name="confirm_password" class="form-input" required minlength="6">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="form-submit">Змінити пароль</button>
+            </div>
+        </form>
+    </div>
+</main>
+{% endblock %}
