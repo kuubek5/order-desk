@@ -99,3 +99,11 @@ def get_export_folder_path(session: Session) -> str:
 
 def get_technician_files_path(session: Session) -> Optional[str]:
     return get_setting(session, "technician_files_path")
+
+
+def get_imap_login(session: Session) -> Optional[str]:
+    return get_setting(session, "imap_login")
+
+
+def get_imap_password(session: Session) -> Optional[str]:
+    return get_setting(session, "imap_password")

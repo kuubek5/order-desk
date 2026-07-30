@@ -638,3 +638,106 @@ li {
   gap: var(--space-2);
   margin-top: var(--space-4);
 }
+
+/* Mail Triage Styles */
+.mail-body-content {
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.mail-body-content pre {
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  max-height: 20rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: var(--color-text-muted);
+}
+
+.mail-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.form-group label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.form-required {
+  color: var(--color-accent);
+}
+
+.form-input {
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-chip);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.95rem;
+  font-family: var(--font-body);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  background-color: rgba(232, 180, 168, 0.05);
+}
+
+.form-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.form-actions {
+  display: flex;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.form-submit {
+  background-color: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-chip);
+  color: var(--color-bg);
+  padding: var(--space-3) var(--space-5);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.form-submit:hover {
+  opacity: 0.9;
+}
+
+.form-reject {
+  background-color: transparent;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-chip);
+  color: var(--color-text-muted);
+  padding: var(--space-3) var(--space-5);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.form-reject:hover {
+  border-color: rgba(232, 180, 168, 0.3);
+  color: var(--color-accent);
+}

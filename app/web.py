@@ -15,7 +15,7 @@ from app.client_matcher import match_client_name
 from app.config import SESSION_SECRET_KEY
 from app.db import SessionLocal
 from app.export_scanner import scan_export_folder
-from app.models import ClientNameAlias, Order, StatusEvent, SyncLog, User
+from app.models import ClientNameAlias, EmailMessage, Order, StatusEvent, SyncLog, User
 from app.settings_store import SETTING_FIELDS, get_all_settings, get_export_folder_path, set_setting
 from app.sheet_writer import write_order_fields
 from app.sheets import get_worksheet_by_name, open_spreadsheet
@@ -360,3 +360,107 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
     db.commit()
 
     return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+@app.get("/mail", response_class=HTMLResponse)
+async def get_mail(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    emails = db.scalars(
+        select(EmailMessage)
+        .where(EmailMessage.status == "нове")
+        .order_by(
+            EmailMessage.received_at.desc().nullslast(),
+            EmailMessage.created_at.desc()
+        )
+    ).all()
+
+    return templates.TemplateResponse(
+        request,
+        "mail_triage.html",
+        {"page_title": "Нові з пошти", "emails": emails, "user": user},
+    )
+
+
+@app.get("/mail/{email_id}", response_class=HTMLResponse)
+async def get_mail_detail(
+    request: Request,
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+
+    return templates.TemplateResponse(
+        request,
+        "mail_detail.html",
+        {"email": email, "user": user},
+    )
+
+
+@app.post("/mail/{email_id}/accept", response_class=HTMLResponse)
+async def accept_email(
+    request: Request,
+    email_id: int,
+    client_name: str = Form(...),
+    material_color: str = Form(""),
+    kind: str = Form(""),
+    quantity: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+
+    new_order = Order(
+        source="email",
+        sheet_tab=None,
+        row_number=None,
+        client_name=client_name.strip() or None,
+        material_color=material_color.strip() or None,
+        kind=kind.strip() or None,
+        quantity=quantity.strip() or None,
+        status="нове",
+    )
+    db.add(new_order)
+    db.flush()
+
+    email.order_id = new_order.id
+    email.status = "прийнято"
+    db.add(
+        StatusEvent(order_id=new_order.id, operator_id=user.id, status="нове", actor=user.username)
+    )
+    db.commit()
+
+    return RedirectResponse("/mail", status_code=303)
+
+
+@app.post("/mail/{email_id}/reject")
+async def reject_email(
+    request: Request,
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+
+    email.status = "відхилено"
+    db.commit()
+
+    return RedirectResponse("/mail", status_code=303)

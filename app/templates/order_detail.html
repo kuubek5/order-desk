@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Замовлення {{ order.work_order_no }} — Order Desk{% endblock %}
+{% block title %}Замовлення {{ order.work_order_no or order.client_name or order.id }} — Order Desk{% endblock %}
 
 {% block content %}
 <main>
@@ -10,6 +10,14 @@
 
     <!-- Passport Header -->
     <div class="card detail-passport">
+        {% if order.client_name %}
+        <div class="passport-row">
+            <div class="passport-field">
+                <label class="passport-label">Клієнт</label>
+                <div class="passport-value">{{ order.client_name }}</div>
+            </div>
+        </div>
+        {% endif %}
         <div class="passport-row">
             <div class="passport-field">
                 <label class="passport-label">Номер наряду</label>

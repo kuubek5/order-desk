@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }} — Order Desk{% endblock %}
+
+{% block content %}
+<main>
+    <div class="topbar">
+        <h1>{{ page_title }}</h1>
+        <div class="topbar-user">
+            <a href="/">← До черги</a>
+            <span class="text-muted">{{ user.full_name or user.username }}</span>
+            <form method="post" action="/logout">
+                <button type="submit" class="link-button">Вийти</button>
+            </form>
+        </div>
+    </div>
+
+    {% if emails %}
+        <div class="queue-summary">
+            Нових листів: <strong>{{ emails|length }}</strong>
+        </div>
+
+        <table class="queue-table">
+            <thead>
+                <tr>
+                    <th>Від</th>
+                    <th>Тема</th>
+                    <th>Одержано</th>
+                    <th>Матеріал / Колір</th>
+                    <th>Вкладень</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for email in emails %}
+                <tr class="queue-row">
+                    <td>{{ email.from_address or '—' }}</td>
+                    <td>{{ email.subject or '—' }}</td>
+                    <td class="text-muted">
+                        {% if email.received_at %}
+                            <span class="mono">{{ email.received_at }}</span>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if email.material_color_guess %}
+                            <span class="chip">{{ email.material_color_guess }}</span>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-muted">{{ email.attachments|length }}</td>
+                    <td><a href="/mail/{{ email.id }}">Обробити →</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="card queue-empty">
+            <p>Немає нових листів.</p>
+        </div>
+    {% endif %}
+</main>
+{% endblock %}

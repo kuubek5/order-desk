@@ -149,3 +149,38 @@ class AppSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now(), onupdate=func.now()
     )
+
+
+class EmailMessage(Base):
+    __tablename__ = "email_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    uid: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    from_address: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    subject: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    body_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    client_name_guess: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    material_color_guess: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    kind_guess: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    quantity_guess: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="нове")
+    order_id: Mapped[Optional[int]] = mapped_column(ForeignKey("orders.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+
+    attachments: Mapped[list["Attachment"]] = relationship(
+        "Attachment", back_populates="email_message", cascade="all, delete-orphan"
+    )
+
+
+class Attachment(Base):
+    __tablename__ = "attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email_message_id: Mapped[int] = mapped_column(ForeignKey("email_messages.id"), index=True)
+    filename: Mapped[str] = mapped_column(String(300))
+    saved_path: Mapped[str] = mapped_column(String(500))
+    size_bytes: Mapped[Optional[int]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
+
+    email_message: Mapped["EmailMessage"] = relationship("EmailMessage", back_populates="attachments")

@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Тріаж листа — Order Desk{% endblock %}
+
+{% block content %}
+<main>
+    <div class="detail-header">
+        <a href="/mail" class="detail-back">← До списку листів</a>
+    </div>
+
+    <!-- Email Header / Passport -->
+    <div class="card detail-passport">
+        <div class="passport-row">
+            <div class="passport-field">
+                <label class="passport-label">Від</label>
+                <div class="passport-value">{{ email.from_address or '—' }}</div>
+            </div>
+            <div class="passport-field">
+                <label class="passport-label">Тема</label>
+                <div class="passport-value">{{ email.subject or '—' }}</div>
+            </div>
+        </div>
+
+        <div class="passport-row">
+            <div class="passport-field">
+                <label class="passport-label">Одержано</label>
+                <div class="passport-value">
+                    {% if email.received_at %}
+                        <span class="mono">{{ email.received_at }}</span>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Email Body -->
+    <div class="card detail-section">
+        <h3 class="detail-section-title">Текст листа</h3>
+        <div class="mail-body-content">
+            <pre>{{ email.body_text or '(порожньо)' }}</pre>
+        </div>
+    </div>
+
+    <!-- Attachments -->
+    {% if email.attachments %}
+    <div class="card detail-section">
+        <h3 class="detail-section-title">Вкладення ({{ email.attachments|length }})</h3>
+        <ul class="detail-list">
+            {% for attachment in email.attachments %}
+            <li class="detail-comment">
+                <div class="comment-header">
+                    <span class="comment-author"><span class="mono">{{ attachment.filename }}</span></span>
+                    <span class="comment-time">
+                        {% if attachment.size_bytes %}
+                            {% if attachment.size_bytes >= 1024 * 1024 %}
+                                {{ (attachment.size_bytes / (1024 * 1024))|round(1) }} МБ
+                            {% else %}
+                                {{ (attachment.size_bytes / 1024)|round(1) }} КБ
+                            {% endif %}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </span>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- Triage Form -->
+    <div class="card detail-section">
+        <h3 class="detail-section-title">Прийняти в чергу</h3>
+        <form method="post" action="/mail/{{ email.id }}/accept" class="mail-form">
+            <div class="form-group">
+                <label for="client_name">Ім'я клієнта<span class="form-required">*</span></label>
+                <input
+                    type="text"
+                    id="client_name"
+                    name="client_name"
+                    class="form-input"
+                    value="{{ email.client_name_guess or '' }}"
+                    placeholder="вкажіть ім'я клієнта"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="material_color">Матеріал / Колір</label>
+                <input
+                    type="text"
+                    id="material_color"
+                    name="material_color"
+                    class="form-input"
+                    value="{{ email.material_color_guess or '' }}"
+                    placeholder="напр. пмма A2, титан"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="kind">Вид роботи</label>
+                <input
+                    type="text"
+                    id="kind"
+                    name="kind"
+                    class="form-input"
+                    value="{{ email.kind_guess or '' }}"
+                    placeholder="напр. анатомія, абатмент"
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="quantity">Кількість</label>
+                <input
+                    type="text"
+                    id="quantity"
+                    name="quantity"
+                    class="form-input"
+                    value="{{ email.quantity_guess or '' }}"
+                    placeholder="напр. 5"
+                >
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="form-submit">Прийняти в чергу</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Reject Form -->
+    <div class="card detail-section">
+        <form method="post" action="/mail/{{ email.id }}/reject" class="mail-form">
+            <button type="submit" class="form-reject">Відхилити</button>
+        </form>
+    </div>
+</main>
+{% endblock %}
