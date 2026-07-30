@@ -14,3 +14,7 @@ services:
       # Map the real export/ share from the lab server here, e.g.:
       # - /mnt/lab-export:/data/export
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          memory: 256M
