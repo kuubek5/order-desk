@@ -1,5 +1,5 @@
 <tr class="queue-row" id="order-row-{{ order.id }}">
-    <td class="order-id">{{ order.work_order_no or '—' }}</td>
+    <td class="order-id"><a href="/orders/{{ order.id }}">{{ order.work_order_no or '—' }}</a></td>
     <td class="material-cell">
         {% if order.material_color %}
             <span class="chip">{{ order.material_color }}</span>
@@ -25,8 +25,12 @@
     </td>
     <td class="technician">{{ order.technician_name or '—' }}</td>
     <td class="status">
-        <span class="status-badge status-{{ order.status|replace(' ', '-')|lower }}">
-            {{ order.status }}
-        </span>
+        <form hx-post="/orders/{{ order.id }}/status" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML" hx-trigger="change">
+            <select name="status" class="status-select status-badge status-{{ order.status|replace(' ', '-')|lower }}">
+                {% for s in statuses %}
+                <option value="{{ s }}" {% if s == order.status %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </form>
     </td>
 </tr>

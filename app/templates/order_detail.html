@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Замовлення {{ order.work_order_no }} — Order Desk{% endblock %}
+
+{% block content %}
+<main>
+    <div class="detail-header">
+        <a href="/" class="detail-back">← До черги</a>
+    </div>
+
+    <!-- Passport Header -->
+    <div class="card detail-passport">
+        <div class="passport-row">
+            <div class="passport-field">
+                <label class="passport-label">Номер наряду</label>
+                <div class="passport-value">{{ order.work_order_no or '—' }}</div>
+            </div>
+            <div class="passport-field">
+                <label class="passport-label">Job Code</label>
+                <div class="passport-value"><span class="mono">{{ order.job_code or '—' }}</span></div>
+            </div>
+            <div class="passport-field">
+                <label class="passport-label">Sum3D ID</label>
+                <div class="passport-value"><span class="mono">{{ order.sum3d_id or '—' }}</span></div>
+            </div>
+        </div>
+
+        <div class="passport-row">
+            <div class="passport-field">
+                <label class="passport-label">Матеріал / Колір</label>
+                <div class="passport-value">
+                    {% if order.material_color %}
+                        <span class="chip">{{ order.material_color }}</span>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="passport-field">
+                <label class="passport-label">Вид роботи</label>
+                <div class="passport-value">
+                    {% if order.kind %}
+                        <span class="chip">{{ order.kind }}</span>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="passport-row">
+            <div class="passport-field">
+                <label class="passport-label">Кількість</label>
+                <div class="passport-value">{{ order.quantity or '—' }}</div>
+            </div>
+            <div class="passport-field">
+                <label class="passport-label">Здати до</label>
+                <div class="passport-value">{{ order.due_time or '—' }}</div>
+            </div>
+            <div class="passport-field">
+                <label class="passport-label">Технік</label>
+                <div class="passport-value">{{ order.technician_name or '—' }}</div>
+            </div>
+        </div>
+
+        <div class="passport-row">
+            <div class="passport-field">
+                <label class="passport-label">Статус</label>
+                <div class="passport-value">
+                    <span class="status-badge status-{{ order.status|replace(' ', '-')|lower }}">{{ order.status }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Events Timeline -->
+    <div class="card detail-section">
+        <h3 class="detail-section-title">Хронологія статусів</h3>
+        {% if order.status_events %}
+            <ul class="detail-timeline">
+                {% for event in order.status_events|sort(attribute='occurred_at') %}
+                    <li class="timeline-event">
+                        <div class="timeline-status">{{ event.status }}</div>
+                        <div class="timeline-meta">
+                            <span class="timeline-operator">
+                                {% if event.operator %}
+                                    {{ event.operator.full_name or event.operator.username }}
+                                {% elif event.actor %}
+                                    {{ event.actor }}
+                                {% else %}
+                                    система
+                                {% endif %}
+                            </span>
+                            <span class="timeline-time">{{ event.occurred_at }}</span>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-muted">поки немає подій</p>
+        {% endif %}
+    </div>
+
+    <!-- Comments Section -->
+    <div class="card detail-section">
+        <h3 class="detail-section-title">Коментарі</h3>
+        {% if order.comments %}
+            <ul class="detail-list">
+                {% for comment in order.comments|sort(attribute='created_at', reverse=True) %}
+                    <li class="detail-comment">
+                        <div class="comment-header">
+                            <span class="comment-author">{{ comment.author or comment.source or '—' }}</span>
+                            <span class="comment-time">{{ comment.created_at }}</span>
+                        </div>
+                        <div class="comment-text">{{ comment.text }}</div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-muted">поки немає коментарів</p>
+        {% endif %}
+    </div>
+
+    <!-- Rework Records Section -->
+    <div class="card detail-section">
+        <h3 class="detail-section-title">Історія переробок</h3>
+        {% if order.rework_records %}
+            <ul class="detail-list">
+                {% for rework in order.rework_records|sort(attribute='created_at') %}
+                    <li class="detail-rework">
+                        <div class="rework-header">
+                            <span class="rework-blame">{{ rework.blame or '—' }}</span>
+                            <span class="rework-date">{{ rework.created_at }}</span>
+                        </div>
+                        <div class="rework-details">
+                            {% if rework.blame_quantity %}
+                                <span class="rework-detail-item">Браку: {{ rework.blame_quantity }}</span>
+                            {% endif %}
+                            {% if rework.redo_quantity %}
+                                <span class="rework-detail-item">Переробки: {{ rework.redo_quantity }}</span>
+                            {% endif %}
+                            {% if rework.cam_comment %}
+                                <div class="rework-comment">{{ rework.cam_comment }}</div>
+                            {% endif %}
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-muted">переробок не було</p>
+        {% endif %}
+    </div>
+</main>
+{% endblock %}

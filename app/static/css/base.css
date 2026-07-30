@@ -366,8 +366,230 @@ li {
   border: 1px solid rgba(200, 232, 168, 0.3);
 }
 
+.status-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.status-select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .status-badge.status-видано {
   background-color: rgba(168, 232, 168, 0.15);
   color: #a8e8a8;
   border: 1px solid rgba(168, 232, 168, 0.3);
+}
+
+/* Order Detail Page Styles */
+.detail-header {
+  margin-bottom: var(--space-5);
+}
+
+.detail-back {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  transition: color 0.2s ease;
+}
+
+.detail-back:hover {
+  color: var(--color-accent);
+}
+
+.detail-passport {
+  margin-bottom: var(--space-5);
+}
+
+.passport-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.passport-row:last-child {
+  margin-bottom: 0;
+}
+
+.passport-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.passport-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.passport-value {
+  font-size: 1rem;
+  color: var(--color-text);
+}
+
+.detail-section {
+  margin-bottom: var(--space-5);
+}
+
+.detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.detail-section-title {
+  font-size: 1.25rem;
+  margin-bottom: var(--space-4);
+  margin-top: 0;
+}
+
+.detail-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline-event {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.timeline-event:last-child {
+  border-bottom: none;
+}
+
+.timeline-status {
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: var(--space-2);
+}
+
+.timeline-meta {
+  display: flex;
+  gap: var(--space-4);
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.timeline-operator {
+  font-weight: 500;
+}
+
+.timeline-time {
+  color: var(--color-text-muted);
+}
+
+.detail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.detail-comment,
+.detail-rework {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.detail-comment:last-child,
+.detail-rework:last-child {
+  border-bottom: none;
+}
+
+.comment-header,
+.rework-header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  font-size: 0.95rem;
+}
+
+.comment-author,
+.rework-blame {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.comment-time,
+.rework-date {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.comment-text {
+  color: var(--color-text);
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.rework-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.rework-detail-item {
+  display: inline-block;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  padding: var(--space-1) var(--space-2);
+  background-color: var(--color-bg);
+  border-radius: 4px;
+}
+
+.rework-comment {
+  font-size: 0.9rem;
+  color: var(--color-text);
+  padding: var(--space-2);
+  background-color: var(--color-bg);
+  border-radius: 4px;
+}
+
+/* Tab Navigation */
+.tab-nav {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.tab-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-chip);
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.tab-link:hover {
+  color: var(--color-text);
+  border-color: rgba(230, 230, 240, 0.2);
+}
+
+.tab-link.active {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.tab-badge {
+  display: inline-block;
+  font-size: 0.85rem;
+  color: inherit;
 }

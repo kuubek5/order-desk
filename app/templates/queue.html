@@ -14,6 +14,21 @@
         </div>
     </div>
 
+    <nav class="tab-nav">
+        <a href="/?period=today" class="tab-link {% if period == 'today' %}active{% endif %}">
+            Сьогодні <span class="tab-badge">({{ counts.today }})</span>
+        </a>
+        <a href="/?period=yesterday" class="tab-link {% if period == 'yesterday' %}active{% endif %}">
+            Вчора <span class="tab-badge">({{ counts.yesterday }})</span>
+        </a>
+        <a href="/?period=tomorrow" class="tab-link {% if period == 'tomorrow' %}active{% endif %}">
+            Завтра <span class="tab-badge">({{ counts.tomorrow }})</span>
+        </a>
+        <a href="/?period=earlier" class="tab-link {% if period == 'earlier' %}active{% endif %}">
+            Раніше <span class="tab-badge">({{ counts.earlier }})</span>
+        </a>
+    </nav>
+
     {% if orders %}
         <div class="queue-summary">
             Всього робіт: <strong>{{ orders|length }}</strong>
