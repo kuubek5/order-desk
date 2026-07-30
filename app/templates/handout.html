@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Ранкова видача — Order Desk{% endblock %}
+
+{% block content %}
+<main>
+    <div class="topbar">
+        <h1>{{ page_title }}</h1>
+        <div class="topbar-user">
+            <a href="/">← До черги</a>
+            <span class="text-muted">{{ user.full_name or user.username }}</span>
+            <form method="post" action="/logout">
+                <button type="submit" class="link-button">Вийти</button>
+            </form>
+        </div>
+    </div>
+
+    {% if client_groups %}
+        {% for group in client_groups %}
+        <div class="card handout-group {% if group.all_found %}is-complete{% endif %}">
+            <div class="handout-group-header">
+                <h3>{{ group.client_name }}{% if group.all_found %} <span class="status-badge status-видано">✓ зібрано</span>{% endif %}</h3>
+                {% if group.match.matched_folder_name %}
+                    <span class="text-muted">
+                        Папка: <span class="mono">{{ group.match.matched_folder_name }}</span>
+                        {% if not group.match.is_confirmed_alias %}(збіг {{ group.match.confidence|round(0) }}%){% endif %}
+                    </span>
+                {% else %}
+                    <span class="text-muted">Папку не знайдено автоматично</span>
+                {% endif %}
+            </div>
+
+            {% if not group.match.matched_folder_name and group.match.candidates %}
+                <form method="post" action="/handout/confirm-alias" class="handout-confirm-form">
+                    <input type="hidden" name="sheet_name" value="{{ group.client_name }}">
+                    <p class="text-muted">Оберіть відповідну папку:</p>
+                    {% for candidate_name, score in group.match.candidates %}
+                        <label class="handout-candidate">
+                            <input type="radio" name="export_folder_name" value="{{ candidate_name }}" required>
+                            <span class="mono">{{ candidate_name }}</span>
+                            <span class="text-muted">({{ score|round(0) }}%)</span>
+                        </label>
+                    {% endfor %}
+                    <button type="submit" class="sum3d-save">Підтвердити</button>
+                </form>
+            {% endif %}
+
+            <table class="queue-table">
+                <thead>
+                    <tr>
+                        <th>Номер наряду</th>
+                        <th>Матеріал / Колір</th>
+                        <th>Статус</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in group.orders %}
+                    <tr class="queue-row">
+                        <td><a href="/orders/{{ order.id }}">{{ order.work_order_no or '—' }}</a></td>
+                        <td>{% if order.material_color %}<span class="chip">{{ order.material_color }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                        <td><span class="status-badge status-{{ order.status|replace(' ', '-')|lower }}">{{ order.status }}</span></td>
+                        <td>
+                            {% if order.status not in ("знайдено при видачі", "видано") %}
+                            <form method="post" action="/orders/{{ order.id }}/mark-found">
+                                <button type="submit" class="sum3d-save" title="Позначити знайденим">✓</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            {% if group.export_entries %}
+                <div class="handout-export-entries">
+                    {% for entry in group.export_entries %}
+                        <span class="chip mono">{{ entry.material_color_folder_name }} ({{ entry.files|length }} файл.)</span>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="card queue-empty">
+            <p>Немає невиданих робіт з відомим клієнтом.</p>
+        </div>
+    {% endif %}
+</main>
+{% endblock %}

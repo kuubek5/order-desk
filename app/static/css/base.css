@@ -593,3 +593,48 @@ li {
   font-size: 0.85rem;
   color: inherit;
 }
+
+/* Morning handout */
+.handout-group {
+  margin-bottom: var(--space-5);
+}
+
+.handout-group.is-complete {
+  opacity: 0.6;
+}
+
+.handout-group-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.handout-group-header h3 {
+  margin-bottom: 0;
+}
+
+.handout-confirm-form {
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.handout-candidate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  cursor: pointer;
+}
+
+.handout-export-entries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}

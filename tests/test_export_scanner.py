@@ -1,0 +1,352 @@
+"""Tests for app/export_scanner.py — scanning the physical export folder tree."""
+
+import pytest
+from datetime import datetime
+from pathlib import Path
+
+from app.export_scanner import scan_export_folder, ExportEntry
+
+
+class TestWellFormedExportTree:
+    """Test scanning a realistic export folder tree with multiple clients and batches."""
+
+    def test_well_formed_tree_returns_expected_entries(self, tmp_path):
+        """Scan a well-formed tree and verify entry count, names, and files."""
+        # Client 1 with 1 batch and 1 material folder
+        client1_path = tmp_path / "Іваненко Петро"
+        batch1_path = client1_path / "Новая папка"
+        mat1_path = batch1_path / "mono a3"
+        mat1_path.mkdir(parents=True)
+        (mat1_path / "file1.stl").write_text("x")
+        (mat1_path / "file2.stl").write_text("x")
+
+        # Client 2 with 1 batch and 2 material folders
+        client2_path = tmp_path / "Козак Василь"
+        batch2_path = client2_path / "Новая папка (2)"
+        mat2a_path = batch2_path / "pmma a2"
+        mat2a_path.mkdir(parents=True)
+        (mat2a_path / "crown.stl").write_text("x")
+
+        mat2b_path = batch2_path / "titanum"
+        mat2b_path.mkdir(parents=True)
+        (mat2b_path / "abutment.stl").write_text("x")
+
+        # Client 1 again with another batch
+        batch1b_path = client1_path / "Новая папка (3)"
+        mat3_path = batch1b_path / "zirconia"
+        mat3_path.mkdir(parents=True)
+        (mat3_path / "frame.stl").write_text("x")
+
+        # Scan and verify
+        result = scan_export_folder(tmp_path)
+
+        assert len(result) == 4, "Should find 4 material-color folders"
+
+        # Verify first entry (Іваненко Петро, Новая папка, mono a3)
+        entry1 = next(e for e in result if e.client_folder_name == "Іваненко Петро" and e.material_color_folder_name == "mono a3")
+        assert entry1.batch_folder_name == "Новая папка"
+        assert set(entry1.files) == {"file1.stl", "file2.stl"}
+        assert entry1.folder_path == mat1_path
+
+        # Verify second entry (Козак Василь, Новая папка (2), pmma a2)
+        entry2 = next(e for e in result if e.client_folder_name == "Козак Василь" and e.material_color_folder_name == "pmma a2")
+        assert entry2.batch_folder_name == "Новая папка (2)"
+        assert entry2.files == ["crown.stl"]
+        assert entry2.folder_path == mat2a_path
+
+        # Verify third entry (Козак Василь, Новая папка (2), titanum)
+        entry3 = next(e for e in result if e.client_folder_name == "Козак Василь" and e.material_color_folder_name == "titanum")
+        assert entry3.batch_folder_name == "Новая папка (2)"
+        assert entry3.files == ["abutment.stl"]
+        assert entry3.folder_path == mat2b_path
+
+        # Verify fourth entry (Іваненко Петро, Новая папка (3), zirconia)
+        entry4 = next(e for e in result if e.client_folder_name == "Іваненко Петро" and e.material_color_folder_name == "zirconia")
+        assert entry4.batch_folder_name == "Новая папка (3)"
+        assert entry4.files == ["frame.stl"]
+        assert entry4.folder_path == mat3_path
+
+    def test_multiple_files_in_one_folder(self, tmp_path):
+        """Verify that files are correctly listed (multiple files in one folder)."""
+        client_path = tmp_path / "Client A"
+        batch_path = client_path / "Новая папка"
+        mat_path = batch_path / "material1"
+        mat_path.mkdir(parents=True)
+
+        # Create multiple files
+        for i in range(5):
+            (mat_path / f"part_{i}.stl").write_text("content")
+
+        result = scan_export_folder(tmp_path)
+
+        assert len(result) == 1
+        entry = result[0]
+        assert len(entry.files) == 5
+        assert set(entry.files) == {f"part_{i}.stl" for i in range(5)}
+
+    def test_deeply_nested_folders_only_three_levels_scanned(self, tmp_path):
+        """Verify that we only go 3 levels deep; level 4+ folders are ignored."""
+        # Create structure: client / batch / material / subfolder / file
+        client_path = tmp_path / "Client"
+        batch_path = client_path / "Batch"
+        mat_path = batch_path / "Material"
+        mat_path.mkdir(parents=True)
+
+        # File directly in material folder (should be included)
+        (mat_path / "file.stl").write_text("x")
+
+        # Subfolder in material folder (should be skipped)
+        subfolder = mat_path / "subfolder"
+        subfolder.mkdir()
+        (subfolder / "nested_file.stl").write_text("x")
+
+        result = scan_export_folder(tmp_path)
+
+        assert len(result) == 1
+        entry = result[0]
+        # Should only have the top-level file, not the nested one
+        assert entry.files == ["file.stl"]
+
+
+class TestEmptyMaterialFolders:
+    """Test handling of empty material-color folders."""
+
+    def test_empty_material_folder_still_produces_entry(self, tmp_path):
+        """An empty material-color folder should produce an ExportEntry with files=[]."""
+        client_path = tmp_path / "Client"
+        batch_path = client_path / "Batch"
+        mat_path = batch_path / "Material"
+        mat_path.mkdir(parents=True)
+        # No files created
+
+        result = scan_export_folder(tmp_path)
+
+        assert len(result) == 1
+        entry = result[0]
+        assert entry.client_folder_name == "Client"
+        assert entry.material_color_folder_name == "Material"
+        assert entry.files == []
+        assert entry.folder_path == mat_path
+
+    def test_mixed_empty_and_nonempty_folders(self, tmp_path):
+        """Mix of empty and non-empty material folders should both produce entries."""
+        client_path = tmp_path / "Client"
+        batch_path = client_path / "Batch"
+
+        # Empty material folder
+        mat_empty = batch_path / "empty_material"
+        mat_empty.mkdir(parents=True)
+
+        # Non-empty material folder
+        mat_full = batch_path / "full_material"
+        mat_full.mkdir(parents=True)
+        (mat_full / "file.stl").write_text("x")
+
+        result = scan_export_folder(tmp_path)
+
+        assert len(result) == 2
+        empty_entry = next(e for e in result if e.material_color_folder_name == "empty_material")
+        full_entry = next(e for e in result if e.material_color_folder_name == "full_material")
+
+        assert empty_entry.files == []
+        assert full_entry.files == ["file.stl"]
+
+
+class TestNonexistentRoot:
+    """Test behavior when root path doesn't exist."""
+
+    def test_nonexistent_root_returns_empty_list(self, tmp_path):
+        """Scanning a non-existent root should return [], not raise."""
+        nonexistent = tmp_path / "does" / "not" / "exist"
+        result = scan_export_folder(nonexistent)
+        assert result == []
+
+    def test_nonexistent_root_string_path(self):
+        """Scanning a non-existent root given as a string path should also return []."""
+        result = scan_export_folder("/this/path/definitely/does/not/exist/12345")
+        assert result == []
+
+
+class TestCreatedAtTimestamp:
+    """Test that created_at field is properly set to batch folder's creation time."""
+
+    def test_created_at_is_datetime_instance(self, tmp_path):
+        """created_at should be a datetime instance (not None, not a string)."""
+        client_path = tmp_path / "Client"
+        batch_path = client_path / "Batch"
+        mat_path = batch_path / "Material"
+        mat_path.mkdir(parents=True)
+        (mat_path / "file.stl").write_text("x")
+
+        result = scan_export_folder(tmp_path)
+
+        assert len(result) == 1
+        entry = result[0]
+        assert isinstance(entry.created_at, datetime)
+        assert entry.created_at is not None
+
+    def test_created_at_is_reasonable_value(self, tmp_path):
+        """created_at should be a reasonable timestamp (recent, not epoch zero)."""
+        client_path = tmp_path / "Client"
+        batch_path = client_path / "Batch"
+        mat_path = batch_path / "Material"
+        mat_path.mkdir(parents=True)
+        (mat_path / "file.stl").write_text("x")
+
+        import time
+        before = datetime.now()
+        result = scan_export_folder(tmp_path)
+        after = datetime.now()
+
+        assert len(result) == 1
+        entry = result[0]
+        # created_at should be within the time range of test execution
+        # (batch was created during this test)
+        assert before <= entry.created_at <= after
+
+
+class TestErrorHandling:
+    """Test graceful error handling: permission errors, non-directory entries, etc."""
+
+    def test_non_directory_at_level_1_skipped(self, tmp_path):
+        """Non-directory entries at level 1 should be skipped silently."""
+        # Create a file at level 1 (not a directory)
+        (tmp_path / "file_at_level_1.txt").write_text("x")
+
+        # Create a valid client folder
+        client_path = tmp_path / "ValidClient"
+        batch_path = client_path / "Batch"
+        mat_path = batch_path / "Material"
+        mat_path.mkdir(parents=True)
+        (mat_path / "file.stl").write_text("x")
+
+        result = scan_export_folder(tmp_path)
+
+        # Should still find the valid entry, not crash on the file
+        assert len(result) == 1
+        assert result[0].client_folder_name == "ValidClient"
+
+    def test_non_directory_at_level_2_skipped(self, tmp_path):
+        """Non-directory entries at level 2 should be skipped silently."""
+        client_path = tmp_path / "Client"
+        client_path.mkdir()
+
+        # Create a file at level 2 (not a batch directory)
+        (client_path / "file_at_level_2.txt").write_text("x")
+
+        # Create a valid batch folder
+        batch_path = client_path / "ValidBatch"
+        mat_path = batch_path / "Material"
+        mat_path.mkdir(parents=True)
+        (mat_path / "file.stl").write_text("x")
+
+        result = scan_export_folder(tmp_path)
+
+        # Should still find the valid entry, not crash on the file
+        assert len(result) == 1
+        assert result[0].batch_folder_name == "ValidBatch"
+
+    def test_non_directory_at_level_3_skipped(self, tmp_path):
+        """Non-directory entries at level 3 should be skipped silently."""
+        client_path = tmp_path / "Client"
+        batch_path = client_path / "Batch"
+        batch_path.mkdir(parents=True)
+
+        # Create a file at level 3 (not a material directory)
+        (batch_path / "file_at_level_3.txt").write_text("x")
+
+        # Create a valid material folder
+        mat_path = batch_path / "Material"
+        mat_path.mkdir()
+        (mat_path / "file.stl").write_text("x")
+
+        result = scan_export_folder(tmp_path)
+
+        # Should still find the valid entry, not crash on the file
+        assert len(result) == 1
+        assert result[0].material_color_folder_name == "Material"
+
+
+class TestExportEntryDataclass:
+    """Test ExportEntry dataclass properties."""
+
+    def test_export_entry_creation(self, tmp_path):
+        """ExportEntry should be creatable with all fields and accessible as attributes."""
+        mat_path = tmp_path / "material"
+        mat_path.mkdir()
+
+        now = datetime.now()
+        entry = ExportEntry(
+            client_folder_name="Test Client",
+            batch_folder_name="Batch",
+            created_at=now,
+            material_color_folder_name="Material",
+            files=["a.stl", "b.stl"],
+            folder_path=mat_path,
+        )
+
+        assert entry.client_folder_name == "Test Client"
+        assert entry.batch_folder_name == "Batch"
+        assert entry.created_at == now
+        assert entry.material_color_folder_name == "Material"
+        assert entry.files == ["a.stl", "b.stl"]
+        assert entry.folder_path == mat_path
+
+
+class TestSpecialCharactersInFolderNames:
+    """Test handling of special characters and Cyrillic names."""
+
+    def test_cyrillic_folder_names(self, tmp_path):
+        """Cyrillic folder names (Ukrainian) should be handled correctly."""
+        # Create structure with Cyrillic names
+        клієнт = tmp_path / "Іванопуло Сергій"
+        партія = клієнт / "Нова папка"
+        матеріал = партія / "цирконій A3.5"
+        матеріал.mkdir(parents=True)
+        (матеріал / "коронка1.stl").write_text("x")
+        (матеріал / "коронка2.stl").write_text("x")
+
+        result = scan_export_folder(tmp_path)
+
+        assert len(result) == 1
+        entry = result[0]
+        assert entry.client_folder_name == "Іванопуло Сергій"
+        assert entry.batch_folder_name == "Нова папка"
+        assert entry.material_color_folder_name == "цирконій A3.5"
+        assert set(entry.files) == {"коронка1.stl", "коронка2.stl"}
+
+    def test_mixed_cyrillic_and_latin_names(self, tmp_path):
+        """Mix of Cyrillic and Latin characters should work."""
+        client_path = tmp_path / "Клієнт A123"
+        batch_path = client_path / "Batch_Папка"
+        mat_path = batch_path / "mono_A3_моно"
+        mat_path.mkdir(parents=True)
+        (mat_path / "file_001.stl").write_text("x")
+
+        result = scan_export_folder(tmp_path)
+
+        assert len(result) == 1
+        entry = result[0]
+        assert entry.client_folder_name == "Клієнт A123"
+        assert entry.batch_folder_name == "Batch_Папка"
+        assert entry.material_color_folder_name == "mono_A3_моно"
+
+
+class TestFolderPathField:
+    """Test that folder_path field contains the correct full path."""
+
+    def test_folder_path_points_to_material_folder(self, tmp_path):
+        """folder_path should be the full path to the level-3 (material-color) folder."""
+        client_path = tmp_path / "Client"
+        batch_path = client_path / "Batch"
+        mat_path = batch_path / "Material"
+        mat_path.mkdir(parents=True)
+        (mat_path / "file.stl").write_text("x")
+
+        result = scan_export_folder(tmp_path)
+
+        assert len(result) == 1
+        entry = result[0]
+        assert entry.folder_path == mat_path
+        assert entry.folder_path.is_absolute()
+        assert entry.folder_path.name == "Material"

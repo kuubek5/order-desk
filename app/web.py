@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException
@@ -11,12 +11,23 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 
 from app.auth import verify_password
-from app.config import SESSION_SECRET_KEY
+from app.client_matcher import match_client_name
+from app.config import EXPORT_FOLDER_PATH, SESSION_SECRET_KEY
 from app.db import SessionLocal
-from app.models import Order, StatusEvent, SyncLog, User
+from app.export_scanner import scan_export_folder
+from app.models import ClientNameAlias, Order, StatusEvent, SyncLog, User
 from app.sheet_writer import write_order_fields
 from app.sheets import get_worksheet_by_name, open_spreadsheet
 from app.statuses import STATUSES
+
+
+def _parse_sheet_tab(sheet_tab: str | None) -> date | None:
+    if not sheet_tab:
+        return None
+    try:
+        return datetime.strptime(sheet_tab, "%d.%m.%y").date()
+    except ValueError:
+        return None
 
 app = FastAPI(title="Order Desk")
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY)
@@ -85,21 +96,11 @@ async def get_queue(request: Request, period: str = "today", db: Session = Depen
     yesterday = today - timedelta(days=1)
     tomorrow = today + timedelta(days=1)
 
-    # Function to parse sheet_tab (format: %d.%m.%y, e.g., "27.07.26")
-    def parse_sheet_tab(sheet_tab: str | None) -> date | None:
-        if not sheet_tab:
-            return None
-        try:
-            from datetime import datetime
-            return datetime.strptime(sheet_tab, "%d.%m.%y").date()
-        except (ValueError, TypeError):
-            return None
-
     # Categorize orders into buckets
     buckets = {"today": [], "yesterday": [], "tomorrow": [], "earlier": []}
 
     for order in all_orders:
-        order_date = parse_sheet_tab(order.sheet_tab)
+        order_date = _parse_sheet_tab(order.sheet_tab)
         if order_date is None:
             # Route None/unparseable to today (safe default for email-sourced orders)
             buckets["today"].append(order)
@@ -217,3 +218,102 @@ async def get_order_detail(
             "user": user,
         },
     )
+
+
+@app.get("/handout", response_class=HTMLResponse)
+async def get_handout(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    today = date.today()
+    candidates = db.scalars(
+        select(Order).where(Order.client_name.is_not(None), Order.status != "видано")
+    ).all()
+
+    groups: dict[str, list[Order]] = {}
+    for order in candidates:
+        order_date = _parse_sheet_tab(order.sheet_tab)
+        if order_date is not None and order_date >= today:
+            continue
+        groups.setdefault(order.client_name, []).append(order)
+
+    entries = scan_export_folder(Path(EXPORT_FOLDER_PATH))
+    folder_names = sorted({e.client_folder_name for e in entries})
+    aliases = {
+        a.sheet_name: a.export_folder_name
+        for a in db.scalars(select(ClientNameAlias).where(ClientNameAlias.confirmed.is_(True))).all()
+    }
+
+    client_groups = []
+    for client_name, group_orders in groups.items():
+        match = match_client_name(client_name, folder_names, aliases)
+        export_entries = (
+            [e for e in entries if e.client_folder_name == match.matched_folder_name]
+            if match.matched_folder_name
+            else []
+        )
+        all_found = all(o.status in ("знайдено при видачі", "видано") for o in group_orders)
+        client_groups.append(
+            {
+                "client_name": client_name,
+                "orders": group_orders,
+                "match": match,
+                "export_entries": export_entries,
+                "all_found": all_found,
+            }
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "handout.html",
+        {"page_title": "Ранкова видача", "user": user, "client_groups": client_groups},
+    )
+
+
+@app.post("/orders/{order_id}/mark-found")
+async def mark_found(request: Request, order_id: int, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+
+    order.status = "знайдено при видачі"
+    db.add(
+        StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username)
+    )
+    db.commit()
+
+    return RedirectResponse("/handout", status_code=303)
+
+
+@app.post("/handout/confirm-alias")
+async def confirm_alias(
+    request: Request,
+    sheet_name: str = Form(...),
+    export_folder_name: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    existing = db.scalar(select(ClientNameAlias).where(ClientNameAlias.sheet_name == sheet_name))
+    if existing is not None:
+        existing.export_folder_name = export_folder_name
+        existing.confirmed = True
+        existing.confirmed_at = datetime.now()
+    else:
+        db.add(
+            ClientNameAlias(
+                sheet_name=sheet_name,
+                export_folder_name=export_folder_name,
+                confirmed=True,
+                confirmed_at=datetime.now(),
+            )
+        )
+    db.commit()
+
+    return RedirectResponse("/handout", status_code=303)
