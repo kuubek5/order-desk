@@ -13,7 +13,7 @@ from starlette.requests import Request
 from app.auth import verify_password
 from app.client_matcher import match_client_name
 from app.config import SESSION_SECRET_KEY
-from app.db import SessionLocal
+from app.db import Base, SessionLocal, engine
 from app.export_scanner import scan_export_folder
 from app.models import ClientNameAlias, EmailMessage, Order, StatusEvent, SyncLog, User
 from app.settings_store import SETTING_FIELDS, get_all_settings, get_export_folder_path, set_setting
@@ -30,6 +30,8 @@ def _parse_sheet_tab(sheet_tab: str | None) -> date | None:
     except ValueError:
         return None
 
+
+Base.metadata.create_all(engine)
 
 app = FastAPI(title="Order Desk")
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET_KEY)

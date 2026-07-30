@@ -1,0 +1,16 @@
+services:
+  order-desk:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DB_PATH: /data/order_desk.db
+      EXPORT_FOLDER_PATH: /data/export
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data
+      - ./mail_attachments:/app/mail_attachments
+      # Map the real export/ share from the lab server here, e.g.:
+      # - /mnt/lab-export:/data/export
+    restart: unless-stopped

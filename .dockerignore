@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+.env
+credentials/
+order_desk.db
+mail_attachments/
+export/
+tests/
+.claude/
+.impeccable/
+CLAUDE.md
