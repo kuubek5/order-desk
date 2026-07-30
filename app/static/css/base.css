@@ -1,0 +1,171 @@
+/* Base Styles — Order Desk */
+/* Foundation for all pages using design tokens */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  line-height: 1.6;
+
+  /* Subtle blueprint-style grid pattern */
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      var(--color-bg-grid-line) 0px,
+      var(--color-bg-grid-line) 1px,
+      transparent 1px,
+      transparent 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      var(--color-bg-grid-line) 0px,
+      var(--color-bg-grid-line) 1px,
+      transparent 1px,
+      transparent 40px
+    );
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: var(--space-4);
+}
+
+h1 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: 2rem;
+}
+
+h3 {
+  font-size: 1.5rem;
+}
+
+h4 {
+  font-size: 1.25rem;
+}
+
+/* Paragraphs & text */
+p {
+  margin-bottom: var(--space-4);
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+  transition: opacity 0.2s ease;
+}
+
+a:hover {
+  opacity: 0.8;
+}
+
+/* Main content container */
+main {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: var(--space-6);
+}
+
+/* Card component */
+.card {
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-5);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.card:hover {
+  border-color: rgba(230, 230, 240, 0.2);
+}
+
+/* Chip / Tag component */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-chip);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.9rem;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.chip::after {
+  content: "×";
+  display: inline-block;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: color 0.2s ease, opacity 0.2s ease;
+  padding-left: var(--space-1);
+}
+
+.chip:hover::after {
+  color: var(--color-accent);
+  opacity: 0.8;
+}
+
+/* Monospace utility class */
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+}
+
+/* Code blocks */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background-color: var(--color-card-bg);
+  padding: var(--space-1) var(--space-2);
+  border-radius: 4px;
+  color: var(--color-accent);
+}
+
+pre {
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+  overflow-x: auto;
+  margin-bottom: var(--space-4);
+}
+
+pre code {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+  color: var(--color-text-muted);
+}
+
+/* Lists */
+ul, ol {
+  margin-left: var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+li {
+  margin-bottom: var(--space-2);
+}
