@@ -170,6 +170,38 @@ li {
   margin-bottom: var(--space-2);
 }
 
+/* Top bar */
+.topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.topbar h1 {
+  margin-bottom: 0;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 0.9rem;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+}
+
+.link-button:hover {
+  opacity: 0.8;
+}
+
 /* Queue Table Styles */
 .queue-table {
   width: 100%;

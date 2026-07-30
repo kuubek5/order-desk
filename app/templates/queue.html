@@ -4,7 +4,15 @@
 
 {% block content %}
 <main>
-    <h1>{{ page_title }}</h1>
+    <div class="topbar">
+        <h1>{{ page_title }}</h1>
+        <div class="topbar-user">
+            <span class="text-muted">{{ user.full_name or user.username }}</span>
+            <form method="post" action="/logout">
+                <button type="submit" class="link-button">Вийти</button>
+            </form>
+        </div>
+    </div>
 
     {% if orders %}
         <div class="queue-summary">
