@@ -1,0 +1,8 @@
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+GOOGLE_SHEET_ID = os.environ["GOOGLE_SHEET_ID"]
+GOOGLE_SERVICE_ACCOUNT_JSON = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
