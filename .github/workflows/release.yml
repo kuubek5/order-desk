@@ -37,6 +37,121 @@ jobs:
           $fileSize = (Get-Item $installerPath).Length
           Write-Host "Installer ready: $installerPath ($(($fileSize/1MB).ToString('F1')) MB)"
 
+      - name: Smoke test - install and verify health
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installerPath = "dist-installer\OrderDesk-Setup-0.1.0.exe"
+          $installDir = "$env:LOCALAPPDATA\Programs\OrderDesk"
+          $exePath = "$installDir\OrderDesk.exe"
+
+          # Verify installer exists first
+          if (-not (Test-Path $installerPath)) {
+            Write-Error "Installer not found at $installerPath"
+            exit 1
+          }
+
+          # Silently install the exe
+          Write-Host "Installing OrderDesk silently from $installerPath..."
+          $process = Start-Process -FilePath $installerPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -NoNewWindow -Wait -PassThru
+          $installExitCode = $process.ExitCode
+          Write-Host "Installer exited with code: $installExitCode"
+          if ($installExitCode -ne 0) {
+            Write-Error "Installer failed with exit code $installExitCode"
+            exit 1
+          }
+          Write-Host "Installer completed successfully"
+
+          # Verify exe exists
+          if (-not (Test-Path $exePath)) {
+            Write-Error "Installed exe not found at $exePath"
+            exit 1
+          }
+          Write-Host "Found installed exe at $exePath"
+
+          # Launch the exe as background process with output redirection
+          Write-Host "Launching OrderDesk..."
+          $logFile = "$env:TEMP\orderdesk-smoke-test.log"
+          $errFile = "$env:TEMP\orderdesk-smoke-test-err.log"
+          $appProcess = Start-Process -FilePath $exePath -WindowStyle Hidden -PassThru -RedirectStandardOutput $logFile -RedirectStandardError $errFile
+          $appPid = $appProcess.Id
+          Write-Host "OrderDesk started with PID $appPid"
+
+          # Poll health endpoint with retries (app runs Alembic migrations on first start, can take 30-60 seconds)
+          $healthUrl = "http://127.0.0.1:8000/health"
+          $maxRetries = 90
+          $retryDelaySeconds = 1
+          $retryCount = 0
+          $healthy = $false
+
+          while ($retryCount -lt $maxRetries) {
+            # Check if process is still alive
+            $proc = Get-Process -Id $appPid -ErrorAction SilentlyContinue
+            if (-not $proc) {
+              Write-Host "WARNING: Process exited unexpectedly"
+              if (Test-Path $logFile) {
+                Write-Host "Last stdout from OrderDesk:"
+                Get-Content $logFile -Tail 20
+              }
+              if (Test-Path $errFile) {
+                Write-Host "Last stderr from OrderDesk:"
+                Get-Content $errFile -Tail 20
+              }
+              # Also check the app's own logs
+              $appLogFile = "$env:LOCALAPPDATA\OrderDesk\logs\order-desk.log"
+              if (Test-Path $appLogFile) {
+                Write-Host "Last OrderDesk.log entries:"
+                Get-Content $appLogFile -Tail 20
+              }
+              break
+            }
+
+            try {
+              $response = Invoke-WebRequest -Uri $healthUrl -TimeoutSec 2 -ErrorAction Stop
+              if ($response.StatusCode -eq 200) {
+                Write-Host "Health check passed: $($response.Content)"
+                $healthy = $true
+                break
+              }
+            } catch {
+              # Connection refused or timeout, retry
+            }
+            $retryCount++
+            Write-Host "Health check attempt $retryCount/$maxRetries failed, retrying..."
+            if ($retryCount -lt $maxRetries) {
+              Start-Sleep -Seconds $retryDelaySeconds
+            }
+          }
+
+          # Stop the process
+          try {
+            Stop-Process -Id $appPid -Force -ErrorAction SilentlyContinue
+            Write-Host "Process stopped"
+          } catch {
+            # Process may have already exited
+          }
+
+          # Fail if health check never succeeded
+          if (-not $healthy) {
+            Write-Error "Health check failed after $maxRetries retries"
+            if (Test-Path $logFile) {
+              Write-Host "Last stdout from OrderDesk:"
+              Get-Content $logFile -Tail 20
+            }
+            if (Test-Path $errFile) {
+              Write-Host "Last stderr from OrderDesk:"
+              Get-Content $errFile -Tail 20
+            }
+            $appLogFile = "$env:LOCALAPPDATA\OrderDesk\logs\order-desk.log"
+            if (Test-Path $appLogFile) {
+              Write-Host "Last OrderDesk.log entries:"
+              Get-Content $appLogFile -Tail 30
+            }
+            exit 1
+          }
+
+          Write-Host "Smoke test passed"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
