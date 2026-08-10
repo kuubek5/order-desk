@@ -964,6 +964,7 @@ def get_search(
     results = []
     query_term = (q or "").strip()
 
+    truncated = False
     if query_term:
         # Search in client_name, work_order_no, job_code, sum3d_id
         # Case-insensitive substring matching across all four fields
@@ -983,18 +984,14 @@ def get_search(
             ):
                 results.append(order)
 
-        # Cap results at 100
+        # Cap results at 100 and flag if truncated
         if len(results) > 100:
-            results = results[:100]
             truncated = True
-        else:
-            truncated = False
+            results = results[:100]
 
         # Attach folder info for display
         attach_export_folder_uris(db, results)
         attach_job_code_folder_uris(db, results)
-    else:
-        truncated = False
 
     return templates.TemplateResponse(
         request,
@@ -1002,11 +999,7 @@ def get_search(
         {
             "query": query_term,
             "results": results,
-            "truncated": len(results) == 100 and any(
-                query_term.lower() in str(getattr(o, field) or "").lower()
-                for o in db.scalars(select(Order)).all()
-                for field in ["client_name", "work_order_no", "job_code", "sum3d_id"]
-            ),
+            "truncated": truncated,
             "user": user,
             "statuses": STATUSES,
         },
