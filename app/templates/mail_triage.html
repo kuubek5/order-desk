@@ -116,7 +116,20 @@
                             </span>
                         {% endif %}
                     </td>
-                    <td><a href="/mail/{{ email.id }}">Обробити →</a></td>
+                    <td class="mail-row-actions">
+                        <a href="/mail/{{ email.id }}">Обробити →</a>
+                        <form
+                            class="mail-reject-form"
+                            hx-post="/mail/{{ email.id }}/reject"
+                            hx-target="closest tr"
+                            hx-swap="delete"
+                            hx-confirm="Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється)."
+                        >
+                            <button type="submit" class="form-reject form-reject-compact" title="Відхилити">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                            </button>
+                        </form>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

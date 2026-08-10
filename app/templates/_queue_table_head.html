@@ -1,0 +1,17 @@
+{# Shared <thead> row for both queue-table groups in queue.html ("Лабораторні
+   роботи" / "Роботи з пошти") — kept in one partial so the column set/order
+   only needs to change in one place, same spirit as _topbar_nav.html. Import
+   "with context" wherever it's included so sortcol.th (imported "with
+   context" at queue.html's top) still sees period/ready/source/date/sort. #}
+<thead>
+    <tr>
+        <th>Наряд</th>
+        <th>{{ sortcol.th('material', 'Матеріал / Колір') }}</th>
+        <th>{{ sortcol.th('kind', 'Вид роботи') }}</th>
+        <th>{{ sortcol.th('quantity', 'Кількість') }}</th>
+        <th>Шлях</th>
+        <th>Sum3D ID</th>
+        <th>Технік</th>
+        <th>Статус</th>
+    </tr>
+</thead>

@@ -4,6 +4,7 @@ import logging
 import mimetypes
 import re
 from datetime import date, timedelta
+from html.parser import HTMLParser
 from pathlib import Path
 
 from imap_tools import AND, MailBox
@@ -21,6 +22,94 @@ IMAP_TIMEOUT_SECONDS = 20
 IMAP_LOOKBACK_DAYS = 30
 IMAP_MAX_MESSAGES = 250
 _UNSAFE_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+# Tags that should force a line break in the extracted text so paragraphs/
+# list items/table rows in the source HTML don't all run together into one
+# unreadable line.
+_HTML_BLOCK_TAGS = frozenset(
+    {"p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote"}
+)
+# Tags whose contents are never real message text (CSS/JS payloads some mail
+# clients embed directly in the HTML part).
+_HTML_SKIP_TAGS = frozenset({"script", "style"})
+
+
+class _HTMLTextExtractor(HTMLParser):
+    """Minimal HTML -> plain text extractor, stdlib-only.
+
+    Used instead of a third-party HTML parser (bs4/html2text aren't already a
+    dependency here, see requirements.txt) because the job is narrow: strip
+    markup, keep readable line breaks, never crash on malformed client HTML.
+    `convert_charrefs=True` (the default) makes HTMLParser hand handle_data()
+    already-unescaped text, so entities like `&amp;`/`&nbsp;` come out right
+    without a separate `html.unescape()` pass.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag in _HTML_SKIP_TAGS:
+            self._skip_depth += 1
+        elif tag in _HTML_BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_startendtag(self, tag: str, attrs) -> None:
+        if tag in _HTML_BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in _HTML_SKIP_TAGS:
+            self._skip_depth = max(0, self._skip_depth - 1)
+        elif tag in _HTML_BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth:
+            return
+        self._parts.append(data)
+
+    def get_text(self) -> str:
+        return "".join(self._parts)
+
+
+def html_to_plain_text(html_body: str) -> str:
+    """Best-effort, readable plain text for an HTML-only email body.
+
+    Client mail clients commonly send no plain-text part at all — without
+    this, the raw `<div>`/`<span>`/`<a href=...>` markup would land verbatim
+    in EmailMessage.body_text, which mail_detail.html renders inside a bare
+    `<pre>` (data-quality fix, not a rendering change — the browser must
+    never be asked to sanitize-and-render raw HTML here, that stays out of
+    scope). Malformed input must never raise — a lab operator doing morning
+    triage should see *something* readable, not a broken sync loop.
+    """
+    if not html_body:
+        return ""
+    extractor = _HTMLTextExtractor()
+    try:
+        extractor.feed(html_body)
+        extractor.close()
+    except Exception:
+        logger.warning("html_to_plain_text: falling back to partial parse", exc_info=True)
+    raw_text = extractor.get_text()
+
+    # Collapse the whitespace HTML itself doesn't care about (source
+    # indentation, hard-wrapped lines) without collapsing intentional blank
+    # lines between paragraphs.
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in raw_text.splitlines()]
+    collapsed: list[str] = []
+    last_was_blank = True
+    for line in lines:
+        if line:
+            collapsed.append(line)
+            last_was_blank = False
+        elif not last_was_blank:
+            collapsed.append("")
+            last_was_blank = True
+    return "\n".join(collapsed).strip()
 
 
 def safe_attachment_filename(filename: str | None, index: int, content_type: str) -> str:
@@ -63,7 +152,15 @@ def _apply_attachments(
     responsible for rolling back so a partially-written message never ends
     up marked "ready".
     """
-    body = msg.text or msg.html or ""
+    # Prefer the real plain-text part when the client sent one. Only fall
+    # back to the HTML part — stripped to readable text, never stored as raw
+    # markup — when no plain-text alternative exists at all.
+    if msg.text:
+        body = msg.text
+    elif msg.html:
+        body = html_to_plain_text(msg.html)
+    else:
+        body = ""
     combined_text = f"{msg.subject or ''}\n{body}"
     guesses = guess_fields_from_text(
         combined_text,

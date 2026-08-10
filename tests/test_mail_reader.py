@@ -11,6 +11,7 @@ from app.mail_reader import (
     IMAP_MAX_MESSAGES,
     IMAP_TIMEOUT_SECONDS,
     fetch_new_emails,
+    html_to_plain_text,
     safe_attachment_filename,
     unique_destination,
 )
@@ -43,13 +44,15 @@ def _header_message(uid, subject="case", from_="client@example.test"):
     return SimpleNamespace(uid=uid, from_=from_, subject=subject, date=None)
 
 
-def _full_message(uid, *, text="zircon A2", subject="case", from_="client@example.test", attachments=None):
+def _full_message(
+    uid, *, text="zircon A2", html="", subject="case", from_="client@example.test", attachments=None
+):
     return SimpleNamespace(
         uid=uid,
         from_=from_,
         subject=subject,
         text=text,
-        html="",
+        html=html,
         date=None,
         attachments=attachments or [],
     )
@@ -203,6 +206,88 @@ def test_phase_two_downloads_attachments_and_marks_ready(monkeypatch, tmp_path):
         assert saved.filename == "case.stl"
         assert (tmp_path / "7" / "case.stl").read_bytes() == b"stl-bytes"
         assert saved.saved_path == str(tmp_path / "7" / "case.stl")
+
+
+def test_html_only_message_stores_readable_stripped_text(monkeypatch, tmp_path):
+    """Item 6: when a client's mail client sent no plain-text part at all
+    (msg.text falsy, msg.html present), body_text must end up readable
+    plain text, never the raw markup — mail_detail.html renders whatever
+    lands here verbatim inside a bare <pre>."""
+    html_body = (
+        "<html><body><p>Матеріал: цирконій A2</p>"
+        "<p>Дякую, чекаю на дзвінок&nbsp;&amp; фото.</p></body></html>"
+    )
+    mailbox = FakeMailbox(
+        headers=[_header_message("101")],
+        full_by_uid={"101": _full_message("101", text="", html=html_body)},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        assert fetch_new_emails(session, tmp_path) == 1
+        email = session.scalar(select(EmailMessage))
+
+        assert "<p>" not in email.body_text
+        assert "<html>" not in email.body_text
+        assert "Матеріал: цирконій A2" in email.body_text
+        # `&nbsp;` decodes to a real non-breaking space (U+00A0), which is
+        # correct — it renders identically to a normal space in the <pre>
+        # block mail_detail.html uses, no need to normalize it away.
+        assert "Дякую, чекаю на дзвінок\xa0& фото." in email.body_text
+
+
+def test_plain_text_part_is_preferred_over_html_when_both_present(monkeypatch, tmp_path):
+    mailbox = FakeMailbox(
+        headers=[_header_message("102")],
+        full_by_uid={
+            "102": _full_message("102", text="звичайний текст", html="<p>html текст</p>")
+        },
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        assert fetch_new_emails(session, tmp_path) == 1
+        email = session.scalar(select(EmailMessage))
+        assert email.body_text == "звичайний текст"
+
+
+def test_html_to_plain_text_strips_tags_and_keeps_paragraph_breaks():
+    html_body = "<div><p>Перший рядок</p><p>Другий рядок</p></div>"
+
+    text = html_to_plain_text(html_body)
+
+    assert "<p>" not in text
+    assert "Перший рядок" in text
+    assert "Другий рядок" in text
+    lines = [line for line in text.splitlines() if line]
+    assert lines == ["Перший рядок", "Другий рядок"]
+
+
+def test_html_to_plain_text_unescapes_entities():
+    text = html_to_plain_text("<p>А&amp;Б В</p>")
+    assert text == "А&Б В"
+
+
+def test_html_to_plain_text_drops_script_and_style_content():
+    html_body = "<style>.x{color:red}</style><script>alert(1)</script><p>Текст листа</p>"
+
+    text = html_to_plain_text(html_body)
+
+    assert text == "Текст листа"
+
+
+def test_html_to_plain_text_handles_malformed_markup_without_raising():
+    text = html_to_plain_text("<p>Незакритий тег <div>вкладений")
+
+    assert "Незакритий тег" in text
+    assert "вкладений" in text
+
+
+def test_html_to_plain_text_empty_input_returns_empty_string():
+    assert html_to_plain_text("") == ""
+    assert html_to_plain_text(None) == ""
 
 
 def test_leftover_pending_row_from_previous_run_is_completed(monkeypatch, tmp_path):
