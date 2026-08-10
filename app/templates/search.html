@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Пошук — Order Desk{% endblock %}
+
+{% block content %}
+<main>
+    <div class="topbar">
+        <h1>Пошук робіт</h1>
+        <div class="topbar-user">
+            <a href="/">Черга</a>
+            <a href="/mail" class="mail-nav-link">
+                Нові з пошти
+            </a>
+            <a href="/handout">Ранкова видача</a>
+            <a href="/clients">Клієнти</a>
+            <a href="/stats">Статистика</a>
+            {% if user.role == 'адмін' %}<a href="/settings">Налаштування</a>{% endif %}
+            <a href="/account" class="text-muted">{{ user.full_name or user.username }}</a>
+            <form method="post" action="/logout">
+                <button type="submit" class="link-button">Вийти</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="search-container">
+        <form method="get" action="/search" class="search-form">
+            <input
+                type="text"
+                name="q"
+                value="{{ query }}"
+                placeholder="Пошук по клієнту, наряду, ID Sum3D або шляху-коду…"
+                class="search-input"
+                autofocus
+            >
+            <button type="submit" class="search-button">Шукати</button>
+        </form>
+
+        {% if query %}
+            <div class="search-results">
+                {% if results %}
+                    <div class="queue-summary">
+                        Знайдено: <strong>{{ results|length }}</strong> роботи
+                        {% if truncated %}<span class="text-muted"> (показано перші 100)</span>{% endif %}
+                    </div>
+
+                    <div class="table-scroll">
+                    <table class="queue-table">
+                        <thead>
+                            <tr>
+                                <th>Наряд / клієнт</th>
+                                <th>Матеріал / Колір</th>
+                                <th>Вид роботи</th>
+                                <th>Кількість</th>
+                                <th>Здати до</th>
+                                <th>Шлях</th>
+                                <th>Sum3D ID</th>
+                                <th>Технік</th>
+                                <th>Статус</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for order in results %}
+                                {% include "_order_row.html" %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    </div>
+                {% else %}
+                    <div class="card queue-empty">
+                        <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                        <h2>Результатів не знайдено</h2>
+                        <p>Спробуйте пошук за іншими ключовими словами.</p>
+                    </div>
+                {% endif %}
+            </div>
+        {% else %}
+            <div class="card queue-empty">
+                <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                </svg>
+                <h2>Введіть пошуковий запит</h2>
+                <p>Шукайте по імені клієнта, номеру наряду, коду роботи або ID Sum3D.</p>
+            </div>
+        {% endif %}
+    </div>
+</main>
+{% endblock %}
