@@ -1,7 +1,6 @@
 """Tests for app/parser.py — OrderRow parsing from raw sheet rows."""
 
-import pytest
-from app.parser import parse_rows, OrderRow
+from app.parser import parse_rows
 
 # Exact header structure from the live sheet tab '27.07.26'
 HEADER_ROWS_SAMPLE = [

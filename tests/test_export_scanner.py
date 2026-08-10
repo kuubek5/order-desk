@@ -1,8 +1,6 @@
 """Tests for app/export_scanner.py — scanning the physical export folder tree."""
 
-import pytest
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from app.export_scanner import scan_export_folder, ExportEntry
 
