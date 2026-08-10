@@ -11,13 +11,8 @@
 <main>
     <div class="topbar">
         <h1>Мій обліковий запис</h1>
-        <div class="topbar-user">
-            <a href="/">← До черги</a>
-            <span class="text-muted">{{ user.full_name or user.username }}</span>
-            <form method="post" action="/logout">
-                <button type="submit" class="link-button">Вийти</button>
-            </form>
-        </div>
+        {% set topbar_active = 'account' %}
+        {% include "_topbar_nav.html" %}
     </div>
 
     {% if saved %}
@@ -40,6 +35,10 @@
                 <div class="login-glow">
                     <div class="login-input-wrap">
                         <input type="password" id="current_password" name="current_password" class="login-input" required>
+                        <button type="button" class="login-toggle-password" aria-label="Показати пароль">
+                            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-3.19 4.02M6.1 6.1C3.29 7.9 1 12 1 12s4 7 11 7a9.15 9.15 0 0 0 4.9-1.42"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -48,6 +47,10 @@
                 <div class="login-glow">
                     <div class="login-input-wrap">
                         <input type="password" id="new_password" name="new_password" class="login-input" required minlength="6">
+                        <button type="button" class="login-toggle-password" aria-label="Показати пароль">
+                            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-3.19 4.02M6.1 6.1C3.29 7.9 1 12 1 12s4 7 11 7a9.15 9.15 0 0 0 4.9-1.42"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -56,6 +59,10 @@
                 <div class="login-glow">
                     <div class="login-input-wrap">
                         <input type="password" id="confirm_password" name="confirm_password" class="login-input" required minlength="6">
+                        <button type="button" class="login-toggle-password" aria-label="Показати пароль">
+                            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-3.19 4.02M6.1 6.1C3.29 7.9 1 12 1 12s4 7 11 7a9.15 9.15 0 0 0 4.9-1.42"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -63,4 +70,8 @@
         </form>
     </div>
 </main>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/login.js"></script>
 {% endblock %}

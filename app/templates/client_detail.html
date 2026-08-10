@@ -61,7 +61,7 @@
     <div class="card detail-section">
         <h3 class="detail-section-title">Матеріали / кольори</h3>
         {% if summary.material_breakdown %}
-            <div>
+            <div class="chip-row">
                 {% for material_color, count in summary.material_breakdown %}
                     <span class="chip {{ material_color_css_class(material_color) }}">{{ material_color }} ({{ count }})</span>
                 {% endfor %}

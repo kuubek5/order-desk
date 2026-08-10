@@ -16,8 +16,9 @@
     <div class="card detail-passport">
         {% if email.service_type_guess == "3d_print" %}
         <div class="passport-row">
-            <span class="status-badge" style="background-color: rgba(232, 216, 168, 0.15); color: #e8d8a8; border: 1px solid rgba(232, 216, 168, 0.3);" title="Автоматична підказка за ключовими словами — не приховує лист, перевірте текст листа самостійно">
-                ⚠ Схоже на 3D-друк, не фрезерування — перевірте текст листа
+            <span class="attachment-badge attachment-badge-pending" title="Автоматична підказка за ключовими словами — не приховує лист, перевірте текст листа самостійно">
+                <svg viewBox="0 0 24 24" aria-hidden="true" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+                Схоже на 3D-друк, не фрезерування — перевірте текст листа
             </span>
         </div>
         {% endif %}

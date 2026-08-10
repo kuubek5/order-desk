@@ -19,33 +19,49 @@
         <form method="post" action="/setup">
             <div class="login-field">
                 <label for="full_name">Ім’я</label>
-                <div class="login-input-wrap">
-                    <input type="text" id="full_name" name="full_name" class="login-input"
-                           value="{{ full_name|default('') }}" autocomplete="name" required autofocus>
+                <div class="login-glow">
+                    <div class="login-input-wrap">
+                        <input type="text" id="full_name" name="full_name" class="login-input"
+                               value="{{ full_name|default('') }}" autocomplete="name" required autofocus>
+                    </div>
                 </div>
             </div>
 
             <div class="login-field">
                 <label for="username">Логін</label>
-                <div class="login-input-wrap">
-                    <input type="text" id="username" name="username" class="login-input"
-                           value="{{ username|default('') }}" autocomplete="username" required>
+                <div class="login-glow">
+                    <div class="login-input-wrap">
+                        <input type="text" id="username" name="username" class="login-input"
+                               value="{{ username|default('') }}" autocomplete="username" required>
+                    </div>
                 </div>
             </div>
 
             <div class="login-field">
                 <label for="password">Пароль (щонайменше 10 символів)</label>
-                <div class="login-input-wrap">
-                    <input type="password" id="password" name="password" class="login-input"
-                           autocomplete="new-password" minlength="10" required>
+                <div class="login-glow">
+                    <div class="login-input-wrap">
+                        <input type="password" id="password" name="password" class="login-input"
+                               autocomplete="new-password" minlength="10" required>
+                        <button type="button" class="login-toggle-password" aria-label="Показати пароль">
+                            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-3.19 4.02M6.1 6.1C3.29 7.9 1 12 1 12s4 7 11 7a9.15 9.15 0 0 0 4.9-1.42"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        </button>
+                    </div>
                 </div>
             </div>
 
             <div class="login-field">
                 <label for="password_confirmation">Повторіть пароль</label>
-                <div class="login-input-wrap">
-                    <input type="password" id="password_confirmation" name="password_confirmation"
-                           class="login-input" autocomplete="new-password" minlength="10" required>
+                <div class="login-glow">
+                    <div class="login-input-wrap">
+                        <input type="password" id="password_confirmation" name="password_confirmation"
+                               class="login-input" autocomplete="new-password" minlength="10" required>
+                        <button type="button" class="login-toggle-password" aria-label="Показати пароль">
+                            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-3.19 4.02M6.1 6.1C3.29 7.9 1 12 1 12s4 7 11 7a9.15 9.15 0 0 0 4.9-1.42"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -53,4 +69,8 @@
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/login.js"></script>
 {% endblock %}
