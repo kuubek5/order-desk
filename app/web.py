@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import calendar
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 import ipaddress
 import logging
@@ -96,6 +97,135 @@ MAIL_SYNC_INITIAL_DELAY_SECONDS = 10
 SHEET_SYNC_INTERVAL_SECONDS = 2 * 60
 SHEET_SYNC_INITIAL_DELAY_SECONDS = 10
 
+# A heartbeat last-attempt older than this many sync intervals means the
+# background loop itself likely died (thread crashed, process wedged) rather
+# than just "ran and found nothing" — the scariest failure mode, since it's
+# the monitoring signal silently going quiet. See _sync_heartbeat_status.
+STALE_HEARTBEAT_MULTIPLIER = 3
+
+
+@dataclass(frozen=True)
+class SyncHeartbeat:
+    """Last-tick outcome of a background sync loop (mail IMAP or Google
+    Sheets), kept in memory only — this is a liveness signal ("is the loop
+    ticking right now"), not an audit trail. SyncLog remains the audit
+    trail and deliberately writes no row for a quiet/no-op background tick
+    or a background-triggered failure (see mail_sync_service.sync_mail /
+    sheet_sync_service.sync_google_sheets's `persist=trigger == "manual"`),
+    so silence there is ambiguous between "healthy and quiet" and "dead".
+    This heartbeat is updated on every single tick regardless, to remove
+    that ambiguity. Not persisted to the DB and does not survive a
+    restart — showing "unknown" until the next tick completes after a
+    restart is correct and honest, not a bug.
+    """
+
+    last_attempt_at: datetime | None = None
+    status: str = "unknown"  # "unknown" | "ok" | "error" | "skipped"
+    error_message: str | None = None
+
+
+# Keyed by sync type. Only the matching background worker thread ever writes
+# its own key (mail worker writes "mail", sheet worker writes "sheet"), so
+# there is never more than one writer per key and a Lock isn't needed for
+# the write side. Request-handling threads only read this dict to render the
+# queue page. Each write below swaps in a brand-new *immutable* SyncHeartbeat
+# instance in one dict-key assignment — under the GIL that single assignment
+# is atomic, so a concurrent reader always sees either the old or the new
+# heartbeat in full, never a partially-updated one. Do not turn this into a
+# multi-step mutation (e.g. `heartbeat.status = ...`) — that would reopen the
+# torn-read risk this comment is explaining away.
+_sync_heartbeats: dict[str, SyncHeartbeat] = {
+    "mail": SyncHeartbeat(),
+    "sheet": SyncHeartbeat(),
+}
+
+
+def _record_sync_heartbeat(key: str, *, status: str, error_message: str | None = None) -> None:
+    """Record one background sync tick's outcome for the queue page's status pair.
+
+    ``status="skipped"`` (another sync already holds the lock — MailSyncBusyError /
+    SheetSyncBusyError) is deliberately neutral: it proves the loop is alive
+    (last_attempt_at advances, which is what staleness detection cares about)
+    without overwriting a previously recorded real outcome with a false error.
+    """
+    now = datetime.now()
+    if status == "skipped":
+        previous = _sync_heartbeats[key]
+        _sync_heartbeats[key] = SyncHeartbeat(
+            last_attempt_at=now, status=previous.status, error_message=previous.error_message
+        )
+    else:
+        _sync_heartbeats[key] = SyncHeartbeat(
+            last_attempt_at=now, status=status, error_message=error_message
+        )
+
+
+def _relative_time_uk(reference: datetime, now: datetime) -> str:
+    """"N хв тому" / "N год тому" — no reusable relative-time helper exists
+    elsewhere in this codebase (received_at etc. are all rendered as absolute
+    "%d.%m.%y %H:%M" timestamps), so this is a small new one."""
+    seconds = max(0, int((now - reference).total_seconds()))
+    minutes = seconds // 60
+    if minutes < 1:
+        return "щойно"
+    if minutes < 60:
+        unit = _pluralize_uk(minutes, "хвилину", "хвилини", "хвилин")
+        return f"{minutes} {unit} тому"
+    hours = minutes // 60
+    unit = _pluralize_uk(hours, "годину", "години", "годин")
+    return f"{hours} {unit} тому"
+
+
+def _sync_heartbeat_status(
+    heartbeat: SyncHeartbeat,
+    *,
+    configured: bool,
+    interval_seconds: int,
+    now: datetime,
+) -> dict[str, str]:
+    """Pure formatting for one sync-status line in the queue sidebar.
+
+    Precedence: unconfigured beats everything (nothing is supposed to be
+    running, so silence isn't a warning sign) — then staleness (see
+    STALE_HEARTBEAT_MULTIPLIER) beats whatever outcome was last recorded,
+    because a dead worker thread is worse than a recorded failure — only
+    then do we fall back to the last real success/error tick.
+    """
+    if not configured:
+        return {"state": "neutral", "label": "не налаштовано"}
+    if heartbeat.last_attempt_at is None:
+        return {"state": "neutral", "label": "очікує першої перевірки"}
+
+    age_seconds = max(0.0, (now - heartbeat.last_attempt_at).total_seconds())
+    if age_seconds > interval_seconds * STALE_HEARTBEAT_MULTIPLIER:
+        return {"state": "warning", "label": "⚠ немає відповіді від фонового процесу"}
+
+    relative = _relative_time_uk(heartbeat.last_attempt_at, now)
+    if heartbeat.status == "error":
+        return {"state": "error", "label": f"⚠ помилка · {relative}"}
+    if heartbeat.status == "ok":
+        return {"state": "success", "label": f"✓ {relative}"}
+    # "skipped" with no prior real outcome yet (busy on the very first tick
+    # this process ever attempted) — rare, but still an honest "unknown".
+    return {"state": "neutral", "label": "очікує результату"}
+
+
+def _queue_sync_status(db: Session, now: datetime) -> dict[str, dict[str, str]]:
+    return {
+        "mail": _sync_heartbeat_status(
+            _sync_heartbeats["mail"],
+            configured=_imap_configured(db),
+            interval_seconds=MAIL_SYNC_INTERVAL_SECONDS,
+            now=now,
+        ),
+        "sheet": _sync_heartbeat_status(
+            _sync_heartbeats["sheet"],
+            configured=_sheets_configured(db),
+            interval_seconds=SHEET_SYNC_INTERVAL_SECONDS,
+            now=now,
+        ),
+    }
+
 
 def _is_loopback_request(request: Request) -> bool:
     if request.client is None:
@@ -189,6 +319,32 @@ def _imap_configured(db: Session) -> bool:
     return bool((get_imap_login(db) or "").strip() and (get_imap_password(db) or "").strip())
 
 
+def _mail_sync_tick(db: Session) -> None:
+    """One background IMAP sync attempt: gated on IMAP being configured
+    (an unconfigured sync is not attempted, and correctly stays "не
+    налаштовано" rather than touching the heartbeat). Records a
+    SyncHeartbeat for success or either well-known failure mode
+    (MailSyncBusyError / MailSyncError); any other exception is left to
+    propagate to _mail_sync_worker's own generic handler below, which
+    records its own failure heartbeat — same three-way dispatch the
+    original inline try/except used, just factored out so it is directly
+    callable from tests without threads/Event. See SyncHeartbeat's
+    docstring for why this exists alongside SyncLog.
+    """
+    if not _imap_configured(db):
+        return
+    try:
+        sync_mail_background(db, Path(MAIL_ATTACHMENTS_PATH))
+    except MailSyncBusyError:
+        _record_sync_heartbeat("mail", status="skipped")
+        return
+    except MailSyncError as exc:
+        logger.warning("Background mail sync failed: %s", exc)
+        _record_sync_heartbeat("mail", status="error", error_message=str(exc))
+        return
+    _record_sync_heartbeat("mail", status="ok")
+
+
 def _mail_sync_worker(stop_event: Event) -> None:
     """Poll IMAP without occupying the web request loop or delaying shutdown."""
     if stop_event.wait(MAIL_SYNC_INITIAL_DELAY_SECONDS):
@@ -197,16 +353,31 @@ def _mail_sync_worker(stop_event: Event) -> None:
     while not stop_event.is_set():
         try:
             with SessionLocal() as db:
-                if _imap_configured(db):
-                    sync_mail_background(db, Path(MAIL_ATTACHMENTS_PATH))
-        except MailSyncBusyError:
-            pass
-        except MailSyncError as exc:
-            logger.warning("Background mail sync failed: %s", exc)
+                _mail_sync_tick(db)
         except Exception:
             logger.exception("Unexpected background mail sync failure")
+            _record_sync_heartbeat(
+                "mail", status="error", error_message="Неочікувана помилка синхронізації пошти"
+            )
 
         stop_event.wait(MAIL_SYNC_INTERVAL_SECONDS)
+
+
+def _sheet_sync_tick(db: Session) -> None:
+    """One background Google Sheets sync attempt — same gate/dispatch/testing
+    rationale as _mail_sync_tick above, for SheetSyncBusyError / SheetSyncError."""
+    if not _sheets_configured(db):
+        return
+    try:
+        sync_sheets_background(db)
+    except SheetSyncBusyError:
+        _record_sync_heartbeat("sheet", status="skipped")
+        return
+    except SheetSyncError as exc:
+        logger.warning("Background sheet sync failed: %s", exc)
+        _record_sync_heartbeat("sheet", status="error", error_message=str(exc))
+        return
+    _record_sync_heartbeat("sheet", status="ok")
 
 
 def _sheet_sync_worker(stop_event: Event) -> None:
@@ -222,14 +393,12 @@ def _sheet_sync_worker(stop_event: Event) -> None:
     while not stop_event.is_set():
         try:
             with SessionLocal() as db:
-                if _sheets_configured(db):
-                    sync_sheets_background(db)
-        except SheetSyncBusyError:
-            pass
-        except SheetSyncError as exc:
-            logger.warning("Background sheet sync failed: %s", exc)
+                _sheet_sync_tick(db)
         except Exception:
             logger.exception("Unexpected background sheet sync failure")
+            _record_sync_heartbeat(
+                "sheet", status="error", error_message="Неочікувана помилка синхронізації таблиці"
+            )
 
         stop_event.wait(SHEET_SYNC_INTERVAL_SECONDS)
 
@@ -752,6 +921,7 @@ def get_queue(
         "stats": _queue_week_summary(db, all_orders, today),
         "sync": _queue_sync_summary(db),
     }
+    sync_status = _queue_sync_status(db, datetime.now())
 
     return templates.TemplateResponse(
         request,
@@ -770,6 +940,7 @@ def get_queue(
             "show_overdue": show_overdue,
             "kpis": kpis,
             "peeks": peeks,
+            "sync_status": sync_status,
             "has_any_orders": bool(all_orders),
             "sheets_configured": _sheets_configured(db),
             "sync_flash": sync_flash,
