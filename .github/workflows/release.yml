@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Build Windows installer
+        shell: powershell
+        run: .\build_windows.ps1
+
+      - name: Verify installer exists
+        shell: powershell
+        run: |
+          $installerPath = "dist-installer\OrderDesk-Setup-0.1.0.exe"
+          if (-not (Test-Path $installerPath)) {
+            Write-Error "Installer not found at $installerPath"
+            exit 1
+          }
+          $fileSize = (Get-Item $installerPath).Length
+          Write-Host "Installer ready: $installerPath ($(($fileSize/1MB).ToString('F1')) MB)"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-installer/OrderDesk-Setup-0.1.0.exe
+          fail_on_unmatched_files: true
