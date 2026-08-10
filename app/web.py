@@ -8,11 +8,12 @@ import os
 from pathlib import Path
 from threading import Event, Lock, Thread
 from time import monotonic
+from typing import Annotated
 import uuid
 from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import Depends, FastAPI, Form, HTTPException
+from fastapi import Depends, FastAPI, Form, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -451,6 +452,46 @@ def _queue_sort_key(order: Order) -> tuple:
     return overdue_rank, _order_date(order), due_rank, order.id
 
 
+DATE_STRIP_WINDOW = 7
+
+
+def _known_order_dates(db: Session) -> list[date]:
+    """Calendar days that actually have order data, derived straight from
+    `Order.sheet_tab` — the same column `app/sync.py` populates verbatim
+    from real Google Sheet tab names, and that `accept_email` stamps with
+    the Kyiv business date for mail-sourced orders. There is deliberately no
+    separate mechanism here that talks to Google Sheets to list its tabs:
+    `sheet_tab` already mirrors that list, refreshed every background sync
+    tick, so the queue's day-strip stays in sync "for free"."""
+    tabs = db.scalars(select(Order.sheet_tab).where(Order.sheet_tab.isnot(None)).distinct()).all()
+    parsed = {d for d in (_parse_sheet_tab(tab) for tab in tabs) if d is not None}
+    return sorted(parsed)
+
+
+def _date_window(
+    known_dates: list[date], today: date, date_page: int | None, window: int = DATE_STRIP_WINDOW
+) -> tuple[list[date], int, int]:
+    """Page through `known_dates` (ascending) `window` days at a time.
+
+    Returns `(visible_dates, current_page, total_pages)`. With no explicit
+    `date_page`, the default window is the one containing `today`, or the
+    most recent window if today has no data yet (e.g. the operator opens
+    the queue before the lab has entered anything for today)."""
+    if not known_dates:
+        return [], 0, 0
+
+    total_pages = (len(known_dates) + window - 1) // window
+
+    if date_page is None:
+        anchor_idx = known_dates.index(today) if today in known_dates else len(known_dates) - 1
+        current_page = anchor_idx // window
+    else:
+        current_page = max(0, min(date_page, total_pages - 1))
+
+    start = current_page * window
+    return known_dates[start : start + window], current_page, total_pages
+
+
 def _pluralize_uk(n: int, one: str, few: str, many: str) -> str:
     """Ukrainian has three plural forms selected by the last one/two digits
     of the count (1 клієнт, 2 клієнти, 5 клієнтів, 11 клієнтів, 21 клієнт…)."""
@@ -814,6 +855,15 @@ def get_queue(
     ready: str = "all",
     source: str = "all",
     overdue: str = "0",
+    # `date` (query key) can't be the python parameter name — it would
+    # shadow the `date` class imported at module level and used throughout
+    # this function (`date.today()` etc). `Annotated` keeps the *default*
+    # value a plain `""`/`None` (not a `Query(...)` sentinel object), so
+    # calling `get_queue(...)` directly in tests — the established pattern
+    # in this file, see tests/test_mail_queue_backend.py — still works
+    # without going through FastAPI's request-parsing layer.
+    date_param: Annotated[str, Query(alias="date")] = "",
+    date_page: int | None = None,
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)
@@ -839,6 +889,17 @@ def get_queue(
     # (those links never carry `overdue`).
     show_overdue = overdue == "1"
 
+    # Day-strip filter (sidebar "Дні" group): an explicit, single calendar
+    # day chosen from the set of days that actually have order data (see
+    # `_known_order_dates` — sourced from `Order.sheet_tab`, so it's always
+    # in sync with whatever tabs the Sheet has, no separate lookup needed).
+    # Same precedence rule as `show_overdue` above: independent of, and
+    # takes priority over, the period bucket for this request; `source`/
+    # `ready` stay independent and still apply on top either way. An
+    # invalid/unparseable value is silently ignored (falls back to `period`)
+    # rather than erroring, same spirit as the period/ready/source fallbacks.
+    selected_date = _parse_sheet_tab(date_param)
+
     # Fetch all orders
     all_orders = db.scalars(select(Order).order_by(Order.id.desc())).all()
 
@@ -861,11 +922,19 @@ def get_queue(
         else:
             buckets["earlier"].append(order)
 
-    # Get the filtered list for the current period, or every overdue order
-    # across all periods when the "Прострочено" KPI shortcut is active.
+    # Get the filtered list for the current period, every overdue order
+    # across all periods when the "Прострочено" KPI shortcut is active, or
+    # exactly one calendar day when a day-strip date is selected. `overdue`
+    # keeps top priority (unchanged, pre-existing behavior); `date` is the
+    # next priority, ahead of the plain period bucket.
     if show_overdue:
         orders = sorted(
             (o for o in all_orders if is_overdue(o.sheet_tab, o.status)),
+            key=_queue_sort_key,
+        )
+    elif selected_date is not None:
+        orders = sorted(
+            (o for o in all_orders if _order_date(o) == selected_date),
             key=_queue_sort_key,
         )
     else:
@@ -924,6 +993,13 @@ def get_queue(
     }
     sync_status = _queue_sync_status(db, datetime.now())
 
+    # Day-strip: 7 known dates at a time out of every distinct day that has
+    # order data (see `_known_order_dates` / `_date_window` docstrings above
+    # for why this is enough to stay in sync with the Sheet with no new
+    # sync mechanism).
+    known_dates = _known_order_dates(db)
+    date_tabs, current_date_page, total_date_pages = _date_window(known_dates, today, date_page)
+
     return templates.TemplateResponse(
         request,
         "queue.html",
@@ -947,6 +1023,10 @@ def get_queue(
             "sync_flash": sync_flash,
             "pending_emails": pending_emails,
             "pending_mail_count": pending_mail_count,
+            "selected_date": selected_date,
+            "date_tabs": date_tabs,
+            "date_page": current_date_page,
+            "total_date_pages": total_date_pages,
         },
     )
 
