@@ -1,0 +1,34 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  pytest:
+    # The real product only ships on Windows (standalone PyInstaller/Inno
+    # Setup install, DPAPI-backed secrets) — running CI on windows-latest
+    # matches that target instead of guessing at Linux compatibility for
+    # Windows-only code paths (app/windows_dpapi.py, app/windows_launcher.py).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        # DB_ENCRYPTION_KEY only needs to be a valid Fernet key for the
+        # ephemeral CI sqlite DB each run creates and discards — it protects
+        # nothing real here, unlike the DPAPI-backed key on a real install
+        # (CLAUDE.md section 7), so a fixed CI-only value is fine to commit.
+        env:
+          DB_ENCRYPTION_KEY: "Un82ZLqj-Mb9wutrlh4s384pKBsG1WMn1GCYncpWgTw="
+        run: python -m pytest -q
