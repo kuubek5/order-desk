@@ -23,7 +23,6 @@
         {% endif %}
     </td>
     <td class="quantity">{{ order.quantity or '—' }}</td>
-    <td class="due-time mono">{{ order.due_time or '—' }}</td>
     <td class="job-code">
         {% if order.job_code %}
             <button type="button" class="mono job-code-link copy-button" data-copy="{{ order.job_code }}" {% if order.job_code_folder_preview_token %}data-stl-preview-token="{{ order.job_code_folder_preview_token }}"{% endif %} title="Скопіювати шлях-ID для Sum3D">{{ order.job_code }}</button>

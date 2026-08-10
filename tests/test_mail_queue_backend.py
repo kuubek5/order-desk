@@ -174,6 +174,140 @@ def test_invalid_date_param_falls_back_to_period_bucketing(tmp_path, monkeypatch
         assert [o.id for o in context["orders"]] == [today_order.id]
 
 
+def test_omitting_sort_preserves_default_urgency_ordering(tmp_path, monkeypatch):
+    """Regression guard: the new opt-in `sort` param must not change the
+    default queue ordering when absent — same earliest-deadline-first
+    urgency ordering _queue_sort_key already guarantees (see
+    test_web_helpers.test_queue_sorts_earlier_deadline_first_for_same_day)."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        today_tab = date.today().strftime("%d.%m.%y")
+        later = Order(source="lab", sheet_tab=today_tab, due_time="16:00", material_color="я останній")
+        earlier = Order(source="lab", sheet_tab=today_tab, due_time="09:00", material_color="а перший")
+        db.add_all([later, earlier])
+        db.commit()
+
+        context = _call_get_queue(db, user, monkeypatch, tmp_path)
+
+        assert [o.id for o in context["orders"]] == [earlier.id, later.id]
+        assert context["sort"] == ""
+        assert context["sort_dir"] == "asc"
+
+
+def test_sort_by_material_ascending_is_case_insensitive(tmp_path, monkeypatch):
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        today_tab = date.today().strftime("%d.%m.%y")
+        titan = Order(source="lab", sheet_tab=today_tab, material_color="Титан")
+        mono = Order(source="lab", sheet_tab=today_tab, material_color="моно")
+        pmma = Order(source="lab", sheet_tab=today_tab, material_color="ПММА")
+        db.add_all([titan, mono, pmma])
+        db.commit()
+
+        context = _call_get_queue(db, user, monkeypatch, tmp_path, sort="material", sort_dir="asc")
+
+        assert [o.id for o in context["orders"]] == [mono.id, pmma.id, titan.id]
+        assert context["sort"] == "material"
+
+
+def test_sort_by_kind_case_insensitive(tmp_path, monkeypatch):
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        today_tab = date.today().strftime("%d.%m.%y")
+        vklad = Order(source="lab", sheet_tab=today_tab, kind="вкладка")
+        anatomia = Order(source="lab", sheet_tab=today_tab, kind="Анатомія")
+        db.add_all([vklad, anatomia])
+        db.commit()
+
+        context = _call_get_queue(db, user, monkeypatch, tmp_path, sort="kind", sort_dir="asc")
+
+        assert [o.id for o in context["orders"]] == [anatomia.id, vklad.id]
+
+
+def test_sort_by_material_blank_values_sort_last_both_directions(tmp_path, monkeypatch):
+    """Blanks must stay last regardless of asc/desc — an operator sorting
+    "by material" descending still doesn't want blanks floating to the top."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        today_tab = date.today().strftime("%d.%m.%y")
+        blank = Order(source="lab", sheet_tab=today_tab, material_color=None)
+        pmma = Order(source="lab", sheet_tab=today_tab, material_color="пмма")
+        db.add_all([blank, pmma])
+        db.commit()
+
+        asc = _call_get_queue(db, user, monkeypatch, tmp_path, sort="material", sort_dir="asc")
+        desc = _call_get_queue(db, user, monkeypatch, tmp_path, sort="material", sort_dir="desc")
+
+        assert [o.id for o in asc["orders"]] == [pmma.id, blank.id]
+        assert [o.id for o in desc["orders"]] == [pmma.id, blank.id]
+
+
+def test_sort_by_quantity_is_numeric_not_lexicographic(tmp_path, monkeypatch):
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        today_tab = date.today().strftime("%d.%m.%y")
+        ten = Order(source="lab", sheet_tab=today_tab, quantity="10")
+        three = Order(source="lab", sheet_tab=today_tab, quantity="3")
+        db.add_all([ten, three])
+        db.commit()
+
+        context = _call_get_queue(db, user, monkeypatch, tmp_path, sort="quantity", sort_dir="asc")
+
+        # Numeric, not lexicographic: 3 < 10 (a string sort would put "10" first).
+        assert [o.id for o in context["orders"]] == [three.id, ten.id]
+
+
+def test_sort_by_quantity_non_numeric_sorts_last(tmp_path, monkeypatch):
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        today_tab = date.today().strftime("%d.%m.%y")
+        numeric = Order(source="lab", sheet_tab=today_tab, quantity="5")
+        junk = Order(source="lab", sheet_tab=today_tab, quantity="кілька")
+        db.add_all([junk, numeric])
+        db.commit()
+
+        context = _call_get_queue(db, user, monkeypatch, tmp_path, sort="quantity", sort_dir="asc")
+
+        assert [o.id for o in context["orders"]] == [numeric.id, junk.id]
+
+
+def test_sort_direction_toggles_order(tmp_path, monkeypatch):
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        today_tab = date.today().strftime("%d.%m.%y")
+        low = Order(source="lab", sheet_tab=today_tab, quantity="1")
+        high = Order(source="lab", sheet_tab=today_tab, quantity="9")
+        db.add_all([low, high])
+        db.commit()
+
+        asc = _call_get_queue(db, user, monkeypatch, tmp_path, sort="quantity", sort_dir="asc")
+        desc = _call_get_queue(db, user, monkeypatch, tmp_path, sort="quantity", sort_dir="desc")
+
+        assert [o.id for o in asc["orders"]] == [low.id, high.id]
+        assert [o.id for o in desc["orders"]] == [high.id, low.id]
+        assert desc["sort_dir"] == "desc"
+
+
+def test_invalid_sort_field_is_ignored(tmp_path, monkeypatch):
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        today_tab = date.today().strftime("%d.%m.%y")
+        db.add(Order(source="lab", sheet_tab=today_tab, due_time="09:00"))
+        db.commit()
+
+        context = _call_get_queue(db, user, monkeypatch, tmp_path, sort="not-a-real-field")
+
+        assert context["sort"] == ""
+
+
 def test_open_mail_folder_requires_authentication(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine) as db, pytest.raises(HTTPException) as exc:

@@ -1,0 +1,15 @@
+{# Clickable, sortable column header for the queue table (queue.html).
+   Imported "with context" so it can see the same query-param variables the
+   sidebar filters use (period/ready/source/date/date_page) — a click here
+   preserves all of them, same "preserve everything else" pattern the
+   day-strip pager already follows in _queue_sidebar.html, and only swaps
+   sort/dir. Clicking a column that isn't currently sorted sorts it
+   ascending; clicking the already-active column toggles asc<->desc. #}
+{% macro th(field, label) %}
+{% set is_active = sort == field %}
+{% set next_dir = 'desc' if (is_active and sort_dir == 'asc') else 'asc' %}
+{% set date_value = selected_date.strftime('%d.%m.%y') if selected_date else '' %}
+<a class="th-sort {% if is_active %}th-sort-active{% endif %}" href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ date_value }}&date_page={{ date_page }}&sort={{ field }}&dir={{ next_dir }}" title="Сортувати за «{{ label }}»">
+    <span>{{ label }}</span>{% if is_active %}<span class="th-sort-icon" aria-hidden="true">{% if sort_dir == 'asc' %}&#9650;{% else %}&#9660;{% endif %}</span>{% endif %}
+</a>
+{% endmacro %}

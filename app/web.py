@@ -452,6 +452,40 @@ def _queue_sort_key(order: Order) -> tuple:
     return overdue_rank, _order_date(order), due_rank, order.id
 
 
+# Column headers the operator can click to sort the queue table (queue.html
+# thead, via _sortable_th.html). Explicit, opt-in — with no `sort` query
+# param the queue keeps its default urgency-based _queue_sort_key ordering.
+QUEUE_SORT_FIELDS = ("material", "kind", "quantity")
+
+
+def _queue_column_sort_value(order: Order, sort: str) -> int | str | None:
+    """Sort value for one column, or None for "blank" (missing/unparseable)
+    — callers must always sort blanks last, never first, regardless of
+    direction (an operator sorting "by material" doesn't want blanks at the
+    top just because they picked descending)."""
+    if sort == "quantity":
+        # Order.quantity is a free-text Mapped[Optional[str]] column (see
+        # app/models.py), not a number — reuse the same defensive parser
+        # app/stats.py already established for this exact field instead of
+        # writing a third copy of "parse this string as an int or give up".
+        return parse_int_safe(order.quantity)
+    field = "material_color" if sort == "material" else "kind"
+    value = getattr(order, field, None)
+    if value is None or not value.strip():
+        return None
+    return value.strip().lower()
+
+
+def _sort_orders_by_column(orders: list[Order], sort: str, direction: str) -> list[Order]:
+    """Stable sort by one queue column. Blank/unparseable values always sort
+    last, in both directions — only the *present* values reverse order."""
+    reverse = direction == "desc"
+    paired = [(order, _queue_column_sort_value(order, sort)) for order in orders]
+    present = sorted((p for p in paired if p[1] is not None), key=lambda p: p[1], reverse=reverse)
+    missing = [order for order, value in paired if value is None]
+    return [order for order, _ in present] + missing
+
+
 DATE_STRIP_WINDOW = 7
 
 
@@ -864,6 +898,11 @@ def get_queue(
     # without going through FastAPI's request-parsing layer.
     date_param: Annotated[str, Query(alias="date")] = "",
     date_page: int | None = None,
+    sort: str = "",
+    # `dir` (query key) is kept off the python parameter name so it doesn't
+    # shadow the `dir()` builtin anywhere in this function's body — same
+    # spirit as the `date`/`date_param` split above.
+    sort_dir: Annotated[str, Query(alias="dir")] = "asc",
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)
@@ -881,6 +920,14 @@ def get_queue(
     # Validate source independently from the period/readiness filters.
     if source not in SOURCE_FILTERS:
         source = "all"
+
+    # Validate the optional column sort (queue.html thead, via
+    # _sortable_th.html). Absent/invalid `sort` means "no explicit column
+    # sort" — the queue keeps its default urgency-based ordering below.
+    if sort not in QUEUE_SORT_FIELDS:
+        sort = ""
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "asc"
 
     # "Прострочено" KPI shortcut: overdue work can land in either the
     # "yesterday" or "earlier" bucket, so it needs its own cross-period view
@@ -953,6 +1000,14 @@ def get_queue(
     # Second, independent filter: readiness (has the technician dropped files yet?)
     ready_counts = count_by_readiness(orders)
     orders = filter_by_readiness(orders, ready)
+
+    # Explicit, opt-in column sort (queue.html thead) applied last, on top
+    # of whatever period/source/date/ready filtering produced above. With no
+    # `sort`, this is a no-op — the default urgency-based _queue_sort_key
+    # ordering from earlier is left completely untouched.
+    if sort:
+        orders = _sort_orders_by_column(orders, sort, sort_dir)
+
     sync_flash = request.session.pop("sync_flash", None)
     pending_emails = db.scalars(
         select(EmailMessage)
@@ -1027,6 +1082,8 @@ def get_queue(
             "date_tabs": date_tabs,
             "date_page": current_date_page,
             "total_date_pages": total_date_pages,
+            "sort": sort,
+            "sort_dir": sort_dir,
         },
     )
 
