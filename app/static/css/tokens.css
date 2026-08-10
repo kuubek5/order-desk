@@ -42,4 +42,12 @@
   /* Border Radius */
   --radius-card: 16px;
   --radius-chip: 24px;
+  /* Shared by every pill-shaped text input (topbar search, full search page,
+     login, form fields) — same shape/fill language as --radius-chip and
+     --color-bg used directly elsewhere, named for the input use case. Was
+     referenced in base.css without ever being defined here, so the topbar
+     and search-page inputs silently rendered with square corners and a
+     transparent fill instead of matching every other input on the site. */
+  --radius-input: var(--radius-chip);
+  --color-input-bg: var(--color-bg);
 }

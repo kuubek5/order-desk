@@ -10,17 +10,14 @@
 <main>
     <div class="topbar">
         <h1>Клієнти</h1>
-        <div class="topbar-user">
-            <a href="/">← До черги</a>
-            <a href="/mail">Нові з пошти</a>
-            <a href="/handout">Ранкова видача</a>
-            <a href="/stats">Статистика</a>
-            {% if user.role == 'адмін' %}<a href="/settings">Налаштування</a>{% endif %}
-            <a href="/account" class="text-muted">{{ user.full_name or user.username }}</a>
-            <form method="post" action="/logout">
-                <button type="submit" class="link-button">Вийти</button>
-            </form>
-        </div>
+        <form method="get" action="/search" class="topbar-search">
+            <input type="text" name="q" placeholder="Пошук…" class="topbar-search-input">
+            <button type="submit" class="topbar-search-button" title="Пошук">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            </button>
+        </form>
+        {% set topbar_active = 'clients' %}
+        {% include "_topbar_nav.html" %}
     </div>
 
     {% if error %}
@@ -55,7 +52,13 @@
             </table>
             </div>
         {% else %}
-            <p class="text-muted">Клієнтів ще не додано.</p>
+            <div class="queue-empty">
+                <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/>
+                </svg>
+                <h2>Клієнтів ще не додано</h2>
+                <p>Додайте першого клієнта формою нижче — картка з контактами та історією робіт з’явиться тут.</p>
+            </div>
         {% endif %}
     </div>
 

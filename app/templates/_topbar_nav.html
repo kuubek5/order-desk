@@ -1,0 +1,29 @@
+{# Shared top-bar navigation links, included with `topbar_active` set to the
+   current page's key so its own entry is skipped instead of linking to
+   itself. Kept as a single partial so every screen's link set, order, and
+   labels stay identical — before this, seven templates hand-duplicated this
+   block and had already drifted (missing links, "Робочі замовлення" vs
+   "← До черги", no route to /search from anywhere but the queue's inline
+   search box). #}
+<div class="topbar-user">
+    {% if topbar_active != 'queue' %}<a href="/">← До черги</a>{% endif %}
+    {% if topbar_active != 'mail' %}
+    <a href="/mail" class="mail-nav-link">
+        Нові з пошти
+        {% if pending_mail_count %}<span class="mail-nav-count">{{ pending_mail_count }}</span>{% endif %}
+    </a>
+    {% endif %}
+    {% if topbar_active != 'handout' %}<a href="/handout">Ранкова видача</a>{% endif %}
+    {% if topbar_active != 'clients' %}<a href="/clients">Клієнти</a>{% endif %}
+    {% if topbar_active != 'search' %}<a href="/search">Пошук</a>{% endif %}
+    {% if topbar_active != 'stats' %}<a href="/stats">Статистика</a>{% endif %}
+    {% if user.role == 'адмін' and topbar_active != 'settings' %}<a href="/settings">Налаштування</a>{% endif %}
+    {% if topbar_active != 'account' %}
+    <a href="/account" class="text-muted">{{ user.full_name or user.username }}</a>
+    {% else %}
+    <span class="text-muted">{{ user.full_name or user.username }}</span>
+    {% endif %}
+    <form method="post" action="/logout">
+        <button type="submit" class="link-button">Вийти</button>
+    </form>
+</div>

@@ -13,20 +13,8 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             </button>
         </form>
-        <div class="topbar-user">
-            <a href="/mail" class="mail-nav-link">
-                Нові з пошти
-                {% if pending_mail_count %}<span class="mail-nav-count">{{ pending_mail_count }}</span>{% endif %}
-            </a>
-            <a href="/handout">Ранкова видача</a>
-            <a href="/clients">Клієнти</a>
-            <a href="/stats">Статистика</a>
-            {% if user.role == 'адмін' %}<a href="/settings">Налаштування</a>{% endif %}
-            <a href="/account" class="text-muted">{{ user.full_name or user.username }}</a>
-            <form method="post" action="/logout">
-                <button type="submit" class="link-button">Вийти</button>
-            </form>
-        </div>
+        {% set topbar_active = 'queue' %}
+        {% include "_topbar_nav.html" %}
     </div>
 
     {% if sync_flash %}

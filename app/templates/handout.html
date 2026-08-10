@@ -12,17 +12,8 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             </button>
         </form>
-        <div class="topbar-user">
-            <a href="/">← До черги</a>
-            <a href="/mail">Нові з пошти</a>
-            <a href="/clients">Клієнти</a>
-            <a href="/stats">Статистика</a>
-            {% if user.role == 'адмін' %}<a href="/settings">Налаштування</a>{% endif %}
-            <a href="/account" class="text-muted">{{ user.full_name or user.username }}</a>
-            <form method="post" action="/logout">
-                <button type="submit" class="link-button">Вийти</button>
-            </form>
-        </div>
+        {% set topbar_active = 'handout' %}
+        {% include "_topbar_nav.html" %}
     </div>
 
     <nav class="tab-nav tab-nav-source" aria-label="Джерело робіт">
@@ -119,7 +110,11 @@
         {% endfor %}
     {% else %}
         <div class="card queue-empty">
-            <p>Немає невиданих робіт з відомим клієнтом.</p>
+            <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 6 9 17l-5-5"/>
+            </svg>
+            <h2>Видавати нічого</h2>
+            <p>Немає невиданих робіт з відомим клієнтом — усе, що знайдено, вже видано.</p>
         </div>
     {% endif %}
 </main>
