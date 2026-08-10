@@ -2773,3 +2773,69 @@ li {
   font-size: 0.8rem;
   color: var(--color-text-muted);
 }
+
+/* Multi-file switcher — only present when a folder has more than one .stl
+   file (see stl-preview.js renderSwitcher()). Toggling `.has-switcher` on
+   the popup is what turns on pointer-events for this case; the single-file
+   popup stays pointer-events: none exactly as before, so this whole block
+   is inert (and invisible) for the common case. */
+.stl-preview-popup.has-switcher {
+  pointer-events: auto;
+}
+
+.stl-preview-switcher {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 12px 8px 7px;
+  background: linear-gradient(to top, rgba(10, 8, 12, 0.55), transparent);
+}
+
+.stl-preview-switcher.is-visible {
+  display: flex;
+}
+
+/* Same "small solid circle" language as .job-code-found-dot, sized into a
+   real button with generous invisible padding so it stays easy to hit. */
+.stl-preview-dot {
+  box-sizing: content-box;
+  width: 0.4rem;
+  height: 0.4rem;
+  padding: 5px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.stl-preview-dot::after {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  opacity: 0.55;
+  transition: background-color 0.18s ease, opacity 0.18s ease, transform 0.15s ease;
+}
+
+.stl-preview-dot:hover::after {
+  opacity: 0.85;
+}
+
+.stl-preview-dot.is-active::after {
+  background: var(--color-accent);
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+.stl-preview-dot:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
