@@ -77,9 +77,9 @@ jobs:
           $appPid = $appProcess.Id
           Write-Host "OrderDesk started with PID $appPid"
 
-          # Poll health endpoint with retries
+          # Poll health endpoint with retries (app runs Alembic migrations on first start, can take 30-60 seconds)
           $healthUrl = "http://127.0.0.1:8000/health"
-          $maxRetries = 30
+          $maxRetries = 90
           $retryDelaySeconds = 1
           $retryCount = 0
           $healthy = $false
@@ -96,6 +96,12 @@ jobs:
               if (Test-Path $errFile) {
                 Write-Host "Last stderr from OrderDesk:"
                 Get-Content $errFile -Tail 20
+              }
+              # Also check the app's own logs
+              $appLogFile = "$env:LOCALAPPDATA\OrderDesk\logs\order-desk.log"
+              if (Test-Path $appLogFile) {
+                Write-Host "Last OrderDesk.log entries:"
+                Get-Content $appLogFile -Tail 20
               }
               break
             }
@@ -135,6 +141,11 @@ jobs:
             if (Test-Path $errFile) {
               Write-Host "Last stderr from OrderDesk:"
               Get-Content $errFile -Tail 20
+            }
+            $appLogFile = "$env:LOCALAPPDATA\OrderDesk\logs\order-desk.log"
+            if (Test-Path $appLogFile) {
+              Write-Host "Last OrderDesk.log entries:"
+              Get-Content $appLogFile -Tail 30
             }
             exit 1
           }
