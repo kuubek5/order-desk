@@ -1,0 +1,50 @@
+<aside class="queue-sidebar" aria-label="Фільтри черги">
+    {% if show_overdue %}
+    <a href="/?period={{ period }}&ready={{ ready }}&source={{ source }}" class="chip chip-removable rail-clear" title="Прибрати фільтр прострочених">
+        Прострочено
+    </a>
+    {% endif %}
+
+    <div class="rail-group">
+        <p class="rail-group-label">Період</p>
+        <a href="/?period=today&ready={{ ready }}&source={{ source }}" class="rail-item {% if not show_overdue and period == 'today' %}active{% endif %}">
+            <span>Сьогодні</span><span class="rail-badge">{{ counts.today }}</span>
+        </a>
+        <a href="/?period=yesterday&ready={{ ready }}&source={{ source }}" class="rail-item {% if not show_overdue and period == 'yesterday' %}active{% endif %}">
+            <span>Вчора</span><span class="rail-badge">{{ counts.yesterday }}</span>
+        </a>
+        <a href="/?period=tomorrow&ready={{ ready }}&source={{ source }}" class="rail-item {% if not show_overdue and period == 'tomorrow' %}active{% endif %}">
+            <span>Завтра</span><span class="rail-badge">{{ counts.tomorrow }}</span>
+        </a>
+        <a href="/?period=earlier&ready={{ ready }}&source={{ source }}" class="rail-item {% if not show_overdue and period == 'earlier' %}active{% endif %}">
+            <span>Раніше</span><span class="rail-badge">{{ counts.earlier }}</span>
+        </a>
+    </div>
+
+    <div class="rail-group">
+        <p class="rail-group-label">Джерело</p>
+        <a href="/?period={{ period }}&ready={{ ready }}&source=all" class="rail-item {% if source == 'all' %}active{% endif %}">
+            <span>Усі джерела</span><span class="rail-badge">{{ source_counts.all }}</span>
+        </a>
+        <a href="/?period={{ period }}&ready={{ ready }}&source=lab" class="rail-item {% if source == 'lab' %}active{% endif %}">
+            <span>Google Таблиця</span><span class="rail-badge">{{ source_counts.lab }}</span>
+        </a>
+        <a href="/?period={{ period }}&ready={{ ready }}&source=email" class="rail-item rail-item-email {% if source == 'email' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
+            <span>З пошти</span><span class="rail-badge">{{ source_counts.email }}</span>
+        </a>
+    </div>
+
+    <div class="rail-group">
+        <p class="rail-group-label">Готовність</p>
+        <a href="/?period={{ period }}&ready=all&source={{ source }}" class="rail-item {% if ready == 'all' %}active{% endif %}">
+            <span>Усі</span><span class="rail-badge">{{ ready_counts.all }}</span>
+        </a>
+        <a href="/?period={{ period }}&ready=ready&source={{ source }}" class="rail-item {% if ready == 'ready' %}active{% endif %}">
+            <span>Готово</span><span class="rail-badge">{{ ready_counts.ready }}</span>
+        </a>
+        <a href="/?period={{ period }}&ready=not_ready&source={{ source }}" class="rail-item {% if ready == 'not_ready' %}active{% endif %}">
+            <span>Не готово</span><span class="rail-badge">{{ ready_counts.not_ready }}</span>
+        </a>
+    </div>
+</aside>

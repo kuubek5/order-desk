@@ -1,12 +1,11 @@
-"""v0.2 — one-shot IMAP fetch: reads unseen mail into EmailMessage rows for
-triage. Run manually for now; no scheduling yet.
-"""
+"""One-shot IMAP synchronization for diagnostics and maintenance."""
 
 import sys
 from pathlib import Path
 
+from app.config import MAIL_ATTACHMENTS_PATH
 from app.db import Base, engine, get_session
-from app.mail_reader import fetch_new_emails
+from app.mail_sync_service import sync_mailbox
 
 
 def main() -> None:
@@ -16,7 +15,7 @@ def main() -> None:
     Base.metadata.create_all(engine)
 
     with get_session() as session:
-        count = fetch_new_emails(session, Path("mail_attachments"))
+        count = sync_mailbox(session, Path(MAIL_ATTACHMENTS_PATH), trigger="manual")
 
     print(f"Нових листів: {count}")
 

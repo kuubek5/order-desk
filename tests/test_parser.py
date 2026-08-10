@@ -241,20 +241,23 @@ class TestEdgeCases:
         assert row.material_color == ''  # idx3 out of bounds
         assert row.technician_name == ''  # idx9 out of bounds
 
-    def test_job_code_or_quantity_can_keep_row_alive(self):
-        """A row with only job_code or only quantity (no work_order_no) should not be empty."""
+    def test_job_code_or_quantity_alone_is_still_empty(self):
+        """A row with only job_code or only quantity (no work_order_no) is skipped.
+
+        Real test-sheet data showed operators use these same columns to jot a
+        client name + quantity as a pricing placeholder before a наряд number
+        is assigned (see CLAUDE.md section 2) — those rows aren't real jobs.
+        """
         # Row with only job_code
         raw_rows_1 = HEADER_ROWS_SAMPLE + [
             make_data_row({8: 'JOB001'})  # job_code only
         ]
         result_1 = parse_rows(raw_rows_1)
-        assert len(result_1) == 1
-        assert result_1[0].job_code == 'JOB001'
+        assert len(result_1) == 0
 
         # Row with only quantity
         raw_rows_2 = HEADER_ROWS_SAMPLE + [
             make_data_row({2: '5'})  # quantity only
         ]
         result_2 = parse_rows(raw_rows_2)
-        assert len(result_2) == 1
-        assert result_2[0].quantity == '5'
+        assert len(result_2) == 0

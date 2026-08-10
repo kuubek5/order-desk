@@ -110,7 +110,13 @@ main {
   white-space: nowrap;
 }
 
-.chip::after {
+/* The removable "×" is opt-in via `.chip-removable`. Every current chip
+   (material/kind/mono labels in the queue, handout, order detail, mail
+   screens) is a read-only value label, not a dismissible filter — showing
+   a `cursor:pointer` "×" on all of them promised a removal action that
+   didn't exist anywhere in the app. Kept as a primitive for the actual
+   removable filter chips described in CLAUDE.md section 8, not yet built. */
+.chip-removable::after {
   content: "×";
   display: inline-block;
   cursor: pointer;
@@ -122,9 +128,23 @@ main {
   padding-left: var(--space-1);
 }
 
-.chip:hover::after {
+.chip-removable:hover::after {
   color: var(--color-accent);
   opacity: 0.8;
+}
+
+/* Матеріал/Колір: титан і пмма підсвічуються окремо, циркон (моно/емо/
+   тисячний/числові коди) лишається звичайним чипом */
+.chip.chip-titan {
+  background-color: rgba(150, 224, 168, 0.16);
+  border-color: rgba(150, 224, 168, 0.4);
+  color: #96e0a8;
+}
+
+.chip.chip-pmma {
+  background-color: rgba(232, 224, 120, 0.16);
+  border-color: rgba(232, 224, 120, 0.4);
+  color: #e8e078;
 }
 
 /* Monospace utility class */
@@ -202,6 +222,76 @@ li {
   opacity: 0.8;
 }
 
+.mail-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.mail-nav-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: var(--radius-chip);
+  background: var(--color-email);
+  color: #081312;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.mail-pending-notice {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-email-border);
+  border-radius: var(--radius-card);
+  background: var(--color-email-surface);
+}
+
+.mail-pending-notice > svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: none;
+  stroke: var(--color-email);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mail-pending-notice strong {
+  color: var(--color-text);
+}
+
+.mail-pending-notice p {
+  margin: 0;
+  color: #b9d8d5;
+  font-size: 0.84rem;
+}
+
+.mail-pending-notice > a {
+  white-space: nowrap;
+  color: var(--color-email);
+  font-weight: 700;
+}
+
+/* Every .queue-table can end up wider than its column (long job codes,
+   client names, the users table on narrow viewports). Auto table layout
+   doesn't reliably honor a cell's max-width, so without this wrapper the
+   overflow escapes the table and forces the whole page to scroll
+   horizontally. Wrap every <table class="queue-table"> in this div instead
+   of letting the table itself own the scroll. */
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Queue Table Styles */
 .queue-table {
   width: 100%;
@@ -258,9 +348,47 @@ li {
 
 .queue-table td.job-code {
   max-width: 150px;
+  white-space: nowrap;
+}
+
+.job-code-link {
+  display: inline-block;
+  max-width: 7.25rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  vertical-align: middle;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+/* Small accent dot signalling "a matching folder was found on disk" next to
+   the job code — CSS-drawn instead of a bare "●" glyph so it carries its own
+   color regardless of font/rendering, and stays crisp at any zoom level. */
+.job-code-found-dot {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-left: var(--space-2);
+  border-radius: 50%;
+  background: var(--color-accent);
+  vertical-align: middle;
+}
+
+.copy-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: copy;
+}
+
+.copy-button.copy-success {
+  color: var(--color-success, #83c995);
+}
+
+.job-code-link:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
 }
 
 .queue-table td.status {
@@ -284,12 +412,201 @@ li {
 
 .queue-empty {
   text-align: center;
-  padding: var(--space-6);
+  padding: 3.5rem var(--space-6);
+  display: grid;
+  justify-items: center;
 }
 
 .queue-empty p {
   color: var(--color-text-muted);
-  margin-bottom: 0;
+  max-width: 58ch;
+  margin-bottom: var(--space-5);
+}
+
+.queue-empty h2 {
+  font-size: 1.45rem;
+  margin-bottom: var(--space-2);
+}
+
+.queue-empty-icon {
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: var(--space-5);
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sync-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid rgba(232, 180, 168, 0.45);
+  border-radius: var(--radius-chip);
+  background: rgba(232, 180, 168, 0.08);
+  color: var(--color-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.sync-button svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sync-button:hover {
+  opacity: 1;
+  background: rgba(232, 180, 168, 0.15);
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
+.sync-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.sync-button-primary {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.sync-button-primary:hover {
+  background: #f0c2b7;
+}
+
+.sync-notice {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-card);
+  color: var(--color-text);
+}
+
+.sync-notice-success {
+  background: rgba(131, 201, 149, 0.1);
+  border-color: rgba(131, 201, 149, 0.35);
+}
+
+.sync-notice-error {
+  background: rgba(232, 90, 90, 0.1);
+  border-color: rgba(232, 90, 90, 0.35);
+  color: #f1b2b2;
+}
+
+@media (max-width: 720px) {
+  main {
+    padding: var(--space-4);
+  }
+
+  h1 {
+    font-size: 2rem;
+  }
+
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .topbar-user {
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .mail-pending-notice {
+    grid-template-columns: auto 1fr;
+  }
+
+  .mail-pending-notice > a {
+    grid-column: 2;
+  }
+
+  /* Period/source/readiness tab bars don't wrap; let them scroll
+     horizontally within their own strip instead of forcing the page wide. */
+  .tab-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--space-1);
+  }
+
+  .tab-link {
+    flex: 0 0 auto;
+  }
+
+  .dash-kpis,
+  .dash-peeks {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dash-peek-sync {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 460px) {
+  .dash-kpis,
+  .dash-peeks {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-peek-sync {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 900px) {
+  .queue-layout {
+    flex-direction: column;
+  }
+
+  .queue-sidebar {
+    position: static;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: var(--space-5);
+    padding-bottom: var(--space-2);
+  }
+
+  .rail-clear {
+    flex: 0 0 auto;
+    margin-bottom: 0;
+  }
+
+  .rail-group {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-1);
+    margin-bottom: 0;
+  }
+
+  .rail-group-label {
+    padding: 0;
+    margin-bottom: 0;
+    white-space: nowrap;
+  }
+
+  .rail-item {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 }
 
 .sum3d-form {
@@ -309,6 +626,10 @@ li {
 }
 
 .sum3d-save {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
   background: var(--color-accent);
   border: none;
   border-radius: var(--radius-chip);
@@ -319,6 +640,52 @@ li {
   font-weight: 600;
 }
 
+.sum3d-save:focus-visible,
+.folder-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.sum3d-save svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.folder-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--space-2);
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-chip);
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  color: var(--color-text);
+  text-decoration: none;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.folder-link svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.folder-link:hover {
+  border-color: var(--color-accent);
+}
+
 /* Status Badge Styles */
 .status-badge {
   display: inline-block;
@@ -327,7 +694,22 @@ li {
   font-size: 0.85rem;
   font-weight: 600;
   white-space: nowrap;
-  text-transform: capitalize;
+  /* No text-transform: statuses are multi-word Ukrainian phrases with
+     prepositions ("знайдено при видачі") — CSS `capitalize` title-cases
+     every word ("Знайдено При Видачі"), which reads as broken translation.
+     STATUSES (app/statuses.py) is already written the way it should display. */
+}
+
+.status-badge-icon {
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 0.2em;
+  vertical-align: -0.08em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .status-badge.status-нове {
@@ -385,6 +767,971 @@ li {
   background-color: rgba(168, 232, 168, 0.15);
   color: #a8e8a8;
   border: 1px solid rgba(168, 232, 168, 0.3);
+}
+
+/* переробка — очікує на повторне фрезерування (той самий сенс, що й
+   паперове "помаранчевий = очікує щось") */
+.status-badge.status-переробка {
+  background-color: rgba(232, 152, 96, 0.18);
+  color: #e89860;
+  border: 1px solid rgba(232, 152, 96, 0.4);
+}
+
+/* проблема — єдиний статус, що навмисно виходить за межі м'якої
+   пастельної палітри решти статусів: потребує уваги, а не просто
+   ще один відтінок у ряду */
+.status-badge.status-проблема {
+  background-color: rgba(232, 90, 90, 0.18);
+  color: #e85a5a;
+  border: 1px solid rgba(232, 90, 90, 0.4);
+}
+
+/* Two-phase mail fetch (app.mail_reader.fetch_new_emails): whether an
+   email's attachments have finished downloading yet. Same visual language
+   as .status-badge (14-18% opacity fill + solid border of the same color),
+   just its own pair of classes since this tracks attachment download state,
+   not the email's triage status. Amber for "still working" echoes
+   .status-badge.status-у-фрезеруванні (also "in progress"); teal for
+   "done" reuses the email-source accent (--color-email) so a finished
+   download reads as "arrived", not just "not amber anymore". */
+.attachment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-chip);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.attachment-badge-pending {
+  background-color: rgba(232, 216, 168, 0.15);
+  color: #e8d8a8;
+  border: 1px solid rgba(232, 216, 168, 0.3);
+}
+
+.attachment-badge-ready {
+  background-color: var(--color-email-surface);
+  color: var(--color-email);
+  border: 1px solid var(--color-email-border);
+}
+
+.attachment-badge-dot {
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: attachment-badge-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes attachment-badge-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* Прострочені роботи (день вкладки вже минув, робота не готова) */
+.queue-row-overdue {
+  background-color: rgba(232, 90, 90, 0.04);
+}
+
+.queue-row-overdue:hover {
+  background-color: rgba(232, 90, 90, 0.07);
+}
+
+.queue-row-overdue td.due-time {
+  color: #e85a5a;
+  font-weight: 600;
+}
+
+/* Роботи з пошти (Order.source == "email") — позначення ДЖЕРЕЛА, а не
+   стану чи терміновості, тому свій приглушений бірюзовий відтінок,
+   якого ще нема серед status-badge (сині/фіолетові/зелені/жовті вже
+   зайняті) і який явно відрізняється від теплого блюш-акценту та
+   червоного overdue. Той самий паттерн "14-18% opacity фон + суцільний
+   бордер того ж кольору", що й у status-badge. */
+.queue-row-email {
+  background-color: var(--color-email-surface);
+}
+
+.queue-row-email:hover {
+  background-color: rgba(134, 212, 206, 0.12);
+}
+
+/* Робота може бути одночасно і з пошти, і простроченою. Термінове (overdue)
+   важливіше за джерело, тому в такому випадку фон рядка лишається
+   червоним — джерело при цьому не губиться, бо позначка "з пошти"
+   винесена в окремий бейдж (див. .source-badge-email), який показується
+   завжди, незалежно від фону рядка. Так уникаємо змішування двох
+   напівпрозорих кольорів в один каламутний відтінок. */
+.queue-row-overdue.queue-row-email {
+  background-color: rgba(232, 90, 90, 0.04);
+}
+
+.queue-row-overdue.queue-row-email:hover {
+  background-color: rgba(232, 90, 90, 0.07);
+}
+
+/* Той самий титан/пмма розподіл (див. .chip-titan/.chip-pmma вище), але на
+   весь рядок, не лише чип. Bare-клас (без .queue-row у селекторі) навмисно —
+   специфічність (0,1,0) дорівнює .queue-row-overdue/.queue-row-email, тому
+   пріоритет у каскаді визначає лише порядок оголошення нижче: прострочення
+   й джерело важливіші за матеріал, тому їхні override-правила йдуть після. */
+.chip-titan {
+  background-color: rgba(150, 224, 168, 0.05);
+}
+
+.chip-titan:hover {
+  background-color: rgba(150, 224, 168, 0.08);
+}
+
+.chip-pmma {
+  background-color: rgba(232, 224, 120, 0.05);
+}
+
+.chip-pmma:hover {
+  background-color: rgba(232, 224, 120, 0.08);
+}
+
+.queue-row-overdue.chip-titan,
+.queue-row-overdue.chip-pmma {
+  background-color: rgba(232, 90, 90, 0.04);
+}
+
+.queue-row-overdue.chip-titan:hover,
+.queue-row-overdue.chip-pmma:hover {
+  background-color: rgba(232, 90, 90, 0.07);
+}
+
+/* Source is the primary row category; keep it visible when material also has
+   a tint. Overdue remains the stronger operational state above. */
+.queue-row-email.chip-titan,
+.queue-row-email.chip-pmma {
+  background-color: var(--color-email-surface);
+}
+
+.queue-row-email.chip-titan:hover,
+.queue-row-email.chip-pmma:hover {
+  background-color: rgba(134, 212, 206, 0.12);
+}
+
+.queue-row-overdue.queue-row-email,
+.queue-row-overdue.queue-row-email.chip-titan,
+.queue-row-overdue.queue-row-email.chip-pmma {
+  background-color: rgba(232, 90, 90, 0.04);
+}
+
+.queue-row-overdue.queue-row-email:hover,
+.queue-row-overdue.queue-row-email.chip-titan:hover,
+.queue-row-overdue.queue-row-email.chip-pmma:hover {
+  background-color: rgba(232, 90, 90, 0.07);
+}
+
+/* Pending mail is an operational inbox pinned above queue filters. It uses
+   one continuous surface with separated rows so six letters remain scannable
+   without turning the page into a stack of cards. */
+.pending-mail {
+  margin-bottom: var(--space-5);
+  overflow: hidden;
+  border: 1px solid var(--color-email-border);
+  border-radius: var(--radius-card);
+  background: rgba(12, 27, 28, 0.88);
+}
+
+.pending-mail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-bottom: 1px solid rgba(134, 212, 206, 0.2);
+  background: rgba(134, 212, 206, 0.07);
+}
+
+.pending-mail-heading,
+.pending-mail-title-line {
+  display: flex;
+  align-items: center;
+}
+
+.pending-mail-heading {
+  gap: var(--space-3);
+}
+
+.pending-mail-title-line {
+  gap: var(--space-2);
+}
+
+.pending-mail-heading h2,
+.pending-mail-heading p {
+  margin: 0;
+}
+
+.pending-mail-heading h2 {
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+
+.pending-mail-heading p {
+  margin-top: var(--space-1);
+  color: #b9d8d5;
+  font-size: 0.8rem;
+}
+
+.pending-mail-icon {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(134, 212, 206, 0.12);
+  color: var(--color-email);
+}
+
+.pending-mail-icon svg,
+.pending-mail-attachments svg,
+.pending-mail-folder svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pending-mail-icon svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  stroke-width: 1.8;
+}
+
+.pending-mail-count,
+.pending-mail-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-chip);
+  font-weight: 750;
+}
+
+.pending-mail-count {
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 var(--space-2);
+  background: var(--color-email);
+  color: #081312;
+  font-size: 0.75rem;
+}
+
+.pending-mail-review-all {
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-chip);
+  color: var(--color-email);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pending-mail-list {
+  display: grid;
+}
+
+.pending-mail-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.8fr) minmax(15rem, 1.7fr) auto auto;
+  grid-template-areas: "who message attachments actions";
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid rgba(134, 212, 206, 0.14);
+  transition: background-color 0.18s ease;
+}
+
+.pending-mail-row:last-child {
+  border-bottom: 0;
+}
+
+.pending-mail-row:hover {
+  background: rgba(134, 212, 206, 0.06);
+}
+
+.pending-mail-who,
+.pending-mail-message {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.pending-mail-who {
+  grid-area: who;
+  justify-items: start;
+}
+
+.pending-mail-status {
+  min-height: 1.35rem;
+  padding: 0 var(--space-2);
+  border: 1px solid rgba(134, 212, 206, 0.32);
+  background: rgba(134, 212, 206, 0.1);
+  color: var(--color-email);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pending-mail-who strong {
+  /* `.pending-mail-who` sets `justify-items: start` so the status pill and
+     timestamp hug their own content instead of stretching full-width; that
+     leaves this element sized to its own max-content too, so `max-width:
+     100%` had nothing to clamp against and a long client name pushed the
+     whole row (and page) wider. `justify-self: stretch` opts this one grid
+     item back into filling the column so the ellipsis below has a real
+     boundary to truncate at. */
+  justify-self: stretch;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-mail-received {
+  color: #9fc2bf;
+  font-size: 0.76rem;
+}
+
+.pending-mail-message {
+  grid-area: message;
+}
+
+.pending-mail-subject {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-text);
+  font-weight: 700;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pending-mail-subject:hover {
+  color: var(--color-email);
+}
+
+.pending-mail-guesses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.pending-mail-guesses span {
+  padding: 0.15rem var(--space-2);
+  border-radius: var(--radius-chip);
+  background: rgba(134, 212, 206, 0.08);
+  color: #b9d8d5;
+  font-size: 0.72rem;
+}
+
+.pending-mail-guesses .pending-mail-guess-empty {
+  background: transparent;
+  color: #9fc2bf;
+  padding-left: 0;
+}
+
+.pending-mail-attachments {
+  grid-area: attachments;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: #b9d8d5;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.pending-mail-attachments svg {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 1.8;
+}
+
+.pending-mail-actions {
+  grid-area: actions;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.pending-mail-actions form {
+  margin: 0;
+}
+
+.pending-mail-folder,
+.pending-mail-process {
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-chip);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.pending-mail-folder {
+  border: 1px solid var(--color-email-border);
+  background: rgba(134, 212, 206, 0.08);
+  color: var(--color-email);
+  cursor: pointer;
+}
+
+.pending-mail-folder svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  stroke-width: 1.8;
+}
+
+.pending-mail-folder:hover:not(:disabled) {
+  background: rgba(134, 212, 206, 0.16);
+  border-color: var(--color-email);
+}
+
+.pending-mail-folder:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.pending-mail-process {
+  background: var(--color-email);
+  color: #081312;
+}
+
+.pending-mail-review-all:focus-visible,
+.pending-mail-subject:focus-visible,
+.pending-mail-folder:focus-visible,
+.pending-mail-process:focus-visible {
+  outline: 2px solid var(--color-email);
+  outline-offset: 3px;
+}
+
+@media (max-width: 980px) {
+  .pending-mail-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "who attachments"
+      "message message"
+      "actions actions";
+  }
+}
+
+@media (max-width: 720px) {
+  .pending-mail-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pending-mail-review-all {
+    width: 100%;
+    justify-content: center;
+    border: 1px solid var(--color-email-border);
+  }
+
+  .pending-mail-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "who"
+      "message"
+      "attachments"
+      "actions";
+    gap: var(--space-3);
+  }
+
+  .pending-mail-actions,
+  .pending-mail-actions form,
+  .pending-mail-folder,
+  .pending-mail-process {
+    width: 100%;
+  }
+}
+
+/* Малий бейдж-позначка джерела "з пошти" — компактніший за .status-badge,
+   ставиться поруч із номером наряду. Не border-left понад 1px: тут узагалі
+   без border-left, лише округлена іконка-чіп у тому ж дизайн-паттерні. */
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.45rem;
+  border-radius: var(--radius-chip);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-right: var(--space-2);
+  vertical-align: middle;
+  padding: 0 var(--space-2);
+  gap: var(--space-1);
+}
+
+.source-badge svg,
+.tab-link-email svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.source-badge-email {
+  background-color: rgba(134, 212, 206, 0.14);
+  color: var(--color-email);
+  border: 1px solid var(--color-email-border);
+}
+
+.tab-nav-source {
+  margin-top: calc(-1 * var(--space-2));
+}
+
+.tab-nav-source .tab-link {
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.84rem;
+}
+
+.tab-link-email {
+  gap: var(--space-1);
+}
+
+.tab-nav-source .tab-link-email.active {
+  background-color: var(--color-email);
+  border-color: var(--color-email);
+  color: #081312;
+}
+
+/* Queue dashboard header (Варіант B) — KPI shortcuts and peek cards into the
+   three neighboring screens, plus the vertical filter rail that replaces the
+   old three tab-nav rows on the queue screen only (handout/mail/stats keep
+   .tab-nav as-is, see above). Every card here is a real link/filter/action —
+   never decoration — and the entrance animation is the one authored moment
+   this section gets: a brief, bounded stagger, not a page-load show. */
+@keyframes dash-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dash-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  margin-bottom: var(--space-3);
+}
+
+.dash-peeks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.dash-kpi,
+.dash-peek {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: 12px;
+  border: 1px solid var(--color-card-border);
+  color: var(--color-text);
+  text-decoration: none;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: dash-card-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--kpi-i, 0) * 45ms);
+  transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.15s ease, box-shadow 0.18s ease;
+}
+
+.dash-kpi {
+  background-color: var(--color-card-bg);
+}
+
+.dash-peek {
+  background-color: rgba(255, 255, 255, 0.015);
+}
+
+.dash-kpi:hover {
+  border-color: rgba(230, 230, 240, 0.24);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+}
+
+.dash-peek:not(.dash-peek-sync):hover {
+  border-color: rgba(230, 230, 240, 0.22);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+}
+
+.dash-kpi:active,
+.dash-peek:not(.dash-peek-sync):active {
+  transform: translateY(0) scale(0.98);
+  transition-duration: 0.08s;
+}
+
+.dash-kpi:focus-visible,
+.dash-peek:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.dash-kpi-value {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.dash-kpi-label {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.dash-kpi-overdue {
+  border-color: var(--color-overdue-border);
+  background-color: var(--color-overdue-surface);
+}
+
+.dash-kpi-overdue .dash-kpi-value {
+  color: var(--color-overdue);
+}
+
+.dash-kpi-overdue.is-active {
+  border-color: var(--color-overdue);
+  background-color: rgba(232, 90, 90, 0.14);
+}
+
+.dash-kpi-accent .dash-kpi-value {
+  color: var(--color-accent);
+}
+
+.dash-kpi-accent.is-active {
+  border-color: var(--color-accent);
+  background-color: rgba(232, 180, 168, 0.1);
+}
+
+.dash-kpi-email {
+  border-color: var(--color-email-border);
+  background-color: var(--color-email-surface);
+}
+
+.dash-kpi-email .dash-kpi-value {
+  color: var(--color-email);
+}
+
+.dash-peek-title {
+  font-size: 0.76rem;
+  color: var(--color-text-muted);
+}
+
+.dash-peek-value {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.dash-peek-sync {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  cursor: default;
+}
+
+.dash-peek-sync-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.dash-peek-sync-form {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.dash-peek-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  border: 1px solid rgba(232, 180, 168, 0.4);
+  background: rgba(232, 180, 168, 0.08);
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.15s ease;
+}
+
+.dash-peek-sync-btn:hover {
+  background: rgba(232, 180, 168, 0.16);
+  border-color: var(--color-accent);
+}
+
+.dash-peek-sync-btn:active {
+  transform: scale(0.92);
+  transition-duration: 0.08s;
+}
+
+.dash-peek-sync-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.dash-peek-sync-btn svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Queue layout: sticky vertical filter rail + table content (Варіант B). */
+.queue-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-5);
+  margin-top: var(--space-4);
+}
+
+.queue-sidebar {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  position: sticky;
+  top: var(--space-4);
+}
+
+.queue-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.rail-clear {
+  align-self: flex-start;
+  margin-bottom: var(--space-2);
+  border-color: var(--color-overdue-border);
+  color: var(--color-overdue);
+  background-color: var(--color-overdue-surface);
+  cursor: pointer;
+}
+
+.rail-clear::after {
+  color: var(--color-overdue);
+}
+
+.rail-clear:hover::after {
+  color: #f1a49c;
+}
+
+.rail-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--space-3);
+}
+
+.rail-group-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+  padding: 0 var(--space-3);
+  margin: 0 0 var(--space-1);
+}
+
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.rail-item span:first-of-type {
+  flex: 1;
+}
+
+.rail-badge {
+  font-size: 0.78rem;
+  color: inherit;
+  opacity: 0.75;
+}
+
+.rail-item:hover {
+  background-color: rgba(230, 230, 240, 0.05);
+  color: var(--color-text);
+}
+
+.rail-item.active {
+  background-color: rgba(232, 180, 168, 0.1);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.rail-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.rail-item-email svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rail-item-email.active {
+  background-color: rgba(134, 212, 206, 0.12);
+  color: var(--color-email);
+}
+
+/* Pending mail: collapsible list (CLAUDE.md section 8 — collapses to one
+   summary row by default, expands on click). The grid-template-rows 0fr/1fr
+   trick animates to real content height without JS measuring it. */
+.pending-mail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.pending-mail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1px solid var(--color-email-border);
+  background: rgba(134, 212, 206, 0.08);
+  color: var(--color-email);
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+
+.pending-mail-toggle:hover {
+  background: rgba(134, 212, 206, 0.16);
+}
+
+.pending-mail-toggle:focus-visible {
+  outline: 2px solid var(--color-email);
+  outline-offset: 2px;
+}
+
+.pending-mail-chevron {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.22s ease;
+}
+
+.pending-mail.is-collapsed .pending-mail-chevron {
+  transform: rotate(-90deg);
+}
+
+.pending-mail-preview {
+  display: none;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+}
+
+.pending-mail.is-collapsed .pending-mail-preview {
+  display: flex;
+}
+
+.pending-mail.is-collapsed .pending-mail-hint {
+  display: none;
+}
+
+.pending-mail-preview-chip {
+  padding: 0.1rem var(--space-2);
+  border-radius: var(--radius-chip);
+  background: rgba(134, 212, 206, 0.1);
+  color: #b9d8d5;
+  font-size: 0.72rem;
+}
+
+.pending-mail-preview-more {
+  background: transparent;
+  color: #9fc2bf;
+}
+
+.pending-mail-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.28s ease;
+}
+
+.pending-mail.is-collapsed .pending-mail-collapse {
+  grid-template-rows: 0fr;
+}
+
+.pending-mail-collapse > .pending-mail-list {
+  overflow: hidden;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-kpi,
+  .dash-peek {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .dash-kpi:hover,
+  .dash-kpi:active,
+  .dash-peek:hover,
+  .dash-peek:active,
+  .dash-peek-sync-btn:active {
+    transform: none;
+  }
+
+  .pending-mail-collapse,
+  .pending-mail-chevron {
+    transition: none;
+  }
+
+  .attachment-badge-dot {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* Order Detail Page Styles */
@@ -530,6 +1877,52 @@ li {
   word-break: break-word;
 }
 
+.comment-form {
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.sync-warning {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--space-2);
+  color: var(--color-warning, #f2a65a);
+  cursor: help;
+}
+
+.sync-warning svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.comment-input {
+  width: 100%;
+  margin-top: var(--space-2);
+  resize: vertical;
+  min-height: 5.5rem;
+}
+
+.comment-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .comment-form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .rework-details {
   display: flex;
   flex-direction: column;
@@ -594,6 +1987,18 @@ li {
   color: inherit;
 }
 
+/* Secondary tab row (e.g. readiness filter under the period tabs) — same
+   chip pattern, scaled down a step so it reads as a subordinate filter
+   rather than a second primary nav. */
+.tab-nav-secondary {
+  margin-top: calc(-1 * var(--space-2));
+}
+
+.tab-nav-secondary .tab-link {
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.85rem;
+}
+
 /* Morning handout */
 .handout-group {
   margin-bottom: var(--space-5);
@@ -632,11 +2037,27 @@ li {
   cursor: pointer;
 }
 
-.handout-export-entries {
+.handout-export-batches {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--space-2);
   margin-top: var(--space-4);
+}
+
+.handout-export-batch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.handout-batch-time {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.handout-folder-link {
+  margin-top: 0;
 }
 
 /* Mail Triage Styles */
@@ -740,4 +2161,48 @@ li {
 .form-reject:hover {
   border-color: rgba(232, 180, 168, 0.3);
   color: var(--color-accent);
+}
+
+/* STL hover preview popup (app/static/js/stl-preview.js) */
+[data-stl-preview-token] {
+  cursor: pointer;
+}
+
+.stl-preview-popup {
+  position: fixed;
+  z-index: 200;
+  width: 200px;
+  height: 200px;
+  border-radius: var(--radius-card);
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px) scale(0.98);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  overflow: hidden;
+}
+
+.stl-preview-popup.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.stl-preview-popup canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.stl-preview-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3);
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
 }

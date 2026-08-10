@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Статистика — Order Desk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/stats.css">
+{% endblock %}
+
+{% block content %}
+<main>
+    <div class="topbar">
+        <h1>{{ page_title }}</h1>
+        <div class="topbar-user">
+            <a href="/">← До черги</a>
+            <a href="/mail">Нові з пошти</a>
+            <a href="/handout">Ранкова видача</a>
+            {% if user.role == 'адмін' %}<a href="/settings">Налаштування</a>{% endif %}
+            <span class="text-muted">{{ user.full_name or user.username }}</span>
+            <form method="post" action="/logout">
+                <button type="submit" class="link-button">Вийти</button>
+            </form>
+        </div>
+    </div>
+
+    <nav class="tab-nav">
+        <a href="/stats?period=today" class="tab-link {% if period == 'today' %}active{% endif %}">Сьогодні</a>
+        <a href="/stats?period=week" class="tab-link {% if period == 'week' %}active{% endif %}">Тиждень</a>
+        <a href="/stats?period=month" class="tab-link {% if period == 'month' %}active{% endif %}">Місяць</a>
+        <a href="/stats?period=all" class="tab-link {% if period == 'all' %}active{% endif %}">Весь час</a>
+    </nav>
+
+    <div class="stats-grid">
+        <div class="card stats-card">
+            <h3 class="stats-card-title">Підсумок за період</h3>
+            <div class="stats-numbers">
+                <div class="stats-number-item">
+                    <div class="stats-number">{{ order_count }}</div>
+                    <div class="stats-number-label">робіт</div>
+                </div>
+                <div class="stats-number-item">
+                    <div class="stats-number">{{ quantity_sum }}</div>
+                    <div class="stats-number-label">одиниць</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card stats-card">
+            <h3 class="stats-card-title">Середній час нове → відфрезеровано</h3>
+            {% if avg_hours is not none %}
+                <div class="stats-number">{{ avg_hours|round(1) }} <span class="stats-number-unit">год.</span></div>
+            {% else %}
+                <p class="text-muted">немає даних</p>
+            {% endif %}
+        </div>
+
+        <div class="card stats-card stats-card-wide">
+            <h3 class="stats-card-title">Брак — за весь час</h3>
+            {% if rework_groups %}
+                <div class="table-scroll">
+                <table class="queue-table">
+                    <thead>
+                        <tr>
+                            <th>Винуватець</th>
+                            <th>Переробок</th>
+                            <th>Одиниць переробки</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for group in rework_groups %}
+                        <tr class="queue-row">
+                            <td>{{ group.blame }}</td>
+                            <td>{{ group.count }}</td>
+                            <td>{{ group.redo_quantity_sum }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            {% else %}
+                <p class="text-muted">переробок не зафіксовано</p>
+            {% endif %}
+        </div>
+    </div>
+</main>
+{% endblock %}

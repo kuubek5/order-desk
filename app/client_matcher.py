@@ -4,6 +4,7 @@ This module provides client name matching with a confirmed-alias dictionary,
 using rapidfuzz for fuzzy matching when exact matches are not found.
 """
 
+import unicodedata
 from dataclasses import dataclass
 from rapidfuzz import fuzz
 
@@ -80,13 +81,19 @@ def match_client_name(
             candidates=[],
         )
 
-    # Fuzzy match: normalize whitespace/case for comparison, keep original names
-    sheet_normalized = sheet_name.strip().lower()
+    # Fuzzy match: normalize whitespace/case/Unicode form for comparison, keep original names.
+    # NFC normalization matters because visually-identical Cyrillic text can arrive in
+    # different composed forms (e.g. precomposed "й" U+0439 vs decomposed "и"+combining
+    # breve U+0438 U+0306) depending on the source app/OS that produced the sheet or the
+    # export folder name. Without normalizing first, rapidfuzz scores these as very
+    # different strings even though they render identically, which can push a genuine
+    # exact match below auto_match_threshold.
+    sheet_normalized = unicodedata.normalize("NFC", sheet_name.strip().lower())
 
     # Score each folder name
     scores: list[tuple[str, float]] = []
     for folder_name in folder_names:
-        folder_normalized = folder_name.strip().lower()
+        folder_normalized = unicodedata.normalize("NFC", folder_name.strip().lower())
         score = fuzz.ratio(sheet_normalized, folder_normalized)
         scores.append((folder_name, float(score)))
 

@@ -1,11 +1,107 @@
 /* Settings Page Styles — Order Desk */
 /* Admin configuration screen with grouped input fields */
 
+.mail-sync-row {
+  margin-top: var(--space-5);
+  margin-bottom: var(--space-2);
+}
+
 .settings-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
   margin-top: var(--space-5);
+}
+
+.setup-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid rgba(232, 180, 168, 0.3);
+  border-radius: var(--radius-card);
+  background: rgba(232, 180, 168, 0.06);
+}
+
+.setup-intro h2 {
+  font-size: 1.35rem;
+  margin-bottom: var(--space-2);
+}
+
+.setup-intro p {
+  color: var(--color-text-muted);
+  margin: 0;
+  max-width: 68ch;
+}
+
+.setup-progress,
+.connection-state {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-chip);
+  padding: var(--space-1) var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.settings-group-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.settings-group-heading h2,
+.settings-group-heading p {
+  margin-bottom: 0;
+}
+
+.connection-state-ready {
+  color: #a7ddb4;
+  border-color: rgba(131, 201, 149, 0.38);
+  background: rgba(131, 201, 149, 0.08);
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.settings-secondary-button {
+  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-chip);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-secondary-button:hover,
+.settings-secondary-button:focus-visible {
+  color: var(--color-text);
+  border-color: rgba(230, 230, 240, 0.3);
+}
+
+@media (max-width: 720px) {
+  .setup-intro,
+  .settings-group-heading,
+  .settings-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-actions button {
+    width: 100%;
+  }
 }
 
 .settings-group {
@@ -91,5 +187,175 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+.settings-error {
+  border-color: var(--color-accent);
+  top: calc(var(--space-6) * 3);
+}
+
+/* Operators */
+.settings-operators {
+  margin-top: var(--space-5);
+}
+
+.users-table {
+  width: 100%;
+}
+
+.user-badge-active {
+  background-color: rgba(232, 180, 168, 0.15);
+  color: var(--color-accent);
+}
+
+.user-badge-inactive {
+  background-color: rgba(230, 230, 240, 0.08);
+  color: var(--color-text-muted);
+}
+
+.users-reset-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.users-reset-input {
+  width: 10rem;
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.85rem;
+}
+
+.users-add-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-card-border);
+}
+
+.users-add-form .settings-field {
+  min-width: 10rem;
+}
+
+/* Live validation feedback (A3 path check, A4 IMAP test) — shares the
+   .connection-state pill language already used for Google Sheets/Пошта
+   headers, rather than inventing a second visual vocabulary. */
+.check-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-chip);
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.3;
+  animation: checkPillIn 0.22s ease-out both;
+}
+
+.check-pill svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.check-pill-success {
+  color: #a7ddb4;
+  border-color: rgba(131, 201, 149, 0.38);
+  background: rgba(131, 201, 149, 0.08);
+  animation: checkPillIn 0.22s ease-out both, checkPillPulse 0.5s ease-out 0.22s;
+}
+
+.check-pill-warning {
+  color: #e89860;
+  border-color: rgba(232, 152, 96, 0.4);
+  background: rgba(232, 152, 96, 0.1);
+}
+
+.check-pill-error {
+  color: var(--color-overdue);
+  border-color: var(--color-overdue-border);
+  background: var(--color-overdue-surface);
+}
+
+@keyframes checkPillIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes checkPillPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(131, 201, 149, 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 6px rgba(131, 201, 149, 0);
+  }
+}
+
+.settings-check-result:empty {
+  display: none;
+}
+
+.settings-check-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* In-flight indicator for the debounced path check and the IMAP test
+   button — htmx's own convention: elements carrying "htmx-indicator" start
+   invisible, htmx adds "htmx-request" to the element named by hx-indicator
+   for the request's duration. */
+.check-spinner {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid var(--color-card-border);
+  border-top-color: var(--color-accent);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.check-spinner.htmx-request {
+  opacity: 1;
+  animation: checkSpinnerSpin 0.7s linear infinite;
+}
+
+@keyframes checkSpinnerSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.settings-check-button {
+  min-height: 2.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .check-pill {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .check-spinner.htmx-request {
+    animation: none;
+    opacity: 1;
   }
 }

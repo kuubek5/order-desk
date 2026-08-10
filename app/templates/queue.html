@@ -7,8 +7,13 @@
     <div class="topbar">
         <h1>{{ page_title }}</h1>
         <div class="topbar-user">
-            <a href="/mail">Нові з пошти</a>
+            <a href="/mail" class="mail-nav-link">
+                Нові з пошти
+                {% if pending_mail_count %}<span class="mail-nav-count">{{ pending_mail_count }}</span>{% endif %}
+            </a>
             <a href="/handout">Ранкова видача</a>
+            <a href="/stats">Статистика</a>
+            {% if user.role == 'адмін' %}<a href="/settings">Налаштування</a>{% endif %}
             <span class="text-muted">{{ user.full_name or user.username }}</span>
             <form method="post" action="/logout">
                 <button type="submit" class="link-button">Вийти</button>
@@ -16,50 +21,116 @@
         </div>
     </div>
 
-    <nav class="tab-nav">
-        <a href="/?period=today" class="tab-link {% if period == 'today' %}active{% endif %}">
-            Сьогодні <span class="tab-badge">({{ counts.today }})</span>
-        </a>
-        <a href="/?period=yesterday" class="tab-link {% if period == 'yesterday' %}active{% endif %}">
-            Вчора <span class="tab-badge">({{ counts.yesterday }})</span>
-        </a>
-        <a href="/?period=tomorrow" class="tab-link {% if period == 'tomorrow' %}active{% endif %}">
-            Завтра <span class="tab-badge">({{ counts.tomorrow }})</span>
-        </a>
-        <a href="/?period=earlier" class="tab-link {% if period == 'earlier' %}active{% endif %}">
-            Раніше <span class="tab-badge">({{ counts.earlier }})</span>
-        </a>
-    </nav>
-
-    {% if orders %}
-        <div class="queue-summary">
-            Всього робіт: <strong>{{ orders|length }}</strong>
-        </div>
-
-        <table class="queue-table">
-            <thead>
-                <tr>
-                    <th>Номер наряду</th>
-                    <th>Матеріал / Колір</th>
-                    <th>Вид роботи</th>
-                    <th>Кількість</th>
-                    <th>Здати до</th>
-                    <th>Job Code</th>
-                    <th>Sum3D ID</th>
-                    <th>Технік</th>
-                    <th>Статус</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for order in orders %}
-                    {% include "_order_row.html" %}
-                {% endfor %}
-            </tbody>
-        </table>
-    {% else %}
-        <div class="card queue-empty">
-            <p>Черга порожня — ще не синхронізовано жодної роботи.</p>
-        </div>
+    {% if sync_flash %}
+    <div class="sync-notice sync-notice-{{ sync_flash.kind }}" role="status">
+        <span>{{ sync_flash.message }}</span>
+    </div>
     {% endif %}
+
+    {% include "_queue_kpi_row.html" %}
+    {% include "_queue_peek_row.html" %}
+
+    {% if pending_emails %}
+    <section class="pending-mail is-collapsed" aria-labelledby="pending-mail-title">
+        <header class="pending-mail-header">
+            <div class="pending-mail-heading">
+                <span class="pending-mail-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
+                </span>
+                <div>
+                    <div class="pending-mail-title-line">
+                        <h2 id="pending-mail-title">Нові з пошти</h2>
+                        <span class="pending-mail-count">{{ pending_mail_count }}</span>
+                    </div>
+                    <p class="pending-mail-preview">
+                        {% for email in pending_emails[:5] %}<span class="pending-mail-preview-chip">{{ email.client_name_guess or email.from_address or 'без імені' }}</span>{% endfor %}
+                        {% if pending_emails|length > 5 %}<span class="pending-mail-preview-chip pending-mail-preview-more">+{{ pending_emails|length - 5 }}</span>{% endif %}
+                    </p>
+                    <p class="pending-mail-hint">Закріплені зверху й не залежать від фільтрів черги.</p>
+                </div>
+            </div>
+            <div class="pending-mail-header-actions">
+                <a class="pending-mail-review-all" href="/mail">Перевірити всі</a>
+                <button type="button" class="pending-mail-toggle" data-pending-mail-toggle aria-expanded="false" aria-controls="pending-mail-list" title="Розгорнути/згорнути список">
+                    <svg class="pending-mail-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <div class="pending-mail-collapse">
+            <div class="pending-mail-list" id="pending-mail-list">
+                {% for email in pending_emails %}
+                    {% include "_pending_mail_row.html" %}
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <div class="queue-layout">
+        {% include "_queue_sidebar.html" %}
+
+        <div class="queue-content">
+            {% if orders %}
+                <div class="queue-summary">
+                    {% if show_overdue %}
+                        Прострочені роботи: <strong>{{ orders|length }}</strong>
+                    {% else %}
+                        Всього робіт: <strong>{{ orders|length }}</strong>
+                    {% endif %}
+                </div>
+
+                <div class="table-scroll">
+                <table class="queue-table">
+                    <thead>
+                        <tr>
+                            <th>Наряд / клієнт</th>
+                            <th>Матеріал / Колір</th>
+                            <th>Вид роботи</th>
+                            <th>Кількість</th>
+                            <th>Здати до</th>
+                            <th>Шлях</th>
+                            <th>Sum3D ID</th>
+                            <th>Технік</th>
+                            <th>Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in orders %}
+                            {% include "_order_row.html" %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+            {% else %}
+                <div class="card queue-empty">
+                    <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 11v6c0 1.7 3.1 3 7 3 1.2 0 2.4-.1 3.3-.4"/><path d="M17 16h5m-2.5-2.5L22 16l-2.5 2.5"/>
+                    </svg>
+                    {% if show_overdue %}
+                    <h2>Прострочених робіт немає</h2>
+                    <p>Усе, що мало бути готове до сьогодні, вже здане або в фінальному статусі.</p>
+                    {% elif has_any_orders %}
+                    <h2>У цьому періоді робіт немає</h2>
+                    <p>Роботи вже завантажені. Оберіть інший період або змініть фільтр готовності.</p>
+                    {% elif sheets_configured %}
+                    <h2>Черга готова до першої синхронізації</h2>
+                    <p>Завантажимо роботи з датованих вкладок Google Таблиці та розкладемо їх за періодами.</p>
+                    {% if user.role == 'адмін' %}
+                    <form method="post" action="/sheets/sync">
+                        <button type="submit" class="sync-button sync-button-primary">Завантажити роботи</button>
+                    </form>
+                    {% endif %}
+                    {% else %}
+                    <h2>Під’єднайте робочу таблицю</h2>
+                    <p>Вкажіть ID Google Таблиці та JSON-ключ сервісного акаунта. Після перевірки роботи з’являться тут автоматично.</p>
+                    {% if user.role == 'адмін' %}
+                    <a href="/settings?welcome=1" class="sync-button sync-button-primary">Перейти до налаштувань</a>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
 </main>
 {% endblock %}

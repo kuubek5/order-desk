@@ -8,6 +8,9 @@
         <h1>{{ page_title }}</h1>
         <div class="topbar-user">
             <a href="/">← До черги</a>
+            <a href="/mail">Нові з пошти</a>
+            <a href="/stats">Статистика</a>
+            {% if user.role == 'адмін' %}<a href="/settings">Налаштування</a>{% endif %}
             <span class="text-muted">{{ user.full_name or user.username }}</span>
             <form method="post" action="/logout">
                 <button type="submit" class="link-button">Вийти</button>
@@ -15,11 +18,21 @@
         </div>
     </div>
 
+    <nav class="tab-nav tab-nav-source" aria-label="Джерело робіт">
+        <a href="/handout?source=all" class="tab-link {% if source == 'all' %}active{% endif %}">
+            Усі клієнти <span class="tab-badge">({{ source_counts.all }})</span>
+        </a>
+        <a href="/handout?source=email" class="tab-link tab-link-email {% if source == 'email' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
+            Тільки з пошти <span class="tab-badge">({{ source_counts.email }})</span>
+        </a>
+    </nav>
+
     {% if client_groups %}
         {% for group in client_groups %}
         <div class="card handout-group {% if group.all_found %}is-complete{% endif %}">
             <div class="handout-group-header">
-                <h3>{{ group.client_name }}{% if group.all_found %} <span class="status-badge status-видано">✓ зібрано</span>{% endif %}</h3>
+                <h3>{{ group.client_name }}{% if group.all_found %} <span class="status-badge status-видано"><svg class="status-badge-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>зібрано</span>{% endif %}</h3>
                 {% if group.match.matched_folder_name %}
                     <span class="text-muted">
                         Папка: <span class="mono">{{ group.match.matched_folder_name }}</span>
@@ -41,10 +54,11 @@
                             <span class="text-muted">({{ score|round(0) }}%)</span>
                         </label>
                     {% endfor %}
-                    <button type="submit" class="sum3d-save">Підтвердити</button>
+                    <button type="submit" class="form-submit">Підтвердити</button>
                 </form>
             {% endif %}
 
+            <div class="table-scroll">
             <table class="queue-table">
                 <thead>
                     <tr>
@@ -63,7 +77,9 @@
                         <td>
                             {% if order.status not in ("знайдено при видачі", "видано") %}
                             <form method="post" action="/orders/{{ order.id }}/mark-found">
-                                <button type="submit" class="sum3d-save" title="Позначити знайденим">✓</button>
+                                <button type="submit" class="sum3d-save" title="Позначити знайденим">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                                </button>
                             </form>
                             {% endif %}
                         </td>
@@ -71,11 +87,24 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
 
             {% if group.export_entries %}
-                <div class="handout-export-entries">
-                    {% for entry in group.export_entries %}
-                        <span class="chip mono">{{ entry.material_color_folder_name }} ({{ entry.files|length }} файл.)</span>
+                <div class="handout-export-batches">
+                    {% for batch_key, batch_entries in group.export_entries|sort(attribute='created_at')|groupby('batch_folder_name') %}
+                        <div class="handout-export-batch">
+                            <span class="text-muted handout-batch-time">
+                                {{ batch_entries[0].created_at.strftime('%d.%m.%y %H:%M') }}
+                            </span>
+                            {% for entry in batch_entries %}
+                                <span class="chip mono">{{ entry.material_color_folder_name }} ({{ entry.files|length }} файл.)</span>
+                                {% if entry.folder_uri %}
+                                <a href="{{ entry.folder_uri }}" class="folder-link handout-folder-link" {% if entry.preview_token %}data-stl-preview-token="{{ entry.preview_token }}"{% endif %} title="Відкрити папку">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+                                </a>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
                     {% endfor %}
                 </div>
             {% endif %}

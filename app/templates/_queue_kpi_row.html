@@ -1,0 +1,18 @@
+<section class="dash-kpis" aria-label="Ключові показники черги">
+    <a href="/?overdue=1" class="dash-kpi dash-kpi-overdue {% if show_overdue %}is-active{% endif %}" style="--kpi-i:0">
+        <span class="dash-kpi-value">{{ kpis.overdue }}</span>
+        <span class="dash-kpi-label">Прострочено</span>
+    </a>
+    <a href="/?period=today" class="dash-kpi dash-kpi-accent {% if not show_overdue and period == 'today' %}is-active{% endif %}" style="--kpi-i:1">
+        <span class="dash-kpi-value">{{ kpis.due_today }}</span>
+        <span class="dash-kpi-label">Здати сьогодні</span>
+    </a>
+    <a href="/mail" class="dash-kpi dash-kpi-email" style="--kpi-i:2">
+        <span class="dash-kpi-value">{{ kpis.pending_mail }}</span>
+        <span class="dash-kpi-label">Нових листів</span>
+    </a>
+    <a href="/handout" class="dash-kpi" style="--kpi-i:3">
+        <span class="dash-kpi-value">{{ kpis.clients_without_handout }}</span>
+        <span class="dash-kpi-label">Клієнти без видачі</span>
+    </a>
+</section>

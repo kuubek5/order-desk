@@ -91,6 +91,28 @@ class TestNearExactMatch:
         assert result.is_confirmed_alias is False
 
 
+class TestUnicodeNormalization:
+    """Visually-identical Cyrillic text can arrive in different Unicode
+    composition forms (e.g. from a sheet edited on one OS vs. an export
+    folder created on another). Matching must not penalize this."""
+
+    def test_nfd_decomposed_sheet_name_matches_nfc_folder(self):
+        """Precomposed 'й' (U+0439) in the folder vs. decomposed 'и' + combining
+        breve (U+0438 U+0306) in the sheet name should still be treated as an
+        exact match, not scored as two different names."""
+        import unicodedata
+
+        nfc_name = unicodedata.normalize("NFC", "Гайдай Юрій")
+        nfd_name = unicodedata.normalize("NFD", "Гайдай Юрій")
+        assert nfc_name != nfd_name  # sanity: they really are different code points
+
+        result = match_client_name(nfd_name, [nfc_name], {})
+
+        assert result.matched_folder_name == nfc_name
+        assert result.confidence == 100.0
+        assert result.is_confirmed_alias is False
+
+
 class TestAmbiguousCandidates:
     """When top candidates are within ambiguous_margin, should not auto-match."""
 

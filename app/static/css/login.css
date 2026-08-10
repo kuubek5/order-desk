@@ -11,6 +11,10 @@
   max-width: 22rem;
 }
 
+.setup-card {
+  max-width: 28rem;
+}
+
 .login-card h1 {
   font-size: 1.75rem;
   margin-bottom: var(--space-2);

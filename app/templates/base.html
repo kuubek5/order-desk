@@ -6,8 +6,12 @@
     <title>{% block title %}Order Desk{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/tokens.css">
     <link rel="stylesheet" href="/static/css/base.css">
+    <script src="/static/js/app.js" defer></script>
+    <script src="/static/js/three-0.128.0.min.js" defer></script>
+    <script src="/static/js/STLLoader-0.128.0.js" defer></script>
+    <script src="/static/js/stl-preview.js" defer></script>
     {% block extra_head %}{% endblock %}
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="/static/js/htmx-1.9.10.min.js"></script>
 </head>
 <body>
     {% block content %}{% endblock %}

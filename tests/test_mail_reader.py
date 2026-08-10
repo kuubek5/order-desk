@@ -1,0 +1,265 @@
+import re
+from datetime import date, timedelta
+from types import SimpleNamespace
+
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
+from app.db import Base
+from app.mail_reader import (
+    IMAP_LOOKBACK_DAYS,
+    IMAP_MAX_MESSAGES,
+    IMAP_TIMEOUT_SECONDS,
+    fetch_new_emails,
+    safe_attachment_filename,
+    unique_destination,
+)
+from app.models import Attachment, EmailMessage
+
+
+def test_attachment_filename_strips_path_traversal():
+    assert safe_attachment_filename("../../outside.stl", 1, "application/octet-stream") == "outside.stl"
+    assert safe_attachment_filename(r"..\..\outside.stl", 1, "application/octet-stream") == "outside.stl"
+
+
+def test_attachment_filename_replaces_illegal_characters():
+    assert safe_attachment_filename('case:<1>|?.stl', 1, "application/octet-stream") == "case__1___.stl"
+
+
+def test_attachment_filename_uses_fallback_for_missing_name():
+    assert safe_attachment_filename(None, 3, "image/png") == "attachment_3.png"
+
+
+def test_unique_destination_does_not_overwrite_existing_file(tmp_path):
+    (tmp_path / "case.stl").write_bytes(b"first")
+    (tmp_path / "case (2).stl").write_bytes(b"second")
+
+    destination = unique_destination(tmp_path, "case.stl")
+
+    assert destination.name == "case (3).stl"
+
+
+def _header_message(uid, subject="case", from_="client@example.test"):
+    return SimpleNamespace(uid=uid, from_=from_, subject=subject, date=None)
+
+
+def _full_message(uid, *, text="zircon A2", subject="case", from_="client@example.test", attachments=None):
+    return SimpleNamespace(
+        uid=uid,
+        from_=from_,
+        subject=subject,
+        text=text,
+        html="",
+        date=None,
+        attachments=attachments or [],
+    )
+
+
+def _fake_attachment(filename="case.stl", content_type="application/octet-stream", payload=b"binary"):
+    return SimpleNamespace(filename=filename, content_type=content_type, payload=payload)
+
+
+_UID_RE = re.compile(r"UID (\d+)")
+
+
+class FakeMailbox:
+    """Mock of imap_tools.MailBox distinguishing the headers-only pass from
+    the per-uid full-fetch pass by the ``headers_only`` kwarg and by parsing
+    the requested UID out of the ``AND(uid=...)`` criteria string.
+    """
+
+    def __init__(self, headers, full_by_uid, *, raise_for_uids=None, calls=None):
+        self.headers = headers
+        self.full_by_uid = full_by_uid
+        self.raise_for_uids = raise_for_uids or set()
+        self.calls = calls if calls is not None else []
+
+    def __call__(self, host, timeout):
+        self.calls.append(("connect", host, timeout))
+        return self
+
+    def login(self, login, password):
+        self.calls.append(("login", login, password))
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return None
+
+    def fetch(self, criteria=None, **kwargs):
+        self.calls.append(("fetch", str(criteria), kwargs))
+        if kwargs.get("headers_only"):
+            return iter(self.headers)
+        match = _UID_RE.search(str(criteria))
+        uid = match.group(1) if match else None
+        if uid in self.raise_for_uids:
+            raise OSError(f"simulated network failure for uid {uid}")
+        message = self.full_by_uid.get(uid)
+        return iter([message] if message is not None else [])
+
+
+def _engine_session():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    return Session(engine)
+
+
+def _patch_common(monkeypatch, mailbox):
+    monkeypatch.setattr("app.mail_reader.MailBox", mailbox)
+    monkeypatch.setattr("app.mail_reader.get_imap_login", lambda session: "account")
+    monkeypatch.setattr("app.mail_reader.get_imap_password", lambda session: "secret")
+
+
+def test_fetch_reads_recent_seen_mail_without_marking_seen(monkeypatch, tmp_path):
+    mailbox = FakeMailbox(
+        headers=[_header_message("42")],
+        full_by_uid={"42": _full_message("42")},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        assert fetch_new_emails(session, tmp_path) == 1
+        email = session.scalar(select(EmailMessage))
+        assert email.attachments_status == "ready"
+
+    header_call = next(c for c in mailbox.calls if c[0] == "fetch" and c[2].get("headers_only"))
+    assert header_call[2] == {
+        "mark_seen": False,
+        "reverse": True,
+        "limit": IMAP_MAX_MESSAGES,
+        "headers_only": True,
+    }
+    cutoff = date.today() - timedelta(days=IMAP_LOOKBACK_DAYS)
+    assert f"{cutoff.day}-{cutoff.strftime('%b-%Y')}" in header_call[1]
+
+    uid_call = next(c for c in mailbox.calls if c[0] == "fetch" and not c[2].get("headers_only"))
+    assert uid_call[2] == {"mark_seen": False}
+    assert "42" in uid_call[1]
+    assert next(c for c in mailbox.calls if c[0] == "connect")[2] == IMAP_TIMEOUT_SECONDS
+
+
+def test_fetch_deduplicates_uid_within_and_across_runs(monkeypatch, tmp_path):
+    header = _header_message("55")
+    mailbox = FakeMailbox(
+        headers=[header, header],
+        full_by_uid={"55": _full_message("55")},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        assert fetch_new_emails(session, tmp_path) == 1
+        assert fetch_new_emails(session, tmp_path) == 0
+        assert session.query(EmailMessage).count() == 1
+
+
+def test_phase_one_creates_pending_rows_without_attachments(monkeypatch, tmp_path):
+    """Headers-only pass alone must create visible rows even if phase 2
+    (the full per-message fetch) fails for every message afterwards."""
+    mailbox = FakeMailbox(
+        headers=[_header_message("1"), _header_message("2")],
+        full_by_uid={},
+        raise_for_uids={"1", "2"},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        created = fetch_new_emails(session, tmp_path)
+        assert created == 2
+
+        emails = session.scalars(select(EmailMessage).order_by(EmailMessage.uid)).all()
+        assert [e.uid for e in emails] == ["1", "2"]
+        for email in emails:
+            assert email.attachments_status == "pending"
+            assert email.body_text is None
+            assert email.attachments == []
+        assert session.query(Attachment).count() == 0
+
+
+def test_phase_two_downloads_attachments_and_marks_ready(monkeypatch, tmp_path):
+    attachment = _fake_attachment(filename="case.stl", payload=b"stl-bytes")
+    mailbox = FakeMailbox(
+        headers=[_header_message("7")],
+        full_by_uid={"7": _full_message("7", attachments=[attachment])},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr(
+        "app.mail_reader.guess_fields_from_text",
+        lambda *a, **kw: {"material_color_guess": "цирконій A2"},
+    )
+
+    with _engine_session() as session:
+        assert fetch_new_emails(session, tmp_path) == 1
+        email = session.scalar(select(EmailMessage))
+        assert email.attachments_status == "ready"
+        assert email.material_color_guess == "цирконій A2"
+        assert email.body_text == "zircon A2"
+
+        saved = session.scalar(select(Attachment))
+        assert saved.filename == "case.stl"
+        assert (tmp_path / "7" / "case.stl").read_bytes() == b"stl-bytes"
+        assert saved.saved_path == str(tmp_path / "7" / "case.stl")
+
+
+def test_leftover_pending_row_from_previous_run_is_completed(monkeypatch, tmp_path):
+    """A row left "pending" by a crashed/interrupted earlier run — created
+    directly in the DB, not through this run's phase 1 — must be picked up
+    and finished by phase 2 of the next sync call."""
+    mailbox = FakeMailbox(
+        headers=[],  # nothing new on the server this run
+        full_by_uid={"99": _full_message("99", attachments=[_fake_attachment()])},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        session.add(EmailMessage(uid="99", status="нове", attachments_status="pending"))
+        session.commit()
+
+        created = fetch_new_emails(session, tmp_path)
+        assert created == 0  # no new header this run
+
+        email = session.scalar(select(EmailMessage).where(EmailMessage.uid == "99"))
+        assert email.attachments_status == "ready"
+        assert session.query(Attachment).filter_by(email_message_id=email.id).count() == 1
+
+
+def test_phase_two_failure_on_one_message_does_not_abort_others(monkeypatch, tmp_path):
+    mailbox = FakeMailbox(
+        headers=[_header_message("10"), _header_message("11")],
+        full_by_uid={"11": _full_message("11", attachments=[])},
+        raise_for_uids={"10"},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        created = fetch_new_emails(session, tmp_path)
+        assert created == 2  # both header rows were created in phase 1
+
+        bad = session.scalar(select(EmailMessage).where(EmailMessage.uid == "10"))
+        good = session.scalar(select(EmailMessage).where(EmailMessage.uid == "11"))
+        assert bad.attachments_status == "pending"  # left for retry, no crash
+        assert good.attachments_status == "ready"
+
+
+def test_phase_two_retries_previously_failed_message_on_next_run(monkeypatch, tmp_path):
+    mailbox = FakeMailbox(
+        headers=[],
+        full_by_uid={"3": _full_message("3", attachments=[])},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+
+    with _engine_session() as session:
+        session.add(EmailMessage(uid="3", status="нове", attachments_status="pending"))
+        session.commit()
+
+        fetch_new_emails(session, tmp_path)
+
+        email = session.scalar(select(EmailMessage).where(EmailMessage.uid == "3"))
+        assert email.attachments_status == "ready"

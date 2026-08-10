@@ -164,7 +164,19 @@ class EmailMessage(Base):
     material_color_guess: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     kind_guess: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     quantity_guess: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    # Best-effort hint from app.mail_parser.guess_service_type: "3d_print" if
+    # the message looks like it's about 3D printing (a service this lab does
+    # NOT offer) rather than milling, else None. Purely advisory for the
+    # triage screen — never used to hide a message (CLAUDE.md screen 2).
+    service_type_guess: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="нове")
+    # Two-phase IMAP fetch (app.mail_reader.fetch_new_emails): "pending" means
+    # the row exists (headers only, phase 1) but body/attachments have not
+    # been downloaded yet; "ready" means phase 2 finished (successfully, even
+    # if the message genuinely has zero attachments). Never a third "failed"
+    # state — a failed phase-2 attempt is simply left/reset to "pending" so
+    # the next sync run (2 min later, or manual) retries automatically.
+    attachments_status: Mapped[str] = mapped_column(String(20), default="pending")
     order_id: Mapped[Optional[int]] = mapped_column(ForeignKey("orders.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
 

@@ -4,8 +4,12 @@
 
 {% block content %}
 <main>
+    {% if error %}
+    <div class="settings-alert settings-alert-error">{{ error }}</div>
+    {% endif %}
     <div class="detail-header">
         <a href="/" class="detail-back">← До черги</a>
+        <a href="/stats" class="detail-back">Статистика</a>
     </div>
 
     <!-- Passport Header -->
@@ -24,7 +28,7 @@
                 <div class="passport-value">{{ order.work_order_no or '—' }}</div>
             </div>
             <div class="passport-field">
-                <label class="passport-label">Job Code</label>
+                <label class="passport-label">Шлях</label>
                 <div class="passport-value"><span class="mono">{{ order.job_code or '—' }}</span></div>
             </div>
             <div class="passport-field">
@@ -99,7 +103,7 @@
                                     система
                                 {% endif %}
                             </span>
-                            <span class="timeline-time">{{ event.occurred_at }}</span>
+                            <span class="timeline-time">{{ event.occurred_at.strftime('%d.%m.%y %H:%M') if event.occurred_at else '—' }}</span>
                         </div>
                     </li>
                 {% endfor %}
@@ -112,13 +116,33 @@
     <!-- Comments Section -->
     <div class="card detail-section">
         <h3 class="detail-section-title">Коментарі</h3>
+        <form method="post" action="/orders/{{ order.id }}/comments" class="comment-form">
+            <label for="comment-text" class="passport-label">Новий коментар</label>
+            <textarea
+                id="comment-text"
+                name="text"
+                class="form-input comment-input"
+                rows="3"
+                maxlength="2000"
+                placeholder="Напишіть зауваження для CAM-оператора…"
+                required
+            ></textarea>
+            <div class="comment-form-actions">
+                {% if order.sheet_tab %}
+                    <span class="text-muted">Коментар також додасться у Google Таблицю</span>
+                {% else %}
+                    <span class="text-muted">Коментар збережеться в історії роботи</span>
+                {% endif %}
+                <button type="submit" class="form-submit">Додати коментар</button>
+            </div>
+        </form>
         {% if order.comments %}
             <ul class="detail-list">
                 {% for comment in order.comments|sort(attribute='created_at', reverse=True) %}
                     <li class="detail-comment">
                         <div class="comment-header">
-                            <span class="comment-author">{{ comment.author or comment.source or '—' }}</span>
-                            <span class="comment-time">{{ comment.created_at }}</span>
+                            <span class="comment-author">{{ comment.author or ('Google Таблиця' if comment.source == 'sheet' else comment.source) or '—' }}</span>
+                            <span class="comment-time">{{ comment.created_at.strftime('%d.%m.%y %H:%M') if comment.created_at else '—' }}</span>
                         </div>
                         <div class="comment-text">{{ comment.text }}</div>
                     </li>
@@ -138,7 +162,7 @@
                     <li class="detail-rework">
                         <div class="rework-header">
                             <span class="rework-blame">{{ rework.blame or '—' }}</span>
-                            <span class="rework-date">{{ rework.created_at }}</span>
+                            <span class="rework-date">{{ rework.created_at.strftime('%d.%m.%y %H:%M') if rework.created_at else '—' }}</span>
                         </div>
                         <div class="rework-details">
                             {% if rework.blame_quantity %}

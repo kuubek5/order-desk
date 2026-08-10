@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Order, StatusEvent
+from app.models import Comment, Order, StatusEvent
 from app.parser import OrderRow
 
 
@@ -42,6 +42,37 @@ def _fields(row: OrderRow) -> dict:
     }
 
 
+def _new_sheet_comment(previous: str | None, current: str | None) -> str | None:
+    """Return only newly appended sheet text when possible, else a snapshot."""
+    previous = (previous or "").strip()
+    current = (current or "").strip()
+    if not current or current == previous:
+        return None
+    if previous and current.startswith(previous):
+        appended = current[len(previous):].strip()
+        return appended or None
+    return current
+
+
+def _should_apply_sheet_status(current: str, inferred: str) -> bool:
+    """Apply only forward sheet progress and preserve portal-only states."""
+    if current in {"проблема", "переробка", "знайдено при видачі", "видано"}:
+        return False
+
+    progress = {
+        "нове": 0,
+        "прийнято": 1,
+        "прораховано": 2,
+        "у фрезеруванні": 3,
+        "відфрезеровано": 4,
+    }
+    current_rank = progress.get(current)
+    inferred_rank = progress.get(inferred)
+    if current_rank is None or inferred_rank is None:
+        return current != inferred
+    return inferred_rank > current_rank
+
+
 def sync_tab(session: Session, sheet_tab: str, rows: list[OrderRow]) -> SyncResult:
     result = SyncResult()
     for row in rows:
@@ -58,16 +89,24 @@ def sync_tab(session: Session, sheet_tab: str, rows: list[OrderRow]) -> SyncResu
             session.add(order)
             session.flush()
             session.add(StatusEvent(order_id=order.id, status=status, actor="sync"))
+            if row.cam_comment:
+                session.add(Comment(order_id=order.id, source="sheet", text=row.cam_comment))
             result.created += 1
             continue
 
         changed = False
+        sheet_comment = _new_sheet_comment(existing.cam_comment, row.cam_comment)
         for field, value in _fields(row).items():
             if getattr(existing, field) != value:
                 setattr(existing, field, value)
                 changed = True
 
-        if existing.status != status:
+        if sheet_comment:
+            session.add(Comment(order_id=existing.id, source="sheet", text=sheet_comment))
+
+        # The sheet can only represent progress through milling. Portal-only
+        # handout states must survive the next read from the sheet.
+        if _should_apply_sheet_status(existing.status, status):
             existing.status = status
             session.add(StatusEvent(order_id=existing.id, status=status, actor="sync"))
             changed = True

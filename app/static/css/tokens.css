@@ -14,6 +14,17 @@
 
   /* Accent */
   --color-accent: #e8b4a8;
+  --color-email: #86d4ce;
+  --color-email-surface: rgba(134, 212, 206, 0.08);
+  --color-email-border: rgba(134, 212, 206, 0.38);
+
+  /* Прострочені роботи — already used as raw rgba(232, 90, 90, …) in several
+     places in base.css (queue-row-overdue, status-badge-проблема, sync
+     error); tokenized here so newer components (dashboard KPI/peek cards,
+     sidebar) reference the same source of truth instead of a new hex. */
+  --color-overdue: #e85a5a;
+  --color-overdue-surface: rgba(232, 90, 90, 0.08);
+  --color-overdue-border: rgba(232, 90, 90, 0.4);
 
   /* Typography */
   --font-display: "Poppins", "Nunito", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;

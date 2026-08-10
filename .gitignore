@@ -7,3 +7,8 @@ __pycache__/
 venv/
 credentials/
 mail_attachments/
+build/
+dist/
+dist-installer/
+*.db-shm
+*.db-wal

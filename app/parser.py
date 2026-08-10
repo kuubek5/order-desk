@@ -43,7 +43,11 @@ class OrderRow:
 
     @property
     def is_empty(self) -> bool:
-        return not any([self.work_order_no, self.job_code, self.quantity])
+        # Наряд number is the row's real identifier — operators also jot
+        # client name + quantity into these same columns as a pricing
+        # placeholder before a наряд is assigned (see CLAUDE.md section 2),
+        # so job_code/quantity alone don't mean "this is a real job".
+        return not self.work_order_no
 
 
 def _cell(row: list, idx: int) -> str:
@@ -51,8 +55,10 @@ def _cell(row: list, idx: int) -> str:
 
 
 def _due_time(row: list) -> Optional[str]:
+    # Staff type this on a Ukrainian keyboard, so the mark is often Cyrillic
+    # "х" (U+0445), not Latin "x" — the real test sheet confirmed this.
     for idx, label in DUE_TIME_COLUMNS.items():
-        if _cell(row, idx).lower() == "x":
+        if _cell(row, idx).lower() in ("x", "х"):
             return label
     return None
 

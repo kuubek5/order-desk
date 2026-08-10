@@ -2,12 +2,19 @@
 
 {% block title %}{{ page_title }} — Order Desk{% endblock %}
 
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/settings.css">
+{% endblock %}
+
 {% block content %}
 <main>
     <div class="topbar">
         <h1>{{ page_title }}</h1>
         <div class="topbar-user">
             <a href="/">← До черги</a>
+            <a href="/handout">Ранкова видача</a>
+            <a href="/stats">Статистика</a>
+            {% if user.role == 'адмін' %}<a href="/settings">Налаштування</a>{% endif %}
             <span class="text-muted">{{ user.full_name or user.username }}</span>
             <form method="post" action="/logout">
                 <button type="submit" class="link-button">Вийти</button>
@@ -15,11 +22,49 @@
         </div>
     </div>
 
+    {% if synced is not none %}
+    <div class="settings-success">
+        <p>Синхронізовано, нових листів: {{ synced }}</p>
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="settings-success settings-error">
+        <p>{{ error }}</p>
+    </div>
+    {% endif %}
+
+    <div class="mail-sync-row">
+        <form method="post" action="/mail/sync">
+            <button type="submit" class="form-submit">Перевірити пошту зараз</button>
+        </form>
+        <p class="settings-hint">
+            Пошта перевіряється автоматично кожні 2 хвилини. Лист з’явиться в основній
+            черзі після перевірки полів і натискання «Прийняти».
+        </p>
+    </div>
+
+    <!-- Візуальний фільтр за типом послуги (лише сортування показу — жоден лист
+         не приховується з бази, кожен завжди доступний за /mail/{id} і через
+         чіп «Усі листи», який лишається типовим за замовчуванням). -->
+    <nav class="tab-nav" aria-label="Тип послуги">
+        <a href="/mail?service=all" class="tab-link {% if service == 'all' %}active{% endif %}">
+            Усі листи <span class="tab-badge">({{ service_counts.all }})</span>
+        </a>
+        <a href="/mail?service=milling" class="tab-link {% if service == 'milling' %}active{% endif %}">
+            Схоже на фрезерування <span class="tab-badge">({{ service_counts.milling }})</span>
+        </a>
+        <a href="/mail?service=other" class="tab-link {% if service == 'other' %}active{% endif %}">
+            Схоже на інше <span class="tab-badge">({{ service_counts.other }})</span>
+        </a>
+    </nav>
+
     {% if emails %}
         <div class="queue-summary">
             Нових листів: <strong>{{ emails|length }}</strong>
         </div>
 
+        <div class="table-scroll">
         <table class="queue-table">
             <thead>
                 <tr>
@@ -27,6 +72,7 @@
                     <th>Тема</th>
                     <th>Одержано</th>
                     <th>Матеріал / Колір</th>
+                    <th>Тип</th>
                     <th>Вкладень</th>
                     <th></th>
                 </tr>
@@ -38,7 +84,7 @@
                     <td>{{ email.subject or '—' }}</td>
                     <td class="text-muted">
                         {% if email.received_at %}
-                            <span class="mono">{{ email.received_at }}</span>
+                            <span class="mono">{{ email.received_at.strftime('%d.%m.%y %H:%M') }}</span>
                         {% else %}
                             —
                         {% endif %}
@@ -50,15 +96,40 @@
                             <span class="text-muted">—</span>
                         {% endif %}
                     </td>
-                    <td class="text-muted">{{ email.attachments|length }}</td>
+                    <td>
+                        {% if email.service_type_guess == "3d_print" %}
+                            <span class="status-badge" style="background-color: rgba(232, 216, 168, 0.15); color: #e8d8a8; border: 1px solid rgba(232, 216, 168, 0.3);" title="Автоматична підказка за ключовими словами — не приховує лист, перевірте текст листа самостійно">
+                                ⚠ Схоже на 3D-друк, не фрезерування
+                            </span>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td {% if email.stl_preview_token %}data-stl-preview-token="{{ email.stl_preview_token }}"{% endif %}>
+                        {% if email.attachments_status == "pending" %}
+                            <span class="attachment-badge attachment-badge-pending">
+                                <span class="attachment-badge-dot" aria-hidden="true"></span>
+                                Завантаження…
+                            </span>
+                        {% else %}
+                            <span class="attachment-badge attachment-badge-ready">
+                                ✓ Скачано ({{ email.attachments|length }})
+                            </span>
+                        {% endif %}
+                    </td>
                     <td><a href="/mail/{{ email.id }}">Обробити →</a></td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     {% else %}
         <div class="card queue-empty">
-            <p>Немає нових листів.</p>
+            {% if service != 'all' %}
+                <p>Немає листів у цій категорії. <a href="/mail?service=all">Показати всі нові листи</a>.</p>
+            {% else %}
+                <p>Немає нових листів.</p>
+            {% endif %}
         </div>
     {% endif %}
 </main>

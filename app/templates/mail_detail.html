@@ -4,12 +4,23 @@
 
 {% block content %}
 <main>
+    {% if error %}
+    <div class="settings-alert settings-alert-error">{{ error }}</div>
+    {% endif %}
     <div class="detail-header">
         <a href="/mail" class="detail-back">← До списку листів</a>
+        <a href="/stats" class="detail-back">Статистика</a>
     </div>
 
     <!-- Email Header / Passport -->
     <div class="card detail-passport">
+        {% if email.service_type_guess == "3d_print" %}
+        <div class="passport-row">
+            <span class="status-badge" style="background-color: rgba(232, 216, 168, 0.15); color: #e8d8a8; border: 1px solid rgba(232, 216, 168, 0.3);" title="Автоматична підказка за ключовими словами — не приховує лист, перевірте текст листа самостійно">
+                ⚠ Схоже на 3D-друк, не фрезерування — перевірте текст листа
+            </span>
+        </div>
+        {% endif %}
         <div class="passport-row">
             <div class="passport-field">
                 <label class="passport-label">Від</label>
@@ -26,7 +37,7 @@
                 <label class="passport-label">Одержано</label>
                 <div class="passport-value">
                     {% if email.received_at %}
-                        <span class="mono">{{ email.received_at }}</span>
+                        <span class="mono">{{ email.received_at.strftime('%d.%m.%y %H:%M') }}</span>
                     {% else %}
                         <span class="text-muted">—</span>
                     {% endif %}
@@ -44,9 +55,21 @@
     </div>
 
     <!-- Attachments -->
-    {% if email.attachments %}
-    <div class="card detail-section">
-        <h3 class="detail-section-title">Вкладення ({{ email.attachments|length }})</h3>
+    <div class="card detail-section" {% if email.stl_preview_token %}data-stl-preview-token="{{ email.stl_preview_token }}"{% endif %}>
+        <h3 class="detail-section-title">
+            Вкладення
+            {% if email.attachments_status == "pending" %}
+                <span class="attachment-badge attachment-badge-pending">
+                    <span class="attachment-badge-dot" aria-hidden="true"></span>
+                    Завантаження…
+                </span>
+            {% else %}
+                <span class="attachment-badge attachment-badge-ready">
+                    ✓ Скачано ({{ email.attachments|length }})
+                </span>
+            {% endif %}
+        </h3>
+        {% if email.attachments %}
         <ul class="detail-list">
             {% for attachment in email.attachments %}
             <li class="detail-comment">
@@ -67,12 +90,19 @@
             </li>
             {% endfor %}
         </ul>
+        {% elif email.attachments_status == "pending" %}
+        <p class="text-muted">Вкладення ще завантажуються з пошти…</p>
+        {% endif %}
     </div>
-    {% endif %}
 
     <!-- Triage Form -->
     <div class="card detail-section">
         <h3 class="detail-section-title">Прийняти в чергу</h3>
+        {% if email.attachments_status == "pending" %}
+        <p class="settings-hint">
+            Вкладення ще завантажуються — прийняти лист у чергу можна буде щойно завантаження завершиться.
+        </p>
+        {% endif %}
         <form method="post" action="/mail/{{ email.id }}/accept" class="mail-form">
             <div class="form-group">
                 <label for="client_name">Ім'я клієнта<span class="form-required">*</span></label>
@@ -81,7 +111,7 @@
                     id="client_name"
                     name="client_name"
                     class="form-input"
-                    value="{{ email.client_name_guess or '' }}"
+                    value="{{ email.client_name_guess or email.from_address or '' }}"
                     placeholder="вкажіть ім'я клієнта"
                     required
                 >
@@ -124,7 +154,11 @@
             </div>
 
             <div class="form-actions">
-                <button type="submit" class="form-submit">Прийняти в чергу</button>
+                <button
+                    type="submit"
+                    class="form-submit"
+                    {% if email.attachments_status == "pending" %}disabled aria-disabled="true" title="Зачекайте, поки завантажаться вкладення"{% endif %}
+                >Прийняти в чергу</button>
             </div>
         </form>
     </div>
