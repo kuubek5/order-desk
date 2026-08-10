@@ -11,7 +11,13 @@ python-multipart>=0.0.6
 itsdangerous>=2.1
 pytest>=7.0
 passlib[bcrypt]>=1.7
-bcrypt>=4,<5
+# passlib's bcrypt backend reads bcrypt.__about__.__version__ to detect the
+# installed version; bcrypt>=4.1 removed that attribute, breaking passlib's
+# self-test with a misleading '72 bytes' error instead of the real
+# AttributeError. Found on a real deploy (fresh container pulled latest
+# bcrypt; dev venv had an older cached one masking it) — pin exactly rather
+# than range until passlib's bcrypt backend is updated to not need it.
+bcrypt==4.0.1
 rapidfuzz>=3.0
 cryptography>=41.0
 imap-tools>=1.0

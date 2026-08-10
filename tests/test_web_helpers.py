@@ -3,6 +3,7 @@ from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from app.auth import hash_password
 from app.models import EmailMessage, Order, User
 from app.sheet_sync_service import SheetSyncSummary
 from app.web import (
@@ -15,6 +16,7 @@ from app.web import (
     _write_sheet_fields,
     accept_email,
     get_current_user,
+    post_account_password,
 )
 
 
@@ -246,3 +248,79 @@ def test_queue_handout_summary_pluralizes_client_count():
     ]
 
     assert _queue_handout_summary(orders, today) == "2 клієнти очікують"
+
+
+def _fake_account_db(user):
+    class FakeDb:
+        def __init__(self):
+            self.committed = False
+
+        def get(self, model, object_id):
+            return user if model is User else None
+
+        def commit(self):
+            self.committed = True
+
+    return FakeDb()
+
+
+def test_account_password_change_succeeds_with_correct_current_password():
+    user = SimpleNamespace(id=1, is_active=True, password_hash=hash_password("old-pw"))
+    db = _fake_account_db(user)
+    request = SimpleNamespace(session={"user_id": user.id})
+
+    response = asyncio.run(
+        post_account_password(
+            request=request,
+            current_password="old-pw",
+            new_password="new-secret",
+            confirm_password="new-secret",
+            db=db,
+        )
+    )
+
+    assert response.template.name == "account.html"
+    assert response.context["saved"] is True
+    assert db.committed is True
+    # The stored hash must actually change, not just report success.
+    assert user.password_hash != hash_password("old-pw")
+
+
+def test_account_password_change_rejects_wrong_current_password():
+    original_hash = hash_password("old-pw")
+    user = SimpleNamespace(id=1, is_active=True, password_hash=original_hash)
+    db = _fake_account_db(user)
+    request = SimpleNamespace(session={"user_id": user.id})
+
+    response = asyncio.run(
+        post_account_password(
+            request=request,
+            current_password="wrong-pw",
+            new_password="new-secret",
+            confirm_password="new-secret",
+            db=db,
+        )
+    )
+
+    assert response.context["error"] == "Поточний пароль невірний"
+    assert user.password_hash == original_hash
+    assert db.committed is False
+
+
+def test_account_password_change_rejects_mismatched_confirmation():
+    user = SimpleNamespace(id=1, is_active=True, password_hash=hash_password("old-pw"))
+    db = _fake_account_db(user)
+    request = SimpleNamespace(session={"user_id": user.id})
+
+    response = asyncio.run(
+        post_account_password(
+            request=request,
+            current_password="old-pw",
+            new_password="new-secret",
+            confirm_password="different",
+            db=db,
+        )
+    )
+
+    assert response.context["error"] == "Паролі не збігаються"
+    assert db.committed is False

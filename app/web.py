@@ -599,6 +599,44 @@ async def logout(request: Request):
     return RedirectResponse("/login", status_code=303)
 
 
+@app.get("/account", response_class=HTMLResponse)
+async def get_account(request: Request, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    return templates.TemplateResponse(request, "account.html", {"user": user})
+
+
+@app.post("/account/password", response_class=HTMLResponse)
+async def post_account_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    error = None
+    if not verify_password(current_password, user.password_hash):
+        error = "Поточний пароль невірний"
+    elif len(new_password) < 6:
+        error = "Новий пароль має бути не коротшим за 6 символів"
+    elif new_password != confirm_password:
+        error = "Паролі не збігаються"
+
+    if error:
+        return templates.TemplateResponse(request, "account.html", {"user": user, "error": error})
+
+    user.password_hash = hash_password(new_password)
+    db.commit()
+
+    return templates.TemplateResponse(request, "account.html", {"user": user, "saved": True})
+
+
 @app.get("/", response_class=HTMLResponse)
 def get_queue(
     request: Request,
