@@ -40,14 +40,22 @@ jobs:
       - name: Smoke test - install and verify health
         shell: powershell
         run: |
+          $ErrorActionPreference = 'Stop'
           $installerPath = "dist-installer\OrderDesk-Setup-0.1.0.exe"
           $installDir = "$env:LOCALAPPDATA\Programs\OrderDesk"
           $exePath = "$installDir\OrderDesk.exe"
 
+          # Verify installer exists first
+          if (-not (Test-Path $installerPath)) {
+            Write-Error "Installer not found at $installerPath"
+            exit 1
+          }
+
           # Silently install the exe
-          Write-Host "Installing OrderDesk silently..."
-          & $installerPath /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-          $installExitCode = $LASTEXITCODE
+          Write-Host "Installing OrderDesk silently from $installerPath..."
+          $process = Start-Process -FilePath $installerPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -NoNewWindow -Wait -PassThru
+          $installExitCode = $process.ExitCode
+          Write-Host "Installer exited with code: $installExitCode"
           if ($installExitCode -ne 0) {
             Write-Error "Installer failed with exit code $installExitCode"
             exit 1
@@ -63,9 +71,9 @@ jobs:
 
           # Launch the exe as background process
           Write-Host "Launching OrderDesk..."
-          $process = Start-Process -FilePath $exePath -WindowStyle Hidden -PassThru
-          $pid = $process.Id
-          Write-Host "OrderDesk started with PID $pid"
+          $appProcess = Start-Process -FilePath $exePath -WindowStyle Hidden -PassThru
+          $appPid = $appProcess.Id
+          Write-Host "OrderDesk started with PID $appPid"
 
           # Poll health endpoint with retries
           $healthUrl = "http://127.0.0.1:8000/health"
@@ -93,7 +101,7 @@ jobs:
 
           # Stop the process
           try {
-            Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+            Stop-Process -Id $appPid -Force -ErrorAction SilentlyContinue
             Write-Host "Process stopped"
           } catch {
             # Process may have already exited
