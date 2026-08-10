@@ -37,6 +37,76 @@ jobs:
           $fileSize = (Get-Item $installerPath).Length
           Write-Host "Installer ready: $installerPath ($(($fileSize/1MB).ToString('F1')) MB)"
 
+      - name: Smoke test - install and verify health
+        shell: powershell
+        run: |
+          $installerPath = "dist-installer\OrderDesk-Setup-0.1.0.exe"
+          $installDir = "$env:LOCALAPPDATA\Programs\OrderDesk"
+          $exePath = "$installDir\OrderDesk.exe"
+
+          # Silently install the exe
+          Write-Host "Installing OrderDesk silently..."
+          & $installerPath /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          $installExitCode = $LASTEXITCODE
+          if ($installExitCode -ne 0) {
+            Write-Error "Installer failed with exit code $installExitCode"
+            exit 1
+          }
+          Write-Host "Installer completed successfully"
+
+          # Verify exe exists
+          if (-not (Test-Path $exePath)) {
+            Write-Error "Installed exe not found at $exePath"
+            exit 1
+          }
+          Write-Host "Found installed exe at $exePath"
+
+          # Launch the exe as background process
+          Write-Host "Launching OrderDesk..."
+          $process = Start-Process -FilePath $exePath -WindowStyle Hidden -PassThru
+          $pid = $process.Id
+          Write-Host "OrderDesk started with PID $pid"
+
+          # Poll health endpoint with retries
+          $healthUrl = "http://127.0.0.1:8000/health"
+          $maxRetries = 30
+          $retryDelaySeconds = 1
+          $retryCount = 0
+          $healthy = $false
+
+          while ($retryCount -lt $maxRetries) {
+            try {
+              $response = Invoke-WebRequest -Uri $healthUrl -TimeoutSec 2 -ErrorAction Stop
+              if ($response.StatusCode -eq 200) {
+                Write-Host "Health check passed: $($response.Content)"
+                $healthy = $true
+                break
+              }
+            } catch {
+              # Connection refused or timeout, retry
+            }
+            $retryCount++
+            if ($retryCount -lt $maxRetries) {
+              Start-Sleep -Seconds $retryDelaySeconds
+            }
+          }
+
+          # Stop the process
+          try {
+            Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+            Write-Host "Process stopped"
+          } catch {
+            # Process may have already exited
+          }
+
+          # Fail if health check never succeeded
+          if (-not $healthy) {
+            Write-Error "Health check failed after $maxRetries retries"
+            exit 1
+          }
+
+          Write-Host "Smoke test passed"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
