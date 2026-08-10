@@ -14,6 +14,7 @@
             <a href="/">← До черги</a>
             <a href="/mail">Нові з пошти</a>
             <a href="/handout">Ранкова видача</a>
+            <a href="/clients">Клієнти</a>
             {% if user.role == 'адмін' %}<a href="/settings">Налаштування</a>{% endif %}
             <a href="/account" class="text-muted">{{ user.full_name or user.username }}</a>
             <form method="post" action="/logout">

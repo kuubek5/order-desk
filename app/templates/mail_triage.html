@@ -13,6 +13,7 @@
         <div class="topbar-user">
             <a href="/">← До черги</a>
             <a href="/handout">Ранкова видача</a>
+            <a href="/clients">Клієнти</a>
             <a href="/stats">Статистика</a>
             {% if user.role == 'адмін' %}<a href="/settings">Налаштування</a>{% endif %}
             <a href="/account" class="text-muted">{{ user.full_name or user.username }}</a>

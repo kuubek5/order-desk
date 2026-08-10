@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Клієнти — Order Desk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/settings.css">
+{% endblock %}
+
+{% block content %}
+<main>
+    <div class="topbar">
+        <h1>Клієнти</h1>
+        <div class="topbar-user">
+            <a href="/">← До черги</a>
+            <a href="/mail">Нові з пошти</a>
+            <a href="/handout">Ранкова видача</a>
+            <a href="/stats">Статистика</a>
+            {% if user.role == 'адмін' %}<a href="/settings">Налаштування</a>{% endif %}
+            <a href="/account" class="text-muted">{{ user.full_name or user.username }}</a>
+            <form method="post" action="/logout">
+                <button type="submit" class="link-button">Вийти</button>
+            </form>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="settings-alert settings-alert-error">{{ error }}</div>
+    {% endif %}
+    {% if saved %}
+    <div class="settings-success"><p>Збережено</p></div>
+    {% endif %}
+
+    <div class="card detail-section">
+        {% if client_rows %}
+            <div class="table-scroll">
+            <table class="queue-table">
+                <thead>
+                    <tr>
+                        <th>Клієнт</th>
+                        <th>Телефон</th>
+                        <th>Email</th>
+                        <th>Робіт</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in client_rows %}
+                    <tr class="queue-row">
+                        <td class="order-id"><a href="/clients/{{ row.client.id }}">{{ row.client.canonical_name }}</a></td>
+                        <td class="mono">{{ row.client.phone or '—' }}</td>
+                        <td>{{ row.client.email or '—' }}</td>
+                        <td>{{ row.order_count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        {% else %}
+            <p class="text-muted">Клієнтів ще не додано.</p>
+        {% endif %}
+    </div>
+
+    <div class="card detail-section">
+        <h3 class="detail-section-title">Додати клієнта</h3>
+        <form method="post" action="/clients" class="mail-form">
+            <div class="form-group">
+                <label for="canonical_name">Ім'я клієнта<span class="form-required">*</span></label>
+                <input
+                    type="text"
+                    id="canonical_name"
+                    name="canonical_name"
+                    class="form-input"
+                    placeholder="напр. Литвиненко Олег"
+                    required
+                >
+            </div>
+            <div class="form-group">
+                <label for="phone">Телефон</label>
+                <input type="text" id="phone" name="phone" class="form-input" placeholder="+380...">
+            </div>
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" class="form-input" placeholder="client@example.com">
+            </div>
+            <div class="form-group">
+                <label for="notes">Нотатки</label>
+                <textarea id="notes" name="notes" class="form-input" rows="2" placeholder="довільні нотатки оператора"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="form-submit">Додати клієнта</button>
+            </div>
+        </form>
+    </div>
+</main>
+{% endblock %}
