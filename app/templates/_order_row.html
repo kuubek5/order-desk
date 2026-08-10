@@ -7,6 +7,11 @@
         </span>
         {% endif %}
         <a href="/orders/{{ order.id }}">{% if order.source == 'email' %}{{ order.client_name or 'Без імені клієнта' }}{% else %}{{ order.work_order_no or '—' }}{% endif %}</a>
+        {% if order.cam_comment %}
+        <span class="cam-comment-icon" title="{{ order.cam_comment }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </span>
+        {% endif %}
     </td>
     <td class="material-cell">
         {% if order.material_color %}
@@ -25,7 +30,7 @@
     <td class="quantity">{{ order.quantity or '—' }}</td>
     <td class="job-code">
         {% if order.job_code %}
-            <button type="button" class="mono job-code-link copy-button" data-copy="{{ order.job_code }}" {% if order.job_code_folder_preview_token %}data-stl-preview-token="{{ order.job_code_folder_preview_token }}"{% endif %} title="Скопіювати шлях-ID для Sum3D">{{ order.job_code }}</button>
+            <button type="button" class="mono job-code-link copy-button" data-copy="{{ order.job_code }}" {% if order.job_code_folder_uri %}data-folder-uri="{{ order.job_code_folder_uri }}"{% endif %} {% if order.job_code_folder_preview_token %}data-stl-preview-token="{{ order.job_code_folder_preview_token }}"{% endif %} title="Клік — скопіювати шлях-ID для Sum3D{% if order.job_code_folder_uri %}; подвійний клік — відкрити папку{% endif %}">{{ order.job_code }}</button>
             {% if order.job_code_folder_uri %}<span class="job-code-found-dot" title="Папку з файлами знайдено"></span>{% endif %}
         {% else %}
             <span class="mono">—</span>
@@ -39,9 +44,9 @@
             </button>
         </form>
         {% if order.export_folder_uri %}
-        <span class="folder-link" {% if order.export_folder_preview_token %}data-stl-preview-token="{{ order.export_folder_preview_token }}"{% endif %} title="Вкладення збережені в export">
+        <a href="{{ order.export_folder_uri }}" class="folder-link" {% if order.export_folder_preview_token %}data-stl-preview-token="{{ order.export_folder_preview_token }}"{% endif %} title="Відкрити папку в export">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
-        </span>
+        </a>
         {% endif %}
     </td>
     <td class="technician">{{ order.technician_name or '—' }}</td>

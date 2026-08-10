@@ -76,27 +76,61 @@
                     {% endif %}
                 </div>
 
-                <div class="table-scroll">
-                <table class="queue-table">
-                    <thead>
-                        <tr>
-                            <th>Наряд</th>
-                            <th>{{ sortcol.th('material', 'Матеріал / Колір') }}</th>
-                            <th>{{ sortcol.th('kind', 'Вид роботи') }}</th>
-                            <th>{{ sortcol.th('quantity', 'Кількість') }}</th>
-                            <th>Шлях</th>
-                            <th>Sum3D ID</th>
-                            <th>Технік</th>
-                            <th>Статус</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for order in orders %}
-                            {% include "_order_row.html" %}
-                        {% endfor %}
-                    </tbody>
-                </table>
-                </div>
+                {% if orders_lab %}
+                <section class="queue-group" aria-labelledby="queue-group-lab-title">
+                    <header class="queue-group-header">
+                        <div class="queue-group-heading">
+                            <h2 id="queue-group-lab-title">Лабораторні роботи</h2>
+                            <span class="queue-group-count">{{ orders_lab|length }}</span>
+                        </div>
+                        <button type="button" class="queue-group-toggle" data-queue-group-toggle aria-expanded="true" aria-controls="queue-group-lab-list" title="Розгорнути/згорнути список">
+                            <svg class="queue-group-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                    </header>
+                    <div class="queue-group-collapse">
+                        <div class="queue-group-body" id="queue-group-lab-list">
+                            <div class="table-scroll">
+                            <table class="queue-table">
+                                {% include "_queue_table_head.html" %}
+                                <tbody>
+                                    {% for order in orders_lab %}
+                                        {% include "_order_row.html" %}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                {% endif %}
+
+                {% if orders_email %}
+                <section class="queue-group queue-group-email" aria-labelledby="queue-group-email-title">
+                    <header class="queue-group-header">
+                        <div class="queue-group-heading">
+                            <h2 id="queue-group-email-title">Роботи з пошти</h2>
+                            <span class="queue-group-count">{{ orders_email|length }}</span>
+                        </div>
+                        <button type="button" class="queue-group-toggle" data-queue-group-toggle aria-expanded="true" aria-controls="queue-group-email-list" title="Розгорнути/згорнути список">
+                            <svg class="queue-group-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                    </header>
+                    <div class="queue-group-collapse">
+                        <div class="queue-group-body" id="queue-group-email-list">
+                            <div class="table-scroll">
+                            <table class="queue-table">
+                                {% include "_queue_table_head.html" %}
+                                <tbody>
+                                    {% for order in orders_email %}
+                                        {% include "_order_row.html" %}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                {% endif %}
             {% else %}
                 <div class="card queue-empty">
                     <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">

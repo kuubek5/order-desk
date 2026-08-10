@@ -96,7 +96,13 @@ _FIRST_ADMIN_LOCK = Lock()
 logger = logging.getLogger(__name__)
 MAIL_SYNC_INTERVAL_SECONDS = 2 * 60
 MAIL_SYNC_INITIAL_DELAY_SECONDS = 10
-SHEET_SYNC_INTERVAL_SECONDS = 2 * 60
+# One sync cycle costs ~4 Google Sheets API calls (spreadsheet.worksheets() +
+# get_all_values() per relevant tab, typically 3 tabs) — Google's quota is
+# hundreds of reads/minute, far above that. The old 2-minute value was never
+# based on a real technical constraint, it was just copied from
+# MAIL_SYNC_INTERVAL_SECONDS above; confirmed safe to halve so the queue
+# reflects sheet edits sooner.
+SHEET_SYNC_INTERVAL_SECONDS = 1 * 60
 SHEET_SYNC_INITIAL_DELAY_SECONDS = 10
 
 # A heartbeat last-attempt older than this many sync intervals means the
@@ -1008,6 +1014,16 @@ def get_queue(
     if sort:
         orders = _sort_orders_by_column(orders, sort, sort_dir)
 
+    # Queue table visually separates lab-sheet rows from mail-sourced rows
+    # (queue.html: "Лабораторні роботи" / "Роботи з пошти") — mirrors both
+    # the real Google Sheet's own convention (lab rows in the main block,
+    # mail placeholder rows appended below, see append_mail_placeholder_row)
+    # and gives each source its own collapsible section. Splitting the
+    # already-filtered-and-sorted `orders` list preserves every filter/sort
+    # applied above; each sublist stays correctly ordered within itself.
+    orders_lab = [o for o in orders if o.source != "email"]
+    orders_email = [o for o in orders if o.source == "email"]
+
     sync_flash = request.session.pop("sync_flash", None)
     pending_emails = db.scalars(
         select(EmailMessage)
@@ -1061,6 +1077,8 @@ def get_queue(
         {
             "page_title": "Черга робіт",
             "orders": orders,
+            "orders_lab": orders_lab,
+            "orders_email": orders_email,
             "user": user,
             "statuses": STATUSES,
             "period": period,

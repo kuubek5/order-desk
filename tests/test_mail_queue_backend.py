@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
@@ -383,6 +384,97 @@ def test_open_mail_folder_rejects_db_path_outside_roots(tmp_path, monkeypatch):
             web.open_mail_folder(request=_request(user.id), email_id=email.id, db=db)
 
     assert exc.value.status_code == 404
+
+
+def test_queue_splits_orders_into_lab_and_email_groups(tmp_path, monkeypatch):
+    """Item 4: queue.html renders two independently collapsible sections
+    ("Лабораторні роботи" / "Роботи з пошти") from server-split lists rather
+    than filtering in the template, so per-column sort/filtering keeps
+    working correctly within each group."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        today_tab = date.today().strftime("%d.%m.%y")
+        lab_order = Order(source="lab", sheet_tab=today_tab, client_name="Іванов")
+        email_order = Order(source="email", sheet_tab=today_tab, client_name="Петренко")
+        db.add_all([lab_order, email_order])
+        db.commit()
+
+        context = _call_get_queue(db, user, monkeypatch, tmp_path)
+
+        assert [o.id for o in context["orders_lab"]] == [lab_order.id]
+        assert [o.id for o in context["orders_email"]] == [email_order.id]
+        # The combined `orders` list (used for the overall page summary/
+        # empty-state check) must still contain both.
+        assert {o.id for o in context["orders"]} == {lab_order.id, email_order.id}
+
+
+def test_queue_split_preserves_column_sort_within_each_group(tmp_path, monkeypatch):
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        today_tab = date.today().strftime("%d.%m.%y")
+        lab_b = Order(source="lab", sheet_tab=today_tab, material_color="я останній")
+        lab_a = Order(source="lab", sheet_tab=today_tab, material_color="а перший")
+        email_b = Order(source="email", sheet_tab=today_tab, material_color="я останній")
+        email_a = Order(source="email", sheet_tab=today_tab, material_color="а перший")
+        db.add_all([lab_b, lab_a, email_b, email_a])
+        db.commit()
+
+        context = _call_get_queue(db, user, monkeypatch, tmp_path, sort="material", sort_dir="asc")
+
+        assert [o.id for o in context["orders_lab"]] == [lab_a.id, lab_b.id]
+        assert [o.id for o in context["orders_email"]] == [email_a.id, email_b.id]
+
+
+def test_queue_split_respects_existing_source_filter(tmp_path, monkeypatch):
+    """When the sidebar's own "Джерело" filter narrows to one source, the
+    other group's list must come back empty (queue.html skips rendering an
+    empty section entirely) rather than showing a stale/duplicated group."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        today_tab = date.today().strftime("%d.%m.%y")
+        lab_order = Order(source="lab", sheet_tab=today_tab)
+        email_order = Order(source="email", sheet_tab=today_tab)
+        db.add_all([lab_order, email_order])
+        db.commit()
+
+        lab_only = _call_get_queue(db, user, monkeypatch, tmp_path, source="lab")
+        assert [o.id for o in lab_only["orders_lab"]] == [lab_order.id]
+        assert lab_only["orders_email"] == []
+
+        email_only = _call_get_queue(db, user, monkeypatch, tmp_path, source="email")
+        assert email_only["orders_lab"] == []
+        assert [o.id for o in email_only["orders_email"]] == [email_order.id]
+
+
+def test_reject_email_marks_rejected_and_excludes_from_triage_list(tmp_path, monkeypatch):
+    """Item 7's triage-list reject button posts to this same, already-
+    existing route (app/web.py::reject_email) — confirm end-to-end that
+    rejecting removes the email from get_mail's "нове" query without
+    touching the real IMAP mailbox (no imap_tools call happens here at
+    all — mark_seen semantics live entirely in app/mail_reader.py)."""
+    engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email = EmailMessage(uid="reject-me", status="нове", from_address="client@example.test")
+        db.add(email)
+        db.commit()
+
+        response = asyncio.run(
+            web.reject_email(request=_request(user.id), email_id=email.id, db=db)
+        )
+        assert response.status_code == 303
+
+        db.refresh(email)
+        assert email.status == "відхилено"
+
+        mail_context = web.get_mail(request=_request(user.id), db=db)
+        assert email.id not in [e.id for e in mail_context["emails"]]
 
 
 def test_open_mail_folder_reports_non_windows_backend(tmp_path, monkeypatch):

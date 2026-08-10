@@ -7,6 +7,8 @@ from app.auth import hash_password
 from app.models import EmailMessage, Order, User
 from app.sheet_sync_service import SheetSyncSummary
 from app.web import (
+    MAIL_SYNC_INTERVAL_SECONDS,
+    SHEET_SYNC_INTERVAL_SECONDS,
     _date_window,
     _handout_pending_client_count,
     _order_date,
@@ -21,6 +23,15 @@ from app.web import (
     get_current_user,
     post_account_password,
 )
+
+
+def test_sheet_sync_interval_is_one_minute():
+    """Confirmed safe to halve from the old 2-minute value: one sync cycle
+    is ~4 Sheets API calls (worksheets() + get_all_values() per relevant
+    tab), Google's quota is hundreds of reads/minute. Mail sync keeps its
+    own, independent 2-minute interval."""
+    assert SHEET_SYNC_INTERVAL_SECONDS == 60
+    assert MAIL_SYNC_INTERVAL_SECONDS == 2 * 60
 
 
 def test_email_order_uses_created_date():
