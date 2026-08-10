@@ -128,6 +128,29 @@ class ClientNameAlias(Base):
     )
 
 
+class Client(Base):
+    """A client profile the operator maintains directly (contact info, notes).
+
+    Deliberately NOT linked to Order via a foreign key. Order.client_name
+    stays free text, populated by three independent write paths (sheet
+    import, mail-order accept, sheet-side manual entry) that already work in
+    production. A Client's orders are found at read time by fuzzy-matching
+    canonical_name against Order.client_name (see app/client_profile.py),
+    not by a stored client_id — see that module's docstring for the reasoning.
+    """
+
+    __tablename__ = "clients"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    canonical_name: Mapped[str] = mapped_column(String(200))
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now()
+    )
+
+
 class SyncLog(Base):
     __tablename__ = "sync_logs"
 

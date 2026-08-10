@@ -25,6 +25,7 @@ from starlette.requests import Request
 
 from app.auth import hash_password, verify_password
 from app.client_matcher import match_client_name
+from app.client_profile import find_matching_orders, summarize_client_orders
 from app.config import MAIL_ATTACHMENTS_PATH, SESSION_SECRET_KEY
 from app.db import Base, SessionLocal, engine
 from app.export_scanner import scan_export_folder
@@ -32,7 +33,7 @@ from app.mail_export import save_attachments_to_export
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
 from app.mail_sync_service import MailSyncBusyError, MailSyncError, sync_mail_background, sync_mailbox
 from app.material_class import material_color_css_class
-from app.models import ClientNameAlias, Comment, EmailMessage, Order, ReworkRecord, StatusEvent, SyncLog, User
+from app.models import Client, ClientNameAlias, Comment, EmailMessage, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.order_folder import (
     attach_email_folder_availability,
     attach_email_preview_tokens,
@@ -1338,6 +1339,121 @@ def get_stats(request: Request, period: str = "week", db: Session = Depends(get_
             "avg_hours": avg_hours,
         },
     )
+
+
+@app.get("/clients", response_class=HTMLResponse)
+def get_clients(request: Request, db: Session = Depends(get_db)):
+    """Screen: list of client profiles (CLAUDE.md — not admin-gated, any
+    operator can view/manage clients, same as /stats).
+
+    Order counts are computed via app.client_profile.find_matching_orders
+    against every order that has a client_name — see that module's
+    docstring for why this is a read-time fuzzy match rather than a stored
+    FK, and why doing this over the full Order table on every request is
+    fine at this project's scale.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    clients = db.scalars(select(Client).order_by(Client.canonical_name)).all()
+    named_orders = db.scalars(select(Order).where(Order.client_name.isnot(None))).all()
+
+    client_rows = [
+        {"client": client, "order_count": len(find_matching_orders(client.canonical_name, named_orders))}
+        for client in clients
+    ]
+
+    return templates.TemplateResponse(
+        request,
+        "clients.html",
+        {
+            "user": user,
+            "client_rows": client_rows,
+            "error": request.query_params.get("error"),
+            "saved": request.query_params.get("saved") is not None,
+        },
+    )
+
+
+@app.post("/clients", response_class=HTMLResponse)
+def create_client(
+    request: Request,
+    canonical_name: str = Form(...),
+    phone: str = Form(""),
+    email: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    name = canonical_name.strip()
+    if not name:
+        return RedirectResponse("/clients?error=ім'я+клієнта+обов'язкове", status_code=303)
+
+    client = Client(
+        canonical_name=name,
+        phone=phone.strip() or None,
+        email=email.strip() or None,
+        notes=notes.strip() or None,
+    )
+    db.add(client)
+    db.commit()
+
+    return RedirectResponse(f"/clients/{client.id}", status_code=303)
+
+
+@app.get("/clients/{client_id}", response_class=HTMLResponse)
+def get_client_detail(request: Request, client_id: int, db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="клієнта не знайдено")
+
+    named_orders = db.scalars(select(Order).where(Order.client_name.isnot(None))).all()
+    matched_orders = find_matching_orders(client.canonical_name, named_orders)
+    summary = summarize_client_orders(matched_orders)
+
+    return templates.TemplateResponse(
+        request,
+        "client_detail.html",
+        {
+            "user": user,
+            "client": client,
+            "summary": summary,
+            "saved": request.query_params.get("saved") is not None,
+        },
+    )
+
+
+@app.post("/clients/{client_id}", response_class=HTMLResponse)
+def update_client(
+    request: Request,
+    client_id: int,
+    phone: str = Form(""),
+    email: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="клієнта не знайдено")
+
+    client.phone = phone.strip() or None
+    client.email = email.strip() or None
+    client.notes = notes.strip() or None
+    db.commit()
+
+    return RedirectResponse(f"/clients/{client_id}?saved=1", status_code=303)
 
 
 @app.get("/settings", response_class=HTMLResponse)

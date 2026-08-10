@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}{{ client.canonical_name }} — Order Desk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/settings.css">
+{% endblock %}
+
+{% block content %}
+<main>
+    <div class="detail-header">
+        <a href="/clients" class="detail-back">← До клієнтів</a>
+        <a href="/stats" class="detail-back">Статистика</a>
+    </div>
+
+    {% if saved %}
+    <div class="settings-success"><p>Збережено</p></div>
+    {% endif %}
+
+    <!-- Contact card -->
+    <div class="card detail-passport">
+        <div class="passport-row">
+            <div class="passport-field">
+                <label class="passport-label">Клієнт</label>
+                <div class="passport-value">{{ client.canonical_name }}</div>
+            </div>
+        </div>
+        <div class="passport-row">
+            <div class="passport-field">
+                <label class="passport-label">Робіт знайдено</label>
+                <div class="passport-value">{{ summary.total_count }}</div>
+            </div>
+            <div class="passport-field">
+                <label class="passport-label">Остання робота</label>
+                <div class="passport-value">
+                    {{ summary.last_order_date.strftime('%d.%m.%y') if summary.last_order_date else '—' }}
+                </div>
+            </div>
+        </div>
+
+        <form method="post" action="/clients/{{ client.id }}" class="mail-form">
+            <div class="form-group">
+                <label for="phone">Телефон</label>
+                <input type="text" id="phone" name="phone" class="form-input" value="{{ client.phone or '' }}" placeholder="+380...">
+            </div>
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" class="form-input" value="{{ client.email or '' }}" placeholder="client@example.com">
+            </div>
+            <div class="form-group">
+                <label for="notes">Нотатки</label>
+                <textarea id="notes" name="notes" class="form-input" rows="3" placeholder="довільні нотатки оператора">{{ client.notes or '' }}</textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="form-submit">Зберегти контакти</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Materials breakdown -->
+    <div class="card detail-section">
+        <h3 class="detail-section-title">Матеріали / кольори</h3>
+        {% if summary.material_breakdown %}
+            <div>
+                {% for material_color, count in summary.material_breakdown %}
+                    <span class="chip {{ material_color_css_class(material_color) }}">{{ material_color }} ({{ count }})</span>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted">поки немає даних</p>
+        {% endif %}
+    </div>
+
+    <!-- Recent orders -->
+    <div class="card detail-section">
+        <h3 class="detail-section-title">Останні роботи</h3>
+        {% if summary.recent_orders %}
+            <div class="table-scroll">
+            <table class="queue-table">
+                <thead>
+                    <tr>
+                        <th>Номер наряду</th>
+                        <th>Матеріал / Колір</th>
+                        <th>Статус</th>
+                        <th>Дата</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order in summary.recent_orders %}
+                    <tr class="queue-row">
+                        <td class="order-id"><a href="/orders/{{ order.id }}">{{ order.work_order_no or order.client_name or '—' }}</a></td>
+                        <td>
+                            {% if order.material_color %}
+                                <span class="chip {{ material_color_css_class(order.material_color) }}">{{ order.material_color }}</span>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td><span class="status-badge status-{{ order.status|replace(' ', '-')|lower }}">{{ order.status }}</span></td>
+                        <td class="mono">{{ order.created_at.strftime('%d.%m.%y') if order.created_at else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        {% else %}
+            <p class="text-muted">робіт цього клієнта поки не знайдено в черзі</p>
+        {% endif %}
+    </div>
+</main>
+{% endblock %}
