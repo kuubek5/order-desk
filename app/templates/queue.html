@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_sortable_th.html" as sortcol with context %}
 
 {% block title %}{{ page_title }} — Order Desk{% endblock %}
 
@@ -91,11 +92,10 @@
                 <table class="queue-table">
                     <thead>
                         <tr>
-                            <th>Наряд / клієнт</th>
-                            <th>Матеріал / Колір</th>
-                            <th>Вид роботи</th>
-                            <th>Кількість</th>
-                            <th>Здати до</th>
+                            <th>Наряд</th>
+                            <th>{{ sortcol.th('material', 'Матеріал / Колір') }}</th>
+                            <th>{{ sortcol.th('kind', 'Вид роботи') }}</th>
+                            <th>{{ sortcol.th('quantity', 'Кількість') }}</th>
                             <th>Шлях</th>
                             <th>Sum3D ID</th>
                             <th>Технік</th>

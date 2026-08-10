@@ -11,8 +11,10 @@ from app.web import (
     _handout_pending_client_count,
     _order_date,
     _pluralize_uk,
+    _queue_column_sort_value,
     _queue_handout_summary,
     _queue_sort_key,
+    _sort_orders_by_column,
     _sync_summary_message,
     _write_sheet_fields,
     accept_email,
@@ -63,6 +65,95 @@ def test_queue_sorts_earlier_deadline_first_for_same_day():
     earlier = SimpleNamespace(**base, due_time="09:00", id=2)
 
     assert sorted([later, earlier], key=_queue_sort_key) == [earlier, later]
+
+
+def test_column_sort_value_quantity_parses_numeric_string():
+    order = SimpleNamespace(quantity="12")
+    assert _queue_column_sort_value(order, "quantity") == 12
+
+
+def test_column_sort_value_quantity_non_numeric_is_blank():
+    order = SimpleNamespace(quantity="кілька")
+    assert _queue_column_sort_value(order, "quantity") is None
+
+
+def test_column_sort_value_material_lowercases_and_strips():
+    order = SimpleNamespace(material_color="  ПММА A2 ")
+    assert _queue_column_sort_value(order, "material") == "пмма a2"
+
+
+def test_column_sort_value_material_blank_is_none():
+    order = SimpleNamespace(material_color=None)
+    assert _queue_column_sort_value(order, "material") is None
+    order_empty = SimpleNamespace(material_color="   ")
+    assert _queue_column_sort_value(order_empty, "material") is None
+
+
+def test_column_sort_value_kind_reads_kind_field():
+    order = SimpleNamespace(kind="Абатмент")
+    assert _queue_column_sort_value(order, "kind") == "абатмент"
+
+
+def test_sort_orders_by_column_material_ascending_case_insensitive():
+    a = SimpleNamespace(material_color="титан", id=1)
+    b = SimpleNamespace(material_color="Пмма", id=2)
+    c = SimpleNamespace(material_color="моно", id=3)
+
+    result = _sort_orders_by_column([a, b, c], "material", "asc")
+
+    assert [o.id for o in result] == [3, 2, 1]  # моно, Пмма, титан
+
+
+def test_sort_orders_by_column_material_blanks_sort_last_ascending():
+    with_value = SimpleNamespace(material_color="пмма", id=1)
+    blank = SimpleNamespace(material_color=None, id=2)
+
+    result = _sort_orders_by_column([blank, with_value], "material", "asc")
+
+    assert [o.id for o in result] == [1, 2]
+
+
+def test_sort_orders_by_column_material_blanks_sort_last_descending():
+    """Blanks must stay last even in descending order — an operator sorting
+    "by material" descending still doesn't want blanks floating to the top."""
+    with_value = SimpleNamespace(material_color="пмма", id=1)
+    blank = SimpleNamespace(material_color="", id=2)
+
+    result = _sort_orders_by_column([with_value, blank], "material", "desc")
+
+    assert [o.id for o in result] == [1, 2]
+
+
+def test_sort_orders_by_column_quantity_numeric_ascending():
+    small = SimpleNamespace(quantity="3", id=1)
+    big = SimpleNamespace(quantity="10", id=2)
+
+    result = _sort_orders_by_column([big, small], "quantity", "asc")
+
+    # Numeric, not lexicographic: 3 < 10 (a string sort would put "10" first).
+    assert [o.id for o in result] == [1, 2]
+
+
+def test_sort_orders_by_column_quantity_non_numeric_sorts_last():
+    numeric = SimpleNamespace(quantity="5", id=1)
+    junk = SimpleNamespace(quantity="кілька", id=2)
+    blank = SimpleNamespace(quantity=None, id=3)
+
+    result = _sort_orders_by_column([junk, blank, numeric], "quantity", "asc")
+
+    assert result[0].id == 1
+    assert {o.id for o in result[1:]} == {2, 3}
+
+
+def test_sort_orders_by_column_direction_toggle():
+    a = SimpleNamespace(quantity="1", id=1)
+    b = SimpleNamespace(quantity="2", id=2)
+
+    ascending = _sort_orders_by_column([a, b], "quantity", "asc")
+    descending = _sort_orders_by_column([a, b], "quantity", "desc")
+
+    assert [o.id for o in ascending] == [1, 2]
+    assert [o.id for o in descending] == [2, 1]
 
 
 def _dates(*day_month_years):
