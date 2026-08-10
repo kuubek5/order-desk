@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "order-desk"
+version = "1.0.0"
+description = "Order management system for dental milling lab"
+
+[tool.ruff]
+# Line length matches common IDE defaults and allows readable docstrings/comments
+line-length = 110
+
+[tool.ruff.lint]
+# Select rules: E and F (pyflakes) as base, ignore E501 (line too long) for now
+# since the codebase has many pre-existing long lines in docstrings.
+select = ["E", "F"]
+ignore = ["E501"]
+
+[tool.mypy]
+# Start lenient: ignore missing imports (many third-party stubs not available)
+ignore_missing_imports = true
+
+# Allow untyped definitions for now — the codebase has pre-existing type issues
+# that would require significant effort to resolve. This is informational-only.
+allow_untyped_defs = true
+allow_untyped_calls = true
+allow_incomplete_defs = true
+allow_untyped_decorators = true
+
+# Warn about unused ignores so we can clean them up later
+warn_unused_ignores = true
+
+# Warn about redundant casts
+warn_redundant_casts = true
+
+# Warn about unused variables
+warn_unused_variables = false
+
+# Report type errors as non-blocking warnings
+warn_return_any = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

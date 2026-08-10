@@ -1,6 +1,5 @@
 """Tests for app/client_matcher.py — fuzzy client name matching."""
 
-import pytest
 from app.client_matcher import MatchResult, match_client_name
 
 
@@ -38,7 +37,6 @@ class TestConfirmedAliasShortCircuit:
 
     def test_confirmed_alias_only_sheet_name_lookup(self):
         """Confirmed alias is keyed by exact sheet_name, not fuzzy-matched."""
-        sheet_name = "Іваненко Петро"
         similar_name = "іваненко петро"  # Different case
         folder_names = ["іваненко петро"]
         known_aliases = {"Іваненко Петро": "іваненко петро"}  # Only this key

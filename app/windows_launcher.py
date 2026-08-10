@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 import shutil
 import socket
-import sys
 import threading
 import time
 import urllib.request

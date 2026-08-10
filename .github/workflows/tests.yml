@@ -20,13 +20,23 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
-      - name: Run tests
+      - name: Lint with ruff
+        run: python -m ruff check .
+
+      - name: Type check with mypy (informational only)
+        # mypy currently reports 26 pre-existing type errors across 4 files.
+        # This check is informational only — not gating CI — to allow gradual
+        # type-checking adoption. A human should periodically review findings.
+        continue-on-error: true
+        run: python -m mypy app --ignore-missing-imports
+
+      - name: Run tests with coverage
         # DB_ENCRYPTION_KEY only needs to be a valid Fernet key for the
         # ephemeral CI sqlite DB each run creates and discards — it protects
         # nothing real here, unlike the DPAPI-backed key on a real install
         # (CLAUDE.md section 7), so a fixed CI-only value is fine to commit.
         env:
           DB_ENCRYPTION_KEY: "Un82ZLqj-Mb9wutrlh4s384pKBsG1WMn1GCYncpWgTw="
-        run: python -m pytest -q
+        run: python -m pytest -q --cov=app --cov-report=term-missing

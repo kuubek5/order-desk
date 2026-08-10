@@ -31,7 +31,7 @@ from app.mail_export import save_attachments_to_export
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
 from app.mail_sync_service import MailSyncBusyError, MailSyncError, sync_mail_background, sync_mailbox
 from app.material_class import material_color_css_class
-from app.models import Attachment, ClientNameAlias, Comment, EmailMessage, Order, ReworkRecord, StatusEvent, SyncLog, User
+from app.models import ClientNameAlias, Comment, EmailMessage, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.order_folder import (
     attach_email_folder_availability,
     attach_email_preview_tokens,
