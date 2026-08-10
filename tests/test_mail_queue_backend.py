@@ -61,6 +61,119 @@ def test_queue_eagerly_exposes_pending_mail_oldest_first_independent_of_filters(
         assert all(email.folder_available is False for email in context["pending_emails"])
 
 
+def _call_get_queue(db, user, monkeypatch, tmp_path, **kwargs):
+    """Same monkeypatch set as the pending-mail test above, factored out so
+    the day-strip tests below don't need to repeat it: stubs the mail-export
+    path lookup and captures the template context dict instead of rendering
+    real HTML."""
+    mail_root = tmp_path / "mail"
+    mail_root.mkdir(exist_ok=True)
+    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+    kwargs.setdefault("period", "today")
+    kwargs.setdefault("ready", "all")
+    kwargs.setdefault("source", "all")
+    return web.get_queue(request=_request(user.id), db=db, **kwargs)
+
+
+def test_known_order_dates_derived_from_distinct_sheet_tabs(tmp_path):
+    """This is the crux of "stays synced with the Sheet": the day-strip's
+    list of known days is read straight off Order.sheet_tab, which
+    app/sync.py populates verbatim from real sheet tab names — no separate
+    lookup against Google Sheets, no independently-computed guess."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        db.add_all(
+            [
+                Order(source="lab", sheet_tab="08.08.26", row_number=1),
+                Order(source="lab", sheet_tab="08.08.26", row_number=2),  # duplicate tab
+                Order(source="lab", sheet_tab="05.08.26", row_number=3),
+                Order(source="email", sheet_tab="09.08.26"),
+                Order(source="email", sheet_tab=None),  # unpriced mail order, no tab yet
+            ]
+        )
+        db.commit()
+
+        known = web._known_order_dates(db)
+
+        assert known == [date(2026, 8, 5), date(2026, 8, 8), date(2026, 8, 9)]
+
+
+def test_date_filter_returns_exactly_that_days_orders(tmp_path, monkeypatch):
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        matching = Order(source="lab", sheet_tab="08.08.26", client_name="Іванов")
+        other_day = Order(source="lab", sheet_tab="09.08.26", client_name="Петренко")
+        db.add_all([matching, other_day])
+        db.commit()
+
+        context = _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26")
+
+        assert [o.id for o in context["orders"]] == [matching.id]
+        assert context["selected_date"] == date(2026, 8, 8)
+
+
+def test_date_filter_bypasses_period_bucket_entirely(tmp_path, monkeypatch):
+    """A `date` far outside today/yesterday/tomorrow must still surface its
+    orders even though `period` defaults to "today" — the same bypass
+    `show_overdue` already gets over the period bucket."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        far_past = Order(source="lab", sheet_tab="01.01.26", client_name="Далеко")
+        db.add(far_past)
+        db.commit()
+
+        context = _call_get_queue(
+            db, user, monkeypatch, tmp_path, period="today", date_param="01.01.26"
+        )
+
+        assert [o.id for o in context["orders"]] == [far_past.id]
+
+
+def test_date_filter_composes_with_source_and_ready_like_period_does(tmp_path, monkeypatch):
+    """`date` is an independent, additive filter — `source`/`ready` must
+    still narrow the result the same way they narrow a plain period bucket."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        lab_order = Order(source="lab", sheet_tab="08.08.26", client_name="Іванов")
+        email_order = Order(source="email", sheet_tab="08.08.26", client_name="Петренко")
+        db.add_all([lab_order, email_order])
+        db.commit()
+
+        all_sources = _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26")
+        assert {o.id for o in all_sources["orders"]} == {lab_order.id, email_order.id}
+
+        lab_only = _call_get_queue(
+            db, user, monkeypatch, tmp_path, date_param="08.08.26", source="lab"
+        )
+        assert [o.id for o in lab_only["orders"]] == [lab_order.id]
+
+        email_only = _call_get_queue(
+            db, user, monkeypatch, tmp_path, date_param="08.08.26", source="email"
+        )
+        assert [o.id for o in email_only["orders"]] == [email_order.id]
+
+
+def test_invalid_date_param_falls_back_to_period_bucketing(tmp_path, monkeypatch):
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        today_order = Order(source="lab", sheet_tab=date.today().strftime("%d.%m.%y"))
+        db.add(today_order)
+        db.commit()
+
+        context = _call_get_queue(db, user, monkeypatch, tmp_path, date_param="not-a-date")
+
+        assert context["selected_date"] is None
+        assert [o.id for o in context["orders"]] == [today_order.id]
+
+
 def test_open_mail_folder_requires_authentication(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine) as db, pytest.raises(HTTPException) as exc:

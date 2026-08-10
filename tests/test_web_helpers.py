@@ -7,6 +7,7 @@ from app.auth import hash_password
 from app.models import EmailMessage, Order, User
 from app.sheet_sync_service import SheetSyncSummary
 from app.web import (
+    _date_window,
     _handout_pending_client_count,
     _order_date,
     _pluralize_uk,
@@ -62,6 +63,88 @@ def test_queue_sorts_earlier_deadline_first_for_same_day():
     earlier = SimpleNamespace(**base, due_time="09:00", id=2)
 
     assert sorted([later, earlier], key=_queue_sort_key) == [earlier, later]
+
+
+def _dates(*day_month_years):
+    """Small helper to build ascending lists of dates from '10.08.26'-style
+    strings, matching the "%d.%m.%y" shape the day-strip works with."""
+    return [datetime.strptime(s, "%d.%m.%y").date() for s in day_month_years]
+
+
+def test_date_window_empty_known_dates_returns_nothing():
+    assert _date_window([], date(2026, 8, 10), None) == ([], 0, 0)
+
+
+def test_date_window_defaults_to_window_containing_today():
+    known = _dates(
+        "01.08.26", "02.08.26", "03.08.26", "04.08.26", "05.08.26", "06.08.26", "07.08.26",
+        "08.08.26", "09.08.26", "10.08.26",
+    )
+    today = datetime.strptime("09.08.26", "%d.%m.%y").date()
+
+    visible, page, total_pages = _date_window(known, today, None)
+
+    assert page == 1
+    assert total_pages == 2
+    assert visible == known[7:]
+    assert today in visible
+
+
+def test_date_window_defaults_to_most_recent_window_when_today_missing():
+    known = _dates("01.08.26", "02.08.26", "03.08.26")
+    today = datetime.strptime("20.08.26", "%d.%m.%y").date()
+
+    visible, page, total_pages = _date_window(known, today, None)
+
+    assert page == 0
+    assert total_pages == 1
+    assert visible == known
+
+
+def test_date_window_explicit_page_is_used_verbatim():
+    known = _dates(
+        "01.08.26", "02.08.26", "03.08.26", "04.08.26", "05.08.26", "06.08.26", "07.08.26",
+        "08.08.26", "09.08.26",
+    )
+    today = datetime.strptime("09.08.26", "%d.%m.%y").date()
+
+    visible, page, total_pages = _date_window(known, today, 0)
+
+    assert page == 0
+    assert total_pages == 2
+    assert visible == known[:7]
+
+
+def test_date_window_clamps_page_beyond_available_range():
+    known = _dates("01.08.26", "02.08.26", "03.08.26")
+    today = date(2026, 8, 1)
+
+    visible, page, total_pages = _date_window(known, today, 99)
+
+    assert page == 0
+    assert total_pages == 1
+    assert visible == known
+
+
+def test_date_window_clamps_negative_page_to_zero():
+    known = _dates("01.08.26", "02.08.26", "03.08.26")
+    today = date(2026, 8, 1)
+
+    visible, page, total_pages = _date_window(known, today, -3)
+
+    assert page == 0
+    assert visible == known
+
+
+def test_date_window_fewer_than_seven_known_dates():
+    known = _dates("05.08.26", "06.08.26")
+    today = date(2026, 8, 5)
+
+    visible, page, total_pages = _date_window(known, today, None)
+
+    assert total_pages == 1
+    assert page == 0
+    assert visible == known
 
 
 def test_sync_summary_message_reports_import_counts():

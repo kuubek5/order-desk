@@ -48,6 +48,39 @@
         </a>
     </div>
 
+    {% if date_tabs %}
+    <div class="rail-group rail-group-dates">
+        <div class="rail-dates-header">
+            <p class="rail-group-label">Дні</p>
+            <div class="rail-date-pager">
+                {% set selected_value = selected_date.strftime('%d.%m.%y') if selected_date else '' %}
+                {% if date_page > 0 %}
+                <a href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ selected_value }}&date_page={{ date_page - 1 }}" class="rail-date-nav" aria-label="Попередній тиждень" title="Попередній тиждень">‹</a>
+                {% else %}
+                <span class="rail-date-nav rail-date-nav-disabled" aria-hidden="true">‹</span>
+                {% endif %}
+                {% if date_page + 1 < total_date_pages %}
+                <a href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ selected_value }}&date_page={{ date_page + 1 }}" class="rail-date-nav" aria-label="Наступний тиждень" title="Наступний тиждень">›</a>
+                {% else %}
+                <span class="rail-date-nav rail-date-nav-disabled" aria-hidden="true">›</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="rail-date-strip">
+            {% for d in date_tabs %}
+            <a href="/?date={{ d.strftime('%d.%m.%y') }}&date_page={{ date_page }}&ready={{ ready }}&source={{ source }}" class="rail-date-item {% if not show_overdue and selected_date == d %}active{% endif %}" title="{{ d.strftime('%d.%m.%Y') }}">
+                {{ d.strftime('%d.%m') }}
+            </a>
+            {% endfor %}
+        </div>
+        {% if selected_date %}
+        <a href="/?period={{ period }}&ready={{ ready }}&source={{ source }}" class="chip chip-removable rail-clear" title="Прибрати фільтр дня">
+            {{ selected_date.strftime('%d.%m.%y') }}
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <div class="rail-group rail-group-sync" aria-label="Стан фонової синхронізації">
         <p class="rail-group-label">Синхронізація</p>
         <div class="rail-status rail-status-{{ sync_status.mail.state }}">

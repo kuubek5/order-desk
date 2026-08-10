@@ -714,6 +714,25 @@ li {
     flex: 0 0 auto;
     white-space: nowrap;
   }
+
+  .rail-group-dates {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-1);
+  }
+
+  .rail-date-strip {
+    flex-wrap: nowrap;
+  }
+
+  .rail-date-item {
+    flex: 0 0 auto;
+  }
+
+  .rail-group-dates .rail-clear {
+    flex: 0 0 auto;
+    margin: 0;
+  }
 }
 
 .sum3d-form {
@@ -1765,6 +1784,100 @@ li {
 
 .rail-status-neutral .rail-status-value {
   color: var(--color-text-muted);
+}
+
+/* Day-strip (sidebar "Дні" group): paged 7-at-a-time list of the calendar
+   days that actually have order data (Order.sheet_tab), independent of the
+   Період bucket group above. */
+.rail-dates-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.rail-dates-header .rail-group-label {
+  padding: 0;
+  margin: 0;
+}
+
+.rail-date-pager {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.rail-date-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  line-height: 1;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.rail-date-nav:hover {
+  background-color: rgba(230, 230, 240, 0.05);
+  color: var(--color-text);
+}
+
+.rail-date-nav:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.rail-date-nav-disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.rail-date-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+}
+
+.rail-date-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.6rem;
+  padding: var(--space-1) var(--space-2);
+  border-radius: 8px;
+  border: 1px solid transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.rail-date-item:hover {
+  background-color: rgba(230, 230, 240, 0.05);
+  color: var(--color-text);
+}
+
+.rail-date-item.active {
+  background-color: rgba(232, 180, 168, 0.1);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.rail-date-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.rail-group-dates .rail-clear {
+  margin: var(--space-2) var(--space-3) 0;
 }
 
 /* Pending mail: collapsible list (CLAUDE.md section 8 — collapses to one
