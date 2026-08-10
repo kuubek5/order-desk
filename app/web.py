@@ -951,6 +951,61 @@ def get_queue(
     )
 
 
+@app.get("/search", response_class=HTMLResponse)
+def get_search(
+    request: Request,
+    q: str = "",
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    results = []
+    query_term = (q or "").strip()
+
+    truncated = False
+    if query_term:
+        # Search in client_name, work_order_no, job_code, sum3d_id
+        # Case-insensitive substring matching across all four fields
+        all_orders = db.scalars(select(Order)).all()
+        query_lower = query_term.lower()
+
+        for order in all_orders:
+            # Check if query appears in any of the four fields (case-insensitive)
+            if any(
+                (field and query_lower in (field or "").lower())
+                for field in [
+                    order.client_name,
+                    order.work_order_no,
+                    order.job_code,
+                    order.sum3d_id,
+                ]
+            ):
+                results.append(order)
+
+        # Cap results at 100 and flag if truncated
+        if len(results) > 100:
+            truncated = True
+            results = results[:100]
+
+        # Attach folder info for display
+        attach_export_folder_uris(db, results)
+        attach_job_code_folder_uris(db, results)
+
+    return templates.TemplateResponse(
+        request,
+        "search.html",
+        {
+            "query": query_term,
+            "results": results,
+            "truncated": truncated,
+            "user": user,
+            "statuses": STATUSES,
+        },
+    )
+
+
 @app.post("/sheets/sync")
 def sync_sheets(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
