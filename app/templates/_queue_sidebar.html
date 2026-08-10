@@ -47,4 +47,16 @@
             <span>Не готово</span><span class="rail-badge">{{ ready_counts.not_ready }}</span>
         </a>
     </div>
+
+    <div class="rail-group rail-group-sync" aria-label="Стан фонової синхронізації">
+        <p class="rail-group-label">Синхронізація</p>
+        <div class="rail-status rail-status-{{ sync_status.mail.state }}">
+            <span class="rail-status-name">Пошта</span>
+            <span class="rail-status-value">{{ sync_status.mail.label }}</span>
+        </div>
+        <div class="rail-status rail-status-{{ sync_status.sheet.state }}">
+            <span class="rail-status-name">Google Таблиця</span>
+            <span class="rail-status-value">{{ sync_status.sheet.label }}</span>
+        </div>
+    </div>
 </aside>

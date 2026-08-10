@@ -1614,6 +1614,52 @@ li {
   color: var(--color-email);
 }
 
+/* Background sync heartbeat pair (queue sidebar, bottom, non-interactive).
+   Reuses the same success/warning/error color vocabulary as settings.css's
+   .check-pill-* (that file isn't loaded on the queue page, so the exact
+   color values are repeated here rather than shared across a <link>). */
+.rail-group-sync {
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-card-border);
+}
+
+.rail-status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.rail-status-name {
+  font-weight: 600;
+}
+
+.rail-status-value {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  text-align: right;
+}
+
+.rail-status-success .rail-status-value {
+  color: #a7ddb4;
+}
+
+.rail-status-warning .rail-status-value {
+  color: #e89860;
+}
+
+.rail-status-error .rail-status-value {
+  color: var(--color-overdue);
+}
+
+.rail-status-neutral .rail-status-value {
+  color: var(--color-text-muted);
+}
+
 /* Pending mail: collapsible list (CLAUDE.md section 8 — collapses to one
    summary row by default, expands on click). The grid-template-rows 0fr/1fr
    trick animates to real content height without JS measuring it. */
