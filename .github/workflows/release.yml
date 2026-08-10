@@ -69,9 +69,10 @@ jobs:
           }
           Write-Host "Found installed exe at $exePath"
 
-          # Launch the exe as background process
+          # Launch the exe as background process with output redirection
           Write-Host "Launching OrderDesk..."
-          $appProcess = Start-Process -FilePath $exePath -WindowStyle Hidden -PassThru
+          $logFile = "$env:TEMP\orderdesk-smoke-test.log"
+          $appProcess = Start-Process -FilePath $exePath -WindowStyle Hidden -PassThru -RedirectStandardOutput $logFile -RedirectStandardError $logFile
           $appPid = $appProcess.Id
           Write-Host "OrderDesk started with PID $appPid"
 
@@ -83,6 +84,17 @@ jobs:
           $healthy = $false
 
           while ($retryCount -lt $maxRetries) {
+            # Check if process is still alive
+            $proc = Get-Process -Id $appPid -ErrorAction SilentlyContinue
+            if (-not $proc) {
+              Write-Host "WARNING: Process exited unexpectedly"
+              if (Test-Path $logFile) {
+                Write-Host "Last output from OrderDesk:"
+                Get-Content $logFile -Tail 20
+              }
+              break
+            }
+
             try {
               $response = Invoke-WebRequest -Uri $healthUrl -TimeoutSec 2 -ErrorAction Stop
               if ($response.StatusCode -eq 200) {
@@ -94,6 +106,7 @@ jobs:
               # Connection refused or timeout, retry
             }
             $retryCount++
+            Write-Host "Health check attempt $retryCount/$maxRetries failed, retrying..."
             if ($retryCount -lt $maxRetries) {
               Start-Sleep -Seconds $retryDelaySeconds
             }
@@ -110,6 +123,10 @@ jobs:
           # Fail if health check never succeeded
           if (-not $healthy) {
             Write-Error "Health check failed after $maxRetries retries"
+            if (Test-Path $logFile) {
+              Write-Host "Last output from OrderDesk:"
+              Get-Content $logFile -Tail 20
+            }
             exit 1
           }
 
