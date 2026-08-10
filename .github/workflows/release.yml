@@ -78,7 +78,8 @@ jobs:
           Write-Host "OrderDesk started with PID $appPid"
 
           # Poll health endpoint with retries (app runs Alembic migrations on first start, can take 30-60 seconds)
-          $healthUrl = "http://127.0.0.1:8000/health"
+          # TEMPORARILY BROKEN FOR TESTING: use wrong port to prove gate can fail
+          $healthUrl = "http://127.0.0.1:9999/health"
           $maxRetries = 90
           $retryDelaySeconds = 1
           $retryCount = 0
