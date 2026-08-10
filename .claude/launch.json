@@ -4,8 +4,8 @@
     {
       "name": "order-desk-web",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "app.web:app", "--reload", "--port", "8000"],
-      "port": 8000
+      "runtimeArgs": ["-m", "uvicorn", "app.web:app", "--reload", "--port", "$PORT"],
+      "autoPort": true
     }
   ]
 }
