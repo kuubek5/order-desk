@@ -72,7 +72,8 @@ jobs:
           # Launch the exe as background process with output redirection
           Write-Host "Launching OrderDesk..."
           $logFile = "$env:TEMP\orderdesk-smoke-test.log"
-          $appProcess = Start-Process -FilePath $exePath -WindowStyle Hidden -PassThru -RedirectStandardOutput $logFile -RedirectStandardError $logFile
+          $errFile = "$env:TEMP\orderdesk-smoke-test-err.log"
+          $appProcess = Start-Process -FilePath $exePath -WindowStyle Hidden -PassThru -RedirectStandardOutput $logFile -RedirectStandardError $errFile
           $appPid = $appProcess.Id
           Write-Host "OrderDesk started with PID $appPid"
 
@@ -89,8 +90,12 @@ jobs:
             if (-not $proc) {
               Write-Host "WARNING: Process exited unexpectedly"
               if (Test-Path $logFile) {
-                Write-Host "Last output from OrderDesk:"
+                Write-Host "Last stdout from OrderDesk:"
                 Get-Content $logFile -Tail 20
+              }
+              if (Test-Path $errFile) {
+                Write-Host "Last stderr from OrderDesk:"
+                Get-Content $errFile -Tail 20
               }
               break
             }
@@ -124,8 +129,12 @@ jobs:
           if (-not $healthy) {
             Write-Error "Health check failed after $maxRetries retries"
             if (Test-Path $logFile) {
-              Write-Host "Last output from OrderDesk:"
+              Write-Host "Last stdout from OrderDesk:"
               Get-Content $logFile -Tail 20
+            }
+            if (Test-Path $errFile) {
+              Write-Host "Last stderr from OrderDesk:"
+              Get-Content $errFile -Tail 20
             }
             exit 1
           }
