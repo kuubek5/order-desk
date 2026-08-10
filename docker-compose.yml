@@ -27,6 +27,14 @@ services:
       - ./export:/app/export
       - ./technician_files:/app/technician_files:ro
       - ./mail_attachments:/app/mail_attachments
+    deploy:
+      resources:
+        reservations:
+          # Soft floor, not a hard limit — a real deploy hit an OOM-kill on a
+          # crowded host (8GB, 27+ containers, no swap) with no memory config
+          # at all here. A reservation lowers this container's OOM-kill
+          # priority without capping it under legitimate load.
+          memory: 256M
 
 volumes:
   order_desk_data:
