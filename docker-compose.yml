@@ -1,0 +1,32 @@
+services:
+  order-desk:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DB_PATH: /app/data/order_desk.db
+      ORDER_DESK_SCHEMA_MANAGED: "1"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - order_desk_data:/app/data
+      - ./credentials:/app/credentials:ro
+      # Шляхи нижче — приклад, підправ під реальні шляхи на хості
+      # (мережева папка export, папка робіт техніків).
+      - ./export:/app/export
+      - ./technician_files:/app/technician_files:ro
+      - ./mail_attachments:/app/mail_attachments
+
+volumes:
+  order_desk_data:

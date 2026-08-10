@@ -1,0 +1,12 @@
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.git
+.env
+*.db
+credentials
+mail_attachments
+tests
+.claude
+.impeccable
