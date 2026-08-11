@@ -3,184 +3,175 @@
 {% block title %}Замовлення {{ order.work_order_no or order.client_name or order.id }} — Order Desk{% endblock %}
 
 {% block content %}
-<main>
+{% set _dot = {
+  'нове': ('#b6c6da', true),
+  'прийнято': ('#0f766e', false),
+  'прораховано': ('#14b8a6', false),
+  'у фрезеруванні': ('#2dd4bf', false),
+  'відфрезеровано': ('#5eead4', false),
+  'знайдено при видачі': ('#99f6e4', false),
+  'видано': ('#5c6b80', false),
+  'проблема': ('#f87171', false),
+  'переробка': ('#f0a35e', false)
+} %}
+<main class="passport2">
     {% if error %}
     <div class="settings-alert settings-alert-error">{{ error }}</div>
     {% endif %}
-    <div class="detail-header">
-        <a href="/" class="detail-back">← До черги</a>
-        <a href="/stats" class="detail-back">Статистика</a>
+    <div class="p2-back">
+        <a href="/">← До черги</a>
+        <a href="/stats">Статистика</a>
     </div>
 
-    <!-- Passport Header -->
-    <div class="card detail-passport">
-        {% if order.client_name %}
-        <div class="passport-row">
-            <div class="passport-field">
-                <label class="passport-label">Клієнт</label>
-                <div class="passport-value">{{ order.client_name }}</div>
-            </div>
+    <div class="p2-head">
+        <div>
+            <span class="ord mono">{% if order.source == 'email' %}{{ order.client_name or ('#' ~ order.id) }}{% else %}{{ order.work_order_no or ('#' ~ order.id) }}{% endif %}</span>
+            {% if order.source == 'email' %}<span class="src">пошта</span>{% endif %}
+            {% if order.source != 'email' and order.client_name %}<div class="client">{{ order.client_name }}</div>{% endif %}
         </div>
-        {% endif %}
-        <div class="passport-row">
-            <div class="passport-field">
-                <label class="passport-label">Номер наряду</label>
-                <div class="passport-value">{{ order.work_order_no or '—' }}</div>
-            </div>
-            <div class="passport-field">
-                <label class="passport-label">Шлях</label>
-                <div class="passport-value"><span class="mono">{{ order.job_code or '—' }}</span></div>
-            </div>
-            <div class="passport-field">
-                <label class="passport-label">Sum3D ID</label>
-                <div class="passport-value"><span class="mono">{{ order.sum3d_id or '—' }}</span></div>
-            </div>
-        </div>
-
-        <div class="passport-row">
-            <div class="passport-field">
-                <label class="passport-label">Матеріал / Колір</label>
-                <div class="passport-value">
-                    {% if order.material_color %}
-                        <span class="chip">{{ order.material_color }}</span>
-                    {% else %}
-                        <span class="text-muted">—</span>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="passport-field">
-                <label class="passport-label">Вид роботи</label>
-                <div class="passport-value">
-                    {% if order.kind %}
-                        <span class="chip">{{ order.kind }}</span>
-                    {% else %}
-                        <span class="text-muted">—</span>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <div class="passport-row">
-            <div class="passport-field">
-                <label class="passport-label">Кількість</label>
-                <div class="passport-value">{{ order.quantity or '—' }}</div>
-            </div>
-            <div class="passport-field">
-                <label class="passport-label">Здати до</label>
-                <div class="passport-value">{{ order.due_time or '—' }}</div>
-            </div>
-            <div class="passport-field">
-                <label class="passport-label">Технік</label>
-                <div class="passport-value">{{ order.technician_name or '—' }}</div>
-            </div>
-        </div>
-
-        <div class="passport-row">
-            <div class="passport-field">
-                <label class="passport-label">Статус</label>
-                <div class="passport-value">
-                    <span class="status-badge status-{{ order.status|replace(' ', '-')|lower }}">{{ order.status }}</span>
-                </div>
-            </div>
-        </div>
+        <span class="status-now status-badge status-{{ order.status|replace(' ', '-')|lower }}">{{ order.status }}</span>
     </div>
 
-    <!-- Status Events Timeline -->
-    <div class="card detail-section">
-        <h3 class="detail-section-title">Хронологія статусів</h3>
-        {% if order.status_events %}
-            <ul class="detail-timeline">
-                {% for event in order.status_events|sort(attribute='occurred_at') %}
-                    <li class="timeline-event">
-                        <div class="timeline-status">{{ event.status }}</div>
-                        <div class="timeline-meta">
-                            <span class="timeline-operator">
-                                {% if event.operator %}
-                                    {{ event.operator.full_name or event.operator.username }}
-                                {% elif event.actor %}
-                                    {{ event.actor }}
-                                {% else %}
-                                    система
-                                {% endif %}
-                            </span>
-                            <span class="timeline-time">{{ event.occurred_at.strftime('%d.%m.%y %H:%M') if event.occurred_at else '—' }}</span>
-                        </div>
-                    </li>
-                {% endfor %}
-            </ul>
+    <div class="dsec">
+        <div class="dlabel">Паспорт роботи</div>
+        <div class="kv"><span>Матеріал · колір</span><b>{% if order.material_color %}<span class="matchip">{{ order.material_color }}</span>{% else %}—{% endif %}</b></div>
+        <div class="kv"><span>Вид роботи</span><b>{{ order.kind or '—' }}</b></div>
+        <div class="kv"><span>Кількість</span><b>{{ order.quantity or '—' }}</b></div>
+        <div class="kv"><span>Здати до</span><b>{{ order.due_time or '—' }}</b></div>
+        <div class="kv"><span>Технік</span><b>{{ order.technician_name or '—' }}</b></div>
+    </div>
+
+    <div class="dsec">
+        <div class="dlabel">Коментар для CAM-оператора</div>
+        {% if order.cam_comment %}
+        <div class="camtext{% if '!!' in order.cam_comment %} shout{% endif %}">{{ order.cam_comment }}</div>
         {% else %}
-            <p class="text-muted">поки немає подій</p>
+        <div class="camtext empty-cam">Коментаря немає</div>
         {% endif %}
     </div>
 
-    <!-- Comments Section -->
-    <div class="card detail-section">
-        <h3 class="detail-section-title">Коментарі</h3>
+    <div class="dsec">
+        <div class="dlabel">Шлях-ID</div>
+        <div class="pathrow">
+            <span class="p mono">{{ order.job_code or '—' }}</span>
+            {% if order.job_code %}
+            <button type="button" class="iconbtn copy-button" data-copy="{{ order.job_code }}" title="Копіювати шлях-ID для Sum3D">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>
+            </button>
+            {% endif %}
+            {% if order.export_folder_uri %}
+            <a href="{{ order.export_folder_uri }}" class="iconbtn" {% if order.export_folder_preview_token %}data-stl-preview-token="{{ order.export_folder_preview_token }}"{% endif %} title="Відкрити папку в export">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="dsec">
+        <div class="dlabel">Sum3D ID</div>
+        <form class="sumrow" hx-post="/orders/{{ order.id }}/sum3d-id" hx-swap="none">
+            <input class="suminput mono" type="text" name="sum3d_id" inputmode="numeric" placeholder="Ще не прораховано" value="{{ order.sum3d_id or '' }}">
+            <button class="btn primary" type="submit">Зберегти</button>
+        </form>
+    </div>
+
+    <div class="dsec">
+        <div class="dlabel">Статус</div>
+        <form class="status-opts" hx-post="/orders/{{ order.id }}/status" hx-swap="none">
+            {% for s in statuses %}
+            {% set _c = _dot.get(s, ('#8fa3bb', false)) %}
+            <button type="submit" name="status" value="{{ s }}" class="sbtn{% if s == 'проблема' %} alarm{% elif s == 'переробка' %} warn{% endif %}" aria-pressed="{{ 'true' if s == order.status else 'false' }}">
+                <span class="sdot" aria-hidden="true" style="{% if _c[1] %}background:transparent;box-shadow:inset 0 0 0 1.6px {{ _c[0] }}{% else %}background:{{ _c[0] }}{% endif %}"></span>{{ s }}
+            </button>
+            {% endfor %}
+        </form>
+        <div class="p2-toast" id="p2-status-toast" role="status" aria-live="polite">Статус збережено — оновіть сторінку, щоб побачити нову хронологію</div>
+    </div>
+
+    <div class="dsec">
+        <div class="dlabel">Хронологія статусів</div>
+        {% if order.status_events %}
+        <div class="timeline">
+            {% for event in order.status_events|sort(attribute='occurred_at', reverse=True) %}
+            <div class="tl-item">
+                <span class="t mono">{{ event.occurred_at.strftime('%d.%m %H:%M') if event.occurred_at else '—' }}</span>
+                <span class="body">
+                    <span class="label">{{ event.status }}</span>
+                    <span class="who">
+                        {% if event.operator %}{{ event.operator.full_name or event.operator.username }}{% elif event.actor %}{{ event.actor }}{% else %}система{% endif %}
+                    </span>
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted">поки немає подій</p>
+        {% endif %}
+    </div>
+
+    <div class="p2-card">
+        <h3>Коментарі</h3>
         <form method="post" action="/orders/{{ order.id }}/comments" class="comment-form">
-            <label for="comment-text" class="passport-label">Новий коментар</label>
-            <textarea
-                id="comment-text"
-                name="text"
-                class="form-input comment-input"
-                rows="3"
-                maxlength="2000"
-                placeholder="Напишіть зауваження для CAM-оператора…"
-                required
-            ></textarea>
+            <textarea id="comment-text" name="text" class="comment-input" rows="3" maxlength="2000" placeholder="Напишіть зауваження для CAM-оператора…" required></textarea>
             <div class="comment-form-actions">
                 {% if order.sheet_tab %}
-                    <span class="text-muted">Коментар також додасться у Google Таблицю</span>
+                <span class="text-muted">Коментар також додасться у Google Таблицю</span>
                 {% else %}
-                    <span class="text-muted">Коментар збережеться в історії роботи</span>
+                <span class="text-muted">Коментар збережеться в історії роботи</span>
                 {% endif %}
                 <button type="submit" class="form-submit">Додати коментар</button>
             </div>
         </form>
         {% if order.comments %}
-            <ul class="detail-list">
-                {% for comment in order.comments|sort(attribute='created_at', reverse=True) %}
-                    <li class="detail-comment">
-                        <div class="comment-header">
-                            <span class="comment-author">{{ comment.author or ('Google Таблиця' if comment.source == 'sheet' else comment.source) or '—' }}</span>
-                            <span class="comment-time">{{ comment.created_at.strftime('%d.%m.%y %H:%M') if comment.created_at else '—' }}</span>
-                        </div>
-                        <div class="comment-text">{{ comment.text }}</div>
-                    </li>
-                {% endfor %}
-            </ul>
+        <ul class="detail-list">
+            {% for comment in order.comments|sort(attribute='created_at', reverse=True) %}
+            <li class="detail-comment">
+                <div class="comment-header">
+                    <span class="comment-author">{{ comment.author or ('Google Таблиця' if comment.source == 'sheet' else comment.source) or '—' }}</span>
+                    <span class="comment-time">{{ comment.created_at.strftime('%d.%m.%y %H:%M') if comment.created_at else '—' }}</span>
+                </div>
+                <div class="comment-text">{{ comment.text }}</div>
+            </li>
+            {% endfor %}
+        </ul>
         {% else %}
-            <p class="text-muted">поки немає коментарів</p>
+        <p class="text-muted">поки немає коментарів</p>
         {% endif %}
     </div>
 
-    <!-- Rework Records Section -->
-    <div class="card detail-section">
-        <h3 class="detail-section-title">Історія переробок</h3>
+    <div class="p2-card">
+        <h3>Історія переробок</h3>
         {% if order.rework_records %}
-            <ul class="detail-list">
-                {% for rework in order.rework_records|sort(attribute='created_at') %}
-                    <li class="detail-rework">
-                        <div class="rework-header">
-                            <span class="rework-blame">{{ rework.blame or '—' }}</span>
-                            <span class="rework-date">{{ rework.created_at.strftime('%d.%m.%y %H:%M') if rework.created_at else '—' }}</span>
-                        </div>
-                        <div class="rework-details">
-                            {% if rework.blame_quantity %}
-                                <span class="rework-detail-item">Браку: {{ rework.blame_quantity }}</span>
-                            {% endif %}
-                            {% if rework.redo_quantity %}
-                                <span class="rework-detail-item">Переробки: {{ rework.redo_quantity }}</span>
-                            {% endif %}
-                            {% if rework.cam_comment %}
-                                <div class="rework-comment">{{ rework.cam_comment }}</div>
-                            {% endif %}
-                        </div>
-                    </li>
-                {% endfor %}
-            </ul>
+        <ul class="detail-list">
+            {% for rework in order.rework_records|sort(attribute='created_at') %}
+            <li class="detail-rework">
+                <div class="rework-header">
+                    <span class="rework-blame">{{ rework.blame or '—' }}</span>
+                    <span class="rework-date">{{ rework.created_at.strftime('%d.%m.%y %H:%M') if rework.created_at else '—' }}</span>
+                </div>
+                <div class="rework-details">
+                    {% if rework.blame_quantity %}<span class="rework-detail-item">Браку: {{ rework.blame_quantity }}</span>{% endif %}
+                    {% if rework.redo_quantity %}<span class="rework-detail-item">Переробки: {{ rework.redo_quantity }}</span>{% endif %}
+                    {% if rework.cam_comment %}<div class="rework-comment">{{ rework.cam_comment }}</div>{% endif %}
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
         {% else %}
-            <p class="text-muted">переробок не було</p>
+        <p class="text-muted">переробок не було</p>
         {% endif %}
     </div>
 </main>
+
+<script>
+(function(){
+  var toast = document.getElementById("p2-status-toast");
+  var opts = document.querySelector(".passport2 .status-opts");
+  if(opts && toast){
+    opts.addEventListener("htmx:afterRequest", function(){
+      toast.classList.add("on");
+    });
+  }
+})();
+</script>
 {% endblock %}

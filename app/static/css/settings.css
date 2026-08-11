@@ -409,3 +409,93 @@
     opacity: 1;
   }
 }
+
+/* ============================================================================
+   v2a — НАЛАШТУВАННЯ (settings.html) ← v2a/settings.html
+   Скоуплено під `.setv2`: переводить НАЯВНІ класи налаштувань (settings-group,
+   login-input, connection-state, settings-actions, users-table, backup…) у
+   card/field-мову v2a БЕЗ зміни розмітки/форм/HTMX/роль-гейтів. Уся
+   функціональність (Google/IMAP/шляхи/оператори/бекап) і `{% if адмін %}`
+   лишаються як були — тут тільки візуальний шар.
+   ========================================================================== */
+main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
+.setv2 h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 14px}
+.setv2 .settings-form{display:flex;flex-direction:column;gap:14px}
+
+/* картки-групи */
+.setv2 .settings-group,.setv2 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);padding:15px 16px;margin:0}
+.setv2 .settings-group:hover,.setv2 .card:hover{border-color:var(--line)}
+.setv2 .settings-group > h2,.setv2 .settings-group-heading h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0 0 4px;letter-spacing:-.005em}
+.setv2 .settings-group-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.setv2 .settings-help{font-size:11.5px;color:var(--ink-3);line-height:1.4;margin:0 0 2px}
+.setv2 .connection-state{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);background:#1d2734;color:var(--ink-2);white-space:nowrap;flex:0 0 auto}
+.setv2 .connection-state-ready{background:rgba(20,184,166,.14);color:var(--accent-c);border-color:rgba(45,212,191,.3)}
+
+/* поля */
+.setv2 .settings-field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.setv2 .settings-field:last-child{margin-bottom:0}
+.setv2 .settings-field > label{font-size:12px;font-weight:500;color:var(--ink-2)}
+.setv2 .login-glow{background:none;border:0;padding:0;box-shadow:none}
+.setv2 .login-input-wrap{position:relative;display:flex;align-items:center;gap:8px}
+.setv2 .login-input{width:100%;height:36px;padding:0 11px;border-radius:var(--r-ctl);background:#111823;border:1px solid var(--line);color:var(--ink);font-family:var(--font-body);font-size:13px;outline:none}
+.setv2 .login-input:focus{border-color:rgba(45,212,191,.45);box-shadow:inset 0 0 18px -12px rgba(45,212,191,.9)}
+.setv2 .login-input::placeholder{color:var(--ink-3)}
+.setv2 .settings-textarea{height:auto;min-height:118px;padding:9px 11px;line-height:1.5;resize:vertical;font-family:var(--font-mono);font-size:12.5px}
+.setv2 .login-toggle-password{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-3);border:0;background:none;cursor:pointer}
+.setv2 .login-toggle-password:hover{color:var(--accent-c)}
+.setv2 .login-toggle-password svg{width:16px;height:16px}
+
+/* кнопки */
+.setv2 .settings-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:2px}
+.setv2 .settings-secondary-button,.setv2 .login-submit,.setv2 .settings-submit{height:36px;padding:0 16px;border-radius:var(--r-ctl);font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink);transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease}
+.setv2 .settings-secondary-button:hover{background:var(--card-3);border-color:#3a4a5f}
+.setv2 .login-submit,.setv2 .settings-submit{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.setv2 .login-submit:hover,.setv2 .settings-submit:hover{background:rgba(20,184,166,.24);border-color:var(--accent)}
+.setv2 .settings-backup-danger{border-color:rgba(248,113,113,.4);color:#f0b4b4;background:rgba(248,113,113,.06)}
+.setv2 .settings-backup-danger:hover{background:rgba(248,113,113,.12)}
+.setv2 .link-button{border:0;background:none;color:var(--accent-c);font-size:12.5px;cursor:pointer;padding:0}
+.setv2 .link-button:hover{text-decoration:underline}
+
+/* перевірка з'єднання / шляхів */
+.setv2 .settings-check-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+.setv2 .settings-check-button{height:32px;padding:0 13px}
+.setv2 .settings-check-result{font-size:11.5px}
+.setv2 .settings-check-result .ok,.setv2 .settings-check-result-ok{color:var(--accent-c)}
+.setv2 .settings-check-result .err,.setv2 .settings-check-result-error{color:var(--alarm)}
+.setv2 .check-spinner{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.22);border-top-color:var(--accent-c);animation:setv2spin .7s linear infinite;display:none}
+.setv2 .check-spinner.htmx-request{display:inline-block}
+@keyframes setv2spin{to{transform:rotate(360deg)}}
+
+/* сповіщення */
+.setv2 .settings-success{border-radius:9px;padding:10px 13px;font-size:13px;border:1px solid rgba(45,212,191,.3);background:rgba(20,184,166,.1);color:var(--accent-c);margin-bottom:12px}
+.setv2 .settings-success p{margin:0}
+.setv2 .settings-error{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#f0b4b4}
+.setv2 .settings-alert{border-radius:9px;padding:10px 13px;margin-bottom:12px;border:1px solid var(--line-2);background:var(--card-2);font-size:13px}
+.setv2 .settings-alert-error{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#f0b4b4}
+.setv2 .setup-intro{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 16px;border:1px solid rgba(45,212,191,.28);background:rgba(20,184,166,.07);border-radius:var(--r-card);margin-bottom:14px}
+.setv2 .setup-intro h2{font-family:var(--font-head);font-size:15px;margin:0 0 3px}
+.setv2 .setup-intro p{margin:0;font-size:12.5px;color:var(--ink-2)}
+.setv2 .setup-progress{font-family:var(--font-mono);font-size:11.5px;color:var(--accent-c);flex:0 0 auto}
+
+/* таблиця операторів */
+.setv2 .users-table{border-collapse:separate;border-spacing:0;width:100%}
+.setv2 .users-table thead th{text-align:left;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line-2);white-space:nowrap}
+.setv2 .users-table tbody td{padding:9px 10px;border-bottom:1px solid #1c2532;font-size:12.5px;color:var(--ink-2);vertical-align:middle}
+.setv2 .users-table .order-id{font-family:var(--font-mono);color:var(--ink)}
+.setv2 .status-badge{font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--line-2);background:#1d2734;color:var(--ink-2)}
+.setv2 .user-badge-active{background:rgba(20,184,166,.14);color:var(--accent-c);border-color:rgba(45,212,191,.3)}
+.setv2 .user-badge-inactive{background:rgba(248,113,113,.1);color:#f0b4b4;border-color:rgba(248,113,113,.3)}
+.setv2 .users-reset-form{display:flex;gap:6px;align-items:center}
+.setv2 .users-reset-input{height:30px;width:130px;font-size:12px}
+.setv2 .users-add-form{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.setv2 .users-add-form .settings-submit{grid-column:1/-1;justify-self:start}
+
+/* бекап */
+.setv2 .settings-backup-form{display:flex;flex-direction:column;gap:12px}
+.setv2 .settings-backup-divider{height:1px;background:var(--line);margin:16px 0}
+.setv2 .settings-backup-confirm{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--ink-2)}
+.setv2 .settings-backup-confirm input{accent-color:var(--accent-b);margin-top:2px}
+.setv2 input[type=file]{font-size:12px;color:var(--ink-2)}
+.setv2 .table-scroll{overflow-x:auto}
+@media (max-width:640px){ .setv2 .users-add-form{grid-template-columns:1fr} }
+

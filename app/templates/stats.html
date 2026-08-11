@@ -7,77 +7,75 @@
 {% endblock %}
 
 {% block content %}
-<main>
-    <div class="topbar">
-        <h1>{{ page_title }}</h1>
-        <form method="get" action="/search" class="topbar-search">
-            <input type="text" name="q" placeholder="Пошук…" class="topbar-search-input">
-            <button type="submit" class="topbar-search-button" title="Пошук">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            </button>
-        </form>
-        {% set topbar_active = 'stats' %}
-        {% include "_topbar_nav.html" %}
-    </div>
+{% set topbar_active = 'stats' %}
+{% include "_topbar_nav.html" %}
 
-    <nav class="tab-nav">
+<main class="statsv2">
+    <h1>{{ page_title }}</h1>
+
+    <nav class="tab-nav" aria-label="Період статистики">
         <a href="/stats?period=today" class="tab-link {% if period == 'today' %}active{% endif %}">Сьогодні</a>
         <a href="/stats?period=week" class="tab-link {% if period == 'week' %}active{% endif %}">Тиждень</a>
         <a href="/stats?period=month" class="tab-link {% if period == 'month' %}active{% endif %}">Місяць</a>
         <a href="/stats?period=all" class="tab-link {% if period == 'all' %}active{% endif %}">Весь час</a>
     </nav>
 
-    <div class="stats-grid">
-        <div class="card stats-card">
-            <h3 class="stats-card-title">Підсумок за період</h3>
-            <div class="stats-numbers">
-                <div class="stats-number-item">
-                    <div class="stats-number">{{ order_count }}</div>
-                    <div class="stats-number-label">робіт</div>
-                </div>
-                <div class="stats-number-item">
-                    <div class="stats-number">{{ quantity_sum }}</div>
-                    <div class="stats-number-label">одиниць</div>
+    <div class="stat-row">
+        <section class="panel stat-card">
+            <div class="panel-body">
+                <div class="dlabel">Робіт за період</div>
+                <div class="stat-chips"><span class="stat-chip"><b class="tnum">{{ order_count }}</b> <span class="unit">робіт</span></span></div>
+            </div>
+        </section>
+        <section class="panel stat-card">
+            <div class="panel-body">
+                <div class="dlabel">Одиниць за період</div>
+                <div class="stat-chips"><span class="stat-chip"><b class="tnum">{{ quantity_sum }}</b> <span class="unit">од.</span></span></div>
+            </div>
+        </section>
+        <section class="panel stat-card">
+            <div class="panel-body">
+                <div class="dlabel">Сер. «нове → відфрезеровано»</div>
+                <div class="stat-chips">
+                    {% if avg_hours is not none %}
+                    <span class="stat-chip"><b class="tnum mono">{{ avg_hours|round(1) }}</b> <span class="unit">год.</span></span>
+                    {% else %}
+                    <span class="muted">немає даних</span>
+                    {% endif %}
                 </div>
             </div>
-        </div>
-
-        <div class="card stats-card">
-            <h3 class="stats-card-title">Середній час нове → відфрезеровано</h3>
-            {% if avg_hours is not none %}
-                <div class="stats-number">{{ avg_hours|round(1) }} <span class="stats-number-unit">год.</span></div>
-            {% else %}
-                <p class="text-muted">немає даних</p>
-            {% endif %}
-        </div>
-
-        <div class="card stats-card stats-card-wide">
-            <h3 class="stats-card-title">Брак — за весь час</h3>
-            {% if rework_groups %}
-                <div class="table-scroll">
-                <table class="queue-table">
-                    <thead>
-                        <tr>
-                            <th>Винуватець</th>
-                            <th>Переробок</th>
-                            <th>Одиниць переробки</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for group in rework_groups %}
-                        <tr class="queue-row">
-                            <td>{{ group.blame }}</td>
-                            <td>{{ group.count }}</td>
-                            <td>{{ group.redo_quantity_sum }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        </section>
+        <section class="panel stat-card">
+            <div class="panel-body">
+                <div class="dlabel">Переробок · за весь час</div>
+                <div class="stat-chips">
+                    <span class="stat-chip is-warn"><b class="tnum">{{ rework_groups|sum(attribute='count') if rework_groups else 0 }}</b> <span class="unit">випадків</span></span>
+                    <span class="stat-sep" aria-hidden="true"></span>
+                    <span class="stat-chip is-warn"><b class="tnum">{{ rework_groups|sum(attribute='redo_quantity_sum') if rework_groups else 0 }}</b> <span class="unit">од.</span></span>
                 </div>
-            {% else %}
-                <p class="text-muted">переробок не зафіксовано</p>
-            {% endif %}
-        </div>
+            </div>
+        </section>
     </div>
+
+    <section class="panel">
+        <div class="card-head">
+            <h2>Брак — розподіл по винуватцях</h2>
+            <span class="meta">за весь час</span>
+        </div>
+        {% if rework_groups %}
+        {% set max_units = (rework_groups|map(attribute='redo_quantity_sum')|max) or 1 %}
+        <div class="stage-list">
+            {% for group in rework_groups %}
+            <div class="stage-row">
+                <span class="lb">{{ group.blame or 'без причини' }}</span>
+                <span class="bar"><i style="width:{{ (group.redo_quantity_sum / max_units * 100)|round(0) if max_units else 0 }}%"></i></span>
+                <span class="n">{{ group.redo_quantity_sum }} од. <span class="pct">· {{ group.count }}×</span></span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-note">переробок не зафіксовано</p>
+        {% endif %}
+    </section>
 </main>
 {% endblock %}

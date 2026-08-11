@@ -2,152 +2,98 @@
 
 {% block title %}{{ page_title }} — Order Desk{% endblock %}
 
-{% block extra_head %}
-<link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
-{% endblock %}
-
 {% block content %}
-<main>
-    <div class="topbar">
-        <h1>{{ page_title }}</h1>
-        <form method="get" action="/search" class="topbar-search">
-            <input type="text" name="q" placeholder="Пошук…" class="topbar-search-input">
-            <button type="submit" class="topbar-search-button" title="Пошук">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            </button>
-        </form>
-        {% set topbar_active = 'mail' %}
-        {% include "_topbar_nav.html" %}
+{% set topbar_active = 'mail' %}
+{% include "_topbar_nav.html" %}
+
+<main class="mailv2">
+    <div class="m-topbar">
+        <div>
+            <h1>{{ page_title }}</h1>
+            <div class="topbar-live">
+                <span class="live"><span class="beacon" aria-hidden="true"></span>пошта перевіряється кожні <b>2 хв</b></span>
+                <span class="sep" aria-hidden="true"></span>
+                <span>ukr.net · останні <b>30 днів</b></span>
+            </div>
+        </div>
+        <div class="head-actions">
+            <form method="post" action="/mail/sync">
+                <button type="submit" class="btn sm">
+                    <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>Перевірити пошту
+                </button>
+            </form>
+        </div>
     </div>
 
     {% if synced is not none %}
-    <div class="settings-success">
-        <p>Синхронізовано, нових листів: {{ synced }}</p>
-    </div>
+    <div class="settings-success"><p>Синхронізовано, нових листів: {{ synced }}</p></div>
     {% endif %}
-
     {% if error %}
-    <div class="settings-success settings-error">
-        <p>{{ error }}</p>
-    </div>
+    <div class="settings-success settings-error"><p>{{ error }}</p></div>
     {% endif %}
 
-    <div class="mail-sync-row">
-        <form method="post" action="/mail/sync">
-            <button type="submit" class="form-submit">Перевірити пошту зараз</button>
-        </form>
-        <p class="settings-hint">
-            Пошта перевіряється автоматично кожні 2 хвилини. Лист з’явиться в основній
-            черзі після перевірки полів і натискання «Прийняти».
-        </p>
-    </div>
-
-    <!-- Візуальний фільтр за типом послуги (лише сортування показу — жоден лист
-         не приховується з бази, кожен завжди доступний за /mail/{id} і через
-         чіп «Усі листи», який лишається типовим за замовчуванням). -->
     <nav class="tab-nav" aria-label="Тип послуги">
-        <a href="/mail?service=all" class="tab-link {% if service == 'all' %}active{% endif %}">
-            Усі листи <span class="tab-badge">({{ service_counts.all }})</span>
-        </a>
-        <a href="/mail?service=milling" class="tab-link {% if service == 'milling' %}active{% endif %}">
-            Схоже на фрезерування <span class="tab-badge">({{ service_counts.milling }})</span>
-        </a>
-        <a href="/mail?service=other" class="tab-link {% if service == 'other' %}active{% endif %}">
-            Схоже на інше <span class="tab-badge">({{ service_counts.other }})</span>
-        </a>
+        <a href="/mail?service=all" class="tab-link {% if service == 'all' %}active{% endif %}">Усі листи <span class="tab-badge">{{ service_counts.all }}</span></a>
+        <a href="/mail?service=milling" class="tab-link {% if service == 'milling' %}active{% endif %}">Схоже на фрезерування <span class="tab-badge">{{ service_counts.milling }}</span></a>
+        <a href="/mail?service=other" class="tab-link {% if service == 'other' %}active{% endif %}">Схоже на інше <span class="tab-badge">{{ service_counts.other }}</span></a>
     </nav>
 
-    {% if emails %}
-        <div class="queue-summary">
-            Нових листів: <strong>{{ emails|length }}</strong>
-        </div>
+    <div class="worklayout">
+        <section class="list-panel" aria-labelledby="mail-list-title">
+            <div class="card-head">
+                <h2 id="mail-list-title">На тріаж</h2>
+                <span class="meta">{{ emails|length }} листів</span>
+            </div>
+            <div class="listwrap">
+                {% if emails %}
+                    {% for email in emails %}
+                    <div class="mailrow" {% if email.stl_preview_token %}data-stl-preview-token="{{ email.stl_preview_token }}"{% endif %}>
+                        <span class="r1">
+                            <a class="from" href="/mail/{{ email.id }}">{{ email.from_address or 'Відправник не визначений' }}</a>
+                            <span class="t">{% if email.received_at %}{{ email.received_at.strftime('%d.%m %H:%M') }}{% else %}—{% endif %}</span>
+                        </span>
+                        <a class="subj" href="/mail/{{ email.id }}">{{ email.subject or 'Без теми' }}</a>
+                        <span class="r3">
+                            <span class="att">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V6a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V7"/></svg>
+                                {% if email.attachments_status == 'pending' %}завантаження…{% else %}{{ email.attachments|length }} файл.{% endif %}
+                            </span>
+                            {% if email.service_type_guess == '3d_print' %}
+                            <span class="reco warn">перевірити</span>
+                            {% else %}
+                            <span class="reco ok">розпізнано</span>
+                            {% endif %}
+                            <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/reject" hx-target="closest .mailrow" hx-swap="delete" hx-confirm="Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється).">
+                                <button type="submit" class="list-reject" title="Відхилити">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                                </button>
+                            </form>
+                        </span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-triage">
+                        <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 7 8 5 8-5"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></span>
+                        {% if service != 'all' %}
+                        <h3>Немає листів у цій категорії</h3>
+                        <p><a href="/mail?service=all">Показати всі нові листи</a>.</p>
+                        {% else %}
+                        <h3>Нових листів немає</h3>
+                        <p>Пошта перевіряється автоматично кожні 2 хвилини — нові листи з’являться тут самі.</p>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+            <div class="list-foot">MIME-імена файлів і шляхи export перевірені на traversal перед збереженням</div>
+        </section>
 
-        <div class="table-scroll">
-        <table class="queue-table">
-            <thead>
-                <tr>
-                    <th>Від</th>
-                    <th>Тема</th>
-                    <th>Одержано</th>
-                    <th>Матеріал / Колір</th>
-                    <th>Тип</th>
-                    <th>Вкладень</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for email in emails %}
-                <tr class="queue-row">
-                    <td>{{ email.from_address or '—' }}</td>
-                    <td>{{ email.subject or '—' }}</td>
-                    <td class="text-muted">
-                        {% if email.received_at %}
-                            <span class="mono">{{ email.received_at.strftime('%d.%m.%y %H:%M') }}</span>
-                        {% else %}
-                            —
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if email.material_color_guess %}
-                            <span class="chip">{{ email.material_color_guess }}</span>
-                        {% else %}
-                            <span class="text-muted">—</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if email.service_type_guess == "3d_print" %}
-                            <span class="attachment-badge attachment-badge-pending" title="Автоматична підказка за ключовими словами — не приховує лист, перевірте текст листа самостійно">
-                                <svg viewBox="0 0 24 24" aria-hidden="true" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
-                                Схоже на 3D-друк, не фрезерування
-                            </span>
-                        {% else %}
-                            <span class="text-muted">—</span>
-                        {% endif %}
-                    </td>
-                    <td {% if email.stl_preview_token %}data-stl-preview-token="{{ email.stl_preview_token }}"{% endif %}>
-                        {% if email.attachments_status == "pending" %}
-                            <span class="attachment-badge attachment-badge-pending">
-                                <span class="attachment-badge-dot" aria-hidden="true"></span>
-                                Завантаження…
-                            </span>
-                        {% else %}
-                            <span class="attachment-badge attachment-badge-ready">
-                                ✓ Скачано ({{ email.attachments|length }})
-                            </span>
-                        {% endif %}
-                    </td>
-                    <td class="mail-row-actions">
-                        <a href="/mail/{{ email.id }}">Обробити →</a>
-                        <form
-                            class="mail-reject-form"
-                            hx-post="/mail/{{ email.id }}/reject"
-                            hx-target="closest tr"
-                            hx-swap="delete"
-                            hx-confirm="Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється)."
-                        >
-                            <button type="submit" class="form-reject form-reject-compact" title="Відхилити">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
-                            </button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        </div>
-    {% else %}
-        <div class="card queue-empty">
-            <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>
-            </svg>
-            {% if service != 'all' %}
-                <h2>Немає листів у цій категорії</h2>
-                <p><a href="/mail?service=all">Показати всі нові листи</a>.</p>
-            {% else %}
-                <h2>Нових листів немає</h2>
-                <p>Пошта перевіряється автоматично кожні 2 хвилини — нові листи з’являться тут самі.</p>
-            {% endif %}
-        </div>
-    {% endif %}
+        <section class="detail-panel">
+            <div class="empty-triage">
+                <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 7 8 5 8-5"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></span>
+                <h3>Оберіть лист зі списку</h3>
+                <p>Клік по листу зліва відкриє картку тріажу: оригінальний текст, розпізнані поля й вкладення для перевірки перед прийняттям у чергу.</p>
+            </div>
+        </section>
+    </div>
 </main>
 {% endblock %}

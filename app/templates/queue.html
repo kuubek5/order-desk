@@ -4,17 +4,27 @@
 {% block title %}{{ page_title }} — Order Desk{% endblock %}
 
 {% block content %}
-<main>
-    <div class="topbar">
-        <h1>{{ page_title }}</h1>
-        <form method="get" action="/search" class="topbar-search">
-            <input type="text" name="q" placeholder="Пошук…" class="topbar-search-input">
-            <button type="submit" class="topbar-search-button" title="Пошук">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            </button>
-        </form>
-        {% set topbar_active = 'queue' %}
-        {% include "_topbar_nav.html" %}
+{% set topbar_active = 'queue' %}
+{% include "_topbar_nav.html" %}
+
+<main class="q2">
+    <div class="q2-topbar">
+        <div>
+            <h1>{{ page_title }}</h1>
+            <div class="topbar-live">
+                <span class="live"><span class="beacon" aria-hidden="true"></span>{{ orders|length }} у вигляді</span>
+                <span class="sep" aria-hidden="true"></span>
+                <span>пошта: <b>{{ sync_status.mail.label }}</b></span>
+                <span class="sep" aria-hidden="true"></span>
+                <span>таблиця: <b>{{ sync_status.sheet.label }}</b></span>
+            </div>
+        </div>
+        <div class="head-actions">
+            <form method="get" action="/search" class="search" role="search">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+                <input type="search" name="q" placeholder="Наряд, технік, шлях-ID…" aria-label="Пошук">
+            </form>
+        </div>
     </div>
 
     {% if sync_flash %}
@@ -25,141 +35,146 @@
 
     {% include "_queue_kpi_row.html" %}
     {% include "_queue_peek_row.html" %}
+    {% include "_queue_sidebar.html" %}
 
-    {% if pending_emails %}
-    <section class="pending-mail is-collapsed" aria-labelledby="pending-mail-title">
-        <header class="pending-mail-header">
-            <div class="pending-mail-heading">
-                <span class="pending-mail-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
+    <div class="worklayout">
+        <section class="queue-panel" aria-labelledby="queue-title">
+            <div class="sweep" aria-hidden="true"><i></i></div>
+            <div class="card-head">
+                <h2 id="queue-title">Черга</h2>
+                <span class="meta">
+                    {% if show_overdue %}прострочені: {{ orders|length }}{% else %}{{ orders|length }} робіт{% endif %}
                 </span>
-                <div>
-                    <div class="pending-mail-title-line">
-                        <h2 id="pending-mail-title">Нові з пошти</h2>
-                        <span class="pending-mail-count">{{ pending_mail_count }}</span>
-                    </div>
-                    <p class="pending-mail-preview">
-                        {% for email in pending_emails[:5] %}<span class="pending-mail-preview-chip">{{ email.client_name_guess or email.from_address or 'без імені' }}</span>{% endfor %}
-                        {% if pending_emails|length > 5 %}<span class="pending-mail-preview-chip pending-mail-preview-more">+{{ pending_emails|length - 5 }}</span>{% endif %}
-                    </p>
-                    <p class="pending-mail-hint">Закріплені зверху й не залежать від фільтрів черги.</p>
-                </div>
+                <div class="right"></div>
             </div>
-            <div class="pending-mail-header-actions">
-                <a class="pending-mail-review-all" href="/mail">Перевірити всі</a>
-                <button type="button" class="pending-mail-toggle" data-pending-mail-toggle aria-expanded="false" aria-controls="pending-mail-list" title="Розгорнути/згорнути список">
-                    <svg class="pending-mail-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                </button>
-            </div>
-        </header>
 
-        <div class="pending-mail-collapse">
-            <div class="pending-mail-list" id="pending-mail-list">
-                {% for email in pending_emails %}
-                    {% include "_pending_mail_row.html" %}
-                {% endfor %}
-            </div>
-        </div>
-    </section>
-    {% endif %}
-
-    <div class="queue-layout">
-        {% include "_queue_sidebar.html" %}
-
-        <div class="queue-content">
             {% if orders %}
-                <div class="queue-summary">
-                    {% if show_overdue %}
-                        Прострочені роботи: <strong>{{ orders|length }}</strong>
-                    {% else %}
-                        Всього робіт: <strong>{{ orders|length }}</strong>
-                    {% endif %}
-                </div>
-
-                {% if orders_lab %}
-                <section class="queue-group" aria-labelledby="queue-group-lab-title">
-                    <header class="queue-group-header">
-                        <div class="queue-group-heading">
-                            <h2 id="queue-group-lab-title">Лабораторні роботи</h2>
-                            <span class="queue-group-count">{{ orders_lab|length }}</span>
-                        </div>
-                        <button type="button" class="queue-group-toggle" data-queue-group-toggle aria-expanded="true" aria-controls="queue-group-lab-list" title="Розгорнути/згорнути список">
-                            <svg class="queue-group-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                        </button>
-                    </header>
-                    <div class="queue-group-collapse">
-                        <div class="queue-group-body" id="queue-group-lab-list">
-                            <div class="table-scroll">
-                            <table class="queue-table">
-                                {% include "_queue_table_head.html" %}
-                                <tbody>
-                                    {% for order in orders_lab %}
-                                        {% include "_order_row.html" %}
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-                {% endif %}
-
-                {% if orders_email %}
-                <section class="queue-group queue-group-email" aria-labelledby="queue-group-email-title">
-                    <header class="queue-group-header">
-                        <div class="queue-group-heading">
-                            <h2 id="queue-group-email-title">Роботи з пошти</h2>
-                            <span class="queue-group-count">{{ orders_email|length }}</span>
-                        </div>
-                        <button type="button" class="queue-group-toggle" data-queue-group-toggle aria-expanded="true" aria-controls="queue-group-email-list" title="Розгорнути/згорнути список">
-                            <svg class="queue-group-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                        </button>
-                    </header>
-                    <div class="queue-group-collapse">
-                        <div class="queue-group-body" id="queue-group-email-list">
-                            <div class="table-scroll">
-                            <table class="queue-table">
-                                {% include "_queue_table_head.html" %}
-                                <tbody>
-                                    {% for order in orders_email %}
-                                        {% include "_order_row.html" %}
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-                {% endif %}
+            <div class="tablewrap">
+                <table class="qtable">
+                    {% include "_queue_table_head.html" %}
+                    <tbody>
+                        {% for order in orders %}
+                            {% include "_order_row.html" %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="qfoot">
+                <span>Клік по шляху-ID копіює його для Sum3D · клік по наряду відкриває паспорт роботи</span>
+            </div>
             {% else %}
-                <div class="card queue-empty">
-                    <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
-                        <ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 11v6c0 1.7 3.1 3 7 3 1.2 0 2.4-.1 3.3-.4"/><path d="M17 16h5m-2.5-2.5L22 16l-2.5 2.5"/>
-                    </svg>
-                    {% if show_overdue %}
-                    <h2>Прострочених робіт немає</h2>
-                    <p>Усе, що мало бути готове до сьогодні, вже здане або в фінальному статусі.</p>
-                    {% elif has_any_orders %}
-                    <h2>У цьому періоді робіт немає</h2>
-                    <p>Роботи вже завантажені. Оберіть інший період або змініть фільтр готовності.</p>
-                    {% elif sheets_configured %}
-                    <h2>Черга готова до першої синхронізації</h2>
-                    <p>Завантажимо роботи з датованих вкладок Google Таблиці та розкладемо їх за періодами.</p>
-                    {% if user.role == 'адмін' %}
-                    <form method="post" action="/sheets/sync">
-                        <button type="submit" class="sync-button sync-button-primary">Завантажити роботи</button>
-                    </form>
-                    {% endif %}
-                    {% else %}
-                    <h2>Під’єднайте робочу таблицю</h2>
-                    <p>Вкажіть ID Google Таблиці та JSON-ключ сервісного акаунта. Після перевірки роботи з’являться тут автоматично.</p>
-                    {% if user.role == 'адмін' %}
-                    <a href="/settings?welcome=1" class="sync-button sync-button-primary">Перейти до налаштувань</a>
-                    {% endif %}
+            <div class="queue-empty">
+                <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 11v6c0 1.7 3.1 3 7 3 1.2 0 2.4-.1 3.3-.4"/><path d="M17 16h5m-2.5-2.5L22 16l-2.5 2.5"/>
+                </svg>
+                {% if show_overdue %}
+                <h2>Прострочених робіт немає</h2>
+                <p>Усе, що мало бути готове до сьогодні, вже здане або в фінальному статусі.</p>
+                {% elif has_any_orders %}
+                <h2>У цьому періоді робіт немає</h2>
+                <p>Роботи вже завантажені. Оберіть інший період або змініть фільтр готовності.</p>
+                {% elif sheets_configured %}
+                <h2>Черга готова до першої синхронізації</h2>
+                <p>Завантажимо роботи з датованих вкладок Google Таблиці та розкладемо їх за періодами.</p>
+                {% if user.role == 'адмін' %}
+                <form method="post" action="/sheets/sync">
+                    <button type="submit" class="btn primary">Завантажити роботи</button>
+                </form>
+                {% endif %}
+                {% else %}
+                <h2>Під’єднайте робочу таблицю</h2>
+                <p>Вкажіть ID Google Таблиці та JSON-ключ сервісного акаунта. Після перевірки роботи з’являться тут автоматично.</p>
+                {% if user.role == 'адмін' %}
+                <a href="/settings?welcome=1" class="btn primary">Перейти до налаштувань</a>
+                {% endif %}
+                {% endif %}
+            </div>
+            {% endif %}
+        </section>
+
+        <aside class="side-panel" aria-label="Довідкові панелі">
+            <section class="side-sec" data-open="true" data-sec="sync">
+                <button class="side-head" type="button" data-side-toggle aria-expanded="true">
+                    Google Таблиця
+                    <span class="side-count {% if sync_status.sheet.state == 'error' %}err{% endif %}">{{ peeks.sync }}</span>
+                    <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div class="side-body">
+                    <div class="state {% if sync_status.sheet.state == 'error' %}err{% else %}ok{% endif %}">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.6"/><path d="m8.4 12.2 2.5 2.5 4.7-5"/></svg>
+                        <span>
+                            <strong>{{ sync_status.sheet.label }}</strong>
+                            <p>Точковий запис Sum3D ID, статусів і коментарів — ручні значення в таблиці не перезаписуються.</p>
+                        </span>
+                    </div>
+                    <div class="kv"><span>Пошта</span><b>{{ sync_status.mail.label }}</b></div>
+                    <div class="kv"><span>Таблиця</span><b>{{ sync_status.sheet.label }}</b></div>
+                    {% if user.role == 'адмін' and sheets_configured %}
+                    <div class="side-actions">
+                        <form method="post" action="/sheets/sync">
+                            <button type="submit" class="btn sm primary">Синхронізувати зараз</button>
+                        </form>
+                    </div>
                     {% endif %}
                 </div>
-            {% endif %}
-        </div>
+            </section>
+
+            <section class="side-sec" data-open="{{ 'true' if pending_emails else 'false' }}" data-sec="mail">
+                <button class="side-head" type="button" data-side-toggle aria-expanded="{{ 'true' if pending_emails else 'false' }}">
+                    Пошта на тріаж
+                    <span class="side-count">{{ pending_mail_count }}</span>
+                    <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div class="side-body">
+                    {% if pending_emails %}
+                    <div class="maillist">
+                        {% for email in pending_emails[:6] %}
+                        <a class="mailrow" href="/mail/{{ email.id }}">
+                            <span class="from">{{ email.client_name_guess or email.from_address or 'без імені' }}</span>
+                            <span class="t">{% if email.received_at %}{{ email.received_at.strftime('%H:%M') }}{% else %}—{% endif %}</span>
+                            <span class="subj">{{ email.subject or 'Без теми' }}</span>
+                            <span class="att">{{ email.attachments|length }} вкл.</span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="side-empty">Нових листів на тріаж немає.</p>
+                    {% endif %}
+                    <div class="side-actions">
+                        <a class="btn sm primary" href="/mail">Відкрити тріаж</a>
+                    </div>
+                </div>
+            </section>
+
+            <section class="side-sec" data-open="false" data-sec="handout">
+                <button class="side-head" type="button" data-side-toggle aria-expanded="false">
+                    Ранкова видача
+                    <span class="side-count {% if kpis.clients_without_handout %}warn{% endif %}">{{ kpis.clients_without_handout }}</span>
+                    <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div class="side-body">
+                    <div class="kv"><span>Стан видачі</span><b>{{ peeks.handout }}</b></div>
+                    <div class="kv"><span>Статистика (тиждень)</span><b>{{ peeks.stats }}</b></div>
+                    <div class="side-actions">
+                        <a class="btn sm primary" href="/handout">Відкрити видачу</a>
+                    </div>
+                </div>
+            </section>
+        </aside>
     </div>
 </main>
+
+{# Виїзний паспорт роботи (slide-over). Клік по наряду/виду відкриває реальну
+   картку /orders/{id} у панелі (iframe) — уся логіка order_detail збережена;
+   без JS посилання просто веде на /orders/{id} (graceful fallback). #}
+<aside class="detail-pane" id="order-detail-pane" aria-hidden="true" aria-label="Паспорт роботи">
+    <div class="detail-head">
+        <span class="ord mono" id="order-detail-title">Паспорт роботи</span>
+        <button class="detail-close" type="button" id="order-detail-close" aria-label="Закрити">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+    </div>
+    <div class="detail-body"><iframe id="order-detail-frame" title="Паспорт роботи"></iframe></div>
+</aside>
+<div class="detail-backdrop" id="order-detail-backdrop"></div>
 {% endblock %}

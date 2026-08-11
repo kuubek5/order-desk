@@ -8,12 +8,11 @@
 {% endblock %}
 
 {% block content %}
-<main>
-    <div class="topbar">
-        <h1>Мій обліковий запис</h1>
-        {% set topbar_active = 'account' %}
-        {% include "_topbar_nav.html" %}
-    </div>
+{% set topbar_active = 'account' %}
+{% include "_topbar_nav.html" %}
+
+<main class="setv2">
+    <h1>Мій обліковий запис</h1>
 
     {% if saved %}
     <div class="settings-success">

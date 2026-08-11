@@ -75,3 +75,58 @@ document.addEventListener("click", (event) => {
   const collapsed = section.classList.toggle("is-collapsed");
   toggle.setAttribute("aria-expanded", String(!collapsed));
 });
+
+// v2a side-panel accordion (queue.html .side-sec). Toggles data-open on the
+// section and aria-expanded on its header. No-op on pages without side-secs.
+document.addEventListener("click", (event) => {
+  const head = event.target.closest("[data-side-toggle]");
+  if (!head) return;
+  const sec = head.closest(".side-sec");
+  if (!sec) return;
+  const open = sec.getAttribute("data-open") === "true";
+  sec.setAttribute("data-open", String(!open));
+  head.setAttribute("aria-expanded", String(!open));
+});
+
+// v2a job-passport slide-over (queue.html .detail-pane). Clicking a наряд/вид
+// link ([data-order-detail]) opens /orders/{id} inside the pane's iframe
+// instead of navigating — the real order_detail page, all logic intact.
+// Without JS the same link just navigates (graceful fallback). Esc / backdrop
+// / close button dismiss it.
+(function () {
+  const pane = document.getElementById("order-detail-pane");
+  if (!pane) return;
+  const backdrop = document.getElementById("order-detail-backdrop");
+  const frame = document.getElementById("order-detail-frame");
+  const title = document.getElementById("order-detail-title");
+  const closeBtn = document.getElementById("order-detail-close");
+
+  function open(id) {
+    frame.src = "/orders/" + encodeURIComponent(id);
+    if (title) title.textContent = "Наряд · " + id;
+    pane.classList.add("open");
+    pane.setAttribute("aria-hidden", "false");
+    if (backdrop) backdrop.classList.add("open");
+  }
+  function close() {
+    pane.classList.remove("open");
+    pane.setAttribute("aria-hidden", "true");
+    if (backdrop) backdrop.classList.remove("open");
+    // clear the iframe so its state resets next open
+    window.setTimeout(() => { if (!pane.classList.contains("open")) frame.src = "about:blank"; }, 250);
+  }
+
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("[data-order-detail]");
+    if (!link) return;
+    // let modified clicks (new tab, etc.) behave normally
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+    event.preventDefault();
+    open(link.getAttribute("data-order-detail"));
+  });
+  if (closeBtn) closeBtn.addEventListener("click", close);
+  if (backdrop) backdrop.addEventListener("click", close);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && pane.classList.contains("open")) close();
+  });
+})();

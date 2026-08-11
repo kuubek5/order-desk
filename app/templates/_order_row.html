@@ -1,30 +1,48 @@
+{# Один рядок щільної черги у стилі v2a (мокап v2a/index.html tbody).
+   Спільний партіал: використовується і в queue.html (клас таблиці `qtable`,
+   під `.q2`), і в search.html (клас `queue-table`, старі стилі). Тому — рівно
+   9 <td>, без окремої dot-колонки: статус-крапка вкладена в комірку наряду.
+   ВАЖЛИВО (регрес-гард tests/test_order_row_template.py): зберігаються токени
+   `comment-cell`, `cam-comment-text`, `folder-link` (як <a>), `data-folder-uri`,
+   `data-copy`, `data-stl-preview-token`. #}
+{% set _dot = {
+  'нове': ('#b6c6da', true),
+  'прийнято': ('#0f766e', false),
+  'прораховано': ('#14b8a6', false),
+  'у фрезеруванні': ('#2dd4bf', false),
+  'відфрезеровано': ('#5eead4', false),
+  'знайдено при видачі': ('#99f6e4', false),
+  'видано': ('#5c6b80', false),
+  'проблема': ('#f87171', false),
+  'переробка': ('#f0a35e', false)
+} %}
+{% set _dc = _dot.get(order.status, ('#8fa3bb', false)) %}
 <tr class="queue-row {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {{ material_color_css_class(order.material_color) }}" id="order-row-{{ order.id }}">
     <td class="order-id">
+        <span class="sdot" aria-hidden="true" style="{% if _dc[1] %}background:transparent;box-shadow:inset 0 0 0 1.6px {{ _dc[0] }}{% else %}background:{{ _dc[0] }}{% endif %}"></span>
         {% if order.source == 'email' %}
-        <span class="source-badge source-badge-email" title="Надійшло з пошти">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
-            Пошта
-        </span>
+        <span class="source-badge source-badge-email src" title="Надійшло з пошти">Пошта</span>
         {% endif %}
-        <a href="/orders/{{ order.id }}">{% if order.source == 'email' %}{{ order.client_name or 'Без імені клієнта' }}{% else %}{{ order.work_order_no or '—' }}{% endif %}</a>
+        <a href="/orders/{{ order.id }}" class="ordbtn" data-order-detail="{{ order.id }}">{% if order.source == 'email' %}{{ order.client_name or 'Без імені клієнта' }}{% else %}{{ order.work_order_no or '—' }}{% endif %}</a>
+        {% if order.source != 'email' and order.client_name %}<div class="rowclient">{{ order.client_name }}</div>{% endif %}
     </td>
     <td class="comment-cell">
         {% if order.cam_comment %}
-        <span class="cam-comment-text">{{ order.cam_comment }}</span>
+        <div class="cam-comment-text cam{% if '!!' in order.cam_comment %} shout{% endif %}" title="{{ order.cam_comment }}">{{ order.cam_comment }}</div>
         {% else %}
         <span class="text-muted">—</span>
         {% endif %}
     </td>
     <td class="material-cell">
         {% if order.material_color %}
-            <span class="chip {{ material_color_css_class(order.material_color) }}">{{ order.material_color }}</span>
+            <span class="matchip chip {{ material_color_css_class(order.material_color) }}">{{ order.material_color }}</span>
         {% else %}
             <span class="text-muted">—</span>
         {% endif %}
     </td>
     <td class="kind-cell">
         {% if order.kind %}
-            <span class="chip">{{ order.kind }}</span>
+            <a href="/orders/{{ order.id }}" class="kindbtn" data-order-detail="{{ order.id }}">{{ order.kind }}</a>
         {% else %}
             <span class="text-muted">—</span>
         {% endif %}
@@ -53,6 +71,11 @@
     </td>
     <td class="technician">{{ order.technician_name or '—' }}</td>
     <td class="status">
+        {% if order.status == 'проблема' %}
+        <span class="badge problem">проблема</span>
+        {% elif order.status == 'переробка' %}
+        <span class="badge redo">переробка</span>
+        {% endif %}
         <form hx-post="/orders/{{ order.id }}/status" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML" hx-trigger="change">
             <select name="status" class="status-select status-badge status-{{ order.status|replace(' ', '-')|lower }}">
                 {% for s in statuses %}

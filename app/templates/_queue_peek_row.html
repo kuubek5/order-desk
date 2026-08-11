@@ -1,29 +1,4 @@
-<section class="dash-peeks" aria-label="Стан суміжних екранів">
-    <a href="/handout" class="dash-peek" style="--kpi-i:4">
-        <span class="dash-peek-title">Ранкова видача</span>
-        <span class="dash-peek-value">{{ peeks.handout }}</span>
-    </a>
-    <a href="/stats?period=week" class="dash-peek" style="--kpi-i:5">
-        <span class="dash-peek-title">Статистика (тиждень)</span>
-        <span class="dash-peek-value">{{ peeks.stats }}</span>
-    </a>
-    <div class="dash-peek dash-peek-sync" style="--kpi-i:6">
-        <div class="dash-peek-sync-text">
-            <span class="dash-peek-title">Google Таблиця</span>
-            <span class="dash-peek-value">{{ peeks.sync }}</span>
-        </div>
-        {% if user.role == 'адмін' %}
-            {% if sheets_configured %}
-            <form method="post" action="/sheets/sync" class="dash-peek-sync-form">
-                <button type="submit" class="dash-peek-sync-btn" title="Синхронізувати Google Таблицю">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg>
-                </button>
-            </form>
-            {% else %}
-            <a href="/settings?welcome=1" class="dash-peek-sync-btn dash-peek-sync-link" title="Налаштувати Google Sheets">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-            </a>
-            {% endif %}
-        {% endif %}
-    </div>
-</section>
+{# У структурі v2a довідкові показники (видача / статистика / стан
+   синхронізації) переїхали в statusline (_queue_kpi_row.html) та праву
+   side-панель черги (queue.html .side-panel). Цей партіал лишено як точку
+   композиції — навмисно порожній, щоб не дублювати ті самі дані. #}

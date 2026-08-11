@@ -7,7 +7,10 @@
 {% endblock %}
 
 {% block content %}
-<main>
+{% set topbar_active = 'clients' %}
+{% include "_topbar_nav.html" %}
+
+<main class="worldv2">
     <div class="detail-header">
         <a href="/clients" class="detail-back">← До клієнтів</a>
         <a href="/stats" class="detail-back">Статистика</a>

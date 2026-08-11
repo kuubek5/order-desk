@@ -1443,6 +1443,7 @@ def get_order_detail(
             "order": order,
             "user": user,
             "error": error,
+            "statuses": STATUSES,
         },
     )
 

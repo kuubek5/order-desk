@@ -3,12 +3,11 @@
 {% block title %}Пошук — Order Desk{% endblock %}
 
 {% block content %}
-<main>
-    <div class="topbar">
-        <h1>Пошук робіт</h1>
-        {% set topbar_active = 'search' %}
-        {% include "_topbar_nav.html" %}
-    </div>
+{% set topbar_active = 'search' %}
+{% include "_topbar_nav.html" %}
+
+<main class="worldv2">
+    <h1>Пошук робіт</h1>
 
     <div class="search-container">
         <form method="get" action="/search" class="search-form">

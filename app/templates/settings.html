@@ -8,18 +8,11 @@
 {% endblock %}
 
 {% block content %}
-<main>
-    <div class="topbar">
-        <h1>Налаштування</h1>
-        <form method="get" action="/search" class="topbar-search">
-            <input type="text" name="q" placeholder="Пошук…" class="topbar-search-input">
-            <button type="submit" class="topbar-search-button" title="Пошук">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            </button>
-        </form>
-        {% set topbar_active = 'settings' %}
-        {% include "_topbar_nav.html" %}
-    </div>
+{% set topbar_active = 'settings' %}
+{% include "_topbar_nav.html" %}
+
+<main class="setv2">
+    <h1>Налаштування</h1>
 
     {% if welcome %}
     <section class="setup-intro" aria-labelledby="setup-intro-title">

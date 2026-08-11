@@ -1,18 +1,39 @@
-<section class="dash-kpis" aria-label="Ключові показники черги">
-    <a href="/?overdue=1" class="dash-kpi dash-kpi-overdue {% if show_overdue %}is-active{% endif %}" style="--kpi-i:0">
-        <span class="dash-kpi-value">{{ kpis.overdue }}</span>
-        <span class="dash-kpi-label">Прострочено</span>
+{# Рядок-лічильники (statusline) — заміна KPI-карток на структуру v2a
+   (мокап v2a/index.html .statusline). Кожен лічильник — реальне посилання-
+   фільтр на той самий маршрут, що й раніше; sl-sync зберігає дію
+   «Синхронізувати» (POST /sheets/sync для адміна) або веде в налаштування. #}
+<section class="statusline" aria-label="Ключові показники черги">
+    <div class="sl-counters">
+        <a href="/?overdue=1" class="sl-item is-alarm {% if show_overdue %}is-active{% endif %}">
+            <b class="tnum">{{ kpis.overdue }}</b> прострочено
+        </a>
+        <span class="sl-sep" aria-hidden="true"></span>
+        <a href="/?period=today" class="sl-item {% if not show_overdue and period == 'today' %}is-active{% endif %}">
+            <b class="tnum">{{ kpis.due_today }}</b> здати сьогодні
+        </a>
+        <span class="sl-sep" aria-hidden="true"></span>
+        <a href="/mail" class="sl-item">
+            <b class="tnum">{{ kpis.pending_mail }}</b> нових листів
+        </a>
+        <span class="sl-sep" aria-hidden="true"></span>
+        <a href="/handout" class="sl-item is-warn">
+            <b class="tnum">{{ kpis.clients_without_handout }}</b> клієнти без видачі
+        </a>
+    </div>
+
+    {% if user.role == 'адмін' and sheets_configured %}
+    <form method="post" action="/sheets/sync">
+        <button type="submit" class="sl-sync {% if sync_status.sheet.state == 'error' %}err{% endif %}" title="Синхронізувати Google Таблицю">
+            <span class="beacon" aria-hidden="true"></span>Google Таблиця: <b>{{ peeks.sync }}</b>
+        </button>
+    </form>
+    {% elif user.role == 'адмін' %}
+    <a href="/settings?welcome=1" class="sl-sync err" title="Налаштувати Google Sheets">
+        <span class="beacon" aria-hidden="true"></span>Google Таблиця: <b>не налаштовано</b>
     </a>
-    <a href="/?period=today" class="dash-kpi dash-kpi-accent {% if not show_overdue and period == 'today' %}is-active{% endif %}" style="--kpi-i:1">
-        <span class="dash-kpi-value">{{ kpis.due_today }}</span>
-        <span class="dash-kpi-label">Здати сьогодні</span>
-    </a>
-    <a href="/mail" class="dash-kpi dash-kpi-email" style="--kpi-i:2">
-        <span class="dash-kpi-value">{{ kpis.pending_mail }}</span>
-        <span class="dash-kpi-label">Нових листів</span>
-    </a>
-    <a href="/handout" class="dash-kpi" style="--kpi-i:3">
-        <span class="dash-kpi-value">{{ kpis.clients_without_handout }}</span>
-        <span class="dash-kpi-label">Клієнти без видачі</span>
-    </a>
+    {% else %}
+    <span class="sl-sync {% if sync_status.sheet.state == 'error' %}err{% endif %}">
+        <span class="beacon" aria-hidden="true"></span>Google Таблиця: <b>{{ peeks.sync }}</b>
+    </span>
+    {% endif %}
 </section>

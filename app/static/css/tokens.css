@@ -62,4 +62,44 @@
      a fully round shape it was never designed for). */
   --radius-input: 9px;
   --color-input-bg: var(--color-bg);
+
+  /* ---- v2a design canon (мокапи P:/…/v2a/*.html :root) ----
+     Ці токени переносять повний бірюзовий світ v2a у продакшн. Імена
+     збережено 1:1 з мокапами, щоб компонентний CSS у base.css можна було
+     переносити без переписування значень. Частина дублює кольори вище під
+     старими іменами (--color-*), нові короткі імена (--card, --ink…) — це те,
+     на що спираються перенесені v2a-компоненти. */
+  --bg: #0d1117;
+  --bg-rail: #0a0e14;
+  --card: #161d27;
+  --card-2: #1b2431;
+  --card-3: #202b3a;
+  --line: #222c3a;
+  --line-2: #2c3849;
+  --ink: #e8eff7;
+  --ink-2: #8fa3bb;
+  --ink-3: #7789a0;
+  --accent: #14b8a6;
+  --accent-b: #2dd4bf;
+  --accent-c: #5eead4;
+  --accent-d: #0f766e;
+  --alarm: #f87171;
+  --warn: #f0a35e;
+
+  --r-card: 10px;
+  --r-ctl: 9px;
+  --glow: inset 0 1px 0 rgba(255,255,255,.045), inset 0 0 44px -26px rgba(45,212,191,.75), 0 18px 38px -30px rgba(0,0,0,.95);
+  --sh-pop: 0 14px 34px -18px rgba(0,0,0,.86), 0 2px 6px -2px rgba(0,0,0,.6);
+
+  --font-head: 'Golos Text', sans-serif;
+  --size-h1: 22px;
+  --ls-head: -0.015em;
+  --size-body: 14px;
+  --lh-body: 1.45;
+
+  /* motion */
+  --ui-speed: .14s;
+  --sweep-duration: 980ms;
+  --beacon-duration: 2.6s;
+  --panel-duration: .22s;
 }

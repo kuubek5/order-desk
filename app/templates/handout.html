@@ -3,119 +3,131 @@
 {% block title %}Ранкова видача — Order Desk{% endblock %}
 
 {% block content %}
-<main>
-    <div class="topbar">
-        <h1>{{ page_title }}</h1>
-        <form method="get" action="/search" class="topbar-search">
-            <input type="text" name="q" placeholder="Пошук…" class="topbar-search-input">
-            <button type="submit" class="topbar-search-button" title="Пошук">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            </button>
-        </form>
-        {% set topbar_active = 'handout' %}
-        {% include "_topbar_nav.html" %}
-    </div>
+{% set topbar_active = 'handout' %}
+{% include "_topbar_nav.html" %}
 
-    <nav class="tab-nav tab-nav-source" aria-label="Джерело робіт">
-        <a href="/handout?source=all" class="tab-link {% if source == 'all' %}active{% endif %}">
-            Усі клієнти <span class="tab-badge">({{ source_counts.all }})</span>
-        </a>
-        <a href="/handout?source=email" class="tab-link tab-link-email {% if source == 'email' %}active{% endif %}">
+<main class="handoutv2">
+    <h1>{{ page_title }}</h1>
+
+    <nav class="tab-nav" aria-label="Джерело робіт">
+        <a href="/handout?source=all" class="tab-link {% if source == 'all' %}active{% endif %}">Усі клієнти <span class="tab-badge">{{ source_counts.all }}</span></a>
+        <a href="/handout?source=email" class="tab-link {% if source == 'email' %}active{% endif %}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
-            Тільки з пошти <span class="tab-badge">({{ source_counts.email }})</span>
+            Тільки з пошти <span class="tab-badge">{{ source_counts.email }}</span>
         </a>
     </nav>
 
     {% if client_groups %}
+    {% set done_groups = client_groups|selectattr('all_found')|list|length %}
+    {% set total_groups = client_groups|length %}
+    <div class="statusline">
+        <span class="sl-item is-ok"><b>{{ done_groups }}</b> зібрано</span>
+        <span class="sl-sep" aria-hidden="true"></span>
+        <span class="sl-item is-warn"><b>{{ total_groups - done_groups }}</b> в роботі</span>
+        <span class="sl-sep" aria-hidden="true"></span>
+        <span class="sl-item"><b>{{ total_groups }}</b> клієнтів</span>
+        <div class="headline-track" aria-hidden="true"><i style="width:{{ (done_groups / total_groups * 100)|round(0) if total_groups else 0 }}%"></i></div>
+    </div>
+
+    <div class="clients">
         {% for group in client_groups %}
-        <div class="card handout-group {% if group.all_found %}is-complete{% endif %}">
-            <div class="handout-group-header">
-                <h3>{{ group.client_name }}{% if group.all_found %} <span class="status-badge status-видано"><svg class="status-badge-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>зібрано</span>{% endif %}</h3>
-                {% if group.match.matched_folder_name %}
-                    <span class="text-muted">
-                        Папка: <span class="mono">{{ group.match.matched_folder_name }}</span>
-                        {% if not group.match.is_confirmed_alias %}(збіг {{ group.match.confidence|round(0) }}%){% endif %}
-                    </span>
-                {% else %}
-                    <span class="text-muted">Папку не знайдено автоматично</span>
-                {% endif %}
+        {% set found_n = group.orders|selectattr('status', 'in', ['знайдено при видачі', 'видано'])|list|length %}
+        {% set total_n = group.orders|length %}
+        <section class="ccard {% if group.all_found %}done{% endif %}">
+            <div class="card-head">
+                <h2>
+                    {% if group.all_found %}<span class="doneicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>{% endif %}
+                    {{ group.client_name }}
+                </h2>
+                <span class="meta">
+                    {% if group.match.matched_folder_name %}
+                        Папка: <span class="mono">{{ group.match.matched_folder_name }}</span>{% if not group.match.is_confirmed_alias %} · збіг {{ group.match.confidence|round(0) }}%{% endif %}
+                    {% else %}
+                        папку не знайдено автоматично
+                    {% endif %}
+                </span>
+                <div class="right">
+                    <div class="progress-wrap">
+                        <span class="progress-num"><b>{{ found_n }}</b> / {{ total_n }} знайдено</span>
+                        <div class="track"><i style="width:{{ (found_n / total_n * 100)|round(0) if total_n else 0 }}%"></i></div>
+                    </div>
+                </div>
             </div>
 
-            {% if not group.match.matched_folder_name and group.match.candidates %}
-                <form method="post" action="/handout/confirm-alias" class="handout-confirm-form">
+            <div class="cbody">
+                {% if not group.match.matched_folder_name and group.match.candidates %}
+                <form method="post" action="/handout/confirm-alias" class="ambig">
                     <input type="hidden" name="sheet_name" value="{{ group.client_name }}">
-                    <p class="text-muted">Оберіть відповідну папку:</p>
-                    {% for candidate_name, score in group.match.candidates %}
-                        <label class="handout-candidate">
+                    <div class="ahead">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+                        <span><b>Кілька папок-кандидатів</b><p>Оберіть відповідну папку — вибір запам’ятається для цього клієнта.</p></span>
+                    </div>
+                    <div class="cands">
+                        {% for candidate_name, score in group.match.candidates %}
+                        <label class="cand">
                             <input type="radio" name="export_folder_name" value="{{ candidate_name }}" required>
-                            <span class="mono">{{ candidate_name }}</span>
-                            <span class="text-muted">({{ score|round(0) }}%)</span>
+                            <span class="p">{{ candidate_name }}</span>
+                            <span class="t">{{ score|round(0) }}%</span>
                         </label>
-                    {% endfor %}
-                    <button type="submit" class="form-submit">Підтвердити</button>
+                        {% endfor %}
+                    </div>
+                    <button type="submit" class="abtn">Підтвердити</button>
                 </form>
-            {% endif %}
+                {% endif %}
 
-            <div class="table-scroll">
-            <table class="queue-table">
-                <thead>
-                    <tr>
-                        <th>Номер наряду</th>
-                        <th>Матеріал / Колір</th>
-                        <th>Статус</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
+                <div class="works">
                     {% for order in group.orders %}
-                    <tr class="queue-row">
-                        <td><a href="/orders/{{ order.id }}">{{ order.work_order_no or '—' }}</a></td>
-                        <td>{% if order.material_color %}<span class="chip">{{ order.material_color }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                        <td><span class="status-badge status-{{ order.status|replace(' ', '-')|lower }}">{{ order.status }}</span></td>
-                        <td>
-                            {% if order.status not in ("знайдено при видачі", "видано") %}
-                            <form method="post" action="/orders/{{ order.id }}/mark-found">
-                                <button type="submit" class="sum3d-save" title="Позначити знайденим">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                                </button>
-                            </form>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            </div>
-
-            {% if group.export_entries %}
-                <div class="handout-export-batches">
-                    {% for batch_key, batch_entries in group.export_entries|sort(attribute='created_at')|groupby('batch_folder_name') %}
-                        <div class="handout-export-batch">
-                            <span class="text-muted handout-batch-time">
-                                {{ batch_entries[0].created_at.strftime('%d.%m.%y %H:%M') }}
-                            </span>
-                            {% for entry in batch_entries %}
-                                <span class="chip mono">{{ entry.material_color_folder_name }} ({{ entry.files|length }} файл.)</span>
-                                {% if entry.folder_uri %}
-                                <a href="{{ entry.folder_uri }}" class="folder-link handout-folder-link" {% if entry.preview_token %}data-stl-preview-token="{{ entry.preview_token }}"{% endif %} title="Відкрити папку">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
-                                </a>
-                                {% endif %}
-                            {% endfor %}
+                    {% set is_found = order.status in ('знайдено при видачі', 'видано') %}
+                    <div class="wrow {% if is_found %}found{% endif %}">
+                        {% if not is_found %}
+                        <form method="post" action="/orders/{{ order.id }}/mark-found">
+                            <button type="submit" class="wcheck" title="Позначити знайденим">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                            </button>
+                        </form>
+                        {% else %}
+                        <span class="wcheck static" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+                        {% endif %}
+                        <div class="wmain">
+                            <div class="top">
+                                <a href="/orders/{{ order.id }}" class="ord">{{ order.work_order_no or '—' }}</a>
+                                {% if order.material_color %}<span class="matchip">{{ order.material_color }}</span>{% endif %}
+                            </div>
+                            <div class="wstatus">{{ order.status }}</div>
                         </div>
+                    </div>
                     {% endfor %}
                 </div>
-            {% endif %}
-        </div>
+
+                {% if group.export_entries %}
+                <div class="cfoot">
+                    <div class="export-batches">
+                        {% for batch_key, batch_entries in group.export_entries|sort(attribute='created_at')|groupby('batch_folder_name') %}
+                        <div class="export-batch">
+                            <span class="batch-time">{{ batch_entries[0].created_at.strftime('%d.%m.%y %H:%M') }}</span>
+                            {% for entry in batch_entries %}
+                            <span class="matchip">{{ entry.material_color_folder_name }} ({{ entry.files|length }} файл.)</span>
+                            {% if entry.folder_uri %}
+                            <a href="{{ entry.folder_uri }}" class="folder-link" {% if entry.preview_token %}data-stl-preview-token="{{ entry.preview_token }}"{% endif %} title="Відкрити папку">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+                            </a>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </section>
         {% endfor %}
+    </div>
     {% else %}
-        <div class="card queue-empty">
-            <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M20 6 9 17l-5-5"/>
-            </svg>
-            <h2>Видавати нічого</h2>
-            <p>Немає невиданих робіт з відомим клієнтом — усе, що знайдено, вже видано.</p>
-        </div>
+    <div class="queue-empty">
+        <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        <h2>Видавати нічого</h2>
+        <p>Немає невиданих робіт з відомим клієнтом — усе, що знайдено, вже видано.</p>
+    </div>
     {% endif %}
 </main>
 {% endblock %}
