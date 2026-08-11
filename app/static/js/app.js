@@ -76,6 +76,33 @@ document.addEventListener("click", (event) => {
   toggle.setAttribute("aria-expanded", String(!collapsed));
 });
 
+// v2a sync sweep (queue.html .queue-panel > .sweep). When the operator kicks
+// off a Google Sheets sync, the neon strip sweeps across the queue for as long
+// as the real POST /sheets/sync is in flight, then the page reloads so the
+// session sync_flash and refreshed queue show. Any form posting to /sheets/sync
+// (statusline sl-sync button, empty-state button) is intercepted; without JS
+// the plain form submit still works (graceful fallback, just no sweep).
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest('form[action="/sheets/sync"]');
+  if (!form) return;
+  event.preventDefault();
+
+  const panel = document.querySelector(".queue-panel");
+  const button = form.querySelector('button[type="submit"]');
+  if (button) button.disabled = true;
+  if (panel) panel.classList.add("sweeping");
+
+  // Let the strip complete at least one pass even if the server answers fast.
+  const minSweep = new Promise((resolve) => window.setTimeout(resolve, 980));
+  const request = fetch("/sheets/sync", {
+    method: "POST",
+    headers: { "X-Requested-With": "fetch" },
+    credentials: "same-origin",
+  }).catch(() => {});
+
+  Promise.all([minSweep, request]).then(() => window.location.assign("/"));
+});
+
 // v2a side-panel accordion (queue.html .side-sec). Toggles data-open on the
 // section and aria-expanded on its header. No-op on pages without side-secs.
 document.addEventListener("click", (event) => {

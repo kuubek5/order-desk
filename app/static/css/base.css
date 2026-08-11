@@ -642,6 +642,15 @@ li {
 
 .copy-button.copy-success {
   color: var(--color-success, #83c995);
+  animation: copyPop 0.32s ease;
+}
+@keyframes copyPop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .copy-button.copy-success { animation: none; }
 }
 
 .job-code-link:hover {
@@ -3159,7 +3168,7 @@ main.q2{
   transform:translateY(-160px);
 }
 .q2 .queue-panel.sweeping .sweep{opacity:1}
-.q2 .queue-panel.sweeping .sweep i{animation:q2sweep var(--sweep-duration) cubic-bezier(.16,.84,.32,1) forwards}
+.q2 .queue-panel.sweeping .sweep i{animation:q2sweep var(--sweep-duration) cubic-bezier(.16,.84,.32,1) infinite}
 @keyframes q2sweep{from{transform:translateY(-160px)}to{transform:translateY(105%)}}
 
 .q2 .side-panel{flex:0 0 296px;width:296px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;display:flex;flex-direction:column;gap:10px}
