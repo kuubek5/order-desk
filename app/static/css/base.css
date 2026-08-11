@@ -443,34 +443,17 @@ li {
   color: var(--color-accent);
 }
 
-/* Speech-bubble hint that Order.cam_comment (Google Sheet column K, the
-   CAM-operator's own instructions — e.g. "покрити опаком") is set on this
-   row. Plain native `title` tooltip, matching the majority of this table's
-   existing icon tooltips (job-code-found-dot, folder-link, sync-warning) —
-   a full JS hover popup (see stl-preview.js) is the wrong weight for short
-   free-text instructions. */
-.cam-comment-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: var(--space-2);
-  color: var(--color-text-muted);
-  cursor: help;
-  vertical-align: middle;
-}
-
-.cam-comment-icon svg {
-  width: 0.95rem;
-  height: 0.95rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.cam-comment-icon:hover {
+/* Order.cam_comment (Google Sheet column K, the CAM-operator's own
+   instructions — e.g. "покрити опаком") shown as always-visible text under
+   the наряд number, matching how it reads directly in the sheet's own
+   column rather than being hidden behind a hover. */
+.cam-comment-text {
+  margin-top: var(--space-1);
+  font-size: 0.85rem;
+  font-weight: 600;
   color: var(--color-accent);
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .queue-table td.material-cell,

@@ -8,9 +8,7 @@
         {% endif %}
         <a href="/orders/{{ order.id }}">{% if order.source == 'email' %}{{ order.client_name or 'Без імені клієнта' }}{% else %}{{ order.work_order_no or '—' }}{% endif %}</a>
         {% if order.cam_comment %}
-        <span class="cam-comment-icon" title="{{ order.cam_comment }}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        </span>
+        <div class="cam-comment-text">{{ order.cam_comment }}</div>
         {% endif %}
     </td>
     <td class="material-cell">
