@@ -13,3 +13,7 @@ dist-installer/
 *.db-shm
 *.db-wal
 .coverage
+
+# License signing key (scripts/license_keygen.py) — never in git, ever.
+license_private_key.pem
+*_private_key.pem

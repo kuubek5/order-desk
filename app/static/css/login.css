@@ -117,6 +117,23 @@
   display: none;
 }
 
+.login-hint {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  margin-top: var(--space-2);
+}
+
+.license-machine-id {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  padding: var(--space-3) var(--space-4);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
 .login-error {
   color: #e8a8a8;
   font-size: 0.85rem;

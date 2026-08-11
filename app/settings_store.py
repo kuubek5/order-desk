@@ -61,6 +61,12 @@ SETTING_FIELDS = [
         help_text="Куди лабораторія скидає файли на сервер",
         operator_editable=True,
     ),
+    SettingField(
+        key="license_key",
+        label="Ліцензійний ключ",
+        secret=True,
+        help_text="Видає власник продукту для цього комп'ютера",
+    ),
 ]
 
 OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operator_editable}
@@ -117,3 +123,7 @@ def get_imap_login(session: Session) -> Optional[str]:
 
 def get_imap_password(session: Session) -> Optional[str]:
     return get_setting(session, "imap_password")
+
+
+def get_license_key(session: Session) -> Optional[str]:
+    return get_setting(session, "license_key")

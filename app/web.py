@@ -31,6 +31,7 @@ from app.client_profile import find_matching_orders, summarize_client_orders
 from app.config import MAIL_ATTACHMENTS_PATH, SESSION_SECRET_KEY
 from app.db import Base, SessionLocal, engine
 from app.export_scanner import scan_export_folder
+from app.license import get_license_status, get_machine_id, verify_license_key
 from app.mail_export import save_attachments_to_export
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
 from app.mail_sync_service import MailSyncBusyError, MailSyncError, sync_mail_background, sync_mailbox
@@ -684,6 +685,38 @@ async def log_slow_requests(request: Request, call_next):
                 duration,
             )
 
+
+# Paths that must work with zero license, zero session, zero DB assumptions:
+# /health is polled by the release-workflow smoke test (.github/workflows/release.yml)
+# before any activation happens, and /static serves the CSS/JS the /license
+# screen itself needs to render.
+_LICENSE_EXEMPT_PATH_PREFIXES = ("/static/",)
+_LICENSE_EXEMPT_PATHS = ("/health", "/license")
+
+
+@app.middleware("http")
+async def license_gate(request: Request, call_next):
+    """Block the entire application — even /setup and /login — without a valid license.
+
+    Runs outermost (defined after, so registered last / wraps everything else,
+    see Starlette's LIFO middleware stack) and reads its own DB session rather
+    than depending on get_db, since dependency injection isn't available here.
+    """
+    path = request.url.path
+    if path in _LICENSE_EXEMPT_PATHS or path.startswith(_LICENSE_EXEMPT_PATH_PREFIXES):
+        return await call_next(request)
+
+    db = SessionLocal()
+    try:
+        status = get_license_status(db)
+    finally:
+        db.close()
+
+    if not status.valid:
+        return RedirectResponse("/license", status_code=303)
+    return await call_next(request)
+
+
 _static_root = resource_path("app/static")
 
 
@@ -803,6 +836,40 @@ def _write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | No
             )
         )
         return error
+
+
+@app.get("/license", response_class=HTMLResponse)
+def license_form(request: Request, db: Session = Depends(get_db)):
+    status = get_license_status(db)
+    return templates.TemplateResponse(
+        request, "license.html", {"status": status, "machine_id": get_machine_id()}
+    )
+
+
+@app.post("/license", response_class=HTMLResponse)
+async def license_submit(
+    request: Request, license_key: str = Form(""), db: Session = Depends(get_db)
+):
+    machine_id = get_machine_id()
+    status = verify_license_key(license_key, machine_id)
+    if not status.valid:
+        return templates.TemplateResponse(
+            request,
+            "license.html",
+            {
+                "status": status,
+                "machine_id": machine_id,
+                "error": status.reason,
+                "license_key_input": license_key.strip(),
+            },
+            status_code=400,
+        )
+
+    set_setting(db, "license_key", license_key.strip())
+    db.commit()
+
+    destination = "/setup" if _user_count(db) == 0 else "/"
+    return RedirectResponse(destination, status_code=303)
 
 
 @app.get("/login", response_class=HTMLResponse)

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Активація ліцензії — Order Desk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="login-page">
+    <div class="card login-card setup-card">
+        <h1>Активація Order Desk</h1>
+
+        {% if status and status.valid %}
+        <p class="login-subtitle">
+            Активовано{% if status.customer %} для «{{ status.customer }}»{% endif %}{% if status.expires_at %}, дійсна до {{ status.expires_at.strftime('%d.%m.%Y') }}{% endif %}.
+        </p>
+        <p class="login-subtitle"><a href="/">Продовжити →</a></p>
+        {% else %}
+        <p class="login-subtitle">Введіть ліцензійний ключ, виданий власником Order Desk для цього комп'ютера.</p>
+        {% endif %}
+
+        {% if error %}
+        <p class="login-error">{{ error }}</p>
+        {% endif %}
+
+        <div class="login-field">
+            <label>Ідентифікатор цього комп'ютера (machine ID)</label>
+            <div class="login-input-wrap">
+                <button type="button" class="mono copy-button license-machine-id" data-copy="{{ machine_id }}"
+                        title="Клік — скопіювати machine ID для надсилання власнику продукту">{{ machine_id }}</button>
+            </div>
+            <p class="login-hint">Надішліть цей ID власнику Order Desk, щоб отримати ліцензійний ключ.</p>
+        </div>
+
+        <form method="post" action="/license">
+            <div class="login-field">
+                <label for="license_key">Ліцензійний ключ</label>
+                <div class="login-glow">
+                    <div class="login-input-wrap">
+                        <input type="text" id="license_key" name="license_key" class="login-input mono"
+                               value="{{ license_key_input|default('') }}"
+                               placeholder="вставте ключ, виданий власником"
+                               autocomplete="off" required autofocus>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="login-submit">Активувати</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
