@@ -1,7 +1,19 @@
 {# Горизонтальні seg-фільтри у стилі v2a (мокап v2a/index.html .filters).
    Раніше — вертикальний сайдбар; тепер один ряд пігулок. Кожне посилання
    зберігає ту саму серверну фільтрацію через GET-параметри (period/ready/
-   source/date), що й попередній сайдбар — жоден маршрут не змінено. #}
+   source/date), що й попередній сайдбар — жоден маршрут не змінено.
+
+   ctx_qs — активний "первинний" режим вибірки (date АБО overdue АБО period).
+   Джерело/готовність — незалежні фільтри поверх нього, тож їхні посилання
+   мусять НЕСТИ цей режим, інакше зміна джерела/готовності скидала б обраний
+   день чи "прострочені" назад на дефолтний період (репортований баг). #}
+{%- if selected_date -%}
+  {%- set ctx_qs = 'date=' ~ selected_date.strftime('%d.%m.%y') ~ '&date_page=' ~ date_page -%}
+{%- elif show_overdue -%}
+  {%- set ctx_qs = 'overdue=1' -%}
+{%- else -%}
+  {%- set ctx_qs = 'period=' ~ period -%}
+{%- endif -%}
 <div class="filters" role="group" aria-label="Фільтри черги">
     <span class="flabel">Період</span>
     <div class="seg">
@@ -13,16 +25,16 @@
 
     <span class="flabel">Джерело</span>
     <div class="seg">
-        <a href="/?period={{ period }}&ready={{ ready }}&source=all" class="{% if source == 'all' %}is-active{% endif %}">Усі <span class="n">{{ source_counts.all }}</span></a>
-        <a href="/?period={{ period }}&ready={{ ready }}&source=lab" class="{% if source == 'lab' %}is-active{% endif %}">Таблиця <span class="n">{{ source_counts.lab }}</span></a>
-        <a href="/?period={{ period }}&ready={{ ready }}&source=email" class="{% if source == 'email' %}is-active{% endif %}">Пошта <span class="n">{{ source_counts.email }}</span></a>
+        <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=all" class="{% if source == 'all' %}is-active{% endif %}">Усі <span class="n">{{ source_counts.all }}</span></a>
+        <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=lab" class="{% if source == 'lab' %}is-active{% endif %}">Таблиця <span class="n">{{ source_counts.lab }}</span></a>
+        <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=email" class="{% if source == 'email' %}is-active{% endif %}">Пошта <span class="n">{{ source_counts.email }}</span></a>
     </div>
 
     <span class="flabel">Готовність</span>
     <div class="seg">
-        <a href="/?period={{ period }}&ready=all&source={{ source }}" class="{% if ready == 'all' %}is-active{% endif %}">Усі <span class="n">{{ ready_counts.all }}</span></a>
-        <a href="/?period={{ period }}&ready=ready&source={{ source }}" class="{% if ready == 'ready' %}is-active{% endif %}">Готово <span class="n">{{ ready_counts.ready }}</span></a>
-        <a href="/?period={{ period }}&ready=not_ready&source={{ source }}" class="{% if ready == 'not_ready' %}is-active{% endif %}">Не готово <span class="n">{{ ready_counts.not_ready }}</span></a>
+        <a href="/?{{ ctx_qs }}&source={{ source }}&ready=all" class="{% if ready == 'all' %}is-active{% endif %}">Усі <span class="n">{{ ready_counts.all }}</span></a>
+        <a href="/?{{ ctx_qs }}&source={{ source }}&ready=ready" class="{% if ready == 'ready' %}is-active{% endif %}">Готово <span class="n">{{ ready_counts.ready }}</span></a>
+        <a href="/?{{ ctx_qs }}&source={{ source }}&ready=not_ready" class="{% if ready == 'not_ready' %}is-active{% endif %}">Не готово <span class="n">{{ ready_counts.not_ready }}</span></a>
     </div>
 
     <a href="/?overdue=1" class="pill alarm {% if show_overdue %}is-active{% endif %}"><span class="dot" aria-hidden="true"></span>Тільки прострочені</a>
