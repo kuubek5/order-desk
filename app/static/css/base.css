@@ -444,11 +444,14 @@ li {
 }
 
 /* Order.cam_comment (Google Sheet column K, the CAM-operator's own
-   instructions — e.g. "покрити опаком") shown as always-visible text under
-   the наряд number, matching how it reads directly in the sheet's own
+   instructions — e.g. "покрити опаком") shown as always-visible text in its
+   own queue column, matching how it reads directly in the sheet's own
    column rather than being hidden behind a hover. */
+.comment-cell {
+  max-width: 220px;
+}
+
 .cam-comment-text {
-  margin-top: var(--space-1);
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--color-accent);

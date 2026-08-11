@@ -7,8 +7,12 @@
         </span>
         {% endif %}
         <a href="/orders/{{ order.id }}">{% if order.source == 'email' %}{{ order.client_name or 'Без імені клієнта' }}{% else %}{{ order.work_order_no or '—' }}{% endif %}</a>
+    </td>
+    <td class="comment-cell">
         {% if order.cam_comment %}
-        <div class="cam-comment-text">{{ order.cam_comment }}</div>
+        <span class="cam-comment-text">{{ order.cam_comment }}</span>
+        {% else %}
+        <span class="text-muted">—</span>
         {% endif %}
     </td>
     <td class="material-cell">

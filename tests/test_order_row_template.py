@@ -45,17 +45,19 @@ def _render(order, **extra):
     return _TEMPLATE.render(order=order, statuses=["нове", "видано"], sync_error=None, **extra)
 
 
-def test_cam_comment_shown_as_visible_text_when_set():
+def test_cam_comment_shown_as_visible_text_in_own_column_when_set():
     html = _render(_order(cam_comment="покрити опаком, я сам закрию"))
 
+    assert '<td class="comment-cell">' in html
     assert "cam-comment-text" in html
     assert "покрити опаком, я сам закрию" in html
 
 
-def test_cam_comment_text_absent_when_no_comment():
+def test_cam_comment_column_shows_dash_when_no_comment():
     html = _render(_order(cam_comment=None))
 
     assert "cam-comment-text" not in html
+    assert '<td class="comment-cell">' in html
 
 
 def test_export_folder_icon_is_a_clickable_anchor_not_a_span():
