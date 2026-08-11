@@ -17,3 +17,6 @@ dist-installer/
 # License signing key (scripts/license_keygen.py) — never in git, ever.
 license_private_key.pem
 *_private_key.pem
+
+# Видані ключі активації клієнтів (журнал власника, не для git)
+keys/
