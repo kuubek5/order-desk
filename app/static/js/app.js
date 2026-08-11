@@ -99,8 +99,14 @@ document.addEventListener("submit", (event) => {
     headers: { "X-Requested-With": "fetch" },
     credentials: "same-origin",
   }).catch(() => {});
+  // Guard against a sync that stalls (e.g. a slow/unreachable Google API): the
+  // strip does a single pass (CSS forwards) and reload happens within the cap
+  // no matter what, so the sweep never becomes a permanent glow.
+  const cap = new Promise((resolve) => window.setTimeout(resolve, 15000));
 
-  Promise.all([minSweep, request]).then(() => window.location.assign("/"));
+  Promise.all([minSweep, Promise.race([request, cap])]).then(() =>
+    window.location.assign("/")
+  );
 });
 
 // v2a side-panel accordion (queue.html .side-sec). Toggles data-open on the
