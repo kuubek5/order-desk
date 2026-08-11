@@ -3441,10 +3441,28 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .empty-triage h3{font-family:var(--font-head);font-size:15.5px;font-weight:600;margin:2px 0 0}
 .mailv2 .empty-triage p{margin:0;font-size:12.5px;color:var(--ink-3);max-width:36ch;line-height:1.5}
 .mailv2 .empty-triage a{color:var(--accent-c)}
+
+/* --- inline STL gallery (app/static/js/stl-gallery.js) --- */
+.mailv2 .stl-gallery{display:flex;gap:12px;align-items:stretch}
+.mailv2 .stl-gallery-stage{position:relative;flex:1;min-width:0;height:360px;border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);background:radial-gradient(120% 120% at 50% 0,#131c28,#0e141d 70%);overflow:hidden}
+.mailv2 .stl-gallery-canvas{display:block;width:100%;height:100%}
+.mailv2 .stl-gallery-status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;font-size:12.5px;color:var(--ink-3)}
+.mailv2 .stl-gallery-files{flex:0 0 200px;width:200px;min-width:0;display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:360px;scrollbar-width:thin}
+.mailv2 .stl-gallery-file{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:9px 10px;border-radius:8px;background:#111823;border:1px solid var(--line);color:var(--ink-2);cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease}
+.mailv2 .stl-gallery-file:hover{background:var(--card-2);border-color:#3a4a5f;color:var(--ink)}
+.mailv2 .stl-gallery-file svg{width:15px;height:15px;flex:0 0 15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.75}
+.mailv2 .stl-gallery-file .name{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.mailv2 .stl-gallery-file.is-active{background:rgba(20,184,166,.12);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.mailv2 .stl-gallery-file.is-active svg{opacity:1}
+
 @media (max-width:940px){
   .mailv2 .worklayout{flex-direction:column}
   .mailv2 .list-panel{flex:0 0 auto;width:100%;max-height:52vh}
   .mailv2 .fieldgrid{grid-template-columns:1fr}
+  .mailv2 .stl-gallery{flex-direction:column}
+  .mailv2 .stl-gallery-files{flex:0 0 auto;width:100%;max-height:none;flex-direction:row;flex-wrap:wrap}
+  .mailv2 .stl-gallery-file{width:auto;flex:1 1 160px}
+  .mailv2 .stl-gallery-stage{height:300px}
 }
 
 

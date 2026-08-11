@@ -56,7 +56,7 @@
                 </form>
             </div>
 
-            <div class="dsec" {% if email.stl_preview_token %}data-stl-preview-token="{{ email.stl_preview_token }}"{% endif %}>
+            <div class="dsec">
                 <div class="dlabel">
                     Вкладення ·
                     {% if email.attachments_status == 'pending' %}
@@ -83,6 +83,19 @@
                 <p class="settings-hint">Вкладення ще завантажуються з пошти…</p>
                 {% endif %}
             </div>
+
+            {% if email.stl_preview_token %}
+            <div class="dsec stl-gallery-sec">
+                <div class="dlabel">Перегляд STL</div>
+                <div class="stl-gallery" data-stl-gallery-token="{{ email.stl_preview_token }}">
+                    <div class="stl-gallery-stage">
+                        <canvas class="stl-gallery-canvas"></canvas>
+                        <div class="stl-gallery-status">Завантаження прев'ю…</div>
+                    </div>
+                    <div class="stl-gallery-files" role="list" aria-label="STL-файли вкладення"></div>
+                </div>
+            </div>
+            {% endif %}
         </div>
 
         <div class="detail-foot">
