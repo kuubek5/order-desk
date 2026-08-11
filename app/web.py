@@ -695,6 +695,24 @@ _LICENSE_EXEMPT_PATHS = ("/health", "/license")
 
 
 @app.middleware("http")
+async def no_store_html(request: Request, call_next):
+    """Stop the browser caching dynamic HTML pages.
+
+    Static assets already cache-bust via static_ver()'s ?v=<mtime>, but the
+    TemplateResponse HTML itself carried no cache header, so after an app
+    upgrade a browser could keep serving a stale page (e.g. mail triage with
+    the old floating STL popup) until a hard refresh. HTML is per-session and
+    changes constantly (queue, mail) — it must never be cached; static files
+    (their own content-type, not text/html) are untouched and stay cacheable.
+    """
+    response = await call_next(request)
+    content_type = response.headers.get("content-type", "")
+    if content_type.startswith("text/html"):
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+    return response
+
+
+@app.middleware("http")
 async def license_gate(request: Request, call_next):
     """Block the entire application — even /setup and /login — without a valid license.
 
