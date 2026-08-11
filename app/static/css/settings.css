@@ -20,9 +20,9 @@
   gap: var(--space-5);
   margin-bottom: var(--space-5);
   padding: var(--space-5);
-  border: 1px solid rgba(232, 180, 168, 0.3);
+  border: 1px solid rgba(20, 184, 166, 0.3);
   border-radius: var(--radius-card);
-  background: rgba(232, 180, 168, 0.06);
+  background: rgba(20, 184, 166, 0.06);
 }
 
 .setup-intro h2 {
@@ -77,7 +77,7 @@
   min-height: 2.75rem;
   padding: var(--space-2) var(--space-4);
   border: 1px solid var(--color-card-border);
-  border-radius: var(--radius-chip);
+  border-radius: var(--radius-input);
   background: transparent;
   color: var(--color-text-muted);
   font: inherit;
@@ -209,9 +209,9 @@
    were missing the border, so they sat flatter than every other badge in
    the app despite sharing the same .status-badge shape. */
 .user-badge-active {
-  background-color: rgba(232, 180, 168, 0.15);
+  background-color: rgba(20, 184, 166, 0.15);
   color: var(--color-accent);
-  border: 1px solid rgba(232, 180, 168, 0.3);
+  border: 1px solid rgba(20, 184, 166, 0.3);
 }
 
 .user-badge-inactive {
@@ -351,6 +351,50 @@
 
 .settings-check-button {
   min-height: 2.5rem;
+}
+
+/* Backup section (CLAUDE.md section 14 — restore for a PC move) */
+.settings-backup-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 32rem;
+}
+
+.settings-backup-divider {
+  height: 1px;
+  margin: var(--space-5) 0;
+  background: var(--color-card-border);
+}
+
+.settings-backup-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.settings-backup-confirm input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--color-overdue);
+  cursor: pointer;
+}
+
+/* Same button, marked as the destructive branch — border/text pick up the
+   overdue hue instead of the neutral one, no new shape or size. */
+.settings-backup-danger {
+  align-self: flex-start;
+  border-color: var(--color-overdue-border);
+  color: var(--color-overdue);
+}
+
+.settings-backup-danger:hover,
+.settings-backup-danger:focus-visible {
+  border-color: var(--color-overdue);
+  color: var(--color-overdue);
 }
 
 @media (prefers-reduced-motion: reduce) {

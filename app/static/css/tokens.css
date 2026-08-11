@@ -1,35 +1,50 @@
 /* Design Tokens — Order Desk */
-/* Color, typography, and spacing system for consistent UI theming */
+/* Color, typography, and spacing system for consistent UI theming.
+
+   Repointed to the "бірюзовий телеметричний пульт" world (chosen after
+   five parallel design directions were explored and reviewed) — same
+   token NAMES base.css and every template already depend on, new VALUES.
+   Two gaps fixed while at it: --color-success and --color-warning were
+   referenced (queue KPI row, status badges) but never defined here, so
+   they silently fell back to inherited/initial; --radius-input existed
+   only as an alias of --radius-chip (pill), giving every input a fully
+   rounded shape it was never designed for. */
 
 :root {
   /* Background & Surface */
-  --color-bg: #0a0a0d;
-  --color-bg-grid-line: rgba(230, 230, 240, 0.04);
-  --color-card-bg: #12121a;
-  --color-card-border: rgba(230, 230, 240, 0.1);
+  --color-bg: #0d1117;
+  --color-bg-grid-line: rgba(45, 212, 191, 0.05);
+  --color-card-bg: #161d27;
+  --color-card-border: #222c3a;
 
   /* Text */
-  --color-text: #e6e6f0;
-  --color-text-muted: #a8a8b8;
+  --color-text: #e8eff7;
+  --color-text-muted: #8fa3bb;
 
   /* Accent */
-  --color-accent: #e8b4a8;
-  --color-email: #86d4ce;
-  --color-email-surface: rgba(134, 212, 206, 0.08);
-  --color-email-border: rgba(134, 212, 206, 0.38);
+  --color-accent: #14b8a6;
 
-  /* Прострочені роботи — already used as raw rgba(232, 90, 90, …) in several
-     places in base.css (queue-row-overdue, status-badge-проблема, sync
-     error); tokenized here so newer components (dashboard KPI/peek cards,
-     sidebar) reference the same source of truth instead of a new hex. */
-  --color-overdue: #e85a5a;
-  --color-overdue-surface: rgba(232, 90, 90, 0.08);
-  --color-overdue-border: rgba(232, 90, 90, 0.4);
+  /* Roboti з пошти — окремий відтінок від акценту (обидва тепер бірюзові
+     було б нерозрізнювано), той самий синій з напрямку "темна воронка". */
+  --color-email: #3b82f6;
+  --color-email-surface: rgba(59, 130, 246, 0.08);
+  --color-email-border: rgba(59, 130, 246, 0.38);
 
-  /* Typography */
-  --font-display: "Poppins", "Nunito", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", Monaco, "Cascadia Code", ui-monospace, monospace;
+  /* Прострочені роботи */
+  --color-overdue: #f87171;
+  --color-overdue-surface: rgba(248, 113, 113, 0.08);
+  --color-overdue-border: rgba(248, 113, 113, 0.4);
+
+  /* Success / warning — раніше використовувались (KPI-рядок, статус-беджі),
+     але не мали визначення тут; додано. */
+  --color-success: #5eead4;
+  --color-warning: #f0a35e;
+
+  /* Typography — self-hosted, app/static/css/fonts.css (офлайн-безпечно,
+     жодного запиту до Google Fonts під час роботи в цеху). */
+  --font-display: 'Golos Text', sans-serif;
+  --font-body: 'Golos Text', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 
   /* Sizing & Spacing */
   --space-1: 0.25rem;   /* 4px */
@@ -40,14 +55,11 @@
   --space-6: 2rem;      /* 32px */
 
   /* Border Radius */
-  --radius-card: 16px;
-  --radius-chip: 24px;
-  /* Shared by every pill-shaped text input (topbar search, full search page,
-     login, form fields) — same shape/fill language as --radius-chip and
-     --color-bg used directly elsewhere, named for the input use case. Was
-     referenced in base.css without ever being defined here, so the topbar
-     and search-page inputs silently rendered with square corners and a
-     transparent fill instead of matching every other input on the site. */
-  --radius-input: var(--radius-chip);
+  --radius-card: 10px;
+  --radius-chip: 999px;
+  /* Inputs are gently rounded controls, not pills — decoupled from
+     --radius-chip (was aliased to it, so every input silently inherited
+     a fully round shape it was never designed for). */
+  --radius-input: 9px;
   --color-input-bg: var(--color-bg);
 }

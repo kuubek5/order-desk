@@ -3,7 +3,7 @@
 {% block title %}{{ client.canonical_name }} — Order Desk{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="/static/css/settings.css">
+<link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
 {% endblock %}
 
 {% block content %}

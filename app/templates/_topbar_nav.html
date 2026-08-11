@@ -1,29 +1,58 @@
-{# Shared top-bar navigation links, included with `topbar_active` set to the
+{# Shared left-rail navigation, included with `topbar_active` set to the
    current page's key so its own entry is skipped instead of linking to
    itself. Kept as a single partial so every screen's link set, order, and
    labels stay identical — before this, seven templates hand-duplicated this
    block and had already drifted (missing links, "Робочі замовлення" vs
    "← До черги", no route to /search from anywhere but the queue's inline
-   search box). #}
+   search box).
+
+   Visually a fixed left rail (see .topbar-user in base.css) instead of the
+   old horizontal bar — but every Jinja condition below is unchanged from
+   before the re-skin: same routes, same self-skip-when-active behavior,
+   same admin-only Налаштування gate, same pending_mail_count badge. #}
 <div class="topbar-user">
-    {% if topbar_active != 'queue' %}<a href="/">← До черги</a>{% endif %}
-    {% if topbar_active != 'mail' %}
-    <a href="/mail" class="mail-nav-link">
-        Нові з пошти
-        {% if pending_mail_count %}<span class="mail-nav-count">{{ pending_mail_count }}</span>{% endif %}
+    <a href="/" class="rail-brand">
+        <img src="/static/img/app-icon.png" alt="" class="rail-brand-mark">
+        <span class="rail-brand-text"><b>Order Desk</b><span>фрезерний центр</span></span>
     </a>
+
+    <nav class="rail-nav-group" aria-label="Основна навігація">
+        {% if topbar_active != 'queue' %}<a href="/">Черга</a>{% endif %}
+        {% if topbar_active != 'mail' %}
+        <a href="/mail" class="mail-nav-link">
+            Нові з пошти
+            {% if pending_mail_count %}<span class="mail-nav-count">{{ pending_mail_count }}</span>{% endif %}
+        </a>
+        {% endif %}
+        {% if topbar_active != 'handout' %}<a href="/handout">Ранкова видача</a>{% endif %}
+        {% if topbar_active != 'clients' %}<a href="/clients">Клієнти</a>{% endif %}
+    </nav>
+
+    <nav class="rail-nav-group" aria-label="Система">
+        {% if topbar_active != 'search' %}<a href="/search">Пошук</a>{% endif %}
+        {% if topbar_active != 'stats' %}<a href="/stats">Статистика</a>{% endif %}
+        {% if topbar_active != 'settings' %}<a href="/settings">Налаштування</a>{% endif %}
+    </nav>
+
+    {% set update = get_known_update() %}
+    {% if user.role == 'адмін' and update %}
+    <div class="rail-update-notice">
+        <p>Доступне оновлення <strong>v{{ update.version }}</strong></p>
+        <form method="post" action="/settings/update/install">
+            <button type="submit" class="rail-update-install-button">Встановити</button>
+        </form>
+        <a href="{{ update.html_url }}" target="_blank" rel="noopener">Деталі релізу</a>
+    </div>
     {% endif %}
-    {% if topbar_active != 'handout' %}<a href="/handout">Ранкова видача</a>{% endif %}
-    {% if topbar_active != 'clients' %}<a href="/clients">Клієнти</a>{% endif %}
-    {% if topbar_active != 'search' %}<a href="/search">Пошук</a>{% endif %}
-    {% if topbar_active != 'stats' %}<a href="/stats">Статистика</a>{% endif %}
-    {% if user.role == 'адмін' and topbar_active != 'settings' %}<a href="/settings">Налаштування</a>{% endif %}
-    {% if topbar_active != 'account' %}
-    <a href="/account" class="text-muted">{{ user.full_name or user.username }}</a>
-    {% else %}
-    <span class="text-muted">{{ user.full_name or user.username }}</span>
-    {% endif %}
-    <form method="post" action="/logout">
-        <button type="submit" class="link-button">Вийти</button>
-    </form>
+
+    <div class="rail-foot">
+        {% if topbar_active != 'account' %}
+        <a href="/account" class="text-muted">{{ user.full_name or user.username }}</a>
+        {% else %}
+        <span class="text-muted">{{ user.full_name or user.username }}</span>
+        {% endif %}
+        <form method="post" action="/logout">
+            <button type="submit" class="link-button">Вийти</button>
+        </form>
+    </div>
 </div>

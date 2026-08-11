@@ -13,7 +13,7 @@ import uuid
 from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Query
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -25,6 +25,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 
 from app.auth import hash_password, verify_password
+from app.backup import BackupFormatError, BackupPasswordError, create_backup, restore_backup
 from app.client_matcher import match_client_name
 from app.client_profile import find_matching_orders, summarize_client_orders
 from app.config import MAIL_ATTACHMENTS_PATH, SESSION_SECRET_KEY
@@ -59,6 +60,7 @@ from app.queue_filters import (
 )
 from app.runtime import resource_path
 from app.settings_store import (
+    OPERATOR_EDITABLE_KEYS,
     SETTING_FIELDS,
     get_all_settings,
     get_export_folder_path,
@@ -85,6 +87,12 @@ from app.sheets import get_worksheet_by_name, open_spreadsheet
 from app.statuses import STATUSES, is_overdue
 from app.stats import average_new_to_milled_hours, parse_int_safe, summarize_rework_by_blame
 from app.stl_preview import build_preview_token, list_stl_files, resolve_preview_folder, resolve_stl_file
+from app.update_check import (
+    _update_check_worker,
+    download_and_verify,
+    get_known_update,
+    launch_silent_install,
+)
 
 try:
     BUSINESS_TIMEZONE = ZoneInfo("Europe/Kyiv")
@@ -631,6 +639,14 @@ async def lifespan(_: FastAPI):
         daemon=True,
     )
     sheet_thread.start()
+    update_check_stop_event = Event()
+    update_check_thread = Thread(
+        target=_update_check_worker,
+        args=(update_check_stop_event,),
+        name="order-desk-update-check",
+        daemon=True,
+    )
+    update_check_thread.start()
     try:
         yield
     finally:
@@ -638,6 +654,8 @@ async def lifespan(_: FastAPI):
         mail_thread.join(timeout=1)
         sheet_stop_event.set()
         sheet_thread.join(timeout=1)
+        update_check_stop_event.set()
+        update_check_thread.join(timeout=1)
 
 
 app = FastAPI(title="Order Desk", lifespan=lifespan)
@@ -666,9 +684,33 @@ async def log_slow_requests(request: Request, call_next):
                 duration,
             )
 
+_static_root = resource_path("app/static")
+
+
+def static_ver(relative: str) -> int:
+    """mtime of a static file, appended as a `?v=` query string in templates.
+
+    FastAPI's StaticFiles sends no Cache-Control/Expires header, so a
+    browser's own heuristic caching can keep serving a stale CSS/JS file
+    after a deploy until the user hard-refreshes. Baking the file's own
+    mtime into the URL forces a new URL — and a real fetch — every time the
+    file's content actually changes, with zero coordination needed.
+    """
+    try:
+        return int((_static_root / relative).stat().st_mtime)
+    except OSError:
+        return 0
+
+
 templates = Jinja2Templates(directory=str(resource_path("app/templates")))
 templates.env.globals["is_overdue"] = is_overdue
 templates.env.globals["material_color_css_class"] = material_color_css_class
+templates.env.globals["static_ver"] = static_ver
+# Available in every template without every route threading it through its
+# own context dict — same rationale as static_ver above. Reads the
+# in-memory "last known result" (see app/update_check.py::get_known_update),
+# never touches the network from a request-handling thread.
+templates.env.globals["get_known_update"] = get_known_update
 
 app.mount("/static", StaticFiles(directory=str(resource_path("app/static"))), name="static")
 
@@ -1677,11 +1719,13 @@ def get_settings(
     user = get_current_user(request, db)
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-
+    # Full page is reachable by any operator now — only the Шляхи папок card
+    # (below, gated per-field via operator_editable) and the two path
+    # HTMX checks are actually operator-facing; settings.html hides every
+    # other card behind {% if user.role == 'адмін' %}, and the POST handler
+    # enforces the same boundary server-side regardless of what the DOM shows.
     values = get_all_settings(db)
-    operators = db.scalars(select(User).order_by(User.created_at)).all()
+    operators = db.scalars(select(User).order_by(User.created_at)).all() if user.role == "адмін" else []
     settings_flash = request.session.pop("settings_flash", None)
     return templates.TemplateResponse(
         request,
@@ -1691,6 +1735,11 @@ def get_settings(
             "values": values,
             "user": user,
             "saved": saved is not None or (settings_flash and settings_flash["kind"] == "success"),
+            "saved_message": (
+                settings_flash["message"]
+                if settings_flash and settings_flash["kind"] == "success" and settings_flash.get("message")
+                else None
+            ),
             "welcome": welcome is not None,
             "sheets_configured": _sheets_configured(db),
             "imap_configured": _imap_configured(db),
@@ -1709,16 +1758,25 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    is_admin = user.role == "адмін"
 
     form = await request.form()
     action = form.get("action", "save")
+    # Field-level enforcement, not just a hidden card: an operator's rendered
+    # form only contains the two path inputs, but a hand-crafted POST could
+    # still include google_sheet_id/imap_password — silently drop anything
+    # outside OPERATOR_EDITABLE_KEYS for a non-admin rather than trusting the
+    # DOM to have hidden it.
     for field in SETTING_FIELDS:
+        if not is_admin and field.key not in OPERATOR_EDITABLE_KEYS:
+            continue
         value = form.get(field.key, "").strip()
         if value:
             set_setting(db, field.key, value)
     db.commit()
+
+    if action == "save_and_sync" and not is_admin:
+        action = "save"
 
     if action == "save_and_sync":
         try:
@@ -1752,8 +1810,9 @@ def check_settings_path(
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    # Operator-editable (see OPERATOR_EDITABLE_KEYS) — both fields this check
+    # serves are filesystem paths, not credentials, so any logged-in user may
+    # probe them, same as they may now save them.
     if not _is_loopback_request(request):
         raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
@@ -1802,6 +1861,145 @@ def test_imap_connection(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request, "_settings_check_result.html", {"result": result}
     )
+
+
+@app.post("/settings/backup/export")
+def export_backup(
+    request: Request,
+    backup_password: str = Form(...),
+    backup_password_confirm: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """CLAUDE.md section 14: "backup для перенесення ПК" — a full, portable
+    snapshot (every table, every secret) re-encrypted under a password the
+    admin sets here and now, independent of this machine's DPAPI key. See
+    app/backup.py for why that independence is the whole point.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+
+    if len(backup_password) < 8:
+        request.session["settings_flash"] = {
+            "kind": "error",
+            "message": "Пароль резервної копії має містити щонайменше 8 символів",
+        }
+        return RedirectResponse("/settings", status_code=303)
+    if backup_password != backup_password_confirm:
+        request.session["settings_flash"] = {"kind": "error", "message": "Паролі не збігаються"}
+        return RedirectResponse("/settings", status_code=303)
+
+    content = create_backup(db, backup_password)
+    filename = f"orderdesk-backup-{datetime.now().strftime('%Y%m%d-%H%M')}.json"
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/settings/backup/import", response_class=HTMLResponse)
+async def import_backup(
+    request: Request,
+    backup_password: str = Form(...),
+    confirm_replace: str = Form(""),
+    backup_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Restore is destructive by design (app/backup.py) — every current
+    order, client, user, and secret gets replaced with what's in the file,
+    not merged. `confirm_replace` is a required checkbox in settings.html so
+    that's a deliberate, informed click, not a misplaced file picker.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+
+    if confirm_replace != "on":
+        request.session["settings_flash"] = {
+            "kind": "error",
+            "message": "Підтвердьте, що поточні дані буде замінено",
+        }
+        return RedirectResponse("/settings", status_code=303)
+
+    raw = await backup_file.read()
+    try:
+        counts = restore_backup(db, raw, backup_password)
+    except BackupPasswordError as exc:
+        request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
+        return RedirectResponse("/settings", status_code=303)
+    except BackupFormatError as exc:
+        request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
+        return RedirectResponse("/settings", status_code=303)
+
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": f"Відновлено: {counts.get('orders', 0)} робіт, {counts.get('clients', 0)} клієнтів, "
+        f"{counts.get('users', 0)} операторів. Увійдіть повторно, якщо змінилися облікові дані.",
+    }
+    return RedirectResponse("/settings", status_code=303)
+
+
+def _install_update_in_background(release) -> None:
+    """Runs on its own daemon thread — download+verify+silent-install can
+    take a while (network download, then Inno Setup itself), and the HTTP
+    response to the admin's click must not block on any of that."""
+    try:
+        installer_path = download_and_verify(release)
+        launch_silent_install(installer_path)
+    except Exception:
+        logger.exception("Background update install failed for release %s", release.version)
+
+
+@app.post("/settings/update/install")
+def install_update(request: Request, db: Session = Depends(get_db)):
+    """Admin-triggered install of the update already found by the
+    background checker (app/update_check.py). Downloads, verifies the
+    checksum, and launches the silent installer + relaunch watchdog on a
+    background thread — see _install_update_in_background above and
+    launch_silent_install's docstring for the skipifsilent workaround.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+
+    release = get_known_update()
+    if release is None:
+        request.session["settings_flash"] = {"kind": "error", "message": "Оновлень немає"}
+        return RedirectResponse("/settings", status_code=303)
+
+    try:
+        Thread(
+            target=_install_update_in_background,
+            args=(release,),
+            name="order-desk-update-install",
+            daemon=True,
+        ).start()
+    except Exception:
+        logger.exception("Failed to start update install thread for release %s", release.version)
+        request.session["settings_flash"] = {
+            "kind": "error",
+            "message": "Не вдалося запустити встановлення оновлення",
+        }
+        return RedirectResponse("/settings", status_code=303)
+
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": "Оновлення встановлюється, застосунок автоматично перезапуститься за кілька секунд",
+    }
+    return RedirectResponse("/settings", status_code=303)
 
 
 @app.post("/settings/users", response_class=HTMLResponse)

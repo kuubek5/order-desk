@@ -4,12 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Order Desk{% endblock %}</title>
-    <link rel="stylesheet" href="/static/css/tokens.css">
-    <link rel="stylesheet" href="/static/css/base.css">
-    <script src="/static/js/app.js" defer></script>
+    <link rel="stylesheet" href="/static/css/fonts.css?v={{ static_ver('css/fonts.css') }}">
+    <link rel="stylesheet" href="/static/css/tokens.css?v={{ static_ver('css/tokens.css') }}">
+    <link rel="stylesheet" href="/static/css/base.css?v={{ static_ver('css/base.css') }}">
+    <script src="/static/js/app.js?v={{ static_ver('js/app.js') }}" defer></script>
     <script src="/static/js/three-0.128.0.min.js" defer></script>
     <script src="/static/js/STLLoader-0.128.0.js" defer></script>
-    <script src="/static/js/stl-preview.js" defer></script>
+    <script src="/static/js/stl-preview.js?v={{ static_ver('js/stl-preview.js') }}" defer></script>
     {% block extra_head %}{% endblock %}
     <script src="/static/js/htmx-1.9.10.min.js"></script>
 </head>

@@ -231,6 +231,140 @@ li {
   font-size: 0.9rem;
 }
 
+/* Left rail (desktop only — ≥721px, the complement of the existing
+   `@media (max-width: 720px)` stacking rule below, which is untouched and
+   still governs narrow viewports exactly as before). Every link inside
+   is still the same anchor/form the pre-rail markup rendered — this only
+   repositions and regroups them; no route, condition, or label changed. */
+@media (min-width: 721px) {
+  body {
+    padding-left: 228px;
+  }
+
+  .topbar-user {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 228px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-5);
+    padding: var(--space-4) var(--space-3) var(--space-3);
+    background-color: var(--color-card-bg);
+    border-right: 1px solid var(--color-card-border);
+    overflow-y: auto;
+    font-size: 0.85rem;
+  }
+
+  .rail-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0 var(--space-2);
+    color: var(--color-text);
+  }
+
+  .rail-brand-mark {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    border-radius: var(--radius-input);
+    object-fit: contain;
+  }
+
+  .rail-brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+  }
+
+  .rail-brand-text b {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  .rail-brand-text span {
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .rail-nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .rail-nav-group a {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-input);
+    color: var(--color-text-muted);
+    font-weight: 500;
+  }
+
+  .rail-nav-group a:hover,
+  .rail-nav-group a:focus-visible {
+    background: var(--color-card-border);
+    color: var(--color-text);
+  }
+
+  .rail-foot {
+    margin-top: auto;
+    padding: var(--space-3) var(--space-2) 0;
+    border-top: 1px solid var(--color-card-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .rail-update-notice {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--color-accent);
+    border-radius: var(--radius-card);
+    background: var(--color-card-bg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .rail-update-notice p {
+    margin: 0;
+    font-size: 0.84rem;
+    color: var(--color-text);
+  }
+
+  .rail-update-install-button {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: none;
+    border-radius: var(--radius-input);
+    background: var(--color-accent);
+    color: var(--color-bg, #14100e);
+    font-weight: 700;
+    font-size: 0.84rem;
+    cursor: pointer;
+  }
+
+  .rail-update-install-button:hover,
+  .rail-update-install-button:focus-visible {
+    opacity: 0.9;
+  }
+
+  .rail-update-notice > a {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    text-align: center;
+  }
+}
+
 .topbar-search {
   display: flex;
   align-items: center;
@@ -570,9 +704,9 @@ li {
   gap: var(--space-2);
   min-height: 2.5rem;
   padding: var(--space-2) var(--space-4);
-  border: 1px solid rgba(232, 180, 168, 0.45);
+  border: 1px solid rgba(20, 184, 166, 0.45);
   border-radius: var(--radius-chip);
-  background: rgba(232, 180, 168, 0.08);
+  background: rgba(20, 184, 166, 0.08);
   color: var(--color-accent);
   font: inherit;
   font-weight: 600;
@@ -592,7 +726,7 @@ li {
 
 .sync-button:hover {
   opacity: 1;
-  background: rgba(232, 180, 168, 0.15);
+  background: rgba(20, 184, 166, 0.15);
   border-color: var(--color-accent);
   transform: translateY(-1px);
 }
@@ -676,7 +810,7 @@ li {
 }
 
 .search-button:hover {
-  background-color: rgba(232, 180, 168, 0.1);
+  background-color: rgba(20, 184, 166, 0.1);
 }
 
 .search-results {
@@ -910,9 +1044,9 @@ li {
 }
 
 .status-badge.status-нове {
-  background-color: rgba(232, 180, 168, 0.15);
+  background-color: rgba(20, 184, 166, 0.15);
   color: var(--color-accent);
-  border: 1px solid rgba(232, 180, 168, 0.3);
+  border: 1px solid rgba(20, 184, 166, 0.3);
 }
 
 .status-badge.status-прийнято {
@@ -1635,7 +1769,7 @@ li {
 
 .dash-kpi-accent.is-active {
   border-color: var(--color-accent);
-  background-color: rgba(232, 180, 168, 0.1);
+  background-color: rgba(20, 184, 166, 0.1);
 }
 
 .dash-kpi-email {
@@ -1686,15 +1820,15 @@ li {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 50%;
-  border: 1px solid rgba(232, 180, 168, 0.4);
-  background: rgba(232, 180, 168, 0.08);
+  border: 1px solid rgba(20, 184, 166, 0.4);
+  background: rgba(20, 184, 166, 0.08);
   color: var(--color-accent);
   cursor: pointer;
   transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.15s ease;
 }
 
 .dash-peek-sync-btn:hover {
-  background: rgba(232, 180, 168, 0.16);
+  background: rgba(20, 184, 166, 0.16);
   border-color: var(--color-accent);
 }
 
@@ -1817,7 +1951,7 @@ li {
 }
 
 .rail-item.active {
-  background-color: rgba(232, 180, 168, 0.1);
+  background-color: rgba(20, 184, 166, 0.1);
   color: var(--color-accent);
   font-weight: 600;
 }
@@ -2011,7 +2145,7 @@ li {
 }
 
 .rail-date-item.active {
-  background-color: rgba(232, 180, 168, 0.1);
+  background-color: rgba(20, 184, 166, 0.1);
   border-color: var(--color-accent);
   color: var(--color-accent);
   font-weight: 600;
@@ -2636,7 +2770,7 @@ li {
 .form-input:focus {
   outline: none;
   border-color: var(--color-accent);
-  background-color: rgba(232, 180, 168, 0.05);
+  background-color: rgba(20, 184, 166, 0.05);
 }
 
 .form-input::placeholder {
@@ -2678,7 +2812,7 @@ li {
 }
 
 .form-reject:hover {
-  border-color: rgba(232, 180, 168, 0.3);
+  border-color: rgba(20, 184, 166, 0.3);
   color: var(--color-accent);
 }
 

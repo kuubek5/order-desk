@@ -22,6 +22,12 @@ class SettingField:
     secret: bool = False
     multiline: bool = False
     help_text: str = ""
+    # Everything defaults admin-only (Google Sheets/IMAP credentials, sync).
+    # Only the two filesystem paths are operator-editable — they're a
+    # per-machine detail ("which drive is the export folder mounted on
+    # today"), not a credential, and whoever is actually at the workstation
+    # needs to fix a moved/renamed folder without waiting on an admin.
+    operator_editable: bool = False
 
 
 SETTING_FIELDS = [
@@ -47,13 +53,17 @@ SETTING_FIELDS = [
         key="export_folder_path",
         label="Шлях до папки export",
         help_text="Готові роботи для клієнтів з пошти",
+        operator_editable=True,
     ),
     SettingField(
         key="technician_files_path",
         label="Шлях до папки робіт техніків",
         help_text="Куди лабораторія скидає файли на сервер",
+        operator_editable=True,
     ),
 ]
+
+OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operator_editable}
 
 SETTING_KEYS = {field.key for field in SETTING_FIELDS}
 

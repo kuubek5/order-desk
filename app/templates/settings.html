@@ -3,8 +3,8 @@
 {% block title %}Налаштування — Order Desk{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="/static/css/login.css">
-<link rel="stylesheet" href="/static/css/settings.css">
+<link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
+<link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -33,7 +33,7 @@
 
     {% if saved %}
     <div class="settings-success">
-        <p>Збережено</p>
+        <p>{{ saved_message or "Збережено" }}</p>
     </div>
     {% endif %}
 
@@ -44,6 +44,7 @@
     {% endif %}
 
     <form method="post" action="/settings" class="settings-form">
+        {% if user.role == 'адмін' %}
         <!-- Google Sheets Section -->
         <div class="card settings-group">
             <div class="settings-group-heading">
@@ -161,8 +162,9 @@
             </div>
             <p class="settings-help">Перевіряє логін і пароль, які вже <strong>збережено</strong> — спершу натисніть «Зберегти без перевірки», якщо щойно їх змінили.</p>
         </div>
+        {% endif %}
 
-        <!-- File Paths Section -->
+        <!-- File Paths Section — operator-editable, see OPERATOR_EDITABLE_KEYS -->
         <div class="card settings-group">
             <h2>Шляхи папок</h2>
 
@@ -224,11 +226,14 @@
         </div>
 
         <div class="settings-actions">
-            <button type="submit" name="action" value="save" class="settings-secondary-button">Зберегти без перевірки</button>
+            <button type="submit" name="action" value="save" class="settings-secondary-button">Зберегти</button>
+            {% if user.role == 'адмін' %}
             <button type="submit" name="action" value="save_and_sync" class="login-submit settings-submit">Зберегти й синхронізувати</button>
+            {% endif %}
         </div>
     </form>
 
+    {% if user.role == 'адмін' %}
     <!-- Operators Section -->
     <div class="card settings-group settings-operators">
         <h2>Оператори</h2>
@@ -316,6 +321,56 @@
             <button type="submit" class="login-submit settings-submit">Додати оператора</button>
         </form>
     </div>
+
+    <!-- Backup Section -->
+    <div class="card settings-group settings-backup">
+        <h2>Резервна копія</h2>
+        <p class="settings-help">
+            Повний знімок бази — роботи, клієнти, оператори, налаштування та секрети (Google, IMAP) — перешифрований
+            під пароль, який ти задаєш нижче. Файл переносний на інший ПК чи обліковий запис Windows: секрети тут
+            зашифровані окремим паролем бекапу, а не ключем цього комп'ютера.
+        </p>
+
+        <form method="post" action="/settings/backup/export" class="settings-backup-form">
+            <div class="settings-field">
+                <label for="backup_password">Пароль резервної копії</label>
+                <div class="login-glow"><div class="login-input-wrap">
+                    <input type="password" id="backup_password" name="backup_password" class="login-input"
+                           placeholder="щонайменше 8 символів" minlength="8" required>
+                </div></div>
+            </div>
+            <div class="settings-field">
+                <label for="backup_password_confirm">Повторити пароль</label>
+                <div class="login-glow"><div class="login-input-wrap">
+                    <input type="password" id="backup_password_confirm" name="backup_password_confirm" class="login-input"
+                           placeholder="ще раз" minlength="8" required>
+                </div></div>
+            </div>
+            <button type="submit" class="login-submit settings-submit">Створити й завантажити бекап</button>
+        </form>
+
+        <div class="settings-backup-divider"></div>
+
+        <form method="post" action="/settings/backup/import" enctype="multipart/form-data" class="settings-backup-form">
+            <div class="settings-field">
+                <label for="backup_file">Файл резервної копії</label>
+                <input type="file" id="backup_file" name="backup_file" accept=".json,application/json" required>
+            </div>
+            <div class="settings-field">
+                <label for="restore_password">Пароль цієї резервної копії</label>
+                <div class="login-glow"><div class="login-input-wrap">
+                    <input type="password" id="restore_password" name="backup_password" class="login-input"
+                           placeholder="пароль, вказаний при створенні" required>
+                </div></div>
+            </div>
+            <label class="settings-backup-confirm">
+                <input type="checkbox" name="confirm_replace" required>
+                Я розумію, що поточні дані буде повністю замінено даними з файлу
+            </label>
+            <button type="submit" class="settings-secondary-button settings-backup-danger">Відновити з бекапу</button>
+        </form>
+    </div>
+    {% endif %}
 </main>
 {% endblock %}
 

@@ -109,15 +109,23 @@ def test_check_settings_path_requires_authentication():
     assert exc.value.status_code == 401
 
 
-def test_check_settings_path_requires_admin_role():
+def test_check_settings_path_allows_operator_role(tmp_path, monkeypatch):
+    """Paths are operator-editable (OPERATOR_EDITABLE_KEYS) — unlike every
+    other /settings action, this one must NOT 403 for a plain operator."""
     engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
-        with pytest.raises(HTTPException) as exc:
-            web.check_settings_path(
-                request=_request(operator.id), kind="export", db=db
-            )
-    assert exc.value.status_code == 403
+        context = web.check_settings_path(
+            request=_request(operator.id),
+            kind="export",
+            export_folder_path=str(tmp_path),
+            technician_files_path="",
+            db=db,
+        )
+    assert context["result"]["state"] == "success"
 
 
 def test_check_settings_path_requires_loopback():
