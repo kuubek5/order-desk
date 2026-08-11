@@ -16,6 +16,7 @@
     <script src="/static/js/htmx-1.9.10.min.js"></script>
 </head>
 <body>
+    <script>try{if(localStorage.getItem('railCollapsed')==='1')document.body.classList.add('rail-collapsed');}catch(e){}</script>
     {% block content %}{% endblock %}
     {% block extra_scripts %}{% endblock %}
 </body>

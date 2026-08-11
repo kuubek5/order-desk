@@ -109,6 +109,23 @@ document.addEventListener("submit", (event) => {
   );
 });
 
+// Left-rail collapse toggle. Persists in localStorage; the anti-flash inline
+// script in base.html applies the saved state before first paint, so this only
+// handles the click and keeps the stored value in sync. No-op if the rail
+// button isn't on the page (e.g. login/license screens have no rail).
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-rail-collapse]");
+  if (!btn) return;
+  const collapsed = document.body.classList.toggle("rail-collapsed");
+  try {
+    localStorage.setItem("railCollapsed", collapsed ? "1" : "0");
+  } catch (_error) {
+    /* private mode / storage disabled — toggle still works for this page */
+  }
+  btn.setAttribute("aria-label", collapsed ? "Розгорнути меню" : "Згорнути меню");
+  btn.setAttribute("title", collapsed ? "Розгорнути меню" : "Згорнути меню");
+});
+
 // v2a side-panel accordion (queue.html .side-sec). Toggles data-open on the
 // section and aria-expanded on its header. No-op on pages without side-secs.
 document.addEventListener("click", (event) => {
