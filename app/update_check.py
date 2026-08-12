@@ -248,13 +248,44 @@ def launch_silent_install(installer_path: Path) -> None:
         close_fds=True,
     )
 
+    # The watchdog must survive this process being shut down by the installer
+    # (OrderDesk.iss PrepareToInstall calls `OrderDesk.exe --shutdown` first),
+    # then relaunch the freshly installed app. The naive version waited only on
+    # the original setup.exe PID — but Inno Setup forks a child *.tmp installer
+    # and the parent exits early, so relaunch fired mid-install and hit a
+    # locked exe / stale mutex, leaving nothing listening. This version:
+    #   1. waits for the ORIGINAL setup process to exit,
+    #   2. then polls until no OrderDesk-Setup* process remains (the forked
+    #      child that actually writes the files),
+    #   3. then relaunches, retrying until /health answers 200,
+    # and logs every step to update-watchdog.log so a failed relaunch is
+    # diagnosable instead of silent. curl.exe (not Invoke-WebRequest) avoids a
+    # .NET loopback quirk that reads a healthy app as down.
+    log_path = data_dir() / "logs" / "update-watchdog.log"
+    setup_stem = installer_path.stem  # e.g. OrderDesk-Setup-0.1.2
     watchdog_command = (
+        f"$log = '{log_path}'; "
+        f"function W($m){{ \"$(Get-Date -Format o) $m\" | Out-File -FilePath $log -Append -Encoding utf8 }}; "
+        f"W 'watchdog start; setup pid {installer_process.pid}'; "
         f"Wait-Process -Id {installer_process.pid} -ErrorAction SilentlyContinue; "
-        f"Start-Process -FilePath '{exe_path}' -ArgumentList '--open-browser' "
-        f"-WorkingDirectory '{install_dir}'"
+        f"W 'original setup exited; waiting for installer children to clear'; "
+        f"$deadline = (Get-Date).AddMinutes(3); "
+        f"while (((Get-Process -ErrorAction SilentlyContinue | "
+        f"Where-Object {{ $_.ProcessName -like '{setup_stem}*' }}).Count -gt 0) "
+        f"-and (Get-Date) -lt $deadline) {{ Start-Sleep -Seconds 1 }}; "
+        f"W 'installer finished; relaunching with health retries'; "
+        f"Start-Sleep -Seconds 2; "
+        f"for ($i = 0; $i -lt 20; $i++) {{ "
+        f"if (-not (Get-Process -Name OrderDesk -ErrorAction SilentlyContinue)) {{ "
+        f"W \"launch attempt $i\"; "
+        f"Start-Process -FilePath '{exe_path}' -ArgumentList '--open-browser' -WorkingDirectory '{install_dir}' }}; "
+        f"Start-Sleep -Seconds 4; "
+        f"$c = (& curl.exe -s -o NUL -w '%{{http_code}}' --max-time 3 --noproxy '*' http://127.0.0.1:8000/health 2>$null); "
+        f"if ($c -eq '200') {{ W 'health 200, done'; break }} }}; "
+        f"W 'watchdog end'"
     )
     subprocess.Popen(
-        ["powershell", "-WindowStyle", "Hidden", "-Command", watchdog_command],
+        ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", watchdog_command],
         creationflags=detached_flags,
         close_fds=True,
     )
