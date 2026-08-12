@@ -129,7 +129,12 @@ jobs:
                 break
               }
             } catch {
-              # Connection refused or timeout, retry
+              # Surface the real connect error periodically (was swallowed
+              # before, which hid why a listening uvicorn stayed unreachable).
+              if ($retryCount % 30 -eq 0) {
+                Write-Host "  connect error: $($_.Exception.Message)"
+                Write-Host "  port 8000 (live): $(netstat -ano | Select-String ':8000')"
+              }
             }
             $retryCount++
             Write-Host "Health check attempt $retryCount/$maxRetries failed, retrying..."
