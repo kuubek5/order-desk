@@ -146,9 +146,13 @@ jobs:
             # Process may have already exited
           }
 
-          # Fail if health check never succeeded
+          # Fail if health check never succeeded. Use Write-Host (not
+          # Write-Error) for the headline: with $ErrorActionPreference='Stop'
+          # a Write-Error is terminating and would abort the block before any
+          # of the diagnostics below ever run — which is exactly why the real
+          # cause stayed invisible across several failed release attempts.
           if (-not $healthy) {
-            Write-Error "Health check failed after $maxRetries retries"
+            Write-Host "Health check failed after $maxRetries retries"
             if (Test-Path $logFile) {
               Write-Host "Last stdout from OrderDesk:"
               Get-Content $logFile -Tail 20
@@ -171,6 +175,7 @@ jobs:
             }
             Write-Host "=== Port 8000 listeners ==="
             netstat -ano | Select-String ":8000"
+            Write-Error "Smoke test failed: health check never succeeded"
             exit 1
           }
 
