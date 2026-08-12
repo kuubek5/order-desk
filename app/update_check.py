@@ -300,13 +300,20 @@ def launch_silent_install(installer_path: Path) -> None:
     entirely and the installer replaces the (now cleanly stopped) app's locked
     files from a stable process rather than from the app that is dying under it.
 
-    Two hard-won details:
-      * `stdin/stdout/stderr=DEVNULL` — the packaged build is windowed (no
-        console), so it has no standard handles to inherit. A console child
-        (powershell here, and curl/the installer it in turn spawns) fails to
-        even start when handed the app's null handles; DEVNULL gives it real
-        ones. This was the actual reason a spawned watchdog produced an empty
-        log.
+    Three hard-won details:
+      * CREATE_NO_WINDOW, NOT DETACHED_PROCESS — this is THE reason a
+        spawned watchdog produced an empty log even after the DEVNULL fix
+        below. DETACHED_PROCESS gives the child *no console at all*, and
+        powershell.exe is a console-subsystem app: with no console it fails to
+        initialize its host and dies silently before running a single line.
+        CREATE_NO_WINDOW instead gives it a hidden console, so it runs headless
+        (no visible window) exactly as intended. Verified with a direct probe:
+        DETACHED never wrote its marker file, CREATE_NO_WINDOW always did. The
+        watchdog still outlives the app — Windows child processes are not killed
+        when the parent exits (no kill-on-close job object is in play here).
+      * `stdin/stdout/stderr=DEVNULL` — the packaged build is windowed, so it
+        has no standard handles to inherit; DEVNULL hands the child real ones.
+        Necessary but, on its own, not sufficient (see the console point above).
       * the script is a `.ps1` FILE run with `-File` (not an inline `-Command`
         string) — an inline one-liner proved fragile to parse/escape; a file on
         disk parses cleanly.
@@ -322,11 +329,14 @@ def launch_silent_install(installer_path: Path) -> None:
 
     exe_path = Path(sys.executable)
 
-    # Only meaningful on Windows (this whole function is a no-op off it in
-    # practice, since is_frozen() requires os.name == "nt" to matter — see
-    # app/runtime.py::data_dir), but resolved defensively so importing this
-    # module never fails on a non-Windows dev machine.
-    detached_flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+    # CREATE_NO_WINDOW (hidden console), not DETACHED_PROCESS (no console) —
+    # powershell needs a console to start; see the docstring. CREATE_NEW_PROCESS_
+    # GROUP keeps a Ctrl+C to the app's group from reaching the watchdog. Only
+    # meaningful on Windows (this whole function no-ops off it, since is_frozen()
+    # requires os.name == "nt" to matter — see app/runtime.py::data_dir), but
+    # resolved defensively so importing this module never fails on a non-Windows
+    # dev machine.
+    spawn_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
         subprocess, "CREATE_NEW_PROCESS_GROUP", 0
     )
 
@@ -345,7 +355,7 @@ def launch_silent_install(installer_path: Path) -> None:
             str(exe_path),
             str(installer_path),
         ],
-        creationflags=detached_flags,
+        creationflags=spawn_flags,
         close_fds=True,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,

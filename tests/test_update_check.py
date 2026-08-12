@@ -204,12 +204,16 @@ def test_launch_silent_install_noop_in_dev(tmp_path):
 
 
 def test_launch_silent_install_frozen_spawns_single_watchdog(tmp_path):
-    """Frozen build: exactly one detached watchdog process is spawned (the
-    watchdog owns the install — the app no longer spawns the installer itself,
-    which is what raced app shutdown and left the overlay stuck). The Popen
-    must pass DEVNULL std handles (a windowed build has none to inherit, and a
-    console child fails to start without real ones — the actual cause of the
-    empty watchdog log) and hand the installer's full path to the script."""
+    """Frozen build: exactly one watchdog process is spawned (the watchdog owns
+    the install — the app no longer spawns the installer itself, which is what
+    raced app shutdown and left the overlay stuck). The Popen must:
+      * use CREATE_NO_WINDOW, never DETACHED_PROCESS — powershell is a console
+        app and dies silently with no console at all (DETACHED), which is what
+        actually left the watchdog log empty; CREATE_NO_WINDOW gives it a hidden
+        console so it runs headless.
+      * pass DEVNULL std handles (a windowed build has none to inherit).
+      * hand the installer's full path to the script.
+    """
     import subprocess
 
     installer = tmp_path / "OrderDesk-Setup-9.9.9.exe"
@@ -226,4 +230,9 @@ def test_launch_silent_install_frozen_spawns_single_watchdog(tmp_path):
     assert kwargs["stdin"] == subprocess.DEVNULL
     assert kwargs["stdout"] == subprocess.DEVNULL
     assert kwargs["stderr"] == subprocess.DEVNULL
+    # The console-mode flag is the crux of the fix. CREATE_NO_WINDOW is set;
+    # DETACHED_PROCESS (no console → powershell can't start) must NOT be.
+    flags = kwargs["creationflags"]
+    assert flags & subprocess.CREATE_NO_WINDOW
+    assert not (flags & subprocess.DETACHED_PROCESS)
     assert (tmp_path / "update-watchdog.ps1").is_file()
