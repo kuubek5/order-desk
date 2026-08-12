@@ -88,7 +88,10 @@ jobs:
 
           # Poll health endpoint with retries (app runs Alembic migrations on first start, can take 30-60 seconds)
           $healthUrl = "http://127.0.0.1:8000/health"
-          $maxRetries = 90
+          # 180s: the onedir bundle grew (self-hosted fonts, three.js, extra JS),
+          # so the first cold unpack + first-run DPAPI key + create_all on a CI
+          # runner can take well over the old 90s before the port starts listening.
+          $maxRetries = 180
           $retryDelaySeconds = 1
           $retryCount = 0
           $healthy = $false
