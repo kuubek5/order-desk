@@ -167,7 +167,7 @@ jobs:
               Write-Host "=== OrderDesk startup-error.txt (the real cause) ==="
               Get-Content $startupErr
             } else {
-              Write-Host "No startup-error.txt — app did not hit the launcher's except block."
+              Write-Host "No startup-error.txt present (launcher except block not reached)."
             }
             Write-Host "=== Port 8000 listeners ==="
             netstat -ano | Select-String ":8000"
