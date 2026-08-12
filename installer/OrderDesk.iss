@@ -1,7 +1,7 @@
 #define MyAppName "Order Desk"
 ; Must be bumped by hand together with app/__version__.py::VERSION at every
 ; release — tests/test_version_sync.py fails the suite if these two drift.
-#define MyAppVersion "0.1.4"
+#define MyAppVersion "0.1.5"
 #define MyAppExeName "OrderDesk.exe"
 #ifndef BuildRoot
   #define BuildRoot "..\dist\OrderDesk"
@@ -41,7 +41,14 @@ Name: "autostart"; Description: "Запускати Order Desk при вході
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "OrderDesk"; ValueData: """{app}\{#MyAppExeName}"""; Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-browser"; Description: "Запустити Order Desk"; Flags: nowait postinstall skipifsilent
+; Relaunch after EVERY install, silent included. This is the auto-updater's
+; restart mechanism: under /VERYSILENT (how the in-app updater runs the new
+; installer) a `postinstall skipifsilent` entry is skipped, so the app never
+; came back on its own. A plain `nowait` entry runs during install right after
+; the files are copied — far more reliable than an external detached watchdog.
+; A manual install also relaunches (normal for a desktop app); the app's mutex
+; makes a redundant launch a no-op.
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-browser"; Flags: nowait runasoriginaluser
 
 [UninstallRun]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--shutdown"; Flags: runhidden waituntilterminated; RunOnceId: "StopOrderDesk"

@@ -231,9 +231,6 @@ def launch_silent_install(installer_path: Path) -> None:
         logger.info("launch_silent_install пропущено, не пакований білд — нема інсталятора для запуску")
         return
 
-    exe_path = Path(sys.executable)
-    install_dir = exe_path.parent
-
     # Only meaningful on Windows (this whole function is a no-op off it in
     # practice, since is_frozen() requires os.name == "nt" to matter — see
     # app/runtime.py::data_dir), but resolved defensively so importing this
@@ -242,50 +239,15 @@ def launch_silent_install(installer_path: Path) -> None:
         subprocess, "CREATE_NEW_PROCESS_GROUP", 0
     )
 
-    installer_process = subprocess.Popen(
-        [str(installer_path), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
-        creationflags=detached_flags,
-        close_fds=True,
-    )
-
-    # The watchdog must survive this process being shut down by the installer
-    # (OrderDesk.iss PrepareToInstall calls `OrderDesk.exe --shutdown` first),
-    # then relaunch the freshly installed app. The naive version waited only on
-    # the original setup.exe PID — but Inno Setup forks a child *.tmp installer
-    # and the parent exits early, so relaunch fired mid-install and hit a
-    # locked exe / stale mutex, leaving nothing listening. This version:
-    #   1. waits for the ORIGINAL setup process to exit,
-    #   2. then polls until no OrderDesk-Setup* process remains (the forked
-    #      child that actually writes the files),
-    #   3. then relaunches, retrying until /health answers 200,
-    # and logs every step to update-watchdog.log so a failed relaunch is
-    # diagnosable instead of silent. curl.exe (not Invoke-WebRequest) avoids a
-    # .NET loopback quirk that reads a healthy app as down.
-    log_path = data_dir() / "logs" / "update-watchdog.log"
-    setup_stem = installer_path.stem  # e.g. OrderDesk-Setup-0.1.2
-    watchdog_command = (
-        f"$log = '{log_path}'; "
-        f"function W($m){{ \"$(Get-Date -Format o) $m\" | Out-File -FilePath $log -Append -Encoding utf8 }}; "
-        f"W 'watchdog start; setup pid {installer_process.pid}'; "
-        f"Wait-Process -Id {installer_process.pid} -ErrorAction SilentlyContinue; "
-        f"W 'original setup exited; waiting for installer children to clear'; "
-        f"$deadline = (Get-Date).AddMinutes(3); "
-        f"while (((Get-Process -ErrorAction SilentlyContinue | "
-        f"Where-Object {{ $_.ProcessName -like '{setup_stem}*' }}).Count -gt 0) "
-        f"-and (Get-Date) -lt $deadline) {{ Start-Sleep -Seconds 1 }}; "
-        f"W 'installer finished; relaunching with health retries'; "
-        f"Start-Sleep -Seconds 2; "
-        f"for ($i = 0; $i -lt 20; $i++) {{ "
-        f"if (-not (Get-Process -Name OrderDesk -ErrorAction SilentlyContinue)) {{ "
-        f"W \"launch attempt $i\"; "
-        f"Start-Process -FilePath '{exe_path}' -ArgumentList '--open-browser' -WorkingDirectory '{install_dir}' }}; "
-        f"Start-Sleep -Seconds 4; "
-        f"$c = (& curl.exe -s -o NUL -w '%{{http_code}}' --max-time 3 --noproxy '*' http://127.0.0.1:8000/health 2>$null); "
-        f"if ($c -eq '200') {{ W 'health 200, done'; break }} }}; "
-        f"W 'watchdog end'"
-    )
+    # Launch the installer detached and return. Relaunch of the new version is
+    # the INSTALLER's job now (OrderDesk.iss [Run], a plain `nowait` entry that
+    # fires under /VERYSILENT), not an external watchdog: the earlier PowerShell
+    # watchdog proved unreliable — a detached child racing the installer's own
+    # `--shutdown` of this process, plus a brittle one-liner that could fail to
+    # start at all. Inno runs its [Run] step right after copying files, so the
+    # freshly installed exe comes back on its own with no moving parts here.
     subprocess.Popen(
-        ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", watchdog_command],
+        [str(installer_path), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
         creationflags=detached_flags,
         close_fds=True,
     )
