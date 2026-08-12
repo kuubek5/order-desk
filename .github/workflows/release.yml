@@ -78,8 +78,11 @@ jobs:
           }
           Write-Host "Found installed exe at $exePath"
 
-          # Launch the exe as background process with output redirection
+          # Launch the exe as background process with output redirection.
+          # ORDER_DESK_NONINTERACTIVE stops a startup-failure MessageBox from
+          # hanging this headless runner forever (it hid the real error before).
           Write-Host "Launching OrderDesk..."
+          $env:ORDER_DESK_NONINTERACTIVE = "1"
           $logFile = "$env:TEMP\orderdesk-smoke-test.log"
           $errFile = "$env:TEMP\orderdesk-smoke-test-err.log"
           $appProcess = Start-Process -FilePath $exePath -WindowStyle Hidden -PassThru -RedirectStandardOutput $logFile -RedirectStandardError $errFile
@@ -159,6 +162,15 @@ jobs:
               Write-Host "Last OrderDesk.log entries:"
               Get-Content $appLogFile -Tail 30
             }
+            $startupErr = "$env:LOCALAPPDATA\OrderDesk\logs\startup-error.txt"
+            if (Test-Path $startupErr) {
+              Write-Host "=== OrderDesk startup-error.txt (the real cause) ==="
+              Get-Content $startupErr
+            } else {
+              Write-Host "No startup-error.txt — app did not hit the launcher's except block."
+            }
+            Write-Host "=== Port 8000 listeners ==="
+            netstat -ano | Select-String ":8000"
             exit 1
           }
 

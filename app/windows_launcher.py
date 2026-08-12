@@ -256,12 +256,29 @@ def main() -> int:
         server.run()
         return 0
     except (Exception, SystemExit):
+        import traceback
+
         try:
             _configure_logging()
             logging.exception("Order Desk failed to start")
         except Exception:
             pass
-        _show_startup_error()
+        # Standalone traceback file that never depends on logging being set up —
+        # the packaged build is windowed (no stderr), so without this a startup
+        # crash leaves no trace at all on a headless/CI host.
+        try:
+            err_dir = DATA_DIR / "logs"
+            err_dir.mkdir(parents=True, exist_ok=True)
+            (err_dir / "startup-error.txt").write_text(
+                traceback.format_exc(), encoding="utf-8"
+            )
+        except Exception:
+            pass
+        # A modal MessageBox blocks forever on a non-interactive host (no one to
+        # dismiss it) — which is exactly what hung the release smoke test and hid
+        # the real error. Skip it when there's no desktop to show it on.
+        if not os.environ.get("ORDER_DESK_NONINTERACTIVE"):
+            _show_startup_error()
         return 1
 
 
