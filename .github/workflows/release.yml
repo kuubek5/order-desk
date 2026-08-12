@@ -78,18 +78,15 @@ jobs:
           }
           Write-Host "Found installed exe at $exePath"
 
-          # Launch the exe as background process with output redirection.
-          # ORDER_DESK_NONINTERACTIVE stops a startup-failure MessageBox from
-          # hanging this headless runner forever (it hid the real error before).
-          Write-Host "Launching OrderDesk..."
-          $env:ORDER_DESK_NONINTERACTIVE = "1"
+          # Do NOT launch the exe manually: the installer's own [Run] step
+          # (plain `nowait`, fires under /VERYSILENT) already launched it after
+          # copying files. Starting a second one would race that launch, and the
+          # app's single-instance mutex would make one process a no-op — which
+          # broke a PID-based liveness check. Just wait for /health to answer.
           $logFile = "$env:TEMP\orderdesk-smoke-test.log"
           $errFile = "$env:TEMP\orderdesk-smoke-test-err.log"
-          $appProcess = Start-Process -FilePath $exePath -WindowStyle Hidden -PassThru -RedirectStandardOutput $logFile -RedirectStandardError $errFile
-          $appPid = $appProcess.Id
-          Write-Host "OrderDesk started with PID $appPid"
+          Write-Host "Waiting for installer-launched OrderDesk to answer /health..."
 
-          # Poll health endpoint with retries (app runs Alembic migrations on first start, can take 30-60 seconds)
           $healthUrl = "http://127.0.0.1:8000/health"
           # 180s: the onedir bundle grew (self-hosted fonts, three.js, extra JS),
           # so the first cold unpack + first-run DPAPI key + create_all on a CI
@@ -100,27 +97,6 @@ jobs:
           $healthy = $false
 
           while ($retryCount -lt $maxRetries) {
-            # Check if process is still alive
-            $proc = Get-Process -Id $appPid -ErrorAction SilentlyContinue
-            if (-not $proc) {
-              Write-Host "WARNING: Process exited unexpectedly"
-              if (Test-Path $logFile) {
-                Write-Host "Last stdout from OrderDesk:"
-                Get-Content $logFile -Tail 20
-              }
-              if (Test-Path $errFile) {
-                Write-Host "Last stderr from OrderDesk:"
-                Get-Content $errFile -Tail 20
-              }
-              # Also check the app's own logs
-              $appLogFile = "$env:LOCALAPPDATA\OrderDesk\logs\order-desk.log"
-              if (Test-Path $appLogFile) {
-                Write-Host "Last OrderDesk.log entries:"
-                Get-Content $appLogFile -Tail 20
-              }
-              break
-            }
-
             # Use curl.exe, not Invoke-WebRequest: on this runner IWR threw a
             # .NET NullReferenceException ("Object reference not set...") on a
             # perfectly ESTABLISHED localhost connection (proxy/keep-alive quirk),
@@ -143,9 +119,9 @@ jobs:
             }
           }
 
-          # Stop the process
+          # Stop whatever the installer launched
           try {
-            Stop-Process -Id $appPid -Force -ErrorAction SilentlyContinue
+            Stop-Process -Name OrderDesk -Force -ErrorAction SilentlyContinue
             Write-Host "Process stopped"
           } catch {
             # Process may have already exited
