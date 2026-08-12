@@ -437,8 +437,9 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .settings-field > label{font-size:12px;font-weight:500;color:var(--ink-2)}
 .setv2 .login-glow{background:none;border:0;padding:0;box-shadow:none}
 .setv2 .login-input-wrap{position:relative;display:flex;align-items:center;gap:8px}
-.setv2 .login-input{width:100%;height:36px;padding:0 11px;border-radius:var(--r-ctl);background:#111823;border:1px solid var(--line);color:var(--ink);font-family:var(--font-body);font-size:13px;outline:none}
-.setv2 .login-input:focus{border-color:rgba(45,212,191,.45);box-shadow:inset 0 0 18px -12px rgba(45,212,191,.9)}
+.setv2 .login-input{width:100%;height:40px;padding:0 13px;border-radius:var(--r-ctl);background:#111823;border:1px solid var(--line);color:var(--ink);font-family:var(--font-body);font-size:13.5px;outline:none;transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease}
+.setv2 .login-input:hover{border-color:var(--line-2)}
+.setv2 .login-input:focus{border-color:var(--accent);background:#0f1620;box-shadow:0 0 0 3px rgba(45,212,191,.13)}
 .setv2 .login-input::placeholder{color:var(--ink-3)}
 .setv2 .settings-textarea{height:auto;min-height:118px;padding:9px 11px;line-height:1.5;resize:vertical;font-family:var(--font-mono);font-size:12.5px}
 .setv2 .login-toggle-password{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-3);border:0;background:none;cursor:pointer}
@@ -447,10 +448,12 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 
 /* кнопки */
 .setv2 .settings-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:2px}
-.setv2 .settings-secondary-button,.setv2 .login-submit,.setv2 .settings-submit{height:36px;padding:0 16px;border-radius:var(--r-ctl);font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink);transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease}
-.setv2 .settings-secondary-button:hover{background:var(--card-3);border-color:#3a4a5f}
-.setv2 .login-submit,.setv2 .settings-submit{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
-.setv2 .login-submit:hover,.setv2 .settings-submit:hover{background:rgba(20,184,166,.24);border-color:var(--accent)}
+.setv2 .settings-secondary-button,.setv2 .login-submit,.setv2 .settings-submit{height:40px;padding:0 18px;border-radius:var(--r-ctl);font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink);transition:background .15s ease,border-color .15s ease,color .15s ease,transform .12s ease,box-shadow .15s ease}
+.setv2 .settings-secondary-button:hover{background:var(--card-3);border-color:#3a4a5f;transform:translateY(-1px)}
+.setv2 .settings-secondary-button:active{transform:translateY(0)}
+.setv2 .login-submit,.setv2 .settings-submit{background:rgba(20,184,166,.16);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.setv2 .login-submit:hover,.setv2 .settings-submit:hover{background:rgba(20,184,166,.26);border-color:var(--accent);transform:translateY(-1px);box-shadow:0 6px 18px -10px rgba(45,212,191,.6)}
+.setv2 .login-submit:active,.setv2 .settings-submit:active{transform:translateY(0);box-shadow:none}
 .setv2 .settings-backup-danger{border-color:rgba(248,113,113,.4);color:#f0b4b4;background:rgba(248,113,113,.06)}
 .setv2 .settings-backup-danger:hover{background:rgba(248,113,113,.12)}
 .setv2 .link-button{border:0;background:none;color:var(--accent-c);font-size:12.5px;cursor:pointer;padding:0}
@@ -507,9 +510,35 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 /* бекап */
 .setv2 .settings-backup-form{display:flex;flex-direction:column;gap:12px}
 .setv2 .settings-backup-divider{height:1px;background:var(--line);margin:16px 0}
-.setv2 .settings-backup-confirm{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--ink-2)}
-.setv2 .settings-backup-confirm input{accent-color:var(--accent-b);margin-top:2px}
-.setv2 input[type=file]{font-size:12px;color:var(--ink-2)}
+.setv2 .settings-backup-confirm{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:var(--ink-2);cursor:pointer}
+/* Fully custom checkbox: the native one renders a pale box that ignores the
+   dark theme (accent-color only paints the checked fill). appearance:none +
+   a drawn checkmark themes both states. */
+.setv2 .settings-backup-confirm input[type=checkbox]{
+  appearance:none;-webkit-appearance:none;flex:0 0 auto;margin-top:1px;
+  width:18px;height:18px;border-radius:5px;border:1px solid var(--line-2);
+  background:#111823;cursor:pointer;position:relative;
+  transition:background .15s ease,border-color .15s ease}
+.setv2 .settings-backup-confirm input[type=checkbox]:hover{border-color:var(--accent-b)}
+.setv2 .settings-backup-confirm input[type=checkbox]:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+.setv2 .settings-backup-confirm input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
+.setv2 .settings-backup-confirm input[type=checkbox]:checked::after{
+  content:"";position:absolute;left:5px;top:1px;width:5px;height:10px;
+  border:solid #07120f;border-width:0 2px 2px 0;transform:rotate(45deg)}
+
+/* Drag-and-drop file zone (backup restore). */
+.setv2 .dropzone{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;text-align:center;padding:22px 16px;border:1.5px dashed var(--line-2);border-radius:var(--r-card);background:rgba(255,255,255,.015);cursor:pointer;transition:border-color .15s ease,background .15s ease}
+.setv2 .dropzone:hover{border-color:var(--accent-b);background:rgba(20,184,166,.05)}
+.setv2 .dropzone.is-dragover{border-color:var(--accent);background:rgba(20,184,166,.1)}
+.setv2 .dropzone.has-file{border-style:solid;border-color:var(--accent-b);background:rgba(20,184,166,.06)}
+.setv2 .dropzone-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.setv2 .dropzone-icon{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--card-2);border:1px solid var(--line-2);color:var(--ink-2);transition:color .15s ease,border-color .15s ease}
+.setv2 .dropzone:hover .dropzone-icon,.setv2 .dropzone.is-dragover .dropzone-icon,.setv2 .dropzone.has-file .dropzone-icon{color:var(--accent-c);border-color:rgba(45,212,191,.4)}
+.setv2 .dropzone-icon svg{width:21px;height:21px}
+.setv2 .dropzone-title{font-size:13px;font-weight:500;color:var(--ink)}
+.setv2 .dropzone-hint{font-size:11.5px;color:var(--ink-3)}
+.setv2 .dropzone-hint b{color:var(--ink-2);font-weight:600}
+.setv2 .dropzone-file{font-family:var(--font-mono);font-size:12px;color:var(--accent-c);word-break:break-all}
 .setv2 .table-scroll{overflow-x:auto}
 @media (max-width:640px){ .setv2 .users-add-form{grid-template-columns:1fr} }
 

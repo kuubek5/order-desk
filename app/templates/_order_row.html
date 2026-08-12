@@ -17,22 +17,23 @@
   'переробка': ('#f0a35e', false)
 } %}
 {% set _dc = _dot.get(order.status, ('#8fa3bb', false)) %}
-<tr class="queue-row {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {{ material_color_css_class(order.material_color) }}" id="order-row-{{ order.id }}">
+{% set _rework = order.active_rework %}
+<tr class="queue-row {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if _rework %}queue-row-rework{% endif %} {{ material_color_css_class(order.material_color) }}" id="order-row-{{ order.id }}">
     <td class="order-id">
         <span class="sdot" aria-hidden="true" style="{% if _dc[1] %}background:transparent;box-shadow:inset 0 0 0 1.6px {{ _dc[0] }}{% else %}background:{{ _dc[0] }}{% endif %}"></span>
         {% if order.source == 'email' %}
         <span class="source-badge source-badge-email src" title="Надійшло з пошти">Пошта</span>
         {% endif %}
         <a href="/orders/{{ order.id }}" class="ordbtn" data-order-detail="{{ order.id }}">{% if order.source == 'email' %}{{ order.client_name or 'Без імені клієнта' }}{% else %}{{ order.work_order_no or '—' }}{% endif %}</a>
+        {% if _rework %}
+        <span class="rework-badge" title="Переробка{% if _rework.occurrence %} · {{ _rework.occurrence }}-й раз{% endif %}{% if _rework.blame %} · причина: {{ _rework.blame }}{% endif %}{% if _rework.blame_quantity %} · браку: {{ _rework.blame_quantity }}{% endif %}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+            переробка{% if _rework.blame %} · {{ _rework.blame }}{% endif %}
+        </span>
+        {% endif %}
         {% if order.source != 'email' and order.client_name %}<div class="rowclient">{{ order.client_name }}</div>{% endif %}
     </td>
-    <td class="comment-cell">
-        {% if order.cam_comment %}
-        <div class="cam-comment-text cam{% if '!!' in order.cam_comment %} shout{% endif %}" title="{{ order.cam_comment }}">{{ order.cam_comment }}</div>
-        {% else %}
-        <span class="text-muted">—</span>
-        {% endif %}
-    </td>
+    <td class="quantity">{{ order.quantity or '—' }}</td>
     <td class="material-cell">
         {% if order.material_color %}
             <span class="matchip chip {{ material_color_css_class(order.material_color) }}">{{ order.material_color }}</span>
@@ -47,7 +48,6 @@
             <span class="text-muted">—</span>
         {% endif %}
     </td>
-    <td class="quantity">{{ order.quantity or '—' }}</td>
     <td class="job-code">
         {% if order.job_code %}
             <button type="button" class="mono job-code-link copy-button" data-copy="{{ order.job_code }}" {% if order.job_code_folder_uri %}data-folder-uri="{{ order.job_code_folder_uri }}"{% endif %} {% if order.job_code_folder_preview_token %}data-stl-preview-token="{{ order.job_code_folder_preview_token }}"{% endif %} title="Клік — скопіювати шлях-ID для Sum3D{% if order.job_code_folder_uri %}; подвійний клік — відкрити папку{% endif %}">{{ order.job_code }}</button>
@@ -56,12 +56,19 @@
             <span class="mono">—</span>
         {% endif %}
     </td>
+    <td class="technician">{{ order.technician_name or '—' }}</td>
+    <td class="comment-cell">
+        {% if order.cam_comment %}
+        <div class="cam-comment-text cam{% if '!!' in order.cam_comment %} shout{% endif %}" title="{{ order.cam_comment }}">{{ order.cam_comment }}</div>
+        {% else %}
+        <span class="text-muted">—</span>
+        {% endif %}
+    </td>
     <td class="sum3d-id">
-        <form class="sum3d-form" hx-post="/orders/{{ order.id }}/sum3d-id" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
-            <input type="text" name="sum3d_id" value="{{ order.sum3d_id or '' }}" class="mono sum3d-input" placeholder="ID">
-            <button type="submit" class="sum3d-save" title="Зберегти й записати в таблицю">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-            </button>
+        {# No save button (галочку прибрано): the input auto-saves on change —
+           the form's hx-trigger fires when the operator edits and blurs/Enters. #}
+        <form class="sum3d-form" hx-post="/orders/{{ order.id }}/sum3d-id" hx-trigger="change, keyup[key=='Enter'] from:.sum3d-input" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
+            <input type="text" name="sum3d_id" value="{{ (_rework.sum3d_id if _rework else order.sum3d_id) or '' }}" class="mono sum3d-input{% if _rework %} sum3d-input-rework{% endif %}" placeholder="{% if _rework %}ID перер.{% else %}ID{% endif %}" title="{% if _rework %}ID Sum3D переробки — запишеться в колонку W таблиці{% else %}Введіть ID Sum3D і натисніть Enter або перейдіть далі — збережеться автоматично{% endif %}">
         </form>
         {% if order.export_folder_uri %}
         {# data-stl-preview-token: клік по цій іконці відкриває стійку STL-панель
@@ -72,7 +79,6 @@
         </a>
         {% endif %}
     </td>
-    <td class="technician">{{ order.technician_name or '—' }}</td>
     <td class="status">
         {% if order.status == 'проблема' %}
         <span class="badge problem">проблема</span>

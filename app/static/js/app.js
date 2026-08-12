@@ -241,6 +241,121 @@ document.addEventListener("click", (event) => {
   head.setAttribute("aria-expanded", String(!open));
 });
 
+// Drag-and-drop file zone (settings backup restore, .dropzone wrapping a hidden
+// file input). Click already works via the native <label>; this adds drag/drop
+// and shows the chosen filename. No-op on pages without a .dropzone.
+(function () {
+  const zone = document.getElementById("backup-dropzone");
+  if (!zone) return;
+  const input = zone.querySelector(".dropzone-input");
+  const fileEl = zone.querySelector(".dropzone-file");
+  const titleEl = zone.querySelector(".dropzone-title");
+  const hintEl = zone.querySelector(".dropzone-hint");
+  if (!input) return;
+
+  function showFile(name) {
+    if (!name) {
+      zone.classList.remove("has-file");
+      if (fileEl) { fileEl.hidden = true; fileEl.textContent = ""; }
+      if (titleEl) titleEl.hidden = false;
+      if (hintEl) hintEl.hidden = false;
+      return;
+    }
+    zone.classList.add("has-file");
+    if (titleEl) titleEl.hidden = true;
+    if (hintEl) hintEl.hidden = true;
+    if (fileEl) { fileEl.hidden = false; fileEl.textContent = name; }
+  }
+
+  input.addEventListener("change", () => {
+    showFile(input.files && input.files[0] ? input.files[0].name : "");
+  });
+
+  ["dragenter", "dragover"].forEach((evt) =>
+    zone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      zone.classList.add("is-dragover");
+    })
+  );
+  ["dragleave", "dragend"].forEach((evt) =>
+    zone.addEventListener(evt, (e) => {
+      // Ignore dragleave bubbling from children still inside the zone.
+      if (evt === "dragleave" && zone.contains(e.relatedTarget)) return;
+      zone.classList.remove("is-dragover");
+    })
+  );
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("is-dragover");
+    const files = e.dataTransfer && e.dataTransfer.files;
+    if (!files || !files.length) return;
+    input.files = files; // assigning a FileList is supported for drops
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+})();
+
+// Date pager placement: when the queue filter bar fits one row, the date pager
+// stays inline; when it wraps (narrower screens), drop it onto its own clean
+// line aligned under the Період pills. Measured in JS — not a fixed CSS
+// breakpoint — so "one row on the big monitor" stays exact whatever its width.
+// The measurement is taken with .filters-wrapped removed (natural layout) to
+// avoid the class feeding back into its own trigger.
+(function () {
+  const filters = document.querySelector(".q2 .filters");
+  if (!filters) return;
+
+  function update() {
+    filters.classList.remove("filters-wrapped");
+    // Reflow, then compare the date pager's row against the first filter group.
+    void filters.offsetHeight;
+    const seg = filters.querySelector(".seg");
+    const strip = filters.querySelector(".date-strip");
+    if (!seg || !strip) return;
+    const wrapped =
+      strip.getBoundingClientRect().top - seg.getBoundingClientRect().top > 5;
+    filters.classList.toggle("filters-wrapped", wrapped);
+  }
+
+  let raf = 0;
+  function schedule() {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(update);
+  }
+  update();
+  window.addEventListener("resize", schedule);
+})();
+
+// Spotlight cards (queue right-rail .side-sec). Writes the cursor position into
+// --mx/--my (for the radial glow) and a small tilt into --rx/--ry, per card.
+// Adds .spotlight so no-JS cards stay flat. Skips tilt under reduced-motion.
+(function () {
+  const cards = document.querySelectorAll(".q2 .side-sec");
+  if (!cards.length) return;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const MAX_TILT = 4; // degrees — restrained, this is a work tool
+
+  cards.forEach((card) => {
+    card.classList.add("spotlight");
+    card.addEventListener("mousemove", (e) => {
+      const r = card.getBoundingClientRect();
+      const x = e.clientX - r.left;
+      const y = e.clientY - r.top;
+      card.style.setProperty("--mx", x + "px");
+      card.style.setProperty("--my", y + "px");
+      if (!reduce) {
+        const px = x / r.width - 0.5; // -0.5 … 0.5
+        const py = y / r.height - 0.5;
+        card.style.setProperty("--ry", (px * MAX_TILT).toFixed(2) + "deg");
+        card.style.setProperty("--rx", (-py * MAX_TILT).toFixed(2) + "deg");
+      }
+    });
+    card.addEventListener("mouseleave", () => {
+      card.style.setProperty("--rx", "0deg");
+      card.style.setProperty("--ry", "0deg");
+    });
+  });
+})();
+
 // ---------------------------------------------------------------------------
 // Режим вигляду (layout-edit) — задача 1. Оператор вмикає режим і налаштовує
 // чергу під себе: ширини стовпців (drag), щільність рядків і карток. Усе

@@ -33,25 +33,28 @@
     <span class="flabel">Готовність</span>
     <div class="seg">
         <a href="/?{{ ctx_qs }}&source={{ source }}&ready=all" class="{% if ready == 'all' %}is-active{% endif %}">Усі <span class="n">{{ ready_counts.all }}</span></a>
-        <a href="/?{{ ctx_qs }}&source={{ source }}&ready=ready" class="{% if ready == 'ready' %}is-active{% endif %}">Готово <span class="n">{{ ready_counts.ready }}</span></a>
-        <a href="/?{{ ctx_qs }}&source={{ source }}&ready=not_ready" class="{% if ready == 'not_ready' %}is-active{% endif %}">Не готово <span class="n">{{ ready_counts.not_ready }}</span></a>
+        <a href="/?{{ ctx_qs }}&source={{ source }}&ready=ready" class="{% if ready == 'ready' %}is-active{% endif %}" title="Технік завершив, заповнено шлях роботи — можна брати">Можна брати <span class="n">{{ ready_counts.ready }}</span></a>
+        <a href="/?{{ ctx_qs }}&source={{ source }}&ready=not_ready" class="{% if ready == 'not_ready' %}is-active{% endif %}" title="Техніки ще не здали (шлях роботи порожній)">Не готово <span class="n">{{ ready_counts.not_ready }}</span></a>
     </div>
 
-    <a href="/?overdue=1" class="pill alarm {% if show_overdue %}is-active{% endif %}"><span class="dot" aria-hidden="true"></span>Тільки прострочені</a>
 
     {% if date_tabs %}
     {% set selected_value = selected_date.strftime('%d.%m.%y') if selected_date else '' %}
+    <div class="filters-break" aria-hidden="true"></div>
+    <span class="flabel flabel-ghost" aria-hidden="true">Період</span>
     <div class="date-strip" aria-label="Дні з роботами">
-        {% if date_page > 0 %}
-        <a href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ selected_value }}&date_page={{ date_page - 1 }}" aria-label="Попередній тиждень" title="Попередній тиждень">‹</a>
+        {# Pages tile from the newest window (page 0); higher page = older, so ‹
+           older = date_page + 1, › newer = date_page - 1 (see _date_window). #}
+        {% if date_page + 1 < total_date_pages %}
+        <a href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ selected_value }}&date_page={{ date_page + 1 }}" aria-label="Тиждень раніше" title="Тиждень раніше">‹</a>
         {% else %}
         <span class="nav-off" aria-hidden="true">‹</span>
         {% endif %}
         {% for d in date_tabs %}
         <a href="/?date={{ d.strftime('%d.%m.%y') }}&date_page={{ date_page }}&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and selected_date == d %}is-active{% endif %}" title="{{ d.strftime('%d.%m.%Y') }}">{{ d.strftime('%d.%m') }}</a>
         {% endfor %}
-        {% if date_page + 1 < total_date_pages %}
-        <a href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ selected_value }}&date_page={{ date_page + 1 }}" aria-label="Наступний тиждень" title="Наступний тиждень">›</a>
+        {% if date_page > 0 %}
+        <a href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ selected_value }}&date_page={{ date_page - 1 }}" aria-label="Тиждень пізніше" title="Тиждень пізніше">›</a>
         {% else %}
         <span class="nav-off" aria-hidden="true">›</span>
         {% endif %}

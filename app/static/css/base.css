@@ -95,6 +95,24 @@ body::before {
   background: rgba(13, 17, 23, 0.35);
 }
 
+/* Browser autofill paints inputs with an opaque pale-yellow background that
+   ignores the dark theme (the IMAP login/password fields showed bright cream).
+   There is no property to set autofill's colour directly, so the standard
+   trick: an inset box-shadow the size of the field repaints its background in
+   the theme colour, and -webkit-text-fill-color forces readable text. The
+   99999s background-color transition parks Chrome's own autofill animation off
+   screen so it never flashes yellow. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--color-text);
+  -webkit-box-shadow: 0 0 0 1000px #111823 inset;
+  box-shadow: 0 0 0 1000px #111823 inset;
+  caret-color: var(--color-text);
+  transition: background-color 99999s ease-in-out 0s;
+}
+
 /* Headings */
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
@@ -1458,6 +1476,41 @@ li {
   background-color: rgba(134, 212, 206, 0.12);
 }
 
+/* Переробки (rework) — теплий оранж (CLAUDE.md §13). Рядок підсвічується, а
+   причину показує окремий бейдж у комірці наряду. */
+.queue-row-rework {
+  background-color: rgba(240, 163, 94, 0.06);
+}
+.queue-row-rework:hover {
+  background-color: rgba(240, 163, 94, 0.1);
+}
+.rework-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 1px 8px 1px 6px;
+  border-radius: var(--radius-chip, 999px);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #f0a35e;
+  background: rgba(240, 163, 94, 0.12);
+  border: 1px solid rgba(240, 163, 94, 0.32);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.rework-badge svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* Робота може бути одночасно і з пошти, і простроченою. Термінове (overdue)
    важливіше за джерело, тому в такому випадку фон рядка лишається
    червоним — джерело при цьому не губиться, бо позначка "з пошти"
@@ -2767,6 +2820,40 @@ li {
 }
 
 .detail-comment,
+/* "Sum3D минулого прорахунку" callout — the original calc's ID the operator
+   opens in Sum3D to review the flawed run before redoing it. Warm-orange like
+   the rework theme; the ID is a copy-button. */
+.rework-prev-calc {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid rgba(240, 163, 94, 0.32);
+  background: rgba(240, 163, 94, 0.07);
+  border-radius: var(--radius-card, 10px);
+}
+.rework-prev-calc .rpc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.rework-prev-calc .rpc-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #f0a35e;
+  letter-spacing: 0.01em;
+}
+.rework-prev-calc .rpc-id {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.rework-prev-calc .rpc-hint {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
 .detail-rework {
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--color-card-border);
@@ -3462,7 +3549,21 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .fchip .x{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:var(--ink-3)}
 .q2 .fchip:hover .x{background:rgba(248,113,113,.16);color:var(--alarm)}
 .q2 .fchip svg{width:10px;height:10px;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;fill:none}
-.q2 .date-strip{display:inline-flex;gap:2px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px}
+/* By default (bar fits one row on wide monitors) the date pager stays inline.
+   app.js measures the real layout and adds .filters-wrapped only when the bar
+   actually wraps — then the pager drops onto its own clean line, left-aligned
+   directly under the Період pills. .filters-break is a full-width zero-height
+   flex break; .flabel-ghost is an invisible "Період"-width spacer that reserves
+   the same lead width so the dates line up under Сьогодні/Вчора/…. Measuring in
+   JS (not a fixed breakpoint) keeps "one row on the big monitor" exact whatever
+   its width. */
+.q2 .filters .filters-break{display:none}
+.q2 .filters .flabel-ghost{display:none}
+.q2 .filters.filters-wrapped .filters-break{display:block;flex-basis:100%;height:0;margin:0;padding:0}
+.q2 .filters.filters-wrapped .flabel-ghost{display:inline;visibility:hidden}
+.q2 .date-strip{display:inline-flex;gap:2px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;max-width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+.q2 .date-strip::-webkit-scrollbar{display:none}
+.q2 .date-strip a,.q2 .date-strip span{flex:0 0 auto}
 .q2 .date-strip a,.q2 .date-strip span{
   height:26px;min-width:26px;padding:0 8px;border-radius:999px;font-size:11.5px;color:var(--ink-2);
   display:inline-flex;align-items:center;justify-content:center;text-decoration:none;font-family:var(--font-mono);
@@ -3617,6 +3718,23 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .side-body{padding:0 var(--queue-density-card-pad,13px) var(--queue-density-card-pad,13px);border-top:1px solid var(--line)}
 .q2 .side-sec[data-open="false"] .side-body{display:none}
 .q2 .side-sec[data-open="true"] .side-body{padding-top:11px}
+
+/* Spotlight cards (inspired by KokonutUI spotlight-cards, reimplemented in our
+   vanilla stack): a teal radial glow follows the cursor, the border lifts, and
+   the card tilts a few degrees toward the pointer. Position vars (--mx/--my)
+   and tilt (--rx/--ry) are written by app.js on mousemove; .spotlight is added
+   by that JS so a no-JS card keeps its normal flat look. overflow:hidden
+   (already on .side-sec) clips the glow to the rounded card. */
+.q2 .side-sec{position:relative;transition:transform .18s ease,box-shadow .2s ease,border-color .2s ease}
+.q2 .side-sec::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0;opacity:0;transition:opacity .25s ease;background:radial-gradient(300px circle at var(--mx,50%) var(--my,50%),rgba(45,212,191,.16),transparent 60%)}
+.q2 .side-sec.spotlight:hover::before{opacity:1}
+.q2 .side-sec.spotlight:hover{border-color:rgba(45,212,191,.35);box-shadow:0 12px 32px -16px rgba(45,212,191,.45),var(--glow)}
+.q2 .side-sec.spotlight{transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg))}
+.q2 .side-head,.q2 .side-body{position:relative;z-index:1}
+@media (prefers-reduced-motion:reduce){
+  .q2 .side-sec.spotlight{transform:none}
+  .q2 .side-sec::before{transition:none}
+}
 .q2 .state{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;margin-bottom:11px}
 .q2 .state svg{width:17px;height:17px;flex:0 0 17px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .q2 .state strong{display:block;font-size:12.5px;font-weight:600}

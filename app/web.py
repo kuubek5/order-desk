@@ -85,6 +85,7 @@ from app.sheet_writer import (
     append_order_comment,
     apply_status_markers,
     write_order_fields,
+    write_rework_sum3d,
 )
 from app.sheets import get_worksheet_by_name, open_spreadsheet
 from app.statuses import STATUSES, is_overdue
@@ -505,6 +506,11 @@ def _sort_orders_by_column(orders: list[Order], sort: str, direction: str) -> li
 
 
 DATE_STRIP_WINDOW = 7
+# How many calendar days back the day-strip always offers, even on days the lab
+# entered no work — so the operator can page ~3 weeks back regardless of how
+# sparse the real work-days are. Real work-days beyond this (and any future
+# deadline days) are still included on top.
+DATE_STRIP_BACKFILL_DAYS = 21
 
 
 def _known_order_dates(db: Session) -> list[date]:
@@ -525,23 +531,32 @@ def _date_window(
 ) -> tuple[list[date], int, int]:
     """Page through `known_dates` (ascending) `window` days at a time.
 
-    Returns `(visible_dates, current_page, total_pages)`. With no explicit
-    `date_page`, the default window is the one containing `today`, or the
-    most recent window if today has no data yet (e.g. the operator opens
-    the queue before the lab has entered anything for today)."""
+    Returns `(visible_dates, current_page, total_pages)`. Pages tile from the
+    RIGHT (most-recent) end: page 0 is the newest full window ending at the last
+    date, higher page numbers step further back in time (the oldest page may be
+    partial). This keeps the default view a full recent week rather than a stub
+    when `today` happens to fall one short of a left-aligned block boundary.
+
+    With no explicit `date_page`, the default is the page whose window contains
+    `today` (or the newest page if today has no data yet). `date_page` counts
+    back from the newest window, so the template's ‹ (older) is `date_page + 1`
+    and › (newer) is `date_page - 1`."""
     if not known_dates:
         return [], 0, 0
 
-    total_pages = (len(known_dates) + window - 1) // window
+    n = len(known_dates)
+    total_pages = (n + window - 1) // window
 
     if date_page is None:
-        anchor_idx = known_dates.index(today) if today in known_dates else len(known_dates) - 1
-        current_page = anchor_idx // window
+        anchor_idx = known_dates.index(today) if today in known_dates else n - 1
+        # How many whole windows the anchor sits back from the newest date.
+        current_page = ((n - 1) - anchor_idx) // window
     else:
         current_page = max(0, min(date_page, total_pages - 1))
 
-    start = current_page * window
-    return known_dates[start : start + window], current_page, total_pages
+    end = n - current_page * window
+    start = max(0, end - window)
+    return known_dates[start:end], current_page, total_pages
 
 
 def _pluralize_uk(n: int, one: str, few: str, many: str) -> str:
@@ -862,6 +877,38 @@ def _write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | No
                 sheet_tab=order.sheet_tab,
                 status="error",
                 message=f"order {order.id}: {error}",
+            )
+        )
+        return error
+
+
+def _write_rework_sum3d(db: Session, order: Order, value: str) -> str | None:
+    """Write the redo Sum3D ID to the sheet's column W. Same lab-only gate,
+    single-cell discipline and error-surfacing as _write_sheet_fields."""
+    if order.source != "lab" or not order.sheet_tab:
+        return None
+    try:
+        worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
+        if worksheet is None:
+            raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
+        write_rework_sum3d(worksheet, order, value)
+        db.add(
+            SyncLog(
+                direction="db_to_sheet",
+                sheet_tab=order.sheet_tab,
+                status="ok",
+                message=f"order {order.id}: rework sum3d_id",
+            )
+        )
+        return None
+    except Exception as exc:
+        error = str(exc)
+        db.add(
+            SyncLog(
+                direction="db_to_sheet",
+                sheet_tab=order.sheet_tab,
+                status="error",
+                message=f"order {order.id}: rework sum3d_id: {error}",
             )
         )
         return error
@@ -1207,7 +1254,13 @@ def get_queue(
     # for why this is enough to stay in sync with the Sheet with no new
     # sync mechanism).
     known_dates = _known_order_dates(db)
-    date_tabs, current_date_page, total_date_pages = _date_window(known_dates, today, date_page)
+    # Union the real work-days with a trailing calendar range so the pager can
+    # always wind back ~3 weeks even when recent days are sparse (see
+    # DATE_STRIP_BACKFILL_DAYS). Empty backfilled days simply show an empty
+    # queue when opened.
+    backfill = {today - timedelta(days=i) for i in range(DATE_STRIP_BACKFILL_DAYS + 1)}
+    date_universe = sorted(set(known_dates) | backfill)
+    date_tabs, current_date_page, total_date_pages = _date_window(date_universe, today, date_page)
 
     return templates.TemplateResponse(
         request,
@@ -1333,8 +1386,18 @@ async def set_sum3d_id(
     if order is None:
         raise HTTPException(status_code=404, detail="order not found")
 
-    order.sum3d_id = sum3d_id.strip() or None
-    sync_error = _write_sheet_fields(db, order, {"sum3d_id"})
+    value = sum3d_id.strip() or None
+    rework = order.active_rework
+    if rework is not None:
+        # A reworked job — the ID the operator types is the redo calculation's
+        # Sum3D (column W), NOT the original job's ID (column L, left intact as
+        # the "previous calculation" the operator reviews to avoid repeating the
+        # mistake — see the order passport's rework block).
+        rework.sum3d_id = value
+        sync_error = _write_rework_sum3d(db, order, value or "")
+    else:
+        order.sum3d_id = value
+        sync_error = _write_sheet_fields(db, order, {"sum3d_id"})
     db.commit()
     db.refresh(order)
 

@@ -4,10 +4,6 @@
    «Синхронізувати» (POST /sheets/sync для адміна) або веде в налаштування. #}
 <section class="statusline" aria-label="Ключові показники черги">
     <div class="sl-counters">
-        <a href="/?overdue=1" class="sl-item is-alarm {% if show_overdue %}is-active{% endif %}">
-            <b class="tnum">{{ kpis.overdue }}</b> прострочено
-        </a>
-        <span class="sl-sep" aria-hidden="true"></span>
         <a href="/?period=today" class="sl-item {% if not show_overdue and period == 'today' %}is-active{% endif %}">
             <b class="tnum">{{ kpis.due_today }}</b> здати сьогодні
         </a>

@@ -96,11 +96,13 @@ def count_by_service_type(emails: list[EmailMessage]) -> dict[str, int]:
 
 
 def is_order_ready(order: Order) -> bool:
-    """Whether an order has an existing technician/export folder on disk."""
-    return bool(
-        getattr(order, "job_code_folder_uri", None)
-        or getattr(order, "export_folder_uri", None)
-    )
+    """Whether the technician has finished this job and the operator can take it
+    into work now. The marker is a filled working-directory path — the sheet's
+    "Номер роботи" (Order.job_code): the lab writes it once the model is done
+    and the files are on the server, so a non-empty job_code means "ready to
+    take". (This is the operator-readiness signal, distinct from the on-disk
+    export folder used for morning handout.)"""
+    return bool(order.job_code and order.job_code.strip())
 
 
 def filter_by_readiness(orders: list[Order], ready: str) -> list[Order]:

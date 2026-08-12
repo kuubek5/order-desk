@@ -60,6 +60,16 @@ class Order(Base):
         "ReworkRecord", back_populates="order", cascade="all, delete-orphan"
     )
 
+    @property
+    def active_rework(self) -> Optional["ReworkRecord"]:
+        """The order's current rework, or None. Reworks are sheet-sourced and
+        upserted one-per-order (see app/sync.py::_sync_rework), so the latest by
+        created_at is the live one. Drives the queue rework badge and routes the
+        Sum3D-ID write to the redo column instead of the main one."""
+        if not self.rework_records:
+            return None
+        return max(self.rework_records, key=lambda r: r.created_at or datetime.min)
+
 
 class StatusEvent(Base):
     __tablename__ = "status_events"

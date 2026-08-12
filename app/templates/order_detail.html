@@ -142,16 +142,26 @@
     <div class="p2-card">
         <h3>Історія переробок</h3>
         {% if order.rework_records %}
+        {% if order.sum3d_id %}
+        <div class="rework-prev-calc">
+            <div class="rpc-row">
+                <span class="rpc-label">Sum3D минулого прорахунку</span>
+                <button type="button" class="mono copy-button rpc-id" data-copy="{{ order.sum3d_id }}" title="Клік — скопіювати ID минулого прорахунку, щоб відкрити той проєкт у Sum3D">{{ order.sum3d_id }}</button>
+            </div>
+            <p class="rpc-hint">Відкрийте цей проєкт у Sum3D — подивіться, як рахувалась минула робота, щоб не повторити помилку.</p>
+        </div>
+        {% endif %}
         <ul class="detail-list">
             {% for rework in order.rework_records|sort(attribute='created_at') %}
             <li class="detail-rework">
                 <div class="rework-header">
-                    <span class="rework-blame">{{ rework.blame or '—' }}</span>
+                    <span class="rework-blame">Причина: {{ rework.blame or '—' }}{% if rework.occurrence %} · {{ rework.occurrence }}-й раз{% endif %}</span>
                     <span class="rework-date">{{ rework.created_at.strftime('%d.%m.%y %H:%M') if rework.created_at else '—' }}</span>
                 </div>
                 <div class="rework-details">
                     {% if rework.blame_quantity %}<span class="rework-detail-item">Браку: {{ rework.blame_quantity }}</span>{% endif %}
                     {% if rework.redo_quantity %}<span class="rework-detail-item">Переробки: {{ rework.redo_quantity }}</span>{% endif %}
+                    {% if rework.sum3d_id %}<span class="rework-detail-item">Sum3D переробки: <button type="button" class="mono copy-button rework-redo-id" data-copy="{{ rework.sum3d_id }}" title="Клік — скопіювати ID переробки">{{ rework.sum3d_id }}</button></span>{% endif %}
                     {% if rework.cam_comment %}<div class="rework-comment">{{ rework.cam_comment }}</div>{% endif %}
                 </div>
             </li>

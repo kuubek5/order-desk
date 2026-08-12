@@ -18,6 +18,8 @@ COL_SUM3D_ID = 12
 COL_CALCULATED = 13
 COL_MILLED = 14
 COL_CAM_COMMENT = 11
+# Rework/БРАК "Заповнює cam оператор" redo ID — sheet column W (parser idx 22).
+COL_REDO_SUM3D_ID = 23
 STATUS_MARKER_FIELDS = {"calculated_raw", "milled_raw"}
 
 # 1-indexed gspread columns for the mail-intake placeholder row (see
@@ -72,6 +74,14 @@ def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[s
 
     if updates:
         worksheet.batch_update(updates)
+
+
+def write_rework_sum3d(worksheet: gspread.Worksheet, order: Order, value: str) -> None:
+    """Write the rework redo Sum3D ID into column W ("Заповнює cam оператор" →
+    ID) of the order's row — the second ID column, distinct from the main
+    Sum3D ID in column L. Touches only that one cell, never the whole row."""
+    row = _sheet_row(order)
+    worksheet.update_cell(row, COL_REDO_SUM3D_ID, value or "")
 
 
 def apply_status_markers(

@@ -2,7 +2,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.db import Base
-from app.models import Comment, Order
+from app.models import Comment, Order, ReworkRecord
 from app.parser import OrderRow
 from app.sync import sync_tab
 
@@ -167,3 +167,78 @@ def test_calculated_status_does_not_regress_to_accepted():
         session.commit()
 
         assert order.status == "прораховано"
+
+
+def test_rework_row_creates_rework_record():
+    with make_session() as session:
+        sync_tab(
+            session,
+            "01.08.26",
+            [make_row(
+                mill_count="2",
+                rework_blame={"технік": "3"},
+                redo_quantity="3",
+                redo_cam_comment="перефрезерувати балансир",
+                redo_sum3d_id="SUM-REDO",
+                redo_calculated="+ 09:00",
+                redo_milled="+ 11:00",
+            )],
+        )
+        session.commit()
+
+        rec = session.scalar(select(ReworkRecord))
+        assert rec is not None
+        assert rec.occurrence == 2
+        assert rec.blame == "технік"
+        assert rec.blame_quantity == "3"
+        assert rec.redo_quantity == "3"
+        assert rec.cam_comment == "перефрезерувати балансир"
+        assert rec.sum3d_id == "SUM-REDO"
+
+
+def test_no_rework_columns_creates_no_record():
+    with make_session() as session:
+        sync_tab(session, "01.08.26", [make_row()])
+        session.commit()
+        assert session.scalar(select(ReworkRecord)) is None
+
+
+def test_rework_sync_is_idempotent_and_updates_in_place():
+    with make_session() as session:
+        row = make_row(rework_blame={"клієнт": "1"}, redo_cam_comment="варіант 1")
+        sync_tab(session, "01.08.26", [row])
+        session.commit()
+
+        # Re-sync with the blame edited in the sheet — must update the SAME
+        # record, not add a second one.
+        row2 = make_row(rework_blame={"обладнання": "2"}, redo_cam_comment="варіант 2")
+        sync_tab(session, "01.08.26", [row2])
+        session.commit()
+
+        records = session.scalars(select(ReworkRecord)).all()
+        assert len(records) == 1
+        assert records[0].blame == "обладнання"
+        assert records[0].blame_quantity == "2"
+        assert records[0].cam_comment == "варіант 2"
+
+
+def test_active_rework_returns_latest_record():
+    from datetime import datetime
+    with make_session() as session:
+        order = Order(source="lab", sheet_tab="01.08.26", row_number=1, work_order_no="24122", status="нове")
+        session.add(order)
+        session.flush()
+        session.add(ReworkRecord(order_id=order.id, blame="технік", created_at=datetime(2026, 8, 1, 9, 0)))
+        session.add(ReworkRecord(order_id=order.id, blame="клієнт", created_at=datetime(2026, 8, 2, 9, 0)))
+        session.commit()
+        session.refresh(order)
+        assert order.active_rework is not None
+        assert order.active_rework.blame == "клієнт"
+
+
+def test_active_rework_none_without_records():
+    with make_session() as session:
+        order = Order(source="lab", sheet_tab="01.08.26", row_number=1, work_order_no="24122", status="нове")
+        session.add(order)
+        session.commit()
+        assert order.active_rework is None

@@ -186,9 +186,11 @@ def test_date_window_defaults_to_window_containing_today():
 
     visible, page, total_pages = _date_window(known, today, None)
 
-    assert page == 1
+    # Pages tile from the newest end: page 0 is the newest full window ending at
+    # the last date (known[3:10]), and it contains today.
+    assert page == 0
     assert total_pages == 2
-    assert visible == known[7:]
+    assert visible == known[3:]
     assert today in visible
 
 
@@ -212,9 +214,26 @@ def test_date_window_explicit_page_is_used_verbatim():
 
     visible, page, total_pages = _date_window(known, today, 0)
 
+    # Page 0 is the NEWEST window (right-tiled), i.e. the last 7 dates.
     assert page == 0
     assert total_pages == 2
-    assert visible == known[:7]
+    assert visible == known[2:]
+
+
+def test_date_window_higher_page_steps_back_in_time():
+    known = _dates(
+        "01.08.26", "02.08.26", "03.08.26", "04.08.26", "05.08.26", "06.08.26", "07.08.26",
+        "08.08.26", "09.08.26",
+    )
+    today = datetime.strptime("09.08.26", "%d.%m.%y").date()
+
+    # Page 1 is the older window; with 9 dates and window 7 the oldest page is
+    # the partial leading remainder.
+    visible, page, total_pages = _date_window(known, today, 1)
+
+    assert page == 1
+    assert total_pages == 2
+    assert visible == known[:2]
 
 
 def test_date_window_clamps_page_beyond_available_range():

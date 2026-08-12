@@ -269,7 +269,15 @@
                 <form method="post" action="/settings/backup/import" enctype="multipart/form-data" class="settings-backup-form">
                     <div class="settings-field">
                         <label for="backup_file">Файл резервної копії</label>
-                        <input type="file" id="backup_file" name="backup_file" accept=".json,application/json" required>
+                        <label class="dropzone" id="backup-dropzone">
+                            <input type="file" id="backup_file" name="backup_file" accept=".json,application/json" required class="dropzone-input">
+                            <span class="dropzone-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 16v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg>
+                            </span>
+                            <span class="dropzone-title">Перетягніть файл або натисніть</span>
+                            <span class="dropzone-hint">Файл резервної копії <b>.json</b></span>
+                            <span class="dropzone-file" hidden></span>
+                        </label>
                     </div>
                     <div class="settings-field">
                         <label for="restore_password">Пароль цієї резервної копії</label>

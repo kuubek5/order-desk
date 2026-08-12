@@ -8,15 +8,18 @@
    по заголовку для сортування працює як звичайно. #}
 {% set _grip %}<span class="colgrip" data-col-resize aria-hidden="true"></span>{% endset %}
 <thead>
+    {# Column order mirrors the Google Sheet: Наряд, Кількість, Матеріал/Колір,
+       Вид роботи, Шлях (Номер роботи), Технік, Коментар, Sum3D ID — then Статус
+       (app-only) at the end. _order_row.html must keep the same td order. #}
     <tr>
         <th>Наряд{{ _grip }}</th>
-        <th>Коментар{{ _grip }}</th>
+        <th>{{ sortcol.th('quantity', 'Кількість') }}{{ _grip }}</th>
         <th>{{ sortcol.th('material', 'Матеріал / Колір') }}{{ _grip }}</th>
         <th>{{ sortcol.th('kind', 'Вид роботи') }}{{ _grip }}</th>
-        <th>{{ sortcol.th('quantity', 'Кількість') }}{{ _grip }}</th>
         <th>Шлях{{ _grip }}</th>
-        <th>Sum3D ID{{ _grip }}</th>
         <th>Технік{{ _grip }}</th>
+        <th>Коментар{{ _grip }}</th>
+        <th>Sum3D ID{{ _grip }}</th>
         <th>Статус{{ _grip }}</th>
     </tr>
 </thead>

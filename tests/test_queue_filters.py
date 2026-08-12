@@ -27,40 +27,51 @@ class _FakeOrder:
 
 
 def test_filter_by_readiness_all_returns_everything_unchanged():
-    orders = [_FakeOrder(job_code_folder_uri="file:///ready"), _FakeOrder()]
+    orders = [_FakeOrder("2026-07-21_00016-007"), _FakeOrder()]
 
     result = filter_by_readiness(orders, "all")
 
     assert result == orders
 
 
-def test_filter_by_readiness_ready_keeps_only_orders_with_resolved_folder():
-    ready_order = _FakeOrder(job_code_folder_uri="file:///ready")
-    not_ready_order = _FakeOrder("2026-07-21_00016-007")
+def test_filter_by_readiness_ready_keeps_only_orders_with_job_code():
+    # "Ready" now means the technician filled the working-directory path
+    # (Order.job_code) — the operator can take it into work.
+    ready_order = _FakeOrder("2026-07-21_00016-007")
+    not_ready_order = _FakeOrder()
 
     result = filter_by_readiness([ready_order, not_ready_order], "ready")
 
     assert result == [ready_order]
 
 
-def test_filter_by_readiness_not_ready_keeps_only_orders_without_resolved_folder():
-    ready_order = _FakeOrder(export_folder_uri="file:///mail-ready")
-    not_ready_order = _FakeOrder("2026-07-21_00016-007")
+def test_filter_by_readiness_not_ready_keeps_only_orders_without_job_code():
+    ready_order = _FakeOrder("2026-07-21_00016-007")
+    not_ready_order = _FakeOrder()
 
     result = filter_by_readiness([ready_order, not_ready_order], "not_ready")
 
     assert result == [not_ready_order]
 
 
-def test_filter_by_readiness_treats_unresolved_job_code_as_not_ready():
-    order = _FakeOrder("")
+def test_filter_by_readiness_treats_blank_job_code_as_not_ready():
+    order = _FakeOrder("   ")
 
     assert filter_by_readiness([order], "ready") == []
     assert filter_by_readiness([order], "not_ready") == [order]
 
 
+def test_filter_by_readiness_ignores_resolved_folder_without_job_code():
+    # A resolved on-disk folder is no longer the readiness signal — only a
+    # filled job_code is.
+    folder_only = _FakeOrder(job_code_folder_uri="file:///ready")
+
+    assert filter_by_readiness([folder_only], "ready") == []
+    assert filter_by_readiness([folder_only], "not_ready") == [folder_only]
+
+
 def test_filter_by_readiness_unknown_value_behaves_like_all():
-    orders = [_FakeOrder(job_code_folder_uri="file:///ready"), _FakeOrder()]
+    orders = [_FakeOrder("2026-07-21_00016-007"), _FakeOrder()]
 
     result = filter_by_readiness(orders, "bogus")
 
@@ -69,9 +80,9 @@ def test_filter_by_readiness_unknown_value_behaves_like_all():
 
 def test_count_by_readiness_splits_correctly():
     orders = [
-        _FakeOrder(job_code_folder_uri="file:///ready-1"),
-        _FakeOrder(export_folder_uri="file:///ready-2"),
         _FakeOrder("2026-07-21_00018-001"),
+        _FakeOrder("2026-07-21_00018-002"),
+        _FakeOrder(),
     ]
 
     counts = count_by_readiness(orders)

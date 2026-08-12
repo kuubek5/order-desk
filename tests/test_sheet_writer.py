@@ -468,3 +468,30 @@ class TestAppendOrderComment:
             (update["range"], update["values"][0][0]) for update in call_args
         }
         assert actual_updates == expected_updates
+
+
+class TestWriteReworkSum3d:
+    """Redo Sum3D ID goes to column W (23), a single-cell update."""
+
+    def test_writes_redo_id_to_column_w(self):
+        from app.sheet_writer import write_rework_sum3d, COL_REDO_SUM3D_ID
+
+        order = make_order(row_number=5)
+        fake_ws = MagicMock()
+
+        write_rework_sum3d(fake_ws, order, "SUM-REDO-9")
+
+        expected_row = 5 + HEADER_ROWS
+        assert COL_REDO_SUM3D_ID == 23
+        fake_ws.update_cell.assert_called_once_with(expected_row, 23, "SUM-REDO-9")
+        fake_ws.batch_update.assert_not_called()
+
+    def test_empty_value_clears_cell(self):
+        from app.sheet_writer import write_rework_sum3d
+
+        order = make_order(row_number=2)
+        fake_ws = MagicMock()
+
+        write_rework_sum3d(fake_ws, order, "")
+
+        fake_ws.update_cell.assert_called_once_with(2 + HEADER_ROWS, 23, "")
