@@ -20,3 +20,5 @@ license_private_key.pem
 
 # Видані ключі активації клієнтів (журнал власника, не для git)
 keys/
+data/
+export/
