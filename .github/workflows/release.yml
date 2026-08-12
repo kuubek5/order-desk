@@ -78,14 +78,19 @@ jobs:
           }
           Write-Host "Found installed exe at $exePath"
 
-          # Do NOT launch the exe manually: the installer's own [Run] step
-          # (plain `nowait`, fires under /VERYSILENT) already launched it after
-          # copying files. Starting a second one would race that launch, and the
-          # app's single-instance mutex would make one process a no-op — which
-          # broke a PID-based liveness check. Just wait for /health to answer.
+          # Launch the exe manually here. On a real workstation the installer's
+          # own [Run] step relaunches the app under /VERYSILENT (that's the
+          # auto-updater's restart path), but a headless CI runner has no
+          # interactive desktop session, so `runasoriginaluser` [Run] is a no-op
+          # here — meaning the mutex is free and this manual launch is what the
+          # smoke test actually exercises. ORDER_DESK_NONINTERACTIVE keeps a
+          # startup-failure MessageBox from hanging the runner.
+          Write-Host "Launching OrderDesk..."
+          $env:ORDER_DESK_NONINTERACTIVE = "1"
           $logFile = "$env:TEMP\orderdesk-smoke-test.log"
           $errFile = "$env:TEMP\orderdesk-smoke-test-err.log"
-          Write-Host "Waiting for installer-launched OrderDesk to answer /health..."
+          Start-Process -FilePath $exePath -WindowStyle Hidden -RedirectStandardOutput $logFile -RedirectStandardError $errFile | Out-Null
+          Write-Host "Waiting for OrderDesk to answer /health..."
 
           $healthUrl = "http://127.0.0.1:8000/health"
           # 180s: the onedir bundle grew (self-hosted fonts, three.js, extra JS),
