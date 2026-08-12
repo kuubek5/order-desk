@@ -37,8 +37,15 @@ New-Item -ItemType Directory -Path $installerOutput -Force | Out-Null
     "/DOutputRoot=$installerOutput" `
     (Join-Path $projectRoot "installer\OrderDesk.iss")
 
+# Version comes from the single source of truth (app/__version__.py) so the
+# installer filename never drifts from the code version — the exact drift that
+# broke the v0.1.1 release build when this was hardcoded to 0.1.0.
+$versionLine = Select-String -Path (Join-Path $projectRoot "app\__version__.py") -Pattern 'VERSION\s*=\s*"([^"]+)"'
+$version = $versionLine.Matches[0].Groups[1].Value
+$installerName = "OrderDesk-Setup-$version.exe"
+
 $projectOutput = Join-Path $projectRoot "dist-installer"
 New-Item -ItemType Directory -Path $projectOutput -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $installerOutput "OrderDesk-Setup-0.1.0.exe") -Destination $projectOutput -Force
+Copy-Item -LiteralPath (Join-Path $installerOutput $installerName) -Destination $projectOutput -Force
 
-Write-Host "Windows installer ready: $projectOutput\OrderDesk-Setup-0.1.0.exe"
+Write-Host "Windows installer ready: $projectOutput\$installerName"
