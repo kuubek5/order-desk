@@ -109,6 +109,109 @@ document.addEventListener("submit", (event) => {
   );
 });
 
+// Themed update overlay (app/templates/_update_overlay.html, styles
+// .update-* in base.css). When an admin clicks "Встановити" on the rail
+// update banner (form[action="/settings/update/install"]), instead of the
+// plain POST→/settings flash we show a full-screen milling animation, fire
+// the install request in the background, cycle mono status lines, and reload
+// the page once the app has restarted and /health answers again. Without JS
+// the form submits normally (graceful fallback to the flash text). The show
+// function is also exposed for manual verification (window.showUpdateOverlay).
+(function () {
+  const STAGES = [
+    "Завантаження оновлення…",
+    "Перевірка контрольної суми…",
+    "Розпакування пакета…",
+    "Встановлення файлів…",
+    "Перезапуск… за мить сторінка оновиться",
+  ];
+  const STAGE_MS = 2200;
+
+  let stageTimer = null;
+  let healthTimer = null;
+  let shown = false;
+
+  function showUpdateOverlay() {
+    const overlay = document.getElementById("update-overlay");
+    if (!overlay || shown) return;
+    shown = true;
+
+    const statusEl = document.getElementById("update-status");
+    overlay.hidden = false;
+    overlay.setAttribute("aria-hidden", "false");
+    // Force reflow so the fade-in transition runs from the hidden state
+    // (rAF is throttled if the tab isn't painting, so don't rely on it).
+    void overlay.offsetWidth;
+    overlay.classList.add("is-shown");
+
+    // Cycle the mono status lines; hold on the final "Перезапуск…" stage.
+    let i = 0;
+    if (statusEl) {
+      statusEl.textContent = STAGES[0];
+      stageTimer = window.setInterval(() => {
+        if (i >= STAGES.length - 1) {
+          window.clearInterval(stageTimer);
+          stageTimer = null;
+          return;
+        }
+        i += 1;
+        statusEl.classList.add("is-fading");
+        window.setTimeout(() => {
+          statusEl.textContent = STAGES[i];
+          statusEl.classList.remove("is-fading");
+        }, 180);
+      }, STAGE_MS);
+    }
+
+    startHealthReloadPoll();
+  }
+
+  // Poll /health. The app is about to restart, so /health will first start
+  // failing (connection dropped) and then, once the new process is up, answer
+  // 200 again — that transition (a failure THEN a success) is our signal to
+  // reload into the freshly updated app. Reloading only after an observed
+  // failure avoids reloading the still-old process before it has restarted.
+  function startHealthReloadPoll() {
+    let sawFailure = false;
+    healthTimer = window.setInterval(() => {
+      fetch("/health", { cache: "no-store" })
+        .then((r) => {
+          if (!r.ok) throw new Error("bad");
+          if (sawFailure) {
+            window.clearInterval(healthTimer);
+            healthTimer = null;
+            window.location.reload();
+          }
+        })
+        .catch(() => {
+          sawFailure = true;
+        });
+    }, 1500);
+  }
+
+  window.showUpdateOverlay = showUpdateOverlay;
+
+  document.addEventListener("submit", (event) => {
+    const form = event.target.closest('form[action="/settings/update/install"]');
+    if (!form) return;
+    event.preventDefault();
+
+    const button = form.querySelector('button[type="submit"]');
+    if (button) button.disabled = true;
+
+    showUpdateOverlay();
+
+    // Fire the real install request; the response never really arrives (the
+    // app restarts mid-flight), so a rejected/aborted fetch is expected and
+    // ignored — the health poll drives the reload.
+    fetch("/settings/update/install", {
+      method: "POST",
+      headers: { "X-Requested-With": "fetch" },
+      credentials: "same-origin",
+    }).catch(() => {});
+  });
+})();
+
 // Left-rail collapse toggle. Persists in localStorage; the anti-flash inline
 // script in base.html applies the saved state before first paint, so this only
 // handles the click and keeps the stored value in sync. No-op if the rail

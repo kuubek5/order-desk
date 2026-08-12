@@ -18,6 +18,7 @@
 <body>
     <script>try{if(localStorage.getItem('railCollapsed')==='1')document.body.classList.add('rail-collapsed');}catch(e){}</script>
     {% block content %}{% endblock %}
+    {% include "_update_overlay.html" %}
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

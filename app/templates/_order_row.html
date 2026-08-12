@@ -64,7 +64,10 @@
             </button>
         </form>
         {% if order.export_folder_uri %}
-        <a href="{{ order.export_folder_uri }}" class="folder-link" {% if order.export_folder_preview_token %}data-stl-preview-token="{{ order.export_folder_preview_token }}"{% endif %} title="Відкрити папку в export">
+        {# data-stl-preview-token: клік по цій іконці відкриває стійку STL-панель
+           (app/static/js/stl-preview.js) — колишню навігацію по href панель
+           перехоплює, всередині є кнопка «Відкрити папку». #}
+        <a href="{{ order.export_folder_uri }}" class="folder-link" {% if order.export_folder_preview_token %}data-stl-preview-token="{{ order.export_folder_preview_token }}"{% endif %} title="Переглянути STL / відкрити папку">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
         </a>
         {% endif %}

@@ -3026,114 +3026,223 @@ li {
   stroke-linejoin: round;
 }
 
-/* STL hover preview popup (app/static/js/stl-preview.js) */
+/* Click-stable STL preview panel (app/static/js/stl-preview.js).
+   Replaces the old fragile hover popup: clicking a folder icon opens this
+   panel, which stays put (no mouseout dismissal) so the operator can switch
+   between a folder's several .stl files. Same visual language as the mail
+   triage gallery (.stl-gallery-* below), scoped under .stl-panel. */
 [data-stl-preview-token] {
   cursor: pointer;
 }
 
-.stl-preview-popup {
+.stl-panel {
   position: fixed;
   z-index: 200;
-  width: 200px;
-  height: 200px;
-  border-radius: var(--radius-card);
-  background: var(--color-card-bg);
-  border: 1px solid var(--color-card-border);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-  pointer-events: none;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-card);
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--sh-pop);
   opacity: 0;
-  transform: translateY(4px) scale(0.98);
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  overflow: hidden;
+  transform: translateY(6px) scale(0.985);
+  transition: opacity 0.16s ease, transform 0.16s ease;
 }
 
-.stl-preview-popup.is-visible {
+.stl-panel.is-open {
   opacity: 1;
   transform: translateY(0) scale(1);
 }
 
-.stl-preview-popup canvas {
+.stl-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px 9px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.stl-panel-title {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+}
+
+.stl-panel-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--card-2);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: color var(--ui-speed) ease, border-color var(--ui-speed) ease, background var(--ui-speed) ease;
+}
+
+.stl-panel-close:hover {
+  color: var(--ink);
+  border-color: var(--line-2);
+  background: var(--card-3);
+}
+
+.stl-panel-close svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.stl-panel-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.stl-panel-stage {
+  position: relative;
+  height: 240px;
+  margin: 10px 10px 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: radial-gradient(120% 120% at 50% 0, #131c28, #0e141d 70%);
+}
+
+.stl-panel-canvas {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.stl-preview-status {
+.stl-panel-status {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-3);
+  padding: 16px;
   text-align: center;
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
+  font-size: 12.5px;
+  color: var(--ink-3);
 }
 
-/* Multi-file switcher — only present when a folder has more than one .stl
-   file (see stl-preview.js renderSwitcher()). Toggling `.has-switcher` on
-   the popup is what turns on pointer-events for this case; the single-file
-   popup stays pointer-events: none exactly as before, so this whole block
-   is inert (and invisible) for the common case. */
-.stl-preview-popup.has-switcher {
-  pointer-events: auto;
-}
-
-.stl-preview-switcher {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 1;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  padding: 12px 8px 7px;
-  background: linear-gradient(to top, rgba(10, 8, 12, 0.55), transparent);
-}
-
-.stl-preview-switcher.is-visible {
+.stl-panel-files {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  max-height: 168px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
-/* Same "small solid circle" language as .job-code-found-dot, sized into a
-   real button with generous invisible padding so it stays easy to hit. */
-.stl-preview-dot {
-  box-sizing: content-box;
-  width: 0.4rem;
-  height: 0.4rem;
-  padding: 5px;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.stl-preview-dot::after {
-  content: "";
-  display: block;
+.stl-panel-file {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: var(--color-text-muted);
-  opacity: 0.55;
-  transition: background-color 0.18s ease, opacity 0.18s ease, transform 0.15s ease;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #111823;
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background var(--ui-speed) ease, border-color var(--ui-speed) ease, color var(--ui-speed) ease;
 }
 
-.stl-preview-dot:hover::after {
-  opacity: 0.85;
+.stl-panel-file:hover {
+  background: var(--card-2);
+  border-color: #3a4a5f;
+  color: var(--ink);
 }
 
-.stl-preview-dot.is-active::after {
-  background: var(--color-accent);
+.stl-panel-file svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+}
+
+.stl-panel-file .name {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.stl-panel-file.is-active {
+  background: rgba(20, 184, 166, 0.12);
+  border-color: rgba(45, 212, 191, 0.42);
+  color: var(--accent-c);
+}
+
+.stl-panel-file.is-active svg {
   opacity: 1;
-  transform: scale(1.15);
 }
 
-.stl-preview-dot:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-  border-radius: 50%;
+.stl-panel-file:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.stl-panel-foot {
+  padding: 0 10px 10px;
+}
+
+.stl-panel-foot[hidden],
+.stl-panel-folder[hidden] {
+  display: none;
+}
+
+.stl-panel-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--card-2);
+  color: var(--ink-2);
+  font-size: 12px;
+  text-decoration: none;
+  transition: color var(--ui-speed) ease, border-color var(--ui-speed) ease, background var(--ui-speed) ease;
+}
+
+.stl-panel-folder:hover {
+  color: var(--accent-c);
+  border-color: rgba(45, 212, 191, 0.42);
+  background: var(--card-3);
+}
+
+.stl-panel-folder svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stl-panel {
+    transition: none;
+  }
 }
 
 /* ============================================================================
@@ -3799,4 +3908,112 @@ main.worldv2{max-width:1000px;margin:0 auto;padding:18px 20px}
 .worldv2 .search-button:hover{background:rgba(20,184,166,.24)}
 .worldv2 .queue-summary{font-size:13px;color:var(--ink-2);margin-bottom:12px}
 .worldv2 .queue-summary strong{color:var(--ink);font-family:var(--font-mono)}
+
+/* ============================================================================
+   Тематичний оверлей оновлення (app/templates/_update_overlay.html,
+   app/static/js/app.js → showUpdateOverlay). Мотив фрезерування у бірюзовому
+   світі v2a: обертовий шпиндель, G-code progress-дуга, блюпринт-сітка. Всі
+   класи скоуплені під .update-overlay, щоб нічого не зачепити.
+   ========================================================================== */
+.update-overlay{
+  position:fixed;inset:0;z-index:1000;
+  display:flex;align-items:center;justify-content:center;padding:24px;
+  background:radial-gradient(120% 120% at 50% 30%, rgba(19,28,40,.94), rgba(8,11,16,.97));
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+  opacity:0;transition:opacity .28s ease;
+}
+.update-overlay[hidden]{display:none}
+.update-overlay.is-shown{opacity:1}
+
+/* тонка блюпринт-сітка на задньому плані (перегук з темою точної механіки) */
+.update-overlay-grid{
+  position:absolute;inset:0;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(45,212,191,.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45,212,191,.06) 1px, transparent 1px);
+  background-size:34px 34px;
+  -webkit-mask-image:radial-gradient(closest-side at 50% 45%, #000 40%, transparent 85%);
+  mask-image:radial-gradient(closest-side at 50% 45%, #000 40%, transparent 85%);
+  animation:updateGridDrift 9s linear infinite;
+}
+@keyframes updateGridDrift{from{background-position:0 0,0 0}to{background-position:34px 34px,34px 34px}}
+
+.update-card{
+  position:relative;z-index:1;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  width:min(420px,100%);padding:34px 30px 30px;text-align:center;
+  border:1px solid var(--line-2);border-radius:16px;
+  background:linear-gradient(180deg, rgba(27,36,49,.9), rgba(18,24,33,.92));
+  box-shadow:var(--glow), 0 40px 90px -50px rgba(0,0,0,.9);
+}
+
+.update-stage{width:160px;height:160px;margin-bottom:6px}
+.update-mill{width:100%;height:100%;overflow:visible}
+.update-mill circle,.update-mill path{fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+.mill-ring-static{stroke:var(--line-2);stroke-width:1.5}
+.mill-ring-static.faint{stroke:rgba(45,212,191,.14)}
+
+/* G-code траса — короткий світний штрих, що біжить по колу */
+.mill-path{
+  stroke:var(--accent-b);stroke-width:2.4;opacity:.9;
+  stroke-dasharray:26 490;
+  filter:drop-shadow(0 0 5px rgba(45,212,191,.7));
+  transform-origin:100px 100px;
+  animation:updateTrace 2.4s linear infinite;
+}
+@keyframes updateTrace{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+
+/* дуга прогресу — циклічно «фрезерує» коло */
+.mill-progress{
+  stroke:var(--accent-c);stroke-width:3;opacity:.85;
+  stroke-dasharray:440;stroke-dashoffset:440;
+  transform:rotate(-90deg);transform-origin:100px 100px;
+  animation:updateProgress 3.2s ease-in-out infinite;
+}
+@keyframes updateProgress{
+  0%{stroke-dashoffset:440}
+  55%{stroke-dashoffset:70}
+  100%{stroke-dashoffset:440}
+}
+
+.mill-cross path{stroke:rgba(143,163,187,.35);stroke-width:1.2}
+
+.mill-spindle{transform-origin:100px 100px;animation:updateSpin 1s linear infinite}
+@keyframes updateSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.mill-hub{stroke:var(--accent);stroke-width:2;fill:rgba(20,184,166,.1)}
+.mill-flutes path{fill:rgba(94,234,212,.22);stroke:var(--accent-c);stroke-width:1.4}
+.mill-tip{fill:var(--accent-c);stroke:none;filter:drop-shadow(0 0 4px rgba(94,234,212,.8))}
+
+.update-title{font-family:var(--font-head);font-size:18px;font-weight:600;color:var(--ink);letter-spacing:var(--ls-head)}
+.update-status{
+  min-height:20px;font-size:13px;color:var(--accent-c);
+  letter-spacing:.01em;
+  transition:opacity .18s ease;
+}
+.update-status.is-fading{opacity:0}
+
+/* тонка sweep-полоска як у синхронізації черги */
+.update-track{
+  position:relative;width:210px;height:3px;margin-top:12px;
+  border-radius:999px;background:rgba(45,212,191,.12);overflow:hidden;
+}
+.update-track i{
+  position:absolute;top:0;left:0;height:100%;width:42%;border-radius:inherit;
+  background:linear-gradient(90deg, transparent, var(--accent-b), transparent);
+  animation:updateSweep 1.25s cubic-bezier(.4,0,.2,1) infinite;
+}
+@keyframes updateSweep{from{transform:translateX(-120%)}to{transform:translateX(360%)}}
+
+.update-note{margin-top:14px;font-size:11.5px;color:var(--ink-3);max-width:280px}
+
+@media (prefers-reduced-motion: reduce){
+  .update-overlay,.update-overlay.is-shown{transition:none}
+  .update-overlay-grid,.mill-path,.mill-progress,.mill-spindle,.update-track i{animation:none}
+  /* статична, але змістовна композиція: дуга прогресу зафіксована частково
+     пройденою, траса та шпиндель просто стоять на місці */
+  .mill-progress{stroke-dashoffset:180}
+  .mill-path{opacity:.6}
+  .update-track i{position:relative;width:60%;transform:none;left:0}
+}
 

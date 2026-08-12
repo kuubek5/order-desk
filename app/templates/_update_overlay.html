@@ -1,0 +1,41 @@
+{# Повноекранний тематичний оверлей оновлення (app/static/js/app.js →
+   showUpdateOverlay). Прихований за замовчуванням (hidden), показується коли
+   адмін тисне «Встановити» на банері оновлення в рейці (_topbar_nav.html
+   .rail-update-notice, форма POST /settings/update/install). Мотив —
+   фрезерування у бірюзовому світі v2a: обертовий шпиндель, G-code progress-
+   дуга по колу, блюпринт-сітка; моноширинні статус-рядки міняються за
+   таймером у JS. Без JS форма працює як раніше (flash-текст на /settings).
+   prefers-reduced-motion → спрощена статична версія (див. base.css). #}
+<div class="update-overlay" id="update-overlay" hidden aria-hidden="true" role="alertdialog" aria-label="Встановлення оновлення" aria-live="polite">
+  <div class="update-overlay-grid" aria-hidden="true"></div>
+  <div class="update-card">
+    <div class="update-stage" aria-hidden="true">
+      <svg class="update-mill" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <!-- нерухома цільова оснастка (workpiece rings) -->
+        <circle class="mill-ring-static" cx="100" cy="100" r="82"/>
+        <circle class="mill-ring-static faint" cx="100" cy="100" r="60"/>
+        <!-- G-code траса, що обертається по колу -->
+        <circle class="mill-path" cx="100" cy="100" r="82"/>
+        <!-- дуга прогресу (замикається по колу циклічно) -->
+        <circle class="mill-progress" cx="100" cy="100" r="70"/>
+        <!-- перехрестя центрування -->
+        <g class="mill-cross">
+          <path d="M100 40 V70 M100 130 V160 M40 100 H70 M130 100 H160"/>
+        </g>
+        <!-- шпиндель із фрезою (обертається) -->
+        <g class="mill-spindle">
+          <circle cx="100" cy="100" r="26" class="mill-hub"/>
+          <g class="mill-flutes">
+            <path d="M100 74 L108 100 L100 126 L92 100 Z"/>
+            <path d="M74 100 L100 92 L126 100 L100 108 Z"/>
+          </g>
+          <circle cx="100" cy="100" r="6" class="mill-tip"/>
+        </g>
+      </svg>
+    </div>
+    <div class="update-title">Встановлення оновлення</div>
+    <div class="update-status mono" id="update-status">Підготовка…</div>
+    <div class="update-track" aria-hidden="true"><i></i></div>
+    <p class="update-note">Застосунок перезапуститься автоматично. Не закривайте вікно.</p>
+  </div>
+</div>
