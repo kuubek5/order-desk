@@ -149,7 +149,7 @@ jobs:
           # Fail if health check never succeeded. Use Write-Host (not
           # Write-Error) for the headline: with $ErrorActionPreference='Stop'
           # a Write-Error is terminating and would abort the block before any
-          # of the diagnostics below ever run — which is exactly why the real
+          # of the diagnostics below ever run, which is exactly why the real
           # cause stayed invisible across several failed release attempts.
           if (-not $healthy) {
             Write-Host "Health check failed after $maxRetries retries"
