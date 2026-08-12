@@ -499,3 +499,39 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .table-scroll{overflow-x:auto}
 @media (max-width:640px){ .setv2 .users-add-form{grid-template-columns:1fr} }
 
+/* ============================================================================
+   Майстер (wizard) — screens/settings_redesigns.html #v3 structure, scoped
+   `.setv2` so it reuses the v2a tokens/atoms without leaking. Adds only the
+   progress bar + vertical step flow chrome; the fields/forms inside each step
+   keep their existing .settings-field / .login-input / .users-table styling.
+   ========================================================================== */
+.setv2 .setup-wizard-progress{display:flex;align-items:center;gap:12px;margin:0 0 18px;padding:12px 16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow)}
+.setv2 .setup-wizard-progress .lbl{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);white-space:nowrap}
+.setv2 .setup-wizard-progress .lbl-pct{color:var(--accent-c)}
+.setv2 .setup-wizard-progress .bar{flex:1;height:8px;border-radius:4px;background:#111823;border:1px solid var(--line);overflow:hidden}
+.setv2 .setup-wizard-progress .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-d),var(--accent-b))}
+
+.setv2 .wizard-flow{position:relative;padding-left:44px}
+.setv2 .wizard-flow::before{content:"";position:absolute;left:17px;top:16px;bottom:22px;width:2px;background:var(--line-2)}
+.setv2 .wizard-step{position:relative;margin-bottom:14px}
+.setv2 .wizard-step:last-child{margin-bottom:0}
+.setv2 .wizard-step .num{position:absolute;left:-44px;top:0;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-weight:600;font-size:14px;background:var(--card-2);border:2px solid var(--line-2);color:var(--ink-3);z-index:2}
+.setv2 .wizard-step.done .num{background:rgba(20,184,166,.16);border-color:var(--accent);color:var(--accent-c)}
+.setv2 .wizard-step.active .num{border-color:var(--accent-b);color:var(--accent-c);box-shadow:0 0 0 4px rgba(45,212,191,.12)}
+.setv2 .wizard-step .box{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);padding:16px}
+.setv2 .wizard-step.active .box{border-color:rgba(45,212,191,.3)}
+.setv2 .wizard-step-head{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+.setv2 .wizard-step-head h2{font-family:var(--font-head);font-size:15px;font-weight:600;margin:0;letter-spacing:-.005em}
+.setv2 .wizard-step-head .connection-state{margin-left:auto}
+.setv2 .wizard-sub{color:var(--ink-2);font-size:12.5px;line-height:1.45;margin:0 0 14px}
+.setv2 .wizard-step .users-add-form{margin-top:14px}
+
+@media (prefers-reduced-motion: reduce){
+  .setv2 .setup-wizard-progress .bar i{transition:none}
+}
+@media (max-width:640px){
+  .setv2 .wizard-flow{padding-left:0}
+  .setv2 .wizard-flow::before{display:none}
+  .setv2 .wizard-step .num{position:static;margin-bottom:8px}
+}
+

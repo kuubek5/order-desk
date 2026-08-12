@@ -69,6 +69,7 @@ from app.settings_store import (
     get_google_sheet_id,
     get_imap_login,
     get_imap_password,
+    get_technician_files_path,
     set_setting,
 )
 from app.sheet_sync_service import (
@@ -1813,6 +1814,33 @@ def get_settings(
     values = get_all_settings(db)
     operators = db.scalars(select(User).order_by(User.created_at)).all() if user.role == "адмін" else []
     settings_flash = request.session.pop("settings_flash", None)
+
+    # Setup-wizard progress (settings.html "Майстер" layout): five steps, a
+    # boolean per step for "готово". These flags are read-only derivations of
+    # the same get_setting values used everywhere else — nothing here changes
+    # how anything is saved or decrypted.
+    google_configured = _sheets_configured(db)
+    imap_configured = _imap_configured(db)
+    paths_set = bool(
+        (get_export_folder_path(db) or "").strip()
+        and (get_technician_files_path(db) or "").strip()
+    )
+    # Independent of the `operators` list above, which is empty for non-admins.
+    operators_exist = db.scalar(select(func.count()).select_from(User)) > 0
+    backup_available = True  # a snapshot can always be created — no prerequisite
+    setup_steps_total = 5
+    setup_steps_done = sum(
+        1
+        for done in (
+            google_configured,
+            operators_exist,
+            backup_available,
+            imap_configured,
+            paths_set,
+        )
+        if done
+    )
+
     return templates.TemplateResponse(
         request,
         "settings.html",
@@ -1829,6 +1857,12 @@ def get_settings(
             "welcome": welcome is not None,
             "sheets_configured": _sheets_configured(db),
             "imap_configured": _imap_configured(db),
+            "google_configured": google_configured,
+            "paths_set": paths_set,
+            "operators_exist": operators_exist,
+            "backup_available": backup_available,
+            "setup_steps_done": setup_steps_done,
+            "setup_steps_total": setup_steps_total,
             "operators": operators,
             "error": error or (
                 settings_flash["message"]
@@ -1943,6 +1977,49 @@ def test_imap_connection(request: Request, db: Session = Depends(get_db)):
             }
         else:
             result = {"state": "success", "message": "З'єднання з поштою успішне"}
+
+    return templates.TemplateResponse(
+        request, "_settings_check_result.html", {"result": result}
+    )
+
+
+@app.post("/settings/test-sheets", response_class=HTMLResponse)
+def test_sheets_connection(request: Request, db: Session = Depends(get_db)):
+    """Read-only Google Sheets access probe for the settings "Майстер" — opens
+    the spreadsheet with whatever sheet id / service-account JSON is CURRENTLY
+    SAVED (same "save first" contract as test-imap) and confirms the service
+    account can actually reach it, without importing any rows. A successful
+    "Зберегти й синхронізувати" already proves the same, but this lets the
+    admin verify access without mutating the queue. Raw gspread/Google error
+    text is never surfaced to the UI, matching the test-imap discipline.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+
+    if not _sheets_configured(db):
+        result = {
+            "state": "error",
+            "message": "Спочатку збережіть ID таблиці та JSON-ключ сервісного акаунта",
+        }
+    else:
+        try:
+            spreadsheet = open_spreadsheet(db=db)
+            # Touch the worksheet list so a permissions/id error surfaces here,
+            # not just an object we never actually read from.
+            spreadsheet.worksheets()
+        except Exception:
+            logger.warning("Google Sheets access test failed")
+            result = {
+                "state": "error",
+                "message": "Немає доступу до таблиці. Перевірте ID, JSON-ключ і чи надано доступ сервісному акаунту",
+            }
+        else:
+            result = {"state": "success", "message": "Доступ до Google Таблиці підтверджено"}
 
     return templates.TemplateResponse(
         request, "_settings_check_result.html", {"result": result}

@@ -12,27 +12,28 @@ html {
 }
 
 body {
-  background-color: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
   line-height: 1.6;
 
-  /* Subtle blueprint-style grid pattern */
-  background-image:
-    repeating-linear-gradient(
-      0deg,
-      var(--color-bg-grid-line) 0px,
-      var(--color-bg-grid-line) 1px,
-      transparent 1px,
-      transparent 40px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      var(--color-bg-grid-line) 0px,
-      var(--color-bg-grid-line) 1px,
-      transparent 1px,
-      transparent 40px
-    );
+  /* Blueprint backdrop image (teal grid + radar HUD) replaces the former
+     CSS grid pattern — the artwork already carries the grid, so doubling it
+     would only muddy the lines. `fixed` keeps the single radar pinned to the
+     viewport corner instead of scrolling/tiling; `cover` scales it to fill. */
+  background: var(--color-bg) url('/static/img/backdrop.svg?v=3') center / cover no-repeat fixed;
+}
+
+/* Very light darkening veil over the backdrop so headings and other text that
+   sit directly on the background (outside the opaque cards) keep their
+   contrast. Negative z-index paints it above the background canvas but below
+   all content, and pointer-events:none keeps it inert. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: rgba(13, 17, 23, 0.35);
 }
 
 /* Headings */

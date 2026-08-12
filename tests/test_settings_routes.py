@@ -248,3 +248,87 @@ def test_test_imap_connection_reports_safe_error_on_failed_login(monkeypatch):
     assert context["result"]["state"] == "error"
     # The raw IMAP exception text must never leak into the UI-facing message.
     assert "AUTHENTICATIONFAILED" not in context["result"]["message"]
+
+
+# --- POST /settings/test-sheets route (Google read-only access probe) ------
+#
+# Read-only access check for the settings "Майстер" Google step. Like the two
+# routes above it does blocking network I/O (open_spreadsheet), so it is a
+# plain `def` and is called directly here.
+
+
+def test_test_sheets_connection_requires_authentication():
+    engine = _database()
+    with Session(engine) as db, pytest.raises(HTTPException) as exc:
+        web.test_sheets_connection(request=_request(None), db=db)
+    assert exc.value.status_code == 401
+
+
+def test_test_sheets_connection_requires_admin_role():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        operator = _operator(db)
+        with pytest.raises(HTTPException) as exc:
+            web.test_sheets_connection(request=_request(operator.id), db=db)
+    assert exc.value.status_code == 403
+
+
+def test_test_sheets_connection_requires_loopback():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        with pytest.raises(HTTPException) as exc:
+            web.test_sheets_connection(
+                request=_request(admin.id, host="203.0.113.5"), db=db
+            )
+    assert exc.value.status_code == 403
+
+
+def test_test_sheets_connection_reports_error_when_not_configured(monkeypatch):
+    engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        context = web.test_sheets_connection(request=_request(admin.id), db=db)
+    assert context["result"]["state"] == "error"
+    assert "збережіть" in context["result"]["message"]
+
+
+def test_test_sheets_connection_reports_success_on_access(monkeypatch):
+    engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        set_setting(db, "google_sheet_id", "sheet-123")
+        set_setting(db, "google_service_account_json", '{"type": "service_account"}')
+        db.commit()
+
+        with patch("app.web.open_spreadsheet") as mock_open:
+            mock_open.return_value.worksheets.return_value = [MagicMock()]
+            context = web.test_sheets_connection(request=_request(admin.id), db=db)
+
+    assert context["result"]["state"] == "success"
+
+
+def test_test_sheets_connection_reports_safe_error_on_failure(monkeypatch):
+    engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        set_setting(db, "google_sheet_id", "sheet-123")
+        set_setting(db, "google_service_account_json", '{"type": "service_account"}')
+        db.commit()
+
+        with patch("app.web.open_spreadsheet") as mock_open:
+            mock_open.side_effect = Exception("PermissionDenied raw google detail")
+            context = web.test_sheets_connection(request=_request(admin.id), db=db)
+
+    assert context["result"]["state"] == "error"
+    # Raw gspread/Google error text must never leak into the UI message.
+    assert "PermissionDenied" not in context["result"]["message"]

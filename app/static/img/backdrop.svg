@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" width="1920" height="1080">
+  <defs>
+    <!-- fine grid -->
+    <pattern id="fine" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M30 0H0V30" fill="none" stroke="#2dd4bf" stroke-width="1" stroke-opacity="0.045"/>
+    </pattern>
+    <!-- coarse grid -->
+    <pattern id="coarse" width="150" height="150" patternUnits="userSpaceOnUse">
+      <path d="M150 0H0V150" fill="none" stroke="#2dd4bf" stroke-width="1" stroke-opacity="0.075"/>
+    </pattern>
+    <radialGradient id="vign" cx="50%" cy="46%" r="72%">
+      <stop offset="0%" stop-color="#0d1117" stop-opacity="0"/>
+      <stop offset="78%" stop-color="#0a0e14" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#080b10" stop-opacity="0.9"/>
+    </radialGradient>
+    <radialGradient id="radarGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#2dd4bf" stop-opacity="0.08"/>
+      <stop offset="60%" stop-color="#2dd4bf" stop-opacity="0.02"/>
+      <stop offset="100%" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- ground -->
+  <rect width="1920" height="1080" fill="#0d1117"/>
+  <rect width="1920" height="1080" fill="url(#fine)"/>
+  <rect width="1920" height="1080" fill="url(#coarse)"/>
+
+  <!-- centre construction diagonals -->
+  <g stroke="#2dd4bf" stroke-opacity="0.08" stroke-width="1">
+    <line x1="0" y1="0" x2="1920" y2="1080"/>
+    <line x1="1920" y1="0" x2="0" y2="1080"/>
+    <line x1="960" y1="0" x2="960" y2="1080" stroke-opacity="0.05"/>
+    <line x1="0" y1="540" x2="1920" y2="540" stroke-opacity="0.05"/>
+  </g>
+
+  <!-- radar HUD, lower-right (blueprint of a milling disc) -->
+  <g transform="translate(1600,760)">
+    <circle r="360" fill="url(#radarGlow)"/>
+    <g fill="none" stroke="#2dd4bf">
+      <circle r="70"  stroke-opacity="0.30"/>
+      <circle r="140" stroke-opacity="0.22"/>
+      <circle r="220" stroke-opacity="0.15"/>
+      <circle r="300" stroke-opacity="0.10"/>
+      <circle r="12"  stroke-opacity="0.5"/>
+    </g>
+    <!-- crosshair -->
+    <g stroke="#5eead4" stroke-opacity="0.35" stroke-width="1">
+      <line x1="-330" y1="0" x2="330" y2="0"/>
+      <line x1="0" y1="-330" x2="0" y2="330"/>
+    </g>
+    <!-- outer tick scale as a dashed ring (static, no script needed for
+         background-image SVGs) -->
+    <circle r="312" fill="none" stroke="#2dd4bf" stroke-opacity="0.30" stroke-width="10" stroke-dasharray="1.5 24"/>
+    <circle r="332" fill="none" stroke="#2dd4bf" stroke-opacity="0.18" stroke-width="18" stroke-dasharray="1.5 71"/>
+  </g>
+
+  <!-- corner index marks -->
+  <g stroke="#2dd4bf" stroke-opacity="0.18" stroke-width="1.5" fill="none">
+    <path d="M40 40h40M40 40v40"/>
+    <path d="M1880 40h-40M1880 40v40"/>
+    <path d="M40 1040h40M40 1040v-40"/>
+  </g>
+
+  <!-- soft vignette so cards read on top -->
+  <rect width="1920" height="1080" fill="url(#vign)"/>
+</svg>
