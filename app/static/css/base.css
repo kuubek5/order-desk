@@ -16,11 +16,70 @@ body {
   font-family: var(--font-body);
   line-height: 1.6;
 
-  /* Blueprint backdrop image (teal grid + radar HUD) replaces the former
-     CSS grid pattern — the artwork already carries the grid, so doubling it
-     would only muddy the lines. `fixed` keeps the single radar pinned to the
-     viewport corner instead of scrolling/tiling; `cover` scales it to fill. */
-  background: var(--color-bg) url('/static/img/backdrop.svg?v=3') center / cover no-repeat fixed;
+  /* Blueprint backdrop (teal grid + radar HUD) is now rendered inline as a
+     fixed layer (see _backdrop.html / .app-backdrop) instead of a CSS
+     background-image, so the radar disc can rotate — a background-image SVG
+     can't animate its own parts. Body just carries the base colour behind it. */
+  background-color: var(--color-bg);
+}
+
+/* Fixed full-viewport inline backdrop layer. Sits behind the darkening veil
+   (body::before, z-index:-1) and all content; inert and decorative. */
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.app-backdrop svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* The milling-disc radar turns slowly on its own axis. transform-box:fill-box
+   pins the origin to the group's own bounding-box centre (the disc centre after
+   the parent translate), so it spins in place rather than orbiting. Very slow
+   and low-contrast on purpose — ambient motion, not a focal point. */
+.radar-spin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: radar-spin 120s linear infinite;
+  will-change: transform;
+}
+
+@keyframes radar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The tick scale on the disc breathes — a slow glow independent of the
+   rotation. Opacity plus a teal drop-shadow pulse together so the dashes
+   clearly brighten and bloom, then dim back, rather than shift position. */
+.radar-ticks {
+  animation: radar-ticks-pulse 4s ease-in-out infinite;
+}
+
+@keyframes radar-ticks-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    filter: drop-shadow(0 0 0 rgba(94, 234, 212, 0));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 5px rgba(94, 234, 212, 0.85));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radar-spin,
+  .radar-ticks {
+    animation: none;
+  }
 }
 
 /* Very light darkening veil over the backdrop so headings and other text that
@@ -249,7 +308,11 @@ li {
    is still the same anchor/form the pre-rail markup rendered — this only
    repositions and regroups them; no route, condition, or label changed. */
 @media (min-width: 721px) {
-  body {
+  /* Reserve the fixed rail's width ONLY on pages that actually render it.
+     Login and other rail-less auth pages share this <body>, so an
+     unconditional padding-left shoved their centered card to the right.
+     :has(.topbar-user) ties the offset to the rail's real presence. */
+  body:has(.topbar-user) {
     padding-left: 228px;
   }
 
@@ -395,9 +458,27 @@ li {
     padding: var(--space-3) var(--space-2) 0;
     border-top: 1px solid var(--color-card-border);
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
+  }
+
+  /* Product version: quiet mono line on its own row under the user/logout row.
+     Low prominence on purpose (a persistent "what build am I on" marker, not a
+     call to action); the canonical spot with the update button is Settings. */
+  .rail-version {
+    flex: 0 0 100%;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+    opacity: 0.6;
+    transition: opacity 0.15s ease;
+  }
+
+  .rail-version:hover,
+  .rail-version:focus-visible {
+    opacity: 0.95;
   }
 
   .rail-foot-user {
@@ -425,7 +506,7 @@ li {
   }
 
   /* ---- Collapsed rail (icons only) ---- */
-  body.rail-collapsed {
+  body.rail-collapsed:has(.topbar-user) {
     padding-left: 64px;
   }
 
@@ -481,6 +562,11 @@ li {
 
   body.rail-collapsed .rail-foot-user {
     display: none;
+  }
+
+  body.rail-collapsed .rail-version {
+    text-align: center;
+    font-size: 10px;
   }
 
   body.rail-collapsed .rail-logout .rail-label {

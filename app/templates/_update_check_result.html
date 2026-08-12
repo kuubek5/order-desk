@@ -1,0 +1,19 @@
+{# HTMX fragment for POST /settings/update/check. `release` is the latest known
+   ReleaseInfo (None when there is nothing newer or the check couldn't reach
+   GitHub); `current_version` is this build. On a newer version, offers the same
+   install action as the rail banner; otherwise a calm "up to date" pill. #}
+{% if release %}
+<span class="check-pill check-pill-warning update-check-found" role="status">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+    <span>Доступне оновлення <strong>v{{ release.version }}</strong></span>
+    <form method="post" action="/settings/update/install" class="update-check-install">
+        <button type="submit" class="settings-secondary-button">Встановити v{{ release.version }}</button>
+    </form>
+    {% if release.html_url %}<a href="{{ release.html_url }}" target="_blank" rel="noopener">Деталі релізу</a>{% endif %}
+</span>
+{% else %}
+<span class="check-pill check-pill-success" role="status">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+    <span>У вас найновіша версія (v{{ current_version }})</span>
+</span>
+{% endif %}

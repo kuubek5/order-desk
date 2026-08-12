@@ -209,18 +209,62 @@ def download_and_verify(release: ReleaseInfo, dest_dir: Path | None = None) -> P
             "Контрольна сума завантаженого файлу не збігається — встановлення скасовано"
         )
 
+    _strip_mark_of_the_web(installer_path)
     return installer_path
 
 
+def _strip_mark_of_the_web(path: Path) -> None:
+    """Remove the Zone.Identifier NTFS alternate data stream (Mark of the Web)
+    from a file whose SHA-256 we have already verified above.
+
+    A file carrying MOTW is routed through Windows SmartScreen when launched,
+    which can suspend an unsigned installer behind a prompt no one is there to
+    click during a silent auto-update. Stripping it is safe here precisely
+    because trust is already established cryptographically by the checksum
+    check — this is not a security downgrade, it is removing a redundant gate
+    on a file we have independently proven authentic. Best-effort and
+    Windows-only: any failure (no such stream, non-NTFS, non-Windows) is
+    ignored, since the stream simply may not exist."""
+    try:
+        os.remove(f"{path}:Zone.Identifier")
+    except OSError:
+        pass
+
+
 _WATCHDOG_SCRIPT = r"""
-$log = Join-Path $env:LOCALAPPDATA 'OrderDesk\logs\update-watchdog.log'
+$logDir = Join-Path $env:LOCALAPPDATA 'OrderDesk\logs'
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$log = Join-Path $logDir 'update-watchdog.log'
 function W($m) { "$(Get-Date -Format o) $m" | Out-File -FilePath $log -Append -Encoding utf8 }
 $exe = $args[0]
-$installerStem = $args[1]
-W "watchdog start; exe=$exe stem=$installerStem"
-# Inno forks a child *.tmp installer and the parent exits early, so wait until
-# no installer process (by stem) remains before relaunching, up to 3 minutes.
+$installer = $args[1]
+$installerStem = [System.IO.Path]::GetFileNameWithoutExtension($installer)
+$installerLog = Join-Path $logDir 'update-installer.log'
+W "watchdog start; exe=$exe installer=$installer"
+# The watchdog OWNS the install: it launches the installer itself (rather than
+# the dying app spawning it) so nothing races app shutdown. The installer's
+# PrepareToInstall step stops the running app via `--shutdown`; we just wait for
+# the whole installer to finish, then relaunch.
+#
+# -NoNewWindow is load-bearing, not cosmetic: it forces Start-Process to use
+# CreateProcess (UseShellExecute=false) instead of ShellExecute. ShellExecute
+# routes an unsigned, unknown-reputation exe through Windows SmartScreen, which
+# SUSPENDS the installer behind an invisible "Windows protected your PC" prompt
+# — hanging the whole update with an empty installer log and no files replaced.
+# CreateProcess bypasses that App-Reputation gate. (The installer is unsigned
+# and new every release, so it never earns reputation.)
+try {
+    Start-Process -FilePath $installer -NoNewWindow `
+        -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$installerLog"
+    W "installer launched"
+} catch {
+    W "installer launch FAILED: $_"
+}
+# Inno forks a child *.tmp installer and the parent setup.exe exits early, so
+# wait until no installer process (by stem) remains before relaunching, up to
+# 3 minutes.
 $deadline = (Get-Date).AddMinutes(3)
+Start-Sleep -Seconds 2
 while ((Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like ($installerStem + '*') }).Count -gt 0 -and (Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 1
 }
@@ -240,19 +284,35 @@ W 'watchdog end'
 
 
 def launch_silent_install(installer_path: Path) -> None:
-    """Launch the verified installer silently, then a detached watchdog that
+    """Spawn a single detached watchdog that installs the verified update and
     relaunches the freshly installed app.
 
     Relaunch can't ride on the installer's [Run] step: under /VERYSILENT that
     entry is `skipifsilent` (an interactive-only postinstall), and a headless
     session has no desktop to launch it from anyway. So a watchdog handles it.
-    The watchdog is written to a .ps1 FILE and run with `powershell -File`
-    rather than an inline `-Command` string — the earlier inline one-liner
-    silently failed to even start (empty watchdog log), most likely a parsing
-    /escaping fragility; a file on disk parses cleanly. It waits for Inno's
-    forked child installer to finish (matching the installer stem, since the
-    parent setup.exe exits early), then relaunches with a /health retry loop
-    and logs every step to update-watchdog.log.
+
+    The watchdog — not the app — launches the installer. This inverts the older
+    design where the app spawned the installer *and* the watchdog separately and
+    then let the installer shut it down: that raced app death against the second
+    (watchdog) spawn, and when the app won the race the watchdog was never
+    created — leaving the update overlay stuck forever with no watchdog log.
+    Making the long-lived watchdog the installer's parent removes that race
+    entirely and the installer replaces the (now cleanly stopped) app's locked
+    files from a stable process rather than from the app that is dying under it.
+
+    Two hard-won details:
+      * `stdin/stdout/stderr=DEVNULL` — the packaged build is windowed (no
+        console), so it has no standard handles to inherit. A console child
+        (powershell here, and curl/the installer it in turn spawns) fails to
+        even start when handed the app's null handles; DEVNULL gives it real
+        ones. This was the actual reason a spawned watchdog produced an empty
+        log.
+      * the script is a `.ps1` FILE run with `-File` (not an inline `-Command`
+        string) — an inline one-liner proved fragile to parse/escape; a file on
+        disk parses cleanly.
+
+    The watchdog logs every step to update-watchdog.log and passes `/LOG` to the
+    installer (update-installer.log) so a future failure is diagnosable.
 
     No-ops in dev (not a frozen/packaged build).
     """
@@ -270,12 +330,6 @@ def launch_silent_install(installer_path: Path) -> None:
         subprocess, "CREATE_NEW_PROCESS_GROUP", 0
     )
 
-    subprocess.Popen(
-        [str(installer_path), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
-        creationflags=detached_flags,
-        close_fds=True,
-    )
-
     watchdog_path = data_dir() / "update-watchdog.ps1"
     watchdog_path.write_text(_WATCHDOG_SCRIPT, encoding="utf-8")
     subprocess.Popen(
@@ -289,8 +343,11 @@ def launch_silent_install(installer_path: Path) -> None:
             "-File",
             str(watchdog_path),
             str(exe_path),
-            installer_path.stem,
+            str(installer_path),
         ],
         creationflags=detached_flags,
         close_fds=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )

@@ -17,6 +17,7 @@
 </head>
 <body>
     <script>try{if(localStorage.getItem('railCollapsed')==='1')document.body.classList.add('rail-collapsed');var _d=localStorage.getItem('queueDensity');if(_d==='compact'||_d==='spacious'||_d==='normal')document.body.setAttribute('data-density',_d);if(localStorage.getItem('layoutEditMode')==='1')document.body.classList.add('layout-edit');}catch(e){}</script>
+    {% include "_backdrop.html" %}
     {% block content %}{% endblock %}
     {% include "_update_overlay.html" %}
     {% block extra_scripts %}{% endblock %}

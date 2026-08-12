@@ -201,3 +201,29 @@ def test_launch_silent_install_noop_in_dev(tmp_path):
     with patch("app.update_check.subprocess.Popen") as mock_popen:
         launch_silent_install(tmp_path / "OrderDesk-Setup-9.9.9.exe")
     mock_popen.assert_not_called()
+
+
+def test_launch_silent_install_frozen_spawns_single_watchdog(tmp_path):
+    """Frozen build: exactly one detached watchdog process is spawned (the
+    watchdog owns the install — the app no longer spawns the installer itself,
+    which is what raced app shutdown and left the overlay stuck). The Popen
+    must pass DEVNULL std handles (a windowed build has none to inherit, and a
+    console child fails to start without real ones — the actual cause of the
+    empty watchdog log) and hand the installer's full path to the script."""
+    import subprocess
+
+    installer = tmp_path / "OrderDesk-Setup-9.9.9.exe"
+    with patch("app.update_check.is_frozen", return_value=True), patch(
+        "app.update_check.data_dir", return_value=tmp_path
+    ), patch("app.update_check.subprocess.Popen") as mock_popen:
+        launch_silent_install(installer)
+
+    assert mock_popen.call_count == 1
+    args, kwargs = mock_popen.call_args
+    cmd = args[0]
+    assert cmd[0] == "powershell"
+    assert str(installer) in cmd
+    assert kwargs["stdin"] == subprocess.DEVNULL
+    assert kwargs["stdout"] == subprocess.DEVNULL
+    assert kwargs["stderr"] == subprocess.DEVNULL
+    assert (tmp_path / "update-watchdog.ps1").is_file()

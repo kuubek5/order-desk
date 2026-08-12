@@ -466,6 +466,20 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .check-spinner.htmx-request{display:inline-block}
 @keyframes setv2spin{to{transform:rotate(360deg)}}
 
+/* Про застосунок · версія та оновлення. Lives as the final node on the wizard
+   rail, so it aligns and connects to the vertical line for free — no special
+   layout. Its node shows an info glyph instead of a number. */
+.setv2 #update{scroll-margin-top:20px}
+.setv2 .wizard-step-about .num svg{width:18px;height:18px}
+/* Match the teal node treatment of a completed step, so the info glyph reads as
+   part of the same rail rather than a dull grey outlier. Doubled class beats the
+   later `.wizard-step .num` base rule (equal specificity would lose on order). */
+.setv2 .wizard-step.wizard-step-about .num{background:rgba(20,184,166,.16);border-color:var(--accent);color:var(--accent-c)}
+.setv2 .update-check-found{flex-wrap:wrap;gap:8px 10px}
+.setv2 .update-check-install{display:inline-flex;margin:0}
+.setv2 .update-check-found .settings-secondary-button{height:28px;padding:0 11px;font-size:12px;font-weight:500}
+.setv2 .update-check-found a{color:var(--accent-c);font-size:12px}
+
 /* сповіщення */
 .setv2 .settings-success{border-radius:9px;padding:10px 13px;font-size:13px;border:1px solid rgba(45,212,191,.3);background:rgba(20,184,166,.1);color:var(--accent-c);margin-bottom:12px}
 .setv2 .settings-success p{margin:0}

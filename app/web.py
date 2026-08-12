@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 
+from app.__version__ import VERSION
 from app.auth import hash_password, verify_password
 from app.backup import BackupFormatError, BackupPasswordError, create_backup, restore_backup
 from app.client_matcher import match_client_name
@@ -90,6 +91,7 @@ from app.statuses import STATUSES, is_overdue
 from app.stats import average_new_to_milled_hours, parse_int_safe, summarize_rework_by_blame
 from app.stl_preview import build_preview_token, list_stl_files, resolve_preview_folder, resolve_stl_file
 from app.update_check import (
+    _update_check_tick,
     _update_check_worker,
     download_and_verify,
     get_known_update,
@@ -763,14 +765,22 @@ templates.env.globals["static_ver"] = static_ver
 # in-memory "last known result" (see app/update_check.py::get_known_update),
 # never touches the network from a request-handling thread.
 templates.env.globals["get_known_update"] = get_known_update
+# Product version, available in every template (rail foot, settings "about")
+# without threading it through each route's context — same rationale as the
+# globals above. Single source of truth is app/__version__.py.
+templates.env.globals["app_version"] = VERSION
 
 app.mount("/static", StaticFiles(directory=str(resource_path("app/static"))), name="static")
 
 
 @app.get("/health", include_in_schema=False)
 async def health() -> dict[str, str]:
-    """Process-level probe without exposing configuration or mutating the DB."""
-    return {"status": "ok"}
+    """Process-level probe without exposing configuration or mutating the DB.
+
+    Reports the running build version so support and the update watchdog's
+    post-relaunch check can confirm *which* build answered, not merely that
+    one did — the version is not a secret and needs no auth here."""
+    return {"status": "ok", "version": VERSION}
 
 
 def get_db():
@@ -2120,6 +2130,33 @@ def _install_update_in_background(release) -> None:
         launch_silent_install(installer_path)
     except Exception:
         logger.exception("Background update install failed for release %s", release.version)
+
+
+@app.post("/settings/update/check", response_class=HTMLResponse)
+def check_update(request: Request, db: Session = Depends(get_db)):
+    """Admin-triggered manual "is there a newer build?" probe for the settings
+    "Про застосунок" section. Runs the same one-shot check the daily background
+    worker does (_update_check_tick, which refreshes the module-level "last
+    known release" that the rail banner also reads), then renders the result as
+    an HTMX fragment: an install button when a newer version is found, or a
+    reassuring "you're on the latest" otherwise. Network failures never surface
+    raw errors — fetch_latest_release swallows them and returns None, same as
+    the background path.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+
+    _update_check_tick()
+    return templates.TemplateResponse(
+        request,
+        "_update_check_result.html",
+        {"release": get_known_update(), "current_version": VERSION},
+    )
 
 
 @app.post("/settings/update/install")
