@@ -212,24 +212,55 @@ def download_and_verify(release: ReleaseInfo, dest_dir: Path | None = None) -> P
     return installer_path
 
 
+_WATCHDOG_SCRIPT = r"""
+$log = Join-Path $env:LOCALAPPDATA 'OrderDesk\logs\update-watchdog.log'
+function W($m) { "$(Get-Date -Format o) $m" | Out-File -FilePath $log -Append -Encoding utf8 }
+$exe = $args[0]
+$installerStem = $args[1]
+W "watchdog start; exe=$exe stem=$installerStem"
+# Inno forks a child *.tmp installer and the parent exits early, so wait until
+# no installer process (by stem) remains before relaunching, up to 3 minutes.
+$deadline = (Get-Date).AddMinutes(3)
+while ((Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like ($installerStem + '*') }).Count -gt 0 -and (Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds 1
+}
+W "installer finished; relaunching with health retries"
+Start-Sleep -Seconds 2
+for ($i = 0; $i -lt 20; $i++) {
+    if (-not (Get-Process -Name OrderDesk -ErrorAction SilentlyContinue)) {
+        W "launch attempt $i"
+        Start-Process -FilePath $exe -ArgumentList '--open-browser'
+    }
+    Start-Sleep -Seconds 4
+    $c = (& curl.exe -s -o NUL -w '%{http_code}' --max-time 3 --noproxy '*' http://127.0.0.1:8000/health 2>$null)
+    if ($c -eq '200') { W 'health 200, done'; break }
+}
+W 'watchdog end'
+"""
+
+
 def launch_silent_install(installer_path: Path) -> None:
-    """Launch the verified installer silently and detached, plus a tiny
-    detached watchdog that waits for the installer process to exit and then
-    relaunches OrderDesk.exe --open-browser.
+    """Launch the verified installer silently, then a detached watchdog that
+    relaunches the freshly installed app.
 
-    Why the watchdog: OrderDesk.iss's [Run] step that would normally
-    relaunch the app after install carries `skipifsilent`, so it never fires
-    under `/VERYSILENT` (required here to avoid popping installer UI in
-    front of the operator mid-shift). The watchdog is the simplest reliable
-    substitute — a one-line PowerShell `Wait-Process` + relaunch, run as its
-    own detached process so it survives this process's own restart.
+    Relaunch can't ride on the installer's [Run] step: under /VERYSILENT that
+    entry is `skipifsilent` (an interactive-only postinstall), and a headless
+    session has no desktop to launch it from anyway. So a watchdog handles it.
+    The watchdog is written to a .ps1 FILE and run with `powershell -File`
+    rather than an inline `-Command` string — the earlier inline one-liner
+    silently failed to even start (empty watchdog log), most likely a parsing
+    /escaping fragility; a file on disk parses cleanly. It waits for Inno's
+    forked child installer to finish (matching the installer stem, since the
+    parent setup.exe exits early), then relaunches with a /health retry loop
+    and logs every step to update-watchdog.log.
 
-    No-ops in dev (not a frozen/packaged build) — there is no installed
-    OrderDesk.exe to relaunch from source.
+    No-ops in dev (not a frozen/packaged build).
     """
     if not is_frozen():
         logger.info("launch_silent_install пропущено, не пакований білд — нема інсталятора для запуску")
         return
+
+    exe_path = Path(sys.executable)
 
     # Only meaningful on Windows (this whole function is a no-op off it in
     # practice, since is_frozen() requires os.name == "nt" to matter — see
@@ -239,15 +270,27 @@ def launch_silent_install(installer_path: Path) -> None:
         subprocess, "CREATE_NEW_PROCESS_GROUP", 0
     )
 
-    # Launch the installer detached and return. Relaunch of the new version is
-    # the INSTALLER's job now (OrderDesk.iss [Run], a plain `nowait` entry that
-    # fires under /VERYSILENT), not an external watchdog: the earlier PowerShell
-    # watchdog proved unreliable — a detached child racing the installer's own
-    # `--shutdown` of this process, plus a brittle one-liner that could fail to
-    # start at all. Inno runs its [Run] step right after copying files, so the
-    # freshly installed exe comes back on its own with no moving parts here.
     subprocess.Popen(
         [str(installer_path), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+        creationflags=detached_flags,
+        close_fds=True,
+    )
+
+    watchdog_path = data_dir() / "update-watchdog.ps1"
+    watchdog_path.write_text(_WATCHDOG_SCRIPT, encoding="utf-8")
+    subprocess.Popen(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            str(watchdog_path),
+            str(exe_path),
+            installer_path.stem,
+        ],
         creationflags=detached_flags,
         close_fds=True,
     )

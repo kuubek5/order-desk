@@ -41,14 +41,12 @@ Name: "autostart"; Description: "Запускати Order Desk при вході
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "OrderDesk"; ValueData: """{app}\{#MyAppExeName}"""; Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
-; Relaunch after EVERY install, silent included. This is the auto-updater's
-; restart mechanism: under /VERYSILENT (how the in-app updater runs the new
-; installer) a `postinstall skipifsilent` entry is skipped, so the app never
-; came back on its own. A plain `nowait` entry runs during install right after
-; the files are copied — far more reliable than an external detached watchdog.
-; A manual install also relaunches (normal for a desktop app); the app's mutex
-; makes a redundant launch a no-op.
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-browser"; Flags: nowait runasoriginaluser
+; Interactive installs relaunch via this postinstall entry (skipped under
+; /VERYSILENT). The silent auto-update path can't relaunch from here — a
+; headless/service context has no desktop session for the launch — so the
+; in-app updater handles its own relaunch via a watchdog script (see
+; app/update_check.py::launch_silent_install).
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-browser"; Description: "Запустити Order Desk"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--shutdown"; Flags: runhidden waituntilterminated; RunOnceId: "StopOrderDesk"
