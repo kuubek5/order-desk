@@ -102,4 +102,36 @@
   --sweep-duration: 980ms;
   --beacon-duration: 2.6s;
   --panel-duration: .22s;
+  /* Мікроанімації полірування (задача 3) — стримані функціональні тривалості. */
+  --enter-duration: .32s;
+  --flash-duration: .9s;
+
+  /* Щільність черги (режим вигляду, задача 1) — керується data-density на
+     <body>. Тут дефолт = «звичайний»; компактний/просторий нижче. Єдине
+     джерело значень щільності, споживається у base.css (.q2 таблиця, side-panel,
+     statusline). */
+  --queue-density-pad: 8px;
+  --queue-density-font: 13px;
+  --queue-density-side-gap: 10px;
+  --queue-density-kv-pad: 6px;
+  --queue-density-card-pad: 13px;
+  --queue-density-sl-pad: 9px;
+}
+
+body[data-density="compact"] {
+  --queue-density-pad: 4px;
+  --queue-density-font: 12px;
+  --queue-density-side-gap: 6px;
+  --queue-density-kv-pad: 4px;
+  --queue-density-card-pad: 10px;
+  --queue-density-sl-pad: 6px;
+}
+
+body[data-density="spacious"] {
+  --queue-density-pad: 12px;
+  --queue-density-font: 14px;
+  --queue-density-side-gap: 15px;
+  --queue-density-kv-pad: 9px;
+  --queue-density-card-pad: 17px;
+  --queue-density-sl-pad: 12px;
 }

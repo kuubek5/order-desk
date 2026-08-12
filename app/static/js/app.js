@@ -241,6 +241,171 @@ document.addEventListener("click", (event) => {
   head.setAttribute("aria-expanded", String(!open));
 });
 
+// ---------------------------------------------------------------------------
+// Режим вигляду (layout-edit) — задача 1. Оператор вмикає режим і налаштовує
+// чергу під себе: ширини стовпців (drag), щільність рядків і карток. Усе
+// локально в localStorage, без запитів на сервер і без змін маршрутів. Anti-flash
+// (застосування збереженого стану до першого рендеру) — інлайн у base.html.
+(function () {
+  const LS_MODE = "layoutEditMode";
+  const LS_DENSITY = "queueDensity";
+  const LS_WIDTHS = "queueColWidths";
+  const MIN_COL = 60;
+  const DENSITIES = ["compact", "normal", "spacious"];
+
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+
+  const table = document.querySelector(".q2 table.qtable");
+
+  // ---- Щільність -----------------------------------------------------------
+  function currentDensity() {
+    const d = lsGet(LS_DENSITY);
+    return DENSITIES.indexOf(d) >= 0 ? d : "normal";
+  }
+  function applyDensity(d) {
+    if (DENSITIES.indexOf(d) < 0) d = "normal";
+    // "normal" — дефолт токенів, атрибут не потрібен (тримає розмітку чистою).
+    if (d === "normal") document.body.removeAttribute("data-density");
+    else document.body.setAttribute("data-density", d);
+    lsSet(LS_DENSITY, d);
+    document.querySelectorAll("[data-density-set]").forEach((b) => {
+      b.classList.toggle("is-active", b.getAttribute("data-density-set") === d);
+    });
+  }
+
+  // ---- Ширини стовпців -----------------------------------------------------
+  function headCells() {
+    if (!table || !table.tHead || !table.tHead.rows[0]) return [];
+    return Array.from(table.tHead.rows[0].cells);
+  }
+  function loadWidths() {
+    try { return JSON.parse(lsGet(LS_WIDTHS)) || null; } catch (e) { return null; }
+  }
+  function applySavedWidths() {
+    const map = loadWidths();
+    if (!map || !table) return;
+    table.style.tableLayout = "fixed";
+    headCells().forEach((th, i) => {
+      if (map[i]) th.style.width = map[i] + "px";
+    });
+  }
+  // Перед першим перетягуванням фіксуємо поточні (auto) ширини всіх стовпців,
+  // щоб table-layout:fixed не перерозподілив їх стрибком.
+  function freezeWidths() {
+    if (!table) return {};
+    const cells = headCells();
+    const rects = cells.map((th) => Math.round(th.getBoundingClientRect().width));
+    table.style.tableLayout = "fixed";
+    const map = loadWidths() || {};
+    cells.forEach((th, i) => {
+      if (!th.style.width) th.style.width = rects[i] + "px";
+      map[i] = parseInt(th.style.width, 10) || rects[i];
+    });
+    return map;
+  }
+  function saveCurrentWidths() {
+    const map = {};
+    headCells().forEach((th, i) => {
+      const w = parseInt(th.style.width, 10);
+      if (w) map[i] = w;
+    });
+    lsSet(LS_WIDTHS, JSON.stringify(map));
+  }
+
+  // Pointer-drag на межі стовпця (.colgrip у _queue_table_head.html).
+  let drag = null;
+  function onPointerDown(event) {
+    const grip = event.target.closest("[data-col-resize]");
+    if (!grip || !document.body.classList.contains("layout-edit")) return;
+    const th = grip.closest("th");
+    if (!th) return;
+    event.preventDefault();
+    event.stopPropagation();
+    freezeWidths();
+    drag = {
+      grip: grip,
+      th: th,
+      startX: event.clientX,
+      startW: parseInt(th.style.width, 10) || Math.round(th.getBoundingClientRect().width),
+    };
+    grip.classList.add("is-dragging");
+    try { if (grip.setPointerCapture && event.pointerId != null) grip.setPointerCapture(event.pointerId); } catch (e) {}
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  }
+  function onPointerMove(event) {
+    if (!drag) return;
+    const w = Math.max(MIN_COL, drag.startW + (event.clientX - drag.startX));
+    drag.th.style.width = w + "px";
+  }
+  function onPointerUp() {
+    if (!drag) return;
+    drag.grip.classList.remove("is-dragging");
+    drag = null;
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    saveCurrentWidths();
+  }
+  // Не давати кліку по межі тригерити сортування заголовка.
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-col-resize]")) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
+
+  // ---- Активація режиму + скидання -----------------------------------------
+  function setMode(on) {
+    document.body.classList.toggle("layout-edit", on);
+    lsSet(LS_MODE, on ? "1" : "0");
+    document.querySelectorAll("[data-layout-edit-toggle]").forEach((btn) => {
+      btn.setAttribute("aria-pressed", String(on));
+    });
+  }
+  function resetLayout() {
+    lsDel(LS_WIDTHS);
+    lsDel(LS_DENSITY);
+    if (table) {
+      table.style.tableLayout = "";
+      headCells().forEach((th) => { th.style.width = ""; });
+    }
+    applyDensity("normal");
+  }
+
+  // Wire-up (no-op на сторінках без черги/кнопки).
+  applySavedWidths();
+  applyDensity(currentDensity());
+  document.querySelectorAll("[data-layout-edit-toggle]").forEach((btn) => {
+    btn.setAttribute("aria-pressed", String(document.body.classList.contains("layout-edit")));
+    btn.addEventListener("click", () => setMode(!document.body.classList.contains("layout-edit")));
+  });
+  document.querySelectorAll("[data-density-set]").forEach((btn) => {
+    btn.addEventListener("click", () => applyDensity(btn.getAttribute("data-density-set")));
+  });
+  document.querySelectorAll("[data-layout-reset]").forEach((btn) => {
+    btn.addEventListener("click", resetLayout);
+  });
+  if (table) table.addEventListener("pointerdown", onPointerDown);
+})();
+
+// Мікроанімації черги (задача 3). Новий рядок після HTMX-свапу статусу/Sum3D
+// коротко флешить (підтвердження зміни); прострочені/нові рядки при першому
+// рендері елегантно з'являються. `prefers-reduced-motion` вимикає анімації
+// через CSS (@media reduce), тож тут додатковий guard не потрібен — клас лише
+// вмикає CSS-анімацію, яку reduce-медіа занулює.
+document.addEventListener("htmx:afterSwap", (event) => {
+  const row = event.target && event.target.closest ? event.target.closest("tr.queue-row") : null;
+  const el = row || (event.detail && event.detail.target);
+  if (el && el.classList && el.classList.contains("queue-row")) {
+    el.classList.remove("row-flash");
+    void el.offsetWidth;
+    el.classList.add("row-flash");
+    window.setTimeout(() => el.classList.remove("row-flash"), 1000);
+  }
+});
+
 // v2a job-passport slide-over (queue.html .detail-pane). Clicking a наряд/вид
 // link ([data-order-detail]) opens /orders/{id} inside the pane's iframe
 // instead of navigating — the real order_detail page, all logic intact.
