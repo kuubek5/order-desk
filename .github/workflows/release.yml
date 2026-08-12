@@ -121,20 +121,20 @@ jobs:
               break
             }
 
-            try {
-              $response = Invoke-WebRequest -Uri $healthUrl -TimeoutSec 2 -ErrorAction Stop
-              if ($response.StatusCode -eq 200) {
-                Write-Host "Health check passed: $($response.Content)"
-                $healthy = $true
-                break
-              }
-            } catch {
-              # Surface the real connect error periodically (was swallowed
-              # before, which hid why a listening uvicorn stayed unreachable).
-              if ($retryCount % 30 -eq 0) {
-                Write-Host "  connect error: $($_.Exception.Message)"
-                Write-Host "  port 8000 (live): $(netstat -ano | Select-String ':8000')"
-              }
+            # Use curl.exe, not Invoke-WebRequest: on this runner IWR threw a
+            # .NET NullReferenceException ("Object reference not set...") on a
+            # perfectly ESTABLISHED localhost connection (proxy/keep-alive quirk),
+            # so a healthy app read as failing. curl is unaffected. --noproxy
+            # guards against any runner proxy env hijacking a loopback request.
+            $code = (curl.exe -s -o NUL -w "%{http_code}" --max-time 3 --noproxy '*' $healthUrl 2>$null)
+            if ($code -eq "200") {
+              Write-Host "Health check passed (HTTP 200)"
+              $healthy = $true
+              break
+            }
+            if ($retryCount % 30 -eq 0) {
+              Write-Host "  curl http_code: $code"
+              Write-Host "  port 8000 (live): $(netstat -ano | Select-String ':8000')"
             }
             $retryCount++
             Write-Host "Health check attempt $retryCount/$maxRetries failed, retrying..."
