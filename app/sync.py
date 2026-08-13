@@ -3,6 +3,12 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.material_catalog import (
+    ensure_seeded,
+    load_alias_rows,
+    material_id_by_name,
+    resolve_material_id,
+)
 from app.models import Comment, Order, ReworkRecord, StatusEvent
 from app.parser import OrderRow
 
@@ -147,6 +153,12 @@ def sync_tab(session: Session, sheet_tab: str, rows: list[OrderRow]) -> SyncResu
         ).scalars()
     }
 
+    # Load the material catalog once per tab (not per row) to classify each
+    # order's free-text colour into a Material category.
+    ensure_seeded(session)
+    alias_rows = load_alias_rows(session)
+    name_to_id = material_id_by_name(session)
+
     for row in rows:
         # Matched by position within the tab's data rows, not job_code, since
         # job_code is only filled in by the operator after the job is taken.
@@ -158,6 +170,7 @@ def sync_tab(session: Session, sheet_tab: str, rows: list[OrderRow]) -> SyncResu
 
         if existing is None:
             order = Order(source="lab", sheet_tab=sheet_tab, row_number=row.row_number, status=status, **_fields(row))
+            order.material_id = resolve_material_id(order.material_color, alias_rows, name_to_id)
             session.add(order)
             session.flush()
             session.add(StatusEvent(order_id=order.id, status=status, actor="sync"))
@@ -173,6 +186,14 @@ def sync_tab(session: Session, sheet_tab: str, rows: list[OrderRow]) -> SyncResu
             if getattr(existing, field) != value:
                 setattr(existing, field, value)
                 changed = True
+
+        # Re-resolve material when the colour text changed (or was never
+        # resolved). Only overwrite with a confident hit — never wipe a good
+        # material_id because a colour momentarily became unrecognizable.
+        resolved_material = resolve_material_id(existing.material_color, alias_rows, name_to_id)
+        if resolved_material is not None and resolved_material != existing.material_id:
+            existing.material_id = resolved_material
+            changed = True
 
         if sheet_comment:
             session.add(Comment(order_id=existing.id, source="sheet", text=sheet_comment))

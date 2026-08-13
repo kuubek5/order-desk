@@ -37,6 +37,13 @@ from app.mail_export import save_attachments_to_export
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
 from app.mail_sync_service import MailSyncBusyError, MailSyncError, sync_mail_background, sync_mailbox
 from app.material_class import material_color_css_class
+from app.material_catalog import (
+    backfill_orders,
+    ensure_seeded,
+    load_alias_rows,
+    material_id_by_name,
+    resolve_material_id,
+)
 from app.models import Client, ClientNameAlias, Comment, EmailMessage, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.order_folder import (
     attach_email_folder_availability,
@@ -642,6 +649,18 @@ def _queue_sync_summary(db: Session) -> str:
 async def lifespan(_: FastAPI):
     if os.environ.get("ORDER_DESK_SCHEMA_MANAGED") != "1":
         Base.metadata.create_all(engine)
+    # Seed the material catalog and classify any still-unresolved orders once at
+    # boot. Idempotent and cheap; covers both the create_all path (no migration
+    # seed) and the first boot after the 0005 upgrade backfills existing rows.
+    # Never let it block startup.
+    with SessionLocal() as db:
+        try:
+            ensure_seeded(db)
+            backfill_orders(db)
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("Material catalog seed/backfill at startup failed")
     mail_stop_event = Event()
     mail_thread = Thread(
         target=_mail_sync_worker,
@@ -2520,6 +2539,10 @@ async def accept_email(
         kind=kind.strip() or None,
         quantity=quantity.strip() or None,
         status="нове",
+    )
+    ensure_seeded(db)
+    new_order.material_id = resolve_material_id(
+        new_order.material_color, load_alias_rows(db), material_id_by_name(db)
     )
     db.add(new_order)
     db.flush()

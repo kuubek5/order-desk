@@ -304,6 +304,20 @@ def test_accept_email_redirects_to_email_queue_filter():
         def commit(self):
             self.committed = True
 
+        def execute(self, _stmt):
+            # Material-catalog lookups added by accept_email. Report the catalog
+            # as already-seeded (first() truthy → ensure_seeded is a no-op) with
+            # no aliases (all() empty → material resolves to None). Keeps this
+            # test focused on the queue-redirect behavior.
+            class _Result:
+                def first(self_inner):
+                    return (1,)
+
+                def all(self_inner):
+                    return []
+
+            return _Result()
+
     db = FakeDb()
     request = SimpleNamespace(session={"user_id": user.id})
 

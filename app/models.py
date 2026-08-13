@@ -42,6 +42,12 @@ class Order(Base):
     last_milled_date: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     mill_count: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     client_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # Resolved material category (app/material_classifier.py maps the free-text
+    # material_color onto the Material catalog). NULL = unresolved, surfaced for
+    # an operator to classify; never guessed.
+    material_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("materials.id"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String(100), default="нове")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()
@@ -59,6 +65,7 @@ class Order(Base):
     rework_records: Mapped[list["ReworkRecord"]] = relationship(
         "ReworkRecord", back_populates="order", cascade="all, delete-orphan"
     )
+    material: Mapped[Optional["Material"]] = relationship("Material")
 
     @property
     def active_rework(self) -> Optional["ReworkRecord"]:
@@ -136,6 +143,39 @@ class ClientNameAlias(Base):
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True
     )
+
+
+class Material(Base):
+    """A material category in the catalog (Цирконій / ПММА / СЛМ / Титан, plus
+    a non-production "Не матеріал" bucket). Categories are stable; the raw
+    spellings that resolve to them live in MaterialAlias. is_production=False
+    keeps stage/part rows out of material production statistics."""
+
+    __tablename__ = "materials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    is_production: Mapped[bool] = mapped_column(default=True)
+    sort_order: Mapped[int] = mapped_column(default=100)
+
+
+class MaterialAlias(Base):
+    """One raw-text rule mapping the free-text colour column onto a Material.
+
+    match_type: "token" (exact whitespace token — for numeric colour codes and
+    `ti`, which must not match as a substring) or "contains" (substring). New
+    rows accumulate as operators classify previously-unresolved colours, so the
+    classifier asks less over time — same idea as ClientNameAlias for handout."""
+
+    __tablename__ = "material_aliases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    material_id: Mapped[int] = mapped_column(ForeignKey("materials.id"), index=True)
+    pattern: Mapped[str] = mapped_column(String(200), index=True)
+    match_type: Mapped[str] = mapped_column(String(20), default="contains")
+    confirmed: Mapped[bool] = mapped_column(default=True)
+
+    material: Mapped["Material"] = relationship("Material")
 
 
 class Client(Base):
