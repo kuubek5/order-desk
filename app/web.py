@@ -96,7 +96,12 @@ from app.sheet_writer import (
 )
 from app.sheets import get_worksheet_by_name, open_spreadsheet
 from app.statuses import STATUSES, is_overdue
-from app.stats import average_new_to_milled_hours, parse_int_safe, summarize_rework_by_blame
+from app.stats import (
+    average_new_to_milled_hours,
+    parse_int_safe,
+    summarize_by_material,
+    summarize_rework_by_blame,
+)
 from app.stl_preview import build_preview_token, list_stl_files, resolve_preview_folder, resolve_stl_file
 from app.update_check import (
     _update_check_tick,
@@ -1736,7 +1741,11 @@ def get_stats(request: Request, period: str = "week", db: Session = Depends(get_
         "all": None,
     }[period]
 
-    all_orders = db.scalars(select(Order).options(selectinload(Order.status_events))).all()
+    all_orders = db.scalars(
+        select(Order).options(
+            selectinload(Order.status_events), selectinload(Order.material)
+        )
+    ).all()
 
     period_orders = []
     for order in all_orders:
@@ -1756,6 +1765,7 @@ def get_stats(request: Request, period: str = "week", db: Session = Depends(get_
     rework_groups = summarize_rework_by_blame(rework_records)
 
     avg_hours = average_new_to_milled_hours(period_orders)
+    material_groups = summarize_by_material(period_orders)
 
     return templates.TemplateResponse(
         request,
@@ -1768,6 +1778,7 @@ def get_stats(request: Request, period: str = "week", db: Session = Depends(get_
             "quantity_sum": quantity_sum,
             "rework_groups": rework_groups,
             "avg_hours": avg_hours,
+            "material_groups": material_groups,
         },
     )
 

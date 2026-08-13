@@ -3,7 +3,55 @@
 from datetime import datetime
 from types import SimpleNamespace
 
-from app.stats import average_new_to_milled_hours, parse_int_safe, summarize_rework_by_blame
+from app.stats import (
+    average_new_to_milled_hours,
+    parse_int_safe,
+    summarize_by_material,
+    summarize_rework_by_blame,
+)
+
+
+def _material(name, is_production=True, sort_order=1, id=1):
+    return SimpleNamespace(id=id, name=name, is_production=is_production, sort_order=sort_order)
+
+
+def _order(material, quantity):
+    return SimpleNamespace(material=material, quantity=quantity)
+
+
+class TestSummarizeByMaterial:
+    def test_groups_and_sums_units_per_material(self):
+        zircon = _material("Цирконій", sort_order=1, id=1)
+        pmma = _material("ПММА", sort_order=2, id=2)
+        orders = [
+            _order(zircon, "3"),
+            _order(zircon, "2"),
+            _order(pmma, "4"),
+        ]
+        groups = summarize_by_material(orders)
+        by_name = {g["material"]: g for g in groups}
+        assert by_name["Цирконій"]["order_count"] == 2
+        assert by_name["Цирконій"]["quantity_sum"] == 5
+        assert by_name["ПММА"]["order_count"] == 1
+        assert by_name["ПММА"]["quantity_sum"] == 4
+
+    def test_non_production_material_is_skipped(self):
+        non_mat = _material("Не матеріал", is_production=False, sort_order=99)
+        groups = summarize_by_material([_order(non_mat, "5")])
+        assert groups == []
+
+    def test_unresolved_orders_fold_into_trailing_group(self):
+        zircon = _material("Цирконій", sort_order=1)
+        groups = summarize_by_material([_order(zircon, "2"), _order(None, "7")])
+        # unresolved sorts last
+        assert groups[-1]["material"] == "Не визначено"
+        assert groups[-1]["quantity_sum"] == 7
+
+    def test_unparseable_quantity_counts_order_but_not_units(self):
+        zircon = _material("Цирконій", sort_order=1)
+        groups = summarize_by_material([_order(zircon, "багато")])
+        assert groups[0]["order_count"] == 1
+        assert groups[0]["quantity_sum"] == 0
 
 
 def make_order(events):

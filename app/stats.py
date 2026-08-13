@@ -22,6 +22,30 @@ def summarize_rework_by_blame(records: list[ReworkRecord]) -> list[dict]:
     return sorted(groups.values(), key=lambda g: g["count"], reverse=True)
 
 
+def summarize_by_material(orders: list[Order]) -> list[dict]:
+    """Orders and unit totals per production material for the period. Skips the
+    non-production "Не матеріал" bucket; folds orders whose material is still
+    unresolved into a trailing "Не визначено" group so the operator can see how
+    much colour text isn't classified yet."""
+    groups: dict[object, dict] = {}
+    for order in orders:
+        material = order.material
+        if material is None:
+            key, name, sort_order = ("__unresolved__", "Не визначено", 1000)
+        elif not material.is_production:
+            continue
+        else:
+            key, name, sort_order = (material.id, material.name, material.sort_order)
+        group = groups.setdefault(
+            key, {"material": name, "sort_order": sort_order, "order_count": 0, "quantity_sum": 0}
+        )
+        group["order_count"] += 1
+        qty = parse_int_safe(order.quantity)
+        if qty is not None:
+            group["quantity_sum"] += qty
+    return sorted(groups.values(), key=lambda g: (g["sort_order"], -g["quantity_sum"]))
+
+
 def average_new_to_milled_hours(orders: list[Order]) -> float | None:
     durations = []
     for order in orders:

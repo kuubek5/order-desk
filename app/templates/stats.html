@@ -59,6 +59,27 @@
 
     <section class="panel">
         <div class="card-head">
+            <h2>Матеріали — за період</h2>
+            <span class="meta">одиниць по категоріях</span>
+        </div>
+        {% if material_groups %}
+        {% set max_mat_units = (material_groups|map(attribute='quantity_sum')|max) or 1 %}
+        <div class="stage-list">
+            {% for group in material_groups %}
+            <div class="stage-row">
+                <span class="lb">{{ group.material }}</span>
+                <span class="bar"><i style="width:{{ (group.quantity_sum / max_mat_units * 100)|round(0) if max_mat_units else 0 }}%"></i></span>
+                <span class="n">{{ group.quantity_sum }} од. <span class="pct">· {{ group.order_count }} робіт</span></span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-note">немає робіт за період</p>
+        {% endif %}
+    </section>
+
+    <section class="panel">
+        <div class="card-head">
             <h2>Брак — розподіл по винуватцях</h2>
             <span class="meta">за весь час</span>
         </div>
