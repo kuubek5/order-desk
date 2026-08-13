@@ -11,6 +11,7 @@ import gspread
 
 from app.models import Order
 from app.parser import HEADER_ROWS
+from app.sheets import call_with_retry
 
 # 1-indexed gspread columns, matching the 0-indexed positions in app/parser.py
 # (idx11 -> col 12, idx12 -> col 13, idx13 -> col 14).
@@ -64,7 +65,8 @@ def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[s
         # have filled the shared sheet since that snapshot. Preserve the live
         # value and bring it back into the ORM object instead of overwriting it.
         if field in STATUS_MARKER_FIELDS:
-            cell = worksheet.acell(gspread.utils.rowcol_to_a1(row, col))
+            a1 = gspread.utils.rowcol_to_a1(row, col)
+            cell = call_with_retry(lambda a1=a1: worksheet.acell(a1))
             live_value = (cell.value or "").strip()
             if live_value:
                 setattr(order, field, live_value)
@@ -73,7 +75,8 @@ def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[s
         updates.append({"range": gspread.utils.rowcol_to_a1(row, col), "values": [[value]]})
 
     if updates:
-        worksheet.batch_update(updates)
+        # Idempotent: retrying writes the same fixed values to the same cells.
+        call_with_retry(lambda: worksheet.batch_update(updates))
 
 
 def write_rework_sum3d(worksheet: gspread.Worksheet, order: Order, value: str) -> None:
@@ -81,7 +84,7 @@ def write_rework_sum3d(worksheet: gspread.Worksheet, order: Order, value: str) -
     ID) of the order's row — the second ID column, distinct from the main
     Sum3D ID in column L. Touches only that one cell, never the whole row."""
     row = _sheet_row(order)
-    worksheet.update_cell(row, COL_REDO_SUM3D_ID, value or "")
+    call_with_retry(lambda: worksheet.update_cell(row, COL_REDO_SUM3D_ID, value or ""))
 
 
 def apply_status_markers(
@@ -146,7 +149,7 @@ def append_mail_placeholder_row(
     # can span up to max_search_rows candidate rows. gspread/Sheets trims
     # trailing empty rows (and trailing empty cells within a row) from the
     # result, so rows past the last populated one simply aren't present.
-    raw_rows = worksheet.get(f"B{start_row}:E{end_row}")
+    raw_rows = call_with_retry(lambda: worksheet.get(f"B{start_row}:E{end_row}"))
 
     row_number = None
     for offset, row in enumerate(raw_rows):
@@ -178,7 +181,7 @@ def append_mail_placeholder_row(
             "values": [[client_name or ""]],
         },
     ]
-    worksheet.batch_update(updates)
+    call_with_retry(lambda: worksheet.batch_update(updates))
     return row_number
 
 
@@ -189,8 +192,11 @@ def append_order_comment(
 ) -> str:
     """Append to the live sheet cell so external edits are not overwritten."""
     row = _sheet_row(order)
-    cell = worksheet.acell(gspread.utils.rowcol_to_a1(row, COL_CAM_COMMENT))
+    a1 = gspread.utils.rowcol_to_a1(row, COL_CAM_COMMENT)
+    cell = call_with_retry(lambda: worksheet.acell(a1))
     current = (cell.value or "").strip()
     combined = f"{current}\n{comment_line}" if current else comment_line
-    worksheet.update_cell(row, COL_CAM_COMMENT, combined)
+    # `combined` is computed once, so a retry re-writes the same absolute value
+    # (not a second append) — idempotent even if a prior attempt reached Sheets.
+    call_with_retry(lambda: worksheet.update_cell(row, COL_CAM_COMMENT, combined))
     return combined

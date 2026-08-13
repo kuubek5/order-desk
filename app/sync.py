@@ -134,12 +134,23 @@ def _should_apply_sheet_status(current: str, inferred: str) -> bool:
 
 def sync_tab(session: Session, sheet_tab: str, rows: list[OrderRow]) -> SyncResult:
     result = SyncResult()
+
+    # Preload every existing order for this tab in ONE query instead of a
+    # SELECT per row (the old N+1). A first import can span ~30 tabs of ~40
+    # rows each; keyed by row_number here, that collapses ~1200 point queries
+    # to ~30. row_number is unique within a tab (1-based data-row position),
+    # and each appears at most once in `rows`, so the map has no collisions.
+    existing_by_row = {
+        order.row_number: order
+        for order in session.execute(
+            select(Order).where(Order.sheet_tab == sheet_tab)
+        ).scalars()
+    }
+
     for row in rows:
         # Matched by position within the tab's data rows, not job_code, since
         # job_code is only filled in by the operator after the job is taken.
-        existing = session.execute(
-            select(Order).where(Order.sheet_tab == sheet_tab, Order.row_number == row.row_number)
-        ).scalar_one_or_none()
+        existing = existing_by_row.get(row.row_number)
 
         status = _infer_status(row)
 

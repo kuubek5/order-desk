@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.models import Order, SyncLog
 from app.parser import parse_rows
 from app.settings_store import get_google_service_account_json, get_google_sheet_id
-from app.sheets import open_spreadsheet
+from app.sheets import call_with_retry, open_spreadsheet
 from app.sync import sync_tab
 
 
@@ -65,7 +65,7 @@ def _worksheets_to_sync(session: Session, spreadsheet, today: date) -> list:
     last_day = today + timedelta(days=1)
 
     dated = []
-    for worksheet in spreadsheet.worksheets():
+    for worksheet in call_with_retry(spreadsheet.worksheets):
         tab_date = _parse_tab_date(worksheet.title)
         if tab_date is not None and first_day <= tab_date <= last_day:
             dated.append((tab_date, worksheet.title, worksheet))
@@ -155,13 +155,13 @@ def sync_google_sheets(session: Session, *, trigger: str = "manual") -> SheetSyn
     try:
         try:
             _configuration(session)
-            spreadsheet = open_spreadsheet(db=session)
+            spreadsheet = open_spreadsheet(db=session)  # retries internally
             worksheets = _worksheets_to_sync(session, spreadsheet, date.today())
             summary = SheetSyncSummary()
 
             for worksheet in worksheets:
                 current_tab = worksheet.title
-                rows = parse_rows(worksheet.get_all_values())
+                rows = parse_rows(call_with_retry(worksheet.get_all_values))
                 result = sync_tab(session, current_tab, rows)
                 summary.tabs_processed += 1
                 summary.tab_names.append(current_tab)
