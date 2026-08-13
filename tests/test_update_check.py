@@ -11,11 +11,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import app.update_check as update_check
 from app.update_check import (
     ReleaseInfo,
     UpdateVerificationError,
+    UPDATE_CHECK_INTERVAL_SECONDS,
+    UPDATE_CHECK_RETRY_SECONDS,
+    _update_check_tick,
+    _update_check_worker,
     download_and_verify,
     fetch_latest_release,
+    get_known_update,
     is_newer_version,
     launch_silent_install,
 )
@@ -236,3 +242,107 @@ def test_launch_silent_install_frozen_spawns_single_watchdog(tmp_path):
     assert flags & subprocess.CREATE_NO_WINDOW
     assert not (flags & subprocess.DETACHED_PROCESS)
     assert (tmp_path / "update-watchdog.ps1").is_file()
+
+
+# --- _update_check_tick: transport-failure vs clean-check signal --------
+
+
+@pytest.fixture(autouse=True)
+def _reset_known_release():
+    """Each tick test starts and ends with an empty known-update slot so the
+    module-level state can't leak between tests (or into the live app)."""
+    update_check._latest_known_release = None
+    yield
+    update_check._latest_known_release = None
+
+
+def _ok_response(payload: dict) -> MagicMock:
+    response = MagicMock()
+    response.json.return_value = payload
+    response.raise_for_status.return_value = None
+    return response
+
+
+def test_tick_returns_true_and_stores_release_when_newer():
+    response = _ok_response(_release_payload("v9.9.9"))
+    with patch("app.update_check.requests.get", return_value=response):
+        assert _update_check_tick() is True
+    assert get_known_update() is not None
+    assert get_known_update().version == "9.9.9"
+
+
+def test_tick_returns_true_but_stores_none_when_up_to_date():
+    # Reached GitHub successfully, just nothing newer → True, slot cleared to
+    # None. This is the case a plain None return could NOT distinguish from a
+    # network failure, which is the whole point of the split.
+    response = _ok_response(_release_payload("v0.0.1"))
+    with patch("app.update_check.requests.get", return_value=response):
+        assert _update_check_tick() is True
+    assert get_known_update() is None
+
+
+def test_tick_returns_false_and_preserves_previous_release_on_network_error():
+    # First: a good tick finds an update.
+    good = _ok_response(_release_payload("v9.9.9"))
+    with patch("app.update_check.requests.get", return_value=good):
+        assert _update_check_tick() is True
+    found = get_known_update()
+    assert found is not None
+
+    # Then: a transient failure must NOT wipe it — returns False, slot kept.
+    with patch("app.update_check.requests.get", side_effect=OSError("offline")):
+        assert _update_check_tick() is False
+    assert get_known_update() is found
+
+
+# --- worker interval selection: retry soon on failure, daily on success -
+
+
+class _StopAfter:
+    """Fake Event whose wait() returns False the first N times (letting the
+    loop run) then True (breaking it), recording every wait() duration so the
+    test can assert which interval the worker chose."""
+
+    def __init__(self, allow_iterations: int):
+        self._remaining = allow_iterations
+        self.waits: list[float] = []
+        self._set = False
+
+    def wait(self, timeout=None):
+        self.waits.append(timeout)
+        if self._remaining <= 0:
+            # Mirror a real threading.Event: once wait() reports the event is
+            # set, is_set() must agree — otherwise the worker's
+            # `while not stop_event.is_set()` loop never exits.
+            self._set = True
+            return True
+        self._remaining -= 1
+        return False
+
+    def is_set(self):
+        return self._set
+
+    def set(self):
+        self._set = True
+
+
+def test_worker_sleeps_retry_interval_after_failed_tick():
+    stop = _StopAfter(allow_iterations=1)  # initial wait + one loop body
+    with patch("app.update_check._update_check_tick", return_value=False):
+        _update_check_worker(stop)
+    # waits[0] is the initial delay; waits[1] is the post-tick interval.
+    assert stop.waits[-1] == UPDATE_CHECK_RETRY_SECONDS
+
+
+def test_worker_sleeps_daily_interval_after_successful_tick():
+    stop = _StopAfter(allow_iterations=1)
+    with patch("app.update_check._update_check_tick", return_value=True):
+        _update_check_worker(stop)
+    assert stop.waits[-1] == UPDATE_CHECK_INTERVAL_SECONDS
+
+
+def test_worker_treats_tick_exception_as_failure_and_retries_soon():
+    stop = _StopAfter(allow_iterations=1)
+    with patch("app.update_check._update_check_tick", side_effect=RuntimeError("boom")):
+        _update_check_worker(stop)
+    assert stop.waits[-1] == UPDATE_CHECK_RETRY_SECONDS

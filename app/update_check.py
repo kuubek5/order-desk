@@ -38,7 +38,12 @@ DOWNLOAD_TIMEOUT_SECONDS = 30
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 
 UPDATE_CHECK_INITIAL_DELAY_SECONDS = 30
-UPDATE_CHECK_INTERVAL_SECONDS = 86400  # once a day
+UPDATE_CHECK_INTERVAL_SECONDS = 86400  # once a day after a check that reached GitHub
+# After a tick that could NOT reach GitHub (offline, HTTP error, bad JSON) we
+# retry far sooner instead of going dark for a whole day. Without this, a single
+# transient network blip on the one daily tick hid an available update until the
+# next day — the exact "оновлення не приходить" symptom seen in the field.
+UPDATE_CHECK_RETRY_SECONDS = 3600  # one hour
 
 
 class UpdateVerificationError(Exception):
@@ -92,22 +97,29 @@ def _find_asset_url(assets: list[dict], *, suffixes: tuple[str, ...]) -> str | N
     return None
 
 
-def fetch_latest_release() -> ReleaseInfo | None:
-    """GET the latest GitHub release and return it only if it is a real,
-    parseable, strictly newer version than this build. Returns None on:
-    no newer release, any network/HTTP/JSON error, or a release with no
-    usable installer asset. Never raises — this is called from a background
-    thread with no one watching for exceptions, and from request handlers
-    that must stay responsive even when GitHub or the network is down.
+def _fetch_release_payload() -> dict | None:
+    """GET the latest-release JSON from GitHub. Returns the parsed dict, or
+    None on ANY network/HTTP/JSON error. Never raises.
+
+    Split out from fetch_latest_release so callers (the background tick) can
+    tell a transport failure (None here) apart from a successful check that
+    simply found no newer release — a distinction fetch_latest_release's own
+    None return deliberately collapses. That distinction is what lets the
+    worker retry soon after a failure but sleep a full day after a success.
     """
     try:
         response = requests.get(RELEASES_API_URL, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
-        payload = response.json()
+        return response.json()
     except Exception as exc:  # noqa: BLE001 - deliberately catch-all, see docstring
         logger.warning("Update check failed: %s", exc)
         return None
 
+
+def _release_from_payload(payload: dict) -> ReleaseInfo | None:
+    """Interpret an already-fetched release payload: return a ReleaseInfo only
+    if it is a real, parseable, strictly newer version with a usable installer
+    asset; None otherwise (not newer, or no .exe). Pure/no network."""
     tag_name = str(payload.get("tag_name") or "").strip()
     version = tag_name[1:] if tag_name.startswith("v") else tag_name
     if not is_newer_version(version, VERSION):
@@ -129,6 +141,20 @@ def fetch_latest_release() -> ReleaseInfo | None:
     )
 
 
+def fetch_latest_release() -> ReleaseInfo | None:
+    """GET the latest GitHub release and return it only if it is a real,
+    parseable, strictly newer version than this build. Returns None on:
+    no newer release, any network/HTTP/JSON error, or a release with no
+    usable installer asset. Never raises — this is called from a background
+    thread with no one watching for exceptions, and from request handlers
+    that must stay responsive even when GitHub or the network is down.
+    """
+    payload = _fetch_release_payload()
+    if payload is None:
+        return None
+    return _release_from_payload(payload)
+
+
 # Last background-check result, read by web.py/templates without ever
 # touching the network on a request. Same rationale as app/web.py's
 # _sync_heartbeats: one module-level slot, written only by the worker
@@ -141,9 +167,24 @@ def get_known_update() -> ReleaseInfo | None:
     return _latest_known_release
 
 
-def _update_check_tick() -> None:
+def _update_check_tick() -> bool:
+    """Run one check and refresh the module-level "last known release" slot.
+
+    Returns True if the check reached GitHub (whether or not a newer release
+    was found), False on a transport failure. The worker uses this to pick the
+    next interval.
+
+    On a transport failure the previously known result is deliberately KEPT
+    rather than wiped to None: a single offline blip must not hide an update
+    the last successful tick already found. The slot is only overwritten when
+    we actually have a fresh answer from GitHub.
+    """
     global _latest_known_release
-    _latest_known_release = fetch_latest_release()
+    payload = _fetch_release_payload()
+    if payload is None:
+        return False
+    _latest_known_release = _release_from_payload(payload)
+    return True
 
 
 def _update_check_worker(stop_event: Event) -> None:
@@ -151,11 +192,15 @@ def _update_check_worker(stop_event: Event) -> None:
         return
 
     while not stop_event.is_set():
+        reached_github = False
         try:
-            _update_check_tick()
+            reached_github = _update_check_tick()
         except Exception:
             logger.exception("Unexpected background update check failure")
-        stop_event.wait(UPDATE_CHECK_INTERVAL_SECONDS)
+        interval = (
+            UPDATE_CHECK_INTERVAL_SECONDS if reached_github else UPDATE_CHECK_RETRY_SECONDS
+        )
+        stop_event.wait(interval)
 
 
 def _updates_dir() -> Path:
