@@ -1,6 +1,8 @@
+import hashlib
 import json
 import logging
 import ssl
+import threading
 import time
 from datetime import date
 from typing import Callable, Optional, TypeVar
@@ -101,20 +103,38 @@ class _LegacyRenegotiationAdapter(HTTPAdapter):
         conn.cert_reqs = "CERT_REQUIRED"
 
 
-def get_client(db: Optional[Session] = None) -> gspread.Client:
-    # Try to get credentials from DB if a session is provided
+# Per-thread cached gspread client. Building one mints an OAuth token (a POST
+# to oauth2.googleapis.com) and stands up a fresh requests.Session; doing that
+# on every sync and every write-back is wasteful when the token is valid for
+# ~1h and the session's connection pool could be reused. The cache is
+# THREAD-LOCAL on purpose: a requests.Session is not safe to share across
+# threads, and the background sync worker and request-handler write-backs run
+# on different threads — each keeps its own client instead of contending over
+# one shared session. Keyed by the credentials content, so changing the
+# service-account JSON in Settings yields a new key and rebuilds automatically;
+# no explicit invalidation call is needed on a config change.
+_local = threading.local()
+
+
+def _credentials_key(db: Optional[Session]) -> tuple[str, Optional[str]]:
+    """Cache key for the active service-account config, plus the DB-stored JSON
+    when that is the source (so a cache miss can build without a second read).
+    Computing the key never mints a token — that's the whole point of caching."""
     if db is not None:
         json_content = get_google_service_account_json(db)
         if json_content is not None:
-            service_account_info = json.loads(json_content)
-            creds = Credentials.from_service_account_info(service_account_info, scopes=_SCOPES)
-        else:
-            # Fall back to file-based credentials
-            creds = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_JSON, scopes=_SCOPES)
-    else:
-        # No DB provided, use file-based credentials
-        creds = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_JSON, scopes=_SCOPES)
+            digest = hashlib.sha256(json_content.encode("utf-8")).hexdigest()
+            return f"db:{digest}", json_content
+    return f"file:{GOOGLE_SERVICE_ACCOUNT_JSON}", None
 
+
+def _build_credentials(json_content: Optional[str]) -> Credentials:
+    if json_content is not None:
+        return Credentials.from_service_account_info(json.loads(json_content), scopes=_SCOPES)
+    return Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_JSON, scopes=_SCOPES)
+
+
+def _build_client(creds: Credentials) -> gspread.Client:
     # Token refresh (POST to oauth2.googleapis.com) runs over its own
     # internal session unless we hand it one explicitly, so the adapter
     # has to be mounted on both this session and the API session below.
@@ -126,6 +146,25 @@ def get_client(db: Optional[Session] = None) -> gspread.Client:
     session.mount("https://", _LegacyRenegotiationAdapter())
 
     return gspread.Client(auth=creds, session=session)
+
+
+def reset_sheets_cache() -> None:
+    """Drop this thread's cached client. Config changes invalidate the cache on
+    their own via the content-based key; this exists for tests and for an
+    explicit "rebuild now" after a settings change on the same thread."""
+    if hasattr(_local, "sheets_client"):
+        del _local.sheets_client
+
+
+def get_client(db: Optional[Session] = None) -> gspread.Client:
+    key, json_content = _credentials_key(db)
+    cached = getattr(_local, "sheets_client", None)
+    if cached is not None and cached[0] == key:
+        return cached[1]
+
+    client = _build_client(_build_credentials(json_content))
+    _local.sheets_client = (key, client)
+    return client
 
 
 def tab_name_for(d: date) -> str:
