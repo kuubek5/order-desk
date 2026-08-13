@@ -1442,6 +1442,38 @@ async def set_sum3d_id(
     )
 
 
+@app.post("/orders/{order_id}/cam-comment", response_class=HTMLResponse)
+async def set_cam_comment(
+    request: Request,
+    order_id: int,
+    cam_comment: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Inline edit of the CAM comment straight from the queue row. Unlike the
+    passport's /comments (which appends to the two-way history preserving other
+    people's sheet edits), this SETS the CAM-comment cell to exactly what the
+    operator typed — the "enter/edit my own note in the row" flow. Writes back
+    to the sheet's comment column for lab orders, same discipline as sum3d-id."""
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+
+    order.cam_comment = cam_comment.strip() or None
+    sync_error = _write_sheet_fields(db, order, {"cam_comment"})
+    db.commit()
+    db.refresh(order)
+
+    attach_export_folder_uris(db, [order])
+    attach_job_code_folder_uris(db, [order])
+
+    return templates.TemplateResponse(
+        request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": sync_error}
+    )
+
+
 @app.post("/orders/{order_id}/status", response_class=HTMLResponse)
 async def set_status(
     request: Request,

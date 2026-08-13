@@ -4309,3 +4309,15 @@ main.worldv2{max-width:1000px;margin:0 auto;padding:18px 20px}
 .matbadge.mat-wax{color:#d99bb0;background:rgba(217,155,176,.14);border-color:rgba(217,155,176,.44)}
 .matbadge.mat-other{color:var(--ink-2);background:var(--card-2);border-color:var(--line-2)}
 .matbadge.mat-unknown{color:#6b7684;background:rgba(107,118,132,.10);border:1px dashed rgba(107,118,132,.6)}
+
+/* Інлайн-редагування коментаря в рядку черги — виглядає як текст, на hover/focus
+   стає полем; авто-збереження через HTMX (див. set_cam_comment). */
+.q2 .cam-comment-form{margin:0}
+.q2 .cam-comment-input{width:100%;max-width:220px;box-sizing:border-box;background:transparent;
+  border:1px solid transparent;border-radius:6px;padding:3px 6px;margin:-2px -4px;
+  font-family:var(--font-body);font-size:12.5px;color:var(--ink-2);white-space:nowrap;
+  text-overflow:ellipsis;outline:none;transition:border-color .12s ease,background .12s ease,color .12s ease}
+.q2 .cam-comment-input:hover{border-color:var(--line-2)}
+.q2 .cam-comment-input:focus{border-color:var(--focus-border);background:#0f1620;color:var(--ink)}
+.q2 .cam-comment-input::placeholder{color:var(--ink-3)}
+.q2 .cam-comment-input.shout{color:var(--warn);font-weight:600}

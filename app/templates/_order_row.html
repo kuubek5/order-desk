@@ -60,11 +60,13 @@
     </td>
     <td class="technician">{{ order.technician_name or '—' }}</td>
     <td class="comment-cell">
-        {% if order.cam_comment %}
-        <div class="cam-comment-text cam{% if '!!' in order.cam_comment %} shout{% endif %}" title="{{ order.cam_comment }}">{{ order.cam_comment }}</div>
-        {% else %}
-        <span class="text-muted">—</span>
-        {% endif %}
+        {# Inline-editable CAM comment — auto-saves on blur (change) or Enter,
+           SETs the value and writes it back to the sheet (see set_cam_comment). #}
+        <form class="cam-comment-form" hx-post="/orders/{{ order.id }}/cam-comment" hx-trigger="change, keyup[key=='Enter'] from:.cam-comment-input" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
+            <input type="text" name="cam_comment" value="{{ order.cam_comment or '' }}"
+                   class="cam-comment-input cam-comment-text cam{% if order.cam_comment and '!!' in order.cam_comment %} shout{% endif %}"
+                   placeholder="коментар…" title="{{ order.cam_comment or 'Введіть коментар для CAM-оператора' }}">
+        </form>
     </td>
     <td class="sum3d-id">
         {# No save button (галочку прибрано): the input auto-saves on change —
