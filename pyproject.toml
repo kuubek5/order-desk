@@ -10,6 +10,10 @@ description = "Order management system for dental milling lab"
 [tool.ruff]
 # Line length matches common IDE defaults and allows readable docstrings/comments
 line-length = 110
+# Local design/reference scratch dirs that are not part of the shipped app and
+# not committed (so CI never lints them anyway) — excluded so local `ruff
+# check .` matches CI instead of nagging about throwaway files.
+extend-exclude = ["refs_catalog"]
 
 [tool.ruff.lint]
 # Select rules: E and F (pyflakes) as base, ignore E501 (line too long) for now

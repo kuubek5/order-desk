@@ -21,10 +21,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import serialization  # noqa: E402
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
 
-from app.license import encode_license_key
+from app.license import encode_license_key  # noqa: E402
 
 PRIVATE_KEY_PATH = ROOT / "license_private_key.pem"
 KEYS_DIR = ROOT / "keys"
