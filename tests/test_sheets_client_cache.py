@@ -67,6 +67,46 @@ def test_reset_forces_rebuild(counting_build, monkeypatch):
     assert counting_build["n"] == 2
 
 
+def test_open_spreadsheet_is_cached_per_thread(monkeypatch):
+    # On the lab PC open_by_key costs ~18s; it must run once, then be reused.
+    monkeypatch.setattr(sheets, "get_google_sheet_id", lambda db: "sheet-1")
+    opens = {"n": 0}
+
+    def fake_open_by_key(_sid):
+        opens["n"] += 1
+        return MagicMock(name=f"spreadsheet-{opens['n']}")
+
+    client = MagicMock()
+    client.open_by_key.side_effect = fake_open_by_key
+    monkeypatch.setattr(sheets, "get_client", lambda db=None: client)
+    monkeypatch.setattr(sheets, "_credentials_key", lambda db: ("db:key", None))
+
+    db = MagicMock()
+    first = sheets.open_spreadsheet(db)
+    second = sheets.open_spreadsheet(db)
+    assert first is second
+    assert opens["n"] == 1  # opened once, cached
+
+
+def test_get_worksheet_by_name_is_cached(monkeypatch):
+    lookups = {"n": 0}
+
+    def fake_worksheet(_name):
+        lookups["n"] += 1
+        return MagicMock(name=f"ws-{lookups['n']}")
+
+    spreadsheet = MagicMock()
+    spreadsheet.worksheet.side_effect = fake_worksheet
+
+    w1 = sheets.get_worksheet_by_name(spreadsheet, "11.08.26")
+    w2 = sheets.get_worksheet_by_name(spreadsheet, "11.08.26")
+    assert w1 is w2
+    assert lookups["n"] == 1
+    # a different tab is a separate lookup
+    sheets.get_worksheet_by_name(spreadsheet, "12.08.26")
+    assert lookups["n"] == 2
+
+
 def test_cache_is_thread_local(counting_build, monkeypatch):
     db = _db_with_creds(monkeypatch, '{"a": 1}')
     main_client = sheets.get_client(db)

@@ -152,8 +152,9 @@ def reset_sheets_cache() -> None:
     """Drop this thread's cached client. Config changes invalidate the cache on
     their own via the content-based key; this exists for tests and for an
     explicit "rebuild now" after a settings change on the same thread."""
-    if hasattr(_local, "sheets_client"):
-        del _local.sheets_client
+    for attr in ("sheets_client", "spreadsheet_cache", "worksheet_cache"):
+        if hasattr(_local, attr):
+            delattr(_local, attr)
 
 
 def get_client(db: Optional[Session] = None) -> gspread.Client:
@@ -172,15 +173,27 @@ def tab_name_for(d: date) -> str:
 
 
 def open_spreadsheet(db: Optional[Session] = None) -> gspread.Spreadsheet:
+    """Open the configured spreadsheet, caching the opened object per thread.
+
+    On the lab PC's proxied link, `client.open_by_key` (a metadata fetch) costs
+    ~18s — as much as the write it precedes. Caching the Spreadsheet object per
+    thread turns every write-back after the first into just the batch_update
+    (~3s) instead of re-opening the whole sheet each time. Keyed by
+    (credentials, sheet_id) so a settings change rebuilds it; the worksheet
+    cache is cleared whenever the spreadsheet is (re)opened."""
+    key, _ = _credentials_key(db)
+    sheet_id = get_google_sheet_id(db) if db is not None else GOOGLE_SHEET_ID
+    cached = getattr(_local, "spreadsheet_cache", None)
+    if cached is not None and cached[0] == (key, sheet_id):
+        return cached[1]
+
     client = get_client(db)
-    if db is not None:
-        sheet_id = get_google_sheet_id(db)
-    else:
-        sheet_id = GOOGLE_SHEET_ID
     # Retry here so every caller (read-sync and operator write-back alike) is
-    # shielded from a transient 429/5xx/SSL blip on the open step, not just the
-    # ones that remembered to wrap it.
-    return call_with_retry(lambda: client.open_by_key(sheet_id))
+    # shielded from a transient 429/5xx/SSL blip on the open step.
+    spreadsheet = call_with_retry(lambda: client.open_by_key(sheet_id))
+    _local.spreadsheet_cache = ((key, sheet_id), spreadsheet)
+    _local.worksheet_cache = {}
+    return spreadsheet
 
 
 def get_worksheet_by_date(spreadsheet: gspread.Spreadsheet, d: date) -> gspread.Worksheet | None:
@@ -188,9 +201,22 @@ def get_worksheet_by_date(spreadsheet: gspread.Spreadsheet, d: date) -> gspread.
 
 
 def get_worksheet_by_name(spreadsheet: gspread.Spreadsheet, name: str) -> gspread.Worksheet | None:
+    """Resolve a worksheet by tab name, caching the object per thread — the
+    `spreadsheet.worksheet(name)` metadata fetch is another ~18s on the lab PC's
+    link. Cached tabs stay valid for cell reads/writes; the cache is reset each
+    time the spreadsheet is reopened (see open_spreadsheet), and a new tab that
+    isn't cached is fetched (and then cached) on demand."""
+    cache = getattr(_local, "worksheet_cache", None)
+    if cache is None:
+        cache = {}
+        _local.worksheet_cache = cache
+    if name in cache:
+        return cache[name]
     try:
         # WorksheetNotFound is permanent, so call_with_retry re-raises it at
         # once (not transient) and it's handled below; only 429/5xx/SSL retry.
-        return call_with_retry(lambda: spreadsheet.worksheet(name))
+        worksheet = call_with_retry(lambda: spreadsheet.worksheet(name))
     except gspread.WorksheetNotFound:
         return None
+    cache[name] = worksheet
+    return worksheet

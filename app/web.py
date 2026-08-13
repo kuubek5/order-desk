@@ -6,6 +6,7 @@ import ipaddress
 import logging
 import os
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Lock, Thread
 from time import monotonic
 from typing import Annotated
@@ -672,6 +673,19 @@ async def lifespan(_: FastAPI):
         except Exception:
             db.rollback()
             logger.exception("Material catalog seed/backfill at startup failed")
+
+    # Warm the sheet write-back worker's cache (open the spreadsheet once) so the
+    # very first operator edit reflects in the sheet in ~3s instead of ~40s. Best
+    # effort — skips silently if the sheet isn't configured or is unreachable.
+    def _warm_sheet_writeback() -> None:
+        try:
+            with SessionLocal() as warm_db:
+                open_spreadsheet(db=warm_db)
+        except Exception:
+            logger.info("Sheet write-back warmup skipped (sheet not ready)")
+
+    _sheet_writeback_pool.submit(_warm_sheet_writeback)
+
     mail_stop_event = Event()
     mail_thread = Thread(
         target=_mail_sync_worker,
@@ -913,14 +927,21 @@ def _write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | No
         return error
 
 
+# Single long-lived worker for sheet write-backs. Using ONE reused thread (not a
+# fresh Thread per edit) is what makes the cached spreadsheet/worksheet objects
+# pay off: only the worker's first write eats the ~18s open + ~18s worksheet
+# lookup on the lab PC's link; every write after that reuses the warm per-thread
+# cache and costs just the ~3s batch_update. It also serialises writes, so two
+# quick edits to the same cell can't land out of order.
+_sheet_writeback_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sheet-writeback")
+
+
 def _write_sheet_fields_background(order_id: int, fields: set[str]) -> None:
-    """Push a sheet write-back onto a background thread so the request can
-    return immediately. The Google Sheets write can take several seconds (more
-    when Google is throttling), and blocking the inline-edit response on it made
-    the queue feel like it "wasn't saving". The DB is already committed by the
-    caller; this just mirrors the change into the sheet with its own session and
-    records the outcome in SyncLog. A lost background write self-heals on the
-    next point edit — the DB stays the source of truth."""
+    """Queue a sheet write-back on the shared writer so the request returns
+    immediately. The DB is already committed by the caller; this mirrors the
+    change into the sheet with its own session and records the outcome in
+    SyncLog. A lost write self-heals on the next point edit — the DB is the
+    source of truth."""
     def worker() -> None:
         try:
             with SessionLocal() as bg:
@@ -931,7 +952,7 @@ def _write_sheet_fields_background(order_id: int, fields: set[str]) -> None:
         except Exception:
             logger.exception("Background sheet write-back failed for order %s", order_id)
 
-    Thread(target=worker, name=f"sheet-writeback-{order_id}", daemon=True).start()
+    _sheet_writeback_pool.submit(worker)
 
 
 def _write_rework_sum3d(db: Session, order: Order, value: str) -> str | None:
