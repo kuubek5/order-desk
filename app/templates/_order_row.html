@@ -62,7 +62,7 @@
     <td class="comment-cell">
         {# Inline-editable CAM comment — auto-saves on blur (change) or Enter,
            SETs the value and writes it back to the sheet (see set_cam_comment). #}
-        <form class="cam-comment-form" hx-post="/orders/{{ order.id }}/cam-comment" hx-trigger="change, keyup[key=='Enter'] from:.cam-comment-input" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
+        <form class="cam-comment-form" onsubmit="return false" hx-post="/orders/{{ order.id }}/cam-comment" hx-trigger="change, keyup[key=='Enter'] from:.cam-comment-input" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
             <input type="text" name="cam_comment" value="{{ order.cam_comment or '' }}"
                    class="cam-comment-input cam-comment-text cam{% if order.cam_comment and '!!' in order.cam_comment %} shout{% endif %}"
                    placeholder="коментар…" title="{{ order.cam_comment or 'Введіть коментар для CAM-оператора' }}">

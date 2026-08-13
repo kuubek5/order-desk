@@ -913,6 +913,27 @@ def _write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | No
         return error
 
 
+def _write_sheet_fields_background(order_id: int, fields: set[str]) -> None:
+    """Push a sheet write-back onto a background thread so the request can
+    return immediately. The Google Sheets write can take several seconds (more
+    when Google is throttling), and blocking the inline-edit response on it made
+    the queue feel like it "wasn't saving". The DB is already committed by the
+    caller; this just mirrors the change into the sheet with its own session and
+    records the outcome in SyncLog. A lost background write self-heals on the
+    next point edit — the DB stays the source of truth."""
+    def worker() -> None:
+        try:
+            with SessionLocal() as bg:
+                order = bg.get(Order, order_id)
+                if order is not None:
+                    _write_sheet_fields(bg, order, fields)
+                    bg.commit()
+        except Exception:
+            logger.exception("Background sheet write-back failed for order %s", order_id)
+
+    Thread(target=worker, name=f"sheet-writeback-{order_id}", daemon=True).start()
+
+
 def _write_rework_sum3d(db: Session, order: Order, value: str) -> str | None:
     """Write the redo Sum3D ID to the sheet's column W. Same lab-only gate,
     single-cell discipline and error-surfacing as _write_sheet_fields."""
@@ -1462,15 +1483,18 @@ async def set_cam_comment(
         raise HTTPException(status_code=404, detail="order not found")
 
     order.cam_comment = cam_comment.strip() or None
-    sync_error = _write_sheet_fields(db, order, {"cam_comment"})
-    db.commit()
+    db.commit()  # persist immediately — the row must feel instantly saved
     db.refresh(order)
+
+    # Mirror to the sheet in the background so a slow Google write never stalls
+    # the inline edit (see _write_sheet_fields_background).
+    _write_sheet_fields_background(order.id, {"cam_comment"})
 
     attach_export_folder_uris(db, [order])
     attach_job_code_folder_uris(db, [order])
 
     return templates.TemplateResponse(
-        request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": sync_error}
+        request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": None}
     )
 
 
