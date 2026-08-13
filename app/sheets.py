@@ -103,6 +103,17 @@ class _LegacyRenegotiationAdapter(HTTPAdapter):
         conn.cert_reqs = "CERT_REQUIRED"
 
 
+def new_legacy_session() -> requests.Session:
+    """A requests.Session that survives the lab PC's TLS-inspecting proxy — the
+    same legacy-renegotiation + Windows-cert-store handling the Sheets client
+    uses. Use it for any outbound HTTPS that would otherwise fail with
+    SSLEOFError under that proxy (e.g. the GitHub update check), not just
+    Sheets."""
+    session = requests.Session()
+    session.mount("https://", _LegacyRenegotiationAdapter())
+    return session
+
+
 # Per-thread cached gspread client. Building one mints an OAuth token (a POST
 # to oauth2.googleapis.com) and stands up a fresh requests.Session; doing that
 # on every sync and every write-back is wasteful when the token is valid for

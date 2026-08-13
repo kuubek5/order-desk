@@ -81,7 +81,7 @@ def test_fetch_latest_release_returns_release_when_newer():
     response = MagicMock()
     response.json.return_value = _release_payload("v9.9.9")
     response.raise_for_status.return_value = None
-    with patch("app.update_check.requests.get", return_value=response) as mock_get:
+    with patch("app.update_check._http_get", return_value=response) as mock_get:
         result = fetch_latest_release()
     mock_get.assert_called_once()
     assert result == ReleaseInfo(
@@ -97,12 +97,12 @@ def test_fetch_latest_release_returns_none_when_not_newer():
     response = MagicMock()
     response.json.return_value = _release_payload("v0.0.1")
     response.raise_for_status.return_value = None
-    with patch("app.update_check.requests.get", return_value=response):
+    with patch("app.update_check._http_get", return_value=response):
         assert fetch_latest_release() is None
 
 
 def test_fetch_latest_release_returns_none_on_network_error():
-    with patch("app.update_check.requests.get", side_effect=OSError("offline")):
+    with patch("app.update_check._http_get", side_effect=OSError("offline")):
         assert fetch_latest_release() is None
 
 
@@ -110,7 +110,7 @@ def test_fetch_latest_release_returns_none_on_bad_json():
     response = MagicMock()
     response.raise_for_status.return_value = None
     response.json.side_effect = ValueError("not json")
-    with patch("app.update_check.requests.get", return_value=response):
+    with patch("app.update_check._http_get", return_value=response):
         assert fetch_latest_release() is None
 
 
@@ -120,14 +120,14 @@ def test_fetch_latest_release_returns_none_without_exe_asset():
     response = MagicMock()
     response.json.return_value = payload
     response.raise_for_status.return_value = None
-    with patch("app.update_check.requests.get", return_value=response):
+    with patch("app.update_check._http_get", return_value=response):
         assert fetch_latest_release() is None
 
 
 def test_fetch_latest_release_never_raises_on_http_error():
     response = MagicMock()
     response.raise_for_status.side_effect = Exception("HTTP 500")
-    with patch("app.update_check.requests.get", return_value=response):
+    with patch("app.update_check._http_get", return_value=response):
         assert fetch_latest_release() is None
 
 
@@ -164,7 +164,7 @@ def test_download_and_verify_succeeds_with_matching_checksum(tmp_path):
     installer_response = _installer_response(content)
     checksum_response = _checksum_response(expected_hash)
 
-    with patch("app.update_check.requests.get", side_effect=[installer_response, checksum_response]):
+    with patch("app.update_check._http_get", side_effect=[installer_response, checksum_response]):
         result_path = download_and_verify(_release(), dest_dir=tmp_path)
 
     assert result_path.exists()
@@ -178,7 +178,7 @@ def test_download_and_verify_raises_and_deletes_file_on_mismatch(tmp_path):
     installer_response = _installer_response(content)
     checksum_response = _checksum_response(wrong_hash)
 
-    with patch("app.update_check.requests.get", side_effect=[installer_response, checksum_response]):
+    with patch("app.update_check._http_get", side_effect=[installer_response, checksum_response]):
         with pytest.raises(UpdateVerificationError):
             download_and_verify(_release(), dest_dir=tmp_path)
 
@@ -190,7 +190,7 @@ def test_download_and_verify_raises_without_checksum_url(tmp_path):
     content = b"fake installer bytes"
     installer_response = _installer_response(content)
 
-    with patch("app.update_check.requests.get", return_value=installer_response):
+    with patch("app.update_check._http_get", return_value=installer_response):
         with pytest.raises(UpdateVerificationError):
             download_and_verify(_release(checksum_url=None), dest_dir=tmp_path)
 
@@ -265,7 +265,7 @@ def _ok_response(payload: dict) -> MagicMock:
 
 def test_tick_returns_true_and_stores_release_when_newer():
     response = _ok_response(_release_payload("v9.9.9"))
-    with patch("app.update_check.requests.get", return_value=response):
+    with patch("app.update_check._http_get", return_value=response):
         assert _update_check_tick() is True
     assert get_known_update() is not None
     assert get_known_update().version == "9.9.9"
@@ -276,7 +276,7 @@ def test_tick_returns_true_but_stores_none_when_up_to_date():
     # None. This is the case a plain None return could NOT distinguish from a
     # network failure, which is the whole point of the split.
     response = _ok_response(_release_payload("v0.0.1"))
-    with patch("app.update_check.requests.get", return_value=response):
+    with patch("app.update_check._http_get", return_value=response):
         assert _update_check_tick() is True
     assert get_known_update() is None
 
@@ -284,13 +284,13 @@ def test_tick_returns_true_but_stores_none_when_up_to_date():
 def test_tick_returns_false_and_preserves_previous_release_on_network_error():
     # First: a good tick finds an update.
     good = _ok_response(_release_payload("v9.9.9"))
-    with patch("app.update_check.requests.get", return_value=good):
+    with patch("app.update_check._http_get", return_value=good):
         assert _update_check_tick() is True
     found = get_known_update()
     assert found is not None
 
     # Then: a transient failure must NOT wipe it — returns False, slot kept.
-    with patch("app.update_check.requests.get", side_effect=OSError("offline")):
+    with patch("app.update_check._http_get", side_effect=OSError("offline")):
         assert _update_check_tick() is False
     assert get_known_update() is found
 

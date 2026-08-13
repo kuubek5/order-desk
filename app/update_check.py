@@ -31,6 +31,29 @@ from app.runtime import data_dir, is_frozen
 
 logger = logging.getLogger(__name__)
 
+# Lazily-built HTTPS session carrying the same legacy-renegotiation / Windows
+# cert-store handling the Sheets client uses. Without it, the GitHub update
+# check hits SSLEOFError behind the lab PC's TLS-inspecting proxy and the app
+# never sees a new release — the real reason updates "didn't arrive".
+_http_session: "requests.Session | None" = None
+
+
+def _session() -> "requests.Session":
+    global _http_session
+    if _http_session is None:
+        from app.sheets import new_legacy_session
+
+        _http_session = new_legacy_session()
+    return _http_session
+
+
+def _http_get(url: str, **kwargs) -> requests.Response:
+    """GET via the legacy-TLS session so update-check traffic survives the lab
+    PC's proxy. Thin wrapper (behaves like requests.get) — also the single seam
+    the tests patch."""
+    return _session().get(url, **kwargs)
+
+
 GITHUB_REPO = "kuubek5/order-desk"
 RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 REQUEST_TIMEOUT_SECONDS = 5
@@ -108,7 +131,7 @@ def _fetch_release_payload() -> dict | None:
     worker retry soon after a failure but sleep a full day after a success.
     """
     try:
-        response = requests.get(RELEASES_API_URL, timeout=REQUEST_TIMEOUT_SECONDS)
+        response = _http_get(RELEASES_API_URL, timeout=REQUEST_TIMEOUT_SECONDS)
         response.raise_for_status()
         return response.json()
     except Exception as exc:  # noqa: BLE001 - deliberately catch-all, see docstring
@@ -230,7 +253,7 @@ def download_and_verify(release: ReleaseInfo, dest_dir: Path | None = None) -> P
     directory.mkdir(parents=True, exist_ok=True)
     installer_path = directory / f"OrderDesk-Setup-{release.version}.exe"
 
-    response = requests.get(release.installer_url, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS)
+    response = _http_get(release.installer_url, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS)
     response.raise_for_status()
     with installer_path.open("wb") as handle:
         for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
@@ -243,7 +266,7 @@ def download_and_verify(release: ReleaseInfo, dest_dir: Path | None = None) -> P
             "Реліз не має файлу контрольної суми — встановлення скасовано з міркувань безпеки"
         )
 
-    checksum_response = requests.get(release.checksum_url, timeout=REQUEST_TIMEOUT_SECONDS)
+    checksum_response = _http_get(release.checksum_url, timeout=REQUEST_TIMEOUT_SECONDS)
     checksum_response.raise_for_status()
     expected = checksum_response.text.strip().split()[0].lower()
     actual = _sha256_of_file(installer_path)
