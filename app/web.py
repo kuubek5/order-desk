@@ -36,7 +36,7 @@ from app.license import get_license_status, get_machine_id, verify_license_key
 from app.mail_export import save_attachments_to_export
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
 from app.mail_sync_service import MailSyncBusyError, MailSyncError, sync_mail_background, sync_mailbox
-from app.material_class import material_color_css_class
+from app.material_class import material_badge, material_color_css_class
 from app.material_catalog import (
     MaterialCatalogError,
     add_alias,
@@ -804,6 +804,7 @@ def static_ver(relative: str) -> int:
 templates = Jinja2Templates(directory=str(resource_path("app/templates")))
 templates.env.globals["is_overdue"] = is_overdue
 templates.env.globals["material_color_css_class"] = material_color_css_class
+templates.env.globals["material_badge"] = material_badge
 templates.env.globals["static_ver"] = static_ver
 # Available in every template without every route threading it through its
 # own context dict — same rationale as static_ver above. Reads the
@@ -1168,8 +1169,10 @@ def get_queue(
     # rather than erroring, same spirit as the period/ready/source fallbacks.
     selected_date = _parse_sheet_tab(date_param)
 
-    # Fetch all orders
-    all_orders = db.scalars(select(Order).order_by(Order.id.desc())).all()
+    # Fetch all orders (eager-load material for the queue's material badge)
+    all_orders = db.scalars(
+        select(Order).options(selectinload(Order.material)).order_by(Order.id.desc())
+    ).all()
 
     # Define date boundaries
     today = date.today()

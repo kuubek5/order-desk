@@ -35,6 +35,8 @@
     </td>
     <td class="quantity">{{ order.quantity or '—' }}</td>
     <td class="material-cell">
+        {% set _mat = material_badge(order) %}
+        {% if _mat %}<span class="matbadge {{ _mat.cls }}" title="{{ _mat.title }}">{{ _mat.symbol }}</span>{% endif %}
         {% if order.material_color %}
             <span class="matchip chip {{ material_color_css_class(order.material_color) }}">{{ order.material_color }}</span>
         {% else %}

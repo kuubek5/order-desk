@@ -4292,3 +4292,20 @@ main.worldv2{max-width:1000px;margin:0 auto;padding:18px 20px}
   .update-track i{position:relative;width:60%;transform:none;left:0}
 }
 
+
+/* ── Бейджі матеріалів (черга, картка, видача) ───────────────────────────
+   Компактна моно-пігулка з символом матеріалу. Палітра погоджена з Романом:
+   кожен матеріал має свій відтінок, окремий від бірюзового UI-акценту. */
+.matbadge{
+  display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:999px;
+  font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.02em;
+  line-height:1;white-space:nowrap;vertical-align:middle;margin-right:6px;
+  border:1px solid transparent;
+}
+.matbadge.mat-zr{color:#8fbfe0;background:rgba(143,191,224,.13);border-color:rgba(143,191,224,.42)}
+.matbadge.mat-pmma{color:#d8b46a;background:rgba(216,180,106,.13);border-color:rgba(216,180,106,.42)}
+.matbadge.mat-ti{color:#4fb477;background:rgba(79,180,119,.14);border-color:rgba(79,180,119,.44)}
+.matbadge.mat-slm{color:#9aa7b4;background:rgba(154,167,180,.14);border-color:rgba(154,167,180,.42)}
+.matbadge.mat-wax{color:#d99bb0;background:rgba(217,155,176,.14);border-color:rgba(217,155,176,.44)}
+.matbadge.mat-other{color:var(--ink-2);background:var(--card-2);border-color:var(--line-2)}
+.matbadge.mat-unknown{color:#6b7684;background:rgba(107,118,132,.10);border:1px dashed rgba(107,118,132,.6)}
