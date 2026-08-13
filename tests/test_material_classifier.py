@@ -9,6 +9,7 @@ from app.material_classifier import (
     PMMA,
     SLM,
     TITANIUM,
+    WAX,
     ZIRCON,
     classify_material,
     normalize_material,
@@ -53,9 +54,40 @@ def test_slm(raw):
     assert classify_material(raw) == SLM
 
 
-@pytest.mark.parametrize("raw", ["титан корея", "Ti", "titan"])
+@pytest.mark.parametrize("raw", ["титан корея", "Ti", "titan", "tit"])
 def test_titanium(raw):
     assert classify_material(raw) == TITANIUM
+
+
+@pytest.mark.parametrize("raw", ["wax", "віск", "воск"])
+def test_wax(raw):
+    assert classify_material(raw) == WAX
+
+
+@pytest.mark.parametrize(
+    "raw",
+    # translucency markers + bare-shade fallback all default to zirconia
+    ["st a2", "st a1", "s1", "a3 tr", "a2 транс", "с2 транс", "с 3 транс", "a2", "а3.5", "bl2"],
+)
+def test_zircon_translucency_and_bare_shade_fallback(raw):
+    assert classify_material(raw) == ZIRCON
+
+
+@pytest.mark.parametrize("raw", ["hipc a2", "hipc a3", "trinia"])
+def test_pmma_extra_variants(raw):
+    assert classify_material(raw) == PMMA
+
+
+@pytest.mark.parametrize("raw", ["vtulka", "анатомія А 3,5"])
+def test_non_material_extra_variants(raw):
+    assert classify_material(raw) == NON_MATERIAL
+
+
+def test_pmma_shade_is_not_overridden_by_zircon_fallback():
+    # The shade fallback must never fire when a material word is present — a
+    # bare 'a2' is zirconia, but 'пмма a2' stays PMMA.
+    assert classify_material("пмма a2") == PMMA
+    assert classify_material("pmma a3.5") == PMMA
 
 
 @pytest.mark.parametrize("raw", ["моделювання", "втулка", "implant", "імплант"])
@@ -63,10 +95,12 @@ def test_non_material_rows(raw):
     assert classify_material(raw) == NON_MATERIAL
 
 
-@pytest.mark.parametrize("raw", ["a2", "а3.5", "b1", "", "   ", None, "???"])
+@pytest.mark.parametrize("raw", ["", "   ", None, "???", "12", "невідоме слово"])
 def test_unresolved_returns_none(raw):
-    # A bare shade or empty/garbage can't be pinned to a material — must stay
-    # unresolved (None), never guessed.
+    # Empty/garbage, a bare number (not a colour code), or an unknown word can't
+    # be pinned to a material — must stay unresolved (None), never guessed.
+    # (Bare tooth shades like a2 DO resolve to zirconia by lab convention — see
+    # test_zircon_translucency_and_bare_shade_fallback.)
     assert classify_material(raw) is None
 
 

@@ -34,6 +34,7 @@ ZIRCON = "Цирконій"
 PMMA = "ПММА"
 SLM = "СЛМ"
 TITANIUM = "Титан"
+WAX = "Віск"
 NON_MATERIAL = "Не матеріал"
 
 # Seed catalog: (name, is_production, sort_order). is_production=False keeps
@@ -44,6 +45,7 @@ SEED_MATERIALS: list[tuple[str, bool, int]] = [
     (PMMA, True, 2),
     (SLM, True, 3),
     (TITANIUM, True, 4),
+    (WAX, True, 5),
     (NON_MATERIAL, False, 99),
 ]
 
@@ -59,29 +61,44 @@ SEED_ALIASES: dict[str, list[tuple[str, str]]] = {
         ("утмл", "contains"), ("utml", "contains"),
         ("стмл", "contains"), ("stml", "contains"),
         ("nat", "token"), ("nature", "contains"), ("z nat", "contains"),
+        # Super-translucent / translucent zirconia markers seen in the sheet.
+        ("st", "token"), ("s1", "token"), ("tr", "token"), ("транс", "contains"),
         # Manufacturer colour codes for zirconia discs.
         ("500", "token"), ("800", "token"), ("1000", "token"),
         ("1333", "token"), ("2000", "token"),
     ],
     PMMA: [
         ("пмма", "contains"), ("pmma", "contains"),
-        ("хіпс", "contains"), ("hips", "contains"),
+        ("хіпс", "contains"), ("hips", "contains"), ("hipc", "contains"),
         ("каппа", "contains"), ("kappa", "contains"),
+        ("trinia", "contains"),
     ],
     SLM: [
         ("слм", "contains"), ("slm", "contains"),
     ],
     TITANIUM: [
-        ("титан", "contains"), ("titan", "contains"), ("ti", "token"),
+        ("титан", "contains"), ("titan", "contains"), ("ti", "token"), ("tit", "token"),
+    ],
+    WAX: [
+        ("wax", "contains"), ("віск", "contains"), ("воск", "contains"),
     ],
     NON_MATERIAL: [
-        ("моделювання", "contains"), ("втулка", "contains"),
+        ("моделювання", "contains"), ("втулка", "contains"), ("vtulka", "contains"),
+        ("анатомія", "contains"),
         ("implant", "contains"), ("імплант", "contains"), ("имплант", "contains"),
     ],
 }
 
 _FUZZY_THRESHOLD = 84.0
 _MIN_FUZZY_LEN = 4  # don't fuzzy-match very short tokens (a2, ti, 800)
+
+# A bare tooth shade with no material word (a2, а3.5, с3, bl2, optionally with a
+# translucency suffix). In this lab a colour cell that carries only a shade
+# defaults to zirconia — the dominant material — so classify it as such, but
+# ONLY as a last resort, after every alias/fuzzy check has failed. That ordering
+# is what keeps "пмма a2" as PMMA: the пмма alias matches first, so the shade
+# fallback never runs for it.
+_SHADE_RE = re.compile(r"^(bl|[a-dавсд])\s?\d(\.\d)?( (tr|транс))?$")
 
 
 @dataclass(frozen=True)
@@ -159,4 +176,9 @@ def classify_material(raw: str | None, aliases: list[AliasRow] | None = None) ->
 
     if len(fuzzy_matched) == 1:
         return next(iter(fuzzy_matched))
+
+    # Last resort: a colour cell that is only a shade (no material word) is
+    # zirconia by lab convention.
+    if _SHADE_RE.match(normalized):
+        return ZIRCON
     return None

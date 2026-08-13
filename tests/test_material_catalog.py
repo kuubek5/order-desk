@@ -52,8 +52,10 @@ def test_resolve_material_id_maps_colour_to_catalog():
         assert resolve_material_id("800", rows, name_to_id) == zircon_id
         assert resolve_material_id("пмма a2", rows, name_to_id) == name_to_id["ПММА"]
         assert resolve_material_id("титан корея", rows, name_to_id) == name_to_id["Титан"]
-        # bare shade is unresolved
-        assert resolve_material_id("a2", rows, name_to_id) is None
+        # a bare shade defaults to zirconia (lab convention)
+        assert resolve_material_id("a2", rows, name_to_id) == zircon_id
+        # a genuinely unknown value stays unresolved
+        assert resolve_material_id("загадка", rows, name_to_id) is None
 
 
 def test_backfill_classifies_existing_orders():
@@ -62,20 +64,20 @@ def test_backfill_classifies_existing_orders():
             Order(source="lab", material_color="моно а3.5", status="нове"),
             Order(source="lab", material_color="пмма a2", status="нове"),
             Order(source="lab", material_color="моделювання", status="нове"),
-            Order(source="lab", material_color="a2", status="нове"),  # unresolved
+            Order(source="lab", material_color="загадка", status="нове"),  # unresolved
         ])
         session.commit()
 
         changed = backfill_orders(session)
         session.commit()
 
-        assert changed == 3  # the bare shade stays unresolved
+        assert changed == 3  # the unknown value stays unresolved
         name_to_id = material_id_by_name(session)
         by_colour = {o.material_color: o.material_id for o in session.scalars(select(Order))}
         assert by_colour["моно а3.5"] == name_to_id[ZIRCON]
         assert by_colour["пмма a2"] == name_to_id["ПММА"]
         assert by_colour["моделювання"] == name_to_id[NON_MATERIAL]
-        assert by_colour["a2"] is None
+        assert by_colour["загадка"] is None
 
 
 def test_backfill_is_idempotent_on_reruns():
@@ -166,4 +168,4 @@ def test_non_material_bucket_is_not_production():
         assert non_mat.is_production is False
         # all real materials are production
         prod = session.scalars(select(Material).where(Material.is_production.is_(True))).all()
-        assert {m.name for m in prod} == {"Цирконій", "ПММА", "СЛМ", "Титан"}
+        assert {m.name for m in prod} == {"Цирконій", "ПММА", "СЛМ", "Титан", "Віск"}
