@@ -38,11 +38,17 @@ from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
 from app.mail_sync_service import MailSyncBusyError, MailSyncError, sync_mail_background, sync_mailbox
 from app.material_class import material_color_css_class
 from app.material_catalog import (
+    MaterialCatalogError,
+    add_alias,
+    add_material,
     backfill_orders,
+    delete_alias,
     ensure_seeded,
+    list_materials,
     load_alias_rows,
     material_id_by_name,
     resolve_material_id,
+    unresolved_order_count,
 )
 from app.models import Client, ClientNameAlias, Comment, EmailMessage, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.order_folder import (
@@ -2127,6 +2133,114 @@ def test_sheets_connection(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request, "_settings_check_result.html", {"result": result}
     )
+
+
+def _require_settings_admin(request: Request, db: Session):
+    """Admin + loopback gate shared by the settings mutation routes. Returns the
+    user; raises the same 401/403s the other settings POSTs use."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    return user
+
+
+@app.get("/settings/materials", response_class=HTMLResponse)
+def get_materials_settings(request: Request, db: Session = Depends(get_db)):
+    """Screen: material library management (admin). Lists categories with their
+    alias rules, plus the count of orders whose colour is still unclassified."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    ensure_seeded(db)
+    flash = request.session.pop("materials_flash", None)
+    return templates.TemplateResponse(
+        request,
+        "settings_materials.html",
+        {
+            "page_title": "Бібліотека матеріалів",
+            "user": user,
+            "materials": list_materials(db),
+            "unresolved_count": unresolved_order_count(db),
+            "flash": flash,
+        },
+    )
+
+
+@app.post("/settings/materials/alias/add")
+def add_material_alias(
+    request: Request,
+    material_id: int = Form(...),
+    pattern: str = Form(...),
+    match_type: str = Form("contains"),
+    db: Session = Depends(get_db),
+):
+    _require_settings_admin(request, db)
+    try:
+        add_alias(db, material_id, pattern, match_type)
+        # Apply the new rule to every order, including already-classified ones.
+        changed = backfill_orders(db, only_unresolved=False)
+        db.commit()
+        request.session["materials_flash"] = {
+            "kind": "success",
+            "message": f"Правило додано. Перекласифіковано робіт: {changed}.",
+        }
+    except MaterialCatalogError as exc:
+        db.rollback()
+        request.session["materials_flash"] = {"kind": "error", "message": str(exc)}
+    return RedirectResponse("/settings/materials", status_code=303)
+
+
+@app.post("/settings/materials/alias/{alias_id}/delete")
+def remove_material_alias(alias_id: int, request: Request, db: Session = Depends(get_db)):
+    _require_settings_admin(request, db)
+    delete_alias(db, alias_id)
+    # Re-resolve from scratch so orders that only matched the deleted rule are
+    # re-evaluated against the remaining rules (may become unresolved again).
+    for order in db.scalars(select(Order)).all():
+        order.material_id = None
+    backfill_orders(db, only_unresolved=False)
+    db.commit()
+    request.session["materials_flash"] = {"kind": "success", "message": "Правило видалено."}
+    return RedirectResponse("/settings/materials", status_code=303)
+
+
+@app.post("/settings/materials/add")
+def create_material(
+    request: Request,
+    name: str = Form(...),
+    is_production: str = Form("on"),
+    db: Session = Depends(get_db),
+):
+    _require_settings_admin(request, db)
+    try:
+        add_material(db, name, is_production=is_production == "on")
+        db.commit()
+        request.session["materials_flash"] = {"kind": "success", "message": "Матеріал додано."}
+    except MaterialCatalogError as exc:
+        db.rollback()
+        request.session["materials_flash"] = {"kind": "error", "message": str(exc)}
+    return RedirectResponse("/settings/materials", status_code=303)
+
+
+@app.post("/settings/materials/reclassify")
+def reclassify_materials(request: Request, db: Session = Depends(get_db)):
+    _require_settings_admin(request, db)
+    for order in db.scalars(select(Order)).all():
+        order.material_id = None
+    changed = backfill_orders(db, only_unresolved=False)
+    db.commit()
+    request.session["materials_flash"] = {
+        "kind": "success",
+        "message": f"Перекласифіковано робіт: {changed}.",
+    }
+    return RedirectResponse("/settings/materials", status_code=303)
 
 
 @app.post("/settings/backup/export")

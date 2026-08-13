@@ -158,6 +158,10 @@ class Material(Base):
     is_production: Mapped[bool] = mapped_column(default=True)
     sort_order: Mapped[int] = mapped_column(default=100)
 
+    aliases: Mapped[list["MaterialAlias"]] = relationship(
+        "MaterialAlias", back_populates="material", cascade="all, delete-orphan"
+    )
+
 
 class MaterialAlias(Base):
     """One raw-text rule mapping the free-text colour column onto a Material.
@@ -175,7 +179,7 @@ class MaterialAlias(Base):
     match_type: Mapped[str] = mapped_column(String(20), default="contains")
     confirmed: Mapped[bool] = mapped_column(default=True)
 
-    material: Mapped["Material"] = relationship("Material")
+    material: Mapped["Material"] = relationship("Material", back_populates="aliases")
 
 
 class Client(Base):

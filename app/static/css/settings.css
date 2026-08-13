@@ -578,3 +578,37 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
   .setv2 .wizard-step .num{position:static;margin-bottom:8px}
 }
 
+
+/* ── Бібліотека матеріалів (/settings/materials) ─────────────────────────
+   Керування каталогом матеріалів: категорії + правила-аліаси. Скоуплено під
+   .matlib, використовує ті ж токени, що й решта setv2. */
+.matlib-head{margin-bottom:14px}
+.matlib-back{display:inline-block;margin-bottom:10px;color:var(--ink-3);font-size:12.5px;text-decoration:none}
+.matlib-back:hover{color:var(--accent)}
+.matlib-flash{padding:10px 13px;border-radius:var(--r-ctl);margin-bottom:14px;font-size:13px;border:1px solid var(--line)}
+.matlib-flash.is-ok{background:rgba(45,212,191,.10);border-color:rgba(45,212,191,.35);color:var(--ink)}
+.matlib-flash.is-error{background:rgba(244,114,110,.10);border-color:rgba(244,114,110,.4);color:#f4726e}
+.matlib-summary .panel-body{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.matlib-summary .dlabel{color:var(--ink-3);font-size:12px;margin-right:8px}
+.matlib-summary .tnum{font-family:var(--font-mono);font-size:22px;font-weight:700;color:var(--ink)}
+.matlib-summary .tnum.is-warn{color:#f0a24b}
+.matlib-summary .unit{color:var(--ink-3);font-size:12.5px;margin-left:6px}
+.matlib-material{margin-bottom:12px}
+.matlib-tag{margin-left:8px;font-size:11px;padding:2px 7px;border-radius:6px;background:var(--line);color:var(--ink-3);vertical-align:middle}
+.matlib-aliases{display:flex;flex-wrap:wrap;gap:7px;padding:2px 0 12px}
+.matlib-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:999px;border:1px solid var(--line-2);background:#111823;font-size:12.5px;color:var(--ink)}
+.matlib-chip.is-token{border-color:rgba(45,212,191,.4)}
+.matlib-chip .mono{font-family:var(--font-mono)}
+.matlib-mt{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);width:14px;text-align:center}
+.matlib-x-form{display:inline-flex;margin:0}
+.matlib-x{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border:0;background:none;color:var(--ink-3);cursor:pointer;padding:0}
+.matlib-x:hover{color:#f4726e}
+.matlib-x svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
+.matlib-add-alias,.matlib-add-material{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.matlib-add-alias .login-input{flex:1;min-width:160px}
+.matlib-select{flex:0 0 auto;min-width:150px}
+.matlib-check{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2);font-size:12.5px}
+.matlib-newmat{margin-top:16px}
+.matlib-add-material .login-input{flex:1;min-width:180px}
+.matlib-link{display:inline-flex;align-items:center;gap:6px;margin-bottom:14px;padding:8px 13px;border-radius:var(--r-ctl);border:1px solid var(--line-2);background:#111823;color:var(--ink);font-size:13px;text-decoration:none;transition:border-color .15s ease,color .15s ease}
+.matlib-link:hover{border-color:rgba(45,212,191,.45);color:var(--accent)}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Бібліотека матеріалів — Order Desk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
+<link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'settings' %}
+{% include "_topbar_nav.html" %}
+
+<main class="setv2 matlib">
+    <div class="matlib-head">
+        <a href="/settings" class="matlib-back">← Налаштування</a>
+        <h1>Бібліотека матеріалів</h1>
+        <p class="wizard-sub">Категорії та правила зіставлення сирого тексту «Колір роботи» з матеріалом. Правила — це дані: додавай/видаляй, і система перекласифікує всі роботи.</p>
+    </div>
+
+    {% if flash %}
+    <div class="matlib-flash {{ 'is-error' if flash.kind == 'error' else 'is-ok' }}">{{ flash.message }}</div>
+    {% endif %}
+
+    <section class="panel matlib-summary">
+        <div class="panel-body">
+            <div>
+                <span class="dlabel">Не розпізнано</span>
+                <span class="tnum {{ 'is-warn' if unresolved_count else '' }}">{{ unresolved_count }}</span>
+                <span class="unit">робіт без матеріалу</span>
+            </div>
+            <form method="post" action="/settings/materials/reclassify">
+                <button type="submit" class="btn-secondary" title="Застосувати всі правила до всіх робіт заново">Перекласифікувати все</button>
+            </form>
+        </div>
+    </section>
+
+    {% for material in materials %}
+    <section class="panel matlib-material">
+        <div class="card-head">
+            <h2>{{ material.name }}
+                {% if not material.is_production %}<span class="matlib-tag">не рахується</span>{% endif %}
+            </h2>
+            <span class="meta">{{ material.aliases|length }} правил</span>
+        </div>
+
+        <div class="matlib-aliases">
+            {% for alias in material.aliases|sort(attribute='pattern') %}
+            <span class="matlib-chip {{ 'is-token' if alias.match_type == 'token' else '' }}">
+                <span class="mono">{{ alias.pattern }}</span>
+                <span class="matlib-mt" title="{{ 'точний токен' if alias.match_type == 'token' else 'підрядок' }}">{{ 'T' if alias.match_type == 'token' else '~' }}</span>
+                <form method="post" action="/settings/materials/alias/{{ alias.id }}/delete" class="matlib-x-form">
+                    <button type="submit" class="matlib-x" aria-label="Видалити правило" title="Видалити">
+                        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+                    </button>
+                </form>
+            </span>
+            {% else %}
+            <span class="muted">немає правил</span>
+            {% endfor %}
+        </div>
+
+        <form method="post" action="/settings/materials/alias/add" class="matlib-add-alias">
+            <input type="hidden" name="material_id" value="{{ material.id }}">
+            <input class="login-input" type="text" name="pattern" placeholder="нове написання, напр. моно" required>
+            <select class="login-input matlib-select" name="match_type" title="Тип зіставлення">
+                <option value="contains">підрядок (~)</option>
+                <option value="token">точний токен (T)</option>
+            </select>
+            <button type="submit" class="btn-secondary">Додати</button>
+        </form>
+    </section>
+    {% endfor %}
+
+    <section class="panel matlib-newmat">
+        <div class="card-head"><h2>Новий матеріал</h2></div>
+        <form method="post" action="/settings/materials/add" class="matlib-add-material">
+            <input class="login-input" type="text" name="name" placeholder="назва категорії, напр. Скло" required>
+            <label class="matlib-check">
+                <input type="checkbox" name="is_production" checked> рахувати у статистиці
+            </label>
+            <button type="submit" class="btn-secondary">Створити</button>
+        </form>
+    </section>
+</main>
+{% endblock %}

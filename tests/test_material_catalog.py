@@ -5,12 +5,20 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
 from app.db import Base
+import pytest
+
 from app.material_catalog import (
+    MaterialCatalogError,
+    add_alias,
+    add_material,
     backfill_orders,
+    delete_alias,
     ensure_seeded,
+    list_materials,
     load_alias_rows,
     material_id_by_name,
     resolve_material_id,
+    unresolved_order_count,
 )
 from app.material_classifier import SEED_ALIASES, SEED_MATERIALS, NON_MATERIAL, ZIRCON
 from app.models import Material, MaterialAlias, Order
@@ -78,6 +86,77 @@ def test_backfill_is_idempotent_on_reruns():
         session.commit()
         # second run resolves nothing new
         assert backfill_orders(session) == 0
+
+
+def test_add_alias_then_backfill_resolves_previously_unknown_colour():
+    with make_session() as session:
+        ensure_seeded(session)
+        # a colour the seed can't classify
+        order = Order(source="lab", material_color="суперкераміка x", status="нове")
+        session.add(order)
+        session.flush()
+        assert backfill_orders(session) == 0  # still unresolved
+        assert unresolved_order_count(session) == 1
+
+        zircon_id = material_id_by_name(session)[ZIRCON]
+        add_alias(session, zircon_id, "суперкераміка", "contains")
+
+        assert backfill_orders(session, only_unresolved=False) == 1
+        session.flush()
+        assert order.material_id == zircon_id
+        assert unresolved_order_count(session) == 0
+
+
+def test_add_alias_normalizes_and_rejects_duplicate():
+    with make_session() as session:
+        ensure_seeded(session)
+        zircon_id = material_id_by_name(session)[ZIRCON]
+        alias = add_alias(session, zircon_id, "  SuperZ  ", "contains")
+        assert alias.pattern == "superz"  # normalized lower/trim
+        with pytest.raises(MaterialCatalogError):
+            add_alias(session, zircon_id, "superz", "contains")
+
+
+def test_add_alias_rejects_bad_match_type_and_empty():
+    with make_session() as session:
+        ensure_seeded(session)
+        zircon_id = material_id_by_name(session)[ZIRCON]
+        with pytest.raises(MaterialCatalogError):
+            add_alias(session, zircon_id, "x", "regex")
+        with pytest.raises(MaterialCatalogError):
+            add_alias(session, zircon_id, "   ", "contains")
+
+
+def test_delete_alias_removes_rule():
+    with make_session() as session:
+        ensure_seeded(session)
+        zircon_id = material_id_by_name(session)[ZIRCON]
+        alias = add_alias(session, zircon_id, "tempz", "contains")
+        delete_alias(session, alias.id)
+        rows = [r for r in load_alias_rows(session) if r.pattern == "tempz"]
+        assert rows == []
+
+
+def test_add_material_is_unique_and_sorts_last():
+    with make_session() as session:
+        ensure_seeded(session)
+        others_max = max(m.sort_order for m in list_materials(session) if m.name != "Скло")
+        mat = add_material(session, "Скло")
+        assert mat.is_production is True
+        assert mat.sort_order == others_max + 1
+        with pytest.raises(MaterialCatalogError):
+            add_material(session, "скло")  # case-insensitive clash
+        with pytest.raises(MaterialCatalogError):
+            add_material(session, "   ")
+
+
+def test_list_materials_includes_aliases_in_order():
+    with make_session() as session:
+        ensure_seeded(session)
+        materials = list_materials(session)
+        assert [m.name for m in materials[:4]] == ["Цирконій", "ПММА", "СЛМ", "Титан"]
+        zircon = materials[0]
+        assert any(a.pattern == "моно" for a in zircon.aliases)
 
 
 def test_non_material_bucket_is_not_production():
