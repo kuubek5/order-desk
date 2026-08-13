@@ -129,12 +129,19 @@ def _record_failure(
 
 
 def sync_google_sheets(session: Session, *, trigger: str = "manual") -> SheetSyncSummary:
-    """Import relevant dated tabs atomically and persist an audit log.
+    """Import relevant dated tabs tab-by-tab and persist an audit log.
 
     The first import covers the most recent 30 days plus tomorrow. Later runs
-    cover yesterday, today and tomorrow. Any failed import is rolled back in
-    full; its sanitized error log is committed separately and a safe error is
-    raised for the UI.
+    cover yesterday, today and tomorrow.
+
+    Each tab is committed on its own: a failure part-way through a multi-tab
+    import (say tab 25 of 30) rolls back ONLY the failing tab and preserves the
+    tabs already imported, instead of discarding the whole run. Retries
+    (call_with_retry) absorb transient blips first, so a failure that still
+    reaches here is treated as fatal for this run: the failing tab is rolled
+    back, its sanitized error is logged, and processing stops rather than
+    hammering an unhealthy connection through the remaining tabs. A setup
+    failure (missing config, can't open/list the spreadsheet) imports nothing.
 
     The process-wide non-blocking lock prevents a background run and a button
     click (or two overlapping background ticks) from importing the same tab
@@ -151,43 +158,53 @@ def sync_google_sheets(session: Session, *, trigger: str = "manual") -> SheetSyn
             "Синхронізація Google Таблиці вже виконується. Спробуйте трохи пізніше."
         )
 
-    current_tab: str | None = None
+    summary = SheetSyncSummary()
     try:
         try:
             _configuration(session)
             spreadsheet = open_spreadsheet(db=session)  # retries internally
             worksheets = _worksheets_to_sync(session, spreadsheet, date.today())
-            summary = SheetSyncSummary()
+        except Exception as exc:
+            # Setup failure: nothing has been imported, so there is no partial
+            # progress to preserve — surface it and record it like before.
+            safe_error = _safe_failure(exc)
+            _record_failure(session, None, safe_error, persist=trigger == "manual")
+            raise safe_error from exc
 
-            for worksheet in worksheets:
-                current_tab = worksheet.title
+        for worksheet in worksheets:
+            current_tab = worksheet.title
+            try:
                 rows = parse_rows(call_with_retry(worksheet.get_all_values))
                 result = sync_tab(session, current_tab, rows)
-                summary.tabs_processed += 1
-                summary.tab_names.append(current_tab)
-                summary.rows_seen += len(rows)
-                summary.created += result.created
-                summary.updated += result.updated
-                summary.unchanged += result.unchanged
+                # Commit this tab before touching the next, so a later tab's
+                # failure can never undo it.
+                session.commit()
+            except Exception as exc:
+                safe_error = _safe_failure(exc)
+                _record_failure(session, current_tab, safe_error, persist=trigger == "manual")
+                raise safe_error from exc
 
-            if trigger == "manual" or summary.created or summary.updated:
-                session.add(
-                    SyncLog(
-                        direction="sheet_to_db",
-                        status="ok",
-                        message=(
-                            f"trigger {trigger}; tabs {summary.tabs_processed}; "
-                            f"rows {summary.rows_seen}; created {summary.created}; "
-                            f"updated {summary.updated}; unchanged {summary.unchanged}"
-                        ),
-                    )
+            summary.tabs_processed += 1
+            summary.tab_names.append(current_tab)
+            summary.rows_seen += len(rows)
+            summary.created += result.created
+            summary.updated += result.updated
+            summary.unchanged += result.unchanged
+
+        if trigger == "manual" or summary.created or summary.updated:
+            session.add(
+                SyncLog(
+                    direction="sheet_to_db",
+                    status="ok",
+                    message=(
+                        f"trigger {trigger}; tabs {summary.tabs_processed}; "
+                        f"rows {summary.rows_seen}; created {summary.created}; "
+                        f"updated {summary.updated}; unchanged {summary.unchanged}"
+                    ),
                 )
-            session.commit()
-            return summary
-        except Exception as exc:
-            safe_error = _safe_failure(exc)
-            _record_failure(session, current_tab, safe_error, persist=trigger == "manual")
-            raise safe_error from exc
+            )
+        session.commit()
+        return summary
     finally:
         _sync_lock.release()
 

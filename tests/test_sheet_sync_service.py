@@ -112,7 +112,11 @@ def test_missing_credentials_is_logged_and_raised_without_opening_sheet(monkeypa
         assert "JSON сервісного" in log.message
 
 
-def test_remote_failure_rolls_back_orders_and_logs_sanitized_error(monkeypatch):
+def test_failing_tab_rolls_back_but_earlier_tabs_persist_and_error_is_sanitized(monkeypatch):
+    # good (today) is imported and committed first; broken (tomorrow) fails.
+    # Per-tab commit means good survives while only the failing tab is rolled
+    # back — the whole run is no longer discarded. The raw exception text (a
+    # private key here) must never reach the persisted error log.
     configured(monkeypatch)
     secret = "SUPER-SECRET-PRIVATE-KEY"
     good = worksheet(date.today(), "100")
@@ -128,11 +132,35 @@ def test_remote_failure_rolls_back_orders_and_logs_sanitized_error(monkeypatch):
         with pytest.raises(SheetSyncError, match="Не вдалося синхронізувати"):
             sync_google_sheets(session)
 
-        assert session.query(Order).count() == 0
-        log = session.scalar(select(SyncLog))
+        # good's order stayed committed; broken's did not create anything.
+        orders = session.query(Order).all()
+        assert len(orders) == 1
+        assert orders[0].sheet_tab == good.title
+        log = session.scalar(select(SyncLog).where(SyncLog.status == "error"))
         assert log.status == "error"
         assert log.sheet_tab == broken.title
         assert secret not in log.message
+
+
+def test_setup_failure_imports_nothing(monkeypatch):
+    # A failure before the per-tab loop (here: opening the spreadsheet) leaves
+    # the DB empty and records the sanitized error, since there is no partial
+    # progress to preserve.
+    configured(monkeypatch)
+
+    def boom(db):
+        raise RuntimeError("cannot open")
+
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", boom)
+
+    with make_session() as session:
+        with pytest.raises(SheetSyncError, match="Не вдалося синхронізувати"):
+            sync_google_sheets(session)
+
+        assert session.query(Order).count() == 0
+        log = session.scalar(select(SyncLog))
+        assert log.status == "error"
+        assert log.sheet_tab is None
 
 
 def test_invalid_date_tabs_are_ignored(monkeypatch):
