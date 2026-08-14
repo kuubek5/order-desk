@@ -142,18 +142,21 @@ def test_count_by_readiness_empty_list():
     }
 
 
-def test_filter_by_source_email_keeps_only_email_orders():
+def test_filter_by_source_client_keeps_email_and_sheet_client_orders():
     lab = SimpleNamespace(source="lab")
     email = SimpleNamespace(source="email")
+    sheet_client = SimpleNamespace(source="sheet_client")
 
-    assert filter_by_source([lab, email], "email") == [email]
+    # "Клієнти" groups both email-client sources, lab is excluded.
+    assert filter_by_source([lab, email, sheet_client], "client") == [email, sheet_client]
 
 
 def test_filter_by_source_lab_keeps_only_lab_orders():
     lab = SimpleNamespace(source="lab")
     email = SimpleNamespace(source="email")
+    sheet_client = SimpleNamespace(source="sheet_client")
 
-    assert filter_by_source([lab, email], "lab") == [lab]
+    assert filter_by_source([lab, email, sheet_client], "lab") == [lab]
 
 
 def test_filter_by_source_all_and_unknown_return_everything():
@@ -163,18 +166,19 @@ def test_filter_by_source_all_and_unknown_return_everything():
     assert filter_by_source(orders, "bogus") == orders
 
 
-def test_count_by_source_splits_known_sources():
+def test_count_by_source_splits_lab_and_client():
     orders = [
         SimpleNamespace(source="lab"),
         SimpleNamespace(source="email"),
+        SimpleNamespace(source="sheet_client"),
         SimpleNamespace(source="lab"),
     ]
 
-    assert count_by_source(orders) == {"all": 3, "lab": 2, "email": 1}
+    assert count_by_source(orders) == {"all": 4, "lab": 2, "client": 2}
 
 
 def test_count_by_source_empty_list():
-    assert count_by_source([]) == {"all": 0, "lab": 0, "email": 0}
+    assert count_by_source([]) == {"all": 0, "lab": 0, "client": 0}
 
 
 def test_group_has_email_order_true_when_any_order_is_from_email():

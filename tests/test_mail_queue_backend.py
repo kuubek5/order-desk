@@ -285,10 +285,10 @@ def test_date_filter_composes_with_source_and_ready_like_period_does(tmp_path, m
         )
         assert [o.id for o in lab_only["orders"]] == [lab_order.id]
 
-        email_only = _call_get_queue(
-            db, user, monkeypatch, tmp_path, date_param="08.08.26", source="email"
+        client_only = _call_get_queue(
+            db, user, monkeypatch, tmp_path, date_param="08.08.26", source="client"
         )
-        assert [o.id for o in email_only["orders"]] == [email_order.id]
+        assert [o.id for o in client_only["orders"]] == [email_order.id]
 
 
 def test_invalid_date_param_falls_back_to_period_bucketing(tmp_path, monkeypatch):
@@ -574,9 +574,9 @@ def test_queue_split_respects_existing_source_filter(tmp_path, monkeypatch):
         assert [o.id for o in lab_only["orders_lab"]] == [lab_order.id]
         assert lab_only["orders_email"] == []
 
-        email_only = _call_get_queue(db, user, monkeypatch, tmp_path, source="email")
-        assert email_only["orders_lab"] == []
-        assert [o.id for o in email_only["orders_email"]] == [email_order.id]
+        client_only = _call_get_queue(db, user, monkeypatch, tmp_path, source="client")
+        assert client_only["orders_lab"] == []
+        assert [o.id for o in client_only["orders_email"]] == [email_order.id]
 
 
 def test_reject_email_marks_rejected_and_excludes_from_triage_list(tmp_path, monkeypatch):

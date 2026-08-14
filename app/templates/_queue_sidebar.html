@@ -26,8 +26,8 @@
     <span class="flabel">Джерело</span>
     <div class="seg">
         <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=all" class="{% if source == 'all' %}is-active{% endif %}">Усі <span class="n">{{ source_counts.all }}</span></a>
-        <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=lab" class="{% if source == 'lab' %}is-active{% endif %}">Таблиця <span class="n">{{ source_counts.lab }}</span></a>
-        <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=email" class="{% if source == 'email' %}is-active{% endif %}">Пошта <span class="n">{{ source_counts.email }}</span></a>
+        <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=lab" class="{% if source == 'lab' %}is-active{% endif %}" title="Внутрішні лабораторні роботи">Лабораторія <span class="n">{{ source_counts.lab }}</span></a>
+        <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=client" class="{% if source == 'client' %}is-active{% endif %}" title="Роботи клієнтів з пошти — авто (IMAP) і вписані в таблицю">Клієнти <span class="n">{{ source_counts.client }}</span></a>
     </div>
 
     <span class="flabel">Готовність</span>

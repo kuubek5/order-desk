@@ -11,8 +11,13 @@ filtering.
 from app.models import EmailMessage, Order
 
 READY_FILTERS = ("all", "not_ready", "can_take", "in_work")
-SOURCE_FILTERS = ("all", "lab", "email")
+SOURCE_FILTERS = ("all", "lab", "client")
 HANDOUT_SOURCE_FILTERS = ("all", "email")
+
+# "Клієнти" groups every email-client work: auto-parsed IMAP orders ("email")
+# and clients typed straight into the sheet without a наряд ("sheet_client").
+# "Лабораторія" is the internal work source ("lab").
+CLIENT_SOURCES = ("email", "sheet_client")
 
 # Visual-only filter for the mail triage screen (CLAUDE.md screen 2):
 # "milling" hides nothing from the database, it just narrows what's shown in
@@ -25,9 +30,12 @@ SERVICE_TYPE_FILTERS = ("all", "milling", "other")
 
 
 def filter_by_source(orders: list[Order], source: str) -> list[Order]:
-    """Filter the queue by origin; unknown values safely show all sources."""
-    if source in ("lab", "email"):
-        return [order for order in orders if order.source == source]
+    """Filter the queue by origin: "lab" (internal works) or "client" (all
+    email clients — IMAP + sheet-entered). Unknown values show every source."""
+    if source == "lab":
+        return [order for order in orders if order.source == "lab"]
+    if source == "client":
+        return [order for order in orders if order.source in CLIENT_SOURCES]
     return list(orders)
 
 
@@ -36,7 +44,7 @@ def count_by_source(orders: list[Order]) -> dict[str, int]:
     return {
         "all": len(orders),
         "lab": sum(1 for order in orders if order.source == "lab"),
-        "email": sum(1 for order in orders if order.source == "email"),
+        "client": sum(1 for order in orders if order.source in CLIENT_SOURCES),
     }
 
 
