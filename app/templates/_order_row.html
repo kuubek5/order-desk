@@ -37,7 +37,10 @@
             переробка{% if _rework.blame %} · {{ _rework.blame }}{% endif %}
         </span>
         {% endif %}
-        {% if order.source != 'email' and order.client_name %}<div class="rowclient">{{ order.client_name }}</div>{% endif %}
+        {# Secondary client line only for internal lab works (наряд is the
+           identity, client shown below it). For email/client rows the client
+           name IS the identity above, so repeating it here is redundant. #}
+        {% if order.source not in ('email', 'sheet_client') and order.client_name %}<div class="rowclient">{{ order.client_name }}</div>{% endif %}
     </td>
     <td class="quantity">{{ order.quantity or '—' }}</td>
     <td class="material-cell">

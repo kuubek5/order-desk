@@ -416,6 +416,28 @@ def test_write_sheet_fields_skips_email_orders_even_with_sheet_tab():
     assert result is None
 
 
+def test_write_sheet_fields_writes_for_sheet_client_rows():
+    """Client rows entered in the sheet without a наряд (source="sheet_client")
+    ARE real spreadsheet rows matched back by row_number, so a Sum3D typed in
+    the CRM must write back — unlike IMAP "email" orders."""
+    order = SimpleNamespace(
+        id=7, source="sheet_client", sheet_tab=date.today().strftime("%d.%m.%y"),
+        row_number=5, sum3d_id="PRJ-9",
+    )
+    added = []
+    db = SimpleNamespace(add=added.append)
+    wrote = []
+
+    with patch("app.web.open_spreadsheet", return_value=object()), \
+         patch("app.web.get_worksheet_by_name", return_value=object()), \
+         patch("app.web.write_order_fields", side_effect=lambda ws, o, f: wrote.append(f)):
+        result = _write_sheet_fields(db, order, {"sum3d_id"})
+
+    assert result is None  # no error
+    assert wrote == [{"sum3d_id"}]  # the write actually happened
+    assert any(getattr(x, "status", None) == "ok" for x in added)
+
+
 def test_pluralize_uk_picks_the_right_form():
     # Queue dashboard peek card grammar (CLAUDE.md screen 1 "Клієнти без
     # видачі"/"Ранкова видача" peek) — 1/21/31 клієнт, 2-4/22-24 клієнти,

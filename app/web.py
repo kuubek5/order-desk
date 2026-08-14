@@ -1033,14 +1033,14 @@ def _validate_first_admin(
 def _write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | None:
     """Write explicit portal changes and record the outcome without hiding it.
 
-    source == "lab" is the real gate, not sheet_tab truthiness: email orders
-    now also carry a sheet_tab-shaped business date (set at accept time, see
-    accept_email) so they date-bucket/overdue exactly like table orders, but
-    they were never a row in the shared spreadsheet and must never trigger a
-    write there — that guard used to be "sheet_tab is set", which silently
-    stops being true once email orders have a sheet_tab too.
+    Being an actual sheet row is the real gate, not sheet_tab truthiness: IMAP
+    "email" orders now also carry a sheet_tab-shaped business date (set at
+    accept time, see accept_email) so they date-bucket/overdue exactly like
+    table orders, but they were never a row in the shared spreadsheet and must
+    never trigger a write there. Both "lab" work rows and "sheet_client" client
+    rows ARE real sheet rows (matched back by row_number), so both write back.
     """
-    if not fields or order.source != "lab" or not order.sheet_tab:
+    if not fields or order.source not in ("lab", "sheet_client") or not order.sheet_tab:
         return None
     try:
         worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
