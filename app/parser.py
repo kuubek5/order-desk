@@ -49,6 +49,20 @@ class OrderRow:
         # so job_code/quantity alone don't mean "this is a real job".
         return not self.work_order_no
 
+    @property
+    def is_client_row(self) -> bool:
+        """A client work entered straight into the sheet without a наряд number.
+
+        The lab types email clients into the sheet (the "blue-filled" rows):
+        no наряд, no technician — the client's name sits in the "вид" column
+        (E, parsed here as `kind`) alongside a material and quantity. Confirmed
+        on real tabs (Басараб / LekaLab / i3lab Kiev). Internal works always
+        get a наряд first, so a наряд-less row carrying a name + material is a
+        client placeholder, not a draft internal job — surface it as one."""
+        if self.work_order_no:
+            return False
+        return bool(self.kind and (self.material_color or self.quantity))
+
 
 def _cell(row: list, idx: int) -> str:
     return row[idx].strip() if idx < len(row) else ""
@@ -92,6 +106,6 @@ def parse_rows(raw_rows: list[list[str]]) -> list[OrderRow]:
             redo_calculated=_cell(row, 23),
             redo_milled=_cell(row, 24),
         )
-        if not order.is_empty:
+        if not order.is_empty or order.is_client_row:
             parsed.append(order)
     return parsed

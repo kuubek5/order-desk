@@ -3655,6 +3655,12 @@ body.layout-edit .q2 table.qtable{user-select:none}
   border:1px solid rgba(45,212,191,.32);color:var(--accent-c);background:rgba(20,184,166,.1);margin-left:7px;
 }
 .q2 .rowclient{font-size:11.5px;color:var(--ink-2);margin-top:1px}
+/* Client rows entered in the sheet without a наряд (blue-filled by the lab) —
+   a soft blue that echoes that sheet convention, distinct from the teal email
+   badge and the material chips. */
+.q2 .source-badge-client.src{border-color:rgba(96,165,250,.42);color:#93c5fd;background:rgba(96,165,250,.13)}
+.q2 tr.queue-row-client{background:rgba(96,165,250,.06)}
+.q2 tr.queue-row-client:hover{background:rgba(96,165,250,.1)}
 .q2 .cam{max-width:220px;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2);font-size:12.5px;white-space:nowrap}
 .q2 .cam.shout{color:var(--warn)}
 .q2 .matchip{

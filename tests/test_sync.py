@@ -35,6 +35,71 @@ def make_session():
     return Session(engine)
 
 
+def make_client_row(**overrides):
+    """A наряд-less client row: no work_order_no/technician, client name in the
+    "вид" (kind) column, only material + quantity (real-tab shape)."""
+    values = {
+        "row_number": 5,
+        "seq_no": "60",
+        "work_order_no": "",
+        "quantity": "1",
+        "material_color": "mono a3",
+        "kind": "Басараб",  # client name, not a work type
+        "due_time": None,
+        "job_code": "",
+        "technician_name": "",
+        "cam_comment": "",
+        "sum3d_id": "10-19-48",
+        "calculated": "D",
+        "milled": "",
+        "last_milled_date": "",
+        "mill_count": "",
+    }
+    values.update(overrides)
+    return OrderRow(**values)
+
+
+def test_client_row_is_imported_as_sheet_client_with_name():
+    with make_session() as session:
+        res = sync_tab(session, "22.06.26", [make_client_row()])
+        session.commit()
+
+        order = session.scalar(select(Order).where(Order.sheet_tab == "22.06.26"))
+        assert res.created == 1
+        assert order.source == "sheet_client"
+        assert order.client_name == "Басараб"
+        assert order.work_order_no is None
+        assert order.kind is None  # the "вид" column held the client, not a type
+        assert order.material_color == "mono a3"
+        assert order.quantity == "1"
+        assert order.status == "нове"
+
+
+def test_client_row_and_normal_row_coexist_in_one_tab():
+    with make_session() as session:
+        sync_tab(session, "22.06.26", [
+            make_row(row_number=1, work_order_no="24122"),
+            make_client_row(row_number=5),
+        ])
+        session.commit()
+
+        by_source = {o.source for o in session.scalars(select(Order))}
+        assert by_source == {"lab", "sheet_client"}
+
+
+def test_vanished_client_row_is_deleted_like_a_lab_row():
+    with make_session() as session:
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)])
+        session.commit()
+        assert session.scalar(select(Order)) is not None
+
+        # Client got issued / row removed → its row_number is gone → drop it.
+        res = sync_tab(session, "22.06.26", [make_row(row_number=1)])
+        session.commit()
+        assert res.deleted == 1
+        assert session.scalar(select(Order).where(Order.source == "sheet_client")) is None
+
+
 def test_new_sheet_comment_is_imported_to_history():
     with make_session() as session:
         sync_tab(session, "01.08.26", [make_row(cam_comment="Обережно з краєм")])

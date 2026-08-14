@@ -49,6 +49,28 @@ def _fields(row: OrderRow) -> dict:
     }
 
 
+def _client_fields(row: OrderRow) -> dict:
+    """Field mapping for a наряд-less client row (see OrderRow.is_client_row).
+    The "вид" column (row.kind) holds the CLIENT NAME here, not a work type, so
+    it lands in client_name; work_order_no/kind/technician stay empty."""
+    return {
+        "work_order_no": None,
+        "job_code": None,
+        "quantity": row.quantity or None,
+        "material_color": row.material_color or None,
+        "kind": None,
+        "due_time": row.due_time,
+        "technician_name": None,
+        "cam_comment": row.cam_comment or None,
+        "sum3d_id": None,
+        "calculated_raw": None,
+        "milled_raw": None,
+        "last_milled_date": None,
+        "mill_count": None,
+        "client_name": row.kind or None,
+    }
+
+
 def _rework_from_row(row: OrderRow) -> dict | None:
     """Rework/БРАК fields for a sheet row, or None when the row records no
     rework. Technicians fill the blame columns (обладнання/технік/адміністратор/
@@ -165,12 +187,24 @@ def sync_tab(session: Session, sheet_tab: str, rows: list[OrderRow]) -> SyncResu
         # job_code is only filled in by the operator after the job is taken.
         existing = existing_by_row.get(row.row_number)
 
-        status = _infer_status(row)
-
-        rework = _rework_from_row(row)
+        # A наряд-less client row (blue-filled email client entered by hand)
+        # is a different kind of record: source "sheet_client", client name in
+        # place of a наряд, and no milling/rework columns to read. Everything
+        # else — positional matching, material resolution, deletion — is shared.
+        is_client = row.is_client_row
+        if is_client:
+            fields = _client_fields(row)
+            source = "sheet_client"
+            status = "нове"
+            rework = None
+        else:
+            fields = _fields(row)
+            source = "lab"
+            status = _infer_status(row)
+            rework = _rework_from_row(row)
 
         if existing is None:
-            order = Order(source="lab", sheet_tab=sheet_tab, row_number=row.row_number, status=status, **_fields(row))
+            order = Order(source=source, sheet_tab=sheet_tab, row_number=row.row_number, status=status, **fields)
             order.material_id = resolve_material_id(order.material_color, alias_rows, name_to_id)
             session.add(order)
             session.flush()
@@ -183,7 +217,7 @@ def sync_tab(session: Session, sheet_tab: str, rows: list[OrderRow]) -> SyncResu
 
         changed = False
         sheet_comment = _new_sheet_comment(existing.cam_comment, row.cam_comment)
-        for field, value in _fields(row).items():
+        for field, value in fields.items():
             if getattr(existing, field) != value:
                 setattr(existing, field, value)
                 changed = True
@@ -223,12 +257,13 @@ def sync_tab(session: Session, sheet_tab: str, rows: list[OrderRow]) -> SyncResu
     #
     # Guarded by `rows` being non-empty: a transient empty read (the lab PC's
     # TLS proxy occasionally returns just headers) must never wipe a whole tab.
-    # Only source="lab" orders are eligible — email-sourced orders never live in
-    # a sheet tab and must not be touched here.
+    # Only sheet-sourced orders are eligible ("lab" work rows and "sheet_client"
+    # client rows) — IMAP "email" orders never live in a sheet tab and must not
+    # be touched here.
     if rows:
         seen_rows = {row.row_number for row in rows}
         for row_number, order in existing_by_row.items():
-            if row_number not in seen_rows and order.source == "lab":
+            if row_number not in seen_rows and order.source in ("lab", "sheet_client"):
                 session.delete(order)
                 result.deleted += 1
 

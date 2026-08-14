@@ -260,3 +260,31 @@ class TestEdgeCases:
         ]
         result_2 = parse_rows(raw_rows_2)
         assert len(result_2) == 0
+
+
+class TestClientRows:
+    """Наряд-less rows that carry a client name (col 4/вид) + material/quantity
+    are the lab's hand-entered email clients — parsed, not skipped."""
+
+    def test_client_row_with_name_and_material_is_parsed(self):
+        raw_rows = HEADER_ROWS_SAMPLE + [
+            make_data_row({2: '1', 3: 'mono a3', 4: 'Басараб'})  # no наряд (idx 1)
+        ]
+        result = parse_rows(raw_rows)
+        assert len(result) == 1
+        assert result[0].is_client_row is True
+        assert result[0].work_order_no == ''
+        assert result[0].kind == 'Басараб'
+        assert result[0].material_color == 'mono a3'
+
+    def test_client_name_alone_without_material_or_quantity_is_skipped(self):
+        # A lone name in the вид column with nothing else isn't a client work.
+        raw_rows = HEADER_ROWS_SAMPLE + [make_data_row({4: 'Басараб'})]
+        assert len(parse_rows(raw_rows)) == 0
+
+    def test_normal_row_with_naryad_is_not_a_client_row(self):
+        raw_rows = HEADER_ROWS_SAMPLE + [
+            make_data_row({1: '24122', 3: 'mono a3', 4: 'анатомія'})
+        ]
+        result = parse_rows(raw_rows)
+        assert result[0].is_client_row is False
