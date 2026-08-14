@@ -52,7 +52,11 @@ def _fields(row: OrderRow) -> dict:
 def _client_fields(row: OrderRow) -> dict:
     """Field mapping for a наряд-less client row (see OrderRow.is_client_row).
     The "вид" column (row.kind) holds the CLIENT NAME here, not a work type, so
-    it lands in client_name; work_order_no/kind/technician stay empty."""
+    it lands in client_name; work_order_no/kind/technician stay empty.
+
+    sum3d_id IS read from column L like any other row: it's the ID column both
+    the operator's write-back and the read import share, so ignoring it here
+    would wipe a Sum3D the operator typed on the very next sync."""
     return {
         "work_order_no": None,
         "job_code": None,
@@ -62,7 +66,7 @@ def _client_fields(row: OrderRow) -> dict:
         "due_time": row.due_time,
         "technician_name": None,
         "cam_comment": row.cam_comment or None,
-        "sum3d_id": None,
+        "sum3d_id": row.sum3d_id or None,
         "calculated_raw": None,
         "milled_raw": None,
         "last_milled_date": None,

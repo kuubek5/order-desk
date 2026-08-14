@@ -73,6 +73,25 @@ def test_client_row_is_imported_as_sheet_client_with_name():
         assert order.material_color == "mono a3"
         assert order.quantity == "1"
         assert order.status == "нове"
+        # Sum3D (column L) is read, not ignored — otherwise a later sync would
+        # wipe whatever the operator typed on the row.
+        assert order.sum3d_id == "10-19-48"
+
+
+def test_client_row_sum3d_survives_resync():
+    with make_session() as session:
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5, sum3d_id="")])
+        session.commit()
+        order = session.scalar(select(Order).where(Order.source == "sheet_client"))
+        # Operator types a Sum3D in the CRM (written back to column L).
+        order.sum3d_id = "PRJ-CLIENT-1"
+        session.commit()
+
+        # Next sync reads the sheet, which now carries that value in column L.
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5, sum3d_id="PRJ-CLIENT-1")])
+        session.commit()
+        session.refresh(order)
+        assert order.sum3d_id == "PRJ-CLIENT-1"  # not wiped back to None
 
 
 def test_client_row_and_normal_row_coexist_in_one_tab():
