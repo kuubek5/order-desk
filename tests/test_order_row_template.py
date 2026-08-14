@@ -50,19 +50,21 @@ def test_cam_comment_is_editable_input_prefilled_when_set():
 
     assert '<td class="comment-cell">' in html
     assert "cam-comment-text" in html
-    # now an inline-editable input that auto-saves back to the sheet
+    # inline-editable textarea (grows to show long text) that saves to the sheet
     assert 'name="cam_comment"' in html
     assert 'hx-post="/orders/1/cam-comment"' in html
-    assert 'value="покрити опаком, я сам закрию"' in html
+    assert "<textarea" in html
+    # textarea holds its value as inner text, not a value attribute
+    assert ">покрити опаком, я сам закрию</textarea>" in html
 
 
 def test_cam_comment_column_is_empty_editable_input_when_no_comment():
     html = _render(_order(cam_comment=None))
 
     assert '<td class="comment-cell">' in html
-    # empty but still editable — an input with a blank value, not a dash
+    # empty but still editable — a blank textarea, not a dash
     assert 'name="cam_comment"' in html
-    assert 'value=""' in html
+    assert "></textarea>" in html
 
 
 def test_export_folder_icon_is_a_clickable_anchor_not_a_span():

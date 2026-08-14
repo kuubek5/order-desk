@@ -14,7 +14,12 @@ from sqlalchemy.orm import Session
 from app.models import Order, SyncLog
 from app.parser import parse_rows
 from app.settings_store import get_google_service_account_json, get_google_sheet_id
-from app.sheets import call_with_retry, open_spreadsheet
+from app.sheets import (
+    call_with_retry,
+    get_worksheet_by_name,
+    open_spreadsheet,
+    tab_name_for,
+)
 from app.sync import sync_tab
 
 
@@ -35,6 +40,10 @@ class SheetSyncBusyError(SheetSyncError):
 
 
 _sync_lock = Lock()
+# How long a MANUAL sync waits for the lock before giving up — long enough to
+# outlast one hot-tab tick (~3s warm), short enough that a click during a real
+# full sync still errors out promptly instead of hanging the request.
+_MANUAL_LOCK_WAIT_SECONDS = 10.0
 
 
 @dataclass
@@ -43,6 +52,7 @@ class SheetSyncSummary:
     created: int = 0
     updated: int = 0
     unchanged: int = 0
+    deleted: int = 0
     rows_seen: int = 0
     tab_names: list[str] = field(default_factory=list)
 
@@ -56,8 +66,16 @@ def _parse_tab_date(title: str) -> date | None:
         return None
 
 
-def _worksheets_to_sync(session: Session, spreadsheet, today: date) -> list:
-    """Choose a bounded initial history, then the operational three-day window."""
+def _worksheets_to_sync(
+    session: Session, spreadsheet, today: date, include_tabs: set[str] | None = None
+) -> list:
+    """Choose a bounded initial history, then the operational three-day window.
+
+    ``include_tabs`` force-adds specific tab titles (dd.mm.yy) even when they
+    fall outside that window — used so a manual sync of a day the operator is
+    actually looking at re-reads that older tab and can reconcile deletions
+    there (a periodic run never revisits old tabs, for proxy-speed reasons)."""
+    include_tabs = include_tabs or set()
     has_sheet_orders = session.scalar(
         select(func.count(Order.id)).where(Order.source == "lab")
     ) > 0
@@ -67,7 +85,9 @@ def _worksheets_to_sync(session: Session, spreadsheet, today: date) -> list:
     dated = []
     for worksheet in call_with_retry(spreadsheet.worksheets):
         tab_date = _parse_tab_date(worksheet.title)
-        if tab_date is not None and first_day <= tab_date <= last_day:
+        if tab_date is None:
+            continue
+        if (first_day <= tab_date <= last_day) or worksheet.title in include_tabs:
             dated.append((tab_date, worksheet.title, worksheet))
     dated.sort(key=lambda item: (item[0], item[1]))
     return [item[2] for item in dated]
@@ -128,7 +148,9 @@ def _record_failure(
         session.rollback()
 
 
-def sync_google_sheets(session: Session, *, trigger: str = "manual") -> SheetSyncSummary:
+def sync_google_sheets(
+    session: Session, *, trigger: str = "manual", include_tabs: set[str] | None = None
+) -> SheetSyncSummary:
     """Import relevant dated tabs tab-by-tab and persist an audit log.
 
     The first import covers the most recent 30 days plus tomorrow. Later runs
@@ -153,7 +175,16 @@ def sync_google_sheets(session: Session, *, trigger: str = "manual") -> SheetSyn
     """
     if trigger not in {"manual", "background"}:
         raise ValueError("unsupported sheet sync trigger")
-    if not _sync_lock.acquire(blocking=False):
+    # A manual click waits out a hot-tab tick (~3s every 15s would otherwise
+    # give the button a ~20% chance of a spurious "вже виконується"); the
+    # background full sync stays non-blocking — its worker thread never
+    # overlaps the hot lane anyway, so a busy lock there means a manual run
+    # is in flight and this tick can just skip.
+    if trigger == "manual":
+        acquired = _sync_lock.acquire(timeout=_MANUAL_LOCK_WAIT_SECONDS)
+    else:
+        acquired = _sync_lock.acquire(blocking=False)
+    if not acquired:
         raise SheetSyncBusyError(
             "Синхронізація Google Таблиці вже виконується. Спробуйте трохи пізніше."
         )
@@ -163,7 +194,7 @@ def sync_google_sheets(session: Session, *, trigger: str = "manual") -> SheetSyn
         try:
             _configuration(session)
             spreadsheet = open_spreadsheet(db=session)  # retries internally
-            worksheets = _worksheets_to_sync(session, spreadsheet, date.today())
+            worksheets = _worksheets_to_sync(session, spreadsheet, date.today(), include_tabs)
         except Exception as exc:
             # Setup failure: nothing has been imported, so there is no partial
             # progress to preserve — surface it and record it like before.
@@ -190,8 +221,9 @@ def sync_google_sheets(session: Session, *, trigger: str = "manual") -> SheetSyn
             summary.created += result.created
             summary.updated += result.updated
             summary.unchanged += result.unchanged
+            summary.deleted += result.deleted
 
-        if trigger == "manual" or summary.created or summary.updated:
+        if trigger == "manual" or summary.created or summary.updated or summary.deleted:
             session.add(
                 SyncLog(
                     direction="sheet_to_db",
@@ -199,7 +231,8 @@ def sync_google_sheets(session: Session, *, trigger: str = "manual") -> SheetSyn
                     message=(
                         f"trigger {trigger}; tabs {summary.tabs_processed}; "
                         f"rows {summary.rows_seen}; created {summary.created}; "
-                        f"updated {summary.updated}; unchanged {summary.unchanged}"
+                        f"updated {summary.updated}; unchanged {summary.unchanged}; "
+                        f"deleted {summary.deleted}"
                     ),
                 )
             )
@@ -212,3 +245,65 @@ def sync_google_sheets(session: Session, *, trigger: str = "manual") -> SheetSyn
 def sync_sheets_background(session: Session) -> SheetSyncSummary:
     """Background-job entry point sharing the same locking and audit path."""
     return sync_google_sheets(session, trigger="background")
+
+
+def sync_hot_tab(
+    session: Session,
+    *,
+    today: date | None = None,
+    extra_days: set[date] | None = None,
+) -> SheetSyncSummary | None:
+    """Fast lane: re-read only the operationally "hot" tabs — today's and
+    yesterday's, plus ``extra_days`` (the days operators are viewing right now,
+    tracked by the queue's poll — so "the open tab in the CRM" is always fast).
+    Yesterday stays hot because the morning handout works out of yesterday's
+    tab, and the user's "current day" is whichever tab the floor is actually
+    in, not the calendar date.
+
+    The full sync (worksheets listing + 3 tabs) costs tens of seconds through
+    the lab proxy, but with the per-thread spreadsheet/worksheet cache warm
+    (app/sheets.py) a single tab's `get_all_values` is ~3s — cheap enough to
+    poll every ~15s so technician edits reach the CRM almost live (and a
+    mistyped comment that gets corrected self-heals within one tick). Runs on
+    the same background worker thread as the full sync, sharing its warm cache.
+
+    Never raises on the busy lock — if a full/manual sync is in flight it
+    already covers these tabs, so this tick just returns None ("skipped"). No
+    SyncLog rows: this runs four times a minute and would flood the audit
+    table; the full sync keeps owning audit logging. Each tab commits on its
+    own (a failure on the second tab never rolls back the first). Returns a
+    summary or None when skipped / no hot tab exists yet."""
+    if not _sync_lock.acquire(blocking=False):
+        return None
+    try:
+        _configuration(session)
+        spreadsheet = open_spreadsheet(db=session)
+        base_day = today or date.today()
+        hot_days = [base_day, base_day - timedelta(days=1)]
+        for extra in sorted(extra_days or ()):
+            if extra not in hot_days:
+                hot_days.append(extra)
+        summary = SheetSyncSummary()
+        for day in hot_days:
+            tab_title = tab_name_for(day)
+            worksheet = get_worksheet_by_name(spreadsheet, tab_title)
+            if worksheet is None:
+                continue  # tab not created yet (early morning) — skip
+            rows = parse_rows(call_with_retry(worksheet.get_all_values))
+            result = sync_tab(session, tab_title, rows)
+            session.commit()
+            summary.tabs_processed += 1
+            summary.tab_names.append(tab_title)
+            summary.rows_seen += len(rows)
+            summary.created += result.created
+            summary.updated += result.updated
+            summary.unchanged += result.unchanged
+            summary.deleted += result.deleted
+        if summary.tabs_processed == 0:
+            return None
+        return summary
+    except Exception as exc:
+        session.rollback()
+        raise _safe_failure(exc) from exc
+    finally:
+        _sync_lock.release()

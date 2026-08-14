@@ -1,3 +1,57 @@
+// Queue auto-refresh guard. #queue-rows polls GET /?…&partial=rows every 15s
+// (see _queue_rows.html) so sheet edits show without an F5. But a blind swap
+// would wipe a comment/Sum3D an operator is mid-typing — so skip the poll's
+// request whenever the focus is inside a queue field being edited. The element
+// isn't replaced, so its own 15s timer just tries again next tick, once the
+// operator has moved on.
+document.addEventListener("htmx:beforeRequest", (event) => {
+  const poller = event.target;
+  if (!poller || poller.id !== "queue-rows") return;
+  const active = document.activeElement;
+  if (
+    active &&
+    poller.contains(active) &&
+    active.matches("input, textarea, select")
+  ) {
+    event.preventDefault();
+  }
+});
+
+// Inline comment textarea: grow to fit the full text while focused/typing so a
+// long technician comment is readable and editable, collapse back to one line
+// on blur. Enter saves (blurs → the form's hx-trigger=change fires), Shift+Enter
+// inserts a newline. All delegated on document so it survives the 15s poll swap.
+function growComment(el) {
+  // Force wrapping here (not only via CSS :focus) so the height math is
+  // reliable even before :focus paints, then size to the wrapped content.
+  el.style.whiteSpace = "pre-wrap";
+  el.style.height = "auto";
+  el.style.height = el.scrollHeight + "px";
+}
+function collapseComment(el) {
+  el.style.whiteSpace = "";
+  el.style.height = "";
+}
+document.addEventListener("focusin", (event) => {
+  const ta = event.target.closest && event.target.closest(".cam-comment-input");
+  if (ta) growComment(ta);
+});
+document.addEventListener("input", (event) => {
+  const ta = event.target.closest && event.target.closest(".cam-comment-input");
+  if (ta) growComment(ta);
+});
+document.addEventListener("focusout", (event) => {
+  const ta = event.target.closest && event.target.closest(".cam-comment-input");
+  if (ta) collapseComment(ta);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.shiftKey) return;
+  const ta = event.target.closest && event.target.closest(".cam-comment-input");
+  if (!ta) return;
+  event.preventDefault();
+  ta.blur(); // change event → hx-post saves
+});
+
 document.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-copy]");
   if (!button) return;
@@ -39,9 +93,22 @@ document.addEventListener("dblclick", (event) => {
   const button = event.target.closest("[data-folder-uri]");
   if (!button) return;
 
+  // A browser blocks a file:// link opened from an http page, so prefer the
+  // authenticated loopback-only server route when the element carries an STL
+  // preview token (the job_code cell does). Fall back to the file:// URI only
+  // where there's no token (kept for any legacy folder link).
+  const token = button.dataset.stlPreviewToken || "";
+  if (token) {
+    fetch("/open-folder", {
+      method: "POST",
+      body: new URLSearchParams({ token: token }),
+      credentials: "same-origin",
+    }).catch(() => {});
+    return;
+  }
+
   const uri = button.dataset.folderUri || "";
   if (!uri) return;
-
   window.location.href = uri;
 });
 
@@ -104,8 +171,12 @@ document.addEventListener("submit", (event) => {
   // no matter what, so the sweep never becomes a permanent glow.
   const cap = new Promise((resolve) => window.setTimeout(resolve, 15000));
 
+  // Reload the CURRENT filtered view (not bare "/") so the operator's active
+  // period/ready/source/date filters survive the sync — the server also
+  // preserves them on the no-JS fallback via a Referer redirect. reload()
+  // re-GETs this URL, which pops and shows the session sync_flash too.
   Promise.all([minSweep, Promise.race([request, cap])]).then(() =>
-    window.location.assign("/")
+    window.location.reload()
   );
 });
 
@@ -372,7 +443,9 @@ document.addEventListener("click", (event) => {
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
 
-  const table = document.querySelector(".q2 table.qtable");
+  // Live lookup — the queue table is re-rendered by the 15s #queue-rows poll,
+  // so a reference captured once would go stale. Every helper re-queries.
+  function getTable() { return document.querySelector(".q2 table.qtable"); }
 
   // ---- Щільність -----------------------------------------------------------
   function currentDensity() {
@@ -392,6 +465,7 @@ document.addEventListener("click", (event) => {
 
   // ---- Ширини стовпців -----------------------------------------------------
   function headCells() {
+    const table = getTable();
     if (!table || !table.tHead || !table.tHead.rows[0]) return [];
     return Array.from(table.tHead.rows[0].cells);
   }
@@ -399,6 +473,7 @@ document.addEventListener("click", (event) => {
     try { return JSON.parse(lsGet(LS_WIDTHS)) || null; } catch (e) { return null; }
   }
   function applySavedWidths() {
+    const table = getTable();
     const map = loadWidths();
     if (!map || !table) return;
     table.style.tableLayout = "fixed";
@@ -409,6 +484,7 @@ document.addEventListener("click", (event) => {
   // Перед першим перетягуванням фіксуємо поточні (auto) ширини всіх стовпців,
   // щоб table-layout:fixed не перерозподілив їх стрибком.
   function freezeWidths() {
+    const table = getTable();
     if (!table) return {};
     const cells = headCells();
     const rects = cells.map((th) => Math.round(th.getBoundingClientRect().width));
@@ -482,6 +558,7 @@ document.addEventListener("click", (event) => {
   function resetLayout() {
     lsDel(LS_WIDTHS);
     lsDel(LS_DENSITY);
+    const table = getTable();
     if (table) {
       table.style.tableLayout = "";
       headCells().forEach((th) => { th.style.width = ""; });
@@ -502,7 +579,14 @@ document.addEventListener("click", (event) => {
   document.querySelectorAll("[data-layout-reset]").forEach((btn) => {
     btn.addEventListener("click", resetLayout);
   });
-  if (table) table.addEventListener("pointerdown", onPointerDown);
+  // Delegated on document (not the table element) so column-resize keeps
+  // working after the 15s poll swaps the table.
+  document.addEventListener("pointerdown", onPointerDown);
+  // Re-apply the operator's saved column widths whenever the poll replaces the
+  // rows block (a fresh <thead> comes back with no inline widths otherwise).
+  document.addEventListener("htmx:afterSwap", (event) => {
+    if (event.target && event.target.id === "queue-rows") applySavedWidths();
+  });
 })();
 
 // Мікроанімації черги (задача 3). Новий рядок після HTMX-свапу статусу/Sum3D

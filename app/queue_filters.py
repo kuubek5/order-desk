@@ -10,7 +10,7 @@ filtering.
 
 from app.models import EmailMessage, Order
 
-READY_FILTERS = ("all", "ready", "not_ready")
+READY_FILTERS = ("all", "not_ready", "can_take", "in_work")
 SOURCE_FILTERS = ("all", "lab", "email")
 HANDOUT_SOURCE_FILTERS = ("all", "email")
 
@@ -95,35 +95,73 @@ def count_by_service_type(emails: list[EmailMessage]) -> dict[str, int]:
     }
 
 
-def is_order_ready(order: Order) -> bool:
-    """Whether the technician has finished this job and the operator can take it
-    into work now. The marker is a filled working-directory path — the sheet's
-    "Номер роботи" (Order.job_code): the lab writes it once the model is done
-    and the files are on the server, so a non-empty job_code means "ready to
-    take". (This is the operator-readiness signal, distinct from the on-disk
-    export folder used for morning handout.)"""
+def _has_path(order: Order) -> bool:
+    """Technician has finished the model and written the working-directory path
+    — the sheet's "Номер роботи" (Order.job_code). A non-empty job_code is the
+    "handed off by the lab" signal."""
     return bool(order.job_code and order.job_code.strip())
 
 
+def _has_sum3d(order: Order) -> bool:
+    """Operator has taken the job into work: they calculated it in Sum3D and
+    wrote the project ID back. Mirrors what the queue row shows (see
+    _order_row.html): for a rework the live ID is the rework's own
+    (active_rework.sum3d_id, sheet column W), otherwise the base run's
+    (Order.sum3d_id, column L). This keeps the filter consistent with the
+    editable ID the operator actually sees in the row — a rework whose redo
+    hasn't been calculated yet reads as "можна набрати", not "в роботі"."""
+    rework = order.active_rework
+    value = rework.sum3d_id if rework else order.sum3d_id
+    return bool(value and value.strip())
+
+
+def is_order_ready(order: Order) -> bool:
+    """Kept as the "lab handed it off" predicate (path filled), regardless of
+    whether the operator has taken it yet. Used by callers that only care that
+    the technician is done."""
+    return _has_path(order)
+
+
+def order_can_take(order: Order) -> bool:
+    """«Можна набрати»: technician dropped the path but no Sum3D ID yet — the
+    operator can pick it up and calculate it."""
+    return _has_path(order) and not _has_sum3d(order)
+
+
+def order_in_work(order: Order) -> bool:
+    """«В роботі»: path is filled AND the operator already set a Sum3D ID, so
+    the job is being calculated/milled, not waiting to be picked up."""
+    return _has_path(order) and _has_sum3d(order)
+
+
 def filter_by_readiness(orders: list[Order], ready: str) -> list[Order]:
-    """Filter orders by an actually resolved on-disk folder.
+    """Filter orders by lifecycle readiness:
+
+      * "not_ready" — technician has not dropped the path yet (job_code empty)
+      * "can_take"  — path filled, no Sum3D ID → operator can pick it up
+      * "in_work"   — path filled AND Sum3D ID set → operator already took it
 
     An unrecognized `ready` value behaves like "all" (no filtering) rather
     than raising, so a bad/stale query param degrades to showing everything
     instead of an error page.
     """
-    if ready == "ready":
-        return [order for order in orders if is_order_ready(order)]
     if ready == "not_ready":
-        return [order for order in orders if not is_order_ready(order)]
+        return [order for order in orders if not _has_path(order)]
+    if ready == "can_take":
+        return [order for order in orders if order_can_take(order)]
+    if ready == "in_work":
+        return [order for order in orders if order_in_work(order)]
     return list(orders)
 
 
 def count_by_readiness(orders: list[Order]) -> dict[str, int]:
     """Counts `orders` per readiness bucket, for the filter chips' badges."""
-    ready_count = sum(1 for order in orders if is_order_ready(order))
+    can_take = sum(1 for order in orders if order_can_take(order))
+    in_work = sum(1 for order in orders if order_in_work(order))
+    not_ready = sum(1 for order in orders if not _has_path(order))
     return {
         "all": len(orders),
-        "ready": ready_count,
-        "not_ready": len(orders) - ready_count,
+        "not_ready": not_ready,
+        "can_take": can_take,
+        "in_work": in_work,
     }

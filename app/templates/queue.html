@@ -65,48 +65,7 @@
                 <div class="right"></div>
             </div>
 
-            {% if orders %}
-            <div class="tablewrap">
-                <table class="qtable">
-                    {% include "_queue_table_head.html" %}
-                    <tbody>
-                        {% for order in orders %}
-                            {% include "_order_row.html" %}
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <div class="qfoot">
-                <span>Клік по шляху-ID копіює його для Sum3D · клік по наряду відкриває паспорт роботи</span>
-            </div>
-            {% else %}
-            <div class="queue-empty">
-                <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 11v6c0 1.7 3.1 3 7 3 1.2 0 2.4-.1 3.3-.4"/><path d="M17 16h5m-2.5-2.5L22 16l-2.5 2.5"/>
-                </svg>
-                {% if show_overdue %}
-                <h2>Прострочених робіт немає</h2>
-                <p>Усе, що мало бути готове до сьогодні, вже здане або в фінальному статусі.</p>
-                {% elif has_any_orders %}
-                <h2>У цьому періоді робіт немає</h2>
-                <p>Роботи вже завантажені. Оберіть інший період або змініть фільтр готовності.</p>
-                {% elif sheets_configured %}
-                <h2>Черга готова до першої синхронізації</h2>
-                <p>Завантажимо роботи з датованих вкладок Google Таблиці та розкладемо їх за періодами.</p>
-                {% if user.role == 'адмін' %}
-                <form method="post" action="/sheets/sync">
-                    <button type="submit" class="btn primary">Завантажити роботи</button>
-                </form>
-                {% endif %}
-                {% else %}
-                <h2>Під’єднайте робочу таблицю</h2>
-                <p>Вкажіть ID Google Таблиці та JSON-ключ сервісного акаунта. Після перевірки роботи з’являться тут автоматично.</p>
-                {% if user.role == 'адмін' %}
-                <a href="/settings?welcome=1" class="btn primary">Перейти до налаштувань</a>
-                {% endif %}
-                {% endif %}
-            </div>
-            {% endif %}
+            {% include "_queue_rows.html" %}
         </section>
 
         <aside class="side-panel" aria-label="Довідкові панелі">
@@ -126,6 +85,10 @@
                     </div>
                     <div class="kv"><span>Пошта</span><b>{{ sync_status.mail.label }}</b></div>
                     <div class="kv"><span>Таблиця</span><b>{{ sync_status.sheet.label }}</b></div>
+                    <div class="ss-row">
+                        <span class="ss-label">Оновлення</span>
+                        {% include "_sync_speed_seg.html" %}
+                    </div>
                     {% if user.role == 'адмін' and sheets_configured %}
                     <div class="side-actions">
                         <form method="post" action="/sheets/sync">

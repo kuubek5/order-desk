@@ -1,0 +1,17 @@
+{# Перемикач швидкості оновлення (бічна панель «Google Таблиця» на черзі).
+   Той самий .seg-патерн, що й фільтри сайдбара/щільність. Кнопка POST-ить
+   пресет і підмінює цей блок; сервер міняє інтервали гарячої смуги синку
+   одразу, а поллер черги (#queue-rows) підхоплює нову частоту з наступним
+   своїм рендером. 5с — фізичний мінімум: одне читання вкладки через проксі
+   лабораторії коштує ~3с. #}
+<div class="seg ss-seg" id="sync-speed-seg" role="group" aria-label="Швидкість оновлення">
+    {% for key, cfg in sync_speed.items() %}
+    <button type="button"
+            hx-post="/sync-speed" hx-vals='{"preset": "{{ key }}"}'
+            hx-target="#sync-speed-seg" hx-swap="outerHTML"
+            class="{% if key == sync_speed_active %}is-active{% endif %}"
+            title="{{ cfg.label }}: таблиця кожні {{ cfg.hot }}с, екран кожні {{ cfg.screen }}с">
+        {{ cfg.label }} <span class="n">{{ cfg.hint }}</span>
+    </button>
+    {% endfor %}
+</div>

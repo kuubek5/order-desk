@@ -52,20 +52,36 @@
     </td>
     <td class="job-code">
         {% if order.job_code %}
-            <button type="button" class="mono job-code-link copy-button" data-copy="{{ order.job_code }}" {% if order.job_code_folder_uri %}data-folder-uri="{{ order.job_code_folder_uri }}"{% endif %} {% if order.job_code_folder_preview_token %}data-stl-preview-token="{{ order.job_code_folder_preview_token }}"{% endif %} title="Клік — скопіювати шлях-ID для Sum3D{% if order.job_code_folder_uri %}; подвійний клік — відкрити папку{% endif %}">{{ order.job_code }}</button>
-            {% if order.job_code_folder_uri %}<span class="job-code-found-dot" title="Папку з файлами знайдено"></span>{% endif %}
+            <button type="button" class="mono job-code-link copy-button" data-copy="{{ order.job_code }}" {% if order.job_code_folder_uri %}data-folder-uri="{{ order.job_code_folder_uri }}"{% endif %} {% if order.job_code_folder_preview_token %}data-stl-preview-token="{{ order.job_code_folder_preview_token }}"{% endif %} title="{{ order.job_code }}&#10;Клік — скопіювати шлях-ID для Sum3D{% if order.job_code_folder_uri %}; подвійний клік — відкрити папку{% endif %}">{{ order.job_code }}</button>
+            {% if order.job_code_folder_preview_token %}
+            {# Clickable STL-preview trigger for lab jobs. The наряд button next
+               to it copies the path (data-copy) and is excluded from preview,
+               so this dedicated icon is how a lab work opens the 3D panel —
+               same [data-stl-preview-token]:not([data-copy]) handler the mail
+               folder icon uses (app/static/js/stl-preview.js). #}
+            <button type="button" class="job-code-preview"
+                    data-stl-preview-token="{{ order.job_code_folder_preview_token }}"
+                    {% if order.job_code_folder_uri %}data-folder-uri="{{ order.job_code_folder_uri }}"{% endif %}
+                    title="Переглянути STL / відкрити папку" aria-label="Переглянути STL цієї роботи">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 7.5v9L12 22l10-5.5v-9L12 2z"/><path d="M2 7.5 12 13l10-5.5M12 13v9"/></svg>
+            </button>
+            {% elif order.job_code_folder_uri %}<span class="job-code-found-dot" title="Папку з файлами знайдено"></span>{% endif %}
         {% else %}
             <span class="mono">—</span>
         {% endif %}
     </td>
     <td class="technician">{{ order.technician_name or '—' }}</td>
     <td class="comment-cell">
-        {# Inline-editable CAM comment — auto-saves on blur (change) or Enter,
-           SETs the value and writes it back to the sheet (see set_cam_comment). #}
-        <form class="cam-comment-form" onsubmit="return false" hx-post="/orders/{{ order.id }}/cam-comment" hx-trigger="change, keyup[key=='Enter'] from:.cam-comment-input" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
-            <input type="text" name="cam_comment" value="{{ order.cam_comment or '' }}"
+        {# Inline-editable CAM comment. Collapsed to one line in the queue; a
+           click/focus expands it (app.js auto-grow) so a long technician
+           comment is fully readable and editable with wrapping — the old
+           single-line <input> clipped anything past ~220px with no way to see
+           it. Saves on blur (change); Enter saves, Shift+Enter adds a newline
+           (app.js). Writes back to the sheet — see set_cam_comment. #}
+        <form class="cam-comment-form" onsubmit="return false" hx-post="/orders/{{ order.id }}/cam-comment" hx-trigger="change" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
+            <textarea name="cam_comment" rows="1"
                    class="cam-comment-input cam-comment-text cam{% if order.cam_comment and '!!' in order.cam_comment %} shout{% endif %}"
-                   placeholder="коментар…" title="{{ order.cam_comment or 'Введіть коментар для CAM-оператора' }}">
+                   placeholder="коментар…" title="{{ order.cam_comment or 'Введіть коментар для CAM-оператора' }}">{{ order.cam_comment or '' }}</textarea>
         </form>
     </td>
     <td class="sum3d-id">

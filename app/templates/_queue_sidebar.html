@@ -33,7 +33,8 @@
     <span class="flabel">Готовність</span>
     <div class="seg">
         <a href="/?{{ ctx_qs }}&source={{ source }}&ready=all" class="{% if ready == 'all' %}is-active{% endif %}">Усі <span class="n">{{ ready_counts.all }}</span></a>
-        <a href="/?{{ ctx_qs }}&source={{ source }}&ready=ready" class="{% if ready == 'ready' %}is-active{% endif %}" title="Технік завершив, заповнено шлях роботи — можна брати">Можна брати <span class="n">{{ ready_counts.ready }}</span></a>
+        <a href="/?{{ ctx_qs }}&source={{ source }}&ready=can_take" class="{% if ready == 'can_take' %}is-active{% endif %}" title="Технік заповнив шлях, Sum3D ID ще немає — можна брати">Можна брати <span class="n">{{ ready_counts.can_take }}</span></a>
+        <a href="/?{{ ctx_qs }}&source={{ source }}&ready=in_work" class="{% if ready == 'in_work' %}is-active{% endif %}" title="Шлях заповнено і стоїть Sum3D ID — оператор уже взяв у роботу">В роботі <span class="n">{{ ready_counts.in_work }}</span></a>
         <a href="/?{{ ctx_qs }}&source={{ source }}&ready=not_ready" class="{% if ready == 'not_ready' %}is-active{% endif %}" title="Техніки ще не здали (шлях роботи порожній)">Не готово <span class="n">{{ ready_counts.not_ready }}</span></a>
     </div>
 

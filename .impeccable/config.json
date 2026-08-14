@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "codex-grid-background",
+        "value": "*",
+        "files": [
+          "app/static/css/base.css"
+        ],
+        "createdAt": "2026-08-14T15:45:43.530Z",
+        "reason": "Blueprint grid on the update overlay is a pinned brief element (CLAUDE.md section 8)"
+      }
+    ]
+  }
+}

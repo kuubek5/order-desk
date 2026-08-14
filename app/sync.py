@@ -28,6 +28,7 @@ class SyncResult:
     created: int = 0
     updated: int = 0
     unchanged: int = 0
+    deleted: int = 0
 
 
 def _fields(row: OrderRow) -> dict:
@@ -212,5 +213,23 @@ def sync_tab(session: Session, sheet_tab: str, rows: list[OrderRow]) -> SyncResu
             result.updated += 1
         else:
             result.unchanged += 1
+
+    # Removal: a lab order whose row_number no longer appears in the sheet was
+    # deleted (or cleared) by the technician — the sheet is the source of truth,
+    # so drop it from the queue (cascade removes its history/comments/rework).
+    # row_number is the absolute raw-sheet position (parser numbers before
+    # filtering blanks), so a cleared row leaves its neighbours' numbers intact
+    # and only the cleared row goes missing.
+    #
+    # Guarded by `rows` being non-empty: a transient empty read (the lab PC's
+    # TLS proxy occasionally returns just headers) must never wipe a whole tab.
+    # Only source="lab" orders are eligible — email-sourced orders never live in
+    # a sheet tab and must not be touched here.
+    if rows:
+        seen_rows = {row.row_number for row in rows}
+        for row_number, order in existing_by_row.items():
+            if row_number not in seen_rows and order.source == "lab":
+                session.delete(order)
+                result.deleted += 1
 
     return result

@@ -11,7 +11,7 @@ from threading import Event, Lock, Thread
 from time import monotonic
 from typing import Annotated
 import uuid
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
@@ -92,6 +92,7 @@ from app.sheet_sync_service import (
     SheetSyncError,
     SheetSyncSummary,
     sync_google_sheets,
+    sync_hot_tab,
     sync_sheets_background,
 )
 from app.sheet_writer import (
@@ -136,6 +137,62 @@ MAIL_SYNC_INITIAL_DELAY_SECONDS = 10
 # reflects sheet edits sooner.
 SHEET_SYNC_INTERVAL_SECONDS = 1 * 60
 SHEET_SYNC_INITIAL_DELAY_SECONDS = 10
+# Fast lane: between full syncs, re-read ONLY the current day's tab this often.
+# With the worker thread's spreadsheet/worksheet cache warm that's a single
+# ~3s API call, so today's technician edits reach the CRM within ~15-20s while
+# the expensive 3-tab full sync stays at the interval above. See
+# app/sheet_sync_service.py::sync_hot_tab.
+SHEET_SYNC_HOT_INTERVAL_SECONDS = 15
+
+# Sync-speed presets (side-panel segmented switch on the queue screen).
+# "hot"    — seconds between hot-tab reads (one ~3s API call per tab through
+#            the lab proxy, so 5s is the physical floor — see the sizing
+#            discussion in CLAUDE.md's proxy notes);
+# "screen" — seconds between the queue's local partial=rows polls;
+# "full"   — seconds between expensive full syncs (listing + 3-day window).
+#            Turbo stretches it: the hot lane already covers the tabs being
+#            worked, and a ~15s full pass every minute would starve 5s ticks.
+# Held in process memory only: an operational knob, not a credential — after a
+# restart the app wakes up in "normal", which is the right default.
+SYNC_SPEED_PRESETS = {
+    "turbo": {"hot": 5, "screen": 5, "full": 120, "label": "Турбо", "hint": "5с"},
+    "normal": {"hot": 15, "screen": 15, "full": 60, "label": "Звичайно", "hint": "15с"},
+    "eco": {"hot": 60, "screen": 30, "full": 60, "label": "Економ", "hint": "60с"},
+}
+_sync_speed_preset = "normal"
+
+
+def get_sync_speed() -> dict:
+    return SYNC_SPEED_PRESETS[_sync_speed_preset]
+
+
+# Days operators are actually looking at right now (queue partial=rows polls
+# record them). The hot lane unions these with today/yesterday so "the open
+# tab in the CRM" is always among the fast-synced ones, whatever day it is.
+_viewed_days: dict[date, float] = {}
+_VIEWED_DAY_TTL_SECONDS = 120.0
+_VIEWED_DAYS_CAP = 2
+
+
+def _record_viewed_day(day: date | None) -> None:
+    if day is None:
+        return
+    _viewed_days[day] = monotonic()
+
+
+def _hot_extra_days() -> set[date]:
+    """Recently-viewed days still worth fast-syncing, freshest first, capped so
+    a filter-hopping operator can't balloon the 5s tick into a full sync."""
+    now = monotonic()
+    fresh = sorted(
+        ((day, ts) for day, ts in _viewed_days.items() if now - ts < _VIEWED_DAY_TTL_SECONDS),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    for day, _ in list(_viewed_days.items()):
+        if now - _viewed_days.get(day, 0) >= _VIEWED_DAY_TTL_SECONDS:
+            _viewed_days.pop(day, None)
+    return {day for day, _ in fresh[:_VIEWED_DAYS_CAP]}
 
 # A heartbeat last-attempt older than this many sync intervals means the
 # background loop itself likely died (thread crashed, process wedged) rather
@@ -420,37 +477,80 @@ def _sheet_sync_tick(db: Session) -> None:
     _record_sync_heartbeat("sheet", status="ok")
 
 
+def _sheet_hot_tick(db: Session) -> None:
+    """One fast-lane attempt at the current day's tab (sync_hot_tab). Errors
+    are logged but do NOT flip the heartbeat to error: this runs every ~15s,
+    and a transient proxy blip here would flap the UI state that the full
+    sync (with its retries and audit trail) is the real owner of."""
+    if not _sheets_configured(db):
+        return
+    try:
+        summary = sync_hot_tab(db, extra_days=_hot_extra_days())
+    except SheetSyncError as exc:
+        logger.warning("Hot-tab sheet sync failed: %s", exc)
+        return
+    if summary is None:
+        return  # lock busy (full sync in flight) or today's tab not created yet
+    _record_sync_heartbeat("sheet", status="ok")
+    if summary.created or summary.updated or summary.deleted:
+        logger.info(
+            "Hot-tab sync %s: created %d, updated %d, deleted %d",
+            summary.tab_names[0],
+            summary.created,
+            summary.updated,
+            summary.deleted,
+        )
+
+
 def _sheet_sync_worker(stop_event: Event) -> None:
     """Poll Google Sheets without occupying the web request loop or delaying
     shutdown — same shape as _mail_sync_worker above. Table rows are entered
     by trusted internal staff (technologists/admins), not free-text clients,
     so unlike email there is no per-row guess to review before it becomes an
     Order: sync_tab already writes directly. Automating the periodic pull
-    just removes the "someone has to remember to click Синхронізувати" step."""
+    just removes the "someone has to remember to click Синхронізувати" step.
+
+    Two-speed loop: the expensive full sync (worksheets listing + 3-day
+    window) runs every SHEET_SYNC_INTERVAL_SECONDS; in between, the cheap
+    hot-tab read of today's tab runs every SHEET_SYNC_HOT_INTERVAL_SECONDS so
+    current-day edits land almost live. Both run on THIS one thread, sharing
+    its warm per-thread spreadsheet/worksheet cache (app/sheets.py)."""
     if stop_event.wait(SHEET_SYNC_INITIAL_DELAY_SECONDS):
         return
 
+    next_full = 0.0  # first iteration always does a full sync
     while not stop_event.is_set():
+        speed = get_sync_speed()  # live: the UI switch changes the next tick
+        run_full = monotonic() >= next_full
         try:
             with SessionLocal() as db:
-                _sheet_sync_tick(db)
+                if run_full:
+                    _sheet_sync_tick(db)
+                    next_full = monotonic() + speed["full"]
+                else:
+                    _sheet_hot_tick(db)
         except Exception:
             logger.exception("Unexpected background sheet sync failure")
             _record_sync_heartbeat(
                 "sheet", status="error", error_message="Неочікувана помилка синхронізації таблиці"
             )
+            if run_full:
+                next_full = monotonic() + speed["full"]
 
-        stop_event.wait(SHEET_SYNC_INTERVAL_SECONDS)
+        stop_event.wait(speed["hot"])
 
 
 def _sync_summary_message(summary: SheetSyncSummary) -> str:
     if summary.tabs_processed == 0:
         return "Підключення працює, але в доступному періоді не знайдено датованих вкладок."
-    return (
+    message = (
         f"Синхронізовано вкладок: {summary.tabs_processed}. "
         f"Нових робіт: {summary.created}, оновлено: {summary.updated}, "
         f"без змін: {summary.unchanged}."
     )
+    if summary.deleted:
+        message += f" Видалено (немає в таблиці): {summary.deleted}."
+    return message
 
 
 def _parse_sheet_tab(sheet_tab: str | None) -> date | None:
@@ -1167,6 +1267,9 @@ def get_queue(
     # shadow the `dir()` builtin anywhere in this function's body — same
     # spirit as the `date`/`date_param` split above.
     sort_dir: Annotated[str, Query(alias="dir")] = "asc",
+    # `partial=rows` returns only the queue-rows fragment (for the 15s HTMX
+    # poll that keeps the table in step with the sheet without a full reload).
+    partial: str = "",
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)
@@ -1337,10 +1440,22 @@ def get_queue(
     date_universe = sorted(set(known_dates) | backfill)
     date_tabs, current_date_page, total_date_pages = _date_window(date_universe, today, date_page)
 
-    return templates.TemplateResponse(
-        request,
-        "queue.html",
-        {
+    # Query string of the currently active filters, so the 15s poll fragment
+    # re-requests the exact same view it lives in. Built from the validated
+    # params (not request.query_params) so it also works when get_queue is
+    # called directly in tests, and reflects clamped/validated values.
+    _qs_items: list[tuple[str, str]] = []
+    if show_overdue:
+        _qs_items.append(("overdue", "1"))
+    _qs_items += [("period", period), ("ready", ready), ("source", source)]
+    if date_param:
+        _qs_items.append(("date", date_param))
+        _qs_items.append(("date_page", str(current_date_page)))
+    if sort:
+        _qs_items += [("sort", sort), ("dir", sort_dir)]
+    rows_qs = urlencode(_qs_items)
+
+    context = {
             "page_title": "Черга робіт",
             "orders": orders,
             "orders_lab": orders_lab,
@@ -1368,7 +1483,49 @@ def get_queue(
             "total_date_pages": total_date_pages,
             "sort": sort,
             "sort_dir": sort_dir,
-        },
+            "rows_qs": rows_qs,
+            "sync_speed": SYNC_SPEED_PRESETS,
+            "sync_speed_active": _sync_speed_preset,
+            "sync_screen_seconds": get_sync_speed()["screen"],
+    }
+
+    # Tell the hot lane which day this operator is actually looking at, so
+    # "the open tab in the CRM" is always among the fast-synced sheets.
+    if selected_date is not None:
+        viewed_day = selected_date
+    elif period == "yesterday":
+        viewed_day = today - timedelta(days=1)
+    elif period == "tomorrow":
+        viewed_day = today + timedelta(days=1)
+    elif period == "today" and not show_overdue:
+        viewed_day = today
+    else:
+        viewed_day = None  # "earlier"/overdue span many days — no single tab
+    _record_viewed_day(viewed_day)
+
+    # The screen poll asks for just the rows block; everything else (sidebar
+    # counts, KPIs) refreshes on a full navigation or a manual sync.
+    if partial == "rows":
+        return templates.TemplateResponse(request, "_queue_rows.html", context)
+
+    return templates.TemplateResponse(request, "queue.html", context)
+
+
+@app.post("/sync-speed", response_class=HTMLResponse)
+def set_sync_speed(request: Request, preset: str = Form(""), db: Session = Depends(get_db)):
+    """Switch the global sync-speed preset (queue side panel's segmented
+    control). Global on purpose: the hot lane is one worker for the whole
+    process, so the fastest interest wins for everyone. Unknown preset values
+    degrade to no-op (same spirit as the queue's filter params)."""
+    global _sync_speed_preset
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if preset in SYNC_SPEED_PRESETS:
+        _sync_speed_preset = preset
+    return templates.TemplateResponse(
+        request,
+        "_sync_speed_seg.html",
+        {"sync_speed": SYNC_SPEED_PRESETS, "sync_speed_active": _sync_speed_preset},
     )
 
 
@@ -1427,6 +1584,32 @@ def get_search(
     )
 
 
+def _back_to_queue(request: Request) -> str:
+    """Path+query of the queue page the request came from, for post-action
+    redirects that must keep the operator's active filters. Falls back to "/"
+    when there's no usable Referer. Scheme and host are discarded, so only a
+    local path is ever returned (no open-redirect surface); a Referer pointing
+    outside the queue root ("/") is ignored too."""
+    referer = request.headers.get("referer")
+    if not referer:
+        return "/"
+    parts = urlsplit(referer)
+    if parts.path not in ("", "/"):
+        return "/"
+    return "/" + (f"?{parts.query}" if parts.query else "")
+
+
+def _synced_day_tabs(request: Request) -> set[str]:
+    """The explicit sidebar day (?date=dd.mm.yy) the sync was launched from,
+    as a set of sheet-tab titles to force-include. Empty when there's no valid
+    date filter — the default three-day window then applies unchanged."""
+    referer = request.headers.get("referer")
+    if not referer:
+        return set()
+    date_values = parse_qs(urlsplit(referer).query).get("date", [])
+    return {value for value in date_values if _parse_sheet_tab(value) is not None}
+
+
 @app.post("/sheets/sync")
 def sync_sheets(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
@@ -1435,8 +1618,14 @@ def sync_sheets(request: Request, db: Session = Depends(get_db)):
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
+    # If the operator triggered the sync while viewing a specific day (the
+    # sidebar "Дні" strip sets ?date=dd.mm.yy), force-include that tab so a
+    # manual sync of an older day reconciles deletions there too — the periodic
+    # window (yesterday/today/tomorrow) never revisits old tabs on its own.
+    include_tabs = _synced_day_tabs(request)
+
     try:
-        summary = sync_google_sheets(db)
+        summary = sync_google_sheets(db, include_tabs=include_tabs)
     except SheetSyncError as exc:
         request.session["sync_flash"] = {"kind": "error", "message": str(exc)}
     else:
@@ -1444,7 +1633,11 @@ def sync_sheets(request: Request, db: Session = Depends(get_db)):
             "kind": "success",
             "message": _sync_summary_message(summary),
         }
-    return RedirectResponse("/", status_code=303)
+    # Return to the exact queue view the operator synced from (period/ready/
+    # source/date/sort filters live in the query string) instead of resetting
+    # to bare "/". Only the path+query of a same-app Referer is used — scheme/
+    # host are dropped, so this can't become an open redirect.
+    return RedirectResponse(_back_to_queue(request), status_code=303)
 
 
 @app.post("/orders/{order_id}/sum3d-id", response_class=HTMLResponse)
@@ -1808,6 +2001,35 @@ def get_stl_preview_file(
         raise HTTPException(status_code=404, detail="файл не знайдено")
 
     return FileResponse(file_path, media_type="model/stl")
+
+
+@app.post("/open-folder", status_code=204)
+def open_preview_folder(request: Request, token: str = Form(...), db: Session = Depends(get_db)):
+    """Open a work's resolved folder in Windows Explorer from a preview token.
+
+    A browser can't act on a file:// link from an http page (it's silently
+    blocked), so the "Відкрити папку" button in the STL panel and the queue's
+    double-click both POST the opaque preview token here instead. Same safety
+    envelope as /mail/{id}/open-folder: authenticated, loopback-only, and the
+    token is re-resolved server-side to a trusted directory (never a raw path
+    from the client — see app/stl_preview.py)."""
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if not _is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+
+    folder = resolve_preview_folder(db, token)
+    if folder is None:
+        raise HTTPException(status_code=404, detail="папку не знайдено")
+
+    try:
+        _open_folder_in_explorer(folder)
+    except NotImplementedError:
+        raise HTTPException(status_code=501, detail="відкриття папки підтримується лише у Windows")
+    except OSError:
+        logger.exception("Could not open preview folder")
+        raise HTTPException(status_code=500, detail="не вдалося відкрити папку")
+    return Response(status_code=204)
 
 
 @app.get("/stats", response_class=HTMLResponse)

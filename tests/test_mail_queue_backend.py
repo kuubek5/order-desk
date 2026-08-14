@@ -80,6 +80,136 @@ def _call_get_queue(db, user, monkeypatch, tmp_path, **kwargs):
     return web.get_queue(request=_request(user.id), db=db, **kwargs)
 
 
+def test_partial_rows_renders_fragment_not_full_page(tmp_path, monkeypatch):
+    """partial=rows must render the polled rows fragment (_queue_rows.html),
+    while the default renders the whole queue page — the 15s auto-refresh
+    depends on the route returning just the rows block."""
+    engine = _database()
+    mail_root = tmp_path / "mail"
+    mail_root.mkdir()
+    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    captured = {}
+    monkeypatch.setattr(
+        web.templates,
+        "TemplateResponse",
+        lambda request, template, context: captured.update(template=template, ctx=context) or context,
+    )
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(Order(source="lab", sheet_tab=date.today().strftime("%d.%m.%y")))
+        db.commit()
+
+        web.get_queue(request=_request(user.id), db=db, partial="rows")
+        assert captured["template"] == "_queue_rows.html"
+        # rows_qs carries the active filters so the poll re-requests this view.
+        assert "period=today" in captured["ctx"]["rows_qs"]
+
+        web.get_queue(request=_request(user.id), db=db)
+        assert captured["template"] == "queue.html"
+
+
+def test_sync_speed_route_switches_preset_and_rejects_unknown(tmp_path, monkeypatch):
+    engine = _database()
+    captured = {}
+    monkeypatch.setattr(
+        web.templates,
+        "TemplateResponse",
+        lambda request, template, context: captured.update(template=template, ctx=context) or context,
+    )
+    original = web._sync_speed_preset
+    try:
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+
+            web.set_sync_speed(request=_request(user.id), preset="turbo", db=db)
+            assert web._sync_speed_preset == "turbo"
+            assert web.get_sync_speed()["hot"] == 5
+            assert captured["template"] == "_sync_speed_seg.html"
+            assert captured["ctx"]["sync_speed_active"] == "turbo"
+
+            # Unknown value degrades to a no-op, same as the queue filters.
+            web.set_sync_speed(request=_request(user.id), preset="ludicrous", db=db)
+            assert web._sync_speed_preset == "turbo"
+
+            with pytest.raises(HTTPException):
+                web.set_sync_speed(request=_request(None), preset="eco", db=db)
+            assert web._sync_speed_preset == "turbo"
+    finally:
+        web._sync_speed_preset = original
+
+
+def test_queue_records_viewed_day_for_hot_lane(tmp_path, monkeypatch):
+    engine = _database()
+    web._viewed_days.clear()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(Order(source="lab", sheet_tab="08.08.26", row_number=1, status="нове"))
+        db.commit()
+
+        _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26")
+
+    assert date(2026, 8, 8) in web._hot_extra_days()
+    web._viewed_days.clear()
+    assert web._hot_extra_days() == set()
+
+
+def _make_tech_token(tech_root, job_code, monkeypatch):
+    import app.stl_preview as stl_preview
+
+    monkeypatch.setattr(stl_preview, "get_technician_files_path", lambda _db: str(tech_root))
+    folder = tech_root / job_code
+    folder.mkdir(parents=True)
+    (folder / "crown.stl").write_bytes(b"solid mesh")
+    token = stl_preview.build_preview_token(folder, {"tech": str(tech_root)})
+    return token, folder
+
+
+def test_open_preview_folder_opens_token_path(tmp_path, monkeypatch):
+    engine = _database()
+    tech = tmp_path / "tech"
+    token, folder = _make_tech_token(tech, "2026-07-21_21112-001", monkeypatch)
+    opened: list = []
+    monkeypatch.setattr(web, "_open_folder_in_explorer", opened.append)
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        response = web.open_preview_folder(request=_request(user.id), token=token, db=db)
+
+    assert response.status_code == 204
+    assert opened == [folder.resolve()]
+
+
+def test_open_preview_folder_requires_authentication(tmp_path, monkeypatch):
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        with pytest.raises(HTTPException) as exc:
+            web.open_preview_folder(request=_request(None), token="x", db=db)
+    assert exc.value.status_code == 401
+
+
+def test_open_preview_folder_rejects_non_loopback(tmp_path, monkeypatch):
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        with pytest.raises(HTTPException) as exc:
+            web.open_preview_folder(
+                request=_request(user.id, host="10.0.0.9"), token="x", db=db
+            )
+    assert exc.value.status_code == 403
+
+
+def test_open_preview_folder_bad_token_is_404(tmp_path, monkeypatch):
+    engine = _database()
+    monkeypatch.setattr(web, "_open_folder_in_explorer", lambda f: None)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        with pytest.raises(HTTPException) as exc:
+            web.open_preview_folder(request=_request(user.id), token="not-a-real-token", db=db)
+    assert exc.value.status_code == 404
+
+
 def test_known_order_dates_derived_from_distinct_sheet_tabs(tmp_path):
     """This is the crux of "stays synced with the Sheet": the day-strip's
     list of known days is read straight off Order.sheet_tab, which

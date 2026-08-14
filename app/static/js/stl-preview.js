@@ -124,11 +124,30 @@
 
     const foot = document.createElement("div");
     foot.className = "stl-panel-foot";
-    const folderBtn = document.createElement("a");
+    const folderBtn = document.createElement("button");
+    folderBtn.type = "button";
     folderBtn.className = "stl-panel-folder";
     folderBtn.hidden = true;
     folderBtn.innerHTML =
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg><span>Відкрити папку</span>';
+    // A browser silently blocks a file:// link opened from an http page, so
+    // open the real folder via the authenticated loopback-only server route
+    // instead of navigating. Re-derives the folder from the opaque token.
+    folderBtn.addEventListener("click", () => {
+      if (!state.token) return;
+      const original = folderBtn.querySelector("span").textContent;
+      const body = new URLSearchParams({ token: state.token });
+      fetch("/open-folder", { method: "POST", body, credentials: "same-origin" })
+        .then((response) => {
+          if (!response.ok) throw new Error("open-failed");
+        })
+        .catch(() => {
+          folderBtn.querySelector("span").textContent = "Не вдалося відкрити";
+          window.setTimeout(() => {
+            folderBtn.querySelector("span").textContent = original;
+          }, 2000);
+        });
+    });
     foot.appendChild(folderBtn);
     panel.appendChild(foot);
 

@@ -1,0 +1,60 @@
+{# sortcol macro is used by _queue_table_head.html below; queue.html imports it
+   too, but this fragment is also rendered standalone by the poll, so it needs
+   its own import. #}
+{% import "_sortable_th.html" as sortcol with context %}
+{# Queue rows fragment — polled every 15s (hx-trigger below) so sheet edits
+   picked up by the background sync surface without a manual F5. The GET hits
+   get_queue with partial=rows, which re-renders THIS same wrapper (so the poll
+   attributes persist across swaps). hx-disinherit stops the per-row Sum3D /
+   comment forms inside from inheriting the poll trigger/target. Edit-protection
+   (app.js htmx:beforeRequest on #queue-rows) skips a refresh while an operator
+   is typing in a row, so an in-progress comment/Sum3D is never wiped. #}
+<div id="queue-rows"
+     hx-get="/?{{ rows_qs }}{% if rows_qs %}&{% endif %}partial=rows"
+     hx-trigger="every {{ sync_screen_seconds|default(15) }}s"
+     hx-target="this"
+     hx-swap="outerHTML"
+     hx-disinherit="*">
+    {% if orders %}
+    <div class="tablewrap">
+        <table class="qtable">
+            {% include "_queue_table_head.html" %}
+            <tbody>
+                {% for order in orders %}
+                    {% include "_order_row.html" %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="qfoot">
+        <span>Клік по шляху-ID копіює його для Sum3D · клік по наряду відкриває паспорт роботи</span>
+    </div>
+    {% else %}
+    <div class="queue-empty">
+        <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 11v6c0 1.7 3.1 3 7 3 1.2 0 2.4-.1 3.3-.4"/><path d="M17 16h5m-2.5-2.5L22 16l-2.5 2.5"/>
+        </svg>
+        {% if show_overdue %}
+        <h2>Прострочених робіт немає</h2>
+        <p>Усе, що мало бути готове до сьогодні, вже здане або в фінальному статусі.</p>
+        {% elif has_any_orders %}
+        <h2>У цьому періоді робіт немає</h2>
+        <p>Роботи вже завантажені. Оберіть інший період або змініть фільтр готовності.</p>
+        {% elif sheets_configured %}
+        <h2>Черга готова до першої синхронізації</h2>
+        <p>Завантажимо роботи з датованих вкладок Google Таблиці та розкладемо їх за періодами.</p>
+        {% if user.role == 'адмін' %}
+        <form method="post" action="/sheets/sync">
+            <button type="submit" class="btn primary">Завантажити роботи</button>
+        </form>
+        {% endif %}
+        {% else %}
+        <h2>Під’єднайте робочу таблицю</h2>
+        <p>Вкажіть ID Google Таблиці та JSON-ключ сервісного акаунта. Після перевірки роботи з’являться тут автоматично.</p>
+        {% if user.role == 'адмін' %}
+        <a href="/settings?welcome=1" class="btn primary">Перейти до налаштувань</a>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+</div>

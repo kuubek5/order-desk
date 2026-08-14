@@ -18,10 +18,14 @@ class _FakeOrder:
         self,
         job_code: str | None = None,
         *,
+        sum3d_id: str | None = None,
+        active_rework=None,
         job_code_folder_uri: str | None = None,
         export_folder_uri: str | None = None,
     ):
         self.job_code = job_code
+        self.sum3d_id = sum3d_id
+        self.active_rework = active_rework
         self.job_code_folder_uri = job_code_folder_uri
         self.export_folder_uri = export_folder_uri
 
@@ -34,15 +38,27 @@ def test_filter_by_readiness_all_returns_everything_unchanged():
     assert result == orders
 
 
-def test_filter_by_readiness_ready_keeps_only_orders_with_job_code():
-    # "Ready" now means the technician filled the working-directory path
-    # (Order.job_code) — the operator can take it into work.
-    ready_order = _FakeOrder("2026-07-21_00016-007")
-    not_ready_order = _FakeOrder()
+def test_filter_by_readiness_can_take_needs_path_and_no_sum3d():
+    # «Можна набрати»: technician filled the path, operator has not set a Sum3D
+    # ID yet — the job is waiting to be picked up.
+    can_take = _FakeOrder("2026-07-21_00016-007")
+    in_work = _FakeOrder("2026-07-21_00016-008", sum3d_id="PRJ-1")
+    not_ready = _FakeOrder()
 
-    result = filter_by_readiness([ready_order, not_ready_order], "ready")
+    result = filter_by_readiness([can_take, in_work, not_ready], "can_take")
 
-    assert result == [ready_order]
+    assert result == [can_take]
+
+
+def test_filter_by_readiness_in_work_needs_path_and_sum3d():
+    # «В роботі»: path filled AND Sum3D ID set — operator already took it.
+    can_take = _FakeOrder("2026-07-21_00016-007")
+    in_work = _FakeOrder("2026-07-21_00016-008", sum3d_id="PRJ-1")
+    not_ready = _FakeOrder()
+
+    result = filter_by_readiness([can_take, in_work, not_ready], "in_work")
+
+    assert result == [in_work]
 
 
 def test_filter_by_readiness_not_ready_keeps_only_orders_without_job_code():
@@ -57,8 +73,35 @@ def test_filter_by_readiness_not_ready_keeps_only_orders_without_job_code():
 def test_filter_by_readiness_treats_blank_job_code_as_not_ready():
     order = _FakeOrder("   ")
 
-    assert filter_by_readiness([order], "ready") == []
+    assert filter_by_readiness([order], "can_take") == []
     assert filter_by_readiness([order], "not_ready") == [order]
+
+
+def test_filter_by_readiness_blank_sum3d_still_can_take():
+    # A whitespace-only Sum3D ID is not a real ID → still «можна набрати».
+    order = _FakeOrder("2026-07-21_00016-007", sum3d_id="  ")
+
+    assert filter_by_readiness([order], "can_take") == [order]
+    assert filter_by_readiness([order], "in_work") == []
+
+
+def test_filter_by_readiness_rework_uses_rework_sum3d_not_base():
+    # A rework whose redo has NOT been calculated yet (rework.sum3d_id empty)
+    # reads as «можна набрати», even though the base run's Sum3D is filled —
+    # matches the ID the operator sees in the queue row (column W).
+    redo_pending = _FakeOrder(
+        "2026-07-20_01939-011",
+        sum3d_id="18-23-34",  # base run — must be ignored for a rework
+        active_rework=SimpleNamespace(sum3d_id=None),
+    )
+    redo_taken = _FakeOrder(
+        "2026-07-20_01939-012",
+        sum3d_id=None,
+        active_rework=SimpleNamespace(sum3d_id="20-01-05"),
+    )
+
+    assert filter_by_readiness([redo_pending, redo_taken], "can_take") == [redo_pending]
+    assert filter_by_readiness([redo_pending, redo_taken], "in_work") == [redo_taken]
 
 
 def test_filter_by_readiness_ignores_resolved_folder_without_job_code():
@@ -66,7 +109,7 @@ def test_filter_by_readiness_ignores_resolved_folder_without_job_code():
     # filled job_code is.
     folder_only = _FakeOrder(job_code_folder_uri="file:///ready")
 
-    assert filter_by_readiness([folder_only], "ready") == []
+    assert filter_by_readiness([folder_only], "can_take") == []
     assert filter_by_readiness([folder_only], "not_ready") == [folder_only]
 
 
@@ -80,18 +123,23 @@ def test_filter_by_readiness_unknown_value_behaves_like_all():
 
 def test_count_by_readiness_splits_correctly():
     orders = [
-        _FakeOrder("2026-07-21_00018-001"),
-        _FakeOrder("2026-07-21_00018-002"),
-        _FakeOrder(),
+        _FakeOrder("2026-07-21_00018-001"),  # can_take
+        _FakeOrder("2026-07-21_00018-002", sum3d_id="PRJ-9"),  # in_work
+        _FakeOrder(),  # not_ready
     ]
 
     counts = count_by_readiness(orders)
 
-    assert counts == {"all": 3, "ready": 2, "not_ready": 1}
+    assert counts == {"all": 3, "can_take": 1, "in_work": 1, "not_ready": 1}
 
 
 def test_count_by_readiness_empty_list():
-    assert count_by_readiness([]) == {"all": 0, "ready": 0, "not_ready": 0}
+    assert count_by_readiness([]) == {
+        "all": 0,
+        "can_take": 0,
+        "in_work": 0,
+        "not_ready": 0,
+    }
 
 
 def test_filter_by_source_email_keeps_only_email_orders():

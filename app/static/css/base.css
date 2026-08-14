@@ -3403,7 +3403,10 @@ li {
   border: 1px solid var(--line);
   background: var(--card-2);
   color: var(--ink-2);
+  font-family: inherit;
   font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
   text-decoration: none;
   transition: color var(--ui-speed) ease, border-color var(--ui-speed) ease, background var(--ui-speed) ease;
 }
@@ -3532,6 +3535,22 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .seg a:hover{color:var(--ink);background:#1d2734;opacity:1}
 .q2 .seg a.is-active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
 .q2 .seg .n{font-family:var(--font-mono);font-size:11px;opacity:.75}
+
+/* Перемикач швидкості оновлення (бічна панель «Google Таблиця»). Стек
+   лейбл-над-сегментом: панель вузька (260-280px), три кнопки в ряд з
+   лейблом збоку не влазять. Кнопки — той самий вигляд, що .seg a /
+   density-seg button. */
+.q2 .ss-row{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.q2 .ss-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.q2 .ss-seg{display:flex;width:100%}
+.q2 .ss-seg button{
+  appearance:none;border:0;background:transparent;flex:1;height:26px;padding:0 8px;border-radius:999px;
+  font:inherit;font-size:12px;font-weight:500;color:var(--ink-2);display:inline-flex;align-items:center;
+  justify-content:center;gap:5px;transition:background var(--ui-speed) ease,color var(--ui-speed) ease;cursor:pointer;
+}
+.q2 .ss-seg button:hover{color:var(--ink);background:#1d2734}
+.q2 .ss-seg button.is-active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
+.q2 .ss-seg button:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 .q2 .pill{
   height:32px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);
   color:var(--ink-2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:7px;text-decoration:none;
@@ -3643,13 +3662,24 @@ body.layout-edit .q2 table.qtable{user-select:none}
   background:#1d2734;border:1px solid var(--line-2);font-size:12px;color:var(--ink);
 }
 .q2 td.quantity{font-family:var(--font-mono);font-size:12.5px;text-align:center;color:var(--ink)}
+.q2 td.job-code{position:relative}
 .q2 .job-code-link{
   font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);padding:3px 7px;border-radius:6px;
   border:1px solid transparent;background:none;cursor:pointer;
+  display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  vertical-align:middle;
   transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease;
 }
 .q2 .job-code-link:hover{background:rgba(20,184,166,.12);border-color:rgba(45,212,191,.3);color:var(--accent-c)}
 .q2 .job-code-found-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent-b);margin-left:5px;vertical-align:middle}
+/* Clickable STL-preview icon for lab jobs (replaces the passive found-dot when
+   the folder resolved). Subtle by default, teal on hover — matches folder-link. */
+.q2 .job-code-preview{margin-left:5px;padding:2px;border:0;background:none;color:var(--accent-b);
+  display:inline-flex;align-items:center;vertical-align:middle;cursor:pointer;border-radius:5px;
+  transition:color var(--ui-speed) ease,background var(--ui-speed) ease}
+.q2 .job-code-preview svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.q2 .job-code-preview:hover{color:var(--accent-c);background:rgba(20,184,166,.14)}
+.q2 .job-code-preview:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 .q2 td.technician{font-size:12.5px;color:var(--ink-2)}
 .q2 .kindbtn{color:var(--ink-2);font-size:12.5px;text-decoration:none}
 .q2 .kindbtn:hover{color:var(--accent-c);opacity:1}
@@ -4313,11 +4343,22 @@ main.worldv2{max-width:1000px;margin:0 auto;padding:18px 20px}
 /* Інлайн-редагування коментаря в рядку черги — виглядає як текст, на hover/focus
    стає полем; авто-збереження через HTMX (див. set_cam_comment). */
 .q2 .cam-comment-form{margin:0}
-.q2 .cam-comment-input{width:100%;max-width:220px;box-sizing:border-box;background:transparent;
-  border:1px solid transparent;border-radius:6px;padding:3px 6px;margin:-2px -4px;
-  font-family:var(--font-body);font-size:12.5px;color:var(--ink-2);white-space:nowrap;
-  text-overflow:ellipsis;outline:none;transition:border-color .12s ease,background .12s ease,color .12s ease}
+/* Textarea, not input: collapsed it's exactly one line (overflow clipped);
+   focus/edit grows it (app.js sets height) and it wraps, so a long comment is
+   fully readable+editable. resize:none — height is driven by content, not a
+   drag handle. */
+.q2 .cam-comment-input{display:block;width:100%;max-width:240px;box-sizing:border-box;background:transparent;
+  border:1px solid transparent;border-radius:6px;padding:3px 6px;margin:-2px -4px;resize:none;overflow:hidden;
+  font-family:var(--font-body);font-size:12.5px;line-height:1.45;color:var(--ink-2);
+  height:calc(1.45em + 6px);min-height:calc(1.45em + 6px);white-space:nowrap;
+  outline:none;transition:border-color .12s ease,background .12s ease,color .12s ease}
 .q2 .cam-comment-input:hover{border-color:var(--line-2)}
-.q2 .cam-comment-input:focus{border-color:var(--focus-border);background:#0f1620;color:var(--ink)}
+/* While editing it floats above neighbouring rows (raised z-index + shadow)
+   so growing the box never shoves the table around. app.js sets the height. */
+.q2 .cam-comment-input:focus{border-color:var(--focus-border);background:#0f1620;color:var(--ink);
+  white-space:pre-wrap;word-break:break-word;position:relative;z-index:5;
+  box-shadow:0 8px 22px rgba(0,0,0,.45)}
 .q2 .cam-comment-input::placeholder{color:var(--ink-3)}
 .q2 .cam-comment-input.shout{color:var(--warn);font-weight:600}
+/* Has content but not focused → hint there's more with a soft right fade. */
+.q2 td.comment-cell{position:relative}

@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from unittest.mock import Mock
 
+import gspread
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -13,8 +14,10 @@ from app.sheet_sync_service import (
     SheetSyncError,
     _sync_lock,
     sync_google_sheets,
+    sync_hot_tab,
     sync_sheets_background,
 )
+from app.sheets import reset_sheets_cache
 
 
 def make_session():
@@ -90,6 +93,30 @@ def test_later_sync_uses_yesterday_today_tomorrow_only(monkeypatch):
         assert result.tabs_processed == 1
         assert result.tab_names == [yesterday.title]
         old.get_all_values.assert_not_called()
+
+
+def test_include_tabs_forces_an_out_of_window_tab(monkeypatch):
+    # A manual sync launched from an older day (?date=...) force-reads that tab
+    # even though it's well outside the yesterday/today/tomorrow window, so a
+    # deletion there can be reconciled.
+    configured(monkeypatch)
+    today = date.today()
+    old = worksheet(today - timedelta(days=10), "old")
+    yesterday = worksheet(today - timedelta(days=1), "y")
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [old, yesterday]
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+
+    with make_session() as session:
+        # Existing lab data → steady-state three-day window (old normally skipped).
+        session.add(Order(source="lab", sheet_tab="seed", row_number=1, status="нове"))
+        session.commit()
+        result = sync_google_sheets(session, include_tabs={old.title})
+
+        assert old.title in result.tab_names
+        old.get_all_values.assert_called_once()
 
 
 def test_missing_credentials_is_logged_and_raised_without_opening_sheet(monkeypatch):
@@ -181,6 +208,8 @@ def test_invalid_date_tabs_are_ignored(monkeypatch):
 
 def test_busy_lock_rejects_concurrent_sync(monkeypatch):
     configured(monkeypatch)
+    # Shrink the manual grace wait so the test doesn't sit through the real 10s.
+    monkeypatch.setattr("app.sheet_sync_service._MANUAL_LOCK_WAIT_SECONDS", 0.05)
     spreadsheet = Mock()
     spreadsheet.worksheets.return_value = []
     monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
@@ -192,6 +221,24 @@ def test_busy_lock_rejects_concurrent_sync(monkeypatch):
                 sync_google_sheets(session)
     finally:
         _sync_lock.release()
+
+
+def test_manual_sync_waits_out_a_short_hot_tick(monkeypatch):
+    # A manual click that lands during a ~3s hot-tab tick must WAIT and then
+    # run, not bounce with "вже виконується" (the hot lane holds the same lock
+    # every 15s, so instant failure would hit real users constantly).
+    import threading
+
+    configured(monkeypatch)
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = []
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
+
+    _sync_lock.acquire()
+    threading.Timer(0.2, _sync_lock.release).start()
+    with make_session() as session:
+        result = sync_google_sheets(session)  # manual trigger by default
+    assert result.tabs_processed == 0
 
 
 def test_background_trigger_skips_log_when_nothing_changed(monkeypatch):
@@ -221,6 +268,139 @@ def test_background_trigger_logs_when_rows_created(monkeypatch):
         log = session.scalar(select(SyncLog))
         assert log is not None
         assert "trigger background" in log.message
+
+
+def test_sync_hot_tab_reads_today_and_yesterday_by_name(monkeypatch):
+    # The fast lane must fetch the hot tabs (today + yesterday, the
+    # morning-handout tab) by name — never the expensive worksheets() listing
+    # the full sync pays for.
+    configured(monkeypatch)
+    reset_sheets_cache()
+    today = date.today()
+    today_ws = worksheet(today, "700")
+    yesterday_ws = worksheet(today - timedelta(days=1), "701")
+    by_name = {today_ws.title: today_ws, yesterday_ws.title: yesterday_ws}
+    spreadsheet = Mock()
+    spreadsheet.worksheet.side_effect = lambda name: by_name[name]
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+
+    with make_session() as session:
+        summary = sync_hot_tab(session)
+
+        assert summary is not None
+        assert summary.tabs_processed == 2
+        assert summary.tab_names == [today_ws.title, yesterday_ws.title]
+        assert summary.created == 2
+        spreadsheet.worksheets.assert_not_called()
+        assert spreadsheet.worksheet.call_count == 2
+        # No audit rows from the 15s cadence — the full sync owns SyncLog.
+        assert session.scalar(select(SyncLog)) is None
+    reset_sheets_cache()
+
+
+def test_sync_hot_tab_skips_quietly_when_lock_busy(monkeypatch):
+    configured(monkeypatch)
+    reset_sheets_cache()
+    open_sheet = Mock()
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", open_sheet)
+
+    _sync_lock.acquire()
+    try:
+        with make_session() as session:
+            assert sync_hot_tab(session) is None
+    finally:
+        _sync_lock.release()
+    open_sheet.assert_not_called()
+
+
+def test_sync_hot_tab_returns_none_when_todays_tab_missing(monkeypatch):
+    # Early morning: technicians haven't created today's tab yet.
+    configured(monkeypatch)
+    reset_sheets_cache()
+    spreadsheet = Mock()
+    spreadsheet.worksheet.side_effect = gspread.WorksheetNotFound("no tab")
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+
+    with make_session() as session:
+        assert sync_hot_tab(session) is None
+    reset_sheets_cache()
+
+
+def test_sync_hot_tab_picks_up_edit_and_deletion(monkeypatch):
+    # A technician fixes a comment and removes a row in today's tab — one hot
+    # tick converges the CRM (the "typo fixed within ~15s" contract).
+    configured(monkeypatch)
+    reset_sheets_cache()
+    today = date.today()
+    two_rows = Mock()
+    two_rows.title = today.strftime("%d.%m.%y")
+    two_rows.get_all_values.return_value = ([[]] * 6) + [
+        ["1", "800", "2", "моно A2", "анатомія", "x", "", "", "", "", "помилковий текст"],
+        ["2", "801", "1", "пмма A3", "коронка", "x"],
+    ]
+    spreadsheet = Mock()
+
+    def only_today(name):
+        if name == two_rows.title:
+            return two_rows
+        raise gspread.WorksheetNotFound(name)
+
+    spreadsheet.worksheet.side_effect = only_today
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+
+    with make_session() as session:
+        first = sync_hot_tab(session, today=today)
+        assert first.created == 2
+
+        # Fix the comment on row 1, delete row 2 entirely.
+        two_rows.get_all_values.return_value = ([[]] * 6) + [
+            ["1", "800", "2", "моно A2", "анатомія", "x", "", "", "", "", "виправлений текст"],
+        ]
+        reset_sheets_cache()  # fresh worksheet lookup for the second tick
+        second = sync_hot_tab(session, today=today)
+
+        assert second.updated == 1
+        assert second.deleted == 1
+        survivor = session.scalar(select(Order).where(Order.work_order_no == "800"))
+        assert survivor.cam_comment == "виправлений текст"
+        assert session.scalar(select(Order).where(Order.work_order_no == "801")) is None
+    reset_sheets_cache()
+
+
+def test_sync_hot_tab_includes_extra_viewed_days(monkeypatch):
+    # An operator viewing an older day (queue day-strip) makes that tab hot
+    # too — "the open tab in the CRM" must be among the fast-synced ones.
+    configured(monkeypatch)
+    reset_sheets_cache()
+    today = date.today()
+    old_day = today - timedelta(days=9)
+    old_ws = worksheet(old_day, "900")
+    by_name = {old_ws.title: old_ws}
+    spreadsheet = Mock()
+
+    def by_title(name):
+        if name in by_name:
+            return by_name[name]
+        raise gspread.WorksheetNotFound(name)
+
+    spreadsheet.worksheet.side_effect = by_title
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+
+    with make_session() as session:
+        summary = sync_hot_tab(session, extra_days={old_day})
+
+        assert summary is not None
+        assert old_ws.title in summary.tab_names
+        assert summary.created == 1
+    reset_sheets_cache()
 
 
 def test_background_failure_is_not_persisted(monkeypatch):

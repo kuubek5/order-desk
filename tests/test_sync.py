@@ -236,6 +236,79 @@ def test_active_rework_returns_latest_record():
         assert order.active_rework.blame == "клієнт"
 
 
+def test_row_removed_from_sheet_is_deleted():
+    with make_session() as session:
+        # Two rows imported.
+        sync_tab(
+            session,
+            "01.08.26",
+            [make_row(row_number=1, work_order_no="24122"),
+             make_row(row_number=2, work_order_no="24123")],
+        )
+        session.commit()
+        assert session.scalar(select(Order).where(Order.work_order_no == "24123")) is not None
+
+        # Technician removed the second row from the sheet — its row_number no
+        # longer appears, so the order must go.
+        result = sync_tab(session, "01.08.26", [make_row(row_number=1, work_order_no="24122")])
+        session.commit()
+
+        assert result.deleted == 1
+        remaining = session.scalars(select(Order)).all()
+        assert [o.work_order_no for o in remaining] == ["24122"]
+
+
+def test_deleted_order_cascades_history():
+    from app.models import StatusEvent
+    with make_session() as session:
+        sync_tab(session, "01.08.26", [make_row(row_number=1, cam_comment="лишиться в історії")])
+        session.commit()
+        assert session.scalar(select(Comment)) is not None
+        assert session.scalar(select(StatusEvent)) is not None
+
+        # Row gone → order + its comment/status history removed with it.
+        sync_tab(session, "01.08.26", [make_row(row_number=2, work_order_no="99999")])
+        session.commit()
+
+        assert session.scalar(select(Order).where(Order.work_order_no == "24122")) is None
+        assert session.scalar(select(Comment).where(Comment.text == "лишиться в історії")) is None
+
+
+def test_empty_rows_never_wipe_tab():
+    # A transient empty read (headers only, via the lab TLS proxy) must not
+    # delete every order in the tab.
+    with make_session() as session:
+        sync_tab(session, "01.08.26", [make_row(row_number=1)])
+        session.commit()
+
+        result = sync_tab(session, "01.08.26", [])
+        session.commit()
+
+        assert result.deleted == 0
+        assert session.scalar(select(Order)) is not None
+
+
+def test_email_order_in_tab_is_not_deleted_by_sheet_sync():
+    with make_session() as session:
+        email_order = Order(
+            source="email",
+            sheet_tab="01.08.26",
+            row_number=5,
+            work_order_no="MAIL-1",
+            status="нове",
+        )
+        session.add(email_order)
+        session.commit()
+
+        # A lab sync of the same tab whose rows don't include row 5 must leave
+        # the email-sourced order untouched.
+        result = sync_tab(session, "01.08.26", [make_row(row_number=1)])
+        session.commit()
+
+        assert result.deleted == 0
+        assert session.scalar(select(Order).where(Order.source == "email")) is not None
+
+
 def test_active_rework_none_without_records():
     with make_session() as session:
         order = Order(source="lab", sheet_tab="01.08.26", row_number=1, work_order_no="24122", status="нове")
