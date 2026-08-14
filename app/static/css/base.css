@@ -4150,6 +4150,12 @@ main.handoutv2{max-width:1200px;margin:0 auto;padding:18px 20px}
    інші екрани. Розмітка/форми/маршрути збережені.
    ========================================================================== */
 main.worldv2{max-width:1000px;margin:0 auto;padding:18px 20px}
+/* Search results carry the full 10-column v2a row, wider than worldv2's reading
+   column — let the search page span full width so the whole row shows without a
+   horizontal scroll, while the search form stays a comfortable width. */
+main.worldv2.search-wide{max-width:none}
+main.worldv2.search-wide .search-container{max-width:none}
+main.worldv2.search-wide .search-form{max-width:900px}
 .worldv2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}
 .worldv2 h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 14px}
 .worldv2 .topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
