@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Order, SyncLog
 from app.parser import parse_rows
+from app.sheet_colors import fetch_row_blue_flags
 from app.settings_store import get_google_service_account_json, get_google_sheet_id
 from app.sheets import (
     call_with_retry,
@@ -206,7 +207,11 @@ def sync_google_sheets(
             current_tab = worksheet.title
             try:
                 rows = parse_rows(call_with_retry(worksheet.get_all_values))
-                result = sync_tab(session, current_tab, rows)
+                # Read fill colours (best-effort) so client rows whose blue was
+                # cleared flip to "видано". Only the full sync pays this extra
+                # fetch; the hot lane skips it (sync_hot_tab passes no colours).
+                row_blue = fetch_row_blue_flags(worksheet)
+                result = sync_tab(session, current_tab, rows, row_blue=row_blue)
                 # Commit this tab before touching the next, so a later tab's
                 # failure can never undo it.
                 session.commit()

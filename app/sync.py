@@ -165,7 +165,17 @@ def _should_apply_sheet_status(current: str, inferred: str) -> bool:
     return inferred_rank > current_rank
 
 
-def sync_tab(session: Session, sheet_tab: str, rows: list[OrderRow]) -> SyncResult:
+def sync_tab(
+    session: Session,
+    sheet_tab: str,
+    rows: list[OrderRow],
+    row_blue: dict[int, bool] | None = None,
+) -> SyncResult:
+    """Import a tab's rows. ``row_blue`` (row_number -> is the fill blue), when
+    provided, drives the client-row "видано" state: the lab clears the blue
+    fill once an email client's work is issued, so a client row that is NOT
+    blue is treated as issued. None means "no colour info this run" (the hot
+    lane skips the extra fetch) — client rows then just stay pending."""
     result = SyncResult()
 
     # Preload every existing order for this tab in ONE query instead of a
@@ -199,8 +209,11 @@ def sync_tab(session: Session, sheet_tab: str, rows: list[OrderRow]) -> SyncResu
         if is_client:
             fields = _client_fields(row)
             source = "sheet_client"
-            status = "нове"
             rework = None
+            # Blue fill = pending, blue removed = issued. Only when colour info
+            # is available this run; default (no info / still blue) = pending.
+            issued = row_blue is not None and not row_blue.get(row.row_number, True)
+            status = "видано" if issued else "нове"
         else:
             fields = _fields(row)
             source = "lab"

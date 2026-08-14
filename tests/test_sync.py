@@ -119,6 +119,51 @@ def test_vanished_client_row_is_deleted_like_a_lab_row():
         assert session.scalar(select(Order).where(Order.source == "sheet_client")) is None
 
 
+def test_client_row_not_blue_is_issued():
+    with make_session() as session:
+        # row_blue says row 5 is NOT blue → the lab cleared it → issued.
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_blue={5: False})
+        session.commit()
+        order = session.scalar(select(Order).where(Order.source == "sheet_client"))
+        assert order.status == "видано"
+
+
+def test_client_row_blue_stays_pending():
+    with make_session() as session:
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_blue={5: True})
+        session.commit()
+        order = session.scalar(select(Order).where(Order.source == "sheet_client"))
+        assert order.status == "нове"
+
+
+def test_client_row_without_colour_info_stays_pending():
+    with make_session() as session:
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)])  # row_blue=None
+        session.commit()
+        order = session.scalar(select(Order).where(Order.source == "sheet_client"))
+        assert order.status == "нове"
+
+
+def test_existing_client_flips_to_issued_when_blue_cleared():
+    with make_session() as session:
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_blue={5: True})
+        session.commit()
+        order = session.scalar(select(Order).where(Order.source == "sheet_client"))
+        assert order.status == "нове"
+
+        # Operator clears the blue → next sync flips it to issued.
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_blue={5: False})
+        session.commit()
+        session.refresh(order)
+        assert order.status == "видано"
+
+        # Re-bluing does NOT un-issue (видано is protected from downgrade).
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_blue={5: True})
+        session.commit()
+        session.refresh(order)
+        assert order.status == "видано"
+
+
 def test_new_sheet_comment_is_imported_to_history():
     with make_session() as session:
         sync_tab(session, "01.08.26", [make_row(cam_comment="Обережно з краєм")])

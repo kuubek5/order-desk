@@ -182,6 +182,21 @@ def append_mail_placeholder_row(
         },
     ]
     call_with_retry(lambda: worksheet.batch_update(updates))
+
+    # Paint the row blue to match the lab's convention (blue = pending client
+    # work; clearing it means issued). Best-effort — a formatting hiccup must
+    # never fail the write the operator is waiting on, and read-side detection
+    # (app/sheet_colors.py) tolerates a missing fill.
+    try:
+        call_with_retry(
+            lambda: worksheet.format(
+                f"A{row_number}:M{row_number}",
+                {"backgroundColor": {"red": 0.2901961, "green": 0.5254902, "blue": 0.9098039}},
+            )
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
     return row_number
 
 
