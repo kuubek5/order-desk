@@ -342,7 +342,7 @@ def test_accept_email_redirects_to_email_queue_filter():
         )
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/?source=email"
+    assert response.headers["location"] == "/?source=client"
     assert email.status == "прийнято"
     assert email.order_id == 42
     assert db.committed is True
@@ -352,6 +352,59 @@ def test_accept_email_redirects_to_email_queue_filter():
     # mail order the same as a table one — see accept_email's comment.
     assert order.sheet_tab == date.today().strftime("%d.%m.%y")
     assert order.row_number is None
+
+
+def test_accept_email_links_order_to_appended_sheet_row():
+    """The appended placeholder row must be linked to the order via row_number,
+    or the next sync re-imports that наряд-less row as a separate
+    source="sheet_client" order — the same work appearing twice."""
+    from app.parser import HEADER_ROWS
+
+    user = SimpleNamespace(id=7, username="operator", is_active=True)
+    email = SimpleNamespace(id=9, status="нове", attachments_status="ready", attachments=[], order_id=None)
+
+    class FakeDb:
+        def __init__(self):
+            self.added = []
+            self.committed = False
+
+        def get(self, model, object_id):
+            return user if model is User else (email if model is EmailMessage else None)
+
+        def add(self, value):
+            self.added.append(value)
+
+        def flush(self):
+            next(v for v in self.added if isinstance(v, Order)).id = 42
+
+        def commit(self):
+            self.committed = True
+
+        def execute(self, _stmt):
+            class _Result:
+                def first(self_inner):
+                    return (1,)
+
+                def all(self_inner):
+                    return []
+
+            return _Result()
+
+    db = FakeDb()
+    request = SimpleNamespace(session={"user_id": user.id})
+    today = date.today().strftime("%d.%m.%y")
+    fake_ws = SimpleNamespace(title=today)
+
+    with patch("app.web.open_spreadsheet"), \
+         patch("app.web.get_worksheet_by_name", return_value=fake_ws), \
+         patch("app.web.append_mail_placeholder_row", return_value=70):
+        asyncio.run(accept_email(
+            request=request, email_id=email.id,
+            client_name="Клієнт", material_color="моно A2", kind="анатомія", quantity="1", db=db,
+        ))
+
+    order = next(v for v in db.added if isinstance(v, Order))
+    assert order.row_number == 70 - HEADER_ROWS  # linked, so no duplicate on sync
 
 
 def test_accept_email_refuses_while_attachments_still_downloading():

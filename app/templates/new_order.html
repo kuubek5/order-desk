@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Нова робота — Order Desk{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'queue' %}
+{% include "_topbar_nav.html" %}
+
+<main class="worldv2 neworder">
+    <h1>Додати роботу клієнта</h1>
+    <p class="neworder-sub">
+        Робота запишеться в таблицю за сьогодні (<span class="mono">{{ today }}</span>) як рядок клієнта
+        без наряду й одразу зʼявиться в черзі у групі «Клієнти».
+    </p>
+
+    {% if error %}
+    <div class="neworder-error" role="alert">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="/orders/new" class="neworder-form">
+        <div class="neworder-field">
+            <label for="client_name">Клієнт</label>
+            <input type="text" id="client_name" name="client_name" value="{{ form.client_name }}"
+                   placeholder="Імʼя клієнта" autofocus required>
+        </div>
+        <div class="neworder-row">
+            <div class="neworder-field">
+                <label for="material_color">Матеріал / колір</label>
+                <input type="text" id="material_color" name="material_color" value="{{ form.material_color }}"
+                       placeholder="напр. mono a3, emo a2, Ti" required>
+            </div>
+            <div class="neworder-field neworder-field-qty">
+                <label for="quantity">Кількість</label>
+                <input type="text" id="quantity" name="quantity" value="{{ form.quantity }}"
+                       placeholder="1" inputmode="numeric">
+            </div>
+        </div>
+        <div class="neworder-actions">
+            <a href="/" class="btn">Скасувати</a>
+            <button type="submit" class="btn primary">Додати в чергу і таблицю</button>
+        </div>
+    </form>
+</main>
+{% endblock %}

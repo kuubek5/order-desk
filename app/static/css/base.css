@@ -4160,6 +4160,31 @@ main.worldv2{max-width:1000px;margin:0 auto;padding:18px 20px}
    column — let the search page span full width so the whole row shows without a
    horizontal scroll, while the search form stays a comfortable width. */
 main.worldv2.search-wide{max-width:none}
+
+/* Ручне додавання роботи (/orders/new) */
+.worldv2.neworder{max-width:560px}
+.neworder-sub{font-size:13px;color:var(--ink-3);line-height:1.55;margin:0 0 18px}
+.neworder-sub .mono{font-family:var(--font-mono);color:var(--ink-2)}
+.neworder-error{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);color:var(--alarm);
+  border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:16px}
+.neworder-form{display:flex;flex-direction:column;gap:16px}
+.neworder-row{display:flex;gap:14px}
+.neworder-field{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
+.neworder-field-qty{flex:0 0 120px}
+.neworder-field label{font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.neworder-field input{height:42px;padding:0 13px;border-radius:10px;background:#111823;border:1px solid var(--line);
+  color:var(--ink);font-family:var(--font-body);font-size:14px;outline:none;
+  transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
+.neworder-field input:focus{border-color:var(--focus-border);background:#0f1620}
+.neworder-field input::placeholder{color:var(--ink-3)}
+.neworder-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}
+.neworder .btn{height:42px;padding:0 18px;border-radius:10px;display:inline-flex;align-items:center;gap:8px;
+  border:1px solid var(--line);background:var(--card);color:var(--ink-2);font-size:13.5px;font-weight:500;
+  text-decoration:none;cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease}
+.neworder .btn:hover{background:var(--card-2);border-color:#3a4a5f;color:var(--ink)}
+.neworder .btn.primary{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.neworder .btn.primary:hover{background:rgba(20,184,166,.24);border-color:var(--accent)}
+.q2 .add-order-btn svg{width:15px;height:15px}
 main.worldv2.search-wide .search-container{max-width:none}
 main.worldv2.search-wide .search-form{max-width:900px}
 .worldv2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}

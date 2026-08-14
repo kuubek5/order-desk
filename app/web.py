@@ -103,6 +103,7 @@ from app.sheet_writer import (
     write_order_fields,
     write_rework_sum3d,
 )
+from app.parser import HEADER_ROWS
 from app.sheets import get_worksheet_by_name, open_spreadsheet
 from app.statuses import STATUSES, is_overdue
 from app.stats import (
@@ -1754,6 +1755,92 @@ async def set_cam_comment(
     )
 
 
+@app.get("/orders/new", response_class=HTMLResponse)
+def new_order_form(request: Request, db: Session = Depends(get_db), error: str = "", material_color: str = "", client_name: str = "", quantity: str = ""):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "new_order.html",
+        {
+            "user": user,
+            "today": date.today().strftime("%d.%m.%y"),
+            "error": error or None,
+            "form": {"client_name": client_name, "material_color": material_color, "quantity": quantity},
+        },
+    )
+
+
+@app.post("/orders/new")
+def create_manual_order(
+    request: Request,
+    client_name: str = Form(""),
+    material_color: str = Form(""),
+    quantity: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Add a client work by hand and mirror it into today's sheet tab as a
+    наряд-less client row (same shape as the blue-filled rows operators write:
+    client name in "Вид роботи", material in "Колір", quantity in "Кількість").
+    The row is linked by row_number so the next sync updates it in place rather
+    than importing a duplicate."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    client_name = client_name.strip()
+    material_color = material_color.strip()
+    quantity = quantity.strip()
+
+    def _back(message: str):
+        params = urlencode(
+            {"error": message, "client_name": client_name, "material_color": material_color, "quantity": quantity}
+        )
+        return RedirectResponse(f"/orders/new?{params}", status_code=303)
+
+    if not client_name:
+        return _back("Вкажіть імʼя клієнта.")
+    if not material_color:
+        return _back("Вкажіть матеріал / колір.")
+
+    tab = date.today().strftime("%d.%m.%y")
+    try:
+        worksheet = get_worksheet_by_name(open_spreadsheet(db=db), tab)
+        if worksheet is None or worksheet.title != tab:
+            return _back(f"Вкладку «{tab}» у таблиці не знайдено — створіть день у таблиці спершу.")
+        note_row = append_mail_placeholder_row(worksheet, client_name, quantity, material_color)
+    except Exception as exc:  # noqa: BLE001 — surface any sheet failure to the operator
+        logger.exception("Manual order sheet write failed")
+        return _back(f"Не вдалося записати в таблицю: {exc}")
+
+    order = Order(
+        source="sheet_client",
+        sheet_tab=tab,
+        row_number=note_row - HEADER_ROWS,
+        client_name=client_name,
+        material_color=material_color or None,
+        quantity=quantity or None,
+        status="нове",
+    )
+    ensure_seeded(db)
+    order.material_id = resolve_material_id(order.material_color, load_alias_rows(db), material_id_by_name(db))
+    db.add(order)
+    db.flush()
+    db.add(StatusEvent(order_id=order.id, operator_id=user.id, status="нове", actor=user.username))
+    db.add(
+        SyncLog(
+            direction="db_to_sheet",
+            sheet_tab=tab,
+            status="ok",
+            message=f"manual client order {order.id}: рядок {note_row}",
+        )
+    )
+    db.commit()
+
+    return RedirectResponse("/?source=client", status_code=303)
+
+
 @app.post("/orders/{order_id}/status", response_class=HTMLResponse)
 async def set_status(
     request: Request,
@@ -3076,6 +3163,12 @@ async def accept_email(
                 new_order.quantity or "",
                 new_order.material_color or "",
             )
+            # Link the order to the row we just wrote. Without this, the next
+            # sheet sync re-imports that наряд-less row as a SEPARATE
+            # source="sheet_client" order — the same work would then appear
+            # twice (once as "Пошта", once as "Клієнт"). With the row_number set,
+            # sync matches it to this order and updates in place instead.
+            new_order.row_number = note_row - HEADER_ROWS
             db.add(
                 SyncLog(
                     direction="mail_to_sheet",
@@ -3096,7 +3189,7 @@ async def accept_email(
 
     db.commit()
 
-    return RedirectResponse("/?source=email", status_code=303)
+    return RedirectResponse("/?source=client", status_code=303)
 
 
 @app.post("/mail/{email_id}/reject")

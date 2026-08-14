@@ -4,13 +4,14 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
 from app.db import Base
 from app.models import Attachment, EmailMessage, Order, User
+from app.parser import HEADER_ROWS
 
 
 def _database():
@@ -208,6 +209,61 @@ def test_open_preview_folder_bad_token_is_404(tmp_path, monkeypatch):
         with pytest.raises(HTTPException) as exc:
             web.open_preview_folder(request=_request(user.id), token="not-a-real-token", db=db)
     assert exc.value.status_code == 404
+
+
+def _stub_sheet_write(monkeypatch, note_row=65, tab=None):
+    tab = tab or date.today().strftime("%d.%m.%y")
+    fake_ws = SimpleNamespace(title=tab)
+    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: fake_ws)
+    monkeypatch.setattr(web, "append_mail_placeholder_row", lambda ws, c, q, m: note_row)
+
+
+def test_create_manual_order_writes_client_row_and_creates_order(monkeypatch):
+    engine = _database()
+    _stub_sheet_write(monkeypatch, note_row=65)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id),
+            client_name="Басараб", material_color="mono a3", quantity="2", db=db,
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/?source=client"
+
+        order = db.scalar(select(Order).where(Order.source == "sheet_client"))
+        assert order.client_name == "Басараб"
+        assert order.material_color == "mono a3"
+        assert order.quantity == "2"
+        assert order.sheet_tab == date.today().strftime("%d.%m.%y")
+        assert order.row_number == 65 - HEADER_ROWS  # linked to the written row
+
+
+def test_create_manual_order_requires_client_and_material(monkeypatch):
+    engine = _database()
+    _stub_sheet_write(monkeypatch)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id), client_name="   ", material_color="x", quantity="", db=db
+        )
+        assert resp.status_code == 303
+        assert "error=" in resp.headers["location"]
+        assert db.scalar(select(Order)) is None  # nothing created
+
+
+def test_create_manual_order_reports_missing_today_tab(monkeypatch):
+    engine = _database()
+    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: None)  # tab absent
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id), client_name="Басараб", material_color="mono a3", quantity="1", db=db
+        )
+        assert resp.status_code == 303
+        assert "error=" in resp.headers["location"]
+        assert db.scalar(select(Order)) is None
 
 
 def test_known_order_dates_derived_from_distinct_sheet_tabs(tmp_path):
