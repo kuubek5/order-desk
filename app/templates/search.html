@@ -30,27 +30,35 @@
                         {% if truncated %}<span class="text-muted"> (показано перші 100)</span>{% endif %}
                     </div>
 
-                    <div class="table-scroll">
-                    <table class="queue-table">
-                        <thead>
-                            <tr>
-                                <th>Наряд / клієнт</th>
-                                <th>Матеріал / Колір</th>
-                                <th>Вид роботи</th>
-                                <th>Кількість</th>
-                                <th>Здати до</th>
-                                <th>Шлях</th>
-                                <th>Sum3D ID</th>
-                                <th>Технік</th>
-                                <th>Статус</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for order in results %}
-                                {% include "_order_row.html" %}
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                    {# Той самий v2a-рядок, що й у черзі: обгортаємо в .q2, щоб
+                       спрацювали стилі рядка, і в .tablewrap для горизонтального
+                       скролу. show_source додає першу колонку «Вкладка» (день
+                       таблиці, де знайдено рядок) — thead нижче з нею збігається. #}
+                    {% set show_source = True %}
+                    <div class="q2">
+                    <div class="tablewrap">
+                        <table class="qtable">
+                            <thead>
+                                <tr>
+                                    <th>Вкладка</th>
+                                    <th>Наряд / клієнт</th>
+                                    <th>К-сть</th>
+                                    <th>Матеріал / Колір</th>
+                                    <th>Вид роботи</th>
+                                    <th>Шлях</th>
+                                    <th>Технік</th>
+                                    <th>Коментар</th>
+                                    <th>Sum3D ID</th>
+                                    <th>Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in results %}
+                                    {% include "_order_row.html" %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                     </div>
                 {% else %}
                     <div class="card queue-empty">

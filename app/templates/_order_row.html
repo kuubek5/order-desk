@@ -19,6 +19,10 @@
 {% set _dc = _dot.get(order.status, ('#8fa3bb', false)) %}
 {% set _rework = order.active_rework %}
 <tr class="queue-row {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if _rework %}queue-row-rework{% endif %} {{ material_color_css_class(order.material_color) }}" id="order-row-{{ order.id }}">
+    {# Джерело рядка — вкладка (день) Google-таблиці, де його знайдено. Показуємо
+       лише у пошуку (show_source), де результати охоплюють усі дні; у черзі
+       колонки нема (рядок лишається 9-колонковим). #}
+    {% if show_source %}<td class="src-tab"><a class="src-tab-link mono" href="/?date={{ order.sheet_tab }}" title="Відкрити чергу за цей день">{{ order.sheet_tab or '—' }}</a></td>{% endif %}
     <td class="order-id">
         <span class="sdot" aria-hidden="true" style="{% if _dc[1] %}background:transparent;box-shadow:inset 0 0 0 1.6px {{ _dc[0] }}{% else %}background:{{ _dc[0] }}{% endif %}"></span>
         {% if order.source == 'email' %}
