@@ -294,6 +294,34 @@
                     </label>
                     <button type="submit" class="settings-secondary-button settings-backup-danger">Відновити з бекапу</button>
                 </form>
+
+                <div class="settings-backup-divider"></div>
+
+                {# Автоматичні місячні знімки БД (app/monthly_backup.py). Read-only
+                   список — застосунок сам робить копію на початку кожного місяця.
+                   Знімки лежать поряд з базою у backups/monthly і містять усе;
+                   секрети в них зашифровані ключем ЦЬОГО ПК (для переносу на інший
+                   ПК — бекап з паролем вище). #}
+                <div class="monthly-backups">
+                    <h3 class="monthly-backups-title">Автоматичні місячні копії</h3>
+                    <p class="monthly-backups-hint">
+                        Наприкінці кожного місяця застосунок сам зберігає повну копію бази
+                        (роботи, клієнти, історія) у папку <span class="mono">backups\monthly</span> поряд з базою.
+                    </p>
+                    {% if monthly_snapshots %}
+                    <ul class="monthly-backups-list">
+                        {% for snap in monthly_snapshots %}
+                        <li>
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg>
+                            <span class="mono name">{{ snap.name }}</span>
+                            <span class="size mono">{{ snap.size_mb }} МБ</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="monthly-backups-empty">Перша копія зʼявиться на початку наступного місяця.</p>
+                    {% endif %}
+                </div>
             </div>
         </div>
 

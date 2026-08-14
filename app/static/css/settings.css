@@ -540,6 +540,20 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .dropzone-hint b{color:var(--ink-2);font-weight:600}
 .setv2 .dropzone-file{font-family:var(--font-mono);font-size:12px;color:var(--accent-c);word-break:break-all}
 .setv2 .table-scroll{overflow-x:auto}
+
+/* Автоматичні місячні копії — read-only список знімків БД */
+.setv2 .monthly-backups-title{font-size:13px;font-weight:600;color:var(--ink);margin:0 0 4px}
+.setv2 .monthly-backups-hint{font-size:11.5px;color:var(--ink-3);margin:0 0 12px;line-height:1.5}
+.setv2 .monthly-backups-hint .mono{font-family:var(--font-mono);color:var(--ink-2)}
+.setv2 .monthly-backups-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.setv2 .monthly-backups-list li{display:flex;align-items:center;gap:10px;padding:8px 12px;
+  background:var(--card-2);border:1px solid var(--line);border-radius:8px}
+.setv2 .monthly-backups-list svg{width:16px;height:16px;flex:0 0 16px;fill:none;stroke:var(--accent-c);
+  stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.setv2 .monthly-backups-list .name{font-size:12.5px;color:var(--ink)}
+.setv2 .monthly-backups-list .size{margin-left:auto;font-size:11.5px;color:var(--ink-3)}
+.setv2 .monthly-backups-empty{font-size:12px;color:var(--ink-3);margin:0}
+
 @media (max-width:640px){ .setv2 .users-add-form{grid-template-columns:1fr} }
 
 /* ============================================================================

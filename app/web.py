@@ -30,8 +30,9 @@ from app.auth import hash_password, verify_password
 from app.backup import BackupFormatError, BackupPasswordError, create_backup, restore_backup
 from app.client_matcher import match_client_name
 from app.client_profile import find_matching_orders, summarize_client_orders
-from app.config import MAIL_ATTACHMENTS_PATH, SESSION_SECRET_KEY
+from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH, SESSION_SECRET_KEY
 from app.db import Base, SessionLocal, engine
+from app.monthly_backup import ensure_monthly_snapshot, list_snapshots
 from app.export_scanner import scan_export_folder
 from app.license import get_license_status, get_machine_id, verify_license_key
 from app.mail_export import save_attachments_to_export
@@ -757,6 +758,37 @@ def _queue_sync_summary(db: Session) -> str:
     return f"Синхронізовано {time_label}"
 
 
+# Monthly DB snapshot: check this often whether last month's archive exists
+# yet (see app/monthly_backup.py for why it's a poll, not a midnight cron —
+# the lab PC is off at midnight). 6h means the archive appears within hours of
+# the first launch in a new month, and the check is a single cheap file-exists
+# the rest of the time.
+MONTHLY_BACKUP_INTERVAL_SECONDS = 6 * 60 * 60
+MONTHLY_BACKUP_INITIAL_DELAY_SECONDS = 30
+
+
+def _monthly_backup_tick() -> None:
+    """One archive-if-missing attempt. Never raises — a snapshot failure must
+    not touch the running app; it just retries on the next tick."""
+    try:
+        created = ensure_monthly_snapshot(engine, DB_PATH)
+        if created is not None:
+            logger.info("Monthly backup written: %s", created.name)
+    except Exception:
+        logger.exception("Monthly DB snapshot failed")
+
+
+def _monthly_backup_worker(stop_event: Event) -> None:
+    """Create the previous month's DB snapshot at the first opportunity after
+    the month rolls over, then idle-check every interval — same
+    thread/shutdown shape as the sync workers above."""
+    if stop_event.wait(MONTHLY_BACKUP_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        _monthly_backup_tick()
+        stop_event.wait(MONTHLY_BACKUP_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if os.environ.get("ORDER_DESK_SCHEMA_MANAGED") != "1":
@@ -810,6 +842,14 @@ async def lifespan(_: FastAPI):
         daemon=True,
     )
     update_check_thread.start()
+    monthly_backup_stop_event = Event()
+    monthly_backup_thread = Thread(
+        target=_monthly_backup_worker,
+        args=(monthly_backup_stop_event,),
+        name="order-desk-monthly-backup",
+        daemon=True,
+    )
+    monthly_backup_thread.start()
     try:
         yield
     finally:
@@ -819,6 +859,8 @@ async def lifespan(_: FastAPI):
         sheet_thread.join(timeout=1)
         update_check_stop_event.set()
         update_check_thread.join(timeout=1)
+        monthly_backup_stop_event.set()
+        monthly_backup_thread.join(timeout=1)
 
 
 app = FastAPI(title="Order Desk", lifespan=lifespan)
@@ -2272,6 +2314,13 @@ def get_settings(
             "paths_set": paths_set,
             "operators_exist": operators_exist,
             "backup_available": backup_available,
+            "monthly_snapshots": [
+                {
+                    "name": p.name,
+                    "size_mb": round(p.stat().st_size / (1024 * 1024), 1),
+                }
+                for p in list_snapshots(DB_PATH)
+            ],
             "setup_steps_done": setup_steps_done,
             "setup_steps_total": setup_steps_total,
             "operators": operators,
