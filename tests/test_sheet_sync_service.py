@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import Mock
 
 import gspread
@@ -392,6 +392,13 @@ def test_sync_hot_tab_picks_up_edit_and_deletion(monkeypatch):
     with make_session() as session:
         first = sync_hot_tab(session, today=today)
         assert first.created == 2
+
+        # Age past sync_tab's deletion grace window (fresh orders are shielded
+        # from reconciliation — the manual-add race guard in app/sync.py).
+        aged = datetime.utcnow() - timedelta(minutes=10)
+        for order in session.scalars(select(Order)):
+            order.created_at = aged
+        session.commit()
 
         # Fix the comment on row 1, delete row 2 entirely.
         two_rows.get_all_values.return_value = ([[]] * 6) + [

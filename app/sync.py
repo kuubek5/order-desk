@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -310,11 +311,24 @@ def sync_tab(
     # mistaken for that transient case. Only sheet-sourced orders are eligible
     # ("lab" work rows and "sheet_client" client rows) — IMAP "email" orders
     # never live in a sheet tab and must not be touched here.
+    # Grace period against a read/write race: a manual add reads the sheet's
+    # free row, writes it, and only then commits the Order — while a hot-lane
+    # tick that fetched get_all_values a moment EARLIER may reach this
+    # reconciliation with rows that predate that write. Without the grace it
+    # would delete the freshly created order (the row "isn't in the sheet"),
+    # and the next tick would re-import it as a new Order, losing its
+    # StatusEvent history and flashing in the UI. Orders younger than the
+    # grace window are simply not eligible for deletion; a genuinely removed
+    # row still gets reconciled by any sync after the window.
+    grace_cutoff = datetime.utcnow() - timedelta(seconds=120)
     if had_raw_rows:
         seen_rows = {row.row_number for row in rows}
         for row_number, order in existing_by_row.items():
-            if row_number not in seen_rows and order.source in ("lab", "sheet_client"):
-                session.delete(order)
-                result.deleted += 1
+            if row_number in seen_rows or order.source not in ("lab", "sheet_client"):
+                continue
+            if order.created_at is not None and order.created_at > grace_cutoff:
+                continue
+            session.delete(order)
+            result.deleted += 1
 
     return result

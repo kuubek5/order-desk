@@ -35,6 +35,19 @@ def make_session():
     return Session(engine)
 
 
+def age_orders(session):
+    """Backdate created_at past sync_tab's deletion grace window (120s) — a
+    just-created order is deliberately shielded from reconciliation (see the
+    manual-add read/write race note in app/sync.py), so deletion tests must
+    age their fixtures first, like real orders that have been around."""
+    from datetime import datetime, timedelta
+
+    old = datetime.utcnow() - timedelta(minutes=10)
+    for order in session.scalars(select(Order)):
+        order.created_at = old
+    session.commit()
+
+
 def make_client_row(**overrides):
     """A наряд-less client row: no work_order_no/technician, client name in the
     "вид" (kind) column, only material + quantity (real-tab shape)."""
@@ -138,6 +151,7 @@ def test_previously_imported_slm_row_is_removed_on_next_sync():
     with make_session() as session:
         sync_tab(session, "22.06.26", [make_row(row_number=1, work_order_no="24999")])
         session.commit()
+        age_orders(session)
         assert session.scalar(select(Order)) is not None
 
         result = sync_tab(session, "22.06.26", [
@@ -164,6 +178,7 @@ def test_vanished_client_row_is_deleted_like_a_lab_row():
     with make_session() as session:
         sync_tab(session, "22.06.26", [make_client_row(row_number=5)])
         session.commit()
+        age_orders(session)
         assert session.scalar(select(Order)) is not None
 
         # Client got issued / row removed → its row_number is gone → drop it.
@@ -429,6 +444,7 @@ def test_row_removed_from_sheet_is_deleted():
              make_row(row_number=2, work_order_no="24123")],
         )
         session.commit()
+        age_orders(session)
         assert session.scalar(select(Order).where(Order.work_order_no == "24123")) is not None
 
         # Technician removed the second row from the sheet — its row_number no
@@ -441,11 +457,42 @@ def test_row_removed_from_sheet_is_deleted():
         assert [o.work_order_no for o in remaining] == ["24122"]
 
 
+def test_freshly_created_order_survives_stale_sync_read():
+    """The manual-add race: an operator's add writes the sheet row and commits
+    the Order while a hot-lane tick is mid-flight with values fetched BEFORE
+    that write. The stale read doesn't contain the new row — reconciliation
+    must NOT delete the just-created order (grace window)."""
+    with make_session() as session:
+        # Freshly created manual order (created_at = now, inside the grace).
+        session.add(Order(
+            source="sheet_client", sheet_tab="01.08.26", row_number=163,
+            client_name="Свіжий", material_color="emo a3", status="нове",
+        ))
+        session.commit()
+
+        # Stale sync read: the sheet snapshot predates the manual add, so row
+        # 163 is absent from `rows`.
+        result = sync_tab(session, "01.08.26", [make_row(row_number=1)])
+        session.commit()
+
+        assert result.deleted == 0
+        assert session.scalar(
+            select(Order).where(Order.client_name == "Свіжий")
+        ) is not None
+
+        # Once aged past the grace, a genuinely vanished row IS reconciled.
+        age_orders(session)
+        result = sync_tab(session, "01.08.26", [make_row(row_number=1)])
+        session.commit()
+        assert result.deleted == 1
+
+
 def test_deleted_order_cascades_history():
     from app.models import StatusEvent
     with make_session() as session:
         sync_tab(session, "01.08.26", [make_row(row_number=1, cam_comment="лишиться в історії")])
         session.commit()
+        age_orders(session)
         assert session.scalar(select(Comment)) is not None
         assert session.scalar(select(StatusEvent)) is not None
 
