@@ -233,11 +233,13 @@ def append_manual_work_row(
     # Blue = pending client work (clearing it means issued). Client rows only,
     # best-effort — a formatting hiccup must never fail the write, and read-side
     # detection (app/sheet_colors.py) tolerates a missing fill.
+    # Paint only A:K — columns L/M/N (ID, Прорахував, Відфрезерував) keep their
+    # own green styling and must not be overwritten blue.
     if paint_blue:
         try:
             call_with_retry(
                 lambda: worksheet.format(
-                    f"A{row_number}:M{row_number}",
+                    f"A{row_number}:K{row_number}",
                     {"backgroundColor": {"red": 0.2901961, "green": 0.5254902, "blue": 0.9098039}},
                 )
             )

@@ -475,6 +475,21 @@ class TestManualPlacement:
         cells = {u["range"] for u in updates}
         assert gspread.utils.rowcol_to_a1(32, 2) in cells  # наряд col B
 
+    def test_client_blue_fill_stops_before_id_columns(self):
+        """Blue fill covers A:K only — columns L/M/N (ID, Прорахував,
+        Відфрезерував) keep their own green styling."""
+        fake_ws = MagicMock()
+        fake_ws.get.return_value = []
+
+        row = append_manual_work_row(
+            fake_ws, e_value="Клієнт", quantity="1", material_color="Ti",
+            placement="client", start_row=60,
+        )
+
+        fake_ws.format.assert_called_once()
+        rng = fake_ws.format.call_args[0][0]
+        assert rng == f"A{row}:K{row}"
+
     def test_lab_empty_table_uses_first_lab_row(self):
         fake_ws = MagicMock()
         fake_ws.get.return_value = []
