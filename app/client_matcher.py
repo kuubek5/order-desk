@@ -2,11 +2,74 @@
 
 This module provides client name matching with a confirmed-alias dictionary,
 using rapidfuzz for fuzzy matching when exact matches are not found.
+
+Real-world folder naming the scorer has to survive (per the lab): the surname
+is always there, but a folder may be surname-only while the sheet has
+name+surname (or vice versa), and either side may be Cyrillic or Latin
+transliteration. So scoring runs on transliterated text and treats a shared
+surname token as a near-exact match.
 """
 
 import unicodedata
 from dataclasses import dataclass
 from rapidfuzz import fuzz
+
+# Ukrainian/Russian -> Latin transliteration, two common styles: the official
+# passport style (я->ia, ю->iu, ...) and the everyday "ya-style" (я->ya,
+# ю->yu, ...). Folder names in the wild use either, so a name is compared in
+# both variants and the best score wins.
+_TRANSLIT_BASE = {
+    "а": "a", "б": "b", "в": "v", "г": "h", "ґ": "g", "д": "d", "е": "e",
+    "ж": "zh", "з": "z", "и": "y", "і": "i", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch",
+    "ь": "", "'": "", "’": "", "ъ": "", "ы": "y", "э": "e", "ё": "o",
+}
+_TRANSLIT_STYLES = (
+    {**_TRANSLIT_BASE, "є": "ie", "ї": "i", "й": "i", "ю": "iu", "я": "ia"},
+    # everyday/Russian-influenced style: я->ya, й->y, and г->g (Шульгін is
+    # written Shulgin far more often than the official Shulhin)
+    {**_TRANSLIT_BASE, "г": "g", "є": "ye", "ї": "yi", "й": "y", "ю": "yu", "я": "ya"},
+)
+
+
+def _normalize(name: str) -> str:
+    return unicodedata.normalize("NFC", name.strip().lower())
+
+
+def _transliterations(name: str) -> list[str]:
+    """The normalized name plus its Latin transliteration variants (deduped).
+    Latin input passes through unchanged, so comparing a Cyrillic sheet name
+    against a Latin folder name lands on the same alphabet."""
+    normalized = _normalize(name)
+    variants = {normalized}
+    for style in _TRANSLIT_STYLES:
+        variants.add("".join(style.get(ch, ch) for ch in normalized))
+    return list(variants)
+
+
+def _score_pair(sheet_name: str, folder_name: str) -> float:
+    """0-100 score between one sheet name and one folder name.
+
+    Best over all transliteration-variant pairs of:
+      * token_set_ratio — 100 when one side's tokens are a subset of the
+        other's ("Мулик" vs "Петро Мулик": surname-only vs name+surname);
+      * plain ratio — rewards whole-string closeness;
+      * best per-token pair ratio (slightly damped) — catches a shared-but-
+        misspelled surname across different transliteration habits.
+    """
+    best = 0.0
+    for a in _transliterations(sheet_name):
+        for b in _transliterations(folder_name):
+            best = max(best, float(fuzz.token_set_ratio(a, b)), float(fuzz.ratio(a, b)))
+            for ta in a.split():
+                if len(ta) < 4:  # short first-name bits ("др", initials) don't count
+                    continue
+                for tb in b.split():
+                    if len(tb) < 4:
+                        continue
+                    best = max(best, float(fuzz.ratio(ta, tb)) * 0.97)
+    return best
 
 
 @dataclass
@@ -81,21 +144,51 @@ def match_client_name(
             candidates=[],
         )
 
-    # Fuzzy match: normalize whitespace/case/Unicode form for comparison, keep original names.
-    # NFC normalization matters because visually-identical Cyrillic text can arrive in
-    # different composed forms (e.g. precomposed "й" U+0439 vs decomposed "и"+combining
-    # breve U+0438 U+0306) depending on the source app/OS that produced the sheet or the
-    # export folder name. Without normalizing first, rapidfuzz scores these as very
-    # different strings even though they render identically, which can push a genuine
-    # exact match below auto_match_threshold.
-    sheet_normalized = unicodedata.normalize("NFC", sheet_name.strip().lower())
+    # Exact match after normalization (case/whitespace/NFC) wins outright —
+    # a folder that IS the sheet name modulo a trailing space must not be
+    # dragged into the ambiguity check by a merely-similar second candidate.
+    sheet_normalized = _normalize(sheet_name)
+    exact = [f for f in folder_names if _normalize(f) == sheet_normalized]
+    if exact:
+        others = [
+            (f, _score_pair(sheet_name, f)) for f in folder_names if f != exact[0]
+        ]
+        others.sort(key=lambda x: x[1], reverse=True)
+        return MatchResult(
+            sheet_name=sheet_name,
+            matched_folder_name=exact[0],
+            confidence=100.0,
+            is_confirmed_alias=False,
+            candidates=[(exact[0], 100.0)] + others[:2],
+        )
 
-    # Score each folder name
-    scores: list[tuple[str, float]] = []
-    for folder_name in folder_names:
-        folder_normalized = unicodedata.normalize("NFC", folder_name.strip().lower())
-        score = fuzz.ratio(sheet_normalized, folder_normalized)
-        scores.append((folder_name, float(score)))
+    # Fuzzy match. Normalization (NFC/case/whitespace) matters because
+    # visually-identical Cyrillic text can arrive in different composed forms
+    # depending on the source app/OS; transliteration matters because the lab
+    # mixes Cyrillic and Latin folder names for the same client. Both are
+    # handled inside _score_pair.
+    scores: list[tuple[str, float]] = [
+        (folder_name, _score_pair(sheet_name, folder_name))
+        for folder_name in folder_names
+    ]
+
+    # A literal (normalized) whole-name match beats any fuzzy scoring — the
+    # surname-token boost can put "іваненко п." within the ambiguity margin of
+    # the true "іваненко петро" folder, but an exact-name folder is never
+    # actually ambiguous. Two exact-equal folders still fall through to the
+    # ambiguity path (genuinely needs a human).
+    exact = [
+        name for name in folder_names if _normalize(name) == _normalize(sheet_name)
+    ]
+    if len(exact) == 1:
+        top = sorted(scores, key=lambda x: x[1], reverse=True)[:3]
+        return MatchResult(
+            sheet_name=sheet_name,
+            matched_folder_name=exact[0],
+            confidence=100.0,
+            is_confirmed_alias=False,
+            candidates=top,
+        )
 
     # Sort by score (descending)
     scores.sort(key=lambda x: x[1], reverse=True)

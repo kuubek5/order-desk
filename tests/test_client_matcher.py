@@ -184,17 +184,18 @@ class TestBelowThreshold:
         assert result.confidence == 100.0
 
     def test_just_below_threshold_does_not_match(self):
-        """Score just below threshold should not auto-match."""
-        sheet_name = "Test Name"
-        folder_names = ["Test Name"]  # Will be 100 when normalized
+        """A fuzzy (non-exact) score below threshold should not auto-match.
+        An exact whole-name match is deliberately exempt from the threshold
+        (see match_client_name's exact-match shortcut), so use a near-miss."""
+        sheet_name = "Testtt"
+        folder_names = ["Different"]
 
-        # Set threshold higher than any possible match
         result = match_client_name(
-            sheet_name, folder_names, {}, auto_match_threshold=101.0
+            sheet_name, folder_names, {}, auto_match_threshold=95.0
         )
 
         assert result.matched_folder_name is None
-        assert result.confidence <= 100.0
+        assert result.confidence < 95.0
 
 
 class TestEmptyFolderNames:
@@ -343,3 +344,42 @@ class TestIntegrationScenarios:
         result2 = match_client_name(sheet_name, folder_names, known_aliases)
         assert result2.matched_folder_name == "коваленко іван"
         assert result2.is_confirmed_alias is True
+
+
+class TestRealWorldNaming:
+    """Naming the lab actually uses: surname always present, folder may be
+    surname-only vs sheet's name+surname, Cyrillic vs Latin either side."""
+
+    def test_surname_only_folder_matches_name_plus_surname_sheet(self):
+        r = match_client_name("Петро Мулик", ["Мулик", "Сидоренко"], {})
+        assert r.matched_folder_name == "Мулик"
+        assert r.confidence >= 90
+
+    def test_name_plus_surname_folder_matches_surname_only_sheet(self):
+        r = match_client_name("Мулик", ["Петро Мулик", "Іван Кужим"], {})
+        assert r.matched_folder_name == "Петро Мулик"
+
+    def test_cyrillic_sheet_matches_latin_folder(self):
+        r = match_client_name("Дяченко", ["Dyachenko", "Petrenko"], {})
+        assert r.matched_folder_name == "Dyachenko"
+        assert r.confidence >= 90
+
+    def test_latin_sheet_matches_cyrillic_folder(self):
+        r = match_client_name("Pavlenko", ["Павленко", "Науменко"], {})
+        assert r.matched_folder_name == "Павленко"
+
+    def test_transliteration_style_variation(self):
+        # ya-style folder vs official-style expectation
+        r = match_client_name("Юрій Ящук", ["Yashchuk", "Kovalenko"], {})
+        assert r.matched_folder_name == "Yashchuk"
+
+    def test_different_surnames_do_not_match(self):
+        r = match_client_name("Мулик", ["Kuzhym", "Petrenko"], {})
+        assert r.matched_folder_name is None
+        assert r.confidence < 90
+
+    def test_surname_match_wins_over_unrelated_shorter_string(self):
+        r = match_client_name(
+            "Олександр Підгорний", ["Підгорний", "Оля", "Стоянов"], {}
+        )
+        assert r.matched_folder_name == "Підгорний"
