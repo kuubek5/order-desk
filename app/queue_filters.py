@@ -104,9 +104,16 @@ def count_by_service_type(emails: list[EmailMessage]) -> dict[str, int]:
 
 
 def _has_path(order: Order) -> bool:
-    """Technician has finished the model and written the working-directory path
-    — the sheet's "Номер роботи" (Order.job_code). A non-empty job_code is the
-    "handed off by the lab" signal."""
+    """Whether the work is "handed off and ready to take".
+
+    For a lab work that means the technician wrote the working-directory path
+    (Order.job_code). Client works (email / sheet-entered) have no technician
+    path — the client already sent the files, so they are ready by nature.
+    Treating them as path-present keeps them out of "Не готово" and lets the
+    readiness split fall on their Sum3D like everything else (no Sum3D → «Можна
+    брати», has Sum3D → «В роботі»)."""
+    if order.source in CLIENT_SOURCES:
+        return True
     return bool(order.job_code and order.job_code.strip())
 
 

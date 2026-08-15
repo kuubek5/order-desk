@@ -20,14 +20,27 @@ class _FakeOrder:
         *,
         sum3d_id: str | None = None,
         active_rework=None,
+        source: str = "lab",
         job_code_folder_uri: str | None = None,
         export_folder_uri: str | None = None,
     ):
         self.job_code = job_code
         self.sum3d_id = sum3d_id
         self.active_rework = active_rework
+        self.source = source
         self.job_code_folder_uri = job_code_folder_uri
         self.export_folder_uri = export_folder_uri
+
+
+def test_client_rows_are_never_not_ready_and_split_on_sum3d():
+    # Client works have no technician path, so they must not fall into
+    # "Не готово"; readiness splits on their Sum3D instead.
+    client_taken = _FakeOrder(source="sheet_client", sum3d_id="10-19-48")
+    client_free = _FakeOrder(source="email", sum3d_id=None)
+
+    assert filter_by_readiness([client_taken, client_free], "not_ready") == []
+    assert filter_by_readiness([client_taken, client_free], "in_work") == [client_taken]
+    assert filter_by_readiness([client_taken, client_free], "can_take") == [client_free]
 
 
 def test_filter_by_readiness_all_returns_everything_unchanged():
