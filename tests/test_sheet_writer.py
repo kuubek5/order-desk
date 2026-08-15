@@ -13,6 +13,7 @@ import gspread.utils
 from app.sheet_writer import (
     append_mail_placeholder_row,
     append_manual_work_row,
+    append_manual_work_rows,
     append_order_comment,
     apply_status_markers,
     write_order_fields,
@@ -510,6 +511,54 @@ class TestManualPlacement:
                 fake_ws, work_order_no="1", e_value="вид", quantity="1",
                 material_color="x", placement="lab", paint_blue=False,
             )
+        fake_ws.batch_update.assert_not_called()
+
+
+class TestAppendManualWorkRows:
+    """Batch append: one batch_update for all cells, one blue format for the
+    whole contiguous block."""
+
+    def test_client_block_is_contiguous_and_one_batch(self):
+        fake_ws = MagicMock()
+        fake_ws.get.return_value = [["", "1", "x", "Наявний"]]  # row 60 filled
+
+        rows = append_manual_work_rows(
+            fake_ws,
+            [
+                {"client_name": "A", "e_value": "A", "material_color": "Ti", "quantity": "1"},
+                {"client_name": "B", "e_value": "B", "material_color": "emo", "quantity": "2"},
+                {"client_name": "C", "e_value": "C", "material_color": "mono", "quantity": "3"},
+            ],
+            placement="client", start_row=60,
+        )
+
+        assert rows == [61, 62, 63]  # contiguous below last filled (60)
+        fake_ws.batch_update.assert_called_once()  # single call for all rows
+        # blue covers the whole block A61:K63
+        fake_ws.format.assert_called_once()
+        assert fake_ws.format.call_args[0][0] == "A61:K63"
+
+    def test_lab_block_gap_then_contiguous_no_blue(self):
+        fake_ws = MagicMock()
+        fake_ws.get.return_value = [["24000"]] * 24  # lab rows 7..30
+
+        rows = append_manual_work_rows(
+            fake_ws,
+            [
+                {"work_order_no": "1", "e_value": "a", "material_color": "x", "quantity": ""},
+                {"work_order_no": "2", "e_value": "b", "material_color": "y", "quantity": ""},
+            ],
+            placement="lab", paint_blue=False,
+        )
+
+        assert rows == [32, 33]  # one gap (31) after last lab (30), then contiguous
+        fake_ws.format.assert_not_called()
+
+    def test_empty_works_writes_nothing(self):
+        fake_ws = MagicMock()
+        rows = append_manual_work_rows(fake_ws, [], placement="client")
+        assert rows == []
+        fake_ws.get.assert_not_called()
         fake_ws.batch_update.assert_not_called()
 
 

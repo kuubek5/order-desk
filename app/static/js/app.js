@@ -55,6 +55,33 @@ document.addEventListener("keydown", (event) => {
 // Inline "add work" form in the queue card-head: the "+" toggle reveals the
 // client-work fields right above the rows; cancel hides them. Delegated so it
 // survives HTMX swaps.
+// Apply the Клієнт/Лабораторія mode across ALL field-rows of the form. Hidden
+// fields are also DISABLED so the inactive mode's values aren't posted and a
+// hidden input never blocks submit.
+function applyAddworkType(form, type) {
+  form.querySelector("[data-addwork-typeinput]").value = type;
+  form.querySelectorAll("[data-addwork-type]").forEach((b) =>
+    b.classList.toggle("is-active", b.dataset.addworkType === type)
+  );
+  form.querySelectorAll("[data-addwork-client]").forEach((el) => {
+    el.hidden = type !== "client";
+    el.disabled = type !== "client";
+  });
+  form.querySelectorAll("[data-addwork-lab]").forEach((el) => {
+    el.hidden = type !== "lab";
+    el.disabled = type !== "lab";
+  });
+}
+
+// Show the per-row remove "✕" only when there's more than one row.
+function refreshAddworkRows(form) {
+  const rows = form.querySelectorAll("[data-addwork-row]");
+  rows.forEach((row) => {
+    const rm = row.querySelector("[data-addwork-removerow]");
+    if (rm) rm.hidden = rows.length <= 1;
+  });
+}
+
 document.addEventListener("click", (event) => {
   const toggle = event.target.closest("[data-addwork-toggle]");
   if (toggle) {
@@ -64,7 +91,7 @@ document.addEventListener("click", (event) => {
     form.hidden = !open;
     toggle.setAttribute("aria-expanded", String(open));
     if (open) {
-      const first = form.querySelector("input");
+      const first = form.querySelector("input:not([disabled])");
       if (first) first.focus();
     }
     return;
@@ -78,27 +105,41 @@ document.addEventListener("click", (event) => {
     }
     return;
   }
-  // Клієнт / Лабораторія type switch inside the add-work form. Hidden fields are
-  // also DISABLED so a hidden required input (client name vs наряд) never blocks
-  // submit and the inactive mode's values aren't posted.
+  // "+ ще рядок" — clone the last field-row, clear its values, keep current mode.
+  const addRow = event.target.closest("[data-addwork-addrow]");
+  if (addRow) {
+    const form = addRow.closest("[data-addwork]");
+    const rowsBox = form.querySelector("[data-addwork-rows]");
+    const rows = rowsBox.querySelectorAll("[data-addwork-row]");
+    const clone = rows[rows.length - 1].cloneNode(true);
+    clone.querySelectorAll("input").forEach((el) => { el.value = ""; });
+    rowsBox.appendChild(clone);
+    const type = form.querySelector("[data-addwork-typeinput]").value;
+    applyAddworkType(form, type);
+    refreshAddworkRows(form);
+    const focusEl = clone.querySelector("input:not([disabled])");
+    if (focusEl) focusEl.focus();
+    return;
+  }
+  // Per-row "✕" — remove that row (never the last remaining one).
+  const removeRow = event.target.closest("[data-addwork-removerow]");
+  if (removeRow) {
+    const form = removeRow.closest("[data-addwork]");
+    const row = removeRow.closest("[data-addwork-row]");
+    if (form.querySelectorAll("[data-addwork-row]").length > 1) {
+      row.remove();
+      refreshAddworkRows(form);
+    }
+    return;
+  }
+  // Клієнт / Лабораторія type switch.
   const typeBtn = event.target.closest("[data-addwork-type]");
   if (typeBtn) {
     const form = typeBtn.closest("[data-addwork]");
     const type = typeBtn.dataset.addworkType;
-    form.querySelector("[data-addwork-typeinput]").value = type;
-    form.querySelectorAll("[data-addwork-type]").forEach((b) =>
-      b.classList.toggle("is-active", b === typeBtn)
-    );
-    form.querySelectorAll("[data-addwork-client]").forEach((el) => {
-      el.hidden = type !== "client";
-      el.disabled = type !== "client";
-    });
-    form.querySelectorAll("[data-addwork-lab]").forEach((el) => {
-      el.hidden = type !== "lab";
-      el.disabled = type !== "lab";
-    });
+    applyAddworkType(form, type);
     const focusEl = form.querySelector(
-      type === "lab" ? '[name="work_order_no"]' : '[name="client_name"]'
+      type === "lab" ? '[name="work_order_no"]:not([disabled])' : '[name="client_name"]:not([disabled])'
     );
     if (focusEl) focusEl.focus();
   }

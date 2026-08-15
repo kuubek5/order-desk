@@ -160,6 +160,93 @@ def _next_lab_row(worksheet: gspread.Worksheet, lab_start: int, lab_end: int) ->
     return row_number
 
 
+def _row_cell_updates(row_number: int, work: dict) -> list[dict]:
+    """Point-cell batch_update entries for one manual work row. Quantity,
+    material and вид/name are always written; наряд/job/tech/Sum3D only when set."""
+    updates = [
+        {"range": gspread.utils.rowcol_to_a1(row_number, COL_QUANTITY), "values": [[work.get("quantity") or ""]]},
+        {"range": gspread.utils.rowcol_to_a1(row_number, COL_MATERIAL_COLOR), "values": [[work.get("material_color") or ""]]},
+        {"range": gspread.utils.rowcol_to_a1(row_number, COL_KIND), "values": [[work.get("e_value") or ""]]},
+    ]
+    optional = (
+        (COL_WORK_ORDER_NO, work.get("work_order_no")),
+        (COL_JOB_CODE, work.get("job_code")),
+        (COL_TECHNICIAN, work.get("technician_name")),
+        (COL_SUM3D_ID, work.get("sum3d_id")),
+    )
+    for col, value in optional:
+        if value:
+            updates.append({"range": gspread.utils.rowcol_to_a1(row_number, col), "values": [[value]]})
+    return updates
+
+
+def append_manual_work_rows(
+    worksheet: gspread.Worksheet,
+    works: list[dict],
+    *,
+    paint_blue: bool = True,
+    placement: str = "client",
+    start_row: int = CLIENT_REGION_START,
+    max_search_rows: int = 200,
+) -> list[int]:
+    """Append several manual work rows in ONE batch and return their 1-indexed
+    sheet rows (aligned with ``works``). Fewer round-trips than N single appends
+    — one batch_update for all cells, one blue format for the whole block.
+
+    Each ``works`` item is a dict with ``quantity``/``material_color``/
+    ``e_value`` (client NAME or lab вид) and optional ``work_order_no``/
+    ``job_code``/``technician_name``/``sum3d_id`` — see column layout in
+    append_manual_work_row.
+
+    Placement (CLAUDE.md §3): the whole batch is written as a contiguous block.
+      * ``placement="client"`` — block starts directly below the last populated
+        row in the client region (no gap), painted blue.
+      * ``placement="lab"`` — block starts one empty row below the last lab row
+        in the main table (single separator before the block), never painted.
+    Raises RuntimeError if the block doesn't fit the target region."""
+    if not works:
+        return []
+    n = len(works)
+    end_row = start_row + max_search_rows
+    if placement == "lab":
+        first = _next_lab_row(
+            worksheet, lab_start=HEADER_ROWS + 1, lab_end=CLIENT_REGION_START - 1
+        )
+        last = first + n - 1
+        if last > CLIENT_REGION_START - 1:
+            raise RuntimeError(
+                f"лабораторна зона не вміщає {n} рядків до клієнтської зони"
+            )
+    else:
+        first = _next_client_row(worksheet, start_row, end_row)
+        last = first + n - 1
+        if last > end_row:
+            raise RuntimeError(f"клієнтська зона не вміщає {n} рядків")
+
+    rows = list(range(first, last + 1))
+    updates: list[dict] = []
+    for row_number, work in zip(rows, works):
+        updates.extend(_row_cell_updates(row_number, work))
+    call_with_retry(lambda: worksheet.batch_update(updates))
+
+    # Blue = pending client work (clearing it means issued). The block is
+    # contiguous, so one format covers it. Paint only A:K — columns L/M/N (ID,
+    # Прорахував, Відфрезерував) keep their green styling. Best-effort: a
+    # formatting hiccup must never fail the write.
+    if paint_blue:
+        try:
+            call_with_retry(
+                lambda: worksheet.format(
+                    f"A{first}:K{last}",
+                    {"backgroundColor": {"red": 0.2901961, "green": 0.5254902, "blue": 0.9098039}},
+                )
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    return rows
+
+
 def append_manual_work_row(
     worksheet: gspread.Worksheet,
     *,
@@ -175,78 +262,26 @@ def append_manual_work_row(
     start_row: int = CLIENT_REGION_START,
     max_search_rows: int = 200,
 ) -> int:
-    """Append a work row into a dated tab and return its 1-indexed sheet row.
-
-    Shared by manual client AND lab adds (and the email intake). Writes only
-    the target cells (never a full-row overwrite), matching the sheet layout:
-      * col B "Номер наряду"  — ``work_order_no`` (empty for a client row)
-      * col C "Кількість"     — ``quantity``
-      * col D "Колір роботи"  — ``material_color``
-      * col E "Вид роботи"    — ``e_value`` (client NAME for a client row, work
-                                type/вид for a lab row)
-      * col I "Номер роботи"  — ``job_code`` work path (only when provided)
-      * col J "Ім'я техніка"  — ``technician_name`` (only when provided)
-      * col L "ID"            — ``sum3d_id`` (only when provided)
-
-    Placement follows the lab's workflow (CLAUDE.md §3):
-      * ``placement="client"`` — appended directly below the last populated row
-        in the client region (rows ``start_row``..), stacking contiguously with
-        no gap; painted blue by default (pending-client marker).
-      * ``placement="lab"`` — placed one empty row below the last lab row (наряд
-        in col B) inside the main table above the client region, keeping a blank
-        separator; never painted blue.
-
-    ``paint_blue`` fills the row the lab's pending-client blue (client rows
-    only). Raises RuntimeError if the target region is full.
-    """
-    end_row = start_row + max_search_rows
-    if placement == "lab":
-        row_number = _next_lab_row(
-            worksheet, lab_start=HEADER_ROWS + 1, lab_end=CLIENT_REGION_START - 1
-        )
-    else:
-        row_number = _next_client_row(worksheet, start_row, end_row)
-
-    updates = [
-        {"range": gspread.utils.rowcol_to_a1(row_number, COL_QUANTITY), "values": [[quantity or ""]]},
-        {"range": gspread.utils.rowcol_to_a1(row_number, COL_MATERIAL_COLOR), "values": [[material_color or ""]]},
-        {"range": gspread.utils.rowcol_to_a1(row_number, COL_KIND), "values": [[e_value or ""]]},
-    ]
-    if work_order_no:
-        updates.append(
-            {"range": gspread.utils.rowcol_to_a1(row_number, COL_WORK_ORDER_NO), "values": [[work_order_no]]}
-        )
-    if job_code:
-        updates.append(
-            {"range": gspread.utils.rowcol_to_a1(row_number, COL_JOB_CODE), "values": [[job_code]]}
-        )
-    if technician_name:
-        updates.append(
-            {"range": gspread.utils.rowcol_to_a1(row_number, COL_TECHNICIAN), "values": [[technician_name]]}
-        )
-    if sum3d_id:
-        updates.append(
-            {"range": gspread.utils.rowcol_to_a1(row_number, COL_SUM3D_ID), "values": [[sum3d_id]]}
-        )
-    call_with_retry(lambda: worksheet.batch_update(updates))
-
-    # Blue = pending client work (clearing it means issued). Client rows only,
-    # best-effort — a formatting hiccup must never fail the write, and read-side
-    # detection (app/sheet_colors.py) tolerates a missing fill.
-    # Paint only A:K — columns L/M/N (ID, Прорахував, Відфрезерував) keep their
-    # own green styling and must not be overwritten blue.
-    if paint_blue:
-        try:
-            call_with_retry(
-                lambda: worksheet.format(
-                    f"A{row_number}:K{row_number}",
-                    {"backgroundColor": {"red": 0.2901961, "green": 0.5254902, "blue": 0.9098039}},
-                )
-            )
-        except Exception:  # noqa: BLE001
-            pass
-
-    return row_number
+    """Append a single work row and return its 1-indexed sheet row. Thin wrapper
+    over append_manual_work_rows (email intake + single manual adds); see there
+    for the column layout and placement rules."""
+    rows = append_manual_work_rows(
+        worksheet,
+        [{
+            "work_order_no": work_order_no,
+            "quantity": quantity,
+            "material_color": material_color,
+            "e_value": e_value,
+            "job_code": job_code,
+            "technician_name": technician_name,
+            "sum3d_id": sum3d_id,
+        }],
+        paint_blue=paint_blue,
+        placement=placement,
+        start_row=start_row,
+        max_search_rows=max_search_rows,
+    )
+    return rows[0]
 
 
 def append_mail_placeholder_row(

@@ -211,34 +211,47 @@ def test_open_preview_folder_bad_token_is_404(tmp_path, monkeypatch):
     assert exc.value.status_code == 404
 
 
-def _stub_sheet_write(monkeypatch, note_row=65, tab=None):
+def _stub_sheet_write(monkeypatch, note_rows=None, tab=None):
+    """Patch the batch sheet writer. Captures the works list / placement /
+    paint_blue and returns sheet rows (defaults to a contiguous block from 60)."""
     tab = tab or date.today().strftime("%d.%m.%y")
     fake_ws = SimpleNamespace(title=tab)
-    calls = {}
+    cap = {}
     monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
     monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: fake_ws)
 
-    def _fake_append(ws, **kwargs):
-        calls.update(kwargs)
-        return note_row
+    def _fake_append(ws, works, *, paint_blue, placement):
+        cap["works"] = works
+        cap["paint_blue"] = paint_blue
+        cap["placement"] = placement
+        return note_rows if note_rows is not None else [60 + i for i in range(len(works))]
 
-    monkeypatch.setattr(web, "append_manual_work_row", _fake_append)
-    return calls
+    monkeypatch.setattr(web, "append_manual_work_rows", _fake_append)
+    return cap
+
+
+def _empty_form():
+    """The list defaults for the manual-order endpoint's per-field parallel
+    lists — merge overrides in per test."""
+    return dict(
+        client_name=[], work_order_no=[], kind=[], material_color=[],
+        quantity=[], sum3d_id=[], job_code=[], technician_name=[],
+    )
 
 
 def test_create_manual_order_writes_client_row_and_creates_order(monkeypatch):
     engine = _database()
-    calls = _stub_sheet_write(monkeypatch, note_row=65)
+    cap = _stub_sheet_write(monkeypatch, note_rows=[65])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
-            request=_request(user.id), work_type="client",
-            client_name="Басараб", work_order_no="", kind="",
-            material_color="mono a3", quantity="2", sum3d_id="", job_code="", technician_name="", db=db,
+            request=_request(user.id), work_type="client", db=db,
+            **{**_empty_form(), "client_name": ["Басараб"],
+               "material_color": ["mono a3"], "quantity": ["2"]},
         )
         assert resp.status_code == 303
         assert resp.headers["location"] == "/?source=client"
-        assert calls["placement"] == "client"
+        assert cap["placement"] == "client"
 
         order = db.scalar(select(Order).where(Order.source == "sheet_client"))
         assert order.client_name == "Басараб"
@@ -250,12 +263,13 @@ def test_create_manual_order_writes_client_row_and_creates_order(monkeypatch):
 
 def test_create_manual_lab_order_with_sum3d(monkeypatch):
     engine = _database()
-    calls = _stub_sheet_write(monkeypatch, note_row=70)
+    cap = _stub_sheet_write(monkeypatch, note_rows=[70])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
-            request=_request(user.id), work_type="lab", client_name="", work_order_no="24999",
-            kind="анатомія", material_color="mono a2", quantity="3", sum3d_id="10-19-48", job_code="", technician_name="", db=db,
+            request=_request(user.id), work_type="lab", db=db,
+            **{**_empty_form(), "work_order_no": ["24999"], "kind": ["анатомія"],
+               "material_color": ["mono a2"], "quantity": ["3"], "sum3d_id": ["10-19-48"]},
         )
         assert resp.status_code == 303
         assert resp.headers["location"] == "/?source=lab"
@@ -267,25 +281,25 @@ def test_create_manual_lab_order_with_sum3d(monkeypatch):
         assert order.client_name is None
         assert order.status == "прийнято"  # has a Sum3D
         assert order.row_number == 70 - HEADER_ROWS
-        # The sheet append got the наряд in B, вид in E, Sum3D, and no blue.
-        assert calls["work_order_no"] == "24999"
-        assert calls["e_value"] == "анатомія"
-        assert calls["sum3d_id"] == "10-19-48"
-        assert calls["paint_blue"] is False
-        assert calls["placement"] == "lab"
+        # The sheet append got наряд/вид/Sum3D and no blue.
+        w = cap["works"][0]
+        assert w["work_order_no"] == "24999"
+        assert w["e_value"] == "анатомія"
+        assert w["sum3d_id"] == "10-19-48"
+        assert cap["paint_blue"] is False
+        assert cap["placement"] == "lab"
 
 
 def test_create_manual_lab_order_allows_missing_naryad(monkeypatch):
     """Lab works may be incomplete — no наряд, just a material — and still be
     written (наряд is often filled in later)."""
     engine = _database()
-    calls = _stub_sheet_write(monkeypatch, note_row=32)
+    cap = _stub_sheet_write(monkeypatch, note_rows=[32])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
-            request=_request(user.id), work_type="lab", client_name="", work_order_no="  ",
-            kind="", material_color="mono a2", quantity="", sum3d_id="",
-            job_code="", technician_name="", db=db,
+            request=_request(user.id), work_type="lab", db=db,
+            **{**_empty_form(), "work_order_no": ["  "], "material_color": ["mono a2"]},
         )
         assert resp.status_code == 303
         assert resp.headers["location"] == "/?source=lab"
@@ -293,7 +307,7 @@ def test_create_manual_lab_order_allows_missing_naryad(monkeypatch):
         assert order is not None
         assert order.work_order_no is None  # blank наряд stored as NULL
         assert order.material_color == "mono a2"
-        assert calls["placement"] == "lab"
+        assert cap["placement"] == "lab"
 
 
 def test_create_manual_lab_order_rejects_fully_blank(monkeypatch):
@@ -302,9 +316,8 @@ def test_create_manual_lab_order_rejects_fully_blank(monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
-            request=_request(user.id), work_type="lab", client_name="", work_order_no="",
-            kind="", material_color="", quantity="", sum3d_id="",
-            job_code="", technician_name="", db=db,
+            request=_request(user.id), work_type="lab", db=db,
+            **{**_empty_form(), "material_color": [""], "quantity": [""]},
         )
         assert resp.status_code == 303
         assert "error=" in resp.headers["location"]
@@ -313,20 +326,65 @@ def test_create_manual_lab_order_rejects_fully_blank(monkeypatch):
 
 def test_create_manual_order_writes_job_code_and_technician(monkeypatch):
     engine = _database()
-    calls = _stub_sheet_write(monkeypatch, note_row=33)
+    cap = _stub_sheet_write(monkeypatch, note_rows=[33])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
-            request=_request(user.id), work_type="lab", client_name="", work_order_no="24500",
-            kind="анатомія", material_color="цирконій", quantity="1", sum3d_id="",
-            job_code="2026-07-21_00016-007", technician_name="Іван", db=db,
+            request=_request(user.id), work_type="lab", db=db,
+            **{**_empty_form(), "work_order_no": ["24500"], "kind": ["анатомія"],
+               "material_color": ["цирконій"], "quantity": ["1"],
+               "job_code": ["2026-07-21_00016-007"], "technician_name": ["Іван"]},
         )
         assert resp.status_code == 303
         order = db.scalar(select(Order).where(Order.source == "lab"))
         assert order.job_code == "2026-07-21_00016-007"
         assert order.technician_name == "Іван"
-        assert calls["job_code"] == "2026-07-21_00016-007"
-        assert calls["technician_name"] == "Іван"
+        assert cap["works"][0]["job_code"] == "2026-07-21_00016-007"
+        assert cap["works"][0]["technician_name"] == "Іван"
+
+
+def test_create_manual_order_multi_clients_one_push(monkeypatch):
+    """Three clients in a single submit → three sheet rows + three orders,
+    aligned by index; one empty trailing row is skipped."""
+    engine = _database()
+    cap = _stub_sheet_write(monkeypatch, note_rows=[85, 86, 87])
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id), work_type="client", db=db,
+            **{**_empty_form(),
+               "client_name": ["Іван", "Петро", "Марія", ""],
+               "material_color": ["mono a3", "Ti", "emo a2", ""],
+               "quantity": ["1", "2", "3", ""]},
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/?source=client"
+        # exactly three works passed to the writer (blank 4th row dropped)
+        assert [w["client_name"] for w in cap["works"]] == ["Іван", "Петро", "Марія"]
+        orders = db.scalars(
+            select(Order).where(Order.source == "sheet_client").order_by(Order.row_number)
+        ).all()
+        assert [o.client_name for o in orders] == ["Іван", "Петро", "Марія"]
+        assert [o.row_number for o in orders] == [85 - HEADER_ROWS, 86 - HEADER_ROWS, 87 - HEADER_ROWS]
+
+
+def test_create_manual_order_multi_rejects_bad_row(monkeypatch):
+    """A client row with a name but no material errors out and nothing is
+    written — the whole batch is validated before any DB/sheet write."""
+    engine = _database()
+    _stub_sheet_write(monkeypatch)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id), work_type="client", db=db,
+            **{**_empty_form(),
+               "client_name": ["Іван", "Петро"],
+               "material_color": ["mono a3", ""],  # 2nd row missing material
+               "quantity": ["1", "2"]},
+        )
+        assert resp.status_code == 303
+        assert "error=" in resp.headers["location"]
+        assert db.scalar(select(Order)) is None
 
 
 def test_create_manual_order_requires_client_and_material(monkeypatch):
@@ -335,8 +393,8 @@ def test_create_manual_order_requires_client_and_material(monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
-            request=_request(user.id), work_type="client", client_name="   ", work_order_no="",
-            kind="", material_color="x", quantity="", sum3d_id="", job_code="", technician_name="", db=db,
+            request=_request(user.id), work_type="client", db=db,
+            **{**_empty_form(), "client_name": ["   "], "material_color": ["x"]},
         )
         assert resp.status_code == 303
         assert "error=" in resp.headers["location"]
@@ -350,8 +408,9 @@ def test_create_manual_order_reports_missing_today_tab(monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
-            request=_request(user.id), work_type="client", client_name="Басараб", work_order_no="",
-            kind="", material_color="mono a3", quantity="1", sum3d_id="", job_code="", technician_name="", db=db,
+            request=_request(user.id), work_type="client", db=db,
+            **{**_empty_form(), "client_name": ["Басараб"],
+               "material_color": ["mono a3"], "quantity": ["1"]},
         )
         assert resp.status_code == 303
         assert "error=" in resp.headers["location"]

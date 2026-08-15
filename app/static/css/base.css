@@ -4199,10 +4199,21 @@ main.worldv2.search-wide{max-width:none}
 .q2 .addwork-toggle svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 .q2 .addwork-toggle:hover{background:rgba(20,184,166,.24);border-color:var(--accent)}
 .q2 .addwork-toggle[aria-expanded="true"]{background:rgba(20,184,166,.24)}
-.q2 .addwork{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;margin:0 0 2px;
+.q2 .addwork{display:flex;flex-direction:column;align-items:stretch;gap:10px;padding:12px 16px;margin:0 0 2px;
   border-top:1px solid var(--line);background:rgba(96,165,250,.05)}
 .q2 .addwork[hidden]{display:none}
-.q2 .addwork-seg{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+.q2 .addwork-rows{display:flex;flex-direction:column;gap:8px}
+.q2 .addwork-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.q2 .addwork-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.q2 .addwork-addrow{height:34px;padding:0 13px;border-radius:8px;border:1px dashed var(--line-2);background:none;
+  color:var(--ink-2);font:inherit;font-size:13px;cursor:pointer;white-space:nowrap;
+  transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.q2 .addwork-addrow:hover{color:var(--ink);border-color:var(--accent)}
+.q2 .addwork-removerow{flex:0 0 auto;width:30px;height:34px;border-radius:8px;border:1px solid var(--line);background:none;
+  color:var(--ink-3);cursor:pointer;font-size:13px;transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.q2 .addwork-removerow:hover{color:#fca5a5;border-color:rgba(248,113,113,.5)}
+.q2 .addwork-removerow[hidden]{display:none}
+.q2 .addwork-seg{display:inline-flex;align-self:flex-start;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
 .q2 .addwork-seg button{appearance:none;border:0;background:transparent;height:28px;padding:0 12px;border-radius:999px;
   font:inherit;font-size:12px;font-weight:500;color:var(--ink-2);cursor:pointer;
   transition:background var(--ui-speed) ease,color var(--ui-speed) ease}

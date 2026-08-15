@@ -98,7 +98,7 @@ from app.sheet_sync_service import (
 )
 from app.sheet_writer import (
     append_mail_placeholder_row,
-    append_manual_work_row,
+    append_manual_work_rows,
     append_order_comment,
     apply_status_markers,
     write_order_fields,
@@ -1085,31 +1085,21 @@ def _write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | No
 _sheet_writeback_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sheet-writeback")
 
 
-def _append_manual_row_warm(
-    tab: str, *, work_order_no: str, quantity: str, material_color: str,
-    e_value: str, job_code: str, technician_name: str, sum3d_id: str,
-    paint_blue: bool, placement: str,
-) -> int | None:
-    """Append a manual work row to `tab` on the write-back worker thread, whose
-    per-thread spreadsheet/worksheet cache stays warm (see _warm_sheet_writeback)
-    — so this runs in seconds instead of the ~40s cold open the request thread
-    would pay. Uses its own DB session for the settings/config read. Returns the
-    1-indexed sheet row written, or None if today's tab doesn't exist yet."""
+def _append_manual_rows_warm(
+    tab: str, works: list[dict], *, paint_blue: bool, placement: str,
+) -> list[int] | None:
+    """Append a batch of manual work rows to `tab` on the write-back worker
+    thread, whose per-thread spreadsheet/worksheet cache stays warm (see
+    _warm_sheet_writeback) — so this runs in seconds instead of the ~40s cold
+    open the request thread would pay. Uses its own DB session for the settings/
+    config read. Returns the list of 1-indexed sheet rows written, or None if
+    today's tab doesn't exist yet."""
     with SessionLocal() as s:
         worksheet = get_worksheet_by_name(open_spreadsheet(db=s), tab)
         if worksheet is None or worksheet.title != tab:
             return None
-        return append_manual_work_row(
-            worksheet,
-            work_order_no=work_order_no,
-            quantity=quantity,
-            material_color=material_color,
-            e_value=e_value,
-            job_code=job_code,
-            technician_name=technician_name,
-            sum3d_id=sum3d_id,
-            paint_blue=paint_blue,
-            placement=placement,
+        return append_manual_work_rows(
+            worksheet, works, paint_blue=paint_blue, placement=placement,
         )
 
 
@@ -1817,115 +1807,143 @@ def new_order_form(
     )
 
 
+_MAX_MANUAL_ROWS = 30
+
+
 @app.post("/orders/new")
 def create_manual_order(
     request: Request,
     work_type: str = Form("client"),
-    client_name: str = Form(""),
-    work_order_no: str = Form(""),
-    kind: str = Form(""),
-    material_color: str = Form(""),
-    quantity: str = Form(""),
-    sum3d_id: str = Form(""),
-    job_code: str = Form(""),
-    technician_name: str = Form(""),
+    client_name: list[str] = Form([]),
+    work_order_no: list[str] = Form([]),
+    kind: list[str] = Form([]),
+    material_color: list[str] = Form([]),
+    quantity: list[str] = Form([]),
+    sum3d_id: list[str] = Form([]),
+    job_code: list[str] = Form([]),
+    technician_name: list[str] = Form([]),
     db: Session = Depends(get_db),
 ):
-    """Add a work by hand and mirror it into today's sheet tab. Two kinds:
+    """Add one OR several works by hand and mirror them into today's sheet tab.
 
-      * client (default) — наряд-less client row (client name in "Вид роботи",
+    Each field arrives as a parallel list (one entry per form row), so a single
+    submit can add several clients or several lab наряди at once. Two kinds:
+
+      * client (default) — наряд-less client rows (client name in "Вид роботи",
         painted the lab's pending blue), source="sheet_client".
-      * lab — a normal internal work: наряд in "Номер наряду", вид in "Вид
+      * lab — normal internal works: наряд in "Номер наряду", вид in "Вид
         роботи", not painted, source="lab".
 
-    An optional Sum3D ID goes into column L for either. The row is linked by
-    row_number so the next sync updates it in place, never duplicating it."""
+    The whole batch is written as one contiguous block in a single sheet call.
+    Each row is linked by row_number so the next sync updates it in place."""
     user = get_current_user(request, db)
     if user is None:
         return RedirectResponse("/login", status_code=303)
 
     work_type = work_type if work_type in ("client", "lab") else "client"
-    client_name = client_name.strip()
-    work_order_no = work_order_no.strip()
-    kind = kind.strip()
-    material_color = material_color.strip()
-    quantity = quantity.strip()
-    sum3d_id = sum3d_id.strip()
-    job_code = job_code.strip()
-    technician_name = technician_name.strip()
+    is_lab = work_type == "lab"
 
     def _back(message: str):
-        params = urlencode({
-            "error": message, "work_type": work_type, "client_name": client_name,
-            "work_order_no": work_order_no, "kind": kind,
-            "material_color": material_color, "quantity": quantity, "sum3d_id": sum3d_id,
-            "job_code": job_code, "technician_name": technician_name,
-        })
+        params = urlencode({"error": message, "work_type": work_type})
         return RedirectResponse(f"/orders/new?{params}", status_code=303)
 
-    is_lab = work_type == "lab"
-    # Lab works may be added with incomplete data (no наряд, no material — these
-    # are often filled in later); we only guard against a fully blank row. A
-    # client row still needs the client name and its material.
-    if is_lab:
-        if not any((work_order_no, kind, material_color, job_code, technician_name, sum3d_id)):
-            return _back("Заповніть хоча б одне поле роботи.")
-    else:
-        if not client_name:
-            return _back("Вкажіть імʼя клієнта.")
-        if not material_color:
-            return _back("Вкажіть матеріал / колір.")
+    def _at(values: list[str], i: int) -> str:
+        return values[i].strip() if i < len(values) else ""
+
+    row_count = max(
+        len(client_name), len(work_order_no), len(kind), len(material_color),
+        len(quantity), len(sum3d_id), len(job_code), len(technician_name),
+    )
+    if row_count == 0:
+        return _back("Додайте хоча б одну роботу.")
+    if row_count > _MAX_MANUAL_ROWS:
+        return _back(f"Забагато рядків за раз (макс. {_MAX_MANUAL_ROWS}).")
+
+    # Build the per-row work list, validating each non-empty row. Fully blank
+    # rows (an extra field-set the operator left empty) are silently skipped.
+    works: list[dict] = []
+    for i in range(row_count):
+        row_client = _at(client_name, i)
+        row_naryad = _at(work_order_no, i)
+        row_kind = _at(kind, i)
+        row_material = _at(material_color, i)
+        row_qty = _at(quantity, i)
+        row_sum3d = _at(sum3d_id, i)
+        row_job = _at(job_code, i)
+        row_tech = _at(technician_name, i)
+
+        if is_lab:
+            if not any((row_naryad, row_kind, row_material, row_job, row_tech, row_sum3d)):
+                continue  # empty lab row
+            works.append({
+                "source": "lab", "work_order_no": row_naryad, "kind": row_kind,
+                "e_value": row_kind, "material_color": row_material, "quantity": row_qty,
+                "job_code": row_job, "technician_name": row_tech, "sum3d_id": row_sum3d,
+            })
+        else:
+            if not any((row_client, row_material, row_qty, row_job, row_tech, row_sum3d)):
+                continue  # empty client row
+            if not row_client:
+                return _back(f"Рядок {i + 1}: вкажіть імʼя клієнта.")
+            if not row_material:
+                return _back(f"Рядок {i + 1}: вкажіть матеріал / колір.")
+            works.append({
+                "source": "sheet_client", "client_name": row_client,
+                "e_value": row_client, "material_color": row_material, "quantity": row_qty,
+                "job_code": row_job, "technician_name": row_tech, "sum3d_id": row_sum3d,
+            })
+
+    if not works:
+        return _back("Заповніть хоча б одну роботу.")
 
     tab = date.today().strftime("%d.%m.%y")
-    # Append on the warm write-back worker (cached spreadsheet/worksheet), not
-    # this cold request thread which would re-pay ~40s of open+worksheet through
-    # the lab proxy. E-column carries the client NAME for a client row and the
-    # вид for a lab row; only client rows get the blue fill.
+    # Append the whole batch on the warm write-back worker (cached spreadsheet/
+    # worksheet) in ONE sheet call — the cold request thread would re-pay ~40s of
+    # open+worksheet through the lab proxy per call.
     try:
-        note_row = _sheet_writeback_pool.submit(
-            _append_manual_row_warm, tab,
-            work_order_no=(work_order_no if is_lab else ""),
-            quantity=quantity,
-            material_color=material_color,
-            e_value=(kind if is_lab else client_name),
-            job_code=job_code,
-            technician_name=technician_name,
-            sum3d_id=sum3d_id,
+        note_rows = _sheet_writeback_pool.submit(
+            _append_manual_rows_warm, tab, works,
             paint_blue=(not is_lab),
             placement=("lab" if is_lab else "client"),
-        ).result(timeout=90)
+        ).result(timeout=120)
     except Exception as exc:  # noqa: BLE001 — surface any sheet failure to the operator
         logger.exception("Manual order sheet write failed")
         return _back(f"Не вдалося записати в таблицю: {exc}")
-    if note_row is None:
+    if note_rows is None:
         return _back(f"Вкладку «{tab}» у таблиці не знайдено — створіть день у таблиці спершу.")
 
-    if is_lab:
-        order = Order(
-            source="lab", sheet_tab=tab, row_number=note_row - HEADER_ROWS,
-            work_order_no=work_order_no or None, kind=kind or None,
-            material_color=material_color or None, quantity=quantity or None,
-            job_code=job_code or None, technician_name=technician_name or None,
-            sum3d_id=sum3d_id or None,
-            status="прийнято" if sum3d_id else "нове",
-        )
-    else:
-        order = Order(
-            source="sheet_client", sheet_tab=tab, row_number=note_row - HEADER_ROWS,
-            client_name=client_name, material_color=material_color or None,
-            quantity=quantity or None, job_code=job_code or None,
-            technician_name=technician_name or None,
-            sum3d_id=sum3d_id or None, status="нове",
-        )
     ensure_seeded(db)
-    order.material_id = resolve_material_id(order.material_color, load_alias_rows(db), material_id_by_name(db))
-    db.add(order)
-    db.flush()
-    db.add(StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username))
+    alias_rows = load_alias_rows(db)
+    name_by_id = material_id_by_name(db)
+    created_ids: list[int] = []
+    for work, note_row in zip(works, note_rows):
+        if work["source"] == "lab":
+            order = Order(
+                source="lab", sheet_tab=tab, row_number=note_row - HEADER_ROWS,
+                work_order_no=work["work_order_no"] or None, kind=work["kind"] or None,
+                material_color=work["material_color"] or None, quantity=work["quantity"] or None,
+                job_code=work["job_code"] or None, technician_name=work["technician_name"] or None,
+                sum3d_id=work["sum3d_id"] or None,
+                status="прийнято" if work["sum3d_id"] else "нове",
+            )
+        else:
+            order = Order(
+                source="sheet_client", sheet_tab=tab, row_number=note_row - HEADER_ROWS,
+                client_name=work["client_name"], material_color=work["material_color"] or None,
+                quantity=work["quantity"] or None, job_code=work["job_code"] or None,
+                technician_name=work["technician_name"] or None,
+                sum3d_id=work["sum3d_id"] or None, status="нове",
+            )
+        order.material_id = resolve_material_id(order.material_color, alias_rows, name_by_id)
+        db.add(order)
+        db.flush()
+        db.add(StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username))
+        created_ids.append(order.id)
+
     db.add(
         SyncLog(
             direction="db_to_sheet", sheet_tab=tab, status="ok",
-            message=f"manual {work_type} order {order.id}: рядок {note_row}",
+            message=f"manual {work_type} ×{len(created_ids)}: рядки {note_rows}",
         )
     )
     db.commit()
