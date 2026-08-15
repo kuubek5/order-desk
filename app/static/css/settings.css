@@ -467,6 +467,14 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .link-button{border:0;background:none;color:var(--accent-c);font-size:12.5px;cursor:pointer;padding:0}
 .setv2 .link-button:hover{text-decoration:underline}
 
+/* компактний рядок статусу секрету (JSON-ключі) з кнопкою "Змінити" —
+   ховає textarea за замовчуванням, щоб крок не розтягувався. */
+.setv2 .cred-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.setv2 .cred-row-label{font-size:12px;font-weight:500;color:var(--ink-2)}
+.setv2 .cred-status{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);background:#1d2734;color:var(--ink-3)}
+.setv2 .cred-status-ready{background:rgba(20,184,166,.14);color:var(--accent-c);border-color:rgba(45,212,191,.3)}
+.setv2 [data-cred-field]{margin-top:8px}
+
 /* перевірка з'єднання / шляхів */
 .setv2 .settings-check-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
 .setv2 .settings-check-button{height:32px;padding:0 13px}

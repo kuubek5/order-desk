@@ -77,10 +77,7 @@
 
                 <form method="post" action="/settings">
                     <div class="settings-field">
-                        <label for="google_sheet_id">{{ fields[0].label }}</label>
-                        {% if fields[0].help_text %}
-                        <p class="settings-help">{{ fields[0].help_text }}</p>
-                        {% endif %}
+                        <label for="google_sheet_id">ID таблиці</label>
                         <div class="login-glow">
                             <div class="login-input-wrap">
                                 <input
@@ -89,7 +86,7 @@
                                     name="google_sheet_id"
                                     class="login-input"
                                     value="{{ values['google_sheet_id'] or '' }}"
-                                    placeholder="ID таблиці"
+                                    placeholder="з адресного рядка Google Sheets"
                                 >
                             </div>
                         </div>
@@ -105,43 +102,47 @@
                         <input type="hidden" name="google_auth_mode" value="{{ auth_mode }}" data-authmode-input>
                     </div>
 
+                    {% set sa_saved = values['google_service_account_json'] %}
                     <div class="settings-field" data-authmode-block="service_account" {% if auth_mode == 'oauth' %}hidden{% endif %}>
-                        <label for="google_service_account_json">{{ fields[1].label }}</label>
-                        {% if fields[1].help_text %}
-                        <p class="settings-help">{{ fields[1].help_text }}</p>
-                        {% endif %}
-                        <div class="login-glow">
+                        <div class="cred-row" data-cred-toggle-group>
+                            <label for="google_service_account_json" class="cred-row-label">JSON-ключ сервісного акаунта</label>
+                            <span class="cred-status {% if sa_saved %}cred-status-ready{% endif %}">{% if sa_saved %}збережено{% else %}не задано{% endif %}</span>
+                            <button type="button" class="link-button" data-cred-toggle>{% if sa_saved %}Змінити{% else %}Вставити{% endif %}</button>
+                        </div>
+                        <div class="login-glow" data-cred-field {% if sa_saved %}hidden{% endif %}>
                             <div class="login-input-wrap">
                                 <textarea
                                     id="google_service_account_json"
                                     name="google_service_account_json"
                                     class="login-input settings-textarea"
-                                    placeholder="{% if values['google_service_account_json'] %}•••••••• (збережено){% else %}не задано{% endif %}"
+                                    placeholder="Вміст JSON-ключа сервісного акаунта Google"
                                 ></textarea>
                             </div>
                         </div>
                     </div>
 
+                    {% set oauth_saved = values['google_oauth_client_json'] %}
                     <div class="settings-field" data-authmode-block="oauth" {% if auth_mode != 'oauth' %}hidden{% endif %}>
-                        <label for="google_oauth_client_json">OAuth Client JSON</label>
-                        <p class="settings-help">Вміст JSON «Desktop app» OAuth-клієнта з Google Cloud Console (кнопка «Створити клієнта» на екрані Credentials).</p>
-                        <div class="login-glow">
+                        <div class="cred-row" data-cred-toggle-group>
+                            <label for="google_oauth_client_json" class="cred-row-label">OAuth Client JSON</label>
+                            <span class="cred-status {% if oauth_saved %}cred-status-ready{% endif %}">{% if oauth_saved %}збережено{% else %}не задано{% endif %}</span>
+                            <button type="button" class="link-button" data-cred-toggle>{% if oauth_saved %}Змінити{% else %}Вставити{% endif %}</button>
+                        </div>
+                        <div class="login-glow" data-cred-field {% if oauth_saved %}hidden{% endif %}>
                             <div class="login-input-wrap">
                                 <textarea
                                     id="google_oauth_client_json"
                                     name="google_oauth_client_json"
                                     class="login-input settings-textarea"
-                                    placeholder="{% if values['google_oauth_client_json'] %}•••••••• (збережено){% else %}не задано{% endif %}"
+                                    placeholder="JSON «Desktop app» OAuth-клієнта з Google Cloud Console"
                                 ></textarea>
                             </div>
                         </div>
 
                         <div class="settings-check-row">
                             <span class="connection-state {% if values['google_oauth_refresh_token'] %}connection-state-ready{% endif %}">
-                                {% if values['google_oauth_refresh_token'] %}Google-акаунт підключено{% else %}Google-акаунт не підключено{% endif %}
+                                {% if values['google_oauth_refresh_token'] %}Акаунт підключено{% else %}Акаунт не підключено{% endif %}
                             </span>
-                        </div>
-                        <div class="settings-check-row">
                             <button
                                 type="button"
                                 class="settings-secondary-button settings-check-button"
@@ -151,13 +152,13 @@
                                 hx-indicator="#oauth-check-spinner"
                                 hx-params="none"
                             >Увійти через Google</button>
+                            {% if values['google_oauth_refresh_token'] %}
+                            <button type="submit" formaction="/settings/google-oauth/disconnect" formnovalidate class="link-button">Відключити</button>
+                            {% endif %}
                             <span class="check-spinner htmx-indicator" id="oauth-check-spinner" aria-hidden="true"></span>
                             <span id="oauth-check-result" class="settings-check-result" aria-live="polite"></span>
                         </div>
-                        <p class="settings-help">Спершу натисніть «Зберегти» після вставки JSON. Відкриється системний браузер — увійдіть Google-акаунтом, що має доступ до таблиці, і дозвольте доступ.</p>
-                        {% if values['google_oauth_refresh_token'] %}
-                        <button type="submit" formaction="/settings/google-oauth/disconnect" formnovalidate class="link-button">Відключити Google-акаунт</button>
-                        {% endif %}
+                        <p class="settings-help">Спершу «Зберегти», тоді «Увійти через Google» — відкриється системний браузер для входу тим акаунтом, що має доступ до таблиці.</p>
                     </div>
 
                     <div class="settings-check-row">
@@ -173,7 +174,6 @@
                         <span class="check-spinner htmx-indicator" id="sheets-check-spinner" aria-hidden="true"></span>
                         <span id="sheets-check-result" class="settings-check-result" aria-live="polite"></span>
                     </div>
-                    <p class="settings-help">Перевіряє доступ до <strong>збереженої</strong> таблиці без імпорту рядків — спершу натисніть «Зберегти», якщо щойно змінили ID чи ключ.</p>
 
                     <div class="settings-actions">
                         <button type="submit" name="action" value="save" class="settings-secondary-button">Зберегти</button>

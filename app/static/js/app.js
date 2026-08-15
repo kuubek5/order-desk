@@ -132,6 +132,26 @@ document.addEventListener("click", (event) => {
     }
     return;
   }
+  // Settings: "Змінити"/"Вставити" reveals a collapsed credential textarea
+  // (JSON keys stay hidden behind a compact status row until the admin
+  // actually wants to change them).
+  const credToggle = event.target.closest("[data-cred-toggle]");
+  if (credToggle) {
+    const group = credToggle.closest("[data-cred-toggle-group]");
+    const field = group.parentElement.querySelector("[data-cred-field]");
+    const opening = field.hidden; // currently collapsed -> this click reveals it
+    if (opening && !credToggle.dataset.originalLabel) {
+      credToggle.dataset.originalLabel = credToggle.textContent;
+    }
+    field.hidden = !opening;
+    credToggle.textContent = opening ? "Скасувати" : (credToggle.dataset.originalLabel || "Змінити");
+    if (opening) {
+      const ta = field.querySelector("textarea, input");
+      if (ta) ta.focus();
+    }
+    return;
+  }
+
   // Settings: Сервісний акаунт / Google-акаунт auth-mode toggle.
   const authBtn = event.target.closest("[data-authmode]");
   if (authBtn) {
