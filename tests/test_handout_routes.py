@@ -204,3 +204,61 @@ def test_group_disappears_from_handout_listing_after_issue(monkeypatch):
             )
             web.get_handout(request=_request(user.id), db=db)
         assert ctx_holder["client_groups"] == []
+
+
+def _get_handout_context(monkeypatch, db, user_id):
+    with patch.object(web, "scan_export_folder", return_value=[]):
+        ctx_holder = {}
+        monkeypatch.setattr(
+            web.templates, "TemplateResponse",
+            lambda request, template, context: ctx_holder.update(context) or context,
+        )
+        web.get_handout(request=_request(user_id), db=db)
+    return ctx_holder
+
+
+def test_handout_orders_follow_sheet_top_to_bottom_order(monkeypatch):
+    """One client, three works — furnaces close at different times through the
+    day, so the sheet's own row order is a rough readiness timeline; the
+    handout card must show them in that order, not DB insertion order."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        # inserted out of row order on purpose
+        db.add(_client_order(client_name="Basarab", status="нове", row_number=90))
+        db.add(_client_order(client_name="Basarab", status="нове", row_number=61))
+        db.add(_client_order(client_name="Basarab", status="нове", row_number=75))
+        db.commit()
+
+        ctx = _get_handout_context(monkeypatch, db, user.id)
+        row_numbers = [o.row_number for o in ctx["client_groups"][0]["orders"]]
+        assert row_numbers == [61, 75, 90]
+
+
+def test_handout_cards_follow_sheet_order_by_earliest_work(monkeypatch):
+    """Card order itself follows each client's earliest work position, so
+    flipping through the handout screen mirrors flipping through the table."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(_client_order(client_name="Later", status="нове", row_number=90))
+        db.add(_client_order(client_name="Earlier", status="нове", row_number=61))
+        db.commit()
+
+        ctx = _get_handout_context(monkeypatch, db, user.id)
+        names = [g["client_name"] for g in ctx["client_groups"]]
+        assert names == ["Earlier", "Later"]
+
+
+def test_handout_orders_older_day_sorts_before_newer_day(monkeypatch):
+    engine = _database()
+    two_days_ago = (date.today() - timedelta(days=2)).strftime("%d.%m.%y")
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(_client_order(client_name="Basarab", status="нове", row_number=5, sheet_tab=YESTERDAY))
+        db.add(_client_order(client_name="Basarab", status="нове", row_number=200, sheet_tab=two_days_ago))
+        db.commit()
+
+        ctx = _get_handout_context(monkeypatch, db, user.id)
+        tabs = [o.sheet_tab for o in ctx["client_groups"][0]["orders"]]
+        assert tabs == [two_days_ago, YESTERDAY]  # older day first even though row 200 > row 5

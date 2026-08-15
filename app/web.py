@@ -595,6 +595,13 @@ def _order_date(order: Order) -> date:
     return date.today()
 
 
+def _sheet_order_key(order: Order) -> tuple:
+    """(day, row position) — the same top-to-bottom order the lab reads off
+    the physical table, used by the handout screen (see get_handout) as a
+    rough readiness timeline instead of DB insertion order."""
+    return (_order_date(order), order.row_number if order.row_number is not None else 0)
+
+
 def _queue_sort_key(order: Order) -> tuple:
     """Oldest overdue work first, then the earliest daily deadline."""
     due_rank = {"09:00": 0, "14:00": 1, "16:00": 2}.get(order.due_time, 3)
@@ -2107,6 +2114,13 @@ def get_handout(request: Request, source: str = "all", db: Session = Depends(get
             continue
         groups.setdefault(order.client_name, []).append(order)
 
+    # Sheet order (day, then row position top-to-bottom), not DB insertion
+    # order — the lab reads this as a rough readiness timeline (furnaces close
+    # at different times through the day), so a client's own works AND the
+    # card order itself both follow it, same as flipping through the table.
+    for group_orders in groups.values():
+        group_orders.sort(key=_sheet_order_key)
+
     entries = scan_export_folder(Path(get_export_folder_path(db)))
     folder_names = sorted({e.client_folder_name for e in entries})
     aliases = {
@@ -2137,6 +2151,10 @@ def get_handout(request: Request, source: str = "all", db: Session = Depends(get
                 "all_found": all_found,
             }
         )
+
+    # Cards themselves follow the same top-to-bottom principle, keyed off
+    # each client's earliest (already-sorted) work.
+    client_groups.sort(key=lambda g: _sheet_order_key(g["orders"][0]))
 
     source_counts = count_client_groups_by_source(client_groups)
     client_groups = filter_client_groups_by_source(client_groups, source)
