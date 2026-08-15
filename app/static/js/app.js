@@ -17,6 +17,37 @@ document.addEventListener("htmx:beforeRequest", (event) => {
   }
 });
 
+// Poll swap without losing the operator's place. Replacing the whole
+// #queue-rows node (hx-swap=outerHTML) makes the document momentarily shorter,
+// so the browser clamped window scroll to the top on every poll tick — an
+// operator reading the bottom of the queue got yanked up every 5-15s.
+// Two layers:
+//   1. If the poll response is byte-identical to the last one, skip the swap
+//      entirely (no DOM churn, no flicker) — the common case, nothing changed.
+//   2. When content DID change, remember the scroll position and restore it
+//      right after the swap settles.
+let lastRowsResponse = null;
+let savedScrollY = null;
+document.addEventListener("htmx:beforeSwap", (event) => {
+  const target = event.detail.target;
+  if (!target || target.id !== "queue-rows") return;
+  const incoming = event.detail.serverResponse;
+  if (incoming != null && incoming === lastRowsResponse) {
+    event.detail.shouldSwap = false;
+    return;
+  }
+  lastRowsResponse = incoming;
+  savedScrollY = window.scrollY;
+});
+document.addEventListener("htmx:afterSettle", (event) => {
+  if (savedScrollY == null) return;
+  const el = event.detail && event.detail.elt;
+  if (el && el.id === "queue-rows") {
+    window.scrollTo(0, savedScrollY);
+    savedScrollY = null;
+  }
+});
+
 // Inline comment textarea: grow to fit the full text while focused/typing so a
 // long technician comment is readable and editable, collapse back to one line
 // on blur. Enter saves (blurs → the form's hx-trigger=change fires), Shift+Enter
