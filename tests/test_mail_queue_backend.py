@@ -214,9 +214,16 @@ def test_open_preview_folder_bad_token_is_404(tmp_path, monkeypatch):
 def _stub_sheet_write(monkeypatch, note_row=65, tab=None):
     tab = tab or date.today().strftime("%d.%m.%y")
     fake_ws = SimpleNamespace(title=tab)
+    calls = {}
     monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
     monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: fake_ws)
-    monkeypatch.setattr(web, "append_mail_placeholder_row", lambda ws, c, q, m: note_row)
+
+    def _fake_append(ws, **kwargs):
+        calls.update(kwargs)
+        return note_row
+
+    monkeypatch.setattr(web, "append_manual_work_row", _fake_append)
+    return calls
 
 
 def test_create_manual_order_writes_client_row_and_creates_order(monkeypatch):
@@ -225,8 +232,9 @@ def test_create_manual_order_writes_client_row_and_creates_order(monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
-            request=_request(user.id),
-            client_name="Басараб", material_color="mono a3", quantity="2", db=db,
+            request=_request(user.id), work_type="client",
+            client_name="Басараб", work_order_no="", kind="",
+            material_color="mono a3", quantity="2", sum3d_id="", db=db,
         )
         assert resp.status_code == 303
         assert resp.headers["location"] == "/?source=client"
@@ -239,13 +247,54 @@ def test_create_manual_order_writes_client_row_and_creates_order(monkeypatch):
         assert order.row_number == 65 - HEADER_ROWS  # linked to the written row
 
 
+def test_create_manual_lab_order_with_sum3d(monkeypatch):
+    engine = _database()
+    calls = _stub_sheet_write(monkeypatch, note_row=70)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id), work_type="lab", client_name="", work_order_no="24999",
+            kind="анатомія", material_color="mono a2", quantity="3", sum3d_id="10-19-48", db=db,
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/?source=lab"
+
+        order = db.scalar(select(Order).where(Order.source == "lab"))
+        assert order.work_order_no == "24999"
+        assert order.kind == "анатомія"
+        assert order.sum3d_id == "10-19-48"
+        assert order.client_name is None
+        assert order.status == "прийнято"  # has a Sum3D
+        assert order.row_number == 70 - HEADER_ROWS
+        # The sheet append got the наряд in B, вид in E, Sum3D, and no blue.
+        assert calls["work_order_no"] == "24999"
+        assert calls["e_value"] == "анатомія"
+        assert calls["sum3d_id"] == "10-19-48"
+        assert calls["paint_blue"] is False
+
+
+def test_create_manual_lab_order_requires_naryad(monkeypatch):
+    engine = _database()
+    _stub_sheet_write(monkeypatch)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id), work_type="lab", client_name="", work_order_no="  ",
+            kind="", material_color="mono a2", quantity="", sum3d_id="", db=db,
+        )
+        assert resp.status_code == 303
+        assert "error=" in resp.headers["location"]
+        assert db.scalar(select(Order)) is None
+
+
 def test_create_manual_order_requires_client_and_material(monkeypatch):
     engine = _database()
     _stub_sheet_write(monkeypatch)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
-            request=_request(user.id), client_name="   ", material_color="x", quantity="", db=db
+            request=_request(user.id), work_type="client", client_name="   ", work_order_no="",
+            kind="", material_color="x", quantity="", sum3d_id="", db=db,
         )
         assert resp.status_code == 303
         assert "error=" in resp.headers["location"]
@@ -259,7 +308,8 @@ def test_create_manual_order_reports_missing_today_tab(monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
-            request=_request(user.id), client_name="Басараб", material_color="mono a3", quantity="1", db=db
+            request=_request(user.id), work_type="client", client_name="Басараб", work_order_no="",
+            kind="", material_color="mono a3", quantity="1", sum3d_id="", db=db,
         )
         assert resp.status_code == 303
         assert "error=" in resp.headers["location"]

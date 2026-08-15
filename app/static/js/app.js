@@ -76,6 +76,31 @@ document.addEventListener("click", (event) => {
       const t = document.querySelector("[data-addwork-toggle]");
       if (t) t.setAttribute("aria-expanded", "false");
     }
+    return;
+  }
+  // Клієнт / Лабораторія type switch inside the add-work form. Hidden fields are
+  // also DISABLED so a hidden required input (client name vs наряд) never blocks
+  // submit and the inactive mode's values aren't posted.
+  const typeBtn = event.target.closest("[data-addwork-type]");
+  if (typeBtn) {
+    const form = typeBtn.closest("[data-addwork]");
+    const type = typeBtn.dataset.addworkType;
+    form.querySelector("[data-addwork-typeinput]").value = type;
+    form.querySelectorAll("[data-addwork-type]").forEach((b) =>
+      b.classList.toggle("is-active", b === typeBtn)
+    );
+    form.querySelectorAll("[data-addwork-client]").forEach((el) => {
+      el.hidden = type !== "client";
+      el.disabled = type !== "client";
+    });
+    form.querySelectorAll("[data-addwork-lab]").forEach((el) => {
+      el.hidden = type !== "lab";
+      el.disabled = type !== "lab";
+    });
+    const focusEl = form.querySelector(
+      type === "lab" ? '[name="work_order_no"]' : '[name="client_name"]'
+    );
+    if (focusEl) focusEl.focus();
   }
 });
 

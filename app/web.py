@@ -98,6 +98,7 @@ from app.sheet_sync_service import (
 )
 from app.sheet_writer import (
     append_mail_placeholder_row,
+    append_manual_work_row,
     append_order_comment,
     apply_status_markers,
     write_order_fields,
@@ -1084,8 +1085,11 @@ def _write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | No
 _sheet_writeback_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sheet-writeback")
 
 
-def _append_client_row_warm(client_name: str, quantity: str, material_color: str, tab: str) -> int | None:
-    """Append a client row to `tab` on the write-back worker thread, whose
+def _append_manual_row_warm(
+    tab: str, *, work_order_no: str, quantity: str, material_color: str,
+    e_value: str, sum3d_id: str, paint_blue: bool,
+) -> int | None:
+    """Append a manual work row to `tab` on the write-back worker thread, whose
     per-thread spreadsheet/worksheet cache stays warm (see _warm_sheet_writeback)
     — so this runs in seconds instead of the ~40s cold open the request thread
     would pay. Uses its own DB session for the settings/config read. Returns the
@@ -1094,7 +1098,15 @@ def _append_client_row_warm(client_name: str, quantity: str, material_color: str
         worksheet = get_worksheet_by_name(open_spreadsheet(db=s), tab)
         if worksheet is None or worksheet.title != tab:
             return None
-        return append_mail_placeholder_row(worksheet, client_name, quantity, material_color)
+        return append_manual_work_row(
+            worksheet,
+            work_order_no=work_order_no,
+            quantity=quantity,
+            material_color=material_color,
+            e_value=e_value,
+            sum3d_id=sum3d_id,
+            paint_blue=paint_blue,
+        )
 
 
 def _write_sheet_fields_background(order_id: int, fields: set[str]) -> None:
@@ -1774,7 +1786,11 @@ async def set_cam_comment(
 
 
 @app.get("/orders/new", response_class=HTMLResponse)
-def new_order_form(request: Request, db: Session = Depends(get_db), error: str = "", material_color: str = "", client_name: str = "", quantity: str = ""):
+def new_order_form(
+    request: Request, db: Session = Depends(get_db), error: str = "",
+    work_type: str = "client", material_color: str = "", client_name: str = "",
+    work_order_no: str = "", kind: str = "", quantity: str = "", sum3d_id: str = "",
+):
     user = get_current_user(request, db)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -1785,7 +1801,12 @@ def new_order_form(request: Request, db: Session = Depends(get_db), error: str =
             "user": user,
             "today": date.today().strftime("%d.%m.%y"),
             "error": error or None,
-            "form": {"client_name": client_name, "material_color": material_color, "quantity": quantity},
+            "form": {
+                "work_type": work_type if work_type in ("client", "lab") else "client",
+                "client_name": client_name, "work_order_no": work_order_no,
+                "kind": kind, "material_color": material_color,
+                "quantity": quantity, "sum3d_id": sum3d_id,
+            },
         },
     )
 
@@ -1793,44 +1814,66 @@ def new_order_form(request: Request, db: Session = Depends(get_db), error: str =
 @app.post("/orders/new")
 def create_manual_order(
     request: Request,
+    work_type: str = Form("client"),
     client_name: str = Form(""),
+    work_order_no: str = Form(""),
+    kind: str = Form(""),
     material_color: str = Form(""),
     quantity: str = Form(""),
+    sum3d_id: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    """Add a client work by hand and mirror it into today's sheet tab as a
-    наряд-less client row (same shape as the blue-filled rows operators write:
-    client name in "Вид роботи", material in "Колір", quantity in "Кількість").
-    The row is linked by row_number so the next sync updates it in place rather
-    than importing a duplicate."""
+    """Add a work by hand and mirror it into today's sheet tab. Two kinds:
+
+      * client (default) — наряд-less client row (client name in "Вид роботи",
+        painted the lab's pending blue), source="sheet_client".
+      * lab — a normal internal work: наряд in "Номер наряду", вид in "Вид
+        роботи", not painted, source="lab".
+
+    An optional Sum3D ID goes into column L for either. The row is linked by
+    row_number so the next sync updates it in place, never duplicating it."""
     user = get_current_user(request, db)
     if user is None:
         return RedirectResponse("/login", status_code=303)
 
+    work_type = work_type if work_type in ("client", "lab") else "client"
     client_name = client_name.strip()
+    work_order_no = work_order_no.strip()
+    kind = kind.strip()
     material_color = material_color.strip()
     quantity = quantity.strip()
+    sum3d_id = sum3d_id.strip()
 
     def _back(message: str):
-        params = urlencode(
-            {"error": message, "client_name": client_name, "material_color": material_color, "quantity": quantity}
-        )
+        params = urlencode({
+            "error": message, "work_type": work_type, "client_name": client_name,
+            "work_order_no": work_order_no, "kind": kind,
+            "material_color": material_color, "quantity": quantity, "sum3d_id": sum3d_id,
+        })
         return RedirectResponse(f"/orders/new?{params}", status_code=303)
 
-    if not client_name:
+    is_lab = work_type == "lab"
+    if is_lab and not work_order_no:
+        return _back("Вкажіть номер наряду.")
+    if not is_lab and not client_name:
         return _back("Вкажіть імʼя клієнта.")
     if not material_color:
         return _back("Вкажіть матеріал / колір.")
 
     tab = date.today().strftime("%d.%m.%y")
-    # Run the sheet append on the warm write-back worker (cached spreadsheet /
-    # worksheet), not this cold request thread — the latter re-pays ~40s of
-    # open_by_key + worksheet() through the lab proxy, which reads as the form
-    # "hanging". The operator still waits for the row_number (needed to link
-    # the order), but on a warm cache that's ~a few seconds.
+    # Append on the warm write-back worker (cached spreadsheet/worksheet), not
+    # this cold request thread which would re-pay ~40s of open+worksheet through
+    # the lab proxy. E-column carries the client NAME for a client row and the
+    # вид for a lab row; only client rows get the blue fill.
     try:
         note_row = _sheet_writeback_pool.submit(
-            _append_client_row_warm, client_name, quantity, material_color, tab
+            _append_manual_row_warm, tab,
+            work_order_no=(work_order_no if is_lab else ""),
+            quantity=quantity,
+            material_color=material_color,
+            e_value=(kind if is_lab else client_name),
+            sum3d_id=sum3d_id,
+            paint_blue=(not is_lab),
         ).result(timeout=90)
     except Exception as exc:  # noqa: BLE001 — surface any sheet failure to the operator
         logger.exception("Manual order sheet write failed")
@@ -1838,31 +1881,34 @@ def create_manual_order(
     if note_row is None:
         return _back(f"Вкладку «{tab}» у таблиці не знайдено — створіть день у таблиці спершу.")
 
-    order = Order(
-        source="sheet_client",
-        sheet_tab=tab,
-        row_number=note_row - HEADER_ROWS,
-        client_name=client_name,
-        material_color=material_color or None,
-        quantity=quantity or None,
-        status="нове",
-    )
+    if is_lab:
+        order = Order(
+            source="lab", sheet_tab=tab, row_number=note_row - HEADER_ROWS,
+            work_order_no=work_order_no, kind=kind or None,
+            material_color=material_color or None, quantity=quantity or None,
+            sum3d_id=sum3d_id or None,
+            status="прийнято" if sum3d_id else "нове",
+        )
+    else:
+        order = Order(
+            source="sheet_client", sheet_tab=tab, row_number=note_row - HEADER_ROWS,
+            client_name=client_name, material_color=material_color or None,
+            quantity=quantity or None, sum3d_id=sum3d_id or None, status="нове",
+        )
     ensure_seeded(db)
     order.material_id = resolve_material_id(order.material_color, load_alias_rows(db), material_id_by_name(db))
     db.add(order)
     db.flush()
-    db.add(StatusEvent(order_id=order.id, operator_id=user.id, status="нове", actor=user.username))
+    db.add(StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username))
     db.add(
         SyncLog(
-            direction="db_to_sheet",
-            sheet_tab=tab,
-            status="ok",
-            message=f"manual client order {order.id}: рядок {note_row}",
+            direction="db_to_sheet", sheet_tab=tab, status="ok",
+            message=f"manual {work_type} order {order.id}: рядок {note_row}",
         )
     )
     db.commit()
 
-    return RedirectResponse("/?source=client", status_code=303)
+    return RedirectResponse(f"/?source={'lab' if is_lab else 'client'}", status_code=303)
 
 
 @app.post("/orders/{order_id}/status", response_class=HTMLResponse)

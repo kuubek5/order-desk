@@ -4185,6 +4185,12 @@ main.worldv2.search-wide{max-width:none}
 .neworder .btn.primary{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
 .neworder .btn.primary:hover{background:rgba(20,184,166,.24);border-color:var(--accent)}
 .neworder .btn.is-loading{opacity:.65;cursor:progress}
+.neworder-opt{color:var(--ink-3);font-weight:400;text-transform:none;letter-spacing:0}
+.neworder .addwork-seg{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;align-self:flex-start}
+.neworder .addwork-seg button{appearance:none;border:0;background:transparent;height:30px;padding:0 16px;border-radius:999px;
+  font:inherit;font-size:13px;font-weight:500;color:var(--ink-2);cursor:pointer;transition:background var(--ui-speed) ease,color var(--ui-speed) ease}
+.neworder .addwork-seg button:hover{color:var(--ink);background:#1d2734}
+.neworder .addwork-seg button.is-active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
 /* Inline «+ Додати» toggle in the queue card-head + expandable add-work form */
 .q2 .card-head .right{display:flex;align-items:center;gap:8px}
 .q2 .addwork-toggle{height:30px;padding:0 12px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;
@@ -4196,6 +4202,12 @@ main.worldv2.search-wide{max-width:none}
 .q2 .addwork{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;margin:0 0 2px;
   border-top:1px solid var(--line);background:rgba(96,165,250,.05)}
 .q2 .addwork[hidden]{display:none}
+.q2 .addwork-seg{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+.q2 .addwork-seg button{appearance:none;border:0;background:transparent;height:28px;padding:0 12px;border-radius:999px;
+  font:inherit;font-size:12px;font-weight:500;color:var(--ink-2);cursor:pointer;
+  transition:background var(--ui-speed) ease,color var(--ui-speed) ease}
+.q2 .addwork-seg button:hover{color:var(--ink);background:#1d2734}
+.q2 .addwork-seg button.is-active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
 .q2 .addwork-badge{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;padding:2px 7px;border-radius:5px;
   border:1px solid rgba(96,165,250,.42);color:#93c5fd;background:rgba(96,165,250,.13)}
 .q2 .addwork-input{height:34px;padding:0 11px;border-radius:8px;background:#111823;border:1px solid var(--line);

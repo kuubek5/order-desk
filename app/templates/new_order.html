@@ -17,13 +17,32 @@
     <div class="neworder-error" role="alert">{{ error }}</div>
     {% endif %}
 
-    <form method="post" action="/orders/new" class="neworder-form"
+    {% set is_lab = form.work_type == 'lab' %}
+    <form method="post" action="/orders/new" class="neworder-form" data-addwork
           onsubmit="var b=this.querySelector('button[type=submit]'); if(b){b.disabled=true; b.classList.add('is-loading'); b.textContent='Додаємо в таблицю…';}">
 
-        <div class="neworder-field">
+        <div class="addwork-seg neworder-seg" role="group" aria-label="Тип роботи">
+            <button type="button" class="{% if not is_lab %}is-active{% endif %}" data-addwork-type="client">Клієнт</button>
+            <button type="button" class="{% if is_lab %}is-active{% endif %}" data-addwork-type="lab">Лабораторія</button>
+        </div>
+        <input type="hidden" name="work_type" value="{{ form.work_type }}" data-addwork-typeinput>
+
+        <div class="neworder-field" data-addwork-client {% if is_lab %}hidden{% endif %}>
             <label for="client_name">Клієнт</label>
             <input type="text" id="client_name" name="client_name" value="{{ form.client_name }}"
-                   placeholder="Імʼя клієнта" autofocus required>
+                   placeholder="Імʼя клієнта" data-addwork-client {% if is_lab %}disabled{% endif %} required>
+        </div>
+        <div class="neworder-row" data-addwork-lab {% if not is_lab %}hidden{% endif %}>
+            <div class="neworder-field">
+                <label for="work_order_no">Номер наряду</label>
+                <input type="text" id="work_order_no" name="work_order_no" value="{{ form.work_order_no }}"
+                       placeholder="напр. 24122" data-addwork-lab {% if not is_lab %}disabled{% endif %} required>
+            </div>
+            <div class="neworder-field">
+                <label for="kind">Вид роботи</label>
+                <input type="text" id="kind" name="kind" value="{{ form.kind }}"
+                       placeholder="анатомія, абатмент…" data-addwork-lab {% if not is_lab %}disabled{% endif %}>
+            </div>
         </div>
         <div class="neworder-row">
             <div class="neworder-field">
@@ -36,6 +55,11 @@
                 <input type="text" id="quantity" name="quantity" value="{{ form.quantity }}"
                        placeholder="1" inputmode="numeric">
             </div>
+        </div>
+        <div class="neworder-field">
+            <label for="sum3d_id">Sum3D ID <span class="neworder-opt">(необовʼязково)</span></label>
+            <input type="text" id="sum3d_id" name="sum3d_id" value="{{ form.sum3d_id }}"
+                   class="mono" placeholder="напр. 10-19-48">
         </div>
         <div class="neworder-actions">
             <a href="/" class="btn">Скасувати</a>

@@ -112,37 +112,34 @@ def apply_status_markers(
     return changed
 
 
-def append_mail_placeholder_row(
+def append_manual_work_row(
     worksheet: gspread.Worksheet,
-    client_name: str,
-    quantity: str,
-    material_color: str,
+    *,
+    work_order_no: str = "",
+    quantity: str = "",
+    material_color: str = "",
+    e_value: str = "",
+    sum3d_id: str = "",
+    paint_blue: bool = True,
     start_row: int = 60,
     max_search_rows: int = 200,
 ) -> int:
-    """Write a mail-intake pricing placeholder row, matching how operators
-    already jot down phone/email orders by hand before a наряд number
-    exists (CLAUDE.md section 2): client name goes into "Вид роботи" (col
-    5) and quantity into "Кількість" (col 3). "Номер наряду" (col 2) is
-    deliberately left blank — it's assigned later once the job is priced.
-    As an improvement over the manual convention, this also fills "Колір
-    роботи" (col 4) with the parsed material/color, which the manual
-    process never captured but the portal already has on hand.
+    """Append a work row into a dated tab and return its 1-indexed sheet row.
 
-    Scans down from ``start_row`` (a 1-indexed real sheet row) for the
-    first row where Номер наряду, Кількість and Вид роботи are all still
-    empty — rows above start_row are where admins log technician work and
-    must never be touched, and a row where any of those three already has
-    something is treated as taken (a previous manual note or unrelated
-    data) and skipped rather than overwritten.
+    Shared by manual client AND lab adds (and the email intake). Writes only
+    the target cells (never a full-row overwrite), matching the sheet layout:
+      * col B "Номер наряду"  — ``work_order_no`` (empty for a client row)
+      * col C "Кількість"     — ``quantity``
+      * col D "Колір роботи"  — ``material_color``
+      * col E "Вид роботи"    — ``e_value`` (client NAME for a client row, work
+                                type/вид for a lab row)
+      * col L "ID"            — ``sum3d_id`` (only when provided)
 
-    Writes with a single batch_update touching only the three target
-    cells — never a full-row overwrite — so anything else already present
-    in that row (e.g. a logist's comment in another column) survives
-    untouched.
-
-    Returns the 1-indexed sheet row written to. Raises RuntimeError if no
-    free row turns up within max_search_rows rows of start_row.
+    Scans down from ``start_row`` for the first row where Номер наряду,
+    Кількість and Вид роботи are all empty — rows above are admin/technician
+    logs and are never touched; a row with any of those filled is treated as
+    taken and skipped. ``paint_blue`` fills the row the lab's pending-client
+    blue (client rows only). Raises RuntimeError if no free row is found.
     """
     end_row = start_row + max_search_rows
     # A single ranged read instead of per-row acell() calls, since scanning
@@ -153,10 +150,10 @@ def append_mail_placeholder_row(
 
     row_number = None
     for offset, row in enumerate(raw_rows):
-        work_order_no = row[0].strip() if len(row) > 0 else ""
-        quantity_cell = row[1].strip() if len(row) > 1 else ""
-        kind_cell = row[3].strip() if len(row) > 3 else ""
-        if not work_order_no and not quantity_cell and not kind_cell:
+        b = row[0].strip() if len(row) > 0 else ""
+        c = row[1].strip() if len(row) > 1 else ""
+        e = row[3].strip() if len(row) > 3 else ""
+        if not b and not c and not e:
             row_number = start_row + offset
             break
     else:
@@ -168,36 +165,56 @@ def append_mail_placeholder_row(
         )
 
     updates = [
-        {
-            "range": gspread.utils.rowcol_to_a1(row_number, COL_QUANTITY),
-            "values": [[quantity or ""]],
-        },
-        {
-            "range": gspread.utils.rowcol_to_a1(row_number, COL_MATERIAL_COLOR),
-            "values": [[material_color or ""]],
-        },
-        {
-            "range": gspread.utils.rowcol_to_a1(row_number, COL_KIND),
-            "values": [[client_name or ""]],
-        },
+        {"range": gspread.utils.rowcol_to_a1(row_number, COL_QUANTITY), "values": [[quantity or ""]]},
+        {"range": gspread.utils.rowcol_to_a1(row_number, COL_MATERIAL_COLOR), "values": [[material_color or ""]]},
+        {"range": gspread.utils.rowcol_to_a1(row_number, COL_KIND), "values": [[e_value or ""]]},
     ]
+    if work_order_no:
+        updates.append(
+            {"range": gspread.utils.rowcol_to_a1(row_number, COL_WORK_ORDER_NO), "values": [[work_order_no]]}
+        )
+    if sum3d_id:
+        updates.append(
+            {"range": gspread.utils.rowcol_to_a1(row_number, COL_SUM3D_ID), "values": [[sum3d_id]]}
+        )
     call_with_retry(lambda: worksheet.batch_update(updates))
 
-    # Paint the row blue to match the lab's convention (blue = pending client
-    # work; clearing it means issued). Best-effort — a formatting hiccup must
-    # never fail the write the operator is waiting on, and read-side detection
-    # (app/sheet_colors.py) tolerates a missing fill.
-    try:
-        call_with_retry(
-            lambda: worksheet.format(
-                f"A{row_number}:M{row_number}",
-                {"backgroundColor": {"red": 0.2901961, "green": 0.5254902, "blue": 0.9098039}},
+    # Blue = pending client work (clearing it means issued). Client rows only,
+    # best-effort — a formatting hiccup must never fail the write, and read-side
+    # detection (app/sheet_colors.py) tolerates a missing fill.
+    if paint_blue:
+        try:
+            call_with_retry(
+                lambda: worksheet.format(
+                    f"A{row_number}:M{row_number}",
+                    {"backgroundColor": {"red": 0.2901961, "green": 0.5254902, "blue": 0.9098039}},
+                )
             )
-        )
-    except Exception:  # noqa: BLE001
-        pass
+        except Exception:  # noqa: BLE001
+            pass
 
     return row_number
+
+
+def append_mail_placeholder_row(
+    worksheet: gspread.Worksheet,
+    client_name: str,
+    quantity: str,
+    material_color: str,
+    start_row: int = 60,
+    max_search_rows: int = 200,
+) -> int:
+    """Client-row convenience wrapper (email intake): client name into "Вид
+    роботи", наряд left blank, row painted blue. See append_manual_work_row."""
+    return append_manual_work_row(
+        worksheet,
+        e_value=client_name,
+        quantity=quantity,
+        material_color=material_color,
+        paint_blue=True,
+        start_row=start_row,
+        max_search_rows=max_search_rows,
+    )
 
 
 def append_order_comment(
