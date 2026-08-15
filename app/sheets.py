@@ -145,6 +145,25 @@ def _build_credentials(json_content: Optional[str]) -> Credentials:
     return Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_JSON, scopes=_SCOPES)
 
 
+class _LeanHTTPClient(gspread.http_client.HTTPClient):
+    """gspread HTTPClient whose default metadata fetch is trimmed with a
+    `fields` mask. Spreadsheet.__init__ and Spreadsheet.worksheet() both call
+    fetch_sheet_metadata with params=None, which normally returns the FULL
+    document metadata — every tab's conditional formats, merges, banding. On a
+    daily-tabs document that JSON is huge and each fetch measured ~18s; the
+    trimmed mask (doc properties + per-sheet properties, all either needs)
+    returns in ~0.2s. Callers that pass their own params (e.g. the row-color
+    reader in app/sheet_colors.py) are untouched."""
+
+    def fetch_sheet_metadata(self, id, params=None):
+        if params is None:
+            params = {
+                "includeGridData": "false",
+                "fields": "properties,sheets.properties",
+            }
+        return super().fetch_sheet_metadata(id, params=params)
+
+
 def _build_client(creds: Credentials) -> gspread.Client:
     # Token refresh (POST to oauth2.googleapis.com) runs over its own
     # internal session unless we hand it one explicitly, so the adapter
@@ -156,7 +175,7 @@ def _build_client(creds: Credentials) -> gspread.Client:
     session = AuthorizedSession(creds, auth_request=auth_request)
     session.mount("https://", _LegacyRenegotiationAdapter())
 
-    return gspread.Client(auth=creds, session=session)
+    return gspread.Client(auth=creds, session=session, http_client=_LeanHTTPClient)
 
 
 def reset_sheets_cache() -> None:
