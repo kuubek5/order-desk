@@ -50,10 +50,44 @@ CALCULATED_STATUSES = {
 MILLED_STATUSES = {"відфрезеровано", "знайдено при видачі", "видано"}
 
 
+_WHITE = {"red": 1.0, "green": 1.0, "blue": 1.0}
+
+
 def _sheet_row(order: Order) -> int:
     if order.row_number is None:
         raise ValueError(f"order {order.id} has no row_number, can't write back to the sheet")
     return order.row_number + HEADER_ROWS
+
+
+def clear_row_fills(spreadsheet: gspread.Spreadsheet, rows: list[tuple[int, int]]) -> None:
+    """Clear the blue "pending client" fill back to white — the counterpart of
+    the blue paint in append_manual_work_rows, used when the lab marks a
+    client's work as issued ("видано"). ``rows`` is a list of
+    (sheetId, absolute_sheet_row) pairs; entries may span several dated tabs
+    (a client's works aren't always all from the same day) since they share
+    one underlying spreadsheet — the whole batch goes out as a SINGLE
+    spreadsheets.batchUpdate call. Paints only A:K, matching
+    append_manual_work_rows — columns L/M/N (ID, Прорахував, Відфрезерував)
+    are never touched."""
+    if not rows:
+        return
+    requests = [
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": row - 1,
+                    "endRowIndex": row,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": COL_CAM_COMMENT,  # A:K
+                },
+                "cell": {"userEnteredFormat": {"backgroundColor": _WHITE}},
+                "fields": "userEnteredFormat.backgroundColor",
+            }
+        }
+        for sheet_id, row in rows
+    ]
+    call_with_retry(lambda: spreadsheet.batch_update({"requests": requests}))
 
 
 def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[str]) -> None:

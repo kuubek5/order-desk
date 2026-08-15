@@ -104,6 +104,7 @@ from app.sheet_writer import (
     append_manual_work_rows,
     append_order_comment,
     apply_status_markers,
+    clear_row_fills,
     write_order_fields,
     write_rework_sum3d,
 )
@@ -2139,6 +2140,7 @@ def get_handout(request: Request, source: str = "all", db: Session = Depends(get
 
     source_counts = count_client_groups_by_source(client_groups)
     client_groups = filter_client_groups_by_source(client_groups, source)
+    handout_flash = request.session.pop("handout_flash", None)
 
     return templates.TemplateResponse(
         request,
@@ -2149,6 +2151,7 @@ def get_handout(request: Request, source: str = "all", db: Session = Depends(get
             "client_groups": client_groups,
             "source": source,
             "source_counts": source_counts,
+            "handout_flash": handout_flash,
         },
     )
 
@@ -2169,6 +2172,76 @@ async def mark_found(request: Request, order_id: int, db: Session = Depends(get_
     )
     db.commit()
 
+    return RedirectResponse("/handout", status_code=303)
+
+
+@app.post("/handout/issue-group")
+async def issue_handout_group(
+    request: Request, client_name: str = Form(...), db: Session = Depends(get_db)
+):
+    """One click on a handout card's "Видати" button closes the whole client
+    group: every found-but-not-yet-issued order flips to "видано" (mirroring
+    the single-order status route), and every sheet_client row's blue
+    "pending" fill is cleared back to white in ONE batched sheet call — the
+    counterpart of the lab's own manual "clear the blue = issued" convention.
+
+    Re-derives the group server-side from client_name (never trusts a client
+    id list from the form) and refuses to close it unless every order is
+    already "знайдено при видачі"/"видано" — the same all_found gate the
+    button's visibility uses, enforced again here in case the page was stale."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    today = date.today()
+    candidates = db.scalars(
+        select(Order).where(Order.client_name == client_name, Order.status != "видано")
+    ).all()
+    group_orders = [
+        o for o in candidates
+        if (d := _parse_sheet_tab(o.sheet_tab)) is not None and d < today
+    ]
+    if not group_orders:
+        return RedirectResponse("/handout", status_code=303)
+    if not all(o.status in ("знайдено при видачі", "видано") for o in group_orders):
+        raise HTTPException(
+            status_code=400, detail="не всі роботи клієнта позначені «Знайдено»"
+        )
+
+    actor = user.full_name or user.username
+    sync_error: str | None = None
+    clear_targets: list[tuple[str, int]] = []  # (sheet_tab, row_number)
+    for order in group_orders:
+        order.status = "видано"
+        sheet_fields = apply_status_markers(order, "видано", actor=actor)
+        db.add(
+            StatusEvent(order_id=order.id, operator_id=user.id, status="видано", actor=user.username)
+        )
+        err = _write_sheet_fields(db, order, sheet_fields)
+        sync_error = sync_error or err
+        if order.source == "sheet_client" and order.sheet_tab and order.row_number is not None:
+            clear_targets.append((order.sheet_tab, order.row_number))
+
+    if clear_targets:
+        try:
+            spreadsheet = open_spreadsheet(db=db)
+            rows_by_sheet_id: list[tuple[int, int]] = []
+            for sheet_tab, row_number in clear_targets:
+                worksheet = get_worksheet_by_name(spreadsheet, sheet_tab)
+                if worksheet is not None:
+                    rows_by_sheet_id.append((worksheet.id, row_number + HEADER_ROWS))
+            clear_row_fills(spreadsheet, rows_by_sheet_id)
+        except Exception as exc:  # noqa: BLE001 — never fail the видано status over this
+            logger.exception("Failed to clear blue fill for handout group %r", client_name)
+            sync_error = sync_error or str(exc)
+
+    db.commit()
+
+    if sync_error:
+        request.session["handout_flash"] = {
+            "kind": "error",
+            "message": f"Статус видано, але запис у таблицю не пройшов: {sync_error}",
+        }
     return RedirectResponse("/handout", status_code=303)
 
 

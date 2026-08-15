@@ -17,6 +17,12 @@
         </a>
     </nav>
 
+    {% if handout_flash %}
+    <div class="sync-notice sync-notice-{{ handout_flash.kind }}" role="status">
+        <span>{{ handout_flash.message }}</span>
+    </div>
+    {% endif %}
+
     {% if client_groups %}
     {% set done_groups = client_groups|selectattr('all_found')|list|length %}
     {% set total_groups = client_groups|length %}
@@ -47,10 +53,17 @@
                     {% endif %}
                 </span>
                 <div class="right">
+                    {% if group.all_found %}
+                    <form method="post" action="/handout/issue-group" class="issue-form">
+                        <input type="hidden" name="client_name" value="{{ group.client_name }}">
+                        <button type="submit" class="issue-btn">Видати</button>
+                    </form>
+                    {% else %}
                     <div class="progress-wrap">
                         <span class="progress-num"><b>{{ found_n }}</b> / {{ total_n }} знайдено</span>
                         <div class="track"><i style="width:{{ (found_n / total_n * 100)|round(0) if total_n else 0 }}%"></i></div>
                     </div>
+                    {% endif %}
                 </div>
             </div>
 
