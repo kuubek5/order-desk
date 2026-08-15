@@ -52,6 +52,33 @@ document.addEventListener("keydown", (event) => {
   ta.blur(); // change event → hx-post saves
 });
 
+// Inline "add work" form in the queue card-head: the "+" toggle reveals the
+// client-work fields right above the rows; cancel hides them. Delegated so it
+// survives HTMX swaps.
+document.addEventListener("click", (event) => {
+  const toggle = event.target.closest("[data-addwork-toggle]");
+  if (toggle) {
+    const form = document.querySelector("[data-addwork]");
+    if (!form) return;
+    const open = form.hidden;
+    form.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    if (open) {
+      const first = form.querySelector("input");
+      if (first) first.focus();
+    }
+    return;
+  }
+  if (event.target.closest("[data-addwork-cancel]")) {
+    const form = document.querySelector("[data-addwork]");
+    if (form) {
+      form.hidden = true;
+      const t = document.querySelector("[data-addwork-toggle]");
+      if (t) t.setAttribute("aria-expanded", "false");
+    }
+  }
+});
+
 document.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-copy]");
   if (!button) return;
