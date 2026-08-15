@@ -94,6 +94,60 @@ def test_client_row_sum3d_survives_resync():
         assert order.sum3d_id == "PRJ-CLIENT-1"  # not wiped back to None
 
 
+def test_slm_row_by_material_text_is_not_imported():
+    """A row whose "Колір роботи" is one of the SLM/non-queue words never
+    becomes an Order — the lab records it for stats only, not for milling."""
+    with make_session() as session:
+        result = sync_tab(session, "22.06.26", [
+            make_row(row_number=1, material_color="слм"),
+            make_row(row_number=2, work_order_no="24999", material_color="моно A2"),
+        ])
+        session.commit()
+        assert result.created == 1
+        orders = session.scalars(select(Order)).all()
+        assert [o.work_order_no for o in orders] == ["24999"]
+
+
+def test_slm_row_matching_is_case_and_space_insensitive():
+    with make_session() as session:
+        result = sync_tab(session, "22.06.26", [
+            make_row(row_number=1, material_color="  Моделювання  "),
+        ])
+        session.commit()
+        assert result.created == 0
+        assert session.scalar(select(Order)) is None
+
+
+def test_grey_fill_row_is_not_imported_even_without_slm_text():
+    """The fill is the second marker — a row that's grey but whose material
+    text isn't one of the known words is still skipped."""
+    with make_session() as session:
+        result = sync_tab(
+            session, "22.06.26",
+            [make_row(row_number=1, material_color="щось інше")],
+            row_fills={1: "grey"},
+        )
+        session.commit()
+        assert result.created == 0
+
+
+def test_previously_imported_slm_row_is_removed_on_next_sync():
+    """An order imported before this filter existed (or before the lab
+    started marking a row grey) is treated as vanished — same deletion path
+    as a row the lab cleared."""
+    with make_session() as session:
+        sync_tab(session, "22.06.26", [make_row(row_number=1, work_order_no="24999")])
+        session.commit()
+        assert session.scalar(select(Order)) is not None
+
+        result = sync_tab(session, "22.06.26", [
+            make_row(row_number=1, work_order_no="24999", material_color="слм"),
+        ])
+        session.commit()
+        assert result.deleted == 1
+        assert session.scalar(select(Order)) is None
+
+
 def test_client_row_and_normal_row_coexist_in_one_tab():
     with make_session() as session:
         sync_tab(session, "22.06.26", [
@@ -121,8 +175,8 @@ def test_vanished_client_row_is_deleted_like_a_lab_row():
 
 def test_client_row_not_blue_is_issued():
     with make_session() as session:
-        # row_blue says row 5 is NOT blue → the lab cleared it → issued.
-        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_blue={5: False})
+        # row_fills says row 5 is NOT blue → the lab cleared it → issued.
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_fills={5: ""})
         session.commit()
         order = session.scalar(select(Order).where(Order.source == "sheet_client"))
         assert order.status == "видано"
@@ -130,7 +184,7 @@ def test_client_row_not_blue_is_issued():
 
 def test_client_row_blue_stays_pending():
     with make_session() as session:
-        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_blue={5: True})
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_fills={5: "blue"})
         session.commit()
         order = session.scalar(select(Order).where(Order.source == "sheet_client"))
         assert order.status == "нове"
@@ -138,7 +192,7 @@ def test_client_row_blue_stays_pending():
 
 def test_client_row_without_colour_info_stays_pending():
     with make_session() as session:
-        sync_tab(session, "22.06.26", [make_client_row(row_number=5)])  # row_blue=None
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)])  # row_fills=None
         session.commit()
         order = session.scalar(select(Order).where(Order.source == "sheet_client"))
         assert order.status == "нове"
@@ -146,19 +200,19 @@ def test_client_row_without_colour_info_stays_pending():
 
 def test_existing_client_flips_to_issued_when_blue_cleared():
     with make_session() as session:
-        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_blue={5: True})
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_fills={5: "blue"})
         session.commit()
         order = session.scalar(select(Order).where(Order.source == "sheet_client"))
         assert order.status == "нове"
 
         # Operator clears the blue → next sync flips it to issued.
-        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_blue={5: False})
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_fills={5: ""})
         session.commit()
         session.refresh(order)
         assert order.status == "видано"
 
         # Re-bluing does NOT un-issue (видано is protected from downgrade).
-        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_blue={5: True})
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_fills={5: "blue"})
         session.commit()
         session.refresh(order)
         assert order.status == "видано"

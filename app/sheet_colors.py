@@ -1,15 +1,17 @@
 """Read cell fill colours from a Google Sheets tab.
 
-The lab tracks email-client rows by hand with a BLUE fill: a blue row is a
-pending client work, and clearing the blue means the work was issued
-("видано"). `get_all_values` only returns text, so telling pending from issued
-needs the cell's background colour — fetched here via the Sheets metadata API
-(spreadsheets.get with includeGridData), scoped to one column of the data
-range so it stays a single cheap call.
+Two fills the lab uses that carry meaning `get_all_values` can't see:
 
-Kept separate from app/sheets.py so this heavier per-sync read is opt-in: only
-the full sync asks for it (see app/sheet_sync_service.py), never the ~15s hot
-lane.
+  * BLUE marks a наряд-less email-client row as pending; clearing the blue
+    means the work was issued ("видано").
+  * GREY marks an SLM (laser-sintering) row entered for stats only — it never
+    belongs in the milling queue (see app/sync.py NON_QUEUE_KINDS).
+
+Fetched via the Sheets metadata API (spreadsheets.get with includeGridData),
+scoped to one column of the data range so it stays a single cheap call. Kept
+separate from app/sheets.py so this per-sync read is opt-in — both the full
+sync and the hot lane call it (see app/sheet_sync_service.py); it's cheap
+enough now (~0.3s post CF-cleanup) that neither needs to skip it.
 """
 
 from __future__ import annotations
@@ -49,10 +51,36 @@ def is_blue(color: dict | None) -> bool:
     return blue > red + 0.15 and blue > green + 0.1
 
 
-def fetch_row_blue_flags(worksheet: gspread.Worksheet) -> dict[int, bool]:
-    """Map data-row number (1-based, as OrderRow.row_number) -> is the row's
-    fill blue. Best-effort: returns {} on any API/shape failure so the caller
-    can degrade to "no colour info" rather than break the sync."""
+def is_grey(color: dict | None) -> bool:
+    """True for a grey fill — the lab's "SLM / not-for-the-queue" marker
+    (laser-sintering batches tracked for stats only). Grey means all three
+    channels are close to each other (neutral, no hue) and the value sits
+    between near-black and near-white; white / no-fill is NOT grey."""
+    if not color:
+        return False
+    red = color.get("red", 0.0)
+    green = color.get("green", 0.0)
+    blue = color.get("blue", 0.0)
+    lo, hi = min(red, green, blue), max(red, green, blue)
+    if hi - lo > 0.08:  # has a hue — not neutral
+        return False
+    return 0.25 <= hi <= 0.93  # dark headers ~0.6, light rows ~0.85; white ≥0.95
+
+
+def classify_fill(color: dict | None) -> str:
+    """'blue' (pending client), 'grey' (SLM/non-queue), or '' (anything else,
+    including no fill)."""
+    if is_blue(color):
+        return "blue"
+    if is_grey(color):
+        return "grey"
+    return ""
+
+
+def fetch_row_fills(worksheet: gspread.Worksheet) -> dict[int, str]:
+    """Map data-row number (1-based, as OrderRow.row_number) -> fill class
+    ('blue' / 'grey' / ''). Best-effort: returns {} on any API/shape failure
+    so the caller can degrade to "no colour info" rather than break the sync."""
     first_row = HEADER_ROWS + 1
     last_row = HEADER_ROWS + _MAX_DATA_ROWS
     rng = f"{worksheet.title}!{_FILL_COLUMN_LETTER}{first_row}:{_FILL_COLUMN_LETTER}{last_row}"
@@ -67,11 +95,11 @@ def fetch_row_blue_flags(worksheet: gspread.Worksheet) -> dict[int, bool]:
     except Exception:  # noqa: BLE001 — colour is a nicety, never fatal to sync
         return {}
 
-    flags: dict[int, bool] = {}
+    fills: dict[int, str] = {}
     for offset, row in enumerate(row_data, start=1):
         values = row.get("values") or []
         color = None
         if values:
             color = (values[0].get("effectiveFormat") or {}).get("backgroundColor")
-        flags[offset] = is_blue(color)
-    return flags
+        fills[offset] = classify_fill(color)
+    return fills

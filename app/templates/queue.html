@@ -74,8 +74,13 @@
             {# Inline add-work form — expands under the "+" above the polled rows
                (kept outside #queue-rows so the 15s refresh never wipes what the
                operator is typing). Posts to /orders/new like the full page. #}
+            {# Plain (non-htmx) POST — /orders/new redirects back to "/" on
+               success, a full page navigation that always starts scrolled to
+               top. sessionStorage bridges the scroll position across that
+               reload (restored in app.js on load) so adding a work doesn't
+               throw the operator back to the top of a long queue. #}
             <form method="post" action="/orders/new" class="addwork" hidden data-addwork
-                  onsubmit="var b=this.querySelector('[data-addwork-submit]'); if(b){b.disabled=true;b.classList.add('is-loading');var l=b.querySelector('.addwork-submit-label');if(l)l.textContent='Фрезеруємо…';}">
+                  onsubmit="sessionStorage.setItem('od-scroll', String(window.scrollY)); var b=this.querySelector('[data-addwork-submit]'); if(b){b.disabled=true;b.classList.add('is-loading');var l=b.querySelector('.addwork-submit-label');if(l)l.textContent='Фрезеруємо…';}">
                 <div class="addwork-seg" role="group" aria-label="Тип роботи">
                     <button type="button" class="is-active" data-addwork-type="client">Клієнт</button>
                     <button type="button" data-addwork-type="lab">Лабораторія</button>

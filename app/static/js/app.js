@@ -1,3 +1,18 @@
+// Restore scroll position across a full page reload triggered by a plain
+// (non-htmx) form POST — e.g. the "+ Додати" manual-add form, whose
+// /orders/new route redirects back to "/" on success. A fresh navigation
+// always starts scrolled to top, so the submit handler stashes the current
+// position in sessionStorage right before the browser navigates away; this
+// consumes it once on the next load so a normal (non-restore) visit is
+// unaffected.
+(function restoreScrollAfterReload() {
+  const saved = sessionStorage.getItem("od-scroll");
+  if (saved === null) return;
+  sessionStorage.removeItem("od-scroll");
+  const y = parseInt(saved, 10);
+  if (!Number.isNaN(y)) window.scrollTo(0, y);
+})();
+
 // Queue auto-refresh guard. #queue-rows polls GET /?…&partial=rows every 15s
 // (see _queue_rows.html) so sheet edits show without an F5. But a blind swap
 // would wipe a comment/Sum3D an operator is mid-typing — so skip the poll's

@@ -13,6 +13,22 @@ from app.models import Comment, Order, ReworkRecord, StatusEvent
 from app.parser import OrderRow
 
 
+# "Вид/колір" values that mark work the lab records for stats only — SLM laser
+# sintering and other non-milling services. These rows never belong in the
+# milling queue (user decision 15.08.26): they are skipped on import, and an
+# already-imported one is deleted by the same not-seen-anymore reconciliation
+# that handles cleared rows. The grey row FILL is the second marker for the
+# same thing (batch blocks whose D column is empty) — see sync_tab's row_fills.
+NON_QUEUE_KINDS = {"слм", "cлм", "елайнери", "моделі", "сканування", "моделювання"}
+
+
+def _is_non_queue_row(row: OrderRow, row_fills: dict[int, str] | None) -> bool:
+    material = (row.material_color or "").strip().lower()
+    if material in NON_QUEUE_KINDS:
+        return True
+    return bool(row_fills) and row_fills.get(row.row_number) == "grey"
+
+
 def _infer_status(row: OrderRow) -> str:
     if row.milled:
         return "відфрезеровано"
@@ -169,13 +185,20 @@ def sync_tab(
     session: Session,
     sheet_tab: str,
     rows: list[OrderRow],
-    row_blue: dict[int, bool] | None = None,
+    row_fills: dict[int, str] | None = None,
 ) -> SyncResult:
-    """Import a tab's rows. ``row_blue`` (row_number -> is the fill blue), when
-    provided, drives the client-row "видано" state: the lab clears the blue
-    fill once an email client's work is issued, so a client row that is NOT
-    blue is treated as issued. None means "no colour info this run" (the hot
-    lane skips the extra fetch) — client rows then just stay pending."""
+    """Import a tab's rows. ``row_fills`` (row_number -> 'blue'/'grey'/''), when
+    provided, drives two things:
+
+      * client-row "видано": the lab clears the blue fill once an email
+        client's work is issued, so a client row whose fill is known and NOT
+        blue is treated as issued;
+      * grey rows are SLM/stats-only records and are skipped entirely (see
+        NON_QUEUE_KINDS for the text-based marker that works even without
+        colour info).
+
+    None means "no colour info this run" — client rows then just stay
+    pending, and only the text marker filters SLM rows."""
     result = SyncResult()
 
     # Preload every existing order for this tab in ONE query instead of a
@@ -196,6 +219,14 @@ def sync_tab(
     alias_rows = load_alias_rows(session)
     name_to_id = material_id_by_name(session)
 
+    # SLM/stats-only rows are treated as if they weren't in the sheet at all:
+    # not imported, and NOT counted as "seen", so an already-imported one is
+    # deleted by the reconciliation below exactly like a cleared row. Keep the
+    # RAW row count for the empty-read guard below — an all-SLM tab must still
+    # reconcile deletions, unlike a genuinely empty (transient proxy) read.
+    had_raw_rows = bool(rows)
+    rows = [row for row in rows if not _is_non_queue_row(row, row_fills)]
+
     for row in rows:
         # Matched by position within the tab's data rows, not job_code, since
         # job_code is only filled in by the operator after the job is taken.
@@ -212,7 +243,7 @@ def sync_tab(
             rework = None
             # Blue fill = pending, blue removed = issued. Only when colour info
             # is available this run; default (no info / still blue) = pending.
-            issued = row_blue is not None and not row_blue.get(row.row_number, True)
+            issued = row_fills is not None and row_fills.get(row.row_number, "blue") != "blue"
             status = "видано" if issued else "нове"
         else:
             fields = _fields(row)
@@ -272,12 +303,14 @@ def sync_tab(
     # filtering blanks), so a cleared row leaves its neighbours' numbers intact
     # and only the cleared row goes missing.
     #
-    # Guarded by `rows` being non-empty: a transient empty read (the lab PC's
-    # TLS proxy occasionally returns just headers) must never wipe a whole tab.
-    # Only sheet-sourced orders are eligible ("lab" work rows and "sheet_client"
-    # client rows) — IMAP "email" orders never live in a sheet tab and must not
-    # be touched here.
-    if rows:
+    # Guarded by the RAW read being non-empty (had_raw_rows, before the SLM
+    # filter) — a transient empty read (the lab PC's TLS proxy occasionally
+    # returns just headers) must never wipe a whole tab, but a tab that's
+    # legitimately all-SLM this sync must still reconcile deletions, not be
+    # mistaken for that transient case. Only sheet-sourced orders are eligible
+    # ("lab" work rows and "sheet_client" client rows) — IMAP "email" orders
+    # never live in a sheet tab and must not be touched here.
+    if had_raw_rows:
         seen_rows = {row.row_number for row in rows}
         for row_number, order in existing_by_row.items():
             if row_number not in seen_rows and order.source in ("lab", "sheet_client"):
