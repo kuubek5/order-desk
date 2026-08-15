@@ -81,6 +81,9 @@ from app.settings_store import (
     SETTING_FIELDS,
     get_all_settings,
     get_export_folder_path,
+    get_google_auth_mode,
+    get_google_oauth_client_json,
+    get_google_oauth_refresh_token,
     get_google_service_account_json,
     get_google_sheet_id,
     get_imap_login,
@@ -105,7 +108,8 @@ from app.sheet_writer import (
     write_rework_sum3d,
 )
 from app.parser import HEADER_ROWS
-from app.sheets import get_worksheet_by_name, open_spreadsheet
+from app.google_oauth import OAuthFlowError, parse_client_config, run_authorization_flow
+from app.sheets import get_worksheet_by_name, open_spreadsheet, reset_sheets_cache
 from app.statuses import STATUSES, is_overdue
 from app.stats import (
     average_new_to_milled_hours,
@@ -409,10 +413,14 @@ def _mail_preview_roots(db: Session) -> dict[str, str | None]:
 
 
 def _sheets_configured(db: Session) -> bool:
-    return bool(
-        (get_google_sheet_id(db) or "").strip()
-        and (get_google_service_account_json(db) or "").strip()
-    )
+    if not (get_google_sheet_id(db) or "").strip():
+        return False
+    if get_google_auth_mode(db) == "oauth":
+        return bool(
+            (get_google_oauth_client_json(db) or "").strip()
+            and (get_google_oauth_refresh_token(db) or "").strip()
+        )
+    return bool((get_google_service_account_json(db) or "").strip())
 
 
 def _imap_configured(db: Session) -> bool:
@@ -2694,6 +2702,59 @@ def _require_settings_admin(request: Request, db: Session):
     if not _is_loopback_request(request):
         raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
     return user
+
+
+@app.post("/settings/google-oauth/start", response_class=HTMLResponse)
+def start_google_oauth(request: Request, db: Session = Depends(get_db)):
+    """Runs the "Sign in with Google" flow using the CURRENTLY SAVED OAuth
+    client JSON (same "save first" contract as test-sheets) — opens the
+    admin's system browser on this PC, waits for the consent redirect, and
+    stores the resulting refresh token encrypted. On success also switches
+    google_auth_mode to "oauth" so subsequent Sheets calls use it."""
+    _require_settings_admin(request, db)
+
+    client_json = (get_google_oauth_client_json(db) or "").strip()
+    if not client_json:
+        result = {
+            "state": "error",
+            "message": "Спочатку вставте й збережіть OAuth Client JSON",
+        }
+    else:
+        try:
+            config = parse_client_config(client_json)
+            refresh_token = run_authorization_flow(config)
+        except OAuthFlowError as exc:
+            logger.warning("Google OAuth sign-in failed: %s", exc)
+            result = {"state": "error", "message": str(exc)}
+        except Exception:
+            logger.exception("Google OAuth sign-in failed unexpectedly")
+            result = {
+                "state": "error",
+                "message": "Не вдалося завершити вхід через Google. Спробуйте ще раз",
+            }
+        else:
+            set_setting(db, "google_oauth_refresh_token", refresh_token)
+            set_setting(db, "google_auth_mode", "oauth")
+            db.commit()
+            reset_sheets_cache()
+            result = {"state": "success", "message": "Вхід через Google виконано"}
+
+    return templates.TemplateResponse(
+        request, "_settings_check_result.html", {"result": result}
+    )
+
+
+@app.post("/settings/google-oauth/disconnect", response_class=HTMLResponse)
+def disconnect_google_oauth(request: Request, db: Session = Depends(get_db)):
+    """Clears the stored refresh token and switches back to the service-account
+    mode — lets an admin re-run the sign-in flow (e.g. with a different Google
+    account) without leaving a stale token behind."""
+    _require_settings_admin(request, db)
+    set_setting(db, "google_oauth_refresh_token", "")
+    set_setting(db, "google_auth_mode", "service_account")
+    db.commit()
+    reset_sheets_cache()
+    return RedirectResponse("/settings?saved=1", status_code=303)
 
 
 @app.get("/settings/materials", response_class=HTMLResponse)

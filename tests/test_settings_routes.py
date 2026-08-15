@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.web as web
 from app.db import Base
+from app.google_oauth import OAuthFlowError
 from app.models import User
 from app.settings_store import set_setting
 
@@ -332,3 +333,165 @@ def test_test_sheets_connection_reports_safe_error_on_failure(monkeypatch):
     assert context["result"]["state"] == "error"
     # Raw gspread/Google error text must never leak into the UI message.
     assert "PermissionDenied" not in context["result"]["message"]
+
+
+# --- _sheets_configured — service_account vs oauth mode --------------------
+
+
+def test_sheets_configured_false_without_sheet_id():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        assert web._sheets_configured(db) is False
+
+
+def test_sheets_configured_true_for_service_account_mode():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        set_setting(db, "google_sheet_id", "sheet-1")
+        set_setting(db, "google_service_account_json", '{"type": "service_account"}')
+        db.commit()
+        assert web._sheets_configured(db) is True
+
+
+def test_sheets_configured_ignores_service_account_json_in_oauth_mode():
+    """Switching to oauth mode must not fall back to a stale service-account
+    JSON — only the oauth client json + refresh token count."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        set_setting(db, "google_sheet_id", "sheet-1")
+        set_setting(db, "google_service_account_json", '{"type": "service_account"}')
+        set_setting(db, "google_auth_mode", "oauth")
+        db.commit()
+        assert web._sheets_configured(db) is False
+
+
+def test_sheets_configured_true_for_oauth_mode_with_token():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        set_setting(db, "google_sheet_id", "sheet-1")
+        set_setting(db, "google_auth_mode", "oauth")
+        set_setting(db, "google_oauth_client_json", '{"installed": {"client_id": "a", "client_secret": "b"}}')
+        set_setting(db, "google_oauth_refresh_token", "rt-123")
+        db.commit()
+        assert web._sheets_configured(db) is True
+
+
+# --- POST /settings/google-oauth/start --------------------------------------
+
+
+def test_start_google_oauth_requires_admin_role():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        operator = _operator(db)
+        with pytest.raises(HTTPException) as exc:
+            web.start_google_oauth(request=_request(operator.id), db=db)
+    assert exc.value.status_code == 403
+
+
+def test_start_google_oauth_requires_loopback():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        with pytest.raises(HTTPException) as exc:
+            web.start_google_oauth(request=_request(admin.id, host="203.0.113.5"), db=db)
+    assert exc.value.status_code == 403
+
+
+def test_start_google_oauth_reports_error_when_client_json_missing(monkeypatch):
+    engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        context = web.start_google_oauth(request=_request(admin.id), db=db)
+    assert context["result"]["state"] == "error"
+    assert "OAuth Client JSON" in context["result"]["message"]
+
+
+def test_start_google_oauth_success_saves_refresh_token_and_switches_mode(monkeypatch):
+    engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        set_setting(db, "google_oauth_client_json", '{"installed": {"client_id": "a", "client_secret": "b"}}')
+        db.commit()
+
+        with patch("app.web.run_authorization_flow", return_value="rt-new-token") as mock_flow, \
+             patch("app.web.reset_sheets_cache") as mock_reset:
+            context = web.start_google_oauth(request=_request(admin.id), db=db)
+
+        mock_flow.assert_called_once()
+        mock_reset.assert_called_once()
+        assert context["result"]["state"] == "success"
+
+        from app.settings_store import get_google_auth_mode, get_google_oauth_refresh_token
+        assert get_google_oauth_refresh_token(db) == "rt-new-token"
+        assert get_google_auth_mode(db) == "oauth"
+
+
+def test_start_google_oauth_reports_flow_error_safely(monkeypatch):
+    engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        set_setting(db, "google_oauth_client_json", '{"installed": {"client_id": "a", "client_secret": "b"}}')
+        db.commit()
+
+        with patch("app.web.run_authorization_flow", side_effect=OAuthFlowError("Google відхилив авторизацію: access_denied")):
+            context = web.start_google_oauth(request=_request(admin.id), db=db)
+
+    assert context["result"]["state"] == "error"
+    assert "access_denied" in context["result"]["message"]
+
+
+def test_start_google_oauth_reports_safe_error_on_unexpected_exception(monkeypatch):
+    engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        set_setting(db, "google_oauth_client_json", '{"installed": {"client_id": "a", "client_secret": "b"}}')
+        db.commit()
+
+        with patch("app.web.run_authorization_flow", side_effect=Exception("raw internal detail")):
+            context = web.start_google_oauth(request=_request(admin.id), db=db)
+
+    assert context["result"]["state"] == "error"
+    assert "raw internal detail" not in context["result"]["message"]
+
+
+# --- POST /settings/google-oauth/disconnect ---------------------------------
+
+
+def test_disconnect_google_oauth_requires_admin_role():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        operator = _operator(db)
+        with pytest.raises(HTTPException) as exc:
+            web.disconnect_google_oauth(request=_request(operator.id), db=db)
+    assert exc.value.status_code == 403
+
+
+def test_disconnect_google_oauth_clears_token_and_resets_mode():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        set_setting(db, "google_auth_mode", "oauth")
+        set_setting(db, "google_oauth_refresh_token", "rt-old")
+        db.commit()
+
+        with patch("app.web.reset_sheets_cache") as mock_reset:
+            resp = web.disconnect_google_oauth(request=_request(admin.id), db=db)
+
+        mock_reset.assert_called_once()
+        assert resp.status_code == 303
+
+        from app.settings_store import get_google_auth_mode, get_google_oauth_refresh_token
+        assert not get_google_oauth_refresh_token(db)
+        assert get_google_auth_mode(db) == "service_account"

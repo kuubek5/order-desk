@@ -95,7 +95,17 @@
                         </div>
                     </div>
 
+                    {% set auth_mode = values['google_auth_mode'] or 'service_account' %}
                     <div class="settings-field">
+                        <label>Спосіб авторизації</label>
+                        <div class="addwork-seg" role="group" aria-label="Спосіб авторизації Google" data-authmode-seg>
+                            <button type="button" class="{% if auth_mode != 'oauth' %}is-active{% endif %}" data-authmode="service_account">Сервісний акаунт</button>
+                            <button type="button" class="{% if auth_mode == 'oauth' %}is-active{% endif %}" data-authmode="oauth">Google-акаунт</button>
+                        </div>
+                        <input type="hidden" name="google_auth_mode" value="{{ auth_mode }}" data-authmode-input>
+                    </div>
+
+                    <div class="settings-field" data-authmode-block="service_account" {% if auth_mode == 'oauth' %}hidden{% endif %}>
                         <label for="google_service_account_json">{{ fields[1].label }}</label>
                         {% if fields[1].help_text %}
                         <p class="settings-help">{{ fields[1].help_text }}</p>
@@ -110,6 +120,44 @@
                                 ></textarea>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="settings-field" data-authmode-block="oauth" {% if auth_mode != 'oauth' %}hidden{% endif %}>
+                        <label for="google_oauth_client_json">OAuth Client JSON</label>
+                        <p class="settings-help">Вміст JSON «Desktop app» OAuth-клієнта з Google Cloud Console (кнопка «Створити клієнта» на екрані Credentials).</p>
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <textarea
+                                    id="google_oauth_client_json"
+                                    name="google_oauth_client_json"
+                                    class="login-input settings-textarea"
+                                    placeholder="{% if values['google_oauth_client_json'] %}•••••••• (збережено){% else %}не задано{% endif %}"
+                                ></textarea>
+                            </div>
+                        </div>
+
+                        <div class="settings-check-row">
+                            <span class="connection-state {% if values['google_oauth_refresh_token'] %}connection-state-ready{% endif %}">
+                                {% if values['google_oauth_refresh_token'] %}Google-акаунт підключено{% else %}Google-акаунт не підключено{% endif %}
+                            </span>
+                        </div>
+                        <div class="settings-check-row">
+                            <button
+                                type="button"
+                                class="settings-secondary-button settings-check-button"
+                                hx-post="/settings/google-oauth/start"
+                                hx-target="#oauth-check-result"
+                                hx-swap="innerHTML"
+                                hx-indicator="#oauth-check-spinner"
+                                hx-params="none"
+                            >Увійти через Google</button>
+                            <span class="check-spinner htmx-indicator" id="oauth-check-spinner" aria-hidden="true"></span>
+                            <span id="oauth-check-result" class="settings-check-result" aria-live="polite"></span>
+                        </div>
+                        <p class="settings-help">Спершу натисніть «Зберегти» після вставки JSON. Відкриється системний браузер — увійдіть Google-акаунтом, що має доступ до таблиці, і дозвольте доступ.</p>
+                        {% if values['google_oauth_refresh_token'] %}
+                        <button type="submit" formaction="/settings/google-oauth/disconnect" formnovalidate class="link-button">Відключити Google-акаунт</button>
+                        {% endif %}
                     </div>
 
                     <div class="settings-check-row">

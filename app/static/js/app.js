@@ -132,6 +132,22 @@ document.addEventListener("click", (event) => {
     }
     return;
   }
+  // Settings: Сервісний акаунт / Google-акаунт auth-mode toggle.
+  const authBtn = event.target.closest("[data-authmode]");
+  if (authBtn) {
+    const seg = authBtn.closest("[data-authmode-seg]");
+    const form = seg.closest("form");
+    const mode = authBtn.dataset.authmode;
+    form.querySelector("[data-authmode-input]").value = mode;
+    seg.querySelectorAll("[data-authmode]").forEach((b) =>
+      b.classList.toggle("is-active", b === authBtn)
+    );
+    form.querySelectorAll("[data-authmode-block]").forEach((el) => {
+      el.hidden = el.dataset.authmodeBlock !== mode;
+    });
+    return;
+  }
+
   // Клієнт / Лабораторія type switch.
   const typeBtn = event.target.closest("[data-addwork-type]");
   if (typeBtn) {

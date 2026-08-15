@@ -28,12 +28,13 @@ def counting_build(monkeypatch):
         builds["n"] += 1
         return MagicMock(name=f"client-{builds['n']}")
 
-    monkeypatch.setattr(sheets, "_build_credentials", lambda json_content: object())
+    monkeypatch.setattr(sheets, "_build_credentials", lambda spec: object())
     monkeypatch.setattr(sheets, "_build_client", fake_build_client)
     return builds
 
 
 def _db_with_creds(monkeypatch, json_content):
+    monkeypatch.setattr(sheets, "get_google_auth_mode", lambda db: "service_account")
     monkeypatch.setattr(sheets, "get_google_service_account_json", lambda db: json_content)
     return MagicMock()  # stand-in Session; only identity matters
 

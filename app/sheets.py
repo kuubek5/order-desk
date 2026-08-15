@@ -9,13 +9,21 @@ from typing import Callable, Optional, TypeVar
 
 import gspread
 import requests
+from google.auth.credentials import Credentials as BaseCredentials
 from google.auth.transport.requests import AuthorizedSession, Request
-from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials as UserCredentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 from requests.adapters import HTTPAdapter
 from sqlalchemy.orm import Session
 
 from app.config import GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SHEET_ID
-from app.settings_store import get_google_service_account_json, get_google_sheet_id
+from app.settings_store import (
+    get_google_auth_mode,
+    get_google_oauth_client_json,
+    get_google_oauth_refresh_token,
+    get_google_service_account_json,
+    get_google_sheet_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -127,22 +135,75 @@ def new_legacy_session() -> requests.Session:
 _local = threading.local()
 
 
-def _credentials_key(db: Optional[Session]) -> tuple[str, Optional[str]]:
-    """Cache key for the active service-account config, plus the DB-stored JSON
-    when that is the source (so a cache miss can build without a second read).
-    Computing the key never mints a token — that's the whole point of caching."""
+_OAUTH_DEFAULT_TOKEN_URI = "https://oauth2.googleapis.com/token"
+
+
+class OAuthClientConfigError(ValueError):
+    """The saved google_oauth_client_json isn't a usable Desktop-client JSON."""
+
+
+def parse_oauth_client_json(json_content: str) -> dict:
+    """Parse the "Desktop app" OAuth client JSON from Google Cloud Console into
+    {client_id, client_secret, token_uri}. Shared by app/google_oauth.py (the
+    sign-in flow) and the credentials builder below, so both agree on what a
+    valid client JSON looks like."""
+    try:
+        data = json.loads(json_content)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise OAuthClientConfigError("Не вдалося розібрати JSON OAuth-клієнта") from exc
+    block = data.get("installed") or data.get("web")
+    if not block or not block.get("client_id") or not block.get("client_secret"):
+        raise OAuthClientConfigError(
+            "У JSON немає client_id/client_secret у розділі «installed»"
+        )
+    return {
+        "client_id": block["client_id"],
+        "client_secret": block["client_secret"],
+        "token_uri": block.get("token_uri", _OAUTH_DEFAULT_TOKEN_URI),
+    }
+
+
+# A credentials "spec" the cache key and the builder agree on:
+#   ("service_account", json_content_or_None, None)
+#   ("oauth", client_json, refresh_token)
+_CredsSpec = tuple[str, Optional[str], Optional[str]]
+
+
+def _credentials_key(db: Optional[Session]) -> tuple[str, _CredsSpec]:
+    """Cache key for the active credentials config, plus the spec needed to
+    build them (so a cache miss can build without a second DB read). Computing
+    the key never mints a token — that's the whole point of caching."""
     if db is not None:
+        if get_google_auth_mode(db) == "oauth":
+            client_json = get_google_oauth_client_json(db)
+            refresh_token = get_google_oauth_refresh_token(db)
+            if client_json and refresh_token:
+                digest = hashlib.sha256(f"{client_json}:{refresh_token}".encode("utf-8")).hexdigest()
+                return f"oauth:{digest}", ("oauth", client_json, refresh_token)
         json_content = get_google_service_account_json(db)
         if json_content is not None:
             digest = hashlib.sha256(json_content.encode("utf-8")).hexdigest()
-            return f"db:{digest}", json_content
-    return f"file:{GOOGLE_SERVICE_ACCOUNT_JSON}", None
+            return f"db:{digest}", ("service_account", json_content, None)
+    return f"file:{GOOGLE_SERVICE_ACCOUNT_JSON}", ("service_account", None, None)
 
 
-def _build_credentials(json_content: Optional[str]) -> Credentials:
+def _build_credentials(spec: _CredsSpec) -> BaseCredentials:
+    kind, a, b = spec
+    if kind == "oauth":
+        client_json, refresh_token = a, b
+        cfg = parse_oauth_client_json(client_json)
+        return UserCredentials(
+            token=None,
+            refresh_token=refresh_token,
+            client_id=cfg["client_id"],
+            client_secret=cfg["client_secret"],
+            token_uri=cfg["token_uri"],
+            scopes=_SCOPES,
+        )
+    json_content = a
     if json_content is not None:
-        return Credentials.from_service_account_info(json.loads(json_content), scopes=_SCOPES)
-    return Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_JSON, scopes=_SCOPES)
+        return ServiceAccountCredentials.from_service_account_info(json.loads(json_content), scopes=_SCOPES)
+    return ServiceAccountCredentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_JSON, scopes=_SCOPES)
 
 
 class _LeanHTTPClient(gspread.http_client.HTTPClient):
@@ -164,7 +225,7 @@ class _LeanHTTPClient(gspread.http_client.HTTPClient):
         return super().fetch_sheet_metadata(id, params=params)
 
 
-def _build_client(creds: Credentials) -> gspread.Client:
+def _build_client(creds: BaseCredentials) -> gspread.Client:
     # Token refresh (POST to oauth2.googleapis.com) runs over its own
     # internal session unless we hand it one explicitly, so the adapter
     # has to be mounted on both this session and the API session below.
@@ -188,12 +249,12 @@ def reset_sheets_cache() -> None:
 
 
 def get_client(db: Optional[Session] = None) -> gspread.Client:
-    key, json_content = _credentials_key(db)
+    key, spec = _credentials_key(db)
     cached = getattr(_local, "sheets_client", None)
     if cached is not None and cached[0] == key:
         return cached[1]
 
-    client = _build_client(_build_credentials(json_content))
+    client = _build_client(_build_credentials(spec))
     _local.sheets_client = (key, client)
     return client
 

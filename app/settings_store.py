@@ -67,6 +67,27 @@ SETTING_FIELDS = [
         secret=True,
         help_text="Видає власник продукту для цього комп'ютера",
     ),
+    # Appended after the original six so existing settings.html template
+    # indices (fields[0]..fields[5]) stay stable — these new fields are
+    # looked up by key, not position.
+    SettingField(
+        key="google_auth_mode",
+        label="Спосіб авторизації Google",
+        help_text="service_account або oauth",
+    ),
+    SettingField(
+        key="google_oauth_client_json",
+        label="Google OAuth Client JSON",
+        secret=True,
+        multiline=True,
+        help_text="Вміст JSON «Desktop app» OAuth-клієнта з Google Cloud Console",
+    ),
+    SettingField(
+        key="google_oauth_refresh_token",
+        label="Google OAuth Refresh Token",
+        secret=True,
+        help_text="Заповнюється автоматично після входу через Google — не редагувати вручну",
+    ),
 ]
 
 OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operator_editable}
@@ -127,3 +148,17 @@ def get_imap_password(session: Session) -> Optional[str]:
 
 def get_license_key(session: Session) -> Optional[str]:
     return get_setting(session, "license_key")
+
+
+def get_google_auth_mode(session: Session) -> str:
+    """"service_account" (default, JSON key) or "oauth" (personal Google
+    account sign-in) — which credentials app/sheets.py should build."""
+    return get_setting(session, "google_auth_mode") or "service_account"
+
+
+def get_google_oauth_client_json(session: Session) -> Optional[str]:
+    return get_setting(session, "google_oauth_client_json")
+
+
+def get_google_oauth_refresh_token(session: Session) -> Optional[str]:
+    return get_setting(session, "google_oauth_refresh_token")
