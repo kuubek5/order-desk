@@ -1087,7 +1087,7 @@ _sheet_writeback_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sh
 
 def _append_manual_row_warm(
     tab: str, *, work_order_no: str, quantity: str, material_color: str,
-    e_value: str, sum3d_id: str, paint_blue: bool,
+    e_value: str, sum3d_id: str, paint_blue: bool, placement: str,
 ) -> int | None:
     """Append a manual work row to `tab` on the write-back worker thread, whose
     per-thread spreadsheet/worksheet cache stays warm (see _warm_sheet_writeback)
@@ -1106,6 +1106,7 @@ def _append_manual_row_warm(
             e_value=e_value,
             sum3d_id=sum3d_id,
             paint_blue=paint_blue,
+            placement=placement,
         )
 
 
@@ -1874,6 +1875,7 @@ def create_manual_order(
             e_value=(kind if is_lab else client_name),
             sum3d_id=sum3d_id,
             paint_blue=(not is_lab),
+            placement=("lab" if is_lab else "client"),
         ).result(timeout=90)
     except Exception as exc:  # noqa: BLE001 — surface any sheet failure to the operator
         logger.exception("Manual order sheet write failed")

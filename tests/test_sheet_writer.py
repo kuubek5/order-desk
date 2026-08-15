@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import gspread.utils
 from app.sheet_writer import (
     append_mail_placeholder_row,
+    append_manual_work_row,
     append_order_comment,
     apply_status_markers,
     write_order_fields,
@@ -400,7 +401,7 @@ class TestAppendMailPlaceholderRow:
         fake_ws = MagicMock()
         fake_ws.get.return_value = [["24000", "1", "", "X"] for _ in range(201)]
 
-        with pytest.raises(RuntimeError, match="вільного рядка"):
+        with pytest.raises(RuntimeError, match="заповнена"):
             append_mail_placeholder_row(fake_ws, "Клієнт", "1", "титан", start_row=60)
 
         fake_ws.batch_update.assert_not_called()
@@ -415,6 +416,86 @@ class TestAppendMailPlaceholderRow:
 
         assert row_number == 100
         fake_ws.get.assert_called_once_with("B100:E300")
+
+
+class TestManualPlacement:
+    """placement="client" appends contiguously below the last populated row;
+    placement="lab" leaves one empty gap below the last lab row (col B) in the
+    main table above the client region."""
+
+    def test_client_appends_after_last_row_leaving_no_gap_over_holes(self):
+        """Client rows stack under the LAST populated row, not into an earlier
+        gap — even if rows 61/62 are empty, a filled row 63 pushes the new row
+        to 64 (immediately under the last record)."""
+        fake_ws = MagicMock()
+        fake_ws.get.return_value = [
+            ["", "33", "sfsd", "43423"],  # row 60 filled
+            [],                            # row 61 empty
+            [],                            # row 62 empty
+            ["4434", "55", "herher", ""],  # row 63 filled
+        ]
+
+        row_number = append_manual_work_row(
+            fake_ws, e_value="Вова", quantity="5", material_color="емо а3",
+            placement="client", start_row=60,
+        )
+
+        assert row_number == 64  # directly under the last record, no gap-filling
+        fake_ws.get.assert_called_once_with("B60:E260")
+
+    def test_client_empty_window_uses_start_row(self):
+        fake_ws = MagicMock()
+        fake_ws.get.return_value = []
+
+        row_number = append_manual_work_row(
+            fake_ws, e_value="Клієнт", quantity="1", material_color="титан",
+            placement="client", start_row=60,
+        )
+        assert row_number == 60
+
+    def test_lab_leaves_one_gap_after_last_lab_row(self):
+        """Last lab row (col B наряд) is row 30 → new lab row lands at 32,
+        leaving row 31 blank as a separator. Scans only the lab region B7:B59."""
+        fake_ws = MagicMock()
+        # B7:B59 = 53 rows; naряд filled in the first 24 (rows 7..30).
+        col_b = [["24000"]] * 24 + [[]] * 29
+        fake_ws.get.return_value = col_b
+
+        row_number = append_manual_work_row(
+            fake_ws, work_order_no="99001", e_value="анатомія",
+            quantity="1", material_color="цирконій", placement="lab",
+            paint_blue=False,
+        )
+
+        assert row_number == 32  # last lab 30, gap 31, write 32
+        fake_ws.get.assert_called_once_with("B7:B59")
+        # lab rows never painted blue
+        fake_ws.format.assert_not_called()
+        updates = fake_ws.batch_update.call_args[0][0]
+        cells = {u["range"] for u in updates}
+        assert gspread.utils.rowcol_to_a1(32, 2) in cells  # наряд col B
+
+    def test_lab_empty_table_uses_first_lab_row(self):
+        fake_ws = MagicMock()
+        fake_ws.get.return_value = []
+
+        row_number = append_manual_work_row(
+            fake_ws, work_order_no="1", e_value="вид", quantity="1",
+            material_color="x", placement="lab", paint_blue=False,
+        )
+        assert row_number == 7  # HEADER_ROWS + 1
+
+    def test_lab_region_full_raises(self):
+        fake_ws = MagicMock()
+        # every row 7..59 has наряд → no gap-room before the client region
+        fake_ws.get.return_value = [["24000"]] * 53
+
+        with pytest.raises(RuntimeError, match="лабораторна зона заповнена"):
+            append_manual_work_row(
+                fake_ws, work_order_no="1", e_value="вид", quantity="1",
+                material_color="x", placement="lab", paint_blue=False,
+            )
+        fake_ws.batch_update.assert_not_called()
 
 
 class TestAppendOrderComment:

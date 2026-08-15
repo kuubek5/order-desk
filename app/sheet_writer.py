@@ -31,6 +31,12 @@ COL_QUANTITY = 3
 COL_MATERIAL_COLOR = 4
 COL_KIND = 5
 
+# The lab enters mail/client rows below this row; the main lab table lives
+# above it (see CLAUDE.md §3 "після 60-го рядка вносимо клієнтів"). Manual adds
+# are placed relative to this boundary — lab rows in the table above, client
+# rows appended below.
+CLIENT_REGION_START = 60
+
 CALCULATED_STATUSES = {
     "прораховано",
     "у фрезеруванні",
@@ -112,6 +118,45 @@ def apply_status_markers(
     return changed
 
 
+def _next_client_row(
+    worksheet: gspread.Worksheet, start_row: int, end_row: int
+) -> int:
+    """Row directly below the last populated row in the client region — client
+    files stack contiguously top-to-bottom, no gap (CLAUDE.md workflow)."""
+    raw_rows = call_with_retry(lambda: worksheet.get(f"B{start_row}:E{end_row}"))
+    last_filled = start_row - 1
+    for offset, row in enumerate(raw_rows):
+        b = row[0].strip() if len(row) > 0 else ""
+        c = row[1].strip() if len(row) > 1 else ""
+        e = row[3].strip() if len(row) > 3 else ""
+        if b or c or e:
+            last_filled = start_row + offset
+    row_number = last_filled + 1
+    if row_number > end_row:
+        raise RuntimeError(
+            f"клієнтська зона заповнена в межах {start_row}-{end_row}"
+        )
+    return row_number
+
+
+def _next_lab_row(worksheet: gspread.Worksheet, lab_start: int, lab_end: int) -> int:
+    """Row one empty gap below the last lab row (наряд in col B) inside the main
+    lab table above the client region — leaves one blank row of separation."""
+    raw_rows = call_with_retry(lambda: worksheet.get(f"B{lab_start}:B{lab_end}"))
+    last_lab = None
+    for offset, row in enumerate(raw_rows):
+        b = row[0].strip() if len(row) > 0 else ""
+        if b:
+            last_lab = lab_start + offset
+    row_number = lab_start if last_lab is None else last_lab + 2
+    if row_number > lab_end:
+        raise RuntimeError(
+            f"лабораторна зона заповнена в межах {lab_start}-{lab_end}; "
+            "додайте рядки перед клієнтською зоною"
+        )
+    return row_number
+
+
 def append_manual_work_row(
     worksheet: gspread.Worksheet,
     *,
@@ -121,7 +166,8 @@ def append_manual_work_row(
     e_value: str = "",
     sum3d_id: str = "",
     paint_blue: bool = True,
-    start_row: int = 60,
+    placement: str = "client",
+    start_row: int = CLIENT_REGION_START,
     max_search_rows: int = 200,
 ) -> int:
     """Append a work row into a dated tab and return its 1-indexed sheet row.
@@ -135,34 +181,24 @@ def append_manual_work_row(
                                 type/вид for a lab row)
       * col L "ID"            — ``sum3d_id`` (only when provided)
 
-    Scans down from ``start_row`` for the first row where Номер наряду,
-    Кількість and Вид роботи are all empty — rows above are admin/technician
-    logs and are never touched; a row with any of those filled is treated as
-    taken and skipped. ``paint_blue`` fills the row the lab's pending-client
-    blue (client rows only). Raises RuntimeError if no free row is found.
+    Placement follows the lab's workflow (CLAUDE.md §3):
+      * ``placement="client"`` — appended directly below the last populated row
+        in the client region (rows ``start_row``..), stacking contiguously with
+        no gap; painted blue by default (pending-client marker).
+      * ``placement="lab"`` — placed one empty row below the last lab row (наряд
+        in col B) inside the main table above the client region, keeping a blank
+        separator; never painted blue.
+
+    ``paint_blue`` fills the row the lab's pending-client blue (client rows
+    only). Raises RuntimeError if the target region is full.
     """
     end_row = start_row + max_search_rows
-    # A single ranged read instead of per-row acell() calls, since scanning
-    # can span up to max_search_rows candidate rows. gspread/Sheets trims
-    # trailing empty rows (and trailing empty cells within a row) from the
-    # result, so rows past the last populated one simply aren't present.
-    raw_rows = call_with_retry(lambda: worksheet.get(f"B{start_row}:E{end_row}"))
-
-    row_number = None
-    for offset, row in enumerate(raw_rows):
-        b = row[0].strip() if len(row) > 0 else ""
-        c = row[1].strip() if len(row) > 1 else ""
-        e = row[3].strip() if len(row) > 3 else ""
-        if not b and not c and not e:
-            row_number = start_row + offset
-            break
-    else:
-        row_number = start_row + len(raw_rows)
-
-    if row_number > end_row:
-        raise RuntimeError(
-            f"не знайдено вільного рядка для нотатки в межах {start_row}-{end_row}"
+    if placement == "lab":
+        row_number = _next_lab_row(
+            worksheet, lab_start=HEADER_ROWS + 1, lab_end=CLIENT_REGION_START - 1
         )
+    else:
+        row_number = _next_client_row(worksheet, start_row, end_row)
 
     updates = [
         {"range": gspread.utils.rowcol_to_a1(row_number, COL_QUANTITY), "values": [[quantity or ""]]},

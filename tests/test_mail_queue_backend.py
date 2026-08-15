@@ -228,7 +228,7 @@ def _stub_sheet_write(monkeypatch, note_row=65, tab=None):
 
 def test_create_manual_order_writes_client_row_and_creates_order(monkeypatch):
     engine = _database()
-    _stub_sheet_write(monkeypatch, note_row=65)
+    calls = _stub_sheet_write(monkeypatch, note_row=65)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
@@ -238,6 +238,7 @@ def test_create_manual_order_writes_client_row_and_creates_order(monkeypatch):
         )
         assert resp.status_code == 303
         assert resp.headers["location"] == "/?source=client"
+        assert calls["placement"] == "client"
 
         order = db.scalar(select(Order).where(Order.source == "sheet_client"))
         assert order.client_name == "Басараб"
@@ -271,6 +272,7 @@ def test_create_manual_lab_order_with_sum3d(monkeypatch):
         assert calls["e_value"] == "анатомія"
         assert calls["sum3d_id"] == "10-19-48"
         assert calls["paint_blue"] is False
+        assert calls["placement"] == "lab"
 
 
 def test_create_manual_lab_order_requires_naryad(monkeypatch):
