@@ -234,7 +234,7 @@ def test_create_manual_order_writes_client_row_and_creates_order(monkeypatch):
         resp = web.create_manual_order(
             request=_request(user.id), work_type="client",
             client_name="Басараб", work_order_no="", kind="",
-            material_color="mono a3", quantity="2", sum3d_id="", db=db,
+            material_color="mono a3", quantity="2", sum3d_id="", job_code="", technician_name="", db=db,
         )
         assert resp.status_code == 303
         assert resp.headers["location"] == "/?source=client"
@@ -255,7 +255,7 @@ def test_create_manual_lab_order_with_sum3d(monkeypatch):
         user = _user(db)
         resp = web.create_manual_order(
             request=_request(user.id), work_type="lab", client_name="", work_order_no="24999",
-            kind="анатомія", material_color="mono a2", quantity="3", sum3d_id="10-19-48", db=db,
+            kind="анатомія", material_color="mono a2", quantity="3", sum3d_id="10-19-48", job_code="", technician_name="", db=db,
         )
         assert resp.status_code == 303
         assert resp.headers["location"] == "/?source=lab"
@@ -275,18 +275,58 @@ def test_create_manual_lab_order_with_sum3d(monkeypatch):
         assert calls["placement"] == "lab"
 
 
-def test_create_manual_lab_order_requires_naryad(monkeypatch):
+def test_create_manual_lab_order_allows_missing_naryad(monkeypatch):
+    """Lab works may be incomplete — no наряд, just a material — and still be
+    written (наряд is often filled in later)."""
+    engine = _database()
+    calls = _stub_sheet_write(monkeypatch, note_row=32)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id), work_type="lab", client_name="", work_order_no="  ",
+            kind="", material_color="mono a2", quantity="", sum3d_id="",
+            job_code="", technician_name="", db=db,
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/?source=lab"
+        order = db.scalar(select(Order).where(Order.source == "lab"))
+        assert order is not None
+        assert order.work_order_no is None  # blank наряд stored as NULL
+        assert order.material_color == "mono a2"
+        assert calls["placement"] == "lab"
+
+
+def test_create_manual_lab_order_rejects_fully_blank(monkeypatch):
     engine = _database()
     _stub_sheet_write(monkeypatch)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
-            request=_request(user.id), work_type="lab", client_name="", work_order_no="  ",
-            kind="", material_color="mono a2", quantity="", sum3d_id="", db=db,
+            request=_request(user.id), work_type="lab", client_name="", work_order_no="",
+            kind="", material_color="", quantity="", sum3d_id="",
+            job_code="", technician_name="", db=db,
         )
         assert resp.status_code == 303
         assert "error=" in resp.headers["location"]
         assert db.scalar(select(Order)) is None
+
+
+def test_create_manual_order_writes_job_code_and_technician(monkeypatch):
+    engine = _database()
+    calls = _stub_sheet_write(monkeypatch, note_row=33)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id), work_type="lab", client_name="", work_order_no="24500",
+            kind="анатомія", material_color="цирконій", quantity="1", sum3d_id="",
+            job_code="2026-07-21_00016-007", technician_name="Іван", db=db,
+        )
+        assert resp.status_code == 303
+        order = db.scalar(select(Order).where(Order.source == "lab"))
+        assert order.job_code == "2026-07-21_00016-007"
+        assert order.technician_name == "Іван"
+        assert calls["job_code"] == "2026-07-21_00016-007"
+        assert calls["technician_name"] == "Іван"
 
 
 def test_create_manual_order_requires_client_and_material(monkeypatch):
@@ -296,7 +336,7 @@ def test_create_manual_order_requires_client_and_material(monkeypatch):
         user = _user(db)
         resp = web.create_manual_order(
             request=_request(user.id), work_type="client", client_name="   ", work_order_no="",
-            kind="", material_color="x", quantity="", sum3d_id="", db=db,
+            kind="", material_color="x", quantity="", sum3d_id="", job_code="", technician_name="", db=db,
         )
         assert resp.status_code == 303
         assert "error=" in resp.headers["location"]
@@ -311,7 +351,7 @@ def test_create_manual_order_reports_missing_today_tab(monkeypatch):
         user = _user(db)
         resp = web.create_manual_order(
             request=_request(user.id), work_type="client", client_name="Басараб", work_order_no="",
-            kind="", material_color="mono a3", quantity="1", sum3d_id="", db=db,
+            kind="", material_color="mono a3", quantity="1", sum3d_id="", job_code="", technician_name="", db=db,
         )
         assert resp.status_code == 303
         assert "error=" in resp.headers["location"]

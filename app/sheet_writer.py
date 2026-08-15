@@ -30,6 +30,9 @@ COL_WORK_ORDER_NO = 2
 COL_QUANTITY = 3
 COL_MATERIAL_COLOR = 4
 COL_KIND = 5
+# "Номер роботи" work path (parser idx 8) and "Ім'я техніка" (parser idx 9).
+COL_JOB_CODE = 9
+COL_TECHNICIAN = 10
 
 # The lab enters mail/client rows below this row; the main lab table lives
 # above it (see CLAUDE.md §3 "після 60-го рядка вносимо клієнтів"). Manual adds
@@ -164,6 +167,8 @@ def append_manual_work_row(
     quantity: str = "",
     material_color: str = "",
     e_value: str = "",
+    job_code: str = "",
+    technician_name: str = "",
     sum3d_id: str = "",
     paint_blue: bool = True,
     placement: str = "client",
@@ -179,6 +184,8 @@ def append_manual_work_row(
       * col D "Колір роботи"  — ``material_color``
       * col E "Вид роботи"    — ``e_value`` (client NAME for a client row, work
                                 type/вид for a lab row)
+      * col I "Номер роботи"  — ``job_code`` work path (only when provided)
+      * col J "Ім'я техніка"  — ``technician_name`` (only when provided)
       * col L "ID"            — ``sum3d_id`` (only when provided)
 
     Placement follows the lab's workflow (CLAUDE.md §3):
@@ -208,6 +215,14 @@ def append_manual_work_row(
     if work_order_no:
         updates.append(
             {"range": gspread.utils.rowcol_to_a1(row_number, COL_WORK_ORDER_NO), "values": [[work_order_no]]}
+        )
+    if job_code:
+        updates.append(
+            {"range": gspread.utils.rowcol_to_a1(row_number, COL_JOB_CODE), "values": [[job_code]]}
+        )
+    if technician_name:
+        updates.append(
+            {"range": gspread.utils.rowcol_to_a1(row_number, COL_TECHNICIAN), "values": [[technician_name]]}
         )
     if sum3d_id:
         updates.append(

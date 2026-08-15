@@ -86,9 +86,11 @@
                 {# Lab mode (hidden+disabled by default so it isn't submitted/validated) #}
                 <input type="text" name="work_order_no" placeholder="Номер наряду" class="addwork-input addwork-qty" data-addwork-lab hidden disabled>
                 <input type="text" name="kind" placeholder="Вид роботи" class="addwork-input" data-addwork-lab hidden disabled>
-                {# Common #}
-                <input type="text" name="material_color" placeholder="Матеріал / колір (mono a3…)" class="addwork-input" required>
+                {# Common (server validates: client needs material, lab may be incomplete) #}
+                <input type="text" name="material_color" placeholder="Матеріал / колір (mono a3…)" class="addwork-input">
                 <input type="text" name="quantity" placeholder="К-сть" class="addwork-input addwork-qty" inputmode="numeric">
+                <input type="text" name="technician_name" placeholder="Технік" class="addwork-input">
+                <input type="text" name="job_code" placeholder="Шлях роботи (напр. 2026-07-21_00016-007)" class="addwork-input mono">
                 <input type="text" name="sum3d_id" placeholder="Sum3D ID" class="addwork-input addwork-qty mono">
                 <button type="submit" class="addwork-submit">Додати в чергу і таблицю</button>
                 <button type="button" class="addwork-cancel" data-addwork-cancel aria-label="Скасувати">✕</button>

@@ -46,14 +46,26 @@
         </div>
         <div class="neworder-row">
             <div class="neworder-field">
-                <label for="material_color">Матеріал / колір</label>
+                <label for="material_color">Матеріал / колір {% if is_lab %}<span class="neworder-opt">(необовʼязково)</span>{% endif %}</label>
                 <input type="text" id="material_color" name="material_color" value="{{ form.material_color }}"
-                       placeholder="напр. mono a3, emo a2, Ti" required>
+                       placeholder="напр. mono a3, emo a2, Ti">
             </div>
             <div class="neworder-field neworder-field-qty">
                 <label for="quantity">Кількість</label>
                 <input type="text" id="quantity" name="quantity" value="{{ form.quantity }}"
                        placeholder="1" inputmode="numeric">
+            </div>
+        </div>
+        <div class="neworder-row">
+            <div class="neworder-field">
+                <label for="technician_name">Технік <span class="neworder-opt">(необовʼязково)</span></label>
+                <input type="text" id="technician_name" name="technician_name" value="{{ form.technician_name }}"
+                       placeholder="Імʼя техніка">
+            </div>
+            <div class="neworder-field">
+                <label for="job_code">Шлях роботи <span class="neworder-opt">(необовʼязково)</span></label>
+                <input type="text" id="job_code" name="job_code" value="{{ form.job_code }}"
+                       class="mono" placeholder="напр. 2026-07-21_00016-007">
             </div>
         </div>
         <div class="neworder-field">

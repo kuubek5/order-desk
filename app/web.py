@@ -1087,7 +1087,8 @@ _sheet_writeback_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sh
 
 def _append_manual_row_warm(
     tab: str, *, work_order_no: str, quantity: str, material_color: str,
-    e_value: str, sum3d_id: str, paint_blue: bool, placement: str,
+    e_value: str, job_code: str, technician_name: str, sum3d_id: str,
+    paint_blue: bool, placement: str,
 ) -> int | None:
     """Append a manual work row to `tab` on the write-back worker thread, whose
     per-thread spreadsheet/worksheet cache stays warm (see _warm_sheet_writeback)
@@ -1104,6 +1105,8 @@ def _append_manual_row_warm(
             quantity=quantity,
             material_color=material_color,
             e_value=e_value,
+            job_code=job_code,
+            technician_name=technician_name,
             sum3d_id=sum3d_id,
             paint_blue=paint_blue,
             placement=placement,
@@ -1791,6 +1794,7 @@ def new_order_form(
     request: Request, db: Session = Depends(get_db), error: str = "",
     work_type: str = "client", material_color: str = "", client_name: str = "",
     work_order_no: str = "", kind: str = "", quantity: str = "", sum3d_id: str = "",
+    job_code: str = "", technician_name: str = "",
 ):
     user = get_current_user(request, db)
     if user is None:
@@ -1807,6 +1811,7 @@ def new_order_form(
                 "client_name": client_name, "work_order_no": work_order_no,
                 "kind": kind, "material_color": material_color,
                 "quantity": quantity, "sum3d_id": sum3d_id,
+                "job_code": job_code, "technician_name": technician_name,
             },
         },
     )
@@ -1822,6 +1827,8 @@ def create_manual_order(
     material_color: str = Form(""),
     quantity: str = Form(""),
     sum3d_id: str = Form(""),
+    job_code: str = Form(""),
+    technician_name: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Add a work by hand and mirror it into today's sheet tab. Two kinds:
@@ -1844,22 +1851,30 @@ def create_manual_order(
     material_color = material_color.strip()
     quantity = quantity.strip()
     sum3d_id = sum3d_id.strip()
+    job_code = job_code.strip()
+    technician_name = technician_name.strip()
 
     def _back(message: str):
         params = urlencode({
             "error": message, "work_type": work_type, "client_name": client_name,
             "work_order_no": work_order_no, "kind": kind,
             "material_color": material_color, "quantity": quantity, "sum3d_id": sum3d_id,
+            "job_code": job_code, "technician_name": technician_name,
         })
         return RedirectResponse(f"/orders/new?{params}", status_code=303)
 
     is_lab = work_type == "lab"
-    if is_lab and not work_order_no:
-        return _back("Вкажіть номер наряду.")
-    if not is_lab and not client_name:
-        return _back("Вкажіть імʼя клієнта.")
-    if not material_color:
-        return _back("Вкажіть матеріал / колір.")
+    # Lab works may be added with incomplete data (no наряд, no material — these
+    # are often filled in later); we only guard against a fully blank row. A
+    # client row still needs the client name and its material.
+    if is_lab:
+        if not any((work_order_no, kind, material_color, job_code, technician_name, sum3d_id)):
+            return _back("Заповніть хоча б одне поле роботи.")
+    else:
+        if not client_name:
+            return _back("Вкажіть імʼя клієнта.")
+        if not material_color:
+            return _back("Вкажіть матеріал / колір.")
 
     tab = date.today().strftime("%d.%m.%y")
     # Append on the warm write-back worker (cached spreadsheet/worksheet), not
@@ -1873,6 +1888,8 @@ def create_manual_order(
             quantity=quantity,
             material_color=material_color,
             e_value=(kind if is_lab else client_name),
+            job_code=job_code,
+            technician_name=technician_name,
             sum3d_id=sum3d_id,
             paint_blue=(not is_lab),
             placement=("lab" if is_lab else "client"),
@@ -1886,8 +1903,9 @@ def create_manual_order(
     if is_lab:
         order = Order(
             source="lab", sheet_tab=tab, row_number=note_row - HEADER_ROWS,
-            work_order_no=work_order_no, kind=kind or None,
+            work_order_no=work_order_no or None, kind=kind or None,
             material_color=material_color or None, quantity=quantity or None,
+            job_code=job_code or None, technician_name=technician_name or None,
             sum3d_id=sum3d_id or None,
             status="прийнято" if sum3d_id else "нове",
         )
@@ -1895,7 +1913,9 @@ def create_manual_order(
         order = Order(
             source="sheet_client", sheet_tab=tab, row_number=note_row - HEADER_ROWS,
             client_name=client_name, material_color=material_color or None,
-            quantity=quantity or None, sum3d_id=sum3d_id or None, status="нове",
+            quantity=quantity or None, job_code=job_code or None,
+            technician_name=technician_name or None,
+            sum3d_id=sum3d_id or None, status="нове",
         )
     ensure_seeded(db)
     order.material_id = resolve_material_id(order.material_color, load_alias_rows(db), material_id_by_name(db))
