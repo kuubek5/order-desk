@@ -160,24 +160,85 @@ def _next_lab_row(worksheet: gspread.Worksheet, lab_start: int, lab_end: int) ->
     return row_number
 
 
-def _row_cell_updates(row_number: int, work: dict) -> list[dict]:
-    """Point-cell batch_update entries for one manual work row. Quantity,
-    material and вид/name are always written; наряд/job/tech/Sum3D only when set."""
-    updates = [
-        {"range": gspread.utils.rowcol_to_a1(row_number, COL_QUANTITY), "values": [[work.get("quantity") or ""]]},
-        {"range": gspread.utils.rowcol_to_a1(row_number, COL_MATERIAL_COLOR), "values": [[work.get("material_color") or ""]]},
-        {"range": gspread.utils.rowcol_to_a1(row_number, COL_KIND), "values": [[work.get("e_value") or ""]]},
-    ]
-    optional = (
+# Pending-client blue fill (RGB 0..1). Clearing it means the work was issued.
+_BLUE = {"red": 0.2901961, "green": 0.5254902, "blue": 0.9098039}
+
+
+def _row_value_map(work: dict) -> dict[int, str]:
+    """1-indexed column → value for one work row. Quantity/material/вид|name are
+    always written; наряд/job/tech/Sum3D only when set (so a blank stays blank)."""
+    cells = {
+        COL_QUANTITY: work.get("quantity") or "",
+        COL_MATERIAL_COLOR: work.get("material_color") or "",
+        COL_KIND: work.get("e_value") or "",
+    }
+    for col, value in (
         (COL_WORK_ORDER_NO, work.get("work_order_no")),
         (COL_JOB_CODE, work.get("job_code")),
         (COL_TECHNICIAN, work.get("technician_name")),
         (COL_SUM3D_ID, work.get("sum3d_id")),
-    )
-    for col, value in optional:
+    ):
         if value:
-            updates.append({"range": gspread.utils.rowcol_to_a1(row_number, col), "values": [[value]]})
-    return updates
+            cells[col] = value
+    return cells
+
+
+def _grid_write_requests(
+    sheet_id: int, rows: list[int], works: list[dict],
+    *, paint_blue: bool, first: int, last: int,
+) -> list[dict]:
+    """Build low-level Sheets `spreadsheets.batchUpdate` requests that write all
+    cell values AND (for client rows) the blue fill in ONE API call — one fewer
+    proxy round-trip than a separate values write + format. Only the target
+    cells are touched; untouched columns keep their content (no full-row wipe).
+
+    Values go out as ``updateCells`` grouped into contiguous column runs per
+    row; the blue fill is one ``repeatCell`` over A:K of the whole block so the
+    green ID/mill columns L/M/N are never overwritten."""
+    requests: list[dict] = []
+    for row_number, work in zip(rows, works):
+        cells = _row_value_map(work)
+        cols = sorted(cells)
+        # split into contiguous column runs so one updateCells writes a run and
+        # gaps (e.g. skipped наряд) are left untouched
+        run: list[int] = []
+        for col in cols:
+            if run and col == run[-1] + 1:
+                run.append(col)
+            else:
+                if run:
+                    requests.append(_update_cells_run(sheet_id, row_number, run, cells))
+                run = [col]
+        if run:
+            requests.append(_update_cells_run(sheet_id, row_number, run, cells))
+
+    if paint_blue:
+        requests.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": first - 1, "endRowIndex": last,
+                    "startColumnIndex": 0, "endColumnIndex": COL_CAM_COMMENT,  # A:K
+                },
+                "cell": {"userEnteredFormat": {"backgroundColor": _BLUE}},
+                "fields": "userEnteredFormat.backgroundColor",
+            }
+        })
+    return requests
+
+
+def _update_cells_run(sheet_id: int, row_number: int, run: list[int], cells: dict[int, str]) -> dict:
+    return {
+        "updateCells": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": row_number - 1, "endRowIndex": row_number,
+                "startColumnIndex": run[0] - 1, "endColumnIndex": run[-1],
+            },
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": cells[c]}} for c in run]}],
+            "fields": "userEnteredValue",
+        }
+    }
 
 
 def append_manual_work_rows(
@@ -224,25 +285,13 @@ def append_manual_work_rows(
             raise RuntimeError(f"клієнтська зона не вміщає {n} рядків")
 
     rows = list(range(first, last + 1))
-    updates: list[dict] = []
-    for row_number, work in zip(rows, works):
-        updates.extend(_row_cell_updates(row_number, work))
-    call_with_retry(lambda: worksheet.batch_update(updates))
-
-    # Blue = pending client work (clearing it means issued). The block is
-    # contiguous, so one format covers it. Paint only A:K — columns L/M/N (ID,
-    # Прорахував, Відфрезерував) keep their green styling. Best-effort: a
-    # formatting hiccup must never fail the write.
-    if paint_blue:
-        try:
-            call_with_retry(
-                lambda: worksheet.format(
-                    f"A{first}:K{last}",
-                    {"backgroundColor": {"red": 0.2901961, "green": 0.5254902, "blue": 0.9098039}},
-                )
-            )
-        except Exception:  # noqa: BLE001
-            pass
+    # Values + blue fill in ONE spreadsheets.batchUpdate — one fewer proxy
+    # round-trip than a separate values write + format. Blue paints only A:K,
+    # so the green ID/mill columns (L/M/N) are never overwritten.
+    requests = _grid_write_requests(
+        worksheet.id, rows, works, paint_blue=paint_blue, first=first, last=last
+    )
+    call_with_retry(lambda: worksheet.spreadsheet.batch_update({"requests": requests}))
 
     return rows
 

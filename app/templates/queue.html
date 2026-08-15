@@ -75,7 +75,7 @@
                (kept outside #queue-rows so the 15s refresh never wipes what the
                operator is typing). Posts to /orders/new like the full page. #}
             <form method="post" action="/orders/new" class="addwork" hidden data-addwork
-                  onsubmit="var b=this.querySelector('button[type=submit]'); if(b){b.disabled=true;b.classList.add('is-loading');b.textContent='Додаємо…';}">
+                  onsubmit="var b=this.querySelector('[data-addwork-submit]'); if(b){b.disabled=true;b.classList.add('is-loading');var l=b.querySelector('.addwork-submit-label');if(l)l.textContent='Фрезеруємо…';}">
                 <div class="addwork-seg" role="group" aria-label="Тип роботи">
                     <button type="button" class="is-active" data-addwork-type="client">Клієнт</button>
                     <button type="button" data-addwork-type="lab">Лабораторія</button>
@@ -102,7 +102,10 @@
                 </div>
                 <div class="addwork-actions">
                     <button type="button" class="addwork-addrow" data-addwork-addrow>+ ще рядок</button>
-                    <button type="submit" class="addwork-submit">Додати в чергу і таблицю</button>
+                    <button type="submit" class="addwork-submit" data-addwork-submit>
+                        {% include "_mill_spinner.svg" %}
+                        <span class="addwork-submit-label">Додати в чергу і таблицю</span>
+                    </button>
                     <button type="button" class="addwork-cancel" data-addwork-cancel aria-label="Скасувати">✕</button>
                 </div>
             </form>

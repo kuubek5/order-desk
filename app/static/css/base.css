@@ -4227,11 +4227,18 @@ main.worldv2.search-wide{max-width:none}
 .q2 .addwork-input:focus{border-color:var(--focus-border);background:#0f1620}
 .q2 .addwork-input::placeholder{color:var(--ink-3)}
 .q2 .addwork-qty{flex:0 0 90px;min-width:0}
-.q2 .addwork-submit{height:34px;padding:0 15px;border-radius:8px;border:1px solid rgba(45,212,191,.42);
+.q2 .addwork-submit{display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  height:34px;padding:0 15px;border-radius:8px;border:1px solid rgba(45,212,191,.42);
   background:rgba(20,184,166,.15);color:var(--accent-c);font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;
   transition:background var(--ui-speed) ease}
 .q2 .addwork-submit:hover{background:rgba(20,184,166,.24)}
-.q2 .addwork-submit.is-loading{opacity:.65;cursor:progress}
+.q2 .addwork-submit.is-loading{cursor:progress}
+/* Themed "milling cutter" spinner — hidden until the button is submitting. */
+.mill-spin{width:15px;height:15px;flex:0 0 auto;display:none;transform-origin:50% 50%}
+.is-loading .mill-spin{display:inline-block;animation:mill-spin .75s linear infinite}
+.is-loading .addwork-submit-label{opacity:.85}
+@keyframes mill-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.is-loading .mill-spin{animation:none}}
 .q2 .addwork-cancel{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:none;
   color:var(--ink-3);cursor:pointer;font-size:13px;transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .q2 .addwork-cancel:hover{color:var(--ink);border-color:var(--line-2)}

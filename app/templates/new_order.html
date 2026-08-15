@@ -19,7 +19,7 @@
 
     {% set is_lab = form.work_type == 'lab' %}
     <form method="post" action="/orders/new" class="neworder-form" data-addwork
-          onsubmit="var b=this.querySelector('button[type=submit]'); if(b){b.disabled=true; b.classList.add('is-loading'); b.textContent='Додаємо в таблицю…';}">
+          onsubmit="var b=this.querySelector('button[type=submit]'); if(b){b.disabled=true; b.classList.add('is-loading'); var l=b.querySelector('.addwork-submit-label'); if(l)l.textContent='Фрезеруємо…';}">
 
         <div class="addwork-seg neworder-seg" role="group" aria-label="Тип роботи">
             <button type="button" class="{% if not is_lab %}is-active{% endif %}" data-addwork-type="client">Клієнт</button>
@@ -75,7 +75,10 @@
         </div>
         <div class="neworder-actions">
             <a href="/" class="btn">Скасувати</a>
-            <button type="submit" class="btn primary">Додати в чергу і таблицю</button>
+            <button type="submit" class="btn primary">
+                {% include "_mill_spinner.svg" %}
+                <span class="addwork-submit-label">Додати в чергу і таблицю</span>
+            </button>
         </div>
     </form>
 </main>

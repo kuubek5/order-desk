@@ -21,6 +21,33 @@ from app.sheet_writer import (
 from app.parser import HEADER_ROWS
 
 
+def _written(fake_ws):
+    """Parse {(row1, col1): value} from the single spreadsheet.batch_update
+    call the append writer now makes (values via updateCells requests)."""
+    body = fake_ws.spreadsheet.batch_update.call_args[0][0]
+    out = {}
+    for req in body["requests"]:
+        uc = req.get("updateCells")
+        if not uc:
+            continue
+        r0 = uc["range"]["startRowIndex"]
+        c0 = uc["range"]["startColumnIndex"]
+        for row in uc["rows"]:
+            for i, cell in enumerate(row["values"]):
+                out[(r0 + 1, c0 + 1 + i)] = cell["userEnteredValue"]["stringValue"]
+    return out
+
+
+def _blue_range(fake_ws):
+    """The repeatCell background range from the batch_update, or None."""
+    body = fake_ws.spreadsheet.batch_update.call_args[0][0]
+    for req in body["requests"]:
+        rc = req.get("repeatCell")
+        if rc:
+            return rc["range"]
+    return None
+
+
 def make_order(id=1, row_number=1, sheet_tab="27.07.26", sum3d_id="SUM123",
                calculated_raw="+ 10:00", milled_raw="", cam_comment=""):
     """Create a minimal fake Order object with the fields sheet_writer.py reads."""
@@ -346,16 +373,12 @@ class TestAppendMailPlaceholderRow:
 
         assert row_number == 60
         fake_ws.get.assert_called_once_with("B60:E260")
-        fake_ws.batch_update.assert_called_once()
-        updates = fake_ws.batch_update.call_args[0][0]
-        expected = {
-            (gspread.utils.rowcol_to_a1(60, 3), "5"),  # Кількість
-            (gspread.utils.rowcol_to_a1(60, 4), "емо а3"),  # Колір роботи
-            (gspread.utils.rowcol_to_a1(60, 5), "Вова"),  # Вид роботи
+        fake_ws.spreadsheet.batch_update.assert_called_once()
+        assert _written(fake_ws) == {
+            (60, 3): "5",       # Кількість
+            (60, 4): "емо а3",  # Колір роботи
+            (60, 5): "Вова",    # Вид роботи
         }
-        actual = {(u["range"], u["values"][0][0]) for u in updates}
-        assert actual == expected
-        assert len(updates) == 3  # точковий запис, не весь рядок
 
     def test_skips_occupied_rows_60_to_65_and_uses_66(self):
         """Rows 60-65 already have something in Номер наряду / Кількість /
@@ -376,14 +399,11 @@ class TestAppendMailPlaceholderRow:
         )
 
         assert row_number == 66
-        updates = fake_ws.batch_update.call_args[0][0]
-        actual = {(u["range"], u["values"][0][0]) for u in updates}
-        expected = {
-            (gspread.utils.rowcol_to_a1(66, 3), "5"),
-            (gspread.utils.rowcol_to_a1(66, 4), "емо а3"),
-            (gspread.utils.rowcol_to_a1(66, 5), "Вова"),
+        assert _written(fake_ws) == {
+            (66, 3): "5",
+            (66, 4): "емо а3",
+            (66, 5): "Вова",
         }
-        assert actual == expected
 
     def test_row_with_only_material_color_filled_is_still_treated_as_free(self):
         """Material/color (col D) isn't part of the occupied-row check — only
@@ -405,7 +425,7 @@ class TestAppendMailPlaceholderRow:
         with pytest.raises(RuntimeError, match="заповнена"):
             append_mail_placeholder_row(fake_ws, "Клієнт", "1", "титан", start_row=60)
 
-        fake_ws.batch_update.assert_not_called()
+        fake_ws.spreadsheet.batch_update.assert_not_called()
 
     def test_custom_start_row_is_respected(self):
         fake_ws = MagicMock()
@@ -470,15 +490,13 @@ class TestManualPlacement:
 
         assert row_number == 32  # last lab 30, gap 31, write 32
         fake_ws.get.assert_called_once_with("B7:B59")
-        # lab rows never painted blue
-        fake_ws.format.assert_not_called()
-        updates = fake_ws.batch_update.call_args[0][0]
-        cells = {u["range"] for u in updates}
-        assert gspread.utils.rowcol_to_a1(32, 2) in cells  # наряд col B
+        assert _blue_range(fake_ws) is None  # lab rows never painted blue
+        written = _written(fake_ws)
+        assert written[(32, 2)] == "99001"  # наряд col B
 
     def test_client_blue_fill_stops_before_id_columns(self):
         """Blue fill covers A:K only — columns L/M/N (ID, Прорахував,
-        Відфрезерував) keep their own green styling."""
+        Відфрезерував) keep their own green styling (endColumnIndex 11 = A:K)."""
         fake_ws = MagicMock()
         fake_ws.get.return_value = []
 
@@ -487,9 +505,9 @@ class TestManualPlacement:
             placement="client", start_row=60,
         )
 
-        fake_ws.format.assert_called_once()
-        rng = fake_ws.format.call_args[0][0]
-        assert rng == f"A{row}:K{row}"
+        rng = _blue_range(fake_ws)
+        assert rng["startRowIndex"] == row - 1 and rng["endRowIndex"] == row
+        assert rng["startColumnIndex"] == 0 and rng["endColumnIndex"] == 11
 
     def test_lab_empty_table_uses_first_lab_row(self):
         fake_ws = MagicMock()
@@ -511,14 +529,14 @@ class TestManualPlacement:
                 fake_ws, work_order_no="1", e_value="вид", quantity="1",
                 material_color="x", placement="lab", paint_blue=False,
             )
-        fake_ws.batch_update.assert_not_called()
+        fake_ws.spreadsheet.batch_update.assert_not_called()
 
 
 class TestAppendManualWorkRows:
-    """Batch append: one batch_update for all cells, one blue format for the
-    whole contiguous block."""
+    """Batch append: ONE spreadsheets.batchUpdate carries all cell values plus
+    the blue fill for the whole contiguous block."""
 
-    def test_client_block_is_contiguous_and_one_batch(self):
+    def test_client_block_is_contiguous_and_one_call(self):
         fake_ws = MagicMock()
         fake_ws.get.return_value = [["", "1", "x", "Наявний"]]  # row 60 filled
 
@@ -533,10 +551,14 @@ class TestAppendManualWorkRows:
         )
 
         assert rows == [61, 62, 63]  # contiguous below last filled (60)
-        fake_ws.batch_update.assert_called_once()  # single call for all rows
-        # blue covers the whole block A61:K63
-        fake_ws.format.assert_called_once()
-        assert fake_ws.format.call_args[0][0] == "A61:K63"
+        fake_ws.spreadsheet.batch_update.assert_called_once()  # single API call
+        # names landed in вид col E of each row
+        written = _written(fake_ws)
+        assert written[(61, 5)] == "A" and written[(62, 5)] == "B" and written[(63, 5)] == "C"
+        # blue covers the whole block A61:K63 (rows 60..63 zero-indexed, cols 0..11)
+        rng = _blue_range(fake_ws)
+        assert rng["startRowIndex"] == 60 and rng["endRowIndex"] == 63
+        assert rng["startColumnIndex"] == 0 and rng["endColumnIndex"] == 11
 
     def test_lab_block_gap_then_contiguous_no_blue(self):
         fake_ws = MagicMock()
@@ -552,14 +574,14 @@ class TestAppendManualWorkRows:
         )
 
         assert rows == [32, 33]  # one gap (31) after last lab (30), then contiguous
-        fake_ws.format.assert_not_called()
+        assert _blue_range(fake_ws) is None
 
     def test_empty_works_writes_nothing(self):
         fake_ws = MagicMock()
         rows = append_manual_work_rows(fake_ws, [], placement="client")
         assert rows == []
         fake_ws.get.assert_not_called()
-        fake_ws.batch_update.assert_not_called()
+        fake_ws.spreadsheet.batch_update.assert_not_called()
 
 
 class TestAppendOrderComment:
