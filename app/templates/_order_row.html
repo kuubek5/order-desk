@@ -95,8 +95,19 @@
     </td>
     <td class="sum3d-id">
         {# No save button (галочку прибрано): the input auto-saves on change —
-           the form's hx-trigger fires when the operator edits and blurs/Enters. #}
-        <form class="sum3d-form" hx-post="/orders/{{ order.id }}/sum3d-id" hx-trigger="change, keyup[key=='Enter'] from:.sum3d-input" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
+           the form's hx-trigger fires when the operator edits and blurs/Enters.
+           onsubmit blocks the NATIVE submit that Enter also fires in a
+           single-input form: without it the browser GET-navigates to the
+           current path with the query string replaced (dropping period/date —
+           the operator got thrown from yesterday's view back to today) and
+           cancels the in-flight htmx POST, so the value never saved.
+           `from:find` scopes the Enter listener to THIS row's input — a bare
+           `.sum3d-input` selector is document-wide and made one Enter fire
+           every visible row's form. #}
+        <form class="sum3d-form" onsubmit="return false"
+              hx-post="/orders/{{ order.id }}/sum3d-id"
+              hx-trigger="change from:find input, keyup[key=='Enter'] from:find input"
+              hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
             <input type="text" name="sum3d_id" value="{{ (_rework.sum3d_id if _rework else order.sum3d_id) or '' }}" class="mono sum3d-input{% if _rework %} sum3d-input-rework{% endif %}" placeholder="{% if _rework %}ID перер.{% else %}ID{% endif %}" title="{% if _rework %}ID Sum3D переробки — запишеться в колонку W таблиці{% else %}Введіть ID Sum3D і натисніть Enter або перейдіть далі — збережеться автоматично{% endif %}">
         </form>
         {% if order.export_folder_uri %}
