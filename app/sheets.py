@@ -192,13 +192,16 @@ def _build_credentials(spec: _CredsSpec) -> BaseCredentials:
     if kind == "oauth":
         client_json, refresh_token = a, b
         cfg = parse_oauth_client_json(client_json)
+        # scopes deliberately omitted: the refresh then inherits whatever the
+        # user actually granted during sign-in (spreadsheets-only — see
+        # app/google_oauth.py SCOPES) instead of re-requesting _SCOPES and
+        # failing with invalid_scope on the narrower grant.
         return UserCredentials(
             token=None,
             refresh_token=refresh_token,
             client_id=cfg["client_id"],
             client_secret=cfg["client_secret"],
             token_uri=cfg["token_uri"],
-            scopes=_SCOPES,
         )
     json_content = a
     if json_content is not None:

@@ -21,10 +21,11 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from app.sheets import OAuthClientConfigError, new_legacy_session, parse_oauth_client_json
 
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
-]
+# Spreadsheets only — deliberately NOT the drive scope. The OAuth mode exists
+# to read/write the queue sheet, which the Sheets API covers entirely; drive
+# is a RESTRICTED scope (vs sensitive) and adds real consent friction in
+# Testing mode. Least privilege besides.
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 _DEFAULT_AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
 
