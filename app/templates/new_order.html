@@ -17,7 +17,9 @@
     <div class="neworder-error" role="alert">{{ error }}</div>
     {% endif %}
 
-    <form method="post" action="/orders/new" class="neworder-form">
+    <form method="post" action="/orders/new" class="neworder-form"
+          onsubmit="var b=this.querySelector('button[type=submit]'); if(b){b.disabled=true; b.classList.add('is-loading'); b.textContent='Додаємо в таблицю…';}">
+
         <div class="neworder-field">
             <label for="client_name">Клієнт</label>
             <input type="text" id="client_name" name="client_name" value="{{ form.client_name }}"

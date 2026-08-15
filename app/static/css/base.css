@@ -4184,6 +4184,7 @@ main.worldv2.search-wide{max-width:none}
 .neworder .btn:hover{background:var(--card-2);border-color:#3a4a5f;color:var(--ink)}
 .neworder .btn.primary{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
 .neworder .btn.primary:hover{background:rgba(20,184,166,.24);border-color:var(--accent)}
+.neworder .btn.is-loading{opacity:.65;cursor:progress}
 .q2 .add-order-btn svg{width:15px;height:15px}
 main.worldv2.search-wide .search-container{max-width:none}
 main.worldv2.search-wide .search-form{max-width:900px}

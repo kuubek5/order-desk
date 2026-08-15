@@ -813,7 +813,12 @@ async def lifespan(_: FastAPI):
     def _warm_sheet_writeback() -> None:
         try:
             with SessionLocal() as warm_db:
-                open_spreadsheet(db=warm_db)
+                ss = open_spreadsheet(db=warm_db)
+                # Also cache today's worksheet on this thread: a manual client
+                # add (create_manual_order) runs its append here, and the
+                # worksheet() metadata fetch is another ~18s cold on the lab
+                # proxy — warming it now keeps the add to just the append.
+                get_worksheet_by_name(ss, date.today().strftime("%d.%m.%y"))
         except Exception:
             logger.info("Sheet write-back warmup skipped (sheet not ready)")
 
@@ -1077,6 +1082,19 @@ def _write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | No
 # cache and costs just the ~3s batch_update. It also serialises writes, so two
 # quick edits to the same cell can't land out of order.
 _sheet_writeback_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sheet-writeback")
+
+
+def _append_client_row_warm(client_name: str, quantity: str, material_color: str, tab: str) -> int | None:
+    """Append a client row to `tab` on the write-back worker thread, whose
+    per-thread spreadsheet/worksheet cache stays warm (see _warm_sheet_writeback)
+    — so this runs in seconds instead of the ~40s cold open the request thread
+    would pay. Uses its own DB session for the settings/config read. Returns the
+    1-indexed sheet row written, or None if today's tab doesn't exist yet."""
+    with SessionLocal() as s:
+        worksheet = get_worksheet_by_name(open_spreadsheet(db=s), tab)
+        if worksheet is None or worksheet.title != tab:
+            return None
+        return append_mail_placeholder_row(worksheet, client_name, quantity, material_color)
 
 
 def _write_sheet_fields_background(order_id: int, fields: set[str]) -> None:
@@ -1805,14 +1823,20 @@ def create_manual_order(
         return _back("Вкажіть матеріал / колір.")
 
     tab = date.today().strftime("%d.%m.%y")
+    # Run the sheet append on the warm write-back worker (cached spreadsheet /
+    # worksheet), not this cold request thread — the latter re-pays ~40s of
+    # open_by_key + worksheet() through the lab proxy, which reads as the form
+    # "hanging". The operator still waits for the row_number (needed to link
+    # the order), but on a warm cache that's ~a few seconds.
     try:
-        worksheet = get_worksheet_by_name(open_spreadsheet(db=db), tab)
-        if worksheet is None or worksheet.title != tab:
-            return _back(f"Вкладку «{tab}» у таблиці не знайдено — створіть день у таблиці спершу.")
-        note_row = append_mail_placeholder_row(worksheet, client_name, quantity, material_color)
+        note_row = _sheet_writeback_pool.submit(
+            _append_client_row_warm, client_name, quantity, material_color, tab
+        ).result(timeout=90)
     except Exception as exc:  # noqa: BLE001 — surface any sheet failure to the operator
         logger.exception("Manual order sheet write failed")
         return _back(f"Не вдалося записати в таблицю: {exc}")
+    if note_row is None:
+        return _back(f"Вкладку «{tab}» у таблиці не знайдено — створіть день у таблиці спершу.")
 
     order = Order(
         source="sheet_client",
