@@ -95,6 +95,41 @@ def test_later_sync_uses_yesterday_today_tomorrow_only(monkeypatch):
         old.get_all_values.assert_not_called()
 
 
+def test_orders_from_deleted_tabs_are_removed(monkeypatch):
+    """A whole dated tab deleted from the sheet takes its orders (lab AND
+    sheet_client) with it on the next full sync — otherwise they linger as
+    phantom days in the queue's day-strip. Email orders and orders with a
+    non-dated sheet_tab are never touched."""
+    configured(monkeypatch)
+    today = date.today()
+    current = worksheet(today, "200")
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [current]
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+
+    gone_tab = (today - timedelta(days=3)).strftime("%d.%m.%y")
+    with make_session() as session:
+        session.add(Order(source="lab", sheet_tab=gone_tab, row_number=1,
+                          work_order_no="111", status="нове"))
+        session.add(Order(source="sheet_client", sheet_tab=gone_tab, row_number=60,
+                          client_name="Vision", status="нове"))
+        # must survive: email order stamped with the same business date
+        session.add(Order(source="email", sheet_tab=gone_tab, status="нове"))
+        # must survive: non-dated sheet_tab was never a real sheet tab
+        session.add(Order(source="lab", sheet_tab="Підсумок", row_number=2, status="нове"))
+        session.commit()
+
+        result = sync_google_sheets(session)
+
+        remaining = session.scalars(select(Order.source).where(Order.sheet_tab != current.title)).all()
+        assert sorted(remaining) == ["email", "lab"]
+        assert result.deleted == 2
+        logs = session.scalars(select(SyncLog)).all()
+        assert any("зниклих вкладок" in log.message and gone_tab in log.message for log in logs)
+
+
 def test_include_tabs_forces_an_out_of_window_tab(monkeypatch):
     # A manual sync launched from an older day (?date=...) force-reads that tab
     # even though it's well outside the yesterday/today/tomorrow window, so a

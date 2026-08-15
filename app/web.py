@@ -636,11 +636,6 @@ def _sort_orders_by_column(orders: list[Order], sort: str, direction: str) -> li
 
 
 DATE_STRIP_WINDOW = 7
-# How many calendar days back the day-strip always offers, even on days the lab
-# entered no work — so the operator can page ~3 weeks back regardless of how
-# sparse the real work-days are. Real work-days beyond this (and any future
-# deadline days) are still included on top.
-DATE_STRIP_BACKFILL_DAYS = 21
 
 
 def _known_order_dates(db: Session) -> list[date]:
@@ -1507,12 +1502,12 @@ def get_queue(
     # for why this is enough to stay in sync with the Sheet with no new
     # sync mechanism).
     known_dates = _known_order_dates(db)
-    # Union the real work-days with a trailing calendar range so the pager can
-    # always wind back ~3 weeks even when recent days are sparse (see
-    # DATE_STRIP_BACKFILL_DAYS). Empty backfilled days simply show an empty
-    # queue when opened.
-    backfill = {today - timedelta(days=i) for i in range(DATE_STRIP_BACKFILL_DAYS + 1)}
-    date_universe = sorted(set(known_dates) | backfill)
+    # Only days that actually exist in the sheet (plus today, so the strip
+    # always has an anchor before the first sync of a fresh day). Calendar
+    # backfill of empty days was deliberately dropped: the lab skips weekends,
+    # and padded dates like 09.08/10.08 read as phantom days that "don't exist
+    # in the table" rather than as pager convenience.
+    date_universe = sorted(set(known_dates) | {today})
     date_tabs, current_date_page, total_date_pages = _date_window(date_universe, today, date_page)
 
     # Query string of the currently active filters, so the 15s poll fragment

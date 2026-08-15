@@ -69,8 +69,13 @@ def _parse_tab_date(title: str) -> date | None:
 
 def _worksheets_to_sync(
     session: Session, spreadsheet, today: date, include_tabs: set[str] | None = None
-) -> list:
+) -> tuple[list, set[str]]:
     """Choose a bounded initial history, then the operational three-day window.
+
+    Returns ``(worksheets_to_import, all_dated_tab_titles)`` — the second set
+    is EVERY dated tab currently present in the document (imported or not),
+    used by sync_google_sheets to delete orders orphaned by a whole tab being
+    removed from the sheet.
 
     ``include_tabs`` force-adds specific tab titles (dd.mm.yy) even when they
     fall outside that window — used so a manual sync of a day the operator is
@@ -84,14 +89,16 @@ def _worksheets_to_sync(
     last_day = today + timedelta(days=1)
 
     dated = []
+    all_dated_titles: set[str] = set()
     for worksheet in call_with_retry(spreadsheet.worksheets):
         tab_date = _parse_tab_date(worksheet.title)
         if tab_date is None:
             continue
+        all_dated_titles.add(worksheet.title)
         if (first_day <= tab_date <= last_day) or worksheet.title in include_tabs:
             dated.append((tab_date, worksheet.title, worksheet))
     dated.sort(key=lambda item: (item[0], item[1]))
-    return [item[2] for item in dated]
+    return [item[2] for item in dated], all_dated_titles
 
 
 def _configuration(session: Session) -> tuple[str, str]:
@@ -195,7 +202,9 @@ def sync_google_sheets(
         try:
             _configuration(session)
             spreadsheet = open_spreadsheet(db=session)  # retries internally
-            worksheets = _worksheets_to_sync(session, spreadsheet, date.today(), include_tabs)
+            worksheets, all_dated_titles = _worksheets_to_sync(
+                session, spreadsheet, date.today(), include_tabs
+            )
         except Exception as exc:
             # Setup failure: nothing has been imported, so there is no partial
             # progress to preserve — surface it and record it like before.
@@ -227,6 +236,44 @@ def sync_google_sheets(
             summary.updated += result.updated
             summary.unchanged += result.unchanged
             summary.deleted += result.deleted
+
+        # Orders orphaned by a WHOLE tab deleted from the sheet: the per-tab
+        # reconciliation above only sees rows inside tabs that still exist, so
+        # an order whose dated tab vanished would linger forever (and keep its
+        # phantom day in the queue's day-strip). Deleting a tab in the sheet
+        # means "this day's records are gone" — mirror that here for
+        # sheet-sourced orders only; email orders are stamped with a business
+        # date, not a real tab, and are never touched.
+        if all_dated_titles:
+            orphans = [
+                o
+                for o in session.scalars(
+                    select(Order).where(
+                        Order.source.in_(("lab", "sheet_client")),
+                        Order.sheet_tab.isnot(None),
+                        Order.sheet_tab.notin_(all_dated_titles),
+                    )
+                )
+                # Only orders whose sheet_tab actually names a dated tab: a
+                # non-dd.mm.yy value was never a real sheet tab, so its absence
+                # from the listing proves nothing.
+                if _parse_tab_date(o.sheet_tab) is not None
+            ]
+            for orphan in orphans:
+                session.delete(orphan)
+                summary.deleted += 1
+            if orphans:
+                gone_tabs = sorted({o.sheet_tab for o in orphans})
+                session.add(
+                    SyncLog(
+                        direction="sheet_to_db",
+                        status="ok",
+                        message=(
+                            f"видалено {len(orphans)} робіт зі зниклих вкладок: "
+                            + ", ".join(gone_tabs)
+                        ),
+                    )
+                )
 
         if trigger == "manual" or summary.created or summary.updated or summary.deleted:
             session.add(
