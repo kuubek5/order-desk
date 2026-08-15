@@ -21,9 +21,13 @@ import gspread
 from app.parser import HEADER_ROWS
 from app.sheets import call_with_retry
 
-# The whole client row is filled, so one representative column is enough. Col D
-# (Колір роботи) is always populated on a real client row and carries the fill.
-_FILL_COLUMN_LETTER = "D"
+# The whole client row is filled, so one representative column is enough.
+# Col C (Кількість) — NOT col D: the sheet's conditional-format rule paints a
+# green cell over column D when the material is "Ti", and effectiveFormat
+# reports that CF result on top of the static blue, which made every Ti client
+# row read as "not blue → issued" the moment it was imported. Column C has no
+# conditional formatting, so its effective fill is the honest row colour.
+_FILL_COLUMN_LETTER = "C"
 # How far down to scan for fills. Client rows sit well below the technician
 # block (~row 60+), but read from the first data row so nothing is missed; a
 # few hundred rows is one API response.

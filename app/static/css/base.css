@@ -4088,6 +4088,18 @@ main.handoutv2{max-width:1200px;margin:0 auto;padding:18px 20px}
 .handoutv2 .ccard{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);overflow:hidden}
 .handoutv2 .ccard.done{opacity:.82}
 .handoutv2 .ccard.done .card-head{background:linear-gradient(90deg,rgba(20,184,166,.1),rgba(20,184,166,0))}
+/* День видачі — chips 14.08 / 15.08 … по днях з невиданими роботами. */
+.handoutv2 .handout-days{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
+.handoutv2 .day-chip{height:30px;padding:0 14px;border-radius:999px;display:inline-flex;align-items:center;
+  font-family:var(--font-mono);font-size:12.5px;color:var(--ink-2);text-decoration:none;
+  background:var(--card);border:1px solid var(--line);transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.handoutv2 .day-chip:hover{color:var(--ink);border-color:var(--line-2)}
+.handoutv2 .day-chip.active{background:rgba(20,184,166,.16);color:var(--accent-c);border-color:rgba(45,212,191,.42)}
+/* Кількість і день у рядку роботи. */
+.handoutv2 .wqty{font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.handoutv2 .wday{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);
+  padding:1px 7px;border-radius:5px;border:1px solid var(--line);background:#111823;white-space:nowrap}
+
 /* "Видати" stays fully legible on an otherwise dimmed done-card — it's the
    one still-actionable control there. */
 .handoutv2 .ccard.done .issue-form{opacity:1}

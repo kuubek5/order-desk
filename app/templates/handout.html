@@ -10,12 +10,21 @@
     <h1>{{ page_title }}</h1>
 
     <nav class="tab-nav" aria-label="Джерело робіт">
-        <a href="/handout?source=all" class="tab-link {% if source == 'all' %}active{% endif %}">Усі клієнти <span class="tab-badge">{{ source_counts.all }}</span></a>
-        <a href="/handout?source=email" class="tab-link {% if source == 'email' %}active{% endif %}">
+        <a href="/handout?source=all{% if selected_day %}&day={{ selected_day }}{% endif %}" class="tab-link {% if source == 'all' %}active{% endif %}">Усі клієнти <span class="tab-badge">{{ source_counts.all }}</span></a>
+        <a href="/handout?source=email{% if selected_day %}&day={{ selected_day }}{% endif %}" class="tab-link {% if source == 'email' %}active{% endif %}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
             Тільки з пошти <span class="tab-badge">{{ source_counts.email }}</span>
         </a>
     </nav>
+
+    {% if handout_days %}
+    <nav class="handout-days" aria-label="День видачі">
+        <a href="/handout?source={{ source }}" class="day-chip {% if not selected_day %}active{% endif %}">Усі дні</a>
+        {% for d in handout_days %}
+        <a href="/handout?source={{ source }}&day={{ d }}" class="day-chip {% if selected_day == d %}active{% endif %}">{{ d[:5] }}</a>
+        {% endfor %}
+    </nav>
+    {% endif %}
 
     {% if handout_flash %}
     <div class="sync-notice sync-notice-{{ handout_flash.kind }}" role="status">
@@ -56,6 +65,7 @@
                     {% if group.all_found %}
                     <form method="post" action="/handout/issue-group" class="issue-form">
                         <input type="hidden" name="client_name" value="{{ group.client_name }}">
+                        <input type="hidden" name="day" value="{{ selected_day }}">
                         <button type="submit" class="issue-btn">Видати</button>
                     </form>
                     {% else %}
@@ -103,8 +113,12 @@
                         {% endif %}
                         <div class="wmain">
                             <div class="top">
-                                <a href="/orders/{{ order.id }}" class="ord">{{ order.work_order_no or '—' }}</a>
+                                {# Sum3D ID is the operator's time-of-day anchor for matching a
+                                   row to its physical export folder — front and centre. #}
+                                <a href="/orders/{{ order.id }}" class="ord mono">{{ order.sum3d_id or order.work_order_no or '—' }}</a>
                                 {% if order.material_color %}<span class="matchip">{{ order.material_color }}</span>{% endif %}
+                                {% if order.quantity %}<span class="wqty">{{ order.quantity }} од.</span>{% endif %}
+                                {% if not selected_day and order.sheet_tab %}<span class="wday">{{ order.sheet_tab[:5] }}</span>{% endif %}
                             </div>
                             <div class="wstatus">{{ order.status }}</div>
                         </div>

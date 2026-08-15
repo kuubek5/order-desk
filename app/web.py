@@ -2094,7 +2094,9 @@ def get_order_detail(
 
 
 @app.get("/handout", response_class=HTMLResponse)
-def get_handout(request: Request, source: str = "all", db: Session = Depends(get_db)):
+def get_handout(
+    request: Request, source: str = "all", day: str = "", db: Session = Depends(get_db)
+):
     user = get_current_user(request, db)
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -2107,11 +2109,26 @@ def get_handout(request: Request, source: str = "all", db: Session = Depends(get
         select(Order).where(Order.client_name.is_not(None), Order.status != "видано")
     ).all()
 
+    eligible = [
+        order
+        for order in candidates
+        if (order_date := _parse_sheet_tab(order.sheet_tab)) is None or order_date < today
+    ]
+
+    # Day chips (14.08, 15.08, …): every past day that still has unissued
+    # client works. `day` narrows the whole screen to that one day — the
+    # operator hands out one day's furnace output at a time.
+    handout_days = sorted(
+        {d for o in eligible if (d := _parse_sheet_tab(o.sheet_tab)) is not None}
+    )
+    selected_day = _parse_sheet_tab(day) if day else None
+    if selected_day is not None and selected_day not in handout_days:
+        selected_day = None
+    if selected_day is not None:
+        eligible = [o for o in eligible if _parse_sheet_tab(o.sheet_tab) == selected_day]
+
     groups: dict[str, list[Order]] = {}
-    for order in candidates:
-        order_date = _parse_sheet_tab(order.sheet_tab)
-        if order_date is not None and order_date >= today:
-            continue
+    for order in eligible:
         groups.setdefault(order.client_name, []).append(order)
 
     # Sheet order (day, then row position top-to-bottom), not DB insertion
@@ -2170,6 +2187,8 @@ def get_handout(request: Request, source: str = "all", db: Session = Depends(get
             "source": source,
             "source_counts": source_counts,
             "handout_flash": handout_flash,
+            "handout_days": [d.strftime("%d.%m.%y") for d in handout_days],
+            "selected_day": selected_day.strftime("%d.%m.%y") if selected_day else "",
         },
     )
 
@@ -2195,7 +2214,10 @@ async def mark_found(request: Request, order_id: int, db: Session = Depends(get_
 
 @app.post("/handout/issue-group")
 async def issue_handout_group(
-    request: Request, client_name: str = Form(...), db: Session = Depends(get_db)
+    request: Request,
+    client_name: str = Form(...),
+    day: str = Form(""),
+    db: Session = Depends(get_db),
 ):
     """One click on a handout card's "Видати" button closes the whole client
     group: every found-but-not-yet-issued order flips to "видано" (mirroring
@@ -2219,8 +2241,17 @@ async def issue_handout_group(
         o for o in candidates
         if (d := _parse_sheet_tab(o.sheet_tab)) is not None and d < today
     ]
+    # When the handout screen is filtered to one day (day chips), the card
+    # the operator sees — and therefore what "Видати" closes — is that day's
+    # works only; the client's other days stay open.
+    selected_day = _parse_sheet_tab(day) if day else None
+    back_url = f"/handout?day={day}" if selected_day is not None else "/handout"
+    if selected_day is not None:
+        group_orders = [
+            o for o in group_orders if _parse_sheet_tab(o.sheet_tab) == selected_day
+        ]
     if not group_orders:
-        return RedirectResponse("/handout", status_code=303)
+        return RedirectResponse(back_url, status_code=303)
     if not all(o.status in ("знайдено при видачі", "видано") for o in group_orders):
         raise HTTPException(
             status_code=400, detail="не всі роботи клієнта позначені «Знайдено»"
@@ -2260,7 +2291,7 @@ async def issue_handout_group(
             "kind": "error",
             "message": f"Статус видано, але запис у таблицю не пройшов: {sync_error}",
         }
-    return RedirectResponse("/handout", status_code=303)
+    return RedirectResponse(back_url, status_code=303)
 
 
 @app.post("/handout/confirm-alias")

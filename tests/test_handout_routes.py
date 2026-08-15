@@ -67,7 +67,7 @@ def test_requires_authentication():
     engine = _database()
     with Session(engine) as db, pytest.raises(HTTPException) as exc:
         import asyncio
-        asyncio.run(web.issue_handout_group(request=_request(None), client_name="X", db=db))
+        asyncio.run(web.issue_handout_group(request=_request(None), client_name="X", day="", db=db))
     assert exc.value.status_code == 401
 
 
@@ -82,7 +82,7 @@ def test_refuses_when_not_all_found(monkeypatch):
         import asyncio
         with pytest.raises(HTTPException) as exc:
             asyncio.run(
-                web.issue_handout_group(request=_request(user.id), client_name="Basarab", db=db)
+                web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
             )
         assert exc.value.status_code == 400
         # nothing flipped to видано
@@ -102,7 +102,7 @@ def test_issues_group_and_clears_blue_fill(monkeypatch):
 
         import asyncio
         resp = asyncio.run(
-            web.issue_handout_group(request=_request(user.id), client_name="Basarab", db=db)
+            web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
         assert resp.status_code == 303
 
@@ -131,7 +131,7 @@ def test_already_issued_orders_are_left_alone_but_still_pass(monkeypatch):
 
         import asyncio
         resp = asyncio.run(
-            web.issue_handout_group(request=_request(user.id), client_name="Basarab", db=db)
+            web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
         assert resp.status_code == 303
         # order already excluded from candidates (status != "видано" filter)
@@ -155,7 +155,7 @@ def test_lab_orders_in_group_are_not_sent_to_clear_row_fills(monkeypatch):
 
         import asyncio
         asyncio.run(
-            web.issue_handout_group(request=_request(user.id), client_name="Basarab", db=db)
+            web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
         assert "rows" not in captured or captured["rows"] == []
 
@@ -177,7 +177,7 @@ def test_sheet_failure_still_marks_issued_and_flashes_error(monkeypatch):
 
         request = _request(user.id)
         import asyncio
-        resp = asyncio.run(web.issue_handout_group(request=request, client_name="Basarab", db=db))
+        resp = asyncio.run(web.issue_handout_group(request=request, client_name="Basarab", day="", db=db))
         assert resp.status_code == 303
         assert db.scalar(select(Order)).status == "видано"
         assert request.session["handout_flash"]["kind"] == "error"
@@ -193,7 +193,7 @@ def test_group_disappears_from_handout_listing_after_issue(monkeypatch):
 
         import asyncio
         asyncio.run(
-            web.issue_handout_group(request=_request(user.id), client_name="Basarab", db=db)
+            web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
 
         with patch.object(web, "scan_export_folder", return_value=[]):
@@ -262,3 +262,72 @@ def test_handout_orders_older_day_sorts_before_newer_day(monkeypatch):
         ctx = _get_handout_context(monkeypatch, db, user.id)
         tabs = [o.sheet_tab for o in ctx["client_groups"][0]["orders"]]
         assert tabs == [two_days_ago, YESTERDAY]  # older day first even though row 200 > row 5
+
+
+def test_handout_day_chips_list_days_with_unissued_works(monkeypatch):
+    engine = _database()
+    two_days_ago = (date.today() - timedelta(days=2)).strftime("%d.%m.%y")
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(_client_order(client_name="A", status="нове", sheet_tab=YESTERDAY))
+        db.add(_client_order(client_name="B", status="нове", sheet_tab=two_days_ago))
+        db.commit()
+
+        ctx = _get_handout_context(monkeypatch, db, user.id)
+        assert ctx["handout_days"] == [two_days_ago, YESTERDAY]
+        assert ctx["selected_day"] == ""
+
+
+def test_handout_day_filter_narrows_to_that_day(monkeypatch):
+    """?day=14.08.26 shows only that day's works — a client whose works span
+    days shows a day-sized card, and a client with nothing that day drops."""
+    engine = _database()
+    two_days_ago = (date.today() - timedelta(days=2)).strftime("%d.%m.%y")
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(_client_order(client_name="Both", status="нове", row_number=60, sheet_tab=YESTERDAY))
+        db.add(_client_order(client_name="Both", status="нове", row_number=61, sheet_tab=two_days_ago))
+        db.add(_client_order(client_name="OnlyOld", status="нове", sheet_tab=two_days_ago))
+        db.commit()
+
+        with patch.object(web, "scan_export_folder", return_value=[]):
+            ctx_holder = {}
+            monkeypatch.setattr(
+                web.templates, "TemplateResponse",
+                lambda request, template, context: ctx_holder.update(context) or context,
+            )
+            web.get_handout(request=_request(user.id), day=YESTERDAY, db=db)
+
+        assert ctx_holder["selected_day"] == YESTERDAY
+        names = [g["client_name"] for g in ctx_holder["client_groups"]]
+        assert names == ["Both"]
+        assert [o.sheet_tab for o in ctx_holder["client_groups"][0]["orders"]] == [YESTERDAY]
+
+
+def test_issue_group_with_day_only_closes_that_day(monkeypatch):
+    """"Видати" on a day-filtered card closes only that day's works — the
+    client's other-day works stay open even if they're also found."""
+    engine = _database()
+    captured = _stub_sheet(monkeypatch)
+    two_days_ago = (date.today() - timedelta(days=2)).strftime("%d.%m.%y")
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        o_new = _client_order(status="знайдено при видачі", row_number=60, sheet_tab=YESTERDAY)
+        o_old = _client_order(status="знайдено при видачі", row_number=61, sheet_tab=two_days_ago)
+        db.add_all([o_new, o_old])
+        db.commit()
+
+        import asyncio
+        resp = asyncio.run(
+            web.issue_handout_group(
+                request=_request(user.id), client_name="Basarab", day=YESTERDAY, db=db
+            )
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"] == f"/handout?day={YESTERDAY}"
+
+        statuses = {o.sheet_tab: o.status for o in db.scalars(select(Order))}
+        assert statuses[YESTERDAY] == "видано"
+        assert statuses[two_days_ago] == "знайдено при видачі"  # untouched
+        from app.parser import HEADER_ROWS
+        assert captured["rows"] == [(42, 60 + HEADER_ROWS)]
