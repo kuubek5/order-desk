@@ -1820,6 +1820,15 @@ def new_order_form(
 
 _MAX_MANUAL_ROWS = 30
 
+# Server-side double-submit guard for manual adds. The submit button disables
+# itself client-side, but an F5 re-POST, back-button resubmit, or a browser
+# retry still reaches the server and would append the same rows to the sheet
+# AGAIN. Keyed by user id; an identical payload within the window is treated
+# as the same submit and answered with the normal redirect, writing nothing.
+# In-process state is enough: the app runs as a single local process.
+_MANUAL_ADD_DEDUP_SECONDS = 30.0
+_recent_manual_adds: dict[int, tuple[str, float]] = {}
+
 
 @app.post("/orders/new")
 def create_manual_order(
@@ -1907,6 +1916,14 @@ def create_manual_order(
     if not works:
         return _back("Заповніть хоча б одну роботу.")
 
+    # Double-submit guard (see _recent_manual_adds): the exact same batch from
+    # the same operator inside the window is a resubmit, not a second intent.
+    fingerprint = repr((work_type, works))
+    now_ts = monotonic()
+    last = _recent_manual_adds.get(user.id)
+    if last is not None and last[0] == fingerprint and (now_ts - last[1]) < _MANUAL_ADD_DEDUP_SECONDS:
+        return RedirectResponse(f"/?source={'lab' if is_lab else 'client'}", status_code=303)
+
     tab = date.today().strftime("%d.%m.%y")
     # Append the whole batch on the warm write-back worker (cached spreadsheet/
     # worksheet) in ONE sheet call — the cold request thread would re-pay ~40s of
@@ -1958,6 +1975,14 @@ def create_manual_order(
         )
     )
     db.commit()
+
+    # Record this successful submit so an immediate resubmit (F5/back) is
+    # recognised and skipped above. Prune stale entries so the dict can't grow
+    # unbounded across a long-running process.
+    _recent_manual_adds[user.id] = (fingerprint, now_ts)
+    for uid, (_, ts) in list(_recent_manual_adds.items()):
+        if now_ts - ts >= _MANUAL_ADD_DEDUP_SECONDS:
+            _recent_manual_adds.pop(uid, None)
 
     return RedirectResponse(f"/?source={'lab' if is_lab else 'client'}", status_code=303)
 

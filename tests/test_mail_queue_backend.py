@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -217,10 +217,16 @@ def _stub_sheet_write(monkeypatch, note_rows=None, tab=None):
     tab = tab or date.today().strftime("%d.%m.%y")
     fake_ws = SimpleNamespace(title=tab)
     cap = {}
+    # Fresh double-submit dedup state per test so module-level state can't leak
+    # between tests that share a user id + payload.
+    monkeypatch.setattr(web, "_recent_manual_adds", {})
     monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
     monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: fake_ws)
 
+    cap["calls"] = 0
+
     def _fake_append(ws, works, *, paint_blue, placement):
+        cap["calls"] += 1
         cap["works"] = works
         cap["paint_blue"] = paint_blue
         cap["placement"] = placement
@@ -415,6 +421,43 @@ def test_create_manual_order_reports_missing_today_tab(monkeypatch):
         assert resp.status_code == 303
         assert "error=" in resp.headers["location"]
         assert db.scalar(select(Order)) is None
+
+
+def test_create_manual_order_double_submit_is_ignored(monkeypatch):
+    """An F5/back resubmit of the exact same batch by the same operator inside
+    the dedup window writes NOTHING new — one order, one sheet append."""
+    monkeypatch.setattr(web, "_recent_manual_adds", {})
+    engine = _database()
+    cap = _stub_sheet_write(monkeypatch, note_rows=[65])
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        payload = {**_empty_form(), "client_name": ["Басараб"],
+                   "material_color": ["mono a3"], "quantity": ["2"]}
+        first = web.create_manual_order(request=_request(user.id), work_type="client", db=db, **payload)
+        second = web.create_manual_order(request=_request(user.id), work_type="client", db=db, **payload)
+
+        assert first.status_code == second.status_code == 303
+        assert cap["calls"] == 1  # sheet written once, not twice
+        assert db.scalar(select(func.count()).select_from(Order).where(Order.source == "sheet_client")) == 1
+
+
+def test_create_manual_order_different_payload_not_deduped(monkeypatch):
+    """A genuinely different second add (another client) is not swallowed."""
+    monkeypatch.setattr(web, "_recent_manual_adds", {})
+    engine = _database()
+    cap = _stub_sheet_write(monkeypatch)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        web.create_manual_order(
+            request=_request(user.id), work_type="client", db=db,
+            **{**_empty_form(), "client_name": ["Басараб"], "material_color": ["mono a3"], "quantity": ["1"]},
+        )
+        web.create_manual_order(
+            request=_request(user.id), work_type="client", db=db,
+            **{**_empty_form(), "client_name": ["Петренко"], "material_color": ["emo a2"], "quantity": ["1"]},
+        )
+        assert cap["calls"] == 2
+        assert db.scalar(select(func.count()).select_from(Order).where(Order.source == "sheet_client")) == 2
 
 
 def test_known_order_dates_derived_from_distinct_sheet_tabs(tmp_path):
