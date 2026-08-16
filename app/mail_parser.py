@@ -10,6 +10,8 @@ import unicodedata
 
 from rapidfuzz import fuzz
 
+from app.client_matcher import _transliterations
+
 _PATTERNS = {
     "material_color_guess": r"(?:колір|цвет|матеріал)[:\s]+[-–]?\s*([^\n,;]+)",
     "kind_guess": r"(?:вид роботи|фрезеруванн\w*|на фрезерування)[:\s]*[-–]?\s*([^\n,;]*)",
@@ -72,8 +74,16 @@ def fuzzy_match_material_color(
     if not candidate or not known_materials:
         return None
 
-    candidate_normalized = unicodedata.normalize("NFC", candidate.strip().lower())
-    if not candidate_normalized:
+    # Compare across Latin↔Cyrillic: the sheet's materials are Cyrillic ("емо
+    # а3.5", "моно а3") but clients write email subjects in Latin ("emo a3.5",
+    # "pmma a2"). Without transliteration fuzz.ratio sees two disjoint alphabets
+    # ("emo" vs "емо" share nothing) and scores ~50, below threshold. Reusing
+    # client_matcher._transliterations lands both sides on one alphabet (Latin
+    # passes through unchanged, Cyrillic gains its Latin variants) — the same
+    # fix already applied to client-name matching. Digits/dots ("a3.5", "500")
+    # pass through untouched, so short numeric codes still score honestly.
+    candidate_variants = _transliterations(candidate)
+    if not any(candidate_variants):
         return None
 
     best_name: str | None = None
@@ -81,15 +91,55 @@ def fuzzy_match_material_color(
     for known in known_materials:
         if not known:
             continue
-        known_normalized = unicodedata.normalize("NFC", known.strip().lower())
-        score = fuzz.ratio(candidate_normalized, known_normalized)
-        if score > best_score:
-            best_score = score
-            best_name = known
+        for known_variant in _transliterations(known):
+            for candidate_variant in candidate_variants:
+                score = fuzz.ratio(candidate_variant, known_variant)
+                if score > best_score:
+                    best_score = score
+                    best_name = known
 
     if best_name is not None and best_score >= threshold:
         return best_name
     return None
+
+
+def material_candidates(
+    candidate: str,
+    known_materials: list[str],
+    limit: int = 3,
+    threshold: float = 60.0,
+) -> list[str]:
+    """Top ``limit`` known materials closest to ``candidate``, best-first, for
+    the accept wizard's "pick the right material" step. Same Latin↔Cyrillic
+    transliteration scoring as fuzzy_match_material_color, but a LOWER threshold
+    (60 vs 80) and several results on purpose: the operator is deciphering a
+    client's mangled spelling ("monolight a3"), so showing a few near-misses to
+    click beats silently returning nothing. Deduped, preserving best order."""
+    if not candidate or not known_materials:
+        return []
+    candidate_variants = _transliterations(candidate)
+    scored: list[tuple[float, str]] = []
+    for known in known_materials:
+        if not known:
+            continue
+        best = 0.0
+        for known_variant in _transliterations(known):
+            for candidate_variant in candidate_variants:
+                best = max(best, fuzz.ratio(candidate_variant, known_variant))
+        if best >= threshold:
+            scored.append((best, known))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    seen: set[str] = set()
+    out: list[str] = []
+    for _, name in scored:
+        key = name.strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(name)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def guess_fields_from_text(

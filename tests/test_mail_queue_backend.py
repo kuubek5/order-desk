@@ -222,6 +222,8 @@ def _stub_sheet_write(monkeypatch, note_rows=None, tab=None):
     monkeypatch.setattr(web, "_recent_manual_adds", {})
     monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
     monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: fake_ws)
+    # The warm append now resolves the newest dated tab ≤ today itself.
+    monkeypatch.setattr(web, "latest_worksheet_on_or_before", lambda ss, d: fake_ws)
 
     cap["calls"] = 0
 
@@ -409,8 +411,10 @@ def test_create_manual_order_requires_client_and_material(monkeypatch):
 
 def test_create_manual_order_reports_missing_today_tab(monkeypatch):
     engine = _database()
+    monkeypatch.setattr(web, "_recent_manual_adds", {})
     monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
-    monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: None)  # tab absent
+    # No dated tab anywhere in the document -> resolver returns None.
+    monkeypatch.setattr(web, "latest_worksheet_on_or_before", lambda ss, d: None)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(

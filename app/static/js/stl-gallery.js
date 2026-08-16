@@ -37,6 +37,8 @@
   const MODEL_COLOR = 0x5eead4;
 
   function setupGallery(root) {
+    if (root.dataset.galleryInit) return; // already wired (e.g. re-scanned after an HTMX swap)
+    root.dataset.galleryInit = "1";
     const token = root.dataset.stlGalleryToken;
     if (!token) return;
 
@@ -313,4 +315,10 @@
   } else {
     init();
   }
+
+  // The triage detail panel arrives via an HTMX swap (mail_triage.html loads
+  // _mail_detail_panel.html into #mail-detail on a row click), so its gallery
+  // isn't in the DOM at load. Re-scan after every settle — setupGallery's
+  // dataset guard keeps already-wired galleries from being set up twice.
+  document.body.addEventListener("htmx:afterSettle", init);
 })();

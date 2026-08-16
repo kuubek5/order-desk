@@ -4,7 +4,7 @@ import logging
 import ssl
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
 from typing import Callable, Optional, TypeVar
 
 import gspread
@@ -292,6 +292,29 @@ def open_spreadsheet(db: Optional[Session] = None) -> gspread.Spreadsheet:
 
 def get_worksheet_by_date(spreadsheet: gspread.Spreadsheet, d: date) -> gspread.Worksheet | None:
     return get_worksheet_by_name(spreadsheet, tab_name_for(d))
+
+
+def latest_worksheet_on_or_before(
+    spreadsheet: gspread.Spreadsheet, target: date
+) -> gspread.Worksheet | None:
+    """The dated tab (title `dd.mm.yy`) with the newest date that is still on or
+    before ``target`` — the tab an email/manual order should land in when the
+    lab hasn't created today's tab yet (they often work a day or two behind).
+    Ignores non-dated tabs and any dated tab in the future. None if the document
+    has no usable dated tab at all."""
+    best_date: date | None = None
+    best_ws: gspread.Worksheet | None = None
+    for ws in spreadsheet.worksheets():
+        try:
+            tab_date = datetime.strptime(ws.title, "%d.%m.%y").date()
+        except ValueError:
+            continue
+        if tab_date > target:
+            continue
+        if best_date is None or tab_date > best_date:
+            best_date = tab_date
+            best_ws = ws
+    return best_ws
 
 
 def get_worksheet_by_name(spreadsheet: gspread.Spreadsheet, name: str) -> gspread.Worksheet | None:

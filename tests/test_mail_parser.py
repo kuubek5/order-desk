@@ -91,6 +91,23 @@ def test_fuzzy_match_material_color_no_known_materials_returns_none():
     assert fuzzy_match_material_color("моно а3", None) is None
 
 
+def test_fuzzy_match_material_color_latin_subject_maps_to_cyrillic():
+    """Clients write email subjects in Latin ('emo a3.5', 'pmma a2') but the
+    sheet's materials are Cyrillic ('емо а3.5', 'пмма а2'). Transliteration
+    must bridge the two alphabets — a real gap found on the live ukr.net box."""
+    known = ["емо а3.5", "пмма а2", "емо а2", "емо а3", "моно а3.5"]
+    assert fuzzy_match_material_color("emo a3.5", known) == "емо а3.5"
+    assert fuzzy_match_material_color("pmma a2", known) == "пмма а2"
+    # colour digits stay distinct: 'emo a2' must not grab 'емо а3'
+    assert fuzzy_match_material_color("emo a2", known) == "емо а2"
+
+
+def test_fuzzy_match_material_color_latin_garbage_still_rejected():
+    """Transliteration must not turn nonsense into a false positive."""
+    known = ["емо а3.5", "пмма а2", "500", "800"]
+    assert fuzzy_match_material_color("xyzzy", known) is None
+
+
 # --- guess_fields_from_text + known_materials integration -----------------------
 
 
@@ -202,3 +219,24 @@ def test_guess_service_type_mixed_milling_and_printing_flags_as_3d_print():
         "Також окремо потрібен 3d друк моделі щелепи."
     )
     assert guess_service_type(mixed_text) == "3d_print"
+
+
+# --- material_candidates (accept wizard chips) ---------------------------------
+
+def test_material_candidates_latin_returns_ranked_cyrillic():
+    from app.mail_parser import material_candidates
+    known = ["емо а3.5", "емо а3", "емо а2", "моно а3", "пмма а2"]
+    out = material_candidates("emo a3", known, limit=3)
+    assert out and out[0] == "емо а3"  # exact translit match ranks first
+    assert len(out) <= 3
+
+
+def test_material_candidates_garbage_returns_empty():
+    from app.mail_parser import material_candidates
+    assert material_candidates("zzzzz", ["емо а3", "пмма а2"]) == []
+
+
+def test_material_candidates_empty_inputs():
+    from app.mail_parser import material_candidates
+    assert material_candidates("", ["емо а3"]) == []
+    assert material_candidates("емо", []) == []

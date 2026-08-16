@@ -108,6 +108,52 @@ def _latest_batch_folder(client_dir: Path) -> Path | None:
     return best
 
 
+def list_client_folders(export_root: Path) -> list[str]:
+    """Existing top-level client folder names under the export root, sorted.
+    Feeds the accept wizard's "or pick an existing folder" override list."""
+    try:
+        return sorted(p.name for p in export_root.iterdir() if p.is_dir())
+    except (OSError, FileNotFoundError):
+        return []
+
+
+def preview_export_target(
+    export_root: Path,
+    client_name: str,
+    material_color: str,
+    client_folder_override: str | None = None,
+) -> dict:
+    """Compute where save_attachments_to_export WOULD put this email's files,
+    without touching the filesystem — drives the wizard's directory step so the
+    operator confirms the path before committing. Mirrors the same resolver /
+    batch-reuse / material-folder logic; keep the two in step."""
+    override = (client_folder_override or "").strip()
+    if override:
+        client_folder = sanitize_folder_name(override)
+    else:
+        client_folder = _resolve_client_folder_name(export_root, client_name)
+    client_dir = _contained_child(export_root, client_folder)
+    client_folder_existing = client_dir.is_dir()
+
+    material_folder = sanitize_folder_name(material_color or _NO_MATERIAL_NAME)
+    latest_batch = _latest_batch_folder(client_dir)
+    if latest_batch is not None and not (latest_batch / material_folder).exists():
+        batch_folder = latest_batch.name
+        batch_reused = True
+    else:
+        batch_folder = _next_batch_folder(client_dir).name
+        batch_reused = False
+
+    return {
+        "client_folder": client_folder,
+        "client_folder_existing": client_folder_existing,
+        "batch_folder": batch_folder,
+        "batch_reused": batch_reused,
+        "material_folder": material_folder,
+        "rel_path": f"{client_folder}/{batch_folder}/{material_folder}",
+    }
+
+
 def _unique_destination(directory: Path, filename: str, reserved: set[Path]) -> Path:
     candidate = directory / filename
     stem = candidate.stem
@@ -121,7 +167,11 @@ def _unique_destination(directory: Path, filename: str, reserved: set[Path]) -> 
 
 
 def save_attachments_to_export(
-    export_root: Path, client_name: str, material_color: str, attachment_paths: list[Path]
+    export_root: Path,
+    client_name: str,
+    material_color: str,
+    attachment_paths: list[Path],
+    client_folder_override: str | None = None,
 ) -> list[Path]:
     """Moves each file in attachment_paths into export_root/<client>/<batch>/<material>/.
 
@@ -143,7 +193,17 @@ def save_attachments_to_export(
     if not attachment_paths:
         return []
 
-    resolved_name = _resolve_client_folder_name(export_root, client_name)
+    # The accept wizard's directory step lets the operator pin an exact client
+    # folder (e.g. reuse "Vision Dental" when the fuzzy match would have made a
+    # new "Vision"). An explicit override skips the fuzzy resolver but still
+    # goes through _contained_child, so a crafted "../" name can't escape the
+    # export root. Empty/whitespace override falls back to the auto resolver.
+    override = (client_folder_override or "").strip()
+    resolved_name = (
+        sanitize_folder_name(override)
+        if override
+        else _resolve_client_folder_name(export_root, client_name)
+    )
     client_dir = _contained_child(export_root, resolved_name)
     material_name = sanitize_folder_name(material_color or _NO_MATERIAL_NAME)
 

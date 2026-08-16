@@ -396,7 +396,7 @@ def test_accept_email_links_order_to_appended_sheet_row():
     fake_ws = SimpleNamespace(title=today)
 
     with patch("app.web.open_spreadsheet"), \
-         patch("app.web.get_worksheet_by_name", return_value=fake_ws), \
+         patch("app.web.latest_worksheet_on_or_before", return_value=fake_ws), \
          patch("app.web.append_mail_placeholder_row", return_value=70):
         asyncio.run(accept_email(
             request=request, email_id=email.id,
@@ -405,6 +405,7 @@ def test_accept_email_links_order_to_appended_sheet_row():
 
     order = next(v for v in db.added if isinstance(v, Order))
     assert order.row_number == 70 - HEADER_ROWS  # linked, so no duplicate on sync
+    assert order.sheet_tab == today  # resolved tab (== today here) drives the order's day
 
 
 def test_accept_email_refuses_while_attachments_still_downloading():

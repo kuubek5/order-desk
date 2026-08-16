@@ -211,3 +211,56 @@ def test_dot_segment_client_cannot_escape_export_root(tmp_path):
 
     assert new_path.is_relative_to(export_root.resolve())
     assert new_path.parent.parent.parent.name == "без_імені"
+
+
+# --- accept wizard: directory preview + override -------------------------------
+
+def _touch(p):
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b"x")
+    return p
+
+
+def test_preview_export_target_new_client(tmp_path):
+    from app.mail_export import preview_export_target
+    prev = preview_export_target(tmp_path, "Новий Клієнт", "емо а3")
+    assert prev["client_folder"] == "Новий Клієнт"
+    assert prev["client_folder_existing"] is False
+    assert prev["material_folder"] == "емо а3"
+    assert prev["rel_path"] == "Новий Клієнт/нова папка/емо а3"
+
+
+def test_preview_export_target_reuses_existing_batch(tmp_path):
+    from app.mail_export import preview_export_target
+    (tmp_path / "Клієнт" / "нова папка" / "титан").mkdir(parents=True)
+    prev = preview_export_target(tmp_path, "Клієнт", "емо а3")
+    assert prev["client_folder_existing"] is True
+    assert prev["batch_folder"] == "нова папка"  # material slot free -> reuse
+    assert prev["batch_reused"] is True
+
+
+def test_preview_export_target_override_wins(tmp_path):
+    from app.mail_export import preview_export_target
+    (tmp_path / "Vision Dental").mkdir()
+    prev = preview_export_target(tmp_path, "Vision", "емо а3", client_folder_override="Vision Dental")
+    assert prev["client_folder"] == "Vision Dental"
+    assert prev["client_folder_existing"] is True
+
+
+def test_list_client_folders(tmp_path):
+    from app.mail_export import list_client_folders
+    (tmp_path / "Бета").mkdir()
+    (tmp_path / "Альфа").mkdir()
+    (tmp_path / "file.txt").write_bytes(b"x")
+    assert list_client_folders(tmp_path) == ["Альфа", "Бета"]
+
+
+def test_save_attachments_override_targets_named_folder(tmp_path):
+    src = _touch(tmp_path / "spool" / "a.stl")
+    (tmp_path / "export").mkdir()
+    new_paths = save_attachments_to_export(
+        tmp_path / "export", "Максим Тест", "емо а3", [src],
+        client_folder_override="Окрема Папка",
+    )
+    assert new_paths[0].parts[-4:] == ("Окрема Папка", "нова папка", "емо а3", "a.stl")
+    assert new_paths[0].is_file()

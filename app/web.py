@@ -36,7 +36,12 @@ from app.db import Base, SessionLocal, engine
 from app.monthly_backup import ensure_monthly_snapshot, list_snapshots
 from app.export_scanner import scan_export_folder
 from app.license import get_license_status, get_machine_id, verify_license_key
-from app.mail_export import save_attachments_to_export
+from app.mail_export import (
+    list_client_folders,
+    preview_export_target,
+    save_attachments_to_export,
+)
+from app.mail_parser import material_candidates
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
 from app.mail_sync_service import MailSyncBusyError, MailSyncError, sync_mail_background, sync_mailbox
 from app.material_class import material_badge, material_color_css_class
@@ -112,7 +117,12 @@ from app.sheet_writer import (
 )
 from app.parser import HEADER_ROWS
 from app.google_oauth import OAuthFlowError, parse_client_config, run_authorization_flow
-from app.sheets import get_worksheet_by_name, open_spreadsheet, reset_sheets_cache
+from app.sheets import (
+    get_worksheet_by_name,
+    latest_worksheet_on_or_before,
+    open_spreadsheet,
+    reset_sheets_cache,
+)
 from app.statuses import STATUSES, is_overdue
 from app.stats import (
     average_new_to_milled_hours,
@@ -1135,21 +1145,26 @@ _sheet_writeback_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sh
 
 
 def _append_manual_rows_warm(
-    tab: str, works: list[dict], *, paint_blue: bool, placement: str,
-) -> list[int] | None:
-    """Append a batch of manual work rows to `tab` on the write-back worker
-    thread, whose per-thread spreadsheet/worksheet cache stays warm (see
-    _warm_sheet_writeback) — so this runs in seconds instead of the ~40s cold
-    open the request thread would pay. Uses its own DB session for the settings/
-    config read. Returns the list of 1-indexed sheet rows written, or None if
-    today's tab doesn't exist yet."""
+    target_date: date, works: list[dict], *, paint_blue: bool, placement: str,
+) -> tuple[str, list[int]] | None:
+    """Append a batch of manual work rows on the write-back worker thread, whose
+    per-thread spreadsheet/worksheet cache stays warm (see _warm_sheet_writeback)
+    — so this runs in seconds instead of the ~40s cold open the request thread
+    would pay. Uses its own DB session for the settings/config read.
+
+    Writes to the newest dated tab on or before ``target_date``: the lab often
+    works a day or two behind, so today's tab may not exist yet — the row goes
+    into the last available day rather than failing. Returns
+    (resolved_tab_title, 1-indexed sheet rows), or None if the document has no
+    dated tab at all."""
     with SessionLocal() as s:
-        worksheet = get_worksheet_by_name(open_spreadsheet(db=s), tab)
-        if worksheet is None or worksheet.title != tab:
+        worksheet = latest_worksheet_on_or_before(open_spreadsheet(db=s), target_date)
+        if worksheet is None:
             return None
-        return append_manual_work_rows(
+        rows = append_manual_work_rows(
             worksheet, works, paint_blue=paint_blue, placement=placement,
         )
+        return worksheet.title, rows
 
 
 def _write_sheet_fields_background(order_id: int, fields: set[str]) -> None:
@@ -1962,21 +1977,23 @@ def create_manual_order(
     if last is not None and last[0] == fingerprint and (now_ts - last[1]) < _MANUAL_ADD_DEDUP_SECONDS:
         return RedirectResponse(f"/?source={'lab' if is_lab else 'client'}", status_code=303)
 
-    tab = date.today().strftime("%d.%m.%y")
     # Append the whole batch on the warm write-back worker (cached spreadsheet/
     # worksheet) in ONE sheet call — the cold request thread would re-pay ~40s of
-    # open+worksheet through the lab proxy per call.
+    # open+worksheet through the lab proxy per call. The worker resolves the
+    # newest dated tab ≤ today (today's tab often isn't created yet) and returns
+    # which tab it actually wrote to, so the orders land on the same day.
     try:
-        note_rows = _sheet_writeback_pool.submit(
-            _append_manual_rows_warm, tab, works,
+        result = _sheet_writeback_pool.submit(
+            _append_manual_rows_warm, date.today(), works,
             paint_blue=(not is_lab),
             placement=("lab" if is_lab else "client"),
         ).result(timeout=120)
     except Exception as exc:  # noqa: BLE001 — surface any sheet failure to the operator
         logger.exception("Manual order sheet write failed")
         return _back(f"Не вдалося записати в таблицю: {exc}")
-    if note_rows is None:
-        return _back(f"Вкладку «{tab}» у таблиці не знайдено — створіть день у таблиці спершу.")
+    if result is None:
+        return _back("У таблиці немає жодної датованої вкладки — створіть день у таблиці спершу.")
+    tab, note_rows = result
 
     ensure_seeded(db)
     alias_rows = load_alias_rows(db)
@@ -3454,6 +3471,7 @@ def get_mail_detail(
     request: Request,
     email_id: int,
     error: str | None = None,
+    panel: int = 0,
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)
@@ -3466,11 +3484,102 @@ def get_mail_detail(
 
     attach_email_preview_tokens([email], _mail_trusted_roots(db), _mail_preview_roots(db))
 
-    return templates.TemplateResponse(
-        request,
-        "mail_detail.html",
-        {"email": email, "user": user, "error": error},
+    # Initial wizard state (step 1): candidates from the recognised guess, the
+    # carried values left blank so _mail_wizard.html falls back to email.*_guess.
+    seed = (email.material_color_guess or "") or (email.subject or "")
+    context = {
+        "email": email,
+        "user": user,
+        "error": error,
+        "wizard_step": 1,
+        "client_name": "",
+        "material_color": "",
+        "kind": "",
+        "quantity": "",
+        "client_folder_override": "",
+        "material_cands": material_candidates(seed, _lab_material_colors(db)),
+    }
+
+    # HTMX click from the triage list swaps just the detail into the right
+    # column (panel=1, or any HX-Request); a plain navigation still gets the
+    # standalone page — the shared _mail_detail_panel.html renders both.
+    request_headers = getattr(request, "headers", None) or {}
+    if panel or request_headers.get("HX-Request") == "true":
+        return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
+
+    return templates.TemplateResponse(request, "mail_detail.html", context)
+
+
+def _lab_material_colors(db: Session) -> list[str]:
+    """Distinct free-text material/colour strings the lab actually used in the
+    sheet (source=="lab") — the reference list the accept wizard matches a
+    client's mangled spelling against."""
+    return sorted(
+        {
+            m
+            for (m,) in db.execute(
+                select(Order.material_color).where(
+                    Order.source == "lab", Order.material_color.is_not(None)
+                )
+            ).all()
+            if m and m.strip()
+        }
     )
+
+
+@app.post("/mail/{email_id}/wizard", response_class=HTMLResponse)
+def mail_wizard(
+    request: Request,
+    email_id: int,
+    step: int = Form(1),
+    client_name: str = Form(""),
+    material_color: str = Form(""),
+    kind: str = Form(""),
+    quantity: str = Form(""),
+    client_folder_override: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Render one step of the semi-automatic accept wizard (client+material →
+    directory → confirm). Each Next/Back re-renders the shared _mail_wizard.html
+    fragment with the accumulated values carried in hidden inputs; nothing is
+    written until the final step POSTs to /mail/{id}/accept."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+
+    step = max(1, min(3, step))
+    known = _lab_material_colors(db)
+    # Candidates from the operator's current material text, or the recognised
+    # guess / subject on the very first render.
+    seed = material_color.strip() or (email.material_color_guess or "") or (email.subject or "")
+    candidates = material_candidates(seed, known)
+
+    ctx = {
+        "email": email,
+        "user": user,
+        "wizard_step": step,
+        "client_name": client_name,
+        "material_color": material_color,
+        "kind": kind,
+        "quantity": quantity,
+        "client_folder_override": client_folder_override,
+        "material_cands": candidates,
+    }
+    if step >= 2:
+        export_root = Path(get_export_folder_path(db))
+        ctx["preview"] = preview_export_target(
+            export_root, client_name, material_color, client_folder_override
+        )
+        ctx["existing_folders"] = list_client_folders(export_root)
+        ctx["attachment_count"] = len(
+            [a for a in email.attachments if Path(a.saved_path).exists()]
+        )
+
+    return templates.TemplateResponse(request, "_mail_wizard.html", ctx)
 
 
 @app.post("/mail/{email_id}/open-folder", status_code=204)
@@ -3518,6 +3627,7 @@ async def accept_email(
     material_color: str = Form(""),
     kind: str = Form(""),
     quantity: str = Form(""),
+    client_folder_override: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)
@@ -3541,16 +3651,34 @@ async def accept_email(
             status_code=303,
         )
 
+    # Which dated tab does this order belong to? The lab often works a day or
+    # two behind, so TODAY's tab may not exist yet — writing the placeholder to
+    # "16.08.26" when the newest real tab is "15.08.26" silently drops the row
+    # (get_worksheet_by_name returns None) and strands the order on a phantom
+    # day. Resolve to the newest existing dated tab on or before today instead;
+    # fall back to today's name only if the sheet is unreachable or has no dated
+    # tab, preserving the old behaviour in that edge case. The resolved
+    # worksheet is reused for the write-back below (one fewer tab fetch).
+    today = date.today()
+    target_tab = today.strftime("%d.%m.%y")
+    target_worksheet = None
+    try:
+        target_worksheet = latest_worksheet_on_or_before(open_spreadsheet(db=db), today)
+        if target_worksheet is not None:
+            target_tab = target_worksheet.title
+    except Exception as exc:  # noqa: BLE001 — sheet trouble must not block accept
+        logger.warning("Could not resolve target sheet tab for email %s: %s", email.id, exc)
+
     new_order = Order(
         source="email",
         # Real наряд identifier from the sheet — email orders never get one,
-        # but sheet_tab is set below to the same "%d.%m.%y" shape table tabs
-        # use, so period tabs, is_overdue() and folder lookups treat a priced
-        # mail order exactly like one entered from the sheet (CLAUDE.md: an
-        # operator wants to find yesterday's mail-sourced job the same way
-        # they'd find a table one). row_number stays None on purpose — that's
-        # the real signal (source == "lab" too) that stops sheet write-back.
-        sheet_tab=date.today().strftime("%d.%m.%y"),
+        # but sheet_tab uses the same "%d.%m.%y" shape table tabs use, so period
+        # tabs, is_overdue() and folder lookups treat a priced mail order exactly
+        # like one entered from the sheet (CLAUDE.md: an operator wants to find
+        # yesterday's mail-sourced job the same way they'd find a table one).
+        # row_number stays None on purpose — that's the real signal (source ==
+        # "lab" too) that stops sheet write-back.
+        sheet_tab=target_tab,
         row_number=None,
         client_name=client_name.strip() or None,
         material_color=material_color.strip() or None,
@@ -3579,6 +3707,7 @@ async def accept_email(
                 new_order.client_name or "",
                 new_order.material_color or "",
                 [Path(a.saved_path) for a in attachments],
+                client_folder_override=client_folder_override,
             )
             for attachment, new_path in zip(attachments, new_paths):
                 attachment.saved_path = str(new_path)
@@ -3598,15 +3727,18 @@ async def accept_email(
     # hiccup, or any other failure is just logged to SyncLog so the
     # operator isn't stuck on a 500 for a convenience write-back.
     try:
-        worksheet = get_worksheet_by_name(open_spreadsheet(db=db), new_order.sheet_tab)
-        if worksheet is None or worksheet.title != new_order.sheet_tab:
+        # Reuse the tab resolved above (newest dated tab ≤ today). None means
+        # the sheet was unreachable or has no dated tab — log and skip, exactly
+        # as the old "tab not found" branch did.
+        worksheet = target_worksheet
+        if worksheet is None:
             db.add(
                 SyncLog(
                     direction="mail_to_sheet",
                     sheet_tab=new_order.sheet_tab,
                     status="error",
                     message=(
-                        f"email {email.id}: вкладку '{new_order.sheet_tab}' не знайдено, "
+                        f"email {email.id}: доступної датованої вкладки немає, "
                         "рядок-нотатку не записано"
                     ),
                 )
@@ -3644,6 +3776,12 @@ async def accept_email(
 
     db.commit()
 
+    # The wizard submits its final step over HTMX; a 303 would make HTMX fetch
+    # and swap the queue HTML into the panel instead of navigating. HX-Redirect
+    # tells HTMX to do a real browser navigation to the (filtered) queue.
+    request_headers = getattr(request, "headers", None) or {}
+    if request_headers.get("HX-Request") == "true":
+        return Response(status_code=204, headers={"HX-Redirect": "/?source=client"})
     return RedirectResponse("/?source=client", status_code=303)
 
 

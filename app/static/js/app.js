@@ -372,6 +372,17 @@ document.addEventListener("DOMContentLoaded", () => {
   applyHandoutView(saved);
 });
 
+// Mail triage: highlight the row whose letter is open in the right-hand detail
+// panel. The HTMX get itself fills #mail-detail; this only tracks which row is
+// the active one so the master-detail selection reads clearly.
+document.addEventListener("click", (event) => {
+  const row = event.target.closest(".mailrow");
+  if (!row) return;
+  if (event.target.closest(".mail-reject-form")) return; // reject button isn't a selection
+  document.querySelectorAll(".mailrow.active").forEach((r) => r.classList.remove("active"));
+  row.classList.add("active");
+});
+
 // v2a sync sweep (queue.html .queue-panel > .sweep). When the operator kicks
 // off a Google Sheets sync, the neon strip sweeps across the queue for as long
 // as the real POST /sheets/sync is in flight, then the page reloads so the

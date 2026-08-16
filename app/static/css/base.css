@@ -4023,9 +4023,12 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .card-head h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0}
 .mailv2 .card-head .meta{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
 .mailv2 .listwrap{overflow-y:auto;flex:1;min-height:0;scrollbar-width:thin;padding:8px}
-.mailv2 .mailrow{display:flex;flex-direction:column;gap:4px;padding:10px 11px;border-radius:9px;border:1px solid transparent;text-decoration:none;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.mailv2 .mailrow{display:flex;flex-direction:column;gap:4px;padding:10px 11px;border-radius:9px;border:1px solid transparent;text-decoration:none;cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .mailv2 .mailrow+.mailrow{margin-top:2px}
 .mailv2 .mailrow:hover{background:var(--card-2);border-color:var(--line);opacity:1}
+.mailv2 .mailrow:focus-visible{outline:2px solid var(--accent-b);outline-offset:1px}
+.mailv2 .mailrow.active{background:var(--card-2);border-color:rgba(45,212,191,.45)}
+.mailv2 .mailrow.active .from{color:var(--accent-c)}
 .mailv2 .mailrow .r1{display:flex;align-items:baseline;gap:8px}
 .mailv2 .mailrow .from{font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mailv2 .mailrow .t{margin-left:auto;font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);flex:0 0 auto}
@@ -4040,6 +4043,39 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .list-reject:hover{color:var(--alarm);border-color:rgba(248,113,113,.4)}
 .mailv2 .list-reject svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
 .mailv2 .list-foot{padding:9px 15px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-3)}
+
+/* Accept wizard (semi-auto): stepper + step body inside the triage panel. */
+.mailv2 .wizard{border:1px solid var(--line);border-radius:11px;background:#111823;padding:12px 13px}
+.mailv2 .wiz-progress{display:flex;align-items:center;gap:6px;margin-bottom:12px}
+.mailv2 .wp-dot{width:22px;height:22px;border-radius:50%;flex:0 0 22px;display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;border:1px solid var(--line-2);background:var(--card);color:var(--ink-3)}
+.mailv2 .wp-dot.on{background:rgba(20,184,166,.18);border-color:rgba(45,212,191,.5);color:var(--accent-c)}
+.mailv2 .wp-dot.done{background:var(--accent-b);border-color:var(--accent-b);color:var(--bg)}
+.mailv2 .wp-line{flex:1;height:1px;background:var(--line-2)}
+.mailv2 .wp-line.done{background:var(--accent-b)}
+.mailv2 .wiz-title{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:11px}
+.mailv2 .wiz-cands{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:7px}
+.mailv2 .wc-label{font-size:11px;color:var(--ink-3)}
+.mailv2 .wc-chip{height:24px;padding:0 10px;border-radius:999px;border:1px solid rgba(45,212,191,.34);background:rgba(20,184,166,.1);color:var(--accent-c);font:inherit;font-size:12px;cursor:pointer;transition:background var(--ui-speed) ease}
+.mailv2 .wc-chip:hover{background:rgba(20,184,166,.22)}
+.mailv2 .wiz-pathbox{border:1px solid var(--line-2);border-radius:9px;background:var(--card);padding:11px 12px;margin-bottom:11px}
+.mailv2 .wpb-label{font-size:11.5px;color:var(--ink-2);margin-bottom:6px}
+.mailv2 .wpb-path{font-size:12.5px;color:var(--ink-2);line-height:1.8;word-break:break-word}
+.mailv2 .wpb-root{color:var(--ink-3)}
+.mailv2 .wpb-seg{padding:1px 6px;border-radius:5px;background:#1d2734;border:1px solid var(--line-2);color:var(--ink)}
+.mailv2 .wpb-seg.exists{border-color:rgba(45,212,191,.4);color:var(--accent-c)}
+.mailv2 .wpb-seg.new{border-color:rgba(240,163,94,.4);color:var(--warn)}
+.mailv2 .wpb-seg.mat{color:var(--ink)}
+.mailv2 .wpb-hints{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.mailv2 .wpb-hint{font-size:11px;color:var(--ink-3)}
+.mailv2 .wpb-hint.ok{color:var(--accent-c)}
+.mailv2 .wpb-hint.new{color:var(--warn)}
+.mailv2 .wiz-summary{margin:0}
+.mailv2 .wiz-summary>div{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-top:1px solid #1b2431}
+.mailv2 .wiz-summary>div:first-child{border-top:none}
+.mailv2 .wiz-summary dt{font-size:12px;color:var(--ink-3);margin:0}
+.mailv2 .wiz-summary dd{font-size:12.5px;color:var(--ink);margin:0;text-align:right;min-width:0;word-break:break-word}
+.mailv2 .wiz-summary dd.sm{font-size:11.5px;color:var(--ink-2)}
+.mailv2 .wiz-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:13px}
 
 .mailv2 .detail-panel{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;scrollbar-width:thin;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow)}
 .mailv2 .detail-head{display:flex;align-items:flex-start;gap:10px;padding:16px 20px 14px;border-bottom:1px solid var(--line)}
