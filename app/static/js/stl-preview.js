@@ -45,6 +45,12 @@
   const REDUCED_MOTION =
     window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // Base per-frame rotation (radians) at slider position 1.0. The speed slider
+  // scales this; 0 = frozen. Default respects prefers-reduced-motion (starts
+  // still) but the slider lets the operator opt back into spin.
+  const BASE_SPIN_Y = 0.012;
+  const BASE_SPIN_X = 0.003;
+
   // Warm teal accent that stays visible against the dark v2a stage; normals
   // are recomputed below so the mesh is never solid black regardless of STL.
   const MODEL_COLOR = 0x5eead4;
@@ -57,6 +63,8 @@
     activeIndex: -1,
     controller: null,
     rafId: null,
+    spinSpeed: REDUCED_MOTION ? 0 : 1, // multiplier on BASE_SPIN_*, driven by the slider
+    speedEl: null,
     fileListCache: new Map(), // token -> string[]
     geometryCache: new Map(), // "token filename" -> BufferGeometry (raw)
     renderer: null,
@@ -108,6 +116,38 @@
     status.className = "stl-panel-status";
     stage.appendChild(status);
     panel.appendChild(stage);
+
+    // Rotation-speed slider: 0 (frozen) … 3× the default spin. Lets the
+    // operator slow a busy model down to inspect it, or spin it up.
+    const speedRow = document.createElement("div");
+    speedRow.className = "stl-panel-speed";
+    const speedIcon = document.createElement("span");
+    speedIcon.className = "stl-speed-icon";
+    speedIcon.setAttribute("aria-hidden", "true");
+    speedIcon.innerHTML =
+      '<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M21 3v6h-6"/></svg>';
+    speedRow.appendChild(speedIcon);
+    const speedInput = document.createElement("input");
+    speedInput.type = "range";
+    speedInput.className = "stl-speed-range";
+    speedInput.min = "0";
+    speedInput.max = "3";
+    speedInput.step = "0.1";
+    speedInput.value = String(state.spinSpeed);
+    speedInput.setAttribute("aria-label", "Швидкість обертання");
+    speedInput.addEventListener("input", () => {
+      state.spinSpeed = Number(speedInput.value) || 0;
+      // Nudge the loop: if it self-stopped at speed 0, resume it; renderOnce
+      // keeps the frozen model visible when the operator drags back to 0.
+      if (state.open && state.spinSpeed > 0 && state.rafId === null) {
+        startRenderLoop();
+      } else if (state.spinSpeed === 0) {
+        renderOnce();
+      }
+    });
+    speedRow.appendChild(speedInput);
+    panel.appendChild(speedRow);
+    state.speedEl = speedInput;
 
     const files = document.createElement("div");
     files.className = "stl-panel-files";
@@ -262,18 +302,22 @@
 
   function startRenderLoop() {
     stopRenderLoop();
-    if (REDUCED_MOTION) {
+    // Frozen (slider at 0, or reduced-motion default): draw one still frame and
+    // don't burn a RAF loop. The slider's input handler restarts the loop when
+    // the operator drags the speed back above 0.
+    if (state.spinSpeed <= 0) {
       renderOnce();
       return;
     }
     function tick() {
-      if (!state.open) {
+      if (!state.open || state.spinSpeed <= 0) {
         stopRenderLoop();
+        renderOnce();
         return;
       }
       if (state.mesh) {
-        state.mesh.rotation.y += 0.012;
-        state.mesh.rotation.x += 0.003;
+        state.mesh.rotation.y += BASE_SPIN_Y * state.spinSpeed;
+        state.mesh.rotation.x += BASE_SPIN_X * state.spinSpeed;
       }
       renderOnce();
       state.rafId = window.requestAnimationFrame(tick);

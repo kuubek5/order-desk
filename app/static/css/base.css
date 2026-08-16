@@ -3318,6 +3318,57 @@ li {
   color: var(--ink-3);
 }
 
+/* Rotation-speed slider under the 3D stage. */
+.stl-panel-speed {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 9px 10px 0;
+}
+.stl-speed-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--ink-3);
+}
+.stl-speed-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.stl-speed-range {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #1c2532;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+.stl-speed-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-b);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--accent-b);
+  cursor: pointer;
+}
+.stl-speed-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-b);
+  border: 2px solid var(--bg);
+  cursor: pointer;
+}
+
 .stl-panel-files {
   display: flex;
   flex-direction: column;
@@ -4109,6 +4160,15 @@ main.handoutv2{max-width:1200px;margin:0 auto;padding:18px 20px}
 .handoutv2 .issue-btn:hover{background:rgba(20,184,166,.28);border-color:var(--accent);transform:translateY(-1px)}
 .handoutv2 .issue-btn:active{transform:translateY(0)}
 .handoutv2 .card-head{display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+/* Collapse chevron: folds the card body away, stays expanded by default. */
+.handoutv2 .card-collapse{flex:0 0 auto;width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--line);border-radius:7px;background:#111823;color:var(--ink-2);cursor:pointer;
+  transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.handoutv2 .card-collapse:hover{color:var(--ink);border-color:var(--line-2)}
+.handoutv2 .card-collapse svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform var(--ui-speed) ease}
+.handoutv2 .ccard.is-collapsed .card-collapse svg{transform:rotate(-90deg)}
+.handoutv2 .ccard.is-collapsed .card-head{border-bottom:none}
+.handoutv2 .ccard.is-collapsed .cbody{display:none}
 .handoutv2 .card-head h2{font-family:var(--font-head);font-size:15.5px;font-weight:600;margin:0;letter-spacing:-.005em;display:flex;align-items:center;gap:8px}
 .handoutv2 .card-head .doneicon{width:18px;height:18px;flex:0 0 18px;border-radius:50%;background:rgba(20,184,166,.18);border:1px solid rgba(45,212,191,.5);display:inline-flex;align-items:center;justify-content:center}
 .handoutv2 .card-head .doneicon svg{width:11px;height:11px;stroke:var(--accent-c);fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
@@ -4136,23 +4196,57 @@ main.handoutv2{max-width:1200px;margin:0 auto;padding:18px 20px}
 .handoutv2 .ambig .abtn{align-self:flex-start;height:30px;padding:0 14px;border-radius:999px;border:1px solid rgba(45,212,191,.4);background:rgba(20,184,166,.14);color:var(--accent-c);font-size:12.5px;font-weight:500;cursor:pointer}
 .handoutv2 .ambig .abtn:hover{background:rgba(20,184,166,.24)}
 
+/* Compact one-line work rows (like the queue): check + ID + material + qty +
+   day + status all on a single dense row, minimal padding. */
 .handoutv2 .works{display:flex;flex-direction:column}
-.handoutv2 .wrow{display:flex;align-items:center;gap:12px;padding:10px 2px}
+.handoutv2 .wrow{display:flex;align-items:center;gap:10px;padding:5px 2px}
 .handoutv2 .wrow+.wrow{border-top:1px solid #1b2431}
 .handoutv2 .wrow.found{opacity:.6}
-.handoutv2 .wcheck{flex:0 0 26px;width:26px;height:26px;border-radius:7px;border:1.6px solid var(--line-2);background:#111823;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
-.handoutv2 .wcheck svg{width:14px;height:14px;stroke:var(--bg);fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity var(--ui-speed) ease}
+.handoutv2 .wcheck{flex:0 0 21px;width:21px;height:21px;border-radius:6px;border:1.5px solid var(--line-2);background:#111823;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.handoutv2 .wcheck svg{width:12px;height:12px;stroke:var(--bg);fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity var(--ui-speed) ease}
 .handoutv2 .wcheck:hover{border-color:var(--accent-b)}
 .handoutv2 .wrow.found .wcheck{background:var(--accent-b);border-color:var(--accent-b)}
 .handoutv2 .wrow.found .wcheck svg{opacity:1}
 .handoutv2 .wcheck.static{cursor:default}
-.handoutv2 .wmain{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
-.handoutv2 .wmain .top{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-.handoutv2 .wmain .ord{font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--ink);text-decoration:none}
+/* Found + clickable: filled check that on hover signals "click to un-mark". */
+.handoutv2 .wcheck.done{cursor:pointer}
+.handoutv2 .wcheck.done:hover{border-color:var(--danger,#e5658b);background:transparent}
+.handoutv2 .wcheck.done:hover svg{stroke:var(--danger,#e5658b)}
+.handoutv2 .wmain{flex:1;min-width:0;display:flex;flex-direction:row;align-items:center;gap:9px}
+.handoutv2 .wmain .top{flex:1;min-width:0;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.handoutv2 .wmain .ord{font-family:var(--font-mono);font-size:12.5px;font-weight:600;color:var(--ink);text-decoration:none}
 .handoutv2 .wmain .ord:hover{color:var(--accent-c);opacity:1}
 .handoutv2 .wrow.found .wmain .ord{text-decoration:line-through;color:var(--ink-3)}
-.handoutv2 .matchip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:6px;background:#1d2734;border:1px solid var(--line-2);font-size:11.5px;color:var(--ink-2)}
-.handoutv2 .wstatus{font-size:12px;color:var(--ink-3)}
+.handoutv2 .matchip{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:6px;background:#1d2734;border:1px solid var(--line-2);font-size:11px;color:var(--ink-2)}
+.handoutv2 .wstatus{flex:0 0 auto;font-size:11px;color:var(--ink-3);white-space:nowrap;margin-left:auto}
+/* Per-row folder shortcuts: one chip per matching export folder, time-labelled
+   so same-material candidates are distinguishable. Clicking opens STL preview. */
+.handoutv2 .wopen{flex:0 0 auto;display:flex;align-items:center;gap:6px}
+.handoutv2 .wfolder{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;
+  border:1px solid rgba(45,212,191,.32);background:rgba(20,184,166,.1);color:var(--accent-c);text-decoration:none;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.handoutv2 .wfolder:hover{background:rgba(20,184,166,.22);border-color:var(--accent);opacity:1}
+.handoutv2 .wfolder svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.handoutv2 .wfolder-t{font-size:10.5px;color:var(--accent-c)}
+.handoutv2 .cfoot-label{font-size:11px;color:var(--ink-3);margin-bottom:7px}
+
+/* View switch: Рядки (compact list) ⇄ Плитки (preview tiles). */
+.handoutv2 .view-toggle{display:flex;gap:6px;margin:0 0 12px;justify-content:flex-end}
+.handoutv2 .view-btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);font:inherit;font-size:12.5px;cursor:pointer;transition:color var(--ui-speed) ease,background var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.handoutv2 .view-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.handoutv2 .view-btn:hover{color:var(--ink)}
+.handoutv2 .view-btn.active{background:rgba(20,184,166,.16);color:var(--accent-c);border-color:rgba(45,212,191,.4)}
+
+/* Tile mode: same work markup, re-laid out as a grid of preview cards. */
+.handoutv2 .clients.as-tiles .works{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.handoutv2 .clients.as-tiles .wrow{flex-direction:column;align-items:stretch;gap:7px;padding:10px;border:1px solid #1c2532;border-radius:10px;background:#111823}
+.handoutv2 .clients.as-tiles .wrow+.wrow{border-top:1px solid #1c2532}
+.handoutv2 .clients.as-tiles .wrow>form{align-self:flex-start}
+.handoutv2 .clients.as-tiles .wmain{flex-direction:column;align-items:flex-start;gap:5px}
+.handoutv2 .clients.as-tiles .wmain .top{flex:none}
+.handoutv2 .clients.as-tiles .wstatus{margin-left:0}
+.handoutv2 .clients.as-tiles .wopen{width:100%}
+.handoutv2 .clients.as-tiles .wfolder{flex:1;justify-content:center;height:34px;font-size:12px}
 .handoutv2 .cfoot{margin-top:11px;padding-top:11px;border-top:1px solid #1b2431}
 .handoutv2 .export-batches{display:flex;flex-direction:column;gap:8px}
 .handoutv2 .export-batch{display:flex;align-items:center;gap:8px;flex-wrap:wrap}

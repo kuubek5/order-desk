@@ -11,11 +11,15 @@ from types import SimpleNamespace
 
 import gspread.utils
 from app.sheet_writer import (
+    _BLUE,
+    _WHITE,
     append_mail_placeholder_row,
     append_manual_work_row,
     append_manual_work_rows,
     append_order_comment,
     apply_status_markers,
+    clear_row_fills,
+    paint_row_fills,
     write_order_fields,
 )
 from app.parser import HEADER_ROWS
@@ -662,3 +666,43 @@ class TestWriteReworkSum3d:
         write_rework_sum3d(fake_ws, order, "")
 
         fake_ws.update_cell.assert_called_once_with(2 + HEADER_ROWS, 23, "")
+
+
+class TestRowFills:
+    """clear_row_fills / paint_row_fills recolour ONLY the client-name cell
+    (column E), not the whole A:K row — user decision 16.08.26. The sync still
+    reads the pending flag from column C, so this narrower repaint never flips
+    a row to "issued" on its own."""
+
+    def _fake_spreadsheet(self):
+        ss = MagicMock()
+        return ss
+
+    def _range(self, ss):
+        body = ss.batch_update.call_args[0][0]
+        return body["requests"][0]["repeatCell"]["range"]
+
+    def _color(self, ss):
+        body = ss.batch_update.call_args[0][0]
+        rc = body["requests"][0]["repeatCell"]
+        return rc["cell"]["userEnteredFormat"]["backgroundColor"]
+
+    def test_clear_targets_only_client_name_column(self):
+        ss = self._fake_spreadsheet()
+        clear_row_fills(ss, [(42, 63)])
+        rng = self._range(ss)
+        assert rng["startColumnIndex"] == 4 and rng["endColumnIndex"] == 5  # column E
+        assert rng["startRowIndex"] == 62 and rng["endRowIndex"] == 63
+        assert self._color(ss) == _WHITE
+
+    def test_paint_targets_only_client_name_column_blue(self):
+        ss = self._fake_spreadsheet()
+        paint_row_fills(ss, [(42, 63)])
+        rng = self._range(ss)
+        assert rng["startColumnIndex"] == 4 and rng["endColumnIndex"] == 5  # column E
+        assert self._color(ss) == _BLUE
+
+    def test_empty_rows_is_noop(self):
+        ss = self._fake_spreadsheet()
+        clear_row_fills(ss, [])
+        ss.batch_update.assert_not_called()

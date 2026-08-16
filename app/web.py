@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 import ipaddress
 import logging
 import os
+import subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Lock, Thread
@@ -105,6 +106,7 @@ from app.sheet_writer import (
     append_order_comment,
     apply_status_markers,
     clear_row_fills,
+    paint_row_fills,
     write_order_fields,
     write_rework_sum3d,
 )
@@ -342,9 +344,23 @@ def _is_loopback_request(request: Request) -> bool:
 
 
 def _open_folder_in_explorer(folder: Path) -> None:
-    if os.name != "nt" or not hasattr(os, "startfile"):
+    if os.name != "nt":
         raise NotImplementedError
-    os.startfile(str(folder))  # type: ignore[attr-defined]
+    # Launch a fresh explorer.exe rather than os.startfile: ShellExecute (which
+    # startfile uses) hands an ALREADY-OPEN Explorer the path and that window
+    # stays wherever it was — often behind the browser, which is exactly the
+    # "opens in the background" complaint. explorer.exe <path> opens a new
+    # window that comes to the foreground. AllowSetForegroundWindow lifts the
+    # foreground lock so the shell may raise it even though this call comes from
+    # the background server process. explorer.exe returns exit code 1 on success
+    # (a known quirk), so the return code is deliberately ignored.
+    try:
+        import ctypes
+
+        ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY
+    except Exception:  # noqa: BLE001 — foreground hint is best-effort
+        pass
+    subprocess.Popen(["explorer", str(folder)])  # noqa: S603,S607
 
 
 def _check_path_status(raw_path: str) -> dict[str, str]:
@@ -600,6 +616,28 @@ def _sheet_order_key(order: Order) -> tuple:
     the physical table, used by the handout screen (see get_handout) as a
     rough readiness timeline instead of DB insertion order."""
     return (_order_date(order), order.row_number if order.row_number is not None else 0)
+
+
+def _material_key(text: str | None) -> str:
+    """Normalize a free-text material+colour for comparison: lowercased, comma
+    decimals unified to dots, tokens sorted so word order doesn't matter
+    ("emo a3" == "a3 emo", "mono a3,5" == "mono a3.5"). Deliberately strict on
+    the colour digits so "emo a3" never collapses into "emo a35"."""
+    norm = (text or "").strip().lower().replace(",", ".")
+    return " ".join(sorted(norm.split()))
+
+
+def _entries_for_material(material_color: str | None, entries: list) -> list:
+    """The export folders under a client whose material matches this work's
+    material_color, oldest-first. Empty when the work has no colour or nothing
+    lines up — the row then simply shows no folder shortcut. See get_handout for
+    why this is an assist, not an exact per-row bind."""
+    key = _material_key(material_color)
+    if not key:
+        return []
+    matched = [e for e in entries if _material_key(e.material_color_folder_name) == key]
+    matched.sort(key=lambda e: e.created_at)
+    return matched
 
 
 def _queue_sort_key(order: Order) -> tuple:
@@ -2183,6 +2221,21 @@ def get_handout(
             entry.preview_token = build_preview_token(
                 entry.folder_path, {"export": get_export_folder_path(db)}
             )
+        # Per-row candidates: narrow the client's export folders to the ones
+        # whose material matches THIS work's material_color, oldest-first. The
+        # path carries no наряд/Sum3D ID (user decision 16.08.26: export stays
+        # "нова папка"), so this is an ASSIST, not an exact bind — when several
+        # works share a material the same folders show under each, and the
+        # operator picks by eye (Sum3D ID + STL preview are their anchor).
+        matched_entry_ids: set[int] = set()
+        for order in group_orders:
+            cands = _entries_for_material(order.material_color, export_entries)
+            order.export_matches = cands
+            for entry in cands:
+                matched_entry_ids.add(id(entry))
+        # Folders whose material matched no row — surfaced separately so a
+        # mislabelled colour never hides a physical work.
+        extra_entries = [e for e in export_entries if id(e) not in matched_entry_ids]
         all_found = all(o.status in ("знайдено при видачі", "видано") for o in group_orders)
         client_groups.append(
             {
@@ -2190,6 +2243,7 @@ def get_handout(
                 "orders": group_orders,
                 "match": match,
                 "export_entries": export_entries,
+                "extra_entries": extra_entries,
                 "all_found": all_found,
             }
         )
@@ -2218,8 +2272,49 @@ def get_handout(
     )
 
 
+def _handout_back_url(source: str, day: str) -> str:
+    """Rebuild the exact handout view (source tab + day chip) the operator was
+    on, so a mark/unmark POST returns them there instead of the unfiltered
+    all-days list."""
+    params: list[str] = []
+    if source and source in HANDOUT_SOURCE_FILTERS and source != "all":
+        params.append(f"source={source}")
+    if day:
+        params.append(f"day={day}")
+    return "/handout" + ("?" + "&".join(params) if params else "")
+
+
+def _set_client_row_fill(db: Session, order: Order, *, blue: bool) -> str | None:
+    """Paint one sheet_client row's A:K fill blue (pending) or white (issued/
+    found) to mirror a handout status change in the shared sheet. No-op for
+    orders that don't live in a sheet row. Returns an error string on failure
+    (never raises — the local status change must stand regardless)."""
+    if order.source != "sheet_client" or not order.sheet_tab or order.row_number is None:
+        return None
+    try:
+        spreadsheet = open_spreadsheet(db=db)
+        worksheet = get_worksheet_by_name(spreadsheet, order.sheet_tab)
+        if worksheet is None:
+            return None
+        rows = [(worksheet.id, order.row_number + HEADER_ROWS)]
+        if blue:
+            paint_row_fills(spreadsheet, rows)
+        else:
+            clear_row_fills(spreadsheet, rows)
+    except Exception as exc:  # noqa: BLE001 — never fail the status change over this
+        logger.exception("Failed to set fill for order %s (blue=%s)", order.id, blue)
+        return str(exc)
+    return None
+
+
 @app.post("/orders/{order_id}/mark-found")
-async def mark_found(request: Request, order_id: int, db: Session = Depends(get_db)):
+async def mark_found(
+    request: Request,
+    order_id: int,
+    source: str = Form("all"),
+    day: str = Form(""),
+    db: Session = Depends(get_db),
+):
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
@@ -2232,9 +2327,56 @@ async def mark_found(request: Request, order_id: int, db: Session = Depends(get_
     db.add(
         StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username)
     )
+    # Found = physically located → clear the sheet's blue "pending" fill to
+    # white, synchronously with the checkbox, per the lab's colour convention.
+    sync_error = _set_client_row_fill(db, order, blue=False)
     db.commit()
 
-    return RedirectResponse("/handout", status_code=303)
+    if sync_error:
+        request.session["handout_flash"] = {
+            "kind": "error",
+            "message": f"Позначено знайденим, але заливка в таблиці не оновилась: {sync_error}",
+        }
+    return RedirectResponse(_handout_back_url(source, day), status_code=303)
+
+
+@app.post("/orders/{order_id}/unmark-found")
+async def unmark_found(
+    request: Request,
+    order_id: int,
+    source: str = Form("all"),
+    day: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Undo an accidental "знайдено" click: revert the order to pending and
+    repaint the sheet row blue so the next sync doesn't read the cleared fill
+    as issued. Refuses to touch an already-issued ("видано") order."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    if order.status != "знайдено при видачі":
+        return RedirectResponse(_handout_back_url(source, day), status_code=303)
+
+    order.status = "нове"
+    db.add(
+        StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username)
+    )
+    # Un-found = back to pending → repaint the blue fill so sheet state and
+    # portal status stay consistent (a white fill + "нове" would otherwise be
+    # read as issued on the next sync).
+    sync_error = _set_client_row_fill(db, order, blue=True)
+    db.commit()
+
+    if sync_error:
+        request.session["handout_flash"] = {
+            "kind": "error",
+            "message": f"Відмітку знято, але заливка в таблиці не оновилась: {sync_error}",
+        }
+    return RedirectResponse(_handout_back_url(source, day), status_code=303)
 
 
 @app.post("/handout/issue-group")

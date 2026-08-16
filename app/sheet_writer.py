@@ -59,16 +59,21 @@ def _sheet_row(order: Order) -> int:
     return order.row_number + HEADER_ROWS
 
 
-def clear_row_fills(spreadsheet: gspread.Spreadsheet, rows: list[tuple[int, int]]) -> None:
-    """Clear the blue "pending client" fill back to white — the counterpart of
-    the blue paint in append_manual_work_rows, used when the lab marks a
-    client's work as issued ("видано"). ``rows`` is a list of
-    (sheetId, absolute_sheet_row) pairs; entries may span several dated tabs
-    (a client's works aren't always all from the same day) since they share
-    one underlying spreadsheet — the whole batch goes out as a SINGLE
-    spreadsheets.batchUpdate call. Paints only A:K, matching
-    append_manual_work_rows — columns L/M/N (ID, Прорахував, Відфрезерував)
-    are never touched."""
+def _set_row_fills(
+    spreadsheet: gspread.Spreadsheet, rows: list[tuple[int, int]], color: dict
+) -> None:
+    """Paint ONLY the client-name cell (column E — see COL_KIND: for a
+    sheet_client row the "вид" column holds the client name) of each
+    (sheetId, absolute_sheet_row) to ``color`` in ONE spreadsheets.batchUpdate.
+    Rows may span several dated tabs (a client's works aren't always all from
+    the same day) since they share one underlying spreadsheet.
+
+    Scoped to the name cell on purpose (user decision 16.08.26): marking a work
+    found/issued must recolour only where the client name is, not the whole
+    row, so other people's per-cell notes and colours in that row are left
+    untouched. The sync still reads the pending flag from column C, so this
+    narrower clear never flips a row to "issued" on its own — the portal status
+    stays authoritative."""
     if not rows:
         return
     requests = [
@@ -78,16 +83,30 @@ def clear_row_fills(spreadsheet: gspread.Spreadsheet, rows: list[tuple[int, int]
                     "sheetId": sheet_id,
                     "startRowIndex": row - 1,
                     "endRowIndex": row,
-                    "startColumnIndex": 0,
-                    "endColumnIndex": COL_CAM_COMMENT,  # A:K
+                    "startColumnIndex": COL_KIND - 1,  # column E, 0-based
+                    "endColumnIndex": COL_KIND,
                 },
-                "cell": {"userEnteredFormat": {"backgroundColor": _WHITE}},
+                "cell": {"userEnteredFormat": {"backgroundColor": color}},
                 "fields": "userEnteredFormat.backgroundColor",
             }
         }
         for sheet_id, row in rows
     ]
     call_with_retry(lambda: spreadsheet.batch_update({"requests": requests}))
+
+
+def clear_row_fills(spreadsheet: gspread.Spreadsheet, rows: list[tuple[int, int]]) -> None:
+    """Clear the blue "pending client" fill back to white — the counterpart of
+    the blue paint in append_manual_work_rows, used when the lab marks a
+    client's work as issued/found ("видано" / "знайдено при видачі")."""
+    _set_row_fills(spreadsheet, rows, _WHITE)
+
+
+def paint_row_fills(spreadsheet: gspread.Spreadsheet, rows: list[tuple[int, int]]) -> None:
+    """Repaint the blue "pending client" fill — the inverse of clear_row_fills,
+    used when the operator un-marks an accidentally-found work so the sheet
+    goes back to "pending" and the next sync doesn't read it as issued."""
+    _set_row_fills(spreadsheet, rows, _BLUE)
 
 
 def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[str]) -> None:

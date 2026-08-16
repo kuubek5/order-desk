@@ -331,3 +331,154 @@ def test_issue_group_with_day_only_closes_that_day(monkeypatch):
         assert statuses[two_days_ago] == "знайдено при видачі"  # untouched
         from app.parser import HEADER_ROWS
         assert captured["rows"] == [(42, 60 + HEADER_ROWS)]
+
+
+def _stub_fills(monkeypatch, sheet_id=42):
+    """Fake sheet layer for mark-found/unmark-found: captures which of
+    clear_row_fills (blue→white) / paint_row_fills (white→blue) got which rows."""
+    fake_ws = SimpleNamespace(id=sheet_id, title=YESTERDAY)
+    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: fake_ws)
+    captured = {}
+    monkeypatch.setattr(web, "clear_row_fills", lambda ss, rows: captured.__setitem__("clear", rows))
+    monkeypatch.setattr(web, "paint_row_fills", lambda ss, rows: captured.__setitem__("paint", rows))
+    return captured
+
+
+def test_mark_found_clears_blue_and_keeps_day(monkeypatch):
+    """The "знайдено" checkbox flips one order to "знайдено при видачі",
+    clears its blue fill to white, and returns to the SAME day-filtered view
+    (the old bug bounced the operator to the unfiltered all-days list)."""
+    engine = _database()
+    captured = _stub_fills(monkeypatch)
+    from app.parser import HEADER_ROWS
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(_client_order(status="нове", row_number=60, sheet_tab=YESTERDAY))
+        db.commit()
+        order = db.scalar(select(Order))
+
+        import asyncio
+        resp = asyncio.run(
+            web.mark_found(
+                request=_request(user.id), order_id=order.id,
+                source="all", day=YESTERDAY, db=db,
+            )
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"] == f"/handout?day={YESTERDAY}"
+        db.refresh(order)
+        assert order.status == "знайдено при видачі"
+        assert captured["clear"] == [(42, 60 + HEADER_ROWS)]
+        assert "paint" not in captured
+
+
+def test_unmark_found_reverts_and_repaints_blue(monkeypatch):
+    """Un-marking an accidental "знайдено" reverts the order to "нове" and
+    repaints the sheet row blue — otherwise a white fill + "нове" would be
+    read as issued on the next sync."""
+    engine = _database()
+    captured = _stub_fills(monkeypatch)
+    from app.parser import HEADER_ROWS
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(_client_order(status="знайдено при видачі", row_number=60, sheet_tab=YESTERDAY))
+        db.commit()
+        order = db.scalar(select(Order))
+
+        import asyncio
+        resp = asyncio.run(
+            web.unmark_found(
+                request=_request(user.id), order_id=order.id,
+                source="email", day=YESTERDAY, db=db,
+            )
+        )
+        assert resp.status_code == 303
+        # source is preserved alongside the day
+        assert resp.headers["location"] == f"/handout?source=email&day={YESTERDAY}"
+        db.refresh(order)
+        assert order.status == "нове"
+        assert captured["paint"] == [(42, 60 + HEADER_ROWS)]
+        assert "clear" not in captured
+
+
+def test_unmark_found_ignores_already_issued(monkeypatch):
+    """Un-mark refuses to touch an already-issued ("видано") order — no status
+    change, no sheet repaint."""
+    engine = _database()
+    captured = _stub_fills(monkeypatch)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(_client_order(status="видано", row_number=60, sheet_tab=YESTERDAY))
+        db.commit()
+        order = db.scalar(select(Order))
+
+        import asyncio
+        resp = asyncio.run(
+            web.unmark_found(
+                request=_request(user.id), order_id=order.id,
+                source="all", day="", db=db,
+            )
+        )
+        assert resp.status_code == 303
+        db.refresh(order)
+        assert order.status == "видано"
+        assert captured == {}  # no fill call at all
+
+
+def test_mark_found_lab_order_skips_sheet_fill(monkeypatch):
+    """A lab order (not sheet_client) was never blue — marking it found flips
+    status but touches no fill in the sheet."""
+    engine = _database()
+    captured = _stub_fills(monkeypatch)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(Order(
+            source="lab", sheet_tab=YESTERDAY, row_number=10,
+            client_name="Basarab", work_order_no="24122", status="відфрезеровано",
+        ))
+        db.commit()
+        order = db.scalar(select(Order))
+
+        import asyncio
+        resp = asyncio.run(
+            web.mark_found(
+                request=_request(user.id), order_id=order.id,
+                source="all", day=YESTERDAY, db=db,
+            )
+        )
+        assert resp.status_code == 303
+        db.refresh(order)
+        assert order.status == "знайдено при видачі"
+        assert captured == {}  # no clear, no paint for a lab row
+
+
+class TestMaterialMatching:
+    """Per-row export-folder matching (get_handout): narrows a client's folders
+    to the ones whose material matches a given work, an assist not an exact bind
+    (the path carries no наряд/Sum3D ID)."""
+
+    def test_material_key_normalizes_order_and_case(self):
+        from app.web import _material_key
+        assert _material_key("emo a3") == _material_key("A3  EMO")
+        assert _material_key("mono a3,5") == _material_key("mono a3.5")
+
+    def test_material_key_keeps_colour_digits_distinct(self):
+        from app.web import _material_key
+        # a3 must never collapse into a35 — different physical shade
+        assert _material_key("emo a3") != _material_key("emo a35")
+
+    def test_entries_for_material_filters_and_sorts_by_time(self):
+        from datetime import datetime
+        from app.web import _entries_for_material
+        e1 = SimpleNamespace(material_color_folder_name="emo a3", created_at=datetime(2026, 8, 14, 11, 0))
+        e2 = SimpleNamespace(material_color_folder_name="emo a35", created_at=datetime(2026, 8, 14, 9, 0))
+        e3 = SimpleNamespace(material_color_folder_name="emo a3", created_at=datetime(2026, 8, 14, 8, 0))
+        got = _entries_for_material("emo a3", [e1, e2, e3])
+        assert got == [e3, e1]  # only emo a3, oldest-first
+
+    def test_entries_for_material_empty_when_no_colour(self):
+        from app.web import _entries_for_material
+        e1 = SimpleNamespace(material_color_folder_name="emo a3", created_at=None)
+        assert _entries_for_material("", [e1]) == []
+        assert _entries_for_material(None, [e1]) == []

@@ -318,6 +318,60 @@ document.addEventListener("click", (event) => {
   toggle.setAttribute("aria-expanded", String(!collapsed));
 });
 
+// Collapsible client card on the handout screen (Ранкова видача): the chevron
+// in each card head folds the card body (works list + export folders) away so
+// a long day's list stays scannable. Client-side only, starts expanded; the
+// "Видати" button and progress in the head stay visible while collapsed.
+document.addEventListener("click", (event) => {
+  const toggle = event.target.closest(".card-collapse");
+  if (!toggle) return;
+
+  const card = toggle.closest(".ccard");
+  if (!card) return;
+
+  const collapsed = card.classList.toggle("is-collapsed");
+  toggle.setAttribute("aria-expanded", String(!collapsed));
+});
+
+// Handout view switch: "Рядки" (compact list, default) ⇄ "Плитки" (preview
+// tiles). Same markup, two CSS layouts (.clients / .clients.as-tiles). The
+// choice is remembered per-browser in localStorage so it survives navigation
+// and reloads. No-op on every other screen.
+const HANDOUT_VIEW_KEY = "handout-view";
+
+function applyHandoutView(mode) {
+  const root = document.querySelector("[data-view-root]");
+  if (!root) return;
+  const tiles = mode === "tiles";
+  root.classList.toggle("as-tiles", tiles);
+  document.querySelectorAll(".view-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.viewMode === (tiles ? "tiles" : "rows"));
+  });
+}
+
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest(".view-btn");
+  if (!btn) return;
+  const mode = btn.dataset.viewMode === "tiles" ? "tiles" : "rows";
+  try {
+    window.localStorage.setItem(HANDOUT_VIEW_KEY, mode);
+  } catch (_) {
+    /* private mode / storage disabled — the toggle still works this session */
+  }
+  applyHandoutView(mode);
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  if (!document.querySelector("[data-view-root]")) return;
+  let saved = "rows";
+  try {
+    saved = window.localStorage.getItem(HANDOUT_VIEW_KEY) || "rows";
+  } catch (_) {
+    /* ignore */
+  }
+  applyHandoutView(saved);
+});
+
 // v2a sync sweep (queue.html .queue-panel > .sweep). When the operator kicks
 // off a Google Sheets sync, the neon strip sweeps across the queue for as long
 // as the real POST /sheets/sync is in flight, then the page reloads so the
