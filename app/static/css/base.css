@@ -3640,7 +3640,16 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 }
 .q2 .date-strip a:hover{color:var(--ink);background:#1d2734;opacity:1}
 .q2 .date-strip a.is-active{background:rgba(20,184,166,.16);color:var(--accent-c)}
-.q2 .date-strip .nav-off{color:var(--ink-3);opacity:.4}
+/* Nav arrows ‹ › — small but clearly the "pager", tinted in the accent so they
+   read as controls, not dates. Bolder glyph + accent fill on hover. */
+.q2 .date-strip a.nav-arrow{
+  color:var(--accent-c);font-size:15px;font-weight:700;line-height:1;
+  background:rgba(20,184,166,.12);border:1px solid rgba(45,212,191,.30);
+}
+.q2 .date-strip a.nav-arrow:hover{
+  color:var(--bg);background:var(--accent-b);border-color:var(--accent-b);opacity:1;
+}
+.q2 .date-strip .nav-off{color:var(--ink-3);opacity:.3;font-size:15px;background:none;border:none}
 
 .q2 .worklayout{flex:1;min-height:0;display:flex;gap:12px;align-items:stretch}
 .q2 .queue-panel{
@@ -4005,6 +4014,14 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .btn.danger{border-color:rgba(248,113,113,.35);color:#f0b4b4}
 .mailv2 .btn.danger:hover{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.5)}
 .mailv2 .btn.sm{height:30px;padding:0 11px;font-size:12.5px}
+
+/* Скринька, яку моніторить система — акцентний чіп у шапці. */
+.mailv2 .mailbox-chip{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;border:1px solid rgba(45,212,191,.28);background:rgba(20,184,166,.1)}
+.mailv2 .mailbox-chip svg{width:12px;height:12px;stroke:var(--accent-c);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.mailv2 .mailbox-chip b{font-family:var(--font-mono);font-weight:500;font-size:11.5px;color:var(--accent-c)}
+
+/* Дія «відкрити папку зі скачаними файлами» під списком вкладень. */
+.mailv2 .att-actions{margin-top:10px}
 
 /* тип-послуги таби */
 .mailv2 .tab-nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
@@ -4644,3 +4661,96 @@ main.worldv2.search-wide .search-form{max-width:900px}
 .q2 .cam-comment-input.shout{color:var(--warn);font-weight:600}
 /* Has content but not focused → hint there's more with a soft right fade. */
 .q2 td.comment-cell{position:relative}
+
+/* Архівний паспорт — банер «лише перегляд». */
+.passport2 .p2-archived{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--accent-c);background:var(--accent-bg,rgba(20,184,166,.12));border:1px solid rgba(45,212,191,.32);border-radius:10px;padding:9px 13px;margin-bottom:14px}
+.passport2 .p2-archived svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+
+/* ── Архів (Концепт «Хроніка»): місяці → календар → день → паспорт ──────── */
+main.arch{max-width:1120px;margin:0 auto;padding:18px 20px}
+.arch .mono{font-family:var(--font-mono);font-variant-ligatures:none}
+.arch-top{margin-bottom:16px}
+.arch-top h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 4px}
+.arch-sub{font-size:12.5px;color:var(--ink-2);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.arch-sub b{color:var(--ink);font-weight:500}
+.arch-sub .sep{width:1px;height:11px;background:var(--line-2)}
+.arch-crumb{color:var(--accent-c);text-decoration:none}
+.arch-crumb:hover{color:var(--accent-b)}
+
+/* Level 1 — months */
+.arch-months{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.arch-month{display:flex;align-items:center;gap:14px;padding:13px 15px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);text-decoration:none;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
+.arch-month:hover{border-color:rgba(45,212,191,.4);background:var(--card-2)}
+.am-info{flex:1;min-width:0}
+.am-label{font-size:13.5px;color:var(--ink);font-weight:500}
+.am-count{font-size:20px;color:var(--accent-c);line-height:1.2}
+.am-spark{display:flex;align-items:flex-end;gap:2px;height:30px;width:96px;flex:0 0 auto}
+.am-spark i{flex:1;background:var(--accent);border-radius:1px;opacity:.8;display:block;min-height:2px}
+
+/* Level 2 — month calendar heatmap */
+.arch-cal{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:14px;max-width:560px}
+.arch-cal .cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+.arch-cal .cal-head b{font-family:var(--font-mono);font-size:10.5px;text-align:center;color:var(--ink-3);font-weight:400}
+.arch-cal .cal-week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+.cal-cell{aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;text-decoration:none;border:1px solid var(--line);background:var(--card-2)}
+.cal-cell.pad{border:0;background:none}
+.cal-cell.empty{opacity:.5}
+.cal-cell .cc-day{font-size:11px;color:var(--ink-3)}
+.cal-cell .cc-n{font-size:13px;color:var(--ink);font-weight:500}
+.cal-cell.h1{background:rgba(20,184,166,.14);border-color:rgba(45,212,191,.2)}
+.cal-cell.h2{background:rgba(20,184,166,.30);border-color:rgba(45,212,191,.3)}
+.cal-cell.h3{background:rgba(20,184,166,.52);border-color:rgba(45,212,191,.5)}
+.cal-cell.h1 .cc-day,.cal-cell.h2 .cc-day{color:var(--ink-2)}
+.cal-cell.h3 .cc-day{color:#04342C}
+.cal-cell.h3 .cc-n{color:#04342C}
+a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
+
+/* Level 3 — day works list */
+.arch-list{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;box-shadow:var(--glow)}
+.arch-row{display:grid;grid-template-columns:70px 1fr 130px 130px auto auto;gap:12px;align-items:center;padding:10px 15px;border-bottom:1px solid var(--line);text-decoration:none;transition:background var(--ui-speed) ease}
+.arch-row:last-child{border-bottom:0}
+.arch-row:hover{background:var(--card-2)}
+.arch-row .ar-id{font-size:12.5px;color:var(--accent-c)}
+.arch-row .ar-client{font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arch-row .ar-mat,.arch-row .ar-kind{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arch-row .ar-sum{font-size:11.5px;color:var(--ink-3);background:var(--card-2);border:1px solid var(--line-2);border-radius:6px;padding:1px 7px}
+.arch-row .ar-status{justify-self:end}
+
+.arch-empty{text-align:center;padding:56px 20px;color:var(--ink-2)}
+.arch-empty .icon svg{width:40px;height:40px;stroke:var(--ink-3);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;margin-bottom:10px}
+.arch-empty h3{font-family:var(--font-head);font-size:16px;color:var(--ink);margin:0 0 6px}
+.arch-empty p{font-size:13px;margin:0;color:var(--ink-3)}
+@media (max-width:720px){
+  .arch-row{grid-template-columns:60px 1fr auto;gap:8px}
+  .arch-row .ar-mat,.arch-row .ar-kind,.arch-row .ar-sum{display:none}
+}
+
+/* ── Toasts ──────────────────────────────────────────────────────────────
+   Спливаючі повідомлення в правому нижньому куті. Показують реальну причину
+   помилки (напр. відмова входу в пошту) без перезавантаження екрана.
+   Кольори — з дизайн-токенів (accent teal / overdue red / success mint). */
+.toast-stack{position:fixed;right:20px;bottom:20px;z-index:1200;display:flex;
+  flex-direction:column;gap:10px;max-width:min(420px,calc(100vw - 40px));
+  pointer-events:none}
+.toast{pointer-events:auto;display:flex;align-items:flex-start;gap:12px;
+  padding:14px 16px;border-radius:14px;border:1px solid var(--line,rgba(255,255,255,.12));
+  background:var(--card,#161d27);color:var(--ink,#e8eff7);
+  box-shadow:0 12px 34px rgba(0,0,0,.5);font-size:14px;line-height:1.42;
+  opacity:0;transform:translateY(12px) scale(.98);
+  transition:opacity .2s ease,transform .2s ease}
+.toast-in{opacity:1;transform:none}
+.toast-out{opacity:0;transform:translateY(12px) scale(.98)}
+.toast-text{flex:1;min-width:0;word-break:break-word}
+.toast-close{pointer-events:auto;flex:0 0 auto;background:none;border:none;
+  color:inherit;font-size:20px;line-height:1;cursor:pointer;opacity:.55;
+  padding:0 2px;margin:-2px -2px 0 0}
+.toast-close:hover{opacity:1}
+.toast-error{border-color:var(--color-overdue-border,rgba(248,113,113,.4));
+  box-shadow:0 12px 34px rgba(0,0,0,.5),inset 3px 0 0 var(--color-overdue,#f87171)}
+.toast-success{border-color:rgba(131,201,149,.4);
+  box-shadow:0 12px 34px rgba(0,0,0,.5),inset 3px 0 0 var(--color-success,#5eead4)}
+.toast-info{box-shadow:0 12px 34px rgba(0,0,0,.5),inset 3px 0 0 var(--accent,#14b8a6)}
+@media (prefers-reduced-motion:reduce){
+  .toast{transition:opacity .2s ease}
+  .toast-in,.toast-out{transform:none}
+}

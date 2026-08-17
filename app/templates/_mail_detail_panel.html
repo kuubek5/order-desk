@@ -48,6 +48,20 @@
         {% elif email.attachments_status == 'pending' %}
         <p class="settings-hint">Вкладення ще завантажуються з пошти…</p>
         {% endif %}
+        {% if email.attachments %}
+        {# Скачані файли лежать у поштовому спулі — даємо оператору відкрити ту
+           папку в Провіднику. Роут loopback-only й відкриває лише перевірений
+           шлях; 204 без тіла, тож hx-swap="none", а фідбек — тостом. #}
+        <div class="att-actions">
+            <button type="button" class="btn sm"
+                    hx-post="/mail/{{ email.id }}/open-folder"
+                    hx-swap="none"
+                    hx-on::after-request="if(event.detail.successful){showToast('Відкрито папку у Провіднику','success')}else{showToast('Не вдалося відкрити папку зі скачаними файлами','error')}">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z"/></svg>
+                Відкрити папку у Провіднику
+            </button>
+        </div>
+        {% endif %}
     </div>
 
     {% if body_links %}

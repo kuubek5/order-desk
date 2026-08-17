@@ -1,10 +1,14 @@
+from collections import defaultdict
 from contextlib import asynccontextmanager
 import calendar
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 import ipaddress
+import json
 import logging
 import os
+import socket
+import ssl
 import subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -699,7 +703,31 @@ def _sort_orders_by_column(orders: list[Order], sort: str, direction: str) -> li
     return [order for order, _ in present] + missing
 
 
-DATE_STRIP_WINDOW = 7
+DATE_STRIP_WINDOW = 3
+
+# Working-space retention: the queue, day-strip, KPIs and handout only surface
+# orders whose business date is within this many days back. Older work rolls
+# into the Archive screen (kept in the DB, never deleted) so the daily workspace
+# stays "the last month" while history stays findable. Google-tab deletions of
+# older days therefore never remove anything the operator still works with.
+RETENTION_DAYS = 30
+
+# Ukrainian month names (nominative) for the Archive screen's month headings.
+_UK_MONTHS = [
+    "", "Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень",
+    "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень",
+]
+
+
+def _uk_month_label(year: int, month: int) -> str:
+    return f"{_UK_MONTHS[month]} {year}"
+
+
+def _order_is_archived(order: Order, cutoff: date) -> bool:
+    """The Archive holds everything NOT in the working queue: orders explicitly
+    archived (removed from Google — a tab or a row) OR aged past the retention
+    window. The exact complement of the working-set filter in get_queue."""
+    return order.archived_at is not None or _order_date(order) < cutoff
 
 
 def _known_order_dates(db: Session) -> list[date]:
@@ -1463,6 +1491,19 @@ def get_queue(
     yesterday = today - timedelta(days=1)
     tomorrow = today + timedelta(days=1)
 
+    # Working space = active orders within the retention window. Archived orders
+    # (removed from Google or explicitly archived) and orders older than
+    # RETENTION_DAYS drop out of every working view here — they stay in the DB
+    # and are reachable on the Archive screen. Done in Python (not SQL) because
+    # the business date is derived from sheet_tab, not a stored column, and the
+    # order set is small (tens per day, a few thousand total).
+    retention_cutoff = today - timedelta(days=RETENTION_DAYS)
+    all_orders = [
+        o
+        for o in all_orders
+        if o.archived_at is None and _order_date(o) >= retention_cutoff
+    ]
+
     # Categorize orders into buckets
     buckets = {"today": [], "yesterday": [], "tomorrow": [], "earlier": []}
 
@@ -1570,13 +1611,12 @@ def get_queue(
     # order data (see `_known_order_dates` / `_date_window` docstrings above
     # for why this is enough to stay in sync with the Sheet with no new
     # sync mechanism).
-    known_dates = _known_order_dates(db)
-    # Only days that actually exist in the sheet (plus today, so the strip
-    # always has an anchor before the first sync of a fresh day). Calendar
-    # backfill of empty days was deliberately dropped: the lab skips weekends,
-    # and padded dates like 09.08/10.08 read as phantom days that "don't exist
-    # in the table" rather than as pager convenience.
-    date_universe = sorted(set(known_dates) | {today})
+    # Day-strip days come from the WORKING set (already filtered to active +
+    # within the retention window above), so the strip shows only days the
+    # operator still works with — never archived/older days and never a phantom
+    # "today" without a real tab. _date_window uses `today` only to pick the
+    # default page (lands on the newest real day when today isn't among them).
+    date_universe = sorted({_order_date(o) for o in all_orders})
     date_tabs, current_date_page, total_date_pages = _date_window(date_universe, today, date_page)
 
     # Query string of the currently active filters, so the 15s poll fragment
@@ -1777,6 +1817,32 @@ def sync_sheets(request: Request, db: Session = Depends(get_db)):
     # to bare "/". Only the path+query of a same-app Referer is used — scheme/
     # host are dropped, so this can't become an open redirect.
     return RedirectResponse(_back_to_queue(request), status_code=303)
+
+
+@app.post("/sheets/import-history")
+def import_sheet_history(request: Request, db: Session = Depends(get_db)):
+    """One-off «import the WHOLE sheet»: pull EVERY dated tab, not just the
+    periodic today±1 window, so the queue's day-strip gains every historical
+    day the sheet holds (arrows then page through them). Deliberately manual —
+    it's a heavier run (one proxy read per tab) that the operator asks for once;
+    the background sync stays fast. Admin + loopback, same gate as the queue's
+    plain sync button."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    try:
+        summary = sync_google_sheets(db, trigger="manual", full_history=True)
+    except SheetSyncError as exc:
+        request.session["sync_flash"] = {"kind": "error", "message": str(exc)}
+    else:
+        request.session["sync_flash"] = {
+            "kind": "success",
+            "message": "Історію таблиці імпортовано. " + _sync_summary_message(summary),
+        }
+    return RedirectResponse("/", status_code=303)
 
 
 @app.post("/orders/{order_id}/sum3d-id", response_class=HTMLResponse)
@@ -2169,6 +2235,11 @@ def get_order_detail(
     if order is None:
         raise HTTPException(status_code=404, detail="order not found")
 
+    # Archived work (out of the retention window or removed from Google) is a
+    # historical record — the passport opens read-only so the operator reviews
+    # it (Sum3D, timeline) without editing frozen history.
+    read_only = _order_is_archived(order, date.today() - timedelta(days=RETENTION_DAYS))
+
     return templates.TemplateResponse(
         request,
         "order_detail.html",
@@ -2177,7 +2248,131 @@ def get_order_detail(
             "user": user,
             "error": error,
             "statuses": STATUSES,
+            "read_only": read_only,
         },
+    )
+
+
+def _parse_archive_month(value: str) -> tuple[int, int] | None:
+    """Parse an Archive month param 'YYYY-MM' into (year, month), or None."""
+    try:
+        year_s, month_s = value.split("-", 1)
+        year, month = int(year_s), int(month_s)
+    except (ValueError, AttributeError):
+        return None
+    if 1 <= month <= 12 and 2000 <= year <= 2100:
+        return year, month
+    return None
+
+
+@app.get("/archive", response_class=HTMLResponse)
+def get_archive(
+    request: Request,
+    month: str = "",
+    date_param: Annotated[str, Query(alias="date")] = "",
+    db: Session = Depends(get_db),
+):
+    """Archive (Concept 1 «Хроніка») — everything that rolled out of the working
+    queue: месяці → календар днів → роботи дня → повний паспорт. Drills down by
+    time; the detail is the existing /orders/{id} passport (Sum3D ID, history,
+    comments, rework) opened in the slide-over, so an old work is fully
+    recoverable, not just listed."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    today = date.today()
+    cutoff = today - timedelta(days=RETENTION_DAYS)
+    all_orders = db.scalars(select(Order).options(selectinload(Order.material))).all()
+    archived = [o for o in all_orders if _order_is_archived(o, cutoff)]
+
+    # One pass: per-day and per-month tallies drive every level below.
+    day_counts: dict[tuple[int, int, int], int] = defaultdict(int)
+    month_counts: dict[tuple[int, int], int] = defaultdict(int)
+    for order in archived:
+        d = _order_date(order)
+        day_counts[(d.year, d.month, d.day)] += 1
+        month_counts[(d.year, d.month)] += 1
+
+    base = {"page_title": "Архів", "user": user, "archive_total": len(archived)}
+
+    # ── Level 3: a single day's works ──────────────────────────────────────
+    selected_date = _parse_sheet_tab(date_param) if date_param else None
+    if selected_date is not None:
+        day_orders = sorted(
+            (o for o in archived if _order_date(o) == selected_date),
+            key=lambda o: (o.work_order_no or o.client_name or "", o.id),
+        )
+        return templates.TemplateResponse(
+            request,
+            "archive.html",
+            {
+                **base,
+                "level": "day",
+                "selected_date": selected_date,
+                "day_label": selected_date.strftime("%d.%m.%Y"),
+                "back_month": f"{selected_date.year:04d}-{selected_date.month:02d}",
+                "day_orders": day_orders,
+            },
+        )
+
+    # ── Level 2: one month's calendar of days ──────────────────────────────
+    parsed_month = _parse_archive_month(month)
+    if parsed_month is not None:
+        year, mon = parsed_month
+        weeks = calendar.monthcalendar(year, mon)
+        grid = [
+            [
+                (
+                    {
+                        "day": dn,
+                        "count": day_counts.get((year, mon, dn), 0),
+                        "date": date(year, mon, dn).strftime("%d.%m.%y"),
+                    }
+                    if dn
+                    else None
+                )
+                for dn in week
+            ]
+            for week in weeks
+        ]
+        month_max = max(
+            (day_counts.get((year, mon, dn), 0) for week in weeks for dn in week if dn),
+            default=0,
+        )
+        return templates.TemplateResponse(
+            request,
+            "archive.html",
+            {
+                **base,
+                "level": "month",
+                "month_ym": f"{year:04d}-{mon:02d}",
+                "month_label": _uk_month_label(year, mon),
+                "month_grid": grid,
+                "month_max": month_max,
+                "month_total": month_counts.get((year, mon), 0),
+            },
+        )
+
+    # ── Level 1: months landing ────────────────────────────────────────────
+    months = []
+    for (year, mon), cnt in sorted(month_counts.items(), reverse=True):
+        weeks = calendar.monthcalendar(year, mon)
+        spark = [
+            sum(day_counts.get((year, mon, dn), 0) for dn in week if dn)
+            for week in weeks
+        ]
+        months.append(
+            {
+                "ym": f"{year:04d}-{mon:02d}",
+                "label": _uk_month_label(year, mon),
+                "count": cnt,
+                "spark": spark,
+                "spark_max": max(spark, default=1) or 1,
+            }
+        )
+    return templates.TemplateResponse(
+        request, "archive.html", {**base, "level": "months", "months": months}
     )
 
 
@@ -2918,13 +3113,116 @@ def check_settings_path(
     )
 
 
+def _imap_error_reason(exc: Exception) -> str:
+    """Turn a raw IMAP failure into a specific, operator-actionable Ukrainian
+    reason. The lab operator needs to know WHICH problem it is: a rejected
+    app-password / disabled IMAP is a completely different fix from "no
+    internet". ukr.net's own login-rejection is the common case and its meaning
+    ("check the app-password, enable IMAP access") is genuinely useful, so we
+    surface that intent rather than a generic "try again". We still don't echo
+    the raw server byte-string into the UI — just the classified reason."""
+    from imap_tools.errors import MailboxLoginError
+
+    if isinstance(exc, MailboxLoginError):
+        return (
+            "Пошта ukr.net відхилила вхід. Найімовірніше протермінувався або "
+            "змінився пароль для програм, або в скриньці вимкнено IMAP-доступ. "
+            "Згенеруйте новий пароль для програм на ukr.net і увімкніть IMAP, "
+            "потім вставте пароль тут."
+        )
+    if isinstance(exc, (socket.timeout, TimeoutError)):
+        return "Пошта imap.ukr.net не відповіла вчасно — перевірте інтернет-з'єднання."
+    if isinstance(exc, ssl.SSLError):
+        return "Помилка захищеного з'єднання з imap.ukr.net (можливо, заважає проксі/антивірус)."
+    if isinstance(exc, (ConnectionError, socket.gaierror, OSError)):
+        return "Немає з'єднання з imap.ukr.net — перевірте інтернет або проксі."
+    return "Не вдалося підключитися до пошти. Перевірте логін, пароль для програм та інтернет."
+
+
+def _imap_check_response(
+    request: Request,
+    result: dict,
+    *,
+    toast_kind: str,
+    toast_message: str | None = None,
+) -> HTMLResponse:
+    """Render the inline check pill AND attach an HX-Trigger toast so the same
+    reason also pops as a notification inside the CRM (see app.js showToast).
+    Belt-and-braces: the pill stays next to the field, the toast makes sure the
+    operator can't miss a failure even if the field is scrolled out of view."""
+    response = templates.TemplateResponse(
+        request, "_settings_check_result.html", {"result": result}
+    )
+    # The toast payload rides along as an HX-Trigger header so app.js can pop it
+    # without a per-route client handler. getattr-guarded so a test that stubs
+    # TemplateResponse to return a plain dict isn't forced to fake a headers map.
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        headers["HX-Trigger"] = json.dumps(
+            {"toast": {"message": toast_message or result["message"], "kind": toast_kind}}
+        )
+    return response
+
+
+def _probe_imap_login(login: str | None, password: str | None) -> dict:
+    """LOGIN-only probe against the given credentials. Returns a check-result
+    dict (state + message). Shared by the save route and the manual test button
+    so both give the operator the same specific reason."""
+    if not login or not password:
+        return {"state": "error", "message": "Спочатку задайте логін і пароль пошти"}
+    try:
+        with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password):
+            pass
+    except Exception as exc:  # noqa: BLE001 — classified into a safe reason below
+        logger.warning(
+            "IMAP login probe failed for login %s: %s", login, type(exc).__name__
+        )
+        return {"state": "error", "message": _imap_error_reason(exc)}
+    return {"state": "success", "message": "З'єднання з поштою успішне"}
+
+
+@app.post("/settings/imap", response_class=HTMLResponse)
+async def save_imap_settings(request: Request, db: Session = Depends(get_db)):
+    """HTMX save for the IMAP credentials block. Saves whatever changed, then
+    immediately probes LOGIN and returns the result inline — so the operator
+    never gets a silent full-page reload that scrolls back to the top, and sees
+    the real reason (as a toast) when it fails. A JS-off client still falls back
+    to the plain <form action="/settings"> full POST."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    form = await request.form()
+    login = (form.get("imap_login") or "").strip()
+    password = (form.get("imap_password") or "").strip()
+    # Empty password means "keep the saved one" — the field renders blank on
+    # purpose (placeholder "•••• збережено"), so a save that only edits the login
+    # must not wipe the stored password.
+    if login:
+        set_setting(db, "imap_login", login)
+    if password:
+        set_setting(db, "imap_password", password)
+    db.commit()
+
+    result = _probe_imap_login(get_imap_login(db), get_imap_password(db))
+    if result["state"] == "success":
+        return _imap_check_response(
+            request, result, toast_kind="success", toast_message="Пошту збережено й підключено"
+        )
+    return _imap_check_response(
+        request, result, toast_kind="error", toast_message="Пошта: " + result["message"]
+    )
+
+
 @app.post("/settings/test-imap", response_class=HTMLResponse)
 def test_imap_connection(request: Request, db: Session = Depends(get_db)):
     """A4: real IMAP LOGIN-only probe against whatever is CURRENTLY SAVED in
     the DB (not unsaved form values — save first, same as "Зберегти й
-    синхронізувати" already works for Google Sheets). Never fetches messages
-    and never leaks raw IMAP server error text into the UI, matching the
-    safe-error discipline in app/mail_sync_service.py::_safe_error.
+    синхронізувати" already works for Google Sheets). Never fetches messages;
+    the raw server error is classified into a specific, safe reason
+    (_imap_error_reason) rather than echoed verbatim.
     """
     user = get_current_user(request, db)
     if user is None:
@@ -2932,28 +3230,15 @@ def test_imap_connection(request: Request, db: Session = Depends(get_db)):
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
-    login = get_imap_login(db)
-    password = get_imap_password(db)
-    if not login or not password:
-        result = {
-            "state": "error",
-            "message": "Спочатку збережіть логін і пароль пошти",
-        }
-    else:
-        try:
-            with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password):
-                pass
-        except Exception:
-            logger.warning("IMAP test connection failed for login %s", login)
-            result = {
-                "state": "error",
-                "message": "Не вдалося підключитися. Перевірте логін, пароль для програм та інтернет",
-            }
-        else:
-            result = {"state": "success", "message": "З'єднання з поштою успішне"}
-
-    return templates.TemplateResponse(
-        request, "_settings_check_result.html", {"result": result}
+    result = _probe_imap_login(get_imap_login(db), get_imap_password(db))
+    toast_kind = "success" if result["state"] == "success" else "error"
+    toast_message = (
+        result["message"]
+        if result["state"] == "success"
+        else "Пошта: " + result["message"]
+    )
+    return _imap_check_response(
+        request, result, toast_kind=toast_kind, toast_message=toast_message
     )
 
 
@@ -3482,6 +3767,9 @@ def get_mail(
             "view": view,
             "pending_count": pending_count,
             "archive_count": archive_count,
+            # Адреса скриньки, яку моніторить система — показуємо в шапці, щоб
+            # оператор бачив, звідки саме тягнуться листи (None → не налаштовано).
+            "mailbox": get_imap_login(db),
         },
     )
 

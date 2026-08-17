@@ -43,6 +43,12 @@ document.addEventListener("htmx:beforeRequest", (event) => {
 //      right after the swap settles.
 let lastRowsResponse = null;
 let savedScrollY = null;
+// The queue table scrolls INSIDE .tablewrap (overflow:auto, capped height), not
+// the window — so when the poll replaces #queue-rows (which contains .tablewrap)
+// the new container starts at scrollTop 0 and the operator reading the bottom
+// gets yanked up. Restoring only window.scrollY missed this (the window barely
+// scrolls). Save and restore the inner scroll too.
+let savedTableScroll = null;
 document.addEventListener("htmx:beforeSwap", (event) => {
   const target = event.detail.target;
   if (!target || target.id !== "queue-rows") return;
@@ -53,13 +59,20 @@ document.addEventListener("htmx:beforeSwap", (event) => {
   }
   lastRowsResponse = incoming;
   savedScrollY = window.scrollY;
+  const wrap = target.querySelector(".tablewrap");
+  savedTableScroll = wrap ? wrap.scrollTop : null;
 });
 document.addEventListener("htmx:afterSettle", (event) => {
-  if (savedScrollY == null) return;
+  if (savedScrollY == null && savedTableScroll == null) return;
   const el = event.detail && event.detail.elt;
   if (el && el.id === "queue-rows") {
-    window.scrollTo(0, savedScrollY);
+    if (savedScrollY != null) window.scrollTo(0, savedScrollY);
+    if (savedTableScroll != null) {
+      const wrap = el.querySelector(".tablewrap");
+      if (wrap) wrap.scrollTop = savedTableScroll;
+    }
     savedScrollY = null;
+    savedTableScroll = null;
   }
 });
 
@@ -887,3 +900,57 @@ document.addEventListener("htmx:afterSwap", (event) => {
     if (event.key === "Escape" && pane.classList.contains("open")) close();
   });
 })();
+
+// Global toast notifications. Спливаюче повідомлення всередині CRM — щоб
+// оператор бачив реальну причину помилки (напр. ukr.net відхилив вхід у пошту),
+// а не мовчазний перезавантажений екран. Викликається двома шляхами:
+//   1. window.showToast(text, kind) з будь-якого JS.
+//   2. Автоматично, коли HTMX-відповідь несе заголовок
+//      `HX-Trigger: {"toast": {"message": "...", "kind": "error"}}` — так сервер
+//      підіймає тост без окремого клієнтського коду на кожен роут.
+// kind: "error" | "success" | "info". Тост сам зникає; його можна закрити хрестиком.
+function showToast(message, kind = "info", timeout = 7000) {
+  if (!message) return;
+  let stack = document.getElementById("toast-stack");
+  if (!stack) {
+    stack = document.createElement("div");
+    stack.id = "toast-stack";
+    stack.className = "toast-stack";
+    document.body.appendChild(stack);
+  }
+  const el = document.createElement("div");
+  el.className = "toast toast-" + kind;
+  el.setAttribute("role", kind === "error" ? "alert" : "status");
+
+  const text = document.createElement("span");
+  text.className = "toast-text";
+  text.textContent = message;
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "toast-close";
+  closeBtn.setAttribute("aria-label", "Закрити");
+  closeBtn.textContent = "×";
+
+  const dismiss = () => {
+    el.classList.add("toast-out");
+    window.setTimeout(() => el.remove(), 220);
+  };
+  closeBtn.addEventListener("click", dismiss);
+
+  el.appendChild(text);
+  el.appendChild(closeBtn);
+  stack.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("toast-in"));
+  // Errors linger (5s longer) — an operator usually needs to read and act on them.
+  const life = timeout > 0 ? (kind === "error" ? timeout + 5000 : timeout) : 0;
+  if (life > 0) window.setTimeout(dismiss, life);
+}
+window.showToast = showToast;
+
+// HTMX fires a DOM event named after each key in the response's HX-Trigger
+// header. The server sends {"toast": {...}} for anything the operator must see.
+document.body.addEventListener("toast", (event) => {
+  const d = (event && event.detail) || {};
+  showToast(d.message || d.value || "", d.kind || "info");
+});

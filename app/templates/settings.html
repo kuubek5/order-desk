@@ -179,6 +179,14 @@
                         <button type="submit" name="action" value="save" class="settings-secondary-button">Зберегти</button>
                         <button type="submit" name="action" value="save_and_sync" class="login-submit settings-submit">Зберегти й синхронізувати</button>
                     </div>
+                    <div class="settings-actions">
+                        {# Разовий повний імпорт: тягне ВСІ датовані вкладки таблиці, а не лише
+                           поточне вікно. formaction перекидає цю ж форму на окремий роут;
+                           поля конфігу він ігнорує — синк іде по вже збереженому. #}
+                        <button type="submit" formaction="/sheets/import-history" formnovalidate
+                                class="settings-secondary-button">Імпортувати всю історію</button>
+                    </div>
+                    <p class="settings-help">Разова дія: підтягує всі минулі дні з таблиці в чергу (може зайняти трохи часу через проксі). Періодична синхронізація й далі оновлює лише поточні дні.</p>
                 </form>
             </div>
         </div>
@@ -444,7 +452,17 @@
                     <p class="settings-help">Перевіряє логін і пароль, які вже <strong>збережено</strong> — спершу натисніть «Зберегти», якщо щойно їх змінили.</p>
 
                     <div class="settings-actions">
-                        <button type="submit" name="action" value="save" class="login-submit settings-submit">Зберегти</button>
+                        {# HTMX save: зберігає + одразу пробує вхід і повертає результат
+                           у #imap-check-result (+ тост). Без перезавантаження сторінки,
+                           тому екран не стрибає вгору. Без JS — звичайний POST на /settings. #}
+                        <button type="submit" name="action" value="save"
+                                class="login-submit settings-submit"
+                                hx-post="/settings/imap"
+                                hx-include="#imap_login, #imap_password"
+                                hx-target="#imap-check-result"
+                                hx-swap="innerHTML"
+                                hx-indicator="#imap-check-spinner"
+                                hx-disabled-elt="this">Зберегти</button>
                     </div>
                 </form>
             </div>

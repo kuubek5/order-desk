@@ -184,7 +184,9 @@ def test_date_window_defaults_to_window_containing_today():
     )
     today = datetime.strptime("09.08.26", "%d.%m.%y").date()
 
-    visible, page, total_pages = _date_window(known, today, None)
+    # Explicit window=7 so this pins the tiling MATH independently of the
+    # product default (DATE_STRIP_WINDOW, which the queue now sets to 3).
+    visible, page, total_pages = _date_window(known, today, None, window=7)
 
     # Pages tile from the newest end: page 0 is the newest full window ending at
     # the last date (known[3:10]), and it contains today.
@@ -212,7 +214,7 @@ def test_date_window_explicit_page_is_used_verbatim():
     )
     today = datetime.strptime("09.08.26", "%d.%m.%y").date()
 
-    visible, page, total_pages = _date_window(known, today, 0)
+    visible, page, total_pages = _date_window(known, today, 0, window=7)
 
     # Page 0 is the NEWEST window (right-tiled), i.e. the last 7 dates.
     assert page == 0
@@ -229,7 +231,7 @@ def test_date_window_higher_page_steps_back_in_time():
 
     # Page 1 is the older window; with 9 dates and window 7 the oldest page is
     # the partial leading remainder.
-    visible, page, total_pages = _date_window(known, today, 1)
+    visible, page, total_pages = _date_window(known, today, 1, window=7)
 
     assert page == 1
     assert total_pages == 2
@@ -266,6 +268,21 @@ def test_date_window_fewer_than_seven_known_dates():
     assert total_pages == 1
     assert page == 0
     assert visible == known
+
+
+def test_date_window_default_shows_three_days_per_page():
+    """Product default (DATE_STRIP_WINDOW=3): the strip shows 3 days at a time
+    and pages the rest with the arrows."""
+    known = _dates("01.08.26", "02.08.26", "03.08.26", "04.08.26", "05.08.26")
+    today = datetime.strptime("05.08.26", "%d.%m.%y").date()
+
+    visible, page, total_pages = _date_window(known, today, None)
+
+    assert total_pages == 2
+    assert page == 0
+    assert visible == known[2:]  # newest three: 03,04,05
+    older, older_page, _ = _date_window(known, today, 1)
+    assert older == known[:2]  # 01,02
 
 
 def test_sync_summary_message_reports_import_counts():

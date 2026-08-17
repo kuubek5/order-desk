@@ -207,7 +207,16 @@ def download_link(
     if not _host_allowed(link.url):
         raise LinkDownloadError("хост не в білому списку")
     dest_dir.mkdir(parents=True, exist_ok=True)
-    session = session or requests.Session()
+    # Default to the legacy-renegotiation session so the download survives the
+    # lab PC's TLS-inspecting proxy (Windows cert store + unsafe-legacy-reneg) —
+    # a plain requests.Session() dies with SSLEOFError/ConnectionError there,
+    # which is exactly the "немає з'єднання з drive.google.com" failure. Same
+    # seam the Sheets client and the GitHub update check use. Lazy import to
+    # avoid pulling gspread into this module's import graph.
+    if session is None:
+        from app.sheets import new_legacy_session
+
+        session = new_legacy_session()
     # (connect, read): fail fast (~10s) when the host is unreachable — a blocked
     # proxy or offline link must not hang the request for the full read window —
     # while still allowing a slow-but-alive transfer up to `timeout` seconds.

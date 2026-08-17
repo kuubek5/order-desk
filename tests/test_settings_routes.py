@@ -1,3 +1,5 @@
+import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -208,7 +210,7 @@ def test_test_imap_connection_reports_error_when_not_configured(monkeypatch):
         admin = _admin(db)
         context = web.test_imap_connection(request=_request(admin.id), db=db)
     assert context["result"]["state"] == "error"
-    assert "збережіть" in context["result"]["message"]
+    assert "логін і пароль" in context["result"]["message"]
 
 
 def test_test_imap_connection_reports_success_on_login(monkeypatch):
@@ -249,6 +251,122 @@ def test_test_imap_connection_reports_safe_error_on_failed_login(monkeypatch):
     assert context["result"]["state"] == "error"
     # The raw IMAP exception text must never leak into the UI-facing message.
     assert "AUTHENTICATIONFAILED" not in context["result"]["message"]
+
+
+# --- _imap_error_reason (classifier) + POST /settings/imap (HTMX save) ------
+#
+# The lab operator must see WHICH problem it is (rejected app-password vs no
+# internet) and never a silent scroll-to-top reload. These cover the classifier
+# and the save route that fixes both.
+
+
+class _FakeResp:
+    """Stand-in for a Starlette response: carries the template context and a
+    real headers dict so HX-Trigger assertions work without a live request."""
+
+    def __init__(self, context):
+        self.context = context
+        self.headers = {}
+
+
+def _fake_template_response(monkeypatch):
+    monkeypatch.setattr(
+        web.templates,
+        "TemplateResponse",
+        lambda request, template, context: _FakeResp(context),
+    )
+
+
+def _imap_request(user_id, form_data, host="127.0.0.1"):
+    async def _form():
+        return form_data
+
+    session = {} if user_id is None else {"user_id": user_id}
+    return SimpleNamespace(
+        session=session, client=SimpleNamespace(host=host), form=_form
+    )
+
+
+def test_imap_error_reason_classifies_login_rejection_without_leaking_raw():
+    from imap_tools.errors import MailboxLoginError
+
+    exc = MailboxLoginError(
+        command_result=("NO", [b"AUTHENTICATIONFAILED raw server detail"]),
+        expected="OK",
+    )
+    msg = web._imap_error_reason(exc)
+    assert "ukr.net" in msg
+    assert "пароль для програм" in msg
+    assert "AUTHENTICATIONFAILED" not in msg
+
+
+def test_imap_error_reason_distinguishes_network_from_auth():
+    assert "інтернет" in web._imap_error_reason(TimeoutError())
+    assert "з'єднання" in web._imap_error_reason(ConnectionError("boom"))
+
+
+def test_save_imap_settings_requires_admin():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        operator = _operator(db)
+        req = _imap_request(operator.id, {"imap_login": "a@ukr.net", "imap_password": "p"})
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(web.save_imap_settings(request=req, db=db))
+    assert exc.value.status_code == 403
+
+
+def test_save_imap_settings_success_fires_toast_and_persists(monkeypatch):
+    engine = _database()
+    _fake_template_response(monkeypatch)
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        req = _imap_request(
+            admin.id, {"imap_login": "user@ukr.net", "imap_password": "app-pw"}
+        )
+        with patch("app.web.MailBox") as mock_mailbox_cls:
+            mock_mailbox_cls.return_value.login.return_value = MagicMock()
+            resp = asyncio.run(web.save_imap_settings(request=req, db=db))
+        assert resp.context["result"]["state"] == "success"
+        trigger = json.loads(resp.headers["HX-Trigger"])
+        assert trigger["toast"]["kind"] == "success"
+        assert web.get_imap_login(db) == "user@ukr.net"
+
+
+def test_save_imap_settings_error_surfaces_reason_toast(monkeypatch):
+    engine = _database()
+    _fake_template_response(monkeypatch)
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        req = _imap_request(
+            admin.id, {"imap_login": "user@ukr.net", "imap_password": "bad"}
+        )
+        with patch("app.web.MailBox") as mock_mailbox_cls:
+            mock_mailbox_cls.return_value.login.side_effect = Exception(
+                "AUTHENTICATIONFAILED raw server detail"
+            )
+            resp = asyncio.run(web.save_imap_settings(request=req, db=db))
+        assert resp.context["result"]["state"] == "error"
+        trigger = json.loads(resp.headers["HX-Trigger"])
+        assert trigger["toast"]["kind"] == "error"
+        assert "AUTHENTICATIONFAILED" not in trigger["toast"]["message"]
+
+
+def test_save_imap_settings_blank_password_keeps_saved(monkeypatch):
+    engine = _database()
+    _fake_template_response(monkeypatch)
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        set_setting(db, "imap_login", "old@ukr.net")
+        set_setting(db, "imap_password", "keep-me")
+        db.commit()
+        req = _imap_request(
+            admin.id, {"imap_login": "new@ukr.net", "imap_password": ""}
+        )
+        with patch("app.web.MailBox") as mock_mailbox_cls:
+            mock_mailbox_cls.return_value.login.return_value = MagicMock()
+            asyncio.run(web.save_imap_settings(request=req, db=db))
+        assert web.get_imap_login(db) == "new@ukr.net"
+        assert web.get_imap_password(db) == "keep-me"
 
 
 # --- POST /settings/test-sheets route (Google read-only access probe) ------

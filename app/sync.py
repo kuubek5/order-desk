@@ -328,7 +328,14 @@ def sync_tab(
                 continue
             if order.created_at is not None and order.created_at > grace_cutoff:
                 continue
-            session.delete(order)
+            if order.archived_at is not None:
+                continue  # already archived — don't re-stamp on every sync
+            # Keep, don't delete: a row cleared/removed in the sheet leaves the
+            # working queue but is preserved for the Archive (the lab prunes old
+            # rows/tabs for space, which must never lose our copy). Aged-out
+            # active orders drop from the queue by date; this marks the ones
+            # removed EARLY, before they would have aged out.
+            order.archived_at = datetime.utcnow()
             result.deleted += 1
 
     return result

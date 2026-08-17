@@ -23,6 +23,13 @@
         <a href="/stats">Статистика</a>
     </div>
 
+    {% if read_only %}
+    <div class="p2-archived" role="status">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg>
+        Архівна робота — лише перегляд
+    </div>
+    {% endif %}
+
     <div class="p2-head">
         <div>
             <span class="ord mono">{% if order.source == 'email' %}{{ order.client_name or ('#' ~ order.id) }}{% else %}{{ order.work_order_no or ('#' ~ order.id) }}{% endif %}</span>
@@ -69,14 +76,28 @@
 
     <div class="dsec">
         <div class="dlabel">Sum3D ID</div>
+        {% if read_only %}
+        <div class="pathrow">
+            <span class="p mono">{{ order.sum3d_id or '—' }}</span>
+            {% if order.sum3d_id %}
+            <button type="button" class="iconbtn copy-button" data-copy="{{ order.sum3d_id }}" title="Копіювати Sum3D ID">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>
+            </button>
+            {% endif %}
+        </div>
+        {% else %}
         <form class="sumrow" hx-post="/orders/{{ order.id }}/sum3d-id" hx-swap="none">
             <input class="suminput mono" type="text" name="sum3d_id" inputmode="numeric" placeholder="Ще не прораховано" value="{{ order.sum3d_id or '' }}">
             <button class="btn primary" type="submit">Зберегти</button>
         </form>
+        {% endif %}
     </div>
 
     <div class="dsec">
         <div class="dlabel">Статус</div>
+        {% if read_only %}
+        <span class="status-now status-badge status-{{ order.status|replace(' ', '-')|lower }}">{{ order.status }}</span>
+        {% else %}
         <form class="status-opts" hx-post="/orders/{{ order.id }}/status" hx-swap="none">
             {% for s in statuses %}
             {% set _c = _dot.get(s, ('#8fa3bb', false)) %}
@@ -86,6 +107,7 @@
             {% endfor %}
         </form>
         <div class="p2-toast" id="p2-status-toast" role="status" aria-live="polite">Статус збережено — оновіть сторінку, щоб побачити нову хронологію</div>
+        {% endif %}
     </div>
 
     <div class="dsec">
@@ -111,6 +133,7 @@
 
     <div class="p2-card">
         <h3>Коментарі</h3>
+        {% if not read_only %}
         <form method="post" action="/orders/{{ order.id }}/comments" class="comment-form">
             <textarea id="comment-text" name="text" class="comment-input" rows="3" maxlength="2000" placeholder="Напишіть зауваження для CAM-оператора…" required></textarea>
             <div class="comment-form-actions">
@@ -122,6 +145,7 @@
                 <button type="submit" class="form-submit">Додати коментар</button>
             </div>
         </form>
+        {% endif %}
         {% if order.comments %}
         <ul class="detail-list">
             {% for comment in order.comments|sort(attribute='created_at', reverse=True) %}

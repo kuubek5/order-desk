@@ -503,21 +503,24 @@ def test_date_filter_returns_exactly_that_days_orders(tmp_path, monkeypatch):
 
 
 def test_date_filter_bypasses_period_bucket_entirely(tmp_path, monkeypatch):
-    """A `date` far outside today/yesterday/tomorrow must still surface its
-    orders even though `period` defaults to "today" — the same bypass
-    `show_overdue` already gets over the period bucket."""
+    """A `date` outside today/yesterday/tomorrow but still inside the retention
+    window must surface its orders even though `period` defaults to "today" —
+    the same bypass `show_overdue` already gets over the period bucket. (Days
+    older than the window are archive territory, not the working queue.)"""
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        far_past = Order(source="lab", sheet_tab="01.01.26", client_name="Далеко")
-        db.add(far_past)
+        past_day = date.today() - timedelta(days=10)
+        tab = past_day.strftime("%d.%m.%y")
+        recent_past = Order(source="lab", sheet_tab=tab, client_name="Далеко")
+        db.add(recent_past)
         db.commit()
 
         context = _call_get_queue(
-            db, user, monkeypatch, tmp_path, period="today", date_param="01.01.26"
+            db, user, monkeypatch, tmp_path, period="today", date_param=tab
         )
 
-        assert [o.id for o in context["orders"]] == [far_past.id]
+        assert [o.id for o in context["orders"]] == [recent_past.id]
 
 
 def test_date_filter_composes_with_source_and_ready_like_period_does(tmp_path, monkeypatch):

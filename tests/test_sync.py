@@ -159,7 +159,10 @@ def test_previously_imported_slm_row_is_removed_on_next_sync():
         ])
         session.commit()
         assert result.deleted == 1
-        assert session.scalar(select(Order)) is None
+        # Kept, not deleted: the vanished row is archived (leaves the working
+        # queue, stays for the Archive) rather than removed from the DB.
+        archived = session.scalar(select(Order))
+        assert archived is not None and archived.archived_at is not None
 
 
 def test_client_row_and_normal_row_coexist_in_one_tab():
@@ -181,11 +184,12 @@ def test_vanished_client_row_is_deleted_like_a_lab_row():
         age_orders(session)
         assert session.scalar(select(Order)) is not None
 
-        # Client got issued / row removed → its row_number is gone → drop it.
+        # Client got issued / row removed → its row_number is gone → archive it.
         res = sync_tab(session, "22.06.26", [make_row(row_number=1)])
         session.commit()
         assert res.deleted == 1
-        assert session.scalar(select(Order).where(Order.source == "sheet_client")) is None
+        client = session.scalar(select(Order).where(Order.source == "sheet_client"))
+        assert client is not None and client.archived_at is not None
 
 
 def test_client_row_not_blue_is_issued():
@@ -448,13 +452,15 @@ def test_row_removed_from_sheet_is_deleted():
         assert session.scalar(select(Order).where(Order.work_order_no == "24123")) is not None
 
         # Technician removed the second row from the sheet — its row_number no
-        # longer appears, so the order must go.
+        # longer appears, so it leaves the working queue (archived, not deleted).
         result = sync_tab(session, "01.08.26", [make_row(row_number=1, work_order_no="24122")])
         session.commit()
 
         assert result.deleted == 1
-        remaining = session.scalars(select(Order)).all()
-        assert [o.work_order_no for o in remaining] == ["24122"]
+        active = session.scalars(select(Order).where(Order.archived_at.is_(None))).all()
+        assert [o.work_order_no for o in active] == ["24122"]
+        gone = session.scalar(select(Order).where(Order.work_order_no == "24123"))
+        assert gone is not None and gone.archived_at is not None
 
 
 def test_freshly_created_order_survives_stale_sync_read():
@@ -487,7 +493,7 @@ def test_freshly_created_order_survives_stale_sync_read():
         assert result.deleted == 1
 
 
-def test_deleted_order_cascades_history():
+def test_archived_order_keeps_its_history():
     from app.models import StatusEvent
     with make_session() as session:
         sync_tab(session, "01.08.26", [make_row(row_number=1, cam_comment="лишиться в історії")])
@@ -496,12 +502,14 @@ def test_deleted_order_cascades_history():
         assert session.scalar(select(Comment)) is not None
         assert session.scalar(select(StatusEvent)) is not None
 
-        # Row gone → order + its comment/status history removed with it.
+        # Row gone → order is ARCHIVED, not deleted, so its comment/status
+        # history is preserved for the Archive (nothing cascades away).
         sync_tab(session, "01.08.26", [make_row(row_number=2, work_order_no="99999")])
         session.commit()
 
-        assert session.scalar(select(Order).where(Order.work_order_no == "24122")) is None
-        assert session.scalar(select(Comment).where(Comment.text == "лишиться в історії")) is None
+        archived = session.scalar(select(Order).where(Order.work_order_no == "24122"))
+        assert archived is not None and archived.archived_at is not None
+        assert session.scalar(select(Comment).where(Comment.text == "лишиться в історії")) is not None
 
 
 def test_empty_rows_never_wipe_tab():

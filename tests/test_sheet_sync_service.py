@@ -44,6 +44,29 @@ def configured(monkeypatch):
     )
 
 
+def test_full_history_imports_all_dated_tabs_including_old(monkeypatch):
+    """full_history=True must pull EVERY dated tab, even one far outside the
+    default 30-day window (the «Імпортувати всю історію» action), while still
+    skipping non-dated tabs."""
+    configured(monkeypatch)
+    today = date.today()
+    current = worksheet(today, "200")
+    too_old = worksheet(today - timedelta(days=200), "400")
+    invalid = Mock(title="Підсумок")
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [invalid, too_old, current]
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+
+    with make_session() as session:
+        result = sync_google_sheets(session, full_history=True)
+
+        assert result.tabs_processed == 2
+        assert set(result.tab_names) == {current.title, too_old.title}
+        assert session.query(Order).count() == 2
+
+
 def test_first_sync_imports_recent_date_tabs_and_returns_summary(monkeypatch):
     configured(monkeypatch)
     today = date.today()
@@ -95,11 +118,12 @@ def test_later_sync_uses_yesterday_today_tomorrow_only(monkeypatch):
         old.get_all_values.assert_not_called()
 
 
-def test_orders_from_deleted_tabs_are_removed(monkeypatch):
-    """A whole dated tab deleted from the sheet takes its orders (lab AND
-    sheet_client) with it on the next full sync — otherwise they linger as
-    phantom days in the queue's day-strip. Email orders and orders with a
-    non-dated sheet_tab are never touched."""
+def test_orders_from_deleted_tabs_are_archived(monkeypatch):
+    """A whole dated tab deleted from the sheet ARCHIVES its orders (lab AND
+    sheet_client) on the next full sync — kept in the DB for the Archive, out
+    of the working queue, never hard-deleted (the lab prunes old tabs for
+    space). Email orders and orders with a non-dated sheet_tab are never
+    touched. Re-running is idempotent (already-archived rows aren't re-stamped)."""
     configured(monkeypatch)
     today = date.today()
     current = worksheet(today, "200")
@@ -115,19 +139,31 @@ def test_orders_from_deleted_tabs_are_removed(monkeypatch):
                           work_order_no="111", status="нове"))
         session.add(Order(source="sheet_client", sheet_tab=gone_tab, row_number=60,
                           client_name="Vision", status="нове"))
-        # must survive: email order stamped with the same business date
+        # must survive active: email order stamped with the same business date
         session.add(Order(source="email", sheet_tab=gone_tab, status="нове"))
-        # must survive: non-dated sheet_tab was never a real sheet tab
+        # must survive active: non-dated sheet_tab was never a real sheet tab
         session.add(Order(source="lab", sheet_tab="Підсумок", row_number=2, status="нове"))
         session.commit()
 
         result = sync_google_sheets(session)
 
-        remaining = session.scalars(select(Order.source).where(Order.sheet_tab != current.title)).all()
-        assert sorted(remaining) == ["email", "lab"]
+        archived = session.scalars(
+            select(Order.source).where(Order.archived_at.isnot(None))
+        ).all()
+        assert sorted(archived) == ["lab", "sheet_client"]
+        active = session.scalars(
+            select(Order.source).where(
+                Order.archived_at.is_(None), Order.sheet_tab != current.title
+            )
+        ).all()
+        assert sorted(active) == ["email", "lab"]
         assert result.deleted == 2
         logs = session.scalars(select(SyncLog)).all()
         assert any("зниклих вкладок" in log.message and gone_tab in log.message for log in logs)
+
+        # Idempotent: a second full sync must not re-archive or re-log them.
+        result2 = sync_google_sheets(session)
+        assert result2.deleted == 0
 
 
 def test_include_tabs_forces_an_out_of_window_tab(monkeypatch):
@@ -411,7 +447,9 @@ def test_sync_hot_tab_picks_up_edit_and_deletion(monkeypatch):
         assert second.deleted == 1
         survivor = session.scalar(select(Order).where(Order.work_order_no == "800"))
         assert survivor.cam_comment == "виправлений текст"
-        assert session.scalar(select(Order).where(Order.work_order_no == "801")) is None
+        # Deleted row is archived (kept), not removed from the DB.
+        gone = session.scalar(select(Order).where(Order.work_order_no == "801"))
+        assert gone is not None and gone.archived_at is not None
     reset_sheets_cache()
 
 

@@ -47,17 +47,17 @@
         {# Pages tile from the newest window (page 0); higher page = older, so ‹
            older = date_page + 1, › newer = date_page - 1 (see _date_window). #}
         {% if date_page + 1 < total_date_pages %}
-        <a href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ selected_value }}&date_page={{ date_page + 1 }}" aria-label="Тиждень раніше" title="Тиждень раніше">‹</a>
+        <a class="nav-arrow" href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ selected_value }}&date_page={{ date_page + 1 }}" aria-label="Старіші дні" title="Старіші дні">‹</a>
         {% else %}
-        <span class="nav-off" aria-hidden="true">‹</span>
+        <span class="nav-arrow nav-off" aria-hidden="true">‹</span>
         {% endif %}
         {% for d in date_tabs %}
         <a href="/?date={{ d.strftime('%d.%m.%y') }}&date_page={{ date_page }}&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and selected_date == d %}is-active{% endif %}" title="{{ d.strftime('%d.%m.%Y') }}">{{ d.strftime('%d.%m') }}</a>
         {% endfor %}
         {% if date_page > 0 %}
-        <a href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ selected_value }}&date_page={{ date_page - 1 }}" aria-label="Тиждень пізніше" title="Тиждень пізніше">›</a>
+        <a class="nav-arrow" href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ selected_value }}&date_page={{ date_page - 1 }}" aria-label="Новіші дні" title="Новіші дні">›</a>
         {% else %}
-        <span class="nav-off" aria-hidden="true">›</span>
+        <span class="nav-arrow nav-off" aria-hidden="true">›</span>
         {% endif %}
     </div>
     {% endif %}

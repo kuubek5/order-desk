@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Архів — Order Desk{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'archive' %}
+{% include "_topbar_nav.html" %}
+
+<main class="arch">
+    <div class="arch-top">
+        <div>
+            <h1>Архів</h1>
+            <div class="arch-sub">
+                {% if level == 'months' %}
+                    Роботи поза робочим вікном · <b class="mono">{{ archive_total }}</b> усього
+                {% elif level == 'month' %}
+                    <a href="/archive" class="arch-crumb">← Місяці</a>
+                    <span class="sep" aria-hidden="true"></span>{{ month_label }} · <b class="mono">{{ month_total }}</b>
+                {% else %}
+                    <a href="/archive" class="arch-crumb">← Місяці</a>
+                    <span class="sep" aria-hidden="true"></span>
+                    <a href="/archive?month={{ back_month }}" class="arch-crumb">Місяць</a>
+                    <span class="sep" aria-hidden="true"></span><span class="mono">{{ day_label }}</span> · <b class="mono">{{ day_orders|length }}</b>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# ── Рівень 1: місяці ─────────────────────────────────────────────── #}
+    {% if level == 'months' %}
+        {% if months %}
+        <div class="arch-months">
+            {% for m in months %}
+            <a class="arch-month" href="/archive?month={{ m.ym }}">
+                <div class="am-info">
+                    <div class="am-label">{{ m.label }}</div>
+                    <div class="am-count mono">{{ m.count }}</div>
+                </div>
+                <div class="am-spark" aria-hidden="true">
+                    {% for v in m.spark %}
+                    <i style="height:{{ (8 + (v / m.spark_max * 92))|round(0, 'floor')|int }}%"></i>
+                    {% endfor %}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="arch-empty">
+            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg></span>
+            <h3>Архів порожній</h3>
+            <p>Сюди потрапляють роботи, старші за 30 днів, і все, що прибрали з таблиці.</p>
+        </div>
+        {% endif %}
+
+    {# ── Рівень 2: календар місяця ────────────────────────────────────── #}
+    {% elif level == 'month' %}
+        <div class="arch-cal">
+            <div class="cal-head"><b>пн</b><b>вт</b><b>ср</b><b>чт</b><b>пт</b><b>сб</b><b>нд</b></div>
+            {% for week in month_grid %}
+            <div class="cal-week">
+                {% for cell in week %}
+                    {% if cell is none %}
+                    <span class="cal-cell pad" aria-hidden="true"></span>
+                    {% elif cell.count == 0 %}
+                    <span class="cal-cell empty"><span class="cc-day mono">{{ cell.day }}</span></span>
+                    {% else %}
+                        {% set r = cell.count / month_max if month_max else 0 %}
+                        <a class="cal-cell {% if r < 0.34 %}h1{% elif r < 0.67 %}h2{% else %}h3{% endif %}" href="/archive?date={{ cell.date }}" title="{{ cell.count }} робіт">
+                            <span class="cc-day mono">{{ cell.day }}</span>
+                            <span class="cc-n mono">{{ cell.count }}</span>
+                        </a>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+
+    {# ── Рівень 3: роботи дня ─────────────────────────────────────────── #}
+    {% else %}
+        {% if day_orders %}
+        <div class="arch-list">
+            {% for order in day_orders %}
+            <a class="arch-row" href="/orders/{{ order.id }}" data-order-detail="{{ order.id }}">
+                <span class="ar-id mono">{{ order.work_order_no or '—' }}</span>
+                <span class="ar-client">{{ order.client_name or (order.work_order_no and '—') or 'Без імені' }}</span>
+                <span class="ar-mat">{{ order.material_color or '' }}</span>
+                <span class="ar-kind">{{ order.kind or '' }}</span>
+                {% if order.sum3d_id %}<span class="ar-sum mono" title="Sum3D ID">{{ order.sum3d_id }}</span>{% endif %}
+                <span class="ar-status status-badge status-{{ order.status|replace(' ', '-')|lower }}">{{ order.status }}</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="arch-empty">
+            <h3>Цього дня робіт немає</h3>
+        </div>
+        {% endif %}
+    {% endif %}
+</main>
+
+{# Паспорт роботи у slide-over (та сама панель, що й у черзі) — data-order-detail
+   на рядках відкриває /orders/{id} в iframe; без JS посилання просто веде туди. #}
+<aside class="detail-pane" id="order-detail-pane" aria-hidden="true" aria-label="Паспорт роботи">
+    <div class="detail-head">
+        <span class="ord mono" id="order-detail-title">Паспорт роботи</span>
+        <button class="detail-close" type="button" id="order-detail-close" aria-label="Закрити">
+            <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+    </div>
+    <div class="detail-body"><iframe id="order-detail-frame" title="Паспорт роботи"></iframe></div>
+</aside>
+<div class="detail-backdrop" id="order-detail-backdrop"></div>
+{% endblock %}

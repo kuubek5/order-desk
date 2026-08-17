@@ -68,7 +68,11 @@ def _parse_tab_date(title: str) -> date | None:
 
 
 def _worksheets_to_sync(
-    session: Session, spreadsheet, today: date, include_tabs: set[str] | None = None
+    session: Session,
+    spreadsheet,
+    today: date,
+    include_tabs: set[str] | None = None,
+    full_history: bool = False,
 ) -> tuple[list, set[str]]:
     """Choose a bounded initial history, then the operational three-day window.
 
@@ -80,7 +84,14 @@ def _worksheets_to_sync(
     ``include_tabs`` force-adds specific tab titles (dd.mm.yy) even when they
     fall outside that window — used so a manual sync of a day the operator is
     actually looking at re-reads that older tab and can reconcile deletions
-    there (a periodic run never revisits old tabs, for proxy-speed reasons)."""
+    there (a periodic run never revisits old tabs, for proxy-speed reasons).
+
+    ``full_history`` imports EVERY dated tab in the document regardless of the
+    window — a one-off "pull the whole sheet" the operator triggers explicitly
+    (Settings → «Імпортувати всю історію»). It is intentionally NOT the periodic
+    path: a background tick still only touches today±1 for proxy speed, and the
+    reconciliation below never deletes already-imported old tabs (their titles
+    stay in all_dated_titles), so history imported once persists cheaply."""
     include_tabs = include_tabs or set()
     has_sheet_orders = session.scalar(
         select(func.count(Order.id)).where(Order.source == "lab")
@@ -95,7 +106,11 @@ def _worksheets_to_sync(
         if tab_date is None:
             continue
         all_dated_titles.add(worksheet.title)
-        if (first_day <= tab_date <= last_day) or worksheet.title in include_tabs:
+        if (
+            full_history
+            or (first_day <= tab_date <= last_day)
+            or worksheet.title in include_tabs
+        ):
             dated.append((tab_date, worksheet.title, worksheet))
     dated.sort(key=lambda item: (item[0], item[1]))
     return [item[2] for item in dated], all_dated_titles
@@ -157,7 +172,11 @@ def _record_failure(
 
 
 def sync_google_sheets(
-    session: Session, *, trigger: str = "manual", include_tabs: set[str] | None = None
+    session: Session,
+    *,
+    trigger: str = "manual",
+    include_tabs: set[str] | None = None,
+    full_history: bool = False,
 ) -> SheetSyncSummary:
     """Import relevant dated tabs tab-by-tab and persist an audit log.
 
@@ -203,7 +222,7 @@ def sync_google_sheets(
             _configuration(session)
             spreadsheet = open_spreadsheet(db=session)  # retries internally
             worksheets, all_dated_titles = _worksheets_to_sync(
-                session, spreadsheet, date.today(), include_tabs
+                session, spreadsheet, date.today(), include_tabs, full_history=full_history
             )
         except Exception as exc:
             # Setup failure: nothing has been imported, so there is no partial
@@ -251,6 +270,9 @@ def sync_google_sheets(
                         Order.source.in_(("lab", "sheet_client")),
                         Order.sheet_tab.isnot(None),
                         Order.sheet_tab.notin_(all_dated_titles),
+                        # Only ones still active — an already-archived order must
+                        # not be re-stamped (and re-logged) on every full sync.
+                        Order.archived_at.is_(None),
                     )
                 )
                 # Only orders whose sheet_tab actually names a dated tab: a
@@ -258,8 +280,13 @@ def sync_google_sheets(
                 # from the listing proves nothing.
                 if _parse_tab_date(o.sheet_tab) is not None
             ]
+            # Keep, don't delete: a whole tab removed from the sheet (the lab
+            # prunes old days for space) archives its orders instead of wiping
+            # them — they leave the working queue but stay findable in the
+            # Archive. Email orders and non-dated sheet_tab values are untouched.
+            archived_at = datetime.utcnow()
             for orphan in orphans:
-                session.delete(orphan)
+                orphan.archived_at = archived_at
                 summary.deleted += 1
             if orphans:
                 gone_tabs = sorted({o.sheet_tab for o in orphans})
@@ -268,7 +295,7 @@ def sync_google_sheets(
                         direction="sheet_to_db",
                         status="ok",
                         message=(
-                            f"видалено {len(orphans)} робіт зі зниклих вкладок: "
+                            f"архівовано {len(orphans)} робіт зі зниклих вкладок: "
                             + ", ".join(gone_tabs)
                         ),
                     )

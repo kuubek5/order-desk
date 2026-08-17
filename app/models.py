@@ -55,6 +55,17 @@ class Order(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now(), onupdate=func.now()
     )
+    # Archive marker. NULL = active (lives in the working queue while its
+    # sheet-tab date is within the retention window). Set to a timestamp when
+    # the order should leave the working space but be KEPT for the archive: it
+    # vanished from Google (a whole tab or a single row removed — the lab
+    # deletes old tabs to free space, which must never lose our copy) OR it was
+    # explicitly archived. The order is never hard-deleted; archived rows stay
+    # searchable on the Archive screen. Ageing out of the window is derived from
+    # the tab date, so it needs no write here — only early removal sets this.
+    archived_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True, index=True
+    )
 
     status_events: Mapped[list["StatusEvent"]] = relationship(
         "StatusEvent", back_populates="order", cascade="all, delete-orphan"
