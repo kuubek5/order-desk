@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -54,9 +54,15 @@ def test_order_is_archived_predicate():
         source="lab", sheet_tab=today.strftime("%d.%m.%y"), archived_at=datetime.utcnow()
     )
 
+    reactivated_old = Order(
+        source="lab", sheet_tab=old_tab, reactivated_at=datetime.utcnow()
+    )
+
     assert web._order_is_archived(aged, cutoff) is True
     assert web._order_is_archived(active, cutoff) is False
     assert web._order_is_archived(archived_in_window, cutoff) is True
+    # Pulled back out of the archive → active again despite the old date.
+    assert web._order_is_archived(reactivated_old, cutoff) is False
 
 
 def _seed(db):
@@ -134,3 +140,35 @@ def test_order_detail_read_only_for_archived_editable_for_active(monkeypatch):
 
     assert arch_ctx["read_only"] is True
     assert act_ctx["read_only"] is False
+
+
+def test_unarchive_order_returns_it_to_the_queue():
+    from app.models import StatusEvent
+
+    engine = _database()
+    today = date.today()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        old = today - timedelta(days=75)
+        order = Order(
+            source="lab", sheet_tab=old.strftime("%d.%m.%y"), work_order_no="Z",
+            status="відфрезеровано", archived_at=datetime.utcnow(),
+        )
+        db.add(order)
+        db.commit()
+        oid = order.id
+
+        resp = web.unarchive_order(request=_request(user.id), order_id=oid, db=db)
+
+        assert resp.status_code == 303
+        assert resp.headers["location"] == f"/orders/{oid}"
+        db.refresh(order)
+        assert order.archived_at is None
+        assert order.reactivated_at is not None
+        # No longer archived → would show in the working queue again.
+        cutoff = today - timedelta(days=web.RETENTION_DAYS)
+        assert web._order_is_archived(order, cutoff) is False
+        # Audit trace records who did it, without changing the real status.
+        ev = db.scalar(select(StatusEvent).where(StatusEvent.status == "розархівовано"))
+        assert ev is not None and ev.operator_id == user.id
+        assert order.status == "відфрезеровано"

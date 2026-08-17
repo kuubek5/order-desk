@@ -4662,9 +4662,13 @@ main.worldv2.search-wide .search-form{max-width:900px}
 /* Has content but not focused → hint there's more with a soft right fade. */
 .q2 td.comment-cell{position:relative}
 
-/* Архівний паспорт — банер «лише перегляд». */
-.passport2 .p2-archived{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--accent-c);background:var(--accent-bg,rgba(20,184,166,.12));border:1px solid rgba(45,212,191,.32);border-radius:10px;padding:9px 13px;margin-bottom:14px}
+/* Архівний паспорт — банер «лише перегляд» + дія «розархівувати». */
+.passport2 .p2-archived{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--accent-c);background:rgba(20,184,166,.12);border:1px solid rgba(45,212,191,.32);border-radius:10px;padding:9px 13px;margin-bottom:14px}
 .passport2 .p2-archived svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.passport2 .p2-unarchive{margin-left:auto}
+.passport2 .p2-unarchive button{display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-size:12.5px;font-weight:500;color:#04342C;background:var(--accent-b);border:0;border-radius:8px;padding:6px 12px;cursor:pointer;transition:background var(--ui-speed) ease}
+.passport2 .p2-unarchive button:hover{background:var(--accent-c)}
+.passport2 .p2-unarchive button svg{width:14px;height:14px;stroke:currentColor}
 
 /* ── Архів (Концепт «Хроніка»): місяці → календар → день → паспорт ──────── */
 main.arch{max-width:1120px;margin:0 auto;padding:18px 20px}

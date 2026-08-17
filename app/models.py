@@ -66,6 +66,14 @@ class Order(Base):
     archived_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True, index=True
     )
+    # Unarchive marker. NULL normally; a timestamp means an operator pulled this
+    # work back out of the Archive into the working queue. It then stays active
+    # even if its business date is older than the retention window (which would
+    # otherwise age it straight back out). Cleared implicitly if it is archived
+    # again. See _order_is_archived / the queue's working-set filter.
+    reactivated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
 
     status_events: Mapped[list["StatusEvent"]] = relationship(
         "StatusEvent", back_populates="order", cascade="all, delete-orphan"
