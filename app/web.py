@@ -726,13 +726,8 @@ def _uk_month_label(year: int, month: int) -> str:
 def _order_is_archived(order: Order, cutoff: date) -> bool:
     """The Archive holds everything NOT in the working queue: orders explicitly
     archived (removed from Google — a tab or a row) OR aged past the retention
-    window. A work an operator pulled back out (reactivated_at) is NOT archived,
-    even when old. The exact complement of the working-set filter in get_queue."""
-    if order.archived_at is not None:
-        return True
-    if order.reactivated_at is not None:
-        return False
-    return _order_date(order) < cutoff
+    window. The exact complement of the working-set filter in get_queue."""
+    return order.archived_at is not None or _order_date(order) < cutoff
 
 
 def _known_order_dates(db: Session) -> list[date]:
@@ -1506,8 +1501,7 @@ def get_queue(
     all_orders = [
         o
         for o in all_orders
-        if o.archived_at is None
-        and (_order_date(o) >= retention_cutoff or o.reactivated_at is not None)
+        if o.archived_at is None and _order_date(o) >= retention_cutoff
     ]
 
     # Categorize orders into buckets
@@ -2257,36 +2251,6 @@ def get_order_detail(
             "read_only": read_only,
         },
     )
-
-
-@app.post("/orders/{order_id}/unarchive")
-def unarchive_order(request: Request, order_id: int, db: Session = Depends(get_db)):
-    """Pull an archived work back into the working queue. Clears archived_at and
-    stamps reactivated_at so the retention filter keeps it active even though its
-    business date is old. Reloads the passport, now editable."""
-    user = get_current_user(request, db)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-
-    order = db.get(Order, order_id)
-    if order is None:
-        raise HTTPException(status_code=404, detail="order not found")
-
-    order.archived_at = None
-    order.reactivated_at = datetime.utcnow()
-    # Audit trace (CLAUDE.md §10 — history must show which operator did what).
-    # A synthetic timeline label, not a real status transition: the order keeps
-    # its current status.
-    db.add(
-        StatusEvent(
-            order_id=order.id,
-            status="розархівовано",
-            operator_id=user.id,
-            actor=user.username,
-        )
-    )
-    db.commit()
-    return RedirectResponse(f"/orders/{order_id}", status_code=303)
 
 
 def _parse_archive_month(value: str) -> tuple[int, int] | None:

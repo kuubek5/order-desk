@@ -119,19 +119,13 @@
             <span>Прийнято в чергу — робота вже створена.</span>
             {% if email.order_id %}<a class="btn sm" href="/orders/{{ email.order_id }}">Відкрити роботу →</a>{% endif %}
             <form method="post" action="/mail/{{ email.id }}/restore"
-                  onsubmit="return confirm('Розархівувати цей лист? Робота в черзі видалиться, файли повернуться з export у пошту, рядок-нотатка в таблиці очиститься. Лист знову стане на тріаж.')">
-                <button type="submit" class="btn primary">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>
-                    Розархівувати
-                </button>
+                  onsubmit="return confirm('Відкотити прийняття? Робота в черзі видалиться, файли повернуться з export у пошту, рядок-нотатка в таблиці очиститься. Лист знову стане на тріаж.')">
+                <button type="submit" class="btn sm">↩ Відкотити прийняття</button>
             </form>
             {% else %}
-            <span>Лист відхилено. Файли лишились у поштовому спулі.</span>
+            <span>Лист відхилено. Файли лишились у поштовому спулі — можна повернути на тріаж.</span>
             <form method="post" action="/mail/{{ email.id }}/restore">
-                <button type="submit" class="btn primary">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>
-                    Розархівувати
-                </button>
+                <button type="submit" class="btn sm">↩ Повернути на тріаж</button>
             </form>
             {% endif %}
         </div>
