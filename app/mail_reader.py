@@ -139,6 +139,55 @@ def unique_destination(directory: Path, filename: str) -> Path:
         number += 1
 
 
+def extract_archive_attachments(
+    session: Session, email_message: EmailMessage
+) -> tuple[int, list[str]]:
+    """Replace each ZIP/RAR attachment of the email with its extracted files —
+    clients pack the STL work into an archive, the CAM operator needs it loose.
+
+    For every archive attachment: extract its files into the same mail-spool
+    folder (safe basenames, no zip-slip — see app/archive_extract.py), add an
+    Attachment row per extracted file, then drop the archive's own row and file
+    (its contents now stand on their own). Returns (files_extracted, errors);
+    a failed archive is left untouched and its reason collected. Caller commits.
+
+    Lazy import of archive_extract avoids a circular import (it reuses this
+    module's filename helpers)."""
+    from app.archive_extract import (
+        ArchiveExtractError,
+        extract_archive,
+        is_archive,
+    )
+
+    extracted_total = 0
+    errors: list[str] = []
+    for attachment in list(email_message.attachments):
+        if not is_archive(attachment.filename):
+            continue
+        archive_path = Path(attachment.saved_path)
+        if not archive_path.is_file():
+            continue
+        existing = frozenset(a.filename for a in email_message.attachments)
+        try:
+            written = extract_archive(archive_path, archive_path.parent, existing)
+        except ArchiveExtractError as exc:
+            errors.append(f"{attachment.filename}: {exc}")
+            continue
+        for path in written:
+            session.add(
+                Attachment(
+                    email_message_id=email_message.id,
+                    filename=path.name,
+                    saved_path=str(path),
+                    size_bytes=path.stat().st_size,
+                )
+            )
+        session.delete(attachment)
+        archive_path.unlink(missing_ok=True)
+        extracted_total += len(written)
+    return extracted_total, errors
+
+
 def _apply_attachments(
     session: Session,
     email_message: EmailMessage,
@@ -314,6 +363,27 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                 # can never delete already-successful attachments out from
                 # under an already-committed Attachment row.
                 del created_paths[mark:]
+                # Auto-unpack any ZIP/RAR attachment so the STL work is loose,
+                # not zipped. Best-effort and isolated: a bad/unsupported archive
+                # (e.g. no UnRAR for RAR) is logged and the letter keeps its
+                # files — never fails the sync.
+                try:
+                    extracted, extract_errors = extract_archive_attachments(
+                        session, email_message
+                    )
+                    if extracted or extract_errors:
+                        session.commit()
+                    if extract_errors:
+                        logger.warning(
+                            "Archive extract for uid %s: %s",
+                            email_message.uid,
+                            "; ".join(extract_errors),
+                        )
+                except Exception:
+                    logger.exception(
+                        "Archive extract failed for uid %s", email_message.uid
+                    )
+                    session.rollback()
             except Exception:
                 logger.exception(
                     "Mail sync: failed to fetch attachments for uid %s, will retry next run",

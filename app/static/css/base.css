@@ -4021,7 +4021,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .mailbox-chip b{font-family:var(--font-mono);font-weight:500;font-size:11.5px;color:var(--accent-c)}
 
 /* Дія «відкрити папку зі скачаними файлами» під списком вкладень. */
-.mailv2 .att-actions{margin-top:10px}
+.mailv2 .att-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 
 /* тип-послуги таби */
 .mailv2 .tab-nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
@@ -4102,7 +4102,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .wiz-summary dd.sm{font-size:11.5px;color:var(--ink-2)}
 .mailv2 .wiz-hint{font-size:11px;color:var(--ink-3);margin-top:5px}
 /* Files attached as share links (Drive / ukr.net) — per-file download rows. */
-.mailv2 .linklist{display:flex;flex-direction:column;gap:5px;margin-bottom:9px}
+.mailv2 .linklist{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
 .mailv2 .linkrow{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;background:#111823;border:1px solid var(--line-2);cursor:pointer;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
 .mailv2 .linkrow:hover{border-color:#3a4a5f;background:var(--card-2)}
 .mailv2 .linkrow:focus-visible{outline:2px solid var(--accent-b);outline-offset:1px}
@@ -4150,7 +4150,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .suminput.mono{font-family:var(--font-mono)}
 .mailv2 .suminput::placeholder{color:var(--ink-3)}
 .mailv2 .suminput:focus{border-color:rgba(45,212,191,.45);box-shadow:inset 0 0 18px -12px rgba(45,212,191,.9)}
-.mailv2 .attlist{display:flex;flex-direction:column;gap:4px}
+.mailv2 .attlist{display:flex;flex-direction:column;gap:6px}
 .mailv2 .attrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:#111823;border:1px solid var(--line)}
 .mailv2 .attrow svg{width:15px;height:15px;flex:0 0 15px;stroke:var(--ink-3);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .attrow .name{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}

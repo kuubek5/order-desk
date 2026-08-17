@@ -55,10 +55,19 @@
         <p class="settings-hint">Вкладення ще завантажуються з пошти…</p>
         {% endif %}
         {% if email.attachments %}
-        {# Скачані файли лежать у поштовому спулі — даємо оператору відкрити ту
-           папку в Провіднику. Роут loopback-only й відкриває лише перевірений
-           шлях; 204 без тіла, тож hx-swap="none", а фідбек — тостом. #}
         <div class="att-actions">
+            {% if has_archive %}
+            {# Ручний резерв авто-розпакування: витягти STL з ZIP/RAR і перерендерити
+               картку, щоб файли зʼявились у списку. #}
+            <button type="button" class="btn primary"
+                    hx-post="/mail/{{ email.id }}/extract-archives"
+                    hx-target="#mail-detail" hx-swap="innerHTML">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1zM10 12h4"/></svg>
+                Розпакувати архіви
+            </button>
+            {% endif %}
+            {# Скачані файли лежать у поштовому спулі — відкрити ту папку в Провіднику.
+               Роут loopback-only, 204 без тіла → hx-swap="none", фідбек тостом. #}
             <button type="button" class="btn sm"
                     hx-post="/mail/{{ email.id }}/open-folder"
                     hx-swap="none"

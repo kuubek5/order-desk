@@ -21,3 +21,7 @@ bcrypt==4.0.1
 rapidfuzz>=3.0
 cryptography>=41.0
 imap-tools>=1.0
+# Extract client-sent .rar work archives (ZIP is stdlib). Needs an external
+# UnRAR/7z binary on the machine at runtime; without it, RAR extraction fails
+# with a clear message and ZIP still works.
+rarfile>=4.0

@@ -53,7 +53,8 @@ from app.link_attachments import (
     download_link,
     extract_download_links,
 )
-from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
+from app.archive_extract import is_archive
+from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS, extract_archive_attachments
 from app.mail_sync_service import MailSyncBusyError, MailSyncError, sync_mail_background, sync_mailbox
 from app.material_class import material_badge, material_color_css_class
 from app.material_catalog import (
@@ -3836,6 +3837,9 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
         "material_folder": "",
         "material_cands": material_candidates(seed, _lab_material_colors(db)),
         "body_links": extract_download_links(email.body_text),
+        # Any ZIP/RAR still sitting among the attachments (auto-unpack failed or
+        # is off) → offer the manual «Розпакувати» reserve button.
+        "has_archive": any(is_archive(a.filename) for a in email.attachments),
         "link_flash": None,
     }
     context.update(extra)
@@ -3899,12 +3903,66 @@ def fetch_email_link(
             status, result_name = "done", path.name
     db.commit()
 
-    return templates.TemplateResponse(
+    # Auto-unpack a freshly downloaded archive (client packed the STL in a
+    # .zip/.rar). Best-effort; the extracted files show on the next panel load,
+    # and a toast tells the operator it happened.
+    toast = None
+    if status == "done" and result_name and is_archive(result_name):
+        db.refresh(email)
+        try:
+            extracted, extract_errors = extract_archive_attachments(db, email)
+            if extracted or extract_errors:
+                db.commit()
+            if extracted:
+                toast = {"message": f"Розпаковано {extracted} файл(ів) з архіву — оновіть картку", "kind": "success"}
+            elif extract_errors:
+                toast = {"message": "Архів: " + extract_errors[0], "kind": "error"}
+        except Exception:  # noqa: BLE001 — extraction must not 500 the panel
+            logger.exception("Archive extract failed for email %s", email.id)
+            db.rollback()
+
+    response = templates.TemplateResponse(
         request,
         "_mail_link_row.html",
         {"email": email, "link": link, "link_status": status,
          "link_message": message, "result_name": result_name},
     )
+    if toast is not None:
+        response.headers["HX-Trigger"] = json.dumps({"toast": toast})
+    return response
+
+
+@app.post("/mail/{email_id}/extract-archives", response_class=HTMLResponse)
+def extract_mail_archives(request: Request, email_id: int, db: Session = Depends(get_db)):
+    """Manual reserve for the auto-unpack: extract every ZIP/RAR attachment of
+    the letter now, and re-render the triage detail so the STL files appear."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+
+    try:
+        extracted, extract_errors = extract_archive_attachments(db, email)
+        db.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("Manual archive extract failed for email %s", email.id)
+        db.rollback()
+        extracted, extract_errors = 0, ["не вдалося розпакувати"]
+
+    db.refresh(email)
+    context = _mail_panel_context(db, email, user)
+    response = templates.TemplateResponse(request, "_mail_detail_panel.html", context)
+    if extracted:
+        toast = {"message": f"Розпаковано {extracted} файл(ів) з архіву", "kind": "success"}
+    elif extract_errors:
+        toast = {"message": "Архів: " + extract_errors[0], "kind": "error"}
+    else:
+        toast = {"message": "Архівів для розпакування немає", "kind": "info"}
+    response.headers["HX-Trigger"] = json.dumps({"toast": toast})
+    return response
 
 
 def _lab_material_colors(db: Session) -> list[str]:
