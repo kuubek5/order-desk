@@ -4158,6 +4158,8 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .attachment-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--line-2);color:var(--ink-2)}
 .mailv2 .attachment-badge-ready{background:rgba(20,184,166,.1);color:var(--accent-c);border-color:rgba(45,212,191,.3)}
 .mailv2 .attachment-badge-pending{background:rgba(240,163,94,.1);color:var(--warn);border-color:rgba(240,163,94,.3)}
+.mailv2 .attachment-badge-warn{background:rgba(240,163,94,.1);color:var(--warn);border-color:rgba(240,163,94,.35);cursor:help}
+.mailv2 .attachment-badge-warn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .attachment-badge-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
 .mailv2 .detail-foot{display:flex;gap:10px;padding:14px 20px;border-top:1px solid var(--line)}
 .mailv2 .detail-foot .btn{height:38px;padding:0 18px}

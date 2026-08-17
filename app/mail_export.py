@@ -7,6 +7,7 @@ Runs at accept time (not at raw IMAP fetch) so the folder is named from the
 operator-confirmed client name/material, not an unreviewed guess.
 """
 
+from datetime import date
 import re
 import shutil
 from pathlib import Path
@@ -14,8 +15,15 @@ from pathlib import Path
 from app.client_matcher import match_client_name
 
 _ILLEGAL_CHARS = re.compile(r'[\\/:*?"<>|]')
-_BATCH_BASE_NAME = "нова папка"
 _NO_MATERIAL_NAME = "без_матеріалу"
+
+
+def _batch_base_name(today: date) -> str:
+    """The per-drop-off batch folder is named for the download date (dd.mm.yy),
+    so the morning handout can orient by date instead of an opaque "нова папка".
+    Same-day drop-offs reuse this folder (or a numbered sibling); a new day gets
+    a fresh date folder."""
+    return today.strftime("%d.%m.%y")
 
 
 def sanitize_folder_name(name: str) -> str:
@@ -62,31 +70,30 @@ def _resolve_client_folder_name(export_root: Path, client_name: str) -> str:
     return sanitize_folder_name(client_name)
 
 
-_BATCH_NUMBER_RE = re.compile(
-    r"^" + re.escape(_BATCH_BASE_NAME) + r" \((\d+)\)$"
-)
+def _batch_number_re(base: str) -> re.Pattern:
+    return re.compile(r"^" + re.escape(base) + r" \((\d+)\)$")
 
 
-def _next_batch_folder(client_dir: Path) -> Path:
-    candidate = client_dir / _BATCH_BASE_NAME
+def _next_batch_folder(client_dir: Path, base: str) -> Path:
+    candidate = client_dir / base
     if not candidate.exists():
         return candidate
     n = 2
-    while (client_dir / f"{_BATCH_BASE_NAME} ({n})").exists():
+    while (client_dir / f"{base} ({n})").exists():
         n += 1
-    return client_dir / f"{_BATCH_BASE_NAME} ({n})"
+    return client_dir / f"{base} ({n})"
 
 
-def _latest_batch_folder(client_dir: Path) -> Path | None:
-    """Return the client's most recently created batch folder, or None.
+def _latest_batch_folder(client_dir: Path, base: str) -> Path | None:
+    """The most recently created batch folder for TODAY's date `base`, or None.
 
-    Batches are named "нова папка", "нова папка (2)", "нова папка (3)", ...
-    in strictly increasing order (see _next_batch_folder), so the one with
-    the highest number is also the most recently created one. Only folders
-    matching that naming scheme are considered — this function is about mail
-    -export batches specifically, not arbitrary folders a technician may have
-    dropped into the client's export directory by hand.
+    Batches for one day are named "17.08.26", "17.08.26 (2)", ... in strictly
+    increasing order (see _next_batch_folder), so the highest number is the most
+    recent. Only folders for THIS date are considered — a different day's date
+    folder is a separate drop-off and is never reused, and arbitrary folders a
+    technician dropped in by hand are ignored.
     """
+    number_re = _batch_number_re(base)
     try:
         candidates = [p for p in client_dir.iterdir() if p.is_dir()]
     except (OSError, FileNotFoundError):
@@ -95,10 +102,10 @@ def _latest_batch_folder(client_dir: Path) -> Path | None:
     best: Path | None = None
     best_n = -1
     for p in candidates:
-        if p.name == _BATCH_BASE_NAME:
+        if p.name == base:
             n = 1
         else:
-            match = _BATCH_NUMBER_RE.match(p.name)
+            match = number_re.match(p.name)
             if not match:
                 continue
             n = int(match.group(1))
@@ -123,11 +130,13 @@ def preview_export_target(
     material_color: str,
     client_folder_override: str | None = None,
     material_folder_override: str | None = None,
+    today: date | None = None,
 ) -> dict:
     """Compute where save_attachments_to_export WOULD put this email's files,
     without touching the filesystem — drives the wizard's directory step so the
     operator confirms the path before committing. Mirrors the same resolver /
     batch-reuse / material-folder logic; keep the two in step."""
+    base = _batch_base_name(today or date.today())
     override = (client_folder_override or "").strip()
     if override:
         client_folder = sanitize_folder_name(override)
@@ -140,12 +149,12 @@ def preview_export_target(
     material_folder = sanitize_folder_name(
         material_override or material_color or _NO_MATERIAL_NAME
     )
-    latest_batch = _latest_batch_folder(client_dir)
+    latest_batch = _latest_batch_folder(client_dir, base)
     if latest_batch is not None and not (latest_batch / material_folder).exists():
         batch_folder = latest_batch.name
         batch_reused = True
     else:
-        batch_folder = _next_batch_folder(client_dir).name
+        batch_folder = _next_batch_folder(client_dir, base).name
         batch_reused = False
 
     return {
@@ -212,19 +221,19 @@ def save_attachments_to_export(
     attachment_paths: list[Path],
     client_folder_override: str | None = None,
     material_folder_override: str | None = None,
+    today: date | None = None,
 ) -> list[Path]:
-    """Moves each file in attachment_paths into export_root/<client>/<batch>/<material>/.
+    """Moves each file in attachment_paths into export_root/<client>/<date>/<material>/.
 
-    A client's batch folder is reused across separate accepted emails as long
-    as each new email brings a material the latest batch doesn't already
-    have — several different materials for the same client pile up inside
-    one batch. Only when the incoming material already exists in that latest
-    batch (a genuine second order for the same material) does a fresh batch
-    get created, numbered after the existing ones. This mirrors how the
-    operator would physically drop off a second box of files: same batch
-    while there's room for another material, a new box only once a slot is
-    already taken. The 3-level client/batch/material structure itself never
-    changes — app/export_scanner.py depends on exactly that depth.
+    The batch folder is named for the download date (dd.mm.yy). Same-day
+    drop-offs for one client reuse that date folder as long as each new email
+    brings a material it doesn't already have — several materials for the same
+    client on the same day pile up inside one date folder. A second order for a
+    material the day's folder already holds gets a numbered sibling ("17.08.26
+    (2)"); a different day gets a fresh date folder. This mirrors how the
+    operator physically drops off boxes, and lets the morning handout orient by
+    date. The 3-level client/date/material structure keeps the exact depth
+    app/export_scanner.py depends on.
 
     Returns the new paths in the same order as attachment_paths. Raises on
     filesystem errors (permission denied, unreachable network path, ...) —
@@ -232,6 +241,8 @@ def save_attachments_to_export(
     """
     if not attachment_paths:
         return []
+
+    base = _batch_base_name(today or date.today())
 
     # The accept wizard's directory step lets the operator pin an exact client
     # folder (e.g. reuse "Vision Dental" when the fuzzy match would have made a
@@ -250,11 +261,11 @@ def save_attachments_to_export(
         material_override or material_color or _NO_MATERIAL_NAME
     )
 
-    latest_batch = _latest_batch_folder(client_dir)
+    latest_batch = _latest_batch_folder(client_dir, base)
     if latest_batch is not None and not (latest_batch / material_name).exists():
         batch_dir = latest_batch
     else:
-        batch_dir = _next_batch_folder(client_dir)
+        batch_dir = _next_batch_folder(client_dir, base)
     material_dir = _contained_child(batch_dir, material_name)
     missing = [path for path in attachment_paths if not path.is_file()]
     if missing:

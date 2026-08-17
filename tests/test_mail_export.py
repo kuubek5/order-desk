@@ -1,8 +1,17 @@
+from datetime import date
+from functools import partial
 from unittest.mock import patch
 
 import pytest
 
-from app.mail_export import sanitize_folder_name, save_attachments_to_export
+from app.mail_export import sanitize_folder_name
+from app.mail_export import save_attachments_to_export as _save_raw
+
+# Batch folders are now named for the download date (dd.mm.yy). Pin a fixed
+# "today" so the expected folder name is deterministic across the suite.
+TODAY = date(2026, 8, 17)
+BATCH = "17.08.26"
+save_attachments_to_export = partial(_save_raw, today=TODAY)
 
 
 def test_sanitize_folder_name_replaces_illegal_chars():
@@ -28,7 +37,7 @@ def test_moves_single_attachment_into_client_batch_material_tree(tmp_path):
     assert len(new_paths) == 1
     assert new_paths[0].name == "incoming.stl"
     assert new_paths[0].parent.name == "моно а3"
-    assert new_paths[0].parent.parent.name == "нова папка"
+    assert new_paths[0].parent.parent.name == BATCH
     assert new_paths[0].parent.parent.parent.name == "Тестовий Клієнт"
     assert new_paths[0].read_bytes() == b"data"
     assert not src.exists()
@@ -39,14 +48,14 @@ def test_second_batch_for_same_client_gets_next_number(tmp_path):
     land inside that same material folder alongside the first order's files
     — it collides, so it gets its own new batch instead."""
     export_root = tmp_path / "export"
-    (export_root / "Клієнт" / "нова папка" / "пмма").mkdir(parents=True)
+    (export_root / "Клієнт" / BATCH / "пмма").mkdir(parents=True)
 
     src = tmp_path / "file.stl"
     src.write_bytes(b"x")
 
     new_paths = save_attachments_to_export(export_root, "Клієнт", "пмма", [src])
 
-    assert new_paths[0].parent.parent.name == "нова папка (2)"
+    assert new_paths[0].parent.parent.name == f"{BATCH} (2)"
 
 
 def test_different_material_reuses_latest_batch_instead_of_new_one(tmp_path):
@@ -62,10 +71,10 @@ def test_different_material_reuses_latest_batch_instead_of_new_one(tmp_path):
     src2.write_bytes(b"second")
     second_paths = save_attachments_to_export(export_root, "Клієнт", "емо а2", [src2])
 
-    assert first_paths[0].parent.parent.name == "нова папка"
-    assert second_paths[0].parent.parent.name == "нова папка"
+    assert first_paths[0].parent.parent.name == BATCH
+    assert second_paths[0].parent.parent.name == BATCH
     assert second_paths[0].parent.name == "емо а2"
-    batch_dir = export_root / "Клієнт" / "нова папка"
+    batch_dir = export_root / "Клієнт" / BATCH
     assert sorted(p.name for p in batch_dir.iterdir()) == ["емо а2", "емо а3"]
 
 
@@ -92,19 +101,19 @@ def test_vova_three_order_batching_scenario(tmp_path):
     src3.write_bytes(b"3")
     paths3 = save_attachments_to_export(export_root, "Вова", "емо а2", [src3])
 
-    assert paths1[0].parent.parent.name == "нова папка"
+    assert paths1[0].parent.parent.name == BATCH
     assert paths1[0].parent.name == "емо а3"
 
-    assert paths2[0].parent.parent.name == "нова папка (2)"
+    assert paths2[0].parent.parent.name == f"{BATCH} (2)"
     assert paths2[0].parent.name == "емо а3"
 
-    assert paths3[0].parent.parent.name == "нова папка (2)"
+    assert paths3[0].parent.parent.name == f"{BATCH} (2)"
     assert paths3[0].parent.name == "емо а2"
 
     client_dir = export_root / "Вова"
-    assert sorted(p.name for p in client_dir.iterdir()) == ["нова папка", "нова папка (2)"]
-    assert sorted(p.name for p in (client_dir / "нова папка").iterdir()) == ["емо а3"]
-    assert sorted(p.name for p in (client_dir / "нова папка (2)").iterdir()) == [
+    assert sorted(p.name for p in client_dir.iterdir()) == [BATCH, f"{BATCH} (2)"]
+    assert sorted(p.name for p in (client_dir / BATCH).iterdir()) == ["емо а3"]
+    assert sorted(p.name for p in (client_dir / f"{BATCH} (2)").iterdir()) == [
         "емо а2",
         "емо а3",
     ]
@@ -184,7 +193,7 @@ def test_repeat_client_with_retyped_name_reuses_existing_folder(tmp_path):
     client_dirs = [p for p in export_root.iterdir() if p.is_dir()]
     assert len(client_dirs) == 1
     assert new_paths[0].parent.parent.parent.name == "Литвиненко Олег"
-    assert new_paths[0].parent.parent.name == "нова папка (2)"
+    assert new_paths[0].parent.parent.name == f"{BATCH} (2)"
 
 
 def test_genuinely_new_client_still_gets_own_folder(tmp_path):
@@ -223,19 +232,19 @@ def _touch(p):
 
 def test_preview_export_target_new_client(tmp_path):
     from app.mail_export import preview_export_target
-    prev = preview_export_target(tmp_path, "Новий Клієнт", "емо а3")
+    prev = preview_export_target(tmp_path, "Новий Клієнт", "емо а3", today=TODAY)
     assert prev["client_folder"] == "Новий Клієнт"
     assert prev["client_folder_existing"] is False
     assert prev["material_folder"] == "емо а3"
-    assert prev["rel_path"] == "Новий Клієнт/нова папка/емо а3"
+    assert prev["rel_path"] == f"Новий Клієнт/{BATCH}/емо а3"
 
 
 def test_preview_export_target_reuses_existing_batch(tmp_path):
     from app.mail_export import preview_export_target
-    (tmp_path / "Клієнт" / "нова папка" / "титан").mkdir(parents=True)
-    prev = preview_export_target(tmp_path, "Клієнт", "емо а3")
+    (tmp_path / "Клієнт" / BATCH / "титан").mkdir(parents=True)
+    prev = preview_export_target(tmp_path, "Клієнт", "емо а3", today=TODAY)
     assert prev["client_folder_existing"] is True
-    assert prev["batch_folder"] == "нова папка"  # material slot free -> reuse
+    assert prev["batch_folder"] == BATCH  # material slot free -> reuse
     assert prev["batch_reused"] is True
 
 
@@ -262,7 +271,7 @@ def test_save_attachments_override_targets_named_folder(tmp_path):
         tmp_path / "export", "Максим Тест", "емо а3", [src],
         client_folder_override="Окрема Папка",
     )
-    assert new_paths[0].parts[-4:] == ("Окрема Папка", "нова папка", "емо а3", "a.stl")
+    assert new_paths[0].parts[-4:] == ("Окрема Папка", BATCH, "емо а3", "a.stl")
     assert new_paths[0].is_file()
 
 
@@ -282,7 +291,7 @@ def test_save_attachments_material_override_targets_named_subfolder(tmp_path):
         tmp_path / "export", "Клініка", "моно а3", [src],
         client_folder_override="Клініка", material_folder_override="спец матеріал",
     )
-    assert new_paths[0].parts[-4:] == ("Клініка", "нова папка", "спец матеріал", "b.stl")
+    assert new_paths[0].parts[-4:] == ("Клініка", BATCH, "спец матеріал", "b.stl")
 
 
 def test_resolve_wizard_overrides_new_folder_wins():
@@ -308,7 +317,7 @@ def test_repeat_same_material_lands_in_new_batch_no_loss(tmp_path):
     second = save_attachments_to_export(exp, "Іванов", "моно а3", [mk("crown.stl")])
     assert first[0].parent != second[0].parent  # different batch folders
     assert first[0].is_file() and second[0].is_file()  # nothing lost
-    assert "нова папка (2)" in second[0].parts  # numbered repeat batch
+    assert f"{BATCH} (2)" in second[0].parts  # numbered repeat batch
 
 
 def test_repeat_different_material_reuses_batch(tmp_path):

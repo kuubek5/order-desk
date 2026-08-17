@@ -30,6 +30,12 @@
             {% else %}
                 <span class="attachment-badge attachment-badge-ready">✓ Скачано ({{ email.attachments|length }})</span>
             {% endif %}
+            {% if body_links %}
+            <span class="attachment-badge attachment-badge-warn" title="Ці файли лежать за посиланням (Google Drive / ukr.net) і НЕ скачуються автоматично. Скачайте їх нижче перед прийняттям у чергу — інакше робота піде без цих файлів.">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
+                +{{ body_links|length }} за посиланням
+            </span>
+            {% endif %}
         </div>
         {% if email.attachments %}
         <div class="attlist">
