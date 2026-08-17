@@ -264,3 +264,62 @@ def test_save_attachments_override_targets_named_folder(tmp_path):
     )
     assert new_paths[0].parts[-4:] == ("Окрема Папка", "нова папка", "емо а3", "a.stl")
     assert new_paths[0].is_file()
+
+
+def test_preview_material_folder_override(tmp_path):
+    from app.mail_export import preview_export_target
+    prev = preview_export_target(
+        tmp_path, "Клієнт", "моно а3", material_folder_override="спец матеріал"
+    )
+    assert prev["material_folder"] == "спец матеріал"
+    assert prev["rel_path"].endswith("/спец матеріал")
+
+
+def test_save_attachments_material_override_targets_named_subfolder(tmp_path):
+    src = _touch(tmp_path / "spool" / "b.stl")
+    (tmp_path / "export").mkdir()
+    new_paths = save_attachments_to_export(
+        tmp_path / "export", "Клініка", "моно а3", [src],
+        client_folder_override="Клініка", material_folder_override="спец матеріал",
+    )
+    assert new_paths[0].parts[-4:] == ("Клініка", "нова папка", "спец матеріал", "b.stl")
+
+
+def test_resolve_wizard_overrides_new_folder_wins():
+    from app.web import _resolve_wizard_overrides
+    # typed new folder beats the dropdown pick
+    assert _resolve_wizard_overrides("Стара", "Нова", "мат") == ("Нова", "мат")
+    # empty new -> pick is used
+    assert _resolve_wizard_overrides("Стара", "  ", "мат") == ("Стара", "мат")
+    # nothing picked/typed -> auto (empty client override)
+    assert _resolve_wizard_overrides("", "", "") == ("", "")
+
+
+def test_repeat_same_material_lands_in_new_batch_no_loss(tmp_path):
+    """A client sending a SECOND email of the SAME material must not overwrite
+    the first — the repeat goes into a fresh numbered batch, both survive."""
+    exp = tmp_path / "export"; exp.mkdir()
+    spool = tmp_path / "spool"; spool.mkdir()
+
+    def mk(n):
+        p = spool / n; p.write_bytes(b"x"); return p
+
+    first = save_attachments_to_export(exp, "Іванов", "моно а3", [mk("crown.stl")])
+    second = save_attachments_to_export(exp, "Іванов", "моно а3", [mk("crown.stl")])
+    assert first[0].parent != second[0].parent  # different batch folders
+    assert first[0].is_file() and second[0].is_file()  # nothing lost
+    assert "нова папка (2)" in second[0].parts  # numbered repeat batch
+
+
+def test_repeat_different_material_reuses_batch(tmp_path):
+    """A different material for the same client piles into the latest batch
+    (a free material slot), not a brand-new one."""
+    exp = tmp_path / "export"; exp.mkdir()
+    spool = tmp_path / "spool"; spool.mkdir()
+
+    def mk(n):
+        p = spool / n; p.write_bytes(b"x"); return p
+
+    a = save_attachments_to_export(exp, "Іванов", "моно а3", [mk("a.stl")])
+    b = save_attachments_to_export(exp, "Іванов", "пмма а2", [mk("b.stl")])
+    assert a[0].parent.parent == b[0].parent.parent  # same batch, different material subfolder

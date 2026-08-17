@@ -50,6 +50,27 @@
         {% endif %}
     </div>
 
+    {% if body_links %}
+    {# Files the client attached as SHARE LINKS (Gmail/Drive, ukr.net eDisk)
+       instead of MIME parts — downloadable on demand into the letter. #}
+    <div class="dsec">
+        <div class="dlabel">Файли за посиланням · {{ body_links|length }}</div>
+        <div class="linklist">
+            {% for link in body_links %}
+            {% include "_mail_link_row.html" %}
+            {% endfor %}
+        </div>
+        <div class="link-actions">
+            <button type="button" class="btn primary"
+                    onclick="document.body.dispatchEvent(new Event('dl-all'))">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+                Скачати всі файли
+            </button>
+        </div>
+        <div class="wiz-hint">Клік по рядку — скачати один файл. Тягне лише з довірених джерел (Google Drive, ukr.net); скачане стає звичайними вкладеннями.</div>
+    </div>
+    {% endif %}
+
     {% if email.stl_preview_token %}
     <div class="dsec stl-gallery-sec">
         <div class="dlabel">Перегляд STL</div>
@@ -63,16 +84,39 @@
     </div>
     {% endif %}
 
+    {% if email.status == 'нове' %}
     <div class="dsec">
         <div class="dlabel">Прийняти в чергу — покроково</div>
         <div id="mail-wizard" class="wizard">
             {% include "_mail_wizard.html" %}
         </div>
     </div>
+    {% else %}
+    {# Archived letter (accepted / rejected): read-only, no wizard. #}
+    <div class="dsec">
+        <div class="archive-state {% if email.status == 'прийнято' %}ok{% else %}muted{% endif %}">
+            {% if email.status == 'прийнято' %}
+            <span>Прийнято в чергу — робота вже створена.</span>
+            {% if email.order_id %}<a class="btn sm" href="/orders/{{ email.order_id }}">Відкрити роботу →</a>{% endif %}
+            <form method="post" action="/mail/{{ email.id }}/restore"
+                  onsubmit="return confirm('Відкотити прийняття? Робота в черзі видалиться, файли повернуться з export у пошту, рядок-нотатка в таблиці очиститься. Лист знову стане на тріаж.')">
+                <button type="submit" class="btn sm">↩ Відкотити прийняття</button>
+            </form>
+            {% else %}
+            <span>Лист відхилено. Файли лишились у поштовому спулі — можна повернути на тріаж.</span>
+            <form method="post" action="/mail/{{ email.id }}/restore">
+                <button type="submit" class="btn sm">↩ Повернути на тріаж</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 
+{% if email.status == 'нове' %}
 <div class="detail-foot">
     <form method="post" action="/mail/{{ email.id }}/reject">
         <button type="submit" class="btn danger">Відхилити лист</button>
     </form>
 </div>
+{% endif %}

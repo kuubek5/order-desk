@@ -39,9 +39,16 @@ from app.license import get_license_status, get_machine_id, verify_license_key
 from app.mail_export import (
     list_client_folders,
     preview_export_target,
+    restore_attachments_to_spool,
     save_attachments_to_export,
 )
 from app.mail_parser import material_candidates
+from app.link_attachments import (
+    LinkAttachment,
+    LinkDownloadError,
+    download_link,
+    extract_download_links,
+)
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
 from app.mail_sync_service import MailSyncBusyError, MailSyncError, sync_mail_background, sync_mailbox
 from app.material_class import material_badge, material_color_css_class
@@ -58,7 +65,7 @@ from app.material_catalog import (
     resolve_material_id,
     unresolved_order_count,
 )
-from app.models import Client, ClientNameAlias, Comment, EmailMessage, Order, ReworkRecord, StatusEvent, SyncLog, User
+from app.models import Attachment, Client, ClientNameAlias, Comment, EmailMessage, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.order_folder import (
     attach_email_folder_availability,
     attach_email_preview_tokens,
@@ -110,6 +117,7 @@ from app.sheet_writer import (
     append_manual_work_rows,
     append_order_comment,
     apply_status_markers,
+    clear_placeholder_row,
     clear_row_fills,
     paint_row_fills,
     write_order_fields,
@@ -3402,6 +3410,12 @@ async def reset_operator_password(
     return RedirectResponse("/settings?saved=1", status_code=303)
 
 
+# Emails that have left the triage queue: accepted into the queue or rejected.
+# The archive view keeps them visible so a processed letter is never lost — the
+# operator can look back at what came in and, for a mistaken reject, restore it.
+_ARCHIVE_STATUSES = ("прийнято", "відхилено")
+
+
 @app.get("/mail", response_class=HTMLResponse)
 def get_mail(
     request: Request,
@@ -3409,6 +3423,7 @@ def get_mail(
     synced: int | None = None,
     error: str | None = None,
     service: str = "all",
+    view: str = "pending",
 ):
     user = get_current_user(request, db)
     if user is None:
@@ -3419,10 +3434,17 @@ def get_mail(
     # screen's source/ready filters.
     if service not in SERVICE_TYPE_FILTERS:
         service = "all"
+    if view not in ("pending", "archive"):
+        view = "pending"
 
+    status_clause = (
+        EmailMessage.status.in_(_ARCHIVE_STATUSES)
+        if view == "archive"
+        else EmailMessage.status == "нове"
+    )
     emails = db.scalars(
         select(EmailMessage)
-        .where(EmailMessage.status == "нове")
+        .where(status_clause)
         .options(selectinload(EmailMessage.attachments))
         .order_by(
             EmailMessage.received_at.desc().nullslast(),
@@ -3430,11 +3452,20 @@ def get_mail(
         )
     ).all()
 
-    # Counts reflect the full "нове" list, before the visual service-type
-    # filter is applied, so the chip badges show totals regardless of which
-    # chip is currently active.
-    service_counts = count_by_service_type(emails)
-    emails = filter_emails_by_service_type(emails, service)
+    # Top-level view counts (pending vs archive) for the two tabs.
+    pending_count = db.scalar(
+        select(func.count()).select_from(EmailMessage).where(EmailMessage.status == "нове")
+    ) or 0
+    archive_count = db.scalar(
+        select(func.count()).select_from(EmailMessage).where(
+            EmailMessage.status.in_(_ARCHIVE_STATUSES)
+        )
+    ) or 0
+
+    # Service-type chips only make sense for the pending triage list.
+    service_counts = count_by_service_type(emails) if view == "pending" else None
+    if view == "pending":
+        emails = filter_emails_by_service_type(emails, service)
     attach_email_preview_tokens(emails, _mail_trusted_roots(db), _mail_preview_roots(db))
 
     return templates.TemplateResponse(
@@ -3448,6 +3479,9 @@ def get_mail(
             "error": error,
             "service": service,
             "service_counts": service_counts,
+            "view": view,
+            "pending_count": pending_count,
+            "archive_count": archive_count,
         },
     )
 
@@ -3482,23 +3516,7 @@ def get_mail_detail(
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")
 
-    attach_email_preview_tokens([email], _mail_trusted_roots(db), _mail_preview_roots(db))
-
-    # Initial wizard state (step 1): candidates from the recognised guess, the
-    # carried values left blank so _mail_wizard.html falls back to email.*_guess.
-    seed = (email.material_color_guess or "") or (email.subject or "")
-    context = {
-        "email": email,
-        "user": user,
-        "error": error,
-        "wizard_step": 1,
-        "client_name": "",
-        "material_color": "",
-        "kind": "",
-        "quantity": "",
-        "client_folder_override": "",
-        "material_cands": material_candidates(seed, _lab_material_colors(db)),
-    }
+    context = _mail_panel_context(db, email, user, error=error)
 
     # HTMX click from the triage list swaps just the detail into the right
     # column (panel=1, or any HX-Request); a plain navigation still gets the
@@ -3508,6 +3526,97 @@ def get_mail_detail(
         return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
 
     return templates.TemplateResponse(request, "mail_detail.html", context)
+
+
+def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict:
+    """Shared render context for the triage detail panel — wizard step 1 seed,
+    material candidates and the whitelisted download links detected in the body.
+    Reused by get_mail_detail (the fetch-link route renders just one row)."""
+    attach_email_preview_tokens([email], _mail_trusted_roots(db), _mail_preview_roots(db))
+    seed = (email.material_color_guess or "") or (email.subject or "")
+    context = {
+        "email": email,
+        "user": user,
+        "error": None,
+        "wizard_step": 1,
+        "client_name": "",
+        "material_color": "",
+        "kind": "",
+        "quantity": "",
+        "folder_pick": "",
+        "folder_new": "",
+        "material_folder": "",
+        "material_cands": material_candidates(seed, _lab_material_colors(db)),
+        "body_links": extract_download_links(email.body_text),
+        "link_flash": None,
+    }
+    context.update(extra)
+    return context
+
+
+@app.post("/mail/{email_id}/fetch-link", response_class=HTMLResponse)
+def fetch_email_link(
+    request: Request,
+    email_id: int,
+    ref: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Download ONE whitelisted share link (identified by its Drive file id or
+    ukr.net URL) into the email's mail-spool folder as an attachment, and return
+    just that link's row with its new status (done / skip / error). Per-link so
+    the operator sees each file's progress separately. Only whitelisted hosts are
+    ever fetched — see app/link_attachments.py."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+
+    link = next(
+        (l for l in extract_download_links(email.body_text) if (l.file_id or l.url) == ref),
+        None,
+    )
+    if link is None:
+        return templates.TemplateResponse(
+            request,
+            "_mail_link_row.html",
+            {"email": email, "link": LinkAttachment(kind="?", url=ref, display=ref),
+             "link_status": "error", "link_message": "посилання не знайдено в листі"},
+        )
+
+    existing = frozenset(a.filename for a in email.attachments)
+    status = message = result_name = None
+    try:
+        path = download_link(link, Path(MAIL_ATTACHMENTS_PATH) / email.uid, existing_names=existing)
+    except LinkDownloadError as exc:
+        status, message = "error", str(exc)
+    except Exception as exc:  # noqa: BLE001 — one bad link mustn't 500 the panel
+        logger.exception("Link download failed for email %s: %s", email.id, link.url)
+        host = (urlsplit(link.url).hostname or "сервер файлів")
+        status, message = "error", f"немає з'єднання з {host} (інтернет / проксі?)"
+    else:
+        if path is None:
+            status = "skip"
+        else:
+            attachment = Attachment(
+                email_message_id=email.id,
+                filename=path.name,
+                saved_path=str(path),
+                size_bytes=path.stat().st_size,
+            )
+            db.add(attachment)
+            email.attachments_status = "ready"
+            status, result_name = "done", path.name
+    db.commit()
+
+    return templates.TemplateResponse(
+        request,
+        "_mail_link_row.html",
+        {"email": email, "link": link, "link_status": status,
+         "link_message": message, "result_name": result_name},
+    )
 
 
 def _lab_material_colors(db: Session) -> list[str]:
@@ -3527,6 +3636,17 @@ def _lab_material_colors(db: Session) -> list[str]:
     )
 
 
+def _resolve_wizard_overrides(
+    folder_pick: str, folder_new: str, material_folder: str
+) -> tuple[str, str]:
+    """Fold the step-2 directory controls into the two overrides
+    save_attachments_to_export understands. A typed new folder name wins over
+    the dropdown pick; an empty pick means "auto-resolve". Material subfolder is
+    passed through as-is (empty -> derive from material_color)."""
+    client_override = (folder_new or "").strip() or (folder_pick or "").strip()
+    return client_override, (material_folder or "").strip()
+
+
 @app.post("/mail/{email_id}/wizard", response_class=HTMLResponse)
 def mail_wizard(
     request: Request,
@@ -3536,7 +3656,9 @@ def mail_wizard(
     material_color: str = Form(""),
     kind: str = Form(""),
     quantity: str = Form(""),
-    client_folder_override: str = Form(""),
+    folder_pick: str = Form(""),
+    folder_new: str = Form(""),
+    material_folder: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Render one step of the semi-automatic accept wizard (client+material →
@@ -3558,6 +3680,10 @@ def mail_wizard(
     seed = material_color.strip() or (email.material_color_guess or "") or (email.subject or "")
     candidates = material_candidates(seed, known)
 
+    client_override, material_override = _resolve_wizard_overrides(
+        folder_pick, folder_new, material_folder
+    )
+
     ctx = {
         "email": email,
         "user": user,
@@ -3566,13 +3692,15 @@ def mail_wizard(
         "material_color": material_color,
         "kind": kind,
         "quantity": quantity,
-        "client_folder_override": client_folder_override,
+        "folder_pick": folder_pick,
+        "folder_new": folder_new,
+        "material_folder": material_folder,
         "material_cands": candidates,
     }
     if step >= 2:
         export_root = Path(get_export_folder_path(db))
         ctx["preview"] = preview_export_target(
-            export_root, client_name, material_color, client_folder_override
+            export_root, client_name, material_color, client_override, material_override
         )
         ctx["existing_folders"] = list_client_folders(export_root)
         ctx["attachment_count"] = len(
@@ -3627,7 +3755,9 @@ async def accept_email(
     material_color: str = Form(""),
     kind: str = Form(""),
     quantity: str = Form(""),
-    client_folder_override: str = Form(""),
+    folder_pick: str = Form(""),
+    folder_new: str = Form(""),
+    material_folder: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)
@@ -3702,12 +3832,16 @@ async def accept_email(
     attachments = [a for a in email.attachments if Path(a.saved_path).exists()]
     if attachments:
         try:
+            client_override, material_override = _resolve_wizard_overrides(
+                folder_pick, folder_new, material_folder
+            )
             new_paths = save_attachments_to_export(
                 Path(get_export_folder_path(db)),
                 new_order.client_name or "",
                 new_order.material_color or "",
                 [Path(a.saved_path) for a in attachments],
-                client_folder_override=client_folder_override,
+                client_folder_override=client_override,
+                material_folder_override=material_override,
             )
             for attachment, new_path in zip(attachments, new_paths):
                 attachment.saved_path = str(new_path)
@@ -3801,5 +3935,74 @@ async def reject_email(
 
     email.status = "відхилено"
     db.commit()
+
+    return RedirectResponse("/mail", status_code=303)
+
+
+def _unaccept_email(db: Session, email: EmailMessage) -> None:
+    """Fully undo an accepted email back to its pre-accept state (status "нове"):
+    move its attachments from export back to the mail spool, blank the sheet
+    placeholder row, and delete the created Order. Raises on a filesystem error
+    (the file move has its own rollback) so the caller can abort cleanly; the
+    sheet blanking is best-effort and never blocks the undo. Ordering: side
+    effects first, DB mutations last, so a raised error leaves nothing
+    half-committed."""
+    order = db.get(Order, email.order_id) if email.order_id else None
+
+    attachments = list(email.attachments)
+    if attachments:
+        new_paths = restore_attachments_to_spool(
+            Path(MAIL_ATTACHMENTS_PATH), email.uid, [Path(a.saved_path) for a in attachments]
+        )
+        for attachment, new_path in zip(attachments, new_paths):
+            attachment.saved_path = str(new_path)
+
+    if order is not None and order.sheet_tab and order.row_number is not None:
+        try:
+            worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
+            if worksheet is not None:
+                clear_placeholder_row(worksheet, order.row_number + HEADER_ROWS)
+        except Exception:  # noqa: BLE001 — sheet cleanup must not block the undo
+            logger.exception("Could not blank sheet placeholder row for email %s", email.id)
+
+    if order is not None:
+        db.delete(order)
+    email.order_id = None
+    email.status = "нове"
+    email.attachments_status = "ready"
+
+
+@app.post("/mail/{email_id}/restore")
+async def restore_email(
+    request: Request,
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    """Return a processed email to the triage queue (status → "нове"). A rejected
+    letter just flips status (its files never left the spool). An ACCEPTED letter
+    is fully un-accepted: attachments move back from export, the sheet placeholder
+    row is blanked and the created Order is deleted, so re-processing can't leave
+    a duplicate."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+
+    if email.status == "відхилено":
+        email.status = "нове"
+        db.commit()
+    elif email.status == "прийнято":
+        try:
+            _unaccept_email(db, email)
+            db.commit()
+        except (OSError, ValueError) as exc:
+            db.rollback()
+            return RedirectResponse(
+                f"/mail?view=archive&error={quote('Не вдалося відкотити прийняття: ' + str(exc))}",
+                status_code=303,
+            )
 
     return RedirectResponse("/mail", status_code=303)

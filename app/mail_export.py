@@ -122,6 +122,7 @@ def preview_export_target(
     client_name: str,
     material_color: str,
     client_folder_override: str | None = None,
+    material_folder_override: str | None = None,
 ) -> dict:
     """Compute where save_attachments_to_export WOULD put this email's files,
     without touching the filesystem — drives the wizard's directory step so the
@@ -135,7 +136,10 @@ def preview_export_target(
     client_dir = _contained_child(export_root, client_folder)
     client_folder_existing = client_dir.is_dir()
 
-    material_folder = sanitize_folder_name(material_color or _NO_MATERIAL_NAME)
+    material_override = (material_folder_override or "").strip()
+    material_folder = sanitize_folder_name(
+        material_override or material_color or _NO_MATERIAL_NAME
+    )
     latest_batch = _latest_batch_folder(client_dir)
     if latest_batch is not None and not (latest_batch / material_folder).exists():
         batch_folder = latest_batch.name
@@ -152,6 +156,41 @@ def preview_export_target(
         "material_folder": material_folder,
         "rel_path": f"{client_folder}/{batch_folder}/{material_folder}",
     }
+
+
+def restore_attachments_to_spool(
+    attachments_root: Path, uid: str, current_paths: list[Path]
+) -> list[Path]:
+    """Move accepted files back from export to their original mail-spool folder
+    (attachments_root/<uid>/) — the inverse of save_attachments_to_export, used
+    when an accepted email is un-accepted. Returns the new spool paths in input
+    order (a still-missing source keeps its computed destination so the caller
+    can repoint saved_path anyway). Unique-renames on name collision and rolls
+    back a partial move, mirroring save_attachments_to_export."""
+    if not current_paths:
+        return []
+    spool_dir = _contained_child(attachments_root, uid)
+    spool_dir.mkdir(parents=True, exist_ok=True)
+    reserved: set[Path] = set()
+    moves = [
+        (source, _unique_destination(spool_dir, source.name, reserved))
+        for source in current_paths
+    ]
+    completed: list[tuple[Path, Path]] = []
+    try:
+        for source, destination in moves:
+            if source.is_file():
+                shutil.move(str(source), str(destination))
+                completed.append((source, destination))
+    except Exception:
+        for source, destination in reversed(completed):
+            try:
+                if destination.exists():
+                    shutil.move(str(destination), str(source))
+            except Exception:
+                pass
+        raise
+    return [destination for _, destination in moves]
 
 
 def _unique_destination(directory: Path, filename: str, reserved: set[Path]) -> Path:
@@ -172,6 +211,7 @@ def save_attachments_to_export(
     material_color: str,
     attachment_paths: list[Path],
     client_folder_override: str | None = None,
+    material_folder_override: str | None = None,
 ) -> list[Path]:
     """Moves each file in attachment_paths into export_root/<client>/<batch>/<material>/.
 
@@ -205,7 +245,10 @@ def save_attachments_to_export(
         else _resolve_client_folder_name(export_root, client_name)
     )
     client_dir = _contained_child(export_root, resolved_name)
-    material_name = sanitize_folder_name(material_color or _NO_MATERIAL_NAME)
+    material_override = (material_folder_override or "").strip()
+    material_name = sanitize_folder_name(
+        material_override or material_color or _NO_MATERIAL_NAME
+    )
 
     latest_batch = _latest_batch_folder(client_dir)
     if latest_batch is not None and not (latest_batch / material_name).exists():

@@ -885,3 +885,130 @@ def test_open_mail_folder_reports_non_windows_backend(tmp_path, monkeypatch):
             web.open_mail_folder(request=_request(user.id), email_id=email.id, db=db)
 
     assert exc.value.status_code == 501
+
+
+def test_restore_rejected_email_returns_to_triage():
+    """A rejected letter flips straight back (відхилено -> нове); its files never
+    left the spool, so nothing else needs undoing."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        rejected = EmailMessage(uid="r1", status="відхилено")
+        db.add(rejected)
+        db.commit()
+
+        asyncio.run(web.restore_email(request=_request(user.id), email_id=rejected.id, db=db))
+        db.refresh(rejected)
+        assert rejected.status == "нове"
+
+
+def test_restore_accepted_email_unwinds_order_and_files(monkeypatch):
+    """Un-accepting a processed letter deletes its order, moves attachments back
+    to the spool and blanks the sheet row — leaving it re-processable as "нове"
+    with no duplicate."""
+    engine = _database()
+    # Stub the filesystem move-back and the sheet blanking so no real IO happens.
+    moved = {}
+    monkeypatch.setattr(
+        web, "restore_attachments_to_spool",
+        lambda root, uid, paths: moved.setdefault("call", (uid, paths)) or [__import__("pathlib").Path(f"/spool/{uid}/f.stl")],
+    )
+    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
+    fake_ws = SimpleNamespace(id=1, title="15.08.26")
+    monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: fake_ws)
+    cleared = {}
+    monkeypatch.setattr(web, "clear_placeholder_row", lambda ws, row: cleared.setdefault("row", row))
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = Order(source="email", sheet_tab="15.08.26", row_number=80, status="нове")
+        db.add(order)
+        db.flush()
+        email = EmailMessage(uid="a1", status="прийнято", order_id=order.id, attachments_status="ready")
+        db.add(email)
+        db.flush()
+        db.add(Attachment(email_message_id=email.id, filename="f.stl", saved_path="/export/Client/нова папка/mono/f.stl"))
+        db.commit()
+        order_id = order.id
+
+        asyncio.run(web.restore_email(request=_request(user.id), email_id=email.id, db=db))
+
+        db.refresh(email)
+        assert email.status == "нове"
+        assert email.order_id is None
+        assert db.get(Order, order_id) is None  # order deleted
+        assert moved["call"][0] == "a1"  # files moved back under the uid
+        assert cleared["row"] == 80 + HEADER_ROWS  # sheet placeholder blanked
+
+
+def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_path):
+    """/mail/{id}/fetch-link downloads a single whitelisted link and returns its
+    row marked done, with a new Attachment created."""
+    engine = _database()
+    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
+    saved = tmp_path / "model.stl"; saved.write_bytes(b"STL")
+    monkeypatch.setattr(web, "download_link", lambda link, dest, existing_names=frozenset(): saved)
+    captured = {}
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse",
+        lambda request, template, context: captured.update(template=template, ctx=context) or context,
+    )
+
+    fid = "1LIyJrFNKnY7oFyMadR1W5mRgRpAW9ivl"
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email = EmailMessage(uid="m1", status="нове",
+                             body_text=f"<https://drive.google.com/file/d/{fid}/view>")
+        db.add(email); db.commit()
+
+        web.fetch_email_link(request=_request(user.id), email_id=email.id, ref=fid, db=db)
+
+        assert captured["template"] == "_mail_link_row.html"
+        assert captured["ctx"]["link_status"] == "done"
+        assert captured["ctx"]["result_name"] == "model.stl"
+        atts = db.query(Attachment).filter(Attachment.email_message_id == email.id).all()
+        assert len(atts) == 1 and atts[0].filename == "model.stl"
+
+
+def test_fetch_email_link_reports_error_row(monkeypatch, tmp_path):
+    """A LinkDownloadError (e.g. file not shared) comes back as an error row, no
+    attachment created."""
+    engine = _database()
+    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
+
+    def boom(link, dest, existing_names=frozenset()):
+        raise web.LinkDownloadError("файл не розшарено")
+
+    monkeypatch.setattr(web, "download_link", boom)
+    captured = {}
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse",
+        lambda request, template, context: captured.update(ctx=context) or context,
+    )
+
+    fid = "104xWP_qkbzSMNXZFdf_LpI8IzSpz2anh"
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email = EmailMessage(uid="m2", status="нове",
+                             body_text=f"https://drive.google.com/open?id={fid}")
+        db.add(email); db.commit()
+
+        web.fetch_email_link(request=_request(user.id), email_id=email.id, ref=fid, db=db)
+        assert captured["ctx"]["link_status"] == "error"
+        assert "розшарено" in captured["ctx"]["link_message"]
+        assert db.query(Attachment).count() == 0
+
+
+def test_fetch_email_link_unknown_ref_is_error_row(monkeypatch, tmp_path):
+    engine = _database()
+    captured = {}
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse",
+        lambda request, template, context: captured.update(ctx=context) or context,
+    )
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email = EmailMessage(uid="m3", status="нове", body_text="no links here")
+        db.add(email); db.commit()
+        web.fetch_email_link(request=_request(user.id), email_id=email.id, ref="nope", db=db)
+        assert captured["ctx"]["link_status"] == "error"

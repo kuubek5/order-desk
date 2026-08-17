@@ -40,14 +40,14 @@
                    placeholder="напр. емо а3.5, титан">
         </div>
         <div class="field">
-            <label for="wiz-kind">Вид роботи</label>
-            <input type="text" id="wiz-kind" name="kind" class="suminput"
-                   value="{{ kind or email.kind_guess or '' }}" placeholder="напр. анатомія, абатмент">
-        </div>
-        <div class="field">
             <label for="wiz-qty">Кількість</label>
             <input type="text" id="wiz-qty" name="quantity" class="suminput mono"
                    value="{{ quantity or email.quantity_guess or '' }}" placeholder="—">
+        </div>
+        <div class="field">
+            <label for="wiz-kind">Вид роботи</label>
+            <input type="text" id="wiz-kind" name="kind" class="suminput"
+                   value="{{ kind or email.kind_guess or '' }}" placeholder="напр. анатомія, абатмент">
         </div>
     </div>
     <div class="wiz-foot">
@@ -82,19 +82,35 @@
         </div>
     </div>
 
-    {% if existing_folders %}
     <div class="field full">
-        <label for="wiz-folder">Або обрати наявну папку клієнта</label>
-        <select id="wiz-folder" name="client_folder_override" class="suminput"
+        <label for="wiz-pick">Папка клієнта</label>
+        <select id="wiz-pick" name="folder_pick" class="suminput"
                 hx-post="/mail/{{ email.id }}/wizard" hx-include="closest form"
-                hx-vals='{"step":"2"}' hx-target="#mail-wizard" hx-swap="innerHTML">
-            <option value="">— авто ({{ preview.client_folder }})</option>
+                hx-vals='{"step":"2"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
+            <option value="" {% if not folder_pick %}selected{% endif %}>— авто-визначення —</option>
             {% for folder in existing_folders %}
-            <option value="{{ folder }}" {% if client_folder_override == folder %}selected{% endif %}>{{ folder }}</option>
+            <option value="{{ folder }}" {% if folder_pick == folder %}selected{% endif %}>{{ folder }}</option>
             {% endfor %}
         </select>
     </div>
-    {% endif %}
+
+    <div class="field full">
+        <label for="wiz-new">…або нова папка клієнта</label>
+        <input type="text" id="wiz-new" name="folder_new" class="suminput"
+               value="{{ folder_new }}" placeholder="впиши назву, якщо папки нема в списку"
+               hx-post="/mail/{{ email.id }}/wizard" hx-include="closest form"
+               hx-vals='{"step":"2"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
+        <div class="wiz-hint">Якщо заповнено — перекриває вибір зі списку вище.</div>
+    </div>
+
+    <div class="field full">
+        <label for="wiz-matfolder">Підпапка матеріалу</label>
+        <input type="text" id="wiz-matfolder" name="material_folder" class="suminput"
+               value="{{ material_folder or preview.material_folder }}"
+               placeholder="напр. моно а3"
+               hx-post="/mail/{{ email.id }}/wizard" hx-include="closest form"
+               hx-vals='{"step":"2"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
+    </div>
 
     <div class="wiz-foot">
         <button type="submit" name="step" value="1" class="btn">← Назад</button>
@@ -109,7 +125,9 @@
     <input type="hidden" name="material_color" value="{{ material_color }}">
     <input type="hidden" name="kind" value="{{ kind }}">
     <input type="hidden" name="quantity" value="{{ quantity }}">
-    <input type="hidden" name="client_folder_override" value="{{ client_folder_override }}">
+    <input type="hidden" name="folder_pick" value="{{ folder_pick }}">
+    <input type="hidden" name="folder_new" value="{{ folder_new }}">
+    <input type="hidden" name="material_folder" value="{{ material_folder }}">
 
     <dl class="wiz-summary">
         <div><dt>Клієнт</dt><dd>{{ client_name or '—' }}</dd></div>

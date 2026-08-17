@@ -109,6 +109,17 @@ def paint_row_fills(spreadsheet: gspread.Spreadsheet, rows: list[tuple[int, int]
     _set_row_fills(spreadsheet, rows, _BLUE)
 
 
+def clear_placeholder_row(worksheet: gspread.Worksheet, row: int) -> None:
+    """Blank a mail-placeholder row (A:K values + the client-name fill) so an
+    un-accepted email leaves no trace in the sheet. Blanking (not deleting) keeps
+    every other row's position — and therefore every other order's row_number —
+    intact; an all-empty row reads as a free row on the next sync, so it's never
+    re-imported. Columns L/M/N are left untouched, matching the write side."""
+    a1 = f"A{row}:{gspread.utils.rowcol_to_a1(row, COL_CAM_COMMENT)}"
+    call_with_retry(lambda: worksheet.batch_update([{"range": a1, "values": [[""] * COL_CAM_COMMENT]}]))
+    _set_row_fills(worksheet.spreadsheet, [(worksheet.id, row)], _WHITE)
+
+
 def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[str]) -> None:
     row = _sheet_row(order)
     column_by_field = {

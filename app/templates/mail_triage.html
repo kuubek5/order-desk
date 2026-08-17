@@ -32,16 +32,23 @@
     <div class="settings-success settings-error"><p>{{ error }}</p></div>
     {% endif %}
 
-    <nav class="tab-nav" aria-label="Тип послуги">
+    <nav class="tab-nav" aria-label="Розділ">
+        <a href="/mail?view=pending" class="tab-link {% if view == 'pending' %}active{% endif %}">На тріаж <span class="tab-badge">{{ pending_count }}</span></a>
+        <a href="/mail?view=archive" class="tab-link {% if view == 'archive' %}active{% endif %}">Архів <span class="tab-badge">{{ archive_count }}</span></a>
+    </nav>
+
+    {% if view == 'pending' %}
+    <nav class="tab-nav sub" aria-label="Тип послуги">
         <a href="/mail?service=all" class="tab-link {% if service == 'all' %}active{% endif %}">Усі листи <span class="tab-badge">{{ service_counts.all }}</span></a>
         <a href="/mail?service=milling" class="tab-link {% if service == 'milling' %}active{% endif %}">Схоже на фрезерування <span class="tab-badge">{{ service_counts.milling }}</span></a>
         <a href="/mail?service=other" class="tab-link {% if service == 'other' %}active{% endif %}">Схоже на інше <span class="tab-badge">{{ service_counts.other }}</span></a>
     </nav>
+    {% endif %}
 
     <div class="worklayout">
         <section class="list-panel" aria-labelledby="mail-list-title">
             <div class="card-head">
-                <h2 id="mail-list-title">На тріаж</h2>
+                <h2 id="mail-list-title">{% if view == 'archive' %}Архів{% else %}На тріаж{% endif %}</h2>
                 <span class="meta">{{ emails|length }} листів</span>
             </div>
             <div class="listwrap">
@@ -62,23 +69,34 @@
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V6a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V7"/></svg>
                                 {% if email.attachments_status == 'pending' %}завантаження…{% else %}{{ email.attachments|length }} файл.{% endif %}
                             </span>
-                            {% if email.service_type_guess == '3d_print' %}
-                            <span class="reco warn">перевірити</span>
+                            {% if view == 'archive' %}
+                                {% if email.status == 'прийнято' %}
+                                <span class="reco ok">✓ прийнято</span>
+                                {% else %}
+                                <span class="reco muted">✕ відхилено</span>
+                                {% endif %}
                             {% else %}
-                            <span class="reco ok">розпізнано</span>
+                                {% if email.service_type_guess == '3d_print' %}
+                                <span class="reco warn">перевірити</span>
+                                {% else %}
+                                <span class="reco ok">розпізнано</span>
+                                {% endif %}
+                                <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/reject" hx-target="closest .mailrow" hx-swap="delete" hx-confirm="Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється)." onclick="event.stopPropagation()">
+                                    <button type="submit" class="list-reject" title="Відхилити">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                                    </button>
+                                </form>
                             {% endif %}
-                            <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/reject" hx-target="closest .mailrow" hx-swap="delete" hx-confirm="Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється)." onclick="event.stopPropagation()">
-                                <button type="submit" class="list-reject" title="Відхилити">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
-                                </button>
-                            </form>
                         </span>
                     </div>
                     {% endfor %}
                 {% else %}
                     <div class="empty-triage">
                         <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 7 8 5 8-5"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></span>
-                        {% if service != 'all' %}
+                        {% if view == 'archive' %}
+                        <h3>Архів порожній</h3>
+                        <p>Тут з’являться листи після прийняття в чергу або відхилення.</p>
+                        {% elif service != 'all' %}
                         <h3>Немає листів у цій категорії</h3>
                         <p><a href="/mail?service=all">Показати всі нові листи</a>.</p>
                         {% else %}
