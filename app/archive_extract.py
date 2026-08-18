@@ -15,7 +15,9 @@ RAR needs the `rarfile` package AND an external UnRAR/7z binary on the machine
 ArchiveExtractError; ZIP always works (stdlib).
 """
 
+import os
 from pathlib import Path
+from shutil import which
 import zipfile
 
 from app.mail_reader import safe_attachment_filename, unique_destination
@@ -24,10 +26,40 @@ _ARCHIVE_SUFFIXES = {".zip", ".rar"}
 _MAX_ENTRIES = 2000
 _MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB uncompressed
 
+# rarfile shells out to an external tool to DECOMPRESS RAR. It searches PATH,
+# but WinRAR/7-Zip install to Program Files without adding themselves to PATH,
+# so probe the usual Windows locations (and an UNRAR_TOOL override) and point
+# rarfile straight at whichever exists. ZIP never needs any of this.
+_WINDOWS_RAR_TOOLS = [
+    r"C:\Program Files\WinRAR\UnRAR.exe",
+    r"C:\Program Files (x86)\WinRAR\UnRAR.exe",
+    r"C:\Program Files\7-Zip\7z.exe",
+    r"C:\Program Files (x86)\7-Zip\7z.exe",
+]
+
 
 class ArchiveExtractError(Exception):
     """An archive could not be extracted (corrupt, unsupported, too big, or the
     RAR backend tool is missing)."""
+
+
+def _configure_rar_tool(rarfile_module) -> None:
+    """Point rarfile at a UnRAR/7z binary when none is on PATH. No-op if a tool
+    is already reachable or none can be found (the caller then surfaces a clear
+    'install UnRAR' error)."""
+    override = os.environ.get("UNRAR_TOOL")
+    if override and os.path.isfile(override):
+        rarfile_module.UNRAR_TOOL = override
+        return
+    if any(which(name) for name in ("unrar", "unar", "bsdtar", "7z", "7za")):
+        return  # a backend is already on PATH
+    for path in _WINDOWS_RAR_TOOLS:
+        if os.path.isfile(path):
+            if path.lower().endswith("7z.exe"):
+                rarfile_module.SEVENZIP_TOOL = path
+            else:
+                rarfile_module.UNRAR_TOOL = path
+            return
 
 
 def is_archive(filename: str) -> bool:
@@ -57,6 +89,7 @@ def _open_archive(archive_path: Path):
             raise ArchiveExtractError(
                 "розпакування RAR недоступне: не встановлено бібліотеку rarfile"
             ) from exc
+        _configure_rar_tool(rarfile)
         try:
             archive = rarfile.RarFile(archive_path)
             entries = [
@@ -66,7 +99,8 @@ def _open_archive(archive_path: Path):
             ]
         except rarfile.RarCannotExec as exc:
             raise ArchiveExtractError(
-                "розпакування RAR недоступне: не знайдено UnRAR на цьому комп'ютері"
+                "розпакування RAR недоступне: не знайдено UnRAR на цьому комп'ютері. "
+                "Встановіть WinRAR або 7-Zip."
             ) from exc
         except Exception as exc:  # noqa: BLE001
             raise ArchiveExtractError(f"пошкоджений RAR: {exc}") from exc
