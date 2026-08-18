@@ -95,6 +95,25 @@ def resolve_email_attachment_folder(
             if lexical_file.is_file() and lexical_file.parent.is_dir():
                 return lexical_file.parent
 
+        # Fallback for a MAPPED NETWORK DRIVE where the stored path and the
+        # trusted root disagree on form — e.g. saved_path is the UNC
+        # "\\host\share\...\mail_attachments\14\file" while the root is the
+        # "P:\...\mail_attachments" drive letter (or vice versa). Lexical
+        # relative_to can't see they're the same place, so compare the fully
+        # resolved canonical forms: resolve(strict=True) has already followed
+        # every symlink/junction, so containment under a resolved root is safe.
+        try:
+            resolved_file = lexical_file.resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        for _lexical_root, resolved_root in roots:
+            try:
+                resolved_file.relative_to(resolved_root)
+            except ValueError:
+                continue
+            if resolved_file.is_file() and resolved_file.parent.is_dir():
+                return resolved_file.parent
+
     return None
 
 

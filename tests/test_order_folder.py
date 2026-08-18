@@ -43,6 +43,30 @@ def test_skips_missing_files_and_picks_next_existing(tmp_path):
     assert result == existing_file.parent
 
 
+def test_resolves_when_stored_path_form_differs_from_trusted_root(tmp_path):
+    """Mapped-network-drive case: saved_path and the trusted root point at the
+    same directory via different forms (UNC vs drive letter in production;
+    simulated here with a directory symlink). Lexical relative_to fails, so the
+    resolved-form fallback must still find and return the folder."""
+    import pytest
+
+    real = tmp_path / "real_spool"
+    (real / "14").mkdir(parents=True)
+    (real / "14" / "crown.stl").write_bytes(b"x")
+    link = tmp_path / "link_spool"
+    try:
+        link.symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation not permitted on this machine")
+
+    # stored via the symlinked form, trusted root is the real directory
+    attachments = [_FakeAttachment(str(link / "14" / "crown.stl"))]
+    folder = resolve_email_attachment_folder(attachments, [real])
+
+    assert folder is not None
+    assert (folder / "crown.stl").is_file()
+
+
 def test_returns_none_when_no_attachments_exist_on_disk(tmp_path):
     missing_path = str(tmp_path / "gone" / "file.stl")
     attachments = [_FakeAttachment(missing_path)]
