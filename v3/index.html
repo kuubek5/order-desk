@@ -1,0 +1,1136 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order Desk — Черга робіт</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Red+Hat+Text:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Red+Hat+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* тло / поверхні — усі нейтралі виведені з тла #111318 */
+  --bg:#111318;
+  --surface:#1c1f27;
+  --surface-2:#171a21;
+  --rail:#14161c;
+  --line:#252935;
+  --line-soft:#1f232c;
+  --row-hover:#1f232c;
+  --row-sel:#212635;
+
+  /* текст */
+  --ink:#e9ecf3;
+  --ink-2:#a3abbf;
+  --ink-mute:#99a1b5;
+  --ink-faint:#828a9e;
+
+  /* сигнали */
+  --accent:#8b7cf6;      /* плоский сигнал: активний стан, вибір, фокус */
+  --accent-dim:#3a3363;
+  --data:#5b9bf8;
+  --alert:#e2574c;       /* прострочено / проблема */
+  --alert-dim:#3a1f1e;
+  --warn:#d68b3f;        /* переробка */
+  --mail:#3fa9a0;        /* джерело: пошта */
+
+  /* стадії стека — одне сімейство, різна світлість */
+  --s1:#22376a;
+  --s2:#33569b;
+  --s3:#4a7ed0;
+  --s4:#6ba3f5;
+  --s5:#a9c8fb;
+
+  --r:8px;
+  --mono:"Red Hat Mono", ui-monospace, monospace;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:"Red Hat Text", sans-serif;
+  background:
+    radial-gradient(120% 80% at 50% 0%, #c6c7ca 0%, #b0b2b6 45%, #9b9da2 100%);
+  color:var(--ink);
+  min-height:100vh;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ── студійне тло ─────────────────────────────────────────── */
+.stage{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:56px 48px 72px;
+}
+
+/* ── вікно браузера ───────────────────────────────────────── */
+.browser{
+  width:100%;
+  max-width:1440px;
+  height:min(880px, calc(100vh - 128px));
+  min-height:620px;
+  background:var(--bg);
+  border-radius:12px;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  box-shadow:
+    0 2px 4px rgba(12,14,20,.28),
+    0 24px 44px -18px rgba(12,14,20,.52),
+    0 64px 110px -30px rgba(12,14,20,.62);
+}
+
+.chrome{
+  flex:0 0 auto;
+  height:46px;
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:0 14px;
+  background:#0d0f13;
+  border-bottom:1px solid #1b1e26;
+}
+.lights{display:flex;gap:8px;align-items:center}
+.lights i{width:11px;height:11px;border-radius:50%;display:block}
+.lights i:nth-child(1){background:#e0625a}
+.lights i:nth-child(2){background:#d8a44b}
+.lights i:nth-child(3){background:#5aab5f}
+.chrome-nav{display:flex;gap:2px;color:#5c6474}
+.chrome-nav button{
+  background:none;border:0;color:inherit;padding:4px;border-radius:6px;
+  display:grid;place-items:center;cursor:default;
+}
+.chrome-nav button:last-child{color:#3d4451}
+.urlbar{
+  flex:1;
+  max-width:520px;
+  margin:0 auto;
+  height:26px;
+  border-radius:6px;
+  background:#191c23;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  font-family:var(--mono);
+  font-size:12px;
+  color:#98a0b2;
+  letter-spacing:.01em;
+}
+.urlbar svg{color:#6b7385}
+.chrome-right{display:flex;gap:10px;color:#4e5563}
+
+/* ── застосунок ───────────────────────────────────────────── */
+.app{
+  flex:1 1 auto;
+  min-height:0;
+  display:grid;
+  grid-template-columns:208px 1fr;
+  background:var(--bg);
+}
+
+/* ── ліва навігація ───────────────────────────────────────── */
+.rail{
+  background:var(--rail);
+  border-right:1px solid var(--line-soft);
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  padding:16px 10px 12px;
+}
+.brand{
+  display:flex;align-items:center;gap:10px;
+  padding:2px 8px 18px;
+}
+.brand-mark{
+  width:26px;height:26px;border-radius:6px;
+  background:var(--surface);
+  border:1px solid var(--line);
+  display:grid;place-items:center;color:var(--accent);
+  flex:0 0 auto;
+}
+.brand-name{font-size:13.5px;font-weight:600;letter-spacing:-.01em}
+.brand-sub{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);letter-spacing:.02em}
+.rail-label{
+  font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-faint);padding:0 8px 8px;font-weight:600;
+}
+.nav{display:flex;flex-direction:column;gap:1px}
+.nav a{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 8px;border-radius:6px;
+  color:var(--ink-2);text-decoration:none;
+  font-size:13.5px;font-weight:500;
+  transition:background .15s ease, color .15s ease;
+}
+.nav a svg{flex:0 0 auto;color:var(--ink-faint);transition:color .15s ease}
+.nav a:hover{background:var(--surface-2);color:var(--ink)}
+.nav a:hover svg{color:var(--ink-2)}
+.nav a[aria-current="page"]{background:var(--surface);color:var(--ink)}
+.nav a[aria-current="page"] svg{color:var(--accent)}
+.nav .count{
+  margin-left:auto;font-family:var(--mono);font-size:11px;
+  color:var(--ink-mute);
+}
+.nav a[data-badge] .count{
+  background:var(--accent);color:#0f1016;font-weight:600;
+  padding:1px 6px;border-radius:999px;
+}
+.rail-foot{margin-top:auto;padding:12px 8px 0;border-top:1px solid var(--line-soft)}
+.who{display:flex;align-items:center;gap:9px}
+.who-av{
+  width:24px;height:24px;border-radius:50%;
+  background:var(--accent-dim);color:#cfc7ff;
+  display:grid;place-items:center;font-size:10.5px;font-weight:600;
+  flex:0 0 auto;
+}
+.who-name{font-size:12.5px;font-weight:500}
+.who-role{font-size:10.5px;color:var(--ink-faint)}
+
+/* ── головна колонка ──────────────────────────────────────── */
+.main{
+  min-width:0;min-height:0;
+  display:grid;
+  grid-template-rows:auto auto auto auto 1fr;
+  background:var(--bg);
+}
+.head{
+  display:flex;align-items:flex-start;gap:20px;
+  padding:20px 22px 14px;
+}
+h1{
+  margin:0 0 5px;
+  font-size:23px;line-height:1.15;font-weight:700;letter-spacing:-.022em;
+}
+.head-meta{
+  margin:0;font-size:12.5px;color:var(--ink-mute);
+}
+.head-meta b{font-family:var(--mono);font-weight:500;color:var(--ink-2)}
+.head-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto}
+
+.pill{
+  display:inline-flex;align-items:center;gap:7px;
+  height:30px;padding:0 11px;border-radius:6px;
+  border:1px solid var(--line);background:var(--surface-2);
+  color:var(--ink-2);font-size:12.5px;font-weight:500;
+}
+.pill .dot{width:7px;height:7px;border-radius:50%;background:var(--mail)}
+.pill.is-bad{border-color:#4a2b28;background:#241a1b;color:#f0b6b0}
+.pill.is-bad .dot{background:var(--alert)}
+
+.btn{
+  display:inline-flex;align-items:center;gap:7px;
+  height:30px;padding:0 12px;border-radius:6px;
+  border:1px solid var(--line);background:var(--surface);
+  color:var(--ink);font:inherit;font-size:12.5px;font-weight:500;
+  cursor:pointer;
+  transition:background .15s ease, border-color .15s ease;
+}
+.btn:hover{background:#232733;border-color:#31374a}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#101019;font-weight:600}
+.btn-primary:hover{background:#9a8df8;border-color:#9a8df8}
+
+/* фокус з клавіатури — єдиний по всій поверхні */
+a:focus-visible, button:focus-visible, input:focus-visible, th[tabindex]:focus-visible, tr:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+  border-radius:6px;
+}
+
+/* ── помилка синхронізації ────────────────────────────────── */
+.syncbar{
+  margin:0 22px 12px;
+  display:flex;align-items:center;gap:12px;
+  padding:9px 12px;
+  border:1px solid #4a2b28;
+  background:#1e1618;
+  border-radius:var(--r);
+  font-size:12.5px;color:#f2c3bd;
+}
+.syncbar svg{color:var(--alert);flex:0 0 auto}
+.syncbar .msg{min-width:0}
+.syncbar .msg b{color:#ffd9d3;font-weight:600}
+.syncbar .msg span{color:#c49b96;font-family:var(--mono);font-size:11.5px}
+.syncbar .btn{margin-left:auto;flex:0 0 auto;background:#2a1e20;border-color:#4a2b28;color:#ffd9d3}
+.syncbar .btn:hover{background:#332426;border-color:#5d3733}
+
+/* ── графік ───────────────────────────────────────────────── */
+.chart{
+  margin:0 22px 14px;
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:var(--r);
+  padding:14px 16px 12px;
+}
+.chart-head{display:flex;align-items:baseline;gap:12px;margin-bottom:2px}
+.chart-title{font-size:13.5px;font-weight:600;letter-spacing:-.01em}
+.chart-sub{font-size:11.5px;color:var(--ink-mute)}
+.chart-total{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.chart-total b{color:var(--ink);font-weight:600}
+
+.plot{
+  position:relative;
+  display:grid;
+  grid-template-columns:30px 1fr;
+  gap:8px;
+  margin-top:10px;
+}
+.yaxis{
+  display:flex;flex-direction:column;justify-content:space-between;
+  height:136px;
+  font-family:var(--mono);font-size:10px;color:var(--ink-faint);
+  text-align:right;padding-bottom:1px;
+}
+.bars{
+  position:relative;
+  height:136px;
+  display:flex;align-items:flex-end;gap:6px;
+  border-bottom:1px solid var(--line);
+}
+.grid{position:absolute;inset:0;pointer-events:none}
+.grid i{position:absolute;left:0;right:0;height:1px;background:var(--line-soft)}
+.col{
+  position:relative;
+  flex:1 1 0;
+  min-width:0;
+  height:100%;
+  display:flex;flex-direction:column;justify-content:flex-end;
+  gap:1px;
+  cursor:default;
+  padding-top:4px;
+}
+.col::after{
+  content:"";position:absolute;inset:-4px -3px 0;border-radius:4px;
+  background:transparent;transition:background .15s ease;
+}
+.col:hover::after{background:rgba(139,124,246,.09)}
+.col.is-today::before{
+  content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--accent);
+}
+.seg{width:100%;border-radius:1px;transition:filter .15s ease}
+.col:hover .seg{filter:brightness(1.14)}
+.seg:first-child{border-radius:2px 2px 1px 1px}
+.xaxis{
+  grid-column:2;
+  display:flex;gap:6px;margin-top:7px;
+}
+.xaxis span{
+  flex:1 1 0;min-width:0;text-align:center;
+  font-family:var(--mono);font-size:10px;color:var(--ink-faint);
+  white-space:nowrap;overflow:hidden;
+}
+.xaxis span.is-today{color:var(--ink-2)}
+
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:11px;padding-top:10px;border-top:1px solid var(--line-soft)}
+.legend div{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-mute)}
+.legend i{width:9px;height:9px;border-radius:2px;display:block}
+
+.tip{
+  position:absolute;
+  z-index:20;
+  min-width:196px;
+  padding:9px 10px 8px;
+  background:#20242e;
+  border:1px solid #333949;
+  border-radius:7px;
+  box-shadow:0 10px 26px -8px rgba(0,0,0,.7);
+  pointer-events:none;
+  opacity:0;
+  transform:translateY(3px);
+  transition:opacity .12s ease, transform .12s ease;
+}
+.tip.on{opacity:1;transform:translateY(0)}
+.tip-day{font-family:var(--mono);font-size:11.5px;color:var(--ink);margin-bottom:7px;font-weight:600}
+.tip-row{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink-2);padding:1.5px 0}
+.tip-row i{width:9px;height:9px;border-radius:2px;flex:0 0 auto}
+.tip-row b{margin-left:auto;font-family:var(--mono);font-weight:500;color:var(--ink)}
+.tip-sum{
+  display:flex;gap:8px;margin-top:7px;padding-top:6px;border-top:1px solid #333949;
+  font-size:11.5px;color:var(--ink-mute);
+}
+.tip-sum b{margin-left:auto;font-family:var(--mono);color:var(--ink);font-weight:600}
+
+/* ── панель фільтрів ──────────────────────────────────────── */
+.toolbar{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:0 22px 12px;
+}
+.tabs{display:flex;gap:1px;background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:2px}
+.tabs button{
+  border:0;background:none;color:var(--ink-mute);
+  font:inherit;font-size:12.5px;font-weight:500;
+  padding:5px 10px;border-radius:5px;cursor:pointer;
+  display:flex;align-items:center;gap:6px;
+  transition:background .15s ease,color .15s ease;
+}
+.tabs button:hover{color:var(--ink)}
+.tabs button em{font-family:var(--mono);font-style:normal;font-size:11px;color:var(--ink-faint)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink)}
+.tabs button[aria-selected="true"] em{color:var(--accent)}
+
+.chip{
+  display:inline-flex;align-items:center;gap:7px;
+  height:28px;padding:0 10px;border-radius:999px;
+  border:1px solid var(--line);background:var(--surface-2);
+  color:var(--ink-2);font:inherit;font-size:12px;font-weight:500;
+  cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.chip:hover{border-color:#31374a;color:var(--ink)}
+.chip i.mark{width:7px;height:7px;border-radius:50%;background:var(--ink-faint);flex:0 0 auto}
+.chip em{font-family:var(--mono);font-style:normal;font-size:11px;color:var(--ink-faint)}
+.chip .x{display:none;color:var(--ink-mute)}
+.chip[aria-pressed="true"]{background:#232838;border-color:#3b3560;color:var(--ink)}
+.chip[aria-pressed="true"] .x{display:block}
+.chip[aria-pressed="true"] em{color:var(--ink-2)}
+.chip[data-tone="alert"] i.mark{background:var(--alert)}
+.chip[data-tone="mail"] i.mark{background:var(--mail)}
+.chip[data-tone="warn"] i.mark{background:var(--warn)}
+.chip[data-tone="data"] i.mark{background:var(--data)}
+
+.search{
+  margin-left:auto;
+  position:relative;display:flex;align-items:center;
+}
+.search svg{position:absolute;left:9px;color:var(--ink-faint);pointer-events:none}
+.search input{
+  height:30px;width:210px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:6px;
+  color:var(--ink);font:inherit;font-size:12.5px;
+  padding:0 10px 0 30px;
+  transition:border-color .15s ease;
+}
+.search input::placeholder{color:var(--ink-faint)}
+.search input:focus{border-color:#3b3560;outline:none}
+.search input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ── таблиця ──────────────────────────────────────────────── */
+.tablewrap{
+  min-height:0;
+  overflow:auto;
+  border-top:1px solid var(--line-soft);
+  margin:0 0 0;
+  scrollbar-color:#333949 var(--bg);
+}
+table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  font-size:12.5px;
+}
+thead th{
+  position:sticky;top:0;z-index:5;
+  background:var(--surface-2);
+  border-bottom:1px solid var(--line);
+  color:var(--ink-mute);
+  font-weight:600;font-size:11px;letter-spacing:.045em;text-transform:uppercase;
+  text-align:left;
+  padding:9px 10px;
+  white-space:nowrap;
+  user-select:none;
+}
+thead th:first-child{padding-left:22px}
+thead th:last-child{padding-right:22px;text-align:right}
+th[data-sort]{cursor:pointer;transition:color .15s ease}
+th[data-sort]:hover{color:var(--ink)}
+th .caret{
+  display:inline-block;margin-left:5px;vertical-align:-1px;
+  color:var(--ink-faint);opacity:0;transition:opacity .15s ease,transform .15s ease;
+}
+th[data-sort]:hover .caret{opacity:.55}
+th[aria-sort] .caret{opacity:1;color:var(--accent)}
+th[aria-sort="descending"] .caret{transform:rotate(180deg)}
+th[aria-sort]{color:var(--ink)}
+
+tbody td{
+  padding:8px 10px;
+  border-bottom:1px solid var(--line-soft);
+  vertical-align:middle;
+  color:var(--ink-2);
+}
+tbody td:first-child{padding-left:22px}
+tbody td:last-child{padding-right:22px;text-align:right}
+tbody tr{transition:background .12s ease}
+tbody tr:hover{background:var(--row-hover)}
+tbody tr.is-sel{background:var(--row-sel);box-shadow:inset 1px 0 0 var(--accent), inset -1px 0 0 rgba(139,124,246,.25)}
+tbody tr.is-late{background:rgba(226,87,76,.055)}
+tbody tr.is-late:hover{background:rgba(226,87,76,.1)}
+tbody tr.is-late.is-sel{background:rgba(226,87,76,.11)}
+
+.mono{font-family:var(--mono);font-size:12px;letter-spacing:.005em}
+.ord{color:var(--ink);font-weight:600}
+.src{
+  display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:var(--ink-faint);margin-right:7px;vertical-align:middle;
+}
+.src.mail{background:var(--mail)}
+.due{color:var(--ink-2);white-space:nowrap}
+.due.late{color:#f0847a;font-weight:600}
+.due .day{color:var(--ink-faint);font-weight:400}
+.due.late .day{color:#c88a83}
+.cmt{
+  color:var(--ink-mute);
+  max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.cmt.loud{color:#e8b6ae}
+.mat{color:var(--ink);white-space:nowrap}
+.kind{white-space:nowrap}
+.qty{font-family:var(--mono);color:var(--ink);text-align:right}
+.path{color:var(--ink-2);white-space:nowrap}
+.path button{
+  background:none;border:0;padding:2px 5px;margin:-2px -5px;border-radius:4px;
+  font:inherit;font-family:var(--mono);font-size:12px;color:inherit;cursor:pointer;
+  transition:background .12s ease,color .12s ease;
+}
+.path button:hover{background:#262b39;color:var(--ink)}
+.sum{color:var(--ink-2)}
+.sum.empty{color:var(--ink-faint)}
+.tech{white-space:nowrap;color:var(--ink-2)}
+.tech.none{color:var(--ink-faint)}
+
+.status{
+  display:inline-flex;align-items:center;gap:6px;
+  height:22px;padding:0 8px 0 7px;border-radius:5px;
+  background:var(--surface);border:1px solid var(--line);
+  font-size:11.5px;font-weight:500;color:var(--ink-2);
+  white-space:nowrap;
+}
+.status i{width:6px;height:6px;border-radius:50%;flex:0 0 auto}
+.status[data-k="нове"] i{background:var(--ink-faint)}
+.status[data-k="прийнято"] i{background:var(--s2)}
+.status[data-k="прораховано"] i{background:var(--s3)}
+.status[data-k="у фрезеруванні"] i{background:var(--s4)}
+.status[data-k="відфрезеровано"] i{background:var(--s5)}
+.status[data-k="знайдено при видачі"] i{background:var(--s5)}
+.status[data-k="видано"] i{background:#5f6a80}
+.status[data-k="видано"]{color:var(--ink-mute)}
+.status[data-k="проблема"]{border-color:#4a2b28;background:#241a1b;color:#f0b6b0}
+.status[data-k="проблема"] i{background:var(--alert)}
+.status[data-k="переробка"]{border-color:#4a3a24;background:#241f16;color:#efc79a}
+.status[data-k="переробка"] i{background:var(--warn)}
+
+.acts{display:inline-flex;gap:5px;justify-content:flex-end}
+.act{
+  width:24px;height:24px;border-radius:5px;
+  border:1px solid var(--line);background:var(--surface-2);
+  color:var(--ink-mute);display:grid;place-items:center;cursor:pointer;
+  transition:background .13s ease,color .13s ease,border-color .13s ease;
+}
+.act:hover{background:#262b39;color:var(--ink);border-color:#333a4c}
+.act.ok:hover{background:#2b3450;border-color:#3b3560;color:#cfc7ff}
+.act.no:hover{background:#2e1f1f;border-color:#4a2b28;color:#f0b6b0}
+.act[disabled]{opacity:.32;cursor:not-allowed}
+.act[disabled]:hover{background:var(--surface-2);color:var(--ink-mute);border-color:var(--line)}
+
+.cbx{
+  width:14px;height:14px;border-radius:3px;
+  border:1px solid #39404f;background:#171a21;
+  display:grid;place-items:center;cursor:pointer;padding:0;
+  color:transparent;
+  transition:background .13s ease,border-color .13s ease,color .13s ease;
+}
+.cbx:hover{border-color:#4b5468}
+.cbx[aria-checked="true"]{background:var(--accent);border-color:var(--accent);color:#12121c}
+
+.foot{
+  display:flex;align-items:center;gap:14px;
+  padding:9px 22px;
+  border-top:1px solid var(--line);
+  background:var(--surface-2);
+  font-size:11.5px;color:var(--ink-mute);
+}
+.foot b{font-family:var(--mono);color:var(--ink-2);font-weight:500}
+.foot .right{margin-left:auto;display:flex;gap:14px;align-items:center}
+
+.empty{
+  padding:40px 22px;text-align:center;color:var(--ink-mute);font-size:13px;
+}
+.empty b{display:block;color:var(--ink);font-size:14px;margin-bottom:5px;font-weight:600}
+
+/* ── авторський момент руху: підтвердження зміни стадії ───── */
+@keyframes wipe{
+  from{clip-path:inset(0 100% 0 0)}
+  to{clip-path:inset(0 0 0 0)}
+}
+@keyframes confirm{
+  0%{background-color:#2a2540;box-shadow:inset 1px 0 0 var(--accent),inset -1px 0 0 var(--accent)}
+  100%{background-color:transparent;box-shadow:inset 1px 0 0 rgba(139,124,246,0),inset -1px 0 0 rgba(139,124,246,0)}
+}
+.advanced .status{animation:wipe 420ms cubic-bezier(.16,1,.3,1)}
+.advanced{animation:confirm 760ms cubic-bezier(.16,1,.3,1)}
+
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+}
+
+/* ── адаптивність: рамка відступає, таблиця скролиться ────── */
+@media (max-width:1180px){
+  .stage{padding:28px 22px 36px}
+  .browser{height:min(880px, calc(100vh - 64px))}
+  .col-cmt{display:none}
+}
+@media (max-width:980px){
+  .app{grid-template-columns:60px 1fr}
+  .brand-text,.rail-label,.nav a span.t,.who-text{display:none}
+  .nav a{justify-content:center;padding:9px 0}
+  .nav .count{margin-left:0;position:absolute;transform:translate(14px,-11px);font-size:10px}
+  .nav a{position:relative}
+  .brand{justify-content:center;padding:2px 0 18px}
+  .who{justify-content:center}
+  .rail{padding:16px 8px 12px}
+  .col-tech{display:none}
+}
+@media (max-width:820px){
+  .stage{padding:14px 12px 22px}
+  .browser{height:calc(100vh - 36px);border-radius:10px}
+  .head{flex-wrap:wrap;padding:16px 16px 12px}
+  .head-actions{margin-left:0;width:100%}
+  .chart,.syncbar{margin-left:16px;margin-right:16px}
+  .toolbar{padding:0 16px 12px}
+  .search{margin-left:0;width:100%}
+  .search input,.search input:focus{width:100%}
+  thead th:first-child,tbody td:first-child{padding-left:16px}
+  thead th:last-child,tbody td:last-child{padding-right:16px}
+  .col-kind,.col-sum{display:none}
+  .legend{gap:10px}
+}
+</style>
+</head>
+<body>
+<!--
+THESIS: Черга фрезерного центру — не «дашборд із KPI-плитками», а стрічка фізичних робіт, де єдине питання щосекунди: що горить зараз. Сторінка відкидає категорійну типовість — ряд великих метрик-карток угорі; замість них один стековий графік навантаження по стадіях за 14 днів і одразу щільний фід.
+OWN-WORLD: майже чорне #111318, панель #1c1f27, нейтралі виведені з тла (синювато-сірі, не сірі). Синє сімейство лише як шкала стадій, фіолетовий #8b7cf6 — плоский сигнал взаємодії, червоний — лише прострочення й проблема. Моно тільки на нарядах, шляхах-ID, Sum3D, часі.
+STORY: оператор бачить прострочені червонуватим тоном рядка, бере роботу галочкою в рядку, копіює шлях-ID у Sum3D, вписує ID назад.
+FIRST VIEWPORT: сіре студійне тло, вікно браузера по центру з м'якою зміщеною тінню; всередині вузький рейл, заголовок, смуга помилки синхронізації, стек-графік, фільтри, щільна таблиця.
+FORM: закріплений напрямок 3 — стек-графік у вікні браузера.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+
+<div class="stage">
+  <div class="browser">
+
+    <!-- хром вікна -->
+    <div class="chrome">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="chrome-nav">
+        <button type="button" tabindex="-1" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8 10 12.5"/></svg>
+        </button>
+        <button type="button" tabindex="-1" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
+        </button>
+      </div>
+      <div class="urlbar">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.75 7V5.25a2.25 2.25 0 0 1 4.5 0V7"/></svg>
+        127.0.0.1:8000/queue
+      </div>
+      <div class="chrome-right">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.2v6.6M5.4 7.4 8 10l2.6-2.6M3.5 12.3h9"/></svg>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.8v8.4M3.8 8h8.4"/></svg>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="3.2" width="9.6" height="9.6" rx="2"/><path d="M6.4 3.2v9.6"/></svg>
+      </div>
+    </div>
+
+    <!-- застосунок -->
+    <div class="app">
+
+      <!-- ліва навігація -->
+      <aside class="rail">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.2 13.4 5v6L8 13.8 2.6 11V5z"/><path d="M8 7.2 13.4 5M8 7.2 2.6 5M8 7.2v6.6"/></svg>
+          </div>
+          <div class="brand-text">
+            <div class="brand-name">Order Desk</div>
+            <div class="brand-sub">фрезерний центр</div>
+          </div>
+        </div>
+
+        <div class="rail-label">Робота</div>
+        <nav class="nav" aria-label="Основна навігація">
+          <a href="#" aria-current="page">
+            <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.6h12M3 9h12M3 13.4h7.5"/></svg>
+            <span class="t">Черга</span><span class="count">28</span>
+          </a>
+          <a href="#" data-badge>
+            <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.4" y="4" width="13.2" height="10" rx="2"/><path d="m2.9 5.3 5.5 4.2a1 1 0 0 0 1.2 0l5.5-4.2"/></svg>
+            <span class="t">Нові з пошти</span><span class="count">6</span>
+          </a>
+          <a href="#">
+            <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.6 6.2 9 3l6.4 3.2v5.6L9 15l-6.4-3.2z"/><path d="M2.6 6.2 9 9.4l6.4-3.2M9 9.4V15"/></svg>
+            <span class="t">Ранкова видача</span><span class="count">12</span>
+          </a>
+          <a href="#">
+            <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6.6" r="2.4"/><path d="M2.8 14.4c0-2.3 1.9-3.8 4.2-3.8s4.2 1.5 4.2 3.8"/><path d="M12.1 4.6a2.4 2.4 0 0 1 0 4.5M13 10.9c1.4.4 2.4 1.6 2.4 3.5"/></svg>
+            <span class="t">Клієнти</span>
+          </a>
+          <a href="#">
+            <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.1" cy="8.1" r="4.6"/><path d="m11.6 11.6 3.3 3.3"/></svg>
+            <span class="t">Пошук</span>
+          </a>
+        </nav>
+
+        <div class="rail-label" style="padding-top:16px">Система</div>
+        <nav class="nav" aria-label="Системна навігація">
+          <a href="#">
+            <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 14.6h11.6"/><path d="M5.2 14.6V8.4M9 14.6V4.2M12.8 14.6v-4"/></svg>
+            <span class="t">Статистика</span>
+          </a>
+          <a href="#">
+            <svg width="17" height="17" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.4h12M3 12.6h12"/><circle cx="7.2" cy="5.4" r="1.7"/><circle cx="11.4" cy="12.6" r="1.7"/></svg>
+            <span class="t">Налаштування</span>
+          </a>
+        </nav>
+
+        <div class="rail-foot">
+          <div class="who">
+            <div class="who-av" aria-hidden="true">РК</div>
+            <div class="who-text">
+              <div class="who-name">Роман Кузьмів</div>
+              <div class="who-role">CAM-оператор</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- головна -->
+      <div class="main">
+
+        <div class="head">
+          <div>
+            <h1>Черга робіт</h1>
+            <p class="head-meta">Вкладка <b>11.08.26</b> · <b>28</b> незавершених · синхронізовано <b>09:47</b></p>
+          </div>
+          <div class="head-actions">
+            <span class="pill"><span class="dot"></span>Пошта: 6 нових</span>
+            <button class="btn" type="button">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.2 7A5.2 5.2 0 0 0 4 4.4M2.8 9A5.2 5.2 0 0 0 12 11.6"/><path d="M13.4 3.6V7h-3.4M2.6 12.4V9H6"/></svg>
+              Синхронізувати
+            </button>
+            <button class="btn btn-primary" type="button">Взяти в роботу</button>
+          </div>
+        </div>
+
+        <div class="syncbar" role="status">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.8 14.4 13.2H1.6z"/><path d="M8 6.6v3M8 11.4h.01"/></svg>
+          <div class="msg">
+            <b>Запис у таблицю не пройшов о 09:42.</b>
+            <span>вкладка 11.08.26 · рядок 31 · сервісний акаунт має роль «Читач»</span>
+          </div>
+          <button class="btn" type="button">Повторити</button>
+        </div>
+
+        <!-- стек-графік -->
+        <section class="chart" aria-label="Розподіл робіт по стадіях за 14 днів">
+          <div class="chart-head">
+            <span class="chart-title">Навантаження по стадіях</span>
+            <span class="chart-sub">останні 14 днів, одиниць</span>
+            <span class="chart-total">за 14 днів <b id="grand">—</b> · сьогодні <b id="todayTotal">—</b></span>
+          </div>
+          <div class="plot">
+            <div class="yaxis" id="yaxis"></div>
+            <div class="bars" id="bars">
+              <div class="grid" id="gridlines"></div>
+            </div>
+            <div class="xaxis" id="xaxis"></div>
+            <div class="tip" id="tip" role="tooltip" aria-hidden="true"></div>
+          </div>
+          <div class="legend" id="legend"></div>
+        </section>
+
+        <!-- фільтри -->
+        <div class="toolbar">
+          <div class="tabs" role="tablist" aria-label="Період">
+            <button role="tab" aria-selected="true" data-bucket="all" type="button">Активні <em>28</em></button>
+            <button role="tab" aria-selected="false" data-bucket="today" type="button">Сьогодні <em>17</em></button>
+            <button role="tab" aria-selected="false" data-bucket="yday" type="button">Вчора <em>5</em></button>
+            <button role="tab" aria-selected="false" data-bucket="tmrw" type="button">Завтра <em>4</em></button>
+            <button role="tab" aria-selected="false" data-bucket="older" type="button">Раніше <em>2</em></button>
+          </div>
+
+          <button class="chip" type="button" aria-pressed="false" data-filter="late" data-tone="alert">
+            <i class="mark"></i>Прострочені <em>6</em>
+            <svg class="x" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5"/></svg>
+          </button>
+          <button class="chip" type="button" aria-pressed="false" data-filter="mail" data-tone="mail">
+            <i class="mark"></i>Пошта <em>8</em>
+            <svg class="x" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5"/></svg>
+          </button>
+          <button class="chip" type="button" aria-pressed="false" data-filter="nosum" data-tone="data">
+            <i class="mark"></i>Без Sum3D ID <em>11</em>
+            <svg class="x" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5"/></svg>
+          </button>
+          <button class="chip" type="button" aria-pressed="false" data-filter="rework" data-tone="warn">
+            <i class="mark"></i>Переробка <em>3</em>
+            <svg class="x" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5"/></svg>
+          </button>
+
+          <div class="search">
+            <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.1" cy="8.1" r="4.6"/><path d="m11.6 11.6 3.3 3.3"/></svg>
+            <input id="q" type="search" placeholder="Наряд, технік, шлях…" aria-label="Пошук у черзі">
+          </div>
+        </div>
+
+        <!-- таблиця -->
+        <div class="tablewrap">
+          <table id="tbl">
+            <thead>
+              <tr>
+                <th scope="col" style="width:34px">
+                  <button class="cbx" id="allBox" type="button" role="checkbox" aria-checked="false" aria-label="Обрати всі рядки">
+                    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.8 8.7 9.6 3.6"/></svg>
+                  </button>
+                </th>
+                <th scope="col" data-sort="ord" tabindex="0">Наряд<span class="caret">↕</span></th>
+                <th scope="col" data-sort="due" tabindex="0">Здати<span class="caret">↕</span></th>
+                <th scope="col" class="col-cmt">Коментар CAM</th>
+                <th scope="col" data-sort="mat" tabindex="0">Матеріал / колір<span class="caret">↕</span></th>
+                <th scope="col" class="col-kind">Вид роботи</th>
+                <th scope="col" data-sort="qty" tabindex="0" style="text-align:right">К-сть<span class="caret">↕</span></th>
+                <th scope="col">Шлях-ID</th>
+                <th scope="col" class="col-sum">Sum3D</th>
+                <th scope="col" class="col-tech" data-sort="tech" tabindex="0">Технік<span class="caret">↕</span></th>
+                <th scope="col" data-sort="st" tabindex="0">Статус<span class="caret">↕</span></th>
+                <th scope="col">Дії</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="foot">
+          <span>Показано <b id="shown">28</b> з <b>28</b></span>
+          <span>Обрано <b id="selCount">0</b></span>
+          <div class="right">
+            <span>Демонстраційні дані</span>
+            <span>Клік по шляху копіює його для Sum3D</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ── стадії ───────────────────────────────────────────────── */
+var STAGES = [
+  {k:"прийнято",       c:"var(--s1)"},
+  {k:"прораховано",    c:"var(--s2)"},
+  {k:"у фрезеруванні", c:"var(--s3)"},
+  {k:"відфрезеровано", c:"var(--s4)"},
+  {k:"видано",         c:"var(--s5)"}
+];
+var FLOW = ["нове","прийнято","прораховано","у фрезеруванні","відфрезеровано","знайдено при видачі","видано"];
+var ORDER = ["нове","прийнято","прораховано","у фрезеруванні","відфрезеровано","знайдено при видачі","видано","переробка","проблема"];
+
+/* ── графік: 14 днів × 5 стадій ───────────────────────────── */
+var CHART = [
+  {d:"29.07", v:[7,6,5,9,4]},
+  {d:"30.07", v:[6,8,6,7,6]},
+  {d:"31.07", v:[9,7,4,8,7]},
+  {d:"01.08", v:[5,5,3,6,4]},
+  {d:"04.08", v:[11,9,7,10,8]},
+  {d:"05.08", v:[8,10,6,9,9]},
+  {d:"06.08", v:[10,8,8,12,7]},
+  {d:"07.08", v:[7,9,5,8,10]},
+  {d:"08.08", v:[12,11,9,11,6]},
+  {d:"09.08", v:[4,4,3,5,3]},
+  {d:"10.08", v:[9,10,7,9,8]},
+  {d:"11.08", v:[13,9,8,7,3]},
+  {d:"12.08", v:[6,5,4,3,1]},
+  {d:"13.08", v:[4,3,2,1,0]}
+];
+var TODAY_IDX = 11;
+
+/* ── черга ────────────────────────────────────────────────── */
+var ROWS = [
+  {ord:"24122", due:"11.08 14:00", ts:1114, bucket:"today", late:false, cmt:"покрити опаком", mat:"моно А3.5", kind:"анатомія", qty:6, path:"2026-08-11_00016-007", sum:"10442", tech:"Олена Гнатюк", st:"прораховано", src:"lab"},
+  {ord:"24118", due:"10.08 16:00", ts:1016, bucket:"yday", late:true, cmt:"Чекаємо Скани!!!!", mat:"цирконій 800", kind:"каркас міст 13-23", qty:11, path:"2026-08-10_00014-003", sum:"", tech:"", st:"нове", src:"lab"},
+  {ord:"24131", due:"11.08 09:00", ts:1109, bucket:"today", late:true, cmt:"Якщо можно на швидку, я сам закрию", mat:"пмма A2", kind:"анатомія гвинтова", qty:4, path:"2026-08-11_00016-011", sum:"", tech:"Ігор Савченко", st:"прийнято", src:"lab"},
+  {ord:"24135", due:"11.08 14:00", ts:1114, bucket:"today", late:false, cmt:"", mat:"титан корея", kind:"абатмент", qty:2, path:"2026-08-11_00017-002", sum:"10447", tech:"Тарас Ковальчук", st:"у фрезеруванні", src:"mail"},
+  {ord:"24127", due:"11.08 16:00", ts:1116, bucket:"today", late:false, cmt:"не полірувати різці", mat:"цирконій 500", kind:"анатомія", qty:8, path:"2026-08-11_00016-019", sum:"10444", tech:"Мар’яна Дідух", st:"прораховано", src:"lab"},
+  {ord:"24110", due:"09.08 16:00", ts:916, bucket:"older", late:true, cmt:"переробка після сколу — вина обладнання", mat:"моно A2", kind:"анатомія", qty:3, path:"2026-08-09_00012-004", sum:"10398", tech:"Дмитро Левченко", st:"переробка", src:"lab"},
+  {ord:"24140", due:"11.08 16:00", ts:1116, bucket:"today", late:false, cmt:"", mat:"пмма A3", kind:"вкладка", qty:1, path:"2026-08-11_00017-008", sum:"", tech:"", st:"нове", src:"mail"},
+  {ord:"24124", due:"11.08 09:00", ts:1109, bucket:"today", late:true, cmt:"клієнт забирає до обіду", mat:"моно А3.5", kind:"анатомія гвинтова", qty:5, path:"2026-08-11_00016-009", sum:"10443", tech:"Олена Гнатюк", st:"відфрезеровано", src:"lab"},
+  {ord:"24133", due:"11.08 14:00", ts:1114, bucket:"today", late:false, cmt:"покрити опаком", mat:"цирконій 800", kind:"каркас міст 13-23", qty:9, path:"2026-08-11_00016-021", sum:"10446", tech:"Наталія Кравець", st:"у фрезеруванні", src:"lab"},
+  {ord:"24145", due:"12.08 14:00", ts:1214, bucket:"tmrw", late:false, cmt:"", mat:"титан корея", kind:"абатмент", qty:4, path:"2026-08-12_00018-001", sum:"", tech:"", st:"нове", src:"mail"},
+  {ord:"24119", due:"10.08 14:00", ts:1014, bucket:"yday", late:true, cmt:"немає файлу штампика", mat:"пмма A2", kind:"анатомія", qty:7, path:"2026-08-10_00014-006", sum:"10421", tech:"Богдан Мельник", st:"проблема", src:"mail"},
+  {ord:"24136", due:"11.08 16:00", ts:1116, bucket:"today", late:false, cmt:"фрезерувати з запасом по краю", mat:"цирконій 500", kind:"анатомія", qty:12, path:"2026-08-11_00017-003", sum:"10448", tech:"Юлія Ткаченко", st:"прораховано", src:"lab"},
+  {ord:"24128", due:"11.08 14:00", ts:1114, bucket:"today", late:false, cmt:"", mat:"моно A2", kind:"вкладка", qty:2, path:"2026-08-11_00016-020", sum:"10445", tech:"Ігор Савченко", st:"відфрезеровано", src:"lab"},
+  {ord:"24141", due:"11.08 16:00", ts:1116, bucket:"today", late:false, cmt:"Чекаємо Скани!!!!", mat:"пмма A3", kind:"анатомія гвинтова", qty:6, path:"2026-08-11_00017-009", sum:"", tech:"", st:"нове", src:"mail"},
+  {ord:"24112", due:"09.08 09:00", ts:909, bucket:"older", late:true, cmt:"друга фрезеровка, вина техніка", mat:"моно А3.5", kind:"анатомія", qty:2, path:"2026-08-09_00012-011", sum:"10402", tech:"Оксана Бондар", st:"переробка", src:"lab"},
+  {ord:"24137", due:"11.08 09:00", ts:1109, bucket:"today", late:false, cmt:"", mat:"титан корея", kind:"абатмент", qty:3, path:"2026-08-11_00017-004", sum:"10449", tech:"Андрій Панасюк", st:"видано", src:"lab"},
+  {ord:"24146", due:"12.08 16:00", ts:1216, bucket:"tmrw", late:false, cmt:"покрити опаком", mat:"цирконій 800", kind:"каркас міст 13-23", qty:14, path:"2026-08-12_00018-002", sum:"", tech:"", st:"нове", src:"lab"},
+  {ord:"24120", due:"10.08 16:00", ts:1016, bucket:"yday", late:true, cmt:"", mat:"моно A2", kind:"анатомія", qty:5, path:"2026-08-10_00014-009", sum:"10424", tech:"Мар’яна Дідух", st:"відфрезеровано", src:"lab"},
+  {ord:"24138", due:"11.08 16:00", ts:1116, bucket:"today", late:false, cmt:"тонкі стінки, обережно", mat:"пмма A2", kind:"вкладка", qty:1, path:"2026-08-11_00017-005", sum:"10450", tech:"Тарас Ковальчук", st:"у фрезеруванні", src:"mail"},
+  {ord:"24129", due:"11.08 14:00", ts:1114, bucket:"today", late:false, cmt:"", mat:"цирконій 500", kind:"анатомія гвинтова", qty:8, path:"2026-08-11_00016-022", sum:"", tech:"Наталія Кравець", st:"прийнято", src:"lab"},
+  {ord:"24147", due:"12.08 09:00", ts:1209, bucket:"tmrw", late:false, cmt:"", mat:"моно А3.5", kind:"анатомія", qty:4, path:"2026-08-12_00018-003", sum:"", tech:"", st:"нове", src:"mail"},
+  {ord:"24121", due:"10.08 09:00", ts:1009, bucket:"yday", late:true, cmt:"третій раз, вина адміністратора", mat:"пмма A3", kind:"анатомія", qty:3, path:"2026-08-10_00014-012", sum:"10426", tech:"Дмитро Левченко", st:"переробка", src:"lab"},
+  {ord:"24139", due:"11.08 16:00", ts:1116, bucket:"today", late:false, cmt:"Якщо можно на швидку, я сам закрию", mat:"титан корея", kind:"абатмент", qty:2, path:"2026-08-11_00017-006", sum:"10451", tech:"Олена Гнатюк", st:"прораховано", src:"lab"},
+  {ord:"24148", due:"12.08 14:00", ts:1214, bucket:"tmrw", late:false, cmt:"", mat:"цирконій 500", kind:"анатомія", qty:10, path:"2026-08-12_00018-004", sum:"", tech:"", st:"нове", src:"lab"},
+  {ord:"24130", due:"11.08 09:00", ts:1109, bucket:"today", late:false, cmt:"", mat:"моно A2", kind:"вкладка", qty:1, path:"2026-08-11_00016-023", sum:"10441", tech:"Юлія Ткаченко", st:"видано", src:"lab"},
+  {ord:"24142", due:"11.08 14:00", ts:1114, bucket:"today", late:false, cmt:"скани прийшли листом", mat:"пмма A2", kind:"анатомія гвинтова", qty:7, path:"2026-08-11_00017-010", sum:"", tech:"Богдан Мельник", st:"прийнято", src:"mail"},
+  {ord:"24123", due:"10.08 14:00", ts:1014, bucket:"yday", late:true, cmt:"немає кольору в листі", mat:"моно А3.5", kind:"анатомія", qty:6, path:"2026-08-10_00014-015", sum:"", tech:"Оксана Бондар", st:"проблема", src:"mail"},
+  {ord:"24143", due:"11.08 16:00", ts:1116, bucket:"today", late:false, cmt:"", mat:"цирконій 800", kind:"каркас міст 13-23", qty:13, path:"2026-08-11_00017-011", sum:"10452", tech:"Андрій Панасюк", st:"у фрезеруванні", src:"lab"}
+];
+
+var $ = function(s){return document.querySelector(s)};
+var esc = function(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
+
+/* ── графік ───────────────────────────────────────────────── */
+var bars = $("#bars"), xaxis = $("#xaxis"), tip = $("#tip");
+var maxTotal = 0;
+CHART.forEach(function(c){
+  var t = c.v.reduce(function(a,b){return a+b},0);
+  c.total = t;
+  if(t > maxTotal) maxTotal = t;
+});
+var scaleTop = Math.ceil(maxTotal/10)*10;
+
+(function yaxis(){
+  var y = $("#yaxis"), g = $("#gridlines"), out = "", gl = "";
+  for(var i=4;i>=0;i--){
+    out += "<span>"+(scaleTop/4*i)+"</span>";
+    gl += '<i style="bottom:'+(i*25)+'%"></i>';
+  }
+  y.innerHTML = out;
+  g.innerHTML = gl;
+})();
+
+CHART.forEach(function(c, i){
+  var col = document.createElement("div");
+  col.className = "col" + (i === TODAY_IDX ? " is-today" : "");
+  col.dataset.i = i;
+  var html = "";
+  for(var s = STAGES.length - 1; s >= 0; s--){
+    var h = c.v[s] / scaleTop * 100;
+    if(h <= 0) continue;
+    html += '<div class="seg" style="height:'+h.toFixed(2)+'%;background:'+STAGES[s].c+'"></div>';
+  }
+  col.innerHTML = html;
+  bars.appendChild(col);
+
+  var lab = document.createElement("span");
+  lab.textContent = c.d;
+  if(i === TODAY_IDX) lab.className = "is-today";
+  xaxis.appendChild(lab);
+});
+
+$("#grand").textContent = CHART.reduce(function(a,c){return a+c.total},0);
+$("#todayTotal").textContent = CHART[TODAY_IDX].total;
+
+$("#legend").innerHTML = STAGES.map(function(s){
+  return '<div><i style="background:'+s.c+'"></i>'+esc(s.k)+"</div>";
+}).join("");
+
+bars.addEventListener("mousemove", function(e){
+  var col = e.target.closest(".col");
+  if(!col){ hideTip(); return; }
+  var c = CHART[+col.dataset.i];
+  tip.innerHTML =
+    '<div class="tip-day">'+esc(c.d)+".26"+(+col.dataset.i === TODAY_IDX ? " · сьогодні" : "")+"</div>" +
+    STAGES.map(function(s, i){
+      return '<div class="tip-row"><i style="background:'+s.c+'"></i>'+esc(s.k)+"<b>"+c.v[i]+"</b></div>";
+    }).reverse().join("") +
+    '<div class="tip-sum">усього одиниць<b>'+c.total+"</b></div>";
+  tip.classList.add("on");
+  tip.setAttribute("aria-hidden","false");
+  var pr = bars.parentElement.getBoundingClientRect();
+  var cr = col.getBoundingClientRect();
+  var x = cr.left - pr.left + cr.width/2 - tip.offsetWidth/2;
+  x = Math.max(0, Math.min(x, pr.width - tip.offsetWidth));
+  tip.style.left = x + "px";
+  tip.style.top = Math.max(-6, cr.top - pr.top - tip.offsetHeight - 8) + "px";
+});
+bars.addEventListener("mouseleave", hideTip);
+function hideTip(){ tip.classList.remove("on"); tip.setAttribute("aria-hidden","true"); }
+
+/* ── таблиця ──────────────────────────────────────────────── */
+var tbody = $("#tbody");
+var state = { bucket:"all", filters:{}, sort:null, dir:1, q:"" };
+ROWS.forEach(function(r,i){ r.id = i; r.sel = false; });
+
+function icoCheck(){
+  return '<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.8 8.7 9.6 3.6"/></svg>';
+}
+function icoX(){
+  return '<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3.4 3.4 8.6 8.6M8.6 3.4 3.4 8.6"/></svg>';
+}
+function icoBox(){
+  return '<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 6.3 4.8 8.7 9.6 3.6"/></svg>';
+}
+
+function visible(){
+  var out = ROWS.filter(function(r){
+    if(state.bucket !== "all" && r.bucket !== state.bucket) return false;
+    if(state.filters.late && !r.late) return false;
+    if(state.filters.mail && r.src !== "mail") return false;
+    if(state.filters.nosum && r.sum) return false;
+    if(state.filters.rework && r.st !== "переробка") return false;
+    if(state.q){
+      var hay = (r.ord+" "+r.tech+" "+r.path+" "+r.mat+" "+r.kind+" "+r.cmt).toLowerCase();
+      if(hay.indexOf(state.q) === -1) return false;
+    }
+    return true;
+  });
+  if(state.sort){
+    var k = state.sort, d = state.dir;
+    out.sort(function(a,b){
+      var av, bv;
+      if(k === "st"){ av = ORDER.indexOf(a.st); bv = ORDER.indexOf(b.st); }
+      else if(k === "due"){ av = a.ts; bv = b.ts; }
+      else if(k === "qty"){ av = a.qty; bv = b.qty; }
+      else { av = String(a[k === "ord" ? "ord" : k]).toLowerCase(); bv = String(b[k === "ord" ? "ord" : k]).toLowerCase(); }
+      if(av < bv) return -1*d;
+      if(av > bv) return 1*d;
+      return 0;
+    });
+  }
+  return out;
+}
+
+function render(){
+  var rows = visible();
+  if(!rows.length){
+    tbody.innerHTML = '<tr><td colspan="12"><div class="empty"><b>За цими фільтрами робіт немає</b>Зніміть чіп-фільтр або поверніться на вкладку «Активні», щоб побачити всю чергу.</div></td></tr>';
+  } else {
+    tbody.innerHTML = rows.map(function(r){
+      var due = r.due.split(" ");
+      var final = (r.st === "видано");
+      return '<tr data-id="'+r.id+'" class="'+(r.late?"is-late ":"")+(r.sel?"is-sel":"")+'" tabindex="0">' +
+        '<td><button class="cbx" type="button" role="checkbox" aria-checked="'+(r.sel?"true":"false")+'" aria-label="Обрати наряд '+r.ord+'" data-act="sel">'+icoBox()+'</button></td>' +
+        '<td class="mono ord"><span class="src '+(r.src==="mail"?"mail":"")+'" title="'+(r.src==="mail"?"з пошти":"лабораторія")+'"></span>'+r.ord+'</td>' +
+        '<td class="mono due'+(r.late?" late":"")+'"><span class="day">'+due[0]+'</span> '+due[1]+'</td>' +
+        '<td class="col-cmt"><div class="cmt'+(/!!|швидку|Чекаємо/.test(r.cmt)?" loud":"")+'" title="'+esc(r.cmt)+'">'+(r.cmt?esc(r.cmt):"—")+'</div></td>' +
+        '<td class="mat">'+esc(r.mat)+'</td>' +
+        '<td class="kind col-kind">'+esc(r.kind)+'</td>' +
+        '<td class="qty">'+r.qty+'</td>' +
+        '<td class="path"><button type="button" data-act="copy" title="Скопіювати шлях-ID для Sum3D">'+r.path+'</button></td>' +
+        '<td class="mono sum col-sum'+(r.sum?"":" empty")+'">'+(r.sum||"—")+'</td>' +
+        '<td class="tech col-tech'+(r.tech?"":" none")+'">'+(r.tech?esc(r.tech):"не призначено")+'</td>' +
+        '<td><span class="status" data-k="'+esc(r.st)+'"><i></i>'+esc(r.st)+'</span></td>' +
+        '<td><span class="acts">' +
+          '<button class="act no" type="button" data-act="problem" title="Позначити проблему" aria-label="Позначити проблему по наряду '+r.ord+'">'+icoX()+'</button>' +
+          '<button class="act ok" type="button" data-act="advance" title="Перевести на наступну стадію" aria-label="Наступна стадія по наряду '+r.ord+'"'+(final?" disabled":"")+'>'+icoCheck()+'</button>' +
+        '</span></td>' +
+      '</tr>';
+    }).join("");
+  }
+  $("#shown").textContent = rows.length;
+  $("#selCount").textContent = ROWS.filter(function(r){return r.sel}).length;
+  var allSel = rows.length > 0 && rows.every(function(r){return r.sel});
+  $("#allBox").setAttribute("aria-checked", allSel ? "true" : "false");
+}
+
+/* дії в рядках — авторський момент руху живе тут */
+tbody.addEventListener("click", function(e){
+  var btn = e.target.closest("[data-act]");
+  var tr = e.target.closest("tr[data-id]");
+  if(!tr) return;
+  var r = ROWS[+tr.dataset.id];
+
+  if(!btn){
+    ROWS.forEach(function(x){ if(x !== r) x.selRow = false; });
+    var was = tr.classList.contains("is-sel");
+    Array.prototype.forEach.call(tbody.querySelectorAll("tr"), function(t){ t.classList.remove("is-sel"); });
+    if(!was) tr.classList.add("is-sel");
+    return;
+  }
+
+  if(btn.dataset.act === "sel"){
+    r.sel = !r.sel;
+    render();
+    return;
+  }
+  if(btn.dataset.act === "copy"){
+    var t = btn.textContent;
+    if(navigator.clipboard) navigator.clipboard.writeText(t).catch(function(){});
+    btn.style.background = "#2b3450";
+    btn.style.color = "#cfc7ff";
+    setTimeout(function(){ btn.style.background = ""; btn.style.color = ""; }, 480);
+    return;
+  }
+  if(btn.dataset.act === "advance"){
+    var i = FLOW.indexOf(r.st);
+    r.st = (i === -1 || i >= FLOW.length - 1) ? "прийнято" : FLOW[i+1];
+    if(r.st !== "нове" && r.st !== "прийнято" && !r.sum) r.sum = String(10453 + r.id);
+    if(!r.tech) r.tech = "Роман Кузьмів";
+    if(r.st === "відфрезеровано" || r.st === "видано") r.late = false;
+    confirmRow(r, tr);
+    return;
+  }
+  if(btn.dataset.act === "problem"){
+    r.st = "проблема";
+    confirmRow(r, tr);
+  }
+});
+
+function confirmRow(r, tr){
+  var id = r.id;
+  render();
+  var fresh = tbody.querySelector('tr[data-id="'+id+'"]');
+  if(fresh){
+    fresh.classList.add("advanced");
+    setTimeout(function(){ fresh.classList.remove("advanced"); }, 800);
+  }
+}
+
+/* сортування колонок */
+Array.prototype.forEach.call(document.querySelectorAll("th[data-sort]"), function(th){
+  function go(){
+    var k = th.dataset.sort;
+    if(state.sort === k) state.dir = -state.dir;
+    else { state.sort = k; state.dir = 1; }
+    Array.prototype.forEach.call(document.querySelectorAll("th[data-sort]"), function(o){ o.removeAttribute("aria-sort"); o.querySelector(".caret").textContent = "↕"; });
+    th.setAttribute("aria-sort", state.dir === 1 ? "ascending" : "descending");
+    th.querySelector(".caret").textContent = state.dir === 1 ? "↑" : "↓";
+    render();
+  }
+  th.addEventListener("click", go);
+  th.addEventListener("keydown", function(e){ if(e.key === "Enter" || e.key === " "){ e.preventDefault(); go(); } });
+});
+
+/* таби періоду */
+Array.prototype.forEach.call(document.querySelectorAll(".tabs button"), function(b){
+  b.addEventListener("click", function(){
+    Array.prototype.forEach.call(document.querySelectorAll(".tabs button"), function(o){ o.setAttribute("aria-selected","false"); });
+    b.setAttribute("aria-selected","true");
+    state.bucket = b.dataset.bucket;
+    render();
+  });
+});
+
+/* чіп-фільтри зі знімним хрестиком */
+Array.prototype.forEach.call(document.querySelectorAll(".chip"), function(c){
+  c.addEventListener("click", function(){
+    var on = c.getAttribute("aria-pressed") === "true";
+    c.setAttribute("aria-pressed", on ? "false" : "true");
+    state.filters[c.dataset.filter] = !on;
+    render();
+  });
+});
+
+/* пошук */
+$("#q").addEventListener("input", function(e){
+  state.q = e.target.value.trim().toLowerCase();
+  render();
+});
+
+/* обрати всі */
+$("#allBox").addEventListener("click", function(){
+  var rows = visible();
+  var allSel = rows.length > 0 && rows.every(function(r){return r.sel});
+  rows.forEach(function(r){ r.sel = !allSel; });
+  render();
+});
+
+render();
+})();
+</script>
+</body>
+</html>

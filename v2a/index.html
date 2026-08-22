@@ -1,0 +1,1565 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order Desk — Черга робіт (щільна)</title>
+<link rel="icon" type="image/png" href="../screens/higg/app_icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Barlow:wght@400;500;600;700&family=Azeret+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1117;
+  --bg-rail:#0a0e14;
+  --card:#161d27;
+  --card-2:#1b2431;
+  --card-3:#202b3a;
+  --line:#222c3a;
+  --line-2:#2c3849;
+  --ink:#e8eff7;
+  --ink-2:#8fa3bb;
+  --ink-3:#7789a0;
+  --accent:#14b8a6;
+  --accent-b:#2dd4bf;
+  --accent-c:#5eead4;
+  --accent-d:#0f766e;
+  --alarm:#f87171;
+  --warn:#f0a35e;
+  --r-card:10px;
+  --r-ctl:9px;
+  --glow:inset 0 1px 0 rgba(255,255,255,.045), inset 0 0 44px -26px rgba(45,212,191,.75), 0 18px 38px -30px rgba(0,0,0,.95);
+  --sh-pop:0 14px 34px -18px rgba(0,0,0,.86), 0 2px 6px -2px rgba(0,0,0,.6);
+
+  /* ---- tweak-panel-controlled tokens ---- */
+  --font-head:'Golos Text',sans-serif;
+  --font-body:'Golos Text',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+  --size-h1:22px;
+  --ls-head:-.015em;
+  --size-body:14px;
+  --lh-body:1.45;
+  --ui-speed:.14s;
+  --sweep-duration:980ms;
+  --beacon-duration:2.6s;
+  --panel-duration:.22s;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--font-body);font-size:var(--size-body);line-height:var(--lh-body);
+  -webkit-font-smoothing:antialiased;
+  display:flex;overflow:hidden;
+}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px;border-radius:4px}
+.mono{font-family:var(--font-mono);font-variant-ligatures:none}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ---------- rail (inherited from v2, unchanged) ---------- */
+.rail{
+  width:228px;flex:0 0 228px;background:var(--bg-rail);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;padding:16px 12px 12px;gap:18px;overflow-y:auto;
+}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 6px 0}
+.brand .mark{
+  width:30px;height:30px;flex:0 0 30px;border-radius:8px;
+  background:linear-gradient(160deg,rgba(45,212,191,.22),rgba(20,184,166,.06));
+  border:1px solid rgba(45,212,191,.34);display:grid;place-items:center;
+  box-shadow:inset 0 0 18px -8px rgba(45,212,191,.9);
+}
+.brand .mark svg{width:16px;height:16px;stroke:var(--accent-b)}
+.brand .mark img{width:22px;height:22px;object-fit:contain;border-radius:5px}
+.brand b{font-family:var(--font-head);font-weight:600;font-size:15.5px;letter-spacing:.01em}
+.brand span{display:block;font-size:10.5px;letter-spacing:.16em;color:var(--ink-3);text-transform:uppercase;margin-top:-2px}
+.nav-group{display:flex;flex-direction:column;gap:2px}
+.nav-title{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3);padding:0 10px 6px;font-weight:600}
+.nav-item{
+  display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:var(--r-ctl);
+  color:var(--ink-2);font-weight:500;font-size:13.5px;text-align:left;
+  transition:background var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.nav-item svg{width:17px;height:17px;flex:0 0 17px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.9}
+.nav-item:hover{background:#141b25;color:var(--ink)}
+.nav-item[aria-current="page"]{
+  background:linear-gradient(90deg,rgba(20,184,166,.16),rgba(20,184,166,.03));
+  color:var(--accent-c);box-shadow:inset 1px 0 0 var(--accent);
+}
+.nav-item .count{
+  margin-left:auto;font-family:var(--font-mono);font-size:11px;font-weight:500;
+  padding:1px 6px;border-radius:5px;background:rgba(45,212,191,.14);color:var(--accent-c);
+  border:1px solid rgba(45,212,191,.26);
+}
+.nav-item .count.warn{background:rgba(240,163,94,.13);color:var(--warn);border-color:rgba(240,163,94,.28)}
+.rail-foot{margin-top:auto;border-top:1px solid var(--line);padding:12px 10px 2px;display:flex;gap:10px;align-items:center}
+.avatar{width:28px;height:28px;border-radius:7px;background:var(--card-3);border:1px solid var(--line-2);display:grid;place-items:center;font-size:12px;font-weight:600;color:var(--accent-c)}
+.rail-foot .who{font-size:12.5px;font-weight:500;line-height:1.25}
+.rail-foot .who span{display:block;font-size:11px;color:var(--ink-3)}
+
+/* ---------- main shell ---------- */
+.main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;padding:16px 20px 16px}
+
+.topbar{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.topbar-title h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 4px}
+.topbar-live{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:12px;color:var(--ink-2)}
+.topbar-live b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:11.5px}
+.topbar-live .sep{width:1px;height:10px;background:var(--line-2)}
+.live{display:inline-flex;align-items:center;gap:7px}
+.live .beacon{width:6px;height:6px;border-radius:50%;background:var(--accent-b);box-shadow:0 0 0 0 rgba(45,212,191,.55);animation:beacon var(--beacon-duration) ease-out infinite}
+@keyframes beacon{0%{box-shadow:0 0 0 0 rgba(45,212,191,.5)}70%{box-shadow:0 0 0 7px rgba(45,212,191,0)}100%{box-shadow:0 0 0 0 rgba(45,212,191,0)}}
+.head-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+.btn{
+  display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:var(--r-ctl);
+  border:1px solid var(--line-2);background:var(--card);color:var(--ink);font-size:13px;font-weight:500;
+  transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.btn:hover{background:var(--card-2);border-color:#3a4a5f}
+.btn.primary{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.btn.primary:hover{background:rgba(20,184,166,.24);border-color:var(--accent)}
+.btn.sm{height:30px;padding:0 11px;font-size:12.5px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---------- statusline: replaces the metric-card row ---------- */
+.statusline{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:9px 14px;margin-bottom:10px;border:1px solid var(--line);border-radius:var(--r-card);
+  background:var(--card);box-shadow:var(--glow);
+}
+.sl-counters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex:1;min-width:0}
+.sl-item{
+  display:inline-flex;align-items:baseline;gap:5px;font-size:12.5px;color:var(--ink-2);
+  padding:3px 8px 3px 6px;border-radius:999px;border:1px solid transparent;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.sl-item:hover{background:var(--card-2);color:var(--ink)}
+.sl-item b{font-family:var(--font-mono);font-weight:600;font-size:14px;color:var(--ink);letter-spacing:-.01em}
+.sl-item.is-alarm b{color:var(--alarm)}
+.sl-item.is-warn b{color:var(--warn)}
+.sl-item[aria-pressed="true"]{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.4);color:var(--accent-c)}
+.sl-item.is-alarm[aria-pressed="true"]{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.42);color:var(--alarm)}
+.sl-item[aria-pressed="true"] b{color:inherit}
+.sl-sep{width:1px;height:14px;background:var(--line-2);flex:0 0 auto}
+.sl-sync{
+  flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 12px;border-radius:999px;
+  border:1px solid rgba(248,113,113,.35);background:rgba(248,113,113,.1);color:var(--alarm);font-size:12px;font-weight:500;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease;
+}
+.sl-sync:hover{background:rgba(248,113,113,.18)}
+.sl-sync.ok{border-color:rgba(45,212,191,.35);background:rgba(20,184,166,.1);color:var(--accent-c)}
+.sl-sync .beacon{width:6px;height:6px;border-radius:50%;background:currentColor}
+.sl-sync b{font-family:var(--font-mono);font-weight:600}
+
+/* ---------- filter pills ---------- */
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.seg{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+.seg button{
+  height:26px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:500;color:var(--ink-2);
+  display:inline-flex;align-items:center;gap:6px;transition:background var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.seg button:hover{color:var(--ink);background:#1d2734}
+.seg button[aria-pressed="true"]{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
+.seg button .n{font-family:var(--font-mono);font-size:11px;opacity:.75}
+.pill{
+  height:32px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);
+  color:var(--ink-2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:7px;
+  transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease;
+}
+.pill:hover{color:var(--ink);border-color:var(--line-2)}
+.pill[aria-pressed="true"]{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.4);color:var(--accent-c)}
+.pill.alarm[aria-pressed="true"]{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.42);color:var(--alarm)}
+.pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.85}
+.filters .label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-right:-2px}
+.chip{
+  height:28px;padding:0 6px 0 11px;border-radius:999px;border:1px dashed var(--line-2);background:transparent;
+  color:var(--ink-2);font-size:12px;display:inline-flex;align-items:center;gap:6px;
+}
+.chip button{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:var(--ink-3)}
+.chip button:hover{background:rgba(248,113,113,.16);color:var(--alarm)}
+.chip svg{width:10px;height:10px;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+
+/* ---------- work layout: queue dominant + narrow collapsible side panel ---------- */
+.worklayout{flex:1;min-height:0;display:flex;gap:12px;align-items:stretch}
+
+.queue-panel{
+  flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);
+}
+.card-head{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.card-head h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0;letter-spacing:-.005em}
+.card-head .meta{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
+.card-head .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+.search{
+  display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:var(--r-ctl);
+  background:#111823;border:1px solid var(--line);min-width:200px;
+}
+.search svg{width:14px;height:14px;stroke:var(--ink-3);fill:none;stroke-width:1.7;stroke-linecap:round}
+.search input{background:none;border:0;outline:none;color:var(--ink);font:400 13px var(--font-body);width:100%}
+.search input::placeholder{color:var(--ink-3)}
+.search:focus-within{border-color:rgba(45,212,191,.45);box-shadow:inset 0 0 18px -12px rgba(45,212,191,.9)}
+
+.tablewrap{overflow:auto;flex:1;min-height:0;scrollbar-width:thin}
+table{border-collapse:separate;border-spacing:0;width:100%;min-width:1120px}
+thead th{
+  position:sticky;top:0;z-index:2;background:#131a24;border-bottom:1px solid var(--line-2);
+  text-align:left;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;padding:9px 10px;white-space:nowrap;
+}
+thead th.sortable{cursor:pointer;user-select:none}
+thead th.sortable:hover{color:var(--ink-2)}
+thead th .sh{display:inline-flex;align-items:center;gap:5px}
+thead th svg{width:10px;height:10px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:0}
+thead th.sortable:hover svg{opacity:.45}
+thead th[aria-sort]{color:var(--accent-c)}
+thead th[aria-sort] svg{opacity:1}
+thead th[aria-sort="descending"] svg{transform:rotate(180deg)}
+tbody td{padding:8px 10px;border-bottom:1px solid #1c2532;font-size:13px;vertical-align:middle;white-space:nowrap}
+tbody tr{transition:background var(--ui-speed) ease}
+tbody tr:hover{background:var(--card-2)}
+tbody tr.late{background:rgba(248,113,113,.055)}
+tbody tr.late:hover{background:rgba(248,113,113,.1)}
+tbody tr.is-selected{background:rgba(20,184,166,.1)}
+td.dotcell{width:26px;padding-left:14px;padding-right:0}
+.sdot{width:8px;height:8px;border-radius:50%;display:block}
+tr.late .sdot{box-shadow:0 0 0 3px rgba(248,113,113,.22)}
+.ordbtn{font-family:var(--font-mono);font-size:12.5px;font-weight:500;color:var(--ink);letter-spacing:-.01em}
+.ordbtn:hover{color:var(--accent-c)}
+.src{
+  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;
+  border:1px solid rgba(45,212,191,.32);color:var(--accent-c);background:rgba(20,184,166,.1);margin-left:7px;
+}
+.cam{max-width:220px;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2);font-size:12.5px}
+.cam.shout{color:var(--warn)}
+.matchip{
+  display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:6px;
+  background:#1d2734;border:1px solid var(--line-2);font-size:12px;color:var(--ink);
+}
+.qty{font-family:var(--font-mono);font-size:12.5px;text-align:center;color:var(--ink)}
+th.qty-h{text-align:center}
+th.qty-h .sh{justify-content:center}
+.pathbtn{
+  font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);padding:3px 7px;border-radius:6px;
+  border:1px solid transparent;transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease;
+}
+.pathbtn:hover{background:rgba(20,184,166,.12);border-color:rgba(45,212,191,.3);color:var(--accent-c)}
+.sum{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2)}
+.sum.none{color:#5a6b80}
+.tech{font-size:12.5px;color:var(--ink-2)}
+.kindbtn{display:block;width:100%;text-align:left;color:var(--ink-2);font-size:12.5px;padding:2px 0;transition:color var(--ui-speed) ease}
+.kindbtn:hover,.kindbtn:focus-visible{color:var(--accent-c)}
+.status{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2)}
+.status b{font-weight:500;color:var(--ink)}
+.badge{font-size:11px;padding:1px 7px;border-radius:5px;font-weight:500}
+.badge.problem{background:rgba(248,113,113,.14);color:#f87878;border:1px solid rgba(248,113,113,.3)}
+.badge.redo{background:rgba(240,163,94,.13);color:var(--warn);border:1px solid rgba(240,163,94,.3)}
+
+.empty{padding:46px 22px;text-align:center;display:none}
+.empty svg{width:26px;height:26px;stroke:var(--ink-3);fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;margin-bottom:10px}
+.empty p{margin:0 0 4px;font-size:14.5px;font-weight:500}
+.empty span{display:block;font-size:12.5px;color:var(--ink-3);margin-bottom:14px}
+.is-empty .empty{display:block}
+.is-empty .tablewrap{display:none}
+
+.qfoot{display:flex;align-items:center;gap:10px;padding:9px 15px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3);flex-wrap:wrap}
+.qfoot .mono{color:var(--ink-2)}
+.toast{
+  margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--accent-c);
+  background:rgba(20,184,166,.13);border:1px solid rgba(45,212,191,.3);border-radius:5px;padding:2px 8px;
+  opacity:0;transition:opacity var(--ui-speed) ease;
+}
+.toast.on{opacity:1}
+
+/* sweep — the one authored moment, shared world-wide */
+.sweep{position:absolute;inset:0;pointer-events:none;overflow:hidden;border-radius:inherit;opacity:0}
+.sweep i{
+  position:absolute;left:0;right:0;top:0;height:150px;display:block;
+  background:linear-gradient(180deg,rgba(45,212,191,0) 0%,rgba(45,212,191,.13) 45%,rgba(94,234,212,.3) 62%,rgba(45,212,191,0) 100%);
+  transform:translateY(-160px);
+}
+.sweeping .sweep{opacity:1}
+.sweeping .sweep i{animation:sweep var(--sweep-duration) cubic-bezier(.16,.84,.32,1) forwards}
+@keyframes sweep{from{transform:translateY(-160px)}to{transform:translateY(105%)}}
+
+/* ---------- side panel: compact, collapsible ---------- */
+.side-panel{
+  flex:0 0 296px;width:296px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;
+  display:flex;flex-direction:column;gap:10px;
+}
+.side-sec{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);
+  overflow:hidden;flex:0 0 auto;
+}
+.side-head{
+  width:100%;display:flex;align-items:center;gap:8px;padding:11px 12px;text-align:left;
+  font-family:var(--font-head);font-size:13px;font-weight:600;color:var(--ink);
+}
+.side-head:hover{background:var(--card-2)}
+.side-head .side-count{
+  font-family:var(--font-mono);font-size:11px;font-weight:500;padding:1px 6px;border-radius:5px;
+  background:rgba(45,212,191,.14);color:var(--accent-c);border:1px solid rgba(45,212,191,.26);
+}
+.side-head .side-count.err{background:rgba(248,113,113,.14);color:var(--alarm);border-color:rgba(248,113,113,.3)}
+.side-head .side-count.warn{background:rgba(240,163,94,.13);color:var(--warn);border-color:rgba(240,163,94,.28)}
+.side-head .chev{margin-left:auto;width:14px;height:14px;flex:0 0 14px;stroke:var(--ink-3);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .16s ease}
+.side-sec[data-open="true"] .chev{transform:rotate(180deg)}
+.side-body{padding:0 13px 13px;border-top:1px solid var(--line)}
+.side-sec[data-open="false"] .side-body{display:none}
+.side-sec[data-open="true"] .side-body{padding-top:11px}
+
+.state{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;margin-bottom:11px}
+.state svg{width:17px;height:17px;flex:0 0 17px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.state strong{display:block;font-size:12.5px;font-weight:600}
+.state p{margin:2px 0 0;font-size:11.5px;line-height:1.4}
+.state.err{background:rgba(248,113,113,.09);border:1px solid rgba(248,113,113,.28);color:var(--alarm)}
+.state.err p{color:#f0b4b4}
+.state.ok{background:rgba(20,184,166,.1);border:1px solid rgba(45,212,191,.3);color:var(--accent-c)}
+.state.ok p{color:#9fd8d0}
+.kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:6px 0;font-size:12px;color:var(--ink-2)}
+.kv+.kv{border-top:1px solid #1b2431}
+.kv b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:11.5px}
+
+.maillist{display:flex;flex-direction:column;gap:2px}
+.mailrow{
+  display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 9px;border-radius:9px;text-align:left;width:100%;
+  transition:background var(--ui-speed) ease;
+}
+.mailrow:hover{background:var(--card-2)}
+.mailrow .from{font-size:12.5px;font-weight:500}
+.mailrow .subj{font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mailrow .t{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3)}
+.mailrow .att{font-family:var(--font-mono);font-size:10.5px;color:var(--accent-c);justify-self:end}
+
+.client{padding:9px 0}
+.client+.client{border-top:1px solid #1b2431}
+.client .top{display:flex;align-items:baseline;gap:10px;font-size:12.5px;font-weight:500}
+.client .top span{margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--ink-2)}
+.track{height:5px;border-radius:3px;background:#111823;margin-top:8px;overflow:hidden;border:1px solid #1c2532}
+.track i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-d),var(--accent-b))}
+.client .note{font-size:11px;color:var(--ink-3);margin-top:6px;font-family:var(--font-mono)}
+
+.stage-row{
+  display:flex;align-items:center;gap:8px;padding:5px 2px;border-radius:6px;width:100%;text-align:left;
+  transition:background var(--ui-speed) ease;
+}
+.stage-row:hover{background:var(--card-2)}
+.stage-row[aria-pressed="true"]{background:rgba(20,184,166,.14)}
+.stage-row .lb{flex:0 0 100px;font-size:11.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stage-row[aria-pressed="true"] .lb{color:var(--accent-c)}
+.stage-row .bar{flex:1;height:6px;border-radius:3px;background:#111823;border:1px solid #1c2532;overflow:hidden}
+.stage-row .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-d),var(--accent-b))}
+.stage-row .n{flex:0 0 22px;text-align:right;font-family:var(--font-mono);font-size:11.5px;color:var(--ink)}
+.stage-foot{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid #1b2431}
+.stage-foot div{font-size:11px;color:var(--ink-3)}
+.stage-foot b{font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--ink);display:block;letter-spacing:-.02em}
+.stage-foot .bad b{color:var(--alarm)}
+.stage-foot .warn b{color:var(--warn)}
+
+/* ---------- job passport: on-demand slide-over, not a persistent pane ---------- */
+.detail-pane{
+  position:fixed;top:0;right:0;bottom:0;width:420px;max-width:92vw;
+  background:var(--card);border-left:1px solid var(--line);box-shadow:var(--sh-pop);
+  transform:translateX(105%);transition:transform var(--panel-duration) cubic-bezier(.16,.84,.32,1);
+  z-index:80;overflow-y:auto;scrollbar-width:thin;
+}
+.detail-pane.open{transform:translateX(0)}
+.detail-head{display:flex;align-items:flex-start;gap:10px;padding:15px 16px 13px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);z-index:1}
+.detail-head .ord{font-family:var(--font-mono);font-size:19px;font-weight:600;letter-spacing:-.01em}
+.detail-head .src{
+  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;
+  border:1px solid rgba(45,212,191,.32);color:var(--accent-c);background:rgba(20,184,166,.1);
+}
+.detail-head .client{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.detail-close{margin-left:auto;width:28px;height:28px;flex:0 0 28px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-2);border:1px solid var(--line-2)}
+.detail-close:hover{color:var(--ink);background:var(--card-2)}
+.detail-close svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+.detail-body{padding:14px 16px 18px}
+.dsec{margin-bottom:16px}
+.dsec:last-child{margin-bottom:0}
+.dsec .dlabel{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:8px}
+.camtext{font-size:13px;color:var(--ink);background:#111823;border:1px solid var(--line);border-radius:8px;padding:10px 11px;line-height:1.45}
+.camtext.shout{color:var(--warn);border-color:rgba(240,163,94,.35)}
+.camtext.empty-cam{color:var(--ink-3);font-style:normal}
+.pathrow{display:flex;align-items:center;gap:8px;background:#111823;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.pathrow .p{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.iconbtn{width:28px;height:28px;flex:0 0 28px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-2);border:1px solid var(--line-2);transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.iconbtn:hover{background:rgba(20,184,166,.12);border-color:rgba(45,212,191,.35);color:var(--accent-c)}
+.iconbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.sumrow{display:flex;gap:8px}
+.suminput{
+  flex:1;min-width:0;height:34px;padding:0 10px;border-radius:var(--r-ctl);background:#111823;border:1px solid var(--line);
+  color:var(--ink);font-family:var(--font-mono);font-size:13px;outline:none;
+}
+.suminput::placeholder{color:var(--ink-3);font-family:var(--font-body)}
+.suminput:focus{border-color:rgba(45,212,191,.45);box-shadow:inset 0 0 18px -12px rgba(45,212,191,.9)}
+.status-opts{display:flex;flex-wrap:wrap;gap:6px}
+.sbtn{
+  height:28px;padding:0 11px;border-radius:999px;border:1px solid var(--line);background:#111823;
+  color:var(--ink-2);font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:6px;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.sbtn:hover{color:var(--ink);border-color:var(--line-2)}
+.sbtn[aria-pressed="true"]{background:rgba(20,184,166,.16);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.sbtn.alarm[aria-pressed="true"]{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.42);color:var(--alarm)}
+.sbtn.warn[aria-pressed="true"]{background:rgba(240,163,94,.13);border-color:rgba(240,163,94,.4);color:var(--warn)}
+.sbtn .sdot{width:6px;height:6px}
+.timeline{display:flex;flex-direction:column}
+.tl-item{display:flex;gap:10px;padding:7px 0}
+.tl-item+.tl-item{border-top:1px solid #1b2431}
+.tl-item .t{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);flex:0 0 40px;padding-top:1px}
+.tl-item .body{flex:1;min-width:0}
+.tl-item .label{font-size:12.5px;color:var(--ink);font-weight:500}
+.tl-item .who{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+.detail-backdrop{position:fixed;inset:0;background:rgba(5,8,12,.6);opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:70}
+.detail-backdrop.open{opacity:1;pointer-events:auto}
+
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media (max-width:1200px){
+  .side-panel{flex:0 0 260px;width:260px}
+}
+@media (max-width:1080px){
+  .rail{width:60px;flex:0 0 60px;padding:16px 8px 10px;align-items:stretch}
+  .brand .txt,.nav-title,.nav-item span.lb,.rail-foot .who{display:none}
+  .nav-item{justify-content:center;padding:9px 0;position:relative}
+  .nav-item .count{position:absolute;top:2px;right:4px;margin:0;font-size:9.5px;padding:0 4px}
+  .rail-foot{justify-content:center}
+}
+@media (max-width:940px){
+  .worklayout{flex-direction:column;overflow-y:auto}
+  .side-panel{flex:0 0 auto;width:100%;overflow:visible;flex-direction:row;flex-wrap:wrap}
+  .side-sec{flex:1 1 260px}
+  .queue-panel{min-height:60vh}
+  .main{overflow-y:auto}
+}
+@media (max-width:560px){
+  .topbar-title h1{font-size:20px}
+  .head-actions{margin-left:0}
+  .side-panel{flex-direction:column}
+  .statusline{flex-direction:column;align-items:stretch}
+  .sl-sync{align-self:flex-start}
+  .detail-pane{width:100%;max-width:100%}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+  .sweeping .sweep{opacity:0}
+}
+</style>
+</head>
+<body>
+<!--
+THESIS: черга — 90% дня оператора, тож екран віддає їй майже всю площу; метрики стиснуті в рядок лічильників, довідкові панелі розгортаються за потреби.
+OWN-WORLD: палітра v2 без змін — синьо-чорне тло, бірюзовий сигнал, тривога/попередження; Barlow + Azeret Mono; тонка рамка, --glow лише на картках, крапки-статуси, sweep-анімація синхронізації.
+STORY: оператор бачить «прострочено» в лічильнику, звужує чергу кліком; клік по наряду чи виду роботи виїжджає паспорт справа (CAM-коментар, Sum3D ID, статус, історія) — на вимогу, черга лишається на весь екран.
+FIRST VIEWPORT: рейл зліва; заголовок і рядок лічильників; пігулки-фільтри; таблиця черги на всю висоту, вузька колонка панелей справа.
+FORM: варіант A — щільна черга; естетика v2 незмінна, додано виїзний паспорт роботи.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+
+<aside class="rail">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">
+      <img src="../screens/higg/app_icon.png" alt="">
+    </span>
+    <span class="txt"><b>Order Desk</b><span>фрезерний центр</span></span>
+  </div>
+
+  <nav class="nav-group" aria-label="Основна навігація">
+    <div class="nav-title">Робота</div>
+    <button class="nav-item" aria-current="page">
+      <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"></path><circle cx="3.5" cy="6" r="1.2"></circle><circle cx="3.5" cy="12" r="1.2"></circle><circle cx="3.5" cy="18" r="1.2"></circle></svg>
+      <span class="lb">Черга</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3.5 7 8.5 6 8.5-6"></path></svg>
+      <span class="lb">Нові з пошти</span><span class="count">6</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5z"></path><path d="M3 8.5 12 13l9-4.5M12 13v7"></path></svg>
+      <span class="lb">Ранкова видача</span><span class="count warn">2</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"></circle><path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5"></path><path d="M16 6.2A3.2 3.2 0 0 1 16 14"></path><path d="M18 19c-.3-1.7-1-3-2-3.9"></path></svg>
+      <span class="lb">Клієнти</span>
+    </button>
+  </nav>
+
+  <nav class="nav-group" aria-label="Аналітика та система">
+    <div class="nav-title">Система</div>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg>
+      <span class="lb">Пошук</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V5M16 20v-7M22 20H2"></path></svg>
+      <span class="lb">Статистика</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2.2"></circle><circle cx="10" cy="17" r="2.2"></circle></svg>
+      <span class="lb">Налаштування</span>
+    </button>
+  </nav>
+
+  <div class="rail-foot">
+    <span class="avatar">ОГ</span>
+    <span class="who">Оксана Гриценко<span>CAM-оператор</span></span>
+  </div>
+</aside>
+
+<main class="main">
+
+  <div class="topbar">
+    <div class="topbar-title">
+      <h1>Черга робіт</h1>
+      <div class="topbar-live">
+        <span class="live"><span class="beacon" aria-hidden="true"></span>10 верстатів · <b>5</b> у роботі</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>вкладка <b>11.08.26</b></span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>пошта перевірена <b>1 хв тому</b></span>
+      </div>
+    </div>
+    <div class="head-actions">
+      <button class="btn sm" type="button">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>Додати роботу
+      </button>
+      <button class="btn sm primary" type="button" id="syncTop">
+        <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"></path><path d="M4 4v4h4M20 20v-4h-4"></path></svg>Синхронізувати
+      </button>
+    </div>
+  </div>
+
+  <div class="statusline" id="statusline">
+    <div class="sl-counters" id="slCounters">
+      <button class="sl-item is-alarm" type="button" data-metric="late" aria-pressed="false"><b class="tnum">10</b> прострочено <span class="mono" style="color:var(--ink-3);font-size:11px">· 30 од. з 04.08</span></button>
+      <span class="sl-sep" aria-hidden="true"></span>
+      <button class="sl-item" type="button" data-metric="today" aria-pressed="false"><b class="tnum">34</b> здати сьогодні</button>
+      <span class="sl-sep" aria-hidden="true"></span>
+      <button class="sl-item" type="button" data-metric="mail" aria-pressed="false"><b class="tnum">6</b> нових листів</button>
+      <span class="sl-sep" aria-hidden="true"></span>
+      <button class="sl-item is-warn" type="button" data-metric="handout" aria-pressed="false"><b class="tnum">2</b> клієнти без видачі</button>
+    </div>
+    <button class="sl-sync" type="button" id="slSync">
+      <span class="beacon" aria-hidden="true"></span>Google Таблиця: не записано <b>3</b> зміни
+    </button>
+  </div>
+
+  <div class="filters" role="group" aria-label="Фільтри черги">
+    <span class="label">Період</span>
+    <div class="seg" id="segPeriod">
+      <button type="button" data-period="today" aria-pressed="false">Сьогодні <span class="n">12</span></button>
+      <button type="button" data-period="yesterday" aria-pressed="false">Вчора <span class="n">7</span></button>
+      <button type="button" data-period="tomorrow" aria-pressed="false">Завтра <span class="n">4</span></button>
+      <button type="button" data-period="earlier" aria-pressed="false">Раніше <span class="n">5</span></button>
+      <button type="button" data-period="all" aria-pressed="true">Усі <span class="n">28</span></button>
+    </div>
+    <span class="label">Джерело</span>
+    <div class="seg" id="segSource">
+      <button type="button" data-source="all" aria-pressed="true">Усі</button>
+      <button type="button" data-source="lab" aria-pressed="false">Лабораторія</button>
+      <button type="button" data-source="mail" aria-pressed="false">Пошта</button>
+    </div>
+    <span class="label">Готовність</span>
+    <div class="seg" id="segReady">
+      <button type="button" data-ready="all" aria-pressed="true">Усі <span class="n">28</span></button>
+      <button type="button" data-ready="new" aria-pressed="false">Нові <span class="n">6</span></button>
+      <button type="button" data-ready="progress" aria-pressed="false">В роботі <span class="n">17</span></button>
+      <button type="button" data-ready="ready" aria-pressed="false">Готові <span class="n">4</span></button>
+      <button type="button" data-ready="done" aria-pressed="false">Видані <span class="n">1</span></button>
+    </div>
+    <button class="pill alarm" type="button" id="pillLate" aria-pressed="false"><span class="dot" aria-hidden="true"></span>Тільки прострочені</button>
+    <span id="chipHost"></span>
+  </div>
+
+  <div class="worklayout">
+
+    <!-- QUEUE — dominant element, full height and width -->
+    <section class="queue-panel" id="queueCard" aria-labelledby="queueTitle">
+      <div class="sweep" aria-hidden="true"><i></i></div>
+      <div class="card-head">
+        <h2 id="queueTitle">Черга</h2>
+        <span class="meta" id="queueMeta">28 робіт · 96 одиниць</span>
+        <div class="right">
+          <label class="search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg>
+            <input type="search" id="q" placeholder="Наряд, технік, шлях-ID…" aria-label="Пошук у черзі">
+          </label>
+          <button class="btn sm" type="button">
+            <svg viewBox="0 0 24 24"><path d="M12 4v11M8 11.5l4 4 4-4M5 19.5h14"></path></svg>Експорт
+          </button>
+        </div>
+      </div>
+
+      <div class="tablewrap">
+        <table id="qtable">
+          <thead>
+            <tr>
+              <th scope="col" aria-hidden="true"></th>
+              <th scope="col" class="sortable" data-key="ord"><span class="sh">Наряд<svg viewBox="0 0 12 12"><path d="M3 7.5 6 4l3 3.5"></path></svg></span></th>
+              <th scope="col">Коментар CAM</th>
+              <th scope="col" class="sortable" data-key="mat"><span class="sh">Матеріал · колір<svg viewBox="0 0 12 12"><path d="M3 7.5 6 4l3 3.5"></path></svg></span></th>
+              <th scope="col">Вид роботи</th>
+              <th scope="col" class="sortable qty-h" data-key="qty"><span class="sh">К-сть<svg viewBox="0 0 12 12"><path d="M3 7.5 6 4l3 3.5"></path></svg></span></th>
+              <th scope="col">Шлях-ID</th>
+              <th scope="col">Sum3D</th>
+              <th scope="col" class="sortable" data-key="tech"><span class="sh">Технік<svg viewBox="0 0 12 12"><path d="M3 7.5 6 4l3 3.5"></path></svg></span></th>
+              <th scope="col" class="sortable" data-key="status"><span class="sh">Статус<svg viewBox="0 0 12 12"><path d="M3 7.5 6 4l3 3.5"></path></svg></span></th>
+            </tr>
+          </thead>
+          <tbody id="qbody"></tbody>
+        </table>
+      </div>
+
+      <div class="empty">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"></path></svg>
+        <p>Під ці фільтри не підпадає жодна робота</p>
+        <span id="emptyWhy">Активні фільтри звузили чергу до нуля.</span>
+        <button class="btn sm primary" type="button" id="resetEmpty">Скинути фільтри</button>
+      </div>
+
+      <div class="qfoot">
+        <span>Клік по шляху-ID копіює його для Sum3D · клік по рядку виділяє роботу</span>
+        <span class="toast" id="toast" role="status" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <!-- SIDE PANEL — compact, collapsible, secondary to the queue -->
+    <aside class="side-panel" aria-label="Довідкові панелі">
+
+      <section class="side-sec" data-open="true" data-sec="sync">
+        <button class="side-head" type="button" data-toggle aria-expanded="true">
+          Google Таблиця
+          <span class="side-count err">3 незаписані</span>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        </button>
+        <div class="side-body">
+          <div class="state err" id="syncState">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5"></path><circle cx="12" cy="16.4" r=".9" fill="currentColor" stroke="none"></circle><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"></path></svg>
+            <span>
+              <strong id="syncHead">Не записано 3 зміни</strong>
+              <p id="syncMsg">Google відповів 403: сервісний акаунт має лише роль «Читач». Дайте роль «Редактор», або повторіть запис після зміни доступу.</p>
+            </span>
+          </div>
+          <div class="kv"><span>Останній імпорт</span><b>09:12:04</b></div>
+          <div class="kv"><span>Остання спроба запису</span><b id="syncTry">09:41:37</b></div>
+          <div class="kv"><span>Черга на запис</span><b id="syncPend">3 зміни</b></div>
+          <div class="kv"><span>Наступна автоспроба</span><b id="syncNext">через 00:52</b></div>
+          <div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap">
+            <button class="btn sm primary" type="button" id="syncRetry">Повторити зараз</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="side-sec" data-open="false" data-sec="mail">
+        <button class="side-head" type="button" data-toggle aria-expanded="false">
+          Пошта на тріаж
+          <span class="side-count">6</span>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        </button>
+        <div class="side-body">
+          <div class="maillist">
+            <button class="mailrow" type="button">
+              <span class="from">Кравчук Л.</span><span class="t">09:38</span>
+              <span class="subj">пмма A2, 4 од., на фрезерування</span><span class="att">3 файли</span>
+            </button>
+            <button class="mailrow" type="button">
+              <span class="from">Тимків Р.</span><span class="t">09:04</span>
+              <span class="subj">титан корея, абатмент, колір уточню</span><span class="att">1 файл</span>
+            </button>
+            <button class="mailrow" type="button">
+              <span class="from">Бондар І.</span><span class="t">08:21</span>
+              <span class="subj">моно А3.5 — каркас міст 14-24</span><span class="att">5 файлів</span>
+            </button>
+            <button class="mailrow" type="button">
+              <span class="from">Гнатюк С.</span><span class="t">07:12</span>
+              <span class="subj">повтор: скани до наряду 24118</span><span class="att">2 файли</span>
+            </button>
+          </div>
+          <div style="display:flex;gap:8px;margin:11px 0 0;flex-wrap:wrap">
+            <button class="btn sm primary" type="button">Відкрити тріаж</button>
+            <button class="btn sm" type="button">Перевірити пошту</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="side-sec" data-open="false" data-sec="handout">
+        <button class="side-head" type="button" data-toggle aria-expanded="false">
+          Ранкова видача
+          <span class="side-count warn">2</span>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        </button>
+        <div class="side-body">
+          <div class="client">
+            <div class="top">Кравчук Л. <span>3 / 5 знайдено</span></div>
+            <div class="track"><i style="width:60%"></i></div>
+            <div class="note">export\Кравчук Л\нова папка (7) · 08:41</div>
+          </div>
+          <div class="client">
+            <div class="top">Мазур В. <span>2 / 4 знайдено</span></div>
+            <div class="track"><i style="width:50%"></i></div>
+            <div class="note">2 папки-кандидати — потрібен вибір оператора</div>
+          </div>
+          <button class="btn sm primary" type="button" style="margin-top:11px">Відкрити видачу</button>
+        </div>
+      </section>
+
+      <section class="side-sec" data-open="false" data-sec="stages">
+        <button class="side-head" type="button" data-toggle aria-expanded="false">
+          Розподіл по стадіях
+          <span class="side-count">7 днів</span>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        </button>
+        <div class="side-body">
+          <div id="stageRows"></div>
+          <div class="stage-foot">
+            <div class="bad">Проблема<b class="tnum">4</b></div>
+            <div class="warn">Переробка<b class="tnum">7</b></div>
+            <div>«нове → відфрезеровано»<b class="tnum">6 год 12 хв</b></div>
+          </div>
+        </div>
+      </section>
+
+    </aside>
+  </div>
+</main>
+
+<aside class="detail-pane" id="detailPane" aria-labelledby="detailOrd" aria-hidden="true">
+  <div class="detail-head">
+    <div>
+      <span class="ord mono" id="detailOrd">—</span>
+      <span class="src" id="detailSrc" style="display:none">пошта</span>
+      <div class="client" id="detailClient" style="display:none"></div>
+    </div>
+    <button class="detail-close" type="button" id="detailClose" aria-label="Закрити паспорт роботи">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+    </button>
+  </div>
+  <div class="detail-body" id="detailBody"></div>
+</aside>
+<div class="detail-backdrop" id="detailBackdrop"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  var STATUS = {
+    "нове":              {c:"#b6c6da", hollow:true},
+    "прийнято":          {c:"#0f766e"},
+    "прораховано":       {c:"#14b8a6"},
+    "у фрезеруванні":    {c:"#2dd4bf"},
+    "відфрезеровано":    {c:"#5eead4"},
+    "знайдено при видачі":{c:"#99f6e4"},
+    "видано":            {c:"#5c6b80"},
+    "проблема":          {c:"#f87171"},
+    "переробка":         {c:"#f0a35e"}
+  };
+  var STATUS_ORDER = ["нове","прийнято","прораховано","у фрезеруванні","відфрезеровано","знайдено при видачі","видано","проблема","переробка"];
+  var FINAL = {"знайдено при видачі":1,"видано":1};
+  var DAY = {earlier:0, yesterday:1, today:2, tomorrow:3};
+
+  // Демонстраційні дані черги (реальні матеріали/види/статуси з PRODUCT.md)
+  var ROWS = [
+    {ord:"24122", src:"lab",  cam:"покрити опаком",                      mat:"пмма A2",    kind:"анатомія",           qty:6, day:"earlier",  dl:"07.08", due:"14:00", path:"2026-08-07_00016-007", sum:"118402", tech:"Оксана Гриценко", status:"у фрезеруванні"},
+    {ord:"24118", src:"lab",  cam:"Чекаємо Скани!!!!",                   mat:"моно А3.5",  kind:"анатомія гвинтова",  qty:4, day:"earlier",  dl:"07.08", due:"09:00", path:"2026-08-07_00016-003", sum:"",       tech:"Марія Дідух",     status:"проблема"},
+    {ord:"24109", src:"mail", client:"Гнатюк С.", cam:"повтор, скол по краю — 2-й раз", mat:"титан корея", kind:"каркас міст 13-23", qty:1, day:"earlier", dl:"04.08", due:"16:00", path:"2026-08-04_00011-002", sum:"118317", tech:"Богдан Кравець", status:"переробка"},
+    {ord:"24127", src:"lab",  cam:"фрезерувати з запасом 0.2",           mat:"500",        kind:"абатмент",           qty:2, day:"earlier",  dl:"08.08", due:"14:00", path:"2026-08-08_00019-006", sum:"118388", tech:"Ігор Панченко",   status:"прораховано"},
+    {ord:"24130", src:"lab",  cam:"тільки після підтвердження кольору",  mat:"моно A2",    kind:"вкладка",            qty:3, day:"earlier",  dl:"08.08", due:"16:00", path:"2026-08-08_00019-011", sum:"",       tech:"Наталя Ковальчук",status:"прийнято"},
+
+    {ord:"24131", src:"lab",  cam:"Якщо можно на швидку, я сам закрию",  mat:"титан корея",kind:"абатмент",           qty:2, day:"yesterday",dl:"10.08", due:"16:00", path:"2026-08-10_00021-011", sum:"118455", tech:"Богдан Кравець",  status:"прораховано"},
+    {ord:"24133", src:"lab",  cam:"каркас тонкий, не полірувати",        mat:"800",        kind:"каркас міст 13-23",  qty:1, day:"yesterday",dl:"10.08", due:"14:00", path:"2026-08-10_00021-014", sum:"118461", tech:"Ігор Панченко",   status:"у фрезеруванні"},
+    {ord:"24136", src:"mail", client:"Кравчук Л.", cam:"покрити опаком", mat:"пмма A2",    kind:"анатомія",           qty:4, day:"yesterday",dl:"10.08", due:"09:00", path:"2026-08-10_00022-001", sum:"118470", tech:"Софія Романюк",   status:"відфрезеровано"},
+    {ord:"24137", src:"lab",  cam:"",                                    mat:"моно А3.5",  kind:"анатомія гвинтова",  qty:2, day:"yesterday",dl:"10.08", due:"16:00", path:"2026-08-10_00022-004", sum:"118472", tech:"Тарас Мельник",   status:"відфрезеровано"},
+    {ord:"24139", src:"mail", client:"Мазур В.",   cam:"перевірити товщину стінки", mat:"моно B1", kind:"вкладка",   qty:3, day:"yesterday",dl:"10.08", due:"14:00", path:"2026-08-10_00022-009", sum:"118474", tech:"Андрій Литвин",   status:"знайдено при видачі"},
+    {ord:"24141", src:"lab",  cam:"",                                    mat:"500",        kind:"абатмент",           qty:1, day:"yesterday",dl:"10.08", due:"09:00", path:"2026-08-10_00022-013", sum:"118476", tech:"Юлія Савчук",     status:"видано"},
+    {ord:"24142", src:"lab",  cam:"віддати разом із 24141",              mat:"пмма A3",    kind:"анатомія",           qty:5, day:"yesterday",dl:"10.08", due:"16:00", path:"2026-08-10_00022-018", sum:"",       tech:"Юлія Савчук",     status:"прийнято"},
+
+    {ord:"24145", src:"lab",  cam:"покрити опаком",                      mat:"пмма A2",    kind:"анатомія",           qty:6, day:"today",   dl:"11.08", due:"14:00", path:"2026-08-11_00024-002", sum:"118491", tech:"Оксана Гриценко", status:"у фрезеруванні"},
+    {ord:"24146", src:"lab",  cam:"Чекаємо Скани!!!!",                   mat:"моно А3.5",  kind:"каркас міст 14-24",  qty:1, day:"today",   dl:"11.08", due:"14:00", path:"2026-08-11_00024-005", sum:"",       tech:"Марія Дідух",     status:"нове"},
+    {ord:"24147", src:"mail", client:"Тимків Р.",  cam:"колір уточнить клієнт", mat:"титан корея", kind:"абатмент",   qty:2, day:"today",   dl:"11.08", due:"16:00", path:"2026-08-11_00024-008", sum:"",       tech:"Богдан Кравець",  status:"нове"},
+    {ord:"24148", src:"lab",  cam:"фрезерувати з запасом 0.2",           mat:"800",        kind:"каркас міст 34-37",  qty:1, day:"today",   dl:"11.08", due:"09:00", path:"2026-08-11_00024-011", sum:"118494", tech:"Ігор Панченко",   status:"прораховано"},
+    {ord:"24149", src:"lab",  cam:"",                                    mat:"моно A2",    kind:"анатомія гвинтова",  qty:4, day:"today",   dl:"11.08", due:"16:00", path:"2026-08-11_00024-014", sum:"118496", tech:"Наталя Ковальчук",status:"у фрезеруванні"},
+    {ord:"24150", src:"mail", client:"Бондар І.",  cam:"5 файлів у листі, звірити кількість", mat:"моно А3.5", kind:"каркас міст 14-24", qty:2, day:"today", dl:"11.08", due:"14:00", path:"2026-08-11_00025-001", sum:"",  tech:"Софія Романюк",   status:"прийнято"},
+    {ord:"24151", src:"lab",  cam:"перефрезерувати, скол по краю",       mat:"пмма A2",    kind:"вкладка",            qty:2, day:"today",   dl:"11.08", due:"16:00", path:"2026-08-11_00025-004", sum:"118501", tech:"Тарас Мельник",   status:"переробка"},
+    {ord:"24152", src:"lab",  cam:"",                                    mat:"500",        kind:"абатмент",           qty:3, day:"today",   dl:"11.08", due:"09:00", path:"2026-08-11_00025-007", sum:"118503", tech:"Андрій Литвин",   status:"відфрезеровано"},
+    {ord:"24153", src:"lab",  cam:"не полірувати, віддати як є",         mat:"титан корея",kind:"каркас міст 13-23",  qty:1, day:"today",   dl:"11.08", due:"14:00", path:"2026-08-11_00025-010", sum:"118505", tech:"Віктор Шевчук",   status:"прораховано"},
+    {ord:"24154", src:"mail", client:"Кравчук Л.", cam:"термінове, клієнт чекає в лабораторії", mat:"пмма A3", kind:"анатомія", qty:8, day:"today", dl:"11.08", due:"16:00", path:"2026-08-11_00025-013", sum:"", tech:"Юлія Савчук",     status:"нове"},
+    {ord:"24155", src:"lab",  cam:"",                                    mat:"моно B1",    kind:"анатомія",           qty:3, day:"today",   dl:"11.08", due:"16:00", path:"2026-08-11_00025-016", sum:"118509", tech:"Оксана Гриценко", status:"у фрезеруванні"},
+    {ord:"24156", src:"lab",  cam:"файл прийшов без опори — питання до техніка", mat:"800", kind:"каркас міст 34-37", qty:1, day:"today", dl:"11.08", due:"09:00", path:"2026-08-11_00025-019", sum:"",  tech:"Марія Дідух",     status:"проблема"},
+
+    {ord:"24158", src:"lab",  cam:"",                                    mat:"моно А3.5",  kind:"анатомія гвинтова",  qty:2, day:"tomorrow", dl:"12.08", due:"14:00", path:"2026-08-12_00026-002", sum:"",       tech:"Богдан Кравець",  status:"нове"},
+    {ord:"24159", src:"lab",  cam:"покрити опаком",                      mat:"пмма A2",    kind:"анатомія",           qty:5, day:"tomorrow", dl:"12.08", due:"16:00", path:"2026-08-12_00026-005", sum:"",       tech:"Ігор Панченко",   status:"нове"},
+    {ord:"24160", src:"mail", client:"Мазур В.",   cam:"",               mat:"титан корея",kind:"абатмент",           qty:2, day:"tomorrow", dl:"12.08", due:"09:00", path:"2026-08-12_00026-008", sum:"",       tech:"Наталя Ковальчук",status:"прийнято"},
+    {ord:"24161", src:"lab",  cam:"тільки після підтвердження кольору",  mat:"моно A2",    kind:"вкладка",            qty:4, day:"tomorrow", dl:"12.08", due:"16:00", path:"2026-08-12_00026-011", sum:"",       tech:"Віктор Шевчук",   status:"нове"}
+  ];
+
+  function readinessGroup(status){
+    if(status === "нове") return "new";
+    if(status === "видано") return "done";
+    if(status === "відфрезеровано" || status === "знайдено при видачі") return "ready";
+    return "progress";
+  }
+
+  ROWS.forEach(function(r){
+    r.late = DAY[r.day] < DAY.today && !FINAL[r.status];
+    r.ready = readinessGroup(r.status);
+  });
+
+  var state = {period:"all", source:"all", ready:"all", late:false, q:"", metric:null, sortKey:"due", sortDir:"asc", selected:null};
+
+  var $  = function(s,root){return (root||document).querySelector(s);};
+  var $$ = function(s,root){return Array.prototype.slice.call((root||document).querySelectorAll(s));};
+  var esc = function(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");};
+
+
+  /* ---------- render queue ---------- */
+  var body = $("#qbody"), card = $("#queueCard"), meta = $("#queueMeta");
+
+  function visible(){
+    return ROWS.filter(function(r){
+      if(state.period !== "all" && r.day !== state.period) return false;
+      if(state.source !== "all" && r.src !== state.source) return false;
+      if(state.ready !== "all" && r.ready !== state.ready) return false;
+      if(state.late && !r.late) return false;
+      if(state.metric === "late" && !r.late) return false;
+      if(state.metric === "today" && r.day !== "today") return false;
+      if(state.metric === "mail" && !(r.src === "mail" && r.status === "нове")) return false;
+      if(state.metric === "handout" && r.status !== "відфрезеровано") return false;
+      if(state.metric && STATUS_ORDER.indexOf(state.metric) > -1 && r.status !== state.metric) return false;
+      if(state.q){
+        var hay = (r.ord+" "+r.cam+" "+r.mat+" "+r.kind+" "+r.path+" "+r.sum+" "+r.tech+" "+r.status+" "+(r.client||"")).toLowerCase();
+        if(hay.indexOf(state.q.toLowerCase()) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function sorted(list){
+    var k = state.sortKey, dir = state.sortDir === "asc" ? 1 : -1;
+    return list.slice().sort(function(a,b){
+      var x, y;
+      if(k === "due"){ x = DAY[a.day]*100 + parseInt(a.due,10); y = DAY[b.day]*100 + parseInt(b.due,10); }
+      else if(k === "qty"){ x = a.qty; y = b.qty; }
+      else if(k === "status"){ x = STATUS_ORDER.indexOf(a.status); y = STATUS_ORDER.indexOf(b.status); }
+      else if(k === "ord"){ x = parseInt(a.ord,10); y = parseInt(b.ord,10); }
+      else { x = (a[k]||"").toLowerCase(); y = (b[k]||"").toLowerCase(); }
+      if(x < y) return -1*dir;
+      if(x > y) return 1*dir;
+      return a.late === b.late ? 0 : (a.late ? -1 : 1);
+    });
+  }
+
+  function dot(status){
+    var s = STATUS[status] || {c:"#8fa3bb"};
+    return '<span class="sdot" style="background:'+(s.hollow ? "transparent" : s.c)+';'+(s.hollow ? "box-shadow:inset 0 0 0 1.6px "+s.c+";" : "")+'"></span>';
+  }
+
+  function byOrd(ord){ for(var i=0;i<ROWS.length;i++){ if(ROWS[i].ord === ord) return ROWS[i]; } return null; }
+
+  /* ---------- job passport (slide-over): builds the same paspORT used in variant B ---------- */
+  var HIST_ORDER = ["нове","прийнято","прораховано","у фрезеруванні","відфрезеровано","знайдено при видачі","видано"];
+  var STATUS_ALL_BTNS = HIST_ORDER.concat(["проблема","переробка"]);
+
+  function buildHistory(r){
+    var idx = HIST_ORDER.indexOf(r.status);
+    var chain;
+    if(idx > -1){ chain = HIST_ORDER.slice(0, idx+1); }
+    else { chain = HIST_ORDER.slice(0, HIST_ORDER.indexOf("прораховано")+1).concat([r.status]); }
+    var n = parseInt(r.ord,10) || 0;
+    var startHour = 8 + (n % 4);
+    return chain.map(function(s,i){
+      var who = i===0
+        ? (r.src === "mail" ? (r.client||"клієнт") + " · надійшло поштою" : "Google Таблиця · імпорт")
+        : r.tech;
+      var hh = Math.min(startHour + i, 19);
+      var mm = (n*7 + i*13) % 60;
+      var time = (hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm;
+      return {t:time, who:who, label:s};
+    });
+  }
+
+  function detailBodyHtml(r){
+    var camShout = /!{2,}/.test(r.cam);
+    var camHtml = r.cam
+      ? '<div class="camtext'+(camShout?" shout":"")+'">'+esc(r.cam)+'</div>'
+      : '<div class="camtext empty-cam">Коментаря немає</div>';
+
+    var hist = buildHistory(r);
+    var histHtml = hist.slice().reverse().map(function(h){
+      return '<div class="tl-item"><span class="t mono">'+esc(h.t)+'</span><span class="body"><span class="label">'+esc(h.label)+'</span><span class="who">'+esc(h.who)+'</span></span></div>';
+    }).join("");
+
+    var statusBtns = STATUS_ALL_BTNS.map(function(s){
+      var cls = s === "проблема" ? " alarm" : (s === "переробка" ? " warn" : "");
+      return '<button class="sbtn'+cls+'" type="button" data-status="'+esc(s)+'" aria-pressed="'+(r.status===s?"true":"false")+'">'+dot(s)+esc(s)+'</button>';
+    }).join("");
+
+    return ''
+      + '<div class="dsec">'
+        + '<div class="dlabel">Паспорт роботи</div>'
+        + '<div class="kv"><span>Матеріал · колір</span><b>'+esc(r.mat)+'</b></div>'
+        + '<div class="kv"><span>Вид роботи</span><b>'+esc(r.kind)+'</b></div>'
+        + '<div class="kv"><span>Кількість</span><b>'+r.qty+' '+esc(plural(r.qty,"од.","од.","од."))+'</b></div>'
+        + '<div class="kv"><span>Здати до</span><b>'+esc(r.dl)+' · '+esc(r.due)+'</b></div>'
+        + '<div class="kv"><span>Технік</span><b>'+esc(r.tech)+'</b></div>'
+      + '</div>'
+      + '<div class="dsec">'
+        + '<div class="dlabel">Коментар для CAM-оператора</div>'
+        + camHtml
+      + '</div>'
+      + '<div class="dsec">'
+        + '<div class="dlabel">Шлях-ID</div>'
+        + '<div class="pathrow"><span class="p mono">'+esc(r.path)+'</span>'
+          + '<button class="iconbtn" type="button" data-copy="'+esc(r.path)+'" title="Копіювати шлях-ID"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M4 16V6a2 2 0 0 1 2-2h10"></path></svg></button>'
+          + '<button class="iconbtn" type="button" data-openfolder="'+esc(r.ord)+'" title="Відкрити папку"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg></button>'
+        + '</div>'
+      + '</div>'
+      + '<div class="dsec">'
+        + '<div class="dlabel">Sum3D ID</div>'
+        + '<div class="sumrow"><input class="suminput mono" type="text" inputmode="numeric" id="sumInput" placeholder="Ще не прораховано" value="'+esc(r.sum)+'">'
+          + '<button class="btn sm primary" type="button" id="sumSave">Зберегти</button></div>'
+      + '</div>'
+      + '<div class="dsec">'
+        + '<div class="dlabel">Статус</div>'
+        + '<div class="status-opts" id="statusOpts">'+statusBtns+'</div>'
+      + '</div>'
+      + '<div class="dsec">'
+        + '<div class="dlabel">Історія</div>'
+        + '<div class="timeline">'+histHtml+'</div>'
+      + '</div>';
+  }
+
+  var detailPane = $("#detailPane"), detailBackdrop = $("#detailBackdrop");
+
+  function fillDetail(r){
+    $("#detailOrd").textContent = r.ord;
+    var srcEl = $("#detailSrc");
+    srcEl.style.display = r.src === "mail" ? "inline-block" : "none";
+    var clEl = $("#detailClient");
+    if(r.client){ clEl.style.display="block"; clEl.textContent = r.client; } else { clEl.style.display="none"; clEl.textContent=""; }
+    $("#detailBody").innerHTML = detailBodyHtml(r);
+  }
+  function openDetail(ord){
+    var r = byOrd(ord); if(!r) return;
+    state.selected = ord; render();
+    fillDetail(r);
+    detailPane.classList.add("open"); detailPane.setAttribute("aria-hidden","false");
+    detailBackdrop.classList.add("open");
+  }
+  function closeDetail(){
+    detailPane.classList.remove("open"); detailPane.setAttribute("aria-hidden","true");
+    detailBackdrop.classList.remove("open");
+  }
+  $("#detailClose").addEventListener("click", closeDetail);
+  detailBackdrop.addEventListener("click", closeDetail);
+  document.addEventListener("keydown", function(e){ if(e.key === "Escape" && detailPane.classList.contains("open")) closeDetail(); });
+
+  function statusCell(r){
+    if(r.status === "проблема") return '<span class="status"><span class="badge problem">проблема</span></span>';
+    if(r.status === "переробка") return '<span class="status"><span class="badge redo">переробка · 2-й раз</span></span>';
+    return '<span class="status"><b>'+esc(r.status)+'</b></span>';
+  }
+
+  function render(){
+    var list = sorted(visible());
+    card.classList.toggle("is-empty", list.length === 0);
+
+    var units = list.reduce(function(a,r){return a + r.qty;}, 0);
+    meta.textContent = list.length + " " + plural(list.length, "робота","роботи","робіт") + " · " + units + " " + plural(units,"одиниця","одиниці","одиниць");
+
+    body.innerHTML = list.map(function(r){
+      return '<tr class="'+(r.late ? "late" : "")+(state.selected === r.ord ? " is-selected" : "")+'" data-row="'+esc(r.ord)+'">'
+        + '<td class="dotcell">'+dot(r.status)+'<span class="sr">'+esc(r.status)+(r.late ? ", прострочено" : "")+'</span></td>'
+        + '<td><button class="ordbtn" type="button" data-open="'+esc(r.ord)+'">'+esc(r.ord)+'</button>'
+          + (r.src === "mail" ? '<span class="src">пошта</span>' : '')
+          + (r.client ? '<div style="font-size:11.5px;color:var(--ink-2);margin-top:1px">'+esc(r.client)+'</div>' : '')
+        + '</td>'
+        + '<td><div class="cam'+(/!{2,}/.test(r.cam) ? " shout" : "")+'" title="'+esc(r.cam)+'">'+(r.cam ? esc(r.cam) : '<span style="color:#55677c">—</span>')+'</div></td>'
+        + '<td><span class="matchip">'+esc(r.mat)+'</span></td>'
+        + '<td><button class="kindbtn" type="button" data-open="'+esc(r.ord)+'">'+esc(r.kind)+'</button></td>'
+        + '<td class="qty">'+r.qty+'</td>'
+        + '<td><button class="pathbtn" type="button" data-copy="'+esc(r.path)+'">'+esc(r.path)+'</button></td>'
+        + '<td><span class="sum'+(r.sum ? "" : " none")+'">'+(r.sum ? esc(r.sum) : "—")+'</span></td>'
+        + '<td class="tech">'+esc(r.tech)+'</td>'
+        + '<td>'+statusCell(r)+'</td>'
+        + '</tr>';
+    }).join("");
+
+    renderChips();
+  }
+
+  function plural(n, one, few, many){
+    var m10 = n % 10, m100 = n % 100;
+    if(m10 === 1 && m100 !== 11) return one;
+    if(m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
+  }
+
+  /* ---------- active-filter chips ---------- */
+  var METRIC_LABEL = {late:"Прострочено", today:"Здати сьогодні", mail:"Нові листи", handout:"Чекають видачі"};
+  var PERIOD_LABEL = {today:"Сьогодні", yesterday:"Вчора", tomorrow:"Завтра", earlier:"Раніше"};
+  var SOURCE_LABEL = {lab:"Лабораторія", mail:"Пошта"};
+  var READY_LABEL = {new:"Нові", progress:"В роботі", ready:"Готові", done:"Видані"};
+
+  function chip(label, clear){
+    return '<span class="chip">'+esc(label)+'<button type="button" data-clear="'+clear+'" aria-label="Зняти фільтр: '+esc(label)+'">'
+      + '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"></path></svg></button></span>';
+  }
+
+  function renderChips(){
+    var out = [];
+    if(state.period !== "all") out.push(chip(PERIOD_LABEL[state.period], "period"));
+    if(state.source !== "all") out.push(chip(SOURCE_LABEL[state.source], "source"));
+    if(state.ready !== "all") out.push(chip(READY_LABEL[state.ready], "ready"));
+    if(state.late) out.push(chip("Прострочені", "late"));
+    if(state.metric) out.push(chip(METRIC_LABEL[state.metric] || state.metric, "metric"));
+    if(state.q) out.push(chip("«"+state.q+"»", "q"));
+    $("#chipHost").innerHTML = out.join("");
+    $("#emptyWhy").textContent = out.length
+      ? "Активні фільтри звузили чергу до нуля. Зніміть частину — або скиньте всі."
+      : "У черзі немає жодної роботи.";
+  }
+
+  /* ---------- controls ---------- */
+  $("#segPeriod").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-period]"); if(!b) return;
+    state.period = b.dataset.period;
+    if(state.metric === "today" && state.period !== "today") state.metric = null;
+    syncControls(); render();
+  });
+  $("#segSource").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-source]"); if(!b) return;
+    state.source = b.dataset.source; syncControls(); render();
+  });
+  $("#segReady").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-ready]"); if(!b) return;
+    state.ready = b.dataset.ready; syncControls(); render();
+  });
+  $("#pillLate").addEventListener("click", function(){ state.late = !state.late; syncControls(); render(); });
+
+  $("#slCounters").addEventListener("click", function(e){
+    var b = e.target.closest("[data-metric]"); if(!b) return;
+    state.metric = state.metric === b.dataset.metric ? null : b.dataset.metric;
+    if(state.metric) state.period = "all";
+    syncControls(); render();
+  });
+
+  $("#chipHost").addEventListener("click", function(e){
+    var b = e.target.closest("[data-clear]"); if(!b) return;
+    var k = b.dataset.clear;
+    if(k === "period") state.period = "all";
+    else if(k === "source") state.source = "all";
+    else if(k === "ready") state.ready = "all";
+    else if(k === "late") state.late = false;
+    else if(k === "metric") state.metric = null;
+    else if(k === "q"){ state.q = ""; $("#q").value = ""; }
+    syncControls(); render();
+  });
+
+  $("#resetEmpty").addEventListener("click", resetAll);
+  function resetAll(){
+    state.period = "all"; state.source = "all"; state.ready = "all"; state.late = false; state.metric = null; state.q = "";
+    $("#q").value = ""; syncControls(); render();
+  }
+
+  var qt;
+  $("#q").addEventListener("input", function(e){
+    clearTimeout(qt); var v = e.target.value;
+    qt = setTimeout(function(){ state.q = v.trim(); render(); }, 120);
+  });
+
+  function syncControls(){
+    $$("#segPeriod button").forEach(function(b){ b.setAttribute("aria-pressed", String(b.dataset.period === state.period)); });
+    $$("#segSource button").forEach(function(b){ b.setAttribute("aria-pressed", String(b.dataset.source === state.source)); });
+    $$("#segReady button").forEach(function(b){ b.setAttribute("aria-pressed", String(b.dataset.ready === state.ready)); });
+    $("#pillLate").setAttribute("aria-pressed", String(state.late));
+    $$("#slCounters .sl-item").forEach(function(b){ b.setAttribute("aria-pressed", String(b.dataset.metric === state.metric)); });
+    $$("#stageRows .stage-row").forEach(function(b){ b.setAttribute("aria-pressed", String(b.dataset.stage === state.metric)); });
+  }
+
+  /* ---------- sorting ---------- */
+  $$("#qtable th.sortable").forEach(function(th){
+    th.tabIndex = 0;
+    function toggle(){
+      var k = th.dataset.key;
+      if(state.sortKey === k){ state.sortDir = state.sortDir === "asc" ? "desc" : "asc"; }
+      else { state.sortKey = k; state.sortDir = "asc"; }
+      $$("#qtable th").forEach(function(o){ o.removeAttribute("aria-sort"); });
+      th.setAttribute("aria-sort", state.sortDir === "asc" ? "ascending" : "descending");
+      render();
+    }
+    th.addEventListener("click", toggle);
+    th.addEventListener("keydown", function(e){ if(e.key === "Enter" || e.key === " "){ e.preventDefault(); toggle(); } });
+  });
+
+  /* ---------- row actions: copy path, open card, select row ---------- */
+  var toast = $("#toast"), tt;
+  function say(msg){
+    toast.textContent = msg; toast.classList.add("on");
+    clearTimeout(tt); tt = setTimeout(function(){ toast.classList.remove("on"); }, 1800);
+  }
+  body.addEventListener("click", function(e){
+    var c = e.target.closest("[data-copy]");
+    if(c){
+      var v = c.dataset.copy;
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(v).catch(function(){}); }
+      say("шлях-ID скопійовано · " + v);
+      return;
+    }
+    var o = e.target.closest("[data-open]");
+    if(o){ openDetail(o.dataset.open); return; }
+    var row = e.target.closest("tr[data-row]");
+    if(row){
+      state.selected = state.selected === row.dataset.row ? null : row.dataset.row;
+      render();
+    }
+  });
+
+  /* ---------- passport actions: copy path, open folder, save Sum3D ID, change status ---------- */
+  $("#detailBody").addEventListener("click", function(e){
+    var copyBtn = e.target.closest("[data-copy]");
+    if(copyBtn){
+      var v = copyBtn.dataset.copy;
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(v).catch(function(){}); }
+      say("шлях-ID скопійовано · " + v);
+      return;
+    }
+    var openBtn = e.target.closest("[data-openfolder]");
+    if(openBtn){ say("папка роботи " + openBtn.dataset.openfolder + " відкрита"); return; }
+
+    var saveBtn = e.target.closest("#sumSave");
+    if(saveBtn){
+      var r = byOrd(state.selected);
+      var val = $("#sumInput").value.trim();
+      r.sum = val;
+      say(val ? "Sum3D ID збережено · " + val : "Sum3D ID очищено");
+      fillDetail(r); render();
+      return;
+    }
+
+    var sBtn = e.target.closest("[data-status]");
+    if(sBtn){
+      var rr = byOrd(state.selected);
+      rr.status = sBtn.dataset.status;
+      rr.late = DAY[rr.day] < DAY.today && !FINAL[rr.status];
+      say("статус змінено · " + rr.status);
+      fillDetail(rr); render();
+      return;
+    }
+  });
+
+  /* ---------- side panel accordion ---------- */
+  $$(".side-sec").forEach(function(sec){
+    var head = sec.querySelector("[data-toggle]");
+    head.addEventListener("click", function(){
+      var open = sec.getAttribute("data-open") === "true";
+      sec.setAttribute("data-open", String(!open));
+      head.setAttribute("aria-expanded", String(!open));
+    });
+  });
+  function openSection(name){
+    var sec = $('.side-sec[data-sec="'+name+'"]');
+    if(!sec) return;
+    sec.setAttribute("data-open", "true");
+    sec.querySelector("[data-toggle]").setAttribute("aria-expanded", "true");
+    sec.scrollIntoView({block:"nearest", behavior: reduce ? "auto" : "smooth"});
+  }
+  $("#slSync").addEventListener("click", function(){ openSection("sync"); });
+
+  /* ---------- stage rows (compact, in side panel) ---------- */
+  var STAGES = [
+    {k:"нове", n:6}, {k:"прийнято", n:11}, {k:"прораховано", n:14},
+    {k:"у фрезеруванні", n:9}, {k:"відфрезеровано", n:21},
+    {k:"знайдено при видачі", n:5}, {k:"видано", n:34}
+  ];
+  var LB = {"у фрезеруванні":"фрезерування","знайдено при видачі":"знайдено"};
+  var maxN = Math.max.apply(null, STAGES.map(function(s){return s.n;}));
+  $("#stageRows").innerHTML = STAGES.map(function(s){
+    var w = Math.max(6, Math.round(s.n / maxN * 100));
+    return '<button class="stage-row" type="button" data-stage="'+esc(s.k)+'" aria-pressed="false">'
+      + '<span class="lb">'+esc(LB[s.k] || s.k)+'</span>'
+      + '<span class="bar"><i style="width:'+w+'%"></i></span>'
+      + '<span class="n tnum">'+s.n+'</span></button>';
+  }).join("");
+  $("#stageRows").addEventListener("click", function(e){
+    var b = e.target.closest("[data-stage]"); if(!b) return;
+    state.metric = state.metric === b.dataset.stage ? null : b.dataset.stage;
+    if(state.metric) state.period = "all";
+    syncControls(); render();
+  });
+
+  /* ---------- authored moment: telemetry sweep on re-sync ---------- */
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var syncing = false;
+
+  function runSync(){
+    if(syncing) return;
+    syncing = true;
+    openSection("sync");
+    var btn = $("#syncRetry");
+    btn.disabled = true; btn.textContent = "Записуємо…";
+    card.classList.add("sweeping");
+
+    var finish = function(){
+      card.classList.remove("sweeping");
+      var st = $("#syncState");
+      st.className = "state ok";
+      st.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.6"></circle><path d="m8.4 12.2 2.5 2.5 4.7-5"></path></svg>'
+        + '<span><strong>Записано 3 зміни</strong><p>Sum3D ID, статусні маркери й коментарі записані точково — ручні значення в таблиці не перезаписані.</p></span>';
+      $("#syncTry").textContent = "09:44:02";
+      $("#syncPend").textContent = "порожньо";
+      $("#syncNext").textContent = "через 02:00";
+      $$('.side-sec[data-sec="sync"] .side-count')[0].textContent = "синхронізовано";
+      $$('.side-sec[data-sec="sync"] .side-count')[0].className = "side-count";
+      var slSync = $("#slSync");
+      slSync.classList.add("ok");
+      slSync.innerHTML = '<span class="beacon" aria-hidden="true"></span>Google Таблиця: <b>синхронізовано</b>';
+      btn.disabled = false; btn.textContent = "Синхронізувати ще раз";
+      say("google таблиця · 3 зміни записано");
+      syncing = false;
+    };
+
+    if(reduce) finish(); else setTimeout(finish, 1000);
+  }
+  $("#syncRetry").addEventListener("click", runSync);
+  $("#syncTop").addEventListener("click", runSync);
+
+  syncControls();
+  render();
+})();
+</script>
+
+<!-- ================= design tweak panel (dev-tool overlay, not part of the product) ================= -->
+<style>
+#tp-toggle{
+  position:fixed;right:18px;bottom:18px;width:44px;height:44px;border-radius:50%;z-index:99998;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  background:#20242c;border:1px solid #343a46;color:#c7ccd6;box-shadow:0 10px 26px -12px rgba(0,0,0,.7);
+  font-family:-apple-system,"Segoe UI",Roboto,sans-serif;transition:background .15s ease,color .15s ease,transform .15s ease;
+}
+#tp-toggle:hover{background:#282d37;color:#fff}
+#tp-toggle svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#tp-panel{
+  position:fixed;top:0;right:0;bottom:0;width:340px;max-width:92vw;z-index:99999;
+  background:#181b21;border-left:1px solid #2a2e37;color:#dfe3ea;
+  font-family:-apple-system,"Segoe UI",Roboto,sans-serif;font-size:12.5px;line-height:1.4;
+  display:flex;flex-direction:column;transform:translateX(100%);transition:transform .2s ease;
+  box-shadow:-18px 0 40px -24px rgba(0,0,0,.7);
+}
+#tp-panel.open{transform:translateX(0)}
+#tp-head{display:flex;align-items:center;gap:8px;padding:13px 14px;border-bottom:1px solid #262a33;flex:0 0 auto}
+#tp-head b{font-size:12.5px;font-weight:600;letter-spacing:.01em}
+#tp-head span{font-size:10.5px;color:#7d8493}
+#tp-close{margin-left:auto;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b91a0;cursor:pointer}
+#tp-close:hover{background:#232833;color:#fff}
+#tp-close svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+#tp-body{flex:1;min-height:0;overflow-y:auto;padding:4px 0 14px;scrollbar-width:thin}
+.tp-sec{border-bottom:1px solid #21242b;padding:10px 14px 14px}
+.tp-sec h3{margin:0 0 9px;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:#7d8493;font-weight:600}
+.tp-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.tp-row:last-child{margin-bottom:0}
+.tp-row label{flex:0 0 108px;color:#aeb4c0;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tp-row input[type=color]{width:26px;height:26px;padding:0;border:1px solid #343a46;border-radius:6px;background:none;cursor:pointer;flex:0 0 auto}
+.tp-row input[type=range]{flex:1;accent-color:#2dd4bf;min-width:0}
+.tp-row select{
+  flex:1;min-width:0;background:#20242c;border:1px solid #343a46;color:#dfe3ea;border-radius:6px;
+  padding:5px 6px;font-size:11.5px;font-family:inherit;
+}
+.tp-row input[type=text]{
+  flex:1;min-width:0;background:#20242c;border:1px solid #343a46;color:#dfe3ea;border-radius:6px;
+  padding:5px 6px;font-size:11.5px;font-family:inherit;
+}
+.tp-val{flex:0 0 44px;text-align:right;color:#7d8493;font-variant-numeric:tabular-nums;font-size:11px}
+.tp-row.tp-check label{flex:1}
+.tp-row input[type=checkbox]{width:15px;height:15px;accent-color:#2dd4bf;cursor:pointer}
+.tp-file{
+  flex:1;background:#20242c;border:1px dashed #3a4150;border-radius:6px;padding:6px 8px;
+  font-size:11px;color:#8b91a0;text-align:center;cursor:pointer;
+}
+.tp-file:hover{border-color:#4b5364;color:#c7ccd6}
+.tp-file input{display:none}
+#tp-foot{flex:0 0 auto;padding:11px 14px;border-top:1px solid #262a33;display:flex;gap:8px}
+.tp-btn{
+  flex:1;height:32px;border-radius:7px;border:1px solid #343a46;background:#20242c;color:#dfe3ea;
+  font-size:11.5px;font-weight:500;font-family:inherit;cursor:pointer;transition:background .14s ease,border-color .14s ease;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.tp-btn:hover{background:#282d37;border-color:#454c5c}
+.tp-btn.primary{background:#0f766e;border-color:#14b8a6;color:#eafffb}
+.tp-btn.primary:hover{background:#116e66}
+.tp-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#tp-toast{
+  position:fixed;right:18px;bottom:70px;z-index:99999;background:#0f766e;color:#eafffb;
+  padding:8px 13px;border-radius:8px;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;font-size:12px;
+  opacity:0;transform:translateY(6px);transition:opacity .16s ease,transform .16s ease;pointer-events:none;
+}
+#tp-toast.on{opacity:1;transform:translateY(0)}
+@media (max-width:560px){ #tp-panel{width:100%} }
+</style>
+
+<button id="tp-toggle" type="button" aria-label="Відкрити панель дизайн-твіків" aria-expanded="false" aria-controls="tp-panel">
+  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.35a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.65 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.65 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.65a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.65a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.35 9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04z"></path></svg>
+</button>
+
+<aside id="tp-panel" aria-label="Панель дизайн-твіків">
+  <div id="tp-head">
+    <b>Дизайн-твіки</b><span>живе редагування</span>
+    <button id="tp-close" type="button" aria-label="Закрити панель">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+    </button>
+  </div>
+  <div id="tp-body"></div>
+  <div id="tp-foot">
+    <button class="tp-btn" id="tp-reset" type="button">Скинути</button>
+    <button class="tp-btn primary" id="tp-copy" type="button">
+      <svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M4 16V6a2 2 0 0 1 2-2h10"></path></svg>
+      Копіювати CSS
+    </button>
+  </div>
+</aside>
+<div id="tp-toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+  var $ = function(s,r){ return (r||document).querySelector(s); };
+
+  var FONT_SANS = [
+    ["'Barlow',sans-serif","Barlow (поточний)"],
+    ["'Space Grotesk',sans-serif","Space Grotesk"],
+    ["'Sora',sans-serif","Sora"],
+    ["'Manrope',sans-serif","Manrope"],
+    ["'Plus Jakarta Sans',sans-serif","Plus Jakarta Sans"],
+    ["'DM Sans',sans-serif","DM Sans"],
+    ["'IBM Plex Sans',sans-serif","IBM Plex Sans"],
+    ["'Outfit',sans-serif","Outfit"],
+    ["'Public Sans',sans-serif","Public Sans"],
+    ["'Work Sans',sans-serif","Work Sans"],
+    ["'Golos Text',sans-serif","Golos Text (кирилиця)"],
+    ["'PT Sans',sans-serif","PT Sans (кирилиця)"],
+    ["'Unbounded',sans-serif","Unbounded (кирилиця)"],
+    ["'Onest',sans-serif","Onest (кирилиця)"],
+    ["__custom__","Інша (ввести назву)…"]
+  ];
+  var FONT_MONO = [
+    ["'Azeret Mono',monospace","Azeret Mono (поточний)"],
+    ["'JetBrains Mono',monospace","JetBrains Mono"],
+    ["'IBM Plex Mono',monospace","IBM Plex Mono"],
+    ["'Space Mono',monospace","Space Mono"],
+    ["'Red Hat Mono',monospace","Red Hat Mono"],
+    ["'Roboto Mono',monospace","Roboto Mono"],
+    ["__custom__","Інша (ввести назву)…"]
+  ];
+
+  var loadedFonts = {};
+  function loadGoogleFont(name){
+    if(loadedFonts[name]) return;
+    loadedFonts[name] = true;
+    var link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=" + encodeURIComponent(name).replace(/%20/g,"+") + ":wght@400;500;600;700&display=swap";
+    document.head.appendChild(link);
+  }
+  // preload the curated lists so switching feels instant
+  FONT_SANS.concat(FONT_MONO).forEach(function(f){
+    if(f[0] === "__custom__") return;
+    var m = f[0].match(/'([^']+)'/);
+    if(m) loadGoogleFont(m[1]);
+  });
+
+  var DEFAULTS = {};
+  var TOKENS = ["--bg","--bg-rail","--card","--card-2","--card-3","--line","--line-2",
+    "--ink","--ink-2","--ink-3","--accent","--accent-b","--accent-c","--accent-d","--alarm","--warn",
+    "--r-card","--r-ctl","--font-head","--font-body","--font-mono","--size-h1","--ls-head",
+    "--size-body","--lh-body","--ui-speed","--sweep-duration","--beacon-duration","--panel-duration","--glow"];
+  TOKENS.forEach(function(t){ DEFAULTS[t] = getComputedStyle(root).getPropertyValue(t).trim(); });
+
+  function setVar(name, val){ root.style.setProperty(name, val); }
+  function px(name){ return parseFloat(getComputedStyle(root).getPropertyValue(name)) || 0; }
+  function ms(name){
+    var v = getComputedStyle(root).getPropertyValue(name).trim();
+    if(v.slice(-2) === "ms") return parseFloat(v);
+    if(v.slice(-1) === "s") return parseFloat(v) * 1000;
+    return parseFloat(v) || 0;
+  }
+
+  var body = $("#tp-body");
+
+  function section(title){
+    var s = document.createElement("div"); s.className = "tp-sec";
+    var h = document.createElement("h3"); h.textContent = title;
+    s.appendChild(h); body.appendChild(s); return s;
+  }
+  function colorRow(sec, label, varName){
+    var row = document.createElement("div"); row.className = "tp-row";
+    var lb = document.createElement("label"); lb.textContent = label;
+    var inp = document.createElement("input"); inp.type = "color";
+    var cur = getComputedStyle(root).getPropertyValue(varName).trim();
+    inp.value = /^#/.test(cur) ? cur : "#000000";
+    inp.addEventListener("input", function(){ setVar(varName, inp.value); });
+    row.appendChild(lb); row.appendChild(inp);
+    sec.appendChild(row);
+  }
+  function rangeRow(sec, label, varName, min, max, step, unit, getFn, setFn){
+    var row = document.createElement("div"); row.className = "tp-row";
+    var lb = document.createElement("label"); lb.textContent = label;
+    var inp = document.createElement("input"); inp.type = "range";
+    inp.min = min; inp.max = max; inp.step = step;
+    var val = document.createElement("span"); val.className = "tp-val";
+    var cur = getFn();
+    inp.value = cur;
+    val.textContent = cur + unit;
+    inp.addEventListener("input", function(){
+      setFn(inp.value);
+      val.textContent = inp.value + unit;
+    });
+    row.appendChild(lb); row.appendChild(inp); row.appendChild(val);
+    sec.appendChild(row);
+  }
+  function fontRow(sec, label, varName, list){
+    var row = document.createElement("div"); row.className = "tp-row";
+    var lb = document.createElement("label"); lb.textContent = label;
+    var sel = document.createElement("select");
+    var cur = getComputedStyle(root).getPropertyValue(varName).trim();
+    var matched = false;
+    list.forEach(function(f){
+      var opt = document.createElement("option"); opt.value = f[0]; opt.textContent = f[1];
+      if(f[0] === cur){ opt.selected = true; matched = true; }
+      sel.appendChild(opt);
+    });
+    row.appendChild(lb); row.appendChild(sel); sec.appendChild(row);
+
+    var custom = document.createElement("div"); custom.className = "tp-row";
+    custom.style.display = matched ? "none" : "flex";
+    var lb2 = document.createElement("label"); lb2.textContent = "";
+    var txt = document.createElement("input"); txt.type = "text"; txt.placeholder = "Назва шрифту з Google Fonts…";
+    if(!matched){ txt.value = cur.replace(/^'([^']+)'.*$/, "$1"); }
+    custom.appendChild(lb2); custom.appendChild(txt); sec.appendChild(custom);
+
+    sel.addEventListener("change", function(){
+      if(sel.value === "__custom__"){
+        custom.style.display = "flex"; txt.focus();
+      } else {
+        custom.style.display = "none";
+        setVar(varName, sel.value);
+      }
+    });
+    function applyCustom(){
+      var name = txt.value.trim();
+      if(!name) return;
+      loadGoogleFont(name);
+      var isMono = list === FONT_MONO;
+      setVar(varName, "'" + name + "'," + (isMono ? "monospace" : "sans-serif"));
+    }
+    txt.addEventListener("change", applyCustom);
+    txt.addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); applyCustom(); } });
+  }
+  function checkRow(sec, label, initial, onChange){
+    var row = document.createElement("div"); row.className = "tp-row tp-check";
+    var lb = document.createElement("label"); lb.textContent = label;
+    var inp = document.createElement("input"); inp.type = "checkbox"; inp.checked = initial;
+    inp.addEventListener("change", function(){ onChange(inp.checked); });
+    row.appendChild(lb); row.appendChild(inp); sec.appendChild(row);
+    return inp;
+  }
+  function fileRow(sec, label, onFile){
+    var row = document.createElement("div"); row.className = "tp-row";
+    var lb = document.createElement("label"); lb.textContent = label;
+    var box = document.createElement("label"); box.className = "tp-file"; box.textContent = "Завантажити зображення…";
+    var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+    inp.addEventListener("change", function(){
+      var f = inp.files && inp.files[0]; if(!f) return;
+      var url = URL.createObjectURL(f);
+      onFile(url);
+      box.textContent = f.name;
+    });
+    box.appendChild(inp);
+    row.appendChild(lb); row.appendChild(box); sec.appendChild(row);
+  }
+
+  var styleReduced = document.createElement("style");
+  styleReduced.textContent = ".tp-reduced *,.tp-reduced *::before,.tp-reduced *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}";
+  document.head.appendChild(styleReduced);
+
+  buildAll();
+
+  /* ---- panel open/close ---- */
+  var panel = $("#tp-panel"), toggle = $("#tp-toggle"), closeBtn = $("#tp-close");
+  function openPanel(){ panel.classList.add("open"); toggle.setAttribute("aria-expanded","true"); }
+  function closePanel(){ panel.classList.remove("open"); toggle.setAttribute("aria-expanded","false"); }
+  toggle.addEventListener("click", function(){ panel.classList.contains("open") ? closePanel() : openPanel(); });
+  closeBtn.addEventListener("click", closePanel);
+
+  /* ---- reset ---- */
+  $("#tp-reset").addEventListener("click", function(){
+    TOKENS.forEach(function(t){ root.style.removeProperty(t); });
+    document.body.classList.remove("tp-reduced");
+    body.innerHTML = "";
+    buildAll();
+    toast("Скинуто до значень за замовчуванням");
+  });
+  function buildAll(){
+    var secHead = section("Заголовок");
+    fontRow(secHead, "Гарнітура", "--font-head", FONT_SANS);
+    rangeRow(secHead, "Розмір h1", "--size-h1", 16, 40, 1, "px", function(){ return px("--size-h1"); }, function(v){ setVar("--size-h1", v+"px"); });
+    rangeRow(secHead, "Трекінг", "--ls-head", -4, 2, 0.5, "em", function(){ return parseFloat(getComputedStyle(root).getPropertyValue("--ls-head"))*100 || -1.5; }, function(v){ setVar("--ls-head",(v/100)+"em"); });
+    var secBody2 = section("Типографіка тіла");
+    fontRow(secBody2, "Гарнітура", "--font-body", FONT_SANS);
+    rangeRow(secBody2, "Розмір", "--size-body", 12, 18, 0.5, "px", function(){ return px("--size-body"); }, function(v){ setVar("--size-body", v+"px"); });
+    rangeRow(secBody2, "Інтерліньяж", "--lh-body", 1.1, 1.9, 0.05, "", function(){ return parseFloat(getComputedStyle(root).getPropertyValue("--lh-body"))||1.45; }, function(v){ setVar("--lh-body", v); });
+    var secMono2 = section("Дані (моно)");
+    fontRow(secMono2, "Гарнітура", "--font-mono", FONT_MONO);
+    var secAccent2 = section("Акцентні кольори");
+    colorRow(secAccent2,"Акцент","--accent"); colorRow(secAccent2,"Акцент (світл.)","--accent-b");
+    colorRow(secAccent2,"Акцент (яскр.)","--accent-c"); colorRow(secAccent2,"Акцент (темн.)","--accent-d");
+    colorRow(secAccent2,"Тривога","--alarm"); colorRow(secAccent2,"Попередження","--warn");
+    var secSurf2 = section("Поверхні");
+    colorRow(secSurf2,"Тло","--bg"); colorRow(secSurf2,"Тло рейла","--bg-rail");
+    colorRow(secSurf2,"Картка","--card"); colorRow(secSurf2,"Картка 2","--card-2"); colorRow(secSurf2,"Картка 3","--card-3");
+    colorRow(secSurf2,"Лінія","--line"); colorRow(secSurf2,"Лінія 2","--line-2");
+    var secText2 = section("Колір тексту");
+    colorRow(secText2,"Основний","--ink"); colorRow(secText2,"Другорядний","--ink-2"); colorRow(secText2,"Третинний","--ink-3");
+    var secShape2 = section("Форма");
+    rangeRow(secShape2, "Радіус картки", "--r-card", 0, 24, 1, "px", function(){ return px("--r-card"); }, function(v){ setVar("--r-card", v+"px"); });
+    rangeRow(secShape2, "Радіус контролу", "--r-ctl", 0, 16, 1, "px", function(){ return px("--r-ctl"); }, function(v){ setVar("--r-ctl", v+"px"); });
+    checkRow(secShape2, "Внутрішнє світіння карток", true, function(on){ setVar("--glow", on ? DEFAULTS["--glow"] : "none"); });
+    var secImg2 = section("Зображення");
+    fileRow(secImg2, "Логотип (рейл)", function(url){ var img=$(".brand .mark img"); if(img) img.src=url; });
+    var secAnim2 = section("Анімація");
+    rangeRow(secAnim2, "Швидкість UI", "--ui-speed", 0, 400, 10, "мс", function(){ return ms("--ui-speed"); }, function(v){ setVar("--ui-speed", v+"ms"); });
+    rangeRow(secAnim2, "Sweep-синхронізація", "--sweep-duration", 200, 2000, 20, "мс", function(){ return ms("--sweep-duration"); }, function(v){ setVar("--sweep-duration", v+"ms"); });
+    rangeRow(secAnim2, "Пульс «наживо»", "--beacon-duration", 800, 5000, 100, "мс", function(){ return ms("--beacon-duration"); }, function(v){ setVar("--beacon-duration", v+"ms"); });
+    rangeRow(secAnim2, "Виїзд паспорта", "--panel-duration", 80, 600, 10, "мс", function(){ return ms("--panel-duration"); }, function(v){ setVar("--panel-duration", v+"ms"); });
+    checkRow(secAnim2, "Вимкнути всю анімацію", false, function(on){ document.body.classList.toggle("tp-reduced", on); });
+  }
+
+  /* ---- copy css ---- */
+  var toastEl = $("#tp-toast"), toastT;
+  function toast(msg){
+    toastEl.textContent = msg; toastEl.classList.add("on");
+    clearTimeout(toastT); toastT = setTimeout(function(){ toastEl.classList.remove("on"); }, 2000);
+  }
+  $("#tp-copy").addEventListener("click", function(){
+    var lines = TOKENS.map(function(t){
+      var v = getComputedStyle(root).getPropertyValue(t).trim();
+      return "  " + t + ": " + v + ";";
+    });
+    var css = ":root{\n" + lines.join("\n") + "\n}";
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(css).then(function(){ toast("CSS скопійовано в буфер"); }).catch(fallbackCopy);
+    } else { fallbackCopy(); }
+    function fallbackCopy(){
+      var ta = document.createElement("textarea");
+      ta.value = css; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try{ document.execCommand("copy"); toast("CSS скопійовано в буфер"); }catch(e){ toast("Не вдалося скопіювати"); }
+      document.body.removeChild(ta);
+    }
+  });
+})();
+</script>
+</body>
+</html>

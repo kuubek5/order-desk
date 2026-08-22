@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order Desk — Особистий кабінет</title>
+<link rel="icon" type="image/png" href="../screens/higg/app_icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Barlow:wght@400;500;600;700&family=Azeret+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1117;
+  --bg-rail:#0a0e14;
+  --card:#161d27;
+  --card-2:#1b2431;
+  --card-3:#202b3a;
+  --line:#222c3a;
+  --line-2:#2c3849;
+  --ink:#e8eff7;
+  --ink-2:#8fa3bb;
+  --ink-3:#7789a0;
+  --accent:#14b8a6;
+  --accent-b:#2dd4bf;
+  --accent-c:#5eead4;
+  --accent-d:#0f766e;
+  --alarm:#f87171;
+  --warn:#f0a35e;
+  --r-card:10px;
+  --r-ctl:9px;
+  --glow:inset 0 1px 0 rgba(255,255,255,.045), inset 0 0 44px -26px rgba(45,212,191,.75), 0 18px 38px -30px rgba(0,0,0,.95);
+  --sh-pop:0 14px 34px -18px rgba(0,0,0,.86), 0 2px 6px -2px rgba(0,0,0,.6);
+
+  /* ---- tweak-panel-controlled tokens ---- */
+  --font-head:'Golos Text',sans-serif;
+  --font-body:'Golos Text',sans-serif;
+  --font-mono:'JetBrains Mono',monospace;
+  --size-h1:22px;
+  --ls-head:-.015em;
+  --size-body:14px;
+  --lh-body:1.45;
+  --ui-speed:.14s;
+  --sweep-duration:980ms;
+  --beacon-duration:2.6s;
+  --panel-duration:.22s;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--font-body);font-size:var(--size-body);line-height:var(--lh-body);
+  -webkit-font-smoothing:antialiased;
+  display:flex;overflow:hidden;
+}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px;border-radius:4px}
+.mono{font-family:var(--font-mono);font-variant-ligatures:none}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ---------- rail (inherited from index.html, unchanged) ---------- */
+.rail{
+  width:228px;flex:0 0 228px;background:var(--bg-rail);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;padding:16px 12px 12px;gap:18px;overflow-y:auto;
+}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 6px 0}
+.brand .mark{
+  width:30px;height:30px;flex:0 0 30px;border-radius:8px;
+  background:linear-gradient(160deg,rgba(45,212,191,.22),rgba(20,184,166,.06));
+  border:1px solid rgba(45,212,191,.34);display:grid;place-items:center;
+  box-shadow:inset 0 0 18px -8px rgba(45,212,191,.9);
+}
+.brand .mark svg{width:16px;height:16px;stroke:var(--accent-b)}
+.brand .mark img{width:22px;height:22px;object-fit:contain;border-radius:5px}
+.brand b{font-family:var(--font-head);font-weight:600;font-size:15.5px;letter-spacing:.01em}
+.brand span{display:block;font-size:10.5px;letter-spacing:.16em;color:var(--ink-3);text-transform:uppercase;margin-top:-2px}
+.nav-group{display:flex;flex-direction:column;gap:2px}
+.nav-title{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3);padding:0 10px 6px;font-weight:600}
+.nav-item{
+  display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:var(--r-ctl);
+  color:var(--ink-2);font-weight:500;font-size:13.5px;text-align:left;
+  transition:background var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.nav-item svg{width:17px;height:17px;flex:0 0 17px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.9}
+.nav-item:hover{background:#141b25;color:var(--ink)}
+.nav-item[aria-current="page"]{
+  background:linear-gradient(90deg,rgba(20,184,166,.16),rgba(20,184,166,.03));
+  color:var(--accent-c);box-shadow:inset 1px 0 0 var(--accent);
+}
+.nav-item .count{
+  margin-left:auto;font-family:var(--font-mono);font-size:11px;font-weight:500;
+  padding:1px 6px;border-radius:5px;background:rgba(45,212,191,.14);color:var(--accent-c);
+  border:1px solid rgba(45,212,191,.26);
+}
+.nav-item .count.warn{background:rgba(240,163,94,.13);color:var(--warn);border-color:rgba(240,163,94,.28)}
+.rail-foot{margin-top:auto;border-top:1px solid var(--line);padding:12px 10px 2px;display:flex;gap:10px;align-items:center}
+.avatar{width:28px;height:28px;border-radius:7px;background:var(--card-3);border:1px solid var(--line-2);display:grid;place-items:center;font-size:12px;font-weight:600;color:var(--accent-c)}
+.avatar.lg{width:52px;height:52px;border-radius:12px;font-size:18px;flex:0 0 52px}
+.rail-foot .who{font-size:12.5px;font-weight:500;line-height:1.25}
+.rail-foot .who span{display:block;font-size:11px;color:var(--ink-3)}
+
+/* ---------- main shell ---------- */
+.main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;padding:16px 20px 16px}
+
+.topbar{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.topbar-title h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 4px}
+.topbar-live{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:12px;color:var(--ink-2)}
+.topbar-live b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:11.5px}
+.topbar-live .sep{width:1px;height:10px;background:var(--line-2)}
+
+.btn{
+  display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:var(--r-ctl);
+  border:1px solid var(--line-2);background:var(--card);color:var(--ink);font-size:13px;font-weight:500;
+  transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.btn:hover{background:var(--card-2);border-color:#3a4a5f}
+.btn.primary{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.btn.primary:hover{background:rgba(20,184,166,.24);border-color:var(--accent)}
+.btn.sm{height:30px;padding:0 11px;font-size:12.5px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---------- card language shared with index.html ---------- */
+.card-head{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.card-head h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0;letter-spacing:-.005em}
+.card-head .meta{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
+.card-head .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+.src{
+  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;
+  border:1px solid rgba(45,212,191,.32);color:var(--accent-c);background:rgba(20,184,166,.1);
+}
+.kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:6px 0;font-size:12px;color:var(--ink-2)}
+.kv+.kv{border-top:1px solid #1b2431}
+.kv b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:11.5px}
+
+.dsec{margin-bottom:16px}
+.dsec:last-child{margin-bottom:0}
+.dsec .dlabel{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:8px}
+.sumrow{display:flex;gap:8px}
+.suminput{
+  flex:1;min-width:0;height:34px;padding:0 10px;border-radius:var(--r-ctl);background:#111823;border:1px solid var(--line);
+  color:var(--ink);font-family:var(--font-mono);font-size:13px;outline:none;
+}
+.suminput::placeholder{color:var(--ink-3);font-family:var(--font-body)}
+.suminput:focus{border-color:rgba(45,212,191,.45);box-shadow:inset 0 0 18px -12px rgba(45,212,191,.9)}
+.suminput.error{border-color:rgba(248,113,113,.5)}
+.suminput.error:focus{box-shadow:inset 0 0 18px -12px rgba(248,113,113,.9)}
+.field-msg{font-size:11.5px;color:var(--ink-3);margin-top:6px;min-height:15px}
+.field-msg.error{color:var(--alarm)}
+.field-msg.ok{color:var(--accent-c)}
+.iconbtn{width:34px;height:34px;flex:0 0 34px;border-radius:var(--r-ctl);display:inline-flex;align-items:center;justify-content:center;color:var(--ink-2);border:1px solid var(--line-2);transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.iconbtn:hover{background:rgba(20,184,166,.12);border-color:rgba(45,212,191,.35);color:var(--accent-c)}
+.iconbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+.timeline{display:flex;flex-direction:column}
+.tl-item{display:flex;gap:10px;padding:7px 0}
+.tl-item+.tl-item{border-top:1px solid #1b2431}
+.tl-item .t{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);flex:0 0 84px;padding-top:1px}
+.tl-item .body{flex:1;min-width:0}
+.tl-item .label{font-size:12.5px;color:var(--ink);font-weight:500}
+.tl-item .who{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+
+.toast{
+  font-family:var(--font-mono);font-size:11px;color:var(--accent-c);
+  background:rgba(20,184,166,.13);border:1px solid rgba(45,212,191,.3);border-radius:5px;padding:2px 8px;
+  opacity:0;transition:opacity var(--ui-speed) ease;
+}
+.toast.on{opacity:1}
+
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media (max-width:1080px){
+  .rail{width:60px;flex:0 0 60px;padding:16px 8px 10px;align-items:stretch}
+  .brand .txt,.nav-title,.nav-item span.lb,.rail-foot .who{display:none}
+  .nav-item{justify-content:center;padding:9px 0;position:relative}
+  .nav-item .count{position:absolute;top:2px;right:4px;margin:0;font-size:9.5px;padding:0 4px}
+  .rail-foot{justify-content:center}
+}
+@media (max-width:560px){
+  .topbar-title h1{font-size:20px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+}
+
+/* ================= account screen (new, same world) ================= */
+.account-main{display:block;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin}
+.account-wrap{max-width:740px;margin:0 auto;display:flex;flex-direction:column;gap:12px;padding-bottom:24px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow)}
+.panel-body{padding:14px 16px}
+
+.profile-id{display:flex;gap:14px;align-items:center}
+.profile-id .name{font-family:var(--font-head);font-weight:600;font-size:16.5px;letter-spacing:-.005em}
+.profile-id .tags{display:flex;gap:8px;align-items:center;margin-top:5px;flex-wrap:wrap}
+.profile-id .login{font-size:12px;color:var(--ink-2)}
+.profile-kv{padding-top:2px}
+
+.stat-row{display:flex;gap:10px;flex-wrap:wrap}
+.stat-card{flex:1;min-width:200px}
+.stat-card .panel-body{padding:12px 14px}
+.stat-chips{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;margin-top:2px}
+.stat-chip{display:inline-flex;align-items:baseline;gap:6px;font-size:12.5px;color:var(--ink-2)}
+.stat-chip b{font-family:var(--font-mono);font-weight:600;font-size:16px;color:var(--ink);letter-spacing:-.01em}
+.stat-chip.is-warn b{color:var(--warn)}
+.stat-chip.is-alarm b{color:var(--alarm)}
+.stat-sep{width:1px;height:14px;background:var(--line-2)}
+
+.pass-form .btn{margin-top:2px}
+.pass-foot{display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap}
+
+.timeline-scroll{max-height:440px;overflow-y:auto;scrollbar-width:thin;padding-right:2px}
+</style>
+</head>
+<body>
+<!--
+THESIS: акаунт — довідкове, не робоче місце: оператор заходить сюди рідко (змінити пароль, звірити свою статистику), тож екран статичний, вертикальний, без панелей, що конкурують за увагу.
+OWN-WORLD: палітра v2a без змін — синьо-чорне тло, бірюзовий сигнал, тривога/попередження; Golos Text + JetBrains Mono; тонка рамка карток, --glow лише на картках, компактні лічильники в стилі statusline, timeline-стрічка з паспорта роботи.
+STORY: Оксана відкриває «Особистий кабінет» з рейла, бачить свій профіль і компактну особисту статистику зверху, за потреби змінює пароль (жива перевірка збігу), нижче гортає свою стрічку дій — той самий запис, що продукт веде для картки роботи, тепер зібраний в один список під неї.
+FIRST VIEWPORT: рейл зліва з підсвіченим пунктом «Особистий кабінет»; заголовок; картка профілю з аватаром і роллю; ряд компактних карток-лічильників особистої статистики.
+FORM: екран «Особистий кабінет оператора» всередині закріпленого світу v2a.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+
+<aside class="rail">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">
+      <img src="../screens/higg/app_icon.png" alt="">
+    </span>
+    <span class="txt"><b>Order Desk</b><span>фрезерний центр</span></span>
+  </div>
+
+  <nav class="nav-group" aria-label="Основна навігація">
+    <div class="nav-title">Робота</div>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"></path><circle cx="3.5" cy="6" r="1.2"></circle><circle cx="3.5" cy="12" r="1.2"></circle><circle cx="3.5" cy="18" r="1.2"></circle></svg>
+      <span class="lb">Черга</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3.5 7 8.5 6 8.5-6"></path></svg>
+      <span class="lb">Нові з пошти</span><span class="count">6</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5z"></path><path d="M3 8.5 12 13l9-4.5M12 13v7"></path></svg>
+      <span class="lb">Ранкова видача</span><span class="count warn">2</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"></circle><path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5"></path><path d="M16 6.2A3.2 3.2 0 0 1 16 14"></path><path d="M18 19c-.3-1.7-1-3-2-3.9"></path></svg>
+      <span class="lb">Клієнти</span>
+    </button>
+  </nav>
+
+  <nav class="nav-group" aria-label="Аналітика та система">
+    <div class="nav-title">Система</div>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg>
+      <span class="lb">Пошук</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V5M16 20v-7M22 20H2"></path></svg>
+      <span class="lb">Статистика</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2.2"></circle><circle cx="10" cy="17" r="2.2"></circle></svg>
+      <span class="lb">Налаштування</span>
+    </button>
+    <button class="nav-item" aria-current="page">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"></circle><path d="M4.5 20c1-4 4-6.2 7.5-6.2s6.5 2.2 7.5 6.2"></path></svg>
+      <span class="lb">Особистий кабінет</span>
+    </button>
+  </nav>
+
+  <div class="rail-foot">
+    <span class="avatar">ОГ</span>
+    <span class="who">Оксана Гриценко<span>CAM-оператор</span></span>
+  </div>
+</aside>
+
+<main class="main account-main">
+  <div class="account-wrap">
+
+    <div class="topbar">
+      <div class="topbar-title">
+        <h1>Особистий кабінет</h1>
+        <div class="topbar-live">
+          <span>Логін <b class="mono">o.grytsenko</b></span>
+          <span class="sep" aria-hidden="true"></span>
+          <span>Оператор з <b class="mono">12.02.26</b></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROFILE -->
+    <section class="panel" aria-labelledby="profileTitle">
+      <div class="card-head">
+        <h2 id="profileTitle">Профіль</h2>
+      </div>
+      <div class="panel-body">
+        <div class="profile-id">
+          <span class="avatar lg" aria-hidden="true">ОГ</span>
+          <div>
+            <div class="name">Оксана Гриценко</div>
+            <div class="tags">
+              <span class="src">оператор</span>
+              <span class="login mono">o.grytsenko</span>
+            </div>
+          </div>
+        </div>
+        <div class="profile-kv">
+          <div class="kv"><span>Логін</span><b class="mono">o.grytsenko</b></div>
+          <div class="kv"><span>Роль</span><b>оператор</b></div>
+          <div class="kv"><span>Акаунт створено</span><b class="mono">12.02.26</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PERSONAL STATS -->
+    <div class="stat-row">
+      <section class="panel stat-card" aria-labelledby="statTodayTitle">
+        <div class="panel-body">
+          <div class="dlabel" id="statTodayTitle">Сьогодні · 11.08</div>
+          <div class="stat-chips">
+            <span class="stat-chip"><b class="tnum">3</b> взято в роботу</span>
+            <span class="stat-sep" aria-hidden="true"></span>
+            <span class="stat-chip"><b class="tnum">0</b> відфрезеровано</span>
+          </div>
+        </div>
+      </section>
+      <section class="panel stat-card" aria-labelledby="statWeekTitle">
+        <div class="panel-body">
+          <div class="dlabel" id="statWeekTitle">За тиждень</div>
+          <div class="stat-chips">
+            <span class="stat-chip"><b class="tnum">9</b> взято в роботу</span>
+            <span class="stat-sep" aria-hidden="true"></span>
+            <span class="stat-chip"><b class="tnum">7</b> відфрезеровано</span>
+            <span class="stat-sep" aria-hidden="true"></span>
+            <span class="stat-chip"><b class="tnum mono">5 год 20 хв</b> сер. «взяв → відфрезерував»</span>
+          </div>
+        </div>
+      </section>
+      <section class="panel stat-card" aria-labelledby="statQualityTitle">
+        <div class="panel-body">
+          <div class="dlabel" id="statQualityTitle">Якість · 30 днів</div>
+          <div class="stat-chips">
+            <span class="stat-chip is-warn"><b class="tnum">1</b> переробка з вашої вини</span>
+            <span class="stat-sep" aria-hidden="true"></span>
+            <span class="stat-chip"><b class="tnum">24</b> робіт закрито</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- PASSWORD CHANGE -->
+    <section class="panel" aria-labelledby="passTitle">
+      <div class="card-head">
+        <h2 id="passTitle">Зміна пароля</h2>
+        <div class="right"><span class="toast" id="passToast" role="status" aria-live="polite"></span></div>
+      </div>
+      <div class="panel-body">
+        <form class="pass-form" id="passForm" novalidate>
+          <div class="dsec">
+            <label class="dlabel" for="curPass">Поточний пароль</label>
+            <div class="sumrow">
+              <input class="suminput mono" type="password" id="curPass" name="current" autocomplete="current-password" required>
+              <button class="iconbtn" type="button" data-toggle="curPass" aria-label="Показати поточний пароль" aria-pressed="false">
+                <svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              </button>
+            </div>
+          </div>
+          <div class="dsec">
+            <label class="dlabel" for="newPass">Новий пароль</label>
+            <div class="sumrow">
+              <input class="suminput mono" type="password" id="newPass" name="new" autocomplete="new-password" minlength="8" required>
+              <button class="iconbtn" type="button" data-toggle="newPass" aria-label="Показати новий пароль" aria-pressed="false">
+                <svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              </button>
+            </div>
+            <div class="field-msg" id="newPassMsg">Мінімум 8 символів</div>
+          </div>
+          <div class="dsec">
+            <label class="dlabel" for="confirmPass">Підтвердження нового пароля</label>
+            <div class="sumrow">
+              <input class="suminput mono" type="password" id="confirmPass" name="confirm" autocomplete="new-password" required>
+              <button class="iconbtn" type="button" data-toggle="confirmPass" aria-label="Показати підтвердження пароля" aria-pressed="false">
+                <svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              </button>
+            </div>
+            <div class="field-msg" id="confirmPassMsg" role="alert" aria-live="polite"></div>
+          </div>
+          <div class="pass-foot">
+            <button class="btn primary" type="submit" id="passSubmit">Змінити пароль</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ACTION HISTORY -->
+    <section class="panel" aria-labelledby="histTitle">
+      <div class="card-head">
+        <h2 id="histTitle">Історія дій</h2>
+        <span class="meta" id="histMeta">18 записів</span>
+      </div>
+      <div class="panel-body">
+        <div class="timeline-scroll">
+          <div class="timeline" id="histList"></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  var $  = function(s,root){return (root||document).querySelector(s);};
+  var $$ = function(s,root){return Array.prototype.slice.call((root||document).querySelectorAll(s));};
+  var esc = function(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");};
+
+  /* ---------- personal action history (demo, newest first) ---------- */
+  var HISTORY = [
+    {t:"11.08 09:41", label:"Змінила статус наряду 24145: прораховано → у фрезеруванні"},
+    {t:"11.08 08:57", label:"Записала Sum3D ID 118491 для наряду 24145"},
+    {t:"11.08 08:52", label:"Взяла в роботу наряд 24145", who:"пмма A2 · анатомія · 6 од."},
+    {t:"11.08 08:30", label:"Змінила статус наряду 24155: прораховано → у фрезеруванні"},
+    {t:"11.08 08:12", label:"Записала Sum3D ID 118509 для наряду 24155"},
+    {t:"11.08 08:05", label:"Взяла в роботу наряд 24155", who:"моно B1 · анатомія · 3 од."},
+    {t:"10.08 17:22", label:"Змінила статус наряду 24122: прораховано → у фрезеруванні"},
+    {t:"10.08 16:40", label:"Записала Sum3D ID 118402 для наряду 24122"},
+    {t:"10.08 16:18", label:"Взяла в роботу наряд 24122", who:"пмма A2 · анатомія · 6 од."},
+    {t:"10.08 11:05", label:"Змінила статус наряду 24096: відфрезеровано → знайдено при видачі"},
+    {t:"10.08 09:47", label:"Змінила статус наряду 24096: у фрезеруванні → відфрезеровано"},
+    {t:"08.08 15:30", label:"Записала Sum3D ID 118360 для наряду 24096"},
+    {t:"08.08 15:02", label:"Взяла в роботу наряд 24096", who:"титан корея · абатмент · 2 од."},
+    {t:"08.08 10:14", label:"Змінила статус наряду 24081: у фрезеруванні → відфрезеровано"},
+    {t:"07.08 14:52", label:"Позначила переробку наряду 24081: скол по краю · винен технік"},
+    {t:"07.08 09:36", label:"Записала Sum3D ID 118301 для наряду 24081"},
+    {t:"07.08 09:10", label:"Взяла в роботу наряд 24081", who:"моно А3.5 · вкладка · 4 од."},
+    {t:"05.08 16:47", label:"Змінила статус наряду 24050: знайдено при видачі → видано"}
+  ];
+
+  var histList = $("#histList");
+  histList.innerHTML = HISTORY.map(function(h){
+    return '<div class="tl-item"><span class="t mono">'+esc(h.t)+'</span><span class="body">'
+      + '<span class="label">'+esc(h.label)+'</span>'
+      + (h.who ? '<span class="who">'+esc(h.who)+'</span>' : '')
+      + '</span></div>';
+  }).join("");
+  $("#histMeta").textContent = HISTORY.length + " записів";
+
+  /* ---------- password field show/hide ---------- */
+  $$("[data-toggle]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var input = $("#"+btn.dataset.toggle);
+      var showing = input.type === "text";
+      input.type = showing ? "password" : "text";
+      btn.setAttribute("aria-pressed", String(!showing));
+    });
+  });
+
+  /* ---------- live validation ---------- */
+  var newPass = $("#newPass"), confirmPass = $("#confirmPass"), curPass = $("#curPass");
+  var newMsg = $("#newPassMsg"), confirmMsg = $("#confirmPassMsg");
+  var submitBtn = $("#passSubmit");
+  var MIN_LEN = 8;
+
+  function checkNew(){
+    if(!newPass.value){
+      newPass.classList.remove("error");
+      newMsg.className = "field-msg";
+      newMsg.textContent = "Мінімум " + MIN_LEN + " символів";
+      return true;
+    }
+    var ok = newPass.value.length >= MIN_LEN;
+    newPass.classList.toggle("error", !ok);
+    newMsg.className = "field-msg" + (ok ? " ok" : " error");
+    newMsg.textContent = ok ? "Довжина ок" : "Мінімум " + MIN_LEN + " символів";
+    return ok;
+  }
+
+  function checkConfirm(){
+    if(!confirmPass.value){
+      confirmPass.classList.remove("error");
+      confirmMsg.className = "field-msg";
+      confirmMsg.textContent = "";
+      return true;
+    }
+    var match = confirmPass.value === newPass.value;
+    confirmPass.classList.toggle("error", !match);
+    confirmMsg.className = "field-msg" + (match ? " ok" : " error");
+    confirmMsg.textContent = match ? "Паролі збігаються" : "Паролі не збігаються";
+    return match;
+  }
+
+  newPass.addEventListener("input", function(){ checkNew(); if(confirmPass.value) checkConfirm(); });
+  newPass.addEventListener("blur", checkNew);
+  confirmPass.addEventListener("input", checkConfirm);
+  confirmPass.addEventListener("blur", checkConfirm);
+
+  var toast = $("#passToast"), tt;
+  function say(msg){
+    toast.textContent = msg; toast.classList.add("on");
+    clearTimeout(tt); tt = setTimeout(function(){ toast.classList.remove("on"); }, 2200);
+  }
+
+  $("#passForm").addEventListener("submit", function(e){
+    e.preventDefault();
+    var lenOk = checkNew();
+    var matchOk = checkConfirm();
+    if(!curPass.value){
+      curPass.classList.add("error");
+      say("вкажіть поточний пароль");
+      curPass.focus();
+      return;
+    }
+    curPass.classList.remove("error");
+    if(!newPass.value || !confirmPass.value){
+      if(!newPass.value){ newMsg.className = "field-msg error"; newMsg.textContent = "Введіть новий пароль"; }
+      if(!confirmPass.value){ confirmMsg.className = "field-msg error"; confirmMsg.textContent = "Підтвердіть новий пароль"; }
+      return;
+    }
+    if(!lenOk || !matchOk){
+      say("виправте помилки у формі");
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Зберігаємо…";
+    setTimeout(function(){
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Змінити пароль";
+      $("#passForm").reset();
+      newPass.classList.remove("error"); confirmPass.classList.remove("error"); curPass.classList.remove("error");
+      newMsg.className = "field-msg"; newMsg.textContent = "Мінімум " + MIN_LEN + " символів";
+      confirmMsg.className = "field-msg"; confirmMsg.textContent = "";
+      say("пароль змінено");
+    }, 500);
+  });
+})();
+</script>
+
+<!-- ================= design tweak panel (dev-tool overlay, not part of the product) ================= -->
+<style>
+#tp-toggle{
+  position:fixed;right:18px;bottom:18px;width:44px;height:44px;border-radius:50%;z-index:99998;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  background:#20242c;border:1px solid #343a46;color:#c7ccd6;box-shadow:0 10px 26px -12px rgba(0,0,0,.7);
+  font-family:-apple-system,"Segoe UI",Roboto,sans-serif;transition:background .15s ease,color .15s ease,transform .15s ease;
+}
+#tp-toggle:hover{background:#282d37;color:#fff}
+#tp-toggle svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#tp-panel{
+  position:fixed;top:0;right:0;bottom:0;width:340px;max-width:92vw;z-index:99999;
+  background:#181b21;border-left:1px solid #2a2e37;color:#dfe3ea;
+  font-family:-apple-system,"Segoe UI",Roboto,sans-serif;font-size:12.5px;line-height:1.4;
+  display:flex;flex-direction:column;transform:translateX(100%);transition:transform .2s ease;
+  box-shadow:-18px 0 40px -24px rgba(0,0,0,.7);
+}
+#tp-panel.open{transform:translateX(0)}
+#tp-head{display:flex;align-items:center;gap:8px;padding:13px 14px;border-bottom:1px solid #262a33;flex:0 0 auto}
+#tp-head b{font-size:12.5px;font-weight:600;letter-spacing:.01em}
+#tp-head span{font-size:10.5px;color:#7d8493}
+#tp-close{margin-left:auto;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b91a0;cursor:pointer}
+#tp-close:hover{background:#232833;color:#fff}
+#tp-close svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+#tp-body{flex:1;min-height:0;overflow-y:auto;padding:4px 0 14px;scrollbar-width:thin}
+.tp-sec{border-bottom:1px solid #21242b;padding:10px 14px 14px}
+.tp-sec h3{margin:0 0 9px;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:#7d8493;font-weight:600}
+.tp-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.tp-row:last-child{margin-bottom:0}
+.tp-row label{flex:0 0 108px;color:#aeb4c0;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tp-row input[type=color]{width:26px;height:26px;padding:0;border:1px solid #343a46;border-radius:6px;background:none;cursor:pointer;flex:0 0 auto}
+.tp-row input[type=range]{flex:1;accent-color:#2dd4bf;min-width:0}
+.tp-row select{
+  flex:1;min-width:0;background:#20242c;border:1px solid #343a46;color:#dfe3ea;border-radius:6px;
+  padding:5px 6px;font-size:11.5px;font-family:inherit;
+}
+.tp-row input[type=text]{
+  flex:1;min-width:0;background:#20242c;border:1px solid #343a46;color:#dfe3ea;border-radius:6px;
+  padding:5px 6px;font-size:11.5px;font-family:inherit;
+}
+.tp-val{flex:0 0 44px;text-align:right;color:#7d8493;font-variant-numeric:tabular-nums;font-size:11px}
+.tp-row.tp-check label{flex:1}
+.tp-row input[type=checkbox]{width:15px;height:15px;accent-color:#2dd4bf;cursor:pointer}
+.tp-file{
+  flex:1;background:#20242c;border:1px dashed #3a4150;border-radius:6px;padding:6px 8px;
+  font-size:11px;color:#8b91a0;text-align:center;cursor:pointer;
+}
+.tp-file:hover{border-color:#4b5364;color:#c7ccd6}
+.tp-file input{display:none}
+#tp-foot{flex:0 0 auto;padding:11px 14px;border-top:1px solid #262a33;display:flex;gap:8px}
+.tp-btn{
+  flex:1;height:32px;border-radius:7px;border:1px solid #343a46;background:#20242c;color:#dfe3ea;
+  font-size:11.5px;font-weight:500;font-family:inherit;cursor:pointer;transition:background .14s ease,border-color .14s ease;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.tp-btn:hover{background:#282d37;border-color:#454c5c}
+.tp-btn.primary{background:#0f766e;border-color:#14b8a6;color:#eafffb}
+.tp-btn.primary:hover{background:#116e66}
+.tp-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#tp-toast{
+  position:fixed;right:18px;bottom:70px;z-index:99999;background:#0f766e;color:#eafffb;
+  padding:8px 13px;border-radius:8px;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;font-size:12px;
+  opacity:0;transform:translateY(6px);transition:opacity .16s ease,transform .16s ease;pointer-events:none;
+}
+#tp-toast.on{opacity:1;transform:translateY(0)}
+@media (max-width:560px){ #tp-panel{width:100%} }
+</style>
+
+<button id="tp-toggle" type="button" aria-label="Відкрити панель дизайн-твіків" aria-expanded="false" aria-controls="tp-panel">
+  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.35a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.65 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.65 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.65a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.65a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.35 9a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.04z"></path></svg>
+</button>
+
+<aside id="tp-panel" aria-label="Панель дизайн-твіків">
+  <div id="tp-head">
+    <b>Дизайн-твіки</b><span>живе редагування</span>
+    <button id="tp-close" type="button" aria-label="Закрити панель">
+      <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+    </button>
+  </div>
+  <div id="tp-body"></div>
+  <div id="tp-foot">
+    <button class="tp-btn" id="tp-reset" type="button">Скинути</button>
+    <button class="tp-btn primary" id="tp-copy" type="button">
+      <svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M4 16V6a2 2 0 0 1 2-2h10"></path></svg>
+      Копіювати CSS
+    </button>
+  </div>
+</aside>
+<div id="tp-toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+  var $ = function(s,r){ return (r||document).querySelector(s); };
+
+  var FONT_SANS = [
+    ["'Barlow',sans-serif","Barlow (поточний)"],
+    ["'Space Grotesk',sans-serif","Space Grotesk"],
+    ["'Sora',sans-serif","Sora"],
+    ["'Manrope',sans-serif","Manrope"],
+    ["'Plus Jakarta Sans',sans-serif","Plus Jakarta Sans"],
+    ["'DM Sans',sans-serif","DM Sans"],
+    ["'IBM Plex Sans',sans-serif","IBM Plex Sans"],
+    ["'Outfit',sans-serif","Outfit"],
+    ["'Public Sans',sans-serif","Public Sans"],
+    ["'Work Sans',sans-serif","Work Sans"],
+    ["'Golos Text',sans-serif","Golos Text (кирилиця)"],
+    ["'PT Sans',sans-serif","PT Sans (кирилиця)"],
+    ["'Unbounded',sans-serif","Unbounded (кирилиця)"],
+    ["'Onest',sans-serif","Onest (кирилиця)"],
+    ["__custom__","Інша (ввести назву)…"]
+  ];
+  var FONT_MONO = [
+    ["'Azeret Mono',monospace","Azeret Mono (поточний)"],
+    ["'JetBrains Mono',monospace","JetBrains Mono"],
+    ["'IBM Plex Mono',monospace","IBM Plex Mono"],
+    ["'Space Mono',monospace","Space Mono"],
+    ["'Red Hat Mono',monospace","Red Hat Mono"],
+    ["'Roboto Mono',monospace","Roboto Mono"],
+    ["__custom__","Інша (ввести назву)…"]
+  ];
+
+  var loadedFonts = {};
+  function loadGoogleFont(name){
+    if(loadedFonts[name]) return;
+    loadedFonts[name] = true;
+    var link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=" + encodeURIComponent(name).replace(/%20/g,"+") + ":wght@400;500;600;700&display=swap";
+    document.head.appendChild(link);
+  }
+  // preload the curated lists so switching feels instant
+  FONT_SANS.concat(FONT_MONO).forEach(function(f){
+    if(f[0] === "__custom__") return;
+    var m = f[0].match(/'([^']+)'/);
+    if(m) loadGoogleFont(m[1]);
+  });
+
+  var DEFAULTS = {};
+  var TOKENS = ["--bg","--bg-rail","--card","--card-2","--card-3","--line","--line-2",
+    "--ink","--ink-2","--ink-3","--accent","--accent-b","--accent-c","--accent-d","--alarm","--warn",
+    "--r-card","--r-ctl","--font-head","--font-body","--font-mono","--size-h1","--ls-head",
+    "--size-body","--lh-body","--ui-speed","--sweep-duration","--beacon-duration","--panel-duration","--glow"];
+  TOKENS.forEach(function(t){ DEFAULTS[t] = getComputedStyle(root).getPropertyValue(t).trim(); });
+
+  function setVar(name, val){ root.style.setProperty(name, val); }
+  function px(name){ return parseFloat(getComputedStyle(root).getPropertyValue(name)) || 0; }
+  function ms(name){
+    var v = getComputedStyle(root).getPropertyValue(name).trim();
+    if(v.slice(-2) === "ms") return parseFloat(v);
+    if(v.slice(-1) === "s") return parseFloat(v) * 1000;
+    return parseFloat(v) || 0;
+  }
+
+  var body = $("#tp-body");
+
+  function section(title){
+    var s = document.createElement("div"); s.className = "tp-sec";
+    var h = document.createElement("h3"); h.textContent = title;
+    s.appendChild(h); body.appendChild(s); return s;
+  }
+  function colorRow(sec, label, varName){
+    var row = document.createElement("div"); row.className = "tp-row";
+    var lb = document.createElement("label"); lb.textContent = label;
+    var inp = document.createElement("input"); inp.type = "color";
+    var cur = getComputedStyle(root).getPropertyValue(varName).trim();
+    inp.value = /^#/.test(cur) ? cur : "#000000";
+    inp.addEventListener("input", function(){ setVar(varName, inp.value); });
+    row.appendChild(lb); row.appendChild(inp);
+    sec.appendChild(row);
+  }
+  function rangeRow(sec, label, varName, min, max, step, unit, getFn, setFn){
+    var row = document.createElement("div"); row.className = "tp-row";
+    var lb = document.createElement("label"); lb.textContent = label;
+    var inp = document.createElement("input"); inp.type = "range";
+    inp.min = min; inp.max = max; inp.step = step;
+    var val = document.createElement("span"); val.className = "tp-val";
+    var cur = getFn();
+    inp.value = cur;
+    val.textContent = cur + unit;
+    inp.addEventListener("input", function(){
+      setFn(inp.value);
+      val.textContent = inp.value + unit;
+    });
+    row.appendChild(lb); row.appendChild(inp); row.appendChild(val);
+    sec.appendChild(row);
+  }
+  function fontRow(sec, label, varName, list){
+    var row = document.createElement("div"); row.className = "tp-row";
+    var lb = document.createElement("label"); lb.textContent = label;
+    var sel = document.createElement("select");
+    var cur = getComputedStyle(root).getPropertyValue(varName).trim();
+    var matched = false;
+    list.forEach(function(f){
+      var opt = document.createElement("option"); opt.value = f[0]; opt.textContent = f[1];
+      if(f[0] === cur){ opt.selected = true; matched = true; }
+      sel.appendChild(opt);
+    });
+    row.appendChild(lb); row.appendChild(sel); sec.appendChild(row);
+
+    var custom = document.createElement("div"); custom.className = "tp-row";
+    custom.style.display = matched ? "none" : "flex";
+    var lb2 = document.createElement("label"); lb2.textContent = "";
+    var txt = document.createElement("input"); txt.type = "text"; txt.placeholder = "Назва шрифту з Google Fonts…";
+    if(!matched){ txt.value = cur.replace(/^'([^']+)'.*$/, "$1"); }
+    custom.appendChild(lb2); custom.appendChild(txt); sec.appendChild(custom);
+
+    sel.addEventListener("change", function(){
+      if(sel.value === "__custom__"){
+        custom.style.display = "flex"; txt.focus();
+      } else {
+        custom.style.display = "none";
+        setVar(varName, sel.value);
+      }
+    });
+    function applyCustom(){
+      var name = txt.value.trim();
+      if(!name) return;
+      loadGoogleFont(name);
+      var isMono = list === FONT_MONO;
+      setVar(varName, "'" + name + "'," + (isMono ? "monospace" : "sans-serif"));
+    }
+    txt.addEventListener("change", applyCustom);
+    txt.addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); applyCustom(); } });
+  }
+  function checkRow(sec, label, initial, onChange){
+    var row = document.createElement("div"); row.className = "tp-row tp-check";
+    var lb = document.createElement("label"); lb.textContent = label;
+    var inp = document.createElement("input"); inp.type = "checkbox"; inp.checked = initial;
+    inp.addEventListener("change", function(){ onChange(inp.checked); });
+    row.appendChild(lb); row.appendChild(inp); sec.appendChild(row);
+    return inp;
+  }
+  function fileRow(sec, label, onFile){
+    var row = document.createElement("div"); row.className = "tp-row";
+    var lb = document.createElement("label"); lb.textContent = label;
+    var box = document.createElement("label"); box.className = "tp-file"; box.textContent = "Завантажити зображення…";
+    var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
+    inp.addEventListener("change", function(){
+      var f = inp.files && inp.files[0]; if(!f) return;
+      var url = URL.createObjectURL(f);
+      onFile(url);
+      box.textContent = f.name;
+    });
+    box.appendChild(inp);
+    row.appendChild(lb); row.appendChild(box); sec.appendChild(row);
+  }
+
+  var styleReduced = document.createElement("style");
+  styleReduced.textContent = ".tp-reduced *,.tp-reduced *::before,.tp-reduced *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}";
+  document.head.appendChild(styleReduced);
+
+  buildAll();
+
+  /* ---- panel open/close ---- */
+  var panel = $("#tp-panel"), toggle = $("#tp-toggle"), closeBtn = $("#tp-close");
+  function openPanel(){ panel.classList.add("open"); toggle.setAttribute("aria-expanded","true"); }
+  function closePanel(){ panel.classList.remove("open"); toggle.setAttribute("aria-expanded","false"); }
+  toggle.addEventListener("click", function(){ panel.classList.contains("open") ? closePanel() : openPanel(); });
+  closeBtn.addEventListener("click", closePanel);
+
+  /* ---- reset ---- */
+  $("#tp-reset").addEventListener("click", function(){
+    TOKENS.forEach(function(t){ root.style.removeProperty(t); });
+    document.body.classList.remove("tp-reduced");
+    body.innerHTML = "";
+    buildAll();
+    toast("Скинуто до значень за замовчуванням");
+  });
+  function buildAll(){
+    var secHead = section("Заголовок");
+    fontRow(secHead, "Гарнітура", "--font-head", FONT_SANS);
+    rangeRow(secHead, "Розмір h1", "--size-h1", 16, 40, 1, "px", function(){ return px("--size-h1"); }, function(v){ setVar("--size-h1", v+"px"); });
+    rangeRow(secHead, "Трекінг", "--ls-head", -4, 2, 0.5, "em", function(){ return parseFloat(getComputedStyle(root).getPropertyValue("--ls-head"))*100 || -1.5; }, function(v){ setVar("--ls-head",(v/100)+"em"); });
+    var secBody2 = section("Типографіка тіла");
+    fontRow(secBody2, "Гарнітура", "--font-body", FONT_SANS);
+    rangeRow(secBody2, "Розмір", "--size-body", 12, 18, 0.5, "px", function(){ return px("--size-body"); }, function(v){ setVar("--size-body", v+"px"); });
+    rangeRow(secBody2, "Інтерліньяж", "--lh-body", 1.1, 1.9, 0.05, "", function(){ return parseFloat(getComputedStyle(root).getPropertyValue("--lh-body"))||1.45; }, function(v){ setVar("--lh-body", v); });
+    var secMono2 = section("Дані (моно)");
+    fontRow(secMono2, "Гарнітура", "--font-mono", FONT_MONO);
+    var secAccent2 = section("Акцентні кольори");
+    colorRow(secAccent2,"Акцент","--accent"); colorRow(secAccent2,"Акцент (світл.)","--accent-b");
+    colorRow(secAccent2,"Акцент (яскр.)","--accent-c"); colorRow(secAccent2,"Акцент (темн.)","--accent-d");
+    colorRow(secAccent2,"Тривога","--alarm"); colorRow(secAccent2,"Попередження","--warn");
+    var secSurf2 = section("Поверхні");
+    colorRow(secSurf2,"Тло","--bg"); colorRow(secSurf2,"Тло рейла","--bg-rail");
+    colorRow(secSurf2,"Картка","--card"); colorRow(secSurf2,"Картка 2","--card-2"); colorRow(secSurf2,"Картка 3","--card-3");
+    colorRow(secSurf2,"Лінія","--line"); colorRow(secSurf2,"Лінія 2","--line-2");
+    var secText2 = section("Колір тексту");
+    colorRow(secText2,"Основний","--ink"); colorRow(secText2,"Другорядний","--ink-2"); colorRow(secText2,"Третинний","--ink-3");
+    var secShape2 = section("Форма");
+    rangeRow(secShape2, "Радіус картки", "--r-card", 0, 24, 1, "px", function(){ return px("--r-card"); }, function(v){ setVar("--r-card", v+"px"); });
+    rangeRow(secShape2, "Радіус контролу", "--r-ctl", 0, 16, 1, "px", function(){ return px("--r-ctl"); }, function(v){ setVar("--r-ctl", v+"px"); });
+    checkRow(secShape2, "Внутрішнє світіння карток", true, function(on){ setVar("--glow", on ? DEFAULTS["--glow"] : "none"); });
+    var secImg2 = section("Зображення");
+    fileRow(secImg2, "Логотип (рейл)", function(url){ var img=$(".brand .mark img"); if(img) img.src=url; });
+    var secAnim2 = section("Анімація");
+    rangeRow(secAnim2, "Швидкість UI", "--ui-speed", 0, 400, 10, "мс", function(){ return ms("--ui-speed"); }, function(v){ setVar("--ui-speed", v+"ms"); });
+    rangeRow(secAnim2, "Sweep-синхронізація", "--sweep-duration", 200, 2000, 20, "мс", function(){ return ms("--sweep-duration"); }, function(v){ setVar("--sweep-duration", v+"ms"); });
+    rangeRow(secAnim2, "Пульс «наживо»", "--beacon-duration", 800, 5000, 100, "мс", function(){ return ms("--beacon-duration"); }, function(v){ setVar("--beacon-duration", v+"ms"); });
+    rangeRow(secAnim2, "Виїзд паспорта", "--panel-duration", 80, 600, 10, "мс", function(){ return ms("--panel-duration"); }, function(v){ setVar("--panel-duration", v+"ms"); });
+    checkRow(secAnim2, "Вимкнути всю анімацію", false, function(on){ document.body.classList.toggle("tp-reduced", on); });
+  }
+
+  /* ---- copy css ---- */
+  var toastEl = $("#tp-toast"), toastT;
+  function toast(msg){
+    toastEl.textContent = msg; toastEl.classList.add("on");
+    clearTimeout(toastT); toastT = setTimeout(function(){ toastEl.classList.remove("on"); }, 2000);
+  }
+  $("#tp-copy").addEventListener("click", function(){
+    var lines = TOKENS.map(function(t){
+      var v = getComputedStyle(root).getPropertyValue(t).trim();
+      return "  " + t + ": " + v + ";";
+    });
+    var css = ":root{\n" + lines.join("\n") + "\n}";
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(css).then(function(){ toast("CSS скопійовано в буфер"); }).catch(fallbackCopy);
+    } else { fallbackCopy(); }
+    function fallbackCopy(){
+      var ta = document.createElement("textarea");
+      ta.value = css; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try{ document.execCommand("copy"); toast("CSS скопійовано в буфер"); }catch(e){ toast("Не вдалося скопіювати"); }
+      document.body.removeChild(ta);
+    }
+  });
+})();
+</script>
+</body>
+</html>

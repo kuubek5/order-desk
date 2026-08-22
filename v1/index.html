@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Черга робіт — Order Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+
+
+<style>
+:root{
+  --bg:#0f1523;
+  --bg-rail:#0c111d;
+  --surface:#1b2333;
+  --surface-2:#212b3e;
+  --surface-3:#27324a;
+  --line:#26314a;
+  --line-2:#1f2839;
+  --ink:#e9eef8;
+  --ink-2:#a6b7d4;
+  --ink-3:#8698b8;
+  --accent:#3b82f6;
+  --accent-dim:#2a4a7d;
+  --accent-ink:#93bbff;
+  --signal:#e94f4f;
+  --signal-ink:#ff9c9c;
+  --signal-bg:#2b1a20;
+  --warn:#d98a3d;
+  --warn-ink:#e8b271;
+  --mail:#33a09a;
+  --mail-ink:#6fd0c9;
+  --r:8px;
+  --r-sm:5px;
+  --ease:cubic-bezier(.2,.7,.25,1);
+  --rail-w:76px;
+  --panel-w:384px;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:"Archivo",sans-serif;
+  font-size:14px;
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+button,input,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+h1,h2,h3,h4,p,ul,ol{margin:0}
+ul,ol{list-style:none;padding:0}
+.mono{font-family:"JetBrains Mono",monospace;font-variant-ligatures:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+::selection{background:var(--accent-dim);color:#fff}
+
+*{scrollbar-width:thin;scrollbar-color:#2c3852 transparent}
+
+/* ---------- shell ---------- */
+.app{
+  display:grid;
+  grid-template-columns:var(--rail-w) minmax(0,1fr) var(--panel-w);
+  height:100dvh;
+}
+
+/* ---------- left rail ---------- */
+.rail{
+  background:var(--bg-rail);
+  border-right:1px solid var(--line-2);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:14px 0 12px;
+  gap:2px;
+  overflow-y:auto;
+}
+.mark{
+  width:34px;height:34px;margin-bottom:14px;
+  border:1px solid var(--line);border-radius:var(--r-sm);
+  display:grid;place-items:center;color:var(--accent-ink);flex:none;
+}
+.nav-item{
+  width:60px;padding:9px 2px 7px;border-radius:var(--r-sm);
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  color:var(--ink-3);position:relative;flex:none;
+  transition:background .15s var(--ease),color .15s var(--ease);
+}
+.nav-item:hover{background:#151d2e;color:var(--ink-2)}
+.nav-item[aria-current="page"]{background:#162034;color:var(--ink)}
+.nav-item[aria-current="page"]::before{
+  content:"";position:absolute;left:-9px;top:50%;transform:translateY(-50%);
+  width:2px;height:22px;border-radius:1px;background:var(--accent);
+}
+.nav-item svg{width:20px;height:20px;flex:none}
+.nav-label{font-size:10px;letter-spacing:.02em;text-align:center;line-height:1.2}
+.nav-icon{position:relative;display:block}
+.nav-count{
+  position:absolute;top:-6px;right:-11px;min-width:16px;height:16px;padding:0 4px;
+  background:var(--accent);color:#fff;border-radius:8px;
+  font-size:10px;font-weight:700;line-height:16px;text-align:center;
+}
+.rail-foot{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:2px}
+.who{
+  width:30px;height:30px;border-radius:50%;background:#1c2740;border:1px solid var(--line);
+  display:grid;place-items:center;font-size:11px;font-weight:600;color:var(--ink-2);
+}
+
+/* ---------- top bar ---------- */
+.stage{display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.topbar{
+  border-bottom:1px solid var(--line-2);
+  padding:14px 20px 0;
+  display:flex;flex-direction:column;gap:12px;flex:none;
+}
+.topbar-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+h1{font-size:20px;font-weight:700;letter-spacing:-.015em;line-height:1.1}
+.head-meta{font-size:12px;color:var(--ink-3);letter-spacing:.01em}
+.head-meta b{color:var(--ink-2);font-weight:500}
+.spacer{margin-left:auto}
+
+.seg{display:flex;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
+.seg button{
+  padding:6px 12px;font-size:12.5px;color:var(--ink-3);
+  border-right:1px solid var(--line);transition:background .15s var(--ease),color .15s var(--ease);
+}
+.seg button:last-child{border-right:0}
+.seg button:hover{background:#182135;color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:#1d2a44;color:var(--ink);font-weight:600}
+
+.chip{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:5px 8px 5px 10px;border:1px solid var(--line);border-radius:var(--r-sm);
+  font-size:12.5px;color:var(--ink-2);background:#151d2e;
+}
+.chip .dot{width:7px;height:7px;border-radius:50%;flex:none}
+.chip .x{display:grid;place-items:center;width:16px;height:16px;border-radius:3px;color:var(--ink-3);
+  transition:background .15s var(--ease),color .15s var(--ease)}
+.chip .x:hover{background:#2a3654;color:var(--ink)}
+.chip.is-off{opacity:.45}
+
+.toggle{
+  display:inline-flex;align-items:center;gap:8px;padding:5px 11px;
+  border:1px solid var(--line);border-radius:var(--r-sm);font-size:12.5px;color:var(--ink-2);
+  transition:border-color .15s var(--ease),background .15s var(--ease),color .15s var(--ease);
+}
+.toggle:hover{background:#182135;color:var(--ink)}
+.toggle[aria-pressed="true"]{border-color:#5f2b30;background:var(--signal-bg);color:var(--signal-ink)}
+.toggle .num{font-family:"JetBrains Mono",monospace;font-weight:700;font-size:11.5px;
+  background:#3a1d23;color:var(--signal-ink);border-radius:3px;padding:1px 5px}
+.toggle[aria-pressed="false"] .num{background:#232e45;color:var(--ink-3)}
+
+.sync{
+  display:inline-flex;align-items:center;gap:9px;padding:5px 10px;
+  border:1px solid var(--line);border-radius:var(--r-sm);font-size:12.5px;color:var(--ink-2);
+}
+.sync .dot{width:7px;height:7px;border-radius:50%;background:var(--ink-3);flex:none}
+.sync[data-state="ok"] .dot{background:#3f9e6c}
+.sync[data-state="error"]{border-color:#5f2b30;background:var(--signal-bg);color:var(--signal-ink)}
+.sync[data-state="error"] .dot{background:var(--signal)}
+.sync[data-state="busy"] .dot{background:var(--accent);animation:pulse 1s infinite}
+.sync .retry{
+  font-size:12px;font-weight:600;color:var(--signal-ink);text-decoration:underline;
+  text-underline-offset:3px;padding:2px 2px;border-radius:3px;
+}
+.sync .retry:hover{color:#ffc3c3}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+.tabmeta{font-size:12px;color:var(--ink-3);padding-bottom:12px}
+.tabmeta .mono{color:var(--ink-2)}
+
+/* ---------- board ---------- */
+.board{
+  flex:1;min-height:0;
+  display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);
+  gap:1px;background:var(--line-2);
+  overflow-x:auto;overflow-y:hidden;
+}
+.col{display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.col-head{padding:14px 14px 11px;flex:none}
+.stage-rail{height:3px;border-radius:2px;background:#1d2537;overflow:hidden;margin-bottom:11px}
+.stage-fill{height:100%;border-radius:2px;display:block}
+.col-title{display:flex;align-items:center;gap:8px}
+.col-title h2{font-size:13px;font-weight:600;letter-spacing:.005em;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.col-count{
+  font-family:"JetBrains Mono",monospace;font-size:11.5px;font-weight:700;
+  min-width:22px;text-align:center;padding:1px 6px;border-radius:4px;
+  background:#232e45;color:var(--ink-2);margin-left:auto;flex:none;
+}
+.col-sub{margin-top:5px;display:flex;gap:10px;align-items:baseline;font-size:11.5px;color:var(--ink-3)}
+.col-sub .late{color:var(--signal-ink)}
+.col-body{
+  flex:1;min-height:0;overflow-y:auto;
+  padding:2px 14px 20px;display:flex;flex-direction:column;gap:8px;
+}
+
+/* ---------- card ---------- */
+.card{
+  position:relative;text-align:left;width:100%;
+  background:var(--surface);border:1px solid var(--line-2);border-radius:var(--r);
+  padding:10px 11px 9px;color:var(--ink);display:block;
+  transition:background .15s var(--ease),border-color .15s var(--ease),box-shadow .15s var(--ease);
+}
+.card:hover{background:var(--surface-2);border-color:#33415f}
+.card[aria-pressed="true"]{
+  border-color:var(--accent);background:#1d2942;
+  box-shadow:inset 0 0 0 1px rgba(59,130,246,.35), -1px 0 0 0 var(--accent);
+}
+.card-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.job{font-size:14px;font-weight:700;letter-spacing:.01em}
+.due{
+  margin-left:auto;font-size:11.5px;font-weight:500;padding:2px 6px;border-radius:4px;
+  background:#232e45;color:var(--ink-2);flex:none;
+}
+.kind{font-size:13.5px;font-weight:500;line-height:1.3;color:var(--ink)}
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.tag{
+  font-size:11.5px;padding:2px 7px;border-radius:4px;
+  background:#1a2436;border:1px solid var(--line);color:var(--ink-2);
+}
+.tag.units{font-family:"JetBrains Mono",monospace;color:var(--ink-2)}
+.tag.mail{border-color:#1f4a48;color:var(--mail-ink);background:#12262a}
+.tag.problem{border-color:#5f2b30;background:#2b1a20;color:var(--signal-ink);font-weight:600}
+.tag.rework{border-color:#5b431f;background:#2a2015;color:var(--warn-ink);font-weight:600}
+.note{
+  margin-top:8px;font-size:12px;line-height:1.35;color:var(--ink-2);
+  background:#151d2e;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:5px 8px;
+}
+.card-foot{
+  margin-top:9px;padding-top:8px;border-top:1px solid var(--line-2);
+  display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-3);
+}
+.card-foot .tech{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-foot .path{margin-left:auto;flex:none;font-size:11px;color:var(--ink-3)}
+
+.card.is-late{background:#231a24;border-color:#4d2c33}
+.card.is-late:hover{background:#2a1e28}
+.card.is-late .due{background:#c64343;color:#fff;font-weight:600}
+.card.is-late .note{background:#1e1620}
+.card.is-late .card-foot{border-top-color:#3a2730}
+.late-day{
+  font-size:11px;font-weight:600;color:var(--signal-ink);
+  padding:2px 6px;border-radius:4px;background:#3a1d23;flex:none;
+}
+
+/* ---------- empty column ---------- */
+.empty{
+  border:1px dashed #2c3854;border-radius:var(--r);padding:16px 14px;
+  color:var(--ink-3);font-size:12.5px;line-height:1.45;
+}
+.empty b{display:block;color:var(--ink-2);font-weight:600;font-size:13px;margin-bottom:5px}
+
+/* ---------- right panel ---------- */
+.panel{
+  background:#131a2b;border-left:1px solid var(--line-2);
+  display:flex;flex-direction:column;min-width:0;
+  box-shadow:-20px 0 44px -30px rgba(0,0,0,.9);
+}
+.panel-head{padding:14px 16px 12px;border-bottom:1px solid var(--line-2);flex:none}
+.panel-head .row{display:flex;align-items:center;gap:10px}
+.panel-job{font-size:20px;font-weight:700;letter-spacing:.01em}
+.panel-label{font-size:11px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase}
+.icon-btn{
+  width:28px;height:28px;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--ink-3);
+  transition:background .15s var(--ease),color .15s var(--ease);
+}
+.icon-btn:hover{background:#1e2840;color:var(--ink)}
+.panel-body{flex:1;min-height:0;overflow-y:auto;padding:16px}
+.sect{margin-bottom:22px}
+.sect:last-child{margin-bottom:6px}
+.sect > h3{
+  font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;margin-bottom:10px;
+}
+
+.chain{display:flex;align-items:center;gap:0;margin-bottom:10px}
+.chain .node{flex:1;display:flex;align-items:center;gap:0;min-width:0}
+.chain .node:last-child{flex:none}
+.chain .bead{width:9px;height:9px;border-radius:50%;background:#26314a;flex:none;transition:background .2s var(--ease)}
+.chain .bar{height:1px;background:#26314a;flex:1;transition:background .2s var(--ease)}
+.chain .node.done .bead,.chain .node.done .bar{background:var(--accent-dim)}
+.chain .node.now .bead{background:var(--accent);box-shadow:0 0 0 4px rgba(59,130,246,.16)}
+.chain-now{font-size:13px;font-weight:600;color:var(--ink)}
+.chain-now span{color:var(--ink-3);font-weight:400}
+
+.actions{display:flex;gap:8px;margin-top:14px}
+.btn{
+  padding:8px 13px;border-radius:var(--r-sm);font-size:13px;font-weight:600;
+  border:1px solid transparent;transition:background .15s var(--ease),border-color .15s var(--ease),color .15s var(--ease);
+}
+.btn-primary{background:#326ed1;color:#fff}
+.btn-primary:hover{background:#5093ff}
+.btn-primary:disabled{background:#1e2840;color:#5d6d8c;cursor:not-allowed}
+.btn-ghost{border-color:var(--line);color:var(--ink-2)}
+.btn-ghost:hover{background:#1e2840;color:var(--ink)}
+.btn-ghost.danger:hover{border-color:#5f2b30;background:var(--signal-bg);color:var(--signal-ink)}
+
+.facts{display:grid;grid-template-columns:104px minmax(0,1fr);gap:1px 12px}
+.facts dt{font-size:12.5px;color:var(--ink-3);padding:6px 0}
+.facts dd{margin:0;font-size:13px;color:var(--ink);padding:6px 0;border-bottom:1px solid var(--line-2)}
+.facts dt{border-bottom:1px solid var(--line-2)}
+.facts dd.late-val{color:var(--signal-ink);font-weight:600}
+
+.pathbox{display:flex;align-items:stretch;gap:0;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;background:#151d2e}
+.pathbox code{
+  flex:1;min-width:0;padding:9px 10px;font-family:"JetBrains Mono",monospace;font-size:12.5px;
+  color:var(--ink);overflow-x:auto;white-space:nowrap;
+}
+.pathbox button{
+  flex:none;padding:0 12px;border-left:1px solid var(--line);color:var(--ink-2);font-size:12.5px;font-weight:600;
+  display:flex;align-items:center;gap:6px;transition:background .15s var(--ease),color .15s var(--ease);
+}
+.pathbox button:hover{background:#1e2840;color:var(--ink)}
+.pathbox button[data-copied="1"]{color:#6fd39a}
+.hint{margin-top:7px;font-size:11.5px;color:var(--ink-3)}
+
+.field{display:flex;gap:8px}
+.field input{
+  flex:1;min-width:0;background:#151d2e;border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:8px 10px;font-family:"JetBrains Mono",monospace;font-size:13px;
+  transition:border-color .15s var(--ease),background .15s var(--ease);
+}
+.field input::placeholder{color:#6f80a0}
+.field input:hover{border-color:#33415f}
+.field input:focus{outline:none;border-color:var(--accent);background:#16203a;box-shadow:0 0 0 3px rgba(59,130,246,.16)}
+
+.timeline{position:relative;padding-left:16px}
+.timeline::before{content:"";position:absolute;left:3px;top:5px;bottom:5px;width:1px;background:var(--line)}
+.timeline li{position:relative;padding:0 0 13px}
+.timeline li:last-child{padding-bottom:0}
+.timeline li::before{
+  content:"";position:absolute;left:-16px;top:5px;width:7px;height:7px;border-radius:50%;
+  background:#2c3854;border:1px solid var(--bg);
+}
+.timeline li.now::before{background:var(--accent)}
+.timeline .t{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--ink-3);margin-right:8px}
+.timeline .s{font-size:13px;color:var(--ink)}
+.timeline .who-line{display:block;font-size:12px;color:var(--ink-3);margin-top:1px}
+
+.comments li{
+  padding:9px 0;border-bottom:1px solid var(--line-2);font-size:13px;color:var(--ink);line-height:1.4;
+}
+.comments li:first-child{padding-top:0}
+.comments .meta{display:block;font-size:11.5px;color:var(--ink-3);margin-bottom:3px}
+.comments .meta .mono{color:var(--ink-3)}
+.comment-form{display:flex;gap:8px;margin-top:11px}
+.comment-form input{
+  flex:1;min-width:0;background:#151d2e;border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:8px 10px;font-size:13px;
+}
+.comment-form input::placeholder{color:#6f80a0}
+.comment-form input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.16)}
+
+.toast{
+  position:fixed;left:50%;bottom:22px;transform:translate(-50%,10px);
+  background:#1d2942;border:1px solid #33415f;border-radius:var(--r-sm);
+  padding:8px 14px;font-size:13px;color:var(--ink);
+  opacity:0;pointer-events:none;transition:opacity .18s var(--ease),transform .18s var(--ease);z-index:40;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+.sheet-close{display:none}
+
+/* ---------- responsive ---------- */
+@media (max-width:1320px){
+  :root{--panel-w:340px}
+  .board{grid-auto-columns:minmax(224px,1fr)}
+}
+@media (max-width:1120px){
+  .app{grid-template-columns:var(--rail-w) minmax(0,1fr)}
+  .board{grid-auto-columns:246px}
+  .panel{
+    position:fixed;left:0;right:0;bottom:0;top:auto;width:100%;
+    max-height:70dvh;border-left:0;border-top:1px solid var(--line);
+    border-radius:12px 12px 0 0;z-index:30;
+    box-shadow:0 -18px 44px -26px rgba(0,0,0,.95);
+    transform:translateY(0);transition:transform .22s var(--ease);
+  }
+  .panel[hidden]{display:flex;transform:translateY(102%)}
+  .panel-head{border-radius:12px 12px 0 0}
+  .sheet-close{display:grid}
+}
+@media (max-width:640px){
+  :root{--rail-w:56px}
+  .nav-label{display:none}
+  .nav-item{width:44px;padding:9px 0}
+  .board{grid-auto-columns:232px}
+  .topbar{padding:12px 14px 0}
+  h1{font-size:18px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
+}
+</style>
+</head>
+<body>
+
+<!--
+THESIS: The shop queue is a funnel with a moving front, not a sortable table. Six stages hold the whole width, and each column header carries a rail that fills further to the right — position in the funnel is read as fill, not as a colour code. Rejects the admin-panel default of one table plus a status column.
+OWN-WORLD: near-black blueprint navy (#0f1523) with card navy (#1b2333), one blue that brightens stage by stage, coral kept for lateness alone, warm amber for rework. Archivo for language, JetBrains Mono for every number an operator retypes into Sum3D.
+STORY: what is late, what is due at 14:00, what is already calculated — read in one sweep; then take the job, copy the path-ID, write the Sum3D ID back, push it one stage on.
+FIRST VIEWPORT: 76px icon rail left; title, period tabs, source chips, overdue toggle and sheet sync across the top; six full-width stage columns beneath; 384px order card panel pinned to the right edge.
+FORM: pinned direction 1 — dark funnel kanban.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+<div class="app">
+
+  <!-- ============ rail ============ -->
+  <nav class="rail" aria-label="Розділи">
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="19" height="19">
+        <path d="M4 6h16M4 12h10M4 18h13"/>
+      </svg>
+    </div>
+
+    <a class="nav-item" href="#" aria-current="page">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="4.5" height="16" rx="1"/><rect x="9.75" y="4" width="4.5" height="11" rx="1"/><rect x="16.5" y="4" width="4.5" height="7" rx="1"/>
+        </svg>
+      </span>
+      <span class="nav-label">Черга</span>
+    </a>
+
+    <a class="nav-item" href="#">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.6 7 7.3 5.3a2 2 0 0 0 2.2 0L20.4 7"/>
+        </svg>
+        <span class="nav-count">6</span>
+      </span>
+      <span class="nav-label">Пошта</span>
+    </a>
+
+    <a class="nav-item" href="#">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 13h4l1.5 3h7L17 13h4"/><path d="M3 13V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 13v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"/>
+        </svg>
+      </span>
+      <span class="nav-label">Видача</span>
+    </a>
+
+    <a class="nav-item" href="#">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="9" cy="8.5" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 6.2a3 3 0 0 1 0 5.6"/><path d="M17.5 19a5.6 5.6 0 0 0-2.2-4.4"/>
+        </svg>
+      </span>
+      <span class="nav-label">Клієнти</span>
+    </a>
+
+    <a class="nav-item" href="#">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 4.5 4.5"/>
+        </svg>
+      </span>
+      <span class="nav-label">Пошук</span>
+    </a>
+
+    <a class="nav-item" href="#">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 20V11"/><path d="M9.33 20V5"/><path d="M14.67 20v-6"/><path d="M20 20V8"/>
+        </svg>
+      </span>
+      <span class="nav-label">Статистика</span>
+    </a>
+
+    <a class="nav-item" href="#">
+      <span class="nav-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 6h14M5 12h14M5 18h14"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="8" cy="18" r="2"/>
+        </svg>
+      </span>
+      <span class="nav-label">Налаштування</span>
+    </a>
+
+    <div class="rail-foot">
+      <a class="nav-item" href="#" aria-label="Обліковий запис оператора: Оксана Гриців">
+        <span class="who" aria-hidden="true">ОГ</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- ============ stage ============ -->
+  <main class="stage">
+    <header class="topbar">
+      <div class="topbar-row">
+        <h1>Черга робіт</h1>
+        <p class="head-meta"><b id="mTotal">29</b> робіт · <b id="mUnits">101</b> од. · <b id="mLate">4</b> прострочені</p>
+
+        <div class="spacer"></div>
+
+        <div class="sync" id="sync" data-state="error" role="status" aria-live="polite">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="syncText">Google Таблиця не відповіла · 10:42</span>
+          <button class="retry" id="syncRetry" type="button">Повторити</button>
+        </div>
+      </div>
+
+      <div class="topbar-row" role="group" aria-label="Фільтри черги">
+        <div class="seg" role="group" aria-label="Період">
+          <button type="button" aria-pressed="false">Вчора</button>
+          <button type="button" aria-pressed="true">Сьогодні</button>
+          <button type="button" aria-pressed="false">Завтра</button>
+          <button type="button" aria-pressed="false">Раніше</button>
+        </div>
+
+        <span class="chip">
+          <span class="dot" style="background:#5b7fb8" aria-hidden="true"></span>
+          лабораторія
+          <button class="x" type="button" aria-label="Прибрати фільтр: лабораторія">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" width="10" height="10"><path d="m3 3 6 6M9 3l-6 6"/></svg>
+          </button>
+        </span>
+
+        <span class="chip">
+          <span class="dot" style="background:var(--mail)" aria-hidden="true"></span>
+          пошта
+          <button class="x" type="button" aria-label="Прибрати фільтр: пошта">
+            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" width="10" height="10"><path d="m3 3 6 6M9 3l-6 6"/></svg>
+          </button>
+        </span>
+
+        <button class="toggle" id="lateToggle" type="button" aria-pressed="false">
+          Лише прострочені <span class="num" id="lateNum">4</span>
+        </button>
+      </div>
+
+      <p class="tabmeta">Вкладка таблиці <span class="mono">11.08.26</span> · демонстраційні дані</p>
+    </header>
+
+    <div class="board" id="board" aria-label="Стадії робіт"></div>
+  </main>
+
+  <!-- ============ right panel ============ -->
+  <aside class="panel" id="panel" aria-label="Картка роботи">
+    <div class="panel-head">
+      <div class="row">
+        <div>
+          <span class="panel-label">Наряд</span>
+          <div class="panel-job mono" id="pJob">24122</div>
+        </div>
+        <button class="icon-btn sheet-close" id="panelClose" type="button" aria-label="Закрити картку" style="margin-left:auto">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" width="15" height="15"><path d="m4 4 8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="panel-body" id="panelBody"></div>
+  </aside>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ---------------- stages ---------------- */
+  const STAGES = [
+    { key:"new",        name:"нове" },
+    { key:"accepted",   name:"прийнято" },
+    { key:"calculated", name:"прораховано" },
+    { key:"milling",    name:"у фрезеруванні" },
+    { key:"milled",     name:"відфрезеровано" },
+    { key:"issued",     name:"видано" }
+  ];
+  const STAGE_COLOR = ["#33507e","#2f6ab4","#3b82f6","#4f92ff","#6ea6ff","#8dbaff"];
+  const STAGE_ORDER = STAGES.map(s => s.key);
+
+  /* ---------------- demo data ---------------- */
+  const D = (job, material, kind, units, due, tech, status, extra) =>
+    Object.assign({ job, material, kind, units, due, tech, status, source:"lab" }, extra || {});
+
+  const ORDERS = [
+    /* нове */
+    D("24151","пмма A2","анатомія",4,"14:00","Оксана Гриців","new",
+      { flag:"problem", note:"Чекаємо Скани!!!!", path:"2026-08-11_00021-004" }),
+    D("24150","моно А3.5","каркас міст 13-23",6,"16:00","Микола Тарасюк","new",{ path:"2026-08-11_00021-005" }),
+    D("24149","титан корея","абатмент",2,"09:00","Ігор Бондар","new",{ late:"10.08", path:"2026-08-10_00019-011" }),
+    D("24148","800","вкладка",1,"16:00","","new",{ source:"mail", client:"Кравченко О.", path:"2026-08-11_00021-006" }),
+    D("24147","пмма A2","анатомія гвинтова",3,"14:00","Леся Ковальчук","new",{ path:"2026-08-11_00021-007" }),
+    D("24146","500","каркас міст 14-24",5,"16:00","Андрій Мельник","new",{ path:"2026-08-11_00021-008" }),
+    D("24145","моно A2","анатомія",2,"09:00","","new",{ source:"mail", client:"Сич Т.", path:"2026-08-11_00021-009" }),
+
+    /* прийнято */
+    D("24144","пмма A3.5","анатомія",4,"14:00","Тарас Гончар","accepted",{ path:"2026-08-11_00020-001" }),
+    D("24143","титан корея","абатмент",3,"16:00","Софія Кравець","accepted",{ path:"2026-08-11_00020-002" }),
+    D("24142","моно А3.5","анатомія гвинтова",6,"09:00","Роман Дяченко","accepted",{ late:"10.08", path:"2026-08-10_00019-014" }),
+    D("24141","500","вкладка",2,"16:00","Віталій Панчук","accepted",{ path:"2026-08-11_00020-003" }),
+    D("24140","800","каркас міст 13-23",5,"14:00","Наталя Собко","accepted",
+      { note:"Якщо можно на швидку, я сам закрию", path:"2026-08-11_00020-004" }),
+    D("24139","пмма A2","анатомія",3,"16:00","","accepted",{ source:"mail", client:"Гнатюк В.", path:"2026-08-11_00020-005" }),
+
+    /* прораховано */
+    D("24138","моно A2","анатомія",4,"14:00","Оксана Гриців","calculated",{ sum3d:"41287", path:"2026-08-11_00018-002" }),
+    D("24137","500","каркас міст 15-25",6,"16:00","Микола Тарасюк","calculated",{ sum3d:"41288", path:"2026-08-11_00018-003" }),
+    D("24136","титан корея","абатмент",2,"09:00","Ігор Бондар","calculated",
+      { flag:"rework", reworkTimes:"2-й раз", sum3d:"41290", path:"2026-08-11_00018-004" }),
+    D("24135","пмма A2","вкладка",1,"14:00","Леся Ковальчук","calculated",{ sum3d:"41291", path:"2026-08-11_00018-005" }),
+    D("24134","моно А3.5","анатомія гвинтова",5,"16:00","Андрій Мельник","calculated",
+      { note:"покрити опаком", sum3d:"41293", path:"2026-08-11_00018-006" }),
+    D("24133","800","анатомія",3,"09:00","","calculated",
+      { source:"mail", client:"Мороз І.", late:"10.08", sum3d:"41279", path:"2026-08-10_00017-009" }),
+
+    /* у фрезеруванні */
+    D("24122","пмма A2","анатомія гвинтова",4,"14:00","Оксана Гриців","milling",
+      { note:"покрити опаком", sum3d:"41302", path:"2026-08-11_00016-007" }),
+    D("24131","моно А3.5","каркас міст 13-23",6,"16:00","Тарас Гончар","milling",{ sum3d:"41300", path:"2026-08-11_00016-008" }),
+    D("24130","титан корея","абатмент",2,"09:00","Софія Кравець","milling",{ late:"10.08", sum3d:"41276", path:"2026-08-10_00015-002" }),
+    D("24129","500","анатомія",4,"14:00","Роман Дяченко","milling",{ sum3d:"41298", path:"2026-08-11_00016-009" }),
+    D("24128","пмма A3.5","вкладка",1,"16:00","Віталій Панчук","milling",{ sum3d:"41297", path:"2026-08-11_00016-010" }),
+
+    /* відфрезеровано */
+    D("24127","моно A2","анатомія",3,"09:00","Наталя Собко","milled",{ sum3d:"41294", path:"2026-08-11_00014-001" }),
+    D("24126","800","каркас міст 14-24",5,"14:00","Оксана Гриців","milled",{ sum3d:"41292", path:"2026-08-11_00014-002" }),
+    D("24125","пмма A2","анатомія гвинтова",2,"16:00","Микола Тарасюк","milled",
+      { flag:"rework", reworkTimes:"3-й раз", sum3d:"41289", path:"2026-08-11_00014-003" }),
+    D("24124","титан корея","абатмент",3,"09:00","Ігор Бондар","milled",{ sum3d:"41286", path:"2026-08-11_00014-004" }),
+    D("24123","500","анатомія",4,"14:00","","milled",{ source:"mail", client:"Демчук А.", sum3d:"41284", path:"2026-08-11_00014-005" })
+  ];
+
+  ORDERS.forEach((o, i) => { o.id = "o" + i; });
+
+  const COMMENTS = {
+    "24122":[
+      { who:"Оксана Гриців", t:"09:28", text:"покрити опаком" },
+      { who:"Адміністратор", t:"10:02", text:"Клієнт забирає о 14:00, кур’єр уже виїхав." }
+    ],
+    "24151":[{ who:"Технік", t:"08:51", text:"Чекаємо Скани!!!!" }],
+    "24140":[{ who:"Наталя Собко", t:"09:40", text:"Якщо можно на швидку, я сам закрию" }]
+  };
+
+  const HISTORY_STEPS = [
+    { key:"new",        t:"08:47", who:"імпорт з таблиці 11.08.26" },
+    { key:"accepted",   t:"09:14", who:"Оксана Гриців" },
+    { key:"calculated", t:"09:52", who:"Оксана Гриців" },
+    { key:"milling",    t:"10:31", who:"Микола Тарасюк" },
+    { key:"milled",     t:"12:48", who:"Микола Тарасюк" },
+    { key:"issued",     t:"09:05", who:"Леся Ковальчук" }
+  ];
+
+  /* ---------------- state ---------------- */
+  let selectedId = ORDERS.find(o => o.job === "24122").id;
+  let lateOnly = false;
+
+  const el = id => document.getElementById(id);
+  const board = el("board");
+  const panel = el("panel");
+  const panelBody = el("panelBody");
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const stageName = k => STAGES[STAGE_ORDER.indexOf(k)].name;
+  const visible = () => lateOnly ? ORDERS.filter(o => o.late) : ORDERS;
+
+  /* ---------------- board render ---------------- */
+  function renderBoard(){
+    const list = visible();
+    board.innerHTML = STAGES.map((st, i) => {
+      const items = list.filter(o => o.status === st.key);
+      const units = items.reduce((a, o) => a + o.units, 0);
+      const late = items.filter(o => o.late).length;
+      const pct = Math.round((i + 1) / STAGES.length * 100);
+      return `
+      <section class="col" aria-label="${esc(st.name)}">
+        <div class="col-head">
+          <div class="stage-rail" aria-hidden="true">
+            <span class="stage-fill" style="width:${pct}%;background:${STAGE_COLOR[i]};opacity:${items.length ? 1 : .35}"></span>
+          </div>
+          <div class="col-title">
+            <h2>${esc(st.name)}</h2>
+            <span class="col-count mono">${items.length}</span>
+          </div>
+          <div class="col-sub">
+            <span class="mono">${units} од.</span>
+            ${late ? `<span class="late">${late} прострочені</span>` : ""}
+          </div>
+        </div>
+        <div class="col-body">
+          ${items.length ? items.map(card).join("") : emptyFor(st.key)}
+        </div>
+      </section>`;
+    }).join("");
+  }
+
+  function card(o){
+    const late = !!o.late;
+    const cls = ["card", late ? "is-late" : ""].join(" ").trim();
+    const foot = o.source === "mail" ? esc(o.client) : esc(o.tech);
+    return `
+    <article class="${cls}" role="button" tabindex="0" aria-pressed="${o.id === selectedId}" data-id="${o.id}">
+      <div class="card-top">
+        <span class="job mono">${esc(o.job)}</span>
+        ${late ? `<span class="late-day mono">${esc(o.late)}</span>` : ""}
+        <span class="due mono">${esc(o.due)}</span>
+      </div>
+      <h3 class="kind">${esc(o.kind)}</h3>
+      <div class="tags">
+        <span class="tag">${esc(o.material)}</span>
+        <span class="tag units">${o.units} од.</span>
+        ${o.source === "mail" ? `<span class="tag mail">пошта</span>` : ""}
+        ${o.flag === "problem" ? `<span class="tag problem">проблема</span>` : ""}
+        ${o.flag === "rework" ? `<span class="tag rework">переробка · ${esc(o.reworkTimes)}</span>` : ""}
+      </div>
+      ${o.note ? `<p class="note">${esc(o.note)}</p>` : ""}
+      <div class="card-foot">
+        <span class="tech">${foot}</span>
+        <span class="path mono">…${esc(o.path.slice(-10))}</span>
+      </div>
+    </article>`;
+  }
+
+  function emptyFor(key){
+    if (lateOnly) return `<div class="empty"><b>Прострочених тут немає</b>У цій стадії всі роботи ще в межах свого дня.</div>`;
+    const copy = {
+      new:["Нових робіт немає","Нові рядки таблиці й прийняті листи падають сюди самі — перевірка кожні 2 хвилини."],
+      accepted:["Ніхто нічого не взяв","Візьміть роботу з «нове» — вона стане вашою і підпишеться вашим іменем."],
+      calculated:["Немає прорахованих","Прорахунок фіксується, коли ви впишете ID проєкту Sum3D."],
+      milling:["Верстати вільні","Роботи потрапляють сюди, коли ви переводите їх у фрезерування."],
+      milled:["Нічого не відфрезеровано","Готові роботи чекатимуть тут до ранкової видачі."],
+      issued:["Сьогодні ще нічого не видано","Ранкова видача зіставляє вчорашні роботи з папками <span class=\"mono\">export</span> — почніть із екрана «Видача»."]
+    }[key];
+    return `<div class="empty"><b>${copy[0]}</b>${copy[1]}</div>`;
+  }
+
+  /* ---------------- panel render ---------------- */
+  function renderPanel(){
+    const o = ORDERS.find(x => x.id === selectedId);
+    if (!o){
+      panelBody.innerHTML = `<div class="empty"><b>Роботу не обрано</b>Оберіть картку в черзі, щоб побачити паспорт, історію й поле Sum3D ID.</div>`;
+      el("pJob").textContent = "—";
+      return;
+    }
+    el("pJob").textContent = o.job;
+
+    const idx = STAGE_ORDER.indexOf(o.status);
+    const chain = STAGES.map((st, i) => {
+      const cl = i < idx ? "done" : i === idx ? "now" : "";
+      return `<span class="node ${cl}"><span class="bead"></span>${i < STAGES.length - 1 ? '<span class="bar"></span>' : ""}</span>`;
+    }).join("");
+
+    const hist = HISTORY_STEPS.slice(0, idx + 1).map((h, i) => `
+      <li class="${i === idx ? "now" : ""}">
+        <span class="t">${h.t}</span><span class="s">${esc(stageName(h.key))}</span>
+        <span class="who-line">${esc(h.who)}</span>
+      </li>`).reverse().join("");
+
+    const cs = COMMENTS[o.job] || [];
+    const comments = cs.length
+      ? `<ul class="comments">${cs.map(c => `<li><span class="meta">${esc(c.who)} · <span class="mono">${c.t}</span></span>${esc(c.text)}</li>`).join("")}</ul>`
+      : `<p class="hint" style="margin-top:0">Коментарів немає. Написаний тут коментар потрапляє у свій рядок таблиці.</p>`;
+
+    panelBody.innerHTML = `
+      <section class="sect">
+        <div class="chain" aria-hidden="true">${chain}</div>
+        <p class="chain-now">${esc(stageName(o.status))} <span>· ${idx + 1} з 6</span></p>
+        <div class="actions">
+          <button class="btn btn-primary" id="advance" type="button" ${idx === STAGES.length - 1 ? "disabled" : ""}>
+            ${idx === STAGES.length - 1 ? "Роботу видано" : "Перевести в «" + esc(stageName(STAGE_ORDER[idx + 1])) + "»"}
+          </button>
+          <button class="btn btn-ghost danger" type="button">Проблема</button>
+        </div>
+      </section>
+
+      <section class="sect">
+        <h3>Паспорт</h3>
+        <dl class="facts">
+          <dt>Матеріал</dt><dd>${esc(o.material)}</dd>
+          <dt>Вид роботи</dt><dd>${esc(o.kind)}</dd>
+          <dt>Кількість</dt><dd class="mono">${o.units} од.</dd>
+          <dt>Здати до</dt><dd class="${o.late ? "late-val" : ""}">${esc(o.due)}${o.late ? " · прострочено з " + esc(o.late) : ""}</dd>
+          <dt>${o.source === "mail" ? "Клієнт" : "Технік"}</dt><dd>${esc(o.source === "mail" ? o.client : o.tech)}</dd>
+          <dt>Джерело</dt><dd>${o.source === "mail" ? "пошта" : "лабораторія"}</dd>
+          <dt>Вкладка</dt><dd class="mono">${o.late ? esc(o.late) + ".26" : "11.08.26"}</dd>
+        </dl>
+      </section>
+
+      <section class="sect">
+        <h3>Шлях-ID для Sum3D</h3>
+        <div class="pathbox">
+          <code id="pathVal">${esc(o.path)}</code>
+          <button id="copyPath" type="button" data-copied="0">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true">
+              <rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3.5V9a1.5 1.5 0 0 0 1.5 1.5"/>
+            </svg>
+            Копіювати
+          </button>
+        </div>
+        <p class="hint">Подвійний клік по картці відкриває папку роботи у провіднику.</p>
+      </section>
+
+      <section class="sect">
+        <h3>ID проєкту Sum3D</h3>
+        <div class="field">
+          <input id="sumInput" type="text" inputmode="numeric" value="${esc(o.sum3d || "")}" placeholder="напр. 41302" aria-label="ID проєкту Sum3D">
+          <button class="btn btn-ghost" id="sumSave" type="button">Записати</button>
+        </div>
+        <p class="hint">Записується точково у свій рядок таблиці — решта колонок не чіпається.</p>
+      </section>
+
+      <section class="sect">
+        <h3>Коментарі</h3>
+        ${comments}
+        <form class="comment-form" id="commentForm">
+          <input type="text" placeholder="Коментар для таблиці…" aria-label="Новий коментар">
+          <button class="btn btn-ghost" type="submit">Додати</button>
+        </form>
+      </section>
+
+      <section class="sect">
+        <h3>Хронологія</h3>
+        <ul class="timeline">${hist}</ul>
+      </section>
+    `;
+
+    el("copyPath").addEventListener("click", copyPath);
+    el("sumSave").addEventListener("click", () => {
+      o.sum3d = el("sumInput").value.trim();
+      toast(o.sum3d ? "ID " + o.sum3d + " записано в рядок " + o.job : "ID очищено");
+    });
+    el("commentForm").addEventListener("submit", e => {
+      e.preventDefault();
+      const input = e.target.querySelector("input");
+      const text = input.value.trim();
+      if (!text) return;
+      (COMMENTS[o.job] = COMMENTS[o.job] || []).push({ who:"Оксана Гриців", t:nowTime(), text });
+      renderPanel();
+      toast("Коментар піде в таблицю з наступною синхронізацією");
+    });
+    const adv = el("advance");
+    if (adv) adv.addEventListener("click", () => advance(o));
+  }
+
+  function nowTime(){
+    const d = new Date();
+    return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+  }
+
+  function copyPath(){
+    const btn = el("copyPath");
+    const text = el("pathVal").textContent;
+    const done = () => {
+      btn.dataset.copied = "1";
+      toast("Шлях-ID у буфері — вставте у Sum3D");
+      setTimeout(() => { btn.dataset.copied = "0"; }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done, done);
+    } else done();
+  }
+
+  /* ---------------- the one authored motion: a card moves down the funnel ---------------- */
+  function advance(o){
+    const idx = STAGE_ORDER.indexOf(o.status);
+    if (idx >= STAGE_ORDER.length - 1) return;
+
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const node = board.querySelector(`[data-id="${o.id}"]`);
+    const from = node ? node.getBoundingClientRect() : null;
+
+    o.status = STAGE_ORDER[idx + 1];
+    if (o.status === "issued") o.late = null;
+
+    renderBoard();
+    renderPanel();
+    updateMeta();
+
+    const next = board.querySelector(`[data-id="${o.id}"]`);
+    if (!next) return;
+
+    if (from && !reduce){
+      const to = next.getBoundingClientRect();
+      const dx = from.left - to.left, dy = from.top - to.top;
+      next.animate(
+        [
+          { transform:`translate(${dx}px, ${dy}px)`, opacity:.85 },
+          { transform:"translate(0,0)", opacity:1 }
+        ],
+        { duration:280, easing:"cubic-bezier(.2,.7,.25,1)" }
+      );
+      const rail = next.closest(".col").querySelector(".stage-fill");
+      rail.animate([{ opacity:.45 }, { opacity:1 }], { duration:420, easing:"ease-out" });
+    }
+    next.focus({ preventScroll:false });
+    toast("Наряд " + o.job + " → " + stageName(o.status));
+  }
+
+  /* ---------------- meta + toast ---------------- */
+  function updateMeta(){
+    const list = visible();
+    el("mTotal").textContent = list.length;
+    el("mUnits").textContent = list.reduce((a, o) => a + o.units, 0);
+    const late = ORDERS.filter(o => o.late).length;
+    el("mLate").textContent = late;
+    el("lateNum").textContent = late;
+  }
+
+  let toastTimer;
+  function toast(msg){
+    const t = el("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+  }
+
+  /* ---------------- interaction ---------------- */
+  function select(id){
+    selectedId = id;
+    board.querySelectorAll(".card").forEach(c => c.setAttribute("aria-pressed", String(c.dataset.id === id)));
+    renderPanel();
+    if (window.matchMedia("(max-width:1120px)").matches) panel.hidden = false;
+  }
+
+  board.addEventListener("click", e => {
+    const c = e.target.closest(".card");
+    if (c) select(c.dataset.id);
+  });
+
+  board.addEventListener("keydown", e => {
+    const c = e.target.closest(".card");
+    if (!c) return;
+    if (e.key === "Enter" || e.key === " "){ e.preventDefault(); select(c.dataset.id); return; }
+    const move = { ArrowDown:1, ArrowUp:-1 }[e.key];
+    if (move){
+      e.preventDefault();
+      const sibs = [...c.closest(".col-body").querySelectorAll(".card")];
+      const n = sibs[sibs.indexOf(c) + move];
+      if (n) n.focus();
+      return;
+    }
+    const side = { ArrowRight:1, ArrowLeft:-1 }[e.key];
+    if (side){
+      e.preventDefault();
+      const cols = [...board.querySelectorAll(".col")];
+      const i = cols.indexOf(c.closest(".col"));
+      const target = cols[i + side];
+      if (target){
+        const first = target.querySelector(".card");
+        if (first) first.focus();
+      }
+    }
+  });
+
+  el("panelClose").addEventListener("click", () => { panel.hidden = true; });
+
+  el("lateToggle").addEventListener("click", e => {
+    lateOnly = !lateOnly;
+    e.currentTarget.setAttribute("aria-pressed", String(lateOnly));
+    renderBoard();
+    updateMeta();
+  });
+
+  document.querySelectorAll(".seg button").forEach(b => {
+    b.addEventListener("click", () => {
+      b.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed","false"));
+      b.setAttribute("aria-pressed","true");
+    });
+  });
+
+  document.querySelectorAll(".chip .x").forEach(x => {
+    x.addEventListener("click", () => x.closest(".chip").classList.toggle("is-off"));
+  });
+
+  /* sync: error → busy → ok */
+  el("syncRetry").addEventListener("click", () => {
+    const s = el("sync"), txt = el("syncText"), btn = el("syncRetry");
+    s.dataset.state = "busy";
+    txt.textContent = "Синхронізую вкладку 11.08.26…";
+    btn.hidden = true;
+    setTimeout(() => {
+      s.dataset.state = "ok";
+      txt.textContent = "Таблиця синхронізована · " + nowTime();
+    }, 1400);
+  });
+
+  /* first paint */
+  if (window.matchMedia("(max-width:1120px)").matches) panel.hidden = true;
+  renderBoard();
+  renderPanel();
+  updateMeta();
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order Desk — Черга робіт</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Azeret+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1117;
+  --bg-rail:#0a0e14;
+  --card:#161d27;
+  --card-2:#1b2431;
+  --card-3:#202b3a;
+  --line:#222c3a;
+  --line-2:#2c3849;
+  --ink:#e8eff7;
+  --ink-2:#8fa3bb;
+  --ink-3:#7789a0;
+  --accent:#14b8a6;
+  --accent-b:#2dd4bf;
+  --accent-c:#5eead4;
+  --accent-d:#0f766e;
+  --alarm:#f87171;
+  --warn:#f0a35e;
+  --r-card:12px;
+  --r-ctl:8px;
+  --glow:inset 0 1px 0 rgba(255,255,255,.045), inset 0 0 44px -26px rgba(45,212,191,.75), 0 18px 38px -30px rgba(0,0,0,.95);
+  --sh-pop:0 14px 34px -18px rgba(0,0,0,.86), 0 2px 6px -2px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:'Barlow',sans-serif;font-size:14px;line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  display:flex;overflow:hidden;
+}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px;border-radius:4px}
+.mono{font-family:'Azeret Mono',monospace;font-variant-ligatures:none}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ---------- rail (inherited from v2, unchanged) ---------- */
+.rail{
+  width:228px;flex:0 0 228px;background:var(--bg-rail);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;padding:16px 12px 12px;gap:18px;overflow-y:auto;
+}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 6px 0}
+.brand .mark{
+  width:30px;height:30px;flex:0 0 30px;border-radius:8px;
+  background:linear-gradient(160deg,rgba(45,212,191,.22),rgba(20,184,166,.06));
+  border:1px solid rgba(45,212,191,.34);display:grid;place-items:center;
+  box-shadow:inset 0 0 18px -8px rgba(45,212,191,.9);
+}
+.brand .mark svg{width:16px;height:16px;stroke:var(--accent-b)}
+.brand b{font-weight:600;font-size:15.5px;letter-spacing:.01em}
+.brand span{display:block;font-size:10.5px;letter-spacing:.16em;color:var(--ink-3);text-transform:uppercase;margin-top:-2px}
+.nav-group{display:flex;flex-direction:column;gap:2px}
+.nav-title{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-3);padding:0 10px 6px;font-weight:600}
+.nav-item{
+  display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:var(--r-ctl);
+  color:var(--ink-2);font-weight:500;font-size:13.5px;text-align:left;
+  transition:background .14s ease,color .14s ease;
+}
+.nav-item svg{width:17px;height:17px;flex:0 0 17px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.9}
+.nav-item:hover{background:#141b25;color:var(--ink)}
+.nav-item[aria-current="page"]{
+  background:linear-gradient(90deg,rgba(20,184,166,.16),rgba(20,184,166,.03));
+  color:var(--accent-c);box-shadow:inset 1px 0 0 var(--accent);
+}
+.nav-item .count{
+  margin-left:auto;font-family:'Azeret Mono',monospace;font-size:11px;font-weight:500;
+  padding:1px 6px;border-radius:5px;background:rgba(45,212,191,.14);color:var(--accent-c);
+  border:1px solid rgba(45,212,191,.26);
+}
+.nav-item .count.warn{background:rgba(240,163,94,.13);color:var(--warn);border-color:rgba(240,163,94,.28)}
+.rail-foot{margin-top:auto;border-top:1px solid var(--line);padding:12px 10px 2px;display:flex;gap:10px;align-items:center}
+.avatar{width:28px;height:28px;border-radius:7px;background:var(--card-3);border:1px solid var(--line-2);display:grid;place-items:center;font-size:12px;font-weight:600;color:var(--accent-c)}
+.rail-foot .who{font-size:12.5px;font-weight:500;line-height:1.25}
+.rail-foot .who span{display:block;font-size:11px;color:var(--ink-3)}
+
+/* ---------- main shell ---------- */
+.main{flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:20px 22px 28px;display:flex;flex-direction:column;min-height:0}
+.head{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:26px;font-weight:600;letter-spacing:-.015em;margin:0 0 5px}
+.telemetry{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12.5px;color:var(--ink-2)}
+.telemetry b{font-family:'Azeret Mono',monospace;font-weight:500;color:var(--ink);font-size:12px}
+.telemetry .sep{width:1px;height:11px;background:var(--line-2)}
+.live{display:inline-flex;align-items:center;gap:7px}
+.live .beacon{width:7px;height:7px;border-radius:50%;background:var(--accent-b);box-shadow:0 0 0 0 rgba(45,212,191,.55);animation:beacon 2.6s ease-out infinite}
+@keyframes beacon{0%{box-shadow:0 0 0 0 rgba(45,212,191,.5)}70%{box-shadow:0 0 0 7px rgba(45,212,191,0)}100%{box-shadow:0 0 0 0 rgba(45,212,191,0)}}
+.head-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+.btn{
+  display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:var(--r-ctl);
+  border:1px solid var(--line-2);background:var(--card);color:var(--ink);font-size:13px;font-weight:500;
+  transition:border-color .14s ease,background .14s ease,color .14s ease;
+}
+.btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.btn:hover{background:var(--card-2);border-color:#3a4a5f}
+.btn.primary{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.btn.primary:hover{background:rgba(20,184,166,.24);border-color:var(--accent)}
+.btn.sm{height:30px;padding:0 11px;font-size:12.5px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---------- filter row ---------- */
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.seg{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+.seg button{
+  height:26px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:500;color:var(--ink-2);
+  display:inline-flex;align-items:center;gap:6px;transition:background .14s ease,color .14s ease;
+}
+.seg button:hover{color:var(--ink);background:#1d2734}
+.seg button[aria-pressed="true"]{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
+.seg button .n{font-family:'Azeret Mono',monospace;font-size:11px;opacity:.75}
+.pill{
+  height:32px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);
+  color:var(--ink-2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:7px;
+  transition:background .14s ease,color .14s ease,border-color .14s ease;
+}
+.pill:hover{color:var(--ink);border-color:var(--line-2)}
+.pill[aria-pressed="true"]{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.4);color:var(--accent-c)}
+.pill.alarm[aria-pressed="true"]{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.42);color:var(--alarm)}
+.pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.85}
+.filters .label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-right:-2px}
+.chip{
+  height:28px;padding:0 6px 0 11px;border-radius:999px;border:1px dashed var(--line-2);background:transparent;
+  color:var(--ink-2);font-size:12px;display:inline-flex;align-items:center;gap:6px;
+}
+.chip button{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:var(--ink-3)}
+.chip button:hover{background:rgba(248,113,113,.16);color:var(--alarm)}
+.chip svg{width:10px;height:10px;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+
+/* ---------- statline: minimal aggregated counters, no metric cards ---------- */
+.statline{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px}
+.stat{
+  display:inline-flex;align-items:baseline;gap:6px;height:28px;padding:0 11px;border-radius:999px;
+  border:1px solid var(--line);background:var(--card);color:var(--ink-2);font-size:12px;font-weight:500;
+  transition:background .14s ease,border-color .14s ease,color .14s ease;
+}
+.stat:hover{border-color:var(--line-2);color:var(--ink)}
+.stat b{font-family:'Azeret Mono',monospace;font-size:13px;font-weight:600;color:var(--ink)}
+.stat.is-alarm b{color:var(--alarm)}
+.stat[aria-pressed="true"]{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.stat[aria-pressed="true"] b{color:var(--accent-c)}
+.stat.is-alarm[aria-pressed="true"]{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.42);color:var(--alarm)}
+.stat.is-alarm[aria-pressed="true"] b{color:var(--alarm)}
+.statline-sep{width:1px;height:16px;background:var(--line-2);margin:0 2px}
+.chip-nav{
+  display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 12px 0 10px;border-radius:999px;
+  border:1px solid rgba(45,212,191,.28);background:rgba(20,184,166,.08);color:var(--accent-c);font-size:12px;font-weight:500;
+  transition:background .14s ease,border-color .14s ease;
+}
+.chip-nav:hover{background:rgba(20,184,166,.16);border-color:rgba(45,212,191,.46)}
+.chip-nav svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.chip-nav b{font-family:'Azeret Mono',monospace;font-weight:600}
+.chip-nav.warn{border-color:rgba(240,163,94,.32);background:rgba(240,163,94,.09);color:var(--warn)}
+.chip-nav.warn:hover{background:rgba(240,163,94,.17)}
+
+/* ---------- split: list + detail ---------- */
+.split{display:flex;gap:14px;align-items:flex-start;flex:1;min-height:0}
+
+.list-pane{
+  flex:1;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
+  box-shadow:var(--glow);display:flex;flex-direction:column;overflow:hidden;min-height:0;
+}
+.list-toolbar{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.list-toolbar h2{font-size:14.5px;font-weight:600;margin:0}
+.list-toolbar .meta{font-family:'Azeret Mono',monospace;font-size:11px;color:var(--ink-3)}
+.search{
+  display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:var(--r-ctl);
+  background:#111823;border:1px solid var(--line);min-width:190px;margin-left:auto;
+}
+.search svg{width:14px;height:14px;stroke:var(--ink-3);fill:none;stroke-width:1.7;stroke-linecap:round}
+.search input{background:none;border:0;outline:none;color:var(--ink);font:400 13px 'Barlow',sans-serif;width:100%}
+.search input::placeholder{color:var(--ink-3)}
+.search:focus-within{border-color:rgba(45,212,191,.45);box-shadow:inset 0 0 18px -12px rgba(45,212,191,.9)}
+
+.list-cols{
+  display:grid;grid-template-columns:16px 70px 112px 1fr 78px;gap:10px;padding:7px 14px;
+  border-bottom:1px solid var(--line-2);background:#131a24;
+  font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:600;
+}
+.list-body{overflow-y:auto;flex:1;min-height:0;scrollbar-width:thin}
+.row-item{
+  display:grid;grid-template-columns:16px 70px 112px 1fr 78px;gap:10px;align-items:center;
+  width:100%;text-align:left;padding:9px 14px;border-bottom:1px solid #1c2532;
+  transition:background .13s ease,box-shadow .13s ease;
+}
+.row-item:hover{background:var(--card-2)}
+.row-item.late{background:rgba(248,113,113,.055)}
+.row-item.late:hover{background:rgba(248,113,113,.1)}
+.row-item.selected{background:rgba(20,184,166,.13);box-shadow:inset 0 0 0 1px rgba(45,212,191,.4)}
+.row-item.late.selected{background:rgba(20,184,166,.13);box-shadow:inset 0 0 0 1px rgba(45,212,191,.4)}
+.sdot{width:8px;height:8px;border-radius:50%;display:block}
+.row-item.late .sdot{box-shadow:0 0 0 3px rgba(248,113,113,.22)}
+.row-ord{font-family:'Azeret Mono',monospace;font-size:12.5px;font-weight:500;color:var(--ink);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-ord .cl{display:block;font-size:10.5px;font-weight:400;color:var(--ink-3);font-family:'Barlow',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.matchip{
+  display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:6px;
+  background:#1d2734;border:1px solid var(--line-2);font-size:11.5px;color:var(--ink);max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.matchip i{width:6px;height:6px;border-radius:2px;background:var(--ink-3);font-style:normal;flex:0 0 auto}
+.row-kind{font-size:12.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-due{font-family:'Azeret Mono',monospace;font-size:11.5px;color:var(--ink-2);text-align:right;white-space:nowrap}
+.row-due b{color:var(--ink);font-weight:500}
+.row-item.late .row-due,.row-item.late .row-due b{color:var(--alarm);font-weight:500}
+.badge{font-size:10.5px;padding:1px 6px;border-radius:5px;font-weight:500;display:inline-block;margin-top:2px}
+.badge.problem{background:rgba(248,113,113,.14);color:var(--alarm);border:1px solid rgba(248,113,113,.3)}
+.badge.redo{background:rgba(240,163,94,.13);color:var(--warn);border:1px solid rgba(240,163,94,.3)}
+
+.empty{padding:46px 22px;text-align:center;display:none}
+.empty svg{width:26px;height:26px;stroke:var(--ink-3);fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;margin-bottom:10px}
+.empty p{margin:0 0 4px;font-size:14.5px;font-weight:500}
+.empty span{display:block;font-size:12.5px;color:var(--ink-3);margin-bottom:14px}
+.is-empty .empty{display:block}
+.is-empty .list-body{display:none}
+
+/* ---------- detail pane ---------- */
+.detail-pane{
+  width:400px;flex:0 0 400px;align-self:flex-start;position:sticky;top:0;
+  max-height:calc(100vh - 40px);overflow-y:auto;scrollbar-width:thin;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);
+}
+.detail-head{display:flex;align-items:flex-start;gap:10px;padding:15px 16px 13px;border-bottom:1px solid var(--line)}
+.detail-head .ord{font-family:'Azeret Mono',monospace;font-size:19px;font-weight:600;letter-spacing:-.01em}
+.detail-head .src{
+  font-family:'Azeret Mono',monospace;font-size:9.5px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;
+  border:1px solid rgba(45,212,191,.32);color:var(--accent-c);background:rgba(20,184,166,.1);
+}
+.detail-head .client{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+.detail-close{display:none;margin-left:auto;width:28px;height:28px;border-radius:7px;align-items:center;justify-content:center;color:var(--ink-2);border:1px solid var(--line-2)}
+.detail-close:hover{color:var(--ink);background:var(--card-2)}
+.detail-close svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+
+.detail-body{padding:14px 16px 18px}
+.dsec{margin-bottom:16px}
+.dsec:last-child{margin-bottom:0}
+.dsec .dlabel{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:8px}
+.kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:6px 0;font-size:12.5px;color:var(--ink-2)}
+.kv+.kv{border-top:1px solid #1b2431}
+.kv b{font-family:'Azeret Mono',monospace;font-weight:500;color:var(--ink);font-size:12px;text-align:right}
+.camtext{
+  font-size:13px;color:var(--ink);background:#111823;border:1px solid var(--line);border-radius:8px;
+  padding:10px 11px;line-height:1.45;
+}
+.camtext.shout{color:var(--warn);border-color:rgba(240,163,94,.35)}
+.camtext.empty-cam{color:var(--ink-3);font-style:normal}
+
+.pathrow{display:flex;align-items:center;gap:8px;background:#111823;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.pathrow .p{font-family:'Azeret Mono',monospace;font-size:11.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.iconbtn{width:28px;height:28px;flex:0 0 28px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-2);border:1px solid var(--line-2);transition:background .13s ease,color .13s ease,border-color .13s ease}
+.iconbtn:hover{background:rgba(20,184,166,.12);border-color:rgba(45,212,191,.35);color:var(--accent-c)}
+.iconbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+.sumrow{display:flex;gap:8px}
+.suminput{
+  flex:1;min-width:0;height:34px;padding:0 10px;border-radius:var(--r-ctl);background:#111823;border:1px solid var(--line);
+  color:var(--ink);font-family:'Azeret Mono',monospace;font-size:13px;outline:none;
+}
+.suminput::placeholder{color:var(--ink-3);font-family:'Barlow',sans-serif}
+.suminput:focus{border-color:rgba(45,212,191,.45);box-shadow:inset 0 0 18px -12px rgba(45,212,191,.9)}
+
+.status-opts{display:flex;flex-wrap:wrap;gap:6px}
+.sbtn{
+  height:28px;padding:0 11px;border-radius:999px;border:1px solid var(--line);background:#111823;
+  color:var(--ink-2);font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:6px;
+  transition:background .13s ease,border-color .13s ease,color .13s ease;
+}
+.sbtn:hover{color:var(--ink);border-color:var(--line-2)}
+.sbtn[aria-pressed="true"]{background:rgba(20,184,166,.16);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.sbtn.alarm[aria-pressed="true"]{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.42);color:var(--alarm)}
+.sbtn.warn[aria-pressed="true"]{background:rgba(240,163,94,.13);border-color:rgba(240,163,94,.4);color:var(--warn)}
+.sbtn .sdot{width:6px;height:6px}
+
+.timeline{display:flex;flex-direction:column}
+.tl-item{display:flex;gap:10px;padding:7px 0}
+.tl-item+.tl-item{border-top:1px solid #1b2431}
+.tl-item .t{font-family:'Azeret Mono',monospace;font-size:11px;color:var(--ink-3);flex:0 0 40px;padding-top:1px}
+.tl-item .body{flex:1;min-width:0}
+.tl-item .label{font-size:12.5px;color:var(--ink);font-weight:500}
+.tl-item .who{font-size:11.5px;color:var(--ink-3);margin-top:1px}
+
+.toast{
+  position:fixed;left:50%;bottom:22px;transform:translate(-50%,8px);font-family:'Azeret Mono',monospace;font-size:11.5px;color:var(--accent-c);
+  background:#0f1620;border:1px solid rgba(45,212,191,.35);border-radius:8px;padding:8px 14px;
+  opacity:0;transition:opacity .16s ease,transform .16s ease;pointer-events:none;z-index:80;box-shadow:var(--sh-pop);
+}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+.backdrop{display:none}
+
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media (max-width:1120px){
+  .rail{width:60px;flex:0 0 60px;padding:16px 8px 10px;align-items:stretch}
+  .brand .txt,.nav-title,.nav-item span.lb,.rail-foot .who{display:none}
+  .nav-item{justify-content:center;padding:9px 0;position:relative}
+  .nav-item .count{position:absolute;top:2px;right:4px;margin:0;font-size:9.5px;padding:0 4px}
+  .rail-foot{justify-content:center}
+  .detail-pane{width:340px;flex:0 0 340px}
+  .list-cols,.row-item{grid-template-columns:14px 62px 96px 1fr 66px}
+}
+@media (max-width:900px){
+  .main{padding:16px 14px 20px}
+  .split{flex-direction:column}
+  .list-pane{width:100%}
+  .detail-pane{
+    position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;flex:none;
+    max-height:88vh;border-radius:16px 16px 0 0;box-shadow:0 -22px 50px -20px rgba(0,0,0,.85);
+    transform:translateY(105%);transition:transform .22s cubic-bezier(.16,.84,.32,1);z-index:60;
+  }
+  .detail-pane.open{transform:translateY(0)}
+  .detail-close{display:inline-flex}
+  .backdrop{
+    display:block;position:fixed;inset:0;background:rgba(5,8,12,.6);opacity:0;pointer-events:none;
+    transition:opacity .2s ease;z-index:50;
+  }
+  .backdrop.open{opacity:1;pointer-events:auto}
+  h1{font-size:22px}
+}
+@media (max-width:560px){
+  .head-actions{margin-left:0}
+  .list-cols{display:none}
+  .row-item{grid-template-columns:14px 1fr 70px;row-gap:4px}
+  .row-item .cell-mat,.row-item .cell-kind{grid-column:2 / 3}
+  .row-item .cell-kind{margin-top:2px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important}
+}
+</style>
+</head>
+<body>
+<!--
+THESIS: реальний цикл оператора — взяв → скопіював шлях-ID → вписав Sum3D ID → змінив статус — не має гортати сторінку; список і панель деталей живуть на екрані одночасно, тому клік по будь-якому рядку одразу дає повний паспорт, а місце в черзі не губиться.
+OWN-WORLD: та сама бірюзова телеметрична палітра з v2 — синьо-чорне тло, бірюзовий сигнал, червона тривога, тонка рамка з внутрішнім світінням лише на картках і панелі, Barlow для інтерфейсу й Azeret Mono для нарядів/шляхів-ID/часу. Токени не змінені.
+STORY: оператор скролить компактний список, клікає рядок — праворуч миттєво оновлюється паспорт роботи з повним коментарем CAM, копіює шлях-ID, вписує Sum3D ID, тисне статус.
+FIRST VIEWPORT: вузький рейл зліва, шапка з фільтрами й мінімальними лічильниками (без карток-метрик), під нею дві колонки — компактний список зліва, прилипла панель деталей ~400px праворуч з обраною роботою.
+FORM: структурний варіант B — список + панель деталей поверх незмінної естетики напрямку 2.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+
+<aside class="rail">
+  <div class="brand">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v4M12 18v4M2 12h4M18 12h4"></path></svg>
+    </span>
+    <span class="txt"><b>Order Desk</b><span>фрезерний центр</span></span>
+  </div>
+
+  <nav class="nav-group" aria-label="Основна навігація">
+    <div class="nav-title">Робота</div>
+    <button class="nav-item" aria-current="page">
+      <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"></path><circle cx="3.5" cy="6" r="1.2"></circle><circle cx="3.5" cy="12" r="1.2"></circle><circle cx="3.5" cy="18" r="1.2"></circle></svg>
+      <span class="lb">Черга</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3.5 7 8.5 6 8.5-6"></path></svg>
+      <span class="lb">Нові з пошти</span><span class="count">6</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5z"></path><path d="M3 8.5 12 13l9-4.5M12 13v7"></path></svg>
+      <span class="lb">Ранкова видача</span><span class="count warn">2</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"></circle><path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5"></path><path d="M16 6.2A3.2 3.2 0 0 1 16 14"></path><path d="M18 19c-.3-1.7-1-3-2-3.9"></path></svg>
+      <span class="lb">Клієнти</span>
+    </button>
+  </nav>
+
+  <nav class="nav-group" aria-label="Аналітика та система">
+    <div class="nav-title">Система</div>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg>
+      <span class="lb">Пошук</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V5M16 20v-7M22 20H2"></path></svg>
+      <span class="lb">Статистика</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2.2"></circle><circle cx="10" cy="17" r="2.2"></circle></svg>
+      <span class="lb">Налаштування</span>
+    </button>
+  </nav>
+
+  <div class="rail-foot">
+    <span class="avatar">ОГ</span>
+    <span class="who">Оксана Гриценко<span>CAM-оператор</span></span>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="head">
+    <div>
+      <h1>Черга робіт</h1>
+      <div class="telemetry">
+        <span class="live"><span class="beacon" aria-hidden="true"></span>10 верстатів · <b>5</b> у роботі</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>вкладка <b>11.08.26</b></span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>пошта перевірена <b>1 хв тому</b></span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>демонстраційні дані</span>
+      </div>
+    </div>
+    <div class="head-actions">
+      <button class="btn sm" type="button">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>Додати роботу
+      </button>
+      <button class="btn sm primary" type="button" id="syncTop">
+        <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"></path><path d="M4 4v4h4M20 20v-4h-4"></path></svg>Синхронізувати
+      </button>
+    </div>
+  </div>
+
+  <div class="filters" role="group" aria-label="Фільтри черги">
+    <span class="label">Період</span>
+    <div class="seg" id="segPeriod">
+      <button type="button" data-period="today" aria-pressed="false">Сьогодні <span class="n">12</span></button>
+      <button type="button" data-period="yesterday" aria-pressed="false">Вчора <span class="n">7</span></button>
+      <button type="button" data-period="tomorrow" aria-pressed="false">Завтра <span class="n">4</span></button>
+      <button type="button" data-period="earlier" aria-pressed="false">Раніше <span class="n">5</span></button>
+      <button type="button" data-period="all" aria-pressed="true">Усі <span class="n">28</span></button>
+    </div>
+    <span class="label">Джерело</span>
+    <div class="seg" id="segSource">
+      <button type="button" data-source="all" aria-pressed="true">Усі</button>
+      <button type="button" data-source="lab" aria-pressed="false">Лабораторія</button>
+      <button type="button" data-source="mail" aria-pressed="false">Пошта</button>
+    </div>
+    <button class="pill alarm" type="button" id="pillLate" aria-pressed="false"><span class="dot" aria-hidden="true"></span>Тільки прострочені</button>
+    <button class="pill" type="button" id="pillNoSum" aria-pressed="false">Без Sum3D ID</button>
+    <span id="chipHost"></span>
+  </div>
+
+  <div class="statline" id="statline" role="group" aria-label="Агреговані лічильники черги">
+    <button class="stat is-alarm" type="button" data-metric="late" aria-pressed="false"><b class="tnum">14</b>прострочено</button>
+    <button class="stat" type="button" data-metric="today" aria-pressed="false"><b class="tnum">34</b>здати сьогодні</button>
+    <button class="stat" type="button" data-metric="milling" aria-pressed="false"><b class="tnum">9</b>у фрезеруванні</button>
+    <button class="stat" type="button" data-metric="nosum" aria-pressed="false"><b class="tnum">11</b>без Sum3D ID</button>
+    <span class="statline-sep" aria-hidden="true"></span>
+    <button class="chip-nav" type="button" title="Перейти на екран «Нові з пошти»">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="2"></rect><path d="m3.5 7.5 8.5 5.5 8.5-5.5"></path></svg>
+      <b class="tnum">6</b>нових листів
+    </button>
+    <button class="chip-nav warn" type="button" title="Перейти на екран «Ранкова видача»">
+      <svg viewBox="0 0 24 24"><path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5z"></path><path d="M4 8.5 12 13l8-4.5"></path></svg>
+      <b class="tnum">2</b>клієнти без видачі
+    </button>
+  </div>
+
+  <div class="split">
+
+    <section class="list-pane" id="listPane" aria-labelledby="listTitle">
+      <div class="list-toolbar">
+        <h2 id="listTitle">Черга</h2>
+        <span class="meta" id="listMeta">28 робіт · 96 одиниць</span>
+        <label class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg>
+          <input type="search" id="q" placeholder="Наряд, технік, шлях-ID…" aria-label="Пошук у черзі">
+        </label>
+      </div>
+      <div class="list-cols" aria-hidden="true">
+        <span></span><span>Наряд</span><span>Матеріал·колір</span><span>Вид роботи</span><span style="text-align:right">Здати</span>
+      </div>
+      <div class="list-body" id="listBody"></div>
+      <div class="empty">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"></path></svg>
+        <p>Під ці фільтри не підпадає жодна робота</p>
+        <span id="emptyWhy">Активні фільтри звузили чергу до нуля.</span>
+        <button class="btn sm primary" type="button" id="resetEmpty">Скинути фільтри</button>
+      </div>
+    </section>
+
+    <aside class="detail-pane" id="detailPane" aria-labelledby="detailOrd">
+      <div class="detail-head">
+        <div>
+          <span class="ord mono" id="detailOrd">—</span>
+          <span class="src" id="detailSrc" style="display:none">пошта</span>
+          <div class="client" id="detailClient" style="display:none"></div>
+        </div>
+        <button class="detail-close" type="button" id="detailClose" aria-label="Закрити панель деталей">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+        </button>
+      </div>
+      <div class="detail-body" id="detailBody"></div>
+    </aside>
+
+  </div>
+</main>
+
+<div class="backdrop" id="backdrop"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  var STATUS = {
+    "нове":              {c:"#b6c6da", hollow:true},
+    "прийнято":          {c:"#0f766e"},
+    "прораховано":       {c:"#14b8a6"},
+    "у фрезеруванні":    {c:"#2dd4bf"},
+    "відфрезеровано":    {c:"#5eead4"},
+    "знайдено при видачі":{c:"#99f6e4"},
+    "видано":            {c:"#5c6b80"},
+    "проблема":          {c:"#f87171"},
+    "переробка":         {c:"#f0a35e"}
+  };
+  var STATUS_ORDER = ["нове","прийнято","прораховано","у фрезеруванні","відфрезеровано","знайдено при видачі","видано"];
+  var STATUS_ALL = STATUS_ORDER.concat(["проблема","переробка"]);
+  var FINAL = {"знайдено при видачі":1,"видано":1};
+  var DAY = {earlier:0, yesterday:1, today:2, tomorrow:3};
+  var KIND_ABBR = {"анатомія гвинтова":"анат. гвинтова"};
+
+  // Демонстраційні дані черги (авторські, ідентичні набору v2)
+  var ROWS = [
+    {ord:"24122", src:"lab",  cam:"покрити опаком",                      mat:"пмма A2",    kind:"анатомія",           qty:6, day:"earlier",  dl:"07.08", due:"14:00", path:"2026-08-07_00016-007", sum:"118402", tech:"Оксана Гриценко", status:"у фрезеруванні"},
+    {ord:"24118", src:"lab",  cam:"Чекаємо Скани!!!!",                   mat:"моно А3.5",  kind:"анатомія гвинтова",  qty:4, day:"earlier",  dl:"07.08", due:"09:00", path:"2026-08-07_00016-003", sum:"",       tech:"Марія Дідух",     status:"проблема"},
+    {ord:"24109", src:"mail", client:"Гнатюк С.", cam:"повтор, скол по краю — 2-й раз", mat:"титан корея", kind:"каркас міст 13-23", qty:1, day:"earlier", dl:"04.08", due:"16:00", path:"2026-08-04_00011-002", sum:"118317", tech:"Богдан Кравець", status:"переробка"},
+    {ord:"24127", src:"lab",  cam:"фрезерувати з запасом 0.2",           mat:"500",        kind:"абатмент",           qty:2, day:"earlier",  dl:"08.08", due:"14:00", path:"2026-08-08_00019-006", sum:"118388", tech:"Ігор Панченко",   status:"прораховано"},
+    {ord:"24130", src:"lab",  cam:"тільки після підтвердження кольору",  mat:"моно A2",    kind:"вкладка",            qty:3, day:"earlier",  dl:"08.08", due:"16:00", path:"2026-08-08_00019-011", sum:"",       tech:"Наталя Ковальчук",status:"прийнято"},
+
+    {ord:"24131", src:"lab",  cam:"Якщо можно на швидку, я сам закрию",  mat:"титан корея",kind:"абатмент",           qty:2, day:"yesterday",dl:"10.08", due:"16:00", path:"2026-08-10_00021-011", sum:"118455", tech:"Богдан Кравець",  status:"прораховано"},
+    {ord:"24133", src:"lab",  cam:"каркас тонкий, не полірувати",        mat:"800",        kind:"каркас міст 13-23",  qty:1, day:"yesterday",dl:"10.08", due:"14:00", path:"2026-08-10_00021-014", sum:"118461", tech:"Ігор Панченко",   status:"у фрезеруванні"},
+    {ord:"24136", src:"mail", client:"Кравчук Л.", cam:"покрити опаком", mat:"пмма A2",    kind:"анатомія",           qty:4, day:"yesterday",dl:"10.08", due:"09:00", path:"2026-08-10_00022-001", sum:"118470", tech:"Софія Романюк",   status:"відфрезеровано"},
+    {ord:"24137", src:"lab",  cam:"",                                    mat:"моно А3.5",  kind:"анатомія гвинтова",  qty:2, day:"yesterday",dl:"10.08", due:"16:00", path:"2026-08-10_00022-004", sum:"118472", tech:"Тарас Мельник",   status:"відфрезеровано"},
+    {ord:"24139", src:"mail", client:"Мазур В.",   cam:"перевірити товщину стінки", mat:"моно B1", kind:"вкладка",   qty:3, day:"yesterday",dl:"10.08", due:"14:00", path:"2026-08-10_00022-009", sum:"118474", tech:"Андрій Литвин",   status:"знайдено при видачі"},
+    {ord:"24141", src:"lab",  cam:"",                                    mat:"500",        kind:"абатмент",           qty:1, day:"yesterday",dl:"10.08", due:"09:00", path:"2026-08-10_00022-013", sum:"118476", tech:"Юлія Савчук",     status:"видано"},
+    {ord:"24142", src:"lab",  cam:"віддати разом із 24141",              mat:"пмма A3",    kind:"анатомія",           qty:5, day:"yesterday",dl:"10.08", due:"16:00", path:"2026-08-10_00022-018", sum:"",       tech:"Юлія Савчук",     status:"прийнято"},
+
+    {ord:"24145", src:"lab",  cam:"покрити опаком",                      mat:"пмма A2",    kind:"анатомія",           qty:6, day:"today",   dl:"11.08", due:"14:00", path:"2026-08-11_00024-002", sum:"118491", tech:"Оксана Гриценко", status:"у фрезеруванні"},
+    {ord:"24146", src:"lab",  cam:"Чекаємо Скани!!!!",                   mat:"моно А3.5",  kind:"каркас міст 14-24",  qty:1, day:"today",   dl:"11.08", due:"14:00", path:"2026-08-11_00024-005", sum:"",       tech:"Марія Дідух",     status:"нове"},
+    {ord:"24147", src:"mail", client:"Тимків Р.",  cam:"колір уточнить клієнт", mat:"титан корея", kind:"абатмент",   qty:2, day:"today",   dl:"11.08", due:"16:00", path:"2026-08-11_00024-008", sum:"",       tech:"Богдан Кравець",  status:"нове"},
+    {ord:"24148", src:"lab",  cam:"фрезерувати з запасом 0.2",           mat:"800",        kind:"каркас міст 34-37",  qty:1, day:"today",   dl:"11.08", due:"09:00", path:"2026-08-11_00024-011", sum:"118494", tech:"Ігор Панченко",   status:"прораховано"},
+    {ord:"24149", src:"lab",  cam:"",                                    mat:"моно A2",    kind:"анатомія гвинтова",  qty:4, day:"today",   dl:"11.08", due:"16:00", path:"2026-08-11_00024-014", sum:"118496", tech:"Наталя Ковальчук",status:"у фрезеруванні"},
+    {ord:"24150", src:"mail", client:"Бондар І.",  cam:"5 файлів у листі, звірити кількість", mat:"моно А3.5", kind:"каркас міст 14-24", qty:2, day:"today", dl:"11.08", due:"14:00", path:"2026-08-11_00025-001", sum:"",  tech:"Софія Романюк",   status:"прийнято"},
+    {ord:"24151", src:"lab",  cam:"перефрезерувати, скол по краю",       mat:"пмма A2",    kind:"вкладка",            qty:2, day:"today",   dl:"11.08", due:"16:00", path:"2026-08-11_00025-004", sum:"118501", tech:"Тарас Мельник",   status:"переробка"},
+    {ord:"24152", src:"lab",  cam:"",                                    mat:"500",        kind:"абатмент",           qty:3, day:"today",   dl:"11.08", due:"09:00", path:"2026-08-11_00025-007", sum:"118503", tech:"Андрій Литвин",   status:"відфрезеровано"},
+    {ord:"24153", src:"lab",  cam:"не полірувати, віддати як є",         mat:"титан корея",kind:"каркас міст 13-23",  qty:1, day:"today",   dl:"11.08", due:"14:00", path:"2026-08-11_00025-010", sum:"118505", tech:"Віктор Шевчук",   status:"прораховано"},
+    {ord:"24154", src:"mail", client:"Кравчук Л.", cam:"термінове, клієнт чекає в лабораторії", mat:"пмма A3", kind:"анатомія", qty:8, day:"today", dl:"11.08", due:"16:00", path:"2026-08-11_00025-013", sum:"", tech:"Юлія Савчук",     status:"нове"},
+    {ord:"24155", src:"lab",  cam:"",                                    mat:"моно B1",    kind:"анатомія",           qty:3, day:"today",   dl:"11.08", due:"16:00", path:"2026-08-11_00025-016", sum:"118509", tech:"Оксана Гриценко", status:"у фрезеруванні"},
+    {ord:"24156", src:"lab",  cam:"файл прийшов без опори — питання до техніка", mat:"800", kind:"каркас міст 34-37", qty:1, day:"today", dl:"11.08", due:"09:00", path:"2026-08-11_00025-019", sum:"",  tech:"Марія Дідух",     status:"проблема"},
+
+    {ord:"24158", src:"lab",  cam:"",                                    mat:"моно А3.5",  kind:"анатомія гвинтова",  qty:2, day:"tomorrow", dl:"12.08", due:"14:00", path:"2026-08-12_00026-002", sum:"",       tech:"Богдан Кравець",  status:"нове"},
+    {ord:"24159", src:"lab",  cam:"покрити опаком",                      mat:"пмма A2",    kind:"анатомія",           qty:5, day:"tomorrow", dl:"12.08", due:"16:00", path:"2026-08-12_00026-005", sum:"",       tech:"Ігор Панченко",   status:"нове"},
+    {ord:"24160", src:"mail", client:"Мазур В.",   cam:"",               mat:"титан корея",kind:"абатмент",           qty:2, day:"tomorrow", dl:"12.08", due:"09:00", path:"2026-08-12_00026-008", sum:"",       tech:"Наталя Ковальчук",status:"прийнято"},
+    {ord:"24161", src:"lab",  cam:"тільки після підтвердження кольору",  mat:"моно A2",    kind:"вкладка",            qty:4, day:"tomorrow", dl:"12.08", due:"16:00", path:"2026-08-12_00026-011", sum:"",       tech:"Віктор Шевчук",   status:"нове"}
+  ];
+
+  ROWS.forEach(function(r){ r.late = DAY[r.day] < DAY.today && !FINAL[r.status]; });
+
+  var state = {period:"all", source:"all", late:false, nosum:false, q:"", metric:null, selected:null};
+
+  var $  = function(s,root){return (root||document).querySelector(s);};
+  var $$ = function(s,root){return Array.prototype.slice.call((root||document).querySelectorAll(s));};
+  var esc = function(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");};
+  function byOrd(ord){ for(var i=0;i<ROWS.length;i++){ if(ROWS[i].ord === ord) return ROWS[i]; } return null; }
+  function plural(n, one, few, many){
+    var m10 = n % 10, m100 = n % 100;
+    if(m10 === 1 && m100 !== 11) return one;
+    if(m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
+  }
+  function abbrKind(k){
+    if(KIND_ABBR[k]) return KIND_ABBR[k];
+    if(/^каркас міст/.test(k)) return k.replace("каркас міст","карк.");
+    return k;
+  }
+  function dot(status){
+    var s = STATUS[status] || {c:"#8fa3bb"};
+    return '<span class="sdot" style="background:'+(s.hollow ? "transparent" : s.c)+';'+(s.hollow ? "box-shadow:inset 0 0 0 1.6px "+s.c+";" : "")+'"></span>';
+  }
+
+  var listPane = $("#listPane"), listBody = $("#listBody"), listMeta = $("#listMeta");
+
+  function visible(){
+    return ROWS.filter(function(r){
+      if(state.period !== "all" && r.day !== state.period) return false;
+      if(state.source !== "all" && r.src !== state.source) return false;
+      if(state.late && !r.late) return false;
+      if(state.nosum && r.sum) return false;
+      if(state.metric === "late" && !r.late) return false;
+      if(state.metric === "today" && r.day !== "today") return false;
+      if(state.metric === "milling" && r.status !== "у фрезеруванні") return false;
+      if(state.metric === "nosum" && r.sum) return false;
+      if(state.q){
+        var hay = (r.ord+" "+r.cam+" "+r.mat+" "+r.kind+" "+r.path+" "+r.sum+" "+r.tech+" "+r.status+" "+(r.client||"")).toLowerCase();
+        if(hay.indexOf(state.q.toLowerCase()) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function sortedList(list){
+    return list.slice().sort(function(a,b){
+      var x = DAY[a.day]*100 + parseInt(a.due,10), y = DAY[b.day]*100 + parseInt(b.due,10);
+      if(x !== y) return x - y;
+      return a.late === b.late ? 0 : (a.late ? -1 : 1);
+    });
+  }
+
+  function renderList(){
+    var list = sortedList(visible());
+    listPane.classList.toggle("is-empty", list.length === 0);
+
+    var units = list.reduce(function(a,r){return a + r.qty;}, 0);
+    listMeta.textContent = list.length + " " + plural(list.length,"робота","роботи","робіт") + " · " + units + " " + plural(units,"одиниця","одиниці","одиниць");
+
+    if(list.length && !byOrd(state.selected) || (list.length && list.indexOf(byOrd(state.selected)) === -1 && state.selected)){
+      // keep selection if it's still visible, otherwise fall back silently — selection stays sticky by design,
+      // it only changes on explicit click, so no reassignment here.
+    }
+    if(!state.selected && list.length){ state.selected = list[0].ord; }
+
+    listBody.innerHTML = list.map(function(r){
+      var late = r.late ? " late" : "";
+      var sel = r.ord === state.selected ? " selected" : "";
+      return '<button class="row-item'+late+sel+'" type="button" data-ord="'+esc(r.ord)+'" aria-current="'+(sel ? "true" : "false")+'">'
+        + '<span class="dotcell">'+dot(r.status)+'<span class="sr">'+esc(r.status)+(r.late ? ", прострочено" : "")+'</span></span>'
+        + '<span class="row-ord cell-ord">'+esc(r.ord)+(r.client ? '<span class="cl">'+esc(r.client)+'</span>' : '')+'</span>'
+        + '<span class="matchip cell-mat"><i aria-hidden="true"></i>'+esc(r.mat)+'</span>'
+        + '<span class="row-kind cell-kind" title="'+esc(r.kind)+'">'+esc(abbrKind(r.kind))
+          + (r.status === "проблема" ? ' <span class="badge problem">проблема</span>' : "")
+          + (r.status === "переробка" ? ' <span class="badge redo">переробка</span>' : "")
+        + '</span>'
+        + '<span class="row-due">'+esc(r.dl)+' <b>'+esc(r.due)+'</b></span>'
+        + '</button>';
+    }).join("");
+
+    $("#emptyWhy").textContent = (state.period!=="all"||state.source!=="all"||state.late||state.nosum||state.metric||state.q)
+      ? "Активні фільтри звузили чергу до нуля. Зніміть частину — або скиньте всі."
+      : "У черзі немає жодної роботи.";
+
+    renderChips();
+    if(list.length && list.indexOf(byOrd(state.selected)) === -1){
+      state.selected = list[0].ord;
+      // re-mark selection without a full re-render loop
+      $$(".row-item", listBody).forEach(function(b){ b.classList.toggle("selected", b.dataset.ord === state.selected); b.setAttribute("aria-current", b.dataset.ord === state.selected ? "true":"false"); });
+    }
+    renderDetail();
+  }
+
+  /* ---------- detail panel ---------- */
+  var OPS = {order:0};
+  function buildHistory(r){
+    var idx = STATUS_ORDER.indexOf(r.status);
+    var chain;
+    if(idx > -1){ chain = STATUS_ORDER.slice(0, idx+1); }
+    else { chain = STATUS_ORDER.slice(0, STATUS_ORDER.indexOf("прораховано")+1).concat([r.status]); }
+    var n = parseInt(r.ord,10) || 0;
+    var startHour = 8 + (n % 4);
+    return chain.map(function(s,i){
+      var who = i===0
+        ? (r.src === "mail" ? (r.client||"клієнт") + " · надійшло поштою" : "Google Таблиця · імпорт")
+        : r.tech;
+      var hh = Math.min(startHour + i, 19);
+      var mm = (n*7 + i*13) % 60;
+      var time = (hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm;
+      return {t:time, who:who, label:s};
+    });
+  }
+
+  function detailBodyHtml(r){
+    var camShout = /!{2,}/.test(r.cam);
+    var camHtml = r.cam
+      ? '<div class="camtext'+(camShout?" shout":"")+'">'+esc(r.cam)+'</div>'
+      : '<div class="camtext empty-cam">Коментаря немає</div>';
+
+    var hist = buildHistory(r);
+    var histHtml = hist.slice().reverse().map(function(h){
+      return '<div class="tl-item"><span class="t mono">'+esc(h.t)+'</span><span class="body"><span class="label">'+esc(h.label)+'</span><span class="who">'+esc(h.who)+'</span></span></div>';
+    }).join("");
+
+    var statusBtns = STATUS_ALL.map(function(s){
+      var cls = s === "проблема" ? " alarm" : (s === "переробка" ? " warn" : "");
+      return '<button class="sbtn'+cls+'" type="button" data-status="'+esc(s)+'" aria-pressed="'+(r.status===s?"true":"false")+'">'+dot(s)+esc(s)+'</button>';
+    }).join("");
+
+    return ''
+      + '<div class="dsec">'
+        + '<div class="dlabel">Паспорт роботи</div>'
+        + '<div class="kv"><span>Матеріал · колір</span><b>'+esc(r.mat)+'</b></div>'
+        + '<div class="kv"><span>Вид роботи</span><b>'+esc(r.kind)+'</b></div>'
+        + '<div class="kv"><span>Кількість</span><b>'+r.qty+' '+esc(plural(r.qty,"од.","од.","од."))+'</b></div>'
+        + '<div class="kv"><span>Здати до</span><b>'+esc(r.dl)+' · '+esc(r.due)+'</b></div>'
+        + '<div class="kv"><span>Технік</span><b>'+esc(r.tech)+'</b></div>'
+      + '</div>'
+      + '<div class="dsec">'
+        + '<div class="dlabel">Коментар для CAM-оператора</div>'
+        + camHtml
+      + '</div>'
+      + '<div class="dsec">'
+        + '<div class="dlabel">Шлях-ID</div>'
+        + '<div class="pathrow"><span class="p mono">'+esc(r.path)+'</span>'
+          + '<button class="iconbtn" type="button" data-copy="'+esc(r.path)+'" title="Копіювати шлях-ID"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M4 16V6a2 2 0 0 1 2-2h10"></path></svg></button>'
+          + '<button class="iconbtn" type="button" data-openfolder="'+esc(r.ord)+'" title="Відкрити папку"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg></button>'
+        + '</div>'
+      + '</div>'
+      + '<div class="dsec">'
+        + '<div class="dlabel">Sum3D ID</div>'
+        + '<div class="sumrow"><input class="suminput mono" type="text" inputmode="numeric" id="sumInput" placeholder="Ще не прораховано" value="'+esc(r.sum)+'">'
+          + '<button class="btn sm primary" type="button" id="sumSave">Зберегти</button></div>'
+      + '</div>'
+      + '<div class="dsec">'
+        + '<div class="dlabel">Статус</div>'
+        + '<div class="status-opts" id="statusOpts">'+statusBtns+'</div>'
+      + '</div>'
+      + '<div class="dsec">'
+        + '<div class="dlabel">Історія</div>'
+        + '<div class="timeline">'+histHtml+'</div>'
+      + '</div>';
+  }
+
+  function renderDetail(){
+    var r = byOrd(state.selected);
+    if(!r) return;
+    $("#detailOrd").textContent = r.ord;
+    var srcEl = $("#detailSrc");
+    srcEl.style.display = r.src === "mail" ? "inline-block" : "none";
+    var clEl = $("#detailClient");
+    if(r.client){ clEl.style.display="block"; clEl.textContent = r.client; } else { clEl.style.display="none"; clEl.textContent=""; }
+    $("#detailBody").innerHTML = detailBodyHtml(r);
+  }
+
+  /* ---------- chips ---------- */
+  var METRIC_LABEL = {late:"Прострочено", today:"Здати сьогодні", milling:"У фрезеруванні", nosum:"Без Sum3D ID"};
+  var PERIOD_LABEL = {today:"Сьогодні", yesterday:"Вчора", tomorrow:"Завтра", earlier:"Раніше"};
+  var SOURCE_LABEL = {lab:"Лабораторія", mail:"Пошта"};
+  function chip(label, clear){
+    return '<span class="chip">'+esc(label)+'<button type="button" data-clear="'+clear+'" aria-label="Зняти фільтр: '+esc(label)+'">'
+      + '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"></path></svg></button></span>';
+  }
+  function renderChips(){
+    var out = [];
+    if(state.period !== "all") out.push(chip(PERIOD_LABEL[state.period], "period"));
+    if(state.source !== "all") out.push(chip(SOURCE_LABEL[state.source], "source"));
+    if(state.late) out.push(chip("Прострочені", "late"));
+    if(state.nosum) out.push(chip("Без Sum3D ID", "nosum"));
+    if(state.metric) out.push(chip(METRIC_LABEL[state.metric] || state.metric, "metric"));
+    if(state.q) out.push(chip("«"+state.q+"»", "q"));
+    $("#chipHost").innerHTML = out.join("");
+  }
+
+  /* ---------- controls ---------- */
+  function syncControls(){
+    $$("#segPeriod button").forEach(function(b){ b.setAttribute("aria-pressed", String(b.dataset.period === state.period)); });
+    $$("#segSource button").forEach(function(b){ b.setAttribute("aria-pressed", String(b.dataset.source === state.source)); });
+    $("#pillLate").setAttribute("aria-pressed", String(state.late));
+    $("#pillNoSum").setAttribute("aria-pressed", String(state.nosum));
+    $$("#statline .stat").forEach(function(b){ b.setAttribute("aria-pressed", String(b.dataset.metric === state.metric)); });
+  }
+
+  $("#segPeriod").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-period]"); if(!b) return;
+    state.period = b.dataset.period;
+    if(state.metric === "today" && state.period !== "today") state.metric = null;
+    syncControls(); renderList();
+  });
+  $("#segSource").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-source]"); if(!b) return;
+    state.source = b.dataset.source; syncControls(); renderList();
+  });
+  $("#pillLate").addEventListener("click", function(){ state.late = !state.late; syncControls(); renderList(); });
+  $("#pillNoSum").addEventListener("click", function(){ state.nosum = !state.nosum; syncControls(); renderList(); });
+
+  $("#statline").addEventListener("click", function(e){
+    var b = e.target.closest("[data-metric]"); if(!b) return;
+    state.metric = state.metric === b.dataset.metric ? null : b.dataset.metric;
+    if(state.metric === "today") state.period = "all";
+    syncControls(); renderList();
+  });
+
+  $("#chipHost").addEventListener("click", function(e){
+    var b = e.target.closest("[data-clear]"); if(!b) return;
+    var k = b.dataset.clear;
+    if(k === "period") state.period = "all";
+    else if(k === "source") state.source = "all";
+    else if(k === "late") state.late = false;
+    else if(k === "nosum") state.nosum = false;
+    else if(k === "metric") state.metric = null;
+    else if(k === "q"){ state.q = ""; $("#q").value = ""; }
+    syncControls(); renderList();
+  });
+
+  $("#resetEmpty").addEventListener("click", function(){
+    state.period = "all"; state.source = "all"; state.late = false; state.nosum = false; state.metric = null; state.q = "";
+    $("#q").value = ""; syncControls(); renderList();
+  });
+
+  var qt;
+  $("#q").addEventListener("input", function(e){
+    clearTimeout(qt); var v = e.target.value;
+    qt = setTimeout(function(){ state.q = v.trim(); renderList(); }, 120);
+  });
+
+  /* ---------- row click -> detail (core interaction) ---------- */
+  var isNarrow = function(){ return window.matchMedia("(max-width:900px)").matches; };
+  var detailPane = $("#detailPane"), backdrop = $("#backdrop");
+
+  function openDetailSheet(){
+    if(!isNarrow()) return;
+    detailPane.classList.add("open");
+    backdrop.classList.add("open");
+  }
+  function closeDetailSheet(){
+    detailPane.classList.remove("open");
+    backdrop.classList.remove("open");
+  }
+
+  listBody.addEventListener("click", function(e){
+    var row = e.target.closest(".row-item"); if(!row) return;
+    state.selected = row.dataset.ord;
+    $$(".row-item", listBody).forEach(function(b){
+      var sel = b.dataset.ord === state.selected;
+      b.classList.toggle("selected", sel);
+      b.setAttribute("aria-current", sel ? "true":"false");
+    });
+    renderDetail();
+    openDetailSheet();
+  });
+
+  $("#detailClose").addEventListener("click", closeDetailSheet);
+  backdrop.addEventListener("click", closeDetailSheet);
+
+  /* ---------- detail panel actions ---------- */
+  var toast = $("#toast"), tt;
+  function say(msg){
+    toast.textContent = msg; toast.classList.add("on");
+    clearTimeout(tt); tt = setTimeout(function(){ toast.classList.remove("on"); }, 1800);
+  }
+
+  $("#detailBody").addEventListener("click", function(e){
+    var copyBtn = e.target.closest("[data-copy]");
+    if(copyBtn){
+      var v = copyBtn.dataset.copy;
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(v).catch(function(){}); }
+      say("шлях-ID скопійовано · " + v);
+      return;
+    }
+    var openBtn = e.target.closest("[data-openfolder]");
+    if(openBtn){ say("папка роботи " + openBtn.dataset.openfolder + " відкрита"); return; }
+
+    var saveBtn = e.target.closest("#sumSave");
+    if(saveBtn){
+      var r = byOrd(state.selected);
+      var val = $("#sumInput").value.trim();
+      r.sum = val;
+      say(val ? "Sum3D ID збережено · " + val : "Sum3D ID очищено");
+      renderDetail(); renderList();
+      return;
+    }
+
+    var sBtn = e.target.closest("[data-status]");
+    if(sBtn){
+      var rr = byOrd(state.selected);
+      rr.status = sBtn.dataset.status;
+      rr.late = DAY[rr.day] < DAY.today && !FINAL[rr.status];
+      say("статус змінено · " + rr.status);
+      renderDetail(); renderList();
+      return;
+    }
+  });
+
+  /* ---------- sync (head action, cosmetic like v2) ---------- */
+  $("#syncTop").addEventListener("click", function(){ say("google таблиця · синхронізовано"); });
+
+  syncControls();
+  renderList();
+})();
+</script>
+</body>
+</html>

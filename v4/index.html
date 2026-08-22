@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order Desk — Черга робіт</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;500;600;700&family=Chivo+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ─── токени ───────────────────────────────────────────────────────── */
+:root{
+  --bg:#0e1116;
+  --panel:#12151c;
+  --panel-2:#141821;
+  --card:#181c24;
+  --card-h:#1d222c;
+  --line:#232936;
+  --line-2:#2c3340;
+  --line-3:#39424f;
+
+  --fg:#eef1f6;
+  --fg-2:#b9c1cd;
+  --fg-3:#8f9aa9;
+
+  --accent:#ff8c42;          /* сигнал: прострочено */
+  --accent-dim:rgba(255,140,66,.14);
+  --mark:#3b82f6;            /* сигнал: зараз / у фрезеруванні / вибір */
+  --mark-dim:rgba(59,130,246,.16);
+  --danger:#f0656a;          /* сигнал: проблема */
+  --rework:#d9a441;          /* сигнал: переробка */
+
+  --lane:572px;
+  --gutter:40px;
+  --daycol:176px;
+  --nav:208px;
+  --step:calc(var(--lane) + var(--gutter));
+  --x-now:calc(var(--lane) + var(--gutter) / 2);
+
+  --r:10px;
+  --ease:cubic-bezier(.16,1,.3,1);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  overflow:hidden;
+  background:var(--bg);
+  color:var(--fg);
+  font-family:"Chivo",sans-serif;
+  font-size:13px;
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  font-variant-numeric:tabular-nums;
+}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+h1,h2,h3,p{margin:0}
+:focus-visible{outline:2px solid var(--mark);outline-offset:2px;border-radius:4px}
+.mono{font-family:"Chivo Mono",monospace;font-variant-numeric:tabular-nums}
+.cap{
+  font-size:11px;line-height:1.2;text-transform:uppercase;
+  letter-spacing:.09em;font-weight:600;color:var(--fg-3);
+}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+svg{display:block;flex:0 0 auto}
+
+/* ─── каркас ───────────────────────────────────────────────────────── */
+.app{display:grid;grid-template-columns:var(--nav) minmax(0,1fr);height:100dvh;overflow:hidden}
+
+/* ─── навігація ────────────────────────────────────────────────────── */
+.nav{
+  display:flex;flex-direction:column;min-height:0;
+  background:var(--panel);border-right:1px solid var(--line);
+}
+.brand{display:flex;align-items:center;gap:10px;padding:18px 16px 16px}
+.brand .mk{color:var(--accent)}
+.brand b{font-size:15px;font-weight:700;letter-spacing:-.01em}
+.brand span{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--fg-3);font-weight:600}
+.navlist{display:flex;flex-direction:column;gap:1px;padding:4px 10px;overflow-y:auto}
+.navsep{height:1px;background:var(--line);margin:10px 16px}
+.navlist a{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 10px;border-radius:8px;
+  color:var(--fg-2);text-decoration:none;font-size:13px;font-weight:500;
+  border:1px solid transparent;
+  transition:background .15s ease,color .15s ease;
+}
+.navlist a svg{color:var(--fg-3);transition:color .15s ease}
+.navlist a:hover{background:#171b24;color:var(--fg)}
+.navlist a:hover svg{color:var(--fg-2)}
+.navlist a[aria-current="page"]{background:#1a1f29;color:var(--fg);border-color:var(--line-2);font-weight:600}
+.navlist a[aria-current="page"] svg{color:var(--accent)}
+.navlist .count{
+  margin-left:auto;font-family:"Chivo Mono",monospace;font-size:11px;font-weight:500;
+  padding:1px 6px;border:1px solid var(--line-3);border-radius:20px;color:var(--fg-2);
+}
+.me{
+  margin-top:auto;display:flex;align-items:center;gap:10px;
+  padding:12px 16px;border-top:1px solid var(--line);
+}
+.me .who{min-width:0}
+.me .who b{display:block;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.me .who span{font-size:11px;color:var(--fg-3)}
+
+/* аватар */
+.ava{
+  display:grid;place-items:center;flex:0 0 auto;
+  width:22px;height:22px;border-radius:50%;
+  border:1px solid var(--line-3);background:#1c212b;
+  font-family:"Chivo Mono",monospace;font-size:9.5px;font-weight:600;
+  color:var(--fg-2);letter-spacing:.02em;
+}
+.ava.lg{width:28px;height:28px;font-size:11px}
+
+/* ─── шапка ────────────────────────────────────────────────────────── */
+.main{display:grid;grid-template-rows:auto auto minmax(0,1fr);min-width:0;position:relative}
+.topbar{
+  display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;
+  padding:18px 20px 14px;border-bottom:1px solid var(--line);
+}
+.title{display:flex;align-items:center;gap:10px}
+.title h1{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.demo{
+  font-family:"Chivo Mono",monospace;font-size:10px;font-weight:500;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--fg-3);
+  border:1px solid var(--line-2);border-radius:4px;padding:2px 6px;
+}
+.tally{color:var(--fg-3);font-size:12px;padding-bottom:2px}
+.tally b{color:var(--fg-2);font-weight:600}
+
+/* стан синхронізації */
+.sync{
+  margin-left:auto;display:flex;align-items:center;gap:8px;
+  border:1px solid var(--line-2);border-radius:var(--r);
+  background:var(--panel-2);padding:6px 8px 6px 10px;
+}
+.sync .led{width:7px;height:7px;border-radius:50%;background:var(--fg-3);flex:0 0 auto}
+.sync-txt{font-size:12px;color:var(--fg-2)}
+.sync-txt .mono{color:var(--fg-3);font-size:11.5px}
+.sync[data-state="ok"] .led{background:#6fa88b}
+.sync[data-state="sync"] .led{background:var(--mark)}
+.sync[data-state="err"]{border-color:rgba(240,101,106,.45);background:rgba(240,101,106,.08)}
+.sync[data-state="err"] .led{background:var(--danger)}
+.sync[data-state="err"] .sync-txt{color:var(--danger)}
+.iconbtn{
+  display:grid;place-items:center;width:26px;height:26px;border-radius:6px;
+  color:var(--fg-3);border:1px solid transparent;transition:background .15s ease,color .15s ease;
+}
+.iconbtn:hover{background:#1c212b;color:var(--fg)}
+.sync[data-state="sync"] .iconbtn svg{animation:spin 900ms linear infinite}
+.retry{
+  font-size:11.5px;font-weight:600;color:var(--danger);
+  border:1px solid rgba(240,101,106,.45);border-radius:6px;padding:3px 8px;
+}
+.retry:hover{background:rgba(240,101,106,.14)}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ─── фільтри ──────────────────────────────────────────────────────── */
+.filters{
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  padding:11px 20px;border-bottom:1px solid var(--line);background:var(--panel-2);
+}
+.fgroup{display:flex;align-items:center;gap:9px}
+.seg{display:flex;border:1px solid var(--line-2);border-radius:8px;overflow:hidden;background:#0f1319}
+.seg button{
+  padding:5px 11px;font-size:12px;font-weight:500;color:var(--fg-3);
+  border-right:1px solid var(--line-2);transition:background .15s ease,color .15s ease;
+}
+.seg button:last-child{border-right:0}
+.seg button:hover{background:#171b24;color:var(--fg-2)}
+.seg button[aria-pressed="true"]{background:#232936;color:var(--fg);font-weight:600}
+.toggle{
+  display:flex;align-items:center;gap:7px;padding:5px 11px;font-size:12px;font-weight:500;
+  border:1px solid var(--line-2);border-radius:8px;color:var(--fg-3);background:#0f1319;
+  transition:background .15s ease,color .15s ease,border-color .15s ease;
+}
+.toggle:hover{background:#171b24;color:var(--fg-2)}
+.toggle[aria-pressed="true"]{
+  border-color:rgba(255,140,66,.5);background:var(--accent-dim);color:var(--accent);font-weight:600;
+}
+.toggle .box{width:11px;height:11px;border:1.5px solid currentColor;border-radius:3px;opacity:.75}
+.toggle[aria-pressed="true"] .box{background:currentColor;opacity:1}
+.applied{display:flex;align-items:center;gap:8px;min-height:26px}
+.xchip{
+  display:flex;align-items:center;gap:7px;padding:3px 5px 3px 10px;
+  border:1px solid var(--line-3);border-radius:20px;background:#1a1f29;
+  font-size:12px;color:var(--fg-2);
+}
+.xchip button{
+  display:grid;place-items:center;width:17px;height:17px;border-radius:50%;color:var(--fg-3);
+  transition:background .15s ease,color .15s ease;
+}
+.xchip button:hover{background:#2c3340;color:var(--fg)}
+
+/* ─── стрічка ──────────────────────────────────────────────────────── */
+.timeline{
+  position:relative;overflow:auto;overscroll-behavior:contain;
+  scrollbar-width:thin;scrollbar-color:#2c3340 transparent;
+  cursor:grab;
+}
+.timeline.dragging{cursor:grabbing}
+.canvas{width:max-content;min-width:100%;position:relative}
+
+/* вісь воріт */
+.axis{display:flex;position:sticky;top:0;z-index:6;background:var(--bg);border-bottom:1px solid var(--line)}
+.axis-corner{
+  position:sticky;left:0;z-index:7;flex:0 0 var(--daycol);
+  display:flex;align-items:center;padding:0 14px;height:42px;
+  background:var(--panel);border-right:1px solid var(--line);
+}
+.axis-lanes{display:flex;position:relative;height:42px}
+.gate{
+  flex:0 0 var(--lane);display:flex;align-items:center;gap:9px;
+  padding:0 12px;border-left:1px solid var(--line-2);
+}
+.gate .t{font-family:"Chivo Mono",monospace;font-size:13px;font-weight:600;color:var(--fg-2)}
+.gate .n{font-size:11.5px;color:var(--fg-3)}
+.gate svg{color:var(--fg-3)}
+.gap{flex:0 0 var(--gutter)}
+.nowpill{
+  position:absolute;top:9px;left:var(--x-now);transform:translateX(-50%);
+  display:flex;align-items:center;gap:6px;white-space:nowrap;
+  background:#326ed1;color:#fff;border-radius:5px;padding:3px 8px;
+  font-family:"Chivo Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.08em;
+}
+
+/* рядки */
+.rows{position:relative}
+.overlay{position:absolute;top:0;bottom:0;left:var(--daycol);right:0;z-index:2;pointer-events:none}
+.overlay .gline{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
+.nowline{position:absolute;top:0;bottom:0;left:var(--x-now);width:1px;transform-origin:top center}
+.nowline::before{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(59,130,246,.85),rgba(59,130,246,.35));
+}
+.nowline::after{
+  content:"";position:absolute;top:0;bottom:0;left:-9px;width:19px;
+  background:linear-gradient(90deg,transparent,rgba(59,130,246,.13),transparent);
+}
+
+.row{display:flex;align-items:stretch;border-bottom:1px solid var(--line);position:relative;z-index:1}
+.row:last-child{border-bottom:0}
+.row.is-today .lanes{background:rgba(59,130,246,.045)}
+
+.daycell{
+  position:sticky;left:0;z-index:4;flex:0 0 var(--daycol);
+  display:flex;flex-direction:column;gap:5px;
+  padding:14px 14px 14px 17px;
+  background:var(--panel);border-right:1px solid var(--line);
+}
+.row.is-today .daycell{background:var(--panel-2)}
+.stripe{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line-3)}
+.row.is-late .stripe{background:var(--accent)}
+.row.is-today .stripe{background:var(--mark)}
+.row.is-ahead .stripe{background:#2f3846}
+.dow{display:flex;align-items:baseline;gap:7px}
+.dow .d{font-family:"Chivo Mono",monospace;font-size:14px;font-weight:600;color:var(--fg);letter-spacing:-.01em}
+.dow .w{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-3)}
+.dstate{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-3)}
+.row.is-late .dstate{color:var(--accent)}
+.row.is-today .dstate{color:var(--mark)}
+.dcount{font-size:11.5px;color:var(--fg-3);margin-top:auto}
+.dlate{display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--accent)}
+
+.lanes{display:flex;align-items:stretch;flex:0 0 auto}
+.lane{flex:0 0 var(--lane);display:flex;gap:12px;padding:14px 12px}
+
+/* порожній день */
+.row.is-blank .lanes{min-height:88px}
+.dayblank{
+  align-self:center;display:flex;align-items:center;gap:10px;
+  margin:0 12px;padding:9px 14px;color:var(--fg-3);font-size:12.5px;
+  border:1px dashed var(--line-2);border-radius:var(--r);
+}
+
+/* ─── картка роботи ────────────────────────────────────────────────── */
+.job{
+  position:relative;z-index:3;flex:0 0 268px;align-self:flex-start;
+  display:flex;flex-direction:column;gap:7px;
+  background:var(--card);border:1px solid var(--line-2);border-radius:var(--r);
+  padding:11px 12px 0;
+  transition:background .16s ease,border-color .16s ease,box-shadow .16s ease;
+}
+.job:hover{background:var(--card-h);border-color:var(--line-3);box-shadow:0 6px 18px -8px rgba(0,0,0,.7)}
+.job:has(.job-open:focus-visible){outline:2px solid var(--mark);outline-offset:2px}
+.job[data-selected]{
+  border-color:var(--mark);background:#1a2130;
+  box-shadow:0 0 0 1px rgba(59,130,246,.45),0 8px 22px -10px rgba(0,0,0,.8);
+}
+.job.is-done{background:#141821;border-color:var(--line)}
+.job.is-done:hover{background:#181c24}
+.job-open{position:absolute;inset:0;border-radius:var(--r);z-index:0}
+.job > *:not(.job-open){position:relative;z-index:1;pointer-events:none}
+
+.job-top{display:flex;align-items:center;gap:7px}
+.job-no{font-family:"Chivo Mono",monospace;font-size:13px;font-weight:600;letter-spacing:-.01em}
+.job.is-done .job-no{color:var(--fg-2)}
+.src{color:var(--fg-3)}
+.status{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:11.5px;color:var(--fg-3);white-space:nowrap}
+.status i{width:7px;height:7px;border-radius:50%;background:var(--line-3);flex:0 0 auto}
+.s-new i{background:#3d4655}
+.s-acc i{background:#5c footer}
+.s-acc i{background:#5c6辺}
+.s-acc i{background:#5c6675}
+.s-calc i{background:transparent;border:1.5px solid var(--fg-2)}
+.s-mill i{background:var(--mark);box-shadow:0 0 0 3px var(--mark-dim)}
+.s-mill{color:#93b8f7}
+.s-prob i{background:var(--danger)}
+.s-prob{color:var(--danger)}
+.s-rew i{background:var(--rework)}
+.s-rew{color:var(--rework)}
+.s-done i,.s-out i,.s-found i{background:#5a6472}
+.rew-n{font-family:"Chivo Mono",monospace;font-weight:600}
+
+.job-kind{font-size:14px;font-weight:600;letter-spacing:-.005em;line-height:1.25;color:var(--fg)}
+.job.is-done .job-kind{color:var(--fg-2);font-weight:500}
+.job-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chip{
+  font-size:11.5px;color:var(--fg-2);background:rgba(255,255,255,.045);
+  border:1px solid var(--line-2);border-radius:5px;padding:1.5px 7px;
+}
+.units{font-size:11.5px;color:var(--fg-3)}
+.job-note{
+  display:flex;gap:7px;font-size:11.5px;line-height:1.35;color:var(--fg-3);
+  border-left:1px solid var(--line-3);padding-left:8px;
+}
+.job-note svg{margin-top:2px;color:var(--line-3)}
+.job-foot{display:flex;align-items:center;gap:9px;padding-bottom:10px}
+.who{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--fg-2);min-width:0}
+.who b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.due{
+  display:flex;align-items:center;gap:5px;margin-left:auto;white-space:nowrap;
+  font-family:"Chivo Mono",monospace;font-size:12px;font-weight:500;color:var(--fg-2);
+}
+.due svg{color:var(--fg-3)}
+.late{
+  font-family:"Chivo Mono",monospace;font-size:11px;font-weight:600;white-space:nowrap;
+  color:var(--accent);background:var(--accent-dim);
+  border:1px solid rgba(255,140,66,.4);border-radius:5px;padding:1px 6px;
+}
+.path{
+  pointer-events:auto;display:flex;align-items:center;gap:7px;width:calc(100% + 24px);
+  margin:0 -12px;padding:7px 12px;border-top:1px solid var(--line);
+  border-radius:0 0 var(--r) var(--r);
+  font-family:"Chivo Mono",monospace;font-size:11px;color:var(--fg-3);
+  transition:background .15s ease,color .15s ease;
+}
+.path:hover{background:#20252f;color:var(--fg-2)}
+.path svg{margin-left:auto;opacity:.6}
+.path.copied{color:#8fd3ae}
+.path.copied svg{opacity:1}
+
+/* порожній результат фільтрів */
+.void{
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+  padding:70px 20px;text-align:center;color:var(--fg-3);
+}
+.void b{display:block;color:var(--fg-2);font-size:14px;font-weight:600;margin-bottom:3px}
+.void .reset{
+  border:1px solid var(--line-3);border-radius:8px;padding:6px 13px;
+  font-size:12.5px;font-weight:600;color:var(--fg-2);
+}
+.void .reset:hover{background:#1c212b;color:var(--fg)}
+
+/* край: зріз стрічки */
+.edge{
+  position:absolute;top:0;right:0;bottom:0;width:56px;pointer-events:none;z-index:5;
+  background:linear-gradient(90deg,rgba(14,17,22,0),rgba(14,17,22,.92));
+  opacity:1;transition:opacity .2s ease;
+}
+.edge[data-end]{opacity:0}
+
+/* ─── рух: єдиний авторський момент ────────────────────────────────── */
+@keyframes draw{
+  from{transform:scaleY(0);filter:blur(1px)}
+  to{transform:scaleY(1);filter:blur(0)}
+}
+.canvas.intro .nowline{animation:draw 760ms var(--ease) both}
+.canvas.intro .nowpill{animation:draw 300ms var(--ease) 380ms both}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
+  .timeline{scroll-behavior:auto}
+}
+
+/* ─── адаптив: структурний ─────────────────────────────────────────── */
+@media (max-width:1180px){
+  :root{--nav:60px;--lane:420px;--daycol:150px}
+  .brand b,.brand span,.navlist a>span,.navlist .count,.me .who{display:none}
+  .brand{justify-content:center;padding:18px 0 16px}
+  .navlist a{justify-content:center;padding:9px 0}
+  .me{justify-content:center;padding:12px 0}
+  .lane{gap:10px}
+  .job{flex-basis:200px}
+}
+@media (max-width:760px){
+  :root{--lane:236px;--gutter:28px;--daycol:118px}
+  .topbar{padding:14px 14px 12px}
+  .filters{padding:10px 14px;gap:12px}
+  .job{flex-basis:212px}
+}
+</style>
+</head>
+<body>
+<!--
+THESIS: черга фрезерного центру — це не таблиця рядків, а час. Сторінка відкидає категорійну типовість «дата = колонка в таблиці»: рядком стає день здачі, а горизонталлю — троє дедлайнових воріт 09:00 / 14:00 / 16:00, спільних для всіх днів.
+OWN-WORLD: майже чорне 0e1116, картка 181c24, Chivo + Chivo Mono на ідентифікаторах. Колір лише як сигнал: помаранчевий = прострочено, синій = зараз і фрезерування, червоний = проблема, бурштин = переробка. Кожен день несе вертикальну смугу-маркер стану.
+STORY: оператор за секунду бачить, скільки годин прострочено і в яких воротах вони застрягли; відкриває наряд, копіює шлях-ID у Sum3D.
+FIRST VIEWPORT: зліва вузька навігація; згори заголовок і стан синхронізації з Таблицею; далі рядок фільтрів; нижче вісь воріт із міткою «сьогодні» і три-чотири рядки-дні, зрізані правим краєм.
+FORM: закріплений брифом напрямок 4 — темна стрічка-таймлайн.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+<div class="app">
+
+  <!-- навігація -->
+  <aside class="nav">
+    <div class="brand">
+      <span class="mk" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="8.25"/><circle cx="12" cy="12" r="3"/>
+          <path d="M12 3.75V6.6M12 17.4v2.85M20.25 12H17.4M6.6 12H3.75" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span><b>Order Desk</b><span>фрезерний центр</span></span>
+    </div>
+
+    <nav class="navlist" aria-label="Розділи">
+      <a href="#" aria-current="page" title="Черга робіт">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3.5 6h11M3.5 12h17M3.5 18h7"/><circle cx="18" cy="6" r="1.6"/><circle cx="14" cy="18" r="1.6"/></svg>
+        <span>Черга робіт</span>
+      </a>
+      <a href="#" title="Нові з пошти">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.6 7 7.3 5.3a2 2 0 0 0 2.2 0L20.4 7"/></svg>
+        <span>Нові з пошти</span><span class="count">6</span>
+      </a>
+      <a href="#" title="Ранкова видача">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 17h18"/><path d="M7 13a5 5 0 0 1 10 0"/><path d="M12 4v2.5M5.4 6.9l1.7 1.8M18.6 6.9l-1.7 1.8"/></svg>
+        <span>Ранкова видача</span>
+      </a>
+      <a href="#" title="Клієнти">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="9.5" cy="8.5" r="3.2"/><path d="M3.8 19a5.9 5.9 0 0 1 11.4 0"/><path d="M16 6.1a3.2 3.2 0 0 1 0 6.1M17.3 14.6A5.9 5.9 0 0 1 20.6 19"/></svg>
+        <span>Клієнти</span>
+      </a>
+      <a href="#" title="Пошук">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="6.2"/><path d="m15.6 15.6 4.2 4.2"/></svg>
+        <span>Пошук</span>
+      </a>
+      <a href="#" title="Статистика">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 20V4"/><path d="M4 20h16"/><path d="M8.5 20v-6M13 20V8.5M17.5 20v-9"/></svg>
+        <span>Статистика</span>
+      </a>
+      <div class="navsep"></div>
+      <a href="#" title="Налаштування">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.1"/><circle cx="10" cy="16" r="2.1"/></svg>
+        <span>Налаштування</span>
+      </a>
+    </nav>
+
+    <div class="me">
+      <span class="ava lg" aria-hidden="true">РК</span>
+      <span class="who"><b>Роман Ковальчук</b><span>оператор CAM</span></span>
+    </div>
+  </aside>
+
+  <!-- основна колонка -->
+  <main class="main">
+
+    <header class="topbar">
+      <div class="title">
+        <h1>Черга робіт</h1>
+        <span class="demo">демо-дані</span>
+      </div>
+      <p class="tally" id="tally"></p>
+
+      <div class="sync" data-state="ok" id="sync">
+        <span class="led" aria-hidden="true"></span>
+        <span class="sync-txt" id="syncTxt">Google Таблиця синхронізована <span class="mono">11:18</span></span>
+        <button class="retry" id="syncRetry" type="button" hidden>Спробувати ще</button>
+        <button class="iconbtn" id="syncBtn" type="button" title="Синхронізувати зараз" aria-label="Синхронізувати зараз">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4.4h-4.4"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="filters">
+      <div class="fgroup">
+        <span class="cap">Період</span>
+        <div class="seg" id="segPeriod" role="group" aria-label="Період">
+          <button type="button" data-v="all" aria-pressed="true">Усі дні</button>
+          <button type="button" data-v="earlier" aria-pressed="false">Раніше</button>
+          <button type="button" data-v="yesterday" aria-pressed="false">Учора</button>
+          <button type="button" data-v="today" aria-pressed="false">Сьогодні</button>
+          <button type="button" data-v="tomorrow" aria-pressed="false">Завтра</button>
+        </div>
+      </div>
+
+      <div class="fgroup">
+        <span class="cap">Джерело</span>
+        <div class="seg" id="segSource" role="group" aria-label="Джерело">
+          <button type="button" data-v="all" aria-pressed="true">Обидва</button>
+          <button type="button" data-v="lab" aria-pressed="false">Лабораторія</button>
+          <button type="button" data-v="mail" aria-pressed="false">Пошта</button>
+        </div>
+      </div>
+
+      <button class="toggle" id="lateOnly" type="button" aria-pressed="false">
+        <span class="box" aria-hidden="true"></span>Тільки прострочені
+      </button>
+
+      <div class="applied" id="applied"></div>
+    </div>
+
+    <section class="timeline" id="timeline" tabindex="0" aria-label="Стрічка днів здачі">
+      <div class="canvas" id="canvas"></div>
+    </section>
+    <div class="edge" id="edge" aria-hidden="true"></div>
+  </main>
+</div>
+
+<p class="sr" role="status" aria-live="polite" id="live"></p>
+
+<script>
+(function(){
+"use strict";
+
+/* ── момент часу, від якого рахується прострочення ─────────────────── */
+var NOW = new Date(2026, 7, 11, 11, 20);
+var SLOTS = ["09:00", "14:00", "16:00"];
+var SLOT_H = {"09:00": 9, "14:00": 14, "16:00": 16};
+
+var DAYS = [
+  {id: "06.08", w: "чт", d: "06.08.26", date: new Date(2026, 7, 6),  rel: "earlier"},
+  {id: "07.08", w: "пт", d: "07.08.26", date: new Date(2026, 7, 7),  rel: "earlier"},
+  {id: "10.08", w: "пн", d: "10.08.26", date: new Date(2026, 7, 10), rel: "yesterday"},
+  {id: "11.08", w: "вт", d: "11.08.26", date: new Date(2026, 7, 11), rel: "today"},
+  {id: "12.08", w: "ср", d: "12.08.26", date: new Date(2026, 7, 12), rel: "tomorrow"},
+  {id: "13.08", w: "чт", d: "13.08.26", date: new Date(2026, 7, 13), rel: "later"},
+  {id: "14.08", w: "пт", d: "14.08.26", date: new Date(2026, 7, 14), rel: "later"}
+];
+
+/* статуси: підпис + клас + чи вважається робота готовою */
+var ST = {
+  "new":   {t: "нове",                c: "s-new",   done: false},
+  "acc":   {t: "прийнято",            c: "s-acc",   done: false},
+  "calc":  {t: "прораховано",         c: "s-calc",  done: false},
+  "mill":  {t: "у фрезеруванні",      c: "s-mill",  done: false},
+  "done":  {t: "відфрезеровано",      c: "s-done",  done: true},
+  "found": {t: "знайдено при видачі", c: "s-found", done: true},
+  "out":   {t: "видано",              c: "s-out",   done: true},
+  "prob":  {t: "проблема",            c: "s-prob",  done: false},
+  "rew":   {t: "переробка",           c: "s-rew",   done: false}
+};
+
+/* ── демо-черга: 28 робіт у 7 днях ────────────────────────────────── */
+function j(day, slot, no, mat, kind, units, tech, st, extra){
+  var o = {day: day, slot: slot, no: no, mat: mat, kind: kind, units: units,
+           tech: tech, st: st, src: "lab", note: "", client: "", rew: 0,
+           path: "2026-" + day.split(".")[1] + "-" + day.split(".")[0] + "_00016-" + no.slice(-3)};
+  if (extra) for (var k in extra) o[k] = extra[k];
+  return o;
+}
+
+var T = {
+  ok: {n: "О. Кравець",  i: "ОК"}, am: {n: "А. Мельник",  i: "АМ"},
+  ib: {n: "І. Бондар",   i: "ІБ"}, mt: {n: "М. Ткаченко", i: "МТ"},
+  tg: {n: "Т. Гнатюк",   i: "ТГ"}, ys: {n: "Ю. Савчук",   i: "ЮС"},
+  dp: {n: "Д. Панченко", i: "ДП"}
+};
+
+var JOBS = [
+  /* 06.08 — закрито, крім однієї проблеми */
+  j("06.08", "09:00", "24118", "моно А3.5",   "анатомія",           4, T.ok, "out"),
+  j("06.08", "09:00", "24119", "500",         "каркас міст 13-23",  1, T.ib, "out"),
+  j("06.08", "14:00", "24121", "титан корея", "абатмент",           2, T.tg, "prob",
+    {src: "mail", client: "Дента Плюс", note: "Чекаємо Скани!!!!"}),
+
+  /* 07.08 */
+  j("07.08", "09:00", "24126", "пмма A2",     "анатомія",           6, T.mt, "out"),
+  j("07.08", "09:00", "24127", "800",         "вкладка",            1, T.ys, "out"),
+  j("07.08", "14:00", "24130", "моно А3.5",   "анатомія гвинтова",  3, T.am, "found"),
+  j("07.08", "16:00", "24133", "титан корея", "абатмент",           2, T.dp, "rew",
+    {rew: 2, note: "покрити опаком"}),
+
+  /* 10.08 — учора */
+  j("10.08", "09:00", "24141", "пмма A2",     "анатомія",           8, T.ok, "out"),
+  j("10.08", "09:00", "24142", "500",         "каркас міст 13-23",  1, T.ib, "mill"),
+  j("10.08", "14:00", "24145", "моно А3.5",   "анатомія",           5, T.mt, "done"),
+  j("10.08", "14:00", "24147", "800",         "вкладка",            2, T.ys, "calc",
+    {src: "mail", client: "Ортос Лаб"}),
+  j("10.08", "16:00", "24150", "титан корея", "абатмент",           3, T.tg, "acc",
+    {note: "Якщо можно на швидку, я сам закрию"}),
+
+  /* 11.08 — сьогодні */
+  j("11.08", "09:00", "24156", "пмма A2",     "анатомія",           4, T.am, "done"),
+  j("11.08", "09:00", "24157", "моно А3.5",   "анатомія гвинтова",  2, T.dp, "mill"),
+  j("11.08", "14:00", "24160", "500",         "каркас міст 13-23",  1, T.ib, "mill"),
+  j("11.08", "14:00", "24161", "титан корея", "абатмент",           2, T.ok, "calc",
+    {note: "покрити опаком"}),
+  j("11.08", "16:00", "24164", "800",         "вкладка",            3, T.ys, "acc",
+    {src: "mail", client: "Смайл Дент"}),
+  j("11.08", "16:00", "24165", "пмма A2",     "анатомія",           6, T.mt, "new"),
+
+  /* 12.08 — завтра */
+  j("12.08", "09:00", "24170", "моно А3.5",   "анатомія",           5, T.tg, "acc"),
+  j("12.08", "09:00", "24171", "500",         "каркас міст 13-23",  1, T.am, "new"),
+  j("12.08", "14:00", "24174", "пмма A2",     "анатомія гвинтова",  3, T.dp, "new",
+    {src: "mail", client: "Дента Плюс"}),
+  j("12.08", "14:00", "24175", "титан корея", "абатмент",           2, T.ib, "acc"),
+  j("12.08", "16:00", "24178", "800",         "вкладка",            2, T.ys, "new"),
+  j("12.08", "16:00", "24179", "моно А3.5",   "анатомія",           4, T.ok, "new",
+    {note: "Чекаємо Скани!!!!"}),
+
+  /* 13.08 */
+  j("13.08", "09:00", "24184", "пмма A2",     "анатомія",           7, T.mt, "new"),
+  j("13.08", "14:00", "24187", "500",         "каркас міст 13-23",  1, T.tg, "new"),
+  j("13.08", "14:00", "24188", "моно А3.5",   "анатомія",           3, T.am, "new",
+    {src: "mail", client: "Ортос Лаб"}),
+  j("13.08", "16:00", "24191", "титан корея", "абатмент",           2, T.dp, "new")
+
+  /* 14.08 — робіт ще немає */
+];
+
+/* ── прострочення ─────────────────────────────────────────────────── */
+function dueDate(job){
+  var day = DAYS.filter(function(x){ return x.id === job.day; })[0];
+  var d = new Date(day.date.getTime());
+  d.setHours(SLOT_H[job.slot], 0, 0, 0);
+  return d;
+}
+JOBS.forEach(function(job){
+  var due = dueDate(job);
+  var over = NOW - due;
+  job.lateH = (over > 0 && !ST[job.st].done) ? Math.floor(over / 3600000) : 0;
+});
+
+/* ── іконки ───────────────────────────────────────────────────────── */
+var IC = {
+  clock: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.2V12l3.2 2"/></svg>',
+  mail:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.6 7 7.3 5.3a2 2 0 0 0 2.2 0L20.4 7"/></svg>',
+  note:  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.5a2.5 2.5 0 0 1-2.5 2.5H9l-4 3.5V6.5A2.5 2.5 0 0 1 7.5 4h10A2.5 2.5 0 0 1 20 6.5Z"/></svg>',
+  copy:  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 5.5A2 2 0 0 0 13.5 3.5h-7a3 3 0 0 0-3 3v7a2 2 0 0 0 2 2"/></svg>',
+  check: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>',
+  alert: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.8v5M12 16.1v.1"/></svg>',
+  x:     '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>',
+  empty: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 8.5h16M4 8.5 6 4.5h12l2 4M4 8.5V19h16V8.5"/><path d="M9.5 12.5h5"/></svg>'
+};
+
+function esc(s){
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                  .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/* ── стан фільтрів ────────────────────────────────────────────────── */
+var F = {period: "all", source: "all", lateOnly: false};
+
+function daysFor(){
+  if (F.period === "all") return DAYS;
+  if (F.period === "earlier")   return DAYS.filter(function(d){ return d.rel === "earlier"; });
+  if (F.period === "yesterday") return DAYS.filter(function(d){ return d.rel === "yesterday"; });
+  if (F.period === "today")     return DAYS.filter(function(d){ return d.rel === "today"; });
+  return DAYS.filter(function(d){ return d.rel === "tomorrow"; });
+}
+function jobsFor(dayId){
+  return JOBS.filter(function(x){
+    if (x.day !== dayId) return false;
+    if (F.source !== "all" && x.src !== F.source) return false;
+    if (F.lateOnly && !x.lateH) return false;
+    return true;
+  });
+}
+
+/* ── розмітка ─────────────────────────────────────────────────────── */
+function jobHTML(x){
+  var st = ST[x.st];
+  var label = "Відкрити наряд " + x.no + ", " + x.kind + ", " + x.mat +
+              ", дедлайн " + x.slot + (x.lateH ? ", прострочено на " + x.lateH + " год" : "");
+  return '' +
+  '<article class="job' + (st.done ? " is-done" : "") + '" data-no="' + x.no + '">' +
+    '<button class="job-open" type="button" aria-label="' + esc(label) + '"></button>' +
+    '<div class="job-top">' +
+      '<span class="job-no">' + x.no + '</span>' +
+      (x.src === "mail" ? '<span class="src" title="З пошти: ' + esc(x.client) + '">' + IC.mail + '</span>' : "") +
+      '<span class="status ' + st.c + '"><i></i>' + st.t +
+        (x.rew ? ' <span class="rew-n">&times;' + x.rew + '</span>' : "") +
+      '</span>' +
+    '</div>' +
+    '<h3 class="job-kind">' + esc(x.kind) + '</h3>' +
+    '<div class="job-meta"><span class="chip">' + esc(x.mat) + '</span>' +
+      '<span class="units">' + x.units + ' од.' +
+      (x.client ? ' &middot; ' + esc(x.client) : "") + '</span></div>' +
+    (x.note ? '<p class="job-note">' + IC.note + '<span>' + esc(x.note) + '</span></p>' : "") +
+    '<div class="job-foot">' +
+      '<span class="who"><span class="ava">' + x.tech.i + '</span><b>' + esc(x.tech.n) + '</b></span>' +
+      '<span class="due">' + IC.clock + x.slot + '</span>' +
+      (x.lateH ? '<span class="late" title="Прострочено">+' + x.lateH + ' год</span>' : "") +
+    '</div>' +
+    '<button class="path" type="button" data-path="' + x.path + '">' +
+      '<span class="txt">' + x.path + '</span>' + IC.copy +
+    '</button>' +
+  '</article>';
+}
+
+function render(){
+  var days = daysFor();
+  var slotCount = {"09:00": 0, "14:00": 0, "16:00": 0};
+  var total = 0, units = 0, late = 0;
+
+  var rows = days.map(function(day){
+    var list = jobsFor(day.id);
+    var dLate = 0, dUnits = 0;
+    list.forEach(function(x){
+      slotCount[x.slot]++; total++; units += x.units;
+      dUnits += x.units;
+      if (x.lateH) { dLate++; late++; }
+    });
+
+    var cls = "row";
+    if (day.rel === "today") cls += " is-today";
+    else if (day.date < NOW) cls += (dLate ? " is-late" : " is-past");
+    else cls += " is-ahead";
+    if (!list.length) cls += " is-blank";
+
+    var state = day.rel === "today" ? "сьогодні"
+              : day.date < NOW ? (dLate ? "прострочено" : "закрито")
+              : "попереду";
+
+    var lanes = !list.length
+      ? '<div class="lane"><p class="dayblank">' + IC.empty +
+        (F.lateOnly || F.source !== "all"
+          ? "Немає робіт за цими фільтрами"
+          : "Робіт на цей день ще немає") + '</p></div>'
+      : SLOTS.map(function(s, i){
+          var inSlot = list.filter(function(x){ return x.slot === s; });
+          return (i ? '<div class="gap"></div>' : "") +
+                 '<div class="lane" role="list" aria-label="Дедлайн ' + s + ', ' + day.d + '">' +
+                 inSlot.map(jobHTML).join("") + '</div>';
+        }).join("");
+
+    return '' +
+    '<div class="' + cls + '">' +
+      '<div class="daycell">' +
+        '<span class="stripe" aria-hidden="true"></span>' +
+        '<span class="dow"><span class="d">' + day.d + '</span><span class="w">' + day.w + '</span></span>' +
+        '<span class="dstate">' + state + '</span>' +
+        '<span class="dcount">' + list.length + ' роб. &middot; ' + dUnits + ' од.</span>' +
+        (dLate ? '<span class="dlate">' + IC.alert + dLate + ' простроч.</span>' : "") +
+      '</div>' +
+      '<div class="lanes">' + lanes + '</div>' +
+    '</div>';
+  }).join("");
+
+  var axis = '' +
+  '<div class="axis">' +
+    '<div class="axis-corner"><span class="cap">День здачі</span></div>' +
+    '<div class="axis-lanes">' +
+      SLOTS.map(function(s, i){
+        return (i ? '<div class="gap"></div>' : "") +
+        '<div class="gate">' + IC.clock +
+          '<span class="t">' + s + '</span>' +
+          '<span class="n">' + slotCount[s] + ' роб.</span>' +
+        '</div>';
+      }).join("") +
+      '<span class="nowpill">сьогодні 11:20</span>' +
+    '</div>' +
+  '</div>';
+
+  var body = total || days.length
+    ? '<div class="rows">' +
+        '<div class="overlay" aria-hidden="true">' +
+          '<span class="gline" style="left:0"></span>' +
+          '<span class="gline" style="left:var(--step)"></span>' +
+          '<span class="gline" style="left:calc(var(--step) * 2)"></span>' +
+          '<span class="nowline"></span>' +
+        '</div>' + rows +
+      '</div>'
+    : '';
+
+  var voidBlock = days.length ? "" :
+    '<div class="void">' +
+      '<span>' + IC.empty + '</span>' +
+      '<p><b>Жоден день не підпадає під фільтри</b>Змініть період або скиньте фільтри.</p>' +
+      '<button class="reset" type="button" id="resetAll">Скинути фільтри</button>' +
+    '</div>';
+
+  canvas.innerHTML = axis + body + voidBlock;
+
+  tally.innerHTML = "<b>" + total + "</b> робіт &middot; <b>" + units + "</b> од. &middot; " +
+                    (late ? "<b>" + late + "</b> прострочено" : "прострочених немає");
+
+  renderApplied();
+  if (!introDone){ canvas.classList.add("intro"); introDone = true; }
+  updateEdge();
+}
+
+/* ── знято/застосовано: чіпи з хрестиком ──────────────────────────── */
+var PERIOD_LBL = {earlier: "Раніше", yesterday: "Учора", today: "Сьогодні", tomorrow: "Завтра"};
+var SOURCE_LBL = {lab: "Лабораторія", mail: "Пошта"};
+
+function renderApplied(){
+  var chips = [];
+  if (F.period !== "all")  chips.push(["period", "Період: " + PERIOD_LBL[F.period]]);
+  if (F.source !== "all")  chips.push(["source", "Джерело: " + SOURCE_LBL[F.source]]);
+  if (F.lateOnly)          chips.push(["late", "Тільки прострочені"]);
+
+  applied.innerHTML = chips.map(function(c){
+    return '<span class="xchip">' + esc(c[1]) +
+      '<button type="button" data-clear="' + c[0] + '" aria-label="Зняти фільтр: ' + esc(c[1]) + '">' +
+      IC.x + '</button></span>';
+  }).join("");
+}
+
+function syncSegs(){
+  [["segPeriod", F.period], ["segSource", F.source]].forEach(function(p){
+    var box = document.getElementById(p[0]);
+    Array.prototype.forEach.call(box.querySelectorAll("button"), function(b){
+      b.setAttribute("aria-pressed", String(b.dataset.v === p[1]));
+    });
+  });
+  lateOnly.setAttribute("aria-pressed", String(F.lateOnly));
+}
+
+/* ── елементи ─────────────────────────────────────────────────────── */
+var canvas   = document.getElementById("canvas");
+var timeline = document.getElementById("timeline");
+var tally    = document.getElementById("tally");
+var applied  = document.getElementById("applied");
+var lateOnly = document.getElementById("lateOnly");
+var edge     = document.getElementById("edge");
+var live     = document.getElementById("live");
+var introDone = false;
+var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function say(msg){ live.textContent = msg; }
+
+/* ── фільтри ──────────────────────────────────────────────────────── */
+document.getElementById("segPeriod").addEventListener("click", function(e){
+  var b = e.target.closest("button"); if (!b) return;
+  F.period = b.dataset.v; syncSegs(); render();
+});
+document.getElementById("segSource").addEventListener("click", function(e){
+  var b = e.target.closest("button"); if (!b) return;
+  F.source = b.dataset.v; syncSegs(); render();
+});
+lateOnly.addEventListener("click", function(){
+  F.lateOnly = !F.lateOnly; syncSegs(); render();
+});
+applied.addEventListener("click", function(e){
+  var b = e.target.closest("button[data-clear]"); if (!b) return;
+  if (b.dataset.clear === "period") F.period = "all";
+  if (b.dataset.clear === "source") F.source = "all";
+  if (b.dataset.clear === "late")   F.lateOnly = false;
+  syncSegs(); render();
+});
+canvas.addEventListener("click", function(e){
+  if (e.target.closest("#resetAll")){
+    F = {period: "all", source: "all", lateOnly: false};
+    syncSegs(); render();
+  }
+});
+
+/* ── дії картки: вибір і копіювання шляху-ID ──────────────────────── */
+canvas.addEventListener("click", function(e){
+  if (suppressClick){ suppressClick = false; e.stopPropagation(); e.preventDefault(); return; }
+
+  var pathBtn = e.target.closest(".path");
+  if (pathBtn){
+    var v = pathBtn.dataset.path;
+    var txt = pathBtn.querySelector(".txt");
+    var write = navigator.clipboard && navigator.clipboard.writeText
+      ? navigator.clipboard.writeText(v) : Promise.reject();
+    write.catch(function(){}).then(function(){
+      pathBtn.classList.add("copied");
+      txt.textContent = "шлях-ID скопійовано";
+      say("Шлях-ID " + v + " скопійовано");
+      setTimeout(function(){
+        pathBtn.classList.remove("copied");
+        txt.textContent = v;
+      }, 1500);
+    });
+    return;
+  }
+
+  var card = e.target.closest(".job");
+  if (card){
+    var was = card.hasAttribute("data-selected");
+    Array.prototype.forEach.call(canvas.querySelectorAll(".job[data-selected]"), function(n){
+      n.removeAttribute("data-selected");
+    });
+    if (!was){ card.setAttribute("data-selected", ""); say("Наряд " + card.dataset.no + " вибрано"); }
+  }
+});
+
+/* ── синхронізація: ok → синхронізую → помилка → повтор → ok ──────── */
+var sync = document.getElementById("sync");
+var syncTxt = document.getElementById("syncTxt");
+var syncBtn = document.getElementById("syncBtn");
+var syncRetry = document.getElementById("syncRetry");
+var failNext = true;
+
+function setSync(state){
+  sync.dataset.state = state;
+  syncRetry.hidden = state !== "err";
+  if (state === "sync"){ syncTxt.textContent = "Синхронізую з Google Таблицею…"; }
+  if (state === "err"){
+    syncTxt.textContent = "Немає доступу до аркуша 11.08.26";
+    say("Помилка синхронізації: немає доступу до аркуша 11.08.26");
+  }
+  if (state === "ok"){
+    var t = new Date(NOW.getTime());
+    syncTxt.innerHTML = 'Google Таблиця синхронізована <span class="mono">' +
+      String(t.getHours()).padStart(2, "0") + ":" + String(t.getMinutes()).padStart(2, "0") + "</span>";
+    say("Таблиця синхронізована");
+  }
+}
+function runSync(){
+  setSync("sync");
+  setTimeout(function(){
+    if (failNext){ failNext = false; setSync("err"); }
+    else { setSync("ok"); }
+  }, 1100);
+}
+syncBtn.addEventListener("click", runSync);
+syncRetry.addEventListener("click", runSync);
+
+/* ── горизонтальний скрол: колесо, перетягування, інерція ─────────── */
+var suppressClick = false;
+
+timeline.addEventListener("wheel", function(e){
+  if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+  if (e.deltaY && (e.ctrlKey || e.altKey)){
+    timeline.scrollLeft += e.deltaY; e.preventDefault();
+  }
+}, {passive: false});
+
+var drag = null, vel = 0, raf = 0;
+
+timeline.addEventListener("pointerdown", function(e){
+  if (e.button !== 0) return;
+  if (e.target.closest("button") && e.pointerType !== "touch"){ /* дозволяємо і тягнути, і клікати */ }
+  cancelAnimationFrame(raf);
+  drag = {x: e.clientX, y: e.clientY, sl: timeline.scrollLeft, st: timeline.scrollTop, moved: 0, last: e.clientX, t: e.timeStamp};
+  vel = 0;
+});
+window.addEventListener("pointermove", function(e){
+  if (!drag) return;
+  var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  drag.moved = Math.max(drag.moved, Math.abs(dx) + Math.abs(dy));
+  if (drag.moved < 6) return;
+  timeline.classList.add("dragging");
+  timeline.scrollLeft = drag.sl - dx;
+  timeline.scrollTop  = drag.st - dy;
+  var dt = e.timeStamp - drag.t;
+  if (dt > 0) vel = (drag.last - e.clientX) / dt * 16;
+  drag.last = e.clientX; drag.t = e.timeStamp;
+});
+window.addEventListener("pointerup", function(){
+  if (!drag) return;
+  var moved = drag.moved;
+  drag = null;
+  timeline.classList.remove("dragging");
+  if (moved >= 6){
+    suppressClick = true;
+    setTimeout(function(){ suppressClick = false; }, 60);
+    if (!reduce && Math.abs(vel) > 1.2) glide();
+  }
+});
+function glide(){
+  vel *= 0.94;
+  timeline.scrollLeft += vel;
+  if (Math.abs(vel) > 0.4) raf = requestAnimationFrame(glide);
+}
+
+/* стрілки з клавіатури по стрічці */
+timeline.addEventListener("keydown", function(e){
+  if (e.target !== timeline) return;
+  var step = 220;
+  if (e.key === "ArrowRight"){ timeline.scrollLeft += step; e.preventDefault(); }
+  if (e.key === "ArrowLeft"){  timeline.scrollLeft -= step; e.preventDefault(); }
+});
+
+/* зріз правого краю зникає в кінці стрічки */
+function updateEdge(){
+  var max = timeline.scrollWidth - timeline.clientWidth;
+  if (max - timeline.scrollLeft < 4) edge.setAttribute("data-end", "");
+  else edge.removeAttribute("data-end");
+}
+timeline.addEventListener("scroll", updateEdge, {passive: true});
+window.addEventListener("resize", updateEdge);
+
+/* ── старт ────────────────────────────────────────────────────────── */
+syncSegs();
+render();
+})();
+</script>
+</body>
+</html>

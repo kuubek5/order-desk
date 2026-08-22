@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order Desk — п'ять напрямків</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #14171c;
+    --line: #23282f;
+    --line-soft: #1a1e23;
+    --ink: #e8eaed;
+    --ink-dim: #8c949e;
+    --ink-faint: #5d656e;
+    --accent: #4a9eff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Archivo", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 32px 28px 60px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .mono { font-family: "JetBrains Mono", monospace; }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 32px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 8px;
+  }
+
+  h1 {
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  header p {
+    color: var(--ink-dim);
+    font-size: 13px;
+    max-width: 62ch;
+    margin-top: 6px;
+  }
+
+  .legend {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    text-align: right;
+    white-space: nowrap;
+    line-height: 1.7;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+    gap: 22px;
+    margin-top: 26px;
+  }
+
+  .version {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .version-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 13px 15px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .version-num {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+
+  .version-name {
+    font-weight: 600;
+    font-size: 14px;
+    flex: 1;
+  }
+
+  .version-open {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--accent);
+    text-decoration: none;
+    border: 1px solid transparent;
+    padding: 3px 8px;
+  }
+
+  .version-open:hover { border-color: var(--accent); }
+
+  .version-traits {
+    padding: 0 15px 12px;
+    color: var(--ink-dim);
+    font-size: 12px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .swatches {
+    display: flex;
+    gap: 0;
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .sw {
+    width: 34px;
+    height: 20px;
+    border: 1px solid rgba(255,255,255,.09);
+    border-right: 0;
+  }
+
+  .sw:last-child { border-right: 1px solid rgba(255,255,255,.09); }
+
+  .frame-wrap {
+    position: relative;
+    height: 430px;
+    overflow: hidden;
+    background: #000;
+  }
+
+  .frame-wrap iframe {
+    width: 1440px;
+    height: 1075px;
+    border: 0;
+    transform: scale(.4);
+    transform-origin: 0 0;
+    pointer-events: none;
+  }
+
+  .frame-missing {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    color: var(--ink-faint);
+    background: var(--bg);
+  }
+
+  .fonts {
+    padding: 11px 15px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    border-top: 1px solid var(--line-soft);
+  }
+
+  @media (max-width: 900px) {
+    header { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .legend { text-align: left; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Order Desk — черга робіт, п'ять напрямків</h1>
+    <p>Однакові інтент, заборони й функції. Кожна версія чесно йде у свою естетику, без змішування. Прев'ю масштабовані — відкривай повний розмір, щоб судити щільність і типографіку.</p>
+  </div>
+  <div class="legend">
+    інтент · висока технологічність, спокійна сила<br>
+    ніколи · фіолетові градієнти, 3d-кулі, inter, райдуга<br>
+    завжди · черга головна, зручність оператора
+  </div>
+</header>
+
+<div class="grid" id="grid"></div>
+
+<script>
+const versions = [
+  {
+    n: 1, dir: "v1", name: "темна воронка-канбан",
+    traits: "кольорові смуги стадій згори колонок, права панель-картка, роздільники 1px, числа в бейджах",
+    palette: ["#0f1523", "#1b2333", "#3b82f6", "#e94f4f"],
+    fonts: "Archivo · JetBrains Mono"
+  },
+  {
+    n: 2, dir: "v2", name: "бірюзовий телеметричний пульт",
+    traits: "сітка карток у три колонки, великі цифри-метрики, крапки-статуси, легке внутрішнє світіння",
+    palette: ["#0d1117", "#161d27", "#14b8a6", "#f87171"],
+    fonts: "Barlow · Azeret Mono"
+  },
+  {
+    n: 3, dir: "v3", name: "стек-графік у вікні браузера",
+    traits: "вікно браузера на сірому студійному тлі, стековий стовпчик, щільна таблиця-фід, кнопки-галочки",
+    palette: ["#111318", "#1c1f27", "#8b7cf6", "#5b9bf8"],
+    fonts: "Red Hat Text · Red Hat Mono"
+  },
+  {
+    n: 4, dir: "v4", name: "темна стрічка-таймлайн",
+    traits: "картки-дні в ряд, вертикальна смуга-маркер, мітка «сьогодні», помаранчевий бейдж прострочення",
+    palette: ["#0e1116", "#181c24", "#ff8c42", "#3b82f6"],
+    fonts: "Chivo · Chivo Mono"
+  },
+  {
+    n: 5, dir: "v5", name: "кислотний лайм на чорному",
+    traits: "два графіки згори, кільцева діаграма праворуч, салатова рамка сторінки, перемикач тем",
+    palette: ["#0a0c0a", "#141714", "#b8ff00", "#3b6cf6"],
+    fonts: "Sora · Spline Sans Mono"
+  }
+];
+
+const grid = document.getElementById("grid");
+
+versions.forEach(v => {
+  const el = document.createElement("div");
+  el.className = "version";
+  el.innerHTML = `
+    <div class="version-head">
+      <span class="version-num">напрямок ${v.n}</span>
+      <span class="version-name">${v.name}</span>
+      <a class="version-open" href="${v.dir}/index.html" target="_blank">повний розмір ↗</a>
+    </div>
+    <div class="version-traits">${v.traits}</div>
+    <div class="swatches">${v.palette.map(c => `<span class="sw" style="background:${c}" title="${c}"></span>`).join("")}</div>
+    <div class="frame-wrap">
+      <iframe src="${v.dir}/index.html" loading="lazy" title="${v.name}"></iframe>
+      <div class="frame-missing" data-slot="${v.dir}">напрямок ${v.n} ще будується</div>
+    </div>
+    <div class="fonts">${v.fonts}</div>`;
+  grid.appendChild(el);
+
+  const iframe = el.querySelector("iframe");
+  const missing = el.querySelector(".frame-missing");
+  iframe.addEventListener("load", () => {
+    try {
+      const doc = iframe.contentDocument;
+      if (doc && doc.body && doc.body.children.length) missing.style.display = "none";
+    } catch (e) {
+      missing.style.display = "none";
+    }
+  });
+});
+</script>
+
+</body>
+</html>
