@@ -317,6 +317,25 @@ class MailFilterRule(Base):
     )
 
 
+class MailFilterCategory(Base):
+    """Editable list of filter categories (the buckets on «Відфільтровані»).
+
+    Seeded with the four defaults (3D-друк, бухгалтерія, спам, інше) by
+    migration 0010; admins add/rename/delete their own on the settings screen.
+    Renaming cascades into existing rules and stamped letters (web.py); deleting
+    is refused while any rule still uses the name — stamped letters keep the old
+    string as history, they never block.
+    """
+
+    __tablename__ = "mail_filter_categories"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now()
+    )
+
+
 class Attachment(Base):
     __tablename__ = "attachments"
 

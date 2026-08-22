@@ -93,7 +93,8 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
         # filter rules. All purely additive — nothing that existed at 0003 is
         # dropped.
         assert tables_after - tables_before == {
-            "clients", "materials", "material_aliases", "mail_filter_rules"
+            "clients", "materials", "material_aliases",
+            "mail_filter_rules", "mail_filter_categories",
         }
         assert tables_before - tables_after == set()
     finally:

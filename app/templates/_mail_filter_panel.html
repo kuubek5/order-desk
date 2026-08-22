@@ -1,0 +1,92 @@
+{# Admin panel for mail filter rules + categories. Shared by the triage
+   «Відфільтровані» tab and the settings screen's «Фільтри пошти» section.
+   Needs: filter_rules, filter_categories, and return_to ("" → back to the
+   filtered tab, "settings" → back to /settings#mail-filters). #}
+<div class="filter-rules">
+    <div class="dsec">
+        <div class="dlabel">Правила фільтрації</div>
+        {% if filter_rules %}
+        <div class="rulelist">
+            {% for rule in filter_rules %}
+            <details class="ruleitem {% if not rule.enabled %}is-off{% endif %}">
+                <summary class="rulerow">
+                    <span class="rule-kind">{% if rule.kind == 'sender' %}відправник{% else %}слово{% endif %}</span>
+                    <span class="rule-pattern mono">{{ rule.pattern }}</span>
+                    <span class="rule-cat">{{ rule.category }}</span>
+                    <span class="rule-hits mono" title="Скільки листів відфільтровано цим правилом">{{ rule.hits }}</span>
+                    <span class="rule-editmark" title="Редагувати" aria-hidden="true">
+                        <svg viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+                    </span>
+                </summary>
+                {# Inline edit: change pattern/category/kind in place — no more
+                   delete-and-recreate. Re-applies retroactively on save. #}
+                <form method="post" action="/mail/filters/{{ rule.id }}/edit" class="rule-edit">
+                    <input type="hidden" name="return_to" value="{{ return_to }}">
+                    <select name="kind" class="suminput sm" aria-label="Тип правила">
+                        <option value="keyword" {% if rule.kind == 'keyword' %}selected{% endif %}>Слово в темі/тексті</option>
+                        <option value="sender" {% if rule.kind == 'sender' %}selected{% endif %}>Відправник</option>
+                    </select>
+                    <input type="text" name="pattern" class="suminput sm mono" value="{{ rule.pattern }}" required aria-label="Шаблон">
+                    <select name="category" class="suminput sm" aria-label="Категорія">
+                        {% for cat in filter_categories %}
+                        <option value="{{ cat }}" {% if rule.category == cat %}selected{% endif %}>{{ cat }}</option>
+                        {% endfor %}
+                        {% if rule.category not in filter_categories %}
+                        <option value="{{ rule.category }}" selected>{{ rule.category }}</option>
+                        {% endif %}
+                    </select>
+                    <div class="rule-edit-actions">
+                        <button type="submit" class="btn sm primary">Зберегти</button>
+                        <button type="submit" class="btn sm" formaction="/mail/filters/{{ rule.id }}/toggle" title="{% if rule.enabled %}Правило активне — призупинити{% else %}Правило на паузі — увімкнути{% endif %}">{% if rule.enabled %}⏸ Пауза{% else %}▶ Увімкнути{% endif %}</button>
+                        <button type="submit" class="btn sm danger" formaction="/mail/filters/{{ rule.id }}/delete"
+                                onclick="return confirm('Видалити правило? Відфільтровані ним листи лишаться у вкладці «Відфільтровані».')">✕ Видалити</button>
+                    </div>
+                </form>
+            </details>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="settings-hint">Правил ще немає. Додайте перше — і листи 3D-друку, бухгалтерії чи спам більше не змішуватимуться з роботами.</p>
+        {% endif %}
+    </div>
+
+    <div class="dsec">
+        <div class="dlabel">Нове правило</div>
+        <form method="post" action="/mail/filters" class="rule-new">
+            <input type="hidden" name="return_to" value="{{ return_to }}">
+            <select name="kind" class="suminput" aria-label="Тип правила">
+                <option value="keyword">Слово в темі/тексті</option>
+                <option value="sender">Відправник (адреса/домен)</option>
+            </select>
+            <input type="text" name="pattern" class="suminput" placeholder="напр. рахунок-фактура або @buh.example.com" required>
+            <select name="category" class="suminput" aria-label="Категорія">
+                {% for cat in filter_categories %}
+                <option value="{{ cat }}">{{ cat }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn primary">Додати правило</button>
+        </form>
+        <div class="wiz-hint">Правило одразу застосується до листів, що зараз у черзі. Фільтр нічого не видаляє — лише переносить у вкладку «Відфільтровані».</div>
+    </div>
+
+    <div class="dsec">
+        <div class="dlabel">Категорії</div>
+        <div class="catlist">
+            {% for cat in filter_category_rows %}
+            <form method="post" action="/mail/filter-categories/{{ cat.id }}/rename" class="catrow">
+                <input type="hidden" name="return_to" value="{{ return_to }}">
+                <input type="text" name="name" class="suminput sm" value="{{ cat.name }}" aria-label="Назва категорії">
+                <button type="submit" class="btn sm" title="Перейменувати (оновить правила й листи)">Зберегти</button>
+                <button type="submit" class="btn sm danger" formaction="/mail/filter-categories/{{ cat.id }}/delete"
+                        title="Видалити (лише якщо не використовується правилами)">✕</button>
+            </form>
+            {% endfor %}
+        </div>
+        <form method="post" action="/mail/filter-categories" class="catrow cat-new">
+            <input type="hidden" name="return_to" value="{{ return_to }}">
+            <input type="text" name="name" class="suminput sm" placeholder="нова категорія…" required>
+            <button type="submit" class="btn sm primary">Додати</button>
+        </form>
+        <div class="wiz-hint">Перейменування каскадно оновлює правила й бейджі листів. Видалити можна лише категорію, яку не використовує жодне правило.</div>
+    </div>
+</div>

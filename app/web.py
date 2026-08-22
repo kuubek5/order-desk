@@ -71,7 +71,7 @@ from app.material_catalog import (
     unresolved_order_count,
 )
 from app.mail_filters import apply_rule_retroactively
-from app.models import Attachment, Client, ClientNameAlias, Comment, EmailMessage, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
+from app.models import Attachment, Client, ClientNameAlias, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.order_folder import (
     attach_email_folder_availability,
     attach_email_preview_tokens,
@@ -3044,6 +3044,14 @@ def get_settings(
             "setup_steps_done": setup_steps_done,
             "setup_steps_total": setup_steps_total,
             "operators": operators,
+            # «Фільтри пошти» section — same shared panel as the filtered tab.
+            "filter_rules": db.scalars(
+                select(MailFilterRule).order_by(MailFilterRule.id.desc())
+            ).all(),
+            "filter_categories": _mail_filter_categories(db),
+            "filter_category_rows": db.scalars(
+                select(MailFilterCategory).order_by(MailFilterCategory.id.asc())
+            ).all(),
             "error": error or (
                 settings_flash["message"]
                 if settings_flash and settings_flash["kind"] == "error"
@@ -3798,6 +3806,14 @@ def get_mail(
         if view == "filtered"
         else []
     )
+    filter_categories = _mail_filter_categories(db)
+    filter_category_rows = (
+        db.scalars(
+            select(MailFilterCategory).order_by(MailFilterCategory.id.asc())
+        ).all()
+        if view == "filtered"
+        else []
+    )
 
     # Learning nudge: a sender whose letters were rejected 2+ times and who has
     # no sender rule yet (enabled OR disabled — a disabled rule records "the
@@ -3854,6 +3870,8 @@ def get_mail(
             "archive_count": archive_count,
             "unread_count": unread_count,
             "filter_rules": filter_rules,
+            "filter_categories": filter_categories,
+            "filter_category_rows": filter_category_rows,
             "filter_suggest": filter_suggest,
             # Адреса скриньки, яку моніторить система — показуємо в шапці, щоб
             # оператор бачив, звідки саме тягнуться листи (None → не налаштовано).
@@ -3934,6 +3952,8 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
         # is off) → offer the manual «Розпакувати» reserve button.
         "has_archive": any(is_archive(a.filename) for a in email.attachments),
         "link_flash": None,
+        # Admin-editable category names for the card's «У фільтр» select.
+        "filter_categories": _mail_filter_categories(db),
     }
     context.update(extra)
     return context
@@ -4417,6 +4437,25 @@ def unfilter_email(
     return RedirectResponse("/mail", status_code=303)
 
 
+_DEFAULT_FILTER_CATEGORIES = ["3D-друк", "бухгалтерія", "спам", "інше"]
+
+
+def _mail_filter_categories(db: Session) -> list[str]:
+    """Admin-editable category names (settings screen), falling back to the
+    four defaults if the table is somehow empty — the selects must never render
+    without options."""
+    names = db.scalars(
+        select(MailFilterCategory.name).order_by(MailFilterCategory.id.asc())
+    ).all()
+    return list(names) or list(_DEFAULT_FILTER_CATEGORIES)
+
+
+def _filters_return_url(return_to: str) -> str:
+    """Where a filter-rule/category action lands: the settings section when the
+    form lives there, the filtered tab otherwise."""
+    return "/settings#mail-filters" if return_to == "settings" else "/mail?view=filtered"
+
+
 @app.post("/mail/{email_id}/filter")
 def filter_email_manually(
     request: Request,
@@ -4447,6 +4486,7 @@ def create_mail_filter(
     kind: str = Form(...),
     pattern: str = Form(...),
     category: str = Form(...),
+    return_to: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Create a triage filter rule (admin) and apply it retroactively to the
@@ -4473,13 +4513,149 @@ def create_mail_filter(
     )
     db.add(rule)
     db.flush()
-    moved = apply_rule_retroactively(db, rule)
+    apply_rule_retroactively(db, rule)
     db.commit()
 
-    return RedirectResponse(
-        f"/mail?view=filtered&synced={moved}" if moved else "/mail?view=filtered",
-        status_code=303,
-    )
+    return RedirectResponse(_filters_return_url(return_to), status_code=303)
+
+
+@app.post("/mail/filters/{rule_id}/edit")
+def edit_mail_filter(
+    request: Request,
+    rule_id: int,
+    kind: str = Form(...),
+    pattern: str = Form(...),
+    category: str = Form(...),
+    return_to: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Edit a rule in place (admin) — no more delete-and-recreate. Letters the
+    OLD version already stamped keep their stamp (history); the edited rule is
+    re-applied retroactively so a broadened pattern catches pending letters
+    right away."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    rule = db.get(MailFilterRule, rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="rule not found")
+
+    kind = kind.strip()
+    pattern = pattern.strip()
+    category = category.strip()
+    if kind not in ("keyword", "sender") or not pattern or not category:
+        return RedirectResponse(
+            f"{_filters_return_url(return_to)}&error={quote('Правило: вкажіть тип, шаблон і категорію')}"
+            if return_to != "settings"
+            else _filters_return_url(return_to),
+            status_code=303,
+        )
+
+    rule.kind = kind
+    rule.pattern = pattern
+    rule.category = category
+    apply_rule_retroactively(db, rule)
+    db.commit()
+    return RedirectResponse(_filters_return_url(return_to), status_code=303)
+
+
+@app.post("/mail/filter-categories")
+def create_filter_category(
+    request: Request,
+    name: str = Form(...),
+    return_to: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    name = name.strip()
+    if name and not db.scalar(
+        select(MailFilterCategory).where(func.lower(MailFilterCategory.name) == name.lower())
+    ):
+        db.add(MailFilterCategory(name=name))
+        db.commit()
+    return RedirectResponse(_filters_return_url(return_to), status_code=303)
+
+
+@app.post("/mail/filter-categories/{category_id}/rename")
+def rename_filter_category(
+    request: Request,
+    category_id: int,
+    name: str = Form(...),
+    return_to: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Rename a category (admin). Cascades into existing rules AND stamped
+    letters so the badge language stays consistent everywhere."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    cat = db.get(MailFilterCategory, category_id)
+    if cat is None:
+        raise HTTPException(status_code=404, detail="category not found")
+    new_name = name.strip()
+    if new_name and new_name != cat.name:
+        old_name = cat.name
+        cat.name = new_name
+        db.execute(
+            sa_update(MailFilterRule)
+            .where(MailFilterRule.category == old_name)
+            .values(category=new_name)
+        )
+        db.execute(
+            sa_update(EmailMessage)
+            .where(EmailMessage.filter_category == old_name)
+            .values(filter_category=new_name)
+        )
+        db.commit()
+    return RedirectResponse(_filters_return_url(return_to), status_code=303)
+
+
+@app.post("/mail/filter-categories/{category_id}/delete")
+def delete_filter_category(
+    request: Request,
+    category_id: int,
+    return_to: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Delete a category (admin) — refused while any rule still uses it (edit
+    those rules first). Stamped letters keep the old string as history and
+    never block."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    cat = db.get(MailFilterCategory, category_id)
+    if cat is None:
+        raise HTTPException(status_code=404, detail="category not found")
+    in_use = db.scalar(
+        select(func.count()).select_from(MailFilterRule).where(
+            MailFilterRule.category == cat.name
+        )
+    ) or 0
+    if in_use:
+        target = _filters_return_url(return_to)
+        sep = "&" if "?" in target else "?"
+        return RedirectResponse(
+            f"{target}{sep}error={quote('Категорію використовують правила — спершу змініть їх')}"
+            if return_to != "settings" else target,
+            status_code=303,
+        )
+    db.delete(cat)
+    db.commit()
+    return RedirectResponse(_filters_return_url(return_to), status_code=303)
 
 
 @app.post("/mail/filters/dismiss-suggest")
@@ -4512,6 +4688,7 @@ def dismiss_filter_suggest(
 def toggle_mail_filter(
     request: Request,
     rule_id: int,
+    return_to: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Enable/disable a rule (admin). Disabling never un-stamps already
@@ -4528,13 +4705,14 @@ def toggle_mail_filter(
         raise HTTPException(status_code=404, detail="rule not found")
     rule.enabled = not rule.enabled
     db.commit()
-    return RedirectResponse("/mail?view=filtered", status_code=303)
+    return RedirectResponse(_filters_return_url(return_to), status_code=303)
 
 
 @app.post("/mail/filters/{rule_id}/delete")
 def delete_mail_filter(
     request: Request,
     rule_id: int,
+    return_to: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Delete a rule (admin). Letters it filtered keep their category badge
@@ -4556,7 +4734,7 @@ def delete_mail_filter(
     )
     db.delete(rule)
     db.commit()
-    return RedirectResponse("/mail?view=filtered", status_code=303)
+    return RedirectResponse(_filters_return_url(return_to), status_code=303)
 
 
 def _unaccept_email(db: Session, email: EmailMessage) -> None:

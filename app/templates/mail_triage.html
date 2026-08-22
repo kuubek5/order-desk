@@ -79,51 +79,11 @@
 
         <section class="detail-panel" id="mail-detail">
             {% if view == 'filtered' and user.role == 'адмін' %}
-            {# Admin panel: the filter rules that feed this tab. Non-admins and
-               other views get the usual "pick a letter" placeholder. #}
-            <div class="filter-rules">
-                <div class="dsec">
-                    <div class="dlabel">Правила фільтрації</div>
-                    {% if filter_rules %}
-                    <div class="rulelist">
-                        {% for rule in filter_rules %}
-                        <div class="rulerow {% if not rule.enabled %}is-off{% endif %}">
-                            <span class="rule-kind">{% if rule.kind == 'sender' %}відправник{% else %}слово{% endif %}</span>
-                            <span class="rule-pattern mono">{{ rule.pattern }}</span>
-                            <span class="rule-cat">{{ rule.category }}</span>
-                            <span class="rule-hits mono" title="Скільки листів відфільтровано цим правилом">{{ rule.hits }}</span>
-                            <form method="post" action="/mail/filters/{{ rule.id }}/toggle">
-                                <button type="submit" class="btn sm" title="{% if rule.enabled %}Вимкнути{% else %}Увімкнути{% endif %}">{% if rule.enabled %}⏸{% else %}▶{% endif %}</button>
-                            </form>
-                            <form method="post" action="/mail/filters/{{ rule.id }}/delete" onsubmit="return confirm('Видалити правило? Відфільтровані ним листи лишаться у цій вкладці.')">
-                                <button type="submit" class="btn sm danger" title="Видалити правило">✕</button>
-                            </form>
-                        </div>
-                        {% endfor %}
-                    </div>
-                    {% else %}
-                    <p class="settings-hint">Правил ще немає. Додайте перше — і листи 3D-друку, бухгалтерії чи спам більше не змішуватимуться з роботами.</p>
-                    {% endif %}
-                </div>
-                <div class="dsec">
-                    <div class="dlabel">Нове правило</div>
-                    <form method="post" action="/mail/filters" class="rule-new">
-                        <select name="kind" class="suminput" aria-label="Тип правила">
-                            <option value="keyword">Слово в темі/тексті</option>
-                            <option value="sender">Відправник (адреса/домен)</option>
-                        </select>
-                        <input type="text" name="pattern" class="suminput" placeholder="напр. рахунок-фактура або @buh.example.com" required>
-                        <input type="text" name="category" class="suminput" placeholder="категорія: 3D-друк / бухгалтерія / спам" list="filter-cats" required>
-                        <datalist id="filter-cats">
-                            <option value="3D-друк"></option>
-                            <option value="бухгалтерія"></option>
-                            <option value="спам"></option>
-                        </datalist>
-                        <button type="submit" class="btn primary">Додати правило</button>
-                    </form>
-                    <div class="wiz-hint">Правило одразу застосується до листів, що зараз у черзі. Фільтр нічого не видаляє — лише переносить у цю вкладку.</div>
-                </div>
-            </div>
+            {# Admin panel: rules + categories that feed this tab (shared with
+               the settings screen). Non-admins and other views get the usual
+               "pick a letter" placeholder. #}
+            {% set return_to = '' %}
+            {% include "_mail_filter_panel.html" %}
             {% else %}
             <div class="empty-triage">
                 <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 7 8 5 8-5"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></span>

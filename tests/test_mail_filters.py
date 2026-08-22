@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -248,6 +248,70 @@ def test_delete_rule_keeps_letters_filtered(monkeypatch):
         assert email.filter_category == "3D-друк"  # badge stays (history)
         assert email.filter_rule_id is None
         assert db.scalars(select(MailFilterRule)).all() == []
+
+
+def test_edit_rule_updates_in_place_and_reapplies(monkeypatch):
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _user(db)
+        rule = MailFilterRule(kind="keyword", pattern="друк", category="3D-друк")
+        db.add(rule)
+        email = EmailMessage(uid="e", status="нове", subject="рахунок за серпень")
+        db.add(email)
+        db.commit()
+
+        response = web.edit_mail_filter(
+            request=_request(admin.id), rule_id=rule.id,
+            kind="keyword", pattern="рахунок", category="бухгалтерія", db=db,
+        )
+        assert response.status_code == 303
+        db.refresh(rule); db.refresh(email)
+        assert (rule.pattern, rule.category) == ("рахунок", "бухгалтерія")
+        # re-applied retroactively: the pending letter got stamped
+        assert email.filter_category == "бухгалтерія"
+
+
+def test_category_crud_rename_cascades_delete_guarded(monkeypatch):
+    from app.models import MailFilterCategory
+
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _user(db)
+        web.create_filter_category(request=_request(admin.id), name="друкарня", db=db)
+        cat = db.scalar(select(MailFilterCategory).where(MailFilterCategory.name == "друкарня"))
+        assert cat is not None
+
+        # duplicate (case-insensitive) is silently ignored
+        web.create_filter_category(request=_request(admin.id), name="ДРУКАРНЯ", db=db)
+        assert db.scalar(select(func.count()).select_from(MailFilterCategory)) == 1
+
+        rule = MailFilterRule(kind="keyword", pattern="друк", category="друкарня")
+        email = EmailMessage(uid="e", status="нове", filter_category="друкарня")
+        db.add_all([rule, email])
+        db.commit()
+
+        # rename cascades into rules and stamped letters
+        web.rename_filter_category(
+            request=_request(admin.id), category_id=cat.id, name="3D-центр", db=db
+        )
+        db.refresh(rule); db.refresh(email)
+        assert rule.category == "3D-центр"
+        assert email.filter_category == "3D-центр"
+
+        # delete refused while a rule uses it
+        web.delete_filter_category(request=_request(admin.id), category_id=cat.id, db=db)
+        assert db.get(MailFilterCategory, cat.id) is not None
+
+        # after the rule is gone, delete succeeds; the letter never blocks
+        db.delete(rule); db.commit()
+        web.delete_filter_category(request=_request(admin.id), category_id=cat.id, db=db)
+        assert db.get(MailFilterCategory, cat.id) is None
+
+
+def test_categories_helper_falls_back_to_defaults():
+    engine = _database()
+    with Session(engine) as db:
+        assert web._mail_filter_categories(db) == web._DEFAULT_FILTER_CATEGORIES
 
 
 def test_suggest_banner_after_two_rejections_without_rule(monkeypatch):
