@@ -186,6 +186,13 @@
             <span class="ssum-files mono">{% if email.attachments_status == 'pending' %}…{% else %}{{ att_count }} файл.{% endif %}</span>
         </div>
         <div class="ssum-actions">
+            {% if email.filter_category %}
+            {# The letter is currently filtered — the one action that makes
+               sense here is bringing it back (mis-filter recovery). #}
+            <form method="post" action="/mail/{{ email.id }}/unfilter">
+                <button type="submit" class="btn sm accent-outline" title="Повернути лист з «Відфільтровані» ({{ email.filter_category }}) у чергу">↩ Повернути з фільтра</button>
+            </form>
+            {% else %}
             {# Manual filter: send just THIS letter to «Відфільтровані» (no rule
                created). Category picked in the small select next to it. #}
             <form method="post" action="/mail/{{ email.id }}/filter" class="manual-filter">
@@ -197,6 +204,7 @@
                 </select>
                 <button type="submit" class="btn sm" title="Перенести лист у «Відфільтровані» (без правила, «↩» повертає)">У фільтр</button>
             </form>
+            {% endif %}
             <form method="post" action="/mail/{{ email.id }}/reject">
                 <button type="submit" class="btn danger sm">Відхилити</button>
             </form>

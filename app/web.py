@@ -4408,10 +4408,13 @@ def unfilter_email(
     email.filter_rule_id = None
     db.commit()
 
+    # HX = the «↩» on a filtered-list row (delete just that row); plain POST =
+    # the card's «Повернути з фільтра» → land on the pending list, where the
+    # returned letter now lives.
     request_headers = getattr(request, "headers", None) or {}
     if request_headers.get("HX-Request") == "true":
         return HTMLResponse("", status_code=200)
-    return RedirectResponse("/mail?view=filtered", status_code=303)
+    return RedirectResponse("/mail", status_code=303)
 
 
 @app.post("/mail/{email_id}/filter")
