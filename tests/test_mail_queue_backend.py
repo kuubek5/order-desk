@@ -866,6 +866,29 @@ def test_reject_email_marks_rejected_and_excludes_from_triage_list(tmp_path, mon
         assert email.id not in [e.id for e in mail_context["emails"]]
 
 
+def test_reject_from_triage_list_returns_empty_200_not_redirect(monkeypatch):
+    """The list's ✕ posts over HTMX with hx-swap="delete" — the route must
+    return an empty 200 so htmx removes only that one row. A 303 to /mail would
+    be followed and its whole-page body fed to the delete swap, wiping the whole
+    list (the reported bug)."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email = EmailMessage(uid="hx-reject", status="нове")
+        db.add(email)
+        db.commit()
+
+        request = _request(user.id)
+        request.headers = {"HX-Request": "true"}
+        response = asyncio.run(
+            web.reject_email(request=request, email_id=email.id, db=db)
+        )
+        assert response.status_code == 200
+        assert response.body == b""  # empty body → htmx deletes just the target
+        db.refresh(email)
+        assert email.status == "відхилено"
+
+
 def test_open_mail_folder_reports_non_windows_backend(tmp_path, monkeypatch):
     engine = _database()
     mail_root = tmp_path / "mail"

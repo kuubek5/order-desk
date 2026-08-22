@@ -4311,6 +4311,15 @@ async def reject_email(
     email.status = "відхилено"
     db.commit()
 
+    # Two callers: the triage LIST row (HTMX, hx-swap="delete" — wants just that
+    # one row gone) and the detail card's plain form (full navigation). For the
+    # HTMX case return an empty 200 so htmx deletes only the target row; a 303
+    # to the full /mail page would be followed and its whole-page body fed to the
+    # delete swap, which (with the polled #mail-list-rows wrapper + hx-preserve)
+    # wiped the entire list. 204 is unusable here — htmx skips the swap on 204.
+    request_headers = getattr(request, "headers", None) or {}
+    if request_headers.get("HX-Request") == "true":
+        return HTMLResponse("", status_code=200)
     return RedirectResponse("/mail", status_code=303)
 
 
