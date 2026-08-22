@@ -4414,6 +4414,30 @@ def unfilter_email(
     return RedirectResponse("/mail?view=filtered", status_code=303)
 
 
+@app.post("/mail/{email_id}/filter")
+def filter_email_manually(
+    request: Request,
+    email_id: int,
+    category: str = Form("інше"),
+    db: Session = Depends(get_db),
+):
+    """Manually move ONE letter to the «Відфільтровані» tab — no rule is
+    created, nothing else is affected. The stamp has no rule FK, so the letter
+    reads "filtered by hand"; «↩» brings it back like any other."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+
+    email.filter_category = (category or "").strip() or "інше"
+    email.filter_rule_id = None
+    db.commit()
+    return RedirectResponse("/mail", status_code=303)
+
+
 @app.post("/mail/filters")
 def create_mail_filter(
     request: Request,

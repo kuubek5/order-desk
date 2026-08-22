@@ -173,6 +173,36 @@ def test_unfilter_returns_letter_to_pending(monkeypatch):
         assert email.filter_rule_id is None
 
 
+def test_manual_filter_moves_single_letter_without_rule(monkeypatch):
+    """The card's «У фільтр» button: one letter goes to the filtered tab, no
+    rule is created, and the operator's category is stamped."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db, role="оператор")  # any operator, not admin-only
+        email = EmailMessage(uid="e", status="нове", subject="реклама")
+        db.add(email)
+        db.commit()
+
+        response = web.filter_email_manually(
+            request=_request(user.id), email_id=email.id, category="спам", db=db
+        )
+        assert response.status_code == 303
+        db.refresh(email)
+        assert email.filter_category == "спам"
+        assert email.filter_rule_id is None
+        assert db.scalars(select(MailFilterRule)).all() == []  # no rule created
+
+        # blank category falls back to "інше"
+        email2 = EmailMessage(uid="e2", status="нове")
+        db.add(email2)
+        db.commit()
+        web.filter_email_manually(
+            request=_request(user.id), email_id=email2.id, category="  ", db=db
+        )
+        db.refresh(email2)
+        assert email2.filter_category == "інше"
+
+
 def test_create_rule_requires_admin(monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:

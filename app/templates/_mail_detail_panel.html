@@ -186,6 +186,17 @@
             <span class="ssum-files mono">{% if email.attachments_status == 'pending' %}…{% else %}{{ att_count }} файл.{% endif %}</span>
         </div>
         <div class="ssum-actions">
+            {# Manual filter: send just THIS letter to «Відфільтровані» (no rule
+               created). Category picked in the small select next to it. #}
+            <form method="post" action="/mail/{{ email.id }}/filter" class="manual-filter">
+                <select name="category" class="suminput sm" aria-label="Категорія фільтра">
+                    <option value="3D-друк">3D-друк</option>
+                    <option value="бухгалтерія">бухгалтерія</option>
+                    <option value="спам">спам</option>
+                    <option value="інше" selected>інше</option>
+                </select>
+                <button type="submit" class="btn sm" title="Перенести лист у «Відфільтровані» (без правила, «↩» повертає)">У фільтр</button>
+            </form>
             <form method="post" action="/mail/{{ email.id }}/reject">
                 <button type="submit" class="btn danger sm">Відхилити</button>
             </form>
