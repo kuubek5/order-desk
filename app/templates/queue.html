@@ -119,6 +119,33 @@
         </section>
 
         <aside class="side-panel" aria-label="Довідкові панелі">
+            <section class="side-sec" data-open="{{ 'true' if pending_emails else 'false' }}" data-sec="mail">
+                <button class="side-head" type="button" data-side-toggle aria-expanded="{{ 'true' if pending_emails else 'false' }}">
+                    Пошта на тріаж
+                    <span class="side-count">{{ pending_mail_count }}</span>
+                    <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div class="side-body">
+                    {% if pending_emails %}
+                    <div class="maillist">
+                        {% for email in pending_emails[:6] %}
+                        <a class="mailrow" href="/mail/{{ email.id }}">
+                            <span class="from">{{ email.client_name_guess or email.from_address or 'без імені' }}</span>
+                            <span class="t">{% if email.received_at %}{{ email.received_at.strftime('%H:%M') }}{% else %}—{% endif %}</span>
+                            <span class="subj">{{ email.subject or 'Без теми' }}</span>
+                            <span class="att">{{ email.attachments|length }} вкл.</span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="side-empty">Нових листів на тріаж немає.</p>
+                    {% endif %}
+                    <div class="side-actions">
+                        <a class="btn sm primary" href="/mail">Відкрити тріаж</a>
+                    </div>
+                </div>
+            </section>
+
             <section class="side-sec" data-open="true" data-sec="sync">
                 <button class="side-head" type="button" data-side-toggle aria-expanded="true">
                     Google Таблиця
@@ -146,33 +173,6 @@
                         </form>
                     </div>
                     {% endif %}
-                </div>
-            </section>
-
-            <section class="side-sec" data-open="{{ 'true' if pending_emails else 'false' }}" data-sec="mail">
-                <button class="side-head" type="button" data-side-toggle aria-expanded="{{ 'true' if pending_emails else 'false' }}">
-                    Пошта на тріаж
-                    <span class="side-count">{{ pending_mail_count }}</span>
-                    <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                </button>
-                <div class="side-body">
-                    {% if pending_emails %}
-                    <div class="maillist">
-                        {% for email in pending_emails[:6] %}
-                        <a class="mailrow" href="/mail/{{ email.id }}">
-                            <span class="from">{{ email.client_name_guess or email.from_address or 'без імені' }}</span>
-                            <span class="t">{% if email.received_at %}{{ email.received_at.strftime('%H:%M') }}{% else %}—{% endif %}</span>
-                            <span class="subj">{{ email.subject or 'Без теми' }}</span>
-                            <span class="att">{{ email.attachments|length }} вкл.</span>
-                        </a>
-                        {% endfor %}
-                    </div>
-                    {% else %}
-                    <p class="side-empty">Нових листів на тріаж немає.</p>
-                    {% endif %}
-                    <div class="side-actions">
-                        <a class="btn sm primary" href="/mail">Відкрити тріаж</a>
-                    </div>
                 </div>
             </section>
 
