@@ -32,7 +32,7 @@ def _request(user_id: int | None, host: str = "127.0.0.1"):
     return SimpleNamespace(session=session, client=SimpleNamespace(host=host))
 
 
-def test_queue_eagerly_exposes_pending_mail_oldest_first_independent_of_filters(
+def test_queue_eagerly_exposes_pending_mail_newest_first_independent_of_filters(
     tmp_path, monkeypatch
 ):
     engine = _database()
@@ -58,7 +58,9 @@ def test_queue_eagerly_exposes_pending_mail_oldest_first_independent_of_filters(
             request=_request(user.id), period="today", ready="all", source="lab", db=db
         )
 
-        assert [email.uid for email in context["pending_emails"]] == ["older", "newer"]
+        # Newest-first, matching the /mail triage list so the pinned widget and
+        # the full triage screen agree on order.
+        assert [email.uid for email in context["pending_emails"]] == ["newer", "older"]
         assert context["pending_mail_count"] == 2
         assert all(email.folder_available is False for email in context["pending_emails"])
 
@@ -1015,3 +1017,75 @@ def test_fetch_email_link_unknown_ref_is_error_row(monkeypatch, tmp_path):
         db.add(email); db.commit()
         web.fetch_email_link(request=_request(user.id), email_id=email.id, ref="nope", db=db)
         assert captured["ctx"]["link_status"] == "error"
+
+
+def test_pending_list_reports_unread_count_of_unopened_letters(monkeypatch):
+    """get_mail exposes unread_count = pending letters with seen_at NULL — the
+    animated "unread by me" highlight and the "N нових" tab badge read off it."""
+    engine = _database()
+    captured = {}
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse",
+        lambda request, template, context: captured.update(ctx=context) or context,
+    )
+    monkeypatch.setattr(web, "attach_email_preview_tokens", lambda *a, **k: None)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add_all([
+            EmailMessage(uid="u1", status="нове"),                      # unseen
+            EmailMessage(uid="u2", status="нове"),                      # unseen
+            EmailMessage(uid="s1", status="нове", seen_at=datetime.now()),  # seen
+            EmailMessage(uid="a1", status="прийнято"),                  # archived, ignored
+        ])
+        db.commit()
+
+        web.get_mail(request=_request(user.id), db=db)
+        assert captured["ctx"]["unread_count"] == 2
+        assert captured["ctx"]["pending_count"] == 3
+
+
+def test_mail_partial_list_renders_only_the_polled_fragment(monkeypatch):
+    """partial=list must render the list-only fragment (_mail_triage_list.html)
+    that the 15s poll swaps in; the default renders the whole triage page."""
+    engine = _database()
+    captured = {}
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse",
+        lambda request, template, context: captured.update(template=template, ctx=context) or context,
+    )
+    monkeypatch.setattr(web, "attach_email_preview_tokens", lambda *a, **k: None)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(EmailMessage(uid="p1", status="нове"))
+        db.commit()
+
+        web.get_mail(request=_request(user.id), db=db, partial="list")
+        assert captured["template"] == "_mail_triage_list.html"
+        assert [e.uid for e in captured["ctx"]["emails"]] == ["p1"]
+        assert captured["ctx"]["view"] == "pending"
+
+        web.get_mail(request=_request(user.id), db=db)
+        assert captured["template"] == "mail_triage.html"
+
+
+def test_opening_mail_detail_stamps_seen_at_once(monkeypatch):
+    """First open clears the unread state (seen_at gets a timestamp); a second
+    open must not move it — the highlight is a one-shot, not a last-viewed clock."""
+    engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse",
+        lambda request, template, context: context,
+    )
+    monkeypatch.setattr(web, "attach_email_preview_tokens", lambda *a, **k: None)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email = EmailMessage(uid="open1", status="нове")
+        db.add(email); db.commit()
+        assert email.seen_at is None
+
+        web.get_mail_detail(request=_request(user.id), email_id=email.id, db=db)
+        first = email.seen_at
+        assert first is not None
+
+        web.get_mail_detail(request=_request(user.id), email_id=email.id, db=db)
+        assert email.seen_at == first

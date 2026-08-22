@@ -1,6 +1,14 @@
-{# Triage detail panel: the full letter + recognised fields + attachments +
-   accept/reject. Shared by the full-page mail_detail.html and the HTMX panel
-   the triage list swaps into its right column. Needs `email` in context. #}
+{# Triage detail panel (variant C — segments + sticky action bar). The letter,
+   files+STL and the accept wizard live in three tabs so the card never grows
+   into a long scroll; a sticky bar keeps the primary actions + a live mini
+   summary always in view. Shared by the full-page mail_detail.html and the
+   HTMX panel the triage list swaps into #mail-detail. Needs `email`.
+
+   Tab state (which segment is open) is remembered client-side in app.js across
+   full-panel re-renders (extract-archives / fetch-link swap all of #mail-detail)
+   and reset to the letter tab when a different letter is opened. #}
+{% set is_new = email.status == 'нове' %}
+{% set att_count = email.attachments|length %}
 <div class="detail-head">
     <div>
         <div class="from">{{ email.from_address or 'Відправник не визначений' }}</div>
@@ -9,143 +17,180 @@
     <div class="when">{% if email.received_at %}{{ email.received_at.strftime('%d.%m.%y %H:%M') }}{% else %}—{% endif %}</div>
 </div>
 
-<div class="detail-body">
-    {% if email.service_type_guess == '3d_print' %}
-    <div class="type-flag">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><circle cx="12" cy="16.4" r=".9" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
-        <span><strong>Схоже на запит 3D-друку, не фрезерування</strong><p>Автоматична підказка за ключовими словами — перевірте текст листа, перш ніж приймати в чергу.</p></span>
+<div class="mail-seg" data-mail-id="{{ email.id }}">
+    <div class="seg-tabs" role="tablist">
+        <button type="button" class="seg-tab on" data-seg="letter" role="tab">Лист</button>
+        <button type="button" class="seg-tab" data-seg="files" role="tab">
+            Файли + STL
+            <span class="seg-cnt">{% if email.attachments_status == 'pending' %}…{% else %}{{ att_count }}{% endif %}</span>
+            {% if body_links %}<span class="seg-dot" title="Є файли за посиланням" aria-hidden="true"></span>{% endif %}
+        </button>
+        {% if is_new %}
+        <button type="button" class="seg-tab" data-seg="accept" role="tab">Прийняти</button>
+        {% else %}
+        <button type="button" class="seg-tab" data-seg="status" role="tab">Статус</button>
+        {% endif %}
     </div>
-    {% endif %}
 
-    <div class="dsec">
-        <div class="dlabel">Текст листа</div>
-        <pre class="camtext">{{ email.body_text or '(порожньо)' }}</pre>
-    </div>
+    <div class="seg-body">
+        {# ---------- Pane: Лист ---------- #}
+        <section class="seg-pane on" data-pane="letter" role="tabpanel">
+            {% if email.service_type_guess == '3d_print' %}
+            <div class="type-flag">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><circle cx="12" cy="16.4" r=".9" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
+                <span><strong>Схоже на запит 3D-друку, не фрезерування</strong><p>Автоматична підказка за ключовими словами — перевірте текст листа, перш ніж приймати в чергу.</p></span>
+            </div>
+            {% endif %}
 
-    <div class="dsec">
-        <div class="dlabel">
-            Вкладення ·
-            {% if email.attachments_status == 'pending' %}
+            <div class="mail-metabar">
+                {% if email.attachments_status == 'pending' %}
                 <span class="attachment-badge attachment-badge-pending"><span class="attachment-badge-dot" aria-hidden="true"></span>Завантаження…</span>
-            {% else %}
-                <span class="attachment-badge attachment-badge-ready">✓ Скачано ({{ email.attachments|length }})</span>
-            {% endif %}
-            {% if body_links %}
-            <span class="attachment-badge attachment-badge-warn" title="Ці файли лежать за посиланням (Google Drive / ukr.net) і НЕ скачуються автоматично. Скачайте їх нижче перед прийняттям у чергу — інакше робота піде без цих файлів.">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
-                +{{ body_links|length }} за посиланням
-            </span>
-            {% endif %}
-        </div>
-        {% if email.attachments %}
-        <div class="attlist">
-            {% for attachment in email.attachments %}
-            <div class="attrow">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-                <span class="name">{{ attachment.filename }}</span>
-                <span class="size">
-                    {% if attachment.size_bytes %}
-                        {% if attachment.size_bytes >= 1024 * 1024 %}{{ (attachment.size_bytes / (1024 * 1024))|round(1) }} МБ{% else %}{{ (attachment.size_bytes / 1024)|round(1) }} КБ{% endif %}
-                    {% else %}—{% endif %}
+                {% else %}
+                <span class="attachment-badge attachment-badge-ready">✓ Скачано ({{ att_count }})</span>
+                {% endif %}
+                {% if body_links %}
+                <span class="attachment-badge attachment-badge-warn" title="Ці файли лежать за посиланням і НЕ скачуються автоматично. Скачайте їх у вкладці «Файли» перед прийняттям у чергу.">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
+                    +{{ body_links|length }} за посиланням
                 </span>
+                {% endif %}
             </div>
-            {% endfor %}
-        </div>
-        {% elif email.attachments_status == 'pending' %}
-        <p class="settings-hint">Вкладення ще завантажуються з пошти…</p>
-        {% endif %}
-        {% if email.attachments %}
-        <div class="att-actions">
-            {% if has_archive %}
-            {# Ручний резерв авто-розпакування: витягти STL з ZIP/RAR і перерендерити
-               картку, щоб файли зʼявились у списку. #}
-            <button type="button" class="btn primary"
-                    hx-post="/mail/{{ email.id }}/extract-archives"
-                    hx-target="#mail-detail" hx-swap="innerHTML">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1zM10 12h4"/></svg>
-                Розпакувати архіви
-            </button>
-            {% endif %}
-            {# Скачані файли лежать у поштовому спулі — відкрити ту папку в Провіднику.
-               Роут loopback-only, 204 без тіла → hx-swap="none", фідбек тостом. #}
-            <button type="button" class="btn sm"
-                    hx-post="/mail/{{ email.id }}/open-folder"
-                    hx-swap="none"
-                    hx-on::after-request="if(event.detail.successful){showToast('Відкрито папку у Провіднику','success')}else{showToast('Не вдалося відкрити папку зі скачаними файлами','error')}">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z"/></svg>
-                Відкрити папку у Провіднику
-            </button>
-        </div>
-        {% endif %}
-    </div>
 
-    {% if body_links %}
-    {# Files the client attached as SHARE LINKS (Gmail/Drive, ukr.net eDisk)
-       instead of MIME parts — downloadable on demand into the letter. #}
-    <div class="dsec">
-        <div class="dlabel">Файли за посиланням · {{ body_links|length }}</div>
-        <div class="linklist">
-            {% for link in body_links %}
-            {% include "_mail_link_row.html" %}
-            {% endfor %}
-        </div>
-        <div class="link-actions">
-            <button type="button" class="btn primary"
-                    onclick="document.body.dispatchEvent(new Event('dl-all'))">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-                Скачати всі файли
-            </button>
-        </div>
-        <div class="wiz-hint">Клік по рядку — скачати один файл. Тягне лише з довірених джерел (Google Drive, ukr.net); скачане стає звичайними вкладеннями.</div>
-    </div>
-    {% endif %}
-
-    {% if email.stl_preview_token %}
-    <div class="dsec stl-gallery-sec">
-        <div class="dlabel">Перегляд STL</div>
-        <div class="stl-gallery" data-stl-gallery-token="{{ email.stl_preview_token }}">
-            <div class="stl-gallery-stage">
-                <canvas class="stl-gallery-canvas"></canvas>
-                <div class="stl-gallery-status">Завантаження прев'ю…</div>
+            <div class="dsec">
+                <div class="dlabel">Текст листа</div>
+                <pre class="camtext">{{ email.body_text or '(порожньо)' }}</pre>
             </div>
-            <div class="stl-gallery-files" role="list" aria-label="STL-файли вкладення"></div>
-        </div>
-    </div>
-    {% endif %}
+        </section>
 
-    {% if email.status == 'нове' %}
-    <div class="dsec">
-        <div class="dlabel">Прийняти в чергу — покроково</div>
-        <div id="mail-wizard" class="wizard">
-            {% include "_mail_wizard.html" %}
-        </div>
-    </div>
-    {% else %}
-    {# Archived letter (accepted / rejected): read-only, no wizard. #}
-    <div class="dsec">
-        <div class="archive-state {% if email.status == 'прийнято' %}ok{% else %}muted{% endif %}">
-            {% if email.status == 'прийнято' %}
-            <span>Прийнято в чергу — робота вже створена.</span>
-            {% if email.order_id %}<a class="btn sm" href="/orders/{{ email.order_id }}">Відкрити роботу →</a>{% endif %}
-            <form method="post" action="/mail/{{ email.id }}/restore"
-                  onsubmit="return confirm('Відкотити прийняття? Робота в черзі видалиться, файли повернуться з export у пошту, рядок-нотатка в таблиці очиститься. Лист знову стане на тріаж.')">
-                <button type="submit" class="btn sm">↩ Відкотити прийняття</button>
-            </form>
-            {% else %}
-            <span>Лист відхилено. Файли лишились у поштовому спулі — можна повернути на тріаж.</span>
-            <form method="post" action="/mail/{{ email.id }}/restore">
-                <button type="submit" class="btn sm">↩ Повернути на тріаж</button>
-            </form>
+        {# ---------- Pane: Файли + STL ---------- #}
+        <section class="seg-pane" data-pane="files" role="tabpanel">
+            <div class="dsec">
+                <div class="dlabel">
+                    Вкладення ·
+                    {% if email.attachments_status == 'pending' %}
+                        <span class="attachment-badge attachment-badge-pending"><span class="attachment-badge-dot" aria-hidden="true"></span>Завантаження…</span>
+                    {% else %}
+                        <span class="attachment-badge attachment-badge-ready">✓ Скачано ({{ att_count }})</span>
+                    {% endif %}
+                </div>
+                {% if email.attachments %}
+                <div class="attlist">
+                    {% for attachment in email.attachments %}
+                    <div class="attrow">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                        <span class="name">{{ attachment.filename }}</span>
+                        <span class="size">
+                            {% if attachment.size_bytes %}
+                                {% if attachment.size_bytes >= 1024 * 1024 %}{{ (attachment.size_bytes / (1024 * 1024))|round(1) }} МБ{% else %}{{ (attachment.size_bytes / 1024)|round(1) }} КБ{% endif %}
+                            {% else %}—{% endif %}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% elif email.attachments_status == 'pending' %}
+                <p class="settings-hint">Вкладення ще завантажуються з пошти…</p>
+                {% else %}
+                <p class="settings-hint">Вкладень немає.</p>
+                {% endif %}
+                {% if email.attachments %}
+                <div class="att-actions">
+                    {% if has_archive %}
+                    <button type="button" class="btn primary"
+                            hx-post="/mail/{{ email.id }}/extract-archives"
+                            hx-target="#mail-detail" hx-swap="innerHTML">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1zM10 12h4"/></svg>
+                        Розпакувати архіви
+                    </button>
+                    {% endif %}
+                    <button type="button" class="btn sm accent-outline"
+                            hx-post="/mail/{{ email.id }}/open-folder"
+                            hx-swap="none"
+                            hx-on::after-request="if(event.detail.successful){showToast('Відкрито папку у Провіднику','success')}else{showToast('Не вдалося відкрити папку зі скачаними файлами','error')}">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z"/></svg>
+                        Відкрити папку у Провіднику
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if body_links %}
+            {# Files the client attached as SHARE LINKS (Gmail/Drive, ukr.net eDisk)
+               instead of MIME parts — downloadable on demand into the letter. #}
+            <div class="dsec">
+                <div class="dlabel">Файли за посиланням · {{ body_links|length }}</div>
+                <div class="linklist">
+                    {% for link in body_links %}
+                    {% include "_mail_link_row.html" %}
+                    {% endfor %}
+                </div>
+                <div class="link-actions">
+                    <button type="button" class="btn primary"
+                            onclick="document.body.dispatchEvent(new Event('dl-all'))">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+                        Скачати всі файли
+                    </button>
+                </div>
+                <div class="wiz-hint">Клік по рядку — скачати один файл. Тягне лише з довірених джерел (Google Drive, ukr.net); скачане стає звичайними вкладеннями.</div>
+            </div>
             {% endif %}
+
+            {% if email.stl_preview_token %}
+            <div class="dsec stl-gallery-sec">
+                <div class="dlabel">Перегляд STL</div>
+                <div class="stl-gallery" data-stl-gallery-token="{{ email.stl_preview_token }}">
+                    <div class="stl-gallery-stage">
+                        <canvas class="stl-gallery-canvas"></canvas>
+                        <div class="stl-gallery-status">Завантаження прев'ю…</div>
+                    </div>
+                    <div class="stl-gallery-files" role="list" aria-label="STL-файли вкладення"></div>
+                </div>
+            </div>
+            {% endif %}
+        </section>
+
+        {# ---------- Pane: Прийняти (new) / Статус (archived) ---------- #}
+        {% if is_new %}
+        <section class="seg-pane" data-pane="accept" role="tabpanel">
+            <div id="mail-wizard" class="wizard">
+                {% include "_mail_wizard.html" %}
+            </div>
+        </section>
+        {% else %}
+        <section class="seg-pane" data-pane="status" role="tabpanel">
+            <div class="archive-state {% if email.status == 'прийнято' %}ok{% else %}muted{% endif %}">
+                {% if email.status == 'прийнято' %}
+                <span>Прийнято в чергу — робота вже створена.</span>
+                {% if email.order_id %}<a class="btn sm" href="/orders/{{ email.order_id }}">Відкрити роботу →</a>{% endif %}
+                <form method="post" action="/mail/{{ email.id }}/restore"
+                      onsubmit="return confirm('Відкотити прийняття? Робота в черзі видалиться, файли повернуться з export у пошту, рядок-нотатка в таблиці очиститься. Лист знову стане на тріаж.')">
+                    <button type="submit" class="btn sm">↩ Відкотити прийняття</button>
+                </form>
+                {% else %}
+                <span>Лист відхилено. Файли лишились у поштовому спулі — можна повернути на тріаж.</span>
+                <form method="post" action="/mail/{{ email.id }}/restore">
+                    <button type="submit" class="btn sm">↩ Повернути на тріаж</button>
+                </form>
+                {% endif %}
+            </div>
+        </section>
+        {% endif %}
+    </div>
+
+    {% if is_new %}
+    <div class="seg-stickybar">
+        <div class="ssum">
+            <span class="ssum-client mono">{{ email.client_name_guess or email.from_address or '—' }}</span>
+            <span class="ssum-sep" aria-hidden="true">·</span>
+            <span class="ssum-mat">{{ email.material_color_guess or '—' }}</span>
+            <span class="ssum-sep" aria-hidden="true">·</span>
+            <span class="ssum-files mono">{% if email.attachments_status == 'pending' %}…{% else %}{{ att_count }} файл.{% endif %}</span>
+        </div>
+        <div class="ssum-actions">
+            <form method="post" action="/mail/{{ email.id }}/reject">
+                <button type="submit" class="btn danger sm">Відхилити</button>
+            </form>
+            <button type="button" class="btn primary sm" data-seg-go="accept">Прийняти →</button>
         </div>
     </div>
     {% endif %}
 </div>
-
-{% if email.status == 'нове' %}
-<div class="detail-foot">
-    <form method="post" action="/mail/{{ email.id }}/reject">
-        <button type="submit" class="btn danger">Відхилити лист</button>
-    </form>
-</div>
-{% endif %}

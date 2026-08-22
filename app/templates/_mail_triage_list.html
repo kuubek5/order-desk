@@ -1,0 +1,75 @@
+{# Triage list fragment — polled every 15s (pending view only) so letters the
+   2-min background IMAP sync pulls in appear WITH the unread highlight without
+   a manual F5. The GET hits get_mail with partial=list, which re-renders THIS
+   same #mail-list-rows wrapper so the poll attributes persist across swaps.
+
+   Each already-shown row carries hx-preserve: HTMX keeps the existing DOM node
+   across the swap, so (a) the "unread" entry animation and dot pulse are NOT
+   restarted every 15s, (b) the .active selection and an operator-cleared
+   unread state (set/removed client-side in app.js) survive the refresh. Only
+   genuinely new rows are fresh DOM → they animate in. Pending rows (still
+   downloading attachments) are NOT preserved, so their "завантаження…" flips
+   to the real file count once phase-2 finishes. hx-disinherit stops the rows'
+   own click/reject handlers from inheriting the poll trigger/target. #}
+<div id="mail-list-rows"
+     {% if view == 'pending' %}hx-get="/mail?view=pending&service={{ service }}&partial=list"
+     hx-trigger="every 15s"
+     hx-target="this"
+     hx-swap="outerHTML"
+     hx-disinherit="*"{% endif %}>
+    {% if emails %}
+        {% for email in emails %}
+        {% set is_unread = view == 'pending' and email.seen_at is none %}
+        <div class="mailrow{% if is_unread %} unread{% endif %}" role="button" tabindex="0"
+             id="mailrow-{{ email.id }}"
+             {% if view == 'pending' and email.attachments_status != 'pending' %}hx-preserve="true"{% endif %}
+             hx-get="/mail/{{ email.id }}?panel=1"
+             hx-target="#mail-detail" hx-swap="innerHTML"
+             hx-trigger="click, keyup[key=='Enter']"
+             data-mail-id="{{ email.id }}">
+            <span class="r1">
+                {% if is_unread %}<span class="newdot" aria-hidden="true"></span>{% endif %}
+                <span class="from">{{ email.client_name_guess or email.from_address or 'Відправник не визначений' }}</span>
+                {% if is_unread %}<span class="sr-only">непрочитано</span>{% endif %}
+                <span class="t">{% if email.received_at %}{{ email.received_at.strftime('%d.%m %H:%M') }}{% else %}—{% endif %}</span>
+            </span>
+            <span class="subj">{{ email.subject or 'Без теми' }}</span>
+            <span class="r3">
+                <span class="att">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V6a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V7"/></svg>
+                    {% if email.attachments_status == 'pending' %}завантаження…{% else %}{{ email.attachments|length }} файл.{% endif %}
+                </span>
+                {% if view == 'archive' %}
+                    {% if email.status == 'прийнято' %}
+                    <span class="reco ok">✓ прийнято</span>
+                    {% else %}
+                    <span class="reco muted">✕ відхилено</span>
+                    {% endif %}
+                {% else %}
+                    {% if email.service_type_guess == '3d_print' %}
+                    <span class="reco warn">перевірити</span>
+                    {% else %}
+                    <span class="reco ok">розпізнано</span>
+                    {% endif %}
+                    <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/reject" hx-target="closest .mailrow" hx-swap="delete" hx-confirm="Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється)." onclick="event.stopPropagation()">
+                        <button type="submit" class="list-reject" title="Відхилити">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+                        </button>
+                    </form>
+                {% endif %}
+            </span>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-triage">
+            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 7 8 5 8-5"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></span>
+            {% if view == 'archive' %}
+            <h3>Архів порожній</h3>
+            <p>Тут з’являться листи після прийняття в чергу або відхилення.</p>
+            {% else %}
+            <h3>Нових листів немає</h3>
+            <p>Пошта перевіряється автоматично кожні 2 хвилини — нові листи з’являться тут самі.</p>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>

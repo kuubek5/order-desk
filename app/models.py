@@ -266,6 +266,11 @@ class EmailMessage(Base):
     # the next sync run (2 min later, or manual) retries automatically.
     attachments_status: Mapped[str] = mapped_column(String(20), default="pending")
     order_id: Mapped[Optional[int]] = mapped_column(ForeignKey("orders.id"), nullable=True)
+    # NULL = no operator has opened this letter's triage card yet → the row is
+    # highlighted as "unread by me" in the "Нові з пошти" list. Stamped the
+    # first time any operator opens the detail panel (GET /mail/{id}). Shared,
+    # not per-user (max two operators — a single seen flag is enough).
+    seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
 
     attachments: Mapped[list["Attachment"]] = relationship(

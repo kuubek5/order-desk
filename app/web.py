@@ -1569,14 +1569,17 @@ def get_queue(
     orders_email = [o for o in orders if o.source == "email"]
 
     sync_flash = request.session.pop("sync_flash", None)
+    # Newest-first, matching the /mail triage list exactly — the pinned widget
+    # is a peek of the SAME queue, so the two must agree on order (an opposite
+    # sort made the widget's top rows look like different letters).
     pending_emails = db.scalars(
         select(EmailMessage)
         .where(EmailMessage.status == "нове")
         .options(selectinload(EmailMessage.attachments))
         .order_by(
-            EmailMessage.received_at.asc().nullslast(),
-            EmailMessage.created_at.asc(),
-            EmailMessage.id.asc(),
+            EmailMessage.received_at.desc().nullslast(),
+            EmailMessage.created_at.desc(),
+            EmailMessage.id.desc(),
         )
     ).all()
     attach_email_folder_availability(
@@ -3710,6 +3713,7 @@ def get_mail(
     error: str | None = None,
     service: str = "all",
     view: str = "pending",
+    partial: str | None = None,
 ):
     user = get_current_user(request, db)
     if user is None:
@@ -3748,11 +3752,29 @@ def get_mail(
         )
     ) or 0
 
+    # Pending letters no operator has opened yet — drives the animated
+    # "unread by me" highlight and the accent count on the pending tab.
+    unread_count = db.scalar(
+        select(func.count()).select_from(EmailMessage).where(
+            EmailMessage.status == "нове", EmailMessage.seen_at.is_(None)
+        )
+    ) or 0
+
     # Service-type chips only make sense for the pending triage list.
     service_counts = count_by_service_type(emails) if view == "pending" else None
     if view == "pending":
         emails = filter_emails_by_service_type(emails, service)
     attach_email_preview_tokens(emails, _mail_trusted_roots(db), _mail_preview_roots(db))
+
+    # The 15s triage poll asks for just the list wrapper (_mail_triage_list.html)
+    # so new letters appear with the unread highlight without a full reload. The
+    # fragment re-renders the same #mail-list-rows so its poll attrs persist.
+    if partial == "list":
+        return templates.TemplateResponse(
+            request,
+            "_mail_triage_list.html",
+            {"emails": emails, "view": view, "service": service},
+        )
 
     return templates.TemplateResponse(
         request,
@@ -3768,6 +3790,7 @@ def get_mail(
             "view": view,
             "pending_count": pending_count,
             "archive_count": archive_count,
+            "unread_count": unread_count,
             # Адреса скриньки, яку моніторить система — показуємо в шапці, щоб
             # оператор бачив, звідки саме тягнуться листи (None → не налаштовано).
             "mailbox": get_imap_login(db),
@@ -3804,6 +3827,12 @@ def get_mail_detail(
     email = db.get(EmailMessage, email_id)
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")
+
+    # Opening the triage card clears the "unread by me" highlight for everyone
+    # (shared seen state). Stamp once — later opens keep the original time.
+    if email.seen_at is None:
+        email.seen_at = datetime.now()
+        db.commit()
 
     context = _mail_panel_context(db, email, user, error=error)
 
