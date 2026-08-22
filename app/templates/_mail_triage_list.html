@@ -45,6 +45,11 @@
                     {% else %}
                     <span class="reco muted">✕ відхилено</span>
                     {% endif %}
+                {% elif view == 'filtered' %}
+                    <span class="reco warn" title="Відфільтровано правилом">{{ email.filter_category }}</span>
+                    <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/unfilter" hx-target="closest .mailrow" hx-swap="delete" onclick="event.stopPropagation()">
+                        <button type="submit" class="list-reject" title="Повернути в чергу">↩</button>
+                    </form>
                 {% else %}
                     {% if email.service_type_guess == '3d_print' %}
                     <span class="reco warn">перевірити</span>

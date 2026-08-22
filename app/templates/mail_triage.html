@@ -44,27 +44,98 @@
 
     <nav class="tab-nav" aria-label="Розділ">
         <a href="/mail?view=pending" class="tab-link {% if view == 'pending' %}active{% endif %}">Усі листи <span class="tab-badge">{{ pending_count }}</span>{% if unread_count %}<span class="tab-badge unread" title="Непрочитані вами">{{ unread_count }} нових</span>{% endif %}</a>
+        <a href="/mail?view=filtered" class="tab-link {% if view == 'filtered' %}active{% endif %}">Відфільтровані <span class="tab-badge">{{ filtered_count }}</span></a>
         <a href="/mail?view=archive" class="tab-link {% if view == 'archive' %}active{% endif %}">Архів <span class="tab-badge">{{ archive_count }}</span></a>
     </nav>
+
+    {% if filter_suggest %}
+    <div class="filter-suggest" role="status">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+        <span>Ви відхилили <b>{{ filter_suggest.count }}</b> листи від <b class="mono">{{ filter_suggest.address }}</b> — фільтрувати цього відправника автоматично?</span>
+        <form method="post" action="/mail/filters">
+            <input type="hidden" name="kind" value="sender">
+            <input type="hidden" name="pattern" value="{{ filter_suggest.address }}">
+            <input type="hidden" name="category" value="відхилені">
+            <button type="submit" class="btn sm primary">Так, фільтрувати</button>
+        </form>
+        <form method="post" action="/mail/filters/dismiss-suggest">
+            <input type="hidden" name="address" value="{{ filter_suggest.address }}">
+            <button type="submit" class="btn sm">Ні, не питати</button>
+        </form>
+    </div>
+    {% endif %}
 
     <div class="worklayout">
         <section class="list-panel" aria-labelledby="mail-list-title">
             <div class="card-head">
-                <h2 id="mail-list-title">{% if view == 'archive' %}Архів{% else %}Усі листи{% endif %}</h2>
+                <h2 id="mail-list-title">{% if view == 'archive' %}Архів{% elif view == 'filtered' %}Відфільтровані{% else %}Усі листи{% endif %}</h2>
                 <span class="meta">{{ emails|length }} листів</span>
             </div>
             <div class="listwrap">
                 {% include "_mail_triage_list.html" %}
             </div>
-            <div class="list-foot">MIME-імена файлів і шляхи export перевірені на traversal перед збереженням</div>
+            <div class="list-foot">{% if view == 'filtered' %}Відфільтровані листи не видаляються — «↩» повертає лист у чергу{% else %}MIME-імена файлів і шляхи export перевірені на traversal перед збереженням{% endif %}</div>
         </section>
 
         <section class="detail-panel" id="mail-detail">
+            {% if view == 'filtered' and user.role == 'адмін' %}
+            {# Admin panel: the filter rules that feed this tab. Non-admins and
+               other views get the usual "pick a letter" placeholder. #}
+            <div class="filter-rules">
+                <div class="dsec">
+                    <div class="dlabel">Правила фільтрації</div>
+                    {% if filter_rules %}
+                    <div class="rulelist">
+                        {% for rule in filter_rules %}
+                        <div class="rulerow {% if not rule.enabled %}is-off{% endif %}">
+                            <span class="rule-kind">{% if rule.kind == 'sender' %}відправник{% else %}слово{% endif %}</span>
+                            <span class="rule-pattern mono">{{ rule.pattern }}</span>
+                            <span class="rule-cat">{{ rule.category }}</span>
+                            <span class="rule-hits mono" title="Скільки листів відфільтровано цим правилом">{{ rule.hits }}</span>
+                            <form method="post" action="/mail/filters/{{ rule.id }}/toggle">
+                                <button type="submit" class="btn sm" title="{% if rule.enabled %}Вимкнути{% else %}Увімкнути{% endif %}">{% if rule.enabled %}⏸{% else %}▶{% endif %}</button>
+                            </form>
+                            <form method="post" action="/mail/filters/{{ rule.id }}/delete" onsubmit="return confirm('Видалити правило? Відфільтровані ним листи лишаться у цій вкладці.')">
+                                <button type="submit" class="btn sm danger" title="Видалити правило">✕</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="settings-hint">Правил ще немає. Додайте перше — і листи 3D-друку, бухгалтерії чи спам більше не змішуватимуться з роботами.</p>
+                    {% endif %}
+                </div>
+                <div class="dsec">
+                    <div class="dlabel">Нове правило</div>
+                    <form method="post" action="/mail/filters" class="rule-new">
+                        <select name="kind" class="suminput" aria-label="Тип правила">
+                            <option value="keyword">Слово в темі/тексті</option>
+                            <option value="sender">Відправник (адреса/домен)</option>
+                        </select>
+                        <input type="text" name="pattern" class="suminput" placeholder="напр. рахунок-фактура або @buh.example.com" required>
+                        <input type="text" name="category" class="suminput" placeholder="категорія: 3D-друк / бухгалтерія / спам" list="filter-cats" required>
+                        <datalist id="filter-cats">
+                            <option value="3D-друк"></option>
+                            <option value="бухгалтерія"></option>
+                            <option value="спам"></option>
+                        </datalist>
+                        <button type="submit" class="btn primary">Додати правило</button>
+                    </form>
+                    <div class="wiz-hint">Правило одразу застосується до листів, що зараз у черзі. Фільтр нічого не видаляє — лише переносить у цю вкладку.</div>
+                </div>
+            </div>
+            {% else %}
             <div class="empty-triage">
                 <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 7 8 5 8-5"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></span>
+                {% if view == 'filtered' %}
+                <h3>Відфільтровані листи</h3>
+                <p>Сюди потрапляють листи, що збіглися з правилами фільтрації (3D-друк, бухгалтерія, спам). Клік по листу відкриє картку; «↩» у списку повертає лист у чергу.</p>
+                {% else %}
                 <h3>Оберіть лист зі списку</h3>
                 <p>Клік по листу зліва відкриє картку тріажу: оригінальний текст, розпізнані поля й вкладення для перевірки перед прийняттям у чергу.</p>
+                {% endif %}
             </div>
+            {% endif %}
         </section>
     </div>
 </main>

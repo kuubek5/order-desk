@@ -11,6 +11,7 @@ from imap_tools import AND, MailBox
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.mail_filters import apply_filters_to_email
 from app.mail_parser import guess_fields_from_text, guess_service_type
 from app.models import Attachment, EmailMessage, Order
 from app.settings_store import get_imap_login, get_imap_password
@@ -223,6 +224,11 @@ def _apply_attachments(
     email_message.service_type_guess = service_type_guess
     for field, value in guesses.items():
         setattr(email_message, field, value)
+
+    # Admin filter rules (keyword/sender → category): a match routes the letter
+    # to the triage screen's «Відфільтровані» tab instead of the main list.
+    # Never deletes — the stamp is one click to undo.
+    apply_filters_to_email(session, email_message)
 
     message_dir = attachments_dir / email_message.uid
     for i, att in enumerate(msg.attachments, start=1):

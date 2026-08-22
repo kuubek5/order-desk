@@ -271,10 +271,49 @@ class EmailMessage(Base):
     # first time any operator opens the detail panel (GET /mail/{id}). Shared,
     # not per-user (max two operators — a single seen flag is enough).
     seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    # Mail filtering (screen 2's «Відфільтровані» tab): a matched MailFilterRule
+    # stamps its category + id here. The letter is NEVER deleted or hidden for
+    # good — status stays "нове", it just moves to the filtered tab and one
+    # click (unfilter) brings it back. NULL = not filtered, shown in the queue.
+    filter_category: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    filter_rule_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("mail_filter_rules.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
 
     attachments: Mapped[list["Attachment"]] = relationship(
         "Attachment", back_populates="email_message", cascade="all, delete-orphan"
+    )
+
+
+class MailFilterRule(Base):
+    """One triage-filter rule: keyword-in-text or sender-substring → category.
+
+    Matching letters are routed to the «Відфільтровані» tab instead of the main
+    triage list — categorised, never deleted (CLAUDE.md screen 2: a silently
+    missing letter is unacceptable). `enabled=False` rules don't match; a
+    disabled SENDER rule doubles as "operator declined the suggestion for this
+    sender" so the suggest-banner doesn't nag again (see web.py reject flow).
+    """
+
+    __tablename__ = "mail_filter_rules"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # "keyword" (substring of subject+body, case-insensitive) or
+    # "sender" (substring of from_address, case-insensitive — an address or a
+    # whole domain like "@buh.example.com").
+    kind: Mapped[str] = mapped_column(String(20))
+    pattern: Mapped[str] = mapped_column(String(300))
+    # Free-text category shown as the badge/reason: "3D-друк", "бухгалтерія",
+    # "спам", … — no fixed enum, the admin names their own buckets.
+    category: Mapped[str] = mapped_column(String(100))
+    enabled: Mapped[bool] = mapped_column(default=True)
+    # How many letters this rule has filtered — visibility into what a rule
+    # actually does, and the evidence for keeping/removing it.
+    hits: Mapped[int] = mapped_column(default=0)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now()
     )
 
 

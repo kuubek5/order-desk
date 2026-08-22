@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from imap_tools import MailBox
-from sqlalchemy import func, select
+from sqlalchemy import and_ as sa_and, func, select, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette.middleware.sessions import SessionMiddleware
@@ -70,7 +70,8 @@ from app.material_catalog import (
     resolve_material_id,
     unresolved_order_count,
 )
-from app.models import Attachment, Client, ClientNameAlias, Comment, EmailMessage, Order, ReworkRecord, StatusEvent, SyncLog, User
+from app.mail_filters import apply_rule_retroactively
+from app.models import Attachment, Client, ClientNameAlias, Comment, EmailMessage, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.order_folder import (
     attach_email_folder_availability,
     attach_email_preview_tokens,
@@ -1574,7 +1575,13 @@ def get_queue(
     # sort made the widget's top rows look like different letters).
     pending_emails = db.scalars(
         select(EmailMessage)
-        .where(EmailMessage.status == "нове")
+        .where(
+            EmailMessage.status == "нове",
+            # Rule-filtered letters (3D print, accounting, spam) live on the
+            # triage screen's «Відфільтровані» tab — keep the queue widget to
+            # actual milling work.
+            EmailMessage.filter_category.is_(None),
+        )
         .options(selectinload(EmailMessage.attachments))
         .order_by(
             EmailMessage.received_at.desc().nullslast(),
@@ -3724,14 +3731,22 @@ def get_mail(
     # screen's source/ready filters.
     if service not in SERVICE_TYPE_FILTERS:
         service = "all"
-    if view not in ("pending", "archive"):
+    if view not in ("pending", "filtered", "archive"):
         view = "pending"
 
-    status_clause = (
-        EmailMessage.status.in_(_ARCHIVE_STATUSES)
-        if view == "archive"
-        else EmailMessage.status == "нове"
-    )
+    # Three views: pending = "нове" NOT stamped by a filter rule; filtered =
+    # "нове" stamped (kept, never deleted — one click brings a letter back);
+    # archive = accepted/rejected.
+    if view == "archive":
+        status_clause = EmailMessage.status.in_(_ARCHIVE_STATUSES)
+    elif view == "filtered":
+        status_clause = sa_and(
+            EmailMessage.status == "нове", EmailMessage.filter_category.is_not(None)
+        )
+    else:
+        status_clause = sa_and(
+            EmailMessage.status == "нове", EmailMessage.filter_category.is_(None)
+        )
     emails = db.scalars(
         select(EmailMessage)
         .where(status_clause)
@@ -3742,9 +3757,16 @@ def get_mail(
         )
     ).all()
 
-    # Top-level view counts (pending vs archive) for the two tabs.
+    # Top-level view counts (pending vs filtered vs archive) for the tabs.
     pending_count = db.scalar(
-        select(func.count()).select_from(EmailMessage).where(EmailMessage.status == "нове")
+        select(func.count()).select_from(EmailMessage).where(
+            EmailMessage.status == "нове", EmailMessage.filter_category.is_(None)
+        )
+    ) or 0
+    filtered_count = db.scalar(
+        select(func.count()).select_from(EmailMessage).where(
+            EmailMessage.status == "нове", EmailMessage.filter_category.is_not(None)
+        )
     ) or 0
     archive_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
@@ -3756,7 +3778,9 @@ def get_mail(
     # "unread by me" highlight and the accent count on the pending tab.
     unread_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
-            EmailMessage.status == "нове", EmailMessage.seen_at.is_(None)
+            EmailMessage.status == "нове",
+            EmailMessage.seen_at.is_(None),
+            EmailMessage.filter_category.is_(None),
         )
     ) or 0
 
@@ -3765,6 +3789,43 @@ def get_mail(
     if view == "pending":
         emails = filter_emails_by_service_type(emails, service)
     attach_email_preview_tokens(emails, _mail_trusted_roots(db), _mail_preview_roots(db))
+
+    # Filter rules — listed (and managed by the admin) on the filtered tab.
+    filter_rules = (
+        db.scalars(
+            select(MailFilterRule).order_by(MailFilterRule.id.desc())
+        ).all()
+        if view == "filtered"
+        else []
+    )
+
+    # Learning nudge: a sender whose letters were rejected 2+ times and who has
+    # no sender rule yet (enabled OR disabled — a disabled rule records "the
+    # operator said no, don't ask again") gets a one-line suggestion banner on
+    # the pending tab.
+    filter_suggest = None
+    if view == "pending":
+        rejected_counts = db.execute(
+            select(EmailMessage.from_address, func.count().label("cnt"))
+            .where(
+                EmailMessage.status == "відхилено",
+                EmailMessage.from_address.is_not(None),
+            )
+            .group_by(EmailMessage.from_address)
+            .having(func.count() >= 2)
+            .order_by(func.count().desc())
+        ).all()
+        if rejected_counts:
+            sender_patterns = {
+                (r.pattern or "").strip().lower()
+                for r in db.scalars(
+                    select(MailFilterRule).where(MailFilterRule.kind == "sender")
+                ).all()
+            }
+            for address, cnt in rejected_counts:
+                if address.strip().lower() not in sender_patterns:
+                    filter_suggest = {"address": address, "count": cnt}
+                    break
 
     # The 15s triage poll asks for just the list wrapper (_mail_triage_list.html)
     # so new letters appear with the unread highlight without a full reload. The
@@ -3789,8 +3850,11 @@ def get_mail(
             "service_counts": service_counts,
             "view": view,
             "pending_count": pending_count,
+            "filtered_count": filtered_count,
             "archive_count": archive_count,
             "unread_count": unread_count,
+            "filter_rules": filter_rules,
+            "filter_suggest": filter_suggest,
             # Адреса скриньки, яку моніторить система — показуємо в шапці, щоб
             # оператор бачив, звідки саме тягнуться листи (None → не налаштовано).
             "mailbox": get_imap_login(db),
@@ -4321,6 +4385,151 @@ async def reject_email(
     if request_headers.get("HX-Request") == "true":
         return HTMLResponse("", status_code=200)
     return RedirectResponse("/mail", status_code=303)
+
+
+@app.post("/mail/{email_id}/unfilter")
+def unfilter_email(
+    request: Request,
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    """Bring a rule-filtered letter back to the main triage list. Clearing the
+    stamp is the whole undo — and apply_filters_to_email never re-stamps an
+    already-processed letter, so the operator's decision sticks."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+
+    email.filter_category = None
+    email.filter_rule_id = None
+    db.commit()
+
+    request_headers = getattr(request, "headers", None) or {}
+    if request_headers.get("HX-Request") == "true":
+        return HTMLResponse("", status_code=200)
+    return RedirectResponse("/mail?view=filtered", status_code=303)
+
+
+@app.post("/mail/filters")
+def create_mail_filter(
+    request: Request,
+    kind: str = Form(...),
+    pattern: str = Form(...),
+    category: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Create a triage filter rule (admin) and apply it retroactively to the
+    letters currently in the pending list — the reason the admin is creating it
+    is usually a letter they're looking at right now."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    kind = kind.strip()
+    pattern = pattern.strip()
+    category = category.strip()
+    if kind not in ("keyword", "sender") or not pattern or not category:
+        return RedirectResponse(
+            f"/mail?view=filtered&error={quote('Правило: вкажіть тип, шаблон і категорію')}",
+            status_code=303,
+        )
+
+    rule = MailFilterRule(
+        kind=kind, pattern=pattern, category=category,
+        created_by=user.username,
+    )
+    db.add(rule)
+    db.flush()
+    moved = apply_rule_retroactively(db, rule)
+    db.commit()
+
+    return RedirectResponse(
+        f"/mail?view=filtered&synced={moved}" if moved else "/mail?view=filtered",
+        status_code=303,
+    )
+
+
+@app.post("/mail/filters/dismiss-suggest")
+def dismiss_filter_suggest(
+    request: Request,
+    address: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """«Ні» on the suggestion banner: record the refusal as a DISABLED sender
+    rule so the banner never nags about this sender again. Costs nothing — a
+    disabled rule filters nothing and can be enabled later from the rules
+    panel if the operator changes their mind."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    address = address.strip()
+    if address:
+        db.add(
+            MailFilterRule(
+                kind="sender", pattern=address, category="відхилені",
+                enabled=False, created_by=user.username,
+            )
+        )
+        db.commit()
+    return RedirectResponse("/mail", status_code=303)
+
+
+@app.post("/mail/filters/{rule_id}/toggle")
+def toggle_mail_filter(
+    request: Request,
+    rule_id: int,
+    db: Session = Depends(get_db),
+):
+    """Enable/disable a rule (admin). Disabling never un-stamps already
+    filtered letters — those return via each letter's own «Повернути» button,
+    keeping the two decisions independent and predictable."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    rule = db.get(MailFilterRule, rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="rule not found")
+    rule.enabled = not rule.enabled
+    db.commit()
+    return RedirectResponse("/mail?view=filtered", status_code=303)
+
+
+@app.post("/mail/filters/{rule_id}/delete")
+def delete_mail_filter(
+    request: Request,
+    rule_id: int,
+    db: Session = Depends(get_db),
+):
+    """Delete a rule (admin). Letters it filtered keep their category badge
+    (historical fact) but lose the FK; they stay on the filtered tab until an
+    operator returns them."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    rule = db.get(MailFilterRule, rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="rule not found")
+    db.execute(
+        sa_update(EmailMessage)
+        .where(EmailMessage.filter_rule_id == rule.id)
+        .values(filter_rule_id=None)
+    )
+    db.delete(rule)
+    db.commit()
+    return RedirectResponse("/mail?view=filtered", status_code=303)
 
 
 def _unaccept_email(db: Session, email: EmailMessage) -> None:

@@ -4233,6 +4233,25 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .ssum .ssum-sep{color:var(--ink-3)}
 .mailv2 .ssum-actions{margin-left:auto;display:flex;gap:8px;flex:0 0 auto}
 .mailv2 .ssum-actions form{margin:0}
+
+/* Filter-rules admin panel on the «Відфільтровані» tab. */
+.mailv2 .filter-rules{padding:18px 20px}
+.mailv2 .rulelist{display:flex;flex-direction:column;gap:6px}
+.mailv2 .rulerow{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;background:#111823;border:1px solid var(--line)}
+.mailv2 .rulerow.is-off{opacity:.5}
+.mailv2 .rule-kind{font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);flex:0 0 auto}
+.mailv2 .rule-pattern{font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.mailv2 .rule-cat{font-size:11px;padding:1px 7px;border-radius:5px;background:rgba(240,163,94,.12);color:var(--warn);border:1px solid rgba(240,163,94,.3);flex:0 0 auto}
+.mailv2 .rule-hits{font-size:11px;color:var(--ink-3);flex:0 0 auto}
+.mailv2 .rulerow form{margin:0}
+.mailv2 .rule-new{display:flex;flex-direction:column;gap:9px}
+.mailv2 .rule-new .btn{align-self:flex-start}
+/* Suggestion banner: "you rejected N letters from X — filter this sender?" */
+.mailv2 .filter-suggest{display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-bottom:14px;padding:10px 14px;border-radius:10px;background:rgba(240,163,94,.08);border:1px solid rgba(240,163,94,.3);font-size:13px;color:var(--ink-2)}
+.mailv2 .filter-suggest svg{width:17px;height:17px;flex:0 0 auto;stroke:var(--warn);fill:none;stroke-width:1.7;stroke-linecap:round}
+.mailv2 .filter-suggest b{color:var(--ink)}
+.mailv2 .filter-suggest form{margin:0;margin-left:auto}
+.mailv2 .filter-suggest form+form{margin-left:0}
 @media (prefers-reduced-motion:reduce){.mailv2 .seg-pane{animation:none}}
 .mailv2 .detail-back{display:inline-flex;gap:14px;margin-bottom:12px;font-size:13px}
 .mailv2 .detail-back a{color:var(--ink-2);text-decoration:none}
