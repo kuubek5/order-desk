@@ -18,6 +18,81 @@ _PATTERNS = {
     "quantity_guess": r"(?:кількість|к-сть|шт\.?)[:\s]*[-–]?\s*(\d+)",
 }
 
+# Deterministic material recogniser — a sheet-independent backstop for when the
+# fuzzy-against-known-values fallback misses (real client subjects like "emo a2",
+# "pmma a3.5" never appeared in the lab's own sheet vocabulary, so they fuzzy-
+# matched nothing and came through blank). Recognises the material FAMILIES the
+# lab actually works with (CLAUDE.md §1-3: цирконій, ПММА, титан, віск, plus the
+# lab's own shorthands моно/моноліт/емо), in the Latin and Cyrillic spellings
+# clients use, optionally followed by a colour code (A1–A4 with a .5 half-step,
+# the 500/800 opaque codes, or "корея"). Longer family names are listed before
+# their prefixes (моноліт before моно) so the fuller match wins. Best-effort for
+# triage only — the operator still reviews and the accept wizard still offers
+# canonical material chips.
+_MAT_FAMILY = (
+    r"(?:цирконі[йяю]\w*|zircon\w*|пмма|pmma|титан\w*|titan\w*"
+    r"|моноліт\w*|monolight|monolit\w*|моно|mono|емакс\w*|e\.?max|емо|emo"
+    r"|віск\w*|воск\w*|wax)"
+)
+_MAT_COLOR = r"(?:[аa]\s?[1-4](?:[.,]5)?|[58]00|коре[яйю]\w*|korea)"
+_MATERIAL_FAMILY_RE = re.compile(
+    r"\b" + _MAT_FAMILY + r"(?:[\s:._–-]*" + _MAT_COLOR + r")?",
+    re.IGNORECASE,
+)
+
+# Forwarded client mail (Subject "Fwd: …") hides the real client behind the
+# forwarder's address — the original sender sits in a "From:/Від:/От кого:" line
+# inside the quoted body. Pull the display name (or the address) from it so the
+# triage card and accept wizard pre-fill the client instead of the forwarder.
+_FWD_FROM_RE = re.compile(
+    r"^\s*(?:from|від|от(?:\s+кого)?|отправитель|sender)\s*:\s*(.+)$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
+_REPLY_PREFIX_RE = re.compile(r"^\s*(?:re|fw|fwd)\s*:\s*", re.IGNORECASE)
+
+
+def _strip_reply_prefix(subject: str | None) -> str | None:
+    """Drop leading Re:/Fw:/Fwd: prefixes (possibly stacked, "Re: Fwd: …") so
+    the material fallbacks see the real subject payload."""
+    if not subject:
+        return subject
+    prev = None
+    while subject != prev:
+        prev = subject
+        subject = _REPLY_PREFIX_RE.sub("", subject)
+    return subject.strip()
+
+
+def guess_material_color_family(text: str | None) -> str | None:
+    """A material family + optional colour code lifted straight from free text,
+    independent of the sheet's historical vocabulary. Returns e.g. "emo a3.5",
+    "pmma a2", "моно а3", or None when no known family is present."""
+    if not text:
+        return None
+    match = _MATERIAL_FAMILY_RE.search(text)
+    if not match:
+        return None
+    return re.sub(r"\s+", " ", match.group(0)).strip() or None
+
+
+def guess_client_from_forward(body: str | None) -> str | None:
+    """Original sender name/address from a forwarded message's quoted headers,
+    or None when the body carries no "From:/Від:" line."""
+    if not body:
+        return None
+    match = _FWD_FROM_RE.search(body)
+    if not match:
+        return None
+    raw = match.group(1).strip()
+    named = re.match(r'^"?([^"<]+?)"?\s*<[^>]+>', raw)
+    if named and named.group(1).strip():
+        return named.group(1).strip()[:200]
+    email = _EMAIL_RE.search(raw)
+    if email:
+        return email.group(0)[:200]
+    return raw[:200] or None
+
 # Keyword/phrase hints that an email is about 3D printing — a service this
 # mailbox's lab does NOT do (CLAUDE.md section 1: the lab mills, it doesn't
 # print). Covers Ukrainian, Ukrainian-Russian surzhyk and English spellings
@@ -166,8 +241,12 @@ def guess_fields_from_text(
     # accepted as if they were a real material/color. Without known_materials
     # (None/empty) the old behaviour is preserved: accept the short phrase
     # as-is, so existing callers/tests that don't pass it are unaffected.
+    # Forwarded/replied client mail carries a "Fwd:"/"Re:" prefix in the subject
+    # ("Fwd: emo a2") — strip it so the material fallbacks see just the payload,
+    # not the mail-client noise.
+    subject_clean = _strip_reply_prefix(subject)
     if guesses["material_color_guess"] is None:
-        for candidate in (subject, body):
+        for candidate in (subject_clean, body):
             if not candidate:
                 continue
             candidate = candidate.strip()
@@ -180,6 +259,22 @@ def guess_fields_from_text(
                 else:
                     guesses["material_color_guess"] = candidate
                 break
+
+    # Sheet-independent backstop: real subjects ("emo a2", "pmma a3.5") that the
+    # lab never typed into its own sheet fuzzy-match nothing above and arrive
+    # blank — recognise the material family directly. Subject first (the more
+    # deliberate field), then body.
+    if guesses["material_color_guess"] is None:
+        for candidate in (subject_clean, body):
+            matched = guess_material_color_family(candidate)
+            if matched:
+                guesses["material_color_guess"] = matched
+                break
+
+    # Client: forwarded mail hides the real sender in the quoted body's
+    # "From:/Від:" header — pull it so the card isn't left blank (the wizard's
+    # from_address fallback only helps for non-forwarded mail).
+    guesses["client_name_guess"] = guess_client_from_forward(body)
 
     return guesses
 

@@ -1,4 +1,12 @@
-from app.mail_parser import fuzzy_match_material_color, guess_fields_from_text, guess_service_type
+import pytest
+
+from app.mail_parser import (
+    fuzzy_match_material_color,
+    guess_client_from_forward,
+    guess_fields_from_text,
+    guess_material_color_family,
+    guess_service_type,
+)
 
 
 def test_extracts_material_color():
@@ -240,3 +248,58 @@ def test_material_candidates_empty_inputs():
     from app.mail_parser import material_candidates
     assert material_candidates("", ["емо а3"]) == []
     assert material_candidates("емо", []) == []
+
+
+# --- Deterministic material-family recogniser (sheet-independent backstop) ---
+
+@pytest.mark.parametrize("text,expected", [
+    ("emo a2", "emo a2"),
+    ("pmma a3.5", "pmma a3.5"),
+    ("моно а3", "моно а3"),
+    ("monolight a3", "monolight a3"),
+    ("Fwd: pmma a2", "pmma a2"),
+    ("цирконій 800", "цирконій 800"),
+    ("титан корея", "титан корея"),
+    ("pmma", "pmma"),            # family without colour still recognised
+])
+def test_material_family_recognises_real_subjects(text, expected):
+    assert guess_material_color_family(text).lower() == expected.lower()
+
+
+@pytest.mark.parametrize("text", ["ky", "hello world", "", None, "замовлення на завтра"])
+def test_material_family_ignores_non_materials(text):
+    assert guess_material_color_family(text) is None
+
+
+def test_family_backstop_fires_when_sheet_fuzzy_misses():
+    # "emo a2" never in the lab sheet vocab → fuzzy returns nothing, family wins.
+    result = guess_fields_from_text("emo a2", subject="emo a2", body="",
+                                    known_materials=["моно а3", "титан корея"])
+    assert result["material_color_guess"].lower() == "emo a2"
+
+
+# --- Client from forwarded headers ---
+
+@pytest.mark.parametrize("body,expected", [
+    ("---------- Forwarded message ---------\nFrom: Ivan Petrov <ivan@x.com>\n", "Ivan Petrov"),
+    ("Від: Петро Іваненко <p@ukr.net>\nтекст", "Петро Іваненко"),
+    ("From: client@example.com\n", "client@example.com"),
+    ('From: "Клініка Люмі" <lumi@ukr.net>', "Клініка Люмі"),
+])
+def test_client_from_forward_extracts_sender(body, expected):
+    assert guess_client_from_forward(body) == expected
+
+
+@pytest.mark.parametrize("body", ["", None, "звичайний текст без заголовків"])
+def test_client_from_forward_none_when_absent(body):
+    assert guess_client_from_forward(body) is None
+
+
+def test_guess_fields_sets_client_from_forwarded_body():
+    result = guess_fields_from_text(
+        "Fwd: pmma a2\nFrom: Стоматологія Люмі <lumi@ukr.net>\nфайли у вкладенні",
+        subject="Fwd: pmma a2",
+        body="From: Стоматологія Люмі <lumi@ukr.net>\nфайли у вкладенні",
+    )
+    assert result["client_name_guess"] == "Стоматологія Люмі"
+    assert result["material_color_guess"].lower() == "pmma a2"
