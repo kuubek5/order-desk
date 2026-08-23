@@ -21,6 +21,17 @@
     {% block content %}{% endblock %}
     {% include "_update_overlay.html" %}
     <div id="toast-stack" class="toast-stack" aria-live="assertive" aria-atomic="false"></div>
+    {% if toast_flash %}
+    {# One-shot outcome toast carried across a redirect via session flash
+       (e.g. accept → queue). app.js loads deferred, so wait for it. #}
+    <script>
+      (function(){
+        var f = {{ toast_flash | tojson }};
+        function show(){ if(window.showToast){ window.showToast(f.message, f.kind || 'info'); } else { setTimeout(show, 60); } }
+        if(document.readyState !== 'loading'){ show(); } else { document.addEventListener('DOMContentLoaded', show); }
+      })();
+    </script>
+    {% endif %}
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

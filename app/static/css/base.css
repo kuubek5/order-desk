@@ -4872,6 +4872,8 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
 .toast-success{border-color:rgba(131,201,149,.4);
   box-shadow:0 12px 34px rgba(0,0,0,.5),inset 3px 0 0 var(--color-success,#5eead4)}
 .toast-info{box-shadow:0 12px 34px rgba(0,0,0,.5),inset 3px 0 0 var(--accent,#14b8a6)}
+.toast-warning{border-color:rgba(240,163,94,.4);
+  box-shadow:0 12px 34px rgba(0,0,0,.5),inset 3px 0 0 var(--warn,#f0a35e)}
 @media (prefers-reduced-motion:reduce){
   .toast{transition:opacity .2s ease}
   .toast-in,.toast-out{transform:none}

@@ -1353,3 +1353,43 @@ def test_partial_accept_redirects_to_two_pane_open(monkeypatch, tmp_path):
             folder_new="", material_folder="", attachment_ids=[a1_id], db=db,
         ))
         assert resp.headers["location"] == f"/mail?open={email.id}"
+
+
+def test_accept_sets_truthful_outcome_toast(monkeypatch, tmp_path):
+    """Accept leaves a session toast flash reporting what actually happened —
+    saved count (full) and remaining count (partial)."""
+    engine = _database()
+    export_root = tmp_path / "export"; export_root.mkdir()
+    spool = tmp_path / "spool" / "t"; spool.mkdir(parents=True)
+    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
+    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email = EmailMessage(uid="t", status="нове", from_address="c@x.ua", attachments_status="ready")
+        db.add(email); db.flush()
+        f1 = spool / "a.stl"; f1.write_bytes(b"A")
+        f2 = spool / "b.stl"; f2.write_bytes(b"B")
+        a1 = Attachment(email_message_id=email.id, filename="a.stl", saved_path=str(f1))
+        a2 = Attachment(email_message_id=email.id, filename="b.stl", saved_path=str(f2))
+        db.add_all([a1, a2]); db.commit()
+        a1_id, a2_id = a1.id, a2.id
+
+        req = _request(user.id)
+        # partial: one file, one remains
+        asyncio.run(web.accept_email(
+            request=req, email_id=email.id, client_name="C", material_color="моно",
+            kind="", quantity="", folder_pick="", folder_new="", material_folder="",
+            attachment_ids=[a1_id], db=db,
+        ))
+        flash = req.session["toast_flash"]
+        assert flash["kind"] == "success"
+        assert "збережено 1" in flash["message"] and "Лишилось 1" in flash["message"]
+
+        # finish: last file, full accept
+        asyncio.run(web.accept_email(
+            request=req, email_id=email.id, client_name="C", material_color="цирконій",
+            kind="", quantity="", folder_pick="", folder_new="", material_folder="",
+            attachment_ids=[a2_id], db=db,
+        ))
+        flash = req.session["toast_flash"]
+        assert "прийнято в чергу: збережено 1" in flash["message"]

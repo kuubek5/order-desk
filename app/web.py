@@ -1570,7 +1570,10 @@ def get_queue(
     orders_lab = [o for o in orders if o.source != "email"]
     orders_email = [o for o in orders if o.source == "email"]
 
-    sync_flash = request.session.pop("sync_flash", None)
+    # Pop flashes only on a full-page render — the 15s poll (partial="rows")
+    # would otherwise consume them before the real navigation shows them.
+    sync_flash = request.session.pop("sync_flash", None) if partial != "rows" else None
+    toast_flash = request.session.pop("toast_flash", None) if partial != "rows" else None
     # Newest-first, matching the /mail triage list exactly — the pinned widget
     # is a peek of the SAME queue, so the two must agree on order (an opposite
     # sort made the widget's top rows look like different letters).
@@ -1666,6 +1669,7 @@ def get_queue(
             "has_any_orders": bool(all_orders),
             "sheets_configured": _sheets_configured(db),
             "sync_flash": sync_flash,
+            "toast_flash": toast_flash,
             "pending_emails": pending_emails,
             "pending_mail_count": pending_mail_count,
             "selected_date": selected_date,
@@ -3743,6 +3747,9 @@ def get_mail(
         service = "all"
     if view not in ("pending", "filtered", "archive"):
         view = "pending"
+    # Pop the flash only on a full-page render — the 15s poll (partial="list")
+    # would otherwise consume it before the real navigation shows it.
+    toast_flash = request.session.pop("toast_flash", None) if partial != "list" else None
 
     # Three views: pending = "нове" NOT stamped by a filter rule; filtered =
     # "нове" stamped (kept, never deleted — one click brings a letter back);
@@ -3876,6 +3883,7 @@ def get_mail(
             "emails": emails,
             "open_panel_html": open_panel_html,
             "open_id": open_id,
+            "toast_flash": toast_flash,
             "user": user,
             "synced": synced,
             "error": error,
@@ -4458,6 +4466,25 @@ async def accept_email(
     ]
     email.status = "нове" if remaining else "прийнято"
     db.commit()
+
+    # A truthful outcome toast, shown on the page we land on (session flash →
+    # base.html). Reports exactly what happened: how many files were saved this
+    # batch and, for a multi-colour letter, how many still wait in the letter.
+    saved = len(attachments)
+    mat = (new_order.material_color or "").strip() or "без матеріалу"
+    if remaining:
+        message = (
+            f"Прийнято партію «{mat}»: збережено {saved} файл(ів). "
+            f"Лишилось {len(remaining)} файл(ів) у листі — прийміть наступний колір."
+        )
+        kind = "success"
+    elif saved:
+        message = f"Роботу «{mat}» прийнято в чергу: збережено {saved} файл(ів)."
+        kind = "success"
+    else:
+        message = f"Роботу «{mat}» прийнято в чергу без файлів (файлів не знайдено)."
+        kind = "warning"
+    request.session["toast_flash"] = {"kind": kind, "message": message}
 
     # Where to land: still files left → back to the letter to accept the next
     # colour; done → the client queue. The wizard posts over HTMX, so a 303
