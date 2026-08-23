@@ -1,7 +1,7 @@
 """Seed the temporary-crown → ПММА material aliases on existing installs.
 
-Revision ID: 0017_seed_pmma_temp_aliases
-Revises: 0016_add_service_keywords
+Revision ID: 0016_seed_pmma_temp_aliases
+Revises: 0015_add_handled_link_refs
 
 app/material_classifier.py's SEED_ALIASES gained «врім'янка»/«temp» → ПММА so
 the mail triage recognises the product wording clients use for PMMA. But the
@@ -18,8 +18,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0017_seed_pmma_temp_aliases"
-down_revision: str | None = "0016_add_service_keywords"
+revision: str = "0016_seed_pmma_temp_aliases"
+down_revision: str | None = "0015_add_handled_link_refs"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

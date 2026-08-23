@@ -71,13 +71,6 @@ from app.material_catalog import (
     resolve_material_id,
     unresolved_order_count,
 )
-from app.service_catalog import (
-    ServiceCatalogError,
-    add_keyword,
-    delete_keyword,
-    ensure_seeded as ensure_service_seeded,
-    list_keywords,
-)
 from app.mail_filters import apply_rule_retroactively
 from app.models import Attachment, Client, ClientNameAlias, ClientSenderMemory, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sender, remember_sender, sender_key_for
@@ -3482,17 +3475,17 @@ def reclassify_materials(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/settings/recognition", response_class=HTMLResponse)
 def get_recognition_settings(request: Request, db: Session = Depends(get_db)):
-    """Screen: mail recognition dictionary (admin). Two editable rule sets that
-    the mail triage reads live — service-type keywords (розпізнано/перевірити
-    badge) and the default-material fallback — plus a pointer to the material
-    library, where material synonyms like «врім'янка» → ПММА are maintained."""
+    """Screen: mail recognition settings (admin). Holds the default-material
+    fallback the triage applies to a signal-less milling letter, and points to
+    the two editable dictionaries that live elsewhere — the material library
+    (synonyms like «врім'янка» → ПММА) and the mail filters (exception
+    categories like 3D-друк / моделювання that route a letter out of the queue)."""
     user = get_current_user(request, db)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
-    ensure_service_seeded(db)
     flash = request.session.pop("recognition_flash", None)
     return templates.TemplateResponse(
         request,
@@ -3500,39 +3493,11 @@ def get_recognition_settings(request: Request, db: Session = Depends(get_db)):
         {
             "page_title": "Розпізнавання пошти",
             "user": user,
-            "keywords": list_keywords(db),
             "materials": list_materials(db),
             "default_material": get_mail_default_material(db),
             "flash": flash,
         },
     )
-
-
-@app.post("/settings/recognition/keyword/add")
-def add_service_keyword(
-    request: Request,
-    pattern: str = Form(...),
-    match_type: str = Form("contains"),
-    db: Session = Depends(get_db),
-):
-    _require_settings_admin(request, db)
-    try:
-        add_keyword(db, pattern, match_type)
-        db.commit()
-        request.session["recognition_flash"] = {"kind": "success", "message": "Ключове слово додано."}
-    except ServiceCatalogError as exc:
-        db.rollback()
-        request.session["recognition_flash"] = {"kind": "error", "message": str(exc)}
-    return RedirectResponse("/settings/recognition", status_code=303)
-
-
-@app.post("/settings/recognition/keyword/{keyword_id}/delete")
-def remove_service_keyword(keyword_id: int, request: Request, db: Session = Depends(get_db)):
-    _require_settings_admin(request, db)
-    delete_keyword(db, keyword_id)
-    db.commit()
-    request.session["recognition_flash"] = {"kind": "success", "message": "Ключове слово видалено."}
-    return RedirectResponse("/settings/recognition", status_code=303)
 
 
 @app.post("/settings/recognition/default-material")

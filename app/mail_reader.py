@@ -16,8 +16,6 @@ from app.mail_parser import guess_fields_from_text, guess_service_type
 from app.material_catalog import ensure_seeded as ensure_materials_seeded, load_alias_rows
 from app.material_classifier import AliasRow
 from app.sender_memory import is_auto_sender
-from app.service_catalog import ensure_seeded as ensure_service_seeded, load_service_rows
-from app.service_classifier import ServiceKeywordRow
 from app.models import Attachment, EmailMessage, Order
 from app.settings_store import (
     get_imap_login,
@@ -222,7 +220,6 @@ def _apply_attachments(
     attachments_dir: Path,
     known_materials: list[str],
     material_alias_rows: "list[AliasRow] | None" = None,
-    service_keyword_rows: "list[ServiceKeywordRow] | None" = None,
     default_material: str | None = None,
 ) -> None:
     """Fill guess fields and save attachments for one fully-fetched message.
@@ -253,7 +250,7 @@ def _apply_attachments(
     # convention) so the triage card isn't left blank. Only fills a genuine gap
     # — never overrides a real guess — and skips 3D-print letters, which aren't
     # milled here. Operator still reviews.
-    service_type_guess = guess_service_type(combined_text, service_keyword_rows)
+    service_type_guess = guess_service_type(combined_text)
     if (
         default_material
         and not guesses.get("material_color_guess")
@@ -371,15 +368,14 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
         )
     )
 
-    # Editable recognition dictionaries (admin-maintained, /settings screens):
-    # material aliases feed the triage material guess, service keywords decide
-    # the розпізнано/перевірити badge. Loaded once per sync and reused for every
-    # message, like known_materials above. ensure_seeded is idempotent — a no-op
-    # once the migration has seeded, but covers create_all/first-boot installs.
+    # Editable material dictionary (admin-maintained, /settings/materials):
+    # material aliases feed the triage material guess. Loaded once per sync and
+    # reused for every message, like known_materials above. ensure_seeded is
+    # idempotent — a no-op once the migration has seeded, but covers
+    # create_all/first-boot installs. default_material is the fallback for a
+    # milling letter that carries no material signal at all.
     ensure_materials_seeded(session)
-    ensure_service_seeded(session)
     material_alias_rows = load_alias_rows(session)
-    service_keyword_rows = load_service_rows(session)
     default_material = get_mail_default_material(session)
 
     cutoff = date.today() - timedelta(days=IMAP_LOOKBACK_DAYS)
@@ -455,7 +451,6 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                     attachments_dir,
                     known_materials,
                     material_alias_rows,
-                    service_keyword_rows,
                     default_material,
                 )
                 session.commit()

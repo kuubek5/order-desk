@@ -203,26 +203,6 @@ class MaterialAlias(Base):
     material: Mapped["Material"] = relationship("Material", back_populates="aliases")
 
 
-class ServiceKeyword(Base):
-    """One raw-text rule flagging an email's service type for the triage badge.
-
-    Mirrors MaterialAlias: pattern + match_type ("token" exact whitespace token
-    or "contains" substring), but resolves to a service_type string instead of a
-    material. service_type="3d_print" marks work the lab does NOT do (it mills,
-    it doesn't print) so the triage card shows «перевірити» instead of
-    «розпізнано». Editable at runtime from the /settings/recognition screen —
-    the hardcoded seed in app/service_classifier.py is only the starting set.
-    Never hides a letter; only flags one for a second look (CLAUDE.md screen 2)."""
-
-    __tablename__ = "service_keywords"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    pattern: Mapped[str] = mapped_column(String(200), index=True)
-    match_type: Mapped[str] = mapped_column(String(20), default="contains")
-    service_type: Mapped[str] = mapped_column(String(50), default="3d_print")
-    confirmed: Mapped[bool] = mapped_column(default=True)
-
-
 class Client(Base):
     """A client profile the operator maintains directly (contact info, notes).
 

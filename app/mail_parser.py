@@ -12,7 +12,6 @@ from rapidfuzz import fuzz
 
 from app.client_matcher import _transliterations
 from app.material_classifier import AliasRow, classify_material
-from app.service_classifier import ServiceKeywordRow, classify_service
 
 _PATTERNS = {
     "material_color_guess": r"(?:колір|цвет|матеріал)[:\s]+[-–]?\s*([^\n,;]+)",
@@ -298,10 +297,7 @@ def guess_fields_from_text(
     return guesses
 
 
-def guess_service_type(
-    text: str,
-    service_keyword_rows: "list[ServiceKeywordRow] | None" = None,
-) -> str | None:
+def guess_service_type(text: str) -> str | None:
     """Best-effort hint: does this email sound like it's about 3D printing —
     a service this mailbox's lab does NOT offer (CLAUDE.md section 1-2: the
     lab mills, it doesn't print) — rather than milling, which is the default
@@ -322,18 +318,9 @@ def guess_service_type(
     about both in one email), this still returns "3d_print" — an operator
     double-checking a mixed email that turns out to be milling-only is cheap;
     silently treating a mixed request as pure milling is not.
-
-    When `service_keyword_rows` is supplied (the admin-maintained ServiceKeyword
-    dictionary, loaded once per sync), matching runs off those editable rules so
-    the lab can extend recognition from /settings/recognition without a code
-    change. When None (older callers, unit tests), the hardcoded regex seed
-    below is used unchanged, so existing behaviour is preserved.
     """
     if not text:
         return None
-
-    if service_keyword_rows is not None:
-        return classify_service(text, service_keyword_rows)
 
     normalized = unicodedata.normalize("NFC", text)
     for service_type, patterns in _SERVICE_TYPE_PATTERNS.items():
