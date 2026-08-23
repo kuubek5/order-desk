@@ -4239,6 +4239,15 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .manual-filter{display:inline-flex;gap:6px;align-items:center}
 .mailv2 .manual-filter .suminput.sm{height:30px;width:auto;padding:0 7px;font-size:12px}
 
+/* Teach-from-triage: fold-out keyword→category rule inside the letter pane. */
+.mailv2 .teach-filter{margin-top:12px}
+.mailv2 .teach-filter-sum{cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:6px}
+.mailv2 .teach-filter-sum::before{content:"+";font-family:var(--mono,monospace);opacity:.6}
+.mailv2 .teach-filter[open] .teach-filter-sum::before{content:"–"}
+.mailv2 .teach-filter-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 4px}
+.mailv2 .teach-filter-form .suminput.sm{height:32px;font-size:12px}
+.mailv2 .teach-filter-form input[name=pattern]{flex:1;min-width:140px}
+
 /* Filter-rules admin panel — shared by the triage «Відфільтровані» tab and the
    settings «Фільтри пошти» section, so everything is scoped to .filter-rules
    (NOT .mailv2) and carries its own control styling. */

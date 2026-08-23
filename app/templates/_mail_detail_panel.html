@@ -78,6 +78,28 @@
                 <div class="dlabel">Текст листа</div>
                 <pre class="camtext">{{ email.body_text or '(порожньо)' }}</pre>
             </div>
+
+            {% if is_new and user and user.role == 'адмін' %}
+            {# Teach-from-triage: turn "this kind of letter isn't ours" into a
+               standing keyword rule. Unlike «У фільтр» in the sticky bar (moves
+               THIS letter only), a rule auto-files every future letter carrying
+               the word — and applies retroactively to the queue right now. #}
+            <details class="dsec teach-filter">
+                <summary class="dlabel teach-filter-sum">Навчити фільтр за словом</summary>
+                <form method="post" action="/mail/filters" class="teach-filter-form">
+                    <input type="hidden" name="kind" value="keyword">
+                    <input type="hidden" name="return_to" value="">
+                    <input type="text" name="pattern" class="suminput sm mono" placeholder="слово, напр. моделювання" required>
+                    <select name="category" class="suminput sm" aria-label="Категорія">
+                        {% for cat in filter_categories %}
+                        <option value="{{ cat }}">{{ cat }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn sm primary" title="Створити правило: всі листи з цим словом → у «Відфільтровані». Діє і на ті, що вже в черзі.">Запам'ятати</button>
+                </form>
+                <div class="wiz-hint">Далі листи з цим словом фільтруються самі. Керувати правилами — Налаштування → Фільтри пошти.</div>
+            </details>
+            {% endif %}
         </section>
 
         {# ---------- Pane: Файли + STL ---------- #}
