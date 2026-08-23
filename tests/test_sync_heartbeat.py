@@ -221,6 +221,7 @@ def test_mail_tick_skips_and_leaves_heartbeat_untouched_when_unconfigured(
 def test_mail_tick_records_success(isolated_heartbeats, monkeypatch):
     monkeypatch.setattr(web, "_imap_configured", lambda db: True)
     monkeypatch.setattr(web, "sync_mail_background", lambda db, path: 3)
+    monkeypatch.setattr(web, "_auto_accept_pass", lambda db: 0)
 
     web._mail_sync_tick(db=None)
 

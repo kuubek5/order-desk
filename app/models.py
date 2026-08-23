@@ -366,6 +366,11 @@ class ClientSenderMemory(Base):
     client_name: Mapped[str] = mapped_column(String(200))
     export_folder: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     orders_count: Mapped[int] = mapped_column(default=1)
+    # Trusted sender: their letters are auto-accepted on arrival (files moved to
+    # export, order created, no operator step) — but ONLY when the guardrails
+    # pass (single confident material, no files-behind-link). Operator toggles
+    # this per sender on the «Авто-прийняття» screen. Default False.
+    auto_accept: Mapped[bool] = mapped_column(default=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()

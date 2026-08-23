@@ -105,3 +105,21 @@ def remember_sender(
         row.orders_count = (row.orders_count or 0) + 1
         row.last_seen_at = now
     return row
+
+
+def is_auto_sender(db: Session, email: EmailMessage) -> bool:
+    """True if this letter's sender is on the trusted auto-accept list."""
+    key = sender_key_for(email)
+    if key is None:
+        return False
+    row = db.scalar(select(ClientSenderMemory).where(ClientSenderMemory.sender_key == key))
+    return bool(row and row.auto_accept)
+
+
+def list_sender_memories(db: Session) -> list[ClientSenderMemory]:
+    """All known senders (most recent first) for the «Авто-прийняття» screen."""
+    return list(
+        db.scalars(
+            select(ClientSenderMemory).order_by(ClientSenderMemory.last_seen_at.desc())
+        ).all()
+    )

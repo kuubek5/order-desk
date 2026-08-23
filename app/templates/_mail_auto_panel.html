@@ -1,0 +1,39 @@
+{# «Авто-прийняття» — trusted-sender list. Each known sender (a client the lab
+   has accepted at least once) can be switched to auto: their next letters are
+   accepted without the operator, but only when the guardrails pass (single
+   confident material, no files behind links; multi-colour always stays manual).
+   Needs sender_memories. #}
+<div class="filter-rules auto-panel">
+    <div class="dsec">
+        <div class="dlabel">Довірені клієнти · авто-прийняття</div>
+        <p class="wiz-hint" style="margin-top:0">
+            Увімкнений клієнт — його листи приймаються самі (файли в export, робота в черзі), щойно надійдуть.
+            <b>Запобіжники:</b> мультиколірний лист, нерозпізнаний матеріал або файли за посиланням завжди йдуть на ручну звірку.
+        </p>
+        {% if sender_memories %}
+        <div class="senderlist">
+            {% for m in sender_memories %}
+            <div class="senderrow {% if m.auto_accept %}is-auto{% endif %}">
+                <div class="sr-main">
+                    <span class="sr-name">{{ m.client_name }}</span>
+                    <span class="sr-key mono">{{ m.sender_key }}</span>
+                </div>
+                <div class="sr-meta mono">
+                    {{ m.orders_count }} робіт{% if m.export_folder %} · {{ m.export_folder }}{% endif %} · {{ m.last_seen_at.strftime('%d.%m.%y') }}
+                </div>
+                <form method="post" action="/mail/senders/{{ m.id }}/auto" class="sr-toggle">
+                    <button type="submit" class="autotoggle {% if m.auto_accept %}on{% endif %}"
+                            title="{% if m.auto_accept %}Авто увімкнено — вимкнути (повернути на ручне){% else %}Увімкнути авто-прийняття для цього клієнта{% endif %}"
+                            aria-pressed="{{ 'true' if m.auto_accept else 'false' }}">
+                        <span class="at-track"><span class="at-knob"></span></span>
+                        <span class="at-label">{% if m.auto_accept %}Авто{% else %}Ручне{% endif %}</span>
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="settings-hint">Список порожній. Клієнт зʼявляється тут після першого прийняття його листа — тоді його можна зробити довіреним.</p>
+        {% endif %}
+    </div>
+</div>

@@ -71,8 +71,8 @@ from app.material_catalog import (
     unresolved_order_count,
 )
 from app.mail_filters import apply_rule_retroactively
-from app.models import Attachment, Client, ClientNameAlias, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
-from app.sender_memory import lookup_sender, remember_sender
+from app.models import Attachment, Client, ClientNameAlias, ClientSenderMemory, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
+from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sender, remember_sender, sender_key_for
 from app.order_folder import (
     attach_email_folder_availability,
     attach_email_preview_tokens,
@@ -485,6 +485,10 @@ def _mail_sync_tick(db: Session) -> None:
         return
     try:
         sync_mail_background(db, Path(MAIL_ATTACHMENTS_PATH))
+        try:
+            _auto_accept_pass(db)
+        except Exception:  # noqa: BLE001 — auto-accept must never break the sync tick
+            logger.exception("Auto-accept pass failed during background sync")
     except MailSyncBusyError:
         _record_sync_heartbeat("mail", status="skipped")
         return
@@ -3745,7 +3749,7 @@ def get_mail(
     # screen's source/ready filters.
     if service not in SERVICE_TYPE_FILTERS:
         service = "all"
-    if view not in ("pending", "filtered", "archive"):
+    if view not in ("pending", "filtered", "archive", "auto"):
         view = "pending"
     # Pop the flash only on a full-page render — the 15s poll (partial="list")
     # would otherwise consume it before the real navigation shows it.
@@ -3788,6 +3792,12 @@ def get_mail(
     archive_count = db.scalar(
         select(func.count()).select_from(EmailMessage).where(
             EmailMessage.status.in_(_ARCHIVE_STATUSES)
+        )
+    ) or 0
+    sender_memories = list_sender_memories(db) if view == "auto" else []
+    auto_count = db.scalar(
+        select(func.count()).select_from(ClientSenderMemory).where(
+            ClientSenderMemory.auto_accept.is_(True)
         )
     ) or 0
 
@@ -3892,6 +3902,8 @@ def get_mail(
             "view": view,
             "pending_count": pending_count,
             "filtered_count": filtered_count,
+            "sender_memories": sender_memories,
+            "auto_count": auto_count,
             "archive_count": archive_count,
             "unread_count": unread_count,
             "filter_rules": filter_rules,
@@ -3916,6 +3928,12 @@ def sync_mail(request: Request, db: Session = Depends(get_db)):
     except (MailSyncBusyError, MailSyncError) as exc:
         return RedirectResponse(f"/mail?error={quote(str(exc))}", status_code=303)
 
+    auto = _auto_accept_pass(db)
+    if auto:
+        request.session["toast_flash"] = {
+            "kind": "success",
+            "message": f"Авто-прийнято листів від довірених клієнтів: {auto}.",
+        }
     return RedirectResponse(f"/mail?synced={count}", status_code=303)
 
 
@@ -4273,6 +4291,139 @@ def open_mail_folder(
         logger.exception("Could not open attachment folder for email %s", email_id)
         raise HTTPException(status_code=500, detail="не вдалося відкрити папку")
     return Response(status_code=204)
+
+
+def _auto_accept_skip_reason(db: Session, email: EmailMessage) -> str | None:
+    """None → this letter is eligible for hands-off auto-accept. Otherwise a
+    short reason it must go to MANUAL triage instead. Guardrails agreed with the
+    operator: trusted sender only, one confident material, all files present
+    (nothing behind a download link). Multi-colour can't be detected up front,
+    so trusting a sender is the operator's judgement that they send single-colour
+    letters — a rare mistake is recoverable via «Повернути»."""
+    if email.status != "нове":
+        return "не нове"
+    if email.attachments_status != "ready":
+        return "вкладення ще вантажаться"
+    if not is_auto_sender(db, email):
+        return "відправник не в авто-списку"
+    if not (email.material_color_guess or "").strip():
+        return "матеріал не розпізнано"
+    if extract_download_links(email.body_text):
+        return "є файли за посиланням"
+    if not any(Path(a.saved_path).exists() for a in email.attachments):
+        return "немає файлів на диску"
+    return None
+
+
+def _auto_accept_pass(db: Session) -> int:
+    """Auto-accept every eligible pending letter from a trusted sender. Runs
+    after each IMAP sync (manual + background). Each letter is independent —
+    a failure on one is logged and never blocks the rest. Returns how many were
+    auto-accepted. Mirrors the manual accept route's side effects (order, file
+    move, sheet placeholder, sender memory) but with no operator step; stamps
+    Order.auto_accepted=True so the history shows it was hands-off."""
+    candidates = db.scalars(
+        select(EmailMessage)
+        .where(EmailMessage.status == "нове")
+        .options(selectinload(EmailMessage.attachments))
+    ).all()
+    accepted = 0
+    for email in candidates:
+        if _auto_accept_skip_reason(db, email) is not None:
+            continue
+        try:
+            _auto_accept_one(db, email)
+            db.commit()
+            accepted += 1
+        except Exception:  # noqa: BLE001 — one bad letter must not abort the pass
+            db.rollback()
+            logger.exception("Auto-accept failed for email %s", email.id)
+    return accepted
+
+
+def _auto_accept_one(db: Session, email: EmailMessage) -> None:
+    hint = lookup_sender(db, email)
+    client_name = (
+        (hint.client_name if hint else None)
+        or email.client_name_guess or email.from_address or ""
+    ).strip()
+    material_color = (email.material_color_guess or "").strip()
+
+    today = date.today()
+    target_tab = today.strftime("%d.%m.%y")
+    target_worksheet = None
+    try:
+        target_worksheet = latest_worksheet_on_or_before(open_spreadsheet(db=db), today)
+        if target_worksheet is not None:
+            target_tab = target_worksheet.title
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Auto-accept: could not resolve sheet tab for %s: %s", email.id, exc)
+
+    order = Order(
+        source="email", sheet_tab=target_tab, row_number=None,
+        client_name=client_name or None, material_color=material_color or None,
+        quantity=(email.quantity_guess or "").strip() or None,
+        kind=(email.kind_guess or "").strip() or None,
+        status="нове", auto_accepted=True, source_email_id=email.id,
+    )
+    ensure_seeded(db)
+    order.material_id = resolve_material_id(order.material_color, load_alias_rows(db), material_id_by_name(db))
+    db.add(order)
+    db.flush()
+    email.order_id = order.id
+    db.add(StatusEvent(order_id=order.id, status="нове", actor="авто-прийняття"))
+
+    attachments = [a for a in email.attachments if a.order_id is None and Path(a.saved_path).exists()]
+    used_folder = None
+    if attachments:
+        folder_override = hint.export_folder if hint else ""
+        new_paths = save_attachments_to_export(
+            Path(get_export_folder_path(db)), client_name, material_color,
+            [Path(a.saved_path) for a in attachments],
+            client_folder_override=folder_override,
+        )
+        for attachment, new_path in zip(attachments, new_paths):
+            attachment.saved_path = str(new_path)
+            attachment.order_id = order.id
+        try:
+            used_folder = new_paths[0].relative_to(Path(get_export_folder_path(db))).parts[0] if new_paths else None
+        except (ValueError, IndexError):
+            used_folder = None
+        db.add(SyncLog(direction="mail_to_export", status="ok",
+                       message=f"auto-accept email {email.id}: {len(attachments)} файл(ів)"))
+
+    remember_sender(db, email, client_name, used_folder)
+
+    if target_worksheet is not None:
+        try:
+            note_row = append_mail_placeholder_row(
+                target_worksheet, client_name, order.quantity or "", material_color
+            )
+            order.row_number = note_row - HEADER_ROWS
+        except Exception:  # noqa: BLE001 — sheet write never blocks auto-accept
+            logger.exception("Auto-accept: sheet write failed for email %s", email.id)
+
+    email.status = "прийнято"
+
+
+@app.post("/mail/senders/{memory_id}/auto")
+def toggle_sender_auto(
+    request: Request,
+    memory_id: int,
+    db: Session = Depends(get_db),
+):
+    """Flip a sender's trusted auto-accept flag (any operator). Trusting a
+    sender means their future letters are accepted automatically when the
+    guardrails pass; existing letters already in triage are untouched."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    row = db.get(ClientSenderMemory, memory_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="sender not found")
+    row.auto_accept = not row.auto_accept
+    db.commit()
+    return RedirectResponse("/mail?view=auto", status_code=303)
 
 
 @app.post("/mail/{email_id}/accept", response_class=HTMLResponse)
