@@ -1000,6 +1000,11 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
         assert _json.loads(response.headers["HX-Trigger"]).get("mailFilesChanged") is True
         atts = db.query(Attachment).filter(Attachment.email_message_id == email.id).all()
         assert len(atts) == 1 and atts[0].filename == "model.stl"
+        # the link ref is recorded so the "ще N за посиланням" count drops to 0
+        import json as _j
+        assert fid in _j.loads(email.handled_link_refs)
+        ctx = web._mail_panel_context(db, email, user)
+        assert ctx["undownloaded_links"] == []
 
 
 def test_fetch_email_link_reports_error_row(monkeypatch, tmp_path):

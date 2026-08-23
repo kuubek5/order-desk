@@ -281,6 +281,10 @@ class EmailMessage(Base):
     # first time any operator opens the detail panel (GET /mail/{id}). Shared,
     # not per-user (max two operators — a single seen flag is enough).
     seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
+    # JSON list of download-link refs (file_id/url) already pulled from the body
+    # (or found already on disk). Lets «Файли + STL» count only links STILL to
+    # download, so the "ще N за посиланням" warning clears once all are fetched.
+    handled_link_refs: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # Mail filtering (screen 2's «Відфільтровані» tab): a matched MailFilterRule
     # stamps its category + id here. The letter is NEVER deleted or hidden for
     # good — status stays "нове", it just moves to the filtered tab and one

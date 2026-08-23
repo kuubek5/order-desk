@@ -20,10 +20,10 @@
 <div class="mail-seg" data-mail-id="{{ email.id }}">
     <div class="seg-tabs" role="tablist">
         <button type="button" class="seg-tab on" data-seg="letter" role="tab">Лист</button>
-        <button type="button" class="seg-tab" data-seg="files" role="tab" title="{{ att_count }} на диску{% if body_links %} + {{ body_links|length }} за посиланням{% endif %}">
+        <button type="button" class="seg-tab" data-seg="files" role="tab" title="{{ att_count }} на диску{% if undownloaded_links %} + {{ undownloaded_links|length }} за посиланням (не скачано){% endif %}">
             Файли + STL
-            <span class="seg-cnt">{% if email.attachments_status == 'pending' %}…{% else %}{{ att_count }}{% if body_links %}+{{ body_links|length }}{% endif %}{% endif %}</span>
-            {% if body_links %}<span class="seg-dot" title="Є файли за посиланням — не всі на диску" aria-hidden="true"></span>{% endif %}
+            <span class="seg-cnt">{% if email.attachments_status == 'pending' %}…{% else %}{{ att_count }}{% if undownloaded_links %}+{{ undownloaded_links|length }}{% endif %}{% endif %}</span>
+            {% if undownloaded_links %}<span class="seg-dot" title="Є файли за посиланням — ще не скачані" aria-hidden="true"></span>{% endif %}
         </button>
         {% if is_new %}
         <button type="button" class="seg-tab" data-seg="accept" role="tab">Прийняти</button>
@@ -66,10 +66,10 @@
                 {% else %}
                 <span class="attachment-badge attachment-badge-ready">✓ Скачано ({{ att_count }})</span>
                 {% endif %}
-                {% if body_links %}
+                {% if undownloaded_links %}
                 <span class="attachment-badge attachment-badge-warn" title="Ці файли лежать за посиланням і НЕ скачуються автоматично. Скачайте їх у вкладці «Файли» перед прийняттям у чергу.">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
-                    +{{ body_links|length }} за посиланням
+                    +{{ undownloaded_links|length }} за посиланням
                 </span>
                 {% endif %}
             </div>
@@ -85,13 +85,13 @@
             {# Total-files summary so the operator knows whether everything is on
                disk or some files still sit behind links. #}
             {% if email.attachments_status != 'pending' %}
-            <div class="files-summary {% if body_links or email.attachments_status == 'skipped' %}warn{% else %}ok{% endif %}">
+            <div class="files-summary {% if undownloaded_links or email.attachments_status == 'skipped' %}warn{% else %}ok{% endif %}">
                 {% if email.attachments_status == 'skipped' %}
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
-                <span>Файли не скачані (відправник не в авто-списку){% if body_links %} + {{ body_links|length }} за посиланням{% endif %} — скачайте нижче.</span>
-                {% elif body_links %}
+                <span>Файли не скачані (відправник не в авто-списку){% if undownloaded_links %} + {{ undownloaded_links|length }} за посиланням{% endif %} — скачайте нижче.</span>
+                {% elif undownloaded_links %}
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
-                <span>На диску <b>{{ att_count }}</b> файл(ів) · за посиланням ще <b>{{ body_links|length }}</b> — скачайте все за посиланням, щоб було повністю.</span>
+                <span>На диску <b>{{ att_count }}</b> файл(ів) · за посиланням ще <b>{{ undownloaded_links|length }}</b> не скачано — скачайте нижче, щоб було повністю.</span>
                 {% else %}
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                 <span>Усі файли на диску: <b>{{ att_count }}</b>.</span>
@@ -170,6 +170,7 @@
                 <div class="dlabel">Файли за посиланням · {{ body_links|length }}</div>
                 <div class="linklist">
                     {% for link in body_links %}
+                    {% set link_status = 'skip' if (link.file_id or link.url) in handled_link_refs else '' %}
                     {% include "_mail_link_row.html" %}
                     {% endfor %}
                 </div>

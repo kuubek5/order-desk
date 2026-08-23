@@ -4004,6 +4004,13 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
         "material_folder": "",
         "material_cands": material_candidates(seed, _lab_material_colors(db)),
         "body_links": extract_download_links(email.body_text),
+        "undownloaded_links": [
+            l for l in extract_download_links(email.body_text)
+            if (l.file_id or l.url) not in (
+                set(json.loads(email.handled_link_refs)) if email.handled_link_refs else set()
+            )
+        ],
+        "handled_link_refs": set(json.loads(email.handled_link_refs)) if email.handled_link_refs else set(),
         # Any ZIP/RAR still sitting among the attachments (auto-unpack failed or
         # is off) → offer the manual «Розпакувати» reserve button.
         "has_archive": any(is_archive(a.filename) for a in email.attachments),
@@ -4072,6 +4079,11 @@ def fetch_email_link(
             db.add(attachment)
             email.attachments_status = "ready"
             status, result_name = "done", path.name
+    if status in ("done", "skip"):
+        # Remember this link as handled so the «ще N за посиланням» count drops.
+        handled = set(json.loads(email.handled_link_refs) if email.handled_link_refs else [])
+        handled.add(ref)
+        email.handled_link_refs = json.dumps(sorted(handled))
     db.commit()
 
     # Auto-unpack a freshly downloaded archive (client packed the STL in a
@@ -4104,7 +4116,7 @@ def fetch_email_link(
     triggers = {}
     if toast is not None:
         triggers["toast"] = toast
-    if status == "done":
+    if status in ("done", "skip"):
         triggers["mailFilesChanged"] = True
     if triggers:
         response.headers["HX-Trigger"] = json.dumps(triggers)
