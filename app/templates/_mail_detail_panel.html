@@ -62,15 +62,7 @@
                 <span class="attachment-badge attachment-badge-pending"><span class="attachment-badge-dot" aria-hidden="true"></span>Завантаження…</span>
                 {% elif email.attachments_status == 'skipped' %}
                 <span class="attachment-badge attachment-badge-warn" title="Відправник не в авто-списку — файли не качались автоматично">Файли не скачані</span>
-                <button type="button" class="btn sm primary dl-btn"
-                        hx-post="/mail/{{ email.id }}/download-attachments"
-                        hx-target="#mail-detail" hx-swap="innerHTML"
-                        hx-indicator="this" hx-disabled-elt="this">
-                    <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-                    <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
-                    <span class="dl-lbl-idle">Скачати файли</span>
-                    <span class="dl-lbl-busy">Скачую файли…</span>
-                </button>
+                <span class="metabar-hint">→ вкладка «Файли + STL», кнопка «Скачати файли»</span>
                 {% else %}
                 <span class="attachment-badge attachment-badge-ready">✓ Скачано ({{ att_count }})</span>
                 {% endif %}
@@ -134,11 +126,14 @@
                 {% if email.attachments %}
                 <div class="att-actions">
                     {% if has_archive %}
-                    <button type="button" class="btn primary"
+                    <button type="button" class="btn primary dl-btn"
                             hx-post="/mail/{{ email.id }}/extract-archives"
-                            hx-target="#mail-detail" hx-swap="innerHTML">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1zM10 12h4"/></svg>
-                        Розпакувати архіви
+                            hx-target="#mail-detail" hx-swap="innerHTML"
+                            hx-indicator="this" hx-disabled-elt="this">
+                        <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1zM10 12h4"/></svg>
+                        <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
+                        <span class="dl-lbl-idle">Розпакувати архіви</span>
+                        <span class="dl-lbl-busy">Розпаковую…</span>
                     </button>
                     {% endif %}
                     <button type="button" class="btn sm accent-outline"

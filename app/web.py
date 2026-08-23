@@ -4098,8 +4098,16 @@ def fetch_email_link(
         {"email": email, "link": link, "link_status": status,
          "link_message": message, "result_name": result_name},
     )
+    # A downloaded file changes the attachment list AND the STL gallery, which
+    # this row-only swap can't refresh — signal the panel to re-render (app.js
+    # debounces so "download all" refreshes once).
+    triggers = {}
     if toast is not None:
-        response.headers["HX-Trigger"] = json.dumps({"toast": toast})
+        triggers["toast"] = toast
+    if status == "done":
+        triggers["mailFilesChanged"] = True
+    if triggers:
+        response.headers["HX-Trigger"] = json.dumps(triggers)
     return response
 
 

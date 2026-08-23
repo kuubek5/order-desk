@@ -1082,6 +1082,23 @@ function showToast(message, kind = "info", timeout = 7000) {
 }
 window.showToast = showToast;
 
+// A "file by link" download adds an attachment and (maybe) STL files, but the
+// per-row swap can't refresh the attachment list or the STL preview. The server
+// fires mailFilesChanged; re-render the whole detail panel once, debounced so a
+// "download all" of many links refreshes a single time after the last one. The
+// active segment tab is preserved by the mail-seg afterSettle handler above.
+let mailFilesRefreshTimer = null;
+document.body.addEventListener("mailFilesChanged", () => {
+  window.clearTimeout(mailFilesRefreshTimer);
+  mailFilesRefreshTimer = window.setTimeout(() => {
+    const root = document.querySelector("#mail-detail .mail-seg");
+    if (!root || !window.htmx) return;
+    const id = root.dataset.mailId;
+    if (!id) return;
+    window.htmx.ajax("GET", `/mail/${id}?panel=1`, { target: "#mail-detail", swap: "innerHTML" });
+  }, 450);
+});
+
 // HTMX fires a DOM event named after each key in the response's HX-Trigger
 // header. The server sends {"toast": {...}} for anything the operator must see.
 document.body.addEventListener("toast", (event) => {

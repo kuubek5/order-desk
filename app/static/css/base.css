@@ -4933,3 +4933,4 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
 .mailv2 .dl-btn.htmx-request .dl-spin,.mailv2 .dl-btn.htmx-request .dl-lbl-busy{display:inline-flex}
 .mailv2 .dl-btn.htmx-request .dl-spin{animation:mailSyncSpin .8s linear infinite;transform-origin:50% 50%}
 .mailv2 .dl-btn:disabled,.mailv2 .dl-btn.htmx-request{opacity:.85;cursor:progress}
+.mailv2 .metabar-hint{font-size:11px;color:var(--ink-3)}

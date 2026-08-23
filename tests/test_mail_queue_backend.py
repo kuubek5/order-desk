@@ -977,10 +977,10 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
     saved = tmp_path / "model.stl"; saved.write_bytes(b"STL")
     monkeypatch.setattr(web, "download_link", lambda link, dest, existing_names=frozenset(): saved)
     captured = {}
-    monkeypatch.setattr(
-        web.templates, "TemplateResponse",
-        lambda request, template, context: captured.update(template=template, ctx=context) or context,
-    )
+    def _fake_tr(request, template, context):
+        captured.update(template=template, ctx=context)
+        return SimpleNamespace(context=context, headers={})
+    monkeypatch.setattr(web.templates, "TemplateResponse", _fake_tr)
 
     fid = "1LIyJrFNKnY7oFyMadR1W5mRgRpAW9ivl"
     with Session(engine, expire_on_commit=False) as db:
@@ -989,11 +989,15 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
                              body_text=f"<https://drive.google.com/file/d/{fid}/view>")
         db.add(email); db.commit()
 
-        web.fetch_email_link(request=_request(user.id), email_id=email.id, ref=fid, db=db)
+        response = web.fetch_email_link(request=_request(user.id), email_id=email.id, ref=fid, db=db)
 
         assert captured["template"] == "_mail_link_row.html"
         assert captured["ctx"]["link_status"] == "done"
         assert captured["ctx"]["result_name"] == "model.stl"
+        # a downloaded file must signal the panel to re-render (STL preview /
+        # attachment list are stale after a row-only swap)
+        import json as _json
+        assert _json.loads(response.headers["HX-Trigger"]).get("mailFilesChanged") is True
         atts = db.query(Attachment).filter(Attachment.email_message_id == email.id).all()
         assert len(atts) == 1 and atts[0].filename == "model.stl"
 
