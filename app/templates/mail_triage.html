@@ -78,6 +78,7 @@
         </section>
 
         <section class="detail-panel" id="mail-detail">
+            {% if open_panel_html %}{{ open_panel_html|safe }}{% else %}
             {% if view == 'filtered' and user.role == 'адмін' %}
             {# Admin panel: rules + categories that feed this tab (shared with
                the settings screen). Non-admins and other views get the usual
@@ -95,6 +96,7 @@
                 <p>Клік по листу зліва відкриє картку тріажу: оригінальний текст, розпізнані поля й вкладення для перевірки перед прийняттям у чергу.</p>
                 {% endif %}
             </div>
+            {% endif %}
             {% endif %}
         </section>
     </div>

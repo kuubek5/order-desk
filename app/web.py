@@ -3730,6 +3730,7 @@ def get_mail(
     service: str = "all",
     view: str = "pending",
     partial: str | None = None,
+    open: int | None = None,
 ):
     user = get_current_user(request, db)
     if user is None:
@@ -3854,12 +3855,27 @@ def get_mail(
             {"emails": emails, "view": view, "service": service},
         )
 
+    # Pre-open a letter in the right-hand panel (used after a partial accept so
+    # the operator lands back in the two-pane list with the letter already open,
+    # not on the standalone card page). Only if it's in the list being shown.
+    open_panel_html = None
+    open_id = None
+    if open is not None:
+        open_email = next((e for e in emails if e.id == open), None)
+        if open_email is not None:
+            open_id = open
+            open_panel_html = templates.env.get_template("_mail_detail_panel.html").render(
+                _mail_panel_context(db, open_email, user)
+            )
+
     return templates.TemplateResponse(
         request,
         "mail_triage.html",
         {
             "page_title": "Нові з пошти",
             "emails": emails,
+            "open_panel_html": open_panel_html,
+            "open_id": open_id,
             "user": user,
             "synced": synced,
             "error": error,
@@ -4446,7 +4462,7 @@ async def accept_email(
     # Where to land: still files left → back to the letter to accept the next
     # colour; done → the client queue. The wizard posts over HTMX, so a 303
     # would swap page HTML into the panel — HX-Redirect drives a real navigation.
-    target = f"/mail/{email.id}" if remaining else "/?source=client"
+    target = f"/mail?open={email.id}" if remaining else "/?source=client"
     request_headers = getattr(request, "headers", None) or {}
     if request_headers.get("HX-Request") == "true":
         return Response(status_code=204, headers={"HX-Redirect": target})

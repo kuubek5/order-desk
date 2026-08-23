@@ -20,7 +20,7 @@
     {% if emails %}
         {% for email in emails %}
         {% set is_unread = view == 'pending' and email.seen_at is none %}
-        <div class="mailrow{% if is_unread %} unread{% endif %}" role="button" tabindex="0"
+        <div class="mailrow{% if is_unread %} unread{% endif %}{% if open_id and email.id == open_id %} active{% endif %}" role="button" tabindex="0"
              id="mailrow-{{ email.id }}"
              {% if view == 'pending' and email.attachments_status != 'pending' %}hx-preserve="true"{% endif %}
              hx-get="/mail/{{ email.id }}?panel=1"

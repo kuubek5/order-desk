@@ -1299,3 +1299,57 @@ def test_wizard_partial_badge_not_nested_in_form():
     # and after the wizard form opens there must be no second <form ... > before its close
     body = html[wizform_pos:]
     assert body.count("<form") == 1, "unexpected nested <form> inside the wizard form"
+
+
+def test_get_mail_open_prerenders_panel_and_marks_row(monkeypatch):
+    """/mail?open=<id> lands in the two-pane list with that letter's card
+    pre-rendered into the right panel (used after a partial accept)."""
+    engine = _database()
+    captured = {}
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse",
+        lambda request, template, context: captured.update(ctx=context) or context,
+    )
+    monkeypatch.setattr(web, "attach_email_preview_tokens", lambda *a, **k: None)
+    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email = EmailMessage(uid="op", status="нове", from_address="c@x.ua", subject="s")
+        db.add(email); db.commit()
+
+        web.get_mail(request=_request(user.id), db=db, open=email.id)
+        assert captured["ctx"]["open_id"] == email.id
+        assert captured["ctx"]["open_panel_html"]  # panel rendered to HTML
+        assert "mail-seg" in captured["ctx"]["open_panel_html"]
+
+        # unknown id → no panel, plain list
+        web.get_mail(request=_request(user.id), db=db, open=99999)
+        assert captured["ctx"]["open_id"] is None
+        assert captured["ctx"]["open_panel_html"] is None
+
+
+def test_partial_accept_redirects_to_two_pane_open(monkeypatch, tmp_path):
+    """After a partial accept the operator returns to the two-pane list with the
+    letter open (/mail?open=id), not the standalone card page."""
+    engine = _database()
+    export_root = tmp_path / "export"; export_root.mkdir()
+    spool = tmp_path / "spool" / "p"; spool.mkdir(parents=True)
+    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
+    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email = EmailMessage(uid="p", status="нове", from_address="c@x.ua", attachments_status="ready")
+        db.add(email); db.flush()
+        f1 = spool / "a.stl"; f1.write_bytes(b"A")
+        f2 = spool / "b.stl"; f2.write_bytes(b"B")
+        a1 = Attachment(email_message_id=email.id, filename="a.stl", saved_path=str(f1))
+        a2 = Attachment(email_message_id=email.id, filename="b.stl", saved_path=str(f2))
+        db.add_all([a1, a2]); db.commit()
+        a1_id = a1.id
+
+        resp = asyncio.run(web.accept_email(
+            request=_request(user.id), email_id=email.id, client_name="C",
+            material_color="моно", kind="", quantity="", folder_pick="",
+            folder_new="", material_folder="", attachment_ids=[a1_id], db=db,
+        ))
+        assert resp.headers["location"] == f"/mail?open={email.id}"
