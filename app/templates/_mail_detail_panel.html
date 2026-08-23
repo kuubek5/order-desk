@@ -20,10 +20,10 @@
 <div class="mail-seg" data-mail-id="{{ email.id }}">
     <div class="seg-tabs" role="tablist">
         <button type="button" class="seg-tab on" data-seg="letter" role="tab">Лист</button>
-        <button type="button" class="seg-tab" data-seg="files" role="tab">
+        <button type="button" class="seg-tab" data-seg="files" role="tab" title="{{ att_count }} на диску{% if body_links %} + {{ body_links|length }} за посиланням{% endif %}">
             Файли + STL
-            <span class="seg-cnt">{% if email.attachments_status == 'pending' %}…{% else %}{{ att_count }}{% endif %}</span>
-            {% if body_links %}<span class="seg-dot" title="Є файли за посиланням" aria-hidden="true"></span>{% endif %}
+            <span class="seg-cnt">{% if email.attachments_status == 'pending' %}…{% else %}{{ att_count }}{% if body_links %}+{{ body_links|length }}{% endif %}{% endif %}</span>
+            {% if body_links %}<span class="seg-dot" title="Є файли за посиланням — не всі на диску" aria-hidden="true"></span>{% endif %}
         </button>
         {% if is_new %}
         <button type="button" class="seg-tab" data-seg="accept" role="tab">Прийняти</button>
@@ -82,6 +82,22 @@
 
         {# ---------- Pane: Файли + STL ---------- #}
         <section class="seg-pane" data-pane="files" role="tabpanel">
+            {# Total-files summary so the operator knows whether everything is on
+               disk or some files still sit behind links. #}
+            {% if email.attachments_status != 'pending' %}
+            <div class="files-summary {% if body_links or email.attachments_status == 'skipped' %}warn{% else %}ok{% endif %}">
+                {% if email.attachments_status == 'skipped' %}
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+                <span>Файли не скачані (відправник не в авто-списку){% if body_links %} + {{ body_links|length }} за посиланням{% endif %} — скачайте нижче.</span>
+                {% elif body_links %}
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+                <span>На диску <b>{{ att_count }}</b> файл(ів) · за посиланням ще <b>{{ body_links|length }}</b> — скачайте все за посиланням, щоб було повністю.</span>
+                {% else %}
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                <span>Усі файли на диску: <b>{{ att_count }}</b>.</span>
+                {% endif %}
+            </div>
+            {% endif %}
             <div class="dsec">
                 <div class="dlabel">
                     Вкладення ·

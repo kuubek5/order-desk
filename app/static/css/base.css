@@ -4934,3 +4934,10 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
 .mailv2 .dl-btn.htmx-request .dl-spin{animation:mailSyncSpin .8s linear infinite;transform-origin:50% 50%}
 .mailv2 .dl-btn:disabled,.mailv2 .dl-btn.htmx-request{opacity:.85;cursor:progress}
 .mailv2 .metabar-hint{font-size:11px;color:var(--ink-3)}
+
+/* Files-tab total summary: is everything on disk, or are some files behind links? */
+.mailv2 .files-summary{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:9px;margin-bottom:14px;font-size:12px;border:1px solid var(--line-2)}
+.mailv2 .files-summary svg{width:15px;height:15px;flex:0 0 15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.mailv2 .files-summary b{font-weight:600}
+.mailv2 .files-summary.ok{background:rgba(20,184,166,.08);border-color:rgba(45,212,191,.28);color:var(--accent-c)}
+.mailv2 .files-summary.warn{background:rgba(240,163,94,.1);border-color:rgba(240,163,94,.3);color:var(--warn)}
