@@ -1267,3 +1267,35 @@ def test_accept_empty_selection_takes_all_unclaimed(monkeypatch, tmp_path):
         db.refresh(email)
         assert email.status == "прийнято"
         assert db.scalar(select(func.count()).select_from(Order).where(Order.source_email_id == email.id)) == 1
+
+
+def test_wizard_partial_badge_not_nested_in_form():
+    """Regression: the «частково прийнято» badge carries a restore <form>; it
+    must render OUTSIDE the wizard's own <form> (nested forms are invalid HTML —
+    the browser splits the outer form and the «Далі» button stops submitting)."""
+    from types import SimpleNamespace
+    from datetime import datetime as _dt
+
+    env = web.templates.env
+    tpl = env.get_template("_mail_wizard.html")
+
+    class E(SimpleNamespace):
+        pass
+
+    email = E(id=7, attachments=[])
+    html = tpl.render(
+        email=email, wizard_step=1, client_name="C", material_color="", kind="",
+        quantity="", folder_pick="", folder_new="", material_folder="",
+        material_cands=[], attachment_ids=[], sender_hint=None,
+        is_partial=True, accepted_batches=1, unclaimed_count=3,
+        unclaimed_attachments=[
+            E(id=1, filename="a.stl"), E(id=2, filename="b.stl"), E(id=3, filename="c.stl"),
+        ],
+    )
+    # the restore form must come BEFORE the wizard form opens (i.e. not nested)
+    restore_pos = html.index('action="/mail/7/restore"')
+    wizform_pos = html.index('<form class="wiz-step"')
+    assert restore_pos < wizform_pos, "restore form is nested inside the wizard form"
+    # and after the wizard form opens there must be no second <form ... > before its close
+    body = html[wizform_pos:]
+    assert body.count("<form") == 1, "unexpected nested <form> inside the wizard form"

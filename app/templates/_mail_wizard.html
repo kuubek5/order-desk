@@ -15,6 +15,14 @@
 </div>
 
 {% if wizard_step == 1 %}
+{% if is_partial %}
+<div class="wiz-partial" role="note">
+    <span>Частково прийнято: <b>{{ accepted_batches }}</b> {% if accepted_batches == 1 %}робота{% elif accepted_batches < 5 %}роботи{% else %}робіт{% endif %} · лишилось <b>{{ unclaimed_count }}</b> файл(ів) цього листа</span>
+    <form method="post" action="/mail/{{ email.id }}/restore" onsubmit="return confirm('Скасувати всі {{ accepted_batches }} прийнятих робіт цього листа? Файли повернуться в лист, почнете заново.')">
+        <button type="submit" class="wp-undo">↩ скасувати прийняте</button>
+    </form>
+</div>
+{% endif %}
 <form class="wiz-step" hx-post="/mail/{{ email.id }}/wizard" hx-target="#mail-wizard" hx-swap="innerHTML">
     {% if sender_hint %}
 <div class="sender-hint" role="note">
@@ -25,14 +33,6 @@
     </span>
 </div>
 {% endif %}
-    {% if is_partial %}
-    <div class="wiz-partial" role="note">
-        <span>Частково прийнято: <b>{{ accepted_batches }}</b> {% if accepted_batches == 1 %}робота{% elif accepted_batches < 5 %}роботи{% else %}робіт{% endif %} · лишилось <b>{{ unclaimed_count }}</b> файл(ів) цього листа</span>
-        <form method="post" action="/mail/{{ email.id }}/restore" onsubmit="return confirm('Скасувати всі {{ accepted_batches }} прийнятих робіт цього листа? Файли повернуться в лист, почнете заново.')">
-            <button type="submit" class="wp-undo">↩ скасувати прийняте</button>
-        </form>
-    </div>
-    {% endif %}
     <div class="wiz-title">Крок 1 · Дані роботи</div>
     <div class="fieldgrid">
         <div class="field full">
