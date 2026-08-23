@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Thread
 
 from sqlalchemy.orm import Session
 
 from app.mail_reader import fetch_new_emails
 from app.models import SyncLog
+
+logger = logging.getLogger(__name__)
 
 
 class MailSyncError(RuntimeError):
@@ -19,7 +22,22 @@ class MailSyncBusyError(MailSyncError):
     """Raised when another manual/background synchronization owns the lock."""
 
 
+class MailSyncTimeoutError(MailSyncError):
+    """The IMAP fetch exceeded MAIL_SYNC_DEADLINE_SECONDS and was abandoned."""
+
+
 _sync_lock = Lock()
+
+# Watchdog deadline for one whole sync run. imap_tools' per-operation socket
+# timeout (IMAP_TIMEOUT_SECONDS=20) does NOT cover a half-open socket or a
+# server that keeps trickling bytes — either can hang a fetch indefinitely.
+# Without this, a hung fetch held _sync_lock forever: the background loop
+# stalled silently, the heartbeat went stale («⚠ немає відповіді»), and the
+# manual «Перевірити пошту» button answered «вже виконується» until the app
+# was restarted. A normal run (30-day lookback, tens of letters, the lab's
+# slow TLS proxy) finishes well inside this; it's a last line of defence,
+# not a tuning knob.
+MAIL_SYNC_DEADLINE_SECONDS = 180
 
 
 def _safe_error(exc: Exception) -> MailSyncError:
@@ -46,6 +64,45 @@ def _cleanup_created_attachments(session: Session) -> None:
             directory.rmdir()
         except OSError:
             pass
+
+
+def _fetch_with_deadline(session: Session, attachments_dir: Path) -> int:
+    """Run fetch_new_emails in a worker thread and give up after
+    MAIL_SYNC_DEADLINE_SECONDS.
+
+    A Python thread can't be killed, so on timeout the worker is simply
+    abandoned (daemon — it can't block shutdown) and MailSyncTimeoutError is
+    raised so the caller releases _sync_lock and the next tick starts clean.
+    IMPORTANT for the caller: after a timeout the `session` object is still
+    owned by the zombie worker — it must NOT be touched (no rollback, no
+    commit) from this thread; SQLAlchemy sessions are not thread-safe.
+    The zombie's eventual outcome is irrelevant: fetch_new_emails commits per
+    letter with UID dedupe, so whatever it manages to land is consistent, and
+    anything it doesn't is re-fetched by a later run.
+    """
+    result: dict[str, object] = {}
+
+    def _run() -> None:
+        try:
+            result["created"] = fetch_new_emails(session, attachments_dir)
+        except BaseException as exc:  # noqa: BLE001 — re-raised in the caller
+            result["error"] = exc
+
+    worker = Thread(target=_run, name="mail-sync-fetch", daemon=True)
+    worker.start()
+    worker.join(MAIL_SYNC_DEADLINE_SECONDS)
+    if worker.is_alive():
+        logger.error(
+            "Mail sync exceeded %ss deadline — abandoning hung IMAP fetch",
+            MAIL_SYNC_DEADLINE_SECONDS,
+        )
+        raise MailSyncTimeoutError(
+            "Пошта не відповіла вчасно (зависло зʼєднання з IMAP). "
+            "Наступна перевірка запуститься автоматично."
+        )
+    if "error" in result:
+        raise result["error"]  # type: ignore[misc]
+    return int(result.get("created", 0))  # type: ignore[arg-type]
 
 
 def _record_failure(session: Session, error: MailSyncError, *, persist: bool) -> None:
@@ -92,7 +149,7 @@ def sync_mail(session: Session, attachments_dir: Path, *, trigger: str = "manual
     try:
         try:
             session.info["mail_sync_created_paths"] = []
-            created = fetch_new_emails(session, attachments_dir)
+            created = _fetch_with_deadline(session, attachments_dir)
             if trigger == "manual" or created:
                 session.add(
                     SyncLog(
@@ -104,6 +161,11 @@ def sync_mail(session: Session, attachments_dir: Path, *, trigger: str = "manual
             session.commit()
             session.info.pop("mail_sync_created_paths", None)
             return created
+        except MailSyncTimeoutError:
+            # The hung worker still owns `session` — do NOT rollback/commit it
+            # here (see _fetch_with_deadline). Just release the lock and
+            # surface the error; the caller logs/heartbeats it.
+            raise
         except Exception as exc:
             safe_error = _safe_error(exc)
             # Manual failures remain visible in the audit table. Background

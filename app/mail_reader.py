@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 
 IMAP_HOST = "imap.ukr.net"
 IMAP_TIMEOUT_SECONDS = 20
+
+# Per-file ceiling for a downloaded MIME attachment. Dental STL work and the
+# ZIP/RAR clients send are single-digit-to-tens of MB; anything past this is
+# not lab work, and with the «скачувати все» toggle on it would be written to
+# the workstation's disk unattended. Oversized files are skipped with a log,
+# never silently truncated.
+MAX_ATTACHMENT_BYTES = 200 * 1024 * 1024
 IMAP_LOOKBACK_DAYS = 30
 IMAP_MAX_MESSAGES = 250
 _UNSAFE_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -177,6 +184,14 @@ def extract_archive_attachments(
     (its contents now stand on their own). Returns (files_extracted, errors);
     a failed archive is left untouched and its reason collected. Caller commits.
 
+    The archive FILE is deleted only after the caller's commit succeeds (via a
+    one-shot after_commit hook), never before. If the commit fails and rolls
+    back, the Attachment rows for the extracted files vanish — and if the
+    archive had already been unlinked, the letter would be left "ready" with
+    neither the archive nor any row pointing at the loose files: the work would
+    be silently lost for the UI. Keeping the archive on disk until the commit
+    lands makes the whole step all-or-nothing; a re-run just re-extracts.
+
     Lazy import of archive_extract avoids a circular import (it reuses this
     module's filename helpers)."""
     from app.archive_extract import (
@@ -187,6 +202,7 @@ def extract_archive_attachments(
 
     extracted_total = 0
     errors: list[str] = []
+    archives_to_unlink: list[Path] = []
     for attachment in list(email_message.attachments):
         if not is_archive(attachment.filename):
             continue
@@ -209,9 +225,49 @@ def extract_archive_attachments(
                 )
             )
         session.delete(attachment)
-        archive_path.unlink(missing_ok=True)
+        archives_to_unlink.append(archive_path)
         extracted_total += len(written)
+
+    if archives_to_unlink:
+        _unlink_after_commit(session, archives_to_unlink)
     return extracted_total, errors
+
+
+def _unlink_after_commit(session: Session, paths: list[Path]) -> None:
+    """Delete `paths` once — and only if — the session's next commit succeeds.
+
+    Registered as a one-shot pair of ``after_commit`` / ``after_rollback``
+    listeners so every caller of extract_archive_attachments (background sync,
+    link-download, the manual «Розпакувати» button) gets the same
+    all-or-nothing guarantee without each having to remember the ordering.
+    On rollback the pair is removed WITHOUT deleting — this matters inside the
+    sync loop, where the same session goes on to commit the NEXT letter: an
+    un-removed listener would fire on that later commit and delete an archive
+    whose extracted rows had already been rolled back."""
+    from sqlalchemy import event
+
+    # SQLAlchemy forbids event.remove() from inside the listener itself
+    # ("deque mutated during iteration"), so one-shot-ness is a shared flag:
+    # whichever of commit/rollback fires first consumes it and the other
+    # becomes a no-op. The dead listeners are then harmless until the session
+    # closes (sessions here are per-request / per-sync-tick).
+    state = {"armed": True}
+
+    def _on_commit(_session: Session) -> None:
+        if not state["armed"]:
+            return
+        state["armed"] = False
+        for path in paths:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not remove extracted archive %s", path)
+
+    def _on_rollback(_session: Session) -> None:
+        state["armed"] = False
+
+    event.listen(session, "after_commit", _on_commit)
+    event.listen(session, "after_rollback", _on_rollback)
 
 
 def _apply_attachments(
@@ -288,24 +344,39 @@ def _apply_attachments(
 def _save_message_attachments(session, email_message, msg, attachments_dir: Path) -> int:
     """Write a fetched message's attachments to the spool and add Attachment
     rows. Returns how many were saved. Shared by the whitelisted auto-download
-    and the manual «Скачати файли» action."""
+    and the manual «Скачати файли» action.
+
+    Files above MAX_ATTACHMENT_BYTES are skipped (logged, no row) rather than
+    written: real dental STL/archives are single-digit-to-tens of MB, and with
+    the «скачувати все» toggle on, one junk letter with a giant attachment
+    would otherwise fill the workstation's disk. The letter itself still
+    imports — only that one oversized file is left behind on the server."""
     message_dir = attachments_dir / email_message.uid
     saved = 0
     for i, att in enumerate(msg.attachments, start=1):
+        payload = att.payload or b""
+        if len(payload) > MAX_ATTACHMENT_BYTES:
+            logger.warning(
+                "Mail sync: skipping oversized attachment %r (%.1f МБ) on uid %s",
+                att.filename,
+                len(payload) / (1024 * 1024),
+                email_message.uid,
+            )
+            continue
         message_dir.mkdir(parents=True, exist_ok=True)
         # Inline attachments (embedded images, signatures, calendar
         # invites) can arrive with no filename — write_bytes() to a
         # bare directory path would otherwise raise PermissionError.
         filename = safe_attachment_filename(att.filename, i, att.content_type)
         dest_path = unique_destination(message_dir, filename)
-        dest_path.write_bytes(att.payload)
+        dest_path.write_bytes(payload)
         session.info.setdefault("mail_sync_created_paths", []).append(dest_path)
         session.add(
             Attachment(
                 email_message_id=email_message.id,
                 filename=dest_path.name,
                 saved_path=str(dest_path),
-                size_bytes=len(att.payload),
+                size_bytes=len(payload),
             )
         )
         saved += 1

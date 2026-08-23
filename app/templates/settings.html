@@ -600,7 +600,29 @@
                         {% if mail_download_all %}Вимкнути авто-скачування{% else %}Увімкнути скачування всього{% endif %}
                     </button>
                 </form>
-                <div class="wiz-hint">Стосується вкладень листа (MIME). Файли за посиланням (Google Drive, ukr.net) якщо треба — тягнуться окремо у вкладці «Файли».</div>
+                <div class="wiz-hint">Стосується вкладень листа (MIME). Файли за посиланням (Google Drive, ukr.net) якщо треба — тягнуться окремо у вкладці «Файли». Завеликі файли (понад 200 МБ) пропускаються.</div>
+
+                {% if spool_report %}
+                {# Disk usage of the mail spool + a MANUAL cleanup. Nothing is
+                   deleted automatically — see app/mail_spool.py. #}
+                <div class="dsec spool-usage">
+                    <div class="dlabel">Тимчасові папки пошти</div>
+                    <p class="wizard-sub">
+                        Зайнято <strong>{{ spool_report.total_mb }} МБ</strong> у {{ spool_report.total_dirs }} папк(ах).
+                        {% if spool_report.prunable_dirs %}
+                        Можна прибрати <strong>{{ spool_report.prunable_dirs|length }}</strong> — порожні, «нічиї» та файли відхилених листів, старших за 30 днів ({{ spool_report.prunable_mb }} МБ).
+                        {% else %}
+                        Прибирати нічого — усе на місці.
+                        {% endif %}
+                    </p>
+                    {% if spool_report.prunable_dirs %}
+                    <form method="post" action="/settings/mail-spool/prune"
+                          onsubmit="return confirm('Видалити {{ spool_report.prunable_dirs|length }} тимчасов(их) папок ({{ spool_report.prunable_mb }} МБ)? Файли прийнятих і активних листів не чіпаються.')">
+                        <button type="submit" class="settings-secondary-button">Прибрати {{ spool_report.prunable_mb }} МБ</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
         </section>
         {% endif %}

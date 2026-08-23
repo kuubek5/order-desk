@@ -13,10 +13,24 @@ First matching rule wins, keyword rules before sender rules, older rules first
 within each kind — deterministic and explainable ("filtered by rule X").
 """
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models import EmailMessage, MailFilterRule
+
+
+def _bump_hits(session: Session, rule: MailFilterRule, by: int = 1) -> None:
+    """Increment rule.hits atomically in SQL (`hits = hits + N`), not via a
+    Python read-modify-write. The background sync thread and web requests
+    (retroactive apply) both bump the same counter; an in-memory `+= 1` on
+    two stale copies loses one of the increments. The ORM attribute is
+    refreshed so callers that read `rule.hits` right after see the new value."""
+    session.execute(
+        update(MailFilterRule)
+        .where(MailFilterRule.id == rule.id)
+        .values(hits=MailFilterRule.hits + by)
+    )
+    session.refresh(rule, attribute_names=["hits"])
 
 
 def _rule_matches(rule: MailFilterRule, email: EmailMessage) -> bool:
@@ -53,7 +67,7 @@ def apply_filters_to_email(session: Session, email: EmailMessage) -> bool:
         if _rule_matches(rule, email):
             email.filter_category = rule.category
             email.filter_rule_id = rule.id
-            rule.hits = (rule.hits or 0) + 1
+            _bump_hits(session, rule)
             return True
     return False
 
@@ -78,5 +92,5 @@ def apply_rule_retroactively(session: Session, rule: MailFilterRule) -> int:
             email.filter_rule_id = rule.id
             stamped += 1
     if stamped:
-        rule.hits = (rule.hits or 0) + stamped
+        _bump_hits(session, rule, by=stamped)
     return stamped

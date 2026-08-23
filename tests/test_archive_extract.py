@@ -126,3 +126,58 @@ def test_extract_archive_attachments_replaces_archive_row_with_files(tmp_path):
         assert names == ["bridge.stl", "crown.stl"]  # archive row gone, files in
         assert not arc.exists()  # archive file removed
         assert (spool / "crown.stl").read_bytes() == b"CROWN"
+
+
+def test_extract_keeps_archive_until_commit_and_survives_rollback(tmp_path):
+    """All-or-nothing: the archive file must NOT be deleted before the commit
+    lands. On rollback it survives (so a retry can re-extract), and the
+    deferred delete must NOT fire on a later, unrelated commit of the same
+    session — that is the exact sequence the sync loop runs (rollback one
+    letter, commit the next)."""
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+
+    from app.db import Base
+    from app.models import Attachment, EmailMessage
+    from app.mail_reader import extract_archive_attachments
+
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    arc = spool / "work.zip"
+    _make_zip(arc, {"crown.stl": b"CROWN"})
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        email = EmailMessage(uid="u1", status="нове")
+        db.add(email)
+        db.flush()
+        db.add(Attachment(
+            email_message_id=email.id, filename="work.zip",
+            saved_path=str(arc), size_bytes=arc.stat().st_size,
+        ))
+        db.commit()
+
+        extracted, _ = extract_archive_attachments(db, email)
+        assert extracted == 1
+        # Before commit: archive still on disk (only the row is pending delete).
+        assert arc.exists()
+
+        db.rollback()
+        # Rolled back: archive row is back, archive file untouched.
+        assert arc.exists()
+        names = sorted(a.filename for a in db.scalars(select(Attachment)))
+        assert names == ["work.zip"]
+
+        # A later unrelated commit on the same session must NOT delete the
+        # archive (the deferred hook was detached on rollback).
+        db.add(EmailMessage(uid="u2", status="нове"))
+        db.commit()
+        assert arc.exists()
+
+        # Now the happy path on the same session: extract + commit → gone.
+        extracted, _ = extract_archive_attachments(db, email)
+        db.commit()
+        assert extracted == 1
+        assert not arc.exists()

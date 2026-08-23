@@ -56,7 +56,13 @@ from app.link_attachments import (
 from app.archive_extract import is_archive
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS, extract_archive_attachments
 from app.mail_reader import download_attachments_now
-from app.mail_sync_service import MailSyncBusyError, MailSyncError, sync_mail_background, sync_mailbox
+from app.mail_sync_service import (
+    MailSyncBusyError,
+    MailSyncError,
+    MailSyncTimeoutError,
+    sync_mail_background,
+    sync_mailbox,
+)
 from app.material_class import material_badge, material_color_css_class
 from app.material_catalog import (
     MaterialCatalogError,
@@ -72,6 +78,7 @@ from app.material_catalog import (
     unresolved_order_count,
 )
 from app.mail_filters import apply_rule_retroactively
+from app.mail_spool import analyze_spool, prune_spool
 from app.models import Attachment, Client, ClientNameAlias, ClientSenderMemory, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sender, remember_sender, sender_key_for
 from app.order_folder import (
@@ -475,6 +482,29 @@ def _imap_configured(db: Session) -> bool:
     return bool((get_imap_login(db) or "").strip() and (get_imap_password(db) or "").strip())
 
 
+def _run_mail_sync_owned_session(*, trigger: str) -> int:
+    """Run one mail sync on a session this function owns and closes — EXCEPT
+    after a watchdog timeout, when the hung fetch thread still holds that
+    session and closing it from here would yank the connection out from under
+    it (sessions aren't thread-safe). In that case the session is deliberately
+    leaked to the zombie (daemon thread; a single SQLite connection) and the
+    error propagates so the caller can log/heartbeat/toast it."""
+    sync_db = SessionLocal()
+    timed_out = False
+    try:
+        # Background goes through sync_mail_background (the module-level name
+        # the heartbeat tests monkeypatch); manual through sync_mailbox.
+        if trigger == "background":
+            return sync_mail_background(sync_db, Path(MAIL_ATTACHMENTS_PATH))
+        return sync_mailbox(sync_db, Path(MAIL_ATTACHMENTS_PATH), trigger=trigger)
+    except MailSyncTimeoutError:
+        timed_out = True
+        raise
+    finally:
+        if not timed_out:
+            sync_db.close()
+
+
 def _mail_sync_tick(db: Session) -> None:
     """One background IMAP sync attempt: gated on IMAP being configured
     (an unconfigured sync is not attempted, and correctly stays "не
@@ -486,11 +516,15 @@ def _mail_sync_tick(db: Session) -> None:
     original inline try/except used, just factored out so it is directly
     callable from tests without threads/Event. See SyncHeartbeat's
     docstring for why this exists alongside SyncLog.
+
+    `db` is used only for the configured-gate read; the sync itself runs on
+    a session it owns (see _run_mail_sync_owned_session) so a watchdog
+    timeout can't leave this per-tick session in the zombie's hands.
     """
     if not _imap_configured(db):
         return
     try:
-        sync_mail_background(db, Path(MAIL_ATTACHMENTS_PATH))
+        _run_mail_sync_owned_session(trigger="background")
     except MailSyncBusyError:
         _record_sync_heartbeat("mail", status="skipped")
         return
@@ -3065,6 +3099,7 @@ def get_settings(
                 select(MailFilterCategory).order_by(MailFilterCategory.id.asc())
             ).all(),
             "mail_download_all": get_mail_download_all(db),
+            "spool_report": analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH)),
             "error": error or (
                 settings_flash["message"]
                 if settings_flash and settings_flash["kind"] == "error"
@@ -3503,6 +3538,26 @@ def get_recognition_settings(request: Request, db: Session = Depends(get_db)):
             "flash": flash,
         },
     )
+
+
+@app.post("/settings/mail-spool/prune")
+def prune_mail_spool(request: Request, db: Session = Depends(get_db)):
+    """Delete the mail-spool folders analyze_spool considers safe (empty ones,
+    orphans with no letter row, and rejected letters past the retention
+    window). Operator-triggered only — never a background job, see
+    app/mail_spool.py."""
+    _require_settings_admin(request, db)
+    removed, freed = prune_spool(db, Path(MAIL_ATTACHMENTS_PATH))
+    mb = round(freed / (1024 * 1024), 1)
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": (
+            f"Прибрано папок: {removed}, звільнено {mb} МБ."
+            if removed
+            else "Нічого прибирати — спул чистий."
+        ),
+    }
+    return RedirectResponse("/settings#mail-download", status_code=303)
 
 
 @app.post("/settings/mail-download/toggle")
@@ -4009,8 +4064,13 @@ def sync_mail(request: Request, db: Session = Depends(get_db)):
     if user is None:
         return RedirectResponse("/login", status_code=303)
 
+    # Own session, not the request's: on a watchdog timeout the hung fetch
+    # thread still owns whatever session it was given (see
+    # mail_sync_service._fetch_with_deadline), and get_db would otherwise
+    # close the request session out from under that zombie. _run_sync_owned
+    # closes the session itself only when the run actually finished.
     try:
-        count = sync_mailbox(db, Path(MAIL_ATTACHMENTS_PATH), trigger="manual")
+        count = _run_mail_sync_owned_session(trigger="manual")
     except (MailSyncBusyError, MailSyncError) as exc:
         return RedirectResponse(f"/mail?error={quote(str(exc))}", status_code=303)
 

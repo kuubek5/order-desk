@@ -91,3 +91,52 @@ def test_background_failure_does_not_write_repeating_audit_rows(monkeypatch, tmp
         with pytest.raises(MailSyncError):
             sync_mail_background(session, tmp_path)
         assert session.scalar(select(SyncLog)) is None
+
+
+def test_hung_fetch_hits_watchdog_and_releases_lock(monkeypatch, tmp_path):
+    """A fetch that never returns must not hold _sync_lock forever: the
+    watchdog abandons it after the deadline, raises a timeout error, and the
+    very next sync can acquire the lock again (no «вже виконується»)."""
+    import threading
+    import app.mail_sync_service as service
+    from app.mail_sync_service import MailSyncTimeoutError
+
+    release = threading.Event()
+
+    def hang(session, path):
+        release.wait(10)  # simulates a half-open IMAP socket
+        return 0
+
+    monkeypatch.setattr(service, "fetch_new_emails", hang)
+    monkeypatch.setattr(service, "MAIL_SYNC_DEADLINE_SECONDS", 0.3)
+
+    with _session() as session:
+        with pytest.raises(MailSyncTimeoutError, match="не відповіла вчасно"):
+            sync_mail(session, tmp_path)
+        # lock released → a follow-up sync is NOT rejected as busy
+        assert service._sync_lock.acquire(blocking=False)
+        service._sync_lock.release()
+    release.set()  # let the zombie finish so the test process exits cleanly
+
+
+def test_normal_fetch_inside_deadline_unaffected(monkeypatch, tmp_path):
+    import app.mail_sync_service as service
+    monkeypatch.setattr(service, "fetch_new_emails", lambda session, path: 2)
+    monkeypatch.setattr(service, "MAIL_SYNC_DEADLINE_SECONDS", 5)
+    with _session() as session:
+        assert sync_mail(session, tmp_path) == 2
+
+
+def test_fetch_exception_in_worker_is_reraised_as_safe_error(monkeypatch, tmp_path):
+    """Exceptions inside the worker thread must surface to the caller (not
+    vanish in the thread) and still go through the safe-error wrapping."""
+    import app.mail_sync_service as service
+
+    def boom(session, path):
+        raise OSError("imap said secret=hunter2")
+
+    monkeypatch.setattr(service, "fetch_new_emails", boom)
+    with _session() as session:
+        with pytest.raises(MailSyncError) as raised:
+            sync_mail(session, tmp_path)
+        assert "hunter2" not in str(raised.value)
