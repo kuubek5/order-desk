@@ -354,6 +354,7 @@ def test_accept_email_redirects_to_email_queue_filter():
                 material_color="моно A2",
                 kind="анатомія",
                 quantity="1",
+                attachment_ids=[],
                 db=db,
             )
         )
@@ -417,7 +418,7 @@ def test_accept_email_links_order_to_appended_sheet_row():
          patch("app.web.append_mail_placeholder_row", return_value=70):
         asyncio.run(accept_email(
             request=request, email_id=email.id,
-            client_name="Клієнт", material_color="моно A2", kind="анатомія", quantity="1", db=db,
+            client_name="Клієнт", material_color="моно A2", kind="анатомія", quantity="1", attachment_ids=[], db=db,
         ))
 
     order = next(v for v in db.added if isinstance(v, Order))
@@ -462,6 +463,7 @@ def test_accept_email_refuses_while_attachments_still_downloading():
             material_color="моно A2",
             kind="анатомія",
             quantity="1",
+            attachment_ids=[],
             db=db,
         )
     )

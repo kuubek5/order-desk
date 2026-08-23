@@ -25,6 +25,14 @@
     </span>
 </div>
 {% endif %}
+    {% if is_partial %}
+    <div class="wiz-partial" role="note">
+        <span>Частково прийнято: <b>{{ accepted_batches }}</b> {% if accepted_batches == 1 %}робота{% elif accepted_batches < 5 %}роботи{% else %}робіт{% endif %} · лишилось <b>{{ unclaimed_count }}</b> файл(ів) цього листа</span>
+        <form method="post" action="/mail/{{ email.id }}/restore" onsubmit="return confirm('Скасувати всі {{ accepted_batches }} прийнятих робіт цього листа? Файли повернуться в лист, почнете заново.')">
+            <button type="submit" class="wp-undo">↩ скасувати прийняте</button>
+        </form>
+    </div>
+    {% endif %}
     <div class="wiz-title">Крок 1 · Дані роботи</div>
     <div class="fieldgrid">
         <div class="field full">
@@ -59,6 +67,20 @@
                    value="{{ kind or email.kind_guess or '' }}" placeholder="напр. анатомія, абатмент">
         </div>
     </div>
+    {% if unclaimed_count > 1 %}
+    <div class="field full wiz-files">
+        <label>Файли цієї роботи <span class="wf-hint">познач, які файли цього кольору — решта лишиться в листі</span></label>
+        <div class="wf-list">
+            {% for att in unclaimed_attachments %}
+            <label class="wf-item">
+                <input type="checkbox" name="attachment_ids" value="{{ att.id }}"
+                       {% if not attachment_ids or att.id in attachment_ids %}checked{% endif %}>
+                <span class="wf-name mono">{{ att.filename }}</span>
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
     <div class="wiz-foot">
         <span></span>
         <button type="submit" name="step" value="2" class="btn primary">Далі →</button>
@@ -72,6 +94,7 @@
     <input type="hidden" name="material_color" value="{{ material_color }}">
     <input type="hidden" name="kind" value="{{ kind }}">
     <input type="hidden" name="quantity" value="{{ quantity }}">
+    {% for aid in attachment_ids %}<input type="hidden" name="attachment_ids" value="{{ aid }}">{% endfor %}
 
     <div class="wiz-pathbox">
         <div class="wpb-label">Файли ({{ attachment_count }}) ляжуть у:</div>
@@ -137,6 +160,7 @@
     <input type="hidden" name="folder_pick" value="{{ folder_pick }}">
     <input type="hidden" name="folder_new" value="{{ folder_new }}">
     <input type="hidden" name="material_folder" value="{{ material_folder }}">
+    {% for aid in attachment_ids %}<input type="hidden" name="attachment_ids" value="{{ aid }}">{% endfor %}
 
     <dl class="wiz-summary">
         <div><dt>Клієнт</dt><dd>{{ client_name or '—' }}</dd></div>

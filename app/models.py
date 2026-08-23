@@ -66,6 +66,16 @@ class Order(Base):
     archived_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True, index=True
     )
+    # The triage letter this order was accepted from (source == "email" only).
+    # One letter can spawn SEVERAL orders — a client sends multiple colours in
+    # one email and the operator accepts them in batches (partial accept), each
+    # batch its own order. NULL for sheet-sourced orders.
+    source_email_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("email_messages.id"), nullable=True, index=True
+    )
+    # Auto-accepted (no operator review) — future auto-list feature stamps this
+    # so the history/badge can say so. NULL/False = accepted through the wizard.
+    auto_accepted: Mapped[bool] = mapped_column(default=False)
 
     status_events: Mapped[list["StatusEvent"]] = relationship(
         "StatusEvent", back_populates="order", cascade="all, delete-orphan"
@@ -367,6 +377,12 @@ class Attachment(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email_message_id: Mapped[int] = mapped_column(ForeignKey("email_messages.id"), index=True)
+    # Which order (partial-accept batch) moved this file into export. NULL = the
+    # file is still unclaimed (in the mail spool), i.e. the letter has more to
+    # accept. Set on accept, cleared on restore.
+    order_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("orders.id"), nullable=True, index=True
+    )
     filename: Mapped[str] = mapped_column(String(300))
     saved_path: Mapped[str] = mapped_column(String(500))
     size_bytes: Mapped[Optional[int]] = mapped_column(nullable=True)

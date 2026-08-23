@@ -1145,7 +1145,7 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
         asyncio.run(web.accept_email(
             request=_request(user.id), email_id=first.id,
             client_name="Люмі-Дент", material_color="моно а3", kind="", quantity="",
-            folder_pick="", folder_new="", material_folder="", db=db,
+            folder_pick="", folder_new="", material_folder="", attachment_ids=[], db=db,
         ))
         mem = db.scalar(select(ClientSenderMemory))
         assert mem is not None
@@ -1166,14 +1166,14 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
         # step 2 with nothing typed → folder preselected from memory
         web.mail_wizard(request=_request(user.id), email_id=second.id, step=2,
                         client_name="Люмі-Дент", material_color="emo a2", kind="", quantity="",
-                        folder_pick="", folder_new="", material_folder="", db=db)
+                        folder_pick="", folder_new="", material_folder="", attachment_ids=[], db=db)
         assert captured["ctx"]["folder_pick"] == "Люмі-Дент"
         assert captured["ctx"]["preview"]["client_folder"] == "Люмі-Дент"
 
         # an explicit operator pick is never overridden by memory
         web.mail_wizard(request=_request(user.id), email_id=second.id, step=2,
                         client_name="Люмі-Дент", material_color="", kind="", quantity="",
-                        folder_pick="", folder_new="Інша папка", material_folder="", db=db)
+                        folder_pick="", folder_new="Інша папка", material_folder="", attachment_ids=[], db=db)
         assert captured["ctx"]["folder_pick"] == ""
         assert captured["ctx"]["preview"]["client_folder"] == "Інша папка"
 
@@ -1184,3 +1184,86 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
         assert captured["ctx"]["sender_hint"] is None
         assert captured["ctx"]["client_name"] == ""
         assert lookup_sender(db, third) is None
+
+
+def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
+    """A letter with files for two colours: accept a subset → one order, chosen
+    files move, letter stays "нове" with the rest; accept the rest → second
+    order, letter becomes "прийнято". Restore undoes BOTH orders."""
+    engine = _database()
+    export_root = tmp_path / "export"; export_root.mkdir()
+    spool = tmp_path / "spool" / "u1"; spool.mkdir(parents=True)
+    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
+    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "spool"))
+    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    monkeypatch.setattr(web.templates, "TemplateResponse", lambda request, template, context: context)
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email = EmailMessage(uid="u1", status="нове", from_address="c@x.ua",
+                             subject="дві роботи", attachments_status="ready")
+        db.add(email); db.flush()
+        f1 = spool / "mono.stl"; f1.write_bytes(b"A")
+        f2 = spool / "zirc.stl"; f2.write_bytes(b"B")
+        a1 = Attachment(email_message_id=email.id, filename="mono.stl", saved_path=str(f1))
+        a2 = Attachment(email_message_id=email.id, filename="zirc.stl", saved_path=str(f2))
+        db.add_all([a1, a2]); db.commit()
+        a1_id, a2_id = a1.id, a2.id
+
+        # accept only file 1 as "моно а3"
+        asyncio.run(web.accept_email(
+            request=_request(user.id), email_id=email.id, client_name="Клієнт",
+            material_color="моно а3", kind="", quantity="", folder_pick="",
+            folder_new="", material_folder="", attachment_ids=[a1_id], db=db,
+        ))
+        db.refresh(email); db.refresh(a1); db.refresh(a2)
+        assert email.status == "нове"  # still has file 2 → partial
+        assert a1.order_id is not None and a2.order_id is None
+        assert (export_root / "Клієнт").is_dir()
+        first_order = a1.order_id
+
+        # accept the rest as "цирконій"
+        asyncio.run(web.accept_email(
+            request=_request(user.id), email_id=email.id, client_name="Клієнт",
+            material_color="цирконій", kind="", quantity="", folder_pick="",
+            folder_new="", material_folder="", attachment_ids=[a2_id], db=db,
+        ))
+        db.refresh(email); db.refresh(a2)
+        assert email.status == "прийнято"  # nothing left
+        assert a2.order_id is not None and a2.order_id != first_order
+        orders = db.scalars(select(Order).where(Order.source_email_id == email.id)).all()
+        assert {o.material_color for o in orders} == {"моно а3", "цирконій"}
+        assert len(orders) == 2
+
+        # restore undoes BOTH orders and returns all files to spool
+        asyncio.run(web.restore_email(request=_request(user.id), email_id=email.id, db=db))
+        db.refresh(email); db.refresh(a1); db.refresh(a2)
+        assert email.status == "нове"
+        assert a1.order_id is None and a2.order_id is None
+        assert db.scalars(select(Order).where(Order.source_email_id == email.id)).all() == []
+
+
+def test_accept_empty_selection_takes_all_unclaimed(monkeypatch, tmp_path):
+    """No checkboxes ticked = single-colour default: all unclaimed files move,
+    letter fully accepted."""
+    engine = _database()
+    export_root = tmp_path / "export"; export_root.mkdir()
+    spool = tmp_path / "spool" / "u2"; spool.mkdir(parents=True)
+    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
+    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    monkeypatch.setattr(web.templates, "TemplateResponse", lambda request, template, context: context)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email = EmailMessage(uid="u2", status="нове", from_address="c@x.ua", attachments_status="ready")
+        db.add(email); db.flush()
+        f = spool / "one.stl"; f.write_bytes(b"A")
+        db.add(Attachment(email_message_id=email.id, filename="one.stl", saved_path=str(f)))
+        db.commit()
+        asyncio.run(web.accept_email(
+            request=_request(user.id), email_id=email.id, client_name="C",
+            material_color="моно", kind="", quantity="", folder_pick="",
+            folder_new="", material_folder="", attachment_ids=[], db=db,
+        ))
+        db.refresh(email)
+        assert email.status == "прийнято"
+        assert db.scalar(select(func.count()).select_from(Order).where(Order.source_email_id == email.id)) == 1

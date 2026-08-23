@@ -3929,6 +3929,25 @@ def get_mail_detail(
     return templates.TemplateResponse(request, "mail_detail.html", context)
 
 
+def _email_partial_state(db: Session, email: EmailMessage) -> dict:
+    """Multi-colour partial-accept state for a letter: files not yet accepted
+    (still in the spool) and how many order batches were already taken from it.
+    Drives the wizard's file picker and the «частково прийнято» badge."""
+    unclaimed = [
+        a for a in email.attachments
+        if a.order_id is None and Path(a.saved_path).exists()
+    ]
+    accepted_batches = db.scalar(
+        select(func.count()).select_from(Order).where(Order.source_email_id == email.id)
+    ) or 0
+    return {
+        "unclaimed_attachments": unclaimed,
+        "unclaimed_count": len(unclaimed),
+        "accepted_batches": accepted_batches,
+        "is_partial": accepted_batches > 0 and bool(unclaimed),
+    }
+
+
 def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict:
     """Shared render context for the triage detail panel — wizard step 1 seed,
     material candidates and the whitelisted download links detected in the body.
@@ -3958,6 +3977,7 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
         "link_flash": None,
         # Admin-editable category names for the card's «У фільтр» select.
         "filter_categories": _mail_filter_categories(db),
+        **_email_partial_state(db, email),
     }
     context.update(extra)
     return context
@@ -4122,6 +4142,7 @@ def mail_wizard(
     folder_pick: str = Form(""),
     folder_new: str = Form(""),
     material_folder: str = Form(""),
+    attachment_ids: list[int] = Form(default=[]),
     db: Session = Depends(get_db),
 ):
     """Render one step of the semi-automatic accept wizard (client+material →
@@ -4174,16 +4195,21 @@ def mail_wizard(
         "folder_new": folder_new,
         "material_folder": material_folder,
         "material_cands": candidates,
+        "attachment_ids": attachment_ids,
+        **_email_partial_state(db, email),
     }
+    # Files that will move in THIS batch: the operator's selection, or all
+    # unclaimed when nothing is ticked (single-colour default).
+    selected_ids = set(attachment_ids)
+    _batch = [a for a in ctx["unclaimed_attachments"] if a.id in selected_ids] if selected_ids else ctx["unclaimed_attachments"]
+    ctx["batch_count"] = len(_batch)
     if step >= 2:
         export_root = Path(get_export_folder_path(db))
         ctx["preview"] = preview_export_target(
             export_root, client_name, material_color, client_override, material_override
         )
         ctx["existing_folders"] = list_client_folders(export_root)
-        ctx["attachment_count"] = len(
-            [a for a in email.attachments if Path(a.saved_path).exists()]
-        )
+        ctx["attachment_count"] = ctx["batch_count"]
 
     return templates.TemplateResponse(request, "_mail_wizard.html", ctx)
 
@@ -4236,6 +4262,7 @@ async def accept_email(
     folder_pick: str = Form(""),
     folder_new: str = Form(""),
     material_folder: str = Form(""),
+    attachment_ids: list[int] = Form(default=[]),
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)
@@ -4298,16 +4325,25 @@ async def accept_email(
     new_order.material_id = resolve_material_id(
         new_order.material_color, load_alias_rows(db), material_id_by_name(db)
     )
+    new_order.source_email_id = email.id
     db.add(new_order)
     db.flush()
 
     email.order_id = new_order.id
-    email.status = "прийнято"
     db.add(
         StatusEvent(order_id=new_order.id, operator_id=user.id, status="нове", actor=user.username)
     )
 
-    attachments = [a for a in email.attachments if Path(a.saved_path).exists()]
+    # Partial accept: only the files the operator selected for THIS colour move
+    # now (a multi-colour letter is accepted in batches). "Unclaimed" = files
+    # not yet moved by a previous batch (order_id is None). An empty selection
+    # means "all remaining", the single-colour default.
+    unclaimed = [
+        a for a in email.attachments
+        if a.order_id is None and Path(a.saved_path).exists()
+    ]
+    selected_ids = set(attachment_ids)
+    attachments = [a for a in unclaimed if a.id in selected_ids] if selected_ids else unclaimed
     if not attachments:
         # Nothing to move, but the sender→client link is still worth keeping.
         remember_sender(db, email, new_order.client_name or "", None)
@@ -4326,6 +4362,7 @@ async def accept_email(
             )
             for attachment, new_path in zip(attachments, new_paths):
                 attachment.saved_path = str(new_path)
+                attachment.order_id = new_order.id
             db.add(SyncLog(direction="mail_to_export", status="ok", message=f"email {email.id}: {len(attachments)} файл(ів)"))
             # Remember this sender → client/folder for the next letter from them.
             # The client folder is the first path segment under export_root.
@@ -4396,15 +4433,24 @@ async def accept_email(
             )
         )
 
+    # Partial vs full acceptance: if the letter still holds unclaimed files
+    # (another colour the operator hasn't accepted yet), keep it "нове" so it
+    # stays in triage to be finished; otherwise it's fully accepted.
+    remaining = [
+        a for a in email.attachments
+        if a.order_id is None and Path(a.saved_path).exists()
+    ]
+    email.status = "нове" if remaining else "прийнято"
     db.commit()
 
-    # The wizard submits its final step over HTMX; a 303 would make HTMX fetch
-    # and swap the queue HTML into the panel instead of navigating. HX-Redirect
-    # tells HTMX to do a real browser navigation to the (filtered) queue.
+    # Where to land: still files left → back to the letter to accept the next
+    # colour; done → the client queue. The wizard posts over HTMX, so a 303
+    # would swap page HTML into the panel — HX-Redirect drives a real navigation.
+    target = f"/mail/{email.id}" if remaining else "/?source=client"
     request_headers = getattr(request, "headers", None) or {}
     if request_headers.get("HX-Request") == "true":
-        return Response(status_code=204, headers={"HX-Redirect": "/?source=client"})
-    return RedirectResponse("/?source=client", status_code=303)
+        return Response(status_code=204, headers={"HX-Redirect": target})
+    return RedirectResponse(target, status_code=303)
 
 
 @app.post("/mail/{email_id}/reject")
@@ -4767,14 +4813,20 @@ def delete_mail_filter(
 
 
 def _unaccept_email(db: Session, email: EmailMessage) -> None:
-    """Fully undo an accepted email back to its pre-accept state (status "нове"):
-    move its attachments from export back to the mail spool, blank the sheet
-    placeholder row, and delete the created Order. Raises on a filesystem error
-    (the file move has its own rollback) so the caller can abort cleanly; the
-    sheet blanking is best-effort and never blocks the undo. Ordering: side
-    effects first, DB mutations last, so a raised error leaves nothing
-    half-committed."""
-    order = db.get(Order, email.order_id) if email.order_id else None
+    """Fully undo EVERY order accepted from this letter (a multi-colour letter
+    can have several), returning it to the pre-accept "нове" state: move all
+    claimed attachments from export back to the mail spool, blank each order's
+    sheet placeholder row, and delete the orders. Raises on a filesystem error
+    (the move has its own rollback) so the caller can abort cleanly; sheet
+    blanking is best-effort. Side effects first, DB mutations last."""
+    orders = db.scalars(
+        select(Order).where(Order.source_email_id == email.id)
+    ).all()
+    # Legacy safety net: pre-0012 accepts linked only via email.order_id.
+    if not orders and email.order_id:
+        legacy = db.get(Order, email.order_id)
+        if legacy is not None:
+            orders = [legacy]
 
     attachments = list(email.attachments)
     if attachments:
@@ -4783,16 +4835,21 @@ def _unaccept_email(db: Session, email: EmailMessage) -> None:
         )
         for attachment, new_path in zip(attachments, new_paths):
             attachment.saved_path = str(new_path)
+            attachment.order_id = None
 
-    if order is not None and order.sheet_tab and order.row_number is not None:
-        try:
-            worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
-            if worksheet is not None:
-                clear_placeholder_row(worksheet, order.row_number + HEADER_ROWS)
-        except Exception:  # noqa: BLE001 — sheet cleanup must not block the undo
-            logger.exception("Could not blank sheet placeholder row for email %s", email.id)
+    spreadsheet = None
+    for order in orders:
+        if order.sheet_tab and order.row_number is not None:
+            try:
+                if spreadsheet is None:
+                    spreadsheet = open_spreadsheet(db=db)
+                worksheet = get_worksheet_by_name(spreadsheet, order.sheet_tab)
+                if worksheet is not None:
+                    clear_placeholder_row(worksheet, order.row_number + HEADER_ROWS)
+            except Exception:  # noqa: BLE001 — sheet cleanup must not block the undo
+                logger.exception("Could not blank sheet placeholder row for email %s", email.id)
 
-    if order is not None:
+    for order in orders:
         db.delete(order)
     email.order_id = None
     email.status = "нове"
@@ -4818,10 +4875,17 @@ async def restore_email(
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")
 
+    has_orders = bool(
+        db.scalar(select(func.count()).select_from(Order).where(Order.source_email_id == email.id))
+        or email.order_id
+    )
     if email.status == "відхилено":
         email.status = "нове"
         db.commit()
-    elif email.status == "прийнято":
+    elif email.status == "прийнято" or has_orders:
+        # "прийнято" = fully accepted; a "нове" letter WITH orders = partially
+        # accepted (some colours taken, more remain). Either way, undo every
+        # order and put all files back — a clean restart of the whole letter.
         try:
             _unaccept_email(db, email)
             db.commit()
