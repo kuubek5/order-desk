@@ -142,6 +142,7 @@ from app.sheets import (
     reset_sheets_cache,
 )
 from app.statuses import STATUSES, is_overdue
+from app.triage_status import triage_readiness
 from app.stats import (
     average_new_to_milled_hours,
     parse_int_safe,
@@ -1069,6 +1070,7 @@ templates = Jinja2Templates(directory=str(resource_path("app/templates")))
 templates.env.globals["is_overdue"] = is_overdue
 templates.env.globals["material_color_css_class"] = material_color_css_class
 templates.env.globals["material_badge"] = material_badge
+templates.env.globals["triage_readiness"] = triage_readiness
 templates.env.globals["static_ver"] = static_ver
 # Available in every template without every route threading it through its
 # own context dict — same rationale as static_ver above. Reads the

@@ -59,10 +59,13 @@
                         <button type="submit" class="list-reject" title="Повернути в чергу">↩</button>
                     </form>
                 {% else %}
-                    {% if email.service_type_guess == '3d_print' %}
-                    <span class="reco warn">перевірити</span>
+                    {% set rd = triage_readiness(email) %}
+                    {% if rd.state == '3d' %}
+                    <span class="reco danger" title="Схоже на 3D-друк — лабораторія цього не робить. Можна навчити фільтр (у листі) прибирати такі автоматично.">3D-друк?</span>
+                    {% elif rd.state == 'incomplete' %}
+                    <span class="reco warn" title="Не розпізнано: {{ rd.missing|join(', ') }} — відкрий лист і заповни перед прийняттям.">{{ rd.missing|join(', ') }}?</span>
                     {% else %}
-                    <span class="reco ok">розпізнано</span>
+                    <span class="reco ok" title="Ключові поля розпізнано — можна приймати в чергу.">готово</span>
                     {% endif %}
                     <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/reject" hx-target="closest .mailrow" hx-swap="delete" hx-confirm="Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється)." onclick="event.stopPropagation()">
                         <button type="submit" class="list-reject" title="Відхилити">

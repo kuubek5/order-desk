@@ -4075,6 +4075,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .reco{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:5px;margin-left:auto}
 .mailv2 .reco.ok{background:rgba(20,184,166,.14);color:var(--accent-c);border:1px solid rgba(45,212,191,.3)}
 .mailv2 .reco.warn{background:rgba(240,163,94,.13);color:var(--warn);border:1px solid rgba(240,163,94,.3)}
+.mailv2 .reco.danger{background:rgba(248,113,113,.13);color:var(--alarm);border:1px solid rgba(248,113,113,.32)}
 .mailv2 .reco.muted{background:#1a222e;color:var(--ink-3);border:1px solid var(--line-2)}
 
 /* Unread-by-operator (seen_at IS NULL): a warm left bar + faint tint mark the
