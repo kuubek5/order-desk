@@ -4925,6 +4925,7 @@ async def restore_email(
     if email.status == "відхилено":
         email.status = "нове"
         db.commit()
+        request.session["toast_flash"] = {"kind": "success", "message": "Лист повернуто в «Усі листи»."}
     elif email.status == "прийнято" or has_orders:
         # "прийнято" = fully accepted; a "нове" letter WITH orders = partially
         # accepted (some colours taken, more remain). Either way, undo every
@@ -4938,5 +4939,9 @@ async def restore_email(
                 f"/mail?view=archive&error={quote('Не вдалося відкотити прийняття: ' + str(exc))}",
                 status_code=303,
             )
+        request.session["toast_flash"] = {
+            "kind": "success",
+            "message": "Прийняття відкочено: роботи видалено, файли повернуто в лист.",
+        }
 
     return RedirectResponse("/mail", status_code=303)

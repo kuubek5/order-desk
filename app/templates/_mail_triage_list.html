@@ -45,6 +45,14 @@
                     {% else %}
                     <span class="reco muted">✕ відхилено</span>
                     {% endif %}
+                    {# Return the letter to «Усі листи». Accepted = heavy undo
+                       (deletes orders, moves files back) → confirm + full nav so
+                       the outcome toast shows; rejected = a cheap status flip. #}
+                    <form class="mail-reject-form" method="post" action="/mail/{{ email.id }}/restore"
+                          {% if email.status == 'прийнято' %}onsubmit="return confirm('Повернути лист у «Усі листи»? Прийняті роботи видаляться, файли повернуться в лист.')"{% endif %}
+                          onclick="event.stopPropagation()">
+                        <button type="submit" class="list-reject" title="Повернути в «Усі листи»">↩</button>
+                    </form>
                 {% elif view == 'filtered' %}
                     <span class="reco warn" title="Відфільтровано правилом">{{ email.filter_category }}</span>
                     <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/unfilter" hx-target="closest .mailrow" hx-swap="delete" onclick="event.stopPropagation()">

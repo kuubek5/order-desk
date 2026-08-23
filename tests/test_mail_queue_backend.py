@@ -1393,3 +1393,18 @@ def test_accept_sets_truthful_outcome_toast(monkeypatch, tmp_path):
         ))
         flash = req.session["toast_flash"]
         assert "прийнято в чергу: збережено 1" in flash["message"]
+
+
+def test_restore_from_archive_sets_toast(monkeypatch):
+    """Archive-row «↩» → letter back to «Усі листи» with an outcome toast."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        rejected = EmailMessage(uid="r", status="відхилено")
+        db.add(rejected); db.commit()
+        req = _request(user.id)
+        resp = asyncio.run(web.restore_email(request=req, email_id=rejected.id, db=db))
+        assert resp.status_code == 303 and resp.headers["location"] == "/mail"
+        db.refresh(rejected)
+        assert rejected.status == "нове"
+        assert "Усі листи" in req.session["toast_flash"]["message"]
