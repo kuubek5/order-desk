@@ -11,12 +11,23 @@
    downloading attachments) are NOT preserved, so their "завантаження…" flips
    to the real file count once phase-2 finishes. hx-disinherit stops the rows'
    own click/reject handlers from inheriting the poll trigger/target. #}
+{# The poll carries `since` — the list's frozen high-water mark. Letters newer
+   than it are counted, not inserted, so no row ever moves under the operator's
+   cursor mid-click (same protection the handout screen has by written rule).
+   The «+N нових» button below is a real navigation: it mints a new watermark
+   and is the ONLY thing that grows this list. #}
 <div id="mail-list-rows"
-     {% if view == 'pending' %}hx-get="/mail?view=pending&service={{ service }}&partial=list"
+     {% if view == 'pending' %}hx-get="/mail?view=pending&service={{ service }}&partial=list&since={{ list_watermark }}"
      hx-trigger="every 15s"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*"{% endif %}>
+    {% if view == 'pending' and held_back_count %}
+    <a class="newmail-bar" href="/mail?view=pending&service={{ service }}">
+        <span class="newmail-dot" aria-hidden="true"></span>
+        +{{ held_back_count }} {% if held_back_count == 1 %}новий лист{% elif held_back_count < 5 %}нові листи{% else %}нових листів{% endif %} — показати
+    </a>
+    {% endif %}
     {% if emails %}
         {% for email in emails %}
         {% set is_unread = view == 'pending' and email.seen_at is none %}
@@ -25,7 +36,7 @@
              {% if view == 'pending' and email.attachments_status != 'pending' %}hx-preserve="true"{% endif %}
              hx-get="/mail/{{ email.id }}?panel=1"
              hx-target="#mail-detail" hx-swap="innerHTML"
-             hx-trigger="click, keyup[key=='Enter']"
+             hx-trigger="click, keyup[key=='Enter'], keyup[key==' ']"
              data-mail-id="{{ email.id }}">
             <span class="r1">
                 {% if is_unread %}<span class="newdot" aria-hidden="true"></span>{% endif %}
@@ -50,13 +61,13 @@
                        the outcome toast shows; rejected = a cheap status flip. #}
                     <form class="mail-reject-form" method="post" action="/mail/{{ email.id }}/restore"
                           {% if email.status == 'прийнято' %}onsubmit="return confirm('Повернути лист у «Усі листи»? Прийняті роботи видаляться, файли повернуться в лист.')"{% endif %}
-                          onclick="event.stopPropagation()">
-                        <button type="submit" class="list-reject" title="Повернути в «Усі листи»">↩</button>
+                          onclick="event.stopPropagation()" onkeyup="event.stopPropagation()">
+                        <button type="submit" class="list-reject" title="Повернути в «Усі листи»" aria-label="Повернути лист у «Усі листи»">↩</button>
                     </form>
                 {% elif view == 'filtered' %}
                     <span class="reco warn" title="Відфільтровано правилом">{{ email.filter_category }}</span>
-                    <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/unfilter" hx-target="closest .mailrow" hx-swap="delete" onclick="event.stopPropagation()">
-                        <button type="submit" class="list-reject" title="Повернути в чергу">↩</button>
+                    <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/unfilter" hx-target="closest .mailrow" hx-swap="delete" onclick="event.stopPropagation()" onkeyup="event.stopPropagation()">
+                        <button type="submit" class="list-reject" title="Повернути в чергу" aria-label="Повернути лист у чергу">↩</button>
                     </form>
                 {% else %}
                     {% set rd = triage_readiness(email) %}
@@ -67,8 +78,12 @@
                     {% else %}
                     <span class="reco ok" title="Ключові поля розпізнано — можна приймати в чергу.">готово</span>
                     {% endif %}
-                    <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/reject" hx-target="closest .mailrow" hx-swap="delete" hx-confirm="Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється)." onclick="event.stopPropagation()">
-                        <button type="submit" class="list-reject" title="Відхилити">
+                    {# keyup must be stopped as well as click: the ROW listens
+                       for keyup[key=='Enter'] to open the letter, so tabbing to
+                       this ✕ and pressing Enter used to reject the letter AND
+                       open it in the same keystroke. #}
+                    <form class="mail-reject-form" hx-post="/mail/{{ email.id }}/reject" hx-target="closest .mailrow" hx-swap="delete" hx-confirm="Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється)." onclick="event.stopPropagation()" onkeyup="event.stopPropagation()">
+                        <button type="submit" class="list-reject" title="Відхилити" aria-label="Відхилити лист">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
                         </button>
                     </form>
@@ -76,7 +91,9 @@
             </span>
         </div>
         {% endfor %}
-    {% else %}
+    {% elif not held_back_count %}
+        {# Suppressed when letters are being held back — «немає листів» directly
+           above a «+3 нових» banner would contradict itself. #}
         <div class="empty-triage">
             <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 7 8 5 8-5"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></span>
             {% if view == 'archive' %}

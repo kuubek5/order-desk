@@ -295,7 +295,7 @@ def test_sync_summary_message_reports_import_counts():
     assert "оновлено: 3" in message
 
 
-def test_accept_email_redirects_to_email_queue_filter():
+def test_accept_email_stays_in_triage_after_full_accept():
     user = SimpleNamespace(id=7, username="operator", is_active=True)
     email = SimpleNamespace(id=9, status="нове", attachments_status="ready", attachments=[], order_id=None)
 
@@ -359,8 +359,11 @@ def test_accept_email_redirects_to_email_queue_filter():
             )
         )
 
+    # A fully accepted letter lands back on the TRIAGE list, not on the queue:
+    # ejecting the operator after every finished letter made them navigate back
+    # each time. The toast still reports the created order.
     assert response.status_code == 303
-    assert response.headers["location"] == "/?source=client"
+    assert response.headers["location"] == "/mail"
     assert email.status == "прийнято"
     assert email.order_id == 42
     assert db.committed is True

@@ -3877,6 +3877,7 @@ def get_mail(
     view: str = "pending",
     partial: str | None = None,
     open: int | None = None,
+    since: int | None = None,
 ):
     user = get_current_user(request, db)
     if user is None:
@@ -3906,15 +3907,35 @@ def get_mail(
         status_clause = sa_and(
             EmailMessage.status == "нове", EmailMessage.filter_category.is_(None)
         )
+    # STABLE ORDER (pending view). The list polls every 15s; without this a
+    # letter arriving mid-glance inserted itself and pushed every row down
+    # under the operator's cursor — the same hazard the handout screen has a
+    # written rule against (CLAUDE.md §2, rule 1). `since` is a high-water mark
+    # of EmailMessage.id captured at full page render and echoed back by the
+    # poll: the refreshed list shows only letters at or below it, so rows never
+    # move. Anything newer is counted and offered as an explicit «+N нових»
+    # banner, which the operator clicks when they are ready — that click is a
+    # full navigation, which mints a new watermark.
+    list_clause = status_clause
+    if since is not None and view == "pending":
+        list_clause = sa_and(status_clause, EmailMessage.id <= since)
     emails = db.scalars(
         select(EmailMessage)
-        .where(status_clause)
+        .where(list_clause)
         .options(selectinload(EmailMessage.attachments))
         .order_by(
             EmailMessage.received_at.desc().nullslast(),
             EmailMessage.created_at.desc()
         )
     ).all()
+    # How many pending letters are being held back from the frozen list.
+    held_back_count = 0
+    if since is not None and view == "pending":
+        held_back_count = db.scalar(
+            select(func.count()).select_from(EmailMessage).where(
+                status_clause, EmailMessage.id > since
+            )
+        ) or 0
 
     # Top-level view counts (pending vs filtered vs archive) for the tabs.
     pending_count = db.scalar(
@@ -3948,6 +3969,13 @@ def get_mail(
             EmailMessage.filter_category.is_(None),
         )
     ) or 0
+
+    # Watermark for the frozen list (see the `since` comment above). On a full
+    # render it is the newest letter id in existence; the poll echoes it back
+    # unchanged, so the visible set stays put until the operator asks for more.
+    list_watermark = since if since is not None else (
+        db.scalar(select(func.max(EmailMessage.id))) or 0
+    )
 
     # Service-type chips only make sense for the pending triage list.
     service_counts = count_by_service_type(emails) if view == "pending" else None
@@ -4007,7 +4035,13 @@ def get_mail(
         return templates.TemplateResponse(
             request,
             "_mail_triage_list.html",
-            {"emails": emails, "view": view, "service": service},
+            {
+                "emails": emails,
+                "view": view,
+                "service": service,
+                "list_watermark": list_watermark,
+                "held_back_count": held_back_count,
+            },
         )
 
     # Pre-open a letter in the right-hand panel (used after a partial accept so
@@ -4054,6 +4088,9 @@ def get_mail(
             # «Скачувати всі вкладення» — той самий тоггл, що в налаштуваннях,
             # продубльований у шапці тріажу для швидкого доступу (адмін).
             "mail_download_all": get_mail_download_all(db),
+            # Frozen-list state (see the `since` comment above).
+            "list_watermark": list_watermark,
+            "held_back_count": held_back_count,
         },
     )
 
@@ -4752,10 +4789,15 @@ async def accept_email(
         kind = "warning"
     request.session["toast_flash"] = {"kind": kind, "message": message}
 
-    # Where to land: still files left → back to the letter to accept the next
-    # colour; done → the client queue. The wizard posts over HTMX, so a 303
-    # would swap page HTML into the panel — HX-Redirect drives a real navigation.
-    target = f"/mail?open={email.id}" if remaining else "/?source=client"
+    # Where to land: STAY IN TRIAGE either way. Still files left → back to this
+    # letter to accept the next colour; fully done → the triage list, so the
+    # operator keeps their place and the next letter is one click away. (This
+    # used to redirect to the client queue when finished, which ejected the
+    # operator from the screen on every completed letter and made them navigate
+    # back — the reward for finishing was losing your place. The toast already
+    # links the created order.) The wizard posts over HTMX, so a 303 would swap
+    # page HTML into the panel — HX-Redirect drives a real navigation.
+    target = f"/mail?open={email.id}" if remaining else "/mail"
     request_headers = getattr(request, "headers", None) or {}
     if request_headers.get("HX-Request") == "true":
         return Response(status_code=204, headers={"HX-Redirect": target})

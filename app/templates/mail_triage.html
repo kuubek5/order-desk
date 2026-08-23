@@ -22,21 +22,6 @@
             </div>
         </div>
         <div class="head-actions">
-            {# «Скачувати всі вкладення» — той самий тоггл, що в Налаштуваннях,
-               продубльований тут для швидкого доступу (адмін). return_to=mail
-               повертає на цей екран із тостом. #}
-            {% if user.role == 'адмін' %}
-            <form method="post" action="/settings/mail-download/toggle" class="dl-all-toggle-form">
-                <input type="hidden" name="return_to" value="mail">
-                <button type="submit" class="dl-all-toggle {% if mail_download_all %}is-on{% endif %}"
-                        title="{% if mail_download_all %}Зараз качаються файли з КОЖНОГО листа. Клік — вимкнути (лише довірені).{% else %}Зараз качаються лише довірені відправники. Клік — качати ВСЕ, що заходить.{% endif %}"
-                        aria-pressed="{{ 'true' if mail_download_all else 'false' }}">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-                    <span>Скачувати все</span>
-                    <span class="dl-all-state">{% if mail_download_all %}увімк{% else %}вимк{% endif %}</span>
-                </button>
-            </form>
-            {% endif %}
             {# Manual IMAP check. On submit the button spins and locks (JS in
                app.js), and a short cooldown persisted in localStorage keeps it
                locked for a few seconds after the page reloads so it can't be
@@ -63,6 +48,25 @@
         <a href="/mail?view=archive" class="tab-link {% if view == 'archive' %}active{% endif %}">Архів <span class="tab-badge">{{ archive_count }}</span></a>
         <a href="/mail?view=auto" class="tab-link {% if view == 'auto' %}active{% endif %}" title="Довірені клієнти — авто-прийняття">Авто-прийняття{% if auto_count %} <span class="tab-badge">{{ auto_count }}</span>{% endif %}</a>
     </nav>
+
+    {# Download mode: a STATE CHIP, not an action button. It was sitting in
+       .head-actions 8px from «Перевірити пошту» — a persistent global setting
+       shoulder to shoulder with the button pressed 30× a day, both the same
+       size, both carrying the same download arrow. Here it reads as ambient
+       state of the whole screen, which is what it is. Full control lives in
+       Налаштування; this is the quick flip. #}
+    {% if user.role == 'адмін' %}
+    <form method="post" action="/settings/mail-download/toggle" class="dl-mode">
+        <input type="hidden" name="return_to" value="mail">
+        <span class="dl-mode-label">Завантаження файлів:</span>
+        <button type="submit" class="dl-mode-btn {% if mail_download_all %}is-on{% endif %}"
+                aria-pressed="{{ 'true' if mail_download_all else 'false' }}"
+                aria-label="{% if mail_download_all %}Зараз качаються файли з кожного листа. Натисніть, щоб качати лише від довірених відправників.{% else %}Зараз качаються файли лише від довірених відправників. Натисніть, щоб качати з кожного листа.{% endif %}">
+            {% if mail_download_all %}з усіх листів{% else %}лише довірені{% endif %}
+            <span class="dl-mode-swap" aria-hidden="true">змінити</span>
+        </button>
+    </form>
+    {% endif %}
 
     {% if filter_suggest %}
     <div class="filter-suggest" role="status">

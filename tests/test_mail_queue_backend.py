@@ -1417,3 +1417,77 @@ def test_restore_from_archive_sets_toast(monkeypatch):
         db.refresh(rejected)
         assert rejected.status == "нове"
         assert "Усі листи" in req.session["toast_flash"]["message"]
+
+
+def test_pending_list_order_is_frozen_by_watermark(tmp_path, monkeypatch):
+    """The 15s poll must not insert newly arrived letters into the list under
+    the operator's cursor. With `since` echoed back, the refreshed list holds
+    the same rows and reports the newcomers as a count instead."""
+    engine = _database()
+    mail_root = tmp_path / "mail"
+    mail_root.mkdir()
+    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    captured = {}
+    monkeypatch.setattr(
+        web.templates,
+        "TemplateResponse",
+        lambda request, template, context: captured.update(template=template, ctx=context) or context,
+    )
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        for uid in ("a", "b"):
+            db.add(EmailMessage(uid=uid, status="нове", received_at=datetime.now()))
+        db.commit()
+
+        # Full render mints the watermark over the two existing letters.
+        web.get_mail(request=_request(user.id), db=db)
+        watermark = captured["ctx"]["list_watermark"]
+        assert watermark > 0
+        assert len(captured["ctx"]["emails"]) == 2
+        assert captured["ctx"]["held_back_count"] == 0
+
+        # A letter lands mid-glance.
+        db.add(EmailMessage(uid="c", status="нове", received_at=datetime.now()))
+        db.commit()
+
+        # The poll echoes the watermark: same two rows, newcomer only counted.
+        web.get_mail(request=_request(user.id), db=db, partial="list", since=watermark)
+        assert captured["template"] == "_mail_triage_list.html"
+        assert len(captured["ctx"]["emails"]) == 2
+        assert captured["ctx"]["held_back_count"] == 1
+        assert captured["ctx"]["list_watermark"] == watermark
+
+        # Clicking «+N нових» is a full navigation → fresh watermark, all three.
+        web.get_mail(request=_request(user.id), db=db)
+        assert len(captured["ctx"]["emails"]) == 3
+        assert captured["ctx"]["held_back_count"] == 0
+        assert captured["ctx"]["list_watermark"] > watermark
+
+
+def test_watermark_does_not_freeze_archive_or_filtered_views(tmp_path, monkeypatch):
+    """Freezing is a pending-list concern only — the archive is browsed, not
+    worked, so a stale `since` must not hide rows there."""
+    engine = _database()
+    mail_root = tmp_path / "mail"
+    mail_root.mkdir()
+    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    captured = {}
+    monkeypatch.setattr(
+        web.templates,
+        "TemplateResponse",
+        lambda request, template, context: captured.update(template=template, ctx=context) or context,
+    )
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(EmailMessage(uid="old", status="прийнято", received_at=datetime.now()))
+        db.commit()
+        db.add(EmailMessage(uid="new", status="прийнято", received_at=datetime.now()))
+        db.commit()
+
+        web.get_mail(request=_request(user.id), db=db, view="archive", since=1)
+        assert len(captured["ctx"]["emails"]) == 2
+        assert captured["ctx"]["held_back_count"] == 0

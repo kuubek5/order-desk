@@ -62,7 +62,10 @@
                 <span class="attachment-badge attachment-badge-pending"><span class="attachment-badge-dot" aria-hidden="true"></span>Завантаження…</span>
                 {% elif email.attachments_status == 'skipped' %}
                 <span class="attachment-badge attachment-badge-warn" title="Відправник не в авто-списку — файли не качались автоматично">Файли не скачані</span>
-                <span class="metabar-hint">→ вкладка «Файли + STL», кнопка «Скачати файли»</span>
+                {# Was a sentence giving turn-by-turn directions to a button
+                   («→ вкладка «Файли + STL», кнопка …»). Put the button under
+                   the operator's cursor instead of describing where it lives. #}
+                <button type="button" class="btn sm metabar-go" data-seg-go="files">Скачати вкладення →</button>
                 {% else %}
                 <span class="attachment-badge attachment-badge-ready">✓ Скачано ({{ att_count }})</span>
                 {% endif %}
@@ -89,13 +92,13 @@
                 <form method="post" action="/mail/filters" class="teach-filter-form">
                     <input type="hidden" name="kind" value="keyword">
                     <input type="hidden" name="return_to" value="">
-                    <input type="text" name="pattern" class="suminput sm mono" placeholder="слово, напр. моделювання" required>
+                    <input type="text" name="pattern" class="suminput sm mono" placeholder="слово, напр. моделювання" aria-label="Слово, за яким фільтрувати листи" required>
                     <select name="category" class="suminput sm" aria-label="Категорія">
                         {% for cat in filter_categories %}
                         <option value="{{ cat }}">{{ cat }}</option>
                         {% endfor %}
                     </select>
-                    <button type="submit" class="btn sm primary" title="Створити правило: всі листи з цим словом → у «Відфільтровані». Діє і на ті, що вже в черзі.">Запам'ятати</button>
+                    <button type="submit" class="btn sm" title="Створити правило: всі листи з цим словом → у «Відфільтровані». Діє і на ті, що вже в черзі.">Запам'ятати</button>
                 </form>
                 <div class="wiz-hint">Далі листи з цим словом фільтруються самі. Керувати правилами — Налаштування → Фільтри пошти.</div>
             </details>
@@ -148,14 +151,17 @@
                 {% elif email.attachments_status == 'skipped' %}
                 <div class="skipped-files">
                     <p class="settings-hint">Файли цього листа не скачані — відправника немає в авто-списку. Скачайте вручну, щоб переглянути STL і прийняти в чергу.</p>
-                    <button type="button" class="btn sm primary dl-btn"
+                    <button type="button" class="btn sm dl-btn"
                         hx-post="/mail/{{ email.id }}/download-attachments"
                         hx-target="#mail-detail" hx-swap="innerHTML"
                         hx-indicator="this" hx-disabled-elt="this">
-                    <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+                    {# Paperclip glyph: these are the letter's own MIME
+                       attachments, distinct from «Скачати за посиланням» below
+                       and from the global «Скачувати все» setting. #}
+                    <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V6a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V7"/></svg>
                     <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
-                    <span class="dl-lbl-idle">Скачати файли</span>
-                    <span class="dl-lbl-busy">Скачую файли…</span>
+                    <span class="dl-lbl-idle">Скачати вкладення</span>
+                    <span class="dl-lbl-busy">Скачую вкладення…</span>
                 </button>
                 </div>
                 {% else %}
@@ -164,7 +170,7 @@
                 {% if email.attachments %}
                 <div class="att-actions">
                     {% if has_archive %}
-                    <button type="button" class="btn primary dl-btn"
+                    <button type="button" class="btn dl-btn"
                             hx-post="/mail/{{ email.id }}/extract-archives"
                             hx-target="#mail-detail" hx-swap="innerHTML"
                             hx-indicator="this" hx-disabled-elt="this">
@@ -197,10 +203,13 @@
                     {% endfor %}
                 </div>
                 <div class="link-actions">
-                    <button type="button" class="btn primary"
+                    {# Link glyph, not the bare download arrow: this pulls files
+                       that live BEHIND A LINK, and must not read the same as
+                       «Скачати вкладення» (MIME parts) two sections above. #}
+                    <button type="button" class="btn"
                             onclick="document.body.dispatchEvent(new Event('dl-all'))">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-                        Скачати всі файли
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1 0l2.9-2.9a5 5 0 0 0-7.1-7.1L11.5 4.4"/><path d="M14 11a5 5 0 0 0-7.1 0L4 13.9a5 5 0 0 0 7.1 7.1l1.4-1.4"/></svg>
+                        Скачати за посиланням
                     </button>
                 </div>
                 <div class="wiz-hint">Клік по рядку — скачати один файл. Тягне лише з довірених джерел (Google Drive, ukr.net); скачане стає звичайними вкладеннями.</div>
@@ -258,6 +267,11 @@
             <span class="ssum-sep" aria-hidden="true">·</span>
             <span class="ssum-files mono">{% if email.attachments_status == 'pending' %}…{% else %}{{ att_count }} файл.{% endif %}</span>
         </div>
+        {# Disposal actions (filter away / reject) sit in their own group,
+           separated from the apex by a divider — they are NOT what the
+           operator came here to do, and «Відхилити» used to sit 8px from
+           «Прийняти» at the same size with no confirmation, while the same
+           action in the list DID confirm. One verb, one safety contract. #}
         <div class="ssum-actions">
             {% if email.filter_category %}
             {# The letter is currently filtered — the one action that makes
@@ -277,10 +291,12 @@
                 <button type="submit" class="btn sm" title="Перенести лист у «Відфільтровані» (без правила, «↩» повертає)">У фільтр</button>
             </form>
             {% endif %}
-            <form method="post" action="/mail/{{ email.id }}/reject">
+            <form method="post" action="/mail/{{ email.id }}/reject"
+                  onsubmit="return confirm('Відхилити цей лист? Він зникне з тріажу (поштова скринька не змінюється).')">
                 <button type="submit" class="btn danger sm">Відхилити</button>
             </form>
-            <button type="button" class="btn primary sm" data-seg-go="accept">Прийняти →</button>
+            <span class="ssum-div" aria-hidden="true"></span>
+            <button type="button" class="btn apex sm" data-seg-go="accept">Прийняти →</button>
         </div>
     </div>
     {% endif %}

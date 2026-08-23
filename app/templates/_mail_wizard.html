@@ -175,7 +175,7 @@
         <button type="button" class="btn"
                 hx-post="/mail/{{ email.id }}/wizard" hx-include="#wiz3form"
                 hx-vals='{"step":"2"}' hx-target="#mail-wizard" hx-swap="innerHTML">← Назад</button>
-        <button type="submit" class="btn primary"
+        <button type="submit" class="btn apex"
                 {% if email.attachments_status == 'pending' %}disabled aria-disabled="true" title="Зачекайте, поки завантажаться вкладення"{% endif %}>
             ✓ Прийняти в чергу
         </button>

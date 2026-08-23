@@ -75,10 +75,24 @@
   --card-2: #1b2431;
   --card-3: #202b3a;
   --line: #222c3a;
-  --line-2: #2c3849;
+  /* Structural hairline between panels and cards. Deliberately quiet: a
+     decorative divider is not a UI component, so 3:1 does not apply to it —
+     see --control-edge for the boundaries that DO carry meaning. Lifted a step
+     from #2c3849 so it survives on the lighter --card-2/--card-3 surfaces. */
+  --line-2: #3a4a5f;
+  /* Border of interactive controls (button, input, select, chip). Here the
+     border IS the affordance: .btn sits at --card on a --card-2 panel, so
+     those two backgrounds differ by almost nothing and the outline is what
+     says "this is pressable". WCAG 1.4.11 wants 3:1 for that, which --line-2
+     misses (1.88 on --card); this clears it on --card and --card-2. */
+  --control-edge: #5f7490;
   --ink: #e8eff7;
   --ink-2: #8fa3bb;
-  --ink-3: #7789a0;
+  /* Lifted from #7789a0, which cleared 4.5:1 only on the darkest surface and
+     failed on every lighter one (--card-2 4.37, --card-3 4.00) — exactly where
+     the smallest 10–11px meta text sits. This value clears 4.5:1 on all of
+     them, which matters in a workshop, not just on paper. */
+  --ink-3: #8698ad;
   --accent: #14b8a6;
   --accent-b: #2dd4bf;
   --accent-c: #5eead4;
