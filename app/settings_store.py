@@ -92,7 +92,14 @@ SETTING_FIELDS = [
 
 OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operator_editable}
 
-SETTING_KEYS = {field.key for field in SETTING_FIELDS}
+# Non-secret preference keys stored in the same AppSetting table but NOT part of
+# the credentials screen (SETTING_FIELDS) — set from their own settings screens.
+# mail_default_material: which material the mail triage assumes when a milling
+# letter carries no material signal at all (empty string / unset = off). See
+# app/mail_reader.py and the /settings/recognition screen.
+PREFERENCE_KEYS = {"mail_default_material"}
+
+SETTING_KEYS = {field.key for field in SETTING_FIELDS} | PREFERENCE_KEYS
 
 
 def get_setting(session: Session, key: str) -> Optional[str]:
@@ -162,3 +169,14 @@ def get_google_oauth_client_json(session: Session) -> Optional[str]:
 
 def get_google_oauth_refresh_token(session: Session) -> Optional[str]:
     return get_setting(session, "google_oauth_refresh_token")
+
+
+def get_mail_default_material(session: Session) -> Optional[str]:
+    """Material name the mail triage assumes for a milling letter with no
+    material signal (e.g. «Цирконій»), or None/"" when the rule is off."""
+    value = get_setting(session, "mail_default_material")
+    return value or None
+
+
+def set_mail_default_material(session: Session, value: str | None) -> None:
+    set_setting(session, "mail_default_material", (value or "").strip())

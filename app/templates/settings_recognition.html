@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Розпізнавання пошти — Order Desk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
+<link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'settings' %}
+{% include "_topbar_nav.html" %}
+
+<main class="setv2 matlib">
+    <div class="matlib-head">
+        <a href="/settings" class="matlib-back">← Налаштування</a>
+        <h1>Розпізнавання пошти</h1>
+        <p class="wizard-sub">Правила, за якими тріаж читає листи. Це дані: додавай/видаляй без правки коду. Оператор завжди переглядає й виправляє — жодне правило не ховає лист.</p>
+    </div>
+
+    {% if flash %}
+    <div class="matlib-flash {{ 'is-error' if flash.kind == 'error' else 'is-ok' }}">{{ flash.message }}</div>
+    {% endif %}
+
+    {# ── Section B: service-type keywords (розпізнано / перевірити badge) ── #}
+    <section class="panel matlib-material">
+        <div class="card-head">
+            <h2>Тип послуги <span class="matlib-tag">ярлик «перевірити»</span></h2>
+            <span class="meta">{{ keywords|length }} слів</span>
+        </div>
+        <p class="wizard-sub">Лабораторія фрезерує, а не друкує. Якщо в листі знайдено одне з цих слів (3D-друк), тріаж ставить жовтий ярлик <strong>перевірити</strong> замість зеленого <strong>розпізнано</strong> — щоб оператор глянув удруге.</p>
+
+        <div class="matlib-aliases">
+            {% for kw in keywords %}
+            <span class="matlib-chip {{ 'is-token' if kw.match_type == 'token' else '' }}">
+                <span class="mono">{{ kw.pattern }}</span>
+                <span class="matlib-mt" title="{{ 'точний токен' if kw.match_type == 'token' else 'підрядок' }}">{{ 'T' if kw.match_type == 'token' else '~' }}</span>
+                <form method="post" action="/settings/recognition/keyword/{{ kw.id }}/delete" class="matlib-x-form">
+                    <button type="submit" class="matlib-x" aria-label="Видалити слово" title="Видалити">
+                        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+                    </button>
+                </form>
+            </span>
+            {% else %}
+            <span class="muted">немає слів</span>
+            {% endfor %}
+        </div>
+
+        <form method="post" action="/settings/recognition/keyword/add" class="matlib-add-alias">
+            <input class="login-input" type="text" name="pattern" placeholder="нове слово, напр. 3d друк" required>
+            <select class="login-input matlib-select" name="match_type" title="Тип зіставлення">
+                <option value="contains">підрядок (~)</option>
+                <option value="token">точний токен (T)</option>
+            </select>
+            <button type="submit" class="settings-secondary-button">Додати</button>
+        </form>
+    </section>
+
+    {# ── Section C: default material when no signal ── #}
+    <section class="panel matlib-material">
+        <div class="card-head">
+            <h2>Матеріал за замовчуванням</h2>
+        </div>
+        <p class="wizard-sub">Коли лист на фрезерування, але матеріал у ньому не розпізнано (просто файл + «фрезерування») — тріаж підставляє цей матеріал. Порожньо = вимкнено, поле лишається пустим для оператора. На листи з 3D-друком правило не діє.</p>
+
+        <form method="post" action="/settings/recognition/default-material" class="matlib-add-alias">
+            <select class="login-input matlib-select" name="material_name" title="Матеріал за замовчуванням">
+                <option value="" {{ 'selected' if not default_material else '' }}>— вимкнено —</option>
+                {% for material in materials %}
+                <option value="{{ material.name }}" {{ 'selected' if default_material == material.name else '' }}>{{ material.name }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="settings-secondary-button">Зберегти</button>
+        </form>
+    </section>
+
+    {# ── Section A: pointer to the material library (material synonyms) ── #}
+    <section class="panel matlib-material">
+        <div class="card-head">
+            <h2>Синоніми матеріалів</h2>
+        </div>
+        <p class="wizard-sub">Слова, які клієнти вживають замість назви матеріалу («врім'янка», «temp» → ПММА; «моно», «катана» → Цирконій), додаються як правила матеріалу в бібліотеці. Тріаж читає той самий словник.</p>
+        <a href="/settings/materials" class="matlib-link">Бібліотека матеріалів <span aria-hidden="true">→</span></a>
+    </section>
+</main>
+{% endblock %}

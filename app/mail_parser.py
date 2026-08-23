@@ -11,6 +11,8 @@ import unicodedata
 from rapidfuzz import fuzz
 
 from app.client_matcher import _transliterations
+from app.material_classifier import AliasRow, classify_material
+from app.service_classifier import ServiceKeywordRow, classify_service
 
 _PATTERNS = {
     "material_color_guess": r"(?:колір|цвет|матеріал)[:\s]+[-–]?\s*([^\n,;]+)",
@@ -222,6 +224,7 @@ def guess_fields_from_text(
     subject: str | None = None,
     body: str | None = None,
     known_materials: list[str] | None = None,
+    material_alias_rows: "list[AliasRow] | None" = None,
 ) -> dict:
     guesses = {}
     for field, pattern in _PATTERNS.items():
@@ -271,6 +274,22 @@ def guess_fields_from_text(
                 guesses["material_color_guess"] = matched
                 break
 
+    # Editable-dictionary backstop: run the admin-maintained material catalog
+    # (Material/MaterialAlias, the /settings/materials screen) over the text so
+    # product wording clients actually use — "врім'янка"/"temp" → ПММА,
+    # "моно"/"катана" → Цирконій — resolves even when it never appeared in the
+    # sheet vocabulary or the hardcoded family regex. Unlike those two, this
+    # source is extended at runtime through the UI without a code change. Runs
+    # last so an explicit "колір:"/family/known-material hit still wins; the
+    # classifier's own ambiguity guard returns None when two materials claim the
+    # text, leaving the guess blank for the operator rather than guessing wrong.
+    if guesses["material_color_guess"] is None and material_alias_rows is not None:
+        for candidate in (subject_clean, body):
+            category = classify_material(candidate, material_alias_rows)
+            if category:
+                guesses["material_color_guess"] = category
+                break
+
     # Client: forwarded mail hides the real sender in the quoted body's
     # "From:/Від:" header — pull it so the card isn't left blank (the wizard's
     # from_address fallback only helps for non-forwarded mail).
@@ -279,7 +298,10 @@ def guess_fields_from_text(
     return guesses
 
 
-def guess_service_type(text: str) -> str | None:
+def guess_service_type(
+    text: str,
+    service_keyword_rows: "list[ServiceKeywordRow] | None" = None,
+) -> str | None:
     """Best-effort hint: does this email sound like it's about 3D printing —
     a service this mailbox's lab does NOT offer (CLAUDE.md section 1-2: the
     lab mills, it doesn't print) — rather than milling, which is the default
@@ -300,9 +322,18 @@ def guess_service_type(text: str) -> str | None:
     about both in one email), this still returns "3d_print" — an operator
     double-checking a mixed email that turns out to be milling-only is cheap;
     silently treating a mixed request as pure milling is not.
+
+    When `service_keyword_rows` is supplied (the admin-maintained ServiceKeyword
+    dictionary, loaded once per sync), matching runs off those editable rules so
+    the lab can extend recognition from /settings/recognition without a code
+    change. When None (older callers, unit tests), the hardcoded regex seed
+    below is used unchanged, so existing behaviour is preserved.
     """
     if not text:
         return None
+
+    if service_keyword_rows is not None:
+        return classify_service(text, service_keyword_rows)
 
     normalized = unicodedata.normalize("NFC", text)
     for service_type, patterns in _SERVICE_TYPE_PATTERNS.items():

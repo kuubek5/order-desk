@@ -90,11 +90,12 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
             )
         }
         # 0004 adds clients; 0005 adds the material catalog; 0009 adds mail
-        # filter rules. All purely additive — nothing that existed at 0003 is
-        # dropped.
+        # filter rules; 0016 adds the service-keyword recogniser. All purely
+        # additive — nothing that existed at 0003 is dropped.
         assert tables_after - tables_before == {
             "clients", "materials", "material_aliases",
             "mail_filter_rules", "mail_filter_categories", "client_sender_memory",
+            "service_keywords",
         }
         assert tables_before - tables_after == set()
     finally:

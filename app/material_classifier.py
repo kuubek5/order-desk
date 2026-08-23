@@ -72,6 +72,13 @@ SEED_ALIASES: dict[str, list[tuple[str, str]]] = {
         ("хіпс", "contains"), ("hips", "contains"), ("hipc", "contains"),
         ("каппа", "contains"), ("kappa", "contains"),
         ("trinia", "contains"),
+        # Clients rarely write "ПММА" — they name the product: a temporary
+        # crown ("врім'янка"/"тимчасова"/"temp") is milled from PMMA. Seeded so
+        # the mail triage recogniser maps that wording to PMMA out of the box;
+        # admins extend this from the material library screen.
+        ("врім", "contains"), ("врем", "contains"),
+        ("тимчасов", "contains"), ("временн", "contains"),
+        ("temp", "contains"),
     ],
     SLM: [
         ("слм", "contains"), ("slm", "contains"),
