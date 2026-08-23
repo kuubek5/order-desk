@@ -22,6 +22,21 @@
             </div>
         </div>
         <div class="head-actions">
+            {# «Скачувати всі вкладення» — той самий тоггл, що в Налаштуваннях,
+               продубльований тут для швидкого доступу (адмін). return_to=mail
+               повертає на цей екран із тостом. #}
+            {% if user.role == 'адмін' %}
+            <form method="post" action="/settings/mail-download/toggle" class="dl-all-toggle-form">
+                <input type="hidden" name="return_to" value="mail">
+                <button type="submit" class="dl-all-toggle {% if mail_download_all %}is-on{% endif %}"
+                        title="{% if mail_download_all %}Зараз качаються файли з КОЖНОГО листа. Клік — вимкнути (лише довірені).{% else %}Зараз качаються лише довірені відправники. Клік — качати ВСЕ, що заходить.{% endif %}"
+                        aria-pressed="{{ 'true' if mail_download_all else 'false' }}">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+                    <span>Скачувати все</span>
+                    <span class="dl-all-state">{% if mail_download_all %}увімк{% else %}вимк{% endif %}</span>
+                </button>
+            </form>
+            {% endif %}
             {# Manual IMAP check. On submit the button spins and locks (JS in
                app.js), and a short cooldown persisted in localStorage keeps it
                locked for a few seconds after the page reloads so it can't be

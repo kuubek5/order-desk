@@ -3506,22 +3506,29 @@ def get_recognition_settings(request: Request, db: Session = Depends(get_db)):
 
 
 @app.post("/settings/mail-download/toggle")
-def toggle_mail_download_all(request: Request, db: Session = Depends(get_db)):
+def toggle_mail_download_all(
+    request: Request,
+    return_to: str = Form(""),
+    db: Session = Depends(get_db),
+):
     """Flip the "auto-download every incoming letter's attachments" toggle
     (admin). Off (default) keeps the selective whitelist behaviour; on pulls
-    files from every sender into the spool as mail arrives."""
+    files from every sender into the spool as mail arrives. `return_to=mail`
+    lands back on the triage screen (the toggle is mirrored in its header),
+    otherwise on the settings section."""
     _require_settings_admin(request, db)
     new_value = not get_mail_download_all(db)
     set_mail_download_all(db, new_value)
     db.commit()
-    request.session["settings_flash"] = {
-        "kind": "success",
-        "message": (
-            "Авто-скачування всіх вкладень увімкнено."
-            if new_value
-            else "Авто-скачування вимкнено — качаються лише довірені відправники."
-        ),
-    }
+    message = (
+        "Авто-скачування всіх вкладень увімкнено."
+        if new_value
+        else "Авто-скачування вимкнено — качаються лише довірені відправники."
+    )
+    if return_to == "mail":
+        request.session["toast_flash"] = {"kind": "success", "message": message}
+        return RedirectResponse("/mail", status_code=303)
+    request.session["settings_flash"] = {"kind": "success", "message": message}
     return RedirectResponse("/settings#mail-download", status_code=303)
 
 
@@ -3989,6 +3996,9 @@ def get_mail(
             # Адреса скриньки, яку моніторить система — показуємо в шапці, щоб
             # оператор бачив, звідки саме тягнуться листи (None → не налаштовано).
             "mailbox": get_imap_login(db),
+            # «Скачувати всі вкладення» — той самий тоггл, що в налаштуваннях,
+            # продубльований у шапці тріажу для швидкого доступу (адмін).
+            "mail_download_all": get_mail_download_all(db),
         },
     )
 

@@ -4027,6 +4027,17 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .mail-sync-btn.is-cooldown{opacity:.75;cursor:not-allowed}
 @keyframes mailSyncSpin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.mailv2 .mail-sync-btn.is-syncing svg{animation:none}}
+
+/* «Скачувати все» header toggle — mirrors the settings switch. Off = neutral,
+   on = teal accent so the "downloading everything" state is obvious at a glance. */
+.mailv2 .dl-all-toggle-form{margin:0}
+.mailv2 .dl-all-toggle{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);font-size:13px;font-weight:500;cursor:pointer;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease}
+.mailv2 .dl-all-toggle svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.mailv2 .dl-all-toggle:hover{background:var(--card-2);border-color:#3a4a5f;color:var(--ink)}
+.mailv2 .dl-all-toggle .dl-all-state{font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:1px 6px;border-radius:5px;background:#1a222e;color:var(--ink-3);border:1px solid var(--line-2)}
+.mailv2 .dl-all-toggle.is-on{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.mailv2 .dl-all-toggle.is-on:hover{background:rgba(20,184,166,.24);border-color:var(--accent)}
+.mailv2 .dl-all-toggle.is-on .dl-all-state{background:rgba(20,184,166,.2);color:var(--accent-c);border-color:rgba(45,212,191,.4)}
 .mailv2 .btn.danger{border-color:rgba(248,113,113,.35);color:#f0b4b4}
 .mailv2 .btn.danger:hover{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.5)}
 .mailv2 .btn.sm{height:30px;padding:0 11px;font-size:12.5px}
