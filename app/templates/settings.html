@@ -572,6 +572,39 @@
                 </form>
             </div>
         </div>
+        {# ── Скачування вкладень · глобальний тоггл ───────────────────────
+           Off (default) → only trusted senders auto-download, the rest wait for
+           a manual pull. On → every incoming letter's files land in the spool
+           as mail arrives. Admin-only. #}
+        {% if user.role == 'адмін' %}
+        <section id="mail-download" class="wizard-step wizard-step-about">
+            <div class="num" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+            </div>
+            <div class="box">
+                <div class="wizard-step-head">
+                    <h2>Скачування вкладень</h2>
+                    <span class="connection-state {% if mail_download_all %}connection-state-ready{% endif %}">
+                        {% if mail_download_all %}Скачує всі{% else %}Лише довірені{% endif %}
+                    </span>
+                </div>
+                <p class="wizard-sub">
+                    {% if mail_download_all %}
+                    Зараз файли з <strong>кожного</strong> листа авто-скачуються в тимчасові папки, щойно надходять. Вимкни, щоб качались лише від довірених відправників, а решта чекала ручного «Скачати файли».
+                    {% else %}
+                    Зараз авто-скачуються файли лише від довірених відправників; решта — «не скачано» до ручного натискання. Увімкни, щоб качалось <strong>усе</strong>, що заходить на пошту.
+                    {% endif %}
+                </p>
+                <form method="post" action="/settings/mail-download/toggle">
+                    <button type="submit" class="{% if mail_download_all %}settings-secondary-button{% else %}login-submit settings-submit{% endif %}">
+                        {% if mail_download_all %}Вимкнути авто-скачування{% else %}Увімкнути скачування всього{% endif %}
+                    </button>
+                </form>
+                <div class="wiz-hint">Стосується вкладень листа (MIME). Файли за посиланням (Google Drive, ukr.net) якщо треба — тягнуться окремо у вкладці «Файли».</div>
+            </div>
+        </section>
+        {% endif %}
+
         {# ── Фільтри пошти · правила та категорії ─────────────────────────
            Same shared panel as the triage «Відфільтровані» tab; actions here
            land back on this section via return_to=settings. Admin-only. #}

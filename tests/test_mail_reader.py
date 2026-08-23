@@ -377,6 +377,30 @@ def test_fetch_gates_attachment_download_by_whitelist(monkeypatch, tmp_path):
         assert email.body_text  # body still parsed for preview
 
 
+def test_download_all_toggle_overrides_whitelist(monkeypatch, tmp_path):
+    """With the admin "download all" toggle on, a NON-whitelisted sender's
+    attachments still download ("ready") — the toggle overrides the gate."""
+    from app.models import EmailMessage
+    from app.settings_store import set_mail_download_all
+
+    attachment = _fake_attachment("crown.stl", b"STL")
+    mailbox = FakeMailbox(
+        headers=[_header_message("8", from_="stranger@example.test")],
+        full_by_uid={"8": _full_message("8", from_="stranger@example.test", attachments=[attachment])},
+    )
+    _patch_common(monkeypatch, mailbox)
+    # not whitelisted — normally "skipped"
+    monkeypatch.setattr("app.mail_reader.is_auto_sender", lambda session, email: False)
+
+    with _engine_session() as session:
+        set_mail_download_all(session, True)
+        session.commit()
+        fetch_new_emails(session, tmp_path)
+        email = session.query(EmailMessage).one()
+        assert email.attachments_status == "ready"
+        assert len(email.attachments) == 1
+
+
 def test_manual_download_pulls_skipped_letter(monkeypatch, tmp_path):
     from app.mail_reader import download_attachments_now
     from app.models import EmailMessage

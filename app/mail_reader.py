@@ -21,6 +21,7 @@ from app.settings_store import (
     get_imap_login,
     get_imap_password,
     get_mail_default_material,
+    get_mail_download_all,
 )
 
 logger = logging.getLogger(__name__)
@@ -221,6 +222,7 @@ def _apply_attachments(
     known_materials: list[str],
     material_alias_rows: "list[AliasRow] | None" = None,
     default_material: str | None = None,
+    download_all: bool = False,
 ) -> None:
     """Fill guess fields and save attachments for one fully-fetched message.
 
@@ -268,13 +270,15 @@ def _apply_attachments(
     # Never deletes — the stamp is one click to undo.
     apply_filters_to_email(session, email_message)
 
-    # Download attachments ONLY for senders on the auto (preview) list — the lab
-    # gets many letters with files that don't concern them, so junk from unknown
-    # senders is left as headers-only ("skipped") until an operator pulls it by
-    # hand («Скачати файли»). Body/guesses above are always parsed, so the letter
-    # is still readable and filterable. Whitelist check needs the body (set
-    # above) for the forwarded-sender key, so it runs here, not in phase 1.
-    if is_auto_sender(session, email_message):
+    # Download attachments for senders on the auto (preview) list — OR for
+    # everyone when the admin flipped the "download all" toggle. Without the
+    # toggle the lab gets many letters with files that don't concern it, so junk
+    # from unknown senders is left as headers-only ("skipped") until an operator
+    # pulls it by hand («Скачати файли»). Body/guesses above are always parsed,
+    # so the letter is still readable and filterable regardless. The whitelist
+    # check needs the body (set above) for the forwarded-sender key, so it runs
+    # here, not in phase 1.
+    if download_all or is_auto_sender(session, email_message):
         _save_message_attachments(session, email_message, msg, attachments_dir)
         email_message.attachments_status = "ready"
     else:
@@ -377,6 +381,9 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
     ensure_materials_seeded(session)
     material_alias_rows = load_alias_rows(session)
     default_material = get_mail_default_material(session)
+    # Admin toggle: when on, every incoming letter's attachments auto-download to
+    # the spool (not only whitelisted senders). Read once per sync.
+    download_all = get_mail_download_all(session)
 
     cutoff = date.today() - timedelta(days=IMAP_LOOKBACK_DAYS)
     created = 0
@@ -452,6 +459,7 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
                     known_materials,
                     material_alias_rows,
                     default_material,
+                    download_all,
                 )
                 session.commit()
                 # This message's files are now safely persisted (DB row

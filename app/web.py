@@ -110,8 +110,10 @@ from app.settings_store import (
     get_imap_login,
     get_imap_password,
     get_mail_default_material,
+    get_mail_download_all,
     get_technician_files_path,
     set_mail_default_material,
+    set_mail_download_all,
     set_setting,
 )
 from app.sheet_sync_service import (
@@ -3062,6 +3064,7 @@ def get_settings(
             "filter_category_rows": db.scalars(
                 select(MailFilterCategory).order_by(MailFilterCategory.id.asc())
             ).all(),
+            "mail_download_all": get_mail_download_all(db),
             "error": error or (
                 settings_flash["message"]
                 if settings_flash and settings_flash["kind"] == "error"
@@ -3500,6 +3503,26 @@ def get_recognition_settings(request: Request, db: Session = Depends(get_db)):
             "flash": flash,
         },
     )
+
+
+@app.post("/settings/mail-download/toggle")
+def toggle_mail_download_all(request: Request, db: Session = Depends(get_db)):
+    """Flip the "auto-download every incoming letter's attachments" toggle
+    (admin). Off (default) keeps the selective whitelist behaviour; on pulls
+    files from every sender into the spool as mail arrives."""
+    _require_settings_admin(request, db)
+    new_value = not get_mail_download_all(db)
+    set_mail_download_all(db, new_value)
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": (
+            "Авто-скачування всіх вкладень увімкнено."
+            if new_value
+            else "Авто-скачування вимкнено — качаються лише довірені відправники."
+        ),
+    }
+    return RedirectResponse("/settings#mail-download", status_code=303)
 
 
 @app.post("/settings/recognition/default-material")

@@ -97,7 +97,10 @@ OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operato
 # mail_default_material: which material the mail triage assumes when a milling
 # letter carries no material signal at all (empty string / unset = off). See
 # app/mail_reader.py and the /settings/recognition screen.
-PREFERENCE_KEYS = {"mail_default_material"}
+# mail_download_all: "1" → auto-download attachments for EVERY incoming letter
+# into the spool, not only whitelisted senders; "" / unset → current behaviour
+# (only trusted senders auto-download, the rest wait for a manual pull).
+PREFERENCE_KEYS = {"mail_default_material", "mail_download_all"}
 
 SETTING_KEYS = {field.key for field in SETTING_FIELDS} | PREFERENCE_KEYS
 
@@ -180,3 +183,13 @@ def get_mail_default_material(session: Session) -> Optional[str]:
 
 def set_mail_default_material(session: Session, value: str | None) -> None:
     set_setting(session, "mail_default_material", (value or "").strip())
+
+
+def get_mail_download_all(session: Session) -> bool:
+    """True → auto-download attachments for every incoming letter (not only
+    whitelisted senders). Default False keeps the current selective behaviour."""
+    return get_setting(session, "mail_download_all") == "1"
+
+
+def set_mail_download_all(session: Session, value: bool) -> None:
+    set_setting(session, "mail_download_all", "1" if value else "")
