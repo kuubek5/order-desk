@@ -388,6 +388,10 @@ class Attachment(Base):
     order_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("orders.id"), nullable=True, index=True
     )
+    # Auto-moved into export ahead of acceptance (trusted-sender auto-download).
+    # True = the file already lives in export (not the spool), so the manual
+    # accept must NOT move it again — only stamp order_id. Cleared on restore.
+    staged_to_export: Mapped[bool] = mapped_column(default=False)
     filename: Mapped[str] = mapped_column(String(300))
     saved_path: Mapped[str] = mapped_column(String(500))
     size_bytes: Mapped[Optional[int]] = mapped_column(nullable=True)

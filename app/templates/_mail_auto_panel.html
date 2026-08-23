@@ -1,15 +1,22 @@
-{# «Авто-прийняття» — trusted-sender list. Each known sender (a client the lab
-   has accepted at least once) can be switched to auto: their next letters are
-   accepted without the operator, but only when the guardrails pass (single
-   confident material, no files behind links; multi-colour always stays manual).
-   Needs sender_memories. #}
+{# «Авто-прийняття» → auto-DOWNLOAD to export for trusted senders (the queue
+   order is always created manually). Each known sender can be toggled; an email
+   can also be added by hand. Needs sender_memories. #}
 <div class="filter-rules auto-panel">
     <div class="dsec">
-        <div class="dlabel">Довірені клієнти · авто-прийняття</div>
+        <div class="dlabel">Довірені клієнти · авто-скачування в export</div>
         <p class="wiz-hint" style="margin-top:0">
-            Увімкнений клієнт — його листи приймаються самі (файли в export, робота в черзі), щойно надійдуть.
-            <b>Запобіжники:</b> мультиколірний лист, нерозпізнаний матеріал або файли за посиланням завжди йдуть на ручну звірку.
+            Критерій — <b>email-адреса відправника</b>. Для увімкненого клієнта файли самі переїжджають у його папку export одразу після синку.
+            <b>Прийняття в чергу завжди вручну</b> — авто нічого не приймає, лише готує файли.
+            Запобіжники: мультиколір, нерозпізнаний матеріал або файли за посиланням лишаються в спулі на ручну обробку.
         </p>
+        <form method="post" action="/mail/senders/add" class="sender-add">
+            <input type="email" name="email_address" class="suminput" placeholder="додати email вручну — напр. client@ukr.net" required>
+            <button type="submit" class="btn primary">Додати в авто</button>
+        </form>
+    </div>
+
+    <div class="dsec">
+        <div class="dlabel">Список відправників</div>
         {% if sender_memories %}
         <div class="senderlist">
             {% for m in sender_memories %}
@@ -19,11 +26,11 @@
                     <span class="sr-key mono">{{ m.sender_key }}</span>
                 </div>
                 <div class="sr-meta mono">
-                    {{ m.orders_count }} робіт{% if m.export_folder %} · {{ m.export_folder }}{% endif %} · {{ m.last_seen_at.strftime('%d.%m.%y') }}
+                    {% if m.orders_count %}{{ m.orders_count }} робіт{% else %}ще без робіт{% endif %}{% if m.export_folder %} · {{ m.export_folder }}{% endif %} · {{ m.last_seen_at.strftime('%d.%m.%y') }}
                 </div>
                 <form method="post" action="/mail/senders/{{ m.id }}/auto" class="sr-toggle">
                     <button type="submit" class="autotoggle {% if m.auto_accept %}on{% endif %}"
-                            title="{% if m.auto_accept %}Авто увімкнено — вимкнути (повернути на ручне){% else %}Увімкнути авто-прийняття для цього клієнта{% endif %}"
+                            title="{% if m.auto_accept %}Авто-скачування увімкнено — вимкнути{% else %}Увімкнути авто-скачування для цього клієнта{% endif %}"
                             aria-pressed="{{ 'true' if m.auto_accept else 'false' }}">
                         <span class="at-track"><span class="at-knob"></span></span>
                         <span class="at-label">{% if m.auto_accept %}Авто{% else %}Ручне{% endif %}</span>
@@ -33,7 +40,7 @@
             {% endfor %}
         </div>
         {% else %}
-        <p class="settings-hint">Список порожній. Клієнт зʼявляється тут після першого прийняття його листа — тоді його можна зробити довіреним.</p>
+        <p class="settings-hint">Список порожній. Додайте email вручну вгорі, або клієнт зʼявиться тут після першого прийняття його листа.</p>
         {% endif %}
     </div>
 </div>

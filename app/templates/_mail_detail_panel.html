@@ -51,6 +51,12 @@
     </span>
 </div>
 {% endif %}
+            {% if staged_count %}
+            <div class="staged-note" role="note">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                <span>Файли вже в export (авто-скачано, {{ staged_count }} файл(ів)) — лишилось прийняти в чергу.</span>
+            </div>
+            {% endif %}
             <div class="mail-metabar">
                 {% if email.attachments_status == 'pending' %}
                 <span class="attachment-badge attachment-badge-pending"><span class="attachment-badge-dot" aria-hidden="true"></span>Завантаження…</span>

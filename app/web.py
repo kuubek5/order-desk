@@ -486,9 +486,9 @@ def _mail_sync_tick(db: Session) -> None:
     try:
         sync_mail_background(db, Path(MAIL_ATTACHMENTS_PATH))
         try:
-            _auto_accept_pass(db)
-        except Exception:  # noqa: BLE001 — auto-accept must never break the sync tick
-            logger.exception("Auto-accept pass failed during background sync")
+            _auto_download_pass(db)
+        except Exception:  # noqa: BLE001 — auto-download must never break the sync tick
+            logger.exception("Auto-download pass failed during background sync")
     except MailSyncBusyError:
         _record_sync_heartbeat("mail", status="skipped")
         return
@@ -3928,11 +3928,11 @@ def sync_mail(request: Request, db: Session = Depends(get_db)):
     except (MailSyncBusyError, MailSyncError) as exc:
         return RedirectResponse(f"/mail?error={quote(str(exc))}", status_code=303)
 
-    auto = _auto_accept_pass(db)
+    auto = _auto_download_pass(db)
     if auto:
         request.session["toast_flash"] = {
             "kind": "success",
-            "message": f"Авто-прийнято листів від довірених клієнтів: {auto}.",
+            "message": f"Авто-скачано в export листів від довірених клієнтів: {auto} (прийміть у чергу вручну).",
         }
     return RedirectResponse(f"/mail?synced={count}", status_code=303)
 
@@ -4016,6 +4016,7 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
         # Any ZIP/RAR still sitting among the attachments (auto-unpack failed or
         # is off) → offer the manual «Розпакувати» reserve button.
         "has_archive": any(is_archive(a.filename) for a in email.attachments),
+        "staged_count": sum(1 for a in email.attachments if a.staged_to_export and a.order_id is None),
         "link_flash": None,
         # Admin-editable category names for the card's «У фільтр» select.
         "filter_categories": _mail_filter_categories(db),
@@ -4293,13 +4294,14 @@ def open_mail_folder(
     return Response(status_code=204)
 
 
-def _auto_accept_skip_reason(db: Session, email: EmailMessage) -> str | None:
-    """None → this letter is eligible for hands-off auto-accept. Otherwise a
-    short reason it must go to MANUAL triage instead. Guardrails agreed with the
-    operator: trusted sender only, one confident material, all files present
-    (nothing behind a download link). Multi-colour can't be detected up front,
-    so trusting a sender is the operator's judgement that they send single-colour
-    letters — a rare mistake is recoverable via «Повернути»."""
+def _auto_download_skip_reason(db: Session, email: EmailMessage) -> str | None:
+    """None → this trusted letter's files may be auto-moved into export ahead of
+    acceptance. Otherwise a reason to leave everything in the spool for manual
+    handling. Same guardrails as before: trusted sender, one confident material
+    (so there's a folder to drop into), all files present (nothing behind a
+    download link), and — importantly — the files are still in the SPOOL (not
+    already staged). Queue acceptance always stays manual, so there is no
+    order-creation risk here; this only pre-organises files."""
     if email.status != "нове":
         return "не нове"
     if email.attachments_status != "ready":
@@ -4310,100 +4312,93 @@ def _auto_accept_skip_reason(db: Session, email: EmailMessage) -> str | None:
         return "матеріал не розпізнано"
     if extract_download_links(email.body_text):
         return "є файли за посиланням"
-    if not any(Path(a.saved_path).exists() for a in email.attachments):
-        return "немає файлів на диску"
+    spool_files = [a for a in email.attachments if not a.staged_to_export and Path(a.saved_path).exists()]
+    if not spool_files:
+        return "немає файлів у спулі"
     return None
 
 
-def _auto_accept_pass(db: Session) -> int:
-    """Auto-accept every eligible pending letter from a trusted sender. Runs
-    after each IMAP sync (manual + background). Each letter is independent —
-    a failure on one is logged and never blocks the rest. Returns how many were
-    auto-accepted. Mirrors the manual accept route's side effects (order, file
-    move, sheet placeholder, sender memory) but with no operator step; stamps
-    Order.auto_accepted=True so the history shows it was hands-off."""
+def _auto_download_pass(db: Session) -> int:
+    """Auto-download eligible trusted letters' files into export (NOT accept —
+    the queue order is always created manually by the operator, which removes
+    the risk of a work silently slipping in). Runs after each IMAP sync. Each
+    letter is independent; a failure is logged and never blocks the rest.
+    Returns how many letters had files staged this pass."""
     candidates = db.scalars(
         select(EmailMessage)
         .where(EmailMessage.status == "нове")
         .options(selectinload(EmailMessage.attachments))
     ).all()
-    accepted = 0
+    staged = 0
     for email in candidates:
-        if _auto_accept_skip_reason(db, email) is not None:
+        if _auto_download_skip_reason(db, email) is not None:
             continue
         try:
-            _auto_accept_one(db, email)
-            db.commit()
-            accepted += 1
+            if _auto_download_one(db, email):
+                db.commit()
+                staged += 1
+            else:
+                db.rollback()
         except Exception:  # noqa: BLE001 — one bad letter must not abort the pass
             db.rollback()
-            logger.exception("Auto-accept failed for email %s", email.id)
-    return accepted
+            logger.exception("Auto-download failed for email %s", email.id)
+    return staged
 
 
-def _auto_accept_one(db: Session, email: EmailMessage) -> None:
+def _auto_download_one(db: Session, email: EmailMessage) -> bool:
+    """Move this letter's spool files into export/<client>/<date>/<material>/,
+    marking them staged_to_export. No order, no status change — the letter stays
+    in triage for the operator to accept manually. Returns True if any file was
+    staged."""
     hint = lookup_sender(db, email)
     client_name = (
         (hint.client_name if hint else None)
         or email.client_name_guess or email.from_address or ""
     ).strip()
     material_color = (email.material_color_guess or "").strip()
-
-    today = date.today()
-    target_tab = today.strftime("%d.%m.%y")
-    target_worksheet = None
-    try:
-        target_worksheet = latest_worksheet_on_or_before(open_spreadsheet(db=db), today)
-        if target_worksheet is not None:
-            target_tab = target_worksheet.title
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Auto-accept: could not resolve sheet tab for %s: %s", email.id, exc)
-
-    order = Order(
-        source="email", sheet_tab=target_tab, row_number=None,
-        client_name=client_name or None, material_color=material_color or None,
-        quantity=(email.quantity_guess or "").strip() or None,
-        kind=(email.kind_guess or "").strip() or None,
-        status="нове", auto_accepted=True, source_email_id=email.id,
+    to_move = [a for a in email.attachments if not a.staged_to_export and Path(a.saved_path).exists()]
+    if not to_move:
+        return False
+    folder_override = hint.export_folder if hint else ""
+    new_paths = save_attachments_to_export(
+        Path(get_export_folder_path(db)), client_name, material_color,
+        [Path(a.saved_path) for a in to_move],
+        client_folder_override=folder_override,
     )
-    ensure_seeded(db)
-    order.material_id = resolve_material_id(order.material_color, load_alias_rows(db), material_id_by_name(db))
-    db.add(order)
-    db.flush()
-    email.order_id = order.id
-    db.add(StatusEvent(order_id=order.id, status="нове", actor="авто-прийняття"))
+    for attachment, new_path in zip(to_move, new_paths):
+        attachment.saved_path = str(new_path)
+        attachment.staged_to_export = True
+    db.add(SyncLog(direction="mail_to_export", status="ok",
+                   message=f"auto-download email {email.id}: {len(to_move)} файл(ів) у export"))
+    return True
 
-    attachments = [a for a in email.attachments if a.order_id is None and Path(a.saved_path).exists()]
-    used_folder = None
-    if attachments:
-        folder_override = hint.export_folder if hint else ""
-        new_paths = save_attachments_to_export(
-            Path(get_export_folder_path(db)), client_name, material_color,
-            [Path(a.saved_path) for a in attachments],
-            client_folder_override=folder_override,
-        )
-        for attachment, new_path in zip(attachments, new_paths):
-            attachment.saved_path = str(new_path)
-            attachment.order_id = order.id
-        try:
-            used_folder = new_paths[0].relative_to(Path(get_export_folder_path(db))).parts[0] if new_paths else None
-        except (ValueError, IndexError):
-            used_folder = None
-        db.add(SyncLog(direction="mail_to_export", status="ok",
-                       message=f"auto-accept email {email.id}: {len(attachments)} файл(ів)"))
 
-    remember_sender(db, email, client_name, used_folder)
-
-    if target_worksheet is not None:
-        try:
-            note_row = append_mail_placeholder_row(
-                target_worksheet, client_name, order.quantity or "", material_color
-            )
-            order.row_number = note_row - HEADER_ROWS
-        except Exception:  # noqa: BLE001 — sheet write never blocks auto-accept
-            logger.exception("Auto-accept: sheet write failed for email %s", email.id)
-
-    email.status = "прийнято"
+@app.post("/mail/senders/add")
+def add_sender_auto(
+    request: Request,
+    email_address: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Manually add an email to the trusted auto-download list without waiting
+    for a first acceptance. Creates a sender-memory row (client name = the
+    address until the first real accept fills it in) with auto on. Idempotent —
+    an existing key is just switched on."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    key = (email_address or "").strip().lower()
+    if key:
+        row = db.scalar(select(ClientSenderMemory).where(ClientSenderMemory.sender_key == key))
+        if row is None:
+            db.add(ClientSenderMemory(
+                sender_key=key, client_name=email_address.strip(),
+                export_folder=None, orders_count=0, auto_accept=True,
+                last_seen_at=datetime.now(),
+            ))
+        else:
+            row.auto_accept = True
+        db.commit()
+    return RedirectResponse("/mail?view=auto", status_code=303)
 
 
 @app.post("/mail/senders/{memory_id}/auto")
@@ -4524,27 +4519,40 @@ async def accept_email(
         remember_sender(db, email, new_order.client_name or "", None)
     if attachments:
         try:
-            client_override, material_override = _resolve_wizard_overrides(
-                folder_pick, folder_new, material_folder
-            )
-            new_paths = save_attachments_to_export(
-                Path(get_export_folder_path(db)),
-                new_order.client_name or "",
-                new_order.material_color or "",
-                [Path(a.saved_path) for a in attachments],
-                client_folder_override=client_override,
-                material_folder_override=material_override,
-            )
-            for attachment, new_path in zip(attachments, new_paths):
-                attachment.saved_path = str(new_path)
+            export_root = Path(get_export_folder_path(db))
+            # Files already auto-staged into export (trusted-sender auto-download)
+            # must NOT be moved again — only linked to this order. The rest move
+            # from the spool as usual.
+            to_move = [a for a in attachments if not a.staged_to_export]
+            staged = [a for a in attachments if a.staged_to_export]
+            used_folder = None
+            if to_move:
+                client_override, material_override = _resolve_wizard_overrides(
+                    folder_pick, folder_new, material_folder
+                )
+                new_paths = save_attachments_to_export(
+                    export_root,
+                    new_order.client_name or "",
+                    new_order.material_color or "",
+                    [Path(a.saved_path) for a in to_move],
+                    client_folder_override=client_override,
+                    material_folder_override=material_override,
+                )
+                for attachment, new_path in zip(to_move, new_paths):
+                    attachment.saved_path = str(new_path)
+                    attachment.order_id = new_order.id
+                try:
+                    used_folder = new_paths[0].relative_to(export_root).parts[0] if new_paths else None
+                except (ValueError, IndexError):
+                    used_folder = None
+            for attachment in staged:
                 attachment.order_id = new_order.id
+            if used_folder is None and staged:
+                try:
+                    used_folder = Path(staged[0].saved_path).relative_to(export_root).parts[0]
+                except (ValueError, IndexError):
+                    used_folder = None
             db.add(SyncLog(direction="mail_to_export", status="ok", message=f"email {email.id}: {len(attachments)} файл(ів)"))
-            # Remember this sender → client/folder for the next letter from them.
-            # The client folder is the first path segment under export_root.
-            try:
-                used_folder = new_paths[0].relative_to(Path(get_export_folder_path(db))).parts[0] if new_paths else None
-            except (ValueError, IndexError):
-                used_folder = None
             remember_sender(db, email, new_order.client_name or "", used_folder)
         except (OSError, ValueError) as exc:
             db.rollback()
@@ -4660,6 +4668,18 @@ async def reject_email(
     email = db.get(EmailMessage, email_id)
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")
+
+    staged = [a for a in email.attachments if a.staged_to_export and a.order_id is None]
+    if staged:
+        try:
+            new_paths = restore_attachments_to_spool(
+                Path(MAIL_ATTACHMENTS_PATH), email.uid, [Path(a.saved_path) for a in staged]
+            )
+            for attachment, new_path in zip(staged, new_paths):
+                attachment.saved_path = str(new_path)
+                attachment.staged_to_export = False
+        except (OSError, ValueError):
+            logger.exception("Could not return auto-staged files to spool for email %s", email.id)
 
     email.status = "відхилено"
     db.commit()
@@ -5030,6 +5050,7 @@ def _unaccept_email(db: Session, email: EmailMessage) -> None:
         for attachment, new_path in zip(attachments, new_paths):
             attachment.saved_path = str(new_path)
             attachment.order_id = None
+            attachment.staged_to_export = False
 
     spreadsheet = None
     for order in orders:

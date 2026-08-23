@@ -4919,3 +4919,9 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
 .mailv2 .autotoggle.on .at-track{background:rgba(20,184,166,.3);border-color:rgba(45,212,191,.5)}
 .mailv2 .autotoggle.on .at-knob{transform:translateX(17px);background:var(--accent-b)}
 .mailv2 .autotoggle .at-label{font-weight:500;min-width:38px;text-align:left}
+
+/* Auto-download: manual add form + staged-files note. */
+.mailv2 .sender-add{display:flex;gap:8px;align-items:center;margin-top:6px}
+.mailv2 .sender-add .suminput{flex:1;min-width:0}
+.mailv2 .staged-note{display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:9px;margin-bottom:14px;background:rgba(20,184,166,.08);border:1px solid rgba(45,212,191,.28);color:var(--accent-c);font-size:12px}
+.mailv2 .staged-note svg{width:15px;height:15px;flex:0 0 15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
