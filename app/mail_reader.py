@@ -114,11 +114,28 @@ def html_to_plain_text(html_body: str) -> str:
     return "\n".join(collapsed).strip()
 
 
+def _repair_mojibake(name: str) -> str:
+    """Undo the classic "UTF-8 filename mis-decoded as Latin-1/CP1252" garble
+    (e.g. "копия" arriving as "ÐºÐ¾Ð¿Ð¸Ñ", em-dash as "â€""). Some senders /
+    forwarders label attachments with raw UTF-8 bytes that the mail library then
+    reads as Latin-1; round-tripping the bytes back through UTF-8 restores the
+    Cyrillic. Applied only when the string carries the tell-tale mojibake marks
+    AND the round-trip succeeds — otherwise the original name is kept."""
+    if not any(mark in name for mark in ("Ð", "Ñ", "Ã", "â")):
+        return name
+    try:
+        repaired = name.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return name
+    return repaired or name
+
+
 def safe_attachment_filename(filename: str | None, index: int, content_type: str) -> str:
     """Return a single safe filename for an untrusted MIME attachment name."""
     fallback = f"attachment_{index}{mimetypes.guess_extension(content_type) or ''}"
     if not filename:
         return fallback
+    filename = _repair_mojibake(filename)
     # Treat both POSIX and Windows separators as path separators regardless of
     # which OS currently runs Order Desk.
     basename = re.split(r"[\\/]", filename)[-1].strip().rstrip(". ")

@@ -398,3 +398,17 @@ def test_manual_download_pulls_skipped_letter(monkeypatch, tmp_path):
         assert n == 1
         assert email.attachments_status == "ready"
         assert len(email.attachments) == 1
+
+
+def test_safe_filename_repairs_utf8_mojibake():
+    """A UTF-8 attachment name mis-read as Latin-1 (Cyrillic → "ÐºÐ¾Ð¿Ð¸Ñ")
+    is repaired back; a clean name is left untouched."""
+    from app.mail_reader import _repair_mojibake, safe_attachment_filename
+
+    orig = "bitesplint_cad — копия (3).stl"
+    mojibake = orig.encode("utf-8").decode("latin-1")
+    assert _repair_mojibake(mojibake) == orig
+    assert safe_attachment_filename(mojibake, 1, "application/octet-stream") == orig
+    # clean ASCII / already-correct Cyrillic names are unchanged
+    assert _repair_mojibake("crown_A2.stl") == "crown_A2.stl"
+    assert _repair_mojibake("коронка.stl") == "коронка.stl"

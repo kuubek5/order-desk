@@ -4926,3 +4926,10 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
 .mailv2 .staged-note{display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:9px;margin-bottom:14px;background:rgba(20,184,166,.08);border:1px solid rgba(45,212,191,.28);color:var(--accent-c);font-size:12px}
 .mailv2 .staged-note svg{width:15px;height:15px;flex:0 0 15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .skipped-files{display:flex;flex-direction:column;gap:9px;align-items:flex-start}
+
+/* «Скачати файли» — live feedback while the on-demand IMAP re-fetch runs. */
+.mailv2 .dl-btn .dl-spin,.mailv2 .dl-btn .dl-lbl-busy{display:none}
+.mailv2 .dl-btn.htmx-request .dl-icon,.mailv2 .dl-btn.htmx-request .dl-lbl-idle{display:none}
+.mailv2 .dl-btn.htmx-request .dl-spin,.mailv2 .dl-btn.htmx-request .dl-lbl-busy{display:inline-flex}
+.mailv2 .dl-btn.htmx-request .dl-spin{animation:mailSyncSpin .8s linear infinite;transform-origin:50% 50%}
+.mailv2 .dl-btn:disabled,.mailv2 .dl-btn.htmx-request{opacity:.85;cursor:progress}
