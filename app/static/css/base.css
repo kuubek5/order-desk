@@ -4080,25 +4080,41 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 /* Depth split: the list stays flat and slightly recessed (darker ground, no
    glow) while the detail card lifts — lighter surface + a real drop shadow — so
    «де шукаю» vs «де працюю» read as two planes, not one flat strip. */
-.mailv2 .list-panel{flex:0 0 380px;width:380px;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-rail);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:none;max-height:calc(100vh - 190px)}
+.mailv2 .list-panel{flex:0 0 440px;width:440px;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-rail);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:none;max-height:calc(100vh - 190px)}
 .mailv2 .card-head{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line)}
 .mailv2 .card-head h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0}
 .mailv2 .card-head .meta{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
-.mailv2 .listwrap{overflow-y:auto;flex:1;min-height:0;scrollbar-width:thin;padding:8px}
-.mailv2 .mailrow{display:flex;flex-direction:column;gap:4px;padding:10px 11px;border-radius:9px;border:1px solid transparent;text-decoration:none;cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
-.mailv2 .mailrow+.mailrow{margin-top:2px}
-.mailv2 .mailrow:hover{background:var(--card-2);border-color:var(--line);opacity:1}
-.mailv2 .mailrow:focus-visible{outline:2px solid var(--accent-b);outline-offset:1px}
-.mailv2 .mailrow.active{background:var(--card-2);border-color:rgba(45,212,191,.45)}
+/* DENSE LIST, not a stack of cards. The job here is clearing 40 near-identical
+   decisions, so rows are separated by a hairline and go edge to edge — the old
+   rounded per-row cards with 8px wrapper padding cost height and bought
+   nothing. Two structural bugs died with them:
+     1. Proximity inversion — the gaps INSIDE a row (4px) were larger than the
+        gap BETWEEN rows (2px), so rows blurred together while each row fell
+        apart into three loose pieces.
+     2. A third line existed only to hold «N файл.» + badge + ✕, and once the ✕
+        grew to its 24px accessible target it set the row height. The ✕ now
+        sits in its own centred column, so the target size costs nothing.
+   ~86px per row → ~52px: roughly twelve letters visible instead of seven. */
+.mailv2 .listwrap{overflow-y:auto;flex:1;min-height:0;scrollbar-width:thin;padding:0}
+.mailv2 .mailrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px;padding:8px 14px;border-bottom:1px solid var(--line);text-decoration:none;cursor:pointer;transition:background var(--ui-speed) ease}
+.mailv2 .mailrow:last-child{border-bottom:0}
+.mailv2 .mailrow:hover{background:var(--card-2);opacity:1}
+.mailv2 .mailrow:focus-visible{outline:2px solid var(--accent-b);outline-offset:-2px}
+.mailv2 .mailrow.active{background:var(--card-2);box-shadow:inset 0 0 0 1px rgba(45,212,191,.45)}
 .mailv2 .mailrow.active .from{color:var(--accent-c)}
-.mailv2 .mailrow .r1{display:flex;align-items:baseline;gap:8px}
+/* The two text lines. 2px between them — tighter than the 8px of padding that
+   separates one row from the next, so proximity now groups correctly. */
+.mailv2 .mailrow .rowmain{display:flex;flex-direction:column;gap:2px;min-width:0}
+.mailv2 .mailrow .r1{display:flex;align-items:baseline;gap:8px;min-width:0}
+.mailv2 .mailrow .r2{display:flex;align-items:baseline;gap:8px;min-width:0}
 .mailv2 .mailrow .from{font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mailv2 .mailrow .t{margin-left:auto;font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);flex:0 0 auto}
-.mailv2 .mailrow .subj{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mailv2 .mailrow .r3{display:flex;align-items:center;gap:8px;margin-top:2px}
-.mailv2 .mailrow .att{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);display:inline-flex;align-items:center;gap:4px}
+.mailv2 .mailrow .subj{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+/* Right-hand column: badge + ✕, centred against both text lines. */
+.mailv2 .mailrow .r3{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.mailv2 .mailrow .att{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;margin-left:auto}
 .mailv2 .mailrow .att svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.mailv2 .reco{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:5px;margin-left:auto}
+.mailv2 .reco{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;white-space:nowrap}
 .mailv2 .reco.ok{background:rgba(20,184,166,.14);color:var(--accent-c);border:1px solid rgba(45,212,191,.3)}
 .mailv2 .reco.warn{background:rgba(240,163,94,.13);color:var(--warn);border:1px solid rgba(240,163,94,.3)}
 .mailv2 .reco.danger{background:rgba(248,113,113,.13);color:var(--alarm);border:1px solid rgba(248,113,113,.32)}
@@ -4108,12 +4124,16 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
    letter as "not read by me". The dot breathes so a fresh arrival pulls the
    eye; the whole row eases in the first time it renders. Warm (not the teal
    selection colour) so unread ≠ active. */
+/* Unread is carried by the dot and a bolder name — no 3px amber bar any more.
+   It was doing three bad things at once: a >1px colour accent on a list item,
+   a box-shadow that fought .active's inset ring on the same property, and a
+   second unrelated meaning for the exact amber the «матеріал?» badge uses
+   40px away on the same row. */
 .mailv2 .mailrow.unread{
-  background:linear-gradient(90deg,rgba(240,163,94,.09),rgba(240,163,94,0) 60%);
-  box-shadow:inset 3px 0 0 0 var(--warn);
+  background:rgba(240,163,94,.05);
   animation:mailUnreadIn .38s ease both;
 }
-.mailv2 .mailrow.unread:hover{background:linear-gradient(90deg,rgba(240,163,94,.14),var(--card-2) 60%)}
+.mailv2 .mailrow.unread:hover{background:var(--card-2)}
 .mailv2 .mailrow.unread .from{color:var(--ink);font-weight:700}
 /* Unread marker: a static dot, deliberately NOT pulsing. This screen is open
    all day beside running machines; one looping glow per unread row (plus the

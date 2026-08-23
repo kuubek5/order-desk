@@ -87,10 +87,10 @@
 
     <div class="worklayout">
         <section class="list-panel" aria-labelledby="mail-list-title">
-            <div class="card-head">
-                <h2 id="mail-list-title">{% if view == 'archive' %}Архів{% elif view == 'filtered' %}Відфільтровані{% else %}Усі листи{% endif %}</h2>
-                <span class="meta">{{ emails|length }} листів</span>
-            </div>
+            {# The active tab above already names this list and counts it, so a
+               visible header repeated the same two facts and cost 45px of the
+               scroller. Kept for screen readers via aria-labelledby. #}
+            <h2 id="mail-list-title" class="sr-only">{% if view == 'archive' %}Архів{% elif view == 'filtered' %}Відфільтровані{% else %}Усі листи{% endif %} — {{ emails|length }}</h2>
             <div class="listwrap">
                 {% include "_mail_triage_list.html" %}
             </div>

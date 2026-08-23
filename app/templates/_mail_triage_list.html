@@ -38,18 +38,31 @@
              hx-target="#mail-detail" hx-swap="innerHTML"
              hx-trigger="click, keyup[key=='Enter'], keyup[key==' ']"
              data-mail-id="{{ email.id }}">
+            {# Two lines, not three. Line 1 carries what the operator scans for
+               (client + readiness badge, badge in a fixed right column so it
+               reads as a column down the list); line 2 carries the supporting
+               detail (subject, file count, time). The ✕ is pulled out of the
+               flow and centred against BOTH lines, so a 24px target no longer
+               dictates the row height. #}
+            <span class="rowmain">
             <span class="r1">
                 {% if is_unread %}<span class="newdot" aria-hidden="true"></span>{% endif %}
                 <span class="from">{{ email.client_name_guess or email.from_address or 'Відправник не визначений' }}</span>
                 {% if is_unread %}<span class="sr-only">непрочитано</span>{% endif %}
-                <span class="t">{% if email.received_at %}{{ email.received_at.strftime('%d.%m %H:%M') }}{% else %}—{% endif %}</span>
             </span>
-            <span class="subj">{{ email.subject or 'Без теми' }}</span>
-            <span class="r3">
+            <span class="r2">
+                {# A subject that is nothing but a reply/forward prefix is not a
+                   subject — it wasted the whole line on «Fwd:». #}
+                {% set subj = (email.subject or '')|trim %}
+                <span class="subj">{% if subj|lower in ('fwd:', 're:', 'fw:', 'fwd', 're', '') %}Без теми{% else %}{{ subj }}{% endif %}</span>
                 <span class="att">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V6a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V7"/></svg>
                     {% if email.attachments_status == 'pending' %}завантаження…{% elif email.attachments_status == 'skipped' %}не скачано{% else %}{{ email.attachments|length }} файл.{% endif %}
                 </span>
+                <span class="t">{% if email.received_at %}{{ email.received_at.strftime('%d.%m %H:%M') }}{% else %}—{% endif %}</span>
+            </span>
+            </span>
+            <span class="r3">
                 {% if view == 'archive' %}
                     {% if email.status == 'прийнято' %}
                     <span class="reco ok">✓ прийнято</span>
