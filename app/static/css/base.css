@@ -4876,3 +4876,10 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
   .toast{transition:opacity .2s ease}
   .toast-in,.toast-out{transform:none}
 }
+
+/* «Постійний клієнт» hint (sender memory) — card Лист pane + wizard step 1. */
+.sender-hint{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-radius:9px;margin-bottom:14px;background:rgba(20,184,166,.09);border:1px solid rgba(45,212,191,.3);color:var(--accent-c)}
+.sender-hint svg{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
+.sender-hint .sh-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sender-hint b{font-size:12.5px;font-weight:600}
+.sender-hint .sh-meta{font-size:11px;color:var(--ink-2)}

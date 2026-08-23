@@ -1112,3 +1112,75 @@ def test_opening_mail_detail_stamps_seen_at_once(monkeypatch):
 
         web.get_mail_detail(request=_request(user.id), email_id=email.id, db=db)
         assert email.seen_at == first
+
+
+def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_path):
+    """End-to-end sender memory: accepting a letter records sender → client +
+    export folder; the NEXT letter from that sender opens the card/wizard with
+    the name prefilled and the folder preselected on step 2."""
+    from app.models import ClientSenderMemory
+    from app.sender_memory import lookup_sender
+
+    engine = _database()
+    export_root = tmp_path / "export"; export_root.mkdir()
+    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
+    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    spool = tmp_path / "spool" / "u1"; spool.mkdir(parents=True)
+    stl = spool / "crown.stl"; stl.write_bytes(b"STL")
+    captured = {}
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse",
+        lambda request, template, context: captured.update(template=template, ctx=context) or context,
+    )
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        first = EmailMessage(uid="u1", status="нове", from_address="Lumi@ukr.net",
+                             subject="моно а3", attachments_status="ready")
+        db.add(first); db.flush()
+        db.add(Attachment(email_message_id=first.id, filename="crown.stl", saved_path=str(stl)))
+        db.commit()
+
+        # 1. accept with a typed client name → memory row created, folder recorded
+        asyncio.run(web.accept_email(
+            request=_request(user.id), email_id=first.id,
+            client_name="Люмі-Дент", material_color="моно а3", kind="", quantity="",
+            folder_pick="", folder_new="", material_folder="", db=db,
+        ))
+        mem = db.scalar(select(ClientSenderMemory))
+        assert mem is not None
+        assert (mem.sender_key, mem.client_name, mem.export_folder, mem.orders_count) == \
+            ("lumi@ukr.net", "Люмі-Дент", "Люмі-Дент", 1)
+        assert (export_root / "Люмі-Дент").is_dir()
+
+        # 2. next letter from the same sender (case differs) → hint + prefill
+        second = EmailMessage(uid="u2", status="нове", from_address="LUMI@UKR.NET",
+                              subject="emo a2", attachments_status="ready")
+        db.add(second); db.commit()
+
+        web.get_mail_detail(request=_request(user.id), email_id=second.id, panel=1, db=db)
+        ctx = captured["ctx"]
+        assert ctx["sender_hint"].client_name == "Люмі-Дент"
+        assert ctx["client_name"] == "Люмі-Дент"  # step-1 field prefilled
+
+        # step 2 with nothing typed → folder preselected from memory
+        web.mail_wizard(request=_request(user.id), email_id=second.id, step=2,
+                        client_name="Люмі-Дент", material_color="emo a2", kind="", quantity="",
+                        folder_pick="", folder_new="", material_folder="", db=db)
+        assert captured["ctx"]["folder_pick"] == "Люмі-Дент"
+        assert captured["ctx"]["preview"]["client_folder"] == "Люмі-Дент"
+
+        # an explicit operator pick is never overridden by memory
+        web.mail_wizard(request=_request(user.id), email_id=second.id, step=2,
+                        client_name="Люмі-Дент", material_color="", kind="", quantity="",
+                        folder_pick="", folder_new="Інша папка", material_folder="", db=db)
+        assert captured["ctx"]["folder_pick"] == ""
+        assert captured["ctx"]["preview"]["client_folder"] == "Інша папка"
+
+        # unknown sender → no hint, nothing prefilled
+        third = EmailMessage(uid="u3", status="нове", from_address="new@client.ua", subject="x")
+        db.add(third); db.commit()
+        web.get_mail_detail(request=_request(user.id), email_id=third.id, panel=1, db=db)
+        assert captured["ctx"]["sender_hint"] is None
+        assert captured["ctx"]["client_name"] == ""
+        assert lookup_sender(db, third) is None

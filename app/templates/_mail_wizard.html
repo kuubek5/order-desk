@@ -16,6 +16,15 @@
 
 {% if wizard_step == 1 %}
 <form class="wiz-step" hx-post="/mail/{{ email.id }}/wizard" hx-target="#mail-wizard" hx-swap="innerHTML">
+    {% if sender_hint %}
+<div class="sender-hint" role="note">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
+    <span class="sh-text">
+        <b>Постійний клієнт: {{ sender_hint.client_name }}</b>
+        <span class="sh-meta mono">{{ sender_hint.orders_count }} {% if sender_hint.orders_count == 1 %}робота{% elif sender_hint.orders_count < 5 %}роботи{% else %}робіт{% endif %}{% if sender_hint.export_folder %} · export/{{ sender_hint.export_folder }}{% endif %} · останнє {{ sender_hint.last_seen_at.strftime('%d.%m') }}</span>
+    </span>
+</div>
+{% endif %}
     <div class="wiz-title">Крок 1 · Дані роботи</div>
     <div class="fieldgrid">
         <div class="field full">
@@ -89,7 +98,7 @@
                 hx-vals='{"step":"2"}' hx-target="#mail-wizard" hx-swap="innerHTML" hx-trigger="change">
             <option value="" {% if not folder_pick %}selected{% endif %}>— авто-визначення —</option>
             {% for folder in existing_folders %}
-            <option value="{{ folder }}" {% if folder_pick == folder %}selected{% endif %}>{{ folder }}</option>
+            <option value="{{ folder }}" {% if folder_pick == folder %}selected{% endif %}>{{ folder }}{% if sender_hint and sender_hint.export_folder == folder %} · папка цього клієнта{% endif %}</option>
             {% endfor %}
         </select>
     </div>

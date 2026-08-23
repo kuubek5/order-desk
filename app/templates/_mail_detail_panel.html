@@ -42,6 +42,15 @@
             </div>
             {% endif %}
 
+{% if sender_hint %}
+<div class="sender-hint" role="note">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
+    <span class="sh-text">
+        <b>Постійний клієнт: {{ sender_hint.client_name }}</b>
+        <span class="sh-meta mono">{{ sender_hint.orders_count }} {% if sender_hint.orders_count == 1 %}робота{% elif sender_hint.orders_count < 5 %}роботи{% else %}робіт{% endif %}{% if sender_hint.export_folder %} · export/{{ sender_hint.export_folder }}{% endif %} · останнє {{ sender_hint.last_seen_at.strftime('%d.%m') }}</span>
+    </span>
+</div>
+{% endif %}
             <div class="mail-metabar">
                 {% if email.attachments_status == 'pending' %}
                 <span class="attachment-badge attachment-badge-pending"><span class="attachment-badge-dot" aria-hidden="true"></span>Завантаження…</span>

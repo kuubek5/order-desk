@@ -336,6 +336,32 @@ class MailFilterCategory(Base):
     )
 
 
+class ClientSenderMemory(Base):
+    """«Памʼять відправника»: what the operator did the LAST time a letter came
+    from this sender — which client name they typed and which export folder the
+    files landed in. Deterministic recurring-client identification for the
+    accept wizard (the sender address is the one signal a client repeats
+    reliably; names/subjects drift). See app/sender_memory.py.
+
+    sender_key = lower-cased from_address, plus "|<original sender>" when the
+    letter was forwarded (one forwarder relays many clients — the quoted From:
+    in the body disambiguates). Upserted on every accept, so the memory keeps
+    following the operator's latest correction.
+    """
+
+    __tablename__ = "client_sender_memory"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sender_key: Mapped[str] = mapped_column(String(400), unique=True, index=True)
+    client_name: Mapped[str] = mapped_column(String(200))
+    export_folder: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    orders_count: Mapped[int] = mapped_column(default=1)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now()
+    )
+
+
 class Attachment(Base):
     __tablename__ = "attachments"
 

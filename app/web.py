@@ -72,6 +72,7 @@ from app.material_catalog import (
 )
 from app.mail_filters import apply_rule_retroactively
 from app.models import Attachment, Client, ClientNameAlias, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
+from app.sender_memory import lookup_sender, remember_sender
 from app.order_folder import (
     attach_email_folder_availability,
     attach_email_preview_tokens,
@@ -3934,12 +3935,15 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
     Reused by get_mail_detail (the fetch-link route renders just one row)."""
     attach_email_preview_tokens([email], _mail_trusted_roots(db), _mail_preview_roots(db))
     seed = (email.material_color_guess or "") or (email.subject or "")
+    # Recurring client? Sender memory beats every guess for the name prefill.
+    sender_hint = lookup_sender(db, email)
     context = {
         "email": email,
         "user": user,
         "error": None,
         "wizard_step": 1,
-        "client_name": "",
+        "client_name": sender_hint.client_name if sender_hint else "",
+        "sender_hint": sender_hint,
         "material_color": "",
         "kind": "",
         "quantity": "",
@@ -4139,6 +4143,20 @@ def mail_wizard(
     seed = material_color.strip() or (email.material_color_guess or "") or (email.subject or "")
     candidates = material_candidates(seed, known)
 
+    sender_hint = lookup_sender(db, email)
+    # Step 1 opens with the remembered name when the operator hasn't typed one;
+    # step 2 pre-selects the remembered folder (only if it still exists) when
+    # no explicit pick/new-folder override was given.
+    if step == 1 and not client_name.strip() and sender_hint:
+        client_name = sender_hint.client_name
+    if (
+        step >= 2 and sender_hint and sender_hint.export_folder
+        and not folder_pick.strip() and not folder_new.strip()
+    ):
+        export_root_probe = Path(get_export_folder_path(db))
+        if sender_hint.export_folder in list_client_folders(export_root_probe):
+            folder_pick = sender_hint.export_folder
+
     client_override, material_override = _resolve_wizard_overrides(
         folder_pick, folder_new, material_folder
     )
@@ -4147,6 +4165,7 @@ def mail_wizard(
         "email": email,
         "user": user,
         "wizard_step": step,
+        "sender_hint": sender_hint,
         "client_name": client_name,
         "material_color": material_color,
         "kind": kind,
@@ -4289,6 +4308,9 @@ async def accept_email(
     )
 
     attachments = [a for a in email.attachments if Path(a.saved_path).exists()]
+    if not attachments:
+        # Nothing to move, but the sender→client link is still worth keeping.
+        remember_sender(db, email, new_order.client_name or "", None)
     if attachments:
         try:
             client_override, material_override = _resolve_wizard_overrides(
@@ -4305,6 +4327,13 @@ async def accept_email(
             for attachment, new_path in zip(attachments, new_paths):
                 attachment.saved_path = str(new_path)
             db.add(SyncLog(direction="mail_to_export", status="ok", message=f"email {email.id}: {len(attachments)} файл(ів)"))
+            # Remember this sender → client/folder for the next letter from them.
+            # The client folder is the first path segment under export_root.
+            try:
+                used_folder = new_paths[0].relative_to(Path(get_export_folder_path(db))).parts[0] if new_paths else None
+            except (ValueError, IndexError):
+                used_folder = None
+            remember_sender(db, email, new_order.client_name or "", used_folder)
         except (OSError, ValueError) as exc:
             db.rollback()
             return RedirectResponse(

@@ -94,7 +94,7 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
         # dropped.
         assert tables_after - tables_before == {
             "clients", "materials", "material_aliases",
-            "mail_filter_rules", "mail_filter_categories",
+            "mail_filter_rules", "mail_filter_categories", "client_sender_memory",
         }
         assert tables_before - tables_after == set()
     finally:
