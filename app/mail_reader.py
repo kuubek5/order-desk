@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.mail_filters import apply_filters_to_email
 from app.mail_parser import guess_fields_from_text, guess_service_type
+from app.sender_memory import is_auto_sender
 from app.models import Attachment, EmailMessage, Order
 from app.settings_store import get_imap_login, get_imap_password
 
@@ -230,7 +231,25 @@ def _apply_attachments(
     # Never deletes — the stamp is one click to undo.
     apply_filters_to_email(session, email_message)
 
+    # Download attachments ONLY for senders on the auto (preview) list — the lab
+    # gets many letters with files that don't concern them, so junk from unknown
+    # senders is left as headers-only ("skipped") until an operator pulls it by
+    # hand («Скачати файли»). Body/guesses above are always parsed, so the letter
+    # is still readable and filterable. Whitelist check needs the body (set
+    # above) for the forwarded-sender key, so it runs here, not in phase 1.
+    if is_auto_sender(session, email_message):
+        _save_message_attachments(session, email_message, msg, attachments_dir)
+        email_message.attachments_status = "ready"
+    else:
+        email_message.attachments_status = "skipped"
+
+
+def _save_message_attachments(session, email_message, msg, attachments_dir: Path) -> int:
+    """Write a fetched message's attachments to the spool and add Attachment
+    rows. Returns how many were saved. Shared by the whitelisted auto-download
+    and the manual «Скачати файли» action."""
     message_dir = attachments_dir / email_message.uid
+    saved = 0
     for i, att in enumerate(msg.attachments, start=1):
         message_dir.mkdir(parents=True, exist_ok=True)
         # Inline attachments (embedded images, signatures, calendar
@@ -248,8 +267,26 @@ def _apply_attachments(
                 size_bytes=len(att.payload),
             )
         )
+        saved += 1
+    return saved
 
+
+def download_attachments_now(session: Session, email_message: EmailMessage, attachments_dir: Path) -> int:
+    """Manually pull a "skipped" letter's attachments on demand (operator
+    decided a non-whitelisted letter is relevant after all). Re-fetches the
+    message by UID and saves its files, flipping status to "ready". Returns the
+    count saved. Raises on IMAP/IO failure — the caller rolls back."""
+    login = get_imap_login(session)
+    password = get_imap_password(session)
+    if not login or not password:
+        raise RuntimeError("IMAP не налаштовано — задайте логін і пароль у Налаштуваннях")
+    with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:
+        full = list(mailbox.fetch(AND(uid=email_message.uid), mark_seen=False))
+        if not full:
+            raise RuntimeError("Лист більше недоступний на сервері")
+        saved = _save_message_attachments(session, email_message, full[0], attachments_dir)
     email_message.attachments_status = "ready"
+    return saved
 
 
 def fetch_new_emails(session: Session, attachments_dir: Path) -> int:

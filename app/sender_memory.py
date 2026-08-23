@@ -108,12 +108,28 @@ def remember_sender(
 
 
 def is_auto_sender(db: Session, email: EmailMessage) -> bool:
-    """True if this letter's sender is on the trusted auto-accept list."""
+    """True if this letter's sender is on the trusted auto-download list.
+
+    Matches EITHER the full sender key (base address, plus the quoted original
+    sender for forwarded mail) OR the bare base address on its own. So adding a
+    forwarder's address by hand (e.g. the admin who relays client mail) trusts
+    every forward from them, not just one exact original sender."""
+    candidates: list[str] = []
     key = sender_key_for(email)
-    if key is None:
+    if key:
+        candidates.append(key)
+    base = (email.from_address or "").strip().lower()
+    if base and base not in candidates:
+        candidates.append(base)
+    if not candidates:
         return False
-    row = db.scalar(select(ClientSenderMemory).where(ClientSenderMemory.sender_key == key))
-    return bool(row and row.auto_accept)
+    row = db.scalar(
+        select(ClientSenderMemory).where(
+            ClientSenderMemory.sender_key.in_(candidates),
+            ClientSenderMemory.auto_accept.is_(True),
+        )
+    )
+    return row is not None
 
 
 def list_sender_memories(db: Session) -> list[ClientSenderMemory]:

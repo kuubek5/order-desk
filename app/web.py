@@ -55,6 +55,7 @@ from app.link_attachments import (
 )
 from app.archive_extract import is_archive
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS, extract_archive_attachments
+from app.mail_reader import download_attachments_now
 from app.mail_sync_service import MailSyncBusyError, MailSyncError, sync_mail_background, sync_mailbox
 from app.material_class import material_badge, material_color_css_class
 from app.material_catalog import (
@@ -485,10 +486,6 @@ def _mail_sync_tick(db: Session) -> None:
         return
     try:
         sync_mail_background(db, Path(MAIL_ATTACHMENTS_PATH))
-        try:
-            _auto_download_pass(db)
-        except Exception:  # noqa: BLE001 — auto-download must never break the sync tick
-            logger.exception("Auto-download pass failed during background sync")
     except MailSyncBusyError:
         _record_sync_heartbeat("mail", status="skipped")
         return
@@ -3928,12 +3925,6 @@ def sync_mail(request: Request, db: Session = Depends(get_db)):
     except (MailSyncBusyError, MailSyncError) as exc:
         return RedirectResponse(f"/mail?error={quote(str(exc))}", status_code=303)
 
-    auto = _auto_download_pass(db)
-    if auto:
-        request.session["toast_flash"] = {
-            "kind": "success",
-            "message": f"Авто-скачано в export листів від довірених клієнтів: {auto} (прийміть у чергу вручну).",
-        }
     return RedirectResponse(f"/mail?synced={count}", status_code=303)
 
 
@@ -4294,83 +4285,30 @@ def open_mail_folder(
     return Response(status_code=204)
 
 
-def _auto_download_skip_reason(db: Session, email: EmailMessage) -> str | None:
-    """None → this trusted letter's files may be auto-moved into export ahead of
-    acceptance. Otherwise a reason to leave everything in the spool for manual
-    handling. Same guardrails as before: trusted sender, one confident material
-    (so there's a folder to drop into), all files present (nothing behind a
-    download link), and — importantly — the files are still in the SPOOL (not
-    already staged). Queue acceptance always stays manual, so there is no
-    order-creation risk here; this only pre-organises files."""
-    if email.status != "нове":
-        return "не нове"
-    if email.attachments_status != "ready":
-        return "вкладення ще вантажаться"
-    if not is_auto_sender(db, email):
-        return "відправник не в авто-списку"
-    if not (email.material_color_guess or "").strip():
-        return "матеріал не розпізнано"
-    if extract_download_links(email.body_text):
-        return "є файли за посиланням"
-    spool_files = [a for a in email.attachments if not a.staged_to_export and Path(a.saved_path).exists()]
-    if not spool_files:
-        return "немає файлів у спулі"
-    return None
-
-
-def _auto_download_pass(db: Session) -> int:
-    """Auto-download eligible trusted letters' files into export (NOT accept —
-    the queue order is always created manually by the operator, which removes
-    the risk of a work silently slipping in). Runs after each IMAP sync. Each
-    letter is independent; a failure is logged and never blocks the rest.
-    Returns how many letters had files staged this pass."""
-    candidates = db.scalars(
-        select(EmailMessage)
-        .where(EmailMessage.status == "нове")
-        .options(selectinload(EmailMessage.attachments))
-    ).all()
-    staged = 0
-    for email in candidates:
-        if _auto_download_skip_reason(db, email) is not None:
-            continue
-        try:
-            if _auto_download_one(db, email):
-                db.commit()
-                staged += 1
-            else:
-                db.rollback()
-        except Exception:  # noqa: BLE001 — one bad letter must not abort the pass
-            db.rollback()
-            logger.exception("Auto-download failed for email %s", email.id)
-    return staged
-
-
-def _auto_download_one(db: Session, email: EmailMessage) -> bool:
-    """Move this letter's spool files into export/<client>/<date>/<material>/,
-    marking them staged_to_export. No order, no status change — the letter stays
-    in triage for the operator to accept manually. Returns True if any file was
-    staged."""
-    hint = lookup_sender(db, email)
-    client_name = (
-        (hint.client_name if hint else None)
-        or email.client_name_guess or email.from_address or ""
-    ).strip()
-    material_color = (email.material_color_guess or "").strip()
-    to_move = [a for a in email.attachments if not a.staged_to_export and Path(a.saved_path).exists()]
-    if not to_move:
-        return False
-    folder_override = hint.export_folder if hint else ""
-    new_paths = save_attachments_to_export(
-        Path(get_export_folder_path(db)), client_name, material_color,
-        [Path(a.saved_path) for a in to_move],
-        client_folder_override=folder_override,
-    )
-    for attachment, new_path in zip(to_move, new_paths):
-        attachment.saved_path = str(new_path)
-        attachment.staged_to_export = True
-    db.add(SyncLog(direction="mail_to_export", status="ok",
-                   message=f"auto-download email {email.id}: {len(to_move)} файл(ів) у export"))
-    return True
+@app.post("/mail/{email_id}/download-attachments", response_class=HTMLResponse)
+def download_email_attachments(
+    request: Request,
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    """Pull a non-whitelisted letter's files on demand ("skipped" → "ready").
+    Re-renders the detail panel so the STL/preview and accept wizard appear."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+    try:
+        download_attachments_now(db, email, Path(MAIL_ATTACHMENTS_PATH))
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 — surface a friendly error, don't 500
+        db.rollback()
+        logger.exception("Manual attachment download failed for email %s", email.id)
+        context = _mail_panel_context(db, email, user, error=f"Не вдалося скачати файли: {exc}")
+        return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
+    context = _mail_panel_context(db, email, user)
+    return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
 
 
 @app.post("/mail/senders/add")

@@ -37,7 +37,7 @@
             <span class="r3">
                 <span class="att">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V6a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V7"/></svg>
-                    {% if email.attachments_status == 'pending' %}завантаження…{% else %}{{ email.attachments|length }} файл.{% endif %}
+                    {% if email.attachments_status == 'pending' %}завантаження…{% elif email.attachments_status == 'skipped' %}не скачано{% else %}{{ email.attachments|length }} файл.{% endif %}
                 </span>
                 {% if view == 'archive' %}
                     {% if email.status == 'прийнято' %}

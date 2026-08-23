@@ -113,6 +113,10 @@ def _patch_common(monkeypatch, mailbox):
     monkeypatch.setattr("app.mail_reader.MailBox", mailbox)
     monkeypatch.setattr("app.mail_reader.get_imap_login", lambda session: "account")
     monkeypatch.setattr("app.mail_reader.get_imap_password", lambda session: "secret")
+    # Existing download tests predate the auto-download whitelist gate; default
+    # every sender to trusted so they exercise the download path. The gate
+    # itself is covered by test_fetch_gates_attachment_download_by_whitelist.
+    monkeypatch.setattr("app.mail_reader.is_auto_sender", lambda session, email: True)
 
 
 def test_fetch_reads_recent_seen_mail_without_marking_seen(monkeypatch, tmp_path):
@@ -348,3 +352,49 @@ def test_phase_two_retries_previously_failed_message_on_next_run(monkeypatch, tm
 
         email = session.scalar(select(EmailMessage).where(EmailMessage.uid == "3"))
         assert email.attachments_status == "ready"
+
+
+def test_fetch_gates_attachment_download_by_whitelist(monkeypatch, tmp_path):
+    """Whitelisted sender → attachments download ("ready"); everyone else →
+    headers only, no files ("skipped"). Body/guesses parse either way."""
+    from app.models import EmailMessage
+
+    attachment = _fake_attachment("crown.stl", b"STL")
+    mailbox = FakeMailbox(
+        headers=[_header_message("7", from_="client@example.test")],
+        full_by_uid={"7": _full_message("7", from_="client@example.test", attachments=[attachment])},
+    )
+    _patch_common(monkeypatch, mailbox)
+    # real gate: not whitelisted
+    monkeypatch.setattr("app.mail_reader.is_auto_sender", lambda session, email: False)
+
+    with _engine_session() as session:
+        created = fetch_new_emails(session, tmp_path)
+        assert created == 1
+        email = session.query(EmailMessage).one()
+        assert email.attachments_status == "skipped"
+        assert email.attachments == []
+        assert email.body_text  # body still parsed for preview
+
+
+def test_manual_download_pulls_skipped_letter(monkeypatch, tmp_path):
+    from app.mail_reader import download_attachments_now
+    from app.models import EmailMessage
+
+    attachment = _fake_attachment("crown.stl", b"STL")
+    mailbox = FakeMailbox(
+        headers=[_header_message("7")],
+        full_by_uid={"7": _full_message("7", attachments=[attachment])},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.is_auto_sender", lambda session, email: False)
+    with _engine_session() as session:
+        fetch_new_emails(session, tmp_path)
+        email = session.query(EmailMessage).one()
+        assert email.attachments_status == "skipped"
+        # operator pulls the files by hand
+        n = download_attachments_now(session, email, tmp_path)
+        session.commit()
+        assert n == 1
+        assert email.attachments_status == "ready"
+        assert len(email.attachments) == 1

@@ -60,6 +60,9 @@
             <div class="mail-metabar">
                 {% if email.attachments_status == 'pending' %}
                 <span class="attachment-badge attachment-badge-pending"><span class="attachment-badge-dot" aria-hidden="true"></span>Завантаження…</span>
+                {% elif email.attachments_status == 'skipped' %}
+                <span class="attachment-badge attachment-badge-warn" title="Відправник не в авто-списку — файли не качались автоматично">Файли не скачані</span>
+                <button type="button" class="btn sm primary" hx-post="/mail/{{ email.id }}/download-attachments" hx-target="#mail-detail" hx-swap="innerHTML"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Скачати файли</button>
                 {% else %}
                 <span class="attachment-badge attachment-badge-ready">✓ Скачано ({{ att_count }})</span>
                 {% endif %}
@@ -104,6 +107,11 @@
                 </div>
                 {% elif email.attachments_status == 'pending' %}
                 <p class="settings-hint">Вкладення ще завантажуються з пошти…</p>
+                {% elif email.attachments_status == 'skipped' %}
+                <div class="skipped-files">
+                    <p class="settings-hint">Файли цього листа не скачані — відправника немає в авто-списку. Скачайте вручну, щоб переглянути STL і прийняти в чергу.</p>
+                    <button type="button" class="btn sm primary" hx-post="/mail/{{ email.id }}/download-attachments" hx-target="#mail-detail" hx-swap="innerHTML"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Скачати файли</button>
+                </div>
                 {% else %}
                 <p class="settings-hint">Вкладень немає.</p>
                 {% endif %}
