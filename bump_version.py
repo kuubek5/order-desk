@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import datetime
 import re
 import sys
 from pathlib import Path
@@ -24,9 +25,40 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
+# The heading the changelog collects in-progress work under, between releases.
+# Must match CHANGELOG.md and app/changelog.py's "dateless == unreleased" rule.
+CHANGELOG_UNRELEASED = "## [Незалежно від версії]"
+
 
 def _read(p: Path) -> str:
     return p.read_text(encoding="utf-8")
+
+
+def _roll_changelog(new: str, check: bool) -> None:
+    """Stamp the pending «Незалежно від версії» section with the new version +
+    today's date, and open a fresh empty pending section above it.
+
+    Makes the release the moment the changelog is versioned: work accumulates
+    under the dateless heading during development, and this turns it into
+    `## [X.Y.Z] — YYYY-MM-DD` in one step, so the shipped build's «Про
+    застосунок» shows exactly what changed. Absent/already-rolled section is a
+    warning, not a failure — a release with nothing new to note is legitimate.
+    """
+    path = ROOT / "CHANGELOG.md"
+    if not path.exists():
+        print("  ! CHANGELOG.md не знайдено — пропускаю")
+        return
+    text = _read(path)
+    if CHANGELOG_UNRELEASED not in text:
+        print("  ! CHANGELOG.md: секції «Незалежно від версії» немає — пропускаю")
+        return
+
+    today = datetime.date.today().isoformat()
+    stamped = f"{CHANGELOG_UNRELEASED}\n\n## [{new}] — {today}"
+    print(f"  CHANGELOG.md: «Незалежно від версії» -> [{new}] — {today}")
+    if not check:
+        # Replace only the first occurrence (the top, pending one).
+        path.write_text(text.replace(CHANGELOG_UNRELEASED, stamped, 1), encoding="utf-8")
 
 
 def bump(new: str, check: bool) -> int:
@@ -70,6 +102,8 @@ def bump(new: str, check: bool) -> int:
         workflow.write_text(
             wtext.replace(f"OrderDesk-Setup-{old}", f"OrderDesk-Setup-{new}"), encoding="utf-8"
         )
+
+    _roll_changelog(new, check)
 
     if check:
         print("\n(--check: нічого не записано)")

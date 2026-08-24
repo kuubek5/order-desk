@@ -5,6 +5,8 @@ other secret (IMAP password, service-account JSON, ...) lives here so it can
 be changed from the Налаштування screen without editing files on disk.
 """
 
+import json
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -127,8 +129,40 @@ def set_setting(session: Session, key: str, value: str) -> None:
         row.value_encrypted = encrypted
 
 
+_SHEET_URL_ID_RE = re.compile(r"/spreadsheets/d/([A-Za-z0-9_-]{20,})")
+
+
+def extract_sheet_id(raw: str) -> str:
+    """Accept either a bare Sheet ID or the whole URL from the address bar.
+
+    Operators copy the browser URL, not the id buried inside it — pasting
+    "https://docs.google.com/spreadsheets/d/<id>/edit#gid=0" used to be saved
+    verbatim and every later call failed with an unhelpful "no access". Pull the
+    id out when it's a URL, otherwise return the input untouched (trimmed), so a
+    plain id keeps working exactly as before.
+    """
+    value = (raw or "").strip()
+    match = _SHEET_URL_ID_RE.search(value)
+    return match.group(1) if match else value
+
+
 def get_google_sheet_id(session: Session) -> str:
     return get_setting(session, "google_sheet_id") or GOOGLE_SHEET_ID
+
+
+def get_service_account_email(session: Session) -> Optional[str]:
+    """`client_email` out of the saved service-account JSON — the address the
+    spreadsheet must be shared with. Shown on the settings screen because
+    otherwise there is no way for the operator to know what to paste into
+    Google's Share dialog. Returns None if nothing is saved or the JSON is
+    unparseable; the caller just hides the hint then."""
+    content = get_setting(session, "google_service_account_json")
+    if not content:
+        return None
+    try:
+        return json.loads(content).get("client_email") or None
+    except (ValueError, AttributeError):
+        return None
 
 
 def get_google_service_account_json(session: Session) -> Optional[str]:

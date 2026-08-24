@@ -54,7 +54,16 @@ def _http_get(url: str, **kwargs) -> requests.Response:
     return _session().get(url, **kwargs)
 
 
-GITHUB_REPO = "kuubek5/order-desk"
+# Updates are read from a SEPARATE, PUBLIC "releases-only" repo, not the source
+# repo. The source repo (kuubek5/order-desk) is private so outsiders can't read
+# the code; this one holds only the built installer + checksum. That keeps the
+# update check ANONYMOUS — the GitHub API returns 404 for a private repo's
+# releases without a token, and a token shipped inside the installed app would
+# be readable on the workstation. Public releases repo = private code + working
+# seamless updates, no secret on the client. The release CI in the private repo
+# publishes here (see .github/workflows/release.yml). If this ever points back
+# at a private repo, auto-update goes silently dark — see test_update_check.
+GITHUB_REPO = "kuubek5/order-desk-releases"
 RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 REQUEST_TIMEOUT_SECONDS = 5
 DOWNLOAD_TIMEOUT_SECONDS = 30

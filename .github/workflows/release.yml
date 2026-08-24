@@ -167,9 +167,17 @@ jobs:
 
           Write-Host "Smoke test passed"
 
-      - name: Create GitHub Release
+      # Publish to the SEPARATE public releases repo, not this (private) one.
+      # The built-in GITHUB_TOKEN only has rights on this repo, so a fine-grained
+      # PAT with contents:write on the releases repo is provided as the
+      # RELEASES_REPO_TOKEN secret. `repository` + `token` retarget the release
+      # there; the app's update check reads from that public repo anonymously.
+      - name: Create GitHub Release (public releases repo)
         uses: softprops/action-gh-release@v3
         with:
+          repository: kuubek5/order-desk-releases
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
+          tag_name: ${{ github.ref_name }}
           files: |
             dist-installer/OrderDesk-Setup-0.3.0.exe
             dist-installer/OrderDesk-Setup-0.3.0.exe.sha256

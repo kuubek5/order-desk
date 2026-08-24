@@ -14,10 +14,12 @@ hand-crafted request the same way regardless of what the DOM shows.
 """
 
 import asyncio
+import json
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from starlette.datastructures import Headers
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -48,9 +50,14 @@ def _operator(db: Session) -> User:
     return user
 
 
-def _form_request(user_id: int, form: dict, host: str = "127.0.0.1"):
+def _form_request(user_id: int, form: dict, host: str = "127.0.0.1", headers: dict | None = None):
     """A fake Request whose `await .form()` returns `form`, matching what
-    `post_settings`/`export_backup`/`import_backup` actually call."""
+    `post_settings`/`export_backup`/`import_backup` actually call.
+
+    `headers` defaults to empty, i.e. a plain (non-HTMX) browser POST — the
+    path that still redirects. Pass {"HX-Request": "true"} to exercise the
+    HTMX branch that answers 204 + toast instead.
+    """
     async def _form():
         return form
 
@@ -58,6 +65,7 @@ def _form_request(user_id: int, form: dict, host: str = "127.0.0.1"):
         session={"user_id": user_id},
         client=SimpleNamespace(host=host),
         form=_form,
+        headers=Headers(headers or {}),
     )
 
 
@@ -214,3 +222,42 @@ def test_operator_cannot_import_backup():
                 )
             )
     assert exc.value.status_code == 403
+
+
+# --- HTMX save keeps the operator on the edited section -------------------
+#
+# The plain POST redirects to /settings?saved=1 — no #hash — which under the
+# console layout lands on «Стан системи» instead of the form just saved. The
+# HTMX branch must answer 204 (nothing to swap) plus a toast instead, and the
+# non-HTMX branch must still redirect for the no-JS case.
+
+
+def test_htmx_save_answers_204_with_toast_instead_of_redirect():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        operator = _operator(db)
+        request = _form_request(
+            operator.id,
+            {"action": "save", "export_folder_path": r"C:\export"},
+            headers={"HX-Request": "true"},
+        )
+        response = asyncio.run(web.post_settings(request=request, db=db))
+
+    assert response.status_code == 204
+    assert "HX-Trigger" in response.headers
+    payload = json.loads(response.headers["HX-Trigger"])
+    assert payload["toast"]["kind"] == "success"
+    # The value still had to be saved — 204 must not mean "did nothing".
+    with Session(engine, expire_on_commit=False) as db:
+        assert get_setting(db, "export_folder_path") == r"C:\export"
+
+
+def test_plain_post_still_redirects_for_no_js():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        operator = _operator(db)
+        request = _form_request(operator.id, {"action": "save", "export_folder_path": r"C:\export"})
+        response = asyncio.run(web.post_settings(request=request, db=db))
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/settings?saved=1"

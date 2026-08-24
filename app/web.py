@@ -19,8 +19,9 @@ import uuid
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import gspread
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from imap_tools import MailBox
@@ -31,6 +32,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 
 from app.__version__ import VERSION
+from app.changelog import load_changelog
 from app.auth import hash_password, verify_password
 from app.backup import BackupFormatError, BackupPasswordError, create_backup, restore_backup
 from app.client_matcher import match_client_name
@@ -79,7 +81,7 @@ from app.material_catalog import (
 )
 from app.mail_filters import apply_rule_retroactively
 from app.mail_spool import analyze_spool, prune_spool
-from app.models import Attachment, Client, ClientNameAlias, ClientSenderMemory, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
+from app.models import AppSetting, Attachment, Client, ClientNameAlias, ClientSenderMemory, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sender, remember_sender, sender_key_for
 from app.order_folder import (
     attach_email_folder_availability,
@@ -118,7 +120,9 @@ from app.settings_store import (
     get_imap_password,
     get_mail_default_material,
     get_mail_download_all,
+    get_service_account_email,
     get_technician_files_path,
+    extract_sheet_id,
     set_mail_default_material,
     set_mail_download_all,
     set_setting,
@@ -353,6 +357,66 @@ def _sync_heartbeat_status(
     # "skipped" with no prior real outcome yet (busy on the very first tick
     # this process ever attempted) — rare, but still an honest "unknown".
     return {"state": "neutral", "label": "очікує результату"}
+
+
+def _sheets_access_error_message(db: Session, exc: BaseException) -> str:
+    """Turn a failed spreadsheet open into the one sentence that says what to
+    DO about it.
+
+    The two real-world failures look identical in the old catch-all wording
+    ("перевірте ID, ключ і доступ"), yet need opposite actions: a 404 means the
+    id is wrong, a 403 means the file exists but was never shared with the
+    account we authenticate as. Naming the service-account address in the 403
+    case matters — it is exactly what has to be pasted into Google's Share
+    dialog. Raw Google error text is still never echoed.
+    """
+    status = None
+    if isinstance(exc, gspread.exceptions.APIError):
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+
+    if isinstance(exc, gspread.exceptions.SpreadsheetNotFound) or status == 404:
+        return "Таблицю з таким ID не знайдено — перевірте ID або вставте посилання на таблицю"
+
+    if status == 403:
+        email = get_service_account_email(db)
+        if get_google_auth_mode(db) == "oauth":
+            return "Акаунт Google не має доступу до цієї таблиці — увійдіть тим акаунтом, що бачить таблицю"
+        if email:
+            return (
+                "Таблиця не відкрита для сервісного акаунта. Відкрийте її в Google → "
+                f"«Поділитися» → додайте {email} як Редактора"
+            )
+        return "Немає доступу до таблиці — надайте сервісному акаунту права Редактора"
+
+    if status in (401, 400):
+        return "Google не прийняв облікові дані — перевірте JSON-ключ сервісного акаунта"
+
+    return "Не вдалося відкрити таблицю. Перевірте ID, ключ і доступ до таблиці"
+
+
+def _toast_response(message: str, *, kind: str = "success") -> Response:
+    """204 + an HX-Trigger toast — the reply for an HTMX action that changed
+    something server-side but has nothing to swap into the page. Same
+    {"toast": {...}} envelope app.js already listens for."""
+    response = Response(status_code=204)
+    response.headers["HX-Trigger"] = json.dumps({"toast": {"message": message, "kind": kind}})
+    return response
+
+
+def _settings_changed_at(db: Session, keys: tuple[str, ...]) -> dict[str, str]:
+    """`AppSetting.updated_at` per key, formatted "12.08.26".
+
+    Answers "а коли ми міняли пароль пошти?" without touching the value: the
+    timestamp column is plaintext, only `value_encrypted` is a secret. Absolute
+    dates, not "N days ago" — a settings screen is consulted rarely, so the
+    calendar date is what the operator can actually cross-reference.
+    """
+    rows = db.scalars(select(AppSetting).where(AppSetting.key.in_(keys))).all()
+    return {
+        row.key: row.updated_at.strftime("%d.%m.%y")
+        for row in rows
+        if row.updated_at is not None
+    }
 
 
 def _queue_sync_status(db: Session, now: datetime) -> dict[str, dict[str, str]]:
@@ -1108,6 +1172,22 @@ templates.env.globals["material_color_css_class"] = material_color_css_class
 templates.env.globals["material_badge"] = material_badge
 templates.env.globals["triage_readiness"] = triage_readiness
 templates.env.globals["static_ver"] = static_ver
+
+
+def _changelog_md(text: str):
+    """Render the only markup a changelog line uses: **bold**. Escapes first, so
+    the CHANGELOG.md content can never inject HTML even though it's our own
+    trusted file — cheaper to be safe than to reason about it."""
+    import re as _re
+
+    from markupsafe import Markup, escape
+
+    escaped = str(escape(text))
+    bolded = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+    return Markup(bolded)
+
+
+templates.env.filters["changelog_md"] = _changelog_md
 # Available in every template without every route threading it through its
 # own context dict — same rationale as static_ver above. Reads the
 # in-memory "last known result" (see app/update_check.py::get_known_update),
@@ -3077,6 +3157,12 @@ def get_settings(
             "sheets_configured": _sheets_configured(db),
             "imap_configured": _imap_configured(db),
             "google_configured": google_configured,
+            # The address the spreadsheet must be shared with — without it on
+            # screen there is no way to know what to paste into Google's Share
+            # dialog, which is the whole of "connecting" in service-account mode.
+            "service_account_email": get_service_account_email(db),
+            # Curated changelog from CHANGELOG.md, rendered in «Про застосунок».
+            "changelog": load_changelog(),
             "paths_set": paths_set,
             "operators_exist": operators_exist,
             "backup_available": backup_available,
@@ -3090,6 +3176,27 @@ def get_settings(
             "setup_steps_done": setup_steps_done,
             "setup_steps_total": setup_steps_total,
             "operators": operators,
+            # Background-loop liveness, same source the queue sidebar renders.
+            # "Стан системи" is where an operator actually looks for it, and the
+            # stale-heartbeat detector (STALE_HEARTBEAT_MULTIPLIER) is the one
+            # signal that distinguishes "quiet because idle" from "worker died".
+            "sync_status": _queue_sync_status(db, datetime.now()),
+            "sync_intervals": {
+                "mail": MAIL_SYNC_INTERVAL_SECONDS // 60,
+                "sheet": SHEET_SYNC_INTERVAL_SECONDS // 60,
+            },
+            "changed_at": _settings_changed_at(
+                db,
+                (
+                    "google_sheet_id",
+                    "google_service_account_json",
+                    "google_oauth_client_json",
+                    "imap_login",
+                    "imap_password",
+                    "export_folder_path",
+                    "technician_files_path",
+                ),
+            ),
             # «Фільтри пошти» section — same shared panel as the filtered tab.
             "filter_rules": db.scalars(
                 select(MailFilterRule).order_by(MailFilterRule.id.desc())
@@ -3099,7 +3206,42 @@ def get_settings(
                 select(MailFilterCategory).order_by(MailFilterCategory.id.asc())
             ).all(),
             "mail_download_all": get_mail_download_all(db),
-            "spool_report": analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH)),
+            "spool_report": (_spool_report := analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH))),
+            # "Стан системи" flow map — honest, cheap counts (one scalar each).
+            # No export-folder scan here; that's the heavy walk we keep off page load.
+            "state_nodes": [
+                {
+                    "n": db.scalar(
+                        select(func.count())
+                        .select_from(EmailMessage)
+                        .where(
+                            EmailMessage.status == "нове",
+                            EmailMessage.filter_category.is_(None),
+                        )
+                    ) or 0,
+                    "l": "Пошта",
+                    "u": "у тріажі",
+                },
+                {"n": _spool_report.total_dirs, "l": "Спул", "u": f"{_spool_report.total_mb} МБ"},
+                {
+                    "n": db.scalar(
+                        select(func.count())
+                        .select_from(Order)
+                        .where(Order.status != "видано", Order.archived_at.is_(None))
+                    ) or 0,
+                    "l": "Черга",
+                    "u": "активні",
+                },
+                {
+                    "n": db.scalar(
+                        select(func.count())
+                        .select_from(Order)
+                        .where(Order.archived_at.is_not(None))
+                    ) or 0,
+                    "l": "Архів",
+                    "u": "робіт",
+                },
+            ],
             "error": error or (
                 settings_flash["message"]
                 if settings_flash and settings_flash["kind"] == "error"
@@ -3127,6 +3269,9 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
         if not is_admin and field.key not in OPERATOR_EDITABLE_KEYS:
             continue
         value = form.get(field.key, "").strip()
+        if field.key == "google_sheet_id":
+            # Operators paste the whole address-bar URL; store the bare id.
+            value = extract_sheet_id(value)
         if value:
             set_setting(db, field.key, value)
     db.commit()
@@ -3134,18 +3279,30 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
     if action == "save_and_sync" and not is_admin:
         action = "save"
 
+    # HTMX save keeps the operator on the section they were editing. The full
+    # POST redirected to /settings?saved=1 — no #hash — which under the console
+    # layout lands on «Стан системи» instead of the form just saved. Answer 204
+    # (nothing to swap; the DOM already shows what was typed) and report the
+    # outcome through the app-wide toast channel. Without JS the plain form
+    # still posts here and still gets the redirect below.
+    hx = request.headers.get("HX-Request") == "true"
+
     if action == "save_and_sync":
         try:
             summary = sync_google_sheets(db)
         except SheetSyncError as exc:
+            if hx:
+                return _toast_response("Синхронізація: " + str(exc), kind="error")
             request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
             return RedirectResponse("/settings?welcome=1", status_code=303)
-        request.session["sync_flash"] = {
-            "kind": "success",
-            "message": _sync_summary_message(summary),
-        }
+        message = _sync_summary_message(summary)
+        if hx:
+            return _toast_response(message, kind="success")
+        request.session["sync_flash"] = {"kind": "success", "message": message}
         return RedirectResponse("/", status_code=303)
 
+    if hx:
+        return _toast_response("Збережено", kind="success")
     return RedirectResponse("/settings?saved=1", status_code=303)
 
 
@@ -3337,15 +3494,15 @@ def test_sheets_connection(request: Request, db: Session = Depends(get_db)):
             spreadsheet = open_spreadsheet(db=db)
             # Touch the worksheet list so a permissions/id error surfaces here,
             # not just an object we never actually read from.
-            spreadsheet.worksheets()
-        except Exception:
+            tabs = spreadsheet.worksheets()
+        except Exception as exc:
             logger.warning("Google Sheets access test failed")
-            result = {
-                "state": "error",
-                "message": "Немає доступу до таблиці. Перевірте ID, JSON-ключ і чи надано доступ сервісному акаунту",
-            }
+            result = {"state": "error", "message": _sheets_access_error_message(db, exc)}
         else:
-            result = {"state": "success", "message": "Доступ до Google Таблиці підтверджено"}
+            result = {
+                "state": "success",
+                "message": f"Доступ підтверджено · {len(tabs)} вкладок",
+            }
 
     return templates.TemplateResponse(
         request, "_settings_check_result.html", {"result": result}
@@ -3558,6 +3715,161 @@ def prune_mail_spool(request: Request, db: Session = Depends(get_db)):
         ),
     }
     return RedirectResponse("/settings#mail-download", status_code=303)
+
+
+# One self-check probe may not wedge the run. Mirrors the reasoning behind
+# mail_sync_service.MAIL_SYNC_DEADLINE_SECONDS: a half-open TLS socket can hang
+# an IMAP/Sheets call indefinitely, and here that would stall a threadpool
+# worker with the UI showing a spinner forever. Past the deadline the probe is
+# abandoned (its thread is left to die on its own) and reported as a failure.
+SELFCHECK_STEP_DEADLINE_SECONDS = 20
+
+
+@app.post("/settings/selfcheck")
+def settings_selfcheck(request: Request, db: Session = Depends(get_db)):
+    """"Стан системи" self-check — streams NDJSON, one line per probe, as each
+    one finishes: {key, name, ok, warn, detail, ms}, then a final
+    {done, passed, total, version}.
+
+    Streaming rather than one batched JSON so the UI's progression is real: the
+    row lights up when its probe actually starts and settles when it actually
+    returns. Reuses the exact probes behind the individual «Перевірити» buttons,
+    so green here means green there. Nothing is mutated and no secret ever
+    leaves — only задано / не задано and the same classified messages those
+    buttons show. Admin + loopback only, like the other settings mutations.
+
+    Every config value is read from the DB up front: the generator body runs
+    after the request's session would otherwise be torn down, so it must not
+    touch `db`.
+    """
+    import json as _json
+    import shutil
+    import time as _time
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FTimeout
+
+    _require_settings_admin(request, db)
+
+    sheets_ready = _sheets_configured(db)
+    imap_ready = _imap_configured(db)
+    imap_login = get_imap_login(db)
+    imap_password = get_imap_password(db)
+    export_path = get_export_folder_path(db)
+    technician_path = get_technician_files_path(db)
+
+    def _sheets():
+        if not sheets_ready:
+            return False, False, "не налаштовано — ID або JSON-ключ порожні"
+        # open_spreadsheet() without a session falls back to the *env* sheet id,
+        # not the one saved through this screen — so it needs a real session.
+        # The request's own is gone by the time the generator body runs, hence a
+        # short-lived session this probe owns and closes (same shape as
+        # _run_mail_sync_owned_session, minus the watchdog-zombie case).
+        probe_db = SessionLocal()
+        try:
+            spreadsheet = open_spreadsheet(db=probe_db)
+            n = len(spreadsheet.worksheets())
+        finally:
+            probe_db.close()
+        return True, False, f"доступ підтверджено · {n} вкладок"
+
+    def _imap():
+        if not imap_ready:
+            return False, False, "не налаштовано — логін або пароль порожні"
+        res = _probe_imap_login(imap_login, imap_password)
+        return res["state"] == "success", False, res["message"]
+
+    def _folder(path_str):
+        p = (path_str or "").strip()
+        if not p:
+            return False, False, "шлях не задано"
+        pp = Path(p)
+        if not pp.exists():
+            return False, False, "папку не знайдено за вказаним шляхом"
+        if not pp.is_dir():
+            return False, False, "шлях вказує не на папку"
+        return True, False, "існує й доступна"
+
+    def _disk():
+        usage = shutil.disk_usage(Path(DB_PATH).parent)
+        free_gb = usage.free / (1024 ** 3)
+        if free_gb < 2:
+            return False, False, f"вільно лише {free_gb:.1f} ГБ (потрібно ≥2 ГБ)"
+        return True, free_gb < 10, f"вільно {free_gb:.1f} ГБ"
+
+    def _backup():
+        snaps = list_snapshots(DB_PATH)
+        if not snaps:
+            return True, True, "жодної автоматичної копії ще немає"
+        newest = max(s.stat().st_mtime for s in snaps)
+        age_days = (_time.time() - newest) / 86400
+        return True, age_days > 40, f"остання копія {age_days:.0f} дн. тому"
+
+    def _update():
+        rel = get_known_update()
+        if rel:
+            return True, True, f"доступне оновлення v{rel.version}"
+        return True, False, "встановлена версія найновіша"
+
+    steps = [
+        ("sheets", "Доступ до Google Таблиці", _sheets),
+        ("imap", "IMAP-зʼєднання зі скринькою", _imap),
+        ("export", "Папка export доступна на запис", lambda: _folder(export_path)),
+        ("technician", "Папка робіт техніків", lambda: _folder(technician_path)),
+        ("disk", "Місце на диску (потрібно ≥2 ГБ)", _disk),
+        ("backup", "Резервна копія свіжа", _backup),
+        ("update", "Наявність оновлення", _update),
+    ]
+
+    def _stream():
+        passed = 0
+        # Manifest first: the UI renders every row (dimmed, named) up front, so
+        # the operator sees what is about to be checked instead of rows
+        # appearing anonymously one at a time.
+        yield _json.dumps(
+            {"steps": [{"key": k, "name": n} for k, n, _ in steps]}, ensure_ascii=False
+        ) + "\n"
+        # daemon threads: an abandoned probe must never hold up shutdown
+        pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="selfcheck")
+        try:
+            for key, name, fn in steps:
+                t0 = _time.perf_counter()
+                try:
+                    ok, warn, detail = pool.submit(fn).result(
+                        timeout=SELFCHECK_STEP_DEADLINE_SECONDS
+                    )
+                except _FTimeout:
+                    logger.warning("selfcheck step %s exceeded deadline", key)
+                    ok, warn, detail = False, False, (
+                        f"немає відповіді понад {SELFCHECK_STEP_DEADLINE_SECONDS} с — перевірку скасовано"
+                    )
+                    # The wedged worker owns this pool's only thread; give the
+                    # remaining steps a fresh one instead of queueing behind it.
+                    pool.shutdown(wait=False)
+                    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="selfcheck")
+                except Exception:
+                    logger.warning("selfcheck step %s failed", key, exc_info=True)
+                    ok, warn, detail = False, False, "перевірка не виконалась"
+                ms = int((_time.perf_counter() - t0) * 1000)
+                if ok:
+                    passed += 1
+                yield _json.dumps(
+                    {"key": key, "name": name, "ok": ok, "warn": warn, "detail": detail, "ms": ms},
+                    ensure_ascii=False,
+                ) + "\n"
+            yield _json.dumps(
+                {"done": True, "passed": passed, "total": len(steps), "version": VERSION},
+                ensure_ascii=False,
+            ) + "\n"
+        finally:
+            pool.shutdown(wait=False)
+
+    return StreamingResponse(
+        _stream(),
+        media_type="application/x-ndjson",
+        # Chunks must reach the browser as they are produced, not buffered into
+        # one response — otherwise the streaming is pointless.
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/settings/mail-download/toggle")

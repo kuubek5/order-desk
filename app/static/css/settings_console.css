@@ -1,0 +1,656 @@
+/* Settings «Консоль» — page-only styles for /settings.
+   Loads AFTER settings.css, so equal-specificity overrides of the wizard
+   layout win on order. Only the section-switching, header, flow map, self-check
+   and command palette are new; every form inside keeps its settings.css look. */
+
+/* ── section switching: one section at a time ─────────────── */
+.scon .wizard-flow {
+  padding-left: 0;                 /* drop the wizard's numbered rail gutter */
+}
+.scon .wizard-flow::before {
+  display: none;                   /* and its vertical connector line */
+}
+.scon .wizard-step .num {
+  display: none;                   /* number badges belonged to the wizard */
+}
+.scon .scon-sec {
+  display: none;
+  margin: 0;
+}
+.scon .scon-sec.is-shown {
+  display: block;
+  animation: sconIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes sconIn {
+  from { opacity: 0; transform: translate3d(12px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+.scon .scon-sec .box {
+  padding: 18px 20px;
+}
+
+/* wider column now that the rail carries navigation */
+main.setv2.scon {
+  max-width: 1080px;
+}
+
+/* Action rows: settings.css right-aligns them (justify-content:flex-end) and
+   login.css gives .login-submit width:100% — sized for a narrow wizard card.
+   Across a ~1000px console panel that reads as broken: the primary button
+   spanned the full width and pushed the secondary one to the far right. Buttons
+   size to their labels and start at the left edge, next to the fields. */
+.scon .settings-actions {
+  justify-content: flex-start;
+}
+.scon .settings-actions .login-submit,
+.scon .settings-actions .settings-submit {
+  width: auto;
+}
+
+/* ── header ───────────────────────────────────────────────── */
+.scon-top {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.scon-title h1 {
+  margin: 0 0 3px;
+}
+.scon-title p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.scon-search {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  border-radius: var(--r-ctl);
+  background: #111823;
+  border: 1px solid var(--line-2);
+  color: var(--ink-3);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color var(--ui-speed) ease, color var(--ui-speed) ease;
+}
+.scon-search:hover {
+  border-color: var(--control-edge);
+  color: var(--ink-2);
+}
+.scon-search svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+.scon-search .k {
+  display: inline-flex;
+  gap: 3px;
+}
+.scon kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  background: var(--card-3);
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 1px 5px;
+  color: var(--ink-2);
+}
+
+/* ── Стан системи · flow map ──────────────────────────────── */
+.scon-map {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  padding: 4px 2px 6px;
+  margin: 6px 0 4px;
+}
+.scon-node {
+  flex: 1 1 0;
+  min-width: 96px;
+}
+.scon-node-box {
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-ctl);
+  background: var(--card-2);
+  padding: 11px 8px;
+  text-align: center;
+  height: 100%;
+  transition: border-color var(--ui-speed) ease, background-color var(--ui-speed) ease;
+}
+.scon-node.is-hot .scon-node-box {
+  border-color: var(--accent-b);
+  background: rgba(20, 184, 166, 0.08);
+}
+.scon-n {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.05;
+}
+.scon-l {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  margin-top: 4px;
+}
+.scon-u {
+  font-size: 10px;
+  color: var(--ink-3);
+}
+.scon-link {
+  flex: 0 0 34px;
+  display: flex;
+  align-items: center;
+  padding-top: 22px;
+}
+.scon-link svg {
+  width: 100%;
+  height: 12px;
+  overflow: visible;
+}
+.scon-link path {
+  stroke: var(--line-2);
+  stroke-width: 1.5;
+  fill: none;
+}
+.scon-link .pulse {
+  stroke: var(--accent-b);
+  stroke-width: 2;
+  stroke-dasharray: 8 100;
+  stroke-dashoffset: 108;
+  opacity: 0;
+  fill: none;
+}
+.scon-link.is-run .pulse {
+  opacity: 1;
+  animation: sconFlow 0.7s linear forwards;
+}
+@keyframes sconFlow {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ── нижній бар дій секції ─────────────────────────────────
+   Перевірка (проба) зліва, збереження (коміт) справа, розділені
+   гнучким проміжком. Тонка лінія зверху відділяє від полів. */
+.scon .scon-actionbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.scon .scon-actionbar-gap {
+  flex: 1 1 24px;
+}
+.scon .scon-actionbar .login-submit,
+.scon .scon-actionbar .settings-submit,
+.scon .scon-actionbar .settings-secondary-button {
+  width: auto;
+  margin: 0;
+}
+/* «Перевірити доступ» — це проба, не збереження: тихіша за навіть «Зберегти» */
+.scon .scon-actionbar .settings-check-button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-2);
+}
+.scon .scon-actionbar .settings-check-button:hover {
+  border-color: var(--line-2);
+  color: var(--ink);
+}
+
+/* ── розкривачка «Разові дії» ─────────────────────────────── */
+.scon .scon-more {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: rgba(27, 36, 49, 0.4);
+}
+.scon .scon-more > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.scon .scon-more > summary::-webkit-details-marker { display: none; }
+.scon .scon-more > summary:hover { color: var(--ink); }
+.scon .scon-more-caret {
+  color: var(--ink-3);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.scon .scon-more[open] .scon-more-caret { transform: rotate(90deg); }
+.scon .scon-more-body {
+  padding: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.scon .scon-more-body .settings-secondary-button {
+  width: auto;
+  margin: 0;
+}
+.scon .scon-more-body .settings-help {
+  margin: 0;
+}
+
+/* ── адреса сервісного акаунта: те, що вставляють у «Поділитися» ── */
+.scon .sa-share-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.scon .sa-share-mail {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: var(--r-ctl);
+  background: #0f1620;
+  border: 1px solid var(--line-2);
+  color: var(--accent-c);
+  font-size: 12.5px;
+  /* довга адреса не має розпирати панель */
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/* ── Стан системи · background-loop heartbeat ─────────────── */
+.scon-beat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  overflow: hidden;
+  background: var(--line);
+}
+.scon-beat-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 13px;
+  background: #0f1620;
+  font-size: 12.5px;
+}
+.scon-beat-row .d {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--line-2);
+}
+.scon-beat-row .n {
+  font-weight: 600;
+  min-width: 128px;
+}
+.scon-beat-row .v {
+  color: var(--ink-2);
+  flex: 1;
+  min-width: 0;
+}
+.scon-beat-row .i {
+  font-size: 11px;
+  color: var(--ink-3);
+  flex: none;
+}
+.scon-beat-success .d { background: var(--accent-b); }
+.scon-beat-success .v { color: var(--accent-c); }
+.scon-beat-warning .d { background: var(--warn); }
+.scon-beat-warning .v { color: var(--warn); }
+.scon-beat-error .d { background: var(--alarm); }
+.scon-beat-error .v { color: #ffc9c9; }
+
+/* "змінено 12.08.26" — коли востаннє чіпали секрет, без розкриття значення */
+.scon-changed {
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* ── Стан системи · self-check ────────────────────────────── */
+.scon-diag {
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: #0f1620;
+  margin-top: 16px;
+  overflow: hidden;
+}
+.scon-diag-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.scon-diag-head .t {
+  font-weight: 600;
+  font-size: 13px;
+}
+.scon-diag-head .sum {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.scon-diag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.scon-diag-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid rgba(34, 44, 58, 0.6);
+  font-size: 12.5px;
+  color: var(--ink-3);
+  opacity: 0.45;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+.scon-diag-list li:last-child {
+  border-bottom: 0;
+}
+.scon-diag-list li.is-run,
+.scon-diag-list li.is-done {
+  opacity: 1;
+  color: var(--ink-2);
+}
+.scon-diag-list li.ok .nm {
+  color: var(--ink);
+}
+.scon-diag-list li.warn {
+  color: var(--warn);
+}
+.scon-diag-list li.bad {
+  color: #ffc9c9;
+}
+.scon-diag-list li .st {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.scon-diag-list li .nm {
+  flex: 1;
+}
+.scon-diag-list li .dt {
+  color: var(--ink-3);
+  font-size: 11.5px;
+}
+.scon-diag-list li .ms {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  flex: none;
+}
+.scon-diag .spin {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid rgba(232, 239, 247, 0.25);
+  border-top-color: var(--accent-c);
+  animation: sconSpin 0.7s linear infinite;
+}
+@keyframes sconSpin {
+  to { transform: rotate(360deg); }
+}
+.scon-diag .tick {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--accent-c);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.scon-diag .tick path {
+  stroke-dasharray: 22;
+  stroke-dashoffset: 22;
+  animation: sconDraw 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes sconDraw {
+  to { stroke-dashoffset: 0; }
+}
+.scon-diag .cross {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--alarm);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+.scon-diag .bang {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--warn);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+.scon-diag .settings-check-row {
+  padding: 12px 14px;
+}
+/* login.css gives .login-submit width:100% (it's a login-form button there).
+   Inside this action row it must size to its label, not span the panel. */
+.scon-diag .settings-check-row .login-submit {
+  width: auto;
+}
+
+/* ── журнал змін ──────────────────────────────────────────── */
+.scon-changelog {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.scon-changelog-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  margin: 0 0 10px;
+}
+.scon-rel {
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: rgba(27, 36, 49, 0.4);
+  margin-bottom: 8px;
+}
+.scon-rel > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+}
+.scon-rel > summary::-webkit-details-marker { display: none; }
+.scon-rel-ver {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.scon-rel-now {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--accent-c);
+  background: rgba(20, 184, 166, 0.12);
+  border: 1px solid rgba(45, 212, 191, 0.3);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.scon-rel-date {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.scon-rel[open] .scon-more-caret { transform: rotate(90deg); }
+.scon-rel-body {
+  padding: 2px 14px 12px;
+}
+.scon-rel-group {
+  margin-top: 10px;
+}
+.scon-rel-label {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 4px;
+}
+/* колір мітки за типом зміни */
+.scon-rel-додано .scon-rel-label { color: var(--accent-c); }
+.scon-rel-виправлено .scon-rel-label { color: var(--warn); }
+.scon-rel-body ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.scon-rel-body li {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+.scon-rel-body li strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ── command palette (Ctrl+K) ─────────────────────────────── */
+.scon-pal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: none;
+  justify-content: center;
+  padding-top: 12vh;
+  background: rgba(6, 9, 13, 0.62);
+  backdrop-filter: blur(5px);
+}
+.scon-pal.is-open {
+  display: flex;
+  animation: sconFade 0.16s ease both;
+}
+@keyframes sconFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.scon-pal-box {
+  width: min(560px, 92vw);
+  align-self: flex-start;
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  box-shadow: var(--sh-pop);
+  overflow: hidden;
+  animation: sconPop 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes sconPop {
+  from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+.scon-pal-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--line);
+}
+.scon-pal-top svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 2;
+  flex: none;
+}
+.scon-pal-top input {
+  flex: 1;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--ink);
+  font-size: 15px;
+  font-family: var(--font-body);
+}
+.scon-pal-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 46vh;
+  overflow: auto;
+}
+.scon-pal-list li button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 0;
+  background: none;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.scon-pal-list li button .g {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.scon-pal-list li[aria-selected="true"] button {
+  background: rgba(20, 184, 166, 0.12);
+  color: var(--ink);
+}
+.scon-pal-empty {
+  padding: 22px;
+  text-align: center;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.scon-pal-foot {
+  display: flex;
+  gap: 14px;
+  padding: 9px 15px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* field the palette jumped to gets a brief ring */
+@keyframes sconRing {
+  0%   { box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.45); }
+  100% { box-shadow: 0 0 0 9px rgba(45, 212, 191, 0); }
+}
+.scon-flash {
+  animation: sconRing 0.8s cubic-bezier(0.16, 1, 0.3, 1) 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scon *,
+  .scon-pal *,
+  .scon-link.is-run .pulse {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

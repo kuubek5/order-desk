@@ -523,6 +523,83 @@ li {
     stroke-linejoin: round;
   }
 
+  /* ---- Settings drill-in sub-rail ----
+     On settings-family pages the rail swaps the main nav for the settings
+     sections. Reuses .rail-nav-item / .rail-label; only the back link, head,
+     group labels and the progress pill are new. Lives here (not in
+     settings_console.css) because materials/recognition/account render the
+     same sub-rail without loading that page-only stylesheet. */
+  .rail-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-height: 0;
+  }
+
+  .rail-settings-back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 6px 10px;
+    border-radius: 8px;
+    color: var(--ink-3);
+    text-decoration: none;
+    font-weight: 600;
+    align-self: flex-start;
+    transition: color var(--ui-speed) ease, background-color var(--ui-speed) ease;
+  }
+
+  .rail-settings-back:hover {
+    color: var(--ink);
+    background-color: var(--card-2);
+  }
+
+  .rail-settings-back svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .rail-settings-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: 2px 10px 8px;
+  }
+
+  .rail-settings-head b {
+    font-size: 15px;
+    letter-spacing: -0.01em;
+  }
+
+  .rail-settings-prog {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent-c);
+    background: rgba(20, 184, 166, 0.12);
+    border: 1px solid rgba(45, 212, 191, 0.3);
+    border-radius: 999px;
+    padding: 1px 8px;
+  }
+
+  .rail-settings-group {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 12px 10px 4px;
+  }
+
+  .rail-settings .rail-nav-group {
+    margin: 0;
+  }
+
   /* ---- Collapsed rail (icons only) ---- */
   body.rail-collapsed:has(.topbar-user) {
     padding-left: 64px;

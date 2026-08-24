@@ -613,3 +613,117 @@ def test_disconnect_google_oauth_clears_token_and_resets_mode():
         from app.settings_store import get_google_auth_mode, get_google_oauth_refresh_token
         assert not get_google_oauth_refresh_token(db)
         assert get_google_auth_mode(db) == "service_account"
+
+
+# --- Стан системи · self-check stream ---------------------------------------
+#
+# The endpoint streams NDJSON so the UI's progression is real rather than a
+# replay of an already-finished run: a manifest line first, then one line per
+# probe as it settles, then a final summary. These assert the contract the
+# client (settings_console.js) parses, plus the per-probe deadline that keeps a
+# half-open socket from wedging the whole run.
+
+
+def _drain(response) -> list[dict]:
+    """Collect the NDJSON lines a StreamingResponse produces.
+
+    Starlette wraps the sync generator into an async iterator, so this has to
+    go through the event loop even though the endpoint itself is sync.
+    """
+    async def _collect():
+        chunks = []
+        async for chunk in response.body_iterator:
+            chunks.append(chunk if isinstance(chunk, str) else chunk.decode("utf-8"))
+        return chunks
+
+    chunks = asyncio.run(_collect())
+    return [json.loads(line) for line in "".join(chunks).splitlines() if line.strip()]
+
+
+def test_selfcheck_streams_manifest_then_result_per_step():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        response = web.settings_selfcheck(request=_request(admin.id), db=db)
+        messages = _drain(response)
+
+    assert response.media_type == "application/x-ndjson"
+    manifest, *rest = messages
+    steps = manifest["steps"]
+    assert [s["key"] for s in steps] == [
+        "sheets", "imap", "export", "technician", "disk", "backup", "update",
+    ]
+
+    *results, summary = rest
+    # One result line per manifest entry, same order — the client settles rows
+    # positionally, so a mismatch would label results with the wrong names.
+    assert [r["key"] for r in results] == [s["key"] for s in steps]
+    for result in results:
+        assert set(result) == {"key", "name", "ok", "warn", "detail", "ms"}
+    assert summary["done"] is True
+    assert summary["total"] == len(steps)
+    assert summary["passed"] == sum(1 for r in results if r["ok"])
+
+
+def test_selfcheck_reports_unconfigured_rather_than_crashing():
+    """Nothing is configured in a fresh DB: those probes must come back as
+    honest failures with a reason, not exceptions."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        messages = _drain(web.settings_selfcheck(request=_request(admin.id), db=db))
+
+    results = {m["key"]: m for m in messages if "ok" in m}
+    assert results["sheets"]["ok"] is False
+    assert "не налаштовано" in results["sheets"]["detail"]
+    assert results["imap"]["ok"] is False
+    assert results["export"]["ok"] is False
+    # Either reason is honest here: get_export_folder_path falls back to a
+    # default path that doesn't exist on a test machine, so "не задано" and
+    # "не знайдено" are both correct outcomes for an unconfigured install.
+    assert results["export"]["detail"] in {
+        "шлях не задано",
+        "папку не знайдено за вказаним шляхом",
+    }
+
+
+def test_selfcheck_abandons_a_probe_that_exceeds_the_deadline(monkeypatch):
+    """A hung probe is reported as a failure and the run continues — the whole
+    point of SELFCHECK_STEP_DEADLINE_SECONDS (mirrors the mail-sync watchdog)."""
+    import threading
+
+    release = threading.Event()
+    monkeypatch.setattr(web, "SELFCHECK_STEP_DEADLINE_SECONDS", 0.2)
+
+    def _hang(*args, **kwargs):
+        release.wait(10)
+        return {"state": "success", "message": "занадто пізно"}
+
+    monkeypatch.setattr(web, "_probe_imap_login", _hang)
+
+    engine = _database()
+    try:
+        with Session(engine, expire_on_commit=False) as db:
+            admin = _admin(db)
+            set_setting(db, "imap_login", "lab@ukr.net")
+            set_setting(db, "imap_password", "secret")
+            db.commit()
+            messages = _drain(web.settings_selfcheck(request=_request(admin.id), db=db))
+    finally:
+        release.set()
+
+    results = {m["key"]: m for m in messages if "ok" in m}
+    assert results["imap"]["ok"] is False
+    assert "немає відповіді" in results["imap"]["detail"]
+    # The steps after the wedged one still ran.
+    assert results["disk"]["key"] == "disk"
+    assert messages[-1]["done"] is True
+
+
+def test_selfcheck_rejects_operator():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        operator = _operator(db)
+        with pytest.raises(HTTPException) as exc:
+            web.settings_selfcheck(request=_request(operator.id), db=db)
+    assert exc.value.status_code == 403

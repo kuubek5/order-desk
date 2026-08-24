@@ -346,3 +346,39 @@ def test_worker_treats_tick_exception_as_failure_and_retries_soon():
     with patch("app.update_check._update_check_tick", side_effect=RuntimeError("boom")):
         _update_check_worker(stop)
     assert stop.waits[-1] == UPDATE_CHECK_RETRY_SECONDS
+
+
+# --- Update feed must be a PUBLIC repo, not the private source repo ----------
+#
+# The source repo is private; the update check is anonymous (no token). If the
+# feed ever points at a private repo, GitHub's API returns 404 for an
+# unauthenticated request and auto-update goes silently dark. This guards the
+# split: updates are read from the dedicated public releases repo.
+
+
+def test_update_feed_points_at_public_releases_repo_not_private_source():
+    assert update_check.GITHUB_REPO == "kuubek5/order-desk-releases"
+    # The source repo name must NOT be the feed — that one is private.
+    assert update_check.GITHUB_REPO != "kuubek5/order-desk"
+    assert update_check.RELEASES_API_URL == (
+        "https://api.github.com/repos/kuubek5/order-desk-releases/releases/latest"
+    )
+
+
+def test_update_check_sends_no_authorization_header():
+    """The feed is public on purpose so no token ships in the installed app.
+    A stray Authorization header would mean a secret leaked into the client."""
+    captured = {}
+
+    def _fake_get(url, **kwargs):
+        captured["headers"] = kwargs.get("headers")
+        resp = MagicMock()
+        resp.raise_for_status = lambda: None
+        resp.json = lambda: {}
+        return resp
+
+    with patch.object(update_check, "_http_get", _fake_get):
+        update_check._fetch_release_payload()
+
+    # No auth header passed by our code (session defaults carry none either).
+    assert not (captured.get("headers") or {}).get("Authorization")

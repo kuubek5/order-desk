@@ -433,6 +433,10 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 
 /* поля */
 .setv2 .settings-field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+/* `display:flex` above beats the UA sheet's `[hidden]{display:none}`, so a
+   field the template marked hidden (the OAuth JSON block while «Сервісний
+   акаунт» is selected, and vice versa) stayed on screen. Honour `hidden`. */
+.setv2 .settings-field[hidden]{display:none}
 .setv2 .settings-field:last-child{margin-bottom:0}
 .setv2 .settings-field > label{font-size:12px;font-weight:500;color:var(--ink-2)}
 .setv2 .login-glow{background:none;border:0;padding:0;box-shadow:none}
