@@ -1043,42 +1043,67 @@ document.addEventListener("htmx:afterSwap", (event) => {
 //      `HX-Trigger: {"toast": {"message": "...", "kind": "error"}}` — так сервер
 //      підіймає тост без окремого клієнтського коду на кожен роут.
 // kind: "error" | "success" | "info". Тост сам зникає; його можна закрити хрестиком.
-function showToast(message, kind = "info", timeout = 7000) {
+const TOAST_ICONS = {
+  error: '<path d="M12 8v5"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/>',
+  warning: '<path d="M10.3 4.3 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  success: '<path d="m4 12.5 5 5L20 7"/>',
+  info: '<path d="M12 16v-5"/><path d="M12 8h.01"/><circle cx="12" cy="12" r="9"/>',
+};
+// Час життя за важливістю. 0 = не зникає само: помилку, через яку стоїть
+// робота, оператор мусить закрити свідомо, інакше вона згорить, поки він
+// біля верстата.
+const TOAST_LIFE = { error: 0, warning: 9000, info: 7000, success: 5000 };
+const TOAST_MAX = 3;
+
+function showToast(message, kind = "info", timeout) {
   if (!message) return;
   let stack = document.getElementById("toast-stack");
   if (!stack) {
     stack = document.createElement("div");
     stack.id = "toast-stack";
     stack.className = "toast-stack";
+    stack.dataset.toastPos = "tc";
+    stack.dataset.toastStyle = "glass";
     document.body.appendChild(stack);
   }
+  // Стиль живе на контейнері, щоб перемикався одним атрибутом із налаштувань.
+  stack.classList.remove("toast-style-glass", "toast-style-card");
+  stack.classList.add("toast-style-" + (stack.dataset.toastStyle || "glass"));
+
+  const life = timeout === undefined ? (TOAST_LIFE[kind] ?? 7000) : timeout;
   const el = document.createElement("div");
-  el.className = "toast toast-" + kind;
+  el.className = "toast toast-" + kind + " toast-in";
   el.setAttribute("role", kind === "error" ? "alert" : "status");
 
-  const text = document.createElement("span");
-  text.className = "toast-text";
-  text.textContent = message;
+  // Один рядок → лише заголовок; «Заголовок. Решта» → заголовок + пояснення.
+  const split = String(message).match(/^(.{0,64}?[.!?])\s+(.+)$/s);
+  const title = split ? split[1] : message;
+  const rest = split ? split[2] : "";
 
-  const closeBtn = document.createElement("button");
-  closeBtn.type = "button";
-  closeBtn.className = "toast-close";
-  closeBtn.setAttribute("aria-label", "Закрити");
-  closeBtn.textContent = "×";
+  el.innerHTML =
+    '<div class="toast-ic"><svg viewBox="0 0 24 24">' +
+    (TOAST_ICONS[kind] || TOAST_ICONS.info) +
+    '</svg></div><div class="toast-body"><div class="toast-title"></div>' +
+    (rest ? '<div class="toast-text"></div>' : "") +
+    '</div><button type="button" class="toast-close" aria-label="Закрити">×</button>' +
+    (life > 0 ? '<i class="toast-life" style="animation-duration:' + life + 'ms"></i>' : "");
+  el.querySelector(".toast-title").textContent = title;
+  if (rest) el.querySelector(".toast-text").textContent = rest;
 
   const dismiss = () => {
+    el.classList.remove("toast-in");
     el.classList.add("toast-out");
     window.setTimeout(() => el.remove(), 220);
   };
-  closeBtn.addEventListener("click", dismiss);
+  el.querySelector(".toast-close").addEventListener("click", dismiss);
 
-  el.appendChild(text);
-  el.appendChild(closeBtn);
-  stack.appendChild(el);
-  requestAnimationFrame(() => el.classList.add("toast-in"));
-  // Errors linger (5s longer) — an operator usually needs to read and act on them.
-  const life = timeout > 0 ? (kind === "error" ? timeout + 5000 : timeout) : 0;
-  if (life > 0) window.setTimeout(dismiss, life);
+  // Згори нові стають першими, знизу — останніми, щоб рух завжди йшов від краю.
+  const pos = stack.dataset.toastPos || "tc";
+  if (pos === "tc" || pos === "tr") stack.insertBefore(el, stack.firstChild);
+  else stack.appendChild(el);
+
+  if (life > 0) window.setTimeout(() => { if (el.parentNode) dismiss(); }, life);
+  while (stack.children.length > TOAST_MAX) stack.firstChild.remove();
 }
 window.showToast = showToast;
 
@@ -1105,3 +1130,198 @@ document.body.addEventListener("toast", (event) => {
   const d = (event && event.detail) || {};
   showToast(d.message || d.value || "", d.kind || "info");
 });
+
+// Liquid segmented toggle for the mail-download mode. Shared by /settings and
+// the /mail triage header (same markup, one handler). The endpoint blindly
+// flips, so only a click on the INACTIVE side posts. The glass pill slides
+// instantly (optimistic); the POST persists; on failure the state reverts so
+// the UI never lies about what the server holds. No-JS falls back to nothing
+// here (admin, localhost, JS always on) — the compact form used to flip on
+// submit, but the animated glass toggle is JS-driven by design.
+(function initDownloadToggles() {
+  const segs = document.querySelectorAll("[data-dl-toggle]");
+  if (!segs.length) return;
+
+  segs.forEach((seg) => {
+    seg.querySelectorAll(".dl-seg-opt").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const want = btn.dataset.val;
+        if (want === seg.dataset.state || seg.classList.contains("is-busy")) return;
+
+        const prev = seg.dataset.state;
+        setSeg(seg, want);
+        seg.classList.add("is-busy");
+
+        fetch("/settings/mail-download/toggle", {
+          method: "POST",
+          headers: { "X-Requested-With": "fetch" },
+        })
+          .then((r) => {
+            if (!(r.ok || r.status === 303)) throw new Error("HTTP " + r.status);
+            if (window.showToast) {
+              window.showToast(
+                want === "all"
+                  ? "Скачуються всі вкладення"
+                  : "Скачуються лише довірені відправники",
+                "success"
+              );
+            }
+          })
+          .catch(() => {
+            setSeg(seg, prev);
+            if (window.showToast) window.showToast("Не вдалося змінити режим", "error");
+          })
+          .finally(() => seg.classList.remove("is-busy"));
+      });
+    });
+  });
+
+  function setSeg(seg, state) {
+    seg.dataset.state = state;
+    seg.querySelectorAll(".dl-seg-opt").forEach((b) => {
+      b.setAttribute("aria-pressed", b.dataset.val === state ? "true" : "false");
+    });
+    // Settings section: keep its status badge and explanatory paragraph honest.
+    const sec = seg.closest(".scon-sec");
+    if (sec) {
+      sec.dataset.dlState = state;
+      const badge = sec.querySelector(".wizard-step-head .connection-state");
+      if (badge) {
+        badge.textContent = state === "all" ? "Скачує всі" : "Лише довірені";
+        badge.classList.toggle("connection-state-ready", state === "all");
+      }
+    }
+  }
+})();
+
+// ── Системні тригери спливаючих сповіщень ───────────────────────────────
+// Порівнюємо знімок /api/notify-state із попереднім і піднімаємо тост лише на
+// ПЕРЕХОДІ (ok → error, кількість зросла). Пропущений опит нічого не «догоняє»
+// — наступний просто відображає реальність, тому старий алерт не спливе двічі.
+// Перелік увімкнених тригерів задається в Налаштуваннях і приїжджає в
+// data-notify-events на .toast-stack.
+(function initNotifyTriggers() {
+  const stack = document.getElementById("toast-stack");
+  if (!stack) return;
+  const enabled = new Set((stack.dataset.notifyEvents || "").split(",").filter(Boolean));
+  if (!enabled.size) return;
+
+  const POLL_MS = 30000;
+  let prev = null;          // перший опит лише запам'ятовує базу, без тостів
+  let offlineShown = false;
+
+  function fire(event, message, kind) {
+    if (enabled.has(event)) showToast(message, kind);
+  }
+
+  function plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
+  }
+
+  async function poll() {
+    let s;
+    try {
+      const r = await fetch("/api/notify-state", { headers: { "X-Requested-With": "fetch" } });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      s = await r.json();
+    } catch (e) {
+      // Застосунок не відповідає — сам себе показати він не може, тому це
+      // єдиний тригер, який визначається на клієнті.
+      if (!offlineShown) {
+        offlineShown = true;
+        fire("offline", "Втрачено зв'язок із застосунком. Дані на екрані могли застаріти — перевірте, чи працює Order Desk.", "error");
+      }
+      return;
+    }
+    if (offlineShown) {
+      offlineShown = false;
+      fire("sheet_recovered", "Зв'язок із застосунком відновлено.", "success");
+    }
+
+    if (prev) {
+      if (prev.sheet !== "error" && s.sheet === "error") {
+        fire("sheet_error", "Google Таблиця не відповідає. " + (s.sheet_label || "Черга не оновлюється."), "error");
+      }
+      if (prev.mail !== "error" && s.mail === "error") {
+        fire("mail_error", "Пошта не відповідає. " + (s.mail_label || "Нові листи не надходять."), "error");
+      }
+      if ((prev.sheet === "error" && s.sheet !== "error") || (prev.mail === "error" && s.mail !== "error")) {
+        fire("sheet_recovered", "Синхронізація відновлена.", "success");
+      }
+      if (s.orders > prev.orders) {
+        const n = s.orders - prev.orders;
+        fire("new_orders", n + " " + plural(n, "нова робота", "нові роботи", "нових робіт") + " у черзі.", "info");
+      }
+      if (s.mail_pending > prev.mail_pending) {
+        const n = s.mail_pending - prev.mail_pending;
+        fire("new_mail", n + " " + plural(n, "новий лист", "нові листи", "нових листів") + " у тріажі.", "info");
+      }
+      if (s.update && s.update !== prev.update) {
+        fire("update_available", "Доступне оновлення v" + s.update + ". Встановити можна в Налаштуваннях.", "warning");
+      }
+    }
+    prev = s;
+  }
+
+  poll();
+  window.setInterval(poll, POLL_MS);
+})();
+
+// ── Ліве меню: «магнітний фокус» + підказки у згорнутому режимі ─────────
+// Пляма світла під курсором — це дві CSS-змінні на пункті (--mx/--my), сам
+// градієнт малює ::after у base.css. Слухач один, делегований на rail, щоб не
+// вішати pointermove на кожен пункт.
+// Підказка — один спільний елемент на <body>: rail має overflow-y:auto, тож
+// будь-який виступ убік усередині нього обрізався б.
+(function initRailFocus() {
+  const rail = document.querySelector(".topbar-user");
+  if (!rail) return;
+
+  rail.addEventListener("pointermove", (event) => {
+    const item = event.target.closest(".rail-nav-item");
+    if (!item) return;
+    const r = item.getBoundingClientRect();
+    item.style.setProperty("--mx", event.clientX - r.left + "px");
+    item.style.setProperty("--my", event.clientY - r.top + "px");
+  });
+
+  let tip = null;
+  const showTip = (item) => {
+    if (!document.body.classList.contains("rail-collapsed")) return;
+    const label = item.querySelector(".rail-label");
+    if (!label) return;
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.className = "rail-tip";
+      tip.setAttribute("role", "tooltip");
+      document.body.appendChild(tip);
+    }
+    tip.textContent = label.textContent.trim();
+    const r = item.getBoundingClientRect();
+    tip.style.left = r.right + 10 + "px";
+    tip.style.top = r.top + r.height / 2 + "px";
+    tip.style.marginTop = "-14px";
+    requestAnimationFrame(() => tip.classList.add("is-on"));
+  };
+  const hideTip = () => { if (tip) tip.classList.remove("is-on"); };
+
+  rail.addEventListener("pointerover", (event) => {
+    const item = event.target.closest(".rail-nav-item");
+    if (item) showTip(item);
+  });
+  rail.addEventListener("pointerout", (event) => {
+    if (!event.relatedTarget || !event.relatedTarget.closest(".rail-nav-item")) hideTip();
+  });
+  rail.addEventListener("focusin", (event) => {
+    const item = event.target.closest(".rail-nav-item");
+    if (item) showTip(item);
+  });
+  rail.addEventListener("focusout", hideTip);
+  // Розгортання/згортання rail миттєво знімає підказку, щоб вона не «зависла».
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-rail-collapse]")) hideTip();
+  });
+})();

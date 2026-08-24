@@ -60,16 +60,21 @@
            state of the whole screen, which is what it is. Full control lives in
            Налаштування; this is the quick flip. #}
         {% if user.role == 'адмін' %}
-        <form method="post" action="/settings/mail-download/toggle" class="dl-mode">
-            <input type="hidden" name="return_to" value="mail">
+        {# Той самий скляний перемикач, що й у Налаштуваннях (base.css .dl-seg,
+           обробник у app.js). Активна сторона — no-op; клік по іншій ковзає
+           плитку й фоном шле POST. #}
+        <div class="dl-mode">
             <span class="dl-mode-label">Завантаження файлів:</span>
-            <button type="submit" class="dl-mode-btn {% if mail_download_all %}is-on{% endif %}"
-                    aria-pressed="{{ 'true' if mail_download_all else 'false' }}"
-                    aria-label="{% if mail_download_all %}Зараз качаються файли з кожного листа. Натисніть, щоб качати лише від довірених відправників.{% else %}Зараз качаються файли лише від довірених відправників. Натисніть, щоб качати з кожного листа.{% endif %}">
-                {% if mail_download_all %}з усіх листів{% else %}лише довірені{% endif %}
-                <span class="dl-mode-swap" aria-hidden="true">змінити</span>
-            </button>
-        </form>
+            <div class="dl-seg" data-dl-toggle
+                 data-state="{{ 'all' if mail_download_all else 'trusted' }}"
+                 role="group" aria-label="Режим скачування вкладень">
+                <div class="dl-seg-glass" aria-hidden="true" style="filter:url('#radio-glass')"></div>
+                <button type="button" class="dl-seg-opt" data-val="trusted"
+                        aria-pressed="{{ 'false' if mail_download_all else 'true' }}">Лише довірені</button>
+                <button type="button" class="dl-seg-opt" data-val="all"
+                        aria-pressed="{{ 'true' if mail_download_all else 'false' }}">Усі підряд</button>
+            </div>
+        </div>
         {% endif %}
     </div>
 

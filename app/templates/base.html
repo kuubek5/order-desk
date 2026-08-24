@@ -18,9 +18,32 @@
 <body>
     <script>try{if(localStorage.getItem('railCollapsed')==='1')document.body.classList.add('rail-collapsed');var _d=localStorage.getItem('queueDensity');if(_d==='compact'||_d==='spacious'||_d==='normal')document.body.setAttribute('data-density',_d);if(localStorage.getItem('layoutEditMode')==='1')document.body.classList.add('layout-edit');}catch(e){}</script>
     {% include "_backdrop.html" %}
+    {# SVG-фільтр «рідкого скла» для перемикача скачування (див. .dl-seg у
+       base.css). Визначається раз на сторінку, бо тогл є і в /settings, і в
+       шапці тріажу /mail. #}
+    <svg class="dl-glass-def" aria-hidden="true" focusable="false">
+        <defs>
+            <filter id="radio-glass" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
+                <feTurbulence type="fractalNoise" baseFrequency="0.05 0.05" numOctaves="1" seed="1" result="turbulence"/>
+                <feGaussianBlur in="turbulence" stdDeviation="2" result="blurredNoise"/>
+                <feDisplacementMap in="SourceGraphic" in2="blurredNoise" scale="30" xChannelSelector="R" yChannelSelector="B" result="displaced"/>
+                <feGaussianBlur in="displaced" stdDeviation="2" result="finalBlur"/>
+                <feComposite in="finalBlur" in2="finalBlur" operator="over"/>
+            </filter>
+        </defs>
+    </svg>
     {% block content %}{% endblock %}
     {% include "_update_overlay.html" %}
-    <div id="toast-stack" class="toast-stack" aria-live="assertive" aria-atomic="false"></div>
+    {# Зона спливаючих сповіщень. Вигляд (скляна/картка), позиція і перелік
+       увімкнених системних тригерів приходять з налаштувань — app.js читає їх
+       з data-атрибутів, тому нове налаштування діє одразу після перезавантаження
+       без окремого запиту. #}
+    {% set _np = notify_prefs() %}
+    <div id="toast-stack" class="toast-stack"
+         data-toast-style="{{ _np.style }}"
+         data-toast-pos="{{ _np.position }}"
+         data-notify-events="{{ _np.events | join(',') }}"
+         aria-live="polite" aria-atomic="false"></div>
     {% if toast_flash %}
     {# One-shot outcome toast carried across a redirect via session flash
        (e.g. accept → queue). app.js loads deferred, so wait for it. #}

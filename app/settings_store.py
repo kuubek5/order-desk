@@ -102,7 +102,17 @@ OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operato
 # mail_download_all: "1" → auto-download attachments for EVERY incoming letter
 # into the spool, not only whitelisted senders; "" / unset → current behaviour
 # (only trusted senders auto-download, the rest wait for a manual pull).
-PREFERENCE_KEYS = {"mail_default_material", "mail_download_all"}
+# notify_style / notify_position: look and placement of the transient popup
+# notifications (see app/static/js/app.js showToast + .toast-zone in base.css).
+# notify_events: comma-separated list of system triggers that are allowed to pop
+# a toast — an empty value means "none", an absent value means "the defaults".
+PREFERENCE_KEYS = {
+    "mail_default_material",
+    "mail_download_all",
+    "notify_style",
+    "notify_position",
+    "notify_events",
+}
 
 SETTING_KEYS = {field.key for field in SETTING_FIELDS} | PREFERENCE_KEYS
 
@@ -227,3 +237,59 @@ def get_mail_download_all(session: Session) -> bool:
 
 def set_mail_download_all(session: Session, value: bool) -> None:
     set_setting(session, "mail_download_all", "1" if value else "")
+
+
+# ── Спливаючі сповіщення ────────────────────────────────────────────────
+# Which system triggers may pop a toast. Each entry is (key, label, level,
+# default_on) — the settings screen renders straight from this list, so adding a
+# trigger here is the only step needed to expose it. `level` drives colour and
+# lifetime client-side: "crit" never auto-dismisses.
+NOTIFY_EVENTS: tuple[tuple[str, str, str, bool], ...] = (
+    ("offline", "Втрачено зв'язок із застосунком", "crit", True),
+    ("sheet_error", "Google Таблиця не відповідає", "crit", True),
+    ("mail_error", "Пошта (IMAP) не відповідає", "crit", True),
+    ("sheet_recovered", "Зв'язок відновлено", "ok", True),
+    ("new_orders", "Нові роботи в таблиці", "info", True),
+    ("new_mail", "Нові листи в тріажі", "info", True),
+    ("update_available", "Доступне оновлення", "warn", True),
+)
+NOTIFY_EVENT_KEYS = {key for key, _, _, _ in NOTIFY_EVENTS}
+NOTIFY_STYLES = {"glass", "card"}
+NOTIFY_POSITIONS = {"tc", "tr", "br", "bl"}
+DEFAULT_NOTIFY_STYLE = "glass"
+DEFAULT_NOTIFY_POSITION = "tc"
+
+
+def get_notify_style(session: Session) -> str:
+    """Popup look: "glass" (default) or "card"."""
+    value = (get_setting(session, "notify_style") or "").strip()
+    return value if value in NOTIFY_STYLES else DEFAULT_NOTIFY_STYLE
+
+
+def get_notify_position(session: Session) -> str:
+    """Where popups appear: tc/tr/br/bl (top-centre by default)."""
+    value = (get_setting(session, "notify_position") or "").strip()
+    return value if value in NOTIFY_POSITIONS else DEFAULT_NOTIFY_POSITION
+
+
+def get_notify_events(session: Session) -> set[str]:
+    """Enabled triggers. Unset → the per-event defaults; an explicitly saved
+    empty string → nothing enabled (the operator turned everything off, which
+    must not silently fall back to the defaults)."""
+    raw = get_setting(session, "notify_events")
+    if raw is None:
+        return {key for key, _, _, on in NOTIFY_EVENTS if on}
+    return {part for part in (p.strip() for p in raw.split(",")) if part in NOTIFY_EVENT_KEYS}
+
+
+def set_notify_prefs(
+    session: Session, *, style: str, position: str, events: set[str] | list[str]
+) -> None:
+    set_setting(session, "notify_style", style if style in NOTIFY_STYLES else DEFAULT_NOTIFY_STYLE)
+    set_setting(
+        session,
+        "notify_position",
+        position if position in NOTIFY_POSITIONS else DEFAULT_NOTIFY_POSITION,
+    )
+    kept = [key for key, _, _, _ in NOTIFY_EVENTS if key in set(events)]
+    set_setting(session, "notify_events", ",".join(kept))

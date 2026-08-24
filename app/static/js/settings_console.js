@@ -162,6 +162,33 @@
     if (e.key === "Escape" && pal.isOpen()) pal.close();
   });
 
+  // ── розділ «Спливаючі сповіщення» ───────────────────────
+  // Підсвітка обраної картки без перезавантаження + приклад тоста поточного
+  // (збереженого) стилю, щоб не вибирати наосліп.
+  main.querySelectorAll('.notify-pick input[type="radio"]').forEach(function (input) {
+    input.addEventListener("change", function () {
+      var group = input.closest(".notify-styles, .notify-pos");
+      if (!group) return;
+      group.querySelectorAll(".notify-pick").forEach(function (p) {
+        p.classList.toggle("is-on", p.contains(input) && input.checked);
+      });
+    });
+  });
+
+  var previewBtn = main.querySelector("[data-notify-preview]");
+  if (previewBtn) {
+    var SAMPLES = [
+      ["Google Таблиця не відповідає. Черга не оновлюється — перевірте зʼєднання.", "error"],
+      ["3 нові роботи у черзі.", "info"],
+      ["Синхронізація відновлена.", "success"],
+    ];
+    var i = 0;
+    previewBtn.addEventListener("click", function () {
+      var s = SAMPLES[i++ % SAMPLES.length];
+      if (window.showToast) window.showToast(s[0], s[1]);
+    });
+  }
+
   // ── copy-to-clipboard (service-account address) ──────────
   document.querySelectorAll("[data-copy-target]").forEach(function (btn) {
     btn.addEventListener("click", function () {

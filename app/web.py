@@ -123,6 +123,15 @@ from app.settings_store import (
     get_service_account_email,
     get_technician_files_path,
     extract_sheet_id,
+    DEFAULT_NOTIFY_POSITION,
+    DEFAULT_NOTIFY_STYLE,
+    NOTIFY_EVENTS,
+    NOTIFY_POSITIONS,
+    NOTIFY_STYLES,
+    get_notify_events,
+    get_notify_position,
+    get_notify_style,
+    set_notify_prefs,
     set_mail_default_material,
     set_mail_download_all,
     set_setting,
@@ -1197,6 +1206,37 @@ templates.env.globals["get_known_update"] = get_known_update
 # without threading it through each route's context — same rationale as the
 # globals above. Single source of truth is app/__version__.py.
 templates.env.globals["app_version"] = VERSION
+
+
+def notify_prefs() -> dict:
+    """Popup-notification preferences for base.html, on their own session.
+
+    A Jinja global rather than per-route context: base.html needs these on
+    EVERY page, and threading them through two dozen handlers would guarantee
+    one gets missed. Three primary-key reads on SQLite per render — cheap.
+    Falls back to the defaults if the DB isn't reachable yet (first run), since
+    a settings lookup must never keep a page from rendering.
+    """
+    try:
+        db = SessionLocal()
+        try:
+            return {
+                "style": get_notify_style(db),
+                "position": get_notify_position(db),
+                "events": sorted(get_notify_events(db)),
+            }
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001 — never break page render over preferences
+        logger.debug("notify_prefs fell back to defaults", exc_info=True)
+        return {
+            "style": DEFAULT_NOTIFY_STYLE,
+            "position": DEFAULT_NOTIFY_POSITION,
+            "events": sorted(key for key, _, _, on in NOTIFY_EVENTS if on),
+        }
+
+
+templates.env.globals["notify_prefs"] = notify_prefs
 
 app.mount("/static", StaticFiles(directory=str(resource_path("app/static"))), name="static")
 
@@ -3163,6 +3203,11 @@ def get_settings(
             "service_account_email": get_service_account_email(db),
             # Curated changelog from CHANGELOG.md, rendered in «Про застосунок».
             "changelog": load_changelog(),
+            # Popup-notification preferences («Спливаючі сповіщення»).
+            "notify_style": get_notify_style(db),
+            "notify_position": get_notify_position(db),
+            "notify_events": get_notify_events(db),
+            "notify_all": NOTIFY_EVENTS,
             "paths_set": paths_set,
             "operators_exist": operators_exist,
             "backup_available": backup_available,
@@ -3723,6 +3768,67 @@ def prune_mail_spool(request: Request, db: Session = Depends(get_db)):
 # worker with the UI showing a spinner forever. Past the deadline the probe is
 # abandoned (its thread is left to die on its own) and reported as a failure.
 SELFCHECK_STEP_DEADLINE_SECONDS = 20
+
+
+@app.get("/api/notify-state")
+def api_notify_state(request: Request, db: Session = Depends(get_db)):
+    """Cheap snapshot the client polls to detect system events worth a popup.
+
+    Deliberately NOT a push channel: the browser compares this against its own
+    previous snapshot and raises a toast on a TRANSITION (ok → error, count
+    grew). That keeps the trigger logic in one place client-side and means a
+    missed poll can never replay an old alert — the next poll just reflects
+    reality. Everything here is already computed for the queue page, so this
+    costs two scalar counts and two in-memory heartbeat reads.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    status = _queue_sync_status(db, datetime.now())
+    release = get_known_update()
+    return {
+        "sheet": status["sheet"]["state"],
+        "mail": status["mail"]["state"],
+        "sheet_label": status["sheet"]["label"],
+        "mail_label": status["mail"]["label"],
+        "orders": db.scalar(
+            select(func.count())
+            .select_from(Order)
+            .where(Order.status != "видано", Order.archived_at.is_(None))
+        ) or 0,
+        "mail_pending": db.scalar(
+            select(func.count())
+            .select_from(EmailMessage)
+            .where(EmailMessage.status == "нове", EmailMessage.filter_category.is_(None))
+        ) or 0,
+        "update": release.version if release else None,
+    }
+
+
+@app.post("/settings/notifications")
+async def save_notification_prefs(request: Request, db: Session = Depends(get_db)):
+    """Save popup look, placement and which system triggers may fire one.
+
+    Operator-facing (not admin-only): these are per-installation display
+    preferences on a single-workstation app, not a security boundary — the same
+    reasoning that makes the folder paths operator-editable.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    form = await request.form()
+    set_notify_prefs(
+        db,
+        style=(form.get("notify_style") or "").strip(),
+        position=(form.get("notify_position") or "").strip(),
+        events=form.getlist("notify_events"),
+    )
+    db.commit()
+    if request.headers.get("HX-Request") == "true":
+        return _toast_response("Налаштування сповіщень збережено")
+    return RedirectResponse("/settings#notifications", status_code=303)
 
 
 @app.post("/settings/selfcheck")

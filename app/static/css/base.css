@@ -459,16 +459,59 @@ li {
     opacity: 0.9;
   }
 
+  /* «Магнітний фокус»: під курсором їде м'яка пляма світла (не заливка всього
+     пункту), активний має глибину — інсет-підсвітку зверху й акцентне ребро,
+     а його іконка трохи більша й товща. Пляма — окремий ::after з
+     радіальним градієнтом за координатами курсора (--mx/--my ставить app.js),
+     тому hover не перемальовує фон самого пункту. */
+  .rail-nav-item::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    opacity: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      120px circle at var(--mx, 50%) var(--my, 50%),
+      rgba(45, 212, 191, 0.14),
+      transparent 60%
+    );
+    transition: opacity 0.2s ease;
+  }
+
+  .rail-nav-item:hover::after,
+  .rail-nav-item:focus-visible::after {
+    opacity: 1;
+  }
+
   .rail-nav-item:hover,
   .rail-nav-item:focus-visible {
-    background: var(--color-card-border);
     color: var(--color-text);
   }
 
   .rail-nav-item.is-active {
-    background: linear-gradient(90deg, rgba(20, 184, 166, 0.16), rgba(20, 184, 166, 0.03));
+    background: linear-gradient(90deg, rgba(20, 184, 166, 0.18), rgba(20, 184, 166, 0.04));
     color: var(--color-success, #5eead4);
-    box-shadow: inset 2px 0 0 var(--color-accent);
+    box-shadow:
+      inset 2px 0 0 var(--color-accent),
+      inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  }
+
+  .rail-nav-item.is-active .rail-nav-icon {
+    opacity: 1;
+    stroke-width: 2;
+    transform: scale(1.08);
+  }
+
+  .rail-nav-icon {
+    transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.16s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rail-nav-item::after,
+    .rail-nav-icon {
+      transition: none;
+    }
   }
 
   .rail-foot {
@@ -4123,13 +4166,6 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
    the state worth noticing. */
 .mailv2 .dl-mode{display:flex;align-items:center;gap:8px;margin:0 0 0 auto}
 .mailv2 .dl-mode-label{font-size:11.5px;color:var(--ink-3)}
-.mailv2 .dl-mode-btn{display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 10px;border-radius:999px;border:1px solid var(--control-edge);background:var(--card);color:var(--ink-2);font-size:12px;font-weight:500;cursor:pointer;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease}
-.mailv2 .dl-mode-btn:hover{background:var(--card-2);border-color:var(--line-2);color:var(--ink)}
-.mailv2 .dl-mode-btn:focus-visible{outline:2px solid var(--accent-b);outline-offset:1px}
-.mailv2 .dl-mode-btn .dl-mode-swap{font-size:10.5px;color:var(--ink-3);border-left:1px solid var(--line-2);padding-left:8px}
-.mailv2 .dl-mode-btn:hover .dl-mode-swap{color:var(--ink-2)}
-.mailv2 .dl-mode-btn.is-on{background:rgba(20,184,166,.13);border-color:rgba(45,212,191,.38);color:var(--accent-c)}
-.mailv2 .dl-mode-btn.is-on .dl-mode-swap{border-left-color:rgba(45,212,191,.3)}
 .mailv2 .btn.danger{border-color:rgba(248,113,113,.35);color:#f0b4b4}
 .mailv2 .btn.danger:hover{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.5)}
 .mailv2 .btn.sm{height:30px;padding:0 11px;font-size:12.5px}
@@ -5015,36 +5051,88 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
   .arch-row .ar-mat,.arch-row .ar-kind,.arch-row .ar-sum{display:none}
 }
 
-/* ── Toasts ──────────────────────────────────────────────────────────────
-   Спливаючі повідомлення в правому нижньому куті. Показують реальну причину
-   помилки (напр. відмова входу в пошту) без перезавантаження екрана.
-   Кольори — з дизайн-токенів (accent teal / overdue red / success mint). */
-.toast-stack{position:fixed;right:20px;bottom:20px;z-index:1200;display:flex;
-  flex-direction:column;gap:10px;max-width:min(420px,calc(100vw - 40px));
-  pointer-events:none}
-.toast{pointer-events:auto;display:flex;align-items:flex-start;gap:12px;
-  padding:14px 16px;border-radius:14px;border:1px solid var(--line,rgba(255,255,255,.12));
-  background:var(--card,#161d27);color:var(--ink,#e8eff7);
-  box-shadow:0 12px 34px rgba(0,0,0,.5);font-size:14px;line-height:1.42;
-  opacity:0;transform:translateY(12px) scale(.98);
-  transition:opacity .2s ease,transform .2s ease}
-.toast-in{opacity:1;transform:none}
-.toast-out{opacity:0;transform:translateY(12px) scale(.98)}
-.toast-text{flex:1;min-width:0;word-break:break-word}
-.toast-close{pointer-events:auto;flex:0 0 auto;background:none;border:none;
-  color:inherit;font-size:20px;line-height:1;cursor:pointer;opacity:.55;
-  padding:0 2px;margin:-2px -2px 0 0}
-.toast-close:hover{opacity:1}
-.toast-error{border-color:var(--color-overdue-border,rgba(248,113,113,.4));
-  box-shadow:0 12px 34px rgba(0,0,0,.5),inset 3px 0 0 var(--color-overdue,#f87171)}
-.toast-success{border-color:rgba(131,201,149,.4);
-  box-shadow:0 12px 34px rgba(0,0,0,.5),inset 3px 0 0 var(--color-success,#5eead4)}
-.toast-info{box-shadow:0 12px 34px rgba(0,0,0,.5),inset 3px 0 0 var(--accent,#14b8a6)}
-.toast-warning{border-color:rgba(240,163,94,.4);
-  box-shadow:0 12px 34px rgba(0,0,0,.5),inset 3px 0 0 var(--warn,#f0a35e)}
+/* ── Спливаючі сповіщення ────────────────────────────────────────────────
+   Вигляд (скляна / картка) і позиція керуються з Налаштувань і приходять
+   у data-атрибутах на .toast-stack (див. base.html + app.js). Рівень задає
+   колір ребра й час життя; критичні не зникають самі. */
+.toast-stack{position:fixed;z-index:1200;display:flex;flex-direction:column;gap:10px;
+  padding:18px;pointer-events:none;max-width:min(440px,calc(100vw - 36px))}
+.toast-stack>*{pointer-events:auto}
+/* позиції */
+.toast-stack[data-toast-pos="br"]{right:0;bottom:0;align-items:flex-end}
+.toast-stack[data-toast-pos="bl"]{left:0;bottom:0;align-items:flex-start}
+.toast-stack[data-toast-pos="tr"]{right:0;top:0;align-items:flex-end}
+.toast-stack[data-toast-pos="tc"]{top:0;left:50%;transform:translateX(-50%);align-items:center}
+/* паспорт роботи фіксований справа (420px) і має нижчий z-index — без цього
+   зсуву тост лягав би просто на нього */
+body:has(.detail-pane.open) .toast-stack[data-toast-pos="br"],
+body:has(.detail-pane.open) .toast-stack[data-toast-pos="tr"]{right:420px}
+
+.toast{position:relative;display:flex;gap:12px;width:380px;max-width:100%;
+  color:var(--ink,#e8eff7);font-size:13px;line-height:1.45;overflow:hidden}
+.toast-ic{width:28px;height:28px;flex:none;border-radius:8px;display:grid;place-items:center}
+.toast-ic svg{width:15px;height:15px;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.toast-body{flex:1;min-width:0}
+.toast-title{font-size:13px;font-weight:600}
+.toast-text{font-size:12px;color:var(--ink-2,#8fa3bb);margin-top:3px;word-break:break-word}
+.toast-close{position:absolute;top:8px;right:9px;background:none;border:0;color:var(--ink-3,#8698ad);
+  font-size:15px;line-height:1;cursor:pointer;padding:2px 5px;border-radius:5px}
+.toast-close:hover{color:var(--ink,#e8eff7);background:rgba(255,255,255,.08)}
+.toast-life{position:absolute;left:0;bottom:0;height:2px;width:100%;transform-origin:left;
+  background:var(--accent-b,#2dd4bf);animation:toastLife linear forwards}
+.toast:hover .toast-life{animation-play-state:paused}
+@keyframes toastLife{to{transform:scaleX(0)}}
+
+/* ── стиль: скляна (основний) ── */
+.toast-style-glass .toast{padding:13px 14px 13px 16px;border-radius:12px;isolation:isolate;
+  background:linear-gradient(157deg,rgba(255,255,255,.10) 0%,rgba(94,234,212,.07) 40%,rgba(255,255,255,.03) 100%);
+  -webkit-backdrop-filter:blur(14px) saturate(1.3);backdrop-filter:blur(14px) saturate(1.3);
+  border:1px solid rgba(255,255,255,.10);
+  box-shadow:0 1px 3px rgba(0,0,0,.5),0 12px 34px -14px rgba(0,0,0,.85),
+    inset 0 1px .5px rgba(255,255,255,.35),inset -1px -1px 1px -.5px rgba(255,255,255,.4)}
+/* фолбек там, де немає backdrop-filter — суцільна підкладка замість скла */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .toast-style-glass .toast{background:var(--card-2,#1b2431)}
+}
+.toast-style-glass .toast::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--accent-b,#2dd4bf)}
+.toast-style-glass .toast-ic{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12)}
+
+/* ── стиль: картка (допоміжний) ── */
+.toast-style-card .toast{padding:12px 13px;border-radius:9px;background:var(--card-2,#1b2431);
+  border:1px solid var(--line-2,#3a4a5f);box-shadow:0 26px 60px -30px rgba(0,0,0,.95),0 4px 12px -6px rgba(0,0,0,.7)}
+.toast-style-card .toast-ic{background:var(--card-3,#202b3a)}
+
+/* ── рівні ── */
+.toast-error .toast-ic svg,.toast-crit .toast-ic svg{stroke:var(--alarm,#f87171)}
+.toast-error::before,.toast-crit::before{background:var(--alarm,#f87171)!important}
+.toast-error .toast-life,.toast-crit .toast-life{background:var(--alarm,#f87171)}
+.toast-style-card .toast-error,.toast-style-card .toast-crit{border-color:rgba(248,113,113,.45)}
+.toast-warning .toast-ic svg{stroke:var(--warn,#f0a35e)}
+.toast-warning::before{background:var(--warn,#f0a35e)!important}
+.toast-warning .toast-life{background:var(--warn,#f0a35e)}
+.toast-style-card .toast-warning{border-color:rgba(240,163,94,.42)}
+.toast-success .toast-ic svg{stroke:var(--accent-c,#5eead4)}
+.toast-success::before{background:var(--accent-c,#5eead4)!important}
+.toast-info .toast-ic svg{stroke:var(--accent-b,#2dd4bf)}
+
+/* ── поява/зникання залежно від краю ── */
+@keyframes toastInR{from{opacity:0;transform:translateX(26px)}to{opacity:1;transform:none}}
+@keyframes toastInL{from{opacity:0;transform:translateX(-26px)}to{opacity:1;transform:none}}
+@keyframes toastInT{from{opacity:0;transform:translateY(-18px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes toastOutR{to{opacity:0;transform:translateX(26px)}}
+@keyframes toastOutL{to{opacity:0;transform:translateX(-26px)}}
+@keyframes toastOutT{to{opacity:0;transform:translateY(-14px) scale(.97)}}
+.toast-stack[data-toast-pos="br"] .toast-in,.toast-stack[data-toast-pos="tr"] .toast-in{animation:toastInR .3s cubic-bezier(.16,1,.3,1) both}
+.toast-stack[data-toast-pos="bl"] .toast-in{animation:toastInL .3s cubic-bezier(.16,1,.3,1) both}
+.toast-stack[data-toast-pos="tc"] .toast-in{animation:toastInT .3s cubic-bezier(.16,1,.3,1) both}
+.toast-stack[data-toast-pos="br"] .toast-out,.toast-stack[data-toast-pos="tr"] .toast-out{animation:toastOutR .2s ease forwards}
+.toast-stack[data-toast-pos="bl"] .toast-out{animation:toastOutL .2s ease forwards}
+.toast-stack[data-toast-pos="tc"] .toast-out{animation:toastOutT .2s ease forwards}
+
 @media (prefers-reduced-motion:reduce){
-  .toast{transition:opacity .2s ease}
-  .toast-in,.toast-out{transform:none}
+  .toast-in,.toast-out{animation:none!important}
+  .toast-life{animation:none!important}
 }
 
 /* «Постійний клієнт» hint (sender memory) — card Лист pane + wizard step 1. */
@@ -5106,3 +5194,119 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
 .mailv2 .files-summary b{font-weight:600}
 .mailv2 .files-summary.ok{background:rgba(20,184,166,.08);border-color:rgba(45,212,191,.28);color:var(--accent-c)}
 .mailv2 .files-summary.warn{background:rgba(240,163,94,.1);border-color:rgba(240,163,94,.3);color:var(--warn)}
+
+/* ── «рідке скло»: сегментний перемикач скачування вкладень ──
+   Порт компонента 21st.dev на наш стек (React немає). Спільний для
+   /settings і шапки тріажу /mail. Скляна плитка (::after) ковзає між
+   двома станами; матування дає backdrop-filter, «скляність» — набір
+   rim-інсетів із референсу (яскравий нижньо-правий край). SVG-фільтр
+   #radio-glass (у base.html) заломлює фон під плиткою. */
+.dl-glass-def { position: absolute; width: 0; height: 0; overflow: hidden; }
+.dl-seg {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  height: 40px;
+  padding: 4px;
+  border-radius: 11px;
+  background: rgba(15, 22, 32, 0.7);
+  border: 1px solid var(--line-2);
+  font-size: 13px;
+  font-weight: 600;
+  isolation: isolate;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.dl-seg::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 8px;
+  /* Градієнтний sheen дає скляний блиск НЕЗАЛЕЖНО від backdrop-filter (той у
+     деяких середовищах не композититься); blur — приємне підсилення зверху.
+     У середину вплетено шепіт бірюзи (акцент застосунку) — щоб плитка була в
+     загальному стилі, але лишалась склом, а не зеленою кнопкою. */
+  background:
+    linear-gradient(157deg,
+      rgba(255, 255, 255, 0.22) 0%,
+      rgba(94, 234, 212, 0.12) 36%,
+      rgba(20, 184, 166, 0.07) 66%,
+      rgba(255, 255, 255, 0.10) 100%);
+  -webkit-backdrop-filter: blur(5px) saturate(1.4);
+  backdrop-filter: blur(5px) saturate(1.4);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 4px 10px rgba(0, 0, 0, 0.45),
+    0 0 10px rgba(45, 212, 191, 0.14),
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.55),
+    inset 3px 3px 0.5px -3px rgba(255, 255, 255, 0.5),
+    inset -3px -3px 0.5px -3px rgba(255, 255, 255, 0.9),
+    inset 1px 1px 1px -0.5px rgba(255, 255, 255, 0.7),
+    inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.7),
+    inset 0 0 8px 6px rgba(94, 234, 212, 0.08);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dl-seg[data-state="all"]::after { transform: translateX(100%); }
+.dl-seg-glass {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: 11px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.dl-seg-opt {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  padding: 0 18px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.25s ease;
+}
+.dl-seg-opt:hover { color: var(--ink-2); }
+/* активна сторона — бірюзовий напис (те саме «активне = акцент», що й у решті
+   сегментних контролів застосунку) */
+.dl-seg-opt[aria-pressed="true"] { color: var(--accent-c); cursor: default; }
+.dl-seg-opt:focus-visible { outline: 2px solid var(--accent-b); outline-offset: 2px; border-radius: 8px; }
+.dl-seg.is-busy { opacity: 0.75; pointer-events: none; }
+
+/* пояснення під тоглом перемикається зі станом секції (лише /settings) */
+.scon-sec[data-dl-state="trusted"] .dl-when-all,
+.scon-sec[data-dl-state="all"] .dl-when-trusted { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dl-seg::after { transition: none; }
+}
+
+/* Підказка для згорнутої rail. Живе на <body>, а не всередині rail: у rail
+   `overflow-y:auto`, тому будь-який виступ убік обрізався б. Позицію ставить
+   app.js за прямокутником пункту. */
+.rail-tip{position:fixed;z-index:1300;pointer-events:none;white-space:nowrap;
+  padding:5px 10px;border-radius:7px;background:var(--card-2,#1b2431);
+  border:1px solid var(--line-2,#3a4a5f);color:var(--ink,#e8eff7);
+  font-size:12px;font-weight:500;opacity:0;transform:translateX(-6px);
+  box-shadow:0 10px 26px -14px rgba(0,0,0,.9);
+  transition:opacity .16s ease,transform .16s cubic-bezier(.16,1,.3,1)}
+.rail-tip.is-on{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){ .rail-tip{transition:none} }
+
+/* Лічильник «Нові з пошти» в rail.
+   1) Пульсація була НЕСКІНЧЕННОЮ, а rail видно на кожному екрані цілий день
+      біля верстатів — рівно той випадок, який CLAUDE.md §14 забороняє (на
+      тріажі такі петлі вже прибрані). Увага має триматись на числі, а не на
+      русі, тому анімацію знято.
+   2) Заливка конкурувала з активним пунктом меню — обидва бірюзові плями.
+      Лишаємо контур: помітно, але не свариться з навігацією. */
+.mail-nav-count{background:transparent;border-color:var(--line-2,#3a4a5f);
+  color:var(--ink-2,#8fa3bb);box-shadow:none;animation:none}
+.rail-nav-item.is-active .mail-nav-count{border-color:rgba(45,212,191,.4);color:var(--accent-c,#5eead4)}
