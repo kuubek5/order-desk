@@ -49,7 +49,12 @@ def _roll_changelog(new: str, check: bool) -> None:
         print("  ! CHANGELOG.md не знайдено — пропускаю")
         return
     text = _read(path)
-    if CHANGELOG_UNRELEASED not in text:
+    # Match the heading ONLY as a real line-start heading — the preamble
+    # documents "## [Незалежно від версії]" inside backticks, and a plain
+    # substring replace hit THAT first, corrupting the intro. Anchor to line
+    # start (MULTILINE) so only the actual heading is rolled.
+    heading_re = re.compile("^" + re.escape(CHANGELOG_UNRELEASED) + r"\s*$", re.MULTILINE)
+    if not heading_re.search(text):
         print("  ! CHANGELOG.md: секції «Незалежно від версії» немає — пропускаю")
         return
 
@@ -57,8 +62,8 @@ def _roll_changelog(new: str, check: bool) -> None:
     stamped = f"{CHANGELOG_UNRELEASED}\n\n## [{new}] — {today}"
     print(f"  CHANGELOG.md: «Незалежно від версії» -> [{new}] — {today}")
     if not check:
-        # Replace only the first occurrence (the top, pending one).
-        path.write_text(text.replace(CHANGELOG_UNRELEASED, stamped, 1), encoding="utf-8")
+        # Replace only the first heading occurrence (the top, pending one).
+        path.write_text(heading_re.sub(stamped, text, count=1), encoding="utf-8")
 
 
 def bump(new: str, check: bool) -> int:

@@ -75,3 +75,25 @@ def test_missing_pending_section_is_a_warning_not_a_crash(tmp_path, monkeypatch)
     out = _roll(tmp_path, monkeypatch, "# Журнал змін\n\n## [0.3.0] — 2026-08-17\n")
     # Unchanged, no exception.
     assert "## [0.4.0]" not in out
+
+
+def test_roll_ignores_the_heading_mentioned_in_the_preamble(tmp_path, monkeypatch):
+    """Regression: the preamble documents the heading inside backticks. A plain
+    substring replace rolled THAT first and corrupted the intro. The real
+    line-start heading must be the one that gets stamped."""
+    text = (
+        "# Журнал змін\n\n"
+        "Новий запис пишемо в розділ `## [Незалежно від версії]` під час роботи.\n\n"
+        "## [Незалежно від версії]\n\n"
+        "### Додано\n- Фіча.\n\n"
+        "## [0.3.0] — 2026-08-17\n\n### Додано\n- Старе.\n"
+    )
+    out = _roll(tmp_path, monkeypatch, text)
+    # Preamble sentence stays intact...
+    assert "Новий запис пишемо в розділ `## [Незалежно від версії]` під час роботи." in out
+    # ...and the real heading became the dated version, once.
+    assert out.count("## [0.4.0] —") == 1
+    from app.changelog import parse_changelog
+
+    versions = [r.version for r in parse_changelog(out)]
+    assert "0.4.0" in versions and "0.3.0" in versions
