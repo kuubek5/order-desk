@@ -4006,7 +4006,7 @@ main.passport2{max-width:760px;margin:0 auto;padding:20px}
    ========================================================================== */
 main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}
-.mailv2 .m-topbar{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.mailv2 .m-topbar{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
 .mailv2 .m-topbar h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 4px}
 .mailv2 .topbar-live{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:12px;color:var(--ink-2)}
 .mailv2 .topbar-live b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:11.5px}
@@ -4044,7 +4044,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
    with «Перевірити пошту», the action pressed dozens of times a day. Off is
    quiet neutral; on is teal, because "hauling every file from everyone" is
    the state worth noticing. */
-.mailv2 .dl-mode{display:flex;align-items:center;gap:8px;margin:2px 0 -2px}
+.mailv2 .dl-mode{display:flex;align-items:center;gap:8px;margin:0 0 0 auto}
 .mailv2 .dl-mode-label{font-size:11.5px;color:var(--ink-3)}
 .mailv2 .dl-mode-btn{display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 10px;border-radius:999px;border:1px solid var(--control-edge);background:var(--card);color:var(--ink-2);font-size:12px;font-weight:500;cursor:pointer;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease}
 .mailv2 .dl-mode-btn:hover{background:var(--card-2);border-color:var(--line-2);color:var(--ink)}
@@ -4066,7 +4066,13 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .att-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 
 /* тип-послуги таби */
-.mailv2 .tab-nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+/* One control band under the page heading: tabs on the left, the
+   download-mode chip pushed to the right edge. They used to stack into two
+   separate rows, which cost a whole horizontal band and left the chip
+   floating between the tabs and the list with a NEGATIVE bottom margin, so
+   the list panel crowded right up against it. */
+.mailv2 .list-controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.mailv2 .tab-nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:0}
 .mailv2 .tab-link{height:30px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;text-decoration:none;transition:background var(--ui-speed) ease,color var(--ui-speed) ease}
 .mailv2 .tab-link:hover{color:var(--ink);opacity:1}
 .mailv2 .tab-link.active{background:rgba(20,184,166,.16);color:var(--accent-c);border-color:rgba(45,212,191,.34)}
@@ -4076,7 +4082,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .settings-error,.mailv2 .settings-alert-error{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#f0b4b4}
 .mailv2 .settings-hint{font-size:12px;color:var(--ink-3)}
 
-.mailv2 .worklayout{display:flex;gap:16px;align-items:stretch;min-height:60vh}
+.mailv2 .worklayout{display:flex;gap:16px;align-items:stretch;min-height:60vh;margin-top:18px}
 /* Depth split: the list stays flat and slightly recessed (darker ground, no
    glow) while the detail card lifts — lighter surface + a real drop shadow — so
    «де шукаю» vs «де працюю» read as two planes, not one flat strip. */
@@ -4095,7 +4101,9 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
         grew to its 24px accessible target it set the row height. The ✕ now
         sits in its own centred column, so the target size costs nothing.
    ~86px per row → ~52px: roughly twelve letters visible instead of seven. */
-.mailv2 .listwrap{overflow-y:auto;flex:1;min-height:0;scrollbar-width:thin;padding:0}
+/* 4px so the first row is not jammed against the panel's rounded top edge —
+   the visible list header that used to provide that separation is gone. */
+.mailv2 .listwrap{overflow-y:auto;flex:1;min-height:0;scrollbar-width:thin;padding:4px 0 0}
 .mailv2 .mailrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px;padding:8px 14px;border-bottom:1px solid var(--line);text-decoration:none;cursor:pointer;transition:background var(--ui-speed) ease}
 .mailv2 .mailrow:last-child{border-bottom:0}
 .mailv2 .mailrow:hover{background:var(--card-2);opacity:1}

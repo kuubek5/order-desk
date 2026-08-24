@@ -42,31 +42,36 @@
     <div class="settings-success settings-error"><p>{{ error }}</p></div>
     {% endif %}
 
-    <nav class="tab-nav" aria-label="Розділ">
-        <a href="/mail?view=pending" class="tab-link {% if view == 'pending' %}active{% endif %}">Усі листи <span class="tab-badge">{{ pending_count }}</span>{% if unread_count %}{% set _uw = 'новий' if (unread_count % 10 == 1 and unread_count % 100 != 11) else ('нові' if (unread_count % 10 in [2,3,4] and unread_count % 100 not in [12,13,14]) else 'нових') %}<span class="tab-badge unread" title="Непрочитані вами"><span class="unread-dot" aria-hidden="true"></span>{{ unread_count }} {{ _uw }}</span>{% endif %}</a>
-        <a href="/mail?view=filtered" class="tab-link {% if view == 'filtered' %}active{% endif %}">Відфільтровані <span class="tab-badge">{{ filtered_count }}</span></a>
-        <a href="/mail?view=archive" class="tab-link {% if view == 'archive' %}active{% endif %}">Архів <span class="tab-badge">{{ archive_count }}</span></a>
-        <a href="/mail?view=auto" class="tab-link {% if view == 'auto' %}active{% endif %}" title="Довірені клієнти — авто-прийняття">Авто-прийняття{% if auto_count %} <span class="tab-badge">{{ auto_count }}</span>{% endif %}</a>
-    </nav>
+    {# Tabs and the download-mode chip are one group — both are controls
+       OVER the list — so they share a single band instead of stacking
+       into two. #}
+    <div class="list-controls">
+        <nav class="tab-nav" aria-label="Розділ">
+            <a href="/mail?view=pending" class="tab-link {% if view == 'pending' %}active{% endif %}">Усі листи <span class="tab-badge">{{ pending_count }}</span>{% if unread_count %}{% set _uw = 'новий' if (unread_count % 10 == 1 and unread_count % 100 != 11) else ('нові' if (unread_count % 10 in [2,3,4] and unread_count % 100 not in [12,13,14]) else 'нових') %}<span class="tab-badge unread" title="Непрочитані вами"><span class="unread-dot" aria-hidden="true"></span>{{ unread_count }} {{ _uw }}</span>{% endif %}</a>
+            <a href="/mail?view=filtered" class="tab-link {% if view == 'filtered' %}active{% endif %}">Відфільтровані <span class="tab-badge">{{ filtered_count }}</span></a>
+            <a href="/mail?view=archive" class="tab-link {% if view == 'archive' %}active{% endif %}">Архів <span class="tab-badge">{{ archive_count }}</span></a>
+            <a href="/mail?view=auto" class="tab-link {% if view == 'auto' %}active{% endif %}" title="Довірені клієнти — авто-прийняття">Авто-прийняття{% if auto_count %} <span class="tab-badge">{{ auto_count }}</span>{% endif %}</a>
+        </nav>
 
-    {# Download mode: a STATE CHIP, not an action button. It was sitting in
-       .head-actions 8px from «Перевірити пошту» — a persistent global setting
-       shoulder to shoulder with the button pressed 30× a day, both the same
-       size, both carrying the same download arrow. Here it reads as ambient
-       state of the whole screen, which is what it is. Full control lives in
-       Налаштування; this is the quick flip. #}
-    {% if user.role == 'адмін' %}
-    <form method="post" action="/settings/mail-download/toggle" class="dl-mode">
-        <input type="hidden" name="return_to" value="mail">
-        <span class="dl-mode-label">Завантаження файлів:</span>
-        <button type="submit" class="dl-mode-btn {% if mail_download_all %}is-on{% endif %}"
-                aria-pressed="{{ 'true' if mail_download_all else 'false' }}"
-                aria-label="{% if mail_download_all %}Зараз качаються файли з кожного листа. Натисніть, щоб качати лише від довірених відправників.{% else %}Зараз качаються файли лише від довірених відправників. Натисніть, щоб качати з кожного листа.{% endif %}">
-            {% if mail_download_all %}з усіх листів{% else %}лише довірені{% endif %}
-            <span class="dl-mode-swap" aria-hidden="true">змінити</span>
-        </button>
-    </form>
-    {% endif %}
+        {# Download mode: a STATE CHIP, not an action button. It was sitting in
+           .head-actions 8px from «Перевірити пошту» — a persistent global setting
+           shoulder to shoulder with the button pressed 30× a day, both the same
+           size, both carrying the same download arrow. Here it reads as ambient
+           state of the whole screen, which is what it is. Full control lives in
+           Налаштування; this is the quick flip. #}
+        {% if user.role == 'адмін' %}
+        <form method="post" action="/settings/mail-download/toggle" class="dl-mode">
+            <input type="hidden" name="return_to" value="mail">
+            <span class="dl-mode-label">Завантаження файлів:</span>
+            <button type="submit" class="dl-mode-btn {% if mail_download_all %}is-on{% endif %}"
+                    aria-pressed="{{ 'true' if mail_download_all else 'false' }}"
+                    aria-label="{% if mail_download_all %}Зараз качаються файли з кожного листа. Натисніть, щоб качати лише від довірених відправників.{% else %}Зараз качаються файли лише від довірених відправників. Натисніть, щоб качати з кожного листа.{% endif %}">
+                {% if mail_download_all %}з усіх листів{% else %}лише довірені{% endif %}
+                <span class="dl-mode-swap" aria-hidden="true">змінити</span>
+            </button>
+        </form>
+        {% endif %}
+    </div>
 
     {% if filter_suggest %}
     <div class="filter-suggest" role="status">
