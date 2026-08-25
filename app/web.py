@@ -41,6 +41,7 @@ from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH, SESSION_SECRET_KEY
 from app.db import Base, SessionLocal, engine
 from app.monthly_backup import ensure_monthly_snapshot, list_snapshots
 from app.export_scanner import scan_export_folder
+from app import sync_control
 from app.license import get_license_status, get_machine_id, verify_license_key
 from app.mail_export import (
     list_client_folders,
@@ -688,6 +689,13 @@ def _sheet_sync_worker(stop_event: Event) -> None:
     next_full = 0.0  # first iteration always does a full sync
     while not stop_event.is_set():
         speed = get_sync_speed()  # live: the UI switch changes the next tick
+        # Paused: touch the sheet in neither direction. Keep looping (cheaply)
+        # so resume takes effect within one tick; force a full sync on resume so
+        # the first thing after a pause is a complete re-read of the table.
+        if sync_control.is_paused():
+            next_full = 0.0
+            stop_event.wait(speed["hot"])
+            continue
         run_full = monotonic() >= next_full
         try:
             with SessionLocal() as db:
@@ -1300,6 +1308,15 @@ def _validate_first_admin(
     if password != password_confirmation:
         return None, "Паролі не збігаються"
     return values, None
+
+
+# Shown when a table-writing action is attempted while sync is paused. The
+# action is refused and NOTHING changes — not even the DB — so there is no
+# divergence for the resume read to revert. The operator retries after resume.
+_SYNC_PAUSED_MSG = (
+    "Синхронізацію таблиці призупинено — зміну не збережено. "
+    "Зніміть паузу, щоб продовжити."
+)
 
 
 def _write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | None:
@@ -1920,6 +1937,7 @@ def get_queue(
             "sync_speed_active": _sync_speed_preset,
             "sync_screen_seconds": get_sync_speed()["screen"],
             "viewed_tab": viewed_day.strftime("%d.%m.%y") if viewed_day else "",
+            "sync_paused": sync_control.is_paused(),
     }
 
     _record_viewed_day(viewed_day)
@@ -2031,6 +2049,33 @@ def _synced_day_tabs(request: Request) -> set[str]:
     return {value for value in date_values if _parse_sheet_tab(value) is not None}
 
 
+@app.post("/sync/pause")
+def toggle_sync_pause(request: Request, db: Session = Depends(get_db)):
+    """Pause or resume ALL Google Sheet traffic (read AND write) from the web.
+
+    The same switch the tray menu flips (app/sync_control.py) — one process, one
+    flag. Admin-only: an accidental pause silently stops the queue from tracking
+    the sheet, so it isn't an operator-level toggle. Returns to the queue with a
+    toast; a banner there keeps an active pause visible so it's never forgotten."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    sync_control.set_paused(not sync_control.is_paused())
+    paused = sync_control.is_paused()
+    request.session["sync_flash"] = {
+        "kind": "info",
+        "message": (
+            "Синхронізацію таблиці призупинено — система не читає й не пише таблицю."
+            if paused
+            else "Синхронізацію відновлено — читаю свіжу таблицю."
+        ),
+    }
+    return RedirectResponse("/", status_code=303)
+
+
 @app.post("/sheets/sync")
 def sync_sheets(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
@@ -2038,6 +2083,13 @@ def sync_sheets(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/login", status_code=303)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    if sync_control.is_paused():
+        request.session["sync_flash"] = {
+            "kind": "info",
+            "message": "Синхронізацію призупинено. Зніміть паузу, щоб синхронізувати.",
+        }
+        return RedirectResponse("/", status_code=303)
 
     # If the operator triggered the sync while viewing a specific day (the
     # sidebar "Дні" strip sets ?date=dd.mm.yy), force-include that tab so a
@@ -2101,6 +2153,12 @@ async def set_sum3d_id(
     if order is None:
         raise HTTPException(status_code=404, detail="order not found")
 
+    if sync_control.is_paused():
+        return templates.TemplateResponse(
+            request, "_order_row.html",
+            {"order": order, "statuses": STATUSES, "sync_error": _SYNC_PAUSED_MSG},
+        )
+
     value = sum3d_id.strip() or None
     rework = order.active_rework
     if rework is not None:
@@ -2142,6 +2200,12 @@ async def set_cam_comment(
     order = db.get(Order, order_id)
     if order is None:
         raise HTTPException(status_code=404, detail="order not found")
+
+    if sync_control.is_paused():
+        return templates.TemplateResponse(
+            request, "_order_row.html",
+            {"order": order, "statuses": STATUSES, "sync_error": _SYNC_PAUSED_MSG},
+        )
 
     order.cam_comment = cam_comment.strip() or None
     db.commit()  # persist immediately — the row must feel instantly saved
@@ -2267,6 +2331,9 @@ def create_manual_order(
 
     def _at(values: list[str], i: int) -> str:
         return values[i].strip() if i < len(values) else ""
+
+    if sync_control.is_paused():
+        return _back(_SYNC_PAUSED_MSG)
 
     row_count = max(
         len(client_name), len(work_order_no), len(kind), len(material_color),
@@ -2465,6 +2532,11 @@ async def delete_order(
     if order.archived_at is not None:
         return _toast_response("Робота вже в архіві", kind="info")
 
+    # Delete blanks the sheet row, so it counts as a table write — refused while
+    # paused (deletion also archives the order, which we must not do half-way).
+    if sync_control.is_paused():
+        return _toast_response(_SYNC_PAUSED_MSG, kind="info")
+
     order.archived_at = datetime.utcnow()
     db.add(
         StatusEvent(
@@ -2507,6 +2579,12 @@ async def set_status(
     order = db.get(Order, order_id)
     if order is None:
         raise HTTPException(status_code=404, detail="order not found")
+
+    if sync_control.is_paused():
+        return templates.TemplateResponse(
+            request, "_order_row.html",
+            {"order": order, "statuses": STATUSES, "sync_error": _SYNC_PAUSED_MSG},
+        )
 
     order.status = status
     sheet_fields = apply_status_markers(
@@ -2993,6 +3071,14 @@ async def issue_handout_group(
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    # Handout clears the blue "pending" fill in the sheet — a table write, so
+    # it's refused while paused; the operator issues after resume.
+    if sync_control.is_paused():
+        request.session["toast_flash"] = {"message": _SYNC_PAUSED_MSG, "kind": "info"}
+        return RedirectResponse(
+            f"/handout?day={day}" if day else "/handout", status_code=303
+        )
 
     today = date.today()
     candidates = db.scalars(

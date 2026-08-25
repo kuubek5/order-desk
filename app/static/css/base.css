@@ -3907,6 +3907,9 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .sync-warning{color:var(--warn);margin-left:5px;display:inline-flex;vertical-align:middle}
 .q2 .sync-warning svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7}
 
+/* Paused-sync note in the sidebar: amber, calm — a standing state, not an alarm. */
+.q2 .sync-paused-note{margin:8px 0;padding:8px 10px;border:1px solid rgba(240,163,94,.4);border-radius:8px;background:rgba(240,163,94,.12);color:var(--warn);font-size:12px;line-height:1.4}
+
 /* "Technician corrected this row" — a warm tint on the row plus a badge naming
    what moved. Two levels: a plain change is amber; a change to a work already
    TAKEN (Sum3D filled) is red, because that is the one that turns into scrap.

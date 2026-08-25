@@ -200,6 +200,90 @@ def _run_migrations() -> None:
         command.upgrade(config, "head")
 
 
+def _load_tray_image():
+    """The bundled brand .ico as a PIL image for the tray, or None if anything
+    is missing — a tray is a nicety and must never keep the app from starting."""
+    try:
+        from PIL import Image
+
+        return Image.open(resource_path("assets/orderdesk.ico"))
+    except Exception:
+        logging.exception("Tray icon image unavailable")
+        return None
+
+
+def _run_server_with_tray(server, tray_holder: dict) -> None:
+    """Run uvicorn under a system-tray icon: server on a background thread, the
+    tray's message loop on the main thread. Right-click gives Open / pause the
+    sheet sync / Quit. Any failure to build the tray falls back to running the
+    server directly (current behaviour), so packaging or platform issues never
+    brick the app — the web UI stays fully usable without the tray."""
+    image = None
+    icon = None
+    # Headless/non-interactive (CI smoke test, service context): no desktop to
+    # host a tray, so skip it outright and just serve. Keeps the smoke test
+    # deterministic instead of relying on the tray-failure fallback below.
+    if os.name == "nt" and not os.environ.get("ORDER_DESK_NONINTERACTIVE"):
+        try:
+            import pystray
+
+            image = _load_tray_image()
+            if image is not None:
+                from app import sync_control
+
+                def _open(_icon=None, _item=None) -> None:
+                    webbrowser.open(APP_URL)
+
+                def _toggle_pause(_icon=None, _item=None) -> None:
+                    sync_control.set_paused(not sync_control.is_paused())
+                    if icon is not None:
+                        icon.update_menu()
+
+                def _is_paused(_item=None) -> bool:
+                    return sync_control.is_paused()
+
+                def _quit(_icon=None, _item=None) -> None:
+                    server.should_exit = True
+                    if icon is not None:
+                        icon.stop()
+
+                menu = pystray.Menu(
+                    pystray.MenuItem("Відкрити Order Desk", _open, default=True),
+                    pystray.MenuItem(
+                        "Синхронізація таблиці на паузі",
+                        _toggle_pause,
+                        checked=_is_paused,
+                    ),
+                    pystray.Menu.SEPARATOR,
+                    pystray.MenuItem("Вийти", _quit),
+                )
+                icon = pystray.Icon("OrderDesk", image, "Order Desk", menu)
+                tray_holder["icon"] = icon
+        except Exception:
+            logging.exception("Tray unavailable — running without it")
+            icon = None
+
+    if icon is None:
+        server.run()
+        return
+
+    server_thread = threading.Thread(target=server.run, name="uvicorn", daemon=True)
+    server_thread.start()
+    try:
+        icon.run()  # blocks on the main thread until icon.stop()
+    except Exception:
+        # The tray loop itself failed (e.g. a headless CI runner with no usable
+        # window station). The app must KEEP SERVING — the web UI is the product,
+        # the tray is a convenience. Wait on the server instead of tearing it
+        # down; an external --shutdown still stops it via watch_shutdown.
+        logging.exception("Tray loop failed — continuing to serve without it")
+        server_thread.join()
+        return
+    # Tray ended normally (Quit or the shutdown event) — wind the server down.
+    server.should_exit = True
+    server_thread.join(timeout=15)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--open-browser", action="store_true")
@@ -242,6 +326,10 @@ def main() -> int:
         server = uvicorn.Server(config)
         _create_shutdown_event()
 
+        # The tray icon (if available) needs the main thread for its Windows
+        # message loop, so it holds a reference to the icon to stop on shutdown.
+        tray_holder: dict = {}
+
         def watch_shutdown() -> None:
             if os.name != "nt" or not _shutdown_event_handle:
                 return
@@ -249,11 +337,17 @@ def main() -> int:
 
             ctypes.windll.kernel32.WaitForSingleObject(_shutdown_event_handle, 0xFFFFFFFF)
             server.should_exit = True
+            icon = tray_holder.get("icon")
+            if icon is not None:
+                try:
+                    icon.stop()
+                except Exception:
+                    logging.exception("Tray icon stop failed on shutdown")
 
         threading.Thread(target=watch_shutdown, daemon=True).start()
         if args.open_browser:
             threading.Thread(target=_open_browser_when_ready, daemon=True).start()
-        server.run()
+        _run_server_with_tray(server, tray_holder)
         return 0
     except (Exception, SystemExit):
         import traceback

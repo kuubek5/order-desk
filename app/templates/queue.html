@@ -177,9 +177,20 @@
                         {% include "_sync_speed_seg.html" %}
                     </div>
                     {% if user.role == 'адмін' and sheets_configured %}
+                    {% if sync_paused %}
+                    <div class="sync-paused-note" role="status">
+                        Синхронізацію призупинено. Система не читає й не пише таблицю —
+                        адміни можуть безпечно правити її. Зняття паузи одразу прочитає свіже.
+                    </div>
+                    {% endif %}
                     <div class="side-actions">
                         <form method="post" action="/sheets/sync">
-                            <button type="submit" class="btn sm primary">Синхронізувати зараз</button>
+                            <button type="submit" class="btn sm primary" {% if sync_paused %}disabled{% endif %}>Синхронізувати зараз</button>
+                        </form>
+                        <form method="post" action="/sync/pause">
+                            <button type="submit" class="btn sm {% if sync_paused %}primary{% endif %}">
+                                {% if sync_paused %}Відновити синхронізацію{% else %}Призупинити синхронізацію{% endif %}
+                            </button>
                         </form>
                     </div>
                     {% endif %}
