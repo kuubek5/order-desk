@@ -3856,9 +3856,13 @@ body.layout-edit .q2 table.qtable{user-select:none}
   display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:6px;
   background:#1d2734;border:1px solid var(--line-2);font-size:12px;color:var(--ink);
 }
-/* Left-aligned to sit directly under the "Кількість" header — centering it in
-   a wide column pushed the number visibly right of the label. */
-.q2 td.quantity{font-family:var(--font-mono);font-size:12.5px;text-align:left;color:var(--ink)}
+/* Header word and number centred together in the column: left-aligning the
+   number put it under the header's first letter while the wide "Кількість"
+   label extended right, so the count looked shifted off its header. Centring
+   both lines the number up under the middle of the label. */
+.q2 th.col-qty{text-align:center}
+.q2 th.col-qty .th-sort{justify-content:center}
+.q2 td.quantity{font-family:var(--font-mono);font-size:12.5px;text-align:center;color:var(--ink)}
 .q2 td.src-tab{white-space:nowrap}
 .q2 .src-tab-link{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);text-decoration:none;
   padding:2px 7px;border-radius:6px;border:1px solid var(--line);background:#111a24;
