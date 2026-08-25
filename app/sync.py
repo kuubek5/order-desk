@@ -498,6 +498,18 @@ def sync_tab(
                 # the first time) is not a correction — flagging it would make
                 # the badge routine noise and train the operator to ignore it.
                 was_filled = bool(getattr(existing, field))
+                # sum3d_id is portal-OWNED (only the operator ever fills column L,
+                # through /orders/{id}/sum3d-id). That write-back is fire-and-forget
+                # with no retry queue: if the sheet write fails (the lab's TLS proxy
+                # drops it) the DB keeps the value but column L stays empty, and this
+                # very loop would then wipe the DB value back to None on the next
+                # 15s poll — the "taken" work silently reverts to "можна брати" and
+                # two operators can grab it. So sum3d_id is FILL-ONLY here: the sheet
+                # may set it, never blank a value the DB already holds. A deliberate
+                # clear goes through the portal, which nulls the DB directly, not via
+                # this read. Mirrors the material_id "never wipe a good value" rule below.
+                if field == "sum3d_id" and was_filled and not value:
+                    continue
                 setattr(existing, field, value)
                 changed = True
                 if was_filled and field in TECHNICIAN_EDITED_FIELDS:

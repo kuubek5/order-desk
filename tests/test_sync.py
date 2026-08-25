@@ -1057,3 +1057,62 @@ def test_recently_imported_then_deleted_still_stuck_within_grace():
     sync_tab(session, "26.08.26", [], raw_row_count=6, deletion_grace_seconds=0)
     session.commit()
     assert session.scalar(select(Order)).archived_at is not None
+
+
+def test_lab_sum3d_not_wiped_when_sheet_column_L_is_empty():
+    """Operator takes a lab work: writes Sum3D to the DB, but the sheet write-back
+    to column L fails (the lab's TLS proxy drops it) — no retry queue. The DB
+    holds the value, column L stays empty. The next 15s poll must NOT wipe it:
+    Sum3D is portal-owned and fill-only on read. Losing it silently reverts the
+    work from "В роботі" to "Можна брати" and two operators can grab it."""
+    with make_session() as session:
+        # Technician handed off: job_code present, no Sum3D yet.
+        sync_tab(session, "T", [make_row(sum3d_id="", calculated="", milled="")])
+        session.commit()
+        order = session.scalar(select(Order))
+        # Operator takes it in the CRM (Sum3D committed locally, sheet write lost).
+        order.sum3d_id = "12-01-45"
+        session.commit()
+
+        # Background poll reads the sheet while column L is still empty.
+        sync_tab(session, "T", [make_row(sum3d_id="", calculated="", milled="")])
+        session.commit()
+        session.refresh(order)
+        assert order.sum3d_id == "12-01-45"  # preserved, not wiped to None
+
+
+def test_client_sum3d_not_wiped_when_sheet_column_L_is_empty():
+    """Same fill-only guard for наряд-less client rows: an operator's Sum3D on a
+    client row survives a poll that reads an empty column L."""
+    with make_session() as session:
+        sync_tab(session, "T", [make_client_row(row_number=5, sum3d_id="")])
+        session.commit()
+        order = session.scalar(select(Order).where(Order.source == "sheet_client"))
+        order.sum3d_id = "10-19-48"
+        session.commit()
+
+        sync_tab(session, "T", [make_client_row(row_number=5, sum3d_id="")])
+        session.commit()
+        session.refresh(order)
+        assert order.sum3d_id == "10-19-48"
+
+
+def test_sheet_can_still_fill_and_change_sum3d():
+    """The fill-only guard must not freeze Sum3D: a non-empty sheet value still
+    sets it (first fill) and a later non-empty value still updates it (a genuine
+    correction). Only blanking a filled value with an empty cell is refused."""
+    with make_session() as session:
+        # First fill from an empty DB value.
+        sync_tab(session, "T", [make_row(sum3d_id="")])
+        session.commit()
+        order = session.scalar(select(Order))
+        assert order.sum3d_id is None
+        sync_tab(session, "T", [make_row(sum3d_id="12-01-45")])
+        session.commit()
+        session.refresh(order)
+        assert order.sum3d_id == "12-01-45"
+        # A real change to another non-empty value still applies.
+        sync_tab(session, "T", [make_row(sum3d_id="17-55-28")])
+        session.commit()
+        session.refresh(order)
+        assert order.sum3d_id == "17-55-28"
