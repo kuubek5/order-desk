@@ -69,6 +69,22 @@ def _fields(row: OrderRow) -> dict:
     }
 
 
+# Fields a TECHNICIAN owns in the sheet, and the word the operator sees when
+# one of them is corrected after import. Deliberately excludes everything the
+# portal writes back itself (sum3d_id, calculated/milled markers): those return
+# from the sheet as "changes" that the operator made seconds earlier, and
+# flagging them would bury the real corrections in noise.
+TECHNICIAN_EDITED_FIELDS = {
+    "work_order_no": "наряд",
+    "quantity": "кількість",
+    "material_color": "колір",
+    "kind": "вид роботи",
+    "job_code": "шлях",
+    "technician_name": "технік",
+    "client_name": "клієнт",
+}
+
+
 def _client_fields(row: OrderRow) -> dict:
     """Field mapping for a наряд-less client row (see OrderRow.is_client_row).
     The "вид" column (row.kind) holds the CLIENT NAME here, not a work type, so
@@ -420,10 +436,37 @@ def sync_tab(
                 changed = True
 
         sheet_comment = _new_sheet_comment(existing.cam_comment, row.cam_comment)
+        edited: list[str] = []
         for field, value in fields.items():
             if getattr(existing, field) != value:
+                # First import of a field the row simply did not have yet (the
+                # technician filling in the шлях later, us reading a column for
+                # the first time) is not a correction — flagging it would make
+                # the badge routine noise and train the operator to ignore it.
+                was_filled = bool(getattr(existing, field))
                 setattr(existing, field, value)
                 changed = True
+                if was_filled and field in TECHNICIAN_EDITED_FIELDS:
+                    edited.append(TECHNICIAN_EDITED_FIELDS[field])
+
+        if edited:
+            # Keep any still-undismissed change visible: the operator must see
+            # everything that moved since they last acknowledged, not only the
+            # latest edit.
+            previous = [
+                part.strip()
+                for part in (existing.sheet_changed_fields or "").split(",")
+                if part.strip()
+            ]
+            merged = previous + [name for name in edited if name not in previous]
+            existing.sheet_changed_fields = ", ".join(merged)[:400]
+            existing.sheet_changed_at = datetime.utcnow()
+            session.add(
+                StatusEvent(
+                    order_id=existing.id, status=existing.status, actor="sync",
+                    note=f"технік змінив у таблиці: {', '.join(edited)}",
+                )
+            )
 
         # Re-resolve material when the colour text changed (or was never
         # resolved). Only overwrite with a confident hit — never wipe a good

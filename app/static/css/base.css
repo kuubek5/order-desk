@@ -3907,6 +3907,22 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .sync-warning{color:var(--warn);margin-left:5px;display:inline-flex;vertical-align:middle}
 .q2 .sync-warning svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7}
 
+/* "Technician corrected this row" — a warm tint on the row plus a badge naming
+   what moved. Two levels: a plain change is amber; a change to a work already
+   TAKEN (Sum3D filled) is red, because that is the one that turns into scrap.
+   The badge is a button — the operator dismisses it, nothing expires on a
+   timer, so a change made during a break is still flagged on their return. */
+.q2 .queue-row-changed > td{background:rgba(240,163,94,.10)}
+.q2 .queue-row-changed-taken > td{background:rgba(248,113,113,.12)}
+.q2 .chg-form{display:inline-flex;margin:0 0 4px}
+.q2 .badge.chg{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:3px 8px;border:1px solid rgba(240,163,94,.42);border-radius:7px;background:rgba(240,163,94,.14);color:var(--warn);font-size:11px;line-height:1.25;text-align:left;cursor:pointer}
+.q2 .badge.chg svg{flex:0 0 auto;width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.q2 .badge.chg span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q2 .badge.chg:hover{background:rgba(240,163,94,.24)}
+.q2 .badge.chg.chg-taken{border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.16);color:#f87878}
+.q2 .badge.chg.chg-taken:hover{background:rgba(248,113,113,.26)}
+.q2 .badge.chg:focus-visible{outline:2px solid var(--control-edge);outline-offset:1px}
+
 /* Delete-from-queue: destructive, so it stays out of the way until the row is
    hovered or the button is tabbed to — 130 always-visible bins would be noise
    in a dense table, and an easy misclick. Kept in tab order (opacity, not

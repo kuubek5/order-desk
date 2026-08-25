@@ -822,3 +822,78 @@ def test_a_truly_empty_read_still_does_not_wipe_a_tab():
     session.commit()
 
     assert session.scalar(select(Order)).archived_at is None
+
+
+def test_technician_correcting_a_row_flags_it_for_the_operator():
+    """A technician who mistypes and fixes the row must not slip past silently.
+
+    The corrected row looks identical on screen, so an operator can mill the
+    version they read minutes earlier — scrap the lab pays for. The flag names
+    WHAT moved so they can judge whether it touches their work.
+    """
+    session = make_session()
+    sync_tab(session, "26.08.26", [make_row(row_number=1, material_color="моно A2")])
+    session.commit()
+    order = session.scalar(select(Order))
+    assert order.sheet_changed_at is None  # first import is not a correction
+
+    sync_tab(session, "26.08.26", [make_row(row_number=1, material_color="моно A3.5")])
+    session.commit()
+    session.refresh(order)
+
+    assert order.sheet_changed_at is not None
+    assert order.sheet_changed_fields == "колір"
+
+
+def test_change_flag_accumulates_until_dismissed():
+    """A second correction before the operator acknowledges must ADD to the
+    list, not replace it — otherwise the earlier change silently disappears."""
+    session = make_session()
+    sync_tab(session, "26.08.26", [make_row(row_number=1)])
+    session.commit()
+    order = session.scalar(select(Order))
+
+    sync_tab(session, "26.08.26", [make_row(row_number=1, material_color="титан")])
+    session.commit()
+    sync_tab(session, "26.08.26", [
+        make_row(row_number=1, material_color="титан", quantity="9")
+    ])
+    session.commit()
+    session.refresh(order)
+
+    assert "колір" in order.sheet_changed_fields
+    assert "кількість" in order.sheet_changed_fields
+
+
+def test_portal_own_writeback_does_not_raise_the_flag():
+    """Sum3D and the milling markers are written BY the portal and read back on
+    the next sync. Flagging those would bury real corrections in noise."""
+    session = make_session()
+    sync_tab(session, "26.08.26", [make_row(row_number=1, sum3d_id="", calculated="")])
+    session.commit()
+    order = session.scalar(select(Order))
+
+    sync_tab(session, "26.08.26", [
+        make_row(row_number=1, sum3d_id="12-01-45", calculated="+ 10:00")
+    ])
+    session.commit()
+    session.refresh(order)
+
+    assert order.sheet_changed_at is None
+
+
+def test_filling_an_empty_field_for_the_first_time_is_not_a_correction():
+    """The technician filling in the шлях later is normal progress, not a fix —
+    flagging it would make the badge routine and train the operator to ignore
+    it, which is exactly what must not happen to a scrap-prevention signal."""
+    session = make_session()
+    sync_tab(session, "26.08.26", [make_row(row_number=1, job_code="")])
+    session.commit()
+    order = session.scalar(select(Order))
+
+    sync_tab(session, "26.08.26", [make_row(row_number=1, job_code="2026-08-26_00042-001")])
+    session.commit()
+    session.refresh(order)
+
+    assert order.sheet_changed_at is None
+    assert order.job_code == "2026-08-26_00042-001"

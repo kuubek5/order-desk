@@ -173,3 +173,44 @@ def test_card_delete_still_redirects_to_the_queue():
                 )
             )
     assert response.headers["HX-Redirect"] == "/"
+
+
+def test_dismissing_a_change_clears_it_and_records_who_looked():
+    """The mark is cleared by the operator, never by a timer (user decision
+    25.08.26): a change that expires on its own can expire during a break —
+    exactly when it would have been missed. Who acknowledged it is kept."""
+    from datetime import datetime
+
+    from app.models import StatusEvent as SE
+
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        order.sheet_changed_at = datetime(2026, 8, 25, 13, 42)
+        order.sheet_changed_fields = "колір, шлях"
+        db.commit()
+
+        asyncio.run(
+            web.dismiss_sheet_change(
+                request=_request(user.id, {"HX-Request": "true"}),
+                order_id=order.id, db=db,
+            )
+        )
+
+        refreshed = db.get(Order, order.id)
+        assert refreshed.sheet_changed_at is None
+        assert refreshed.sheet_changed_fields is None
+        notes = [e.note for e in db.scalars(select(SE).where(SE.order_id == order.id))]
+        assert any("переглянув зміни техніка" in (n or "") for n in notes)
+
+
+def test_dismiss_requires_login():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        order = _order(db)
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(
+                web.dismiss_sheet_change(request=_request(None), order_id=order.id, db=db)
+            )
+        assert exc.value.status_code == 401

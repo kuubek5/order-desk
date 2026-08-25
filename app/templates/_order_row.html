@@ -18,7 +18,12 @@
 } %}
 {% set _dc = _dot.get(order.status, ('#8fa3bb', false)) %}
 {% set _rework = order.active_rework %}
-<tr class="queue-row {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if order.source == 'sheet_client' %}queue-row-client{% endif %} {% if _rework %}queue-row-rework{% endif %} {{ material_color_css_class(order.material_color) }}" id="order-row-{{ order.id }}">
+{# A technician corrected this row in the sheet after we imported it. Louder
+   when the work is already TAKEN (Sum3D filled): milling a corrected work from
+   the version read minutes ago is scrap, and that is the case where it costs. #}
+{% set _changed = order.sheet_changed_at %}
+{% set _changed_taken = _changed and order.sum3d_id %}
+<tr class="queue-row {% if _changed %}queue-row-changed{% endif %} {% if _changed_taken %}queue-row-changed-taken{% endif %} {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if order.source == 'sheet_client' %}queue-row-client{% endif %} {% if _rework %}queue-row-rework{% endif %} {{ material_color_css_class(order.material_color) }}" id="order-row-{{ order.id }}">
     {# Джерело рядка — вкладка (день) Google-таблиці, де його знайдено. Показуємо
        лише у пошуку (show_source), де результати охоплюють усі дні; у черзі
        колонки нема (рядок лишається 9-колонковим). #}
@@ -120,6 +125,20 @@
         {% endif %}
     </td>
     <td class="status">
+        {% if _changed %}
+        {# Says WHAT moved, not just "changed" — the operator has to know whether
+           it touches what they are about to mill. Dismissed by click only. #}
+        <form class="chg-form"
+              hx-post="/orders/{{ order.id }}/change-seen"
+              hx-target="#order-row-{{ order.id }}"
+              hx-swap="outerHTML">
+            <button type="submit" class="badge chg{% if _changed_taken %} chg-taken{% endif %}"
+                    title="Технік змінив у таблиці: {{ order.sheet_changed_fields or '—' }}. Натисніть, щоб прибрати позначку.">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+                <span>{% if _changed_taken %}змінено після взяття{% else %}змінено{% endif %} {{ order.sheet_changed_at.strftime('%H:%M') }} · {{ order.sheet_changed_fields or '—' }}</span>
+            </button>
+        </form>
+        {% endif %}
         {% if order.status == 'проблема' %}
         <span class="badge problem">проблема</span>
         {% elif order.status == 'переробка' %}

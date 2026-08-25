@@ -250,6 +250,10 @@ NOTIFY_EVENTS: tuple[tuple[str, str, str, bool], ...] = (
     ("mail_error", "Пошта (IMAP) не відповідає", "crit", True),
     ("sheet_recovered", "Зв'язок відновлено", "ok", True),
     ("new_orders", "Нові роботи в таблиці", "info", True),
+    # Scrap prevention: a technician correcting a row the operator may already
+    # be milling. Defaults ON and is a warning, not info — this is the one the
+    # operator must not scroll past.
+    ("sheet_changed", "Технік змінив роботу в таблиці", "warn", True),
     ("new_mail", "Нові листи в тріажі", "info", True),
     ("update_available", "Доступне оновлення", "warn", True),
 )

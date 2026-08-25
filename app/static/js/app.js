@@ -1226,7 +1226,11 @@ document.body.addEventListener("toast", (event) => {
   const enabled = new Set((stack.dataset.notifyEvents || "").split(",").filter(Boolean));
   if (!enabled.size) return;
 
-  const POLL_MS = 30000;
+  // Follows the sync-speed preset (data-notify-poll, seconds): on Турбо the
+  // "технік змінив роботу" alert lands in ~5s, not a fixed 30s. Clamped so a
+  // bad value can't hammer the endpoint or stall the alert.
+  const pollSec = parseInt(stack.dataset.notifyPoll, 10);
+  const POLL_MS = Math.min(60, Math.max(5, Number.isFinite(pollSec) ? pollSec : 15)) * 1000;
   let prev = null;          // перший опит лише запам'ятовує базу, без тостів
   let offlineShown = false;
 
@@ -1278,6 +1282,17 @@ document.body.addEventListener("toast", (event) => {
       if (s.mail_pending > prev.mail_pending) {
         const n = s.mail_pending - prev.mail_pending;
         fire("new_mail", n + " " + plural(n, "новий лист", "нові листи", "нових листів") + " у тріажі.", "info");
+      }
+      // Технік виправив рядок, який оператор міг уже читати. Це попередження,
+      // а не інфо: фрезерувати за старою версією = брак, за який платить лаба.
+      if (s.changed > prev.changed) {
+        const n = s.changed - prev.changed;
+        fire(
+          "sheet_changed",
+          n + " " + plural(n, "роботу", "роботи", "робіт") +
+            " змінив технік у таблиці. Позначені в черзі — перевірте перед фрезеруванням.",
+          "warning"
+        );
       }
       if (s.update && s.update !== prev.update) {
         fire("update_available", "Доступне оновлення v" + s.update + ". Встановити можна в Налаштуваннях.", "warning");

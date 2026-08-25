@@ -1225,6 +1225,10 @@ def notify_prefs() -> dict:
                 "style": get_notify_style(db),
                 "position": get_notify_position(db),
                 "events": sorted(get_notify_events(db)),
+                # The popup poll follows the sync-speed preset: on Турбо the
+                # "технік змінив роботу" alert lands in ~5s, not the fixed 30s —
+                # the whole point of the scrap warning is that it is timely.
+                "poll_seconds": get_sync_speed()["screen"],
             }
         finally:
             db.close()
@@ -1234,6 +1238,7 @@ def notify_prefs() -> dict:
             "style": DEFAULT_NOTIFY_STYLE,
             "position": DEFAULT_NOTIFY_POSITION,
             "events": sorted(key for key, _, _, on in NOTIFY_EVENTS if on),
+            "poll_seconds": SYNC_SPEED_PRESETS["normal"]["screen"],
         }
 
 
@@ -2381,6 +2386,46 @@ def create_manual_order(
             _recent_manual_adds.pop(uid, None)
 
     return RedirectResponse(target, status_code=303)
+
+
+@app.post("/orders/{order_id}/change-seen", response_class=HTMLResponse)
+async def dismiss_sheet_change(
+    request: Request, order_id: int, db: Session = Depends(get_db)
+):
+    """Clear the "technician corrected this row" mark once the operator has
+    looked at it.
+
+    Dismissal is theirs alone — no timer (user decision 25.08.26). The mark
+    exists to stop someone milling a version of the work that has since been
+    corrected, and a change that expires on its own can expire during a break,
+    which is exactly when it would have been missed. Re-renders the row so the
+    badge disappears without reloading the queue."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="роботу не знайдено")
+
+    if order.sheet_changed_at is not None:
+        db.add(
+            StatusEvent(
+                order_id=order.id, operator_id=user.id, status=order.status,
+                actor=user.username,
+                note=f"переглянув зміни техніка: {order.sheet_changed_fields or '—'}",
+            )
+        )
+        order.sheet_changed_at = None
+        order.sheet_changed_fields = None
+        db.commit()
+
+    attach_export_folder_uris(db, [order])
+    attach_job_code_folder_uris(db, [order])
+    return templates.TemplateResponse(
+        request, "_order_row.html",
+        {"order": order, "statuses": STATUSES, "sync_error": None},
+    )
 
 
 @app.post("/orders/{order_id}/delete")
@@ -3953,6 +3998,14 @@ def api_notify_state(request: Request, db: Session = Depends(get_db)):
             select(func.count())
             .select_from(EmailMessage)
             .where(EmailMessage.status == "нове", EmailMessage.filter_category.is_(None))
+        ) or 0,
+        # Works a technician corrected in the sheet and nobody has acknowledged
+        # yet. A rise means a fresh correction — the client toasts on that, so
+        # the operator learns about it even while looking at the machines.
+        "changed": db.scalar(
+            select(func.count())
+            .select_from(Order)
+            .where(Order.sheet_changed_at.is_not(None), Order.archived_at.is_(None))
         ) or 0,
         "update": release.version if release else None,
     }

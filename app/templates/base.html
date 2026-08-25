@@ -43,6 +43,7 @@
          data-toast-style="{{ _np.style }}"
          data-toast-pos="{{ _np.position }}"
          data-notify-events="{{ _np.events | join(',') }}"
+         data-notify-poll="{{ _np.poll_seconds | default(15) }}"
          aria-live="polite" aria-atomic="false"></div>
     {% if toast_flash %}
     {# One-shot outcome toast carried across a redirect via session flash

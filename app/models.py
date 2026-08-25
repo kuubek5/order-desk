@@ -55,6 +55,19 @@ class Order(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now(), onupdate=func.now()
     )
+    # A technician corrected this row in the sheet after we imported it. The
+    # corrected row looks identical on screen, so without this the operator can
+    # mill the version they read minutes ago — scrap that costs money. NULL =
+    # nothing to flag; a timestamp plus a short human list of what changed
+    # ("колір, шлях") drives the queue's change badge. Cleared only when the
+    # operator dismisses it, never on a timer. `updated_at` cannot stand in:
+    # it also moves on our own Sum3D/status write-backs.
+    sheet_changed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    sheet_changed_fields: Mapped[Optional[str]] = mapped_column(
+        String(400), nullable=True
+    )
     # Archive marker. NULL = active (lives in the working queue while its
     # sheet-tab date is within the retention window). Set to a timestamp when
     # the order should leave the working space but be KEPT for the archive: it

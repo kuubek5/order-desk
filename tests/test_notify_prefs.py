@@ -136,10 +136,12 @@ def test_route_requires_login():
 def test_notify_prefs_global_shape():
     """base.html renders these straight into data-attributes."""
     prefs = web.notify_prefs()
-    assert set(prefs) == {"style", "position", "events"}
+    assert set(prefs) == {"style", "position", "events", "poll_seconds"}
     assert prefs["style"] in {"glass", "card"}
     assert prefs["position"] in {"tc", "tr", "br", "bl"}
     assert isinstance(prefs["events"], list)
+    # Drives the popup poll interval — follows the sync-speed preset.
+    assert isinstance(prefs["poll_seconds"], int) and prefs["poll_seconds"] > 0
 
 
 # --- state endpoint ---------------------------------------------------------
@@ -161,3 +163,15 @@ def test_notify_state_returns_the_fields_the_client_diffs():
     assert set(state) >= {"sheet", "mail", "orders", "mail_pending", "update"}
     assert isinstance(state["orders"], int)
     assert isinstance(state["mail_pending"], int)
+
+
+def test_technician_change_trigger_is_on_by_default_and_is_a_warning():
+    """The scrap-prevention popup must not need switching on: an operator who
+    never opens the notification settings still gets told that a work they may
+    be milling was corrected. Warning, not info — it outranks "нові роботи"."""
+    key, label, kind, default_on = next(
+        row for row in NOTIFY_EVENTS if row[0] == "sheet_changed"
+    )
+    assert default_on is True
+    assert kind == "warn"
+    assert "технік" in label.lower()
