@@ -1584,3 +1584,38 @@ def test_manual_add_ignores_a_junk_target_tab(monkeypatch):
         )
         assert resp.status_code == 303
         assert cap["calls"] == 1
+
+
+@pytest.mark.parametrize(
+    "period,offset_days",
+    [("today", 0), ("yesterday", -1), ("tomorrow", 1)],
+)
+def test_queue_hands_the_add_form_the_day_the_period_tab_shows(period, offset_days):
+    """The add form must know the day for EVERY way of choosing one.
+
+    Rома 25.08.26, still broken after 0.3.7: adding from the «Завтра» tab kept
+    landing in today's sheet. The date strip puts ?date= in the URL, but the
+    period tabs do not — the form read only the date-strip value, so from
+    «Завтра» it posted an empty tab and the write fell back to today.
+    """
+    from datetime import timedelta
+
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        request = _request(user.id)
+        html = web.get_queue(request=request, db=db, period=period).body.decode()
+
+    expected = (date.today() + timedelta(days=offset_days)).strftime("%d.%m.%y")
+    assert f'name="target_tab" value="{expected}"' in html
+
+
+def test_earlier_tab_leaves_the_target_day_empty():
+    """«Раніше» spans many days, so there is no single tab to target — the form
+    posts nothing and the write falls back to the newest tab ≤ today."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        html = web.get_queue(request=_request(user.id), db=db, period="earlier").body.decode()
+
+    assert 'name="target_tab" value=""' in html

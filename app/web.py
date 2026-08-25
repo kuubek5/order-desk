@@ -1864,6 +1864,23 @@ def get_queue(
         _qs_items += [("sort", sort), ("dir", sort_dir)]
     rows_qs = urlencode(_qs_items)
 
+    # The single day this operator is actually looking at. Two consumers:
+    # the hot sync lane (so the open tab is always among the fast-synced ones)
+    # and the manual-add form, which writes its row into THIS tab.
+    # It must not be `selected_date` alone: picking a day from the date strip
+    # sets it, but the «Завтра»/«Вчора» period tabs do not put a date in the
+    # URL at all — an add made from those then silently fell back to today.
+    if selected_date is not None:
+        viewed_day = selected_date
+    elif period == "yesterday":
+        viewed_day = today - timedelta(days=1)
+    elif period == "tomorrow":
+        viewed_day = today + timedelta(days=1)
+    elif period == "today" and not show_overdue:
+        viewed_day = today
+    else:
+        viewed_day = None  # "earlier"/overdue span many days — no single tab
+
     context = {
             "page_title": "Черга робіт",
             "orders": orders,
@@ -1897,20 +1914,9 @@ def get_queue(
             "sync_speed": SYNC_SPEED_PRESETS,
             "sync_speed_active": _sync_speed_preset,
             "sync_screen_seconds": get_sync_speed()["screen"],
+            "viewed_tab": viewed_day.strftime("%d.%m.%y") if viewed_day else "",
     }
 
-    # Tell the hot lane which day this operator is actually looking at, so
-    # "the open tab in the CRM" is always among the fast-synced sheets.
-    if selected_date is not None:
-        viewed_day = selected_date
-    elif period == "yesterday":
-        viewed_day = today - timedelta(days=1)
-    elif period == "tomorrow":
-        viewed_day = today + timedelta(days=1)
-    elif period == "today" and not show_overdue:
-        viewed_day = today
-    else:
-        viewed_day = None  # "earlier"/overdue span many days — no single tab
     _record_viewed_day(viewed_day)
 
     # The screen poll asks for just the rows block; everything else (sidebar
