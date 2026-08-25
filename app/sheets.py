@@ -266,6 +266,60 @@ def tab_name_for(d: date) -> str:
     return d.strftime("%d.%m.%y")
 
 
+def measure_sheet_weight(spreadsheet: gspread.Spreadsheet) -> dict:
+    """Count conditional-format rules per tab and weigh the metadata response.
+
+    Read-only diagnostic for the "чому таблиця гальмує" case. A sheet whose
+    day-tabs are made by COPYING yesterday's tab accumulates conditional-format
+    rules per cell instead of extending the range: the test sheet reached
+    105 063 rules / 612 MB of metadata, and every values call paid for it
+    (0.3s vs 6.8s measured). Google loads the document as a whole, so the total
+    across ALL tabs is what matters — cleaning one tab changes nothing.
+
+    Asks only for `sheets(properties.title,conditionalFormats)`; the response
+    size is itself the signal, so it is measured rather than discarded.
+    """
+    from time import perf_counter
+
+    started = perf_counter()
+    payload = spreadsheet.client.http_client.fetch_sheet_metadata(
+        spreadsheet.id,
+        params={
+            "includeGridData": "false",
+            "fields": "sheets(properties.title,conditionalFormats)",
+        },
+    )
+    elapsed = perf_counter() - started
+
+    tabs = []
+    total_rules = 0
+    tiny_ranges = 0
+    for sheet in payload.get("sheets", []):
+        title = sheet.get("properties", {}).get("title", "?")
+        rules = sheet.get("conditionalFormats") or []
+        for rule in rules:
+            for rng in rule.get("ranges", []):
+                width = rng.get("endColumnIndex", 0) - rng.get("startColumnIndex", 0)
+                height = rng.get("endRowIndex", 0) - rng.get("startRowIndex", 0)
+                # 1×1 / 2×1 ranges are the fingerprint of per-cell duplication.
+                if 0 < width <= 2 and 0 < height <= 2:
+                    tiny_ranges += 1
+        total_rules += len(rules)
+        tabs.append({"title": title, "rules": len(rules)})
+
+    tabs.sort(key=lambda t: t["rules"], reverse=True)
+    payload_bytes = len(json.dumps(payload).encode("utf-8"))
+    return {
+        "tabs": tabs,
+        "tab_count": len(tabs),
+        "total_rules": total_rules,
+        "tiny_ranges": tiny_ranges,
+        "avg_rules": round(total_rules / len(tabs), 1) if tabs else 0,
+        "payload_mb": round(payload_bytes / (1024 * 1024), 2),
+        "fetch_seconds": round(elapsed, 2),
+    }
+
+
 def open_spreadsheet(db: Optional[Session] = None) -> gspread.Spreadsheet:
     """Open the configured spreadsheet, caching the opened object per thread.
 

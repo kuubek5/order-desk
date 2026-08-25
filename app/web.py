@@ -159,6 +159,7 @@ from app.parser import HEADER_ROWS
 from app.google_oauth import OAuthFlowError, parse_client_config, run_authorization_flow
 from app.sheets import (
     get_worksheet_by_name,
+    measure_sheet_weight,
     latest_worksheet_on_or_before,
     open_spreadsheet,
     reset_sheets_cache,
@@ -3918,6 +3919,56 @@ async def save_notification_prefs(request: Request, db: Session = Depends(get_db
     if request.headers.get("HX-Request") == "true":
         return _toast_response("Налаштування сповіщень збережено")
     return RedirectResponse("/settings#notifications", status_code=303)
+
+
+@app.post("/settings/sheet-weight", response_class=HTMLResponse)
+def settings_sheet_weight(request: Request, db: Session = Depends(get_db)):
+    """Weigh the spreadsheet's conditional formatting — read-only diagnostic.
+
+    Answers "чому додавання таке повільне" with numbers instead of guesses: a
+    document whose day-tabs are copies of yesterday's accumulates per-cell
+    conditional-format rules, and every values call then pays for the whole
+    document's metadata. Nothing is modified here; cleaning is a separate,
+    explicitly requested action.
+    """
+    _require_settings_admin(request, db)
+
+    if not _sheets_configured(db):
+        result = {"state": "error", "message": "Спочатку підключіть Google Таблицю"}
+        return templates.TemplateResponse(
+            request, "_settings_check_result.html", {"result": result}
+        )
+
+    try:
+        weight = measure_sheet_weight(open_spreadsheet(db=db))
+    except Exception as exc:  # noqa: BLE001 — surface a safe reason, never raw Google text
+        logger.warning("Sheet weight probe failed", exc_info=True)
+        return templates.TemplateResponse(
+            request,
+            "_settings_check_result.html",
+            {"result": {"state": "error", "message": _sheets_access_error_message(db, exc)}},
+        )
+
+    # Thresholds from the measured test-sheet case: a healthy tab carries a
+    # handful of rules; thousands per tab is the copy-a-tab disease.
+    avg = weight["avg_rules"]
+    if avg >= 200:
+        state, verdict = "error", "Таблиця сильно роздута умовним форматуванням — це і є причина повільності"
+    elif avg >= 50:
+        state, verdict = "warning", "Умовного форматування помітно більше норми"
+    else:
+        state, verdict = "success", "Умовне форматування в нормі — повільність не через нього"
+
+    message = (
+        f"{verdict}. Правил: {weight['total_rules']} у {weight['tab_count']} вкладках "
+        f"(в середньому {avg} на вкладку, норма 5–20). "
+        f"Дрібних діапазонів 1×1/2×1: {weight['tiny_ranges']}. "
+        f"Метадані: {weight['payload_mb']} МБ, читались {weight['fetch_seconds']} с."
+    )
+    logger.info("SHEET-WEIGHT %s", message)
+    return templates.TemplateResponse(
+        request, "_settings_check_result.html", {"result": {"state": state, "message": message}}
+    )
 
 
 @app.post("/settings/selfcheck")

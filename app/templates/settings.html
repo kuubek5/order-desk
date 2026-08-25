@@ -111,6 +111,22 @@
                     </div>
                     <p class="settings-help">Звіт лягає в буфер обміну текстом — можна вставити в чат підтримки. Секрети в нього не потрапляють, лише «задано / не задано».</p>
                 </div>
+
+                {# Діагностика «чому таблиця гальмує»: рахує правила умовного
+                   форматування. День-вкладка, зроблена копією вчорашньої, тягне
+                   правила поклітинково — на тестовій було 105 тис. правил і
+                   612 МБ метаданих, кожен виклик платив за них. Лише читає. #}
+                <div class="settings-check-row" style="margin-top:14px">
+                    <button type="button" class="settings-secondary-button settings-check-button"
+                            hx-post="/settings/sheet-weight"
+                            hx-target="#sheet-weight-result"
+                            hx-swap="innerHTML"
+                            hx-indicator="#sheet-weight-spinner"
+                            hx-params="none">Перевірити вагу таблиці</button>
+                    <span class="check-spinner htmx-indicator" id="sheet-weight-spinner" aria-hidden="true"></span>
+                    <span id="sheet-weight-result" class="settings-check-result" aria-live="polite"></span>
+                </div>
+                <p class="settings-help">Рахує умовне форматування — найчастішу причину повільного додавання. Нічого не змінює, лише читає (може зайняти кілька секунд).</p>
                 {% endif %}
             </div>
         </section>
