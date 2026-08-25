@@ -669,3 +669,63 @@ def test_unchanged_tab_moves_nothing():
     ])
     assert result.moved == 0
     assert result.deleted == 0
+
+
+def test_refilled_row_returns_an_archived_order_to_the_queue():
+    """A row that is populated again brings its order back.
+
+    Real failure this guards (25.08.26, prod): works added by hand without a
+    наряд were overwritten in place by a bug, the operator deleted the bogus
+    entries (archiving them), and technicians then wrote REAL works into those
+    same rows. The sync matched each row to the archived order and updated its
+    fields — but left archived_at set, so the queue kept insisting the works did
+    not exist while they sat plainly in the sheet.
+    """
+    from datetime import datetime
+
+    session = make_session()
+    order = Order(
+        source="lab", sheet_tab="25.08.26", row_number=25,
+        work_order_no="TEST", material_color="TEST2", status="нове",
+        archived_at=datetime(2026, 8, 25, 9, 0, 0),
+    )
+    session.add(order)
+    session.commit()
+
+    sync_tab(session, "25.08.26", [make_row(
+        row_number=25, work_order_no="28393", material_color="1333",
+        kind="абатмент", quantity="1", job_code="", sum3d_id="",
+        calculated="", milled="",
+    )])
+    session.commit()
+
+    refreshed = session.get(Order, order.id)
+    assert refreshed.archived_at is None, "робота мала повернутись у чергу"
+    assert refreshed.work_order_no == "28393"
+    assert refreshed.material_color == "1333"
+
+
+def test_sync_does_not_touch_an_archived_order_whose_row_stays_empty():
+    """The counterpart: an order archived because its row was cleared must STAY
+    archived while the row remains empty — the fix above must not resurrect
+    everything the operator has ever deleted."""
+    from datetime import datetime
+
+    session = make_session()
+    order = Order(
+        source="lab", sheet_tab="25.08.26", row_number=25,
+        work_order_no="24122", status="нове",
+        archived_at=datetime(2026, 8, 25, 9, 0, 0),
+    )
+    session.add(order)
+    session.commit()
+    age_orders(session)
+
+    # Another row is present, so this is not an empty/transient read — row 25
+    # simply is not in the sheet any more. A different наряд, so the identity
+    # re-link cannot bind the archived order to this row.
+    sync_tab(session, "25.08.26", [make_row(row_number=1, work_order_no="99999")])
+    session.commit()
+
+    refreshed = session.get(Order, order.id)
+    assert refreshed.archived_at == datetime(2026, 8, 25, 9, 0, 0)

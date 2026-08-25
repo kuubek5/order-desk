@@ -374,6 +374,27 @@ def sync_tab(
             continue
 
         changed = False
+
+        # The row is populated again, so whatever archived this order no longer
+        # holds: its tab is present (we just read it), its row is not cleared
+        # (it is in `rows`), and if an operator deleted the work, the technicians
+        # have since written a new one into that row. The sheet is the source of
+        # truth, so bring it back into the queue — otherwise the fields below are
+        # updated on an order nobody can see, and a real work sits in the sheet
+        # while the queue claims it does not exist.
+        # Retention does NOT come through here: old days leave the queue via a
+        # date cutoff (RETENTION_DAYS in web.py), never by stamping archived_at,
+        # so a full-history import cannot resurrect them.
+        if existing.archived_at is not None:
+            existing.archived_at = None
+            session.add(
+                StatusEvent(
+                    order_id=existing.id, status=existing.status, actor="sync",
+                    note="рядок знову заповнено в таблиці — повернуто в чергу",
+                )
+            )
+            changed = True
+
         sheet_comment = _new_sheet_comment(existing.cam_comment, row.cam_comment)
         for field, value in fields.items():
             if getattr(existing, field) != value:
