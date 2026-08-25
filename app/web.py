@@ -1357,12 +1357,25 @@ def _append_manual_rows_warm(
     into the last available day rather than failing. Returns
     (resolved_tab_title, 1-indexed sheet rows), or None if the document has no
     dated tab at all."""
+    from time import perf_counter
+
     with SessionLocal() as s:
-        worksheet = latest_worksheet_on_or_before(open_spreadsheet(db=s), target_date)
+        t0 = perf_counter()
+        spreadsheet = open_spreadsheet(db=s)
+        t_open = perf_counter()
+        worksheet = latest_worksheet_on_or_before(spreadsheet, target_date)
+        t_tab = perf_counter()
         if worksheet is None:
             return None
         rows = append_manual_work_rows(
             worksheet, works, paint_blue=paint_blue, placement=placement,
+        )
+        t_write = perf_counter()
+        # Розбивка фаз: без неї «додавання довге» неможливо діагностувати —
+        # 40с холодного open і 3с запису лікуються по-різному.
+        logger.info(
+            "MANUAL-ADD timing: open=%.2fs tab=%.2fs write=%.2fs total=%.2fs rows=%d",
+            t_open - t0, t_tab - t_open, t_write - t_tab, t_write - t0, len(works),
         )
         return worksheet.title, rows
 
@@ -1382,6 +1395,36 @@ def _write_sheet_fields_background(order_id: int, fields: set[str]) -> None:
                     bg.commit()
         except Exception:
             logger.exception("Background sheet write-back failed for order %s", order_id)
+
+    _sheet_writeback_pool.submit(worker)
+
+
+def _clear_sheet_row_background(sheet_tab: str, row_number: int) -> None:
+    """Blank a deleted order's row in the sheet, on the write-back worker.
+
+    BLANK, never delete: removing a row in Google shifts every row below it up,
+    which would break the row_number linkage of all the works underneath (the
+    exact corruption app/sync.py::_relink_moved_rows had to be written to
+    repair). An all-empty row reads as free on the next sync, so nothing is
+    re-imported and the neighbours keep their positions.
+    """
+    def worker() -> None:
+        try:
+            with SessionLocal() as bg:
+                worksheet = get_worksheet_by_name(open_spreadsheet(db=bg), sheet_tab)
+                if worksheet is None:
+                    logger.warning("Delete: sheet tab %s not found", sheet_tab)
+                    return
+                clear_placeholder_row(worksheet, row_number + HEADER_ROWS)
+                bg.add(
+                    SyncLog(
+                        direction="db_to_sheet", sheet_tab=sheet_tab, status="ok",
+                        message=f"видалено роботу: очищено рядок {row_number + HEADER_ROWS}",
+                    )
+                )
+                bg.commit()
+        except Exception:
+            logger.exception("Clearing sheet row failed for %s row %s", sheet_tab, row_number)
 
     _sheet_writeback_pool.submit(worker)
 
@@ -2291,6 +2334,52 @@ def create_manual_order(
             _recent_manual_adds.pop(uid, None)
 
     return RedirectResponse(f"/?source={'lab' if is_lab else 'client'}", status_code=303)
+
+
+@app.post("/orders/{order_id}/delete")
+async def delete_order(request: Request, order_id: int, db: Session = Depends(get_db)):
+    """Remove a work from the queue and blank its row in the sheet.
+
+    Archive, don't destroy: the order keeps its history and moves to «Архів»,
+    matching what a row vanishing from the sheet already does (see
+    app/sync.py). Deleting the DB row instead would drop its StatusEvents and
+    comments, and the next sync would happily re-import the work anyway.
+
+    The sheet row is BLANKED on the background writer, so the operator isn't
+    held for a Google round-trip through the lab proxy. Email-sourced works
+    (source="email") never had a sheet row — for them this is DB-only.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="роботу не знайдено")
+    if order.archived_at is not None:
+        return _toast_response("Робота вже в архіві", kind="info")
+
+    order.archived_at = datetime.utcnow()
+    db.add(
+        StatusEvent(
+            order_id=order.id, operator_id=user.id, status=order.status,
+            actor=user.username, note="видалено з черги",
+        )
+    )
+    db.commit()
+
+    if order.source in ("lab", "sheet_client") and order.sheet_tab and order.row_number:
+        _clear_sheet_row_background(order.sheet_tab, order.row_number)
+        message = "Роботу видалено з черги, рядок у таблиці очищено"
+    else:
+        message = "Роботу видалено з черги"
+
+    if request.headers.get("HX-Request") == "true":
+        response = _toast_response(message)
+        # Хай сторінка перемалюється — рядок має зникнути з черги одразу.
+        response.headers["HX-Redirect"] = "/"
+        return response
+    return RedirectResponse("/", status_code=303)
 
 
 @app.post("/orders/{order_id}/status", response_class=HTMLResponse)

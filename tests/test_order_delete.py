@@ -1,0 +1,137 @@
+"""Видалення роботи з черги.
+
+Головне рішення: видалення = АРХІВАЦІЯ, а не знищення рядка в БД. Інакше
+губиться історія статусів і коментарі, а наступний синк спокійно імпортує
+роботу назад із таблиці. Рядок у таблиці при цьому ОЧИЩАЄТЬСЯ, а не
+видаляється — видалення зсунуло б усі роботи нижче (див. test_sync.py).
+"""
+
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import pytest
+from fastapi import HTTPException
+from starlette.datastructures import Headers
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
+
+import app.web as web
+from app.db import Base
+from app.models import Order, StatusEvent, User
+
+
+def _database():
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    return engine
+
+
+def _user(db: Session) -> User:
+    u = User(username="op", password_hash="unused", full_name="Оператор", role="оператор")
+    db.add(u)
+    db.commit()
+    return u
+
+
+def _request(user_id, headers=None):
+    return SimpleNamespace(
+        session={} if user_id is None else {"user_id": user_id},
+        client=SimpleNamespace(host="127.0.0.1"),
+        headers=Headers(headers or {}),
+    )
+
+
+def _order(db: Session, **kw) -> Order:
+    defaults = dict(source="lab", sheet_tab="25.08.26", row_number=7,
+                    work_order_no="24122", status="нове")
+    defaults.update(kw)
+    o = Order(**defaults)
+    db.add(o)
+    db.commit()
+    return o
+
+
+def test_delete_archives_instead_of_destroying():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        with patch.object(web, "_clear_sheet_row_background") as clear:
+            asyncio.run(web.delete_order(request=_request(user.id), order_id=order.id, db=db))
+        clear.assert_called_once_with("25.08.26", 7)
+
+    with Session(engine, expire_on_commit=False) as db:
+        kept = db.get(Order, order.id)
+        assert kept is not None, "рядок у БД має лишитись — інакше зникне історія"
+        assert kept.archived_at is not None
+
+
+def test_delete_records_who_did_it():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        with patch.object(web, "_clear_sheet_row_background"):
+            asyncio.run(web.delete_order(request=_request(user.id), order_id=order.id, db=db))
+        events = db.scalars(select(StatusEvent).where(StatusEvent.order_id == order.id)).all()
+    assert any(e.note == "видалено з черги" and e.operator_id == user.id for e in events)
+
+
+def test_email_order_has_no_sheet_row_to_clear():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, source="email", sheet_tab=None, row_number=None, work_order_no=None)
+        with patch.object(web, "_clear_sheet_row_background") as clear:
+            asyncio.run(web.delete_order(request=_request(user.id), order_id=order.id, db=db))
+        clear.assert_not_called()
+        assert db.get(Order, order.id).archived_at is not None
+
+
+def test_deleting_twice_is_harmless():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        with patch.object(web, "_clear_sheet_row_background") as clear:
+            asyncio.run(web.delete_order(request=_request(user.id), order_id=order.id, db=db))
+            first = db.get(Order, order.id).archived_at
+            asyncio.run(web.delete_order(request=_request(user.id), order_id=order.id, db=db))
+            # другий виклик не чіпає таблицю й не перештамповує дату
+            assert clear.call_count == 1
+            assert db.get(Order, order.id).archived_at == first
+
+
+def test_delete_requires_login():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        order = _order(db)
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(web.delete_order(request=_request(None), order_id=order.id, db=db))
+    assert exc.value.status_code == 401
+
+
+def test_delete_unknown_order_is_404():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(web.delete_order(request=_request(user.id), order_id=999, db=db))
+    assert exc.value.status_code == 404
+
+
+def test_htmx_delete_redirects_so_the_row_leaves_the_queue():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        with patch.object(web, "_clear_sheet_row_background"):
+            response = asyncio.run(
+                web.delete_order(
+                    request=_request(user.id, {"HX-Request": "true"}),
+                    order_id=order.id, db=db,
+                )
+            )
+    assert response.headers["HX-Redirect"] == "/"

@@ -5310,3 +5310,13 @@ body:has(.detail-pane.open) .toast-stack[data-toast-pos="tr"]{right:420px}
 .mail-nav-count{background:transparent;border-color:var(--line-2,#3a4a5f);
   color:var(--ink-2,#8fa3bb);box-shadow:none;animation:none}
 .rail-nav-item.is-active .mail-nav-count{border-color:rgba(45,212,191,.4);color:var(--accent-c,#5eead4)}
+
+/* Зона видалення в паспорті роботи — відокремлена червоним, щоб не стояла
+   врівень зі звичайними діями (правило «безпека дій» з CLAUDE.md §14). */
+.passport2 .p2-danger{border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.04)}
+.passport2 .p2-danger h3{color:#ffc9c9}
+.passport2 .p2-delete{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 15px;
+  border-radius:var(--r-ctl);border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.06);
+  color:#f0b4b4;font-size:13px;font-weight:600;cursor:pointer;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease}
+.passport2 .p2-delete:hover{background:rgba(248,113,113,.14);border-color:var(--alarm);color:#ffd7d7}

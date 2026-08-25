@@ -46,6 +46,9 @@ class SyncResult:
     updated: int = 0
     unchanged: int = 0
     deleted: int = 0
+    # Orders whose sheet row shifted (a row above them was deleted) and were
+    # re-linked to their new position instead of being overwritten.
+    moved: int = 0
 
 
 def _fields(row: OrderRow) -> dict:
@@ -182,6 +185,89 @@ def _should_apply_sheet_status(current: str, inferred: str) -> bool:
     return inferred_rank > current_rank
 
 
+def _row_identity(row: OrderRow) -> tuple | None:
+    """Stable identity of a sheet row, independent of its position.
+
+    A наряд number identifies a lab work; a наряд-less client row is identified
+    by client name + material + quantity, which is what the operator typed and
+    what makes that row recognisably "the same work" after rows above it are
+    deleted. Returns None when the row carries nothing identifying — such a row
+    can only ever be matched positionally.
+    """
+    if row.is_client_row:
+        client = (row.kind or "").strip().casefold()
+        if not client:
+            return None
+        return ("client", client, (row.material_color or "").strip().casefold(),
+                (row.quantity or "").strip())
+    naryad = (row.work_order_no or "").strip()
+    if not naryad:
+        return None
+    return ("lab", naryad.casefold())
+
+
+def _order_identity(order: Order) -> tuple | None:
+    """`_row_identity` for an already-imported order — must stay in step with it."""
+    if order.source == "sheet_client":
+        client = (order.client_name or "").strip().casefold()
+        if not client:
+            return None
+        return ("client", client, (order.material_color or "").strip().casefold(),
+                (order.quantity or "").strip())
+    if order.source != "lab":
+        return None
+    naryad = (order.work_order_no or "").strip()
+    if not naryad:
+        return None
+    return ("lab", naryad.casefold())
+
+
+def _relink_moved_rows(existing_by_row: dict[int, Order], rows: list[OrderRow]) -> int:
+    """Repoint orders whose row shifted, rewriting `existing_by_row` in place.
+
+    Only unambiguous identities take part: a key that appears more than once on
+    either side is dropped, because guessing between two repeat works would be
+    worse than falling back to position. Returns how many orders were moved.
+    """
+    row_by_identity: dict[tuple, OrderRow] = {}
+    ambiguous: set[tuple] = set()
+    for row in rows:
+        key = _row_identity(row)
+        if key is None:
+            continue
+        if key in row_by_identity:
+            ambiguous.add(key)
+        row_by_identity[key] = row
+
+    order_by_identity: dict[tuple, Order] = {}
+    for order in existing_by_row.values():
+        key = _order_identity(order)
+        if key is None:
+            continue
+        if key in order_by_identity:
+            ambiguous.add(key)
+        order_by_identity[key] = order
+
+    moved = 0
+    for key, row in row_by_identity.items():
+        if key in ambiguous:
+            continue
+        order = order_by_identity.get(key)
+        if order is None or order.row_number == row.row_number:
+            continue
+        # Don't steal a slot another order legitimately occupies by identity;
+        # that pairing is resolved on its own iteration.
+        occupant = existing_by_row.get(row.row_number)
+        if occupant is not None and _order_identity(occupant) not in (None, key):
+            if _order_identity(occupant) in row_by_identity and _order_identity(occupant) not in ambiguous:
+                continue
+        existing_by_row.pop(order.row_number, None)
+        order.row_number = row.row_number
+        existing_by_row[row.row_number] = order
+        moved += 1
+    return moved
+
+
 def sync_tab(
     session: Session,
     sheet_tab: str,
@@ -228,10 +314,33 @@ def sync_tab(
     had_raw_rows = bool(rows)
     rows = [row for row in rows if not _is_non_queue_row(row, row_fills)]
 
+    # Re-link orders whose row MOVED. Position alone is not a stable key: the
+    # comment below used to assume a removed row is *cleared* (neighbours keep
+    # their numbers), but deleting a row in Google Sheets SHIFTS everything
+    # below up by one. Purely positional matching then quietly rewrote each
+    # surviving order with its neighbour's data and archived the wrong one — the
+    # deleted work appeared to "still hang" in the queue while showing someone
+    # else's numbers, with its status history attached.
+    #
+    # So: match by a stable identity first (наряд, or client+material for
+    # наряд-less client rows), and only fall back to position. Identity is used
+    # ONLY when it is unique on both sides within the tab — repeat works legitimately
+    # share a наряд, and two clients can order the same material the same day, so
+    # an ambiguous key must never win over position.
+    # Snapshot BEFORE the re-link: it evicts a displaced order from the map, and
+    # reconciliation must still see that order to decide its fate.
+    tab_orders = list(existing_by_row.values())
+    matched_ids: set[int] = set()
+
+    moved = _relink_moved_rows(existing_by_row, rows)
+    result.moved += moved
+
     for row in rows:
-        # Matched by position within the tab's data rows, not job_code, since
-        # job_code is only filled in by the operator after the job is taken.
+        # Position within the tab's data rows, after the identity re-link above
+        # has corrected any rows that shifted.
         existing = existing_by_row.get(row.row_number)
+        if existing is not None and existing.id is not None:
+            matched_ids.add(existing.id)
 
         # A наряд-less client row (blue-filled email client entered by hand)
         # is a different kind of record: source "sheet_client", client name in
@@ -322,9 +431,13 @@ def sync_tab(
     # row still gets reconciled by any sync after the window.
     grace_cutoff = datetime.utcnow() - timedelta(seconds=120)
     if had_raw_rows:
-        seen_rows = {row.row_number for row in rows}
-        for row_number, order in existing_by_row.items():
-            if row_number in seen_rows or order.source not in ("lab", "sheet_client"):
+        for order in tab_orders:
+            # "Matched" beats "its number is present": after a row above it was
+            # deleted, a vanished order's OLD number is occupied by the row that
+            # shifted up, so presence of the number proves nothing.
+            if order.id is not None and order.id in matched_ids:
+                continue
+            if order.source not in ("lab", "sheet_client"):
                 continue
             if order.created_at is not None and order.created_at > grace_cutoff:
                 continue

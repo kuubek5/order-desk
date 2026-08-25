@@ -553,3 +553,119 @@ def test_active_rework_none_without_records():
         session.add(order)
         session.commit()
         assert order.active_rework is None
+
+
+# --- Видалення рядка в Google зсуває номери -------------------------------
+#
+# Позиція в таблиці НЕ є стабільним ключем: «Видалити рядок» у Google посуває
+# все нижче вгору. Раніше звʼязок тримався лише на номері рядка, і кожна робота
+# нижче тихо перезаписувалась даними сусіда, а в архів їхала не та. Тепер
+# спершу зіставляємо за стійкою ознакою (наряд / клієнт+матеріал), і лише потім
+# за позицією.
+
+
+def test_deleted_sheet_row_archives_that_work_and_shifts_the_rest():
+    session = make_session()
+    sync_tab(session, "25.08.26", [
+        make_row(row_number=7, work_order_no="AAA", sum3d_id="S-A"),
+        make_row(row_number=8, work_order_no="BBB", sum3d_id="S-B"),
+        make_row(row_number=9, work_order_no="CCC", sum3d_id="S-C"),
+    ])
+    session.commit()
+    age_orders(session)
+
+    # Оператор ВИДАЛЯЄ рядок BBB (не очищає) — CCC переїжджає на 8.
+    result = sync_tab(session, "25.08.26", [
+        make_row(row_number=7, work_order_no="AAA", sum3d_id="S-A"),
+        make_row(row_number=8, work_order_no="CCC", sum3d_id="S-C"),
+    ])
+    session.commit()
+
+    by_naryad = {o.work_order_no: o for o in session.scalars(select(Order))}
+    assert by_naryad["BBB"].archived_at is not None, "видалена робота має піти в архів"
+    assert by_naryad["CCC"].archived_at is None, "уціліла робота не має архівуватись"
+    assert by_naryad["CCC"].row_number == 8, "CCC мав перезвʼязатись на новий рядок"
+    assert by_naryad["AAA"].row_number == 7
+    assert result.moved == 1
+
+
+def test_shift_does_not_overwrite_a_work_with_its_neighbours_data():
+    """Найгірший наслідок старої поведінки: BBB лишався в черзі, але показував
+    дані CCC — разом із чужою історією статусів."""
+    session = make_session()
+    sync_tab(session, "25.08.26", [
+        make_row(row_number=7, work_order_no="BBB", sum3d_id="S-B", material_color="пмма A2"),
+        make_row(row_number=8, work_order_no="CCC", sum3d_id="S-C", material_color="титан"),
+    ])
+    session.commit()
+    age_orders(session)
+
+    sync_tab(session, "25.08.26", [
+        make_row(row_number=7, work_order_no="CCC", sum3d_id="S-C", material_color="титан"),
+    ])
+    session.commit()
+
+    by_naryad = {o.work_order_no: o for o in session.scalars(select(Order))}
+    assert set(by_naryad) == {"BBB", "CCC"}, "жодна робота не мала зникнути чи здублюватись"
+    assert by_naryad["BBB"].material_color == "пмма A2", "BBB не має отримати матеріал CCC"
+    assert by_naryad["BBB"].archived_at is not None
+    assert by_naryad["CCC"].material_color == "титан"
+    assert by_naryad["CCC"].archived_at is None
+
+
+def test_client_row_survives_a_shift_by_client_and_material():
+    """У клієнтських рядків немає наряду — ознака це клієнт + матеріал + к-сть."""
+    session = make_session()
+    sync_tab(session, "25.08.26", [
+        make_client_row(row_number=5, kind="Басараб", material_color="mono a3"),
+        make_client_row(row_number=6, kind="Ковальчук", material_color="пмма A2"),
+    ])
+    session.commit()
+    age_orders(session)
+
+    sync_tab(session, "25.08.26", [
+        make_client_row(row_number=5, kind="Ковальчук", material_color="пмма A2"),
+    ])
+    session.commit()
+
+    by_client = {o.client_name: o for o in session.scalars(select(Order))}
+    assert by_client["Басараб"].archived_at is not None
+    assert by_client["Ковальчук"].archived_at is None
+    assert by_client["Ковальчук"].row_number == 5
+
+
+def test_repeat_works_sharing_a_naryad_fall_back_to_position():
+    """Повторні роботи законно мають однаковий наряд — вгадувати між ними
+    гірше, ніж лишитись на позиції. Неоднозначна ознака не бере участі."""
+    session = make_session()
+    sync_tab(session, "25.08.26", [
+        make_row(row_number=7, work_order_no="DUP", sum3d_id="S-1", material_color="моно A2"),
+        make_row(row_number=8, work_order_no="DUP", sum3d_id="S-2", material_color="титан"),
+    ])
+    session.commit()
+    age_orders(session)
+
+    result = sync_tab(session, "25.08.26", [
+        make_row(row_number=7, work_order_no="DUP", sum3d_id="S-1", material_color="моно A2"),
+        make_row(row_number=8, work_order_no="DUP", sum3d_id="S-2", material_color="титан"),
+    ])
+    session.commit()
+    assert result.moved == 0
+    assert session.query(Order).count() == 2
+
+
+def test_unchanged_tab_moves_nothing():
+    session = make_session()
+    sync_tab(session, "25.08.26", [
+        make_row(row_number=7, work_order_no="AAA"),
+        make_row(row_number=8, work_order_no="BBB"),
+    ])
+    session.commit()
+    age_orders(session)
+
+    result = sync_tab(session, "25.08.26", [
+        make_row(row_number=7, work_order_no="AAA"),
+        make_row(row_number=8, work_order_no="BBB"),
+    ])
+    assert result.moved == 0
+    assert result.deleted == 0

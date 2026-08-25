@@ -195,6 +195,25 @@
         <p class="text-muted">переробок не було</p>
         {% endif %}
     </div>
+
+    {# Видалення = архівація + очищення рядка в таблиці. Історія й коментарі
+       зберігаються, роботу видно в «Архіві». Для архівних приховано. #}
+    {% if not read_only %}
+    <div class="p2-card p2-danger">
+        <h3>Видалити роботу</h3>
+        <p class="text-muted">
+            Робота зникне з черги й перейде в «Архів» — історія та коментарі збережуться.
+            {% if order.sheet_tab and order.source in ('lab', 'sheet_client') %}
+            Рядок у Google Таблиці буде <strong>очищено</strong> (не видалено — щоб не зсунулись інші роботи).
+            {% endif %}
+        </p>
+        <button type="button" class="settings-backup-danger p2-delete"
+                hx-post="/orders/{{ order.id }}/delete"
+                hx-confirm="Видалити цю роботу з черги? Її буде переміщено в «Архів», а рядок у таблиці очищено."
+                hx-indicator="#p2-delete-spinner">Видалити з черги</button>
+        <span class="check-spinner htmx-indicator" id="p2-delete-spinner" aria-hidden="true"></span>
+    </div>
+    {% endif %}
 </main>
 
 <script>
