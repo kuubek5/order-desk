@@ -422,6 +422,15 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 14px}
 .setv2 .settings-form{display:flex;flex-direction:column;gap:14px}
 
+/* Кабінет оператора: вужча колонка карток, монолітерна літера, вихід-зі-зміни */
+.setv2 .setv2-stack{display:flex;flex-direction:column;gap:14px;max-width:26rem}
+.setv2 .acc-who{font-size:12.5px;color:var(--ink-2);line-height:1.5;margin:0 0 2px}
+.setv2 .acc-who strong{color:var(--ink);font-weight:600}
+.setv2 .acc-letter{font-family:var(--font-mono);font-weight:600;color:var(--accent-c)}
+.setv2 .acc-letter-input{width:4.5rem;text-align:center;text-transform:uppercase;font-family:var(--font-mono);letter-spacing:.04em}
+.setv2 .settings-submit.acc-endshift{background:transparent;border-color:var(--control-edge);color:var(--ink);box-shadow:none}
+.setv2 .settings-submit.acc-endshift:hover{border-color:var(--accent-c);color:var(--accent-c);background:transparent;box-shadow:none;transform:translateY(-1px)}
+
 /* картки-групи */
 .setv2 .settings-group,.setv2 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);padding:15px 16px;margin:0}
 .setv2 .settings-group:hover,.setv2 .card:hover{border-color:var(--line)}

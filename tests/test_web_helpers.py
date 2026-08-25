@@ -596,7 +596,7 @@ def test_account_password_change_succeeds_with_correct_current_password():
     )
 
     assert response.template.name == "account.html"
-    assert response.context["saved"] is True
+    assert response.context["saved"] == "Пароль змінено"
     assert db.committed is True
     # The stored hash must actually change, not just report success.
     assert user.password_hash != hash_password("old-pw")

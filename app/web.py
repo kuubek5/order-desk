@@ -1680,7 +1680,31 @@ async def post_account_password(
     user.password_hash = hash_password(new_password)
     db.commit()
 
-    return templates.TemplateResponse(request, "account.html", {"user": user, "saved": True})
+    return templates.TemplateResponse(request, "account.html", {"user": user, "saved": "Пароль змінено"})
+
+
+@app.post("/account/initial", response_class=HTMLResponse)
+async def post_account_initial(
+    request: Request,
+    sheet_initial: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Operator sets their OWN sheet letter (the one stamped into «Прорахував»
+    when they enter a Sum3D). Self-service counterpart of the admin route
+    /settings/users/{id}/initial — same normalize + uniqueness validation."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    initial = _normalize_initial(sheet_initial)
+    if initial is not None:
+        err = _validate_initial(db, initial, exclude_user_id=user.id)
+        if err:
+            return templates.TemplateResponse(request, "account.html", {"user": user, "error": err})
+
+    user.sheet_initial = initial
+    db.commit()
+    return templates.TemplateResponse(request, "account.html", {"user": user, "saved": "Літеру збережено"})
 
 
 @app.get("/", response_class=HTMLResponse)

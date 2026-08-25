@@ -208,3 +208,39 @@ def test_write_rework_calculated_targets_column_X():
     # row 1 + HEADER_ROWS(6) = sheet row 7, column X (24)
     ws.update_cell.assert_called_once_with(7, COL_REDO_CALCULATED, "В")
     assert COL_REDO_CALCULATED == 24
+
+
+# --- operator cabinet: self-service letter -----------------------------------
+
+
+def test_account_initial_lets_operator_set_own_letter():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        op = _user(db, username="roma")
+        with patch.object(web.templates, "TemplateResponse", return_value="ok"):
+            asyncio.run(web.post_account_initial(
+                request=_request(op.id), sheet_initial="р", db=db))
+        assert db.get(User, op.id).sheet_initial == "Р"  # normalized, saved
+
+
+def test_account_initial_rejects_letter_taken_by_another_operator():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        other = _user(db, username="kostya", initial="К")
+        op = _user(db, username="roma")
+        with patch.object(web.templates, "TemplateResponse", return_value="err") as tr:
+            asyncio.run(web.post_account_initial(
+                request=_request(op.id), sheet_initial="к", db=db))
+        # error surfaced, letter NOT set
+        assert tr.call_args[0][2].get("error")
+        assert db.get(User, op.id).sheet_initial is None
+
+
+def test_account_initial_keeping_own_letter_is_allowed():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        op = _user(db, username="stas", initial="СТ")
+        with patch.object(web.templates, "TemplateResponse", return_value="ok"):
+            asyncio.run(web.post_account_initial(
+                request=_request(op.id), sheet_initial="СТ", db=db))
+        assert db.get(User, op.id).sheet_initial == "СТ"  # not a false "taken" clash
