@@ -59,6 +59,66 @@ def _sheet_row(order: Order) -> int:
     return order.row_number + HEADER_ROWS
 
 
+def _identity_cell(order: Order) -> tuple[int | None, str]:
+    """The sheet column + expected value that identifies this order's work,
+    independent of position: the наряд (column B) for a lab row, the client name
+    (column E, the "вид" column) for a наряд-less client row. Used to confirm a
+    stored row_number still points at the right work before writing to it."""
+    source = getattr(order, "source", None)
+    if source == "lab":
+        return COL_WORK_ORDER_NO, (getattr(order, "work_order_no", "") or "").strip()
+    if source == "sheet_client":
+        return COL_KIND, (getattr(order, "client_name", "") or "").strip()
+    return None, ""
+
+
+def _resolve_row(worksheet: gspread.Worksheet, order: Order) -> int | None:
+    """The sheet row that ACTUALLY holds this order's work right now.
+
+    row_number is captured at import time, but deleting a row in Google Sheets
+    shifts every row below it up by one — so a write aimed at the stored row
+    would land on a neighbour's data until the next sync re-links positions
+    (~15s later). This confirms the stored row still carries the order's наряд/
+    client and, when a shift has moved it, relocates by scanning the identity
+    column and corrects order.row_number in place.
+
+    Returns the correct 1-indexed row, or None when the work can't be located
+    unambiguously (row genuinely gone, or a repeated наряд/duplicate client makes
+    the match ambiguous) — the caller must then SKIP the write rather than risk
+    clobbering someone else's row. The DB keeps the value regardless; the next
+    sync re-links row_number and a later write reaches the right cell."""
+    row = _sheet_row(order)
+    col, expected = _identity_cell(order)
+    if col is None or not expected:
+        return row  # nothing to verify against — trust the stored position
+
+    try:
+        current = worksheet.cell(row, col).value
+    except Exception:
+        return row  # read failed — don't block the write on a transient hiccup
+    if not isinstance(current, str):
+        return row  # no real value to compare (e.g. a mock) — trust stored row
+    if current.strip().casefold() == expected.casefold():
+        return row  # fast path: the row still holds this work
+
+    # Mismatch — the row shifted. Relocate by the identity column, but only when
+    # the match is UNIQUE: repeat works legitimately share a наряд and two clients
+    # can order the same material, so an ambiguous key must skip, not guess.
+    try:
+        values = worksheet.col_values(col)
+    except Exception:
+        return None
+    matches = [
+        idx for idx, value in enumerate(values, start=1)
+        if isinstance(value, str) and value.strip().casefold() == expected.casefold()
+    ]
+    if len(matches) != 1:
+        return None  # gone or ambiguous — skip rather than clobber a neighbour
+    resolved = matches[0]
+    order.row_number = resolved - HEADER_ROWS
+    return resolved
+
+
 def _set_row_fills(
     spreadsheet: gspread.Spreadsheet, rows: list[tuple[int, int]], color: dict
 ) -> None:
@@ -139,7 +199,12 @@ def clear_placeholder_row(worksheet: gspread.Worksheet, row: int) -> None:
 
 
 def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[str]) -> None:
-    row = _sheet_row(order)
+    row = _resolve_row(worksheet, order)
+    if row is None:
+        # The row shifted and can't be re-located unambiguously — skip rather
+        # than write sum3d/markers onto a neighbour's row. The DB keeps the value
+        # (sum3d_id is fill-only on read); the next sync re-links row_number.
+        return
     column_by_field = {
         "cam_comment": COL_CAM_COMMENT,
         "sum3d_id": COL_SUM3D_ID,
@@ -174,7 +239,9 @@ def write_rework_sum3d(worksheet: gspread.Worksheet, order: Order, value: str) -
     """Write the rework redo Sum3D ID into column W ("Заповнює cam оператор" →
     ID) of the order's row — the second ID column, distinct from the main
     Sum3D ID in column L. Touches only that one cell, never the whole row."""
-    row = _sheet_row(order)
+    row = _resolve_row(worksheet, order)
+    if row is None:
+        return  # row shifted, can't re-locate safely — skip (see write_order_fields)
     call_with_retry(lambda: worksheet.update_cell(row, COL_REDO_SUM3D_ID, value or ""))
 
 

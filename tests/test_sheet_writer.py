@@ -747,3 +747,65 @@ def test_clear_placeholder_row_whitens_the_whole_ak_block():
     assert rc["range"]["endColumnIndex"] == COL_CAM_COMMENT  # A:K, not just E
     assert rc["range"]["startRowIndex"] == 62 and rc["range"]["endRowIndex"] == 63
     assert rc["cell"]["userEnteredFormat"]["backgroundColor"] == _WHITE
+
+
+def _lab_order(work_order_no="A", row_number=1, sum3d_id="12-01-45"):
+    return SimpleNamespace(
+        id=1, row_number=row_number, sheet_tab="27.07.26", source="lab",
+        work_order_no=work_order_no, client_name=None,
+        cam_comment="", sum3d_id=sum3d_id, calculated_raw="", milled_raw="",
+    )
+
+
+class TestResolveRowGuardsAgainstShift:
+    """#4: a stored row_number goes stale when a row above is DELETED in Google
+    Sheets (everything below shifts up). write_order_fields must not write onto
+    the neighbour that now sits at the old position — it verifies the наряд and
+    relocates, or skips when it can't match unambiguously."""
+
+    def test_writes_to_stored_row_when_naryad_still_matches(self):
+        from app.sheet_writer import COL_SUM3D_ID
+        order = _lab_order(work_order_no="A", row_number=1)  # stored sheet row 7
+        ws = MagicMock()
+        ws.cell.return_value = SimpleNamespace(value="A")  # row 7 still holds наряд A
+        write_order_fields(ws, order, {"sum3d_id"})
+        updates = ws.batch_update.call_args[0][0]
+        assert updates[0]["range"] == gspread.utils.rowcol_to_a1(7, COL_SUM3D_ID)
+        assert order.row_number == 1  # unchanged
+
+    def test_relocates_and_fixes_row_number_after_a_shift(self):
+        from app.sheet_writer import COL_SUM3D_ID
+        order = _lab_order(work_order_no="A", row_number=2)  # stored sheet row 8
+        ws = MagicMock()
+        # Row above deleted: наряд A shifted from row 8 up to row 7; row 8 now B.
+        ws.cell.return_value = SimpleNamespace(value="B")  # mismatch at stored row
+        ws.col_values.return_value = [""] * 6 + ["A", "B"]  # A is at sheet row 7
+        write_order_fields(ws, order, {"sum3d_id"})
+        updates = ws.batch_update.call_args[0][0]
+        assert updates[0]["range"] == gspread.utils.rowcol_to_a1(7, COL_SUM3D_ID)
+        assert order.row_number == 1  # corrected (7 - HEADER_ROWS)
+
+    def test_skips_write_when_naryad_is_gone(self):
+        order = _lab_order(work_order_no="A", row_number=2)
+        ws = MagicMock()
+        ws.cell.return_value = SimpleNamespace(value="B")  # mismatch
+        ws.col_values.return_value = [""] * 6 + ["X", "B"]  # no наряд A anywhere
+        write_order_fields(ws, order, {"sum3d_id"})
+        ws.batch_update.assert_not_called()  # never clobber a neighbour
+
+    def test_skips_write_when_naryad_is_ambiguous(self):
+        order = _lab_order(work_order_no="A", row_number=2)
+        ws = MagicMock()
+        ws.cell.return_value = SimpleNamespace(value="B")  # mismatch
+        ws.col_values.return_value = [""] * 6 + ["A", "B", "A"]  # two rows carry A
+        write_order_fields(ws, order, {"sum3d_id"})
+        ws.batch_update.assert_not_called()
+
+    def test_rework_sum3d_also_guarded(self):
+        from app.sheet_writer import write_rework_sum3d
+        order = _lab_order(work_order_no="A", row_number=2)
+        ws = MagicMock()
+        ws.cell.return_value = SimpleNamespace(value="B")  # mismatch
+        ws.col_values.return_value = [""] * 6 + ["X"]  # gone
+        write_rework_sum3d(ws, order, "22-01-02")
+        ws.update_cell.assert_not_called()
