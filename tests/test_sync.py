@@ -987,3 +987,46 @@ def test_active_hybrid_order_self_heals_on_next_sync():
     assert hybrid.source == "lab"
     assert hybrid.client_name is None
     assert hybrid.work_order_no == "28500"
+
+
+def test_two_naryads_deleted_together_both_archive():
+    """Rома 25.08.26: two наряди added to a tab, both deleted from the sheet,
+    but only ONE left the CRM. Clean flow — distinct rows — must archive both."""
+    session = make_session()
+    sync_tab(session, "26.08.26", [
+        make_row(row_number=1, work_order_no="28601"),
+        make_row(row_number=2, work_order_no="28602"),
+    ], raw_row_count=10)
+    session.commit()
+    age_orders(session)
+    assert sum(o.archived_at is None for o in session.scalars(select(Order))) == 2
+
+    # Both cleared in the sheet → tab parses empty, but the read worked (headers).
+    sync_tab(session, "26.08.26", [], raw_row_count=6)
+    session.commit()
+
+    active = [o for o in session.scalars(select(Order)) if o.archived_at is None]
+    assert active == [], f"обидва мали піти в архів, лишилось: {[o.work_order_no for o in active]}"
+
+
+def test_duplicate_row_numbers_do_not_hide_an_order_from_deletion():
+    """Root-cause guard: two orders sharing a row_number (left by the earlier
+    manual-add overwrite bug) must BOTH be reconciled. Keying the preload by
+    row_number silently dropped one, so it was never archived — the '2 deleted,
+    1 stayed' report."""
+    from datetime import datetime, timedelta
+    session = make_session()
+    old = datetime.utcnow() - timedelta(minutes=10)
+    for naryad in ("28601", "28602"):
+        session.add(Order(
+            source="lab", sheet_tab="26.08.26", row_number=1,  # SAME row_number
+            work_order_no=naryad, material_color="цирконій", status="нове",
+            created_at=old,
+        ))
+    session.commit()
+
+    sync_tab(session, "26.08.26", [], raw_row_count=6)
+    session.commit()
+
+    active = [o for o in session.scalars(select(Order)) if o.archived_at is None]
+    assert active == [], f"обидва мали піти в архів, лишилось: {[o.work_order_no for o in active]}"

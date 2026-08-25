@@ -343,16 +343,19 @@ def sync_tab(
     result = SyncResult()
 
     # Preload every existing order for this tab in ONE query instead of a
-    # SELECT per row (the old N+1). A first import can span ~30 tabs of ~40
-    # rows each; keyed by row_number here, that collapses ~1200 point queries
-    # to ~30. row_number is unique within a tab (1-based data-row position),
-    # and each appears at most once in `rows`, so the map has no collisions.
-    existing_by_row = {
-        order.row_number: order
-        for order in session.execute(
-            select(Order).where(Order.sheet_tab == sheet_tab)
+    # SELECT per row (the old N+1). `all_tab_orders` keeps EVERY order — the
+    # positional map below can hold only one per row_number, and earlier bugs
+    # (manual-add overwrite, hybrid resurrect) could leave two orders sharing a
+    # row_number. Reconciliation must see BOTH: keying only the map dropped the
+    # duplicate, so a deleted row archived one order and left its twin hanging
+    # in the queue forever ("2 наряди deleted, 1 stayed"). Sorted by id so the
+    # map keeps the NEWEST per row deterministically; the rest still reconcile.
+    all_tab_orders = list(
+        session.execute(
+            select(Order).where(Order.sheet_tab == sheet_tab).order_by(Order.id)
         ).scalars()
-    }
+    )
+    existing_by_row = {order.row_number: order for order in all_tab_orders}
 
     # Load the material catalog once per tab (not per row) to classify each
     # order's free-text colour into a Material category.
@@ -383,9 +386,10 @@ def sync_tab(
     # ONLY when it is unique on both sides within the tab — repeat works legitimately
     # share a наряд, and two clients can order the same material the same day, so
     # an ambiguous key must never win over position.
-    # Snapshot BEFORE the re-link: it evicts a displaced order from the map, and
-    # reconciliation must still see that order to decide its fate.
-    tab_orders = list(existing_by_row.values())
+    # Reconciliation must see EVERY order for the tab, not just the one-per-row
+    # map (which drops duplicate row_numbers). Uses the full preload snapshot,
+    # taken before the re-link evicts displaced orders from the map.
+    tab_orders = all_tab_orders
     matched_ids: set[int] = set()
 
     moved = _relink_moved_rows(existing_by_row, rows)
