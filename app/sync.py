@@ -85,6 +85,34 @@ TECHNICIAN_EDITED_FIELDS = {
 }
 
 
+# Every sheet-sourced field an order can carry, across BOTH kinds (lab and
+# наряд-less client). Used to wipe an order clean when its row is reused for a
+# different work, so no field from its previous life lingers. cam_comment stays
+# out: comments are their own records, appended, never overwritten here.
+_ALL_ROW_FIELDS = (
+    "work_order_no", "job_code", "quantity", "material_color", "kind",
+    "due_time", "technician_name", "sum3d_id", "calculated_raw", "milled_raw",
+    "last_milled_date", "mill_count", "client_name",
+)
+
+
+def _reset_order_for_new_work(order: Order, *, source: str, status: str) -> None:
+    """Strip a revived order back to a blank slate for the new work in its row.
+
+    Only the identity that must survive is kept: the DB id, sheet_tab and
+    row_number (so history and position stay linked). source/status adopt the
+    new work; every content field is cleared here and refilled by the caller's
+    field loop from the current row. Also drops the "technician changed" flag —
+    it described the OLD work, and would be meaningless on the new one."""
+    order.source = source
+    order.status = status
+    order.material_id = None
+    order.sheet_changed_at = None
+    order.sheet_changed_fields = None
+    for field in _ALL_ROW_FIELDS:
+        setattr(order, field, None)
+
+
 def _client_fields(row: OrderRow) -> dict:
     """Field mapping for a наряд-less client row (see OrderRow.is_client_row).
     The "вид" column (row.kind) holds the CLIENT NAME here, not a work type, so
@@ -403,6 +431,18 @@ def sync_tab(
 
         changed = False
 
+        # Row reused for the OTHER kind of work (client ↔ lab) while the order
+        # is still ACTIVE. Un-archiving via a buggy earlier build could leave a
+        # hybrid — a sheet_client order carrying a lab наряд, or vice versa —
+        # and the plain field loop below never fixes it, because it only writes
+        # the new kind's fields and leaves the old kind's behind. A kind flip is
+        # unambiguous row-reuse (correcting a наряд never turns a lab row into a
+        # client row), so reset to the new shape. Cheap self-heal for rows the
+        # 0.3.6–0.3.9 resurrect bug already corrupted, on the next sync.
+        if existing.source != source:
+            _reset_order_for_new_work(existing, source=source, status=status)
+            changed = True
+
         # A row holding a DIFFERENT work than the archived order brings that row
         # back into the queue: technicians reuse a row that was cleared, and
         # without this the new work is updated onto an order nobody can see —
@@ -426,10 +466,19 @@ def sync_tab(
                 was = (existing.work_order_no or "").strip()
                 now_in_sheet = (fields.get("work_order_no") or "").strip()
             if now_in_sheet and now_in_sheet != was:
+                # A genuinely different work now occupies this row — reset the
+                # revived order to the NEW work's shape completely, don't merge.
+                # Merging left the old kind's fields behind: a deleted CLIENT row
+                # reused for a LAB наряд kept source="sheet_client" and the old
+                # client_name, so the operator saw a hybrid ("частково моя
+                # робота"). _reset_order_for_new_work clears every type-specific
+                # field and adopts the new source/status before the field loop
+                # below fills in the new values.
+                _reset_order_for_new_work(existing, source=source, status=status)
                 existing.archived_at = None
                 session.add(
                     StatusEvent(
-                        order_id=existing.id, status=existing.status, actor="sync",
+                        order_id=existing.id, status=status, actor="sync",
                         note="у рядок вписано іншу роботу — повернуто в чергу",
                     )
                 )

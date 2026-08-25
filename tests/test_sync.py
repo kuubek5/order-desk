@@ -897,3 +897,93 @@ def test_filling_an_empty_field_for_the_first_time_is_not_a_correction():
 
     assert order.sheet_changed_at is None
     assert order.job_code == "2026-08-26_00042-001"
+
+
+def test_row_reused_by_a_different_KIND_of_work_fully_replaces_the_old():
+    """Rома 25.08.26: created a CLIENT row via the CRM, deleted it, admins then
+    put a LAB наряд in that same row — and the operator saw a hybrid ("partially
+    my test work"). Reviving the archived order must reset it to the new work's
+    shape completely: source, status, and every stale field of the old kind.
+    """
+    from datetime import datetime
+
+    session = make_session()
+    ghost = Order(
+        source="sheet_client", sheet_tab="26.08.26", row_number=63,
+        client_name="TESTCLIENT", material_color="TEST", quantity="1",
+        status="нове", archived_at=datetime(2026, 8, 25, 9, 0),
+    )
+    session.add(ghost)
+    session.commit()
+
+    # Admin writes a normal lab work (наряд in col B) into that same row.
+    sync_tab(session, "26.08.26", [make_row(
+        row_number=63, work_order_no="28500", material_color="цирконій",
+        kind="абатмент", quantity="3", technician_name="Денис",
+        job_code="", sum3d_id="", calculated="", milled="",
+    )])
+    session.commit()
+    session.refresh(ghost)
+
+    assert ghost.archived_at is None
+    assert ghost.source == "lab"           # not the stale sheet_client
+    assert ghost.work_order_no == "28500"
+    assert ghost.material_color == "цирконій"
+    assert ghost.quantity == "3"
+    assert ghost.client_name is None        # the old client name must be gone
+
+
+def test_row_reused_lab_to_client_also_fully_replaces():
+    """Mirror of the hybrid bug the other way: a deleted LAB row reused for a
+    client work must not keep the old наряд/технік."""
+    from datetime import datetime
+
+    session = make_session()
+    ghost = Order(
+        source="lab", sheet_tab="26.08.26", row_number=64,
+        work_order_no="28400", technician_name="Юля", material_color="титан",
+        kind="абатмент", status="прораховано", archived_at=datetime(2026, 8, 25, 9, 0),
+    )
+    session.add(ghost)
+    session.commit()
+
+    sync_tab(session, "26.08.26", [make_client_row(
+        row_number=64, kind="Басараб", material_color="mono a3", quantity="2",
+        sum3d_id="", calculated="", milled="",
+    )])
+    session.commit()
+    session.refresh(ghost)
+
+    assert ghost.archived_at is None
+    assert ghost.source == "sheet_client"
+    assert ghost.client_name == "Басараб"
+    assert ghost.work_order_no is None      # old наряд gone
+    assert ghost.technician_name is None     # old технік gone
+    assert ghost.kind is None                # "вид" column held the client name
+
+
+def test_active_hybrid_order_self_heals_on_next_sync():
+    """Self-heal for rows the 0.3.6–0.3.9 resurrect bug already corrupted: an
+    ACTIVE order (already un-archived) whose source no longer matches the row's
+    kind is reset on the next sync, without needing another delete cycle."""
+    session = make_session()
+    hybrid = Order(
+        source="sheet_client", sheet_tab="26.08.26", row_number=30,
+        client_name="TEST", work_order_no="28500", material_color="цирконій",
+        kind="абатмент", status="нове", archived_at=None,  # already active
+    )
+    session.add(hybrid)
+    session.commit()
+
+    # The row genuinely holds a lab наряд now.
+    sync_tab(session, "26.08.26", [make_row(
+        row_number=30, work_order_no="28500", material_color="цирконій",
+        kind="абатмент", quantity="1", job_code="", sum3d_id="",
+        calculated="", milled="", technician_name="",
+    )])
+    session.commit()
+    session.refresh(hybrid)
+
+    assert hybrid.source == "lab"
+    assert hybrid.client_name is None
+    assert hybrid.work_order_no == "28500"
