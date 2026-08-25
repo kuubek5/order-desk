@@ -1347,15 +1347,21 @@ _sheet_writeback_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sh
 
 def _append_manual_rows_warm(
     target_date: date, works: list[dict], *, paint_blue: bool, placement: str,
+    target_tab: str = "",
 ) -> tuple[str, list[int]] | None:
     """Append a batch of manual work rows on the write-back worker thread, whose
     per-thread spreadsheet/worksheet cache stays warm (see _warm_sheet_writeback)
     — so this runs in seconds instead of the ~40s cold open the request thread
     would pay. Uses its own DB session for the settings/config read.
 
-    Writes to the newest dated tab on or before ``target_date``: the lab often
-    works a day or two behind, so today's tab may not exist yet — the row goes
-    into the last available day rather than failing. Returns
+    ``target_tab`` (dd.mm.yy) is the day tab the operator has on screen and wins
+    when that tab exists — adding a work while looking at tomorrow must land in
+    tomorrow, not silently in today. Falling back on it also covers a tab the
+    operator sees but that has since been renamed away.
+
+    Otherwise writes to the newest dated tab on or before ``target_date``: the
+    lab often works a day or two behind, so today's tab may not exist yet — the
+    row goes into the last available day rather than failing. Returns
     (resolved_tab_title, 1-indexed sheet rows), or None if the document has no
     dated tab at all."""
     from time import perf_counter
@@ -1364,7 +1370,11 @@ def _append_manual_rows_warm(
         t0 = perf_counter()
         spreadsheet = open_spreadsheet(db=s)
         t_open = perf_counter()
-        worksheet = latest_worksheet_on_or_before(spreadsheet, target_date)
+        worksheet = None
+        if target_tab:
+            worksheet = get_worksheet_by_name(spreadsheet, target_tab)
+        if worksheet is None:
+            worksheet = latest_worksheet_on_or_before(spreadsheet, target_date)
         t_tab = perf_counter()
         if worksheet is None:
             return None
@@ -2183,6 +2193,7 @@ def create_manual_order(
     request: Request,
     work_type: str = Form("client"),
     return_to: str = Form(""),
+    target_tab: str = Form(""),
     client_name: list[str] = Form([]),
     work_order_no: list[str] = Form([]),
     kind: list[str] = Form([]),
@@ -2288,10 +2299,17 @@ def create_manual_order(
     # newest dated tab ≤ today (today's tab often isn't created yet) and returns
     # which tab it actually wrote to, so the orders land on the same day.
     try:
+        # The day tab on screen wins over "today" — see _append_manual_rows_warm.
+        # Validated as a real dd.mm.yy here so a hand-crafted value can only ever
+        # miss and fall back, never reach the sheet layer as junk.
+        wanted_tab = target_tab.strip() if isinstance(target_tab, str) else ""
+        if wanted_tab and _parse_sheet_tab(wanted_tab) is None:
+            wanted_tab = ""
         result = _sheet_writeback_pool.submit(
             _append_manual_rows_warm, date.today(), works,
             paint_blue=(not is_lab),
             placement=("lab" if is_lab else "client"),
+            target_tab=wanted_tab,
         ).result(timeout=120)
     except Exception as exc:  # noqa: BLE001 — surface any sheet failure to the operator
         logger.exception("Manual order sheet write failed")

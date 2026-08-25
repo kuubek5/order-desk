@@ -89,6 +89,12 @@
                 {# Filled from location on submit so the operator lands back on the
                    same day tab / filters instead of the default queue view. #}
                 <input type="hidden" name="return_to" data-addwork-returnto>
+                {# The day tab actually on screen. Without it the row is written to
+                   today's tab whatever day the operator is looking at — adding
+                   while on tomorrow's tab silently landed in today's. Empty when
+                   no day is selected, which keeps the old "newest tab ≤ today". #}
+                <input type="hidden" name="target_tab"
+                       value="{{ selected_date.strftime('%d.%m.%y') if selected_date else '' }}">
                 {# One repeatable field-row per work. "+ ще" clones the last row
                    (app.js); all rows post as parallel lists → одним пушем кілька
                    клієнтів або нарядів. Server skips fully-empty rows. #}

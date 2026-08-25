@@ -729,3 +729,59 @@ def test_sync_does_not_touch_an_archived_order_whose_row_stays_empty():
 
     refreshed = session.get(Order, order.id)
     assert refreshed.archived_at == datetime(2026, 8, 25, 9, 0, 0)
+
+
+def test_deleted_work_stays_deleted_while_its_row_is_still_being_blanked():
+    """Regression (0.3.6): deleting from the CRM must stick.
+
+    Delete archives the order and blanks its sheet row on the BACKGROUND
+    writer, so a sync tick routinely reads the row while that blanking is still
+    in flight. Resurrecting on presence alone bounced every delete straight
+    back into the queue — the row still held the same наряд.
+    """
+    from datetime import datetime
+
+    session = make_session()
+    order = Order(
+        source="lab", sheet_tab="25.08.26", row_number=25,
+        work_order_no="28393", material_color="1333", status="нове",
+        archived_at=datetime(2026, 8, 25, 9, 0, 0),
+    )
+    session.add(order)
+    session.commit()
+
+    # The row still carries the SAME work — blanking has not landed yet.
+    sync_tab(session, "25.08.26", [make_row(
+        row_number=25, work_order_no="28393", material_color="1333",
+        kind="абатмент", quantity="1", job_code="", sum3d_id="",
+        calculated="", milled="",
+    )])
+    session.commit()
+
+    assert session.get(Order, order.id).archived_at is not None
+
+
+def test_deleted_client_row_reused_by_another_client_comes_back():
+    """The client-row counterpart: a наряд-less row reused by a DIFFERENT
+    client is a new work and belongs in the queue."""
+    from datetime import datetime
+
+    session = make_session()
+    order = Order(
+        source="sheet_client", sheet_tab="25.08.26", row_number=63,
+        client_name="TEST", material_color="TEST", status="нове",
+        archived_at=datetime(2026, 8, 25, 9, 0, 0),
+    )
+    session.add(order)
+    session.commit()
+
+    sync_tab(session, "25.08.26", [make_row(
+        row_number=63, work_order_no="", kind="Неда", material_color="mono a3",
+        quantity="6", job_code="", sum3d_id="", calculated="", milled="",
+        technician_name="",
+    )])
+    session.commit()
+
+    refreshed = session.get(Order, order.id)
+    assert refreshed.archived_at is None
+    assert refreshed.client_name == "Неда"

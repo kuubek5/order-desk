@@ -1528,3 +1528,59 @@ def test_watermark_does_not_freeze_archive_or_filtered_views(tmp_path, monkeypat
         web.get_mail(request=_request(user.id), db=db, view="archive", since=1)
         assert len(captured["ctx"]["emails"]) == 2
         assert captured["ctx"]["held_back_count"] == 0
+
+
+def test_manual_add_writes_to_the_day_tab_on_screen(monkeypatch):
+    """Adding while looking at another day writes to THAT day's tab.
+
+    Real failure (25.08.26, prod): the operator added a work with tomorrow's tab
+    open and it landed in today's — the target date was hardcoded to today, so
+    the work was written to a tab the operator was not even looking at, and the
+    queue they stayed on never showed it.
+    """
+    engine = _database()
+    seen = {}
+    tomorrow = SimpleNamespace(title="26.08.26")
+    monkeypatch.setattr(web, "_recent_manual_adds", {})
+    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(
+        web, "get_worksheet_by_name",
+        lambda ss, name: (seen.__setitem__("asked", name), tomorrow)[1],
+    )
+    monkeypatch.setattr(
+        web, "latest_worksheet_on_or_before",
+        lambda ss, d: pytest.fail("must not fall back while the tab exists"),
+    )
+    monkeypatch.setattr(
+        web, "append_manual_work_rows",
+        lambda ws, works, *, paint_blue, placement: [65],
+    )
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id), work_type="client", db=db,
+            target_tab="26.08.26",
+            **{**_empty_form(), "client_name": ["Неда"], "material_color": ["mono b1"]},
+        )
+        assert resp.status_code == 303
+        assert seen["asked"] == "26.08.26"
+        order = db.scalar(select(Order).where(Order.source == "sheet_client"))
+        assert order.sheet_tab == "26.08.26"
+
+
+def test_manual_add_ignores_a_junk_target_tab(monkeypatch):
+    """target_tab is form input. Anything that isn't a real dd.mm.yy day is
+    dropped, so the write falls back to the normal newest-tab-≤-today rule
+    instead of reaching the sheet layer as garbage."""
+    engine = _database()
+    cap = _stub_sheet_write(monkeypatch, note_rows=[65])
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id), work_type="client", db=db,
+            target_tab="../../etc/passwd",
+            **{**_empty_form(), "client_name": ["Неда"], "material_color": ["mono b1"]},
+        )
+        assert resp.status_code == 303
+        assert cap["calls"] == 1

@@ -375,25 +375,37 @@ def sync_tab(
 
         changed = False
 
-        # The row is populated again, so whatever archived this order no longer
-        # holds: its tab is present (we just read it), its row is not cleared
-        # (it is in `rows`), and if an operator deleted the work, the technicians
-        # have since written a new one into that row. The sheet is the source of
-        # truth, so bring it back into the queue — otherwise the fields below are
-        # updated on an order nobody can see, and a real work sits in the sheet
-        # while the queue claims it does not exist.
+        # A row holding a DIFFERENT work than the archived order brings that row
+        # back into the queue: technicians reuse a row that was cleared, and
+        # without this the new work is updated onto an order nobody can see —
+        # present in the sheet, absent from the queue.
+        #
+        # Identity, not mere presence, decides. Deleting from the CRM archives
+        # the order and blanks its sheet row on the BACKGROUND writer, so a sync
+        # tick (every 15s) routinely reads the row while the blanking is still
+        # in flight. Resurrecting on presence alone made every delete bounce
+        # straight back — the row still carried the same work. Comparing
+        # identity keeps that case archived while still reviving a row that now
+        # holds someone else's work.
         # Retention does NOT come through here: old days leave the queue via a
         # date cutoff (RETENTION_DAYS in web.py), never by stamping archived_at,
         # so a full-history import cannot resurrect them.
         if existing.archived_at is not None:
-            existing.archived_at = None
-            session.add(
-                StatusEvent(
-                    order_id=existing.id, status=existing.status, actor="sync",
-                    note="рядок знову заповнено в таблиці — повернуто в чергу",
+            if is_client:
+                was = (existing.client_name or "").strip().casefold()
+                now_in_sheet = (fields.get("client_name") or "").strip().casefold()
+            else:
+                was = (existing.work_order_no or "").strip()
+                now_in_sheet = (fields.get("work_order_no") or "").strip()
+            if now_in_sheet and now_in_sheet != was:
+                existing.archived_at = None
+                session.add(
+                    StatusEvent(
+                        order_id=existing.id, status=existing.status, actor="sync",
+                        note="у рядок вписано іншу роботу — повернуто в чергу",
+                    )
                 )
-            )
-            changed = True
+                changed = True
 
         sheet_comment = _new_sheet_comment(existing.cam_comment, row.cam_comment)
         for field, value in fields.items():
