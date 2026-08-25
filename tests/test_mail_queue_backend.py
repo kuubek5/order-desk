@@ -1619,3 +1619,63 @@ def test_earlier_tab_leaves_the_target_day_empty():
         html = web.get_queue(request=_request(user.id), db=db, period="earlier").body.decode()
 
     assert 'name="target_tab" value=""' in html
+
+
+def test_sum_units_counts_only_clean_integers():
+    """Total-units counter sums only cleanly-numeric quantities; ranges and
+    blanks are skipped rather than guessed at (the sheet's quantity is free
+    text)."""
+    orders = [
+        SimpleNamespace(quantity="3"),
+        SimpleNamespace(quantity="1"),
+        SimpleNamespace(quantity="13-23"),  # range — skipped
+        SimpleNamespace(quantity=""),        # blank — skipped
+        SimpleNamespace(quantity=None),      # none — skipped
+        SimpleNamespace(quantity=" 2 "),     # padded int — counted
+    ]
+    assert web._sum_units(orders) == 6
+
+
+def test_total_units_reflects_source_filter(monkeypatch, tmp_path):
+    """The units total follows the active filters — lab-only shows lab units."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add_all([
+            Order(source="lab", sheet_tab="08.08.26", row_number=1,
+                  work_order_no="1", quantity="5", status="нове"),
+            Order(source="sheet_client", sheet_tab="08.08.26", row_number=60,
+                  client_name="Неда", quantity="4", status="нове"),
+        ])
+        db.commit()
+
+        both = _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26", source="all")
+        lab = _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26", source="lab")
+        assert both["total_units"] == 9
+        assert lab["total_units"] == 5
+
+
+def test_neutral_view_puts_lab_above_client(monkeypatch, tmp_path):
+    """source=all + ready=all + no column sort → all lab works above the
+    наряд-less client rows, mirroring the sheet's region layout."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add_all([
+            Order(source="sheet_client", sheet_tab="08.08.26", row_number=60,
+                  client_name="Неда", quantity="1", status="нове"),
+            Order(source="lab", sheet_tab="08.08.26", row_number=1,
+                  work_order_no="24000", quantity="1", status="нове"),
+            Order(source="sheet_client", sheet_tab="08.08.26", row_number=61,
+                  client_name="Басараб", quantity="1", status="нове"),
+            Order(source="lab", sheet_tab="08.08.26", row_number=2,
+                  work_order_no="24001", quantity="1", status="нове"),
+        ])
+        db.commit()
+
+        ctx = _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26")
+        sources = [o.source for o in ctx["orders"]]
+        # every lab before every non-lab
+        last_lab = max(i for i, s in enumerate(sources) if s == "lab")
+        first_client = min(i for i, s in enumerate(sources) if s != "lab")
+        assert last_lab < first_client, sources

@@ -473,7 +473,18 @@ def _open_folder_in_explorer(folder: Path) -> None:
         ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY
     except Exception:  # noqa: BLE001 — foreground hint is best-effort
         pass
-    subprocess.Popen(["explorer", str(folder)])  # noqa: S603,S607
+    # Ask for a NORMAL (restored, visible) window rather than whatever state the
+    # shell last used — operators reported the folder opening minimized. Passed
+    # via STARTUPINFO.wShowWindow (SW_SHOWNORMAL); a hint the shell honours for a
+    # fresh window and harmlessly ignores otherwise.
+    startupinfo = None
+    try:
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = 1  # SW_SHOWNORMAL
+    except Exception:  # noqa: BLE001 — Windows-only struct; never block the open
+        startupinfo = None
+    subprocess.Popen(["explorer", str(folder)], startupinfo=startupinfo)  # noqa: S603,S607
 
 
 def _check_path_status(raw_path: str) -> dict[str, str]:
@@ -1319,6 +1330,18 @@ _SYNC_PAUSED_MSG = (
 )
 
 
+def _sum_units(orders) -> int:
+    """Total units across the given orders. Sums only cleanly-integer quantity
+    strings — the sheet's quantity column is free text, so ranges ("13-23") or
+    blanks are skipped rather than guessed at, keeping the count honest."""
+    total = 0
+    for order in orders:
+        value = (order.quantity or "").strip()
+        if value.isdigit():
+            total += int(value)
+    return total
+
+
 def _write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | None:
     """Write explicit portal changes and record the outcome without hiding it.
 
@@ -1804,6 +1827,16 @@ def get_queue(
     # and gives each source its own collapsible section. Splitting the
     # already-filtered-and-sorted `orders` list preserves every filter/sort
     # applied above; each sublist stays correctly ordered within itself.
+    # Mirror the sheet's own hierarchy in the neutral, unfiltered view: internal
+    # lab works (the main table region) above the наряд-less client/mail rows
+    # (the region below it) — the queue table renders this flat `orders` list, so
+    # the ordering has to happen here. Only when the operator hasn't narrowed or
+    # re-sorted anything (source=all, ready=all, no explicit column sort, no
+    # overdue shortcut), so a deliberate sort/filter still wins. Stable: the
+    # urgency order within each group is preserved, лаб rows just float on top.
+    if source == "all" and ready == "all" and not sort and not show_overdue:
+        orders.sort(key=lambda o: 0 if o.source == "lab" else 1)
+
     orders_lab = [o for o in orders if o.source != "email"]
     orders_email = [o for o in orders if o.source == "email"]
 
@@ -1908,6 +1941,11 @@ def get_queue(
             "orders": orders,
             "orders_lab": orders_lab,
             "orders_email": orders_email,
+            # Sum of units across the currently-filtered view (period/source/
+            # ready/date/overdue all already applied to `orders`). Only cleanly
+            # numeric quantities count; ranges/blanks are skipped rather than
+            # guessed. Shown next to the "N у вигляді" live counter.
+            "total_units": _sum_units(orders),
             "user": user,
             "statuses": STATUSES,
             "period": period,

@@ -3633,6 +3633,7 @@ main.q2{
 .q2 .topbar-live{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:12px;color:var(--ink-2)}
 .q2 .topbar-live b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:11.5px}
 .q2 .topbar-live .sep{width:1px;height:10px;background:var(--line-2)}
+.q2 .topbar-live .tl-unit{color:var(--ink-3)}
 .q2 .live{display:inline-flex;align-items:center;gap:7px}
 .q2 .live .beacon{width:6px;height:6px;border-radius:50%;background:var(--accent-b);box-shadow:0 0 0 0 rgba(45,212,191,.55);animation:q2beacon var(--beacon-duration) ease-out infinite}
 @keyframes q2beacon{0%{box-shadow:0 0 0 0 rgba(45,212,191,.5)}70%{box-shadow:0 0 0 7px rgba(45,212,191,0)}100%{box-shadow:0 0 0 0 rgba(45,212,191,0)}}
@@ -3855,7 +3856,9 @@ body.layout-edit .q2 table.qtable{user-select:none}
   display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:6px;
   background:#1d2734;border:1px solid var(--line-2);font-size:12px;color:var(--ink);
 }
-.q2 td.quantity{font-family:var(--font-mono);font-size:12.5px;text-align:center;color:var(--ink)}
+/* Left-aligned to sit directly under the "Кількість" header — centering it in
+   a wide column pushed the number visibly right of the label. */
+.q2 td.quantity{font-family:var(--font-mono);font-size:12.5px;text-align:left;color:var(--ink)}
 .q2 td.src-tab{white-space:nowrap}
 .q2 .src-tab-link{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);text-decoration:none;
   padding:2px 7px;border-radius:6px;border:1px solid var(--line);background:#111a24;
@@ -5015,7 +5018,11 @@ main.worldv2.search-wide .search-form{max-width:900px}
 .q2 .cam-comment-input:focus{border-color:var(--focus-border);background:#0f1620;color:var(--ink);
   white-space:pre-wrap;word-break:break-word;position:relative;z-index:5;
   box-shadow:0 8px 22px rgba(0,0,0,.45)}
-.q2 .cam-comment-input::placeholder{color:var(--ink-3)}
+/* Empty comment cells stay truly blank — no "коментар…" ghost text on every
+   row (the column header already says what it is). The hint appears only when
+   the operator clicks into the field, so the affordance to type is kept. */
+.q2 .cam-comment-input::placeholder{color:transparent}
+.q2 .cam-comment-input:focus::placeholder{color:var(--ink-3)}
 .q2 .cam-comment-input.shout{color:var(--warn);font-weight:600}
 /* Has content but not focused → hint there's more with a soft right fade. */
 .q2 td.comment-cell{position:relative}
