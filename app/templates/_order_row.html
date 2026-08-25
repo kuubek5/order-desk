@@ -137,5 +137,24 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
         </span>
         {% endif %}
+        {# Delete straight from the queue — same action as the work card, one
+           click closer. Destructive, so it stays quiet until the row is hovered
+           or the button focused, and always asks first.
+           hx-swap="none" on purpose: HTMX fires the server's HX-Trigger toast on
+           THIS form, so swapping the row away as the response would detach it
+           first and the toast would never reach the listener on <body>. The row
+           is dropped here instead, once the request is known to have succeeded —
+           the day tab, filters and scroll all stay untouched. #}
+        <form class="row-delete-form"
+              hx-post="/orders/{{ order.id }}/delete"
+              hx-vals='{"inline": "1"}'
+              hx-swap="none"
+              hx-on::after-request="if(event.detail.successful){var r=this.closest('tr');if(r)r.remove();}"
+              hx-confirm="Видалити «{{ order.work_order_no or order.client_name or 'роботу' }}» з черги? Рядок у таблиці буде очищено, історія лишиться в Архіві.">
+            <button type="submit" class="row-delete" aria-label="Видалити роботу з черги"
+                    title="Видалити роботу з черги">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+            </button>
+        </form>
     </td>
 </tr>

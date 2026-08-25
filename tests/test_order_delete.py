@@ -135,3 +135,41 @@ def test_htmx_delete_redirects_so_the_row_leaves_the_queue():
                 )
             )
     assert response.headers["HX-Redirect"] == "/"
+
+
+def test_inline_delete_keeps_the_operator_in_place_and_still_toasts():
+    """Deleting from a queue ROW must not redirect — the operator keeps the day
+    tab, filters and scroll they were working in (the row itself is removed
+    client-side). The toast still has to go out: it is the only feedback that
+    the click did anything, and a silent delete button is not shippable."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        with patch.object(web, "_clear_sheet_row_background"):
+            response = asyncio.run(
+                web.delete_order(
+                    request=_request(user.id, {"HX-Request": "true"}),
+                    order_id=order.id, inline="1", db=db,
+                )
+            )
+        assert "HX-Redirect" not in response.headers
+        assert "toast" in response.headers["HX-Trigger"]
+        assert db.get(Order, order.id).archived_at is not None
+
+
+def test_card_delete_still_redirects_to_the_queue():
+    """Without `inline` the caller is the work card, whose page is gone once the
+    work is archived — that one still hands the operator back to the queue."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        with patch.object(web, "_clear_sheet_row_background"):
+            response = asyncio.run(
+                web.delete_order(
+                    request=_request(user.id, {"HX-Request": "true"}),
+                    order_id=order.id, inline="", db=db,
+                )
+            )
+    assert response.headers["HX-Redirect"] == "/"

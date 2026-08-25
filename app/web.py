@@ -2348,7 +2348,12 @@ def create_manual_order(
 
 
 @app.post("/orders/{order_id}/delete")
-async def delete_order(request: Request, order_id: int, db: Session = Depends(get_db)):
+async def delete_order(
+    request: Request,
+    order_id: int,
+    inline: str = Form(""),
+    db: Session = Depends(get_db),
+):
     """Remove a work from the queue and blank its row in the sheet.
 
     Archive, don't destroy: the order keeps its history and moves to «Архів»,
@@ -2359,6 +2364,15 @@ async def delete_order(request: Request, order_id: int, db: Session = Depends(ge
     The sheet row is BLANKED on the background writer, so the operator isn't
     held for a Google round-trip through the lab proxy. Email-sourced works
     (source="email") never had a sheet row — for them this is DB-only.
+
+    Two callers, two replies. From the work card (``inline`` unset) the page
+    the operator is looking at no longer exists, so we send them to the queue.
+    From a queue row (``inline``) we reply with the plain toast and no redirect:
+    the operator keeps the day tab, filters and scroll they were working in, and
+    the row is removed client-side (see _order_row.html). Deliberately NOT a
+    body swapped over the row — HTMX fires HX-Trigger on the requesting element,
+    so swapping the row away first detaches the form and the toast event never
+    bubbles to the listener on <body>. The row would vanish silently.
     """
     user = get_current_user(request, db)
     if user is None:
@@ -2386,6 +2400,8 @@ async def delete_order(request: Request, order_id: int, db: Session = Depends(ge
         message = "Роботу видалено з черги"
 
     if request.headers.get("HX-Request") == "true":
+        if isinstance(inline, str) and inline.strip():
+            return _toast_response(message)
         response = _toast_response(message)
         # Хай сторінка перемалюється — рядок має зникнути з черги одразу.
         response.headers["HX-Redirect"] = "/"

@@ -3907,6 +3907,19 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .sync-warning{color:var(--warn);margin-left:5px;display:inline-flex;vertical-align:middle}
 .q2 .sync-warning svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7}
 
+/* Delete-from-queue: destructive, so it stays out of the way until the row is
+   hovered or the button is tabbed to — 130 always-visible bins would be noise
+   in a dense table, and an easy misclick. Kept in tab order (opacity, not
+   display) so it is reachable by keyboard, and always visible where there is
+   no hover to reveal it (touch). */
+.q2 .row-delete-form{display:inline-flex;vertical-align:middle;margin-left:5px}
+.q2 .row-delete{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:6px;background:none;color:var(--ink-3);cursor:pointer;opacity:0;transition:opacity .12s ease,color .12s ease,background .12s ease}
+.q2 .row-delete svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.q2 .queue-row:hover .row-delete{opacity:1}
+.q2 .row-delete:focus-visible{opacity:1;outline:2px solid var(--control-edge);outline-offset:1px}
+.q2 .row-delete:hover{color:#f87878;background:rgba(248,113,113,.14)}
+@media (hover:none){.q2 .row-delete{opacity:.55}}
+
 .q2 .qfoot{display:flex;align-items:center;gap:10px;padding:9px 15px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3);flex-wrap:wrap}
 .q2 .queue-empty{padding:46px 22px;text-align:center;background:none;border:0}
 .q2 .queue-empty-icon{width:26px;height:26px;stroke:var(--ink-3);fill:none;stroke-width:1.4;margin-bottom:10px}
