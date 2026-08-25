@@ -479,12 +479,12 @@ class TestManualPlacement:
         assert row_number == 60
 
     def test_lab_leaves_one_gap_after_last_lab_row(self):
-        """Last lab row (col B наряд) is row 30 → new lab row lands at 32,
-        leaving row 31 blank as a separator. Scans only the lab region B7:B59."""
+        """Last lab row is row 30 → new lab row lands at 32, leaving row 31
+        blank as a separator. Scans only the lab region, B:E of rows 7..59."""
         fake_ws = MagicMock()
-        # B7:B59 = 53 rows; naряд filled in the first 24 (rows 7..30).
-        col_b = [["24000"]] * 24 + [[]] * 29
-        fake_ws.get.return_value = col_b
+        # B7:E59 = 53 rows; наряд filled in the first 24 (rows 7..30).
+        rows = [["24000", "1", "", "анатомія"]] * 24 + [[]] * 29
+        fake_ws.get.return_value = rows
 
         row_number = append_manual_work_row(
             fake_ws, work_order_no="99001", e_value="анатомія",
@@ -493,10 +493,30 @@ class TestManualPlacement:
         )
 
         assert row_number == 32  # last lab 30, gap 31, write 32
-        fake_ws.get.assert_called_once_with("B7:B59")
+        fake_ws.get.assert_called_once_with("B7:E59")
         assert _blue_range(fake_ws) is None  # lab rows never painted blue
         written = _written(fake_ws)
         assert written[(32, 2)] == "99001"  # наряд col B
+
+    def test_lab_row_without_naryad_still_occupies_its_row(self):
+        """A lab row written with no наряд (allowed — наряд is often filled in
+        later) must still count as taken. Scanning col B alone made such a row
+        invisible, so every later add resolved to it and overwrote it in place.
+        Here rows 7..29 hold наряди and row 31 holds a наряд-less work → the
+        next add must land at 33, not back on 31."""
+        fake_ws = MagicMock()
+        rows = [["24000", "1", "", "анатомія"]] * 23  # rows 7..29
+        rows.append([])                               # row 30 — separator
+        rows.append(["", "", "TEST2", "TEST"])        # row 31 — no наряд
+        rows.extend([[]] * 28)                        # rows 32..59
+        fake_ws.get.return_value = rows
+
+        row_number = append_manual_work_row(
+            fake_ws, e_value="анатомія", quantity="1",
+            material_color="цирконій", placement="lab", paint_blue=False,
+        )
+
+        assert row_number == 33  # last occupied 31, gap 32, write 33
 
     def test_client_blue_fill_stops_before_id_columns(self):
         """Blue fill covers A:K only — columns L/M/N (ID, Прорахував,

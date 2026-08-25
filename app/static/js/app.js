@@ -140,6 +140,26 @@ document.addEventListener("keydown", (event) => {
   ta.blur(); // change event → hx-post saves
 });
 
+// Enter anywhere in the "add work" form submits it. Relying on the browser's
+// implicit submission is not enough here: the form's onsubmit disables the
+// submit button, and a form whose default button is disabled swallows Enter
+// silently — the operator types, presses Enter, and nothing happens.
+// requestSubmit() (not submit()) keeps onsubmit and native validation running.
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.shiftKey) return;
+  const target = event.target;
+  if (!target || !target.closest) return;
+  const field = target.closest("[data-addwork] input");
+  if (!field) return;
+  const form = field.closest("[data-addwork]");
+  if (!form) return;
+  event.preventDefault();
+  const submit = form.querySelector("[data-addwork-submit], button[type=submit]");
+  if (submit && submit.disabled) return; // a submit is already in flight
+  if (typeof form.requestSubmit === "function") form.requestSubmit();
+  else form.submit();
+});
+
 // Inline "add work" form in the queue card-head: the "+" toggle reveals the
 // client-work fields right above the rows; cancel hides them. Delegated so it
 // survives HTMX swaps.

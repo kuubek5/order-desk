@@ -2182,6 +2182,7 @@ _recent_manual_adds: dict[int, tuple[str, float]] = {}
 def create_manual_order(
     request: Request,
     work_type: str = Form("client"),
+    return_to: str = Form(""),
     client_name: list[str] = Form([]),
     work_order_no: list[str] = Form([]),
     kind: list[str] = Form([]),
@@ -2210,6 +2211,15 @@ def create_manual_order(
 
     work_type = work_type if work_type in ("client", "lab") else "client"
     is_lab = work_type == "lab"
+
+    # Send the operator back to the exact queue view they submitted from — same
+    # day tab, same filters — instead of resetting them to the default queue.
+    # Only a same-origin relative path is accepted: an absolute or
+    # protocol-relative value would turn this form into an open redirect.
+    default_target = f"/?source={'lab' if is_lab else 'client'}"
+    target = return_to.strip() if isinstance(return_to, str) else ""
+    if not target.startswith("/") or target.startswith("//"):
+        target = default_target
 
     def _back(message: str):
         params = urlencode({"error": message, "work_type": work_type})
@@ -2270,7 +2280,7 @@ def create_manual_order(
     now_ts = monotonic()
     last = _recent_manual_adds.get(user.id)
     if last is not None and last[0] == fingerprint and (now_ts - last[1]) < _MANUAL_ADD_DEDUP_SECONDS:
-        return RedirectResponse(f"/?source={'lab' if is_lab else 'client'}", status_code=303)
+        return RedirectResponse(target, status_code=303)
 
     # Append the whole batch on the warm write-back worker (cached spreadsheet/
     # worksheet) in ONE sheet call — the cold request thread would re-pay ~40s of
@@ -2334,7 +2344,7 @@ def create_manual_order(
         if now_ts - ts >= _MANUAL_ADD_DEDUP_SECONDS:
             _recent_manual_adds.pop(uid, None)
 
-    return RedirectResponse(f"/?source={'lab' if is_lab else 'client'}", status_code=303)
+    return RedirectResponse(target, status_code=303)
 
 
 @app.post("/orders/{order_id}/delete")

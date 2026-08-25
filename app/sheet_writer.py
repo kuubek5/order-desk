@@ -185,6 +185,19 @@ def apply_status_markers(
     return changed
 
 
+def _row_is_occupied(row: list[str]) -> bool:
+    """True if a B:E slice belongs to a real work — наряд (B), кількість (C) or
+    вид/ім'я клієнта (E) is filled.
+
+    Колір/матеріал (D) is deliberately NOT a signal: the lab also writes loose
+    notes there ("залишок матеріалу") on rows that hold no work, and treating
+    those as taken would push every add past them."""
+    b = row[0].strip() if len(row) > 0 else ""
+    c = row[1].strip() if len(row) > 1 else ""
+    e = row[3].strip() if len(row) > 3 else ""
+    return bool(b or c or e)
+
+
 def _next_client_row(
     worksheet: gspread.Worksheet, start_row: int, end_row: int
 ) -> int:
@@ -193,10 +206,7 @@ def _next_client_row(
     raw_rows = call_with_retry(lambda: worksheet.get(f"B{start_row}:E{end_row}"))
     last_filled = start_row - 1
     for offset, row in enumerate(raw_rows):
-        b = row[0].strip() if len(row) > 0 else ""
-        c = row[1].strip() if len(row) > 1 else ""
-        e = row[3].strip() if len(row) > 3 else ""
-        if b or c or e:
+        if _row_is_occupied(row):
             last_filled = start_row + offset
     row_number = last_filled + 1
     if row_number > end_row:
@@ -207,13 +217,19 @@ def _next_client_row(
 
 
 def _next_lab_row(worksheet: gspread.Worksheet, lab_start: int, lab_end: int) -> int:
-    """Row one empty gap below the last lab row (наряд in col B) inside the main
-    lab table above the client region — leaves one blank row of separation."""
-    raw_rows = call_with_retry(lambda: worksheet.get(f"B{lab_start}:B{lab_end}"))
+    """Row one empty gap below the last populated lab row inside the main lab
+    table above the client region — leaves one blank row of separation.
+
+    Occupancy uses the same B/C/E test as the client region (_row_is_occupied),
+    not наряд (B) alone. A lab work may legitimately be written without a наряд
+    — it is often filled in later — and such a row was invisible to a B-only
+    scan, so every later manual add resolved to that SAME row and overwrote it.
+    Column A is excluded on purpose: the lab pre-numbers it 1..N for the whole
+    day, so A is never empty and would push every add past the region."""
+    raw_rows = call_with_retry(lambda: worksheet.get(f"B{lab_start}:E{lab_end}"))
     last_lab = None
     for offset, row in enumerate(raw_rows):
-        b = row[0].strip() if len(row) > 0 else ""
-        if b:
+        if _row_is_occupied(row):
             last_lab = lab_start + offset
     row_number = lab_start if last_lab is None else last_lab + 2
     if row_number > lab_end:

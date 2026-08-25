@@ -429,6 +429,43 @@ def test_create_manual_order_reports_missing_today_tab(monkeypatch):
         assert db.scalar(select(Order)) is None
 
 
+def test_create_manual_order_returns_to_the_submitting_view(monkeypatch):
+    """The operator lands back on the exact queue view they added from — same
+    day tab and filters — instead of being reset to the default queue."""
+    engine = _database()
+    _stub_sheet_write(monkeypatch, note_rows=[65])
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id), work_type="client", db=db,
+            return_to="/?day=2026-08-25&source=client",
+            **{**_empty_form(), "client_name": ["Неда"], "material_color": ["mono b1"]},
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/?day=2026-08-25&source=client"
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    ["https://evil.test/steal", "//evil.test/steal", "javascript:alert(1)", "  "],
+)
+def test_create_manual_order_refuses_offsite_return_to(monkeypatch, hostile):
+    """return_to is attacker-controllable form input, so anything that isn't a
+    same-origin relative path falls back to the default queue view — the form
+    must never become an open redirect."""
+    engine = _database()
+    _stub_sheet_write(monkeypatch, note_rows=[65])
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = web.create_manual_order(
+            request=_request(user.id), work_type="client", db=db,
+            return_to=hostile,
+            **{**_empty_form(), "client_name": ["Неда"], "material_color": ["mono b1"]},
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/?source=client"
+
+
 def test_create_manual_order_double_submit_is_ignored(monkeypatch):
     """An F5/back resubmit of the exact same batch by the same operator inside
     the dedup window writes NOTHING new — one order, one sheet append."""

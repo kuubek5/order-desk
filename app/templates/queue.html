@@ -80,12 +80,15 @@
                reload (restored in app.js on load) so adding a work doesn't
                throw the operator back to the top of a long queue. #}
             <form method="post" action="/orders/new" class="addwork" hidden data-addwork
-                  onsubmit="sessionStorage.setItem('od-scroll', String(window.scrollY)); var b=this.querySelector('[data-addwork-submit]'); if(b){b.disabled=true;b.classList.add('is-loading');var l=b.querySelector('.addwork-submit-label');if(l)l.textContent='Фрезеруємо…';}">
+                  onsubmit="sessionStorage.setItem('od-scroll', String(window.scrollY)); var r=this.querySelector('[data-addwork-returnto]'); if(r)r.value=location.pathname+location.search; var b=this.querySelector('[data-addwork-submit]'); if(b){b.disabled=true;b.classList.add('is-loading');var l=b.querySelector('.addwork-submit-label');if(l)l.textContent='Фрезеруємо…';}">
                 <div class="addwork-seg" role="group" aria-label="Тип роботи">
                     <button type="button" class="is-active" data-addwork-type="client">Клієнт</button>
                     <button type="button" data-addwork-type="lab">Лабораторія</button>
                 </div>
                 <input type="hidden" name="work_type" value="client" data-addwork-typeinput>
+                {# Filled from location on submit so the operator lands back on the
+                   same day tab / filters instead of the default queue view. #}
+                <input type="hidden" name="return_to" data-addwork-returnto>
                 {# One repeatable field-row per work. "+ ще" clones the last row
                    (app.js); all rows post as parallel lists → одним пушем кілька
                    клієнтів або нарядів. Server skips fully-empty rows. #}
