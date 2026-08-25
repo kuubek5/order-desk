@@ -1059,50 +1059,44 @@ def test_recently_imported_then_deleted_still_stuck_within_grace():
     assert session.scalar(select(Order)).archived_at is not None
 
 
-def test_lab_sum3d_not_wiped_when_sheet_column_L_is_empty():
-    """Operator takes a lab work: writes Sum3D to the DB, but the sheet write-back
-    to column L fails (the lab's TLS proxy drops it) — no retry queue. The DB
-    holds the value, column L stays empty. The next 15s poll must NOT wipe it:
-    Sum3D is portal-owned and fill-only on read. Losing it silently reverts the
-    work from "В роботі" to "Можна брати" and two operators can grab it."""
+def test_empty_sheet_sum3d_clears_the_db_value_so_work_is_takeable_again():
+    """The sheet is the source of truth for Sum3D. "Можна брати" (takeable) is
+    exactly job_code present + Sum3D EMPTY, so when staff clear column L in the
+    sheet to hand a work back to the queue, the next sync MUST clear the DB value
+    too — otherwise the work stays stuck in "В роботі" and disappears from the
+    takeable list. Regression guard for the 0.3.15 fill-only bug."""
     with make_session() as session:
-        # Technician handed off: job_code present, no Sum3D yet.
-        sync_tab(session, "T", [make_row(sum3d_id="", calculated="", milled="")])
+        # Imported with a Sum3D (operator had taken it) → "В роботі".
+        sync_tab(session, "T", [make_row(sum3d_id="12-01-45", calculated="", milled="")])
         session.commit()
         order = session.scalar(select(Order))
-        # Operator takes it in the CRM (Sum3D committed locally, sheet write lost).
-        order.sum3d_id = "12-01-45"
-        session.commit()
+        assert order.sum3d_id == "12-01-45"
 
-        # Background poll reads the sheet while column L is still empty.
+        # Staff clear column L in the sheet to return it to the queue.
         sync_tab(session, "T", [make_row(sum3d_id="", calculated="", milled="")])
         session.commit()
         session.refresh(order)
-        assert order.sum3d_id == "12-01-45"  # preserved, not wiped to None
+        assert order.sum3d_id is None  # cleared → job_code + no Sum3D = "можна брати"
 
 
-def test_client_sum3d_not_wiped_when_sheet_column_L_is_empty():
-    """Same fill-only guard for наряд-less client rows: an operator's Sum3D on a
-    client row survives a poll that reads an empty column L."""
+def test_empty_sheet_sum3d_clears_a_client_row_too():
+    """Same source-of-truth rule for наряд-less client rows."""
     with make_session() as session:
-        sync_tab(session, "T", [make_client_row(row_number=5, sum3d_id="")])
+        sync_tab(session, "T", [make_client_row(row_number=5, sum3d_id="10-19-48")])
         session.commit()
         order = session.scalar(select(Order).where(Order.source == "sheet_client"))
-        order.sum3d_id = "10-19-48"
-        session.commit()
+        assert order.sum3d_id == "10-19-48"
 
         sync_tab(session, "T", [make_client_row(row_number=5, sum3d_id="")])
         session.commit()
         session.refresh(order)
-        assert order.sum3d_id == "10-19-48"
+        assert order.sum3d_id is None
 
 
-def test_sheet_can_still_fill_and_change_sum3d():
-    """The fill-only guard must not freeze Sum3D: a non-empty sheet value still
-    sets it (first fill) and a later non-empty value still updates it (a genuine
-    correction). Only blanking a filled value with an empty cell is refused."""
+def test_sheet_fills_and_changes_sum3d():
+    """A non-empty sheet value sets Sum3D (first fill) and a later non-empty value
+    updates it (a genuine correction)."""
     with make_session() as session:
-        # First fill from an empty DB value.
         sync_tab(session, "T", [make_row(sum3d_id="")])
         session.commit()
         order = session.scalar(select(Order))
@@ -1111,11 +1105,12 @@ def test_sheet_can_still_fill_and_change_sum3d():
         session.commit()
         session.refresh(order)
         assert order.sum3d_id == "12-01-45"
-        # A real change to another non-empty value still applies.
         sync_tab(session, "T", [make_row(sum3d_id="17-55-28")])
         session.commit()
         session.refresh(order)
         assert order.sum3d_id == "17-55-28"
+
+
 def test_naryadless_lab_work_imports_as_lab_not_a_fake_client():
     """A technician recorded a work before its наряд was assigned (admins away):
     no наряд, but a technician + вид + material. It must enter the queue as a LAB
