@@ -7,10 +7,34 @@
 // unaffected.
 (function restoreScrollAfterReload() {
   const saved = sessionStorage.getItem("od-scroll");
-  if (saved === null) return;
+  const savedTable = sessionStorage.getItem("od-tablescroll");
+  if (saved === null && savedTable === null) return;
   sessionStorage.removeItem("od-scroll");
+  sessionStorage.removeItem("od-tablescroll");
   const y = parseInt(saved, 10);
   if (!Number.isNaN(y)) window.scrollTo(0, y);
+  // The queue table scrolls INSIDE .tablewrap, not the window (see the poll
+  // guard below), so the manual-add reload lands the operator at the top of
+  // the list unless we restore the container's own scrollTop. Deferred to the
+  // next frame so the table has laid out its full height first.
+  const t = parseInt(savedTable, 10);
+  if (!Number.isNaN(t) && t > 0) {
+    // The table's full height isn't laid out the instant this deferred script
+    // runs, so a single set can be clamped to 0. Re-apply across a few frames
+    // and once more on window 'load' (fonts/layout settled), stopping as soon
+    // as it sticks — cheap, and it survives a slow first paint.
+    let tries = 0;
+    const apply = function () {
+      const wrap = document.querySelector(".tablewrap");
+      if (wrap && wrap.scrollHeight > wrap.clientHeight) {
+        wrap.scrollTop = t;
+        if (Math.abs(wrap.scrollTop - t) < 2) return; // landed
+      }
+      if (tries++ < 20) requestAnimationFrame(apply);
+    };
+    requestAnimationFrame(apply);
+    window.addEventListener("load", apply, { once: true });
+  }
 })();
 
 // Queue auto-refresh guard. #queue-rows polls GET /?…&partial=rows every 15s
