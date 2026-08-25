@@ -2154,6 +2154,7 @@ def new_order_form(
     work_type: str = "client", material_color: str = "", client_name: str = "",
     work_order_no: str = "", kind: str = "", quantity: str = "", sum3d_id: str = "",
     job_code: str = "", technician_name: str = "",
+    return_to: str = "", target_tab: str = "",
 ):
     user = get_current_user(request, db)
     if user is None:
@@ -2165,6 +2166,12 @@ def new_order_form(
             "user": user,
             "today": date.today().strftime("%d.%m.%y"),
             "error": error or None,
+            # Carried through a failed validation so the retry still writes to
+            # the day tab the operator started from and lands back there. This
+            # page is reached almost only via _back, so losing them here meant
+            # the second attempt silently fell back to today's tab.
+            "return_to": return_to,
+            "target_tab": target_tab,
             "form": {
                 "work_type": work_type if work_type in ("client", "lab") else "client",
                 "client_name": client_name, "work_order_no": work_order_no,
@@ -2232,8 +2239,19 @@ def create_manual_order(
     if not target.startswith("/") or target.startswith("//"):
         target = default_target
 
+    # The day tab on screen wins over "today" — see _append_manual_rows_warm.
+    # Validated as a real dd.mm.yy here so a hand-crafted value can only ever
+    # miss and fall back, never reach the sheet layer as junk. Resolved before
+    # _back so a failed validation can carry it into the retry.
+    wanted_tab = target_tab.strip() if isinstance(target_tab, str) else ""
+    if wanted_tab and _parse_sheet_tab(wanted_tab) is None:
+        wanted_tab = ""
+
     def _back(message: str):
-        params = urlencode({"error": message, "work_type": work_type})
+        params = urlencode({
+            "error": message, "work_type": work_type,
+            "return_to": target, "target_tab": wanted_tab,
+        })
         return RedirectResponse(f"/orders/new?{params}", status_code=303)
 
     def _at(values: list[str], i: int) -> str:
@@ -2299,12 +2317,6 @@ def create_manual_order(
     # newest dated tab ≤ today (today's tab often isn't created yet) and returns
     # which tab it actually wrote to, so the orders land on the same day.
     try:
-        # The day tab on screen wins over "today" — see _append_manual_rows_warm.
-        # Validated as a real dd.mm.yy here so a hand-crafted value can only ever
-        # miss and fall back, never reach the sheet layer as junk.
-        wanted_tab = target_tab.strip() if isinstance(target_tab, str) else ""
-        if wanted_tab and _parse_sheet_tab(wanted_tab) is None:
-            wanted_tab = ""
         result = _sheet_writeback_pool.submit(
             _append_manual_rows_warm, date.today(), works,
             paint_blue=(not is_lab),

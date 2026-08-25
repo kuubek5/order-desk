@@ -26,6 +26,11 @@
             <button type="button" class="{% if is_lab %}is-active{% endif %}" data-addwork-type="lab">Лабораторія</button>
         </div>
         <input type="hidden" name="work_type" value="{{ form.work_type }}" data-addwork-typeinput>
+        {# Carried through from the queue (this page is reached via a failed
+           validation), so the retry writes to the day tab the operator started
+           from and returns them there instead of the default queue. #}
+        <input type="hidden" name="return_to" value="{{ return_to or '' }}">
+        <input type="hidden" name="target_tab" value="{{ target_tab or '' }}">
 
         <div class="neworder-field" data-addwork-client {% if is_lab %}hidden{% endif %}>
             <label for="client_name">Клієнт</label>

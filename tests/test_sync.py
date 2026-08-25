@@ -785,3 +785,40 @@ def test_deleted_client_row_reused_by_another_client_comes_back():
     refreshed = session.get(Order, order.id)
     assert refreshed.archived_at is None
     assert refreshed.client_name == "Неда"
+
+
+def test_clearing_the_only_row_of_a_tab_still_archives_it():
+    """Rома 25.08.26: added a work to tomorrow's tab in the SHEET, deleted it
+    there, and the work stayed in the CRM forever.
+
+    The tab is nearly empty (tomorrow's usually is), so deleting its only row
+    makes the parsed row list empty — and the empty-read guard (meant for the
+    proxy returning just headers) then skips reconciliation entirely.
+    """
+    session = make_session()
+    sync_tab(session, "26.08.26", [make_row(row_number=1, work_order_no="28393")])
+    session.commit()
+    age_orders(session)
+    assert session.scalar(select(Order)).archived_at is None
+
+    # Operator clears that row in the sheet → the tab now parses to NOTHING,
+    # but the read itself was fine: the header block still came back.
+    sync_tab(session, "26.08.26", [], raw_row_count=6)
+    session.commit()
+
+    order = session.scalar(select(Order))
+    assert order.archived_at is not None, "робота мала піти в архів"
+
+
+def test_a_truly_empty_read_still_does_not_wipe_a_tab():
+    """The guard this must not break: the lab proxy occasionally returns an
+    empty response. Nothing at all came back, so nothing may be archived."""
+    session = make_session()
+    sync_tab(session, "26.08.26", [make_row(row_number=1, work_order_no="28393")])
+    session.commit()
+    age_orders(session)
+
+    sync_tab(session, "26.08.26", [], raw_row_count=0)
+    session.commit()
+
+    assert session.scalar(select(Order)).archived_at is None

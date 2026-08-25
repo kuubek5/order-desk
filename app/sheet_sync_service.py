@@ -234,11 +234,15 @@ def sync_google_sheets(
         for worksheet in worksheets:
             current_tab = worksheet.title
             try:
-                rows = parse_rows(call_with_retry(worksheet.get_all_values))
+                raw = call_with_retry(worksheet.get_all_values)
+                rows = parse_rows(raw)
                 # Read fill colours (best-effort) so client rows whose blue was
                 # cleared flip to "видано" and grey SLM rows are filtered out.
                 row_fills = fetch_row_fills(worksheet)
-                result = sync_tab(session, current_tab, rows, row_fills=row_fills)
+                result = sync_tab(
+                    session, current_tab, rows,
+                    row_fills=row_fills, raw_row_count=len(raw),
+                )
                 # Commit this tab before touching the next, so a later tab's
                 # failure can never undo it.
                 session.commit()
@@ -367,13 +371,16 @@ def sync_hot_tab(
             worksheet = get_worksheet_by_name(spreadsheet, tab_title)
             if worksheet is None:
                 continue  # tab not created yet (early morning) — skip
-            rows = parse_rows(call_with_retry(worksheet.get_all_values))
+            raw = call_with_retry(worksheet.get_all_values)
+            rows = parse_rows(raw)
             # Colours are cheap now (the CF-bloat cleanup took the metadata
             # fetch from ~7s to ~0.3s), so the hot lane reads them too: blue
             # clears flip to "видано" and grey SLM rows are filtered within
             # one ~15s tick instead of waiting for the next full sync.
             row_fills = fetch_row_fills(worksheet)
-            result = sync_tab(session, tab_title, rows, row_fills=row_fills)
+            result = sync_tab(
+                session, tab_title, rows, row_fills=row_fills, raw_row_count=len(raw),
+            )
             session.commit()
             summary.tabs_processed += 1
             summary.tab_names.append(tab_title)

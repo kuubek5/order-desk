@@ -11,7 +11,7 @@ from app.material_catalog import (
     resolve_material_id,
 )
 from app.models import Comment, Order, ReworkRecord, StatusEvent
-from app.parser import OrderRow
+from app.parser import HEADER_ROWS, OrderRow
 
 
 # "Вид/колір" values that mark work the lab records for stats only — SLM laser
@@ -273,6 +273,7 @@ def sync_tab(
     sheet_tab: str,
     rows: list[OrderRow],
     row_fills: dict[int, str] | None = None,
+    raw_row_count: int | None = None,
 ) -> SyncResult:
     """Import a tab's rows. ``row_fills`` (row_number -> 'blue'/'grey'/''), when
     provided, drives two things:
@@ -285,7 +286,16 @@ def sync_tab(
         colour info).
 
     None means "no colour info this run" — client rows then just stay
-    pending, and only the text marker filters SLM rows."""
+    pending, and only the text marker filters SLM rows.
+
+    ``raw_row_count`` is how many rows the sheet read returned BEFORE parsing
+    (headers included). It is what tells a tab that is genuinely empty apart
+    from a transient failed read: a real response still carries the HEADER_ROWS
+    header block, a proxy hiccup carries nothing. Without it, clearing the last
+    row of a tab left its orders in the queue forever — tomorrow's tab usually
+    holds one or two rows, so deleting them empties it entirely and the
+    empty-read guard below skipped reconciliation. Omit it to keep the old
+    "any parsed row proves the read worked" behaviour."""
     result = SyncResult()
 
     # Preload every existing order for this tab in ONE query instead of a
@@ -311,7 +321,9 @@ def sync_tab(
     # deleted by the reconciliation below exactly like a cleared row. Keep the
     # RAW row count for the empty-read guard below — an all-SLM tab must still
     # reconcile deletions, unlike a genuinely empty (transient proxy) read.
-    had_raw_rows = bool(rows)
+    had_raw_rows = bool(rows) or (
+        raw_row_count is not None and raw_row_count >= HEADER_ROWS
+    )
     rows = [row for row in rows if not _is_non_queue_row(row, row_fills)]
 
     # Re-link orders whose row MOVED. Position alone is not a stable key: the
