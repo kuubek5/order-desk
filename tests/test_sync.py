@@ -1030,3 +1030,30 @@ def test_duplicate_row_numbers_do_not_hide_an_order_from_deletion():
 
     active = [o for o in session.scalars(select(Order)) if o.archived_at is None]
     assert active == [], f"обидва мали піти в архів, лишилось: {[o.work_order_no for o in active]}"
+
+
+def test_recently_imported_then_deleted_still_stuck_within_grace():
+    """Reproduce Rома's 'delete from sheet, stays in CRM, manual sync no help':
+    a наряд imported seconds ago and then deleted is inside the 120s deletion
+    grace, so reconciliation skips it — and a manual sync within that window
+    keeps skipping. Demonstrates the grace is the blocker for sheet-native
+    works the operator deleted deliberately."""
+    session = make_session()
+    # Fresh import — created_at is NOW (within grace).
+    sync_tab(session, "26.08.26", [make_row(row_number=1, work_order_no="28700")],
+             raw_row_count=10)
+    session.commit()
+
+    # Deleted in the sheet moments later; operator hits sync.
+    sync_tab(session, "26.08.26", [], raw_row_count=6)
+    session.commit()
+
+    order = session.scalar(select(Order))
+    # Background sync keeps the grace, so a just-imported+deleted order survives.
+    assert order.archived_at is None
+
+    # A MANUAL sync bypasses the grace (deletion_grace_seconds=0) — the operator
+    # deleted the row and asked to reconcile now.
+    sync_tab(session, "26.08.26", [], raw_row_count=6, deletion_grace_seconds=0)
+    session.commit()
+    assert session.scalar(select(Order)).archived_at is not None

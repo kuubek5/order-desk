@@ -318,6 +318,7 @@ def sync_tab(
     rows: list[OrderRow],
     row_fills: dict[int, str] | None = None,
     raw_row_count: int | None = None,
+    deletion_grace_seconds: float = 120,
 ) -> SyncResult:
     """Import a tab's rows. ``row_fills`` (row_number -> 'blue'/'grey'/''), when
     provided, drives two things:
@@ -570,7 +571,15 @@ def sync_tab(
     # StatusEvent history and flashing in the UI. Orders younger than the
     # grace window are simply not eligible for deletion; a genuinely removed
     # row still gets reconciled by any sync after the window.
-    grace_cutoff = datetime.utcnow() - timedelta(seconds=120)
+    #
+    # A MANUAL sync passes deletion_grace_seconds=0: the operator deleted a row
+    # in the sheet and clicked "sync now", so they want it gone now, not in two
+    # minutes. That deliberate action isn't racing the CRM manual-add path the
+    # grace protects — only the 15s background poll is, and it keeps the grace.
+    # This was the "delete from sheet, stays in CRM, manual sync no help" report:
+    # a just-imported наряд deleted seconds later sat inside the grace, and every
+    # manual sync in that window skipped it.
+    grace_cutoff = datetime.utcnow() - timedelta(seconds=deletion_grace_seconds)
     if had_raw_rows:
         for order in tab_orders:
             # "Matched" beats "its number is present": after a row above it was
@@ -580,7 +589,11 @@ def sync_tab(
                 continue
             if order.source not in ("lab", "sheet_client"):
                 continue
-            if order.created_at is not None and order.created_at > grace_cutoff:
+            if (
+                deletion_grace_seconds > 0
+                and order.created_at is not None
+                and order.created_at > grace_cutoff
+            ):
                 continue
             if order.archived_at is not None:
                 continue  # already archived — don't re-stamp on every sync

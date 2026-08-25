@@ -242,6 +242,10 @@ def sync_google_sheets(
                 result = sync_tab(
                     session, current_tab, rows,
                     row_fills=row_fills, raw_row_count=len(raw),
+                    # A manual "Синхронізувати зараз" reconciles deletions
+                    # immediately — the operator's deliberate click isn't the
+                    # background poll the read/write grace guards against.
+                    deletion_grace_seconds=0 if trigger == "manual" else 120,
                 )
                 # Commit this tab before touching the next, so a later tab's
                 # failure can never undo it.

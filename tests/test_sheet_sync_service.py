@@ -118,6 +118,41 @@ def test_later_sync_uses_yesterday_today_tomorrow_only(monkeypatch):
         old.get_all_values.assert_not_called()
 
 
+def test_manual_sync_archives_a_just_created_row_deleted_from_the_sheet(monkeypatch):
+    """Rома's report: add a наряд in the sheet, it appears in the CRM, delete it
+    in the sheet — but it stays, and manual sync doesn't help. Cause: the just-
+    imported order was inside the 120s deletion grace, and every manual sync in
+    that window skipped it. A manual sync now reconciles immediately."""
+    configured(monkeypatch)
+    today = date.today()
+    empty = worksheet(today)
+    empty.get_all_values.return_value = [[]] * 6  # row cleared, headers remain
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [empty]
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+    monkeypatch.setattr(
+        "app.sheet_sync_service.fetch_row_fills", lambda ws: {}
+    )
+
+    with make_session() as session:
+        # Imported seconds ago (inside the grace), row 7 = data-row 1.
+        session.add(Order(
+            source="lab", sheet_tab=today.strftime("%d.%m.%y"), row_number=1,
+            work_order_no="28700", status="нове", created_at=datetime.utcnow(),
+        ))
+        session.commit()
+
+        # Background run keeps the grace — the fresh order survives.
+        sync_google_sheets(session, trigger="background")
+        assert session.scalar(select(Order)).archived_at is None
+
+        # Manual run reconciles now.
+        sync_google_sheets(session, trigger="manual")
+        assert session.scalar(select(Order)).archived_at is not None
+
+
 def test_orders_from_deleted_tabs_are_archived(monkeypatch):
     """A whole dated tab deleted from the sheet ARCHIVES its orders (lab AND
     sheet_client) on the next full sync — kept in the DB for the Archive, out
