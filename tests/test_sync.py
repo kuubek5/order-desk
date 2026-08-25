@@ -1116,3 +1116,78 @@ def test_sheet_can_still_fill_and_change_sum3d():
         session.commit()
         session.refresh(order)
         assert order.sum3d_id == "17-55-28"
+def test_naryadless_lab_work_imports_as_lab_not_a_fake_client():
+    """A technician recorded a work before its наряд was assigned (admins away):
+    no наряд, but a technician + вид + material. It must enter the queue as a LAB
+    work — not be dropped (lost work) and not become a client named after its
+    "вид" (анатомія). The наряд fills in on a later sync."""
+    with make_session() as session:
+        sync_tab(session, "T", [make_row(
+            row_number=1, work_order_no="", technician_name="Іван",
+            kind="анатомія", material_color="цирконій A2", sum3d_id="12-01-45",
+            calculated="", milled="",
+        )])
+        session.commit()
+        order = session.scalar(select(Order))
+        assert order is not None  # not dropped
+        assert order.source == "lab"
+        assert order.client_name is None  # not a fake client
+        assert order.work_order_no is None  # наряд not assigned yet
+        assert order.kind == "анатомія"
+        assert order.technician_name == "Іван"
+        assert order.sum3d_id == "12-01-45"
+
+
+def test_naryadless_lab_work_gains_its_naryad_without_duplicating():
+    """When the наряд is finally assigned, the same order gains it — no second
+    order, no lost Sum3D/status."""
+    with make_session() as session:
+        base = dict(row_number=1, work_order_no="", technician_name="Іван",
+                    kind="анатомія", material_color="цирконій A2",
+                    sum3d_id="12-01-45", calculated="", milled="")
+        sync_tab(session, "T", [make_row(**base)])
+        session.commit()
+        age_orders(session)
+
+        sync_tab(session, "T", [make_row(**{**base, "work_order_no": "24555"})],
+                 deletion_grace_seconds=0)
+        session.commit()
+
+        orders = list(session.scalars(select(Order)))
+        assert len(orders) == 1  # same order, not a duplicate
+        assert orders[0].work_order_no == "24555"
+        assert orders[0].sum3d_id == "12-01-45"
+
+
+def test_clearing_naryad_on_an_active_lab_work_keeps_it_lab():
+    """Clearing the наряд cell on an in-progress lab work (leaving технік + вид +
+    material) must NOT flip it into a fake client and must NOT reset its status.
+    Regression for the misclassification the client heuristic used to cause."""
+    with make_session() as session:
+        sync_tab(session, "T", [make_row(
+            row_number=1, work_order_no="24122", technician_name="Технік",
+            kind="анатомія", material_color="моно A2", sum3d_id="12-01-45",
+            calculated="", milled="",
+        )])
+        session.commit()
+        age_orders(session)
+        order = session.scalar(select(Order))
+        order.status = "прораховано"
+        session.commit()
+
+        # наряд cell cleared; технік + вид + material remain (no mill markers,
+        # so the sheet reports no new progress — status must simply be preserved).
+        sync_tab(session, "T", [make_row(
+            row_number=1, work_order_no="", technician_name="Технік",
+            kind="анатомія", material_color="моно A2", sum3d_id="12-01-45",
+            calculated="", milled="",
+        )], deletion_grace_seconds=0)
+        session.commit()
+        session.refresh(order)
+
+        assert order.source == "lab"  # not flipped to sheet_client
+        assert order.client_name is None
+        assert order.status == "прораховано"  # progress not lost
+        assert order.sum3d_id == "12-01-45"
+        assert order.archived_at is None
+

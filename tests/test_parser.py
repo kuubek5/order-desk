@@ -288,3 +288,46 @@ class TestClientRows:
         ]
         result = parse_rows(raw_rows)
         assert result[0].is_client_row is False
+
+    def test_naryadless_row_with_a_technician_is_not_a_client(self):
+        # A technician entered an internal work before the наряд was assigned
+        # (admins away). The technician column is the discriminator: filled = lab,
+        # so this must NOT be read as a client named after its "вид".
+        raw_rows = HEADER_ROWS_SAMPLE + [
+            make_data_row({3: 'цирконій A2', 4: 'анатомія', 9: 'Іван'})  # no наряд, has технік
+        ]
+        result = parse_rows(raw_rows)
+        assert len(result) == 1
+        assert result[0].is_client_row is False
+        assert result[0].is_pending_lab_row is True
+
+
+class TestPendingLabRows:
+    """Наряд-less internal works: a technician recorded the work before its
+    наряд was assigned. Must enter the queue as lab (not dropped, not a fake
+    client) — the наряд fills in later."""
+
+    def test_naryadless_lab_row_is_parsed_not_dropped(self):
+        raw_rows = HEADER_ROWS_SAMPLE + [
+            make_data_row({3: 'цирконій A2', 4: 'анатомія', 9: 'Іван', 11: '12-01-45'})
+        ]
+        result = parse_rows(raw_rows)
+        assert len(result) == 1  # kept despite no наряд
+        assert result[0].is_pending_lab_row is True
+        assert result[0].technician_name == 'Іван'
+        assert result[0].kind == 'анатомія'
+
+    def test_technician_alone_without_work_content_is_still_skipped(self):
+        # A stray technician name with no work (no вид/material/quantity) is not
+        # a work — don't resurrect a blank row into the queue.
+        raw_rows = HEADER_ROWS_SAMPLE + [make_data_row({9: 'Іван'})]
+        assert len(parse_rows(raw_rows)) == 0
+
+    def test_client_row_without_technician_still_a_client(self):
+        # The email-client shape is unchanged: no наряд, no technician.
+        raw_rows = HEADER_ROWS_SAMPLE + [
+            make_data_row({2: '1', 3: 'mono a3', 4: 'Басараб'})
+        ]
+        result = parse_rows(raw_rows)
+        assert result[0].is_client_row is True
+        assert result[0].is_pending_lab_row is False

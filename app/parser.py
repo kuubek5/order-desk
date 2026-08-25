@@ -56,12 +56,34 @@ class OrderRow:
         The lab types email clients into the sheet (the "blue-filled" rows):
         no наряд, no technician — the client's name sits in the "вид" column
         (E, parsed here as `kind`) alongside a material and quantity. Confirmed
-        on real tabs (Басараб / LekaLab / i3lab Kiev). Internal works always
-        get a наряд first, so a наряд-less row carrying a name + material is a
-        client placeholder, not a draft internal job — surface it as one."""
+        on real tabs (Басараб / LekaLab / i3lab Kiev).
+
+        A наряд-less row that DOES carry a technician name is not a client — it
+        is an internal work a technician entered before a наряд was assigned
+        (admins went home / forgot). The technician column is the discriminator
+        the lab confirmed: filled → lab, empty → client. Such a row is caught by
+        is_pending_lab_row and imported as a наряд-less lab work, not a fake
+        client named after its "вид"."""
         if self.work_order_no:
             return False
+        if self.technician_name:
+            return False
         return bool(self.kind and (self.material_color or self.quantity))
+
+    @property
+    def is_pending_lab_row(self) -> bool:
+        """An internal (lab) work entered before its наряд was assigned.
+
+        Reality the lab confirmed: administrators assign наряди, and when they
+        are away a technician still records the work in the sheet WITHOUT a
+        наряд. No наряд yet, but a technician name (the "lab entered this" mark)
+        plus some work content. Must enter the queue as a lab work — dropping it
+        (is_empty is True while there is no наряд) would silently lose real
+        work, and classifying it as a client mislabels it with its work-type as
+        a client name. The наряд fills in later, positionally matched."""
+        if self.work_order_no:
+            return False
+        return bool(self.technician_name and (self.kind or self.material_color or self.quantity))
 
 
 def _cell(row: list, idx: int) -> str:
@@ -106,6 +128,6 @@ def parse_rows(raw_rows: list[list[str]]) -> list[OrderRow]:
             redo_calculated=_cell(row, 23),
             redo_milled=_cell(row, 24),
         )
-        if not order.is_empty or order.is_client_row:
+        if not order.is_empty or order.is_client_row or order.is_pending_lab_row:
             parsed.append(order)
     return parsed
