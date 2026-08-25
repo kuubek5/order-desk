@@ -21,6 +21,9 @@ COL_MILLED = 14
 COL_CAM_COMMENT = 11
 # Rework/БРАК "Заповнює cam оператор" redo ID — sheet column W (parser idx 22).
 COL_REDO_SUM3D_ID = 23
+# Rework/БРАК "Прорахував" — sheet column X (parser idx 23). Holds the operator
+# letter for a REDO calculation, the rework counterpart of COL_CALCULATED (М).
+COL_REDO_CALCULATED = 24
 STATUS_MARKER_FIELDS = {"calculated_raw", "milled_raw"}
 
 # 1-indexed gspread columns for the mail-intake placeholder row (see
@@ -243,6 +246,16 @@ def write_rework_sum3d(worksheet: gspread.Worksheet, order: Order, value: str) -
     if row is None:
         return  # row shifted, can't re-locate safely — skip (see write_order_fields)
     call_with_retry(lambda: worksheet.update_cell(row, COL_REDO_SUM3D_ID, value or ""))
+
+
+def write_rework_calculated(worksheet: gspread.Worksheet, order: Order, value: str) -> None:
+    """Write the operator letter into the rework "Прорахував" cell (column X) —
+    who calculated the REDO in Sum3D, the БРАК-block counterpart of column М.
+    Single cell, row-verified, same discipline as write_rework_sum3d."""
+    row = _resolve_row(worksheet, order)
+    if row is None:
+        return
+    call_with_retry(lambda: worksheet.update_cell(row, COL_REDO_CALCULATED, value or ""))
 
 
 def apply_status_markers(

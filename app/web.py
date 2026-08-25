@@ -154,6 +154,7 @@ from app.sheet_writer import (
     clear_row_fills,
     paint_row_fills,
     write_order_fields,
+    write_rework_calculated,
     write_rework_sum3d,
 )
 from app.parser import HEADER_ROWS
@@ -1485,9 +1486,13 @@ def _clear_sheet_row_background(sheet_tab: str, row_number: int) -> None:
     _sheet_writeback_pool.submit(worker)
 
 
-def _write_rework_sum3d(db: Session, order: Order, value: str) -> str | None:
-    """Write the redo Sum3D ID to the sheet's column W. Same lab-only gate,
-    single-cell discipline and error-surfacing as _write_sheet_fields."""
+def _write_rework_sum3d(
+    db: Session, order: Order, value: str, letter: str | None = None
+) -> str | None:
+    """Write the redo Sum3D ID to the sheet's column W and, when ``letter`` is
+    given, the operator's initial to the rework "Прорахував" cell (column X) —
+    both in one sheet open. Same lab-only gate, single-cell discipline and
+    error-surfacing as _write_sheet_fields."""
     if order.source != "lab" or not order.sheet_tab:
         return None
     try:
@@ -1495,6 +1500,8 @@ def _write_rework_sum3d(db: Session, order: Order, value: str) -> str | None:
         if worksheet is None:
             raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
         write_rework_sum3d(worksheet, order, value)
+        if letter is not None:
+            write_rework_calculated(worksheet, order, letter)
         db.add(
             SyncLog(
                 direction="db_to_sheet",
@@ -2184,7 +2191,8 @@ async def set_sum3d_id(
     sum3d_id: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    if get_current_user(request, db) is None:
+    user = get_current_user(request, db)
+    if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
 
     order = db.get(Order, order_id)
@@ -2198,17 +2206,41 @@ async def set_sum3d_id(
         )
 
     value = sum3d_id.strip() or None
+    # Entering a Sum3D ID IS the "I calculated this in Sum3D" moment, so the
+    # portal stamps the operator's letter into the "Прорахував" column — М for a
+    # normal work, Х for a rework — matching the lab's existing by-hand
+    # convention. Only when the operator actually has a letter assigned and a
+    # value is being set (never on a clear); an operator without a letter just
+    # gets the Sum3D written, "Прорахував" left as-is.
+    initial = (user.sheet_initial or "").strip() or None
+    stamp = initial if (initial and value) else None
     rework = order.active_rework
     if rework is not None:
         # A reworked job — the ID the operator types is the redo calculation's
         # Sum3D (column W), NOT the original job's ID (column L, left intact as
         # the "previous calculation" the operator reviews to avoid repeating the
-        # mistake — see the order passport's rework block).
+        # mistake — see the order passport's rework block). The letter goes to
+        # the rework "Прорахував" (column Х), the redo counterpart of М.
         rework.sum3d_id = value
-        sync_error = _write_rework_sum3d(db, order, value or "")
+        if stamp:
+            rework.calculated_raw = stamp
+        sync_error = _write_rework_sum3d(db, order, value or "", letter=stamp)
     else:
         order.sum3d_id = value
-        sync_error = _write_sheet_fields(db, order, {"sum3d_id"})
+        write_fields = {"sum3d_id"}
+        if stamp:
+            order.calculated_raw = stamp
+            write_fields.add("calculated_raw")
+            # The letter in М is the "прораховано" marker, so advance the DB
+            # status to match (never downgrade a further state), recording the
+            # real logged-in operator who calculated it.
+            if order.status in ("нове", "прийнято"):
+                order.status = "прораховано"
+                db.add(StatusEvent(
+                    order_id=order.id, operator_id=user.id,
+                    status="прораховано", actor=user.username,
+                ))
+        sync_error = _write_sheet_fields(db, order, write_fields)
     db.commit()
     db.refresh(order)
 
@@ -4588,6 +4620,7 @@ async def create_operator(request: Request, db: Session = Depends(get_db)):
     password = form.get("password", "").strip()
     full_name = form.get("full_name", "").strip() or None
     role = form.get("role", "оператор").strip() or "оператор"
+    initial = _normalize_initial(form.get("sheet_initial", ""))
 
     if not username or not password:
         return RedirectResponse("/settings?error=логін+і+пароль+обов'язкові", status_code=303)
@@ -4596,16 +4629,70 @@ async def create_operator(request: Request, db: Session = Depends(get_db)):
     if existing is not None:
         return RedirectResponse("/settings?error=такий+логін+вже+існує", status_code=303)
 
+    if initial is not None:
+        err = _validate_initial(db, initial, exclude_user_id=None)
+        if err:
+            return RedirectResponse(f"/settings?error={quote(err)}", status_code=303)
+
     db.add(
         User(
             username=username,
             password_hash=hash_password(password),
             full_name=full_name,
             role=role,
+            sheet_initial=initial,
         )
     )
     db.commit()
 
+    return RedirectResponse("/settings?saved=1", status_code=303)
+
+
+def _normalize_initial(raw: str) -> str | None:
+    """A sheet initial normalized: trimmed, upper-cased (Р/К/СТ), or None if
+    blank. Length is validated separately by _validate_initial."""
+    cleaned = (raw or "").strip().upper()
+    return cleaned or None
+
+
+def _validate_initial(db: Session, initial: str, *, exclude_user_id: int | None) -> str | None:
+    """Return a Ukrainian error message if the initial is invalid, else None.
+    Rules: 1-2 letters, unique across operators (letters identify who
+    calculated, so a shared letter would be ambiguous)."""
+    if not (1 <= len(initial) <= 2) or not initial.isalpha():
+        return "літера оператора — 1-2 букви"
+    query = select(User).where(User.sheet_initial == initial)
+    if exclude_user_id is not None:
+        query = query.where(User.id != exclude_user_id)
+    clash = db.scalar(query)
+    if clash is not None:
+        return f"літеру «{initial}» вже має {clash.full_name or clash.username}"
+    return None
+
+
+@app.post("/settings/users/{user_id}/initial", response_class=HTMLResponse)
+async def set_operator_initial(request: Request, user_id: int, db: Session = Depends(get_db)):
+    """Assign/change/clear an operator's sheet letter (admin only). Empty clears
+    it (that operator's Sum3D writes then leave "Прорахував" untouched)."""
+    admin = get_current_user(request, db)
+    if admin is None:
+        return RedirectResponse("/login", status_code=303)
+    if admin.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    target = db.get(User, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="користувача не знайдено")
+
+    form = await request.form()
+    initial = _normalize_initial(form.get("sheet_initial", ""))
+    if initial is not None:
+        err = _validate_initial(db, initial, exclude_user_id=user_id)
+        if err:
+            return RedirectResponse(f"/settings?error={quote(err)}", status_code=303)
+
+    target.sheet_initial = initial
+    db.commit()
     return RedirectResponse("/settings?saved=1", status_code=303)
 
 

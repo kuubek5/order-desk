@@ -383,6 +383,7 @@
                             <th>Ім'я</th>
                             <th>Логін</th>
                             <th>Роль</th>
+                            <th>Літера</th>
                             <th>Статус</th>
                             <th>Скинути пароль</th>
                             <th></th>
@@ -394,6 +395,14 @@
                             <td>{{ operator.full_name or '—' }}</td>
                             <td class="order-id">{{ operator.username }}</td>
                             <td>{{ operator.role }}</td>
+                            <td>
+                                <form method="post" action="/settings/users/{{ operator.id }}/initial" class="users-reset-form">
+                                    <input type="text" name="sheet_initial" class="login-input users-initial-input"
+                                           value="{{ operator.sheet_initial or '' }}" maxlength="2"
+                                           placeholder="—" title="1-2 літери, напр. Р, СТ" style="width:3.2rem;text-align:center;text-transform:uppercase;">
+                                    <button type="submit" class="link-button">Зберегти</button>
+                                </form>
+                            </td>
                             <td>
                                 <span class="status-badge {{ 'user-badge-active' if operator.is_active else 'user-badge-inactive' }}">
                                     {{ 'активний' if operator.is_active else 'вимкнено' }}
@@ -453,6 +462,15 @@
                                     <option value="оператор">оператор</option>
                                     <option value="адмін">адмін</option>
                                 </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label for="sheet_initial">Літера в таблиці</label>
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <input type="text" id="sheet_initial" name="sheet_initial" class="login-input"
+                                       maxlength="2" placeholder="Р, К, СТ…" style="text-transform:uppercase;">
                             </div>
                         </div>
                     </div>

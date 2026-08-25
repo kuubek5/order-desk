@@ -15,6 +15,12 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     full_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     role: Mapped[str] = mapped_column(String(50), default="оператор")
+    # The 1-2 letter initial the operator writes in the sheet's "Прорахував"
+    # column (М/Х) to mark who calculated a work in Sum3D (Р=Рома, К=Костя,
+    # СТ=Стас…). Filled by the portal automatically when this operator enters a
+    # Sum3D ID, so the sheet keeps its existing human convention. Unique across
+    # operators (enforced in the settings route); NULL until an admin assigns it.
+    sheet_initial: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()
