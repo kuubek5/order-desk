@@ -726,3 +726,24 @@ class TestRowFills:
         ss = self._fake_spreadsheet()
         clear_row_fills(ss, [])
         ss.batch_update.assert_not_called()
+
+
+def test_clear_placeholder_row_whitens_the_whole_ak_block():
+    """Deleting a client work must leave a brand-new-looking row: the blue
+    "pending" fill is painted over ALL of A:K on add, so the clear has to whiten
+    all of A:K too — whitening only the name cell (column E) left the rest of
+    the row blue (operator report 26.08.26). L/M/N (green template) untouched."""
+    from unittest.mock import MagicMock
+    from app.sheet_writer import clear_placeholder_row, _WHITE, COL_CAM_COMMENT
+
+    ws = MagicMock()
+    ws.id = 777
+    clear_placeholder_row(ws, 63)
+
+    # The fill batch_update is the spreadsheet.batch_update call.
+    body = ws.spreadsheet.batch_update.call_args[0][0]
+    rc = body["requests"][0]["repeatCell"]
+    assert rc["range"]["startColumnIndex"] == 0
+    assert rc["range"]["endColumnIndex"] == COL_CAM_COMMENT  # A:K, not just E
+    assert rc["range"]["startRowIndex"] == 62 and rc["range"]["endRowIndex"] == 63
+    assert rc["cell"]["userEnteredFormat"]["backgroundColor"] == _WHITE

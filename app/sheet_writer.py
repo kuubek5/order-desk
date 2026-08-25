@@ -110,14 +110,32 @@ def paint_row_fills(spreadsheet: gspread.Spreadsheet, rows: list[tuple[int, int]
 
 
 def clear_placeholder_row(worksheet: gspread.Worksheet, row: int) -> None:
-    """Blank a mail-placeholder row (A:K values + the client-name fill) so an
-    un-accepted email leaves no trace in the sheet. Blanking (not deleting) keeps
-    every other row's position — and therefore every other order's row_number —
-    intact; an all-empty row reads as a free row on the next sync, so it's never
-    re-imported. Columns L/M/N are left untouched, matching the write side."""
+    """Blank a client/mail-placeholder row (A:K values AND the whole A:K fill)
+    so a deleted or un-accepted work leaves a row that looks brand-new. Blanking
+    (not deleting) keeps every other row's position — and therefore every other
+    order's row_number — intact; an all-empty row reads as a free row on the
+    next sync, so it's never re-imported. Columns L/M/N are left untouched
+    (their green «технік заповнює» styling is the empty-row template), matching
+    the write side.
+
+    The fill is cleared across the FULL A:K block, not just the name cell: the
+    manual-add paints the blue "pending" fill over all of A:K, so whitening only
+    column E left the rest of the row blue after a delete (operator report)."""
     a1 = f"A{row}:{gspread.utils.rowcol_to_a1(row, COL_CAM_COMMENT)}"
     call_with_retry(lambda: worksheet.batch_update([{"range": a1, "values": [[""] * COL_CAM_COMMENT]}]))
-    _set_row_fills(worksheet.spreadsheet, [(worksheet.id, row)], _WHITE)
+    # Whiten A:K — same span the blue "pending" fill was painted over.
+    request = {
+        "repeatCell": {
+            "range": {
+                "sheetId": worksheet.id,
+                "startRowIndex": row - 1, "endRowIndex": row,
+                "startColumnIndex": 0, "endColumnIndex": COL_CAM_COMMENT,  # A:K
+            },
+            "cell": {"userEnteredFormat": {"backgroundColor": _WHITE}},
+            "fields": "userEnteredFormat.backgroundColor",
+        }
+    }
+    call_with_retry(lambda: worksheet.spreadsheet.batch_update({"requests": [request]}))
 
 
 def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[str]) -> None:
