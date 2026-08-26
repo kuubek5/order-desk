@@ -3825,6 +3825,12 @@ body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
   border-right-color:var(--accent-b);
 }
 .q2 table.qtable tbody td{padding:var(--queue-density-pad,8px) 8px;border-bottom:1px solid #1c2532;font-size:var(--queue-density-font,13px);vertical-align:middle;white-space:nowrap}
+/* ТИМЧАСОВО приховано на прохання: колонка «Статус» у черзі. DOM лишається
+   (td/th на місці — регрес-тести шаблону рядка не ламаються, зміна статусу й
+   видалення рядка ще працюють, просто не показані). Повернути — прибрати ці два
+   рядки. Undo тепер робить статична кнопка «Крок назад» у шапці. */
+.q2 table.qtable td.status,
+.q2 table.qtable th.col-status{display:none}
 body.layout-edit .q2 table.qtable{user-select:none}
 .q2 table.qtable tbody tr{transition:background var(--ui-speed) ease}
 .q2 table.qtable tbody tr:hover{background:var(--card-2)}

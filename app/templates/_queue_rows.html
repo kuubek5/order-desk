@@ -11,7 +11,7 @@
    is typing in a row, so an in-progress comment/Sum3D is never wiped. #}
 <div id="queue-rows"
      hx-get="/?{{ rows_qs }}{% if rows_qs %}&{% endif %}partial=rows"
-     hx-trigger="every {{ sync_screen_seconds|default(15) }}s"
+     hx-trigger="every {{ sync_screen_seconds|default(15) }}s, refresh-queue from:body"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*">

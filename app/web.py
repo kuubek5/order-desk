@@ -406,12 +406,17 @@ def _sheets_access_error_message(db: Session, exc: BaseException) -> str:
     return "Не вдалося відкрити таблицю. Перевірте ID, ключ і доступ до таблиці"
 
 
-def _toast_response(message: str, *, kind: str = "success") -> Response:
+def _toast_response(message: str, *, kind: str = "success", triggers: dict | None = None) -> Response:
     """204 + an HX-Trigger toast — the reply for an HTMX action that changed
     something server-side but has nothing to swap into the page. Same
-    {"toast": {...}} envelope app.js already listens for."""
+    {"toast": {...}} envelope app.js already listens for. `triggers` adds extra
+    HX-Trigger events alongside the toast (e.g. {"refresh-queue": True} to make
+    the polled #queue-rows refetch immediately)."""
+    payload = {"toast": {"message": message, "kind": kind}}
+    if triggers:
+        payload.update(triggers)
     response = Response(status_code=204)
-    response.headers["HX-Trigger"] = json.dumps({"toast": {"message": message, "kind": kind}})
+    response.headers["HX-Trigger"] = json.dumps(payload)
     return response
 
 
@@ -453,16 +458,18 @@ def log_action(
 UNDO_WINDOW_SECONDS = 5 * 60
 
 
-def _attach_undo_toast(response: Response, entry: ActionLog, message: str) -> None:
-    """Add an HX-Trigger toast carrying an «Скасувати» affordance for this logged
-    action. app.js renders the button and POSTs the undoUrl.
+def _attach_action_toast(response: Response, entry: ActionLog, message: str) -> None:
+    """Add a plain success HX-Trigger toast confirming a logged action. Undo is no
+    longer offered here — a persistent «Крок назад» button in the queue header
+    reverts the last action instead (POST /actions/undo-last), so the toast is
+    just confirmation and does not carry an undoUrl.
 
     ensure_ascii MUST stay on (default): HTTP header values are latin-1, so any
     Cyrillic in `message` has to ride as \\uXXXX escapes — htmx decodes them back
     to real text. ensure_ascii=False here put raw Cyrillic in the header and 500'd
-    the whole request."""
+    the whole request. `entry` is kept in the signature for callers/logging parity."""
     response.headers["HX-Trigger"] = json.dumps(
-        {"toast": {"message": message, "kind": "success", "undoUrl": f"/actions/{entry.id}/undo"}}
+        {"toast": {"message": message, "kind": "success"}}
     )
 
 
@@ -2358,7 +2365,7 @@ async def set_sum3d_id(
         request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": sync_error}
     )
     if sync_error is None:
-        _attach_undo_toast(response, log_entry, note)
+        _attach_action_toast(response, log_entry, note)
     return response
 
 
@@ -2794,33 +2801,21 @@ async def set_status(
         request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": sync_error}
     )
     if log_entry is not None and sync_error is None:
-        _attach_undo_toast(response, log_entry, f"статус → {status}")
+        _attach_action_toast(response, log_entry, f"статус → {status}")
     return response
 
 
-@app.post("/actions/{action_id}/undo")
-async def undo_action(request: Request, action_id: int, db: Session = Depends(get_db)):
-    """Revert the LAST logged action to its before-state (Sum3D or status),
-    writing the old value back to DB + sheet. Guards: only the operator who did
-    it, only once, only within UNDO_WINDOW_SECONDS, and only if nothing has
-    changed the value since (the shared sheet — someone else may have edited the
-    row; a blind restore would clobber their change, so we refuse instead)."""
-    user = get_current_user(request, db)
-    if user is None:
-        raise HTTPException(status_code=401, detail="увійдіть в систему")
+# Action types a "крок назад" can revert, newest-first selection order.
+UNDOABLE_ACTION_TYPES = ("sum3d", "status")
 
-    entry = db.get(ActionLog, action_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail="дію не знайдено")
-    if entry.operator_id != user.id:
-        return _toast_response("Скасувати можна лише власну дію", kind="error")
-    if entry.undone_at is not None:
-        return _toast_response("Цю дію вже скасовано", kind="error")
-    if entry.created_at is not None and entry.created_at < datetime.utcnow() - timedelta(seconds=UNDO_WINDOW_SECONDS):
-        return _toast_response("Вікно скасування минуло", kind="error")
-    if sync_control.is_paused():
-        return _toast_response(_SYNC_PAUSED_MSG, kind="info")
 
+def _perform_undo(db: Session, user: "User", entry: ActionLog) -> Response:
+    """Revert one already-validated ActionLog entry to its before-state (Sum3D or
+    status), writing the old value back to DB + sheet. The caller has already
+    checked ownership, the not-yet-undone flag and the time window; this does the
+    revert, the concurrent-change guard, the log and the commit. On success it
+    also fires the `refresh-queue` HX-Trigger so the polled queue shows the
+    reverted row at once instead of after the next 15s tick."""
     order = db.get(Order, entry.order_id) if entry.order_id else None
     if order is None:
         return _toast_response("Роботи більше немає — скасувати не можна", kind="error")
@@ -2870,8 +2865,64 @@ async def undo_action(request: Request, action_id: int, db: Session = Depends(ge
     db.commit()
 
     if sync_error:
-        return _toast_response("Скасовано в системі, але таблиця не оновилась: " + sync_error, kind="error")
-    return _toast_response("Дію скасовано")
+        return _toast_response(
+            "Скасовано в системі, але таблиця не оновилась: " + sync_error,
+            kind="error", triggers={"refresh-queue": True},
+        )
+    return _toast_response("Дію скасовано", triggers={"refresh-queue": True})
+
+
+@app.post("/actions/{action_id}/undo")
+async def undo_action(request: Request, action_id: int, db: Session = Depends(get_db)):
+    """Undo one specific logged action by id (guards: own action, once, within
+    the window, sync not paused), then revert it via _perform_undo."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    entry = db.get(ActionLog, action_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="дію не знайдено")
+    if entry.operator_id != user.id:
+        return _toast_response("Скасувати можна лише власну дію", kind="error")
+    if entry.undone_at is not None:
+        return _toast_response("Цю дію вже скасовано", kind="error")
+    if entry.created_at is not None and entry.created_at < datetime.utcnow() - timedelta(seconds=UNDO_WINDOW_SECONDS):
+        return _toast_response("Вікно скасування минуло", kind="error")
+    if sync_control.is_paused():
+        return _toast_response(_SYNC_PAUSED_MSG, kind="info")
+
+    return _perform_undo(db, user, entry)
+
+
+@app.post("/actions/undo-last")
+async def undo_last_action(request: Request, db: Session = Depends(get_db)):
+    """«Крок назад» — the static undo button. Finds THIS operator's most recent
+    still-undoable action (Sum3D/status, not yet undone, inside the window) and
+    reverts it. Pressing it again steps back through earlier actions. Replaces the
+    per-action «Скасувати» toast affordance."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if sync_control.is_paused():
+        return _toast_response(_SYNC_PAUSED_MSG, kind="info")
+
+    cutoff = datetime.utcnow() - timedelta(seconds=UNDO_WINDOW_SECONDS)
+    entry = (
+        db.query(ActionLog)
+        .filter(
+            ActionLog.operator_id == user.id,
+            ActionLog.action_type.in_(UNDOABLE_ACTION_TYPES),
+            ActionLog.undone_at.is_(None),
+            ActionLog.created_at >= cutoff,
+        )
+        .order_by(ActionLog.created_at.desc(), ActionLog.id.desc())
+        .first()
+    )
+    if entry is None:
+        return _toast_response("Немає що скасувати", kind="info")
+
+    return _perform_undo(db, user, entry)
 
 
 @app.post("/orders/{order_id}/comments")

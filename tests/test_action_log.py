@@ -237,6 +237,63 @@ def test_undo_logs_an_undo_action():
         assert "скасовано" in undo_entry.note
 
 
+def _run_undo_last(db, user):
+    with patch.object(web, "_write_sheet_fields", return_value=None), \
+         patch.object(web, "_write_rework_sum3d", return_value=None):
+        return asyncio.run(web.undo_last_action(request=_request(user.id), db=db))
+
+
+def test_undo_last_reverts_most_recent_action():
+    """The static «Крок назад» button undoes the operator's latest action without
+    being handed a specific id."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, status="прийнято")
+        _run_status(db, user, order, "у фрезеруванні")
+        _run_undo_last(db, user)
+        db.refresh(order)
+        assert order.status == "прийнято"
+
+
+def test_undo_last_steps_back_through_actions():
+    """Pressing «Крок назад» again reverts the previous action too."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, status="нове")
+        _run_status(db, user, order, "прийнято")
+        _run_status(db, user, order, "у фрезеруванні")
+        _run_undo_last(db, user)                       # undo the 2nd
+        db.refresh(order)
+        assert order.status == "прийнято"
+        _run_undo_last(db, user)                       # step back once more
+        db.refresh(order)
+        assert order.status == "нове"
+
+
+def test_undo_last_with_nothing_to_undo_is_noop():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = _run_undo_last(db, user)
+        assert resp.status_code == 204
+        assert "undone_at" not in ""  # no entries exist; nothing changed
+        assert db.scalar(select(ActionLog)) is None
+
+
+def test_undo_last_only_sees_own_actions():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db, initial="Р")
+        other = _user(db, initial="К", username="kostya")
+        order = _order(db, status="прийнято")
+        _run_status(db, user, order, "у фрезеруванні")   # user's action
+        _run_undo_last(db, other)                        # other has nothing
+        db.refresh(order)
+        assert order.status == "у фрезеруванні"          # untouched
+
+
 # --- Журнал: окремий екран + картка (крок 3) ---------------------------------
 
 
@@ -295,14 +352,16 @@ def test_order_detail_context_includes_actions():
         assert len(actions) == 1 and actions[0].note == "Sum3D → x"
 
 
-def test_undo_toast_header_is_latin1_safe():
+def test_action_toast_header_is_latin1_safe():
     """HTTP header values are latin-1; a Cyrillic toast message must ride as
     ASCII unicode escapes, not raw Cyrillic. Regression: ensure_ascii=False here
     500'd every Sum3D/status action whose message had Cyrillic (unit tests mocked
-    the response, so only a real Response object catches it)."""
+    the response, so only a real Response object catches it). The confirmation
+    toast no longer carries an undoUrl — undo is the static «Крок назад» button."""
     from starlette.responses import Response
     resp = Response()
-    web._attach_undo_toast(resp, SimpleNamespace(id=7), "Sum3D очищено")
+    web._attach_action_toast(resp, SimpleNamespace(id=7), "Sum3D очищено")
     header = resp.headers["HX-Trigger"]
     header.encode("latin-1")   # must not raise
-    assert "/actions/7/undo" in header
+    assert "undoUrl" not in header
+    assert "/actions/7/undo" not in header
