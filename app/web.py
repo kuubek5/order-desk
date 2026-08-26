@@ -2951,6 +2951,14 @@ def get_order_detail(
     # it (Sum3D, timeline) without editing frozen history.
     read_only = _order_is_archived(order, date.today() - timedelta(days=RETENTION_DAYS))
 
+    # Laconic action journal for THIS work (Sum3D/status/undo), newest first —
+    # one line per operator action, the "хто що зробив" record.
+    actions = db.execute(
+        select(ActionLog)
+        .where(ActionLog.order_id == order.id)
+        .order_by(ActionLog.created_at.desc())
+    ).scalars().all()
+
     return templates.TemplateResponse(
         request,
         "order_detail.html",
@@ -2960,6 +2968,64 @@ def get_order_detail(
             "error": error,
             "statuses": STATUSES,
             "read_only": read_only,
+            "actions": actions,
+        },
+    )
+
+
+@app.get("/journal", response_class=HTMLResponse)
+def get_journal(
+    request: Request,
+    operator: str = "",
+    day: str = "",
+    db: Session = Depends(get_db),
+):
+    """Лаконічний журнал дій оператора — усі змінні дії (Sum3D, статус, undo)
+    стрічкою, з фільтром за оператором і днем. Прозорий для всієї команди
+    (хто що зробив); показує останні дії, обмежені вікном, щоб не тягнути все."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    query = (
+        select(ActionLog)
+        .options(selectinload(ActionLog.order), selectinload(ActionLog.operator))
+        .order_by(ActionLog.created_at.desc())
+    )
+    op_id = int(operator) if operator.isdigit() else None
+    if op_id is not None:
+        query = query.where(ActionLog.operator_id == op_id)
+
+    day_value = ""
+    if day:
+        try:
+            picked = datetime.strptime(day, "%Y-%m-%d")
+            query = query.where(
+                ActionLog.created_at >= picked,
+                ActionLog.created_at < picked + timedelta(days=1),
+            )
+            day_value = day
+        except ValueError:
+            pass
+
+    limit = 500
+    entries = db.execute(query.limit(limit + 1)).scalars().all()
+    truncated = len(entries) > limit
+    entries = entries[:limit]
+
+    operators = db.scalars(select(User).order_by(User.full_name, User.username)).all()
+
+    return templates.TemplateResponse(
+        request,
+        "journal.html",
+        {
+            "user": user,
+            "entries": entries,
+            "operators": operators,
+            "selected_operator": op_id,
+            "selected_day": day_value,
+            "truncated": truncated,
+            "limit": limit,
         },
     )
 

@@ -235,3 +235,61 @@ def test_undo_logs_an_undo_action():
         undo_entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "undo"))
         assert undo_entry is not None
         assert "скасовано" in undo_entry.note
+
+
+# --- Журнал: окремий екран + картка (крок 3) ---------------------------------
+
+
+def test_journal_lists_newest_first_and_filters_by_operator():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        roma = _user(db, username="roma")
+        kostya = _user(db, username="kostya")
+        order = _order(db)
+        web.log_action(db, order=order, operator=roma, action_type="status",
+                       field="status", old="нове", new="прийнято", note="A")
+        web.log_action(db, order=order, operator=kostya, action_type="status",
+                       field="status", old="прийнято", new="прораховано", note="B")
+        db.commit()
+
+        # No filter → both, newest first.
+        resp = web.get_journal(request=_request(roma.id), db=db)
+        entries = resp.context["entries"]
+        assert [e.note for e in entries] == ["B", "A"]
+
+        # Filter by operator → only theirs.
+        resp = web.get_journal(request=_request(roma.id), operator=str(roma.id), db=db)
+        assert [e.note for e in resp.context["entries"]] == ["A"]
+
+
+def test_journal_filters_by_day():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        e_today = web.log_action(db, order=order, operator=user, action_type="status",
+                                 field="status", old="нове", new="прийнято", note="today")
+        db.commit()
+        e_old = web.log_action(db, order=order, operator=user, action_type="status",
+                               field="status", old="прийнято", new="прораховано", note="old")
+        db.commit()
+        # Backdate one entry to a known past day.
+        e_old.created_at = datetime(2026, 1, 15, 10, 0, 0)
+        db.commit()
+
+        resp = web.get_journal(request=_request(user.id), day="2026-01-15", db=db)
+        notes = [e.note for e in resp.context["entries"]]
+        assert notes == ["old"]
+
+
+def test_order_detail_context_includes_actions():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        web.log_action(db, order=order, operator=user, action_type="sum3d",
+                       field="sum3d_id", old="{}", new="{}", note="Sum3D → x")
+        db.commit()
+        resp = web.get_order_detail(request=_request(user.id), order_id=order.id, db=db)
+        actions = resp.context["actions"]
+        assert len(actions) == 1 and actions[0].note == "Sum3D → x"

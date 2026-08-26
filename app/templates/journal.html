@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Журнал дій — Order Desk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'journal' %}
+{% include "_topbar_nav.html" %}
+
+<main class="setv2">
+    <h1>Журнал дій</h1>
+
+    <form method="get" action="/journal" class="journal-filters">
+        <select name="operator" class="login-input jf-op">
+            <option value="">усі оператори</option>
+            {% for o in operators %}
+            <option value="{{ o.id }}" {% if selected_operator == o.id %}selected{% endif %}>{{ o.full_name or o.username }}</option>
+            {% endfor %}
+        </select>
+        <input type="date" name="day" value="{{ selected_day }}" class="login-input jf-day">
+        <button type="submit" class="login-submit settings-submit">Показати</button>
+        {% if selected_operator or selected_day %}
+        <a href="/journal" class="link-button">Скинути</a>
+        {% endif %}
+    </form>
+
+    {% if entries %}
+    <div class="journal-list">
+        {% for a in entries %}
+        <div class="journal-row{% if a.undone_at %} is-undone{% endif %}">
+            <span class="jr-time mono">{{ a.created_at.strftime('%d.%m %H:%M') if a.created_at else '—' }}</span>
+            <span class="jr-op">{% if a.operator %}{{ a.operator.full_name or a.operator.username }}{% else %}система{% endif %}</span>
+            <span class="jr-note">{{ a.note or a.action_type }}</span>
+            <span class="jr-work mono">{% if a.order and a.order.work_order_no %}наряд {{ a.order.work_order_no }}{% elif a.order and a.order.client_name %}{{ a.order.client_name }}{% else %}—{% endif %}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% if truncated %}
+    <p class="settings-help" style="margin-top:12px;">Показано останні {{ limit }} дій. Уточніть фільтр (оператор або день), щоб побачити старіші.</p>
+    {% endif %}
+    {% else %}
+    <p class="settings-help" style="margin-top:12px;">Дій за цим фільтром не знайдено.</p>
+    {% endif %}
+</main>
+{% endblock %}

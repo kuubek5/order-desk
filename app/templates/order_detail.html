@@ -131,6 +131,27 @@
         {% endif %}
     </div>
 
+    <div class="dsec">
+        <div class="dlabel">Журнал дій</div>
+        {% if actions %}
+        <div class="timeline">
+            {% for a in actions %}
+            <div class="tl-item{% if a.undone_at %} tl-undone{% endif %}">
+                <span class="t mono">{{ a.created_at.strftime('%d.%m %H:%M') if a.created_at else '—' }}</span>
+                <span class="body">
+                    <span class="label">{{ a.note or a.action_type }}</span>
+                    <span class="who">
+                        {% if a.operator %}{{ a.operator.full_name or a.operator.username }}{% else %}система{% endif %}{% if a.undone_at %} · скасовано{% endif %}
+                    </span>
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted">поки немає дій</p>
+        {% endif %}
+    </div>
+
     <div class="p2-card">
         <h3>Коментарі</h3>
         {% if not read_only %}

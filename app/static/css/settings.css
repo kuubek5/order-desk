@@ -431,6 +431,21 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .settings-submit.acc-endshift{background:transparent;border-color:var(--control-edge);color:var(--ink);box-shadow:none}
 .setv2 .settings-submit.acc-endshift:hover{border-color:var(--accent-c);color:var(--accent-c);background:transparent;box-shadow:none;transform:translateY(-1px)}
 
+/* Журнал дій — фільтри + лаконічна стрічка одна-дія-один-рядок */
+.setv2 .journal-filters{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:16px}
+.setv2 .journal-filters .jf-op{width:auto;min-width:12rem}
+.setv2 .journal-filters .jf-day{width:auto}
+.setv2 .journal-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;background:var(--card)}
+.setv2 .journal-row{display:grid;grid-template-columns:84px 9rem 1fr auto;gap:12px;align-items:baseline;padding:8px 14px}
+.setv2 .journal-row+.journal-row{border-top:1px solid var(--line-2)}
+.setv2 .jr-time{color:var(--ink-3);font-size:11.5px}
+.setv2 .jr-op{color:var(--ink-2);font-size:12.5px;font-weight:500}
+.setv2 .jr-note{color:var(--ink);font-size:13px;min-width:0}
+.setv2 .jr-work{color:var(--ink-3);font-size:12px;white-space:nowrap}
+.setv2 .journal-row.is-undone{opacity:.6}
+.setv2 .journal-row.is-undone .jr-note{text-decoration:line-through}
+@media (max-width:640px){.setv2 .journal-row{grid-template-columns:70px 1fr;row-gap:2px}.setv2 .jr-work{grid-column:2}}
+
 /* картки-групи */
 .setv2 .settings-group,.setv2 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);padding:15px 16px;margin:0}
 .setv2 .settings-group:hover,.setv2 .card:hover{border-color:var(--line)}
