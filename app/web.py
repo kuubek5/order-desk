@@ -447,6 +447,29 @@ def log_action(
     return entry
 
 
+# How long after an action "Скасувати" stays valid. The toast lives ~15s, but a
+# direct call could arrive later; a short window keeps undo from clobbering work
+# others may have built on top of a change made long ago.
+UNDO_WINDOW_SECONDS = 5 * 60
+
+
+def _attach_undo_toast(response: Response, entry: ActionLog, message: str) -> None:
+    """Add an HX-Trigger toast carrying an «Скасувати» affordance for this logged
+    action. app.js renders the button and POSTs the undoUrl."""
+    response.headers["HX-Trigger"] = json.dumps(
+        {"toast": {"message": message, "kind": "success", "undoUrl": f"/actions/{entry.id}/undo"}},
+        ensure_ascii=False,
+    )
+
+
+def _snapshot_target(order: Order, field: str):
+    """Resolve a snapshot field name to (object, attr). "rework.x" targets the
+    order's active rework record; everything else targets the order itself."""
+    if field.startswith("rework."):
+        return order.active_rework, field.split(".", 1)[1]
+    return order, field
+
+
 def _settings_changed_at(db: Session, keys: tuple[str, ...]) -> dict[str, str]:
     """`AppSetting.updated_at` per key, formatted "12.08.26".
 
@@ -2271,24 +2294,28 @@ async def set_sum3d_id(
     initial = (user.sheet_initial or "").strip() or None
     stamp = initial if (initial and value) else None
     rework = order.active_rework
+    # Full before-snapshot so "Скасувати" reverts EVERYTHING this action touched
+    # (Sum3D + the auto-stamped letter + the auto-advanced status), not just the
+    # Sum3D cell — a real "крок назад".
+    if rework is not None:
+        before = {"rework.sum3d_id": rework.sum3d_id, "rework.calculated_raw": rework.calculated_raw}
+    else:
+        before = {"sum3d_id": order.sum3d_id, "calculated_raw": order.calculated_raw, "status": order.status}
+
     if rework is not None:
         # A reworked job — the ID the operator types is the redo calculation's
         # Sum3D (column W), NOT the original job's ID (column L, left intact as
         # the "previous calculation" the operator reviews to avoid repeating the
         # mistake — see the order passport's rework block). The letter goes to
         # the rework "Прорахував" (column Х), the redo counterpart of М.
-        old_sum3d = rework.sum3d_id
         rework.sum3d_id = value
         if stamp:
             rework.calculated_raw = stamp
         sync_error = _write_rework_sum3d(db, order, value or "", letter=stamp)
-        log_action(
-            db, order=order, operator=user, action_type="sum3d",
-            field="rework.sum3d_id", old=old_sum3d, new=value,
-            note=(f"Sum3D переробки → {value}" if value else "Sum3D переробки очищено"),
-        )
+        after = {"rework.sum3d_id": rework.sum3d_id, "rework.calculated_raw": rework.calculated_raw}
+        note = f"Sum3D переробки → {value}" if value else "Sum3D переробки очищено"
+        undo_field = "rework.sum3d_id"
     else:
-        old_sum3d = order.sum3d_id
         order.sum3d_id = value
         write_fields = {"sum3d_id"}
         if stamp:
@@ -2304,20 +2331,27 @@ async def set_sum3d_id(
                     status="прораховано", actor=user.username,
                 ))
         sync_error = _write_sheet_fields(db, order, write_fields)
-        log_action(
-            db, order=order, operator=user, action_type="sum3d",
-            field="sum3d_id", old=old_sum3d, new=value,
-            note=(f"Sum3D → {value}" if value else "Sum3D очищено"),
-        )
+        after = {"sum3d_id": order.sum3d_id, "calculated_raw": order.calculated_raw, "status": order.status}
+        note = f"Sum3D → {value}" if value else "Sum3D очищено"
+        undo_field = "sum3d_id"
+
+    log_entry = log_action(
+        db, order=order, operator=user, action_type="sum3d", field=undo_field,
+        old=json.dumps(before, ensure_ascii=False),
+        new=json.dumps(after, ensure_ascii=False), note=note,
+    )
     db.commit()
     db.refresh(order)
 
     attach_export_folder_uris(db, [order])
     attach_job_code_folder_uris(db, [order])
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": sync_error}
     )
+    if sync_error is None:
+        _attach_undo_toast(response, log_entry, note)
+    return response
 
 
 @app.post("/orders/{order_id}/cam-comment", response_class=HTMLResponse)
@@ -2734,8 +2768,9 @@ async def set_status(
     db.add(
         StatusEvent(order_id=order.id, operator_id=user.id, status=status, actor=user.username)
     )
+    log_entry = None
     if status != old_status:
-        log_action(
+        log_entry = log_action(
             db, order=order, operator=user, action_type="status",
             field="status", old=old_status, new=status,
             note=f"статус: {old_status} → {status}",
@@ -2747,9 +2782,88 @@ async def set_status(
     attach_export_folder_uris(db, [order])
     attach_job_code_folder_uris(db, [order])
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": sync_error}
     )
+    if log_entry is not None and sync_error is None:
+        _attach_undo_toast(response, log_entry, f"статус → {status}")
+    return response
+
+
+@app.post("/actions/{action_id}/undo")
+async def undo_action(request: Request, action_id: int, db: Session = Depends(get_db)):
+    """Revert the LAST logged action to its before-state (Sum3D or status),
+    writing the old value back to DB + sheet. Guards: only the operator who did
+    it, only once, only within UNDO_WINDOW_SECONDS, and only if nothing has
+    changed the value since (the shared sheet — someone else may have edited the
+    row; a blind restore would clobber their change, so we refuse instead)."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    entry = db.get(ActionLog, action_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="дію не знайдено")
+    if entry.operator_id != user.id:
+        return _toast_response("Скасувати можна лише власну дію", kind="error")
+    if entry.undone_at is not None:
+        return _toast_response("Цю дію вже скасовано", kind="error")
+    if entry.created_at is not None and entry.created_at < datetime.utcnow() - timedelta(seconds=UNDO_WINDOW_SECONDS):
+        return _toast_response("Вікно скасування минуло", kind="error")
+    if sync_control.is_paused():
+        return _toast_response(_SYNC_PAUSED_MSG, kind="info")
+
+    order = db.get(Order, entry.order_id) if entry.order_id else None
+    if order is None:
+        return _toast_response("Роботи більше немає — скасувати не можна", kind="error")
+
+    if entry.action_type == "sum3d":
+        before = json.loads(entry.old_value or "{}")
+        after = json.loads(entry.new_value or "{}")
+        # Guard: every field this action set must still hold what it set — else
+        # someone changed it since and undo would clobber them.
+        for f, v in after.items():
+            obj, attr = _snapshot_target(order, f)
+            if obj is None or getattr(obj, attr) != v:
+                return _toast_response("Не можна скасувати — значення вже змінили", kind="error")
+        # Restore the whole before-snapshot.
+        for f, v in before.items():
+            obj, attr = _snapshot_target(order, f)
+            if obj is not None:
+                setattr(obj, attr, v)
+        if entry.field == "rework.sum3d_id":
+            rework = order.active_rework
+            restored = (rework.sum3d_id if rework else None) or ""
+            restored_letter = (rework.calculated_raw if rework else None)
+            sync_error = _write_rework_sum3d(db, order, restored, letter=restored_letter)
+        else:
+            sync_error = _write_sheet_fields(db, order, {"sum3d_id", "calculated_raw"})
+            db.add(StatusEvent(
+                order_id=order.id, operator_id=user.id, status=order.status,
+                actor=user.username, note="скасовано (Sum3D)",
+            ))
+    elif entry.action_type == "status":
+        if order.status != entry.new_value:
+            return _toast_response("Не можна скасувати — статус уже змінили", kind="error")
+        order.status = entry.old_value
+        db.add(StatusEvent(
+            order_id=order.id, operator_id=user.id, status=order.status,
+            actor=user.username, note="скасовано (статус)",
+        ))
+        sync_error = None
+    else:
+        return _toast_response("Цей тип дії поки не скасовується", kind="error")
+
+    entry.undone_at = datetime.utcnow()
+    log_action(
+        db, order=order, operator=user, action_type="undo",
+        field=entry.field, note=f"скасовано: {entry.note}",
+    )
+    db.commit()
+
+    if sync_error:
+        return _toast_response("Скасовано в системі, але таблиця не оновилась: " + sync_error, kind="error")
+    return _toast_response("Дію скасовано")
 
 
 @app.post("/orders/{order_id}/comments")

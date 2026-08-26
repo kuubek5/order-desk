@@ -1099,7 +1099,7 @@ const TOAST_ICONS = {
 const TOAST_LIFE = { error: 0, warning: 9000, info: 7000, success: 5000 };
 const TOAST_MAX = 3;
 
-function showToast(message, kind = "info", timeout) {
+function showToast(message, kind = "info", timeout, undoUrl) {
   if (!message) return;
   let stack = document.getElementById("toast-stack");
   if (!stack) {
@@ -1129,7 +1129,9 @@ function showToast(message, kind = "info", timeout) {
     (TOAST_ICONS[kind] || TOAST_ICONS.info) +
     '</svg></div><div class="toast-body"><div class="toast-title"></div>' +
     (rest ? '<div class="toast-text"></div>' : "") +
-    '</div><button type="button" class="toast-close" aria-label="Закрити">×</button>' +
+    '</div>' +
+    (undoUrl ? '<button type="button" class="toast-undo">Скасувати</button>' : "") +
+    '<button type="button" class="toast-close" aria-label="Закрити">×</button>' +
     (life > 0 ? '<i class="toast-life" style="animation-duration:' + life + 'ms"></i>' : "");
   el.querySelector(".toast-title").textContent = title;
   if (rest) el.querySelector(".toast-text").textContent = rest;
@@ -1140,6 +1142,20 @@ function showToast(message, kind = "info", timeout) {
     window.setTimeout(() => el.remove(), 220);
   };
   el.querySelector(".toast-close").addEventListener("click", dismiss);
+
+  // «Скасувати» — POST the undo endpoint via htmx so its own HX-Trigger toast
+  // (успіх/помилка) is processed. The reverted row refreshes on the next queue
+  // poll (~15s). Guard against a double-click while the request is in flight.
+  const undoBtn = undoUrl && el.querySelector(".toast-undo");
+  if (undoBtn) {
+    undoBtn.addEventListener("click", () => {
+      undoBtn.disabled = true;
+      dismiss();
+      if (window.htmx) {
+        window.htmx.ajax("POST", undoUrl, { source: document.body, swap: "none" });
+      }
+    });
+  }
 
   // Згори нові стають першими, знизу — останніми, щоб рух завжди йшов від краю.
   const pos = stack.dataset.toastPos || "tc";
@@ -1172,7 +1188,7 @@ document.body.addEventListener("mailFilesChanged", () => {
 // header. The server sends {"toast": {...}} for anything the operator must see.
 document.body.addEventListener("toast", (event) => {
   const d = (event && event.detail) || {};
-  showToast(d.message || d.value || "", d.kind || "info");
+  showToast(d.message || d.value || "", d.kind || "info", undefined, d.undoUrl);
 });
 
 // Liquid segmented toggle for the mail-download mode. Shared by /settings and

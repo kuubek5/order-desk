@@ -2,6 +2,8 @@
 for Undo and the laconic action journal. Step 1 covers Sum3D + status logging.
 """
 import asyncio
+import json
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -21,8 +23,8 @@ def _database():
     return engine
 
 
-def _user(db, initial=None):
-    u = User(username="op", password_hash="x", full_name="Оп",
+def _user(db, initial=None, username="op"):
+    u = User(username=username, password_hash="x", full_name="Оп",
              role="оператор", sheet_initial=initial)
     db.add(u)
     db.commit()
@@ -52,7 +54,7 @@ def _run_sum3d(db, user, order, value):
          patch.object(web, "_write_rework_sum3d", return_value=None), \
          patch.object(web, "attach_export_folder_uris"), \
          patch.object(web, "attach_job_code_folder_uris"), \
-         patch.object(web.templates, "TemplateResponse", return_value="ok"):
+         patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
         asyncio.run(web.set_sum3d_id(
             request=_request(user.id), order_id=order.id, sum3d_id=value, db=db))
 
@@ -61,7 +63,7 @@ def _run_status(db, user, order, status):
     with patch.object(web, "_write_sheet_fields", return_value=None), \
          patch.object(web, "attach_export_folder_uris"), \
          patch.object(web, "attach_job_code_folder_uris"), \
-         patch.object(web.templates, "TemplateResponse", return_value="ok"):
+         patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
         asyncio.run(web.set_status(
             request=_request(user.id), order_id=order.id, status=status, db=db))
 
@@ -77,8 +79,10 @@ def test_sum3d_entry_is_logged():
         assert entry.order_id == order.id
         assert entry.operator_id == user.id
         assert entry.field == "sum3d_id"
-        assert entry.old_value is None       # was empty
-        assert entry.new_value == "12-01-45"
+        # old/new are full JSON snapshots (Sum3D + letter + status) so undo can
+        # revert everything the action touched.
+        assert json.loads(entry.old_value)["sum3d_id"] is None       # was empty
+        assert json.loads(entry.new_value)["sum3d_id"] == "12-01-45"
         assert "12-01-45" in entry.note
         assert entry.undone_at is None
 
@@ -90,8 +94,8 @@ def test_sum3d_clear_records_old_value_for_undo():
         order = _order(db, sum3d_id="12-01-45", status="прораховано")
         _run_sum3d(db, user, order, "")   # operator clears it
         entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "sum3d"))
-        assert entry.old_value == "12-01-45"   # enough to undo
-        assert entry.new_value is None
+        assert json.loads(entry.old_value)["sum3d_id"] == "12-01-45"   # enough to undo
+        assert json.loads(entry.new_value)["sum3d_id"] is None
         assert "очищено" in entry.note
 
 
@@ -129,3 +133,105 @@ def test_log_action_helper_stringifies_values():
         e = db.scalar(select(ActionLog).where(ActionLog.action_type == "test"))
         assert e.new_value == "5"        # stringified
         assert e.old_value is None
+
+
+# --- Undo (крок 2) -----------------------------------------------------------
+
+
+def _run_undo(db, user, action_id):
+    with patch.object(web, "_write_sheet_fields", return_value=None), \
+         patch.object(web, "_write_rework_sum3d", return_value=None):
+        return asyncio.run(web.undo_action(
+            request=_request(user.id), action_id=action_id, db=db))
+
+
+def test_undo_sum3d_reverts_value_letter_and_status():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db, initial="Р")
+        order = _order(db, status="прийнято")
+        _run_sum3d(db, user, order, "12-01-45")      # sets sum3d, letter Р, status прораховано
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "sum3d"))
+        assert order.sum3d_id == "12-01-45" and order.status == "прораховано"
+
+        _run_undo(db, user, entry.id)
+        db.refresh(order)
+        assert order.sum3d_id is None            # reverted
+        assert order.calculated_raw is None      # letter reverted
+        assert order.status == "прийнято"        # status reverted
+        db.refresh(entry)
+        assert entry.undone_at is not None       # marked undone
+
+
+def test_undo_status_reverts_status():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, status="прийнято")
+        _run_status(db, user, order, "у фрезеруванні")
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "status"))
+        _run_undo(db, user, entry.id)
+        db.refresh(order)
+        assert order.status == "прийнято"
+
+
+def test_undo_refuses_if_value_changed_since():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db, initial="Р")
+        order = _order(db, status="прийнято")
+        _run_sum3d(db, user, order, "12-01-45")
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "sum3d"))
+        # Someone (technician in sheet / other op) changed Sum3D since.
+        order.sum3d_id = "99-99-99"
+        db.commit()
+        _run_undo(db, user, entry.id)
+        db.refresh(order)
+        assert order.sum3d_id == "99-99-99"      # NOT clobbered
+        db.refresh(entry)
+        assert entry.undone_at is None           # refused
+
+
+def test_undo_only_by_the_operator_who_did_it():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db, initial="Р")
+        other = _user(db, initial="К", username="kostya")
+        order = _order(db, status="прийнято")
+        _run_sum3d(db, user, order, "12-01-45")
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "sum3d"))
+        _run_undo(db, other, entry.id)           # different operator
+        db.refresh(order)
+        assert order.sum3d_id == "12-01-45"      # unchanged
+        db.refresh(entry)
+        assert entry.undone_at is None
+
+
+def test_undo_cannot_run_twice():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, status="прийнято")
+        _run_status(db, user, order, "відфрезеровано")
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "status"))
+        _run_undo(db, user, entry.id)
+        db.refresh(order)
+        assert order.status == "прийнято"
+        # change it again, then try to undo the SAME entry — must refuse
+        order.status = "відфрезеровано"; db.commit()
+        _run_undo(db, user, entry.id)
+        db.refresh(order)
+        assert order.status == "відфрезеровано"  # second undo did nothing
+
+
+def test_undo_logs_an_undo_action():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, status="прийнято")
+        _run_status(db, user, order, "у фрезеруванні")
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "status"))
+        _run_undo(db, user, entry.id)
+        undo_entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "undo"))
+        assert undo_entry is not None
+        assert "скасовано" in undo_entry.note

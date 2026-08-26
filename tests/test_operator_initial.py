@@ -135,7 +135,7 @@ def _run_sum3d(db, user, order, value):
          patch.object(web, "_write_rework_sum3d", return_value=None) as wr, \
          patch.object(web, "attach_export_folder_uris"), \
          patch.object(web, "attach_job_code_folder_uris"), \
-         patch.object(web.templates, "TemplateResponse", return_value="ok"):
+         patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
         asyncio.run(web.set_sum3d_id(
             request=_request(user.id), order_id=order.id, sum3d_id=value, db=db))
     return ws, wr

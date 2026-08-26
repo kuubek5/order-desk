@@ -5121,6 +5121,11 @@ body:has(.detail-pane.open) .toast-stack[data-toast-pos="tr"]{right:420px}
 .toast-close{position:absolute;top:8px;right:9px;background:none;border:0;color:var(--ink-3,#8698ad);
   font-size:15px;line-height:1;cursor:pointer;padding:2px 5px;border-radius:5px}
 .toast-close:hover{color:var(--ink,#e8eff7);background:rgba(255,255,255,.08)}
+.toast-undo{align-self:center;margin-right:20px;background:none;border:1px solid var(--control-edge,#5f7490);
+  color:var(--ink,#e8eff7);font:inherit;font-size:12px;font-weight:600;cursor:pointer;
+  padding:4px 12px;border-radius:7px;white-space:nowrap;transition:border-color .15s,color .15s}
+.toast-undo:hover{border-color:var(--accent-c,#2dd4bf);color:var(--accent-c,#2dd4bf)}
+.toast-undo:disabled{opacity:.5;cursor:default}
 .toast-life{position:absolute;left:0;bottom:0;height:2px;width:100%;transform-origin:left;
   background:var(--accent-b,#2dd4bf);animation:toastLife linear forwards}
 .toast:hover .toast-life{animation-play-state:paused}
