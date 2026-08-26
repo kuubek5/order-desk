@@ -67,12 +67,11 @@
         {% for group in client_groups %}
         {% set found_n = group.orders|selectattr('status', 'in', ['знайдено при видачі', 'видано'])|list|length %}
         {% set total_n = group.orders|length %}
-        {# Порядковий номер — головний орієнтир екрана: клієнти йдуть у тому
-           порядку, у якому їх фрезерували, і оператор іде згори вниз. `current`
-           — перший незібраний, тобто де оператор зараз. #}
+        {# Клієнти йдуть у тому порядку, у якому їх фрезерували, і оператор іде
+           згори вниз. Номер прибрано — порядок несе сам список; `current`
+           підсвічує першого незібраного, тобто де оператор зараз. #}
         <section class="ccard {% if group.all_found %}done{% endif %} {% if group.is_current %}current{% endif %}">
             <div class="card-head">
-                <span class="qnum mono" title="{{ group.position }}-й у порядку фрезерування">{{ group.position }}</span>
                 <button type="button" class="card-collapse" aria-expanded="true" title="Згорнути / розгорнути">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                 </button>
