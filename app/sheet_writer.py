@@ -258,6 +258,53 @@ def write_rework_calculated(worksheet: gspread.Worksheet, order: Order, value: s
     call_with_retry(lambda: worksheet.update_cell(row, COL_REDO_CALCULATED, value or ""))
 
 
+class RowOccupiedError(RuntimeError):
+    """The row a deleted work used to occupy now holds someone else's data."""
+
+
+def restore_order_row(worksheet: gspread.Worksheet, order: Order) -> None:
+    """Re-fill the A:K cells of a row that ``clear_placeholder_row`` blanked —
+    the sheet half of undoing a delete.
+
+    Deliberately does NOT go through _resolve_row: that verifies the row still
+    carries this work's наряд/client, and after a delete the cell is empty by
+    definition, so it would always fail. Instead the stored position is used with
+    the opposite guard — the target row must still be EMPTY across A:K. If
+    anything has been typed there since (the lab reuses freed rows), writing
+    would silently overwrite a colleague's work, so this raises RowOccupiedError
+    and the caller reports it instead of guessing.
+
+    L/M/N are not touched: clear_placeholder_row leaves them alone, so Sum3D and
+    the mill markers were never lost in the first place."""
+    row = _sheet_row(order)
+    try:
+        current = worksheet.get_values(f"A{row}:K{row}")
+    except Exception:
+        current = []
+    occupied = [c for c in (current[0] if current else []) if isinstance(c, str) and c.strip()]
+    if occupied:
+        raise RowOccupiedError(f"рядок {row} уже зайнято")
+
+    values = {
+        COL_WORK_ORDER_NO: order.work_order_no,
+        COL_QUANTITY: order.quantity,
+        COL_MATERIAL_COLOR: order.material_color,
+        # Column E carries the work type for a lab row and the CLIENT NAME for a
+        # наряд-less client row — the same split _identity_cell relies on.
+        COL_KIND: order.client_name if order.source == "sheet_client" else order.kind,
+        COL_JOB_CODE: order.job_code,
+        COL_TECHNICIAN: order.technician_name,
+        COL_CAM_COMMENT: order.cam_comment,
+    }
+    updates = [
+        {"range": gspread.utils.rowcol_to_a1(row, col), "values": [[value]]}
+        for col, value in values.items()
+        if value
+    ]
+    if updates:
+        call_with_retry(lambda: worksheet.batch_update(updates))
+
+
 def write_calculated(worksheet: gspread.Worksheet, order: Order, value: str) -> None:
     """DIRECT overwrite of the main "Прорахував" cell (column М) — for the manual
     «Оператор» edit from the queue row. Unlike write_order_fields, which treats

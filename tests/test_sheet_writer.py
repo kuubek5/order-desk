@@ -809,3 +809,65 @@ class TestResolveRowGuardsAgainstShift:
         ws.col_values.return_value = [""] * 6 + ["X"]  # gone
         write_rework_sum3d(ws, order, "22-01-02")
         ws.update_cell.assert_not_called()
+
+
+class TestRestoreOrderRow:
+    """restore_order_row re-fills a row that clear_placeholder_row blanked (the
+    sheet half of undoing a delete). Its guard is safety-critical: the lab reuses
+    freed rows, so writing onto a row someone has since filled would destroy real
+    work."""
+
+    def _order(self, **kw):
+        base = dict(
+            id=7, row_number=3, sheet_tab="27.07.26", source="lab",
+            work_order_no="24122", quantity="4", material_color="mono a3",
+            kind="анатомія", client_name=None, job_code="2026-07-21_00016-007",
+            technician_name="Юля", cam_comment="на швидку", status="прийнято",
+        )
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def test_restores_values_into_the_blanked_row(self):
+        from app.sheet_writer import restore_order_row
+
+        fake_ws = MagicMock()
+        fake_ws.get_values.return_value = [["", "", "", "", "", "", "", "", "", "", ""]]
+        restore_order_row(fake_ws, self._order())
+
+        writes = {
+            u["range"]: u["values"][0][0]
+            for u in fake_ws.batch_update.call_args[0][0]
+        }
+        row = 3 + HEADER_ROWS
+        assert writes[gspread.utils.rowcol_to_a1(row, 2)] == "24122"       # наряд
+        assert writes[gspread.utils.rowcol_to_a1(row, 4)] == "mono a3"     # колір
+        assert writes[gspread.utils.rowcol_to_a1(row, 5)] == "анатомія"    # вид
+        assert writes[gspread.utils.rowcol_to_a1(row, 10)] == "Юля"        # технік
+
+    def test_client_row_puts_the_client_name_in_column_e(self):
+        """Column E holds the work type for a lab row but the CLIENT NAME for a
+        наряд-less client row — restoring the wrong one would rename the work."""
+        from app.sheet_writer import restore_order_row
+
+        fake_ws = MagicMock()
+        fake_ws.get_values.return_value = [[""]]
+        order = self._order(source="sheet_client", work_order_no=None,
+                            kind=None, client_name="Басараб")
+        restore_order_row(fake_ws, order)
+
+        writes = {
+            u["range"]: u["values"][0][0]
+            for u in fake_ws.batch_update.call_args[0][0]
+        }
+        assert writes[gspread.utils.rowcol_to_a1(3 + HEADER_ROWS, 5)] == "Басараб"
+
+    def test_refuses_when_the_freed_row_was_reused(self):
+        """Someone typed into the row after the delete — restoring would overwrite
+        their work, so it must raise instead of writing."""
+        from app.sheet_writer import RowOccupiedError, restore_order_row
+
+        fake_ws = MagicMock()
+        fake_ws.get_values.return_value = [["", "24999", "2", "pmma a2"]]
+        with pytest.raises(RowOccupiedError):
+            restore_order_row(fake_ws, self._order())
+        fake_ws.batch_update.assert_not_called()

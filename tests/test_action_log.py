@@ -405,6 +405,86 @@ def test_operator_set_undo_restores_and_redo_reapplies():
         assert order.calculated_raw == "К"                  # re-applied
 
 
+# --- Решта дій з таблицею: коментар, створення, видалення (крок 4) -----------
+
+
+def _run_cam_comment(db, user, order, text):
+    with patch.object(web, "_write_sheet_fields_background"), \
+         patch.object(web, "attach_export_folder_uris"), \
+         patch.object(web, "attach_job_code_folder_uris"), \
+         patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
+        asyncio.run(web.set_cam_comment(
+            request=_request(user.id), order_id=order.id, cam_comment=text, db=db))
+
+
+def test_cam_comment_is_logged_and_undoable():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, cam_comment="на швидку")
+        _run_cam_comment(db, user, order, "покрити опаком")
+        db.refresh(order)
+        assert order.cam_comment == "покрити опаком"
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "cam_comment"))
+        assert entry is not None and entry.old_value == "на швидку"
+        _run_undo_last(db, user); db.refresh(order)
+        assert order.cam_comment == "на швидку"          # reverted
+        _run_redo_last(db, user); db.refresh(order)
+        assert order.cam_comment == "покрити опаком"     # re-applied
+
+
+def test_cam_comment_unchanged_is_not_logged():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, cam_comment="той самий")
+        _run_cam_comment(db, user, order, "той самий")
+        assert db.scalar(select(ActionLog).where(ActionLog.action_type == "cam_comment")) is None
+
+
+def _run_delete(db, user, order):
+    with patch.object(web, "_clear_sheet_row_background"), \
+         patch.object(web, "_restore_sheet_row", return_value=None):
+        asyncio.run(web.delete_order(
+            request=_request(user.id), order_id=order.id, inline="1", db=db))
+
+
+def test_delete_is_logged_and_undo_restores_the_work():
+    """A mis-clicked delete is the most valuable undo of all — it must bring the
+    work back to the queue AND re-fill the sheet row it blanked."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, work_order_no="24122")
+        _run_delete(db, user, order)
+        db.refresh(order)
+        assert order.archived_at is not None                # gone from the queue
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "delete"))
+        assert entry is not None and "24122" in entry.note
+
+        with patch.object(web, "_restore_sheet_row", return_value=None) as restore:
+            _run_undo_last(db, user)
+        db.refresh(order)
+        assert order.archived_at is None                    # back in the queue
+        assert restore.called                               # sheet row re-filled
+
+
+def test_delete_redo_archives_again():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        _run_delete(db, user, order)
+        with patch.object(web, "_restore_sheet_row", return_value=None):
+            _run_undo_last(db, user)
+        db.refresh(order)
+        assert order.archived_at is None
+        with patch.object(web, "_clear_sheet_row_background"):
+            _run_redo_last(db, user)
+        db.refresh(order)
+        assert order.archived_at is not None                # deleted again
+
+
 def _recent_context(db, user, tab=""):
     """Call the «Останні дії» popup route and capture the template context."""
     captured = {}

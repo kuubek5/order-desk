@@ -153,6 +153,8 @@ from app.sheet_writer import (
     clear_placeholder_row,
     clear_row_fills,
     paint_row_fills,
+    RowOccupiedError,
+    restore_order_row,
     write_calculated,
     write_order_fields,
     write_rework_calculated,
@@ -1591,6 +1593,44 @@ def _write_rework_sum3d(
         return error
 
 
+def _restore_sheet_row(db: Session, order: Order) -> str | None:
+    """Sheet half of undoing a delete: re-fill the A:K cells that were blanked and,
+    for a still-pending client work, repaint the blue «чекає видачі» fill (the sync
+    reads that fill as the issued/pending flag, so skipping it would silently flip
+    the restored work to «видано»). Returns an error string, never raises."""
+    if order.source not in ("lab", "sheet_client") or not order.sheet_tab or order.row_number is None:
+        return None
+    try:
+        spreadsheet = open_spreadsheet(db=db)
+        worksheet = get_worksheet_by_name(spreadsheet, order.sheet_tab)
+        if worksheet is None:
+            raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
+        restore_order_row(worksheet, order)
+        if order.source == "sheet_client" and order.status not in ("видано", "знайдено при видачі"):
+            paint_row_fills(spreadsheet, [(worksheet.id, order.row_number + HEADER_ROWS)])
+        db.add(SyncLog(
+            direction="db_to_sheet", sheet_tab=order.sheet_tab, status="ok",
+            message=f"order {order.id}: рядок відновлено",
+        ))
+        return None
+    except RowOccupiedError as exc:
+        # The freed row was reused by someone else — restoring would overwrite
+        # their work. The order still comes back to the queue; the operator is
+        # told the sheet needs a manual line.
+        db.add(SyncLog(
+            direction="db_to_sheet", sheet_tab=order.sheet_tab, status="error",
+            message=f"order {order.id}: {exc}",
+        ))
+        return f"{exc} — впишіть роботу в таблицю вручну"
+    except Exception as exc:  # noqa: BLE001 — surface, never block the un-archive
+        error = str(exc)
+        db.add(SyncLog(
+            direction="db_to_sheet", sheet_tab=order.sheet_tab, status="error",
+            message=f"order {order.id}: restore: {error}",
+        ))
+        return error
+
+
 def _write_calculated(db: Session, order: Order, value: str) -> str | None:
     """Write the «Оператор» / «Прорахував» cell (column М) DIRECTLY — the explicit
     manual edit must overwrite whatever is there (write_order_fields would instead
@@ -2472,7 +2512,8 @@ async def set_cam_comment(
     people's sheet edits), this SETS the CAM-comment cell to exactly what the
     operator typed — the "enter/edit my own note in the row" flow. Writes back
     to the sheet's comment column for lab orders, same discipline as sum3d-id."""
-    if get_current_user(request, db) is None:
+    user = get_current_user(request, db)
+    if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
 
     order = db.get(Order, order_id)
@@ -2485,7 +2526,14 @@ async def set_cam_comment(
             {"order": order, "statuses": STATUSES, "sync_error": _SYNC_PAUSED_MSG},
         )
 
+    old_comment = order.cam_comment
     order.cam_comment = cam_comment.strip() or None
+    if (old_comment or "") != (order.cam_comment or ""):
+        log_action(
+            db, order=order, operator=user, action_type="cam_comment", field="cam_comment",
+            old=old_comment or "", new=order.cam_comment or "",
+            note=(f"коментар → {order.cam_comment}" if order.cam_comment else "коментар очищено"),
+        )
     db.commit()  # persist immediately — the row must feel instantly saved
     db.refresh(order)
 
@@ -2712,6 +2760,17 @@ def create_manual_order(
         db.add(order)
         db.flush()
         db.add(StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username))
+        # Adding a work by hand IS an operator action, so it belongs in the
+        # journal and the «Останні дії» popup — otherwise a work the operator
+        # just created is the one thing they cannot jump back to. Logged as
+        # "create": listed and locatable, but deliberately NOT undoable — «Крок
+        # назад» is a quick low-friction click and must never silently delete a
+        # row from the shared sheet. Removing a work stays the explicit delete
+        # button, which asks first.
+        log_action(
+            db, order=order, operator=user, action_type="create",
+            note=f"додано вручну: {order.work_order_no or order.client_name or ('#' + str(order.id))}",
+        )
         created_ids.append(order.id)
 
     db.add(
@@ -2822,6 +2881,14 @@ async def delete_order(
             actor=user.username, note="видалено з черги",
         )
     )
+    # Logged so the delete is both visible in the journal and reversible: undo
+    # un-archives the work and re-fills the sheet row it blanked. The most
+    # valuable undo of all — a mis-clicked delete is otherwise retyped by hand.
+    log_action(
+        db, order=order, operator=user, action_type="delete", field="archived_at",
+        old="", new="archived",
+        note=f"видалено з черги: {order.work_order_no or order.client_name or ('#' + str(order.id))}",
+    )
     db.commit()
 
     if order.source in ("lab", "sheet_client") and order.sheet_tab and order.row_number:
@@ -2897,7 +2964,7 @@ async def set_status(
 
 
 # Action types a "крок назад" can revert, newest-first selection order.
-UNDOABLE_ACTION_TYPES = ("sum3d", "status", "operator")
+UNDOABLE_ACTION_TYPES = ("sum3d", "status", "operator", "cam_comment", "delete")
 
 
 def _perform_undo(db: Session, user: "User", entry: ActionLog) -> Response:
@@ -2950,6 +3017,20 @@ def _perform_undo(db: Session, user: "User", entry: ActionLog) -> Response:
             return _toast_response("Не можна скасувати — оператора вже змінили", kind="error")
         order.calculated_raw = entry.old_value or ""
         sync_error = _write_calculated(db, order, order.calculated_raw)
+    elif entry.action_type == "cam_comment":
+        if (order.cam_comment or "") != (entry.new_value or ""):
+            return _toast_response("Не можна скасувати — коментар уже змінили", kind="error")
+        order.cam_comment = entry.old_value or None
+        sync_error = _write_sheet_fields(db, order, {"cam_comment"})
+    elif entry.action_type == "delete":
+        if order.archived_at is None:
+            return _toast_response("Робота вже повернута в чергу", kind="info")
+        order.archived_at = None
+        sync_error = _restore_sheet_row(db, order)
+        db.add(StatusEvent(
+            order_id=order.id, operator_id=user.id, status=order.status,
+            actor=user.username, note="відновлено з видалення",
+        ))
     else:
         return _toast_response("Цей тип дії поки не скасовується", kind="error")
 
@@ -3069,6 +3150,22 @@ def _perform_redo(db: Session, user: "User", entry: ActionLog) -> Response:
             return _toast_response("Не можна повторити — оператора вже змінили", kind="error")
         order.calculated_raw = entry.new_value or ""
         sync_error = _write_calculated(db, order, order.calculated_raw)
+    elif entry.action_type == "cam_comment":
+        if (order.cam_comment or "") != (entry.old_value or ""):
+            return _toast_response("Не можна повторити — коментар уже змінили", kind="error")
+        order.cam_comment = entry.new_value or None
+        sync_error = _write_sheet_fields(db, order, {"cam_comment"})
+    elif entry.action_type == "delete":
+        if order.archived_at is not None:
+            return _toast_response("Робота вже видалена", kind="info")
+        order.archived_at = datetime.utcnow()
+        if order.source in ("lab", "sheet_client") and order.sheet_tab and order.row_number:
+            _clear_sheet_row_background(order.sheet_tab, order.row_number)
+        sync_error = None
+        db.add(StatusEvent(
+            order_id=order.id, operator_id=user.id, status=order.status,
+            actor=user.username, note="видалено з черги (повторно)",
+        ))
     else:
         return _toast_response("Цей тип дії поки не повторюється", kind="error")
 
@@ -3119,6 +3216,14 @@ async def redo_last_action(request: Request, db: Session = Depends(get_db)):
 # How many entries the «Останні дії» popup shows. Deliberately short: this is a
 # "where was I just now" locator, not the audit log — /journal owns depth.
 RECENT_ACTIONS_LIMIT = 10
+
+# What the popup LISTS — a superset of what ← → can revert. Creating a work by
+# hand is a real place the operator was and must be jumpable, but reverting it
+# would mean deleting a row from the shared sheet, which stays behind the
+# explicit delete button (with its confirm) rather than a one-click arrow.
+# Excluded from both: the "undo"/"redo" bookkeeping rows, which would otherwise
+# bury the actual edits every time the operator steps back.
+RECENT_ACTION_TYPES = UNDOABLE_ACTION_TYPES + ("create",)
 
 
 @app.get("/actions/recent", response_class=HTMLResponse)
