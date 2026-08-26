@@ -14,13 +14,13 @@
     <h1>Журнал дій</h1>
 
     <form method="get" action="/journal" class="journal-filters">
-        <select name="operator" class="login-input jf-op">
+        <select name="operator" aria-label="Оператор" class="login-input jf-op">
             <option value="">усі оператори</option>
             {% for o in operators %}
             <option value="{{ o.id }}" {% if selected_operator == o.id %}selected{% endif %}>{{ o.full_name or o.username }}</option>
             {% endfor %}
         </select>
-        <input type="date" name="day" value="{{ selected_day }}" class="login-input jf-day">
+        <input type="date" name="day" value="{{ selected_day }}" aria-label="День" class="login-input jf-day">
         <button type="submit" class="login-submit settings-submit">Показати</button>
         {% if selected_operator or selected_day %}
         <a href="/journal" class="link-button">Скинути</a>

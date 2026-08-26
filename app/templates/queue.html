@@ -134,16 +134,16 @@
                 <div class="addwork-rows" data-addwork-rows>
                     <div class="addwork-row" data-addwork-row>
                         {# Client mode #}
-                        <input type="text" name="client_name" placeholder="Імʼя клієнта" class="addwork-input" data-addwork-client>
+                        <input type="text" name="client_name" placeholder="Імʼя клієнта" aria-label="Імʼя клієнта" class="addwork-input" data-addwork-client>
                         {# Lab mode (hidden+disabled by default so it isn't submitted) #}
-                        <input type="text" name="work_order_no" placeholder="Номер наряду" class="addwork-input addwork-qty" data-addwork-lab hidden disabled>
-                        <input type="text" name="kind" placeholder="Вид роботи" class="addwork-input" data-addwork-lab hidden disabled>
+                        <input type="text" name="work_order_no" placeholder="Номер наряду" aria-label="Номер наряду" class="addwork-input addwork-qty" data-addwork-lab hidden disabled>
+                        <input type="text" name="kind" placeholder="Вид роботи" aria-label="Вид роботи" class="addwork-input" data-addwork-lab hidden disabled>
                         {# Common #}
-                        <input type="text" name="material_color" placeholder="Матеріал / колір (mono a3…)" class="addwork-input">
-                        <input type="text" name="quantity" placeholder="К-сть" class="addwork-input addwork-qty" inputmode="numeric">
-                        <input type="text" name="technician_name" placeholder="Технік" class="addwork-input">
-                        <input type="text" name="job_code" placeholder="Шлях роботи (напр. 2026-07-21_00016-007)" class="addwork-input mono">
-                        <input type="text" name="sum3d_id" placeholder="Sum3D ID" class="addwork-input addwork-qty mono">
+                        <input type="text" name="material_color" placeholder="Матеріал / колір (mono a3…)" aria-label="Матеріал і колір" class="addwork-input">
+                        <input type="text" name="quantity" placeholder="К-сть" aria-label="Кількість одиниць" class="addwork-input addwork-qty" inputmode="numeric">
+                        <input type="text" name="technician_name" placeholder="Технік" aria-label="Технік" class="addwork-input">
+                        <input type="text" name="job_code" placeholder="Шлях роботи (напр. 2026-07-21_00016-007)" aria-label="Шлях роботи" class="addwork-input mono">
+                        <input type="text" name="sum3d_id" placeholder="Sum3D ID" aria-label="Sum3D ID" class="addwork-input addwork-qty mono">
                         <button type="button" class="addwork-removerow" data-addwork-removerow aria-label="Прибрати рядок" hidden>✕</button>
                     </div>
                 </div>

@@ -47,10 +47,10 @@
        into two. #}
     <div class="list-controls">
         <nav class="tab-nav" aria-label="Розділ">
-            <a href="/mail?view=pending" class="tab-link {% if view == 'pending' %}active{% endif %}">Усі листи <span class="tab-badge">{{ pending_count }}</span>{% if unread_count %}{% set _uw = 'новий' if (unread_count % 10 == 1 and unread_count % 100 != 11) else ('нові' if (unread_count % 10 in [2,3,4] and unread_count % 100 not in [12,13,14]) else 'нових') %}<span class="tab-badge unread" title="Непрочитані вами"><span class="unread-dot" aria-hidden="true"></span>{{ unread_count }} {{ _uw }}</span>{% endif %}</a>
-            <a href="/mail?view=filtered" class="tab-link {% if view == 'filtered' %}active{% endif %}">Відфільтровані <span class="tab-badge">{{ filtered_count }}</span></a>
-            <a href="/mail?view=archive" class="tab-link {% if view == 'archive' %}active{% endif %}">Архів <span class="tab-badge">{{ archive_count }}</span></a>
-            <a href="/mail?view=auto" class="tab-link {% if view == 'auto' %}active{% endif %}" title="Довірені клієнти — авто-прийняття">Авто-прийняття{% if auto_count %} <span class="tab-badge">{{ auto_count }}</span>{% endif %}</a>
+            <a href="/mail?view=pending" class="tab-link {% if view == 'pending' %}active{% endif %}"{% if view == 'pending' %} aria-current="page"{% endif %}>Усі листи <span class="tab-badge">{{ pending_count }}</span>{% if unread_count %}{% set _uw = 'новий' if (unread_count % 10 == 1 and unread_count % 100 != 11) else ('нові' if (unread_count % 10 in [2,3,4] and unread_count % 100 not in [12,13,14]) else 'нових') %}<span class="tab-badge unread" title="Непрочитані вами"><span class="unread-dot" aria-hidden="true"></span>{{ unread_count }} {{ _uw }}</span>{% endif %}</a>
+            <a href="/mail?view=filtered" class="tab-link {% if view == 'filtered' %}active{% endif %}"{% if view == 'filtered' %} aria-current="page"{% endif %}>Відфільтровані <span class="tab-badge">{{ filtered_count }}</span></a>
+            <a href="/mail?view=archive" class="tab-link {% if view == 'archive' %}active{% endif %}"{% if view == 'archive' %} aria-current="page"{% endif %}>Архів <span class="tab-badge">{{ archive_count }}</span></a>
+            <a href="/mail?view=auto" class="tab-link {% if view == 'auto' %}active{% endif %}"{% if view == 'auto' %} aria-current="page"{% endif %} title="Довірені клієнти — авто-прийняття">Авто-прийняття{% if auto_count %} <span class="tab-badge">{{ auto_count }}</span>{% endif %}</a>
         </nav>
 
         {# Download mode: a STATE CHIP, not an action button. It was sitting in

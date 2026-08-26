@@ -4226,10 +4226,16 @@ def _ensure_client_profiles(db: Session, named_orders: list[Order]) -> int:
 CLIENT_STATE_FILTERS = ("all", "unbound", "active")
 
 
-def _client_pane_context(db: Session, client: Client) -> dict:
+def _client_pane_context(db: Session, client: Client, named_orders: list[Order] | None = None) -> dict:
     """Everything the right-hand card shows for one client. Split out so the
-    shell render and the HTMX pane request build it identically."""
-    named_orders = db.scalars(select(Order).where(Order.client_name.isnot(None))).all()
+    shell render and the HTMX pane request build it identically.
+
+    `named_orders` lets a caller that has already loaded them pass them in: the
+    list screen loads every named order to count works per client, and rebuilding
+    that set here made /clients read the whole Order table TWICE per request. The
+    standalone pane route has no such list, so it loads its own."""
+    if named_orders is None:
+        named_orders = db.scalars(select(Order).where(Order.client_name.isnot(None))).all()
     matched = find_matching_orders(client.canonical_name, named_orders)
     summary = summarize_client_orders(matched)
     folder_names, bound_folder, folder_suggestions = _client_folder_options(db, client.canonical_name)
@@ -4341,7 +4347,10 @@ def get_clients(
     # the screen is never a dead half-empty split.
     visible_ids = [r["client"].id for r in client_rows]
     selected_id = selected if selected in visible_ids else (visible_ids[0] if visible_ids else None)
-    pane = _client_pane_context(db, db.get(Client, selected_id)) if selected_id else {}
+    pane = (
+        _client_pane_context(db, db.get(Client, selected_id), named_orders=named_orders)
+        if selected_id else {}
+    )
 
     return templates.TemplateResponse(
         request,

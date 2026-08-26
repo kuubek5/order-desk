@@ -171,7 +171,7 @@
         <span class="badge redo">переробка</span>
         {% endif %}
         <form hx-post="/orders/{{ order.id }}/status" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML" hx-trigger="change">
-            <select name="status" class="status-select status-badge status-{{ order.status|replace(' ', '-')|lower }}">
+            <select name="status" aria-label="Статус роботи" class="status-select status-badge status-{{ order.status|replace(' ', '-')|lower }}">
                 {% for s in statuses %}
                 <option value="{{ s }}" {% if s == order.status %}selected{% endif %}>{{ s }}</option>
                 {% endfor %}

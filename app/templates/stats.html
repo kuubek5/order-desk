@@ -14,10 +14,10 @@
     <h1>{{ page_title }}</h1>
 
     <nav class="tab-nav" aria-label="Період статистики">
-        <a href="/stats?period=today" class="tab-link {% if period == 'today' %}active{% endif %}">Сьогодні</a>
-        <a href="/stats?period=week" class="tab-link {% if period == 'week' %}active{% endif %}">Тиждень</a>
-        <a href="/stats?period=month" class="tab-link {% if period == 'month' %}active{% endif %}">Місяць</a>
-        <a href="/stats?period=all" class="tab-link {% if period == 'all' %}active{% endif %}">Весь час</a>
+        <a href="/stats?period=today" class="tab-link {% if period == 'today' %}active{% endif %}"{% if period == 'today' %} aria-current="page"{% endif %}>Сьогодні</a>
+        <a href="/stats?period=week" class="tab-link {% if period == 'week' %}active{% endif %}"{% if period == 'week' %} aria-current="page"{% endif %}>Тиждень</a>
+        <a href="/stats?period=month" class="tab-link {% if period == 'month' %}active{% endif %}"{% if period == 'month' %} aria-current="page"{% endif %}>Місяць</a>
+        <a href="/stats?period=all" class="tab-link {% if period == 'all' %}active{% endif %}"{% if period == 'all' %} aria-current="page"{% endif %}>Весь час</a>
     </nav>
 
     <div class="stat-row">

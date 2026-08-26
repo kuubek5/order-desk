@@ -20,7 +20,7 @@
             {# Кілька сусідніх днів, а не один: видно, де ти в тижні, і сусідній
                день — один клік. Повний список лишається за «усі дні». #}
             {% for d in day_window %}
-            <a class="dchip mono {% if d.active %}active{% endif %}" href="/handout?source={{ source }}&day={{ d.value }}">{{ d.label }}</a>
+            <a class="dchip mono {% if d.active %}active{% endif %}" href="/handout?source={{ source }}&day={{ d.value }}"{% if d.active %} aria-current="date"{% endif %}>{{ d.label }}</a>
             {% endfor %}
             {% if not selected_day %}<span class="dchip dall active">усі</span>{% endif %}
             {% if next_day %}<a class="arw" href="/handout?source={{ source }}&day={{ next_day }}" title="Наступний день" aria-label="Наступний день">›</a>
@@ -45,8 +45,8 @@
         {% endif %}
 
         <nav class="hsrc" aria-label="Джерело робіт">
-            <a href="/handout?source=all{% if selected_day %}&day={{ selected_day }}{% endif %}" class="{% if source == 'all' %}on{% endif %}">Усі <span class="mono">{{ source_counts.all }}</span></a>
-            <a href="/handout?source=email{% if selected_day %}&day={{ selected_day }}{% endif %}" class="{% if source == 'email' %}on{% endif %}">Пошта <span class="mono">{{ source_counts.email }}</span></a>
+            <a href="/handout?source=all{% if selected_day %}&day={{ selected_day }}{% endif %}" class="{% if source == 'all' %}on{% endif %}"{% if source == 'all' %} aria-current="page"{% endif %}>Усі <span class="mono">{{ source_counts.all }}</span></a>
+            <a href="/handout?source=email{% if selected_day %}&day={{ selected_day }}{% endif %}" class="{% if source == 'email' %}on{% endif %}"{% if source == 'email' %} aria-current="page"{% endif %}>Пошта <span class="mono">{{ source_counts.email }}</span></a>
         </nav>
 
         {% if client_groups %}
