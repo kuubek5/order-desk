@@ -131,6 +131,16 @@
         </a>
         {% endif %}
     </td>
+    {# Оператор, що прорахував (стовпець М «Прорахував» таблиці → Order.calculated_raw).
+       Двосторонньо синхронізується: читається парсером (idx 12) і пишеться назад
+       у COL_CALCULATED. Тут лише показуємо, хто взяв роботу в Sum3D. #}
+    <td class="calc-op">
+        {% if order.calculated_raw %}
+            <span class="mono op-badge" title="Хто прорахував — стовпець «Прорахував» (М) таблиці">{{ order.calculated_raw }}</span>
+        {% else %}
+            <span class="text-muted">—</span>
+        {% endif %}
+    </td>
     <td class="status">
         {% if _changed %}
         {# Says WHAT moved, not just "changed" — the operator has to know whether

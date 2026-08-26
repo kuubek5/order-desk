@@ -294,6 +294,65 @@ def test_undo_last_only_sees_own_actions():
         assert order.status == "у фрезеруванні"          # untouched
 
 
+# --- Redo / «Крок вперед» ----------------------------------------------------
+
+
+def _run_redo_last(db, user):
+    with patch.object(web, "_write_sheet_fields", return_value=None), \
+         patch.object(web, "_write_rework_sum3d", return_value=None):
+        return asyncio.run(web.redo_last_action(request=_request(user.id), db=db))
+
+
+def test_redo_last_reapplies_undone_action():
+    """«Крок вперед» re-applies the value the undone action originally set."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, status="прийнято")
+        _run_status(db, user, order, "у фрезеруванні")
+        _run_undo_last(db, user)
+        db.refresh(order)
+        assert order.status == "прийнято"                # undone
+        _run_redo_last(db, user)
+        db.refresh(order)
+        assert order.status == "у фрезеруванні"          # redone
+
+
+def test_undo_redo_roundtrip_is_repeatable():
+    """After a redo the entry is undoable again, so undo→redo→undo all step."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db, initial="Р")
+        order = _order(db, status="прийнято")
+        _run_sum3d(db, user, order, "12-01-45")
+        _run_undo_last(db, user); db.refresh(order)
+        assert order.sum3d_id is None
+        _run_redo_last(db, user); db.refresh(order)
+        assert order.sum3d_id == "12-01-45"              # redone
+        _run_undo_last(db, user); db.refresh(order)
+        assert order.sum3d_id is None                    # undoable again after redo
+
+
+def test_redo_refuses_if_value_changed_since_undo():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db, initial="Р")
+        order = _order(db, status="прийнято")
+        _run_sum3d(db, user, order, "12-01-45")
+        _run_undo_last(db, user); db.refresh(order)
+        order.sum3d_id = "77-77-77"; db.commit()         # someone set it after undo
+        _run_redo_last(db, user); db.refresh(order)
+        assert order.sum3d_id == "77-77-77"              # NOT clobbered by redo
+
+
+def test_redo_with_nothing_to_redo_is_noop():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        resp = _run_redo_last(db, user)
+        assert resp.status_code == 204
+
+
 # --- Журнал: окремий екран + картка (крок 3) ---------------------------------
 
 

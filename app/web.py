@@ -2925,6 +2925,96 @@ async def undo_last_action(request: Request, db: Session = Depends(get_db)):
     return _perform_undo(db, user, entry)
 
 
+def _perform_redo(db: Session, user: "User", entry: ActionLog) -> Response:
+    """Re-apply an already-undone action — the mirror of _perform_undo. Restores
+    the entry's AFTER-state (the value the action originally set), guards that
+    nothing has changed since the undo (else the redo would clobber someone), then
+    clears `undone_at` so the entry is undoable again. Symmetric with undo, so
+    «Крок назад» / «Крок вперед» form a proper step chain."""
+    order = db.get(Order, entry.order_id) if entry.order_id else None
+    if order is None:
+        return _toast_response("Роботи більше немає — повторити не можна", kind="error")
+
+    if entry.action_type == "sum3d":
+        before = json.loads(entry.old_value or "{}")
+        after = json.loads(entry.new_value or "{}")
+        # Guard: the value must still be in the reverted (before) state — else
+        # something changed since the undo and a redo would clobber it.
+        for f, v in before.items():
+            obj, attr = _snapshot_target(order, f)
+            if obj is None or getattr(obj, attr) != v:
+                return _toast_response("Не можна повторити — значення вже змінили", kind="error")
+        for f, v in after.items():
+            obj, attr = _snapshot_target(order, f)
+            if obj is not None:
+                setattr(obj, attr, v)
+        if entry.field == "rework.sum3d_id":
+            rework = order.active_rework
+            restored = (rework.sum3d_id if rework else None) or ""
+            restored_letter = (rework.calculated_raw if rework else None)
+            sync_error = _write_rework_sum3d(db, order, restored, letter=restored_letter)
+        else:
+            sync_error = _write_sheet_fields(db, order, {"sum3d_id", "calculated_raw"})
+            db.add(StatusEvent(
+                order_id=order.id, operator_id=user.id, status=order.status,
+                actor=user.username, note="повторено (Sum3D)",
+            ))
+    elif entry.action_type == "status":
+        if order.status != entry.old_value:
+            return _toast_response("Не можна повторити — статус уже змінили", kind="error")
+        order.status = entry.new_value
+        db.add(StatusEvent(
+            order_id=order.id, operator_id=user.id, status=order.status,
+            actor=user.username, note="повторено (статус)",
+        ))
+        sync_error = None
+    else:
+        return _toast_response("Цей тип дії поки не повторюється", kind="error")
+
+    entry.undone_at = None
+    log_action(
+        db, order=order, operator=user, action_type="redo",
+        field=entry.field, note=f"повторено: {entry.note}",
+    )
+    db.commit()
+
+    if sync_error:
+        return _toast_response(
+            "Повторено в системі, але таблиця не оновилась: " + sync_error,
+            kind="error", triggers={"refresh-queue": True},
+        )
+    return _toast_response("Дію повторено", triggers={"refresh-queue": True})
+
+
+@app.post("/actions/redo-last")
+async def redo_last_action(request: Request, db: Session = Depends(get_db)):
+    """«Крок вперед» — the static redo button. Re-applies THIS operator's most
+    recently undone action (Sum3D/status) that is still inside the window.
+    Pressing it again steps forward through earlier undos, mirroring «Крок назад»."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if sync_control.is_paused():
+        return _toast_response(_SYNC_PAUSED_MSG, kind="info")
+
+    cutoff = datetime.utcnow() - timedelta(seconds=UNDO_WINDOW_SECONDS)
+    entry = (
+        db.query(ActionLog)
+        .filter(
+            ActionLog.operator_id == user.id,
+            ActionLog.action_type.in_(UNDOABLE_ACTION_TYPES),
+            ActionLog.undone_at.is_not(None),
+            ActionLog.undone_at >= cutoff,
+        )
+        .order_by(ActionLog.undone_at.desc(), ActionLog.id.desc())
+        .first()
+    )
+    if entry is None:
+        return _toast_response("Немає що повторити", kind="info")
+
+    return _perform_redo(db, user, entry)
+
+
 @app.post("/orders/{order_id}/comments")
 async def add_order_comment(
     request: Request,

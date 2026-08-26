@@ -26,15 +26,21 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
                 <input type="search" name="q" placeholder="Наряд, технік, шлях-ID…" aria-label="Пошук">
             </form>
-            {# «Крок назад» — статична кнопка undo. Скасовує ОСТАННЮ дію оператора
-               (Sum3D/статус); повторний клік крокує глибше. Замінила спливаючу
-               кнопку «Скасувати» в toast. Успіх кидає refresh-queue → полл одразу
-               перемальовує змінений рядок. #}
-            <button type="button" class="btn undo-step" hx-post="/actions/undo-last" hx-swap="none"
-                    title="Крок назад — скасувати останню дію (Sum3D або статус)">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h12a4 4 0 0 1 0 8h-4"/></svg>
-                <span>Крок назад</span>
-            </button>
+            {# Крок назад / вперед — дві статичні іконки-кнопки (undo/redo).
+               undo скасовує ОСТАННЮ дію оператора (Sum3D/статус), redo повертає її;
+               повторний клік крокує глибше в обидва боки. Тултип (title) при
+               наведенні пояснює кожну. Успіх кидає refresh-queue → полл одразу
+               перемальовує змінений рядок. Замінили спливаючу «Скасувати» в toast. #}
+            <div class="step-actions" role="group" aria-label="Крок назад / вперед">
+                <button type="button" class="icon-btn undo-step" hx-post="/actions/undo-last" hx-swap="none"
+                        title="Крок назад — скасувати останню дію" aria-label="Крок назад — скасувати останню дію">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h12a4 4 0 0 1 0 8h-4"/></svg>
+                </button>
+                <button type="button" class="icon-btn redo-step" hx-post="/actions/redo-last" hx-swap="none"
+                        title="Крок вперед — повторити скасовану дію" aria-label="Крок вперед — повторити скасовану дію">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H8a4 4 0 0 0 0 8h4"/></svg>
+                </button>
+            </div>
             <button type="button" class="btn layout-edit-toggle" data-layout-edit-toggle aria-pressed="false" title="Режим вигляду — налаштувати чергу під себе">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.2"/><circle cx="8" cy="16" r="2.2"/></svg>
                 <span>Вигляд</span>

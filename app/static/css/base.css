@@ -3651,6 +3651,18 @@ main.q2{
 .q2 .btn.sm{height:30px;padding:0 11px;font-size:12.5px}
 .q2 .btn:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 
+/* Крок назад / вперед — дві іконки-кнопки поруч (undo/redo). Той самий вигляд, що
+   й .btn, але квадратні й без тексту; тултип через native title. */
+.q2 .step-actions{display:inline-flex;gap:4px}
+.q2 .icon-btn{
+  display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;
+  border-radius:var(--r-ctl);border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);
+  cursor:pointer;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.q2 .icon-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.q2 .icon-btn:hover{background:var(--card-2);border-color:#3a4a5f;color:var(--ink);opacity:1}
+.q2 .icon-btn:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+
 /* Кнопка-перемикач режиму вигляду + панель контролів (задача 1). Активний стан
    перемикача підсвічений бірюзовим, як інші is-active елементи v2a. */
 .q2 .layout-edit-toggle[aria-pressed="true"]{
@@ -3831,6 +3843,11 @@ body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
    рядки. Undo тепер робить статична кнопка «Крок назад» у шапці. */
 .q2 table.qtable td.status,
 .q2 table.qtable th.col-status{display:none}
+/* Колонка «Оператор» — хто прорахував (стовпець М таблиці, Order.calculated_raw).
+   Компактний моно-бейдж; коротке значення (літера/код St, D, EE…). */
+.q2 td.calc-op{white-space:nowrap}
+.q2 .op-badge{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;
+  background:#1d2734;border:1px solid var(--line-2);font-size:11.5px;color:var(--ink);letter-spacing:.01em}
 body.layout-edit .q2 table.qtable{user-select:none}
 .q2 table.qtable tbody tr{transition:background var(--ui-speed) ease}
 .q2 table.qtable tbody tr:hover{background:var(--card-2)}
