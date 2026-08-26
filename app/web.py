@@ -455,10 +455,14 @@ UNDO_WINDOW_SECONDS = 5 * 60
 
 def _attach_undo_toast(response: Response, entry: ActionLog, message: str) -> None:
     """Add an HX-Trigger toast carrying an «Скасувати» affordance for this logged
-    action. app.js renders the button and POSTs the undoUrl."""
+    action. app.js renders the button and POSTs the undoUrl.
+
+    ensure_ascii MUST stay on (default): HTTP header values are latin-1, so any
+    Cyrillic in `message` has to ride as \\uXXXX escapes — htmx decodes them back
+    to real text. ensure_ascii=False here put raw Cyrillic in the header and 500'd
+    the whole request."""
     response.headers["HX-Trigger"] = json.dumps(
-        {"toast": {"message": message, "kind": "success", "undoUrl": f"/actions/{entry.id}/undo"}},
-        ensure_ascii=False,
+        {"toast": {"message": message, "kind": "success", "undoUrl": f"/actions/{entry.id}/undo"}}
     )
 
 
@@ -2267,7 +2271,11 @@ def import_sheet_history(request: Request, db: Session = Depends(get_db)):
 async def set_sum3d_id(
     request: Request,
     order_id: int,
-    sum3d_id: str = Form(...),
+    # Default "" (not Form(...)): an EMPTY value is a valid, meaningful input —
+    # the operator deleting a mistakenly-entered Sum3D to send the work back to
+    # «можна брати». Form(...) treated an empty form field as missing and 422'd,
+    # so clearing was impossible from the UI at all.
+    sum3d_id: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)

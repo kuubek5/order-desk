@@ -293,3 +293,16 @@ def test_order_detail_context_includes_actions():
         resp = web.get_order_detail(request=_request(user.id), order_id=order.id, db=db)
         actions = resp.context["actions"]
         assert len(actions) == 1 and actions[0].note == "Sum3D → x"
+
+
+def test_undo_toast_header_is_latin1_safe():
+    """HTTP header values are latin-1; a Cyrillic toast message must ride as
+    ASCII unicode escapes, not raw Cyrillic. Regression: ensure_ascii=False here
+    500'd every Sum3D/status action whose message had Cyrillic (unit tests mocked
+    the response, so only a real Response object catches it)."""
+    from starlette.responses import Response
+    resp = Response()
+    web._attach_undo_toast(resp, SimpleNamespace(id=7), "Sum3D очищено")
+    header = resp.headers["HX-Trigger"]
+    header.encode("latin-1")   # must not raise
+    assert "/actions/7/undo" in header

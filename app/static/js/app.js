@@ -731,6 +731,20 @@ document.addEventListener("click", (event) => {
   btn.setAttribute("title", collapsed ? "Розгорнути меню" : "Згорнути меню");
 });
 
+// «Видалити Sum3D» (✕ у рядку черги). Clears the row's Sum3D input and fires a
+// change event so the form's existing hx-post saves the empty value — the work
+// drops back to «можна брати» (its technician path/job_code stays). No-op if the
+// input is missing.
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest(".sum3d-clear");
+  if (!btn) return;
+  const form = btn.closest(".sum3d-form");
+  const input = form && form.querySelector(".sum3d-input");
+  if (!input) return;
+  input.value = "";
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+});
+
 // v2a side-panel accordion (queue.html .side-sec). Toggles data-open on the
 // section and aria-expanded on its header. No-op on pages without side-secs.
 document.addEventListener("click", (event) => {

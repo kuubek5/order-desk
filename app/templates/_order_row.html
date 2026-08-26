@@ -114,6 +114,13 @@
               hx-trigger="change from:find input, keyup[key=='Enter'] from:find input"
               hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
             <input type="text" name="sum3d_id" value="{{ (_rework.sum3d_id if _rework else order.sum3d_id) or '' }}" class="mono sum3d-input{% if _rework %} sum3d-input-rework{% endif %}" placeholder="{% if _rework %}ID перер.{% else %}ID{% endif %}" title="{% if _rework %}ID Sum3D переробки — запишеться в колонку W таблиці{% else %}Введіть ID Sum3D і натисніть Enter або перейдіть далі — збережеться автоматично{% endif %}">
+            {# Явне «видалити Sum3D»: помилково взяту роботу оператор повертає в
+               «можна брати» одним кліком (job_code лишається → чергова готова до
+               взяття). Іде через той самий /sum3d-id з порожнім значенням, тож
+               логується і дає тост «Скасувати». #}
+            {% if (_rework.sum3d_id if _rework else order.sum3d_id) %}
+            <button type="button" class="sum3d-clear" title="Видалити Sum3D — робота повернеться в «можна брати»" aria-label="Видалити Sum3D">✕</button>
+            {% endif %}
         </form>
         {% if order.export_folder_uri %}
         {# data-stl-preview-token: клік по цій іконці відкриває стійку STL-панель
