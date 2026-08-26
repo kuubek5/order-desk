@@ -23,6 +23,10 @@
    the version read minutes ago is scrap, and that is the case where it costs. #}
 {% set _changed = order.sheet_changed_at %}
 {% set _changed_taken = _changed and order.sum3d_id %}
+{# Клієнтські роботи (пошта / вписаний клієнт) не мають наряду, виду, шляху
+   техніка чи імені техніка — це поля лабораторного процесу. Для них порожні
+   клітинки лишаємо просто пустими, без «—» (щоб не читалось як «бракує даних»). #}
+{% set _is_client = order.source in ('email', 'sheet_client') %}
 <tr class="queue-row {% if _changed %}queue-row-changed{% endif %} {% if _changed_taken %}queue-row-changed-taken{% endif %} {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if order.source == 'sheet_client' %}queue-row-client{% endif %} {% if _rework %}queue-row-rework{% endif %} {{ material_color_css_class(order.material_color) }}" id="order-row-{{ order.id }}">
     {# Джерело рядка — вкладка (день) Google-таблиці, де його знайдено. Показуємо
        лише у пошуку (show_source), де результати охоплюють усі дні; у черзі
@@ -60,7 +64,7 @@
     <td class="kind-cell">
         {% if order.kind %}
             <a href="/orders/{{ order.id }}" class="kindbtn" data-order-detail="{{ order.id }}">{{ order.kind }}</a>
-        {% else %}
+        {% elif not _is_client %}
             <span class="text-muted">—</span>
         {% endif %}
     </td>
@@ -80,11 +84,11 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 7.5v9L12 22l10-5.5v-9L12 2z"/><path d="M2 7.5 12 13l10-5.5M12 13v9"/></svg>
             </button>
             {% elif order.job_code_folder_uri %}<span class="job-code-found-dot" title="Папку з файлами знайдено"></span>{% endif %}
-        {% else %}
+        {% elif not _is_client %}
             <span class="mono">—</span>
         {% endif %}
     </td>
-    <td class="technician">{{ order.technician_name or '—' }}</td>
+    <td class="technician">{% if order.technician_name %}{{ order.technician_name }}{% elif not _is_client %}—{% endif %}</td>
     <td class="comment-cell">
         {# Inline-editable CAM comment. Collapsed to one line in the queue; a
            click/focus expands it (app.js auto-grow) so a long technician

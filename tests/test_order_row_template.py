@@ -111,3 +111,25 @@ def test_job_code_button_has_no_folder_uri_attribute_when_unresolved():
     html = _render(_order(job_code_folder_uri=None))
 
     assert "data-folder-uri" not in html
+
+
+def test_lab_row_shows_dash_for_empty_kind_job_tech():
+    """A lab row keeps the «—» placeholder in the fields it simply hasn't filled
+    yet — the operator needs to see the column is empty, not missing."""
+    html = _render(_order(source="lab", kind=None, job_code=None, technician_name=None))
+    # kind + job-code render a dash span; technician renders a bare dash
+    assert html.count("—") >= 3
+
+
+def test_client_row_leaves_kind_job_tech_blank_not_dash():
+    """Client rows (email / вписаний клієнт) have no work-type, path or technician
+    — those are lab-process fields. Their cells stay empty rather than «—», so the
+    row doesn't read as 'data missing'."""
+    html = _render(_order(
+        source="sheet_client", kind=None, job_code=None, technician_name=None,
+        client_name="Басараб",
+    ))
+    # No dash placeholder in kind / job-code / technician cells for a client row
+    assert '<span class="text-muted">—</span>' not in html   # kind dash gone
+    assert '<span class="mono">—</span>' not in html         # job-code dash gone
+    assert '<td class="technician"></td>' in html            # technician left blank

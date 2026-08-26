@@ -3846,14 +3846,19 @@ body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
 /* Колонка «Оператор» — хто прорахував (стовпець М таблиці, Order.calculated_raw).
    Компактний моно-бейдж; коротке значення (літера/код St, D, EE…). */
 .q2 td.calc-op{white-space:nowrap}
-.q2 .operator-form{display:inline-flex;gap:4px;align-items:center}
-/* Редагований інпут «Оператор» (стовпець М). Як sum3d-input, але вужчий —
-   значення короткі (літера/код St, D, ЕЕ…). */
+.q2 .operator-form{display:inline-flex;align-items:center}
+/* Лаконічний інпут «Оператор» (стовпець М). Значення короткі (літера/код St,
+   D, ЕЕ…), тож за замовчуванням він читається як звичайний моно-текст — без
+   рамки й фону. Афорданс поля (рамка+фон) з'являється на hover рядка або у
+   фокусі, як і решта «тихих доти, доки не потрібні» контролів у рядку. Вузький
+   під короткий код; функціонал (ввід + Enter/blur) незмінний. */
 .q2 .operator-input{
-  width:58px;height:26px;padding:0 8px;border-radius:6px;background:#111823;border:1px solid var(--line);
+  width:44px;height:24px;padding:0 6px;border-radius:6px;background:transparent;border:1px solid transparent;
   color:var(--ink);font-family:var(--font-mono);font-size:11.5px;outline:none;
+  transition:border-color .12s ease,background .12s ease;
 }
-.q2 .operator-input:focus{border-color:rgba(45,212,191,.45)}
+.q2 .queue-row:hover .operator-input{border-color:var(--line);background:#111823}
+.q2 .operator-input:focus{border-color:rgba(45,212,191,.45);background:#111823}
 .q2 .operator-input::placeholder{color:var(--ink-3)}
 /* Кеш: колишній моно-бейдж (замінено на інпут, лишаю на випадок ре-юзу деінде). */
 .q2 .op-badge{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;
