@@ -41,6 +41,41 @@
             </div>
         </div>
 
+        {# Прив'язка папки в `export`. Задається один раз тут і діє на кожну
+           наступну ранкову видачу: зберігається як підтверджений ClientNameAlias,
+           який матчер видачі вже вважає авторитетним. Поки не прив'язано —
+           видача пише «папку не знайдено автоматично» і STL-превʼю показувати
+           нічого. Підказки — ті самі нечіткі кандидати, що рахує видача. #}
+        <form method="post" action="/clients/{{ client.id }}/folder" class="mail-form folder-bind">
+            <div class="form-group">
+                <label for="export_folder_name">Папка робіт на диску</label>
+                <input type="text" id="export_folder_name" name="export_folder_name" class="form-input mono"
+                       list="export-folders" value="{{ bound_folder or '' }}"
+                       placeholder="назва папки в export — порожнє поле відв'яже">
+                <datalist id="export-folders">
+                    {% for name in folder_names %}<option value="{{ name }}"></option>{% endfor %}
+                </datalist>
+                <p class="form-hint">
+                    {% if bound_folder %}
+                        Прив'язано. Ранкова видача бере файли звідси.
+                    {% elif folder_names %}
+                        Не прив'язано — у видачі буде «папку не знайдено автоматично».
+                    {% else %}
+                        У теці <span class="mono">export</span> папок не знайдено. Перевірте шлях у Налаштуваннях.
+                    {% endif %}
+                </p>
+                {% if folder_suggestions %}
+                <div class="folder-suggest">
+                    <span class="folder-suggest-label">Схоже на:</span>
+                    {% for name in folder_suggestions %}
+                    <button type="submit" name="export_folder_name" value="{{ name }}" class="folder-suggest-btn mono">{{ name }}</button>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            <button type="submit" class="form-submit">Зберегти папку</button>
+        </form>
+
         <form method="post" action="/clients/{{ client.id }}" class="mail-form">
             <div class="form-group">
                 <label for="phone">Телефон</label>

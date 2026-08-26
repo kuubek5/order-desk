@@ -66,13 +66,27 @@
                 </button>
                 <h2>
                     {% if group.all_found %}<span class="doneicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>{% endif %}
+                    {# Ім'я клієнта відкриває його папку на диску — прив'язка
+                       задається один раз у картці клієнта. Без прив'язки ім'я
+                       лишається звичайним текстом, а поруч стоїть дія, що веде
+                       саме туди, де це лагодиться. #}
+                    {% if group.client_folder_uri %}
+                    <a class="client-open" href="{{ group.client_folder_uri }}" data-folder-uri="{{ group.client_folder_uri }}"
+                       title="Відкрити папку клієнта у Провіднику">
+                        {{ group.client_name }}
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+                    </a>
+                    {% else %}
                     {{ group.client_name }}
+                    {% endif %}
                 </h2>
                 <span class="meta">
                     {% if group.match.matched_folder_name %}
                         Папка: <span class="mono">{{ group.match.matched_folder_name }}</span>{% if not group.match.is_confirmed_alias %} · збіг {{ group.match.confidence|round(0) }}%{% endif %}
+                    {% elif group.client_id %}
+                        <a class="bind-folder" href="/clients/{{ group.client_id }}">Прив'язати папку</a>
                     {% else %}
-                        папку не знайдено автоматично
+                        <a class="bind-folder" href="/clients">Створити картку клієнта</a>
                     {% endif %}
                 </span>
                 <div class="right">

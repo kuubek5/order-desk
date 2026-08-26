@@ -208,3 +208,81 @@ def test_update_client_saves_contact_info():
         assert refreshed.phone == "0671112233"
         assert refreshed.email == "new@example.com"
         assert refreshed.notes == "змінено"
+
+
+# --- POST /clients/{id}/folder — прив'язка папки в export -------------------
+
+
+class TestBindClientFolder:
+    """The folder binding lives on the client card so it is set ONCE and every
+    later morning handout reads it, instead of the operator re-confirming a fuzzy
+    guess each day. Storage is a confirmed ClientNameAlias — exactly what the
+    handout matcher already treats as authoritative."""
+
+    def _client(self, db, name="Басараб"):
+        client = Client(canonical_name=name)
+        db.add(client)
+        db.commit()
+        return client
+
+    def test_binding_writes_a_confirmed_alias(self):
+        from app.models import ClientNameAlias
+
+        engine = _database()
+        with Session(engine) as db:
+            user = _operator(db)
+            client = self._client(db)
+            web.bind_client_folder(
+                request=_request(user.id), client_id=client.id,
+                export_folder_name="  Басараб Лаб  ", db=db,
+            )
+            alias = db.query(ClientNameAlias).one()
+            assert alias.sheet_name == "Басараб"
+            assert alias.export_folder_name == "Басараб Лаб"   # trimmed
+            assert alias.confirmed is True and alias.confirmed_at is not None
+
+    def test_rebinding_updates_the_same_alias(self):
+        from app.models import ClientNameAlias
+
+        engine = _database()
+        with Session(engine) as db:
+            user = _operator(db)
+            client = self._client(db)
+            web.bind_client_folder(request=_request(user.id), client_id=client.id,
+                                   export_folder_name="Стара", db=db)
+            web.bind_client_folder(request=_request(user.id), client_id=client.id,
+                                   export_folder_name="Нова", db=db)
+            alias = db.query(ClientNameAlias).one()          # not a second row
+            assert alias.export_folder_name == "Нова"
+
+    def test_empty_value_unbinds(self):
+        from app.models import ClientNameAlias
+
+        engine = _database()
+        with Session(engine) as db:
+            user = _operator(db)
+            client = self._client(db)
+            web.bind_client_folder(request=_request(user.id), client_id=client.id,
+                                   export_folder_name="Басараб Лаб", db=db)
+            web.bind_client_folder(request=_request(user.id), client_id=client.id,
+                                   export_folder_name="", db=db)
+            assert db.query(ClientNameAlias).count() == 0
+
+    def test_requires_authentication(self):
+        engine = _database()
+        with Session(engine) as db:
+            client = self._client(db)
+            response = web.bind_client_folder(
+                request=_request(None), client_id=client.id,
+                export_folder_name="Басараб", db=db,
+            )
+        assert isinstance(response, RedirectResponse)
+
+    def test_unknown_client_is_404(self):
+        engine = _database()
+        with Session(engine) as db:
+            user = _operator(db)
+            with pytest.raises(HTTPException) as exc:
+                web.bind_client_folder(request=_request(user.id), client_id=999,
+                                       export_folder_name="X", db=db)
+            assert exc.value.status_code == 404

@@ -3652,6 +3652,13 @@ def get_handout(
         a.sheet_name: a.export_folder_name
         for a in db.scalars(select(ClientNameAlias).where(ClientNameAlias.confirmed.is_(True))).all()
     }
+    # Client cards, keyed by folded name — the handout links each group to its
+    # card so an unbound folder is fixed once there instead of every morning.
+    client_ids = {
+        c.canonical_name.strip().casefold(): c.id
+        for c in db.scalars(select(Client)).all()
+        if c.canonical_name
+    }
 
     client_groups = []
     for client_name, group_orders in groups.items():
@@ -3682,6 +3689,12 @@ def get_handout(
         # mislabelled colour never hides a physical work.
         extra_entries = [e for e in export_entries if id(e) not in matched_entry_ids]
         all_found = all(o.status in ("знайдено при видачі", "видано") for o in group_orders)
+        # Client-level folder (the parent of the material folders) so the client
+        # name itself opens the right place on disk, and a link to the client
+        # card so an unbound client can be fixed once instead of every morning.
+        client_folder_uri = None
+        if export_entries:
+            client_folder_uri = folder_to_file_uri(export_entries[0].folder_path.parent.parent)
         client_groups.append(
             {
                 "client_name": client_name,
@@ -3690,6 +3703,8 @@ def get_handout(
                 "export_entries": export_entries,
                 "extra_entries": extra_entries,
                 "all_found": all_found,
+                "client_folder_uri": client_folder_uri,
+                "client_id": client_ids.get(client_name.strip().casefold()),
             }
         )
 
@@ -4153,6 +4168,13 @@ def get_client_detail(request: Request, client_id: int, db: Session = Depends(ge
     matched_orders = find_matching_orders(client.canonical_name, named_orders)
     summary = summarize_client_orders(matched_orders)
 
+    # Folder binding lives HERE, on the client, not on the handout screen: it is
+    # a property of the client that holds for every future day, so it is set once
+    # and the morning handout just reads it. Storage stays ClientNameAlias
+    # (keyed by the free-text sheet name Order.client_name carries) — Client is
+    # deliberately not FK-linked to Order, see the Client model docstring.
+    folder_names, bound_folder, folder_suggestions = _client_folder_options(db, client.canonical_name)
+
     return templates.TemplateResponse(
         request,
         "client_detail.html",
@@ -4161,8 +4183,78 @@ def get_client_detail(request: Request, client_id: int, db: Session = Depends(ge
             "client": client,
             "summary": summary,
             "saved": request.query_params.get("saved") is not None,
+            "folder_names": folder_names,
+            "bound_folder": bound_folder,
+            "folder_suggestions": folder_suggestions,
         },
     )
+
+
+def _client_folder_options(db: Session, canonical_name: str) -> tuple[list[str], str | None, list[str]]:
+    """(every export folder on disk, the one bound to this client, ranked guesses).
+
+    The guesses are the fuzzy candidates the handout screen already computes —
+    surfaced here so binding is one click on the right name instead of hunting
+    through a few hundred folders."""
+    try:
+        entries = scan_export_folder(Path(get_export_folder_path(db)))
+    except Exception:  # noqa: BLE001 — an unreachable export root must not 500 the card
+        entries = []
+    folder_names = sorted({e.client_folder_name for e in entries})
+
+    alias = db.scalar(
+        select(ClientNameAlias).where(
+            ClientNameAlias.sheet_name == canonical_name,
+            ClientNameAlias.confirmed.is_(True),
+        )
+    )
+    bound = alias.export_folder_name if alias else None
+
+    match = match_client_name(canonical_name, folder_names, {})
+    suggestions = [name for name, _score in match.candidates if name != bound][:3]
+    return folder_names, bound, suggestions
+
+
+@app.post("/clients/{client_id}/folder", response_class=HTMLResponse)
+def bind_client_folder(
+    request: Request,
+    client_id: int,
+    export_folder_name: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Bind (or unbind, with an empty value) the client's folder in `export`.
+
+    Writes a CONFIRMED ClientNameAlias, which is exactly what the handout's
+    matcher already treats as authoritative — so a binding made once here stops
+    every future «папку не знайдено автоматично» for this client, and the STL
+    preview has something to show."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    client = db.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="клієнта не знайдено")
+
+    value = export_folder_name.strip()
+    alias = db.scalar(
+        select(ClientNameAlias).where(ClientNameAlias.sheet_name == client.canonical_name)
+    )
+    if not value:
+        if alias is not None:
+            db.delete(alias)
+    elif alias is None:
+        db.add(ClientNameAlias(
+            sheet_name=client.canonical_name, export_folder_name=value,
+            confirmed=True, confirmed_at=datetime.utcnow(),
+        ))
+    else:
+        alias.export_folder_name = value
+        alias.confirmed = True
+        alias.confirmed_at = datetime.utcnow()
+    db.commit()
+
+    return RedirectResponse(f"/clients/{client_id}?saved=1", status_code=303)
 
 
 @app.post("/clients/{client_id}", response_class=HTMLResponse)
