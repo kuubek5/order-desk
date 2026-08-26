@@ -62,6 +62,9 @@ def test_get_clients_requires_authentication():
 
 
 def test_get_clients_lists_clients_with_order_counts():
+    """A client seen in real work gets a card automatically, so «Клієнти» and the
+    morning handout show the same people — a client with no card had nowhere to
+    configure its export folder. Spelling variants still fold into ONE card."""
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
@@ -73,10 +76,24 @@ def test_get_clients_lists_clients_with_order_counts():
 
         context = web.get_clients(request=_request(operator.id), db=db)
 
-    rows = context["client_rows"]
-    assert len(rows) == 1
-    assert rows[0]["client"].canonical_name == "Литвиненко Олег"
-    assert rows[0]["order_count"] == 2
+    rows = {row["client"].canonical_name: row for row in context["client_rows"]}
+    assert rows["Литвиненко Олег"]["order_count"] == 2   # both spellings, one card
+    assert "Хтось Інший" in rows                          # auto-provisioned from orders
+    assert rows["Хтось Інший"]["bound_folder"] is None    # not configured yet
+
+
+def test_get_clients_is_idempotent_and_does_not_duplicate_cards():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        operator = _operator(db)
+        db.add(_order("Кривовид"))
+        db.commit()
+
+        first = web.get_clients(request=_request(operator.id), db=db)
+        second = web.get_clients(request=_request(operator.id), db=db)
+
+    assert len(first["client_rows"]) == len(second["client_rows"]) == 1
+    assert db.query(Client).count() == 1
 
 
 # --- POST /clients -----------------------------------------------------

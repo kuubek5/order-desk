@@ -3652,13 +3652,25 @@ def get_handout(
         a.sheet_name: a.export_folder_name
         for a in db.scalars(select(ClientNameAlias).where(ClientNameAlias.confirmed.is_(True))).all()
     }
-    # Client cards, keyed by folded name — the handout links each group to its
-    # card so an unbound folder is fixed once there instead of every morning.
-    client_ids = {
+    # Every client on this screen gets a card (idempotent), so «Клієнти» and the
+    # handout always show the same people and the folder binding is always one
+    # click away. Cheap next to the export scan above.
+    _ensure_client_profiles(db, eligible)
+    clients_by_name = {
         c.canonical_name.strip().casefold(): c.id
         for c in db.scalars(select(Client)).all()
         if c.canonical_name
     }
+    client_names = [c for c in clients_by_name]
+
+    def _client_id_for(name: str) -> int | None:
+        """Exact fold first, then the same fuzzy matcher — the sheet spells one
+        lab several ways and they must all reach the one card."""
+        folded = (name or "").strip().casefold()
+        if folded in clients_by_name:
+            return clients_by_name[folded]
+        hit = match_client_name(folded, client_names, {}).matched_folder_name
+        return clients_by_name.get(hit) if hit else None
 
     client_groups = []
     for client_name, group_orders in groups.items():
@@ -3704,7 +3716,7 @@ def get_handout(
                 "extra_entries": extra_entries,
                 "all_found": all_found,
                 "client_folder_uri": client_folder_uri,
-                "client_id": client_ids.get(client_name.strip().casefold()),
+                "client_id": _client_id_for(client_name),
             }
         )
 
@@ -4090,6 +4102,48 @@ def get_stats(request: Request, period: str = "week", db: Session = Depends(get_
     )
 
 
+def _ensure_client_profiles(db: Session, named_orders: list[Order]) -> int:
+    """Give every client that appears in real work a card, so «Клієнти» and the
+    morning handout show the SAME people.
+
+    Without this, a client only existed on the handout screen (derived from the
+    free-text Order.client_name) and had no card to configure — which is where
+    the export-folder binding lives, so they could never be set up at all.
+
+    A new card is created only when no existing client already covers that name:
+    the sheet spells the same lab several ways («Кривовид», «Кривовид кл»), and a
+    card per spelling would fragment one client into several. Reuses the same
+    fuzzy matcher the folder binding uses, with client names in place of folder
+    names. Idempotent — running it on every /clients visit adds nothing once the
+    cards exist. Returns how many were created."""
+    existing = [c.canonical_name for c in db.scalars(select(Client)).all() if c.canonical_name]
+    seen = {name.strip().casefold() for name in existing}
+    created = 0
+
+    # Stable order (sheet order, then name) so a batch of new cards lands in a
+    # predictable sequence rather than SQLAlchemy's iteration order.
+    order_names: list[str] = []
+    for order in sorted(named_orders, key=_sheet_order_key):
+        name = (order.client_name or "").strip()
+        if name and name.casefold() not in {n.casefold() for n in order_names}:
+            order_names.append(name)
+
+    for name in order_names:
+        if name.casefold() in seen:
+            continue
+        # An existing card already spelled this client another way — reuse it.
+        if existing and match_client_name(name, existing, {}).matched_folder_name:
+            continue
+        db.add(Client(canonical_name=name))
+        existing.append(name)
+        seen.add(name.casefold())
+        created += 1
+
+    if created:
+        db.commit()
+    return created
+
+
 @app.get("/clients", response_class=HTMLResponse)
 def get_clients(request: Request, db: Session = Depends(get_db)):
     """Screen: list of client profiles (CLAUDE.md — not admin-gated, any
@@ -4105,11 +4159,23 @@ def get_clients(request: Request, db: Session = Depends(get_db)):
     if user is None:
         return RedirectResponse("/login", status_code=303)
 
-    clients = db.scalars(select(Client).order_by(Client.canonical_name)).all()
     named_orders = db.scalars(select(Order).where(Order.client_name.isnot(None))).all()
+    _ensure_client_profiles(db, named_orders)
+    clients = db.scalars(select(Client).order_by(Client.canonical_name)).all()
+
+    # Folder bindings, so the list can show at a glance who is still unconfigured
+    # — that is the state that breaks the morning handout.
+    bound = {
+        a.sheet_name.strip().casefold(): a.export_folder_name
+        for a in db.scalars(select(ClientNameAlias).where(ClientNameAlias.confirmed.is_(True))).all()
+    }
 
     client_rows = [
-        {"client": client, "order_count": len(find_matching_orders(client.canonical_name, named_orders))}
+        {
+            "client": client,
+            "order_count": len(find_matching_orders(client.canonical_name, named_orders)),
+            "bound_folder": bound.get((client.canonical_name or "").strip().casefold()),
+        }
         for client in clients
     ]
 

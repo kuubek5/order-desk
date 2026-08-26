@@ -27,6 +27,7 @@
                 <thead>
                     <tr>
                         <th>Клієнт</th>
+                        <th>Папка робіт</th>
                         <th>Телефон</th>
                         <th>Email</th>
                         <th>Робіт</th>
@@ -36,6 +37,15 @@
                     {% for row in client_rows %}
                     <tr class="queue-row">
                         <td class="order-id"><a href="/clients/{{ row.client.id }}">{{ row.client.canonical_name }}</a></td>
+                        {# Стан прив'язки папки — саме він ламає ранкову видачу,
+                           тож видно одразу зі списку, кого ще не налаштовано. #}
+                        <td>
+                            {% if row.bound_folder %}
+                            <span class="mono folder-ok">{{ row.bound_folder }}</span>
+                            {% else %}
+                            <a class="folder-missing" href="/clients/{{ row.client.id }}">Прив'язати папку</a>
+                            {% endif %}
+                        </td>
                         <td class="mono">{{ row.client.phone or '—' }}</td>
                         <td>{{ row.client.email or '—' }}</td>
                         <td>{{ row.order_count }}</td>
