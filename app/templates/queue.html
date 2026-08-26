@@ -131,8 +131,8 @@
         </section>
 
         <aside class="side-panel" aria-label="Довідкові панелі">
-            <section class="side-sec" data-open="{{ 'true' if pending_emails else 'false' }}" data-sec="mail">
-                <button class="side-head" type="button" data-side-toggle aria-expanded="{{ 'true' if pending_emails else 'false' }}">
+            <section class="side-sec" data-open="false" data-sec="mail">
+                <button class="side-head" type="button" data-side-toggle aria-expanded="false">
                     Пошта на тріаж
                     <span class="side-count">{{ pending_mail_count }}</span>
                     <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -158,8 +158,8 @@
                 </div>
             </section>
 
-            <section class="side-sec" data-open="true" data-sec="sync">
-                <button class="side-head" type="button" data-side-toggle aria-expanded="true">
+            <section class="side-sec" data-open="false" data-sec="sync">
+                <button class="side-head" type="button" data-side-toggle aria-expanded="false">
                     Google Таблиця
                     <span class="side-count {% if sync_status.sheet.state == 'error' %}err{% endif %}">{{ peeks.sync }}</span>
                     <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
