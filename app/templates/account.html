@@ -30,7 +30,7 @@
     <div class="card settings-group">
         <h2>Моя літера</h2>
         <p class="settings-help">Додається в колонку «Прорахував», коли ви вписуєте Sum3D. 1–2 літери, унікальна.</p>
-        <form method="post" action="/account/initial" class="settings-form" style="margin-top: 12px;">
+        <form method="post" action="/account/initial" class="settings-form" style="margin-top: 0;">
             <div class="settings-field">
                 <label for="sheet_initial">Літера</label>
                 <div class="login-glow">
@@ -46,7 +46,7 @@
 
     <div class="card settings-group">
         <h2>Змінити пароль</h2>
-        <form method="post" action="/account/password" class="settings-form" style="margin-top: 12px;">
+        <form method="post" action="/account/password" class="settings-form" style="margin-top: 0;">
             <div class="settings-field">
                 <label for="current_password">Поточний пароль</label>
                 <div class="login-glow">
@@ -91,7 +91,7 @@
         <h2>Зміна</h2>
         <p class="acc-who">Ви увійшли як <strong>{{ user.full_name or user.username }}</strong>{% if user.sheet_initial %} · літера <span class="acc-letter">{{ user.sheet_initial }}</span>{% endif %}.</p>
         <p class="settings-help">Завершили роботу — вийдіть, щоб наступний оператор увійшов у свій обліковий запис.</p>
-        <form method="post" action="/logout" style="margin-top: 12px;">
+        <form method="post" action="/logout">
             <button type="submit" class="login-submit settings-submit acc-endshift">Закінчити зміну</button>
         </form>
     </div>
