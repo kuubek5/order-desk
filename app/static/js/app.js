@@ -745,6 +745,106 @@ document.addEventListener("click", (event) => {
   input.dispatchEvent(new Event("change", { bubbles: true }));
 });
 
+// ── «Останні дії» popup (queue header, between undo and redo) ───────────────
+// A LOCATOR, not a time machine: clicking an entry never changes data, it only
+// scrolls to the work that action touched and highlights its row. Reverting
+// stays exclusively on the ← → buttons, so a stray click at the bench is safe.
+//
+// Same state-machine style as the other menus here: a data-attribute toggled on
+// the wrapper, everything delegated on document so it survives HTMX swaps.
+function closeActionHistory() {
+  document.querySelectorAll("[data-acthist]").forEach((box) => {
+    box.classList.remove("is-open");
+    const toggle = box.querySelector("[data-acthist-toggle]");
+    if (toggle) toggle.setAttribute("aria-expanded", "false");
+  });
+}
+
+// Highlight the row an action touched. Scrolls INSIDE .tablewrap (the table has
+// its own scroll container — scrolling the window instead just yanks the page
+// and leaves the row off-screen). The class is re-applied after the 15s poll
+// swap below, so a highlight can't be wiped a second after it appears.
+let focusedOrderId = "";
+function highlightOrderRow(orderId, { scroll = true } = {}) {
+  const row = document.getElementById("order-row-" + orderId);
+  if (!row) return false;
+  if (scroll) {
+    const wrap = row.closest(".tablewrap");
+    if (wrap) {
+      const top = row.offsetTop - wrap.clientHeight / 2 + row.offsetHeight / 2;
+      wrap.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+    } else {
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }
+  row.classList.remove("row-locate");
+  void row.offsetWidth; // restart the animation when the same row is picked twice
+  row.classList.add("row-locate");
+  return true;
+}
+
+document.addEventListener("click", (event) => {
+  const toggle = event.target.closest("[data-acthist-toggle]");
+  if (toggle) {
+    const box = toggle.closest("[data-acthist]");
+    const willOpen = !box.classList.contains("is-open");
+    closeActionHistory();
+    if (willOpen) {
+      box.classList.add("is-open");
+      toggle.setAttribute("aria-expanded", "true");
+    }
+    return; // hx-get on the button refetches the list every open
+  }
+
+  const entry = event.target.closest(".acthist-row");
+  if (entry) {
+    const orderId = entry.dataset.actOrder;
+    closeActionHistory();
+    if (!orderId) return;
+    // Archived work has left the queue entirely — its passport is the only
+    // place left to look at it.
+    if (entry.dataset.actArchived) {
+      window.location.href = "/orders/" + orderId;
+      return;
+    }
+    if (highlightOrderRow(orderId)) {
+      focusedOrderId = orderId;
+      return;
+    }
+    // Not on screen: another day tab, or filtered out. Navigate to that day
+    // with the filters cleared, and let ?focus= finish the jump after load.
+    const tab = entry.dataset.actTab || "";
+    const qs = new URLSearchParams({ ready: "all", source: "all", focus: orderId });
+    if (tab) qs.set("date", tab);
+    window.location.href = "/?" + qs.toString();
+    return;
+  }
+
+  if (!event.target.closest(".acthist-menu")) closeActionHistory();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeActionHistory();
+});
+
+// Arriving from a cross-day jump: ?focus=<id> put the right tab on screen, now
+// locate the row. Deferred a tick so the table has laid out and offsetTop is real.
+document.addEventListener("DOMContentLoaded", () => {
+  const main = document.querySelector(".q2[data-focus-order]");
+  if (!main) return;
+  focusedOrderId = main.dataset.focusOrder;
+  window.setTimeout(() => highlightOrderRow(focusedOrderId), 80);
+});
+
+// The 15s poll replaces #queue-rows wholesale, which would drop the highlight
+// mid-look. Re-apply it (without re-scrolling — the operator may have scrolled
+// on by then and yanking them back would be worse than losing the tint).
+document.body.addEventListener("htmx:afterSwap", (event) => {
+  if (!focusedOrderId) return;
+  if (!event.target || event.target.id !== "queue-rows") return;
+  highlightOrderRow(focusedOrderId, { scroll: false });
+});
+
 // v2a side-panel accordion (queue.html .side-sec). Toggles data-open on the
 // section and aria-expanded on its header. No-op on pages without side-secs.
 document.addEventListener("click", (event) => {

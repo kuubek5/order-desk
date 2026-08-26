@@ -405,6 +405,84 @@ def test_operator_set_undo_restores_and_redo_reapplies():
         assert order.calculated_raw == "К"                  # re-applied
 
 
+def _recent_context(db, user, tab=""):
+    """Call the «Останні дії» popup route and capture the template context."""
+    captured = {}
+
+    def _fake(request, name, ctx):
+        captured.update(ctx)
+        captured["_template"] = name
+        return SimpleNamespace(headers={})
+
+    with patch.object(web.templates, "TemplateResponse", side_effect=_fake):
+        web.get_recent_actions(request=_request(user.id), tab=tab, db=db)
+    return captured
+
+
+def test_recent_actions_lists_own_newest_first():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, status="прийнято")
+        _run_status(db, user, order, "прораховано")
+        _run_status(db, user, order, "у фрезеруванні")
+        ctx = _recent_context(db, user)
+        notes = [e.note for e in ctx["entries"]]
+        assert ctx["_template"] == "_actions_recent.html"
+        assert notes[0].endswith("у фрезеруванні")   # newest first
+        assert len(notes) == 2
+
+
+def test_recent_actions_excludes_other_operators():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db, initial="Р")
+        other = _user(db, initial="К", username="kostya")
+        order = _order(db, status="прийнято")
+        _run_status(db, user, order, "прораховано")
+        # The popup is scoped to the viewer, so undo (own-only) and this list
+        # can never disagree about what is steppable.
+        assert _recent_context(db, other)["entries"] == []
+        assert len(_recent_context(db, user)["entries"]) == 1
+
+
+def test_recent_actions_keeps_undone_entries_visible():
+    """An undone action stays in the list (struck through) — it is still a place
+    the operator was, and «Крок вперед» can re-apply it."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, status="прийнято")
+        _run_status(db, user, order, "прораховано")
+        _run_undo_last(db, user)
+        entries = _recent_context(db, user)["entries"]
+        assert len(entries) == 1 and entries[0].undone_at is not None
+
+
+def test_recent_actions_capped_at_limit():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, calculated_raw=None)
+        for i in range(web.RECENT_ACTIONS_LIMIT + 4):
+            _run_set_operator(db, user, order, f"O{i}")
+        entries = _recent_context(db, user)["entries"]
+        assert len(entries) == web.RECENT_ACTIONS_LIMIT
+
+
+def test_recent_actions_ignores_undo_meta_entries():
+    """undo/redo write their own ActionLog rows; the popup lists the real edits,
+    not the bookkeeping, so stepping back doesn't spam the list."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, status="прийнято")
+        _run_status(db, user, order, "прораховано")
+        _run_undo_last(db, user)
+        types = {e.action_type for e in _recent_context(db, user)["entries"]}
+        assert types == {"status"}       # no "undo" row in the list
+
+
 def test_operator_set_noop_when_unchanged():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:

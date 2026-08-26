@@ -1828,6 +1828,10 @@ def get_queue(
     # `partial=rows` returns only the queue-rows fragment (for the 15s HTMX
     # poll that keeps the table in step with the sheet without a full reload).
     partial: str = "",
+    # Order id the page should scroll to and highlight once loaded — set by the
+    # «Останні дії» popup when the action it points at lives on another day tab
+    # or behind different filters, so the jump survives the navigation.
+    focus: str = "",
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)
@@ -2104,6 +2108,7 @@ def get_queue(
             "sync_screen_seconds": get_sync_speed()["screen"],
             "viewed_tab": viewed_day.strftime("%d.%m.%y") if viewed_day else "",
             "sync_paused": sync_control.is_paused(),
+            "focus_order_id": focus.strip() if focus.strip().isdigit() else "",
     }
 
     _record_viewed_day(viewed_day)
@@ -3109,6 +3114,48 @@ async def redo_last_action(request: Request, db: Session = Depends(get_db)):
         return _toast_response("Немає що повторити", kind="info")
 
     return _perform_redo(db, user, entry)
+
+
+# How many entries the «Останні дії» popup shows. Deliberately short: this is a
+# "where was I just now" locator, not the audit log — /journal owns depth.
+RECENT_ACTIONS_LIMIT = 10
+
+
+@app.get("/actions/recent", response_class=HTMLResponse)
+def get_recent_actions(
+    request: Request,
+    tab: str = "",
+    db: Session = Depends(get_db),
+):
+    """Render the «Останні дії» popup — this operator's last data-changing actions,
+    newest first, each one clickable to jump to the work it touched.
+
+    Scoped to the current operator on purpose: it reads the same ActionLog rows
+    «Крок назад» steps through, so what the list shows and what the arrows can
+    revert never disagree. Clicking an entry NEVER changes data — it only locates
+    the row (see app.js) — so a stray click at the bench is harmless.
+
+    ``tab`` is the day tab the queue is showing, used only to badge entries whose
+    work lives on a different day (the jump then navigates instead of scrolling).
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    entries = db.execute(
+        select(ActionLog)
+        .options(selectinload(ActionLog.order))
+        .where(
+            ActionLog.operator_id == user.id,
+            ActionLog.action_type.in_(UNDOABLE_ACTION_TYPES),
+        )
+        .order_by(ActionLog.created_at.desc(), ActionLog.id.desc())
+        .limit(RECENT_ACTIONS_LIMIT)
+    ).scalars().all()
+
+    return templates.TemplateResponse(
+        request, "_actions_recent.html", {"entries": entries, "viewed_tab": tab.strip()}
+    )
 
 
 @app.post("/orders/{order_id}/comments")

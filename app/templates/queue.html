@@ -7,7 +7,7 @@
 {% set topbar_active = 'queue' %}
 {% include "_topbar_nav.html" %}
 
-<main class="q2">
+<main class="q2"{% if focus_order_id %} data-focus-order="{{ focus_order_id }}"{% endif %}>
     <div class="q2-topbar">
         <div>
             <h1>{{ page_title }}</h1>
@@ -36,6 +36,19 @@
                         title="Крок назад — скасувати останню дію" aria-label="Крок назад — скасувати останню дію">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h12a4 4 0 0 1 0 8h-4"/></svg>
                 </button>
+                {# Середня кнопка — сам стек дій (← рух назад, ⟳ стек, → рух вперед),
+                   як «попередній / черга / наступний» у плеєрі. Показує попап з
+                   останніми діями; клік по запису лише переносить до роботи й
+                   підсвічує рядок — дані не змінює (відкат роблять тільки ← →). #}
+                <div class="acthist" data-acthist>
+                    <button type="button" class="icon-btn acthist-toggle" data-acthist-toggle
+                            hx-get="/actions/recent?tab={{ viewed_tab }}" hx-target="#acthist-slot" hx-swap="innerHTML"
+                            aria-expanded="false" aria-haspopup="true"
+                            title="Останні дії — перейти до роботи, якої торкались" aria-label="Останні дії">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 8v4l3 2"/></svg>
+                    </button>
+                    <div class="acthist-slot" id="acthist-slot"></div>
+                </div>
                 <button type="button" class="icon-btn redo-step" hx-post="/actions/redo-last" hx-swap="none"
                         title="Крок вперед — повторити скасовану дію" aria-label="Крок вперед — повторити скасовану дію">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H8a4 4 0 0 0 0 8h4"/></svg>

@@ -3663,6 +3663,58 @@ main.q2{
 .q2 .icon-btn:hover{background:var(--card-2);border-color:#3a4a5f;color:var(--ink);opacity:1}
 .q2 .icon-btn:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 
+/* Попап «Останні дії» — середня кнопка ряду ← ⟳ →. Тінтований активний стан, як
+   у решти is-active елементів. Меню — абсолютне, вирівняне по правому краю
+   кнопки (кнопки стоять у правому верхньому куті, тож меню росте всередину). */
+.q2 .acthist{position:relative;display:inline-flex}
+.q2 .acthist.is-open .acthist-toggle{background:rgba(20,184,166,.16);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.q2 .acthist-slot{position:absolute;top:calc(100% + 6px);right:0;z-index:40}
+.q2 .acthist:not(.is-open) .acthist-slot{display:none}
+.q2 .acthist-menu{
+  width:330px;background:var(--card);border:1px solid var(--line-2);border-radius:var(--r-card);
+  box-shadow:0 18px 40px -18px rgba(0,0,0,.8),var(--glow);overflow:hidden;
+  animation:q2fade-slide var(--enter-duration,.32s) ease both;
+}
+.q2 .acthist-head{padding:9px 12px;border-bottom:1px solid var(--line);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+/* Щільні хайрлайн-рядки, не картки — той самий крок, що на тріажі пошти. */
+.q2 .acthist-list{max-height:min(52vh,340px);overflow-y:auto;scrollbar-width:thin}
+.q2 .acthist-row{
+  display:block;width:100%;text-align:left;padding:7px 12px;border:0;border-bottom:1px solid var(--line);
+  background:none;cursor:pointer;font:inherit;border-left:2px solid transparent;
+  transition:background var(--ui-speed) ease,border-left-color var(--ui-speed) ease;
+}
+.q2 .acthist-row:last-child{border-bottom:0}
+.q2 .acthist-row:hover:not(:disabled){background:rgba(20,184,166,.07);border-left-color:var(--accent-b)}
+.q2 .acthist-row:focus-visible{outline:2px solid var(--control-edge);outline-offset:-2px}
+.q2 .acthist-row:disabled{cursor:default;opacity:.45}
+.q2 .ah-line{display:flex;align-items:baseline;gap:8px}
+.q2 .ah-time{font-size:11px;color:var(--ink-3);flex:0 0 auto}
+.q2 .ah-note{font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q2 .ah-tag{margin-left:auto;flex:0 0 auto;font-size:10px;color:var(--ink-3);border:1px solid var(--line-2);border-radius:4px;padding:1px 5px}
+.q2 .ah-tag.warn{color:var(--warn);border-color:rgba(240,163,94,.4)}
+.q2 .ah-sub{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q2 .ah-sub b{font-weight:500;color:var(--ink-2)}
+.q2 .acthist-row.is-undone{opacity:.55}
+.q2 .acthist-row.is-undone .ah-note{text-decoration:line-through;color:var(--ink-3)}
+.q2 .acthist-empty{margin:0;padding:16px 12px;font-size:12px;color:var(--ink-3);line-height:1.45}
+.q2 .acthist-foot{display:flex;justify-content:space-between;gap:10px;padding:7px 12px;border-top:1px solid var(--line);font-size:11px;color:var(--ink-3)}
+.q2 .acthist-foot a{color:var(--accent-c);text-decoration:none}
+.q2 .acthist-foot a:hover{opacity:1;text-decoration:underline}
+
+/* «Ось ця робота» — довша й помітніша за row-flash (той підтверджує збереження,
+   цей веде око через увесь екран після стрибка). Тінт + бірюзова смуга зліва. */
+.q2 table.qtable tbody tr.row-locate{animation:q2row-locate 2.4s ease-out}
+.q2 table.qtable tbody tr.row-locate > td:first-child{box-shadow:inset 2px 0 0 var(--accent-b)}
+@keyframes q2row-locate{
+  0%{background:rgba(20,184,166,.3)}
+  55%{background:rgba(20,184,166,.18)}
+  100%{background:transparent}
+}
+@media (prefers-reduced-motion:reduce){
+  .q2 table.qtable tbody tr.row-locate{animation:none;background:rgba(20,184,166,.14)}
+  .q2 .acthist-menu{animation:none}
+}
+
 /* Кнопка-перемикач режиму вигляду + панель контролів (задача 1). Активний стан
    перемикача підсвічений бірюзовим, як інші is-active елементи v2a. */
 .q2 .layout-edit-toggle[aria-pressed="true"]{

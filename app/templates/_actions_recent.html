@@ -1,0 +1,43 @@
+{# Попап «Останні дії» — останні дії ЦЬОГО оператора (ті самі записи ActionLog,
+   якими крокують ← →, тож список і кнопки не розходяться). Клік по запису НІЧОГО
+   не змінює: лише переносить до роботи і підсвічує рядок (app.js). Якщо робота на
+   іншому дні/за фільтром — перехід на її вкладку з ?focus=<id>. #}
+<div class="acthist-menu" id="acthist-menu" role="menu" aria-label="Останні дії">
+    <div class="acthist-head">Останні дії</div>
+    {% if entries %}
+    <div class="acthist-list">
+        {% for a in entries %}
+        {% set _order = a.order %}
+        {% set _archived = _order and _order.archived_at %}
+        {% set _other_day = _order and _order.sheet_tab and viewed_tab and _order.sheet_tab != viewed_tab %}
+        <button type="button" class="acthist-row{% if a.undone_at %} is-undone{% endif %}" role="menuitem"
+                {% if _order %}data-act-order="{{ _order.id }}"{% endif %}
+                {% if _order and _order.sheet_tab %}data-act-tab="{{ _order.sheet_tab }}"{% endif %}
+                {% if _archived %}data-act-archived="1"{% endif %}
+                {% if not _order %}disabled title="Роботи вже немає"{% endif %}>
+            <span class="ah-line">
+                <span class="ah-time mono">{{ a.created_at.strftime('%H:%M') if a.created_at else '—' }}</span>
+                <span class="ah-note">{{ a.note or a.action_type }}</span>
+                {% if a.undone_at %}<span class="ah-tag">скасовано</span>
+                {% elif _archived %}<span class="ah-tag">архів</span>
+                {% elif _other_day %}<span class="ah-tag warn">{{ _order.sheet_tab }}</span>{% endif %}
+            </span>
+            <span class="ah-sub">
+                {% if _order %}
+                    {% if _order.work_order_no %}наряд <b class="mono">{{ _order.work_order_no }}</b>
+                    {% elif _order.client_name %}клієнт <b>{{ _order.client_name }}</b>
+                    {% else %}робота <b class="mono">#{{ _order.id }}</b>{% endif %}
+                    {% if _order.material_color %} · {{ _order.material_color }}{% endif %}
+                {% else %}роботи вже немає{% endif %}
+            </span>
+        </button>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="acthist-empty">Дій ще не було. Тут з'являться Sum3D, оператор і статуси, які ви зміните.</p>
+    {% endif %}
+    <div class="acthist-foot">
+        <span>Клік — перейти до роботи</span>
+        <a href="/journal">Увесь журнал</a>
+    </div>
+</div>
