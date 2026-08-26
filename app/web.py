@@ -3728,6 +3728,26 @@ def get_handout(
     client_groups = filter_client_groups_by_source(client_groups, source)
     handout_flash = request.session.pop("handout_flash", None)
 
+    # Queue position + per-client totals. The position is THE anchor of the
+    # screen: the operator works strictly in the order the clients were milled
+    # (which is the sheet order these groups are already sorted by), so it is
+    # numbered explicitly rather than left implicit in the scroll position.
+    # `is_current` marks the first client not yet fully found — where the
+    # operator is right now.
+    current_marked = False
+    for index, group in enumerate(client_groups, start=1):
+        group["position"] = index
+        group["works_count"] = len(group["orders"])
+        group["units_total"] = sum(_quantity_units(o.quantity) for o in group["orders"])
+        group["found_count"] = sum(
+            1 for o in group["orders"] if o.status in ("знайдено при видачі", "видано")
+        )
+        group["is_current"] = not group["all_found"] and not current_marked
+        if group["is_current"]:
+            current_marked = True
+
+    done_groups = sum(1 for g in client_groups if g["all_found"])
+
     return templates.TemplateResponse(
         request,
         "handout.html",
@@ -3740,8 +3760,38 @@ def get_handout(
             "handout_flash": handout_flash,
             "handout_days": [d.strftime("%d.%m.%y") for d in handout_days],
             "selected_day": selected_day.strftime("%d.%m.%y") if selected_day else "",
+            "prev_day": _adjacent_handout_day(handout_days, selected_day, -1),
+            "next_day": _adjacent_handout_day(handout_days, selected_day, +1),
+            "done_groups": done_groups,
+            "total_groups": len(client_groups),
         },
     )
+
+
+def _quantity_units(raw: str | None) -> int:
+    """Units in a sheet quantity cell. Free text ("4", "4 шт", ""), so anything
+    unparseable counts as 0 rather than breaking the client's total."""
+    digits = "".join(ch for ch in (raw or "") if ch.isdigit())
+    return int(digits) if digits else 0
+
+
+def _adjacent_handout_day(days: list, selected, step: int) -> str:
+    """Neighbouring day for the ‹ › pager, or "" at the ends. Replaces the wall
+    of 30+ day chips: the operator hands out one day at a time and steps between
+    them, so only the neighbours need to be one click away."""
+    if not days:
+        return ""
+    if selected is None:
+        # No day chosen: ‹ opens the newest day, › stays inert.
+        return days[-1].strftime("%d.%m.%y") if step < 0 else ""
+    try:
+        index = days.index(selected)
+    except ValueError:
+        return ""
+    target = index + step
+    if 0 <= target < len(days):
+        return days[target].strftime("%d.%m.%y")
+    return ""
 
 
 def _handout_back_url(source: str, day: str) -> str:

@@ -7,24 +7,48 @@
 {% include "_topbar_nav.html" %}
 
 <main class="handoutv2">
-    <h1>{{ page_title }}</h1>
+    {# Одна стрічка замість заголовка + табів + стіни з 30 чіпів днів: день
+       перемикається сусідами (‹ ›), бо видача йде по одному дню за раз, а
+       повний список лишається за «усі дні». Прогрес — тонка лінія, а не блок. #}
+    <div class="hbar">
+        <h1>{{ page_title }}</h1>
 
-    <nav class="tab-nav" aria-label="Джерело робіт">
-        <a href="/handout?source=all{% if selected_day %}&day={{ selected_day }}{% endif %}" class="tab-link {% if source == 'all' %}active{% endif %}">Усі клієнти <span class="tab-badge">{{ source_counts.all }}</span></a>
-        <a href="/handout?source=email{% if selected_day %}&day={{ selected_day }}{% endif %}" class="tab-link {% if source == 'email' %}active{% endif %}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
-            Тільки з пошти <span class="tab-badge">{{ source_counts.email }}</span>
-        </a>
-    </nav>
+        {% if handout_days %}
+        <div class="daypick" role="group" aria-label="День видачі">
+            {% if prev_day %}<a class="arw" href="/handout?source={{ source }}&day={{ prev_day }}" title="Попередній день" aria-label="Попередній день">‹</a>
+            {% else %}<span class="arw off" aria-hidden="true">‹</span>{% endif %}
+            <span class="dnow mono">{{ selected_day[:5] if selected_day else 'усі дні' }}</span>
+            {% if next_day %}<a class="arw" href="/handout?source={{ source }}&day={{ next_day }}" title="Наступний день" aria-label="Наступний день">›</a>
+            {% else %}<span class="arw off" aria-hidden="true">›</span>{% endif %}
+        </div>
+        <details class="dayall">
+            <summary title="Усі дні">усі дні</summary>
+            <div class="dayall-pop">
+                <a href="/handout?source={{ source }}" class="day-chip {% if not selected_day %}active{% endif %}">Усі</a>
+                {% for d in handout_days %}
+                <a href="/handout?source={{ source }}&day={{ d }}" class="day-chip {% if selected_day == d %}active{% endif %}">{{ d[:5] }}</a>
+                {% endfor %}
+            </div>
+        </details>
+        {% endif %}
 
-    {% if handout_days %}
-    <nav class="handout-days" aria-label="День видачі">
-        <a href="/handout?source={{ source }}" class="day-chip {% if not selected_day %}active{% endif %}">Усі дні</a>
-        {% for d in handout_days %}
-        <a href="/handout?source={{ source }}&day={{ d }}" class="day-chip {% if selected_day == d %}active{% endif %}">{{ d[:5] }}</a>
-        {% endfor %}
-    </nav>
-    {% endif %}
+        {% if client_groups %}
+        <div class="hspine" aria-hidden="true"><i style="width:{{ (done_groups / total_groups * 100)|round(0) if total_groups else 0 }}%"></i></div>
+        <span class="hkpi mono"><b>{{ done_groups }}</b> / {{ total_groups }} клієнтів</span>
+        {% endif %}
+
+        <nav class="hsrc" aria-label="Джерело робіт">
+            <a href="/handout?source=all{% if selected_day %}&day={{ selected_day }}{% endif %}" class="{% if source == 'all' %}on{% endif %}">Усі <span class="mono">{{ source_counts.all }}</span></a>
+            <a href="/handout?source=email{% if selected_day %}&day={{ selected_day }}{% endif %}" class="{% if source == 'email' %}on{% endif %}">Пошта <span class="mono">{{ source_counts.email }}</span></a>
+        </nav>
+
+        {% if client_groups %}
+        <nav class="view-toggle" aria-label="Вигляд робіт">
+            <button type="button" class="view-btn active" data-view-mode="rows" title="Черга — клієнти в порядку фрезерування">Черга</button>
+            <button type="button" class="view-btn" data-view-mode="tiles" title="Плитки">Плитки</button>
+        </nav>
+        {% endif %}
+    </div>
 
     {% if handout_flash %}
     <div class="sync-notice sync-notice-{{ handout_flash.kind }}" role="status">
@@ -33,63 +57,42 @@
     {% endif %}
 
     {% if client_groups %}
-    {% set done_groups = client_groups|selectattr('all_found')|list|length %}
-    {% set total_groups = client_groups|length %}
-    <div class="statusline">
-        <span class="sl-item is-ok"><b>{{ done_groups }}</b> зібрано</span>
-        <span class="sl-sep" aria-hidden="true"></span>
-        <span class="sl-item is-warn"><b>{{ total_groups - done_groups }}</b> в роботі</span>
-        <span class="sl-sep" aria-hidden="true"></span>
-        <span class="sl-item"><b>{{ total_groups }}</b> клієнтів</span>
-        <div class="headline-track" aria-hidden="true"><i style="width:{{ (done_groups / total_groups * 100)|round(0) if total_groups else 0 }}%"></i></div>
-    </div>
-
-    <nav class="view-toggle" aria-label="Вигляд робіт">
-        <button type="button" class="view-btn active" data-view-mode="rows" title="Рядки">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-            Рядки
-        </button>
-        <button type="button" class="view-btn" data-view-mode="tiles" title="Плитки">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/></svg>
-            Плитки
-        </button>
-    </nav>
 
     <div class="clients" data-view-root>
         {% for group in client_groups %}
         {% set found_n = group.orders|selectattr('status', 'in', ['знайдено при видачі', 'видано'])|list|length %}
         {% set total_n = group.orders|length %}
-        <section class="ccard {% if group.all_found %}done{% endif %}">
+        {# Порядковий номер — головний орієнтир екрана: клієнти йдуть у тому
+           порядку, у якому їх фрезерували, і оператор іде згори вниз. `current`
+           — перший незібраний, тобто де оператор зараз. #}
+        <section class="ccard {% if group.all_found %}done{% endif %} {% if group.is_current %}current{% endif %}">
             <div class="card-head">
+                <span class="qnum mono" title="{{ group.position }}-й у порядку фрезерування">{{ group.position }}</span>
                 <button type="button" class="card-collapse" aria-expanded="true" title="Згорнути / розгорнути">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                 </button>
                 <h2>
                     {% if group.all_found %}<span class="doneicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>{% endif %}
-                    {# Ім'я клієнта відкриває його папку на диску — прив'язка
-                       задається один раз у картці клієнта. Без прив'язки ім'я
-                       лишається звичайним текстом, а поруч стоїть дія, що веде
-                       саме туди, де це лагодиться. #}
-                    {% if group.client_folder_uri %}
-                    <a class="client-open" href="{{ group.client_folder_uri }}" data-folder-uri="{{ group.client_folder_uri }}"
-                       title="Відкрити папку клієнта у Провіднику">
-                        {{ group.client_name }}
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
-                    </a>
-                    {% else %}
                     {{ group.client_name }}
-                    {% endif %}
                 </h2>
-                <span class="meta">
-                    {% if group.match.matched_folder_name %}
-                        Папка: <span class="mono">{{ group.match.matched_folder_name }}</span>{% if not group.match.is_confirmed_alias %} · збіг {{ group.match.confidence|round(0) }}%{% endif %}
-                    {% elif group.client_id %}
-                        <a class="bind-folder" href="/clients/{{ group.client_id }}">Прив'язати папку</a>
-                    {% else %}
-                        <a class="bind-folder" href="/clients">Створити картку клієнта</a>
-                    {% endif %}
-                </span>
+                <span class="cstat mono">{{ group.works_count }} {% if group.works_count == 1 %}робота{% elif group.works_count < 5 %}роботи{% else %}робіт{% endif %}{% if group.units_total %} · {{ group.units_total }} од.{% endif %}</span>
                 <div class="right">
+                    {# Відкрити папку клієнта — головна дія: саме з неї
+                       починається впізнавання. Активний клієнт отримує залиту
+                       кнопку, решта — тиху. Непривʼязана папка показує дію, що
+                       веде в картку клієнта, де це лагодиться назавжди. #}
+                    {% if group.client_folder_uri %}
+                    <a class="fbtn {% if group.is_current %}lead{% endif %}" href="{{ group.client_folder_uri }}"
+                       data-folder-uri="{{ group.client_folder_uri }}"
+                       title="{{ group.match.matched_folder_name }} — відкрити у Провіднику">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+                        {% if group.is_current %}Відкрити папку{% else %}Папка{% endif %}
+                    </a>
+                    {% elif group.client_id %}
+                    <a class="bind-folder" href="/clients/{{ group.client_id }}">Прив'язати папку</a>
+                    {% else %}
+                    <a class="bind-folder" href="/clients">Створити картку клієнта</a>
+                    {% endif %}
                     {% if group.all_found %}
                     <form method="post" action="/handout/issue-group" class="issue-form">
                         <input type="hidden" name="client_name" value="{{ group.client_name }}">
@@ -129,17 +132,22 @@
                         {% else %}
                         <span class="wcheck static" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
                         {% endif %}
+                        {# Матеріал, колір і кількість — це те, що оператор
+                           очікує побачити в папці, тож вони ведуть рядок.
+                           Sum3D ID стоїть тихо праворуч: це інструмент
+                           ПЕРЕВІРКИ, до якого звертаються лише коли впізнання
+                           викликало сумнів — як саме фрезерувалось і скільки.
+                           Статус текстом не дублюємо: його несе відмітка. #}
                         <div class="wmain">
                             <div class="top">
-                                {# Sum3D ID is the operator's time-of-day anchor for matching a
-                                   row to its physical export folder — front and centre. #}
-                                <a href="/orders/{{ order.id }}" class="ord mono">{{ order.sum3d_id or order.work_order_no or '—' }}</a>
                                 {% if order.material_color %}<span class="matchip">{{ order.material_color }}</span>{% endif %}
-                                {% if order.quantity %}<span class="wqty">{{ order.quantity }} од.</span>{% endif %}
+                                <span class="wqty">{{ order.quantity or '—' }} <em>од.</em></span>
                                 {% if not selected_day and order.sheet_tab %}<span class="wday">{{ order.sheet_tab[:5] }}</span>{% endif %}
                             </div>
-                            <div class="wstatus">{{ order.status }}</div>
                         </div>
+                        <a href="/orders/{{ order.id }}" class="wsum mono" title="Паспорт роботи — перевірити, як фрезерувалось">
+                            {{ order.sum3d_id or order.work_order_no or '—' }}
+                        </a>
                         {% if order.export_matches %}
                         {# Per-row folder shortcuts: only the client's folders whose
                            material matches THIS work, each labelled with its creation
