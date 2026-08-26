@@ -871,3 +871,52 @@ class TestRestoreOrderRow:
         with pytest.raises(RowOccupiedError):
             restore_order_row(fake_ws, self._order())
         fake_ws.batch_update.assert_not_called()
+
+
+class TestRestoreGuardAndCalculatedSkip:
+    """Two failure paths the mocked-sheet tests used to walk straight past."""
+
+    def _order(self, **kw):
+        base = dict(
+            id=7, row_number=3, sheet_tab="27.07.26", source="lab",
+            work_order_no="24122", quantity="4", material_color="mono a3",
+            kind="анатомія", client_name=None, job_code=None,
+            technician_name=None, cam_comment=None, status="прийнято",
+        )
+        base.update(kw)
+        return SimpleNamespace(**base)
+
+    def test_unreadable_row_refuses_instead_of_writing(self):
+        """A failed emptiness read must NOT be treated as "row is empty". The
+        check is the only thing between a restore and overwriting a colleague's
+        work in a re-used row, so a proxy blip has to abort, not wave it through."""
+        from app.sheet_writer import restore_order_row
+
+        fake_ws = MagicMock()
+        fake_ws.get_values.side_effect = RuntimeError("proxy reset")
+        with pytest.raises(RuntimeError, match="не вдалося перевірити"):
+            restore_order_row(fake_ws, self._order())
+        fake_ws.batch_update.assert_not_called()
+
+    def test_write_calculated_reports_a_skipped_write(self):
+        """When the row can't be located unambiguously (shifted row + duplicate
+        client name) the write is skipped — and must be reported, because the
+        sheet is authoritative for column М and the next sync would otherwise
+        quietly revert what the operator typed."""
+        from app.sheet_writer import write_calculated
+
+        fake_ws = MagicMock()
+        # Identity cell holds someone else's наряд, and the relocation scan finds
+        # the value twice → ambiguous → _resolve_row returns None.
+        fake_ws.cell.return_value = SimpleNamespace(value="99999")
+        fake_ws.col_values.return_value = ["", "24122", "24122"]
+        assert write_calculated(fake_ws, self._order(), "St") is False
+        fake_ws.update_cell.assert_not_called()
+
+    def test_write_calculated_reports_a_real_write(self):
+        from app.sheet_writer import write_calculated
+
+        fake_ws = MagicMock()
+        fake_ws.cell.return_value = SimpleNamespace(value="24122")
+        assert write_calculated(fake_ws, self._order(), "St") is True
+        fake_ws.update_cell.assert_called_once()

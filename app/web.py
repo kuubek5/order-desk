@@ -1593,42 +1593,75 @@ def _write_rework_sum3d(
         return error
 
 
-def _restore_sheet_row(db: Session, order: Order) -> str | None:
-    """Sheet half of undoing a delete: re-fill the A:K cells that were blanked and,
-    for a still-pending client work, repaint the blue «чекає видачі» fill (the sync
-    reads that fill as the issued/pending flag, so skipping it would silently flip
-    the restored work to «видано»). Returns an error string, never raises."""
-    if order.source not in ("lab", "sheet_client") or not order.sheet_tab or order.row_number is None:
-        return None
+def _restore_sheet_row_warm(order_id: int) -> str | None:
+    """Re-fill a deleted work's sheet row, ON THE WRITE-BACK WORKER — never call
+    this directly from a request thread.
+
+    Running here is not an optimisation, it is correctness: deleting a work
+    queues _clear_sheet_row_background on this same single-worker pool, and a
+    cold spreadsheet open costs tens of seconds through the lab proxy. A restore
+    that ran on the request thread could therefore land BEFORE the still-queued
+    blank, which would then wipe the row it had just restored — leaving the work
+    un-archived in the CRM with an empty sheet row, which the next sync reads as
+    "vanished" and archives all over again. The pool serialises writes, so
+    queueing behind the blank is what makes undo deterministic.
+
+    Uses its own session (SQLAlchemy sessions are not thread-safe) and reads the
+    order's values, which the caller has already committed. Returns an error
+    string, or None on success; never raises."""
+    with SessionLocal() as bg:
+        order = bg.get(Order, order_id)
+        if order is None:
+            return "роботи більше немає"
+        if order.source not in ("lab", "sheet_client") or not order.sheet_tab or order.row_number is None:
+            return None  # never had a sheet row (email work) — nothing to restore
+        try:
+            spreadsheet = open_spreadsheet(db=bg)
+            worksheet = get_worksheet_by_name(spreadsheet, order.sheet_tab)
+            if worksheet is None:
+                raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
+            restore_order_row(worksheet, order)
+            if order.source == "sheet_client" and order.status not in ("видано", "знайдено при видачі"):
+                # The sync reads the blue fill as the pending/issued flag, so a
+                # restore that skipped it would silently flip the work to «видано».
+                paint_row_fills(spreadsheet, [(worksheet.id, order.row_number + HEADER_ROWS)])
+            bg.add(SyncLog(
+                direction="db_to_sheet", sheet_tab=order.sheet_tab, status="ok",
+                message=f"order {order.id}: рядок відновлено",
+            ))
+            bg.commit()
+            return None
+        except RowOccupiedError as exc:
+            bg.rollback()
+            bg.add(SyncLog(
+                direction="db_to_sheet", sheet_tab=order.sheet_tab, status="error",
+                message=f"order {order.id}: {exc}",
+            ))
+            bg.commit()
+            return f"{exc} — впишіть роботу в таблицю вручну"
+        except Exception as exc:  # noqa: BLE001 — reported to the operator, never raised
+            error = str(exc)
+            bg.rollback()
+            bg.add(SyncLog(
+                direction="db_to_sheet", sheet_tab=order.sheet_tab, status="error",
+                message=f"order {order.id}: restore: {error}",
+            ))
+            bg.commit()
+            return error
+
+
+def _restore_sheet_row(order: Order) -> str | None:
+    """Restore a deleted work's sheet row and WAIT for the result.
+
+    Blocking is deliberate. Undo of a delete is rare and explicit, and its two
+    halves must not diverge: the caller needs to know whether the row actually
+    came back before it decides to un-archive the order. Same submit-and-wait
+    shape the manual-add path already uses (_append_manual_rows_warm)."""
     try:
-        spreadsheet = open_spreadsheet(db=db)
-        worksheet = get_worksheet_by_name(spreadsheet, order.sheet_tab)
-        if worksheet is None:
-            raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
-        restore_order_row(worksheet, order)
-        if order.source == "sheet_client" and order.status not in ("видано", "знайдено при видачі"):
-            paint_row_fills(spreadsheet, [(worksheet.id, order.row_number + HEADER_ROWS)])
-        db.add(SyncLog(
-            direction="db_to_sheet", sheet_tab=order.sheet_tab, status="ok",
-            message=f"order {order.id}: рядок відновлено",
-        ))
-        return None
-    except RowOccupiedError as exc:
-        # The freed row was reused by someone else — restoring would overwrite
-        # their work. The order still comes back to the queue; the operator is
-        # told the sheet needs a manual line.
-        db.add(SyncLog(
-            direction="db_to_sheet", sheet_tab=order.sheet_tab, status="error",
-            message=f"order {order.id}: {exc}",
-        ))
-        return f"{exc} — впишіть роботу в таблицю вручну"
-    except Exception as exc:  # noqa: BLE001 — surface, never block the un-archive
-        error = str(exc)
-        db.add(SyncLog(
-            direction="db_to_sheet", sheet_tab=order.sheet_tab, status="error",
-            message=f"order {order.id}: restore: {error}",
-        ))
-        return error
+        return _sheet_writeback_pool.submit(_restore_sheet_row_warm, order.id).result(timeout=120)
+    except Exception as exc:  # noqa: BLE001 — includes the wait timing out
+        logger.exception("Restoring sheet row failed for order %s", order.id)
+        return str(exc) or "таблиця не відповідає"
 
 
 def _write_calculated(db: Session, order: Order, value: str) -> str | None:
@@ -1642,7 +1675,12 @@ def _write_calculated(db: Session, order: Order, value: str) -> str | None:
         worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
         if worksheet is None:
             raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
-        write_calculated(worksheet, order, value)
+        if not write_calculated(worksheet, order, value):
+            # Row shifted and its identity is ambiguous (duplicate client name on
+            # the tab), so the write was skipped. Must NOT report success: the
+            # sheet is authoritative for column М, so the next sync would quietly
+            # revert the value and the operator would never know why.
+            raise RuntimeError("рядок у таблиці не знайдено однозначно — значення не записано")
         db.add(
             SyncLog(
                 direction="db_to_sheet", sheet_tab=order.sheet_tab, status="ok",
@@ -3025,8 +3063,19 @@ def _perform_undo(db: Session, user: "User", entry: ActionLog) -> Response:
     elif entry.action_type == "delete":
         if order.archived_at is None:
             return _toast_response("Робота вже повернута в чергу", kind="info")
+        # Restore the sheet row FIRST, and un-archive only if it actually came
+        # back. Both halves or neither: an order returned to the queue whose
+        # row_number now points at somebody else's row gets silently overwritten
+        # with their data by the next sync (sync_tab matches by row_number). On
+        # failure the entry stays not-undone, so ← can simply be pressed again
+        # once the sheet is sorted out.
+        restore_error = _restore_sheet_row(order)
+        if restore_error:
+            return _toast_response(
+                "Не вдалося відновити рядок у таблиці: " + restore_error, kind="error"
+            )
         order.archived_at = None
-        sync_error = _restore_sheet_row(db, order)
+        sync_error = None
         db.add(StatusEvent(
             order_id=order.id, operator_id=user.id, status=order.status,
             actor=user.username, note="відновлено з видалення",
@@ -3075,9 +3124,10 @@ async def undo_action(request: Request, action_id: int, db: Session = Depends(ge
 @app.post("/actions/undo-last")
 async def undo_last_action(request: Request, db: Session = Depends(get_db)):
     """«Крок назад» — the static undo button. Finds THIS operator's most recent
-    still-undoable action (Sum3D/status, not yet undone, inside the window) and
-    reverts it. Pressing it again steps back through earlier actions. Replaces the
-    per-action «Скасувати» toast affordance."""
+    still-undoable action (any of UNDOABLE_ACTION_TYPES — Sum3D, status, operator,
+    CAM comment, delete — not yet undone, inside the window) and reverts it.
+    Pressing it again steps back through earlier actions. Replaces the per-action
+    «Скасувати» toast affordance."""
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
@@ -3187,8 +3237,9 @@ def _perform_redo(db: Session, user: "User", entry: ActionLog) -> Response:
 @app.post("/actions/redo-last")
 async def redo_last_action(request: Request, db: Session = Depends(get_db)):
     """«Крок вперед» — the static redo button. Re-applies THIS operator's most
-    recently undone action (Sum3D/status) that is still inside the window.
-    Pressing it again steps forward through earlier undos, mirroring «Крок назад»."""
+    recently undone action (any of UNDOABLE_ACTION_TYPES) that is still inside the
+    window. Pressing it again steps forward through earlier undos, mirroring
+    «Крок назад»."""
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
@@ -3252,7 +3303,7 @@ def get_recent_actions(
         .options(selectinload(ActionLog.order))
         .where(
             ActionLog.operator_id == user.id,
-            ActionLog.action_type.in_(UNDOABLE_ACTION_TYPES),
+            ActionLog.action_type.in_(RECENT_ACTION_TYPES),
         )
         .order_by(ActionLog.created_at.desc(), ActionLog.id.desc())
         .limit(RECENT_ACTIONS_LIMIT)

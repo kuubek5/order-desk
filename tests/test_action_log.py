@@ -469,6 +469,46 @@ def test_delete_is_logged_and_undo_restores_the_work():
         assert restore.called                               # sheet row re-filled
 
 
+def test_delete_undo_keeps_the_work_archived_when_the_row_cannot_be_restored():
+    """Both halves or neither. If the sheet row can't come back (the lab re-used
+    it), un-archiving anyway would leave the order pointing at somebody else's
+    row — and sync_tab matches by row_number, so the next sync would overwrite
+    the restored work with their data."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        _run_delete(db, user, order)
+        db.refresh(order)
+        archived_at = order.archived_at
+
+        with patch.object(web, "_restore_sheet_row", return_value="рядок 9 уже зайнято"):
+            _run_undo_last(db, user)
+        db.refresh(order)
+        assert order.archived_at == archived_at          # still deleted, not half-restored
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "delete"))
+        assert entry.undone_at is None                   # still undoable — ← can be retried
+
+
+def test_restore_sheet_row_goes_through_the_writeback_pool():
+    """The delete blanks the row on the single-worker pool; the restore MUST queue
+    behind it there, or it can land first and be wiped by the pending blank."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        order = _order(db)
+        submitted = {}
+        real_submit = web._sheet_writeback_pool.submit
+
+        def spy(fn, *a, **kw):
+            submitted["fn"] = fn
+            return real_submit(fn, *a, **kw)
+
+        with patch.object(web, "_restore_sheet_row_warm", return_value=None), \
+             patch.object(web._sheet_writeback_pool, "submit", side_effect=spy):
+            assert web._restore_sheet_row(order) is None
+        assert submitted.get("fn") is not None            # went through the pool
+
+
 def test_delete_redo_archives_again():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
@@ -548,6 +588,39 @@ def test_recent_actions_capped_at_limit():
             _run_set_operator(db, user, order, f"O{i}")
         entries = _recent_context(db, user)["entries"]
         assert len(entries) == web.RECENT_ACTIONS_LIMIT
+
+
+def test_recent_actions_includes_manually_created_works():
+    """Regression: the popup filtered by UNDOABLE_ACTION_TYPES, which excludes
+    "create", so a work the operator had just added by hand never showed up —
+    the exact symptom reported. It is listed (and locatable) but the arrows still
+    skip it, since undoing a creation would delete a shared-sheet row."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, work_order_no="24122")
+        web.log_action(db, order=order, operator=user, action_type="create",
+                       note="додано вручну: 24122")
+        db.commit()
+
+        entries = _recent_context(db, user)["entries"]
+        assert [e.action_type for e in entries] == ["create"]
+        assert "create" in web.RECENT_ACTION_TYPES
+        assert "create" not in web.UNDOABLE_ACTION_TYPES   # listed, not steppable
+
+
+def test_undo_last_skips_creations():
+    """«Крок назад» must not delete a sheet row behind a one-click arrow."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        web.log_action(db, order=order, operator=user, action_type="create", note="додано")
+        db.commit()
+        resp = _run_undo_last(db, user)
+        assert resp.status_code == 204
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "create"))
+        assert entry.undone_at is None                     # untouched
 
 
 def test_recent_actions_ignores_undo_meta_entries():

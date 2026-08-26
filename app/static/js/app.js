@@ -764,7 +764,15 @@ function closeActionHistory() {
 // its own scroll container — scrolling the window instead just yanks the page
 // and leaves the row off-screen). The class is re-applied after the 15s poll
 // swap below, so a highlight can't be wiped a second after it appears.
+//
+// focusedUntil bounds that re-application. Without it the poll would restart the
+// 2.4s animation every 15 seconds for the rest of the session — a row pulsing
+// all day next to an operator at the bench, which is exactly the kind of endless
+// loop this screen is not allowed to grow (see CLAUDE.md on the mail-triage
+// animation cleanup).
+const FOCUS_HIGHLIGHT_MS = 10000;
 let focusedOrderId = "";
+let focusedUntil = 0;
 function highlightOrderRow(orderId, { scroll = true } = {}) {
   const row = document.getElementById("order-row-" + orderId);
   if (!row) return false;
@@ -809,6 +817,7 @@ document.addEventListener("click", (event) => {
     }
     if (highlightOrderRow(orderId)) {
       focusedOrderId = orderId;
+      focusedUntil = Date.now() + FOCUS_HIGHLIGHT_MS;
       return;
     }
     // Not on screen: another day tab, or filtered out. Navigate to that day
@@ -833,15 +842,22 @@ document.addEventListener("DOMContentLoaded", () => {
   const main = document.querySelector(".q2[data-focus-order]");
   if (!main) return;
   focusedOrderId = main.dataset.focusOrder;
+  focusedUntil = Date.now() + FOCUS_HIGHLIGHT_MS;
   window.setTimeout(() => highlightOrderRow(focusedOrderId), 80);
 });
 
 // The 15s poll replaces #queue-rows wholesale, which would drop the highlight
 // mid-look. Re-apply it (without re-scrolling — the operator may have scrolled
-// on by then and yanking them back would be worse than losing the tint).
+// on by then and yanking them back would be worse than losing the tint), but
+// only inside the focus window: past it the highlight has done its job and the
+// row must go quiet for good.
 document.body.addEventListener("htmx:afterSwap", (event) => {
   if (!focusedOrderId) return;
   if (!event.target || event.target.id !== "queue-rows") return;
+  if (Date.now() > focusedUntil) {
+    focusedOrderId = "";
+    return;
+  }
   highlightOrderRow(focusedOrderId, { scroll: false });
 });
 

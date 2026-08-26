@@ -277,10 +277,14 @@ def restore_order_row(worksheet: gspread.Worksheet, order: Order) -> None:
     L/M/N are not touched: clear_placeholder_row leaves them alone, so Sum3D and
     the mill markers were never lost in the first place."""
     row = _sheet_row(order)
+    # A read failure must REFUSE, never fall through to the write: the emptiness
+    # check is the only thing standing between a restore and overwriting a
+    # colleague's work in a re-used row. Treating an unreadable row as "empty"
+    # would invert exactly the guarantee this function exists for.
     try:
         current = worksheet.get_values(f"A{row}:K{row}")
-    except Exception:
-        current = []
+    except Exception as exc:
+        raise RuntimeError(f"не вдалося перевірити, чи рядок {row} вільний: {exc}") from exc
     occupied = [c for c in (current[0] if current else []) if isinstance(c, str) and c.strip()]
     if occupied:
         raise RowOccupiedError(f"рядок {row} уже зайнято")
@@ -305,17 +309,24 @@ def restore_order_row(worksheet: gspread.Worksheet, order: Order) -> None:
         call_with_retry(lambda: worksheet.batch_update(updates))
 
 
-def write_calculated(worksheet: gspread.Worksheet, order: Order, value: str) -> None:
+def write_calculated(worksheet: gspread.Worksheet, order: Order, value: str) -> bool:
     """DIRECT overwrite of the main "Прорахував" cell (column М) — for the manual
     «Оператор» edit from the queue row. Unlike write_order_fields, which treats
     calculated_raw as an auto status-marker and PRESERVES a non-empty live cell
     (deferring to whatever staff typed), this is an explicit operator edit and must
     win: it writes the value even over an existing one, and an empty value clears
-    the cell. Single cell, row-verified, same discipline as write_rework_*."""
+    the cell. Single cell, row-verified, same discipline as write_rework_*.
+
+    Returns True when the cell was written, False when _resolve_row could not
+    locate the row unambiguously (shifted row + duplicate identity) and the write
+    was skipped. The caller MUST surface a skip: the sheet is authoritative for
+    calculated_raw, so a silently skipped write means the next sync quietly
+    reverts what the operator just typed."""
     row = _resolve_row(worksheet, order)
     if row is None:
-        return
+        return False
     call_with_retry(lambda: worksheet.update_cell(row, COL_CALCULATED, value or ""))
+    return True
 
 
 def apply_status_markers(
