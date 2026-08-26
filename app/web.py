@@ -3762,6 +3762,7 @@ def get_handout(
             "selected_day": selected_day.strftime("%d.%m.%y") if selected_day else "",
             "prev_day": _adjacent_handout_day(handout_days, selected_day, -1),
             "next_day": _adjacent_handout_day(handout_days, selected_day, +1),
+            "day_window": _handout_day_window(handout_days, selected_day),
             "done_groups": done_groups,
             "total_groups": len(client_groups),
         },
@@ -3773,6 +3774,28 @@ def _quantity_units(raw: str | None) -> int:
     unparseable counts as 0 rather than breaking the client's total."""
     digits = "".join(ch for ch in (raw or "") if ch.isdigit())
     return int(digits) if digits else 0
+
+
+HANDOUT_DAY_WINDOW = 3
+
+
+def _handout_day_window(days: list, selected) -> list[dict]:
+    """The few days shown in the pager, newest-last, with the selected one marked.
+
+    A single date with ‹ › arrows hid where the operator was in the week; a wall
+    of 30+ chips drowned the screen. Three days is the middle: the current day
+    plus its neighbours, so stepping back a day is one click and the position is
+    visible. Anchored on the selected day (or the newest one when the screen
+    shows all days), and clamped so the window stays full at either end."""
+    if not days:
+        return []
+    size = min(HANDOUT_DAY_WINDOW, len(days))
+    anchor = days.index(selected) if selected in days else len(days) - 1
+    start = max(0, min(anchor - size // 2, len(days) - size))
+    return [
+        {"value": d.strftime("%d.%m.%y"), "label": d.strftime("%d.%m"), "active": d == selected}
+        for d in days[start:start + size]
+    ]
 
 
 def _adjacent_handout_day(days: list, selected, step: int) -> str:

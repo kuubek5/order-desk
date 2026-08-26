@@ -482,3 +482,49 @@ class TestMaterialMatching:
         e1 = SimpleNamespace(material_color_folder_name="emo a3", created_at=None)
         assert _entries_for_material("", [e1]) == []
         assert _entries_for_material(None, [e1]) == []
+
+
+class TestHandoutDayWindow:
+    """The pager shows a few neighbouring days, not one date and not a wall of
+    30+ chips: the operator hands out one day at a time but needs to see where
+    that day sits and reach the one before it in a single click."""
+
+    @staticmethod
+    def _days(*day_numbers):
+        from datetime import date
+        return [date(2026, 8, d) for d in day_numbers]
+
+    def _labels(self, days, selected):
+        return [d["label"] for d in web._handout_day_window(days, selected)]
+
+    def test_window_centres_on_the_selected_day(self):
+        days = self._days(20, 21, 22, 23, 24)
+        window = web._handout_day_window(days, days[2])
+        assert [d["label"] for d in window] == ["21.08", "22.08", "23.08"]
+        assert [d["active"] for d in window] == [False, True, False]
+
+    def test_window_stays_full_at_the_newest_end(self):
+        days = self._days(20, 21, 22, 23, 24)
+        assert self._labels(days, days[-1]) == ["22.08", "23.08", "24.08"]
+
+    def test_window_stays_full_at_the_oldest_end(self):
+        days = self._days(20, 21, 22, 23, 24)
+        assert self._labels(days, days[0]) == ["20.08", "21.08", "22.08"]
+
+    def test_no_selection_anchors_on_the_newest_days(self):
+        days = self._days(20, 21, 22, 23, 24)
+        window = web._handout_day_window(days, None)
+        assert [d["label"] for d in window] == ["22.08", "23.08", "24.08"]
+        assert not any(d["active"] for d in window)   # «усі дні» is the active state
+
+    def test_shorter_history_than_the_window_is_not_padded(self):
+        days = self._days(24, 25)
+        assert self._labels(days, days[0]) == ["24.08", "25.08"]
+
+    def test_no_days_gives_an_empty_pager(self):
+        assert web._handout_day_window([], None) == []
+
+    def test_value_keeps_the_full_year_for_the_query_string(self):
+        days = self._days(24)
+        entry = web._handout_day_window(days, days[0])[0]
+        assert entry["label"] == "24.08" and entry["value"] == "24.08.26"

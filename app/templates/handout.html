@@ -17,7 +17,12 @@
         <div class="daypick" role="group" aria-label="День видачі">
             {% if prev_day %}<a class="arw" href="/handout?source={{ source }}&day={{ prev_day }}" title="Попередній день" aria-label="Попередній день">‹</a>
             {% else %}<span class="arw off" aria-hidden="true">‹</span>{% endif %}
-            <span class="dnow mono">{{ selected_day[:5] if selected_day else 'усі дні' }}</span>
+            {# Кілька сусідніх днів, а не один: видно, де ти в тижні, і сусідній
+               день — один клік. Повний список лишається за «усі дні». #}
+            {% for d in day_window %}
+            <a class="dchip mono {% if d.active %}active{% endif %}" href="/handout?source={{ source }}&day={{ d.value }}">{{ d.label }}</a>
+            {% endfor %}
+            {% if not selected_day %}<span class="dchip dall active">усі</span>{% endif %}
             {% if next_day %}<a class="arw" href="/handout?source={{ source }}&day={{ next_day }}" title="Наступний день" aria-label="Наступний день">›</a>
             {% else %}<span class="arw off" aria-hidden="true">›</span>{% endif %}
         </div>
