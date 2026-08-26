@@ -135,6 +135,42 @@ class StatusEvent(Base):
     operator: Mapped[Optional["User"]] = relationship("User")
 
 
+class ActionLog(Base):
+    """One row per state-CHANGING operator action — the shared backbone for both
+    "Скасувати" (undo the last action) and the laconic action journal.
+
+    ``field``/``old_value``/``new_value`` let undo restore the previous state
+    (write the old value back to DB + sheet); ``note`` is the pre-rendered
+    one-line human summary the journal shows ("Sum3D → 12-01-45"). ``undone_at``
+    is stamped when the action is reverted, so it shows as undone and can't be
+    undone twice. Read-only actions (open folder, copy path) are NOT logged —
+    only things that changed data. order_id is nullable so an action on an
+    already-deleted order still keeps its journal line."""
+    __tablename__ = "action_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("orders.id"), index=True, nullable=True
+    )
+    operator_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    action_type: Mapped[str] = mapped_column(String(50), index=True)
+    field: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    old_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    new_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now(), index=True
+    )
+    undone_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+
+    order: Mapped[Optional["Order"]] = relationship("Order")
+    operator: Mapped[Optional["User"]] = relationship("User")
+
+
 class Comment(Base):
     __tablename__ = "comments"
 

@@ -82,7 +82,7 @@ from app.material_catalog import (
 )
 from app.mail_filters import apply_rule_retroactively
 from app.mail_spool import analyze_spool, prune_spool
-from app.models import AppSetting, Attachment, Client, ClientNameAlias, ClientSenderMemory, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
+from app.models import ActionLog, AppSetting, Attachment, Client, ClientNameAlias, ClientSenderMemory, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sender, remember_sender, sender_key_for
 from app.order_folder import (
     attach_email_folder_availability,
@@ -413,6 +413,38 @@ def _toast_response(message: str, *, kind: str = "success") -> Response:
     response = Response(status_code=204)
     response.headers["HX-Trigger"] = json.dumps({"toast": {"message": message, "kind": kind}})
     return response
+
+
+def log_action(
+    db: Session,
+    *,
+    order: "Order | None",
+    operator: "User | None",
+    action_type: str,
+    field: str | None = None,
+    old=None,
+    new=None,
+    note: str | None = None,
+) -> ActionLog:
+    """Record one state-CHANGING operator action into the ActionLog — the shared
+    backbone for "Скасувати" (undo) and the laconic action journal. Call it
+    inside the route's own transaction (committed together with the change), AND
+    only for actions that actually changed data — never for reads/navigation.
+
+    field/old/new capture enough to undo (restore the old value); note is the
+    pre-rendered one-line journal summary. Values are stringified so any column
+    type logs uniformly."""
+    entry = ActionLog(
+        order_id=order.id if order is not None else None,
+        operator_id=operator.id if operator is not None else None,
+        action_type=action_type,
+        field=field,
+        old_value=None if old is None else str(old),
+        new_value=None if new is None else str(new),
+        note=note,
+    )
+    db.add(entry)
+    return entry
 
 
 def _settings_changed_at(db: Session, keys: tuple[str, ...]) -> dict[str, str]:
@@ -2245,11 +2277,18 @@ async def set_sum3d_id(
         # the "previous calculation" the operator reviews to avoid repeating the
         # mistake — see the order passport's rework block). The letter goes to
         # the rework "Прорахував" (column Х), the redo counterpart of М.
+        old_sum3d = rework.sum3d_id
         rework.sum3d_id = value
         if stamp:
             rework.calculated_raw = stamp
         sync_error = _write_rework_sum3d(db, order, value or "", letter=stamp)
+        log_action(
+            db, order=order, operator=user, action_type="sum3d",
+            field="rework.sum3d_id", old=old_sum3d, new=value,
+            note=(f"Sum3D переробки → {value}" if value else "Sum3D переробки очищено"),
+        )
     else:
+        old_sum3d = order.sum3d_id
         order.sum3d_id = value
         write_fields = {"sum3d_id"}
         if stamp:
@@ -2265,6 +2304,11 @@ async def set_sum3d_id(
                     status="прораховано", actor=user.username,
                 ))
         sync_error = _write_sheet_fields(db, order, write_fields)
+        log_action(
+            db, order=order, operator=user, action_type="sum3d",
+            field="sum3d_id", old=old_sum3d, new=value,
+            note=(f"Sum3D → {value}" if value else "Sum3D очищено"),
+        )
     db.commit()
     db.refresh(order)
 
@@ -2680,6 +2724,7 @@ async def set_status(
             {"order": order, "statuses": STATUSES, "sync_error": _SYNC_PAUSED_MSG},
         )
 
+    old_status = order.status
     order.status = status
     sheet_fields = apply_status_markers(
         order,
@@ -2689,6 +2734,12 @@ async def set_status(
     db.add(
         StatusEvent(order_id=order.id, operator_id=user.id, status=status, actor=user.username)
     )
+    if status != old_status:
+        log_action(
+            db, order=order, operator=user, action_type="status",
+            field="status", old=old_status, new=status,
+            note=f"статус: {old_status} → {status}",
+        )
     sync_error = _write_sheet_fields(db, order, sheet_fields)
     db.commit()
     db.refresh(order)
