@@ -89,6 +89,28 @@ def test_client_row_is_imported_as_sheet_client_with_name():
         # Sum3D (column L) is read, not ignored — otherwise a later sync would
         # wipe whatever the operator typed on the row.
         assert order.sum3d_id == "10-19-48"
+        # «Прорахував» (column М) is read for client rows too — a client work is
+        # calculated by an operator just like a lab work (regression: it used to
+        # be hardcoded None, so the operator column stayed empty on client rows).
+        assert order.calculated_raw == "D"
+
+
+def test_client_row_operator_survives_resync():
+    """The operator letter (column М) an operator sets on a client row must not
+    be wiped by the next sync — same round-trip guarantee as Sum3D."""
+    with make_session() as session:
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5, calculated="")])
+        session.commit()
+        order = session.scalar(select(Order).where(Order.source == "sheet_client"))
+        assert not order.calculated_raw
+        # Operator types the letter in the CRM (written back to column М).
+        order.calculated_raw = "К"
+        session.commit()
+        # Next sync reads the sheet, now carrying that value in column М.
+        sync_tab(session, "22.06.26", [make_client_row(row_number=5, calculated="К")])
+        session.commit()
+        session.refresh(order)
+        assert order.calculated_raw == "К"  # not wiped back to None
 
 
 def test_client_row_sum3d_survives_resync():

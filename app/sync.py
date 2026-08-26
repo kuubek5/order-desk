@@ -118,9 +118,14 @@ def _client_fields(row: OrderRow) -> dict:
     The "вид" column (row.kind) holds the CLIENT NAME here, not a work type, so
     it lands in client_name; work_order_no/kind/technician stay empty.
 
-    sum3d_id IS read from column L like any other row: it's the ID column both
-    the operator's write-back and the read import share, so ignoring it here
-    would wipe a Sum3D the operator typed on the very next sync."""
+    sum3d_id / calculated_raw / milled_raw ARE read from columns L/M/N like any
+    other row: a client work is calculated in Sum3D and milled just like a lab
+    work, so the operator stamps «Прорахував» (М) and «Відфрезерував» (N) on it
+    too. These are shared read/write-back columns — ignoring them here would (a)
+    hide the operator on client rows in the queue and (b) WIPE an М/Sum3D the
+    operator just typed on the very next sync. Only наряд/kind/technician stay
+    empty (a client row has none of those). Client status still comes from the
+    blue fill, not from these markers."""
     return {
         "work_order_no": None,
         "job_code": None,
@@ -131,9 +136,9 @@ def _client_fields(row: OrderRow) -> dict:
         "technician_name": None,
         "cam_comment": row.cam_comment or None,
         "sum3d_id": row.sum3d_id or None,
-        "calculated_raw": None,
-        "milled_raw": None,
-        "last_milled_date": None,
+        "calculated_raw": row.calculated or None,
+        "milled_raw": row.milled or None,
+        "last_milled_date": row.last_milled_date or None,
         "mill_count": None,
         "client_name": row.kind or None,
     }
