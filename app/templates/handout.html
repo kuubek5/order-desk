@@ -26,8 +26,10 @@
             {% if next_day %}<a class="arw" href="/handout?source={{ source }}&day={{ next_day }}" title="Наступний день" aria-label="Наступний день">›</a>
             {% else %}<span class="arw off" aria-hidden="true">›</span>{% endif %}
         </div>
+        {# Підпис — кількість днів, а не «усі дні»: слово вже стоїть чіпом у
+           пейджері, а число каже, скільки їх узагалі є. #}
         <details class="dayall">
-            <summary title="Усі дні">усі дні</summary>
+            <summary title="Обрати день зі списку">{{ handout_days|length }} дн.</summary>
             <div class="dayall-pop">
                 <a href="/handout?source={{ source }}" class="day-chip {% if not selected_day %}active{% endif %}">Усі</a>
                 {% for d in handout_days %}

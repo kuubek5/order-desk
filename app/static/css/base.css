@@ -4948,11 +4948,19 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .cfoot-label{font-size:11px;color:var(--ink-3);margin-bottom:7px}
 
 /* View switch: Рядки (compact list) ⇄ Плитки (preview tiles). */
-.handoutv2 .view-toggle{display:flex;gap:6px;margin:0 0 12px;justify-content:flex-end}
-.handoutv2 .view-btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);font:inherit;font-size:12.5px;cursor:pointer;transition:color var(--ui-speed) ease,background var(--ui-speed) ease,border-color var(--ui-speed) ease}
-.handoutv2 .view-btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.handoutv2 .view-btn:hover{color:var(--ink)}
-.handoutv2 .view-btn.active{background:rgba(20,184,166,.16);color:var(--accent-c);border-color:rgba(45,212,191,.4)}
+/* Перемикач вигляду — той самий сегментований контрол, що й .hsrc поруч:
+   одна капсула з сегментами всередині, а не двi окремі кнопки. Раніше він був
+   окремим блоком під стрічкою (свої межі, radius 8px, height 30px, margin
+   знизу) і після переїзду в .hbar стирчав чужим елементом біля сусіда. */
+.handoutv2 .view-toggle{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;margin:0}
+.handoutv2 .view-btn{
+  display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 12px;border-radius:999px;
+  border:0;background:none;color:var(--ink-2);font:inherit;font-size:12.5px;cursor:pointer;
+  transition:color var(--ui-speed) ease,background var(--ui-speed) ease;
+}
+.handoutv2 .view-btn:hover{color:var(--ink);background:#1d2734}
+.handoutv2 .view-btn.active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
+.handoutv2 .view-btn:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 
 /* Tile mode: same work markup, re-laid out as a grid of preview cards. */
 .handoutv2 .clients.as-tiles .works{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
