@@ -8,10 +8,8 @@
             <b class="tnum">{{ kpis.due_today }}</b> здати сьогодні
         </a>
         <span class="sl-sep" aria-hidden="true"></span>
-        <a href="/mail" class="sl-item">
-            <b class="tnum">{{ kpis.pending_mail }}</b> нових листів
-        </a>
-        <span class="sl-sep" aria-hidden="true"></span>
+        {# «Нових листів» приховано, поки пошта не задіяна — повернути, коли
+           почнемо обробляти пошту (лічильник kpis.pending_mail лишається). #}
         <a href="/handout" class="sl-item is-warn">
             <b class="tnum">{{ kpis.clients_without_handout }}</b> клієнти без видачі
         </a>
