@@ -3804,7 +3804,7 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 table.qtable thead th{
   position:sticky;top:0;z-index:2;background:#131a24;border-bottom:1px solid var(--line-2);
   text-align:left;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);
-  font-weight:600;padding:9px 10px;white-space:nowrap;
+  font-weight:600;padding:9px 8px;white-space:normal;line-height:1.15;
 }
 .q2 table.qtable thead th a.th-sort{color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
 .q2 table.qtable thead th a.th-sort:hover{color:var(--ink-2);opacity:1}
@@ -3824,7 +3824,7 @@ body.layout-edit .q2 table.qtable thead th .colgrip:hover,
 body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
   border-right-color:var(--accent-b);
 }
-.q2 table.qtable tbody td{padding:var(--queue-density-pad,8px) 10px;border-bottom:1px solid #1c2532;font-size:var(--queue-density-font,13px);vertical-align:middle;white-space:nowrap}
+.q2 table.qtable tbody td{padding:var(--queue-density-pad,8px) 8px;border-bottom:1px solid #1c2532;font-size:var(--queue-density-font,13px);vertical-align:middle;white-space:nowrap}
 body.layout-edit .q2 table.qtable{user-select:none}
 .q2 table.qtable tbody tr{transition:background var(--ui-speed) ease}
 .q2 table.qtable tbody tr:hover{background:var(--card-2)}
@@ -3836,6 +3836,12 @@ body.layout-edit .q2 table.qtable{user-select:none}
    як у мокапі), тож тут вона має бути inline поруч із номером, а не block на
    власному рядку. */
 .q2 td.order-id .sdot{display:inline-block;vertical-align:middle;margin-right:7px}
+/* Adaptive: cap the naryad/client cell so a long client name can no longer push
+   the whole table wider than the panel (it clipped СТАТУС off-screen on ~1900px
+   monitors). Naryad + client name truncate with ellipsis; the full value stays
+   in the row's title/hover and the work card. */
+.q2 td.order-id{max-width:182px}
+.q2 .ordbtn{display:inline-block;max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .q2 tr.queue-row-overdue .sdot{box-shadow:0 0 0 3px rgba(248,113,113,.22)}
 .q2 .ordbtn{font-family:var(--font-mono);font-size:12.5px;font-weight:500;color:var(--ink);letter-spacing:-.01em;text-decoration:none}
 .q2 .ordbtn:hover{color:var(--accent-c);opacity:1}
@@ -3843,7 +3849,7 @@ body.layout-edit .q2 table.qtable{user-select:none}
   font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;
   border:1px solid rgba(45,212,191,.32);color:var(--accent-c);background:rgba(20,184,166,.1);margin-left:7px;
 }
-.q2 .rowclient{font-size:11.5px;color:var(--ink-2);margin-top:1px}
+.q2 .rowclient{font-size:11.5px;color:var(--ink-2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 /* Client rows entered in the sheet without a наряд (blue-filled by the lab) —
    a soft blue that echoes that sheet convention, distinct from the teal email
    badge and the material chips. */
@@ -3868,7 +3874,12 @@ body.layout-edit .q2 table.qtable{user-select:none}
   padding:2px 7px;border-radius:6px;border:1px solid var(--line);background:#111a24;
   transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .q2 .src-tab-link:hover{color:var(--accent-c);border-color:rgba(45,212,191,.35)}
-.q2 td.job-code{position:relative}
+.q2 td.job-code{position:relative;max-width:184px}
+/* Wide enough for a full mill path ID (2026-07-09_01939-003) — this is the value
+   the operator copies into Sum3D, so it must stay fully readable; ellipsis is a
+   safety net only for the rare longer ID. The Статус column (last, auto) yields
+   this slack, so widening here does not push the table wider. */
+.q2 .job-code-link{max-width:100%;overflow:hidden;text-overflow:ellipsis;text-align:left}
 .q2 .job-code-link{
   font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);padding:3px 7px;border-radius:6px;
   border:1px solid transparent;background:none;cursor:pointer;
@@ -3887,7 +3898,8 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .job-code-preview:hover{color:var(--accent-c);background:rgba(20,184,166,.14)}
 .q2 .job-code-preview:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 .q2 td.technician{font-size:12.5px;color:var(--ink-2)}
-.q2 .kindbtn{color:var(--ink-2);font-size:12.5px;text-decoration:none}
+.q2 td.kind-cell{max-width:160px}
+.q2 .kindbtn{color:var(--ink-2);font-size:12.5px;text-decoration:none;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .q2 .kindbtn:hover{color:var(--accent-c);opacity:1}
 .q2 .sum3d-form{display:inline-flex;gap:4px;align-items:center}
 .q2 .sum3d-input{
@@ -3896,9 +3908,15 @@ body.layout-edit .q2 table.qtable{user-select:none}
 }
 .q2 .sum3d-input:focus{border-color:rgba(45,212,191,.45)}
 .q2 .sum3d-clear{width:22px;height:26px;flex:0 0 22px;border:0;background:none;cursor:pointer;
-  color:var(--ink-3);font-size:12px;line-height:1;border-radius:6px;padding:0;
-  display:inline-flex;align-items:center;justify-content:center;transition:color .12s,background .12s}
+  color:var(--ink-3);font-size:12px;line-height:1;border-radius:6px;padding:0;opacity:0;
+  display:inline-flex;align-items:center;justify-content:center;transition:opacity .12s ease,color .12s,background .12s}
+/* Тихий за замовчуванням — проявляється лише коли курсор над рядком (або кнопка
+   у фокусі з клавіатури), як і кошик видалення рядка. На тач-екрані завжди трохи
+   видимий, бо hover там нема. */
+.q2 .queue-row:hover .sum3d-clear{opacity:1}
+.q2 .sum3d-clear:focus-visible{opacity:1;outline:2px solid var(--control-edge);outline-offset:1px}
 .q2 .sum3d-clear:hover{color:var(--color-overdue,#e5736a);background:rgba(229,115,106,.12)}
+@media (hover:none){.q2 .sum3d-clear{opacity:.55}}
 .q2 .sum3d-save{
   width:26px;height:26px;flex:0 0 26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;
   color:var(--ink-2);border:1px solid var(--line-2);background:none;cursor:pointer;
@@ -3911,6 +3929,12 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .status-select{
   height:26px;border-radius:999px;background:#111823;border:1px solid var(--line);color:var(--ink);
   font-size:12px;padding:0 8px;font-family:var(--font-body);cursor:pointer;
+  /* Adaptive: pin the width instead of letting the widest <option> ("знайдено
+     при видачі") set the column's min-width — that longest option alone made the
+     Статус column ~160px wider than needed and pushed the table off ~1900px
+     screens. Fits every status shown in the queue; the rare handout-stage label
+     clips by a couple chars and stays readable in the open dropdown. */
+  width:140px;max-width:140px;
 }
 .q2 .badge{font-size:11px;padding:1px 7px;border-radius:5px;font-weight:500}
 .q2 .badge.problem{background:rgba(248,113,113,.14);color:#f87878;border:1px solid rgba(248,113,113,.3)}
