@@ -52,7 +52,9 @@
     </div>
     {% endif %}
 
-    {% include "_queue_kpi_row.html" %}
+    {# Верхня стрічка-статуслайн прихована на прохання (пошта ще не задіяна) —
+       повернути, розкоментувавши цей include; сам _queue_kpi_row.html цілий. #}
+    {# {% include "_queue_kpi_row.html" %} #}
     {% include "_queue_peek_row.html" %}
     {% include "_queue_sidebar.html" %}
 
