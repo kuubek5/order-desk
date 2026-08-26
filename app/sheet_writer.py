@@ -258,6 +258,19 @@ def write_rework_calculated(worksheet: gspread.Worksheet, order: Order, value: s
     call_with_retry(lambda: worksheet.update_cell(row, COL_REDO_CALCULATED, value or ""))
 
 
+def write_calculated(worksheet: gspread.Worksheet, order: Order, value: str) -> None:
+    """DIRECT overwrite of the main "Прорахував" cell (column М) — for the manual
+    «Оператор» edit from the queue row. Unlike write_order_fields, which treats
+    calculated_raw as an auto status-marker and PRESERVES a non-empty live cell
+    (deferring to whatever staff typed), this is an explicit operator edit and must
+    win: it writes the value even over an existing one, and an empty value clears
+    the cell. Single cell, row-verified, same discipline as write_rework_*."""
+    row = _resolve_row(worksheet, order)
+    if row is None:
+        return
+    call_with_retry(lambda: worksheet.update_cell(row, COL_CALCULATED, value or ""))
+
+
 def apply_status_markers(
     order: Order,
     status: str,

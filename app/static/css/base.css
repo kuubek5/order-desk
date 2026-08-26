@@ -3846,17 +3846,18 @@ body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
 /* Колонка «Оператор» — хто прорахував (стовпець М таблиці, Order.calculated_raw).
    Компактний моно-бейдж; коротке значення (літера/код St, D, EE…). */
 .q2 td.calc-op{white-space:nowrap}
+.q2 .operator-form{display:inline-flex;gap:4px;align-items:center}
+/* Редагований інпут «Оператор» (стовпець М). Як sum3d-input, але вужчий —
+   значення короткі (літера/код St, D, ЕЕ…). */
+.q2 .operator-input{
+  width:58px;height:26px;padding:0 8px;border-radius:6px;background:#111823;border:1px solid var(--line);
+  color:var(--ink);font-family:var(--font-mono);font-size:11.5px;outline:none;
+}
+.q2 .operator-input:focus{border-color:rgba(45,212,191,.45)}
+.q2 .operator-input::placeholder{color:var(--ink-3)}
+/* Кеш: колишній моно-бейдж (замінено на інпут, лишаю на випадок ре-юзу деінде). */
 .q2 .op-badge{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;
   background:#1d2734;border:1px solid var(--line-2);font-size:11.5px;color:var(--ink);letter-spacing:.01em}
-/* ✕ видалити оператора — тихий за замовчуванням, проявляється на hover рядка /
-   focus кнопки, як ✕ Sum3D і кошик видалення рядка. */
-.q2 .op-clear{width:20px;height:22px;margin-left:3px;border:0;background:none;cursor:pointer;opacity:0;
-  color:var(--ink-3);font-size:12px;line-height:1;border-radius:6px;padding:0;vertical-align:middle;
-  display:inline-flex;align-items:center;justify-content:center;transition:opacity .12s ease,color .12s,background .12s}
-.q2 .queue-row:hover .op-clear{opacity:1}
-.q2 .op-clear:focus-visible{opacity:1;outline:2px solid var(--control-edge);outline-offset:1px}
-.q2 .op-clear:hover{color:var(--color-overdue,#e5736a);background:rgba(229,115,106,.12)}
-@media (hover:none){.q2 .op-clear{opacity:.55}}
 body.layout-edit .q2 table.qtable{user-select:none}
 .q2 table.qtable tbody tr{transition:background var(--ui-speed) ease}
 .q2 table.qtable tbody tr:hover{background:var(--card-2)}

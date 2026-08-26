@@ -153,6 +153,7 @@ from app.sheet_writer import (
     clear_placeholder_row,
     clear_row_fills,
     paint_row_fills,
+    write_calculated,
     write_order_fields,
     write_rework_calculated,
     write_rework_sum3d,
@@ -1590,6 +1591,36 @@ def _write_rework_sum3d(
         return error
 
 
+def _write_calculated(db: Session, order: Order, value: str) -> str | None:
+    """Write the «Оператор» / «Прорахував» cell (column М) DIRECTLY — the explicit
+    manual edit must overwrite whatever is there (write_order_fields would instead
+    preserve a non-empty live marker cell and silently drop the edit). Same
+    lab/client-row gate and error-surfacing as _write_sheet_fields."""
+    if order.source not in ("lab", "sheet_client") or not order.sheet_tab:
+        return None
+    try:
+        worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
+        if worksheet is None:
+            raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
+        write_calculated(worksheet, order, value)
+        db.add(
+            SyncLog(
+                direction="db_to_sheet", sheet_tab=order.sheet_tab, status="ok",
+                message=f"order {order.id}: calculated_raw (operator)",
+            )
+        )
+        return None
+    except Exception as exc:
+        error = str(exc)
+        db.add(
+            SyncLog(
+                direction="db_to_sheet", sheet_tab=order.sheet_tab, status="error",
+                message=f"order {order.id}: calculated_raw: {error}",
+            )
+        )
+        return error
+
+
 @app.get("/license", response_class=HTMLResponse)
 def license_form(request: Request, db: Session = Depends(get_db)):
     status = get_license_status(db)
@@ -2369,12 +2400,16 @@ async def set_sum3d_id(
     return response
 
 
-@app.post("/orders/{order_id}/operator-clear", response_class=HTMLResponse)
-async def clear_operator(request: Request, order_id: int, db: Session = Depends(get_db)):
-    """Clear the «Прорахував» cell (column М → Order.calculated_raw): erase who
-    calculated the work, write the empty value back to the sheet, log it as an
-    undoable "operator" action. For fixing a wrong/stray operator letter. Does not
-    touch Sum3D or readiness (which key off job_code + sum3d_id, not this cell)."""
+@app.post("/orders/{order_id}/operator", response_class=HTMLResponse)
+async def set_operator(request: Request, order_id: int, operator: str = Form(""), db: Session = Depends(get_db)):
+    """Set OR clear the «Прорахував» cell (column М → Order.calculated_raw): who
+    calculated the work. The operator types the letter/code straight in the queue
+    row and it writes back to the sheet; an empty value clears it (the ✕ button
+    just empties the input). Logged as an undoable "operator" action. Does not
+    touch Sum3D or readiness (which key off job_code + sum3d_id, not this cell).
+
+    Default "" (not Form(...)): an empty value is a valid input — clearing the
+    cell — exactly like set_sum3d_id, where Form(...) would 422 a blank field."""
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
@@ -2389,20 +2424,22 @@ async def clear_operator(request: Request, order_id: int, db: Session = Depends(
             {"order": order, "statuses": STATUSES, "sync_error": _SYNC_PAUSED_MSG},
         )
 
+    value = operator.strip()
     old_value = order.calculated_raw
-    if not old_value:
-        # Nothing to clear — return the row untouched, no log, no toast.
+    if (old_value or "") == value:
+        # No change — return the row untouched, no log, no toast.
         attach_export_folder_uris(db, [order])
         attach_job_code_folder_uris(db, [order])
         return templates.TemplateResponse(
             request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": None}
         )
 
-    order.calculated_raw = ""
-    sync_error = _write_sheet_fields(db, order, {"calculated_raw"})
+    order.calculated_raw = value
+    sync_error = _write_calculated(db, order, value)
+    note = f"оператор → {value}" if value else "оператора очищено"
     log_entry = log_action(
         db, order=order, operator=user, action_type="operator", field="calculated_raw",
-        old=old_value, new="", note="оператора очищено",
+        old=old_value or "", new=value, note=note,
     )
     db.commit()
     db.refresh(order)
@@ -2414,7 +2451,7 @@ async def clear_operator(request: Request, order_id: int, db: Session = Depends(
         request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": sync_error}
     )
     if sync_error is None:
-        _attach_action_toast(response, log_entry, "оператора очищено")
+        _attach_action_toast(response, log_entry, note)
     return response
 
 
@@ -2906,8 +2943,8 @@ def _perform_undo(db: Session, user: "User", entry: ActionLog) -> Response:
     elif entry.action_type == "operator":
         if (order.calculated_raw or "") != (entry.new_value or ""):
             return _toast_response("Не можна скасувати — оператора вже змінили", kind="error")
-        order.calculated_raw = entry.old_value or None
-        sync_error = _write_sheet_fields(db, order, {"calculated_raw"})
+        order.calculated_raw = entry.old_value or ""
+        sync_error = _write_calculated(db, order, order.calculated_raw)
     else:
         return _toast_response("Цей тип дії поки не скасовується", kind="error")
 
@@ -3025,8 +3062,8 @@ def _perform_redo(db: Session, user: "User", entry: ActionLog) -> Response:
     elif entry.action_type == "operator":
         if (order.calculated_raw or "") != (entry.old_value or ""):
             return _toast_response("Не можна повторити — оператора вже змінили", kind="error")
-        order.calculated_raw = entry.new_value or None
-        sync_error = _write_sheet_fields(db, order, {"calculated_raw"})
+        order.calculated_raw = entry.new_value or ""
+        sync_error = _write_calculated(db, order, order.calculated_raw)
     else:
         return _toast_response("Цей тип дії поки не повторюється", kind="error")
 

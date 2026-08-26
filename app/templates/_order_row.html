@@ -134,20 +134,20 @@
     {# Оператор, що прорахував (стовпець М «Прорахував» таблиці → Order.calculated_raw).
        Двосторонньо синхронізується: читається парсером (idx 12) і пишеться назад
        у COL_CALCULATED. Тут лише показуємо, хто взяв роботу в Sum3D. #}
+    {# «Оператор» (стовпець М «Прорахував») — редагований прямо в рядку: оператор
+       вписує літеру/код і Enter/blur зберігає в calculated_raw + пише назад у
+       таблицю. Порожнє значення = очистити (✕ просто спорожнює інпут і шле
+       change — той самий /operator). onsubmit гасить нативний submit Enter у
+       формі з одним інпутом (як у sum3d-form). Дія логується → «Крок назад». #}
     <td class="calc-op">
-        {% if order.calculated_raw %}
-            <span class="mono op-badge" title="Хто прорахував — стовпець «Прорахував» (М) таблиці">{{ order.calculated_raw }}</span>
-            {# Видалити оператора: очищає клітинку «Прорахував» (стовпець М) і пише
-               порожнє в таблицю. Тихий за замовчуванням, проявляється на hover
-               рядка (як ✕ Sum3D); дія логується → можна «Крок назад». #}
-            <button type="button" class="op-clear"
-                    hx-post="/orders/{{ order.id }}/operator-clear"
-                    hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML"
-                    title="Видалити оператора — очистити стовпець «Прорахував» (М)"
-                    aria-label="Видалити оператора">✕</button>
-        {% else %}
-            <span class="text-muted">—</span>
-        {% endif %}
+        <form class="operator-form" onsubmit="return false"
+              hx-post="/orders/{{ order.id }}/operator"
+              hx-trigger="change from:find input, keyup[key=='Enter'] from:find input"
+              hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
+            <input type="text" name="operator" value="{{ order.calculated_raw or '' }}"
+                   class="mono operator-input" placeholder="—"
+                   title="Хто прорахував — стовпець «Прорахував» (М). Впишіть і натисніть Enter; порожнє поле очищає.">
+        </form>
     </td>
     <td class="status">
         {% if _changed %}
