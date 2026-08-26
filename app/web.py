@@ -3747,6 +3747,11 @@ def get_handout(
             current_marked = True
 
     done_groups = sum(1 for g in client_groups if g["all_found"])
+    # Clients with no bound export folder. Counted so the screen can say it ONCE
+    # at the top instead of putting a warning chip on every card — with nothing
+    # bound yet that was 34 amber calls-to-action, which reads as noise and
+    # buries the one client the operator is actually on.
+    unbound_count = sum(1 for g in client_groups if not g["client_folder_uri"])
 
     return templates.TemplateResponse(
         request,
@@ -3765,6 +3770,7 @@ def get_handout(
             "day_window": _handout_day_window(handout_days, selected_day),
             "done_groups": done_groups,
             "total_groups": len(client_groups),
+            "unbound_count": unbound_count,
         },
     )
 

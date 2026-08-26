@@ -31,3 +31,5 @@ screens/
 refs_catalog/
 *.bak_*
 order_desk.db.bak_*
+.devlogin
+.devcookies

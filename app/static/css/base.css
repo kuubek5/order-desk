@@ -4732,7 +4732,9 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
    Скоуплено під `.handoutv2`. Уся логіка (mark-found, confirm-alias,
    source-фільтр) збережена.
    ========================================================================== */
-main.handoutv2{max-width:1200px;margin:0 auto;padding:18px 20px}
+/* 1200px лишало ~370px мертвого поля з кожного боку на робочому 1900px
+   моніторі. 1440 тримає довжину рядка читабельною і віддає екрану решту. */
+main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}
 .handoutv2 h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 12px}
 .handoutv2 .tab-nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
@@ -4754,6 +4756,17 @@ main.handoutv2{max-width:1200px;margin:0 auto;padding:18px 20px}
 /* Ритм екрана — крок 4px. Проміжок МІЖ картками клієнтів (10px) навмисно
    більший за проміжок між роботами всередині картки (рядки — хайрлайни без
    зазору), щоб група читалась як одне ціле, а не розсипалась. */
+.handoutv2 .bindbar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px;
+  padding:9px 13px;border-radius:var(--r-card);
+  border:1px solid rgba(240,163,94,.32);background:rgba(240,163,94,.08);
+  font-size:12.5px;color:var(--ink-2);
+}
+.handoutv2 .bindbar svg{width:15px;height:15px;flex:0 0 15px;stroke:var(--warn);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.handoutv2 .bindbar b{color:var(--warn);font-weight:600}
+.handoutv2 .bindbar a{margin-left:auto;color:var(--accent-c);text-decoration:none;white-space:nowrap;border-bottom:1px solid rgba(94,234,212,.35)}
+.handoutv2 .bindbar a:hover{opacity:1;border-bottom-color:var(--accent-c)}
+
 .handoutv2 .clients{display:flex;flex-direction:column;gap:10px}
 .handoutv2 .ccard{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);overflow:hidden}
 .handoutv2 .ccard.done{opacity:.82}
@@ -4778,7 +4791,7 @@ main.handoutv2{max-width:1200px;margin:0 auto;padding:18px 20px}
   transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,transform .12s ease}
 .handoutv2 .issue-btn:hover{background:rgba(20,184,166,.28);border-color:var(--accent);transform:translateY(-1px)}
 .handoutv2 .issue-btn:active{transform:translateY(0)}
-.handoutv2 .card-head{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.handoutv2 .card-head{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 /* Collapse chevron: folds the card body away, stays expanded by default. */
 .handoutv2 .card-collapse{flex:0 0 auto;width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;
   border:1px solid var(--line);border-radius:7px;background:#111823;color:var(--ink-2);cursor:pointer;
@@ -4795,7 +4808,12 @@ main.handoutv2{max-width:1200px;margin:0 auto;padding:18px 20px}
    Хребет екрана — порядок, у якому клієнтів фрезерували. Номер стоїть першим,
    папка клієнта — головна дія (саме з неї починається впізнавання), Sum3D ID
    тихий праворуч як інструмент перевірки при сумніві. */
-.handoutv2 .hbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.handoutv2 .hbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+/* Заголовок на цьому екрані менший за типовий h1: у стрічці сім елементів, і
+   при 1280px вона переносилась на три рядки — 88px хрому перед першою карткою. */
+.handoutv2 .hbar h1{font-size:19px;margin-right:2px}
+.handoutv2 .hbar .hspine{flex:1 1 60px;min-width:50px}
+
 .handoutv2 .hbar h1{margin:0;font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head)}
 .handoutv2 .daypick{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-2);border-radius:999px;padding:3px 4px}
 .handoutv2 .daypick .arw{
@@ -4869,10 +4887,12 @@ main.handoutv2{max-width:1200px;margin:0 auto;padding:18px 20px}
 .handoutv2 .card-head .client-open:hover{opacity:1;text-decoration:underline;text-underline-offset:3px}
 .handoutv2 .card-head .client-open:hover svg{stroke:var(--accent-c)}
 .handoutv2 .card-head .bind-folder{
-  font-family:var(--font-body);color:var(--warn);text-decoration:none;
-  border:1px solid rgba(240,163,94,.4);border-radius:5px;padding:1px 7px;font-size:11px;white-space:nowrap;
+  font-family:var(--font-body);color:var(--ink-3);text-decoration:none;
+  border:1px solid var(--line-2);border-radius:6px;padding:4px 10px;font-size:11.5px;white-space:nowrap;
+  transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease,background var(--ui-speed) ease;
 }
-.handoutv2 .card-head .bind-folder:hover{opacity:1;background:rgba(240,163,94,.14)}
+.handoutv2 .card-head .bind-folder:hover{opacity:1;color:var(--warn);border-color:rgba(240,163,94,.45);background:rgba(240,163,94,.1)}
+.handoutv2 .card-head .bind-folder.lead{color:var(--warn);border-color:rgba(240,163,94,.45);background:rgba(240,163,94,.1)}
 .handoutv2 .card-head .right{margin-left:auto;display:flex;align-items:center;gap:12px}
 .handoutv2 .card-head .progress-wrap{display:flex;flex-direction:column;gap:5px;width:150px}
 .handoutv2 .card-head .progress-num{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);white-space:nowrap;text-align:right}

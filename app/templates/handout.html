@@ -61,6 +61,16 @@
     </div>
     {% endif %}
 
+    {# Стан «папки не налаштовані» кажемо один раз тут, а не бейджем на кожній
+       картці. Без прив'язки видача не покаже файлів клієнта взагалі. #}
+    {% if unbound_count %}
+    <div class="bindbar" role="status">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+        <span>Папку не прив'язано у <b>{{ unbound_count }}</b> {% if unbound_count == 1 %}клієнта{% else %}клієнтів{% endif %} — їхні файли видача не покаже.</span>
+        <a href="/clients">Налаштувати клієнтів</a>
+    </div>
+    {% endif %}
+
     {% if client_groups %}
 
     <div class="clients" data-view-root>
@@ -92,10 +102,12 @@
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
                         {% if group.is_current %}Відкрити папку{% else %}Папка{% endif %}
                     </a>
-                    {% elif group.client_id %}
-                    <a class="bind-folder" href="/clients/{{ group.client_id }}">Прив'язати папку</a>
                     {% else %}
-                    <a class="bind-folder" href="/clients">Створити картку клієнта</a>
+                    {# Тихо на всіх картках, голосно лише на тій, де оператор
+                       зараз: 34 бурштинові заклики одночасно ховають той один,
+                       що справді потрібен. Загальний стан каже банер угорі. #}
+                    <a class="bind-folder {% if group.is_current %}lead{% endif %}"
+                       href="{% if group.client_id %}/clients/{{ group.client_id }}{% else %}/clients{% endif %}">Прив'язати папку</a>
                     {% endif %}
                     {% if group.all_found %}
                     <form method="post" action="/handout/issue-group" class="issue-form">
