@@ -1,0 +1,103 @@
+{# Права картка «Майстра». Прилітає окремим HTMX-запитом, тож список ліворуч
+   лишається на місці й не перемальовується — при 280 клієнтах повний рендер
+   списку коштує нечіткий матч по всіх роботах (~0.8с). #}
+<div class="cl-pane" id="client-pane">
+    <div class="cp-id">
+        <div class="cp-name">
+            <h2>{{ client.canonical_name }}</h2>
+            {% if aliases %}
+            {# Написання, під якими той самий клієнт зустрічається в таблиці —
+               видно, чому дві назви — це одна картка. #}
+            <p class="cp-alias">у таблиці також {% for a in aliases[:3] %}«{{ a }}»{% if not loop.last %}, {% endif %}{% endfor %}{% if aliases|length > 3 %} та ще {{ aliases|length - 3 }}{% endif %}</p>
+            {% endif %}
+        </div>
+        {% if bound_folder %}
+        <span class="cp-state ok"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>папку прив'язано</span>
+        {% else %}
+        <span class="cp-state warn">папку не прив'язано</span>
+        {% endif %}
+    </div>
+
+    {# Головне налаштування: без нього ранкова видача не покаже файлів клієнта. #}
+    <section class="cp-sec">
+        <div class="cp-lab">Папка робіт на диску</div>
+        <form method="post" action="/clients/{{ client.id }}/folder"
+              hx-post="/clients/{{ client.id }}/folder" hx-target="#client-pane" hx-swap="outerHTML"
+              class="cp-folder">
+            <input type="text" name="export_folder_name" class="cp-input mono" list="export-folders"
+                   value="{{ bound_folder or '' }}" placeholder="назва папки в export — порожнє поле відв'яже"
+                   aria-label="Папка робіт на диску">
+            <datalist id="export-folders">
+                {% for name in folder_names %}<option value="{{ name }}"></option>{% endfor %}
+            </datalist>
+            <button type="submit" class="cp-save">Зберегти</button>
+        </form>
+        {% if folder_suggestions %}
+        {# Одноклікові кандидати — ті самі нечіткі здогади, що рахує видача.
+           Прив'язати правильну папку = один клік, а не пошук серед сотень назв. #}
+        <div class="cp-sugs">
+            <span class="cp-sugs-lab">Схоже на:</span>
+            {% for name in folder_suggestions %}
+            <form method="post" action="/clients/{{ client.id }}/folder"
+                  hx-post="/clients/{{ client.id }}/folder" hx-target="#client-pane" hx-swap="outerHTML">
+                <button type="submit" name="export_folder_name" value="{{ name }}" class="cp-sug mono">{{ name }}</button>
+            </form>
+            {% endfor %}
+        </div>
+        {% elif not folder_names %}
+        <p class="cp-hint">У теці <span class="mono">export</span> папок не знайдено — перевірте шлях у Налаштуваннях.</p>
+        {% endif %}
+    </section>
+
+    <div class="cp-kpis">
+        <div class="cp-k"><span class="n mono">{{ summary.total_count }}</span><span class="l">робіт</span></div>
+        <div class="cp-k"><span class="n mono">{{ units_total }}</span><span class="l">одиниць</span></div>
+        <div class="cp-k"><span class="n mono">{{ summary.last_order_date.strftime('%d.%m') if summary.last_order_date else '—' }}</span><span class="l">остання робота</span></div>
+    </div>
+
+    {% if summary.material_breakdown %}
+    <section class="cp-sec">
+        <div class="cp-lab">Що замовляє найчастіше</div>
+        <div class="cp-mats">
+            {% for material, count in summary.material_breakdown[:6] %}
+            <span class="cp-mat"><span class="mono">{{ material }}</span><b class="mono">{{ count }}</b></span>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="cp-sec">
+        <div class="cp-lab">Контакти й нотатки</div>
+        <form method="post" action="/clients/{{ client.id }}" class="cp-contacts">
+            <div class="cp-pair">
+                <input type="text" name="phone" class="cp-input" value="{{ client.phone or '' }}" placeholder="+380…" aria-label="Телефон">
+                <input type="email" name="email" class="cp-input" value="{{ client.email or '' }}" placeholder="пошта" aria-label="Email">
+            </div>
+            <textarea name="notes" class="cp-input cp-notes" rows="2" placeholder="нотатки" aria-label="Нотатки">{{ client.notes or '' }}</textarea>
+            <button type="submit" class="cp-save">Зберегти контакти</button>
+        </form>
+    </section>
+
+    {% if summary.recent_orders %}
+    <section class="cp-sec">
+        <div class="cp-lab">Останні роботи</div>
+        <div class="cp-orders">
+            {% for order in summary.recent_orders[:6] %}
+            <a class="cp-order" href="/orders/{{ order.id }}">
+                <span class="mono cp-o-day">{{ order.sheet_tab[:5] if order.sheet_tab else '—' }}</span>
+                <span class="cp-o-mat mono">{{ order.material_color or '—' }}</span>
+                <span class="cp-o-qty mono">{{ order.quantity or '—' }} од.</span>
+                <span class="cp-o-st">{{ order.status }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+</div>
+
+{% if swap_list_item %}
+{# Оновлюємо лише крапку стану цього клієнта в списку — повний рендер списку
+   коштував би нечіткий матч по всіх роботах кожного клієнта. #}
+<span id="cl-dot-{{ client.id }}" class="cl-dot {% if bound_now %}ok{% else %}warn{% endif %}" hx-swap-oob="true"></span>
+<span id="cl-fold-{{ client.id }}" class="cl-fold mono" hx-swap-oob="true">{{ bound_folder or '' }}</span>
+{% endif %}

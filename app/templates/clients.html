@@ -3,98 +3,79 @@
 {% block title %}Клієнти — Order Desk{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
+<link rel="stylesheet" href="/static/css/clients.css?v={{ static_ver('css/clients.css') }}">
 {% endblock %}
 
 {% block content %}
 {% set topbar_active = 'clients' %}
 {% include "_topbar_nav.html" %}
 
-<main class="worldv2">
-    <h1>Клієнти</h1>
+{# «Майстер»: список ліворуч, картка праворуч. Налаштувати кілька сотень
+   клієнтів — це послідовність дрібних HTMX-запитів, а не перезавантаження
+   сторінки на кожного. Пошук і фільтр стану — форми GET, тож посилання на
+   відфільтрований вигляд можна зберегти. #}
+<main class="clientsv2">
+    <div class="cl-bar">
+        <h1>Клієнти</h1>
 
-    {% if error %}
-    <div class="settings-alert settings-alert-error">{{ error }}</div>
-    {% endif %}
-    {% if saved %}
-    <div class="settings-success"><p>Збережено</p></div>
-    {% endif %}
+        <form method="get" action="/clients" class="cl-search" role="search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+            <input type="search" name="q" value="{{ q }}" placeholder="Ім'я, папка, телефон…" aria-label="Пошук клієнта">
+            <input type="hidden" name="state" value="{{ state }}">
+        </form>
 
-    <div class="card detail-section">
-        {% if client_rows %}
-            <div class="table-scroll">
-            <table class="queue-table">
-                <thead>
-                    <tr>
-                        <th>Клієнт</th>
-                        <th>Папка робіт</th>
-                        <th>Телефон</th>
-                        <th>Email</th>
-                        <th>Робіт</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in client_rows %}
-                    <tr class="queue-row">
-                        <td class="order-id"><a href="/clients/{{ row.client.id }}">{{ row.client.canonical_name }}</a></td>
-                        {# Стан прив'язки папки — саме він ламає ранкову видачу,
-                           тож видно одразу зі списку, кого ще не налаштовано. #}
-                        <td>
-                            {% if row.bound_folder %}
-                            <span class="mono folder-ok">{{ row.bound_folder }}</span>
-                            {% else %}
-                            <a class="folder-missing" href="/clients/{{ row.client.id }}">Прив'язати папку</a>
-                            {% endif %}
-                        </td>
-                        <td class="mono">{{ row.client.phone or '—' }}</td>
-                        <td>{{ row.client.email or '—' }}</td>
-                        <td>{{ row.order_count }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            </div>
+        <nav class="cl-seg" aria-label="Стан клієнтів">
+            <a href="/clients?state=all{% if q %}&q={{ q }}{% endif %}" class="{% if state == 'all' %}on{% endif %}">Усі <span class="mono">{{ state_counts.all }}</span></a>
+            <a href="/clients?state=unbound{% if q %}&q={{ q }}{% endif %}" class="{% if state == 'unbound' %}on warn{% endif %}">Без папки <span class="mono">{{ state_counts.unbound }}</span></a>
+            <a href="/clients?state=active{% if q %}&q={{ q }}{% endif %}" class="{% if state == 'active' %}on{% endif %}">З роботами <span class="mono">{{ state_counts.active }}</span></a>
+        </nav>
+
+        <details class="cl-add">
+            <summary>+ Клієнт</summary>
+            <form method="post" action="/clients" class="cl-add-pop">
+                <input type="text" name="canonical_name" class="cp-input" placeholder="Ім'я клієнта" required aria-label="Ім'я клієнта">
+                <input type="hidden" name="phone" value=""><input type="hidden" name="email" value=""><input type="hidden" name="notes" value="">
+                <button type="submit" class="cp-save">Додати</button>
+            </form>
+        </details>
+    </div>
+
+    {% if error %}<div class="settings-alert settings-alert-error">{{ error }}</div>{% endif %}
+
+    {% if client_rows %}
+    <div class="cl-split">
+        <div class="cl-list" role="list" aria-label="Клієнти">
+            {% for row in client_rows %}
+            <a role="listitem" class="cl-item {% if row.client.id == selected_id %}on{% endif %}"
+               href="/clients?state={{ state }}{% if q %}&q={{ q }}{% endif %}&selected={{ row.client.id }}"
+               hx-get="/clients/{{ row.client.id }}/pane" hx-target="#client-pane" hx-swap="outerHTML"
+               hx-push-url="/clients?state={{ state }}{% if q %}&q={{ q }}{% endif %}&selected={{ row.client.id }}">
+                <span id="cl-dot-{{ row.client.id }}" class="cl-dot {% if row.bound_folder %}ok{% else %}warn{% endif %}"></span>
+                <span class="cl-name">
+                    {{ row.client.canonical_name }}
+                    <span id="cl-fold-{{ row.client.id }}" class="cl-fold mono">{{ row.bound_folder or '' }}</span>
+                </span>
+                <span class="cl-count mono">{{ row.order_count }}</span>
+            </a>
+            {% endfor %}
+        </div>
+
+        {% include "_client_pane.html" %}
+    </div>
+    {% else %}
+    <div class="queue-empty">
+        <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/>
+        </svg>
+        {% if q or state != 'all' %}
+        <h2>Нічого не знайшлось</h2>
+        <p>Спробуйте інший запит або зніміть фільтр.</p>
+        <a class="cp-save" href="/clients">Показати всіх</a>
         {% else %}
-            <div class="queue-empty">
-                <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/>
-                </svg>
-                <h2>Клієнтів ще не додано</h2>
-                <p>Додайте першого клієнта формою нижче — картка з контактами та історією робіт з’явиться тут.</p>
-            </div>
+        <h2>Клієнтів ще немає</h2>
+        <p>Картка заводиться сама, щойно клієнт зʼявиться в роботах з таблиці або пошти.</p>
         {% endif %}
     </div>
-
-    <div class="card detail-section">
-        <h3 class="detail-section-title">Додати клієнта</h3>
-        <form method="post" action="/clients" class="mail-form">
-            <div class="form-group">
-                <label for="canonical_name">Ім'я клієнта<span class="form-required">*</span></label>
-                <input
-                    type="text"
-                    id="canonical_name"
-                    name="canonical_name"
-                    class="form-input"
-                    placeholder="напр. Литвиненко Олег"
-                    required
-                >
-            </div>
-            <div class="form-group">
-                <label for="phone">Телефон</label>
-                <input type="text" id="phone" name="phone" class="form-input" placeholder="+380...">
-            </div>
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" class="form-input" placeholder="client@example.com">
-            </div>
-            <div class="form-group">
-                <label for="notes">Нотатки</label>
-                <textarea id="notes" name="notes" class="form-input" rows="2" placeholder="довільні нотатки оператора"></textarea>
-            </div>
-            <div class="form-actions">
-                <button type="submit" class="form-submit">Додати клієнта</button>
-            </div>
-        </form>
-    </div>
+    {% endif %}
 </main>
 {% endblock %}

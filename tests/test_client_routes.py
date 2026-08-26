@@ -33,9 +33,12 @@ def _operator(db: Session) -> User:
     return user
 
 
-def _request(user_id: int | None):
+def _request(user_id: int | None, *, htmx: bool = False):
+    """`headers` is part of the shape now: routes that answer HTMX with a
+    fragment and a full navigation with a redirect read HX-Request off it."""
     session = {} if user_id is None else {"user_id": user_id}
-    return SimpleNamespace(session=session, query_params={})
+    headers = {"HX-Request": "true"} if htmx else {}
+    return SimpleNamespace(session=session, query_params={}, headers=headers)
 
 
 def _order(client_name, **kwargs):
@@ -303,3 +306,103 @@ class TestBindClientFolder:
                 web.bind_client_folder(request=_request(user.id), client_id=999,
                                        export_folder_name="X", db=db)
             assert exc.value.status_code == 404
+
+
+class TestClientsMasterScreen:
+    """«Майстер»: список ліворуч, картка праворуч. Пошук і фільтр стану звужують
+    список, а панель ніколи не лишається порожньою при непорожньому списку."""
+
+    def _seed(self, db):
+        bound = Client(canonical_name="Середюк")
+        unbound = Client(canonical_name="Кривовид")
+        db.add_all([bound, unbound])
+        db.add(_order("Середюк"))
+        db.add(_order("Кривовид"))
+        db.add(_order("Кривовид"))
+        db.commit()
+        from app.models import ClientNameAlias
+        db.add(ClientNameAlias(sheet_name="Середюк", export_folder_name="Seredyuk", confirmed=True))
+        db.commit()
+        return bound, unbound
+
+    def test_state_counts_describe_the_whole_set(self):
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _operator(db)
+            self._seed(db)
+            ctx = web.get_clients(request=_request(user.id), db=db)
+        assert ctx["state_counts"]["all"] == 2
+        assert ctx["state_counts"]["unbound"] == 1      # Кривовид
+        assert ctx["state_counts"]["active"] == 2
+
+    def test_unbound_filter_narrows_the_list_but_not_the_counts(self):
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _operator(db)
+            self._seed(db)
+            ctx = web.get_clients(request=_request(user.id), state="unbound", db=db)
+        names = [r["client"].canonical_name for r in ctx["client_rows"]]
+        assert names == ["Кривовид"]
+        assert ctx["state_counts"]["all"] == 2          # чіпи описують увесь набір
+
+    def test_search_matches_name_and_bound_folder(self):
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _operator(db)
+            self._seed(db)
+            by_name = web.get_clients(request=_request(user.id), q="криво", db=db)
+            by_folder = web.get_clients(request=_request(user.id), q="seredyuk", db=db)
+        assert [r["client"].canonical_name for r in by_name["client_rows"]] == ["Кривовид"]
+        assert [r["client"].canonical_name for r in by_folder["client_rows"]] == ["Середюк"]
+
+    def test_pane_opens_on_the_first_visible_client_by_default(self):
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _operator(db)
+            self._seed(db)
+            ctx = web.get_clients(request=_request(user.id), db=db)
+        assert ctx["selected_id"] == ctx["client_rows"][0]["client"].id
+        assert ctx["client"].canonical_name == ctx["client_rows"][0]["client"].canonical_name
+
+    def test_selection_outside_the_filtered_list_falls_back(self):
+        """Обраний клієнт, якого фільтр приховав, не лишає екран напівпорожнім."""
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _operator(db)
+            bound, _ = self._seed(db)
+            ctx = web.get_clients(request=_request(user.id), state="unbound", selected=bound.id, db=db)
+        assert ctx["selected_id"] != bound.id
+        assert ctx["client"].canonical_name == "Кривовид"
+
+    def test_empty_result_leaves_no_pane(self):
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _operator(db)
+            self._seed(db)
+            ctx = web.get_clients(request=_request(user.id), q="нікого-такого-немає", db=db)
+        assert ctx["client_rows"] == []
+        assert ctx["selected_id"] is None
+        assert "client" not in ctx
+
+    def test_pane_route_returns_the_card_for_one_client(self):
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _operator(db)
+            _, unbound = self._seed(db)
+            ctx = web.get_client_pane(request=_request(user.id), client_id=unbound.id, db=db)
+        assert ctx["client"].canonical_name == "Кривовид"
+        assert ctx["summary"].total_count == 2
+        assert ctx["bound_folder"] is None
+
+    def test_binding_from_the_master_answers_with_the_card(self):
+        """HTMX дістає фрагмент картки, а не редірект — список лишається на місці."""
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _operator(db)
+            _, unbound = self._seed(db)
+            ctx = web.bind_client_folder(
+                request=_request(user.id, htmx=True), client_id=unbound.id,
+                export_folder_name="Krivovid", db=db,
+            )
+        assert ctx["bound_folder"] == "Krivovid"
+        assert ctx["swap_list_item"] is True and ctx["bound_now"] is True
