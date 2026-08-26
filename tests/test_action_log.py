@@ -353,6 +353,53 @@ def test_redo_with_nothing_to_redo_is_noop():
         assert resp.status_code == 204
 
 
+# --- Видалення клітинки «Оператор» (calculated_raw / стовпець М) --------------
+
+
+def _run_operator_clear(db, user, order):
+    with patch.object(web, "_write_sheet_fields", return_value=None), \
+         patch.object(web, "attach_export_folder_uris"), \
+         patch.object(web, "attach_job_code_folder_uris"), \
+         patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
+        return asyncio.run(web.clear_operator(
+            request=_request(user.id), order_id=order.id, db=db))
+
+
+def test_operator_clear_empties_cell_and_logs():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, calculated_raw="D")
+        _run_operator_clear(db, user, order)
+        db.refresh(order)
+        assert not order.calculated_raw                     # cleared
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "operator"))
+        assert entry is not None and entry.old_value == "D" and (entry.new_value or "") == ""
+
+
+def test_operator_clear_undo_restores_and_redo_reclears():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, calculated_raw="ЕЕ")
+        _run_operator_clear(db, user, order)
+        db.refresh(order)
+        assert not order.calculated_raw
+        _run_undo_last(db, user); db.refresh(order)
+        assert order.calculated_raw == "ЕЕ"                 # restored
+        _run_redo_last(db, user); db.refresh(order)
+        assert not order.calculated_raw                     # re-cleared
+
+
+def test_operator_clear_noop_when_already_empty():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, calculated_raw=None)
+        _run_operator_clear(db, user, order)
+        assert db.scalar(select(ActionLog).where(ActionLog.action_type == "operator")) is None
+
+
 # --- Журнал: окремий екран + картка (крок 3) ---------------------------------
 
 

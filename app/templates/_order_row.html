@@ -137,6 +137,14 @@
     <td class="calc-op">
         {% if order.calculated_raw %}
             <span class="mono op-badge" title="Хто прорахував — стовпець «Прорахував» (М) таблиці">{{ order.calculated_raw }}</span>
+            {# Видалити оператора: очищає клітинку «Прорахував» (стовпець М) і пише
+               порожнє в таблицю. Тихий за замовчуванням, проявляється на hover
+               рядка (як ✕ Sum3D); дія логується → можна «Крок назад». #}
+            <button type="button" class="op-clear"
+                    hx-post="/orders/{{ order.id }}/operator-clear"
+                    hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML"
+                    title="Видалити оператора — очистити стовпець «Прорахував» (М)"
+                    aria-label="Видалити оператора">✕</button>
         {% else %}
             <span class="text-muted">—</span>
         {% endif %}

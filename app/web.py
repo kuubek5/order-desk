@@ -2369,6 +2369,55 @@ async def set_sum3d_id(
     return response
 
 
+@app.post("/orders/{order_id}/operator-clear", response_class=HTMLResponse)
+async def clear_operator(request: Request, order_id: int, db: Session = Depends(get_db)):
+    """Clear the «Прорахував» cell (column М → Order.calculated_raw): erase who
+    calculated the work, write the empty value back to the sheet, log it as an
+    undoable "operator" action. For fixing a wrong/stray operator letter. Does not
+    touch Sum3D or readiness (which key off job_code + sum3d_id, not this cell)."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+
+    if sync_control.is_paused():
+        return templates.TemplateResponse(
+            request, "_order_row.html",
+            {"order": order, "statuses": STATUSES, "sync_error": _SYNC_PAUSED_MSG},
+        )
+
+    old_value = order.calculated_raw
+    if not old_value:
+        # Nothing to clear — return the row untouched, no log, no toast.
+        attach_export_folder_uris(db, [order])
+        attach_job_code_folder_uris(db, [order])
+        return templates.TemplateResponse(
+            request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": None}
+        )
+
+    order.calculated_raw = ""
+    sync_error = _write_sheet_fields(db, order, {"calculated_raw"})
+    log_entry = log_action(
+        db, order=order, operator=user, action_type="operator", field="calculated_raw",
+        old=old_value, new="", note="оператора очищено",
+    )
+    db.commit()
+    db.refresh(order)
+
+    attach_export_folder_uris(db, [order])
+    attach_job_code_folder_uris(db, [order])
+
+    response = templates.TemplateResponse(
+        request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": sync_error}
+    )
+    if sync_error is None:
+        _attach_action_toast(response, log_entry, "оператора очищено")
+    return response
+
+
 @app.post("/orders/{order_id}/cam-comment", response_class=HTMLResponse)
 async def set_cam_comment(
     request: Request,
@@ -2806,7 +2855,7 @@ async def set_status(
 
 
 # Action types a "крок назад" can revert, newest-first selection order.
-UNDOABLE_ACTION_TYPES = ("sum3d", "status")
+UNDOABLE_ACTION_TYPES = ("sum3d", "status", "operator")
 
 
 def _perform_undo(db: Session, user: "User", entry: ActionLog) -> Response:
@@ -2854,6 +2903,11 @@ def _perform_undo(db: Session, user: "User", entry: ActionLog) -> Response:
             actor=user.username, note="скасовано (статус)",
         ))
         sync_error = None
+    elif entry.action_type == "operator":
+        if (order.calculated_raw or "") != (entry.new_value or ""):
+            return _toast_response("Не можна скасувати — оператора вже змінили", kind="error")
+        order.calculated_raw = entry.old_value or None
+        sync_error = _write_sheet_fields(db, order, {"calculated_raw"})
     else:
         return _toast_response("Цей тип дії поки не скасовується", kind="error")
 
@@ -2968,6 +3022,11 @@ def _perform_redo(db: Session, user: "User", entry: ActionLog) -> Response:
             actor=user.username, note="повторено (статус)",
         ))
         sync_error = None
+    elif entry.action_type == "operator":
+        if (order.calculated_raw or "") != (entry.old_value or ""):
+            return _toast_response("Не можна повторити — оператора вже змінили", kind="error")
+        order.calculated_raw = entry.new_value or None
+        sync_error = _write_sheet_fields(db, order, {"calculated_raw"})
     else:
         return _toast_response("Цей тип дії поки не повторюється", kind="error")
 
