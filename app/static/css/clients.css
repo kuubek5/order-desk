@@ -39,7 +39,10 @@ main.clientsv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;fle
   border-left:2px solid transparent;border-bottom:1px solid #1a222e;
   transition:background var(--ui-speed) ease,border-left-color var(--ui-speed) ease;
 }
-.clientsv2 .cl-item:last-child{border-bottom:0}
+/* Межу прибираємо в ОСТАННЬОГО рядка списку, а не в останньої дитини обгортки:
+   кожен .cl-item тепер лежить у власному role="listitem", тож `.cl-item:last-child`
+   збігався б у КОЖНОМУ рядку і зняв би роздільники геть усюди. */
+.clientsv2 .cl-list > *:last-child .cl-item{border-bottom:0}
 .clientsv2 .cl-item:hover{background:var(--card-2);opacity:1}
 .clientsv2 .cl-item.on{background:rgba(20,184,166,.09);border-left-color:var(--accent-b)}
 .clientsv2 .cl-item:focus-visible{outline:2px solid var(--accent-b);outline-offset:-2px}

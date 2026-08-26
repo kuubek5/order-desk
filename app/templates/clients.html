@@ -46,7 +46,13 @@
     <div class="cl-split">
         <div class="cl-list" role="list" aria-label="Клієнти">
             {% for row in client_rows %}
-            <a role="listitem" class="cl-item {% if row.client.id == selected_id %}on{% endif %}"
+            {# role=listitem на самому <a> перекрив би роль посилання — елемент
+               оголошувався б як пункт списку, а не як те, що можна відкрити.
+               Тому роль тримає обгортка, а якір лишається якорем.
+               data-cl-item — за ним app.js переносить підсвітку обраного, бо
+               HTMX міняє лише панель і клас `on` інакше лишився б на старому. #}
+            <div role="listitem">
+            <a data-cl-item class="cl-item {% if row.client.id == selected_id %}on{% endif %}"
                href="/clients?state={{ state }}{% if q %}&q={{ q }}{% endif %}&selected={{ row.client.id }}"
                hx-get="/clients/{{ row.client.id }}/pane" hx-target="#client-pane" hx-swap="outerHTML"
                hx-push-url="/clients?state={{ state }}{% if q %}&q={{ q }}{% endif %}&selected={{ row.client.id }}">
@@ -57,6 +63,7 @@
                 </span>
                 <span class="cl-count mono">{{ row.order_count }}</span>
             </a>
+            </div>
             {% endfor %}
         </div>
 

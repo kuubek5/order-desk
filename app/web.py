@@ -4502,6 +4502,11 @@ def bind_client_folder(
     # that one row in the list — re-rendering the whole list would cost a fuzzy
     # match over every client (~0.8s at 280) just to flip one dot.
     if request.headers.get("HX-Request") == "true":
+        # Known cost: this reads every named Order to summarise ONE client, the
+        # same shape /clients/{id}/pane pays. Bounding it means narrowing the
+        # candidate set before the fuzzy match, which would change matching
+        # semantics — left as a deliberate trade-off rather than papered over by
+        # moving the identical query up a level.
         return templates.TemplateResponse(
             request, "_client_pane.html",
             {"user": user, "swap_list_item": True, "bound_now": bool(value),

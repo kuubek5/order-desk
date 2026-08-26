@@ -861,6 +861,19 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
   highlightOrderRow(focusedOrderId, { scroll: false });
 });
 
+// Клієнти, режим «Майстер»: HTMX міняє лише праву картку, тож підсвітку
+// обраного в лівому списку треба перенести самим. Без цього клас `on` лишався
+// на попередньому клієнті — картка показувала одного, список підсвічував
+// іншого, і на списку в кілька сотень рядків оператор губив своє місце.
+// Робимо це на click, а не на htmx:afterSwap, щоб підсвітка стрибала одразу,
+// не чекаючи відповіді сервера.
+document.addEventListener("click", (event) => {
+  const item = event.target.closest("[data-cl-item]");
+  if (!item) return;
+  document.querySelectorAll("[data-cl-item].on").forEach((el) => el.classList.remove("on"));
+  item.classList.add("on");
+});
+
 // v2a side-panel accordion (queue.html .side-sec). Toggles data-open on the
 // section and aria-expanded on its header. No-op on pages without side-secs.
 document.addEventListener("click", (event) => {
