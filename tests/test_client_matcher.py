@@ -383,3 +383,70 @@ class TestRealWorldNaming:
             "Олександр Підгорний", ["Підгорний", "Оля", "Стоянов"], {}
         )
         assert r.matched_folder_name == "Підгорний"
+
+
+class TestMatcherPerformance:
+    """Регрес-гард для «GET /handout took 1652s» (бойовий лог 27.08.26).
+
+    Вузьким місцем виявився не мережевий диск, а саме зіставлення імен:
+    _score_pair коштує ~30 викликів rapidfuzz на пару, і його ганяли по
+    СОТНЯХ тек для КОЖНОГО клієнта."""
+
+    def test_expensive_scorer_runs_only_on_shortlisted_candidates(self, monkeypatch):
+        from app import client_matcher
+
+        folders = [f"Клієнт {i:03d}" for i in range(400)] + ["Кривовид"]
+        calls = []
+        real = client_matcher._score_pair
+
+        def counting(a, b):
+            calls.append(b)
+            return real(a, b)
+
+        monkeypatch.setattr(client_matcher, "_score_pair", counting)
+        client_matcher.match_client_name("Кривовид", folders, {})
+
+        assert len(calls) <= 41, (
+            f"дорогий скорер мав пройти по короткому списку, а пройшов "
+            f"по {len(calls)} з {len(folders)} тек"
+        )
+
+    def test_exact_match_survives_the_prefilter(self):
+        """Точний збіг не має загубитись у дешевому проході — на ньому
+        тримається гілка exact."""
+        from app.client_matcher import match_client_name
+
+        folders = [f"Інший {i:03d}" for i in range(300)] + ["Басараб"]
+        result = match_client_name("Басараб", folders, {})
+        assert result.matched_folder_name == "Басараб"
+        assert result.confidence == 100.0
+
+    def test_repeated_names_are_normalised_once_not_per_comparison(self):
+        """Ім'я нормалізується РАЗ і далі береться з кешу. Без цього одні й ті
+        самі рядки перебудовувались мільйони разів за запит — саме це й давало
+        хвилини очікування."""
+        from app import client_matcher
+
+        client_matcher._normalize.cache_clear()
+        folders = [f"Кривовид {i:03d}" for i in range(50)]
+        names = ["Кривовид", "Кривовид кл", "Кривовид лаб"] * 8
+        for name in names:
+            client_matcher.match_client_name(name, folders, {})
+
+        info = client_matcher._normalize.cache_info()
+        assert info.misses <= len(folders) + len(set(names)) + 5, (
+            f"кожен рядок мав нормалізуватись один раз: {info}"
+        )
+        assert info.hits > info.misses * 10, f"кеш мав давати влучення: {info}"
+
+    def test_dissimilar_candidates_never_reach_the_expensive_scorer(self):
+        """Дешевий відсів відкидає явно несхожі теки ще до дорогого скорера."""
+        from app import client_matcher
+
+        client_matcher._transliterations_cached.cache_clear()
+        folders = [f"Клієнт {i:03d}" for i in range(50)]
+        client_matcher.match_client_name("Кривовид", folders, {})
+
+        assert client_matcher._transliterations_cached.cache_info().misses == 0, (
+            "жодна з несхожих тек не мала дійти до транслітерації"
+        )

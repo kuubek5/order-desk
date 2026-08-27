@@ -12,7 +12,8 @@ surname token as a near-exact match.
 
 import unicodedata
 from dataclasses import dataclass
-from rapidfuzz import fuzz
+from functools import lru_cache
+from rapidfuzz import fuzz, process
 
 # Ukrainian/Russian -> Latin transliteration, two common styles: the official
 # passport style (я->ia, ю->iu, ...) and the everyday "ya-style" (я->ya,
@@ -33,11 +34,26 @@ _TRANSLIT_STYLES = (
 )
 
 
+# ПРОДУКТИВНІСТЬ: ці дві функції викликались мільйони разів за один запит і
+# щоразу перебудовували ті самі рядки. У бойовому логу 27.08.26 це давало
+# «GET /handout took 1652s» і «GET /clients took 768s»: сторінка звіряє
+# кожного клієнта з кожною текою, тобто одні й ті самі імена нормалізуються
+# й транслітеруються тисячі разів. Імен обмежена кількість — кешуємо.
+@lru_cache(maxsize=8192)
 def _normalize(name: str) -> str:
     return unicodedata.normalize("NFC", name.strip().lower())
 
 
+@lru_cache(maxsize=8192)
+def _transliterations_cached(name: str) -> tuple[str, ...]:
+    return tuple(_transliterations_uncached(name))
+
+
 def _transliterations(name: str) -> list[str]:
+    return list(_transliterations_cached(name))
+
+
+def _transliterations_uncached(name: str) -> list[str]:
     """The normalized name plus its Latin transliteration variants (deduped).
     Latin input passes through unchanged, so comparing a Cyrillic sheet name
     against a Latin folder name lands on the same alphabet."""
@@ -58,6 +74,11 @@ def _score_pair(sheet_name: str, folder_name: str) -> float:
       * best per-token pair ratio (slightly damped) — catches a shared-but-
         misspelled surname across different transliteration habits.
     """
+    # Точний збіг після нормалізації — 100 без жодного порівняння. Найчастіший
+    # випадок у реальних даних і найдорожчий шлях, якщо його не зрізати.
+    if _normalize(sheet_name) == _normalize(folder_name):
+        return 100.0
+
     best = 0.0
     for a in _transliterations(sheet_name):
         for b in _transliterations(folder_name):
@@ -94,6 +115,39 @@ class MatchResult:
     Populated even when there is a clear winner, so a UI can show alternatives.
     Empty list if folder_names was empty.
     """
+
+
+# ПОПЕРЕДНІЙ ВІДСІВ. _score_pair коштує ~30 викликів rapidfuzz на пару
+# (9 комбінацій транслітерацій плюс цикли по токенах). Ганяти його по СОТНЯХ
+# тек для КОЖНОГО клієнта — мільйони порівнянь і хвилини очікування: бойовий
+# лог 27.08.26 показав «GET /handout took 1652s» і «GET /clients took 768s».
+#
+# Спершу дешевий прохід rapidfuzz по нормалізованих рядках відбирає
+# правдоподібних, і лише вони йдуть у дорогий скорер. Поріг 55 із запасом:
+# дорогий скорер піднімає оцінку за рахунок транслітерації й спільного
+# токена, але не з нічого — усе нижче не дотягне до порога автозбігу (90).
+_PREFILTER_KEEP = 40
+_PREFILTER_FLOOR = 55.0
+
+
+def _shortlist(sheet_name: str, folder_names: list[str]) -> list[str]:
+    if len(folder_names) <= _PREFILTER_KEEP:
+        return list(folder_names)
+    normalized = {name: _normalize(name) for name in folder_names}
+    rough = process.extract(
+        _normalize(sheet_name),
+        normalized,
+        scorer=fuzz.token_set_ratio,
+        limit=_PREFILTER_KEEP,
+        score_cutoff=_PREFILTER_FLOOR,
+    )
+    picked = [key for _value, _score, key in rough]
+    # Точні збіги мусять дійти до скорера, навіть якщо дешевий прохід їх не
+    # підняв — на них тримається гілка «exact».
+    target = _normalize(sheet_name)
+    seen = set(picked)
+    picked += [n for n in folder_names if normalized[n] == target and n not in seen]
+    return picked
 
 
 def match_client_name(
@@ -150,8 +204,13 @@ def match_client_name(
     sheet_normalized = _normalize(sheet_name)
     exact = [f for f in folder_names if _normalize(f) == sheet_normalized]
     if exact:
+        # Ці кандидати — суто підказка «схоже також на…» у два рядки.
+        # Раніше заради них скорер проходив ПО ВСІХ теках, хоча потрібну вже
+        # знайдено точним збігом: найчастіший шлях був найдорожчим.
         others = [
-            (f, _score_pair(sheet_name, f)) for f in folder_names if f != exact[0]
+            (f, _score_pair(sheet_name, f))
+            for f in _shortlist(sheet_name, folder_names)
+            if f != exact[0]
         ]
         others.sort(key=lambda x: x[1], reverse=True)
         return MatchResult(
@@ -169,7 +228,7 @@ def match_client_name(
     # handled inside _score_pair.
     scores: list[tuple[str, float]] = [
         (folder_name, _score_pair(sheet_name, folder_name))
-        for folder_name in folder_names
+        for folder_name in _shortlist(sheet_name, folder_names)
     ]
 
     # A literal (normalized) whole-name match beats any fuzzy scoring — the
