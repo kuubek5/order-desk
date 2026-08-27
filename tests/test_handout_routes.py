@@ -818,3 +818,68 @@ class TestClientFolderOpens:
         assert [e.material_color_folder_name for e in matched] == [
             "Emotions A3 опаковий всередині"
         ]
+
+
+class TestOneBatchPerRow:
+    """Під рядком роботи мають бути теки ОДНІЄЇ партії, не всі за тиждень.
+
+    Скриншот 28.08.26: у клієнта Кривовид одна робота `mono a3.5`, а під нею
+    чотири теки. Причина — постійний клієнт замовляє той самий матеріал мало
+    не щодня, а відбір брав усе вікно сканування. Прив'язки «рядок ↔ тека» в
+    шляху немає (CLAUDE.md §4), але робота не могла лежати в партії, скачаній
+    пізніше за неї, — цим і звужуємо."""
+
+    def _entry(self, name, when):
+        from datetime import datetime
+        return SimpleNamespace(material_color_folder_name=name, created_at=when)
+
+    def test_only_the_nearest_earlier_batch_survives(self):
+        from datetime import date, datetime
+        from app.web import _entries_for_material
+
+        entries = [
+            self._entry("mono a3.5", datetime(2026, 8, 21, 8, 59)),
+            self._entry("mono a3.5", datetime(2026, 8, 24, 9, 30)),
+            self._entry("mono a3.5", datetime(2026, 8, 27, 8, 5)),
+        ]
+        picked = _entries_for_material("mono a3.5", entries, date(2026, 8, 27))
+        assert [e.created_at.day for e in picked] == [27]
+
+    def test_several_folders_of_the_SAME_day_all_stay(self):
+        """Дві теки одного дня — це справді неоднозначність, яку вирішує око
+        оператора; ховати одну з них не можна."""
+        from datetime import date, datetime
+        from app.web import _entries_for_material
+
+        entries = [
+            self._entry("mono a3.5", datetime(2026, 8, 27, 8, 5)),
+            self._entry("mono a3.5", datetime(2026, 8, 27, 12, 15)),
+            self._entry("mono a3.5", datetime(2026, 8, 24, 9, 30)),
+        ]
+        picked = _entries_for_material("mono a3.5", entries, date(2026, 8, 27))
+        assert [e.created_at.hour for e in picked] == [8, 12]
+
+    def test_files_uploaded_the_next_day_are_not_lost(self):
+        """Партії раніше за роботу немає — беремо найранішу пізнішу, інакше
+        рядок лишився б зовсім без теки."""
+        from datetime import date, datetime
+        from app.web import _entries_for_material
+
+        entries = [
+            self._entry("mono a3.5", datetime(2026, 8, 28, 9, 0)),
+            self._entry("mono a3.5", datetime(2026, 8, 29, 9, 0)),
+        ]
+        picked = _entries_for_material("mono a3.5", entries, date(2026, 8, 27))
+        assert [e.created_at.day for e in picked] == [28]
+
+    def test_without_a_work_day_nothing_is_narrowed(self):
+        """Робота без дати вкладки не має на що спиратись — краще показати
+        все, ніж навмання відрізати."""
+        from datetime import datetime
+        from app.web import _entries_for_material
+
+        entries = [
+            self._entry("mono a3.5", datetime(2026, 8, 21, 8, 59)),
+            self._entry("mono a3.5", datetime(2026, 8, 27, 8, 5)),
+        ]
+        assert len(_entries_for_material("mono a3.5", entries, None)) == 2

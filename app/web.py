@@ -860,16 +860,27 @@ def _sheet_order_key(order: Order) -> tuple:
     return (_order_date(order), order.row_number if order.row_number is not None else 0)
 
 
-def _entries_for_material(material_color: str | None, entries: list) -> list:
+def _entries_for_material(material_color: str | None, entries: list, work_day=None) -> list:
     """The export folders under a client whose material matches this work's
     material_color, oldest-first. Empty when the work has no colour or nothing
     lines up — the row then simply shows no folder shortcut. See get_handout for
     why this is an assist, not an exact per-row bind.
 
-    Правила збігу — в `app/material_match.py`. Раніше тут стояла рівність
+    Правила збігу назв — в `app/material_match.py`. Раніше тут стояла рівність
     відсортованих слів, і бойовий випадок 28.08.26 (Pavlenko) показав, чого
     вона варта: у таблиці `emo a3`, на диску `Emotions A3 опаковий всередині`
-    — та сама робота, теку видно поруч, а рядок її не знаходив."""
+    — та сама робота, теку видно поруч, а рядок її не знаходив.
+
+    `work_day` відсікає ЧУЖІ партії. Без нього під рядком висіли всі теки
+    клієнта з тим самим матеріалом за все вікно сканування — а постійний
+    клієнт замовляє `mono a3.5` мало не щодня, тож під однією роботою
+    з'являлось по чотири теки з різних днів (скриншот 28.08.26: «робота одна,
+    а папок багато»). Прив'язки «рядок ↔ тека» в шляху немає (CLAUDE.md §4:
+    ні наряду, ні Sum3D ID), але дата партії є, і робота не могла лежати в
+    партії, скачаній ПІСЛЯ неї. Тож беремо одну партію — найближчу з тих, що
+    не пізніші за день роботи, а якщо таких немає (файли дозалили наступного
+    дня) — найранішу пізнішу. Кілька тек лишається тільки тоді, коли вони
+    справді з одного дня; вибір між ними за оператором, як і був."""
     if not material_color or not material_color.strip():
         return []
     matched = [
@@ -877,7 +888,13 @@ def _entries_for_material(material_color: str | None, entries: list) -> list:
         if materials_match(material_color, e.material_color_folder_name)
     ]
     matched.sort(key=lambda e: e.created_at)
-    return matched
+    if work_day is None or not matched:
+        return matched
+
+    batch_days = sorted({e.created_at.date() for e in matched})
+    not_after = [d for d in batch_days if d <= work_day]
+    chosen = not_after[-1] if not_after else batch_days[0]
+    return [e for e in matched if e.created_at.date() == chosen]
 
 
 def _queue_sort_key(order: Order) -> tuple:
@@ -3893,7 +3910,9 @@ def get_handout(
         # works share a material the same folders show under each, and the
         # operator picks by eye (Sum3D ID + STL preview are their anchor).
         for order in group_orders:
-            order.export_matches = _entries_for_material(order.material_color, export_entries)
+            order.export_matches = _entries_for_material(
+                order.material_color, export_entries, _parse_sheet_tab(order.sheet_tab)
+            )
         # Теки, чий матеріал не збігся з жодним рядком, раніше показувались
         # окремим підвалом «Інші папки». Прибрано на прохання оператора
         # (28.08.26): на ранковій видачі це шум — звіряють коронку з STL за

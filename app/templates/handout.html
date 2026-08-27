@@ -191,7 +191,10 @@
                             <a href="{{ entry.folder_uri }}" class="wfolder" {% if entry.preview_token %}data-stl-preview-token="{{ entry.preview_token }}"{% endif %}
                                title="{{ entry.material_color_folder_name }} · {{ entry.created_at.strftime('%d.%m %H:%M') }} · {{ entry.files|length }} файл. — прев'ю / відкрити">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
-                                <span class="wfolder-t mono">{{ entry.created_at.strftime('%H:%M') }}</span>
+                                {# Партія з іншого дня, ніж сама робота (файли дозалили
+                                   раніше/пізніше) — тоді час без дати брехав би, що це
+                                   сьогоднішня тека. #}
+                                <span class="wfolder-t mono">{% if entry.created_at.strftime('%d.%m.%y') != order.sheet_tab %}{{ entry.created_at.strftime('%d.%m') }} {% endif %}{{ entry.created_at.strftime('%H:%M') }}</span>
                             </a>
                             {% endfor %}
                         </div>
