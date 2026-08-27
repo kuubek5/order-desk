@@ -73,6 +73,37 @@ def find_matching_orders(
     return matches
 
 
+def index_orders_by_name(orders: list[Order]) -> dict[str, list[Order]]:
+    """Orders grouped by normalized client_name.
+
+    The client list matches EVERY client against EVERY order, and the sheet
+    reuses the same few hundred spellings across thousands of rows — so a
+    plain double loop pays for the same fuzzy comparison over and over. One
+    pass here turns that into «clients × distinct names»."""
+    index: dict[str, list[Order]] = {}
+    for order in orders:
+        if not order.client_name:
+            continue
+        index.setdefault(_normalize(order.client_name), []).append(order)
+    return index
+
+
+def count_matching_orders(
+    canonical_name: str,
+    index: dict[str, list[Order]],
+    threshold: float = MATCH_THRESHOLD,
+) -> int:
+    """How many orders find_matching_orders would return, via index_orders_by_name."""
+    if not canonical_name or not canonical_name.strip():
+        return 0
+    normalized_target = _normalize(canonical_name)
+    total = 0
+    for name, orders in index.items():
+        if name == normalized_target or fuzz.ratio(normalized_target, name) >= threshold:
+            total += len(orders)
+    return total
+
+
 @dataclass
 class ClientOrderSummary:
     """Aggregated view of a client's matched orders, for the client card."""

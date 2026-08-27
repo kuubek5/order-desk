@@ -224,7 +224,7 @@ def test_group_disappears_from_handout_listing_after_issue(monkeypatch):
             web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
 
-        with patch.object(web, "scan_export_folder_cached", return_value=[]):
+        with patch.object(web, "list_export_client_names_cached", return_value=[]):
             ctx_holder = {}
             monkeypatch.setattr(
                 web.templates, "TemplateResponse",
@@ -235,7 +235,7 @@ def test_group_disappears_from_handout_listing_after_issue(monkeypatch):
 
 
 def _get_handout_context(monkeypatch, db, user_id):
-    with patch.object(web, "scan_export_folder_cached", return_value=[]):
+    with patch.object(web, "list_export_client_names_cached", return_value=[]):
         ctx_holder = {}
         monkeypatch.setattr(
             web.templates, "TemplateResponse",
@@ -318,7 +318,7 @@ def test_handout_day_filter_narrows_to_that_day(monkeypatch):
         db.add(_client_order(client_name="OnlyOld", status="нове", sheet_tab=two_days_ago))
         db.commit()
 
-        with patch.object(web, "scan_export_folder_cached", return_value=[]):
+        with patch.object(web, "list_export_client_names_cached", return_value=[]):
             ctx_holder = {}
             monkeypatch.setattr(
                 web.templates, "TemplateResponse",
@@ -600,3 +600,62 @@ def test_handout_reads_only_the_clients_on_screen(monkeypatch, tmp_path):
         f"глибина сховища мала читатись лише для клієнта на екрані, "
         f"а прочитано {len(deep_reads)} тек: {deep_reads[:5]}"
     )
+
+
+class TestExportPrewarm:
+    """Фоновий прогрів кешу обходу export.
+
+    Обхід сховища коштує стільки, скільки коштує (виміряно на бойовій шарі
+    27.08.26: 33 мс/запис послідовно, ~2525 записів на екрані). Питання —
+    хто платить: оператор, який відкрив видачу, чи фон. Прогрів має сенс
+    ЛИШЕ якщо він звертається до сховища з тими самими аргументами, що й
+    сам екран, — інакше наповнить кеш під іншим ключем і оператор однаково
+    чекатиме. Саме це тут і перевіряється."""
+
+    def _seed(self, db):
+        _user(db)
+        db.add(_client_order(client_name="Basarab", status="прийнято"))
+        db.add(_client_order(client_name="Кривовид", status="прийнято", row_number=61))
+        db.commit()
+
+    def _record_scans(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            web, "list_export_client_names_cached", lambda root: ["Basarab", "Кривовид"]
+        )
+        monkeypatch.setattr(web, "get_export_folder_path", lambda db: "Z:\\")
+        monkeypatch.setattr(
+            web,
+            "scan_export_client_cached",
+            lambda root, folder, not_before: calls.append((str(root), folder, not_before)) or [],
+        )
+        return calls
+
+    def test_prewarm_hits_the_same_cache_keys_as_the_screen(self, monkeypatch):
+        engine = _database()
+        with Session(engine) as db:
+            self._seed(db)
+            user_id = db.scalar(select(User.id))
+
+            screen_calls = self._record_scans(monkeypatch)
+            monkeypatch.setattr(
+                web.templates, "TemplateResponse",
+                lambda request, template, context: context,
+            )
+            web.get_handout(request=_request(user_id), db=db)
+            from_screen = set(screen_calls)
+
+            warm_calls = self._record_scans(monkeypatch)
+            web.export_warm_once(db)
+            from_warm = set(warm_calls)
+
+        assert from_screen, "екран мусить звертатися до сховища — інакше тест ні про що"
+        assert from_warm == from_screen
+
+    def test_prewarm_skips_an_unreachable_export_root(self, monkeypatch):
+        engine = _database()
+        with Session(engine) as db:
+            self._seed(db)
+            monkeypatch.setattr(web, "get_export_folder_path", lambda db: "Z:\\")
+            monkeypatch.setattr(web, "list_export_client_names_cached", lambda root: [])
+            assert web.export_warm_once(db) == 0

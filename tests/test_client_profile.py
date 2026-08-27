@@ -3,7 +3,12 @@
 from datetime import datetime
 from types import SimpleNamespace
 
-from app.client_profile import find_matching_orders, summarize_client_orders
+from app.client_profile import (
+    count_matching_orders,
+    find_matching_orders,
+    index_orders_by_name,
+    summarize_client_orders,
+)
 
 
 def make_order(client_name, material_color=None, created_at=None):
@@ -94,3 +99,29 @@ class TestSummarizeClientOrders:
         orders = [make_order("Вова", created_at=datetime(2026, 1, i)) for i in range(1, 15)]
         summary = summarize_client_orders(orders, recent_limit=5)
         assert len(summary.recent_orders) == 5
+
+
+class TestCountMatchingOrders:
+    """Індексований підрахунок мусить давати те саме число, що й повний прохід —
+    інакше екран «Клієнти» показав би не ту кількість робіт."""
+
+    ORDERS = [
+        make_order("Литвиненко Олег"),
+        make_order("литвиненко олег "),
+        make_order("Литвиненко Олег"),
+        make_order("Кривовид"),
+        make_order("Кривовид кл"),
+        make_order(None),
+        make_order("Хтось Інший"),
+    ]
+
+    def test_matches_full_scan_for_every_name(self):
+        index = index_orders_by_name(self.ORDERS)
+        for name in ("Литвиненко Олег", "Кривовид", "Хтось Інший", "Невідомий", ""):
+            assert count_matching_orders(name, index) == len(
+                find_matching_orders(name, self.ORDERS)
+            ), name
+
+    def test_orders_without_client_name_are_not_indexed(self):
+        index = index_orders_by_name(self.ORDERS)
+        assert all(name for name in index)

@@ -37,7 +37,12 @@ from app.changelog import load_changelog
 from app.auth import hash_password, verify_password
 from app.backup import BackupFormatError, BackupPasswordError, create_backup, restore_backup
 from app.client_matcher import match_client_name
-from app.client_profile import find_matching_orders, summarize_client_orders
+from app.client_profile import (
+    count_matching_orders,
+    find_matching_orders,
+    index_orders_by_name,
+    summarize_client_orders,
+)
 from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH, SESSION_SECRET_KEY
 from app.db import Base, SessionLocal, engine
 from app.monthly_backup import ensure_monthly_snapshot, list_snapshots
@@ -45,7 +50,6 @@ from app.export_scanner import (
     clear_export_cache,
     list_export_client_names_cached,
     scan_export_client_cached,
-    scan_export_folder_cached,
 )
 from app import sync_control
 from app.license import get_license_status, get_machine_id, verify_license_key
@@ -1101,6 +1105,60 @@ def _monthly_backup_worker(stop_event: Event) -> None:
         stop_event.wait(MONTHLY_BACKUP_INTERVAL_SECONDS)
 
 
+EXPORT_WARM_INITIAL_DELAY_SECONDS = 20.0
+EXPORT_WARM_INTERVAL_SECONDS = 120.0
+
+
+def _export_warm_worker(stop_event: Event) -> None:
+    """Тримати кеш обходу export теплим, щоб екран видачі відкривався одразу.
+
+    Обхід сховища коштує рівно стільки, скільки коштує — виміряно 27.08.26 на
+    бойовій шарі: 33 мс/запис послідовно, 8.5 мс у 16 потоків, а на екрані
+    ~2525 записів. Питання лише в тому, ХТО за це платить. Досі платив
+    оператор, який відкрив видачу (80с очікування). Тепер платить фон, а
+    оператор отримує вже готове.
+
+    Кеш сканера (`app/export_scanner.py`) віддає протухле одразу й оновлює
+    його у фоні, тож інтервал більший за TTL — це не зайве очікування, а
+    лише вік даних, і для тек із роботами він неістотний.
+
+    Ключі кешу мусять збігатися з тими, що рахує сам екран, — тому обидва
+    йдуть через ті самі помічники (`_handout_*`). Інакше прогрів наповнить
+    кеш під іншим ключем, і на екрані нічого не зміниться."""
+    if stop_event.wait(EXPORT_WARM_INITIAL_DELAY_SECONDS):
+        return
+
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                export_warm_once(db)
+        except Exception:  # noqa: BLE001 — фоновий прогрів не валить застосунок
+            logger.exception("Фоновий прогрів export не вдався")
+        if stop_event.wait(EXPORT_WARM_INTERVAL_SECONDS):
+            return
+
+
+def export_warm_once(db: Session) -> int:
+    """Один прохід прогріву. Повертає кількість прогрітих тек."""
+    root = Path(get_export_folder_path(db))
+    folder_names = list_export_client_names_cached(root)
+    if not folder_names:
+        return 0
+    eligible = _handout_eligible_orders(db, date.today())
+    not_before = _handout_not_before(eligible)
+    client_names = {o.client_name for o in eligible if o.client_name}
+    folders = _matched_folders(_handout_client_matches(db, client_names, folder_names))
+    started = time.monotonic()
+    scanned = _scan_export_for_clients(root, folders, not_before)
+    logger.info(
+        "Export prewarm: %d тек, %d записів, %.2fс",
+        len(folders),
+        sum(len(v) for v in scanned.values()),
+        time.monotonic() - started,
+    )
+    return len(folders)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if os.environ.get("ORDER_DESK_SCHEMA_MANAGED") != "1":
@@ -1167,6 +1225,14 @@ async def lifespan(_: FastAPI):
         daemon=True,
     )
     monthly_backup_thread.start()
+    export_warm_stop_event = Event()
+    export_warm_thread = Thread(
+        target=_export_warm_worker,
+        args=(export_warm_stop_event,),
+        name="order-desk-export-warm",
+        daemon=True,
+    )
+    export_warm_thread.start()
     try:
         yield
     finally:
@@ -1178,6 +1244,8 @@ async def lifespan(_: FastAPI):
         update_check_thread.join(timeout=1)
         monthly_backup_stop_event.set()
         monthly_backup_thread.join(timeout=1)
+        export_warm_stop_event.set()
+        export_warm_thread.join(timeout=1)
 
 
 app = FastAPI(title="Order Desk", lifespan=lifespan)
@@ -3615,6 +3683,90 @@ def get_archive(
     )
 
 
+
+# ── Видача: обхід сховища ────────────────────────────────────────────────
+# Ці три помічники спільні для екрана видачі й для фонового прогріву кешу.
+# Прогрів МУСИТЬ рахувати корінь, межу за датою й теки клієнтів точно так
+# само, як екран, — інакше він наповнить кеш під іншим ключем і оператор
+# однаково чекатиме.
+
+EXPORT_SCAN_WORKERS = 16
+"""Виміряно на бойовому сховищі 27.08.26 (746 тек клієнтів, Synology/SMB):
+послідовний обхід 33 мс/запис, у 16 потоків — 8.5 мс/запис, тобто 3.9x.
+Ціну диктує затримка кожної ходки, а не процесор, тому потоки й дають
+виграш. Більше 16 не ставимо: далі впираємось у сам SMB, а не в очікування."""
+
+
+def _handout_eligible_orders(db: Session, today: date) -> list[Order]:
+    """Невидані клієнтські роботи за минулі дні — те, що показує видача.
+
+    selectinload(Order.material) обов'язковий: `_matpair.html` викликає
+    material_badge(order) на КОЖНІЙ роботі, а без фільтра дня їх ~1800.
+    Виміряно (по 3 прогріті запити): без eager 3.8с, з ним 2.7с."""
+    candidates = db.scalars(
+        select(Order)
+        .options(selectinload(Order.material))
+        .where(Order.client_name.is_not(None), Order.status != "видано")
+    ).all()
+    return [
+        order
+        for order in candidates
+        if (order_date := _parse_sheet_tab(order.sheet_tab)) is None or order_date < today
+    ]
+
+
+def _handout_not_before(eligible: list[Order]) -> datetime | None:
+    """Межа за датою — головний важіль швидкодії обходу. Бойовий лог 27.08.26:
+    «262 клієнтів на екрані, 746 тек, 46148 записів, 511.42с» — тобто ~176
+    партій на клієнта, роки накопичених тек. Але файли роботи НЕ МОЖУТЬ
+    лежати в партії, створеній до появи самої роботи, а на екрані лише
+    роботи за останні 30 днів. Тиждень запасу — на розбіжність годинників
+    і дозаливки."""
+    oldest = min(
+        (d for o in eligible if (d := _parse_sheet_tab(o.sheet_tab)) is not None),
+        default=None,
+    )
+    if oldest is None:
+        return None
+    return datetime.combine(oldest, datetime.min.time()) - timedelta(days=7)
+
+
+def _scan_export_for_clients(
+    root: Path, folders_by_client: dict[str, str], not_before: datetime | None
+) -> dict[str, list]:
+    """Обхід сховища для показаних клієнтів, паралельно — див.
+    EXPORT_SCAN_WORKERS. Кеш сканера потокобезпечний."""
+    if not folders_by_client:
+        return {}
+    names = list(folders_by_client)
+    with ThreadPoolExecutor(max_workers=min(EXPORT_SCAN_WORKERS, len(names))) as pool:
+        results = pool.map(
+            lambda folder: scan_export_client_cached(root, folder, not_before),
+            (folders_by_client[name] for name in names),
+        )
+        return dict(zip(names, results))
+
+
+def _handout_client_matches(db: Session, client_names, folder_names: list[str]) -> dict:
+    """{ім'я клієнта: результат нечіткого зіставлення з текою в export}.
+
+    Чистий CPU — рахується один раз наперед, а не всередині циклу обходу."""
+    aliases = {
+        a.sheet_name: a.export_folder_name
+        for a in db.scalars(select(ClientNameAlias).where(ClientNameAlias.confirmed.is_(True))).all()
+    }
+    return {name: match_client_name(name, folder_names, aliases) for name in client_names}
+
+
+def _matched_folders(matches: dict) -> dict[str, str]:
+    """Лише ті клієнти, кому зіставлення взагалі знайшло теку."""
+    return {
+        name: match.matched_folder_name
+        for name, match in matches.items()
+        if match.matched_folder_name
+    }
+
+
 @app.get("/handout", response_class=HTMLResponse)
 def get_handout(
     request: Request, source: str = "all", day: str = "", db: Session = Depends(get_db)
@@ -3627,22 +3779,7 @@ def get_handout(
         source = "all"
 
     today = date.today()
-    # selectinload(Order.material) обов'язковий: `_matpair.html` викликає
-    # material_badge(order) на КОЖНІЙ роботі, а на видачі без фільтра дня їх
-    # ~1800. Виміряно на усталених значеннях (по 3 прогріті запити):
-    # без eager 3.8с, з ним 2.7с. Решта часу — не запити, а 3.1МБ HTML,
-    # який ця сторінка віддає одним шматком; це окрема задача.
-    candidates = db.scalars(
-        select(Order)
-        .options(selectinload(Order.material))
-        .where(Order.client_name.is_not(None), Order.status != "видано")
-    ).all()
-
-    eligible = [
-        order
-        for order in candidates
-        if (order_date := _parse_sheet_tab(order.sheet_tab)) is None or order_date < today
-    ]
+    eligible = _handout_eligible_orders(db, today)
 
     # Day chips (14.08, 15.08, …): every past day that still has unissued
     # client works. `day` narrows the whole screen to that one day — the
@@ -3678,28 +3815,8 @@ def get_handout(
     _export_root = Path(get_export_folder_path(db))
     _scan_started = time.monotonic()
     folder_names = list_export_client_names_cached(_export_root)
-
-    # Межа за датою — головний важіль швидкодії. Бойовий лог 27.08.26:
-    #   «262 клієнтів на екрані, 746 тек, 46148 записів, 511.42с»
-    # тобто ~176 партій на клієнта — роки накопичених папок на Synology, де
-    # кожна тека це мережева ходка. Але файли роботи НЕ МОЖУТЬ лежати в
-    # партії, створеній до появи самої роботи, а на екрані лише роботи за
-    # останні 30 днів. Тож рахуємо межу з найстарішої показаної роботи й
-    # даємо тиждень запасу на розбіжність годинників і дозаливки.
-    _oldest_shown = min(
-        (d for o in eligible if (d := _parse_sheet_tab(o.sheet_tab)) is not None),
-        default=None,
-    )
-    _not_before = (
-        datetime.combine(_oldest_shown, datetime.min.time()) - timedelta(days=7)
-        if _oldest_shown is not None
-        else None
-    )
-    entries: list = []          # наповнюється ліниво, по клієнту, нижче
-    aliases = {
-        a.sheet_name: a.export_folder_name
-        for a in db.scalars(select(ClientNameAlias).where(ClientNameAlias.confirmed.is_(True))).all()
-    }
+    _not_before = _handout_not_before(eligible)
+    entries: list = []          # наповнюється нижче, після обходу
     # Every client on this screen gets a card (idempotent), so «Клієнти» and the
     # handout always show the same people and the folder binding is always one
     # click away. Cheap next to the export scan above.
@@ -3720,18 +3837,13 @@ def get_handout(
         hit = match_client_name(folded, client_names, {}).matched_folder_name
         return clients_by_name.get(hit) if hit else None
 
+    matches = _handout_client_matches(db, list(groups), folder_names)
+    scanned = _scan_export_for_clients(_export_root, _matched_folders(matches), _not_before)
+
     client_groups = []
     for client_name, group_orders in groups.items():
-        match = match_client_name(client_name, folder_names, aliases)
-        # Глибина сховища читається ТІЛЬКИ для цього клієнта — і тільки якщо
-        # нечітке зіставлення взагалі знайшло його теку.
-        export_entries = (
-            scan_export_client_cached(
-                _export_root, match.matched_folder_name, _not_before
-            )
-            if match.matched_folder_name
-            else []
-        )
+        match = matches[client_name]
+        export_entries = scanned.get(client_name, [])
         entries.extend(export_entries)
         for entry in export_entries:
             entry.folder_uri = folder_to_file_uri(entry.folder_path)
@@ -4276,10 +4388,14 @@ def _ensure_client_profiles(db: Session, named_orders: list[Order]) -> int:
     # Stable order (sheet order, then name) so a batch of new cards lands in a
     # predictable sequence rather than SQLAlchemy's iteration order.
     order_names: list[str] = []
+    # Набір складок тримаємо окремо: перебудова його всередині циклу робила
+    # прохід квадратичним по кількості робіт.
+    order_name_folds: set[str] = set()
     for order in sorted(named_orders, key=_sheet_order_key):
         name = (order.client_name or "").strip()
-        if name and name.casefold() not in {n.casefold() for n in order_names}:
+        if name and name.casefold() not in order_name_folds:
             order_names.append(name)
+            order_name_folds.add(name.casefold())
 
     for name in order_names:
         if name.casefold() in seen:
@@ -4381,6 +4497,7 @@ def get_clients(
     if user is None:
         return RedirectResponse("/login", status_code=303)
 
+    _started = time.monotonic()
     named_orders = db.scalars(select(Order).where(Order.client_name.isnot(None))).all()
     _ensure_client_profiles(db, named_orders)
     clients = db.scalars(select(Client).order_by(Client.canonical_name)).all()
@@ -4392,10 +4509,14 @@ def get_clients(
         for a in db.scalars(select(ClientNameAlias).where(ClientNameAlias.confirmed.is_(True))).all()
     }
 
+    # Один прохід по роботах замість «кожен клієнт × кожна робота»: у таблиці
+    # кілька сотень різних написань імені на тисячі рядків, тож нечітке
+    # порівняння повторювалось намарно тисячі разів на кожен показ екрана.
+    name_index = index_orders_by_name(named_orders)
     client_rows = [
         {
             "client": client,
-            "order_count": len(find_matching_orders(client.canonical_name, named_orders)),
+            "order_count": count_matching_orders(client.canonical_name, name_index),
             "bound_folder": bound.get((client.canonical_name or "").strip().casefold()),
         }
         for client in clients
@@ -4436,6 +4557,12 @@ def get_clients(
         if selected_id else {}
     )
 
+    # Таймінг у лог з тієї ж причини, що й на видачі: «не відкривається» без
+    # цифри — це вгадування.
+    logger.info(
+        "Clients screen: %d клієнтів, %d робіт з іменем, %.2fс",
+        len(clients), len(named_orders), time.monotonic() - _started,
+    )
     return templates.TemplateResponse(
         request,
         "clients.html",
@@ -4523,12 +4650,17 @@ def _client_folder_options(db: Session, canonical_name: str) -> tuple[list[str],
 
     The guesses are the fuzzy candidates the handout screen already computes —
     surfaced here so binding is one click on the right name instead of hunting
-    through a few hundred folders."""
+    through a few hundred folders.
+
+    ПРОДУКТИВНІСТЬ: тут потрібні ЛИШЕ імена тек 1-го рівня. Раніше стояв
+    повний обхід дерева (`scan_export_folder_cached`) — і бойовий лог
+    27.08.26 показав ціну: «46148 записів, 511.42с» на Synology, тобто
+    `/clients` відкривався 4+ хвилини заради списку з 746 назв, який дає
+    один-єдиний scandir кореня."""
     try:
-        entries = scan_export_folder_cached(Path(get_export_folder_path(db)))
+        folder_names = sorted(list_export_client_names_cached(Path(get_export_folder_path(db))))
     except Exception:  # noqa: BLE001 — an unreachable export root must not 500 the card
-        entries = []
-    folder_names = sorted({e.client_folder_name for e in entries})
+        folder_names = []
 
     alias = db.scalar(
         select(ClientNameAlias).where(
