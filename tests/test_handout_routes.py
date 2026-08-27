@@ -4,6 +4,7 @@ fill cleared in the sheet. Mocks the sheet layer (open_spreadsheet,
 get_worksheet_by_name, clear_row_fills) so no real network is touched."""
 
 from datetime import date, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -883,3 +884,22 @@ class TestOneBatchPerRow:
             self._entry("mono a3.5", datetime(2026, 8, 27, 8, 5)),
         ]
         assert len(_entries_for_material("mono a3.5", entries, None)) == 2
+
+
+class TestRaiseExplorerWindow:
+    """Підняття вікна Провідника — best-effort і НЕ має нічого ламати.
+
+    Саму поведінку (згорнуте вікно → розгорнуте й активне) перевірено наживо
+    28.08.26 на Windows: ці тести лише стережуть, щоб помічник мовчки
+    здавався замість того, щоб валити відкриття теки, яке вже відбулось."""
+
+    def test_a_missing_window_just_times_out_quietly(self):
+        import time as _time
+
+        started = _time.monotonic()
+        web._raise_explorer_window(Path("Тека-якої-точно-немає"), timeout=0.05)
+        assert _time.monotonic() - started < 2
+
+    def test_an_empty_name_is_not_searched_for(self):
+        # Порожня ціль збіглася б із будь-яким вікном без заголовка.
+        web._raise_explorer_window(Path("   "), timeout=0.05)

@@ -569,6 +569,84 @@ def _open_folder_in_explorer(folder: Path) -> None:
     except Exception:  # noqa: BLE001 — Windows-only struct; never block the open
         startupinfo = None
     subprocess.Popen(["explorer", str(folder)], startupinfo=startupinfo)  # noqa: S603,S607
+    # Підказки вище — необхідні, але недостатні: `explorer.exe <шлях>` лише
+    # передає шлях УЖЕ ЗАПУЩЕНІЙ оболонці, а вікно створює вона, у своєму
+    # процесі. STARTUPINFO запущеного нами стабу на те вікно не діє, тож воно
+    # й далі з'являлось згорнутим або за браузером. Тому вікно піднімається
+    # окремо, коли з'явиться. У фоновому потоці: чекати на нього всередині
+    # запиту означало б тримати оператора на «крутилці» заради вікна, яке він
+    # і так уже бачить.
+    Thread(
+        target=_raise_explorer_window,
+        args=(folder,),
+        name="order-desk-raise-explorer",
+        daemon=True,
+    ).start()
+
+
+_EXPLORER_WINDOW_CLASSES = ("CabinetWClass", "ExploreWClass")
+_RAISE_WINDOW_TIMEOUT_SECONDS = 3.0
+
+
+def _raise_explorer_window(folder: Path, timeout: float = _RAISE_WINDOW_TIMEOUT_SECONDS) -> None:
+    """Розгорнути й винести наперед вікно Провідника для цієї теки.
+
+    Вікно з'являється не миттєво, тому шукаємо його з опитуванням до
+    `timeout`. Найкраще за все піднімає `SwitchToThisWindow`: на відміну від
+    `SetForegroundWindow`, він не спотикається об блокування переднього плану,
+    коли викликач — фоновий процес (а сервер саме такий). `ShowWindow` з
+    `SW_RESTORE` окремо потрібен для випадку, коли Провідник віддав уже
+    відкрите, але згорнуте вікно.
+
+    Повністю best-effort: будь-яка невдача тут не має псувати саме відкриття
+    теки, яке вже відбулось."""
+    if os.name != "nt":
+        return
+    target = (folder.name or str(folder)).strip().lower()
+    if not target:
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        enum_proc = ctypes.WINFUNCTYPE(
+            wintypes.BOOL, wintypes.HWND, wintypes.LPARAM
+        )
+
+        def _matches(hwnd) -> bool:
+            buffer = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(hwnd, buffer, 256)
+            if buffer.value not in _EXPLORER_WINDOW_CLASSES:
+                return False
+            title = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(hwnd, title, 512)
+            # Провідник дописує до назви теки локалізований суфікс
+            # («ExplorerRaiseTest — проводник»), тому порівняння на точну
+            # рівність не знаходило нічого — перевірено наживо 28.08.26.
+            head = title.value.split(" — ")[0].split(" - ")[0].strip().lower()
+            return head == target or title.value.strip().lower() == target
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            found: list[int] = []
+
+            def _callback(hwnd, _lparam):
+                if _matches(hwnd):
+                    found.append(hwnd)
+                    return False  # верхнє за z-порядком — те, що щойно відкрилось
+                return True
+
+            user32.EnumWindows(enum_proc(_callback), 0)
+            if found:
+                hwnd = found[0]
+                user32.ShowWindow(hwnd, 9)  # SW_RESTORE — розгорнути згорнуте
+                user32.SwitchToThisWindow(hwnd, True)
+                user32.SetForegroundWindow(hwnd)
+                return
+            time.sleep(0.1)
+    except Exception:  # noqa: BLE001 — тека вже відкрита; підняття вікна не критичне
+        logger.debug("Не вдалося підняти вікно Провідника", exc_info=True)
 
 
 def _check_path_status(raw_path: str) -> dict[str, str]:
