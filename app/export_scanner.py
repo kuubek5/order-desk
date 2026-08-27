@@ -45,7 +45,7 @@ class ExportEntry:
     Kept for later use (e.g., building a 'copy path' button), not used by scanning logic."""
 
 
-def scan_export_folder(root: Path) -> list[ExportEntry]:
+def scan_export_folder(root: Path, not_before: datetime | None = None) -> list[ExportEntry]:
     """Scan the export folder tree and return a flat list of ExportEntry objects.
 
     Walks exactly 3 levels deep: client / batch / material-color.
@@ -66,7 +66,7 @@ def scan_export_folder(root: Path) -> list[ExportEntry]:
     return [
         entry
         for name in list_export_client_names(root)
-        for entry in scan_export_client(root, name)
+        for entry in scan_export_client(root, name, not_before)
     ]
 
 
@@ -108,8 +108,19 @@ def list_export_client_names(root: Path) -> list[str]:
     return sorted(names)
 
 
-def scan_export_client(root: Path, client_folder_name: str) -> list[ExportEntry]:
-    """Партії/матеріали/файли ОДНОГО клієнта."""
+def scan_export_client(
+    root: Path, client_folder_name: str, not_before: datetime | None = None
+) -> list[ExportEntry]:
+    """Партії/матеріали/файли ОДНОГО клієнта.
+
+    `not_before` відсікає старі партії, НЕ заходячи в них. Це головний важіль
+    швидкодії: у бойовому логу 27.08.26 повний обхід дав
+    «46148 записів, 511.42с» — 262 клієнти по ~176 партій кожен, тобто роки
+    накопичених папок. Видача показує роботи за останні 30 днів, і файли
+    не можуть лежати в партії, створеній ДО появи роботи. Час створення
+    scandir віддає безкоштовно разом зі списком теки, тож відсів коштує нуль
+    ходок, а економить тисячі.
+    """
     client_root = Path(root) / client_folder_name
     entries: list[ExportEntry] = []
 
@@ -120,6 +131,10 @@ def scan_export_client(root: Path, client_folder_name: str) -> list[ExportEntry]
             created_at = datetime.fromtimestamp(batch.stat().st_ctime)
         except (OSError, PermissionError, ValueError, OverflowError):
             # без часу створення партію не відрізнити від сусідньої
+            continue
+
+        # Стару партію пропускаємо ДО того, як зазирнути всередину.
+        if not_before is not None and created_at < not_before:
             continue
 
         for material in _dir_entries(batch.path):
@@ -198,10 +213,12 @@ def list_export_client_names_cached(root: Path) -> list[str]:
     return _cached(("names", str(root)), lambda: list_export_client_names(root))
 
 
-def scan_export_client_cached(root: Path, client_folder_name: str) -> list[ExportEntry]:
+def scan_export_client_cached(
+    root: Path, client_folder_name: str, not_before: datetime | None = None
+) -> list[ExportEntry]:
     return _cached(
-        ("client", str(root), client_folder_name),
-        lambda: scan_export_client(root, client_folder_name),
+        ("client", str(root), client_folder_name, not_before),
+        lambda: scan_export_client(root, client_folder_name, not_before),
     )
 
 

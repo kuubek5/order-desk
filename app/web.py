@@ -3678,6 +3678,23 @@ def get_handout(
     _export_root = Path(get_export_folder_path(db))
     _scan_started = time.monotonic()
     folder_names = list_export_client_names_cached(_export_root)
+
+    # Межа за датою — головний важіль швидкодії. Бойовий лог 27.08.26:
+    #   «262 клієнтів на екрані, 746 тек, 46148 записів, 511.42с»
+    # тобто ~176 партій на клієнта — роки накопичених папок на Synology, де
+    # кожна тека це мережева ходка. Але файли роботи НЕ МОЖУТЬ лежати в
+    # партії, створеній до появи самої роботи, а на екрані лише роботи за
+    # останні 30 днів. Тож рахуємо межу з найстарішої показаної роботи й
+    # даємо тиждень запасу на розбіжність годинників і дозаливки.
+    _oldest_shown = min(
+        (d for o in eligible if (d := _parse_sheet_tab(o.sheet_tab)) is not None),
+        default=None,
+    )
+    _not_before = (
+        datetime.combine(_oldest_shown, datetime.min.time()) - timedelta(days=7)
+        if _oldest_shown is not None
+        else None
+    )
     entries: list = []          # наповнюється ліниво, по клієнту, нижче
     aliases = {
         a.sheet_name: a.export_folder_name
@@ -3709,7 +3726,9 @@ def get_handout(
         # Глибина сховища читається ТІЛЬКИ для цього клієнта — і тільки якщо
         # нечітке зіставлення взагалі знайшло його теку.
         export_entries = (
-            scan_export_client_cached(_export_root, match.matched_folder_name)
+            scan_export_client_cached(
+                _export_root, match.matched_folder_name, _not_before
+            )
             if match.matched_folder_name
             else []
         )
@@ -3791,8 +3810,9 @@ def get_handout(
     # відкривається» доводиться вгадувати (так і сталось 27.08.26).
     logger.info(
         "Handout export scan: %d клієнтів на екрані, %d тек у сховищі, "
-        "%d записів, %.2fс",
+        "%d записів, партії від %s, %.2fс",
         len(groups), len(folder_names), len(entries),
+        _not_before.date() if _not_before else "усі",
         time.monotonic() - _scan_started,
     )
     return templates.TemplateResponse(

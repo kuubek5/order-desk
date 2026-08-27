@@ -580,9 +580,9 @@ def test_handout_reads_only_the_clients_on_screen(monkeypatch, tmp_path):
     deep_reads = []
     real_deep = export_scanner.scan_export_client
 
-    def counting_deep(r, name):
+    def counting_deep(r, name, not_before=None):
         deep_reads.append(name)
-        return real_deep(r, name)
+        return real_deep(r, name, not_before)
 
     monkeypatch.setattr(web, "scan_export_client_cached", counting_deep)
     monkeypatch.setattr(

@@ -399,3 +399,70 @@ class TestExportScanCache:
 
         export_scanner.clear_export_cache()
         assert export_scanner.scan_export_folder_cached(tmp_path / "немає") == []
+
+
+class TestBatchDateCutoff:
+    """Регрес-гард для «46148 записів, 511.42с» (бойовий лог 27.08.26).
+
+    На Synology у клієнта накопичуються РОКИ партій (~176 на клієнта), а
+    видача показує роботи за 30 днів. Стару партію треба пропускати, НЕ
+    заходячи в неї: час створення scandir віддає безкоштовно, а кожна тека
+    всередині — це окрема мережева ходка."""
+
+    def _batch(self, root, client, name, age_days, materials=("mono a3", "pmma A2")):
+        import os
+        import time as _t
+        for m in materials:
+            (root / client / name / m).mkdir(parents=True)
+            (root / client / name / m / "crown.stl").write_bytes(b"x")
+        stamp = _t.time() - age_days * 86400
+        os.utime(root / client / name, (stamp, stamp))
+
+    def test_old_batches_are_not_descended_into(self, tmp_path, monkeypatch):
+        """Перевіряємо саме РІШЕННЯ пропустити, а не файлову систему:
+        os.utime міняє час зміни, а код дивиться на час СТВОРЕННЯ, який на
+        Windows окремий і засобами тесту не підробляється."""
+        from datetime import datetime, timedelta
+        from types import SimpleNamespace
+        from app import export_scanner
+
+        now = datetime.now().timestamp()
+        old = now - 200 * 86400
+
+        def fake_batch(name, ctime):
+            return SimpleNamespace(
+                name=name,
+                path=str(tmp_path / name),
+                is_dir=lambda: True,
+                stat=lambda: SimpleNamespace(st_ctime=ctime),
+            )
+
+        batches = [fake_batch(f"стара-{i:02d}", old) for i in range(20)]
+        batches.append(fake_batch("свіжа", now - 3 * 86400))
+
+        opened = []
+
+        def fake_entries(path):
+            opened.append(str(path))
+            # корінь клієнта віддає партії; глибше — порожньо
+            return batches if str(path).endswith("Люмі") else []
+
+        monkeypatch.setattr(export_scanner, "_dir_entries", fake_entries)
+        export_scanner.scan_export_client(
+            tmp_path, "Люмі", datetime.now() - timedelta(days=30)
+        )
+
+        assert not any("стара-" in p for p in opened), (
+            f"у старі партії заходили: {[p for p in opened if 'стара-' in p][:3]}"
+        )
+        assert any("свіжа" in p for p in opened), "свіжу партію мали прочитати"
+
+    def test_without_cutoff_everything_is_read(self, tmp_path):
+        from app import export_scanner
+
+        export_scanner.clear_export_cache()
+        self._batch(tmp_path, "Люмі", "стара", age_days=400)
+        self._batch(tmp_path, "Люмі", "свіжа", age_days=1)
+
+        entries = export_scanner.scan_export_client(tmp_path, "Люмі")
+        assert {e.batch_folder_name for e in entries} == {"стара", "свіжа"}
