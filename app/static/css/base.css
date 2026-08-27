@@ -4914,8 +4914,11 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .works{display:flex;flex-direction:column}
 .handoutv2 .wrow{display:flex;align-items:center;gap:12px;padding:8px 0;min-height:38px}
 .handoutv2 .wrow+.wrow{border-top:1px solid #1b2431}
+/* Знайдено ≠ скасовано. Перекреслений Sum3D ID читався як «цього ID більше
+   немає», хоча його ще звіряють: рядок лишається робочим до видачі, а сам
+   ID оператор порівнює з наміченим у Sum3D. Стан каже галочка й приглушення
+   рядка — цього досить. */
 .handoutv2 .wrow.found{opacity:.55}
-.handoutv2 .wrow.found .wsum{text-decoration:line-through}
 .handoutv2 .wcheck{flex:0 0 21px;width:26px;height:26px;border-radius:6px;border:1.5px solid var(--line-2);background:#111823;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .handoutv2 .wcheck svg{width:12px;height:12px;stroke:var(--bg);fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity var(--ui-speed) ease}
 .handoutv2 .wcheck:hover{border-color:var(--accent-b)}
