@@ -482,7 +482,7 @@ document.addEventListener("click", (event) => {
   applyHandoutView(mode);
 });
 
-document.addEventListener("DOMContentLoaded", () => {
+function restoreHandoutView() {
   if (!document.querySelector("[data-view-root]")) return;
   let saved = "rows";
   try {
@@ -491,6 +491,13 @@ document.addEventListener("DOMContentLoaded", () => {
     /* ignore */
   }
   applyHandoutView(saved);
+}
+
+document.addEventListener("DOMContentLoaded", restoreHandoutView);
+// Відмітка «знайдено» підмінює список карток через HTMX, а `as-tiles` живе на
+// самому списку — без цього кожна галочка мовчки скидала «Плитки» на «Рядки».
+document.body.addEventListener("htmx:afterSwap", (event) => {
+  if (event.target && event.target.id === "handout-list") restoreHandoutView();
 });
 
 // Mail triage: highlight the row whose letter is open in the right-hand detail

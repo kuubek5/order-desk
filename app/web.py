@@ -3971,14 +3971,13 @@ def _matched_folders(matches: dict) -> dict[str, str]:
     }
 
 
-@app.get("/handout", response_class=HTMLResponse)
-def get_handout(
-    request: Request, source: str = "all", day: str = "", db: Session = Depends(get_db)
-):
-    user = get_current_user(request, db)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
+def _handout_context(request: Request, user, source: str, day: str, db: Session) -> dict:
+    """Усе, що показує екран видачі.
 
+    Винесено з роута, бо відмітка «знайдено» тепер підмінює список карток
+    через HTMX і мусить будувати рівно те саме, що й повне відкриття екрана —
+    інакше після галочки прогрес, кнопка «Видати N з M» чи позначка поточного
+    клієнта розійшлися б із рештою сторінки."""
     if source not in HANDOUT_SOURCE_FILTERS:
         source = "all"
 
@@ -4143,10 +4142,7 @@ def get_handout(
         _not_before.date() if _not_before else "усі",
         time.monotonic() - _scan_started,
     )
-    return templates.TemplateResponse(
-        request,
-        "handout.html",
-        {
+    return {
             "page_title": "Ранкова видача",
             "user": user,
             "client_groups": client_groups,
@@ -4165,7 +4161,31 @@ def get_handout(
             "done_groups": done_groups,
             "total_groups": len(client_groups),
             "unbound_count": unbound_count,
-        },
+    }
+
+
+@app.get("/handout", response_class=HTMLResponse)
+def get_handout(
+    request: Request, source: str = "all", day: str = "", db: Session = Depends(get_db)
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse(
+        request, "handout.html", _handout_context(request, user, source, day, db)
+    )
+
+
+def _handout_cards_response(request: Request, user, source: str, day: str, db: Session):
+    """Лише список карток — відповідь на HTMX-відмітку.
+
+    Сторінка НЕ перезавантажується, тому екран лишається рівно там, де
+    оператор його прокрутив. Раніше кожна галочка йшла звичайною формою з
+    редіректом, і після кожної екран смикався на початок — на видачі, де
+    йдуть списком згори вниз і клацають підряд, це збивало саме те, заради
+    чого екран і робився."""
+    return templates.TemplateResponse(
+        request, "_handout_cards.html", _handout_context(request, user, source, day, db)
     )
 
 
@@ -4277,6 +4297,11 @@ async def mark_found(
     # white, per the lab's colour convention. У фоні: галочка має ставитись
     # миттєво, бо оператор клацає їх підряд.
     _set_client_row_fill_background(order.id, blue=False)
+    # HTMX-клік підмінює лише список карток — сторінка не перезавантажується,
+    # тож скрол лишається там, де оператор його поставив. Редірект лишається
+    # для звичайної форми (без JS) і для прямих переходів.
+    if request.headers.get("HX-Request"):
+        return _handout_cards_response(request, user, source, day, db)
     return RedirectResponse(_handout_back_url(source, day), status_code=303)
 
 
@@ -4310,6 +4335,11 @@ async def unmark_found(
     # portal status stay consistent (a white fill + "нове" would otherwise be
     # read as issued on the next sync). Так само у фоні.
     _set_client_row_fill_background(order.id, blue=True)
+    # HTMX-клік підмінює лише список карток — сторінка не перезавантажується,
+    # тож скрол лишається там, де оператор його поставив. Редірект лишається
+    # для звичайної форми (без JS) і для прямих переходів.
+    if request.headers.get("HX-Request"):
+        return _handout_cards_response(request, user, source, day, db)
     return RedirectResponse(_handout_back_url(source, day), status_code=303)
 
 

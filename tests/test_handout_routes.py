@@ -32,9 +32,15 @@ def _user(db: Session) -> User:
     return user
 
 
-def _request(user_id: int | None):
+def _request(user_id: int | None, headers: dict | None = None):
+    """`headers` — щоб перевіряти HTMX-гілку: відмітка «знайдено» з HX-Request
+    віддає фрагмент списку замість редіректу."""
     session = {} if user_id is None else {"user_id": user_id}
-    return SimpleNamespace(session=session, client=SimpleNamespace(host="127.0.0.1"))
+    return SimpleNamespace(
+        session=session,
+        client=SimpleNamespace(host="127.0.0.1"),
+        headers=headers or {},
+    )
 
 
 YESTERDAY = (date.today() - timedelta(days=1)).strftime("%d.%m.%y")
@@ -983,3 +989,74 @@ class TestMarkFoundIsInstant:
                 )
             )
         assert seen_status == {"dirty": False}
+
+
+class TestScrollStaysPut:
+    """Відмітка «знайдено» не має перезавантажувати сторінку.
+
+    Скарга оператора 28.08.26: «екран смикається наверх». Кожна галочка йшла
+    звичайною формою з редіректом на /handout, тобто повним перезавантаженням
+    — а оператор іде списком згори вниз і клацає їх підряд. Тепер HTMX
+    підмінює лише список карток.
+
+    Шаблони тут рендеряться ПО-СПРАВЖНЬОМУ (без підміни TemplateResponse):
+    помилка в партіалі інакше знайшлась би вже в оператора."""
+
+    def _screen(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(web, "get_export_folder_path", lambda db: str(tmp_path))
+        monkeypatch.setattr(web, "list_export_client_names_cached", lambda root: [])
+
+    def test_an_htmx_mark_returns_the_card_list_not_a_redirect(self, monkeypatch, tmp_path):
+        engine = _database()
+        self._screen(monkeypatch, tmp_path)
+        monkeypatch.setattr(web, "_set_client_row_fill_background", lambda order_id, *, blue: None)
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            db.add(_client_order(client_name="Basarab", status="нове", sheet_tab=YESTERDAY))
+            db.commit()
+            order = db.scalar(select(Order))
+
+            import asyncio
+            resp = asyncio.run(
+                web.mark_found(
+                    request=_request(user.id, headers={"HX-Request": "true"}),
+                    order_id=order.id, source="all", day=YESTERDAY, db=db,
+                )
+            )
+            assert resp.status_code == 200
+            body = resp.body.decode("utf-8")
+            assert 'id="handout-list"' in body
+            # Це ФРАГМЕНТ, не сторінка — інакше HTMX вставив би сторінку в себе.
+            assert "<html" not in body.lower()
+
+    def test_a_plain_form_still_redirects(self, monkeypatch, tmp_path):
+        """Без JS форма мусить працювати по-старому."""
+        engine = _database()
+        self._screen(monkeypatch, tmp_path)
+        monkeypatch.setattr(web, "_set_client_row_fill_background", lambda order_id, *, blue: None)
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            db.add(_client_order(client_name="Basarab", status="нове", sheet_tab=YESTERDAY))
+            db.commit()
+            order = db.scalar(select(Order))
+
+            import asyncio
+            resp = asyncio.run(
+                web.mark_found(
+                    request=_request(user.id), order_id=order.id,
+                    source="all", day=YESTERDAY, db=db,
+                )
+            )
+        assert resp.status_code == 303
+
+    def test_the_full_page_still_renders_with_the_partial(self, monkeypatch, tmp_path):
+        engine = _database()
+        self._screen(monkeypatch, tmp_path)
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            db.add(_client_order(client_name="Basarab", status="нове", sheet_tab=YESTERDAY))
+            db.commit()
+            resp = web.get_handout(request=_request(user.id), day="", db=db)
+        body = resp.body.decode("utf-8")
+        assert 'id="handout-list"' in body
+        assert "Basarab" in body
