@@ -1,0 +1,35 @@
+{# Матеріал і колір — ОДНЕ маркування з двох половин, як на коробці матеріалу.
+   Спільний партіал: черга (_order_row.html) і ранкова видача (handout.html)
+   мусять говорити про матеріал однаково. До цього видача друкувала сирий
+   `material_color` — 130 різних варіантів чіпа на 1801 рядок, де `mono a3.5`,
+   `mono a3,5` і `mono a35` жили як три різні значення. А саме видача — той
+   екран, де оператор звіряє фізичну коронку за матеріалом і кольором.
+
+   Обидва режими («Маркування» / «Технічний код», перемикач у панелі «Вигляд»
+   черги) малюються з ЦІЄЇ САМОЇ розмітки — перемикає лише CSS через
+   body[data-matstyle]. Тому зміна режиму не робить запиту й не перерендерює
+   рядок.
+
+   Очікує в контексті: `order` з полями material / material_color. #}
+{% set _mat = material_badge(order) %}
+{% set _word, _code = split_material_color(order.material_color) %}
+{% set _mt = _mat.title if _mat else None %}
+{% set _word = strip_material_word(_word, _mt, true) %}
+{% set _plain = strip_material_word(order.material_color, _mt) %}
+{% if _mat or order.material_color %}
+<span class="matpair {{ _mat.cls if _mat else 'mat-none' }}">
+    {# Слот ключа рендериться ЗАВЖДИ, навіть порожнім: саме його фіксовані
+       42px тримають спільну ліву межу значень. Без нього рядки «Не матеріал»
+       з'їжджали на 42px ліворуч і колонка переставала бути стовпчиком. #}
+    <span class="mp-k"{% if _mat %} title="{{ _mat.title }}"{% endif %}>{{ _mat.symbol if _mat else '' }}</span>
+    {% if order.material_color %}
+    {# title потрібен, бо при вузькій колонці довгі значення обрізаються
+       трикрапкою — без нього «титан штрауман репліка» не відновити ніяк.
+       Назва матеріалу опускається, коли ключ уже її промовив: `PMMA │ пмма A2`
+       називало матеріал двічі. #}
+    <span class="mp-v" title="{{ order.material_color }}">{% if _code %}{% if _word %}<span class="mp-word">{{ _word }}</span> {% endif %}<span class="mp-code">{{ _code }}</span>{% else %}<span class="mp-code">{{ _plain }}</span>{% endif %}</span>
+    {% endif %}
+</span>
+{% else %}
+<span class="text-muted">—</span>
+{% endif %}

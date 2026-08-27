@@ -43,11 +43,15 @@ body {
    pins the origin to the group's own bounding-box centre (the disc centre after
    the parent translate), so it spins in place rather than orbiting. Very slow
    and low-contrast on purpose — ambient motion, not a focal point. */
+/* Обертання й пульсацію радара ВИМКНЕНО. На черзі одночасно крутились три
+   нескінченні петлі (radar-spin 120s, radar-ticks-pulse 4s, q2beacon 2.6s)
+   на екрані, який відкритий цілий день біля верстатів. Правило «один живий
+   сигнал на екран» виведене на тріажі (CLAUDE.md п.14) — сигналом лишається
+   маячок «черга жива», бо він щось означає. Радар — декорація, до того ж
+   метафора авіадиспетчера, а не фрезерування. Графіка лишається статичною. */
 .radar-spin {
   transform-box: fill-box;
   transform-origin: center;
-  animation: radar-spin 120s linear infinite;
-  will-change: transform;
 }
 
 @keyframes radar-spin {
@@ -60,7 +64,7 @@ body {
    rotation. Opacity plus a teal drop-shadow pulse together so the dashes
    clearly brighten and bloom, then dim back, rather than shift position. */
 .radar-ticks {
-  animation: radar-ticks-pulse 4s ease-in-out infinite;
+  opacity: 0.35;
 }
 
 @keyframes radar-ticks-pulse {
@@ -1653,58 +1657,17 @@ li {
   background-color: rgba(232, 90, 90, 0.07);
 }
 
-/* Той самий титан/пмма розподіл (див. .chip-titan/.chip-pmma вище), але на
-   весь рядок, не лише чип. Bare-клас (без .queue-row у селекторі) навмисно —
-   специфічність (0,1,0) дорівнює .queue-row-overdue/.queue-row-email, тому
-   пріоритет у каскаді визначає лише порядок оголошення нижче: прострочення
-   й джерело важливіші за матеріал, тому їхні override-правила йдуть після. */
-.chip-titan {
-  background-color: rgba(150, 224, 168, 0.05);
-}
-
-.chip-titan:hover {
-  background-color: rgba(150, 224, 168, 0.08);
-}
-
-.chip-pmma {
-  background-color: rgba(232, 224, 120, 0.05);
-}
-
-.chip-pmma:hover {
-  background-color: rgba(232, 224, 120, 0.08);
-}
-
-.queue-row-overdue.chip-titan,
-.queue-row-overdue.chip-pmma {
+/* Прострочене й «пошта» — операційні стани рядка, вони й лишаються
+   єдиними власниками фону. Матеріал звідси прибрано: він тонував рядок
+   лише для 2 родин із 5, третьою палітрою (не тією, що в маркуванні), і
+   конкурував з тими самими станами. Матеріал тепер живе виключно в
+   `.matpair .mp-k` — символ плюс колір, з текстовим дублем для тих, хто
+   не розрізняє відтінки. */
+.queue-row-overdue.queue-row-email {
   background-color: rgba(232, 90, 90, 0.04);
 }
 
-.queue-row-overdue.chip-titan:hover,
-.queue-row-overdue.chip-pmma:hover {
-  background-color: rgba(232, 90, 90, 0.07);
-}
-
-/* Source is the primary row category; keep it visible when material also has
-   a tint. Overdue remains the stronger operational state above. */
-.queue-row-email.chip-titan,
-.queue-row-email.chip-pmma {
-  background-color: var(--color-email-surface);
-}
-
-.queue-row-email.chip-titan:hover,
-.queue-row-email.chip-pmma:hover {
-  background-color: rgba(134, 212, 206, 0.12);
-}
-
-.queue-row-overdue.queue-row-email,
-.queue-row-overdue.queue-row-email.chip-titan,
-.queue-row-overdue.queue-row-email.chip-pmma {
-  background-color: rgba(232, 90, 90, 0.04);
-}
-
-.queue-row-overdue.queue-row-email:hover,
-.queue-row-overdue.queue-row-email.chip-titan:hover,
-.queue-row-overdue.queue-row-email.chip-pmma:hover {
+.queue-row-overdue.queue-row-email:hover {
   background-color: rgba(232, 90, 90, 0.07);
 }
 
@@ -3682,6 +3645,10 @@ main.q2{
 .q2 .live{display:inline-flex;align-items:center;gap:7px}
 .q2 .live .beacon{width:6px;height:6px;border-radius:50%;background:var(--accent-b);box-shadow:0 0 0 0 rgba(45,212,191,.55);animation:q2beacon var(--beacon-duration) ease-out infinite}
 @keyframes q2beacon{0%{box-shadow:0 0 0 0 rgba(45,212,191,.5)}70%{box-shadow:0 0 0 7px rgba(45,212,191,0)}100%{box-shadow:0 0 0 0 rgba(45,212,191,0)}}
+/* Єдина нескінченна петля без захисту — решта 14 його мали. */
+@media (prefers-reduced-motion: reduce){
+  .q2 .live .beacon,.mailv2 .live .beacon{animation:none}
+}
 .q2 .head-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
 
 .q2 .btn{
@@ -3773,14 +3740,14 @@ main.q2{
 body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--enter-duration,.32s) ease both}
 .q2 .layout-controls .lc-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .q2 .layout-controls .lc-hint{font-size:11.5px;color:var(--ink-3)}
-.q2 .layout-controls .density-seg button{
+.q2 .layout-controls .seg button{
   appearance:none;border:0;background:none;cursor:pointer;
   padding:5px 11px;border-radius:999px;color:var(--ink-2);font:500 12px var(--font-body);
   transition:color var(--ui-speed) ease,background var(--ui-speed) ease;
 }
-.q2 .layout-controls .density-seg button:hover{color:var(--ink);background:#1d2734}
-.q2 .layout-controls .density-seg button.is-active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
-.q2 .layout-controls .density-seg button:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+.q2 .layout-controls .seg button:hover{color:var(--ink);background:#1d2734}
+.q2 .layout-controls .seg button.is-active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
+.q2 .layout-controls .seg button:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 .q2 .layout-controls .lc-reset{margin-left:auto;cursor:pointer}
 .q2 .layout-controls .lc-reset:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 
@@ -3950,7 +3917,11 @@ body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
    фокусі, як і решта «тихих доти, доки не потрібні» контролів у рядку. Вузький
    під короткий код; функціонал (ввід + Enter/blur) незмінний. */
 .q2 .operator-input{
-  width:34px;height:21px;padding:0 4px;border-radius:5px;background:transparent;border:1px solid transparent;
+  /* Нижня лінія — афорданс «сюди пишуть». У спокої поле не мало ЖОДНОЇ
+     межі (1.00:1) і читалось як текст. Повна рамка на 49 рядках
+     забоксувала б таблицю; одна лінія коштує піксель. */
+  width:34px;height:21px;padding:0 4px;border-radius:5px;background:transparent;
+  border:1px solid transparent;border-bottom-color:var(--control-edge);
   color:var(--ink);font-family:var(--font-mono);font-size:11px;outline:none;
   transition:border-color .12s ease,background .12s ease;
 }
@@ -4038,9 +4009,14 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .kindbtn:hover{color:var(--accent-c);opacity:1}
 .q2 .sum3d-form{display:inline-flex;gap:4px;align-items:center}
 .q2 .sum3d-input{
-  width:74px;height:26px;padding:0 8px;border-radius:6px;background:#111823;border:1px solid var(--line);
+  width:74px;height:26px;padding:0 8px;border-radius:6px;background:#111823;
+  /* Межа тут Є афордансом (сюди пишуть Sum3D ID), тож --control-edge:
+     на --line виходило 1.12:1 — поле не читалось як поле. */
+  border:1px solid var(--control-edge);
   color:var(--ink);font-family:var(--font-mono);font-size:11.5px;outline:none;
 }
+/* Плейсхолдер лишався сірим кольором браузера rgb(117,117,117) = 3.87:1. */
+.q2 .sum3d-input::placeholder{color:var(--ink-3);opacity:1}
 .q2 .sum3d-input:focus{border-color:rgba(45,212,191,.45)}
 .q2 .sum3d-clear{width:22px;height:26px;flex:0 0 22px;border:0;background:none;cursor:pointer;
   color:var(--ink-3);font-size:12px;line-height:1;border-radius:6px;padding:0;opacity:0;
@@ -4204,8 +4180,20 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .detail-backdrop{position:fixed;inset:0;background:rgba(5,8,12,.6);opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:70}
 .detail-backdrop.open{opacity:1;pointer-events:auto}
 
-@media (max-width:1200px){ .q2 .side-panel{flex:0 0 260px;width:260px} }
-@media (max-width:940px){
+/* Бічна панель складається під таблицю ТАМ, ДЕ ПОЧИНАЄ КОШТУВАТИ КОЛОНОК,
+   а не на телефонному брейкпоінті. Виміряно на реальних 49 рядках:
+   таблиця має власну ширину 1120px + 296px панелі + проміжки.
+
+     1920 → приховано 0      (робочий монітор — панель поруч, усе видно)
+     1600 → приховано 123px
+     1440 → приховано 283px
+     1280 → приховано 443px  (ховаються Технік, Коментар, Sum3D ID, Оператор)
+
+   Раніше панель лишалась збоку аж до 940px, тобто на ноутбуці чи в
+   половині екрана оператор втрачав Sum3D ID — поле, заради якого чергу
+   й відкривають. Тепер нижче 1650px вона стає горизонтальною смугою під
+   таблицею: лічильники видно, ширину таблиця забирає собі. */
+@media (max-width:1650px){
   .q2 .worklayout{flex-direction:column}
   .q2 .side-panel{flex:0 0 auto;width:100%;flex-direction:row;flex-wrap:wrap}
   .q2 .side-sec{flex:1 1 260px}
@@ -4775,7 +4763,9 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .handout-days{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
 .handoutv2 .day-chip{height:30px;padding:0 14px;border-radius:999px;display:inline-flex;align-items:center;
   font-family:var(--font-mono);font-size:12.5px;color:var(--ink-2);text-decoration:none;
-  background:var(--card);border:1px solid var(--line);transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease}
+  /* Межа тут Є афордансом (це <a>, ним обирають день): на --line
+     виходило 1.20:1 і чіп не читався як клікабельний. */
+  background:var(--card);border:1px solid var(--control-edge);transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .handoutv2 .day-chip:hover{color:var(--ink);border-color:var(--line-2)}
 .handoutv2 .day-chip.active{background:rgba(20,184,166,.16);color:var(--accent-c);border-color:rgba(45,212,191,.42)}
 /* Кількість і день у рядку роботи. */
@@ -5260,22 +5250,81 @@ main.worldv2.search-wide .search-form{max-width:900px}
 }
 
 
-/* ── Бейджі матеріалів (черга, картка, видача) ───────────────────────────
-   Компактна моно-пігулка з символом матеріалу. Палітра погоджена з Романом:
-   кожен матеріал має свій відтінок, окремий від бірюзового UI-акценту. */
-.matbadge{
-  display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:999px;
-  font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.02em;
-  line-height:1;white-space:nowrap;vertical-align:middle;margin-right:6px;
-  border:1px solid transparent;
+
+/* ── Матеріал + Колір: одне маркування з двох половин ────────────────────
+   Замінює пару «бейдж + окремий чіп» у черзі. Причина: колір кодувався
+   двічі (бейдж мав свою палітру, чіп — свою, і лише для 2 матеріалів із 5),
+   а сам чіп із рамкою й фіксованою шириною читався як поле вводу — поруч
+   у стовпці SUM3D стоять справжні редаговані поля.
+
+   ДВА РЕЖИМИ з однієї розмітки, перемикач «Колір роботи» в панелі «Вигляд»:
+     (типово)                  — «Маркування»: зрощена пара
+     body[data-matstyle=code]  — «Технічний код»: без коробки, моноширинний
+
+   Ширина ключа фіксована (42px) — саме вона вирівнює колонку, тобто задає
+   спільну ліву межу для значень. Найдовший символ — `PMMA`, 4 знаки. */
+.q2 .matpair{--matpair-fs:var(--queue-density-font,12.5px)}
+.matpair{
+  display:inline-flex;align-items:stretch;vertical-align:middle;
+  height:var(--matpair-h,22px);border-radius:5px;overflow:hidden;max-width:100%;
 }
-.matbadge.mat-zr{color:#8fbfe0;background:rgba(143,191,224,.13);border-color:rgba(143,191,224,.42)}
-.matbadge.mat-pmma{color:#d8b46a;background:rgba(216,180,106,.13);border-color:rgba(216,180,106,.42)}
-.matbadge.mat-ti{color:#4fb477;background:rgba(79,180,119,.14);border-color:rgba(79,180,119,.44)}
-.matbadge.mat-slm{color:#9aa7b4;background:rgba(154,167,180,.14);border-color:rgba(154,167,180,.42)}
-.matbadge.mat-wax{color:#d99bb0;background:rgba(217,155,176,.14);border-color:rgba(217,155,176,.44)}
-.matbadge.mat-other{color:var(--ink-2);background:var(--card-2);border-color:var(--line-2)}
-.matbadge.mat-unknown{color:#6b7684;background:rgba(107,118,132,.10);border:1px dashed rgba(107,118,132,.6)}
+.matpair .mp-k{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:42px;padding:0 7px;flex:0 0 auto;border-radius:5px;
+  /* Символ теж масштабується щільністю: був прибитий до 10px, тож
+     «Просторий» збільшував значення і НЕ збільшував ключ. */
+  font-family:var(--font-mono);font-size:calc(var(--matpair-fs,12.5px) - 2.5px);
+  font-weight:600;letter-spacing:.07em;
+  line-height:1;
+}
+.matpair .mp-v{
+  display:inline-flex;align-items:center;padding:0 9px;min-width:0;
+  font-size:var(--matpair-fs,12.5px);color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.matpair .mp-word,.matpair .mp-code{font-style:normal;font-weight:inherit}
+
+/* Відтінки матеріалів — ті самі, що були в бейджі (погоджені з Романом:
+   Zr крижаний блакитний, PMMA бурштин, Ti смарагд, SLM сталь, Wax троянда). */
+.matpair.mat-zr .mp-k{color:#8fbfe0;background:rgba(143,191,224,.20)}
+.matpair.mat-pmma .mp-k{color:#d8b46a;background:rgba(216,180,106,.20)}
+.matpair.mat-ti .mp-k{color:#63c88b;background:rgba(79,180,119,.21)}
+.matpair.mat-slm .mp-k{color:#9aa7b4;background:rgba(154,167,180,.21)}
+.matpair.mat-wax .mp-k{color:#d99bb0;background:rgba(217,155,176,.21)}
+.matpair.mat-other .mp-k{color:var(--ink-2);background:var(--card-3)}
+/* «Не визначено» лишається пунктиром: пунктир і Є повідомленням про
+   невизначеність, суцільна межа тут збрехала б. */
+.matpair.mat-unknown .mp-k{
+  color:var(--ink-2);background:rgba(107,118,132,.16);
+  box-shadow:inset 0 0 0 1px rgba(143,163,187,.55);
+}
+/* Матеріал не розпізнано взагалі — половини ключа немає, лишається значення. */
+/* «Не матеріал» (етапні/деталеві рядки): символу немає, але місце ключа
+   лишається зайнятим порожнім слотом — інакше значення таких рядків
+   з'їжджало на 42px ліворуч і колонка переставала бути стовпчиком. */
+.matpair.mat-none .mp-k{background:none;box-shadow:none}
+
+/* ── Режим «Технічний код» ───────────────────────────────────────────────
+   Коробка зникає повністю: колір — це дані для читання, не контрол.
+   Символ матеріалу лишається кольоровим (він і несе матеріал), значення
+   стає моноширинним, а назва притишується, щоб код читався першим. */
+body[data-matstyle="code"] .matpair{border:0;border-radius:0;height:auto;align-items:baseline;gap:9px}
+body[data-matstyle="code"] .matpair .mp-k{
+  min-width:34px;padding:0;justify-content:flex-start;font-size:10.5px;background:none;
+}
+body[data-matstyle="code"] .matpair .mp-v{
+  padding:0;background:none;font-family:var(--font-mono);letter-spacing:.02em;
+  /* Моноширинний на пів пікселя вужчий за Golos — тому на крок менший, але
+     ВІД щільності, а не прибитий: інакше «Просторий» не діяв саме в режимі,
+     де оператор і намагається розрізнити A3.5 від A3. */
+  font-size:calc(var(--matpair-fs,12.5px) - .5px);
+}
+body[data-matstyle="code"] .matpair .mp-word{color:var(--ink-3)}
+body[data-matstyle="code"] .matpair .mp-code{color:var(--ink);font-weight:500}
+body[data-matstyle="code"] .matpair.mat-unknown{border:0}
+
+/* Бейджі .matbadge видалено: колонку замінив .matpair, жоден шаблон
+   їх більше не рендерить (перевірено grep по app/templates). */
 
 /* Інлайн-редагування коментаря в рядку черги — виглядає як текст, на hover/focus
    стає полем; авто-збереження через HTMX (див. set_cam_comment). */
@@ -5285,7 +5334,7 @@ main.worldv2.search-wide .search-form{max-width:900px}
    fully readable+editable. resize:none — height is driven by content, not a
    drag handle. */
 .q2 .cam-comment-input{display:block;width:100%;max-width:240px;box-sizing:border-box;background:transparent;
-  border:1px solid transparent;border-radius:6px;padding:3px 6px;margin:-2px -4px;resize:none;overflow:hidden;
+  border:1px solid transparent;border-bottom-color:var(--control-edge);border-radius:6px;padding:3px 6px;margin:-2px -4px;resize:none;overflow:hidden;
   font-family:var(--font-body);font-size:12.5px;line-height:1.45;color:var(--ink-2);
   height:calc(1.45em + 6px);min-height:calc(1.45em + 6px);white-space:nowrap;
   outline:none;transition:border-color .12s ease,background .12s ease,color .12s ease}
@@ -5377,8 +5426,11 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
 /* позиції */
 .toast-stack[data-toast-pos="br"]{right:0;bottom:0;align-items:flex-end}
 .toast-stack[data-toast-pos="bl"]{left:0;bottom:0;align-items:flex-start}
-.toast-stack[data-toast-pos="tr"]{right:0;top:0;align-items:flex-end}
-.toast-stack[data-toast-pos="tc"]{top:0;left:50%;transform:translateX(-50%);align-items:center}
+/* Верхні позиції відступають нижче шапки: при top:0 тост лягав просто на
+   <h1> і рядок «49 у вигляді · пошта · таблиця», тобто повідомлення про
+   збій закривало саме те, за чим оператор і дивиться в шапку. */
+.toast-stack[data-toast-pos="tr"]{right:0;top:62px;align-items:flex-end}
+.toast-stack[data-toast-pos="tc"]{top:62px;left:50%;transform:translateX(-50%);align-items:center}
 /* паспорт роботи фіксований справа (420px) і має нижчий z-index — без цього
    зсуву тост лягав би просто на нього */
 body:has(.detail-pane.open) .toast-stack[data-toast-pos="br"],

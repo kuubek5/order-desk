@@ -71,7 +71,11 @@ def test_requires_authentication():
     assert exc.value.status_code == 401
 
 
-def test_refuses_when_not_all_found(monkeypatch):
+def test_issues_nothing_when_no_work_is_marked_found(monkeypatch):
+    """Жодної позначки «знайдено» → видавати нічого. Раніше тут був
+    HTTPException 400; тепер це просто редірект із поясненням, бо
+    натиснути кнопку без знайдених робіт оператор може лише зі
+    застарілої сторінки — це не помилка, а порожня дія."""
     engine = _database()
     _stub_sheet(monkeypatch)
     with Session(engine, expire_on_commit=False) as db:
@@ -80,14 +84,38 @@ def test_refuses_when_not_all_found(monkeypatch):
         db.commit()
 
         import asyncio
-        with pytest.raises(HTTPException) as exc:
-            asyncio.run(
-                web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
-            )
-        assert exc.value.status_code == 400
-        # nothing flipped to видано
-        order = db.scalar(select(Order))
-        assert order.status == "нове"
+        request = _request(user.id)
+        asyncio.run(
+            web.issue_handout_group(request=request, client_name="Basarab", day="", db=db)
+        )
+        assert db.scalar(select(Order)).status == "нове"
+        assert "handout_flash" in request.session
+
+
+def test_issues_only_found_works_and_leaves_the_rest(monkeypatch):
+    """ЧАСТКОВА ВИДАЧА — норма процесу (CLAUDE.md §2): цирконій іде через
+    три пічки, що відкриваються в різний час, тож роботи одного клієнта
+    виходять партіями. Знайдене видається зараз, решта лишається в картці."""
+    engine = _database()
+    captured = _stub_sheet(monkeypatch)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        found = _client_order(row_number=60, status="знайдено при видачі")
+        waiting = _client_order(row_number=61, status="нове")
+        db.add_all([found, waiting])
+        db.commit()
+
+        import asyncio
+        asyncio.run(
+            web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
+        )
+
+        assert found.status == "видано"
+        assert waiting.status == "нове"          # чекає наступної пічки
+        # синю заливку знято рівно з виданого рядка, не з обох
+        assert captured["rows"] == [(42, 60 + web.HEADER_ROWS)]
+        events = db.scalars(select(StatusEvent)).all()
+        assert [e.status for e in events] == ["видано"]
 
 
 def test_issues_group_and_clears_blue_fill(monkeypatch):

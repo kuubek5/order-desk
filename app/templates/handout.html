@@ -111,17 +111,25 @@
                     <a class="bind-folder {% if group.is_current %}lead{% endif %}"
                        href="{% if group.client_id %}/clients/{{ group.client_id }}{% else %}/clients{% endif %}">Прив'язати папку</a>
                     {% endif %}
-                    {% if group.all_found %}
-                    <form method="post" action="/handout/issue-group" class="issue-form">
-                        <input type="hidden" name="client_name" value="{{ group.client_name }}">
-                        <input type="hidden" name="day" value="{{ selected_day }}">
-                        <button type="submit" class="issue-btn">Видати</button>
-                    </form>
-                    {% else %}
+                    {# Часткова видача — норма (CLAUDE.md §2): пічки відкриваються
+                       тричі на день, тож роботи клієнта виходять партіями. Кнопка
+                       з'являється, щойно знайдено ХОЧ ОДНУ, і каже, скільки саме
+                       піде зараз. Прогрес лишається поруч, доки картка не зібрана. #}
+                    {% if found_n < total_n %}
                     <div class="progress-wrap">
                         <span class="progress-num"><b>{{ found_n }}</b> / {{ total_n }} знайдено</span>
                         <div class="track"><i style="width:{{ (found_n / total_n * 100)|round(0) if total_n else 0 }}%"></i></div>
                     </div>
+                    {% endif %}
+                    {% if found_n %}
+                    <form method="post" action="/handout/issue-group" class="issue-form">
+                        <input type="hidden" name="client_name" value="{{ group.client_name }}">
+                        <input type="hidden" name="day" value="{{ selected_day }}">
+                        <button type="submit" class="issue-btn"
+                                title="{% if found_n < total_n %}Видати {{ found_n }} знайдених; решта {{ total_n - found_n }} лишиться в картці{% else %}Видати всі роботи клієнта{% endif %}">
+                            {% if found_n < total_n %}Видати {{ found_n }} з {{ total_n }}{% else %}Видати{% endif %}
+                        </button>
+                    </form>
                     {% endif %}
                 </div>
             </div>
@@ -158,7 +166,7 @@
                            Статус текстом не дублюємо: його несе відмітка. #}
                         <div class="wmain">
                             <div class="top">
-                                {% if order.material_color %}<span class="matchip">{{ order.material_color }}</span>{% endif %}
+                                {% include "_matpair.html" %}
                                 <span class="wqty">{{ order.quantity or '—' }} <em>од.</em></span>
                                 {% if not selected_day and order.sheet_tab %}<span class="wday">{{ order.sheet_tab[:5] }}</span>{% endif %}
                             </div>

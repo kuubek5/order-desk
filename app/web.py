@@ -66,7 +66,12 @@ from app.mail_sync_service import (
     sync_mail_background,
     sync_mailbox,
 )
-from app.material_class import material_badge, material_color_css_class
+from app.material_class import (
+    strip_material_word,
+    material_badge,
+    material_color_css_class,
+    split_material_color,
+)
 from app.material_catalog import (
     MaterialCatalogError,
     add_alias,
@@ -1269,6 +1274,8 @@ templates = Jinja2Templates(directory=str(resource_path("app/templates")))
 templates.env.globals["is_overdue"] = is_overdue
 templates.env.globals["material_color_css_class"] = material_color_css_class
 templates.env.globals["material_badge"] = material_badge
+templates.env.globals["split_material_color"] = split_material_color
+templates.env.globals["strip_material_word"] = strip_material_word
 templates.env.globals["triage_readiness"] = triage_readiness
 templates.env.globals["static_ver"] = static_ver
 
@@ -2234,7 +2241,10 @@ def get_search(
     if query_term:
         # Search in client_name, work_order_no, job_code, sum3d_id
         # Case-insensitive substring matching across all four fields
-        all_orders = db.scalars(select(Order)).all()
+        # Той самий N+1, що й на видачі: рядок пошуку рендерить маркування.
+        all_orders = db.scalars(
+            select(Order).options(selectinload(Order.material))
+        ).all()
         query_lower = query_term.lower()
 
         for order in all_orders:
@@ -3613,8 +3623,18 @@ def get_handout(
         source = "all"
 
     today = date.today()
+    # selectinload(Order.material) обов'язковий: `_matpair.html` викликає
+    # material_badge(order) на КОЖНІЙ роботі, а на видачі без фільтра дня їх
+    # ~1800. Без цього кожен рядок робив би власний SELECT.
+    # selectinload(Order.material) обов'язковий: `_matpair.html` викликає
+    # material_badge(order) на КОЖНІЙ роботі, а на видачі без фільтра дня їх
+    # ~1800. Виміряно на усталених значеннях (по 3 прогріті запити):
+    # без eager 3.8с, з ним 2.7с. Решта часу — не запити, а 3.1МБ HTML,
+    # який ця сторінка віддає одним шматком; це окрема задача.
     candidates = db.scalars(
-        select(Order).where(Order.client_name.is_not(None), Order.status != "видано")
+        select(Order)
+        .options(selectinload(Order.material))
+        .where(Order.client_name.is_not(None), Order.status != "видано")
     ).all()
 
     eligible = [
@@ -3944,9 +3964,15 @@ async def issue_handout_group(
     counterpart of the lab's own manual "clear the blue = issued" convention.
 
     Re-derives the group server-side from client_name (never trusts a client
-    id list from the form) and refuses to close it unless every order is
-    already "знайдено при видачі"/"видано" — the same all_found gate the
-    button's visibility uses, enforced again here in case the page was stale."""
+    id list from the form) and issues EXACTLY the orders already marked
+    "знайдено при видачі"/"видано", leaving the rest of the card open.
+
+    Часткова видача — норма процесу, не виняток (CLAUDE.md §2): цирконій іде
+    через три пічки, які відкриваються ~9:00, в обід і під вечір, тож роботи
+    одного клієнта фізично виходять у різний час. Раніше тут стояв gate
+    all_found, і клієнт із 52 роботами не міг отримати «Видати» жодного разу
+    за день — оператор мусив або чекати до вечора, або обходити портал через
+    Google-таблицю."""
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
@@ -3978,10 +4004,16 @@ async def issue_handout_group(
         ]
     if not group_orders:
         return RedirectResponse(back_url, status_code=303)
-    if not all(o.status in ("знайдено при видачі", "видано") for o in group_orders):
-        raise HTTPException(
-            status_code=400, detail="не всі роботи клієнта позначені «Знайдено»"
-        )
+    # Видаємо рівно те, що оператор уже знайшов. Решта лишається в картці.
+    group_orders = [
+        o for o in group_orders if o.status in ("знайдено при видачі", "видано")
+    ]
+    if not group_orders:
+        request.session["handout_flash"] = {
+            "kind": "info",
+            "message": "Нічого видавати: жодну роботу цього клієнта не позначено «знайдено».",
+        }
+        return RedirectResponse(back_url, status_code=303)
 
     actor = user.full_name or user.username
     sync_error: str | None = None

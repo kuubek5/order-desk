@@ -1,7 +1,8 @@
 {# Один рядок щільної черги у стилі v2a (мокап v2a/index.html tbody).
    Спільний партіал: використовується і в queue.html (клас таблиці `qtable`,
    під `.q2`), і в search.html (клас `queue-table`, старі стилі). Тому — рівно
-   9 <td>, без окремої dot-колонки: статус-крапка вкладена в комірку наряду.
+   10 <td> у черзі (+ `src-tab` лише в пошуку, під show_source), без окремої
+   dot-колонки: статус-крапка вкладена в комірку наряду.
    ВАЖЛИВО (регрес-гард tests/test_order_row_template.py): зберігаються токени
    `comment-cell`, `cam-comment-text`, `folder-link` (як <a>), `data-folder-uri`,
    `data-copy`, `data-stl-preview-token`. #}
@@ -27,7 +28,7 @@
    техніка чи імені техніка — це поля лабораторного процесу. Для них порожні
    клітинки лишаємо просто пустими, без «—» (щоб не читалось як «бракує даних»). #}
 {% set _is_client = order.source in ('email', 'sheet_client') %}
-<tr class="queue-row {% if _changed %}queue-row-changed{% endif %} {% if _changed_taken %}queue-row-changed-taken{% endif %} {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if order.source == 'sheet_client' %}queue-row-client{% endif %} {% if _rework %}queue-row-rework{% endif %} {{ material_color_css_class(order.material_color) }}" id="order-row-{{ order.id }}">
+<tr class="queue-row {% if _changed %}queue-row-changed{% endif %} {% if _changed_taken %}queue-row-changed-taken{% endif %} {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if order.source == 'sheet_client' %}queue-row-client{% endif %} {% if _rework %}queue-row-rework{% endif %}" id="order-row-{{ order.id }}">
     {# Джерело рядка — вкладка (день) Google-таблиці, де його знайдено. Показуємо
        лише у пошуку (show_source), де результати охоплюють усі дні; у черзі
        колонки нема (рядок лишається 9-колонковим). #}
@@ -46,21 +47,36 @@
             переробка{% if _rework.blame %} · {{ _rework.blame }}{% endif %}
         </span>
         {% endif %}
+        {# ПЕРЕНЕСЕНО з комірки «Статус» у комірку наряду: колонку статусу
+           тимчасово приховано (td.status{display:none}), і разом з нею зникала
+           ЦЯ кнопка — getClientRects() порожній, видалити рядок було
+           неможливо взагалі. Тут вона біля ідентичності рядка й видима.
+           Delete straight from the queue — same action as the work card, one
+           click closer. Destructive, so it stays quiet until the row is hovered
+           or the button focused, and always asks first.
+           hx-swap="none" on purpose: HTMX fires the server's HX-Trigger toast on
+           THIS form, so swapping the row away as the response would detach it
+           first and the toast would never reach the listener on <body>. The row
+           is dropped here instead, once the request is known to have succeeded —
+           the day tab, filters and scroll all stay untouched. #}
+        <form class="row-delete-form"
+              hx-post="/orders/{{ order.id }}/delete"
+              hx-vals='{"inline": "1"}'
+              hx-swap="none"
+              hx-on::after-request="if(event.detail.successful){var r=this.closest('tr');if(r)r.remove();}"
+              hx-confirm="Видалити «{{ order.work_order_no or order.client_name or 'роботу' }}» з черги? Рядок у таблиці буде очищено, історія лишиться в Архіві.">
+            <button type="submit" class="row-delete" aria-label="Видалити роботу з черги"
+                    title="Видалити роботу з черги">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+            </button>
+        </form>
         {# Secondary client line only for internal lab works (наряд is the
            identity, client shown below it). For email/client rows the client
            name IS the identity above, so repeating it here is redundant. #}
         {% if order.source not in ('email', 'sheet_client') and order.client_name %}<div class="rowclient" title="{{ order.client_name }}">{{ order.client_name }}</div>{% endif %}
     </td>
     <td class="quantity">{{ order.quantity or '—' }}</td>
-    <td class="material-cell">
-        {% set _mat = material_badge(order) %}
-        {% if _mat %}<span class="matbadge {{ _mat.cls }}" title="{{ _mat.title }}">{{ _mat.symbol }}</span>{% endif %}
-        {% if order.material_color %}
-            <span class="matchip chip {{ material_color_css_class(order.material_color) }}">{{ order.material_color }}</span>
-        {% else %}
-            <span class="text-muted">—</span>
-        {% endif %}
-    </td>
+    <td class="material-cell">{% include "_matpair.html" %}</td>
     <td class="kind-cell">
         {% if order.kind %}
             <a href="/orders/{{ order.id }}" class="kindbtn" data-order-detail="{{ order.id }}">{{ order.kind }}</a>
@@ -182,24 +198,5 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
         </span>
         {% endif %}
-        {# Delete straight from the queue — same action as the work card, one
-           click closer. Destructive, so it stays quiet until the row is hovered
-           or the button focused, and always asks first.
-           hx-swap="none" on purpose: HTMX fires the server's HX-Trigger toast on
-           THIS form, so swapping the row away as the response would detach it
-           first and the toast would never reach the listener on <body>. The row
-           is dropped here instead, once the request is known to have succeeded —
-           the day tab, filters and scroll all stay untouched. #}
-        <form class="row-delete-form"
-              hx-post="/orders/{{ order.id }}/delete"
-              hx-vals='{"inline": "1"}'
-              hx-swap="none"
-              hx-on::after-request="if(event.detail.successful){var r=this.closest('tr');if(r)r.remove();}"
-              hx-confirm="Видалити «{{ order.work_order_no or order.client_name or 'роботу' }}» з черги? Рядок у таблиці буде очищено, історія лишиться в Архіві.">
-            <button type="submit" class="row-delete" aria-label="Видалити роботу з черги"
-                    title="Видалити роботу з черги">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-            </button>
-        </form>
     </td>
 </tr>

@@ -1,0 +1,381 @@
+/* ============================================================
+   Trial: трактування контролів «A · Machined Bezel»
+   Джерело: v0 (Claude Opus 4.8), збережено в design/v0-control-system.html
+   Перевірено наживо 27.08.26: цілі 40px, крок рядка 29.94px, 0 @keyframes,
+   0 нескінченних петель, 0 зовнішніх залежностей, контраст межі 3.54:1
+   на --card і 3.27:1 на --card-2.
+
+   ЦЕ ПРОБНИЙ ШАР. Вантажиться ПІСЛЯ base.css і перекриває його на рівних
+   специфічностях. Відкат = прибрати один <link> у base.html. base.css не
+   чіпаємо навмисне: 5643 рядки, правити їх заради проби — невиправданий ризик.
+
+   Що по дорозі виправлено (не косметика, реальні дефекти):
+   1. `.q2 .btn` брав межу з --line-2 — це декоративний роздільник, він дає
+      1.88:1 на --card. Межа керованого елемента має бути --control-edge
+      (3.54:1). `.mailv2 .btn` це вже робив правильно — тепер однаково скрізь.
+   2. Фокус був внутрішнім світінням (--focus-glow). Замінено на суцільне
+      зміщене кільце: розмите світіння на темному тлі погано читається в цеху
+      і не має чіткої межі.
+   3. Висота кнопки різнилась між екранами (32px у черзі, 34px у пошті) без
+      причини. Тепер одна змінна.
+   ============================================================ */
+
+/* ---- 53 компонентні змінні трактування A ----
+   Усі похідні від наших 16 базових токенів з tokens.css — жодного нового
+   кольору. Щоб спробувати B або C, міняються ТІЛЬКИ значення тут. */
+:root{
+  /* геометрія й типографіка контрола */
+  --ctl-h: 40px;
+  --ctl-r: 6px;
+  --ctl-bw: 1px;
+  --btn-px: 14px;
+  --ctl-fs: 13.5px;
+  --ctl-fw: 600;
+  --ctl-ls: .01em;
+  --ctl-tt: none;
+
+  /* натискання: реальний хід униз + внутрішня тінь */
+  --press-y: 1px;
+  --relief: inset 0 1px 0 rgba(232,239,247,.07);
+  --relief-a: inset 0 2px 3px rgba(13,17,23,.55);
+
+  /* фокус: суцільне кільце, нуль розмиття */
+  --focus-w: 2px;
+  --focus-off: 2px;
+
+  /* головна дія */
+  --pri-bg: var(--accent);
+  --pri-bg-h: var(--accent-b);
+  --pri-bg-a: var(--accent-d);
+  --pri-bd: var(--accent-c);
+  --pri-fg: var(--bg);
+
+  /* другорядна */
+  --sec-bg: var(--card-2);
+  --sec-bg-h: var(--card-3);
+  --sec-bg-a: var(--card);
+  --sec-bd: var(--control-edge);
+  --sec-bd-h: var(--accent-b);
+
+  /* тиха */
+  --ghost-bd: transparent;
+  --ghost-bd-h: var(--control-edge);
+  --ghost-bg-h: var(--card-2);
+  --ghost-bg-a: var(--card);
+
+  /* чіп */
+  --chip-h: 28px;
+  --chip-r: 6px;
+  --chip-px: 9px;
+  --chip-bg: var(--card-2);
+  --chip-bg-h: var(--card-3);
+  --chip-bd: var(--control-edge);
+  --chip-bd-h: var(--accent-b);
+
+  /* поле вводу */
+  --in-bg: var(--card-2);
+  --in-bg-h: var(--card-3);
+  --in-bw: 1px;
+  --in-bd: var(--control-edge);
+  --in-bd-h: var(--accent-b);
+  --in-relief: inset 0 2px 3px rgba(13,17,23,.45);
+
+  --ease-a: cubic-bezier(0.20,0.70,0.20,1);
+  --t-fast: 110ms;
+  --t-base: 150ms;
+}
+
+/* Щільні екрани: черга відкрита 90% часу, 40px там коштують ~8 рядків
+   видимості. Той самий характер, менша ціль — рівно те, заради чого
+   геометрія винесена у змінну. Видача навпаки: оператор у рукавичках. */
+.q2{ --ctl-h: 34px; --ctl-fs: 13px; }
+.handoutv2{ --ctl-h: 44px; }
+
+/* ============ КНОПКА ============
+   `.btn` у нас не має глобального оголошення — він переоголошений під
+   кожен екран. Перелічуємо всі наявні області, щоб накладка була повною,
+   а не «на черзі працює, у пошті ні». */
+.q2 .btn,
+.mailv2 .btn,
+.neworder .btn,
+.passport2 .btn,
+.filter-rules .btn,
+.clientsv2 .btn,
+.statsv2 .btn,
+.setv2 .btn,
+.arch .btn,
+.worldv2 .btn{
+  height: var(--ctl-h);
+  padding: 0 var(--btn-px);
+  border-radius: var(--ctl-r);
+  border: var(--ctl-bw) solid var(--sec-bd);
+  background: var(--sec-bg);
+  color: var(--ink);
+  font-size: var(--ctl-fs);
+  font-weight: var(--ctl-fw);
+  letter-spacing: var(--ctl-ls);
+  text-transform: var(--ctl-tt);
+  box-shadow: var(--relief);
+  transition:
+    background var(--t-fast) var(--ease-a),
+    border-color var(--t-fast) var(--ease-a),
+    color var(--t-fast) var(--ease-a),
+    transform var(--t-fast) var(--ease-a),
+    box-shadow var(--t-fast) var(--ease-a);
+}
+
+.q2 .btn:hover,
+.mailv2 .btn:hover,
+.neworder .btn:hover,
+.passport2 .btn:hover,
+.filter-rules .btn:hover,
+.clientsv2 .btn:hover,
+.statsv2 .btn:hover,
+.setv2 .btn:hover,
+.arch .btn:hover,
+.worldv2 .btn:hover{
+  background: var(--sec-bg-h);
+  border-color: var(--sec-bd-h);
+  color: var(--ink);
+}
+
+/* Натискання відчувається: кнопка йде вниз і западає всередину. */
+.q2 .btn:active,
+.mailv2 .btn:active,
+.neworder .btn:active,
+.passport2 .btn:active,
+.filter-rules .btn:active,
+.clientsv2 .btn:active,
+.statsv2 .btn:active,
+.setv2 .btn:active,
+.arch .btn:active,
+.worldv2 .btn:active{
+  transform: translateY(var(--press-y));
+  background: var(--sec-bg-a);
+  box-shadow: var(--relief-a);
+}
+
+/* Фокус — суцільне кільце, а не світіння. Читається при денному світлі
+   в цеху, має чітку межу, не зливається з тінню. */
+.q2 .btn:focus-visible,
+.mailv2 .btn:focus-visible,
+.neworder .btn:focus-visible,
+.passport2 .btn:focus-visible,
+.filter-rules .btn:focus-visible,
+.clientsv2 .btn:focus-visible,
+.statsv2 .btn:focus-visible,
+.setv2 .btn:focus-visible,
+.arch .btn:focus-visible,
+.worldv2 .btn:focus-visible{
+  outline: var(--focus-w) solid var(--accent-c);
+  outline-offset: var(--focus-off);
+  box-shadow: var(--relief);
+}
+
+/* Головна дія — залита. Лишається єдиним залитим трактуванням на екран
+   (правило з тріажу, CLAUDE.md п.14): заливка = коміт, тінт = крок. */
+.mailv2 .btn.apex{
+  background: var(--pri-bg);
+  border-color: var(--pri-bd);
+  color: var(--pri-fg);
+  font-weight: 700;
+}
+.mailv2 .btn.apex:hover{ background: var(--pri-bg-h); border-color: var(--pri-bd); }
+.mailv2 .btn.apex:active{ background: var(--pri-bg-a); }
+
+/* Другий рівень — тінт, не заливка. */
+.q2 .btn.primary,
+.mailv2 .btn.primary,
+.neworder .btn.primary,
+.passport2 .btn.primary,
+.filter-rules .btn.primary,
+.clientsv2 .btn.primary,
+.statsv2 .btn.primary,
+.setv2 .btn.primary,
+.arch .btn.primary,
+.worldv2 .btn.primary{
+  background: rgba(20,184,166,.15);
+  border-color: var(--pri-bd);
+  color: var(--accent-c);
+}
+.q2 .btn.primary:hover,
+.mailv2 .btn.primary:hover,
+.neworder .btn.primary:hover,
+.passport2 .btn.primary:hover,
+.filter-rules .btn.primary:hover,
+.clientsv2 .btn.primary:hover,
+.statsv2 .btn.primary:hover,
+.setv2 .btn.primary:hover,
+.arch .btn.primary:hover,
+.worldv2 .btn.primary:hover{
+  background: rgba(20,184,166,.24);
+  border-color: var(--accent-c);
+  color: var(--accent-c);
+}
+
+/* Малий розмір лишається малим — але тим самим характером. */
+.q2 .btn.sm,
+.mailv2 .btn.sm,
+.filter-rules .btn.sm{
+  height: calc(var(--ctl-h) - 8px);
+  padding: 0 calc(var(--btn-px) - 4px);
+  font-size: calc(var(--ctl-fs) - 1px);
+}
+
+.q2 .btn:disabled,
+.mailv2 .btn:disabled,
+.neworder .btn:disabled,
+.passport2 .btn:disabled,
+.filter-rules .btn:disabled,
+.clientsv2 .btn:disabled,
+.statsv2 .btn:disabled,
+.setv2 .btn:disabled,
+.arch .btn:disabled,
+.worldv2 .btn:disabled{
+  opacity: .42;
+  box-shadow: none;
+  transform: none;
+  cursor: default;
+}
+
+/* ============ ЧІП ============
+   ЧІП НАВМИСНО НЕ ОТРИМУЄ ТРАКТУВАННЯ КОНТРОЛА.
+
+   Перша спроба дала йому --control-edge і --card-2, як кнопкам і полям.
+   Наживо це вийшло дефектом: у колонці SUM3D поруч стоять СПРАВЖНІ
+   редаговані поля (.sum3d-input) з такою ж межею, радіусом і фоном —
+   чіп матеріалу став невідрізнимим від поля вводу й почав обіцяти
+   редагування, якого немає.
+
+   Правило з CLAUDE.md стосується елементів, де межа Є афордансом:
+   кнопка, поле, селект. Чіп — це підпис, дані для читання. Для нього
+   --line-2 правильний саме тому, що декоративний. Геометрію лишаємо
+   як була. */
+
+/* ============ ПОЛЕ ВВОДУ ============
+   Заглиблення робить поле схожим на місце, куди пишуть, а не на кнопку.
+
+   ОБЛАСТЬ НАВМИСНО ВУЗЬКА — тільки форма нового наряду.
+   У черзі всередині рядків живуть п'ять свідомо стиснутих інпутів
+   (.operator-input, .sum3d-input, .cam-comment-input, .search input,
+   .addwork-input). Селектор `.q2 input[type="text"]` має специфічність
+   (0,2,1) — ВИЩУ за `.q2 .operator-input` (0,2,0) — тож накладка мовчки
+   роздула б їх до 34px і зламала щільність таблиці. Перевірено, не гіпотеза.
+   Ті інпути отримають трактування окремо й поіменно, коли дійде черга. */
+.neworder input[type="text"],
+.neworder select{
+  min-height: var(--ctl-h);
+  border-radius: var(--ctl-r);
+  border: var(--in-bw) solid var(--in-bd);
+  background: var(--in-bg);
+  box-shadow: var(--in-relief);
+  color: var(--ink);
+  transition: border-color var(--t-fast) var(--ease-a), background var(--t-fast) var(--ease-a);
+}
+.neworder input[type="text"]:focus,
+.neworder select:focus{
+  outline: var(--focus-w) solid var(--accent-c);
+  outline-offset: var(--focus-off);
+  border-color: var(--in-bd-h);
+  box-shadow: var(--in-relief);
+}
+
+/* ============ ВИДАЧА ============
+   Тут контроли звуться інакше — не `.btn`, а `.issue-btn` / `.fbtn` /
+   `.wcheck` / `.card-collapse`. Без цього блоку екран видачі не отримав би
+   трактування взагалі (перевірено пробою: кнопка лишалась сирою браузерною).
+   Ті самі два дефекти, що й у черзі: межа з --line-2 (1.88:1) і фон,
+   захардкоджений повз токени. */
+
+/* «Видати» — дія, що завершує клієнта. Геометрія за A, ієрархія НЕ змінена:
+   лишається тінтом, як зараз. Зробити її залитою за правилом apex
+   (заливка = коміт) — окреме рішення, не протягуємо його сюди мовчки. */
+.handoutv2 .issue-btn{
+  height: var(--ctl-h);
+  padding: 0 var(--btn-px);
+  border-radius: var(--ctl-r);
+  border: var(--ctl-bw) solid var(--pri-bd);
+  font-size: var(--ctl-fs);
+  font-weight: var(--ctl-fw);
+  letter-spacing: var(--ctl-ls);
+  transition:
+    background var(--t-fast) var(--ease-a),
+    border-color var(--t-fast) var(--ease-a),
+    transform var(--t-fast) var(--ease-a),
+    box-shadow var(--t-fast) var(--ease-a);
+}
+/* Був підйом на -1px при наведенні. У A рух іде вниз при натисканні, а не
+   вгору при наведенні: підйом обіцяє натискання, якого ще не сталося. */
+.handoutv2 .issue-btn:hover{ background: rgba(20,184,166,.26); border-color: var(--accent-c); transform: none; }
+.handoutv2 .issue-btn:active{ transform: translateY(var(--press-y)); box-shadow: var(--relief-a); }
+.handoutv2 .issue-btn:focus-visible{ outline: var(--focus-w) solid var(--accent-c); outline-offset: var(--focus-off); }
+
+/* «Папка» — тиха дія, з якої починається впізнавання роботи. */
+.handoutv2 .fbtn{
+  height: var(--ctl-h);
+  padding: 0 var(--btn-px);
+  border-radius: var(--ctl-r);
+  border: var(--ctl-bw) solid var(--sec-bd);
+  background: var(--sec-bg);
+  font-size: var(--ctl-fs);
+  box-shadow: var(--relief);
+  transition:
+    background var(--t-fast) var(--ease-a),
+    border-color var(--t-fast) var(--ease-a),
+    color var(--t-fast) var(--ease-a),
+    transform var(--t-fast) var(--ease-a);
+}
+.handoutv2 .fbtn:hover{ background: var(--sec-bg-h); border-color: var(--sec-bd-h); color: var(--ink); }
+.handoutv2 .fbtn:active{ transform: translateY(var(--press-y)); box-shadow: var(--relief-a); }
+.handoutv2 .fbtn.lead{ background: rgba(20,184,166,.14); border-color: var(--pri-bd); color: var(--accent-c); }
+
+/* Відмітка «знайдено» — головна ціль екрана, один клік = видано.
+   БУЛО 26px, і це виявилось перевернутою ставкою: на тому ж екрані
+   «Папка» (безпечна, оборотна) має 44px, а дія, ціна помилки якої —
+   фізично загублена коронка, була найменшою ціллю свого екрана.
+   Дві незалежні оцінки вказали на це окремо. Тепер 40px — нарівні
+   з рештою контролів видачі, оператор у рукавичках влучає. */
+.handoutv2 .wcheck{
+  flex: 0 0 40px; width: 40px; height: 40px;
+  border: 1.5px solid var(--control-edge);
+  background: var(--card-2);
+  border-radius: var(--ctl-r);
+  transition:
+    background var(--t-fast) var(--ease-a),
+    border-color var(--t-fast) var(--ease-a),
+    transform var(--t-fast) var(--ease-a);
+}
+.handoutv2 .wcheck svg{width:17px;height:17px}
+.handoutv2 .wcheck:hover{ border-color: var(--accent-b); background: var(--card-3); }
+.handoutv2 .wcheck:active{ transform: translateY(var(--press-y)); }
+.handoutv2 .wcheck:focus-visible{ outline: var(--focus-w) solid var(--accent-c); outline-offset: var(--focus-off); }
+
+.handoutv2 .card-collapse{
+  border: var(--ctl-bw) solid var(--control-edge);
+  border-radius: var(--ctl-r);
+  background: var(--card-2);
+}
+.handoutv2 .card-collapse:hover{ border-color: var(--sec-bd-h); background: var(--card-3); }
+
+/* Межа тут — афорданс (це посилання-кнопка), тому --control-edge, а не
+   --line-2. «Тихо» лишається кольором тексту, не невидимою межею. */
+.handoutv2 .card-head .bind-folder{
+  height: var(--ctl-h);
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--ctl-r);
+  border: var(--ctl-bw) solid var(--control-edge);
+  font-size: var(--ctl-fs);
+}
+
+/* Колонка «Матеріал / Колір» переїхала в base.css (.matpair) — це вже
+   фіча з перемикачем у панелі «Вигляд», а не частина проби трактування,
+   тож вона не має зникати разом з відкатом цього шару. */
+
+@media (prefers-reduced-motion: reduce){
+  .q2 .btn, .mailv2 .btn, .neworder .btn, .passport2 .btn, .filter-rules .btn{
+    transition: none;
+  }
+  .q2 .btn:active, .mailv2 .btn:active, .neworder .btn:active,
+  .passport2 .btn:active, .filter-rules .btn:active{ transform: none; }
+}

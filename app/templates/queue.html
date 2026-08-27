@@ -65,13 +65,18 @@
        усе локально (localStorage), без запитів на сервер. #}
     <div class="layout-controls" role="group" aria-label="Режим вигляду">
         <span class="lc-label">Щільність</span>
-        <div class="seg density-seg">
+        <div class="seg density-seg" role="group" aria-label="Щільність черги">
             <button type="button" data-density-set="compact">Компактний</button>
             <button type="button" data-density-set="normal">Звичайний</button>
             <button type="button" data-density-set="spacious">Просторий</button>
         </div>
+        <span class="lc-label">Колір роботи</span>
+        <div class="seg matstyle-seg" role="group" aria-label="Вигляд колонки «Матеріал / Колір»">
+            <button type="button" data-matstyle-set="pair" title="Матеріал і колір одним маркуванням">Маркування</button>
+            <button type="button" data-matstyle-set="code" title="Без коробки, моноширинний — 800 / 500 / A3.5 читаються як коди виробника">Технічний код</button>
+        </div>
         <span class="lc-hint">Перетягніть межу заголовка стовпця, щоб змінити його ширину</span>
-        <button type="button" class="pill lc-reset" data-layout-reset title="Скинути ширини стовпців і щільність до типових">Скинути</button>
+        <button type="button" class="pill lc-reset" data-layout-reset title="Скинути ширини стовпців, щільність і вигляд колонки «Матеріал / Колір» до типових">Скинути</button>
     </div>
 
     {% if sync_flash %}
