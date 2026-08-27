@@ -82,6 +82,7 @@ from app.material_class import (
     material_color_css_class,
     split_material_color,
 )
+from app.material_match import materials_match
 from app.material_catalog import (
     MaterialCatalogError,
     add_alias,
@@ -859,24 +860,22 @@ def _sheet_order_key(order: Order) -> tuple:
     return (_order_date(order), order.row_number if order.row_number is not None else 0)
 
 
-def _material_key(text: str | None) -> str:
-    """Normalize a free-text material+colour for comparison: lowercased, comma
-    decimals unified to dots, tokens sorted so word order doesn't matter
-    ("emo a3" == "a3 emo", "mono a3,5" == "mono a3.5"). Deliberately strict on
-    the colour digits so "emo a3" never collapses into "emo a35"."""
-    norm = (text or "").strip().lower().replace(",", ".")
-    return " ".join(sorted(norm.split()))
-
-
 def _entries_for_material(material_color: str | None, entries: list) -> list:
     """The export folders under a client whose material matches this work's
     material_color, oldest-first. Empty when the work has no colour or nothing
     lines up — the row then simply shows no folder shortcut. See get_handout for
-    why this is an assist, not an exact per-row bind."""
-    key = _material_key(material_color)
-    if not key:
+    why this is an assist, not an exact per-row bind.
+
+    Правила збігу — в `app/material_match.py`. Раніше тут стояла рівність
+    відсортованих слів, і бойовий випадок 28.08.26 (Pavlenko) показав, чого
+    вона варта: у таблиці `emo a3`, на диску `Emotions A3 опаковий всередині`
+    — та сама робота, теку видно поруч, а рядок її не знаходив."""
+    if not material_color or not material_color.strip():
         return []
-    matched = [e for e in entries if _material_key(e.material_color_folder_name) == key]
+    matched = [
+        e for e in entries
+        if materials_match(material_color, e.material_color_folder_name)
+    ]
     matched.sort(key=lambda e: e.created_at)
     return matched
 
@@ -3906,8 +3905,17 @@ def get_handout(
         # name itself opens the right place on disk, and a link to the client
         # card so an unbound client can be fixed once instead of every morning.
         client_folder_uri = None
+        client_folder_token = None
         if export_entries:
-            client_folder_uri = folder_to_file_uri(export_entries[0].folder_path.parent.parent)
+            client_folder = export_entries[0].folder_path.parent.parent
+            client_folder_uri = folder_to_file_uri(client_folder)
+            # Токен, а не лише file://-посилання: браузер МОВЧКИ блокує перехід
+            # на file:// зі сторінки на http, тому кнопка «Відкрити папку» досі
+            # не робила нічого (бойовий випадок 28.08.26). Провідник відкриває
+            # сервер через /open-folder, як це вже роблять прев'ю і черга.
+            client_folder_token = build_preview_token(
+                client_folder, {"export": get_export_folder_path(db)}
+            )
         client_groups.append(
             {
                 "client_name": client_name,
@@ -3916,6 +3924,7 @@ def get_handout(
                 "export_entries": export_entries,
                 "all_found": all_found,
                 "client_folder_uri": client_folder_uri,
+                "client_folder_token": client_folder_token,
                 "client_id": _client_id_for(client_name),
             }
         )

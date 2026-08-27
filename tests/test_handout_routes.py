@@ -488,15 +488,8 @@ class TestMaterialMatching:
     to the ones whose material matches a given work, an assist not an exact bind
     (the path carries no наряд/Sum3D ID)."""
 
-    def test_material_key_normalizes_order_and_case(self):
-        from app.web import _material_key
-        assert _material_key("emo a3") == _material_key("A3  EMO")
-        assert _material_key("mono a3,5") == _material_key("mono a3.5")
-
-    def test_material_key_keeps_colour_digits_distinct(self):
-        from app.web import _material_key
-        # a3 must never collapse into a35 — different physical shade
-        assert _material_key("emo a3") != _material_key("emo a35")
+    # Самі правила збігу — в tests/test_material_match.py; тут лише те, що
+    # робить із ними екран: відбір і порядок.
 
     def test_entries_for_material_filters_and_sorts_by_time(self):
         from datetime import datetime
@@ -728,3 +721,100 @@ class TestHandoutDefaultDay:
             self._two_days(db)
             ctx = _get_handout_context(monkeypatch, db, user.id, day="не-дата")
         assert ctx["selected_day"] == YESTERDAY
+
+
+class TestClientFolderOpens:
+    """Кнопка «Відкрити папку» на картці клієнта.
+
+    Вона лишається `<a href="file://...">`, але браузер МОВЧКИ блокує перехід
+    на file:// зі сторінки на http — саме тому кнопка не робила нічого
+    (бойовий випадок 28.08.26, клієнт Pavlenko: тека прив'язана, лежить на
+    диску, кнопка мертва). Провідник тепер відкриває сервер за токеном, тож
+    токен мусить бути в контексті — інакше JS нема чого надіслати."""
+
+    def test_the_button_carries_a_token_the_server_can_resolve(self, monkeypatch, tmp_path):
+        from datetime import datetime
+
+        client_folder = tmp_path / "Pavlenko"
+        material_folder = client_folder / "26.08.26" / "Emotions A3 опаковий всередині"
+        material_folder.mkdir(parents=True)
+
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            db.add(_client_order(client_name="Pavlenko", status="нове"))
+            db.commit()
+
+            entry = SimpleNamespace(
+                client_folder_name="Pavlenko",
+                batch_folder_name="26.08.26",
+                material_color_folder_name="Emotions A3 опаковий всередині",
+                created_at=datetime(2026, 8, 26, 10, 16),
+                files=["a.stl"],
+                folder_path=material_folder,
+            )
+            monkeypatch.setattr(web, "get_export_folder_path", lambda db: str(tmp_path))
+            # Токен резолвиться НЕ через web.get_export_folder_path, а через
+            # власну мапу коренів stl_preview — саме вона тримає перевірку
+            # «шлях справді всередині довіреного кореня».
+            import app.stl_preview as stl_preview
+            monkeypatch.setitem(
+                stl_preview._ROOT_RESOLVERS, "export", lambda db: str(tmp_path)
+            )
+            monkeypatch.setattr(
+                web, "list_export_client_names_cached", lambda root: ["Pavlenko"]
+            )
+            monkeypatch.setattr(
+                web, "scan_export_client_cached", lambda root, folder, nb: [entry]
+            )
+            monkeypatch.setattr(
+                web.templates, "TemplateResponse",
+                lambda request, template, context: context,
+            )
+            ctx = web.get_handout(request=_request(user.id), day="", db=db)
+
+            group = ctx["client_groups"][0]
+            assert group["client_folder_token"], "без токена кнопка знову буде мертвою"
+            assert web.resolve_preview_folder(db, group["client_folder_token"]) == client_folder
+
+    def test_the_matching_folder_reaches_the_row(self, monkeypatch, tmp_path):
+        """Той самий випадок з іншого боку: `emo a3` у таблиці мусить знайти
+        теку `Emotions A3 опаковий всередині`."""
+        from datetime import datetime
+
+        material_folder = tmp_path / "Pavlenko" / "26.08.26" / "Emotions A3 опаковий всередині"
+        material_folder.mkdir(parents=True)
+
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            order = _client_order(client_name="Pavlenko", status="нове")
+            order.material_color = "emo a3"
+            db.add(order)
+            db.commit()
+
+            entry = SimpleNamespace(
+                client_folder_name="Pavlenko",
+                batch_folder_name="26.08.26",
+                material_color_folder_name="Emotions A3 опаковий всередині",
+                created_at=datetime(2026, 8, 26, 10, 16),
+                files=["a.stl"],
+                folder_path=material_folder,
+            )
+            monkeypatch.setattr(web, "get_export_folder_path", lambda db: str(tmp_path))
+            monkeypatch.setattr(
+                web, "list_export_client_names_cached", lambda root: ["Pavlenko"]
+            )
+            monkeypatch.setattr(
+                web, "scan_export_client_cached", lambda root, folder, nb: [entry]
+            )
+            monkeypatch.setattr(
+                web.templates, "TemplateResponse",
+                lambda request, template, context: context,
+            )
+            ctx = web.get_handout(request=_request(user.id), day="", db=db)
+
+        matched = ctx["client_groups"][0]["orders"][0].export_matches
+        assert [e.material_color_folder_name for e in matched] == [
+            "Emotions A3 опаковий всередині"
+        ]

@@ -373,6 +373,41 @@ document.addEventListener("dblclick", (event) => {
   window.location.href = uri;
 });
 
+// «Відкрити папку» на картці клієнта (видача). Кнопка лишається звичайним
+// <a href="file://...">, але ЗВИЧАЙНИЙ клік по ньому браузер зі сторінки на
+// http блокує мовчки — саме тому кнопка не робила нічого (бойовий випадок
+// 28.08.26). Тому клік перехоплюємо й просимо відкрити Провідник сервер, як
+// це вже роблять прев'ю STL і подвійний клік у черзі.
+//
+// Мовчазна кнопка — гірше за зламану: якщо не вийшло, оператор мусить це
+// бачити, а не гадати, чи він узагалі влучив.
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-open-folder-token]");
+  if (!button) return;
+
+  event.preventDefault();
+  const token = button.dataset.openFolderToken || "";
+  if (!token) return;
+
+  button.classList.add("is-opening");
+  fetch("/open-folder", {
+    method: "POST",
+    body: new URLSearchParams({ token: token }),
+    credentials: "same-origin",
+  })
+    .then((response) => {
+      if (!response.ok) throw new Error(String(response.status));
+    })
+    .catch(() => {
+      if (window.showToast) {
+        window.showToast("Не вдалося відкрити папку — перевірте доступ до сховища", "error");
+      }
+    })
+    .finally(() => {
+      button.classList.remove("is-opening");
+    });
+});
+
 // Collapsible "Нові з пошти" block on the queue dashboard (CLAUDE.md section
 // 8): starts collapsed to a single summary row, expands on click. No-op on
 // every other page — the toggle button only exists on the queue screen.

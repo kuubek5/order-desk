@@ -107,6 +107,7 @@
                     {% if group.client_folder_uri %}
                     <a class="fbtn {% if group.is_current %}lead{% endif %}" href="{{ group.client_folder_uri }}"
                        data-folder-uri="{{ group.client_folder_uri }}"
+                       {% if group.client_folder_token %}data-open-folder-token="{{ group.client_folder_token }}"{% endif %}
                        title="{{ group.match.matched_folder_name }} — відкрити у Провіднику">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
                         {% if group.is_current %}Відкрити папку{% else %}Папка{% endif %}
