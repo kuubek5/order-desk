@@ -1145,6 +1145,12 @@ def export_warm_once(db: Session) -> int:
     if not folder_names:
         return 0
     eligible = _handout_eligible_orders(db, date.today())
+    # Гріємо рівно те, що побачить оператор: екран за замовчуванням показує
+    # останній день, тож прогрів усіх днів дав би ІНШУ межу за датою — інший
+    # ключ кешу — і оператор однаково чекав би.
+    default_day = _handout_select_day(_handout_day_options(eligible), "")
+    if default_day is not None:
+        eligible = [o for o in eligible if _parse_sheet_tab(o.sheet_tab) == default_day]
     not_before = _handout_not_before(eligible)
     client_names = {o.client_name for o in eligible if o.client_name}
     folders = _matched_folders(_handout_client_matches(db, client_names, folder_names))
@@ -3715,6 +3721,35 @@ def _handout_eligible_orders(db: Session, today: date) -> list[Order]:
     ]
 
 
+HANDOUT_ALL_DAYS = "all"
+"""Значення параметра `day`, що просить показати ВСІ дні одразу."""
+
+
+def _handout_day_options(eligible: list[Order]) -> list:
+    """Минулі дні, де ще лишились невидані клієнтські роботи, за зростанням."""
+    return sorted({d for o in eligible if (d := _parse_sheet_tab(o.sheet_tab)) is not None})
+
+
+def _handout_select_day(days: list, day: str):
+    """Який день показує екран.
+
+    Порожній параметр = НАЙНОВІШИЙ день, а не всі одразу. Так працює сам
+    процес: печі відкриваються вранці, і видають те, що вчора відфрезерували
+    (CLAUDE.md §9.4). Показ усіх 30 днів разом давав 262 клієнти на екрані —
+    звідси й 2525 тек, які треба обійти на мережевому сховищі перед першим
+    рядком HTML. Старіші дні нікуди не зникли: вони за чіпами днів і за
+    «усі», а скільки там робіт — написано в шапці.
+
+    Невідомий або порожній день повертає до цього ж замовчування, щоб
+    зіпсоване посилання не відкривало найважчий можливий екран."""
+    if day == HANDOUT_ALL_DAYS:
+        return None
+    parsed = _parse_sheet_tab(day) if day else None
+    if parsed is not None and parsed in days:
+        return parsed
+    return days[-1] if days else None
+
+
 def _handout_not_before(eligible: list[Order]) -> datetime | None:
     """Межа за датою — головний важіль швидкодії обходу. Бойовий лог 27.08.26:
     «262 клієнтів на екрані, 746 тек, 46148 записів, 511.42с» — тобто ~176
@@ -3784,14 +3819,16 @@ def get_handout(
     # Day chips (14.08, 15.08, …): every past day that still has unissued
     # client works. `day` narrows the whole screen to that one day — the
     # operator hands out one day's furnace output at a time.
-    handout_days = sorted(
-        {d for o in eligible if (d := _parse_sheet_tab(o.sheet_tab)) is not None}
-    )
-    selected_day = _parse_sheet_tab(day) if day else None
-    if selected_day is not None and selected_day not in handout_days:
-        selected_day = None
+    handout_days = _handout_day_options(eligible)
+    selected_day = _handout_select_day(handout_days, day)
     if selected_day is not None:
-        eligible = [o for o in eligible if _parse_sheet_tab(o.sheet_tab) == selected_day]
+        shown = [o for o in eligible if _parse_sheet_tab(o.sheet_tab) == selected_day]
+        # Скільки робіт лишилось на інших днях — щоб замовчування «останній
+        # день» ніколи не ховало хвіст мовчки.
+        other_days_count = len(eligible) - len(shown)
+        eligible = shown
+    else:
+        other_days_count = 0
 
     groups: dict[str, list[Order]] = {}
     for order in eligible:
@@ -3939,6 +3976,10 @@ def get_handout(
             "handout_flash": handout_flash,
             "handout_days": [d.strftime("%d.%m.%y") for d in handout_days],
             "selected_day": selected_day.strftime("%d.%m.%y") if selected_day else "",
+            # Те, що треба покласти в посилання/форми, щоб повернутись СЮДИ ж:
+            # порожній рядок означав би «замовчування», а не «всі дні».
+            "day_param": selected_day.strftime("%d.%m.%y") if selected_day else HANDOUT_ALL_DAYS,
+            "other_days_count": other_days_count,
             "prev_day": _adjacent_handout_day(handout_days, selected_day, -1),
             "next_day": _adjacent_handout_day(handout_days, selected_day, +1),
             "day_window": _handout_day_window(handout_days, selected_day),
@@ -4151,7 +4192,7 @@ async def issue_handout_group(
     # the operator sees — and therefore what "Видати" closes — is that day's
     # works only; the client's other days stay open.
     selected_day = _parse_sheet_tab(day) if day else None
-    back_url = f"/handout?day={day}" if selected_day is not None else "/handout"
+    back_url = f"/handout?day={day}" if day else "/handout"
     if selected_day is not None:
         group_orders = [
             o for o in group_orders if _parse_sheet_tab(o.sheet_tab) == selected_day

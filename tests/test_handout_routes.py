@@ -234,14 +234,16 @@ def test_group_disappears_from_handout_listing_after_issue(monkeypatch):
         assert ctx_holder["client_groups"] == []
 
 
-def _get_handout_context(monkeypatch, db, user_id):
+def _get_handout_context(monkeypatch, db, user_id, day="all"):
+    """Порожній `day` тепер означає «останній день», а не «всі» — тому тести,
+    яким потрібен увесь список, просять його явно."""
     with patch.object(web, "list_export_client_names_cached", return_value=[]):
         ctx_holder = {}
         monkeypatch.setattr(
             web.templates, "TemplateResponse",
             lambda request, template, context: ctx_holder.update(context) or context,
         )
-        web.get_handout(request=_request(user_id), db=db)
+        web.get_handout(request=_request(user_id), day=day, db=db)
     return ctx_holder
 
 
@@ -301,7 +303,7 @@ def test_handout_day_chips_list_days_with_unissued_works(monkeypatch):
         db.add(_client_order(client_name="B", status="нове", sheet_tab=two_days_ago))
         db.commit()
 
-        ctx = _get_handout_context(monkeypatch, db, user.id)
+        ctx = _get_handout_context(monkeypatch, db, user.id, day="all")
         assert ctx["handout_days"] == [two_days_ago, YESTERDAY]
         assert ctx["selected_day"] == ""
 
@@ -659,3 +661,70 @@ class TestExportPrewarm:
             monkeypatch.setattr(web, "get_export_folder_path", lambda db: "Z:\\")
             monkeypatch.setattr(web, "list_export_client_names_cached", lambda root: [])
             assert web.export_warm_once(db) == 0
+
+
+class TestHandoutDefaultDay:
+    """Порожній `day` відкриває НАЙНОВІШИЙ день, а не всі 30 одразу.
+
+    Не косметика, а швидкодія: усі дні разом давали 262 клієнти на екрані й
+    ~2525 тек, які треба обійти на мережевому сховищі ще до першого рядка
+    HTML (виміряно 27.08.26 — 33 мс на теку). Один день — це десятки тек.
+    Умова, за якою це чесно: хвіст не зникає мовчки, і повернутись до всіх
+    днів можна одним кліком."""
+
+    def _two_days(self, db):
+        two_days_ago = (date.today() - timedelta(days=2)).strftime("%d.%m.%y")
+        db.add(_client_order(client_name="A", status="нове", sheet_tab=YESTERDAY))
+        db.add(_client_order(client_name="B", status="нове", row_number=61, sheet_tab=two_days_ago))
+        db.add(_client_order(client_name="C", status="нове", row_number=62, sheet_tab=two_days_ago))
+        db.commit()
+        return two_days_ago
+
+    def test_empty_day_opens_the_newest_day_only(self, monkeypatch):
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            self._two_days(db)
+            ctx = _get_handout_context(monkeypatch, db, user.id, day="")
+        assert ctx["selected_day"] == YESTERDAY
+        assert [g["client_name"] for g in ctx["client_groups"]] == ["A"]
+
+    def test_the_hidden_tail_is_counted_not_swallowed(self, monkeypatch):
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            self._two_days(db)
+            ctx = _get_handout_context(monkeypatch, db, user.id, day="")
+        assert ctx["other_days_count"] == 2
+
+    def test_all_days_stays_reachable(self, monkeypatch):
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            self._two_days(db)
+            ctx = _get_handout_context(monkeypatch, db, user.id, day="all")
+        assert ctx["selected_day"] == ""
+        assert ctx["other_days_count"] == 0
+        assert len(ctx["client_groups"]) == 3
+
+    def test_links_and_forms_carry_the_all_days_choice(self, monkeypatch):
+        """`day_param` — те, що шаблон кладе в посилання й форми. Порожній
+        рядок означав би «замовчування», тобто клік по вкладці джерела
+        мовчки викидав би оператора з «усіх днів» на останній."""
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            self._two_days(db)
+            all_days = _get_handout_context(monkeypatch, db, user.id, day="all")
+            one_day = _get_handout_context(monkeypatch, db, user.id, day="")
+        assert all_days["day_param"] == "all"
+        assert one_day["day_param"] == YESTERDAY
+
+    def test_a_broken_day_link_falls_back_to_the_default(self, monkeypatch):
+        """Зіпсоване посилання не має відкривати найважчий можливий екран."""
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            self._two_days(db)
+            ctx = _get_handout_context(monkeypatch, db, user.id, day="не-дата")
+        assert ctx["selected_day"] == YESTERDAY

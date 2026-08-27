@@ -4820,6 +4820,8 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .daypick .dchip:hover{color:var(--ink);background:#1d2734;opacity:1}
 .handoutv2 .daypick .dchip.active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
 .handoutv2 .daypick .dchip.dall{font-family:var(--font-body)}
+.handoutv2 .dayrest{font-size:12px;color:var(--ink-3);text-decoration:none;padding:4px 9px;border:1px dashed var(--line-2);border-radius:999px}
+.handoutv2 .dayrest:hover{color:var(--ink);border-color:var(--control-edge)}
 .handoutv2 .dayall{position:relative}
 .handoutv2 .dayall summary{list-style:none;cursor:pointer;font-size:12px;color:var(--ink-3);padding:4px 9px;border:1px solid var(--line);border-radius:999px}
 .handoutv2 .dayall summary::-webkit-details-marker{display:none}

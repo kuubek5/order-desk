@@ -22,7 +22,7 @@
             {% for d in day_window %}
             <a class="dchip mono {% if d.active %}active{% endif %}" href="/handout?source={{ source }}&day={{ d.value }}"{% if d.active %} aria-current="date"{% endif %}>{{ d.label }}</a>
             {% endfor %}
-            {% if not selected_day %}<span class="dchip dall active">усі</span>{% endif %}
+            {% if not selected_day %}<span class="dchip dall active">усі</span>{% else %}<a class="dchip dall" href="/handout?source={{ source }}&day=all" title="Показати всі дні одразу">усі</a>{% endif %}
             {% if next_day %}<a class="arw" href="/handout?source={{ source }}&day={{ next_day }}" title="Наступний день" aria-label="Наступний день">›</a>
             {% else %}<span class="arw off" aria-hidden="true">›</span>{% endif %}
         </div>
@@ -31,12 +31,19 @@
         <details class="dayall">
             <summary title="Обрати день зі списку">{{ handout_days|length }} дн.</summary>
             <div class="dayall-pop">
-                <a href="/handout?source={{ source }}" class="day-chip {% if not selected_day %}active{% endif %}">Усі</a>
+                <a href="/handout?source={{ source }}&day=all" class="day-chip {% if not selected_day %}active{% endif %}">Усі</a>
                 {% for d in handout_days %}
                 <a href="/handout?source={{ source }}&day={{ d }}" class="day-chip {% if selected_day == d %}active{% endif %}">{{ d[:5] }}</a>
                 {% endfor %}
             </div>
         </details>
+        {# Замовчування показує лише останній день. Хвіст не має зникати
+           мовчки — тому скільки робіт лишилось поза екраном сказано прямо,
+           і саме число веде на «всі дні». #}
+        {% if other_days_count %}
+        <a class="dayrest mono" href="/handout?source={{ source }}&day=all"
+           title="Роботи за старіші дні — показати всі дні">+{{ other_days_count }} за інші дні</a>
+        {% endif %}
         {% endif %}
 
         {% if client_groups %}
@@ -45,8 +52,8 @@
         {% endif %}
 
         <nav class="hsrc" aria-label="Джерело робіт">
-            <a href="/handout?source=all{% if selected_day %}&day={{ selected_day }}{% endif %}" class="{% if source == 'all' %}on{% endif %}"{% if source == 'all' %} aria-current="page"{% endif %}>Усі <span class="mono">{{ source_counts.all }}</span></a>
-            <a href="/handout?source=email{% if selected_day %}&day={{ selected_day }}{% endif %}" class="{% if source == 'email' %}on{% endif %}"{% if source == 'email' %} aria-current="page"{% endif %}>Пошта <span class="mono">{{ source_counts.email }}</span></a>
+            <a href="/handout?source=all&day={{ day_param }}" class="{% if source == 'all' %}on{% endif %}"{% if source == 'all' %} aria-current="page"{% endif %}>Усі <span class="mono">{{ source_counts.all }}</span></a>
+            <a href="/handout?source=email&day={{ day_param }}" class="{% if source == 'email' %}on{% endif %}"{% if source == 'email' %} aria-current="page"{% endif %}>Пошта <span class="mono">{{ source_counts.email }}</span></a>
         </nav>
 
         {% if client_groups %}
@@ -124,7 +131,7 @@
                     {% if found_n %}
                     <form method="post" action="/handout/issue-group" class="issue-form">
                         <input type="hidden" name="client_name" value="{{ group.client_name }}">
-                        <input type="hidden" name="day" value="{{ selected_day }}">
+                        <input type="hidden" name="day" value="{{ day_param }}">
                         <button type="submit" class="issue-btn"
                                 title="{% if found_n < total_n %}Видати {{ found_n }} знайдених; решта {{ total_n - found_n }} лишиться в картці{% else %}Видати всі роботи клієнта{% endif %}">
                             {% if found_n < total_n %}Видати {{ found_n }} з {{ total_n }}{% else %}Видати{% endif %}
@@ -142,7 +149,7 @@
                         {% if not is_found %}
                         <form method="post" action="/orders/{{ order.id }}/mark-found">
                             <input type="hidden" name="source" value="{{ source }}">
-                            <input type="hidden" name="day" value="{{ selected_day }}">
+                            <input type="hidden" name="day" value="{{ day_param }}">
                             <button type="submit" class="wcheck" title="Позначити знайденим">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                             </button>
@@ -150,7 +157,7 @@
                         {% elif order.status == 'знайдено при видачі' %}
                         <form method="post" action="/orders/{{ order.id }}/unmark-found">
                             <input type="hidden" name="source" value="{{ source }}">
-                            <input type="hidden" name="day" value="{{ selected_day }}">
+                            <input type="hidden" name="day" value="{{ day_param }}">
                             <button type="submit" class="wcheck done" title="Зняти відмітку «знайдено»">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                             </button>
