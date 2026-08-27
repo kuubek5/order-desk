@@ -199,28 +199,6 @@
                     {% endfor %}
                 </div>
 
-                {% if group.extra_entries %}
-                {# Folders whose material didn't line up with any row — surfaced so a
-                   mislabelled colour never hides a physical work. #}
-                <div class="cfoot">
-                    <div class="cfoot-label">Інші папки (матеріал не збігся з рядками)</div>
-                    <div class="export-batches">
-                        {% for batch_key, batch_entries in group.extra_entries|sort(attribute='created_at')|groupby('batch_folder_name') %}
-                        <div class="export-batch">
-                            <span class="batch-time">{{ batch_entries[0].created_at.strftime('%d.%m.%y %H:%M') }}</span>
-                            {% for entry in batch_entries %}
-                            <span class="matchip">{{ entry.material_color_folder_name }} ({{ entry.files|length }} файл.)</span>
-                            {% if entry.folder_uri %}
-                            <a href="{{ entry.folder_uri }}" class="folder-link" {% if entry.preview_token %}data-stl-preview-token="{{ entry.preview_token }}"{% endif %} title="Відкрити папку">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
-                            </a>
-                            {% endif %}
-                            {% endfor %}
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-                {% endif %}
             </div>
         </section>
         {% endfor %}

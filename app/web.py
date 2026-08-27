@@ -3893,15 +3893,14 @@ def get_handout(
         # "нова папка"), so this is an ASSIST, not an exact bind — when several
         # works share a material the same folders show under each, and the
         # operator picks by eye (Sum3D ID + STL preview are their anchor).
-        matched_entry_ids: set[int] = set()
         for order in group_orders:
-            cands = _entries_for_material(order.material_color, export_entries)
-            order.export_matches = cands
-            for entry in cands:
-                matched_entry_ids.add(id(entry))
-        # Folders whose material matched no row — surfaced separately so a
-        # mislabelled colour never hides a physical work.
-        extra_entries = [e for e in export_entries if id(e) not in matched_entry_ids]
+            order.export_matches = _entries_for_material(order.material_color, export_entries)
+        # Теки, чий матеріал не збігся з жодним рядком, раніше показувались
+        # окремим підвалом «Інші папки». Прибрано на прохання оператора
+        # (28.08.26): на ранковій видачі це шум — звіряють коронку з STL за
+        # рядком роботи, а не гортають чужі теки. Тека клієнта цілком лишається
+        # одним кліком (`client_folder_uri`), якщо матеріал таки підписали не
+        # так і теку треба відкрити руками.
         all_found = all(o.status in ("знайдено при видачі", "видано") for o in group_orders)
         # Client-level folder (the parent of the material folders) so the client
         # name itself opens the right place on disk, and a link to the client
@@ -3915,7 +3914,6 @@ def get_handout(
                 "orders": group_orders,
                 "match": match,
                 "export_entries": export_entries,
-                "extra_entries": extra_entries,
                 "all_found": all_found,
                 "client_folder_uri": client_folder_uri,
                 "client_id": _client_id_for(client_name),

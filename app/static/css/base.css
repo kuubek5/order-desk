@@ -4937,7 +4937,6 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .wfolder:hover{background:rgba(20,184,166,.22);border-color:var(--accent);opacity:1}
 .handoutv2 .wfolder svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .handoutv2 .wfolder-t{font-size:10.5px;color:var(--accent-c)}
-.handoutv2 .cfoot-label{font-size:11px;color:var(--ink-3);margin-bottom:7px}
 
 /* View switch: Рядки (compact list) ⇄ Плитки (preview tiles). */
 /* Перемикач вигляду — той самий сегментований контрол, що й .hsrc поруч:
@@ -4963,7 +4962,6 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .clients.as-tiles .wmain .top{flex:none}
 .handoutv2 .clients.as-tiles .wopen{width:100%}
 .handoutv2 .clients.as-tiles .wfolder{flex:1;justify-content:center;height:34px;font-size:12px}
-.handoutv2 .cfoot{margin-top:12px;padding-top:12px;border-top:1px solid #1b2431}
 .handoutv2 .export-batches{display:flex;flex-direction:column;gap:8px}
 .handoutv2 .export-batch{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .handoutv2 .batch-time{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
