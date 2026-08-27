@@ -9,7 +9,12 @@ Walks exactly 3 levels deep, collecting ExportEntry objects for each material-co
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import logging
 import os
+import threading
+import time
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -126,3 +131,68 @@ def scan_export_folder(root: Path) -> list[ExportEntry]:
                 entries.append(entry)
 
     return entries
+
+
+# ── Кеш обходу дерева ────────────────────────────────────────────────────
+# `export` живе на МЕРЕЖЕВОМУ диску, а обхід triрівневого дерева
+# (клієнт / партія / матеріал) — це сотні мережевих stat() на кожну теку.
+# Екран видачі викликав scan_export_folder на КОЖНЕ відкриття, незалежно від
+# обраного дня. У бойовому логу 25.08.26 це дало «GET /handout took 65.281s»,
+# і сторінка фактично перестала відкриватись.
+#
+# Стратегія — stale-while-revalidate: свіжий кеш віддається одразу, протухлий
+# теж віддається одразу, а оновлення йде фоновим потоком. Блокує лише найперше
+# сканування після старту. Папка змінюється, коли оператор скачує роботи —
+# хвилина затримки тут нічого не варта, а 65 секунд очікування вартують зміни.
+_CACHE_TTL_SECONDS = 90.0
+_cache: dict[str, tuple[float, list[ExportEntry]]] = {}
+_cache_lock = threading.Lock()
+_refreshing: set[str] = set()
+
+
+def _refresh_cache(key: str, root: Path) -> None:
+    try:
+        entries = scan_export_folder(root)
+    except Exception:  # noqa: BLE001 — фонове оновлення не має валити застосунок
+        logger.exception("Фонове сканування export не вдалося: %s", root)
+        return
+    finally:
+        with _cache_lock:
+            _refreshing.discard(key)
+    with _cache_lock:
+        _cache[key] = (time.monotonic(), entries)
+
+
+def scan_export_folder_cached(root: Path) -> list[ExportEntry]:
+    """scan_export_folder із кешем на `_CACHE_TTL_SECONDS`.
+
+    Окрема функція, а не прапорець у scan_export_folder: сканер лишається
+    чистим і передбачуваним для тестів, які створюють теки й одразу чекають
+    їх у результаті. Кеш потрібен рівно одному місцю — екрану видачі.
+    """
+    key = str(root)
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _cache.get(key)
+        if cached is not None:
+            stamped, entries = cached
+            if now - stamped < _CACHE_TTL_SECONDS:
+                return entries
+            # протухло — віддаємо старе, оновлюємо у фоні
+            if key not in _refreshing:
+                _refreshing.add(key)
+                threading.Thread(
+                    target=_refresh_cache, args=(key, Path(root)), daemon=True
+                ).start()
+            return entries
+    # перший раз — доводиться дочекатись
+    entries = scan_export_folder(root)
+    with _cache_lock:
+        _cache[key] = (time.monotonic(), entries)
+    return entries
+
+
+def clear_export_cache() -> None:
+    """Скинути кеш — після скачування файлів у export, щоб видача побачила їх одразу."""
+    with _cache_lock:
+        _cache.clear()

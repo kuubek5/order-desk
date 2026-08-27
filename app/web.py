@@ -40,7 +40,10 @@ from app.client_profile import find_matching_orders, summarize_client_orders
 from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH, SESSION_SECRET_KEY
 from app.db import Base, SessionLocal, engine
 from app.monthly_backup import ensure_monthly_snapshot, list_snapshots
-from app.export_scanner import scan_export_folder
+from app.export_scanner import (
+    clear_export_cache,
+    scan_export_folder_cached,
+)
 from app import sync_control
 from app.license import get_license_status, get_machine_id, verify_license_key
 from app.mail_export import (
@@ -3623,9 +3626,6 @@ def get_handout(
     today = date.today()
     # selectinload(Order.material) обов'язковий: `_matpair.html` викликає
     # material_badge(order) на КОЖНІЙ роботі, а на видачі без фільтра дня їх
-    # ~1800. Без цього кожен рядок робив би власний SELECT.
-    # selectinload(Order.material) обов'язковий: `_matpair.html` викликає
-    # material_badge(order) на КОЖНІЙ роботі, а на видачі без фільтра дня їх
     # ~1800. Виміряно на усталених значеннях (по 3 прогріті запити):
     # без eager 3.8с, з ним 2.7с. Решта часу — не запити, а 3.1МБ HTML,
     # який ця сторінка віддає одним шматком; це окрема задача.
@@ -3664,7 +3664,9 @@ def get_handout(
     for group_orders in groups.values():
         group_orders.sort(key=_sheet_order_key)
 
-    entries = scan_export_folder(Path(get_export_folder_path(db)))
+    # Кешований обхід: export лежить на мережевому диску, і повний прохід
+    # дерева коштував 65с у бойовому логу 25.08.26 — сторінка не відкривалась.
+    entries = scan_export_folder_cached(Path(get_export_folder_path(db)))
     folder_names = sorted({e.client_folder_name for e in entries})
     aliases = {
         a.sheet_name: a.export_folder_name
@@ -4471,7 +4473,7 @@ def _client_folder_options(db: Session, canonical_name: str) -> tuple[list[str],
     surfaced here so binding is one click on the right name instead of hunting
     through a few hundred folders."""
     try:
-        entries = scan_export_folder(Path(get_export_folder_path(db)))
+        entries = scan_export_folder_cached(Path(get_export_folder_path(db)))
     except Exception:  # noqa: BLE001 — an unreachable export root must not 500 the card
         entries = []
     folder_names = sorted({e.client_folder_name for e in entries})
@@ -6649,6 +6651,8 @@ async def accept_email(
                     client_folder_override=client_override,
                     material_folder_override=material_override,
                 )
+                # Файли переїхали — кеш обходу export більше не відповідає диску.
+                clear_export_cache()
                 for attachment, new_path in zip(to_move, new_paths):
                     attachment.saved_path = str(new_path)
                     attachment.order_id = new_order.id
@@ -6791,6 +6795,8 @@ async def reject_email(
             new_paths = restore_attachments_to_spool(
                 Path(MAIL_ATTACHMENTS_PATH), email.uid, [Path(a.saved_path) for a in staged]
             )
+            # Файли переїхали — кеш обходу export більше не відповідає диску.
+            clear_export_cache()
             for attachment, new_path in zip(staged, new_paths):
                 attachment.saved_path = str(new_path)
                 attachment.staged_to_export = False
@@ -7163,6 +7169,8 @@ def _unaccept_email(db: Session, email: EmailMessage) -> None:
         new_paths = restore_attachments_to_spool(
             Path(MAIL_ATTACHMENTS_PATH), email.uid, [Path(a.saved_path) for a in attachments]
         )
+        # Файли переїхали — кеш обходу export більше не відповідає диску.
+        clear_export_cache()
         for attachment, new_path in zip(attachments, new_paths):
             attachment.saved_path = str(new_path)
             attachment.order_id = None

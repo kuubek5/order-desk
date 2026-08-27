@@ -351,3 +351,51 @@ class TestFolderPathField:
         assert entry.folder_path == mat_path
         assert entry.folder_path.is_absolute()
         assert entry.folder_path.name == "Material"
+
+
+class TestExportScanCache:
+    """Кеш обходу export — лікує «GET /handout took 65.281s» з бойового логу
+    25.08.26: `export` на мережевому диску, повний прохід triрівневого дерева
+    йшов на КОЖНЕ відкриття видачі."""
+
+    def test_second_call_does_not_touch_the_disk_again(self, tmp_path, monkeypatch):
+        from app import export_scanner
+
+        export_scanner.clear_export_cache()
+        (tmp_path / "Люмі" / "17.08.26" / "моно a3").mkdir(parents=True)
+
+        calls = []
+        real = export_scanner.scan_export_folder
+
+        def counting(root):
+            calls.append(root)
+            return real(root)
+
+        monkeypatch.setattr(export_scanner, "scan_export_folder", counting)
+        first = export_scanner.scan_export_folder_cached(tmp_path)
+        second = export_scanner.scan_export_folder_cached(tmp_path)
+
+        assert len(calls) == 1, "другий виклик мав прийти з кешу"
+        assert [e.material_color_folder_name for e in first] == ["моно a3"]
+        assert second == first
+
+    def test_clear_cache_makes_the_next_call_hit_the_disk(self, tmp_path):
+        from app import export_scanner
+
+        export_scanner.clear_export_cache()
+        (tmp_path / "Люмі" / "17.08.26" / "моно a3").mkdir(parents=True)
+        assert len(export_scanner.scan_export_folder_cached(tmp_path)) == 1
+
+        # нова тека з'явилась (оператор прийняв лист) — без скидання кешу
+        # видача її б не побачила
+        (tmp_path / "Ортос" / "17.08.26" / "пмма A2").mkdir(parents=True)
+        assert len(export_scanner.scan_export_folder_cached(tmp_path)) == 1, "кеш ще діє"
+
+        export_scanner.clear_export_cache()
+        assert len(export_scanner.scan_export_folder_cached(tmp_path)) == 2
+
+    def test_missing_root_is_cached_as_empty_not_an_error(self, tmp_path):
+        from app import export_scanner
+
+        export_scanner.clear_export_cache()
+        assert export_scanner.scan_export_folder_cached(tmp_path / "немає") == []

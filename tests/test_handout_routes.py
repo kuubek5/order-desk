@@ -224,7 +224,7 @@ def test_group_disappears_from_handout_listing_after_issue(monkeypatch):
             web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
 
-        with patch.object(web, "scan_export_folder", return_value=[]):
+        with patch.object(web, "scan_export_folder_cached", return_value=[]):
             ctx_holder = {}
             monkeypatch.setattr(
                 web.templates, "TemplateResponse",
@@ -235,7 +235,7 @@ def test_group_disappears_from_handout_listing_after_issue(monkeypatch):
 
 
 def _get_handout_context(monkeypatch, db, user_id):
-    with patch.object(web, "scan_export_folder", return_value=[]):
+    with patch.object(web, "scan_export_folder_cached", return_value=[]):
         ctx_holder = {}
         monkeypatch.setattr(
             web.templates, "TemplateResponse",
@@ -318,7 +318,7 @@ def test_handout_day_filter_narrows_to_that_day(monkeypatch):
         db.add(_client_order(client_name="OnlyOld", status="нове", sheet_tab=two_days_ago))
         db.commit()
 
-        with patch.object(web, "scan_export_folder", return_value=[]):
+        with patch.object(web, "scan_export_folder_cached", return_value=[]):
             ctx_holder = {}
             monkeypatch.setattr(
                 web.templates, "TemplateResponse",
