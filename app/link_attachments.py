@@ -16,7 +16,7 @@ Security posture (this is the server fetching a URL taken from email content):
 from dataclasses import dataclass
 import re
 from pathlib import Path
-from urllib.parse import urlsplit, parse_qs, unquote
+from urllib.parse import urlsplit, unquote
 
 import requests
 

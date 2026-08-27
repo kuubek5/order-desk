@@ -3,7 +3,7 @@ for Undo and the laconic action journal. Step 1 covers Sum3D + status logging.
 """
 import asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -218,7 +218,8 @@ def test_undo_cannot_run_twice():
         db.refresh(order)
         assert order.status == "прийнято"
         # change it again, then try to undo the SAME entry — must refuse
-        order.status = "відфрезеровано"; db.commit()
+        order.status = "відфрезеровано"
+        db.commit()
         _run_undo(db, user, entry.id)
         db.refresh(order)
         assert order.status == "відфрезеровано"  # second undo did nothing
@@ -327,11 +328,14 @@ def test_undo_redo_roundtrip_is_repeatable():
         user = _user(db, initial="Р")
         order = _order(db, status="прийнято")
         _run_sum3d(db, user, order, "12-01-45")
-        _run_undo_last(db, user); db.refresh(order)
+        _run_undo_last(db, user)
+        db.refresh(order)
         assert order.sum3d_id is None
-        _run_redo_last(db, user); db.refresh(order)
+        _run_redo_last(db, user)
+        db.refresh(order)
         assert order.sum3d_id == "12-01-45"              # redone
-        _run_undo_last(db, user); db.refresh(order)
+        _run_undo_last(db, user)
+        db.refresh(order)
         assert order.sum3d_id is None                    # undoable again after redo
 
 
@@ -341,9 +345,12 @@ def test_redo_refuses_if_value_changed_since_undo():
         user = _user(db, initial="Р")
         order = _order(db, status="прийнято")
         _run_sum3d(db, user, order, "12-01-45")
-        _run_undo_last(db, user); db.refresh(order)
-        order.sum3d_id = "77-77-77"; db.commit()         # someone set it after undo
-        _run_redo_last(db, user); db.refresh(order)
+        _run_undo_last(db, user)
+        db.refresh(order)
+        order.sum3d_id = "77-77-77"
+        db.commit()         # someone set it after undo
+        _run_redo_last(db, user)
+        db.refresh(order)
         assert order.sum3d_id == "77-77-77"              # NOT clobbered by redo
 
 
@@ -399,9 +406,11 @@ def test_operator_set_undo_restores_and_redo_reapplies():
         _run_set_operator(db, user, order, "К")             # change ЕЕ → К
         db.refresh(order)
         assert order.calculated_raw == "К"
-        _run_undo_last(db, user); db.refresh(order)
+        _run_undo_last(db, user)
+        db.refresh(order)
         assert order.calculated_raw == "ЕЕ"                 # restored
-        _run_redo_last(db, user); db.refresh(order)
+        _run_redo_last(db, user)
+        db.refresh(order)
         assert order.calculated_raw == "К"                  # re-applied
 
 
@@ -427,9 +436,11 @@ def test_cam_comment_is_logged_and_undoable():
         assert order.cam_comment == "покрити опаком"
         entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "cam_comment"))
         assert entry is not None and entry.old_value == "на швидку"
-        _run_undo_last(db, user); db.refresh(order)
+        _run_undo_last(db, user)
+        db.refresh(order)
         assert order.cam_comment == "на швидку"          # reverted
-        _run_redo_last(db, user); db.refresh(order)
+        _run_redo_last(db, user)
+        db.refresh(order)
         assert order.cam_comment == "покрити опаком"     # re-applied
 
 
@@ -675,8 +686,9 @@ def test_journal_filters_by_day():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db)
-        e_today = web.log_action(db, order=order, operator=user, action_type="status",
-                                 field="status", old="нове", new="прийнято", note="today")
+        # значення не потрібне — важливий сам запис у журнал
+        web.log_action(db, order=order, operator=user, action_type="status",
+                       field="status", old="нове", new="прийнято", note="today")
         db.commit()
         e_old = web.log_action(db, order=order, operator=user, action_type="status",
                                field="status", old="прийнято", new="прораховано", note="old")

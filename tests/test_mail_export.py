@@ -307,11 +307,15 @@ def test_resolve_wizard_overrides_new_folder_wins():
 def test_repeat_same_material_lands_in_new_batch_no_loss(tmp_path):
     """A client sending a SECOND email of the SAME material must not overwrite
     the first — the repeat goes into a fresh numbered batch, both survive."""
-    exp = tmp_path / "export"; exp.mkdir()
-    spool = tmp_path / "spool"; spool.mkdir()
+    exp = tmp_path / "export"
+    exp.mkdir()
+    spool = tmp_path / "spool"
+    spool.mkdir()
 
     def mk(n):
-        p = spool / n; p.write_bytes(b"x"); return p
+        p = spool / n
+        p.write_bytes(b"x")
+        return p
 
     first = save_attachments_to_export(exp, "Іванов", "моно а3", [mk("crown.stl")])
     second = save_attachments_to_export(exp, "Іванов", "моно а3", [mk("crown.stl")])
@@ -323,11 +327,15 @@ def test_repeat_same_material_lands_in_new_batch_no_loss(tmp_path):
 def test_repeat_different_material_reuses_batch(tmp_path):
     """A different material for the same client piles into the latest batch
     (a free material slot), not a brand-new one."""
-    exp = tmp_path / "export"; exp.mkdir()
-    spool = tmp_path / "spool"; spool.mkdir()
+    exp = tmp_path / "export"
+    exp.mkdir()
+    spool = tmp_path / "spool"
+    spool.mkdir()
 
     def mk(n):
-        p = spool / n; p.write_bytes(b"x"); return p
+        p = spool / n
+        p.write_bytes(b"x")
+        return p
 
     a = save_attachments_to_export(exp, "Іванов", "моно а3", [mk("a.stl")])
     b = save_attachments_to_export(exp, "Іванов", "пмма а2", [mk("b.stl")])

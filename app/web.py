@@ -88,7 +88,7 @@ from app.material_catalog import (
 from app.mail_filters import apply_rule_retroactively
 from app.mail_spool import analyze_spool, prune_spool
 from app.models import ActionLog, AppSetting, Attachment, Client, ClientNameAlias, ClientSenderMemory, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
-from app.sender_memory import is_auto_sender, list_sender_memories, lookup_sender, remember_sender, sender_key_for
+from app.sender_memory import list_sender_memories, lookup_sender, remember_sender
 from app.order_folder import (
     attach_email_folder_availability,
     attach_email_preview_tokens,
@@ -132,8 +132,6 @@ from app.settings_store import (
     DEFAULT_NOTIFY_POSITION,
     DEFAULT_NOTIFY_STYLE,
     NOTIFY_EVENTS,
-    NOTIFY_POSITIONS,
-    NOTIFY_STYLES,
     get_notify_events,
     get_notify_position,
     get_notify_style,
@@ -6160,8 +6158,8 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
         "material_cands": material_candidates(seed, _lab_material_colors(db)),
         "body_links": extract_download_links(email.body_text),
         "undownloaded_links": [
-            l for l in extract_download_links(email.body_text)
-            if (l.file_id or l.url) not in (
+            dl for dl in extract_download_links(email.body_text)
+            if (dl.file_id or dl.url) not in (
                 set(json.loads(email.handled_link_refs)) if email.handled_link_refs else set()
             )
         ],
@@ -6200,7 +6198,7 @@ def fetch_email_link(
         raise HTTPException(status_code=404, detail="email not found")
 
     link = next(
-        (l for l in extract_download_links(email.body_text) if (l.file_id or l.url) == ref),
+        (dl for dl in extract_download_links(email.body_text) if (dl.file_id or dl.url) == ref),
         None,
     )
     if link is None:
@@ -6217,7 +6215,7 @@ def fetch_email_link(
         path = download_link(link, Path(MAIL_ATTACHMENTS_PATH) / email.uid, existing_names=existing)
     except LinkDownloadError as exc:
         status, message = "error", str(exc)
-    except Exception as exc:  # noqa: BLE001 — one bad link mustn't 500 the panel
+    except Exception:  # noqa: BLE001 — one bad link mustn't 500 the panel
         logger.exception("Link download failed for email %s: %s", email.id, link.url)
         host = (urlsplit(link.url).hostname or "сервер файлів")
         status, message = "error", f"немає з'єднання з {host} (інтернет / проксі?)"

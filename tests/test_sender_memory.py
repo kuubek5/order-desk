@@ -39,7 +39,8 @@ def test_forward_without_original_sender_yields_no_key():
 def test_remember_then_lookup_round_trip_and_upsert():
     with _db() as db:
         first = EmailMessage(uid="a", from_address="lumi@ukr.net", subject="моно а3")
-        db.add(first); db.commit()
+        db.add(first)
+        db.commit()
         assert lookup_sender(db, first) is None  # unknown yet
 
         remember_sender(db, first, "Люмі-Дент", "Люмі-Дент", now=datetime(2026, 8, 1))
@@ -49,7 +50,8 @@ def test_remember_then_lookup_round_trip_and_upsert():
 
         # second accept from the same sender: latest correction wins, count grows
         second = EmailMessage(uid="b", from_address="LUMI@ukr.net", subject="emo a2")
-        db.add(second); db.commit()
+        db.add(second)
+        db.commit()
         remember_sender(db, second, "Люмі Дент (Київ)", "Люмі-Дент", now=datetime(2026, 8, 14))
         db.commit()
         hint = lookup_sender(db, second)
@@ -62,14 +64,18 @@ def test_remember_then_lookup_round_trip_and_upsert():
 def test_remember_keeps_folder_when_new_accept_has_none():
     with _db() as db:
         e = EmailMessage(uid="a", from_address="x@y.z", subject="s")
-        db.add(e); db.commit()
-        remember_sender(db, e, "X", "X-folder"); db.commit()
-        remember_sender(db, e, "X", None); db.commit()
+        db.add(e)
+        db.commit()
+        remember_sender(db, e, "X", "X-folder")
+        db.commit()
+        remember_sender(db, e, "X", None)
+        db.commit()
         assert lookup_sender(db, e).export_folder == "X-folder"
 
 
 def test_remember_ignores_blank_name():
     with _db() as db:
         e = EmailMessage(uid="a", from_address="x@y.z", subject="s")
-        db.add(e); db.commit()
+        db.add(e)
+        db.commit()
         assert remember_sender(db, e, "   ", "f") is None

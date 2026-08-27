@@ -1011,7 +1011,8 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
     row marked done, with a new Attachment created."""
     engine = _database()
     monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
-    saved = tmp_path / "model.stl"; saved.write_bytes(b"STL")
+    saved = tmp_path / "model.stl"
+    saved.write_bytes(b"STL")
     monkeypatch.setattr(web, "download_link", lambda link, dest, existing_names=frozenset(): saved)
     captured = {}
     def _fake_tr(request, template, context):
@@ -1024,7 +1025,8 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
         user = _user(db)
         email = EmailMessage(uid="m1", status="нове",
                              body_text=f"<https://drive.google.com/file/d/{fid}/view>")
-        db.add(email); db.commit()
+        db.add(email)
+        db.commit()
 
         response = web.fetch_email_link(request=_request(user.id), email_id=email.id, ref=fid, db=db)
 
@@ -1065,7 +1067,8 @@ def test_fetch_email_link_reports_error_row(monkeypatch, tmp_path):
         user = _user(db)
         email = EmailMessage(uid="m2", status="нове",
                              body_text=f"https://drive.google.com/open?id={fid}")
-        db.add(email); db.commit()
+        db.add(email)
+        db.commit()
 
         web.fetch_email_link(request=_request(user.id), email_id=email.id, ref=fid, db=db)
         assert captured["ctx"]["link_status"] == "error"
@@ -1083,7 +1086,8 @@ def test_fetch_email_link_unknown_ref_is_error_row(monkeypatch, tmp_path):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="m3", status="нове", body_text="no links here")
-        db.add(email); db.commit()
+        db.add(email)
+        db.commit()
         web.fetch_email_link(request=_request(user.id), email_id=email.id, ref="nope", db=db)
         assert captured["ctx"]["link_status"] == "error"
 
@@ -1149,7 +1153,8 @@ def test_opening_mail_detail_stamps_seen_at_once(monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="open1", status="нове")
-        db.add(email); db.commit()
+        db.add(email)
+        db.commit()
         assert email.seen_at is None
 
         web.get_mail_detail(request=_request(user.id), email_id=email.id, db=db)
@@ -1168,11 +1173,14 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
     from app.sender_memory import lookup_sender
 
     engine = _database()
-    export_root = tmp_path / "export"; export_root.mkdir()
+    export_root = tmp_path / "export"
+    export_root.mkdir()
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
     monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
-    spool = tmp_path / "spool" / "u1"; spool.mkdir(parents=True)
-    stl = spool / "crown.stl"; stl.write_bytes(b"STL")
+    spool = tmp_path / "spool" / "u1"
+    spool.mkdir(parents=True)
+    stl = spool / "crown.stl"
+    stl.write_bytes(b"STL")
     captured = {}
     monkeypatch.setattr(
         web.templates, "TemplateResponse",
@@ -1183,7 +1191,8 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
         user = _user(db)
         first = EmailMessage(uid="u1", status="нове", from_address="Lumi@ukr.net",
                              subject="моно а3", attachments_status="ready")
-        db.add(first); db.flush()
+        db.add(first)
+        db.flush()
         db.add(Attachment(email_message_id=first.id, filename="crown.stl", saved_path=str(stl)))
         db.commit()
 
@@ -1202,7 +1211,8 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
         # 2. next letter from the same sender (case differs) → hint + prefill
         second = EmailMessage(uid="u2", status="нове", from_address="LUMI@UKR.NET",
                               subject="emo a2", attachments_status="ready")
-        db.add(second); db.commit()
+        db.add(second)
+        db.commit()
 
         web.get_mail_detail(request=_request(user.id), email_id=second.id, panel=1, db=db)
         ctx = captured["ctx"]
@@ -1225,7 +1235,8 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
 
         # unknown sender → no hint, nothing prefilled
         third = EmailMessage(uid="u3", status="нове", from_address="new@client.ua", subject="x")
-        db.add(third); db.commit()
+        db.add(third)
+        db.commit()
         web.get_mail_detail(request=_request(user.id), email_id=third.id, panel=1, db=db)
         assert captured["ctx"]["sender_hint"] is None
         assert captured["ctx"]["client_name"] == ""
@@ -1237,8 +1248,10 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
     files move, letter stays "нове" with the rest; accept the rest → second
     order, letter becomes "прийнято". Restore undoes BOTH orders."""
     engine = _database()
-    export_root = tmp_path / "export"; export_root.mkdir()
-    spool = tmp_path / "spool" / "u1"; spool.mkdir(parents=True)
+    export_root = tmp_path / "export"
+    export_root.mkdir()
+    spool = tmp_path / "spool" / "u1"
+    spool.mkdir(parents=True)
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
     monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "spool"))
     monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
@@ -1248,12 +1261,16 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
         user = _user(db)
         email = EmailMessage(uid="u1", status="нове", from_address="c@x.ua",
                              subject="дві роботи", attachments_status="ready")
-        db.add(email); db.flush()
-        f1 = spool / "mono.stl"; f1.write_bytes(b"A")
-        f2 = spool / "zirc.stl"; f2.write_bytes(b"B")
+        db.add(email)
+        db.flush()
+        f1 = spool / "mono.stl"
+        f1.write_bytes(b"A")
+        f2 = spool / "zirc.stl"
+        f2.write_bytes(b"B")
         a1 = Attachment(email_message_id=email.id, filename="mono.stl", saved_path=str(f1))
         a2 = Attachment(email_message_id=email.id, filename="zirc.stl", saved_path=str(f2))
-        db.add_all([a1, a2]); db.commit()
+        db.add_all([a1, a2])
+        db.commit()
         a1_id, a2_id = a1.id, a2.id
 
         # accept only file 1 as "моно а3"
@@ -1262,7 +1279,9 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
             material_color="моно а3", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[a1_id], db=db,
         ))
-        db.refresh(email); db.refresh(a1); db.refresh(a2)
+        db.refresh(email)
+        db.refresh(a1)
+        db.refresh(a2)
         assert email.status == "нове"  # still has file 2 → partial
         assert a1.order_id is not None and a2.order_id is None
         assert (export_root / "Клієнт").is_dir()
@@ -1274,7 +1293,8 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
             material_color="цирконій", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[a2_id], db=db,
         ))
-        db.refresh(email); db.refresh(a2)
+        db.refresh(email)
+        db.refresh(a2)
         assert email.status == "прийнято"  # nothing left
         assert a2.order_id is not None and a2.order_id != first_order
         orders = db.scalars(select(Order).where(Order.source_email_id == email.id)).all()
@@ -1283,7 +1303,9 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
 
         # restore undoes BOTH orders and returns all files to spool
         asyncio.run(web.restore_email(request=_request(user.id), email_id=email.id, db=db))
-        db.refresh(email); db.refresh(a1); db.refresh(a2)
+        db.refresh(email)
+        db.refresh(a1)
+        db.refresh(a2)
         assert email.status == "нове"
         assert a1.order_id is None and a2.order_id is None
         assert db.scalars(select(Order).where(Order.source_email_id == email.id)).all() == []
@@ -1293,16 +1315,20 @@ def test_accept_empty_selection_takes_all_unclaimed(monkeypatch, tmp_path):
     """No checkboxes ticked = single-colour default: all unclaimed files move,
     letter fully accepted."""
     engine = _database()
-    export_root = tmp_path / "export"; export_root.mkdir()
-    spool = tmp_path / "spool" / "u2"; spool.mkdir(parents=True)
+    export_root = tmp_path / "export"
+    export_root.mkdir()
+    spool = tmp_path / "spool" / "u2"
+    spool.mkdir(parents=True)
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
     monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     monkeypatch.setattr(web.templates, "TemplateResponse", lambda request, template, context: context)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="u2", status="нове", from_address="c@x.ua", attachments_status="ready")
-        db.add(email); db.flush()
-        f = spool / "one.stl"; f.write_bytes(b"A")
+        db.add(email)
+        db.flush()
+        f = spool / "one.stl"
+        f.write_bytes(b"A")
         db.add(Attachment(email_message_id=email.id, filename="one.stl", saved_path=str(f)))
         db.commit()
         asyncio.run(web.accept_email(
@@ -1320,7 +1346,6 @@ def test_wizard_partial_badge_not_nested_in_form():
     must render OUTSIDE the wizard's own <form> (nested forms are invalid HTML —
     the browser splits the outer form and the «Далі» button stops submitting)."""
     from types import SimpleNamespace
-    from datetime import datetime as _dt
 
     env = web.templates.env
     tpl = env.get_template("_mail_wizard.html")
@@ -1361,7 +1386,8 @@ def test_get_mail_open_prerenders_panel_and_marks_row(monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="op", status="нове", from_address="c@x.ua", subject="s")
-        db.add(email); db.commit()
+        db.add(email)
+        db.commit()
 
         web.get_mail(request=_request(user.id), db=db, open=email.id)
         assert captured["ctx"]["open_id"] == email.id
@@ -1378,19 +1404,25 @@ def test_partial_accept_redirects_to_two_pane_open(monkeypatch, tmp_path):
     """After a partial accept the operator returns to the two-pane list with the
     letter open (/mail?open=id), not the standalone card page."""
     engine = _database()
-    export_root = tmp_path / "export"; export_root.mkdir()
-    spool = tmp_path / "spool" / "p"; spool.mkdir(parents=True)
+    export_root = tmp_path / "export"
+    export_root.mkdir()
+    spool = tmp_path / "spool" / "p"
+    spool.mkdir(parents=True)
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
     monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="p", status="нове", from_address="c@x.ua", attachments_status="ready")
-        db.add(email); db.flush()
-        f1 = spool / "a.stl"; f1.write_bytes(b"A")
-        f2 = spool / "b.stl"; f2.write_bytes(b"B")
+        db.add(email)
+        db.flush()
+        f1 = spool / "a.stl"
+        f1.write_bytes(b"A")
+        f2 = spool / "b.stl"
+        f2.write_bytes(b"B")
         a1 = Attachment(email_message_id=email.id, filename="a.stl", saved_path=str(f1))
         a2 = Attachment(email_message_id=email.id, filename="b.stl", saved_path=str(f2))
-        db.add_all([a1, a2]); db.commit()
+        db.add_all([a1, a2])
+        db.commit()
         a1_id = a1.id
 
         resp = asyncio.run(web.accept_email(
@@ -1405,19 +1437,25 @@ def test_accept_sets_truthful_outcome_toast(monkeypatch, tmp_path):
     """Accept leaves a session toast flash reporting what actually happened —
     saved count (full) and remaining count (partial)."""
     engine = _database()
-    export_root = tmp_path / "export"; export_root.mkdir()
-    spool = tmp_path / "spool" / "t"; spool.mkdir(parents=True)
+    export_root = tmp_path / "export"
+    export_root.mkdir()
+    spool = tmp_path / "spool" / "t"
+    spool.mkdir(parents=True)
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
     monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="t", status="нове", from_address="c@x.ua", attachments_status="ready")
-        db.add(email); db.flush()
-        f1 = spool / "a.stl"; f1.write_bytes(b"A")
-        f2 = spool / "b.stl"; f2.write_bytes(b"B")
+        db.add(email)
+        db.flush()
+        f1 = spool / "a.stl"
+        f1.write_bytes(b"A")
+        f2 = spool / "b.stl"
+        f2.write_bytes(b"B")
         a1 = Attachment(email_message_id=email.id, filename="a.stl", saved_path=str(f1))
         a2 = Attachment(email_message_id=email.id, filename="b.stl", saved_path=str(f2))
-        db.add_all([a1, a2]); db.commit()
+        db.add_all([a1, a2])
+        db.commit()
         a1_id, a2_id = a1.id, a2.id
 
         req = _request(user.id)
@@ -1447,7 +1485,8 @@ def test_restore_from_archive_sets_toast(monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         rejected = EmailMessage(uid="r", status="відхилено")
-        db.add(rejected); db.commit()
+        db.add(rejected)
+        db.commit()
         req = _request(user.id)
         resp = asyncio.run(web.restore_email(request=req, email_id=rejected.id, db=db))
         assert resp.status_code == 303 and resp.headers["location"] == "/mail"

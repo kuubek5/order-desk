@@ -265,7 +265,8 @@ def test_edit_rule_updates_in_place_and_reapplies(monkeypatch):
             kind="keyword", pattern="рахунок", category="бухгалтерія", db=db,
         )
         assert response.status_code == 303
-        db.refresh(rule); db.refresh(email)
+        db.refresh(rule)
+        db.refresh(email)
         assert (rule.pattern, rule.category) == ("рахунок", "бухгалтерія")
         # re-applied retroactively: the pending letter got stamped
         assert email.filter_category == "бухгалтерія"
@@ -294,7 +295,8 @@ def test_category_crud_rename_cascades_delete_guarded(monkeypatch):
         web.rename_filter_category(
             request=_request(admin.id), category_id=cat.id, name="3D-центр", db=db
         )
-        db.refresh(rule); db.refresh(email)
+        db.refresh(rule)
+        db.refresh(email)
         assert rule.category == "3D-центр"
         assert email.filter_category == "3D-центр"
 
@@ -303,7 +305,8 @@ def test_category_crud_rename_cascades_delete_guarded(monkeypatch):
         assert db.get(MailFilterCategory, cat.id) is not None
 
         # after the rule is gone, delete succeeds; the letter never blocks
-        db.delete(rule); db.commit()
+        db.delete(rule)
+        db.commit()
         web.delete_filter_category(request=_request(admin.id), category_id=cat.id, db=db)
         assert db.get(MailFilterCategory, cat.id) is None
 

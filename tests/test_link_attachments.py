@@ -21,11 +21,11 @@ def test_extracts_and_dedupes_drive_links():
         "<https://drive.google.com/open?id=104xWP_qkbzSMNXZFdf_LpI8IzSpz2anh>"
     )
     links = extract_download_links(body)
-    assert [l.file_id for l in links] == [
+    assert [lnk.file_id for lnk in links] == [
         "1LIyJrFNKnY7oFyMadR1W5mRgRpAW9ivl",
         "104xWP_qkbzSMNXZFdf_LpI8IzSpz2anh",
     ]
-    assert all(l.kind == "drive" for l in links)
+    assert all(lnk.kind == "drive" for lnk in links)
 
 
 def test_extracts_ukrnet_edisk_link():

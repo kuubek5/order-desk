@@ -199,7 +199,6 @@ def test_rework_sum3d_stamps_letter_in_column_X():
 
 
 def test_write_rework_calculated_targets_column_X():
-    import gspread.utils
     from app.sheet_writer import write_rework_calculated, COL_REDO_CALCULATED
     order = SimpleNamespace(id=1, row_number=1, source="lab", work_order_no="A",
                             client_name=None)
@@ -226,7 +225,8 @@ def test_account_initial_lets_operator_set_own_letter():
 def test_account_initial_rejects_letter_taken_by_another_operator():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
-        other = _user(db, username="kostya", initial="К")
+        # оператор із зайнятою літерою — потрібен у базі, посилання не треба
+        _user(db, username="kostya", initial="К")
         op = _user(db, username="roma")
         with patch.object(web.templates, "TemplateResponse", return_value="err") as tr:
             asyncio.run(web.post_account_initial(
