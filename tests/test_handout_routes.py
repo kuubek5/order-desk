@@ -376,6 +376,20 @@ def _stub_fills(monkeypatch, sheet_id=42):
     return captured
 
 
+def _inline_fill_background(monkeypatch, db):
+    """Запис заливки тепер іде у фоновий воркер із ВЛАСНОЮ сесією — у тестах
+    це вело б у справжню SessionLocal. Виконуємо його одразу й на тестовій
+    сесії: перевіряємо, що фарбують правильно, не втрачаючи асинхронності
+    самого обробника (для неї є окремий тест нижче)."""
+    monkeypatch.setattr(
+        web,
+        "_set_client_row_fill_background",
+        lambda order_id, *, blue: web._set_client_row_fill(
+            db, db.get(Order, order_id), blue=blue
+        ),
+    )
+
+
 def test_mark_found_clears_blue_and_keeps_day(monkeypatch):
     """The "знайдено" checkbox flips one order to "знайдено при видачі",
     clears its blue fill to white, and returns to the SAME day-filtered view
@@ -388,6 +402,7 @@ def test_mark_found_clears_blue_and_keeps_day(monkeypatch):
         db.add(_client_order(status="нове", row_number=60, sheet_tab=YESTERDAY))
         db.commit()
         order = db.scalar(select(Order))
+        _inline_fill_background(monkeypatch, db)
 
         import asyncio
         resp = asyncio.run(
@@ -416,6 +431,7 @@ def test_unmark_found_reverts_and_repaints_blue(monkeypatch):
         db.add(_client_order(status="знайдено при видачі", row_number=60, sheet_tab=YESTERDAY))
         db.commit()
         order = db.scalar(select(Order))
+        _inline_fill_background(monkeypatch, db)
 
         import asyncio
         resp = asyncio.run(
@@ -903,3 +919,67 @@ class TestRaiseExplorerWindow:
     def test_an_empty_name_is_not_searched_for(self):
         # Порожня ціль збіглася б із будь-яким вікном без заголовка.
         web._raise_explorer_window(Path("   "), timeout=0.05)
+
+
+class TestMarkFoundIsInstant:
+    """Галочка «знайдено» не має чекати на Google Таблицю.
+
+    Скарга оператора 28.08.26: «довго думає, довго ставить галочку». Запис
+    заливки йшов синхронно і на потоці ЗАПИТУ — тобто повз теплий кеш
+    write-back воркера, платячи за відкриття таблиці заново. На видачі
+    галочки клацають підряд, тож ця затримка діставалась десятки разів за
+    ранок."""
+
+    def test_the_request_never_touches_the_sheet_itself(self, monkeypatch):
+        engine = _database()
+        touched = []
+        monkeypatch.setattr(
+            web, "_set_client_row_fill",
+            lambda db, order, *, blue: touched.append(blue) or None,
+        )
+        queued = []
+        monkeypatch.setattr(
+            web, "_set_client_row_fill_background",
+            lambda order_id, *, blue: queued.append((order_id, blue)),
+        )
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            db.add(_client_order(status="нове", row_number=60, sheet_tab=YESTERDAY))
+            db.commit()
+            order = db.scalar(select(Order))
+
+            import asyncio
+            asyncio.run(
+                web.mark_found(
+                    request=_request(user.id), order_id=order.id,
+                    source="all", day=YESTERDAY, db=db,
+                )
+            )
+            assert queued == [(order.id, False)]
+        assert touched == [], "таблицю чіпає фон, а не обробник кліку"
+
+    def test_the_status_is_committed_before_the_sheet_is_queued(self, monkeypatch):
+        """Фон читає роботу власною сесією — якщо поставити його в чергу до
+        коміту, він побачить стару заливку або взагалі нічого."""
+        engine = _database()
+        seen_status = {}
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            db.add(_client_order(status="нове", row_number=60, sheet_tab=YESTERDAY))
+            db.commit()
+            order = db.scalar(select(Order))
+            monkeypatch.setattr(
+                web, "_set_client_row_fill_background",
+                lambda order_id, *, blue: seen_status.update(
+                    dirty=bool(db.dirty or db.new)
+                ),
+            )
+
+            import asyncio
+            asyncio.run(
+                web.mark_found(
+                    request=_request(user.id), order_id=order.id,
+                    source="all", day=YESTERDAY, db=db,
+                )
+            )
+        assert seen_status == {"dirty": False}

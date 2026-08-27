@@ -1704,6 +1704,37 @@ def _write_sheet_fields_background(order_id: int, fields: set[str]) -> None:
     _sheet_writeback_pool.submit(worker)
 
 
+def _set_client_row_fill_background(order_id: int, *, blue: bool) -> None:
+    """Перефарбувати рядок клієнта в таблиці, не тримаючи оператора.
+
+    Раніше це робилось прямо в обробнику кліку — і не абиде, а на потоці
+    ЗАПИТУ, повз теплий кеш write-back воркера. Тобто кожна галочка «знайдено»
+    платила за відкриття таблиці заново: у бойовому логу такі відкриття
+    коштували від секунд до 40+ (`MANUAL-ADD timing: open=...`). Оператор на
+    видачі клацає галочки одну за одною, тож ця затримка діставалась йому
+    десятки разів за ранок.
+
+    Заливка — дзеркало стану, а не сам стан: джерело правди в базі, і втрачений
+    мазок самолікується наступною точковою правкою (та сама логіка, що в
+    _write_sheet_fields_background)."""
+    def worker() -> None:
+        try:
+            with SessionLocal() as bg:
+                order = bg.get(Order, order_id)
+                if order is None:
+                    return
+                error = _set_client_row_fill(bg, order, blue=blue)
+                if error:
+                    logger.warning(
+                        "Заливку рядка для роботи %s не оновлено: %s", order_id, error
+                    )
+                bg.commit()
+        except Exception:
+            logger.exception("Фонова заливка рядка не вдалася для роботи %s", order_id)
+
+    _sheet_writeback_pool.submit(worker)
+
+
 def _clear_sheet_row_background(sheet_tab: str, row_number: int) -> None:
     """Blank a deleted order's row in the sheet, on the write-back worker.
 
@@ -4197,16 +4228,11 @@ async def mark_found(
     db.add(
         StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username)
     )
-    # Found = physically located → clear the sheet's blue "pending" fill to
-    # white, synchronously with the checkbox, per the lab's colour convention.
-    sync_error = _set_client_row_fill(db, order, blue=False)
     db.commit()
-
-    if sync_error:
-        request.session["handout_flash"] = {
-            "kind": "error",
-            "message": f"Позначено знайденим, але заливка в таблиці не оновилась: {sync_error}",
-        }
+    # Found = physically located → clear the sheet's blue "pending" fill to
+    # white, per the lab's colour convention. У фоні: галочка має ставитись
+    # миттєво, бо оператор клацає їх підряд.
+    _set_client_row_fill_background(order.id, blue=False)
     return RedirectResponse(_handout_back_url(source, day), status_code=303)
 
 
@@ -4235,17 +4261,11 @@ async def unmark_found(
     db.add(
         StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username)
     )
+    db.commit()
     # Un-found = back to pending → repaint the blue fill so sheet state and
     # portal status stay consistent (a white fill + "нове" would otherwise be
-    # read as issued on the next sync).
-    sync_error = _set_client_row_fill(db, order, blue=True)
-    db.commit()
-
-    if sync_error:
-        request.session["handout_flash"] = {
-            "kind": "error",
-            "message": f"Відмітку знято, але заливка в таблиці не оновилась: {sync_error}",
-        }
+    # read as issued on the next sync). Так само у фоні.
+    _set_client_row_fill_background(order.id, blue=True)
     return RedirectResponse(_handout_back_url(source, day), status_code=303)
 
 
