@@ -556,3 +556,47 @@ class TestHandoutDayWindow:
         days = self._days(24)
         entry = web._handout_day_window(days, days[0])[0]
         assert entry["label"] == "24.08" and entry["value"] == "24.08.26"
+
+
+def test_handout_reads_only_the_clients_on_screen(monkeypatch, tmp_path):
+    """Регрес-гард для «GET /handout took 65.281s» (бойовий лог 25.08.26).
+
+    `export` — шара Synology через SMB, де ціну диктує КІЛЬКІСТЬ звернень.
+    Сторінка обходила все дерево, хоча показує 10-20 клієнтів із сотень.
+    Тепер глибина сховища читається тільки для тих, хто реально на екрані."""
+    engine = _database()
+    _stub_sheet(monkeypatch)
+
+    # у сховищі 100 тек, на екрані буде один клієнт
+    root = tmp_path / "export"
+    for i in range(100):
+        (root / f"Клієнт {i}" / "17.08.26" / "mono a3").mkdir(parents=True)
+    (root / "Basarab" / "17.08.26" / "Ti").mkdir(parents=True)
+
+    monkeypatch.setattr(web, "get_export_folder_path", lambda db: str(root))
+    from app import export_scanner
+    export_scanner.clear_export_cache()
+
+    deep_reads = []
+    real_deep = export_scanner.scan_export_client
+
+    def counting_deep(r, name):
+        deep_reads.append(name)
+        return real_deep(r, name)
+
+    monkeypatch.setattr(web, "scan_export_client_cached", counting_deep)
+    monkeypatch.setattr(
+        web, "list_export_client_names_cached", export_scanner.list_export_client_names
+    )
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(_client_order(client_name="Basarab", status="знайдено при видачі"))
+        db.commit()
+        with patch.object(web.templates, "TemplateResponse", return_value="ok"):
+            web.get_handout(request=_request(user.id), source="all", day="", db=db)
+
+    assert deep_reads == ["Basarab"], (
+        f"глибина сховища мала читатись лише для клієнта на екрані, "
+        f"а прочитано {len(deep_reads)} тек: {deep_reads[:5]}"
+    )

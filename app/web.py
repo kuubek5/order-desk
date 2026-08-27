@@ -9,6 +9,7 @@ import logging
 import os
 import socket
 import ssl
+import time
 import subprocess
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -42,6 +43,8 @@ from app.db import Base, SessionLocal, engine
 from app.monthly_backup import ensure_monthly_snapshot, list_snapshots
 from app.export_scanner import (
     clear_export_cache,
+    list_export_client_names_cached,
+    scan_export_client_cached,
     scan_export_folder_cached,
 )
 from app import sync_control
@@ -3664,10 +3667,18 @@ def get_handout(
     for group_orders in groups.values():
         group_orders.sort(key=_sheet_order_key)
 
-    # Кешований обхід: export лежить на мережевому диску, і повний прохід
-    # дерева коштував 65с у бойовому логу 25.08.26 — сторінка не відкривалась.
-    entries = scan_export_folder_cached(Path(get_export_folder_path(db)))
-    folder_names = sorted({e.client_folder_name for e in entries})
+    # `export` — шара Synology через SMB, де ціну диктує КІЛЬКІСТЬ звернень.
+    # Повний обхід дерева тут коштував 65с (бойовий лог 25.08.26) і сторінка
+    # не відкривалась. Тепер обхід ЛІНИВИЙ:
+    #   рівень 1 (імена тек клієнтів) — один запит, потрібен для нечіткого
+    #       зіставлення «ім'я в таблиці ↔ назва теки»;
+    #   глибина — тільки для клієнтів, що реально на цьому екрані.
+    # Робота стала пропорційна показаному (10-20 клієнтів), а не вмісту
+    # сховища (сотні тек).
+    _export_root = Path(get_export_folder_path(db))
+    _scan_started = time.monotonic()
+    folder_names = list_export_client_names_cached(_export_root)
+    entries: list = []          # наповнюється ліниво, по клієнту, нижче
     aliases = {
         a.sheet_name: a.export_folder_name
         for a in db.scalars(select(ClientNameAlias).where(ClientNameAlias.confirmed.is_(True))).all()
@@ -3695,11 +3706,14 @@ def get_handout(
     client_groups = []
     for client_name, group_orders in groups.items():
         match = match_client_name(client_name, folder_names, aliases)
+        # Глибина сховища читається ТІЛЬКИ для цього клієнта — і тільки якщо
+        # нечітке зіставлення взагалі знайшло його теку.
         export_entries = (
-            [e for e in entries if e.client_folder_name == match.matched_folder_name]
+            scan_export_client_cached(_export_root, match.matched_folder_name)
             if match.matched_folder_name
             else []
         )
+        entries.extend(export_entries)
         for entry in export_entries:
             entry.folder_uri = folder_to_file_uri(entry.folder_path)
             entry.preview_token = build_preview_token(
@@ -3773,6 +3787,14 @@ def get_handout(
     # buries the one client the operator is actually on.
     unbound_count = sum(1 for g in client_groups if not g["client_folder_uri"])
 
+    # Таймінг обходу сховища в лог: без нього причину «сторінка не
+    # відкривається» доводиться вгадувати (так і сталось 27.08.26).
+    logger.info(
+        "Handout export scan: %d клієнтів на екрані, %d тек у сховищі, "
+        "%d записів, %.2fс",
+        len(groups), len(folder_names), len(entries),
+        time.monotonic() - _scan_started,
+    )
     return templates.TemplateResponse(
         request,
         "handout.html",

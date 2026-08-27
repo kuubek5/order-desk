@@ -63,134 +63,155 @@ def scan_export_folder(root: Path) -> list[ExportEntry]:
         Flat list of ExportEntry, one per material-color leaf folder found.
     """
     root = Path(root)
+    return [
+        entry
+        for name in list_export_client_names(root)
+        for entry in scan_export_client(root, name)
+    ]
 
-    # ПРОДУКТИВНІСТЬ: `export` живе на Synology через SMB, тож КОЖЕН системний
-    # виклик — це мережева ходка. Раніше обхід ішов через Path.iterdir() +
-    # .is_dir() + .is_file() + os.stat(): для кожного запису окремий запит.
-    # На сотнях клієнтських тек це тисячі ходок і 65с у бойовому логу.
-    #
-    # os.scandir() віддає тип запису й розмір/час РАЗОМ зі списком теки —
-    # Windows кладе це в ту саму відповідь, тож entry.is_dir() і entry.stat()
-    # не коштують нічого. Лишається по одному запиту на теку замість запиту
-    # на кожен запис у ній.
-    def _entries(path) -> list:
-        try:
-            with os.scandir(path) as it:
-                return list(it)
-        except (PermissionError, OSError):
-            return []
 
-    if not root.exists():
+# ПРОДУКТИВНІСТЬ: `export` — це шара Synology через SMB, де кожен системний
+# виклик коштує мережеву ходку. Тому тут два окремих входи:
+#
+#   list_export_client_names — ОДИН scandir кореня. Дешево, і саме цього
+#       достатньо для нечіткого зіставлення імен «таблиця ↔ тека».
+#   scan_export_client — глибина (партія / матеріал / файли) для ОДНОГО
+#       клієнта. Викликається тільки для тих, хто реально на екрані.
+#
+# Раніше екран видачі обходив УСЕ дерево, хоча показує 10-20 клієнтів із
+# сотень. Тепер робота пропорційна показаному, а не вмісту сховища.
+
+
+def _dir_entries(path) -> list:
+    """os.scandir одним запитом. На Windows тип запису й час створення
+    приходять РАЗОМ зі списком теки, тож entry.is_dir()/stat() безкоштовні —
+    на відміну від Path.iterdir() + .is_dir(), де кожен запис це окрема ходка."""
+    try:
+        with os.scandir(path) as it:
+            return list(it)
+    except (PermissionError, OSError):
         return []
 
-    entries = []
 
-    for client in _entries(root):                       # рівень 1: клієнти
+def list_export_client_names(root: Path) -> list[str]:
+    """Імена тек клієнтів (рівень 1). Один запит до сховища."""
+    root = Path(root)
+    if not root.exists():
+        return []
+    names = []
+    for client in _dir_entries(root):
         try:
-            if not client.is_dir():
-                continue
+            if client.is_dir():
+                names.append(client.name)
         except OSError:
             continue
+    return sorted(names)
 
-        for batch in _entries(client.path):             # рівень 2: партії
+
+def scan_export_client(root: Path, client_folder_name: str) -> list[ExportEntry]:
+    """Партії/матеріали/файли ОДНОГО клієнта."""
+    client_root = Path(root) / client_folder_name
+    entries: list[ExportEntry] = []
+
+    for batch in _dir_entries(client_root):
+        try:
+            if not batch.is_dir():
+                continue
+            created_at = datetime.fromtimestamp(batch.stat().st_ctime)
+        except (OSError, PermissionError, ValueError, OverflowError):
+            # без часу створення партію не відрізнити від сусідньої
+            continue
+
+        for material in _dir_entries(batch.path):
             try:
-                if not batch.is_dir():
+                if not material.is_dir():
                     continue
-                created_at = datetime.fromtimestamp(batch.stat().st_ctime)
-            except (OSError, PermissionError, ValueError, OverflowError):
-                # без часу створення партію не відрізнити від сусідньої —
-                # пропускаємо цілком, як і раніше
+            except OSError:
                 continue
 
-            for material in _entries(batch.path):       # рівень 3: матеріал+колір
+            files_list = []
+            for f in _dir_entries(material.path):
                 try:
-                    if not material.is_dir():
-                        continue
+                    if f.is_file():
+                        files_list.append(f.name)
                 except OSError:
                     continue
 
-                files_list = []
-                for f in _entries(material.path):       # рівень 4: файли
-                    try:
-                        if f.is_file():
-                            files_list.append(f.name)
-                    except OSError:
-                        continue
-
-                entries.append(
-                    ExportEntry(
-                        client_folder_name=client.name,
-                        batch_folder_name=batch.name,
-                        created_at=created_at,
-                        material_color_folder_name=material.name,
-                        files=files_list,
-                        folder_path=Path(material.path),
-                    )
+            entries.append(
+                ExportEntry(
+                    client_folder_name=client_folder_name,
+                    batch_folder_name=batch.name,
+                    created_at=created_at,
+                    material_color_folder_name=material.name,
+                    files=files_list,
+                    folder_path=Path(material.path),
                 )
-
+            )
     return entries
 
 
-# ── Кеш обходу дерева ────────────────────────────────────────────────────
-# `export` живе на МЕРЕЖЕВОМУ диску, а обхід triрівневого дерева
-# (клієнт / партія / матеріал) — це сотні мережевих stat() на кожну теку.
-# Екран видачі викликав scan_export_folder на КОЖНЕ відкриття, незалежно від
-# обраного дня. У бойовому логу 25.08.26 це дало «GET /handout took 65.281s»,
-# і сторінка фактично перестала відкриватись.
-#
-# Стратегія — stale-while-revalidate: свіжий кеш віддається одразу, протухлий
-# теж віддається одразу, а оновлення йде фоновим потоком. Блокує лише найперше
-# сканування після старту. Папка змінюється, коли оператор скачує роботи —
-# хвилина затримки тут нічого не варта, а 65 секунд очікування вартують зміни.
+# ── Кеш ──────────────────────────────────────────────────────────────────
+# stale-while-revalidate: свіже віддається одразу, протухле теж віддається
+# одразу з фоновим оновленням. Блокує лише найперший запит. TTL 90с — папка
+# змінюється, коли оператор приймає лист, і тоді кеш скидають явно.
 _CACHE_TTL_SECONDS = 90.0
-_cache: dict[str, tuple[float, list[ExportEntry]]] = {}
+_cache: dict[tuple, tuple[float, object]] = {}
 _cache_lock = threading.Lock()
-_refreshing: set[str] = set()
+_refreshing: set[tuple] = set()
 
 
-def _refresh_cache(key: str, root: Path) -> None:
+def _cached(key: tuple, producer):
+    """Спільна механіка кешу для всіх трьох входів сканера."""
+    now = time.monotonic()
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit is not None:
+            stamped, value = hit
+            if now - stamped < _CACHE_TTL_SECONDS:
+                return value
+            if key not in _refreshing:
+                _refreshing.add(key)
+                threading.Thread(
+                    target=_background_refresh, args=(key, producer), daemon=True
+                ).start()
+            return value            # протухле краще за очікування
+    value = producer()
+    with _cache_lock:
+        _cache[key] = (time.monotonic(), value)
+    return value
+
+
+def _background_refresh(key: tuple, producer) -> None:
     try:
-        entries = scan_export_folder(root)
-    except Exception:  # noqa: BLE001 — фонове оновлення не має валити застосунок
-        logger.exception("Фонове сканування export не вдалося: %s", root)
+        value = producer()
+    except Exception:  # noqa: BLE001 — фонове оновлення не валить застосунок
+        logger.exception("Фонове сканування export не вдалося: %s", key)
         return
     finally:
         with _cache_lock:
             _refreshing.discard(key)
     with _cache_lock:
-        _cache[key] = (time.monotonic(), entries)
+        _cache[key] = (time.monotonic(), value)
+
+
+def list_export_client_names_cached(root: Path) -> list[str]:
+    return _cached(("names", str(root)), lambda: list_export_client_names(root))
+
+
+def scan_export_client_cached(root: Path, client_folder_name: str) -> list[ExportEntry]:
+    return _cached(
+        ("client", str(root), client_folder_name),
+        lambda: scan_export_client(root, client_folder_name),
+    )
 
 
 def scan_export_folder_cached(root: Path) -> list[ExportEntry]:
-    """scan_export_folder із кешем на `_CACHE_TTL_SECONDS`.
-
-    Окрема функція, а не прапорець у scan_export_folder: сканер лишається
-    чистим і передбачуваним для тестів, які створюють теки й одразу чекають
-    їх у результаті. Кеш потрібен рівно одному місцю — екрану видачі.
-    """
-    key = str(root)
-    now = time.monotonic()
-    with _cache_lock:
-        cached = _cache.get(key)
-        if cached is not None:
-            stamped, entries = cached
-            if now - stamped < _CACHE_TTL_SECONDS:
-                return entries
-            # протухло — віддаємо старе, оновлюємо у фоні
-            if key not in _refreshing:
-                _refreshing.add(key)
-                threading.Thread(
-                    target=_refresh_cache, args=(key, Path(root)), daemon=True
-                ).start()
-            return entries
-    # перший раз — доводиться дочекатись
-    entries = scan_export_folder(root)
-    with _cache_lock:
-        _cache[key] = (time.monotonic(), entries)
-    return entries
+    """Повний обхід із кешем. Лишається для екранів, яким справді потрібне
+    все дерево; видача натомість ходить ліниво, по клієнту."""
+    return _cached(("full", str(root)), lambda: scan_export_folder(root))
 
 
 def clear_export_cache() -> None:
-    """Скинути кеш — після скачування файлів у export, щоб видача побачила їх одразу."""
+    """Скинути кеш — після переміщення файлів у/з export."""
     with _cache_lock:
         _cache.clear()
