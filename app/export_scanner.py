@@ -64,71 +64,69 @@ def scan_export_folder(root: Path) -> list[ExportEntry]:
     """
     root = Path(root)
 
+    # ПРОДУКТИВНІСТЬ: `export` живе на Synology через SMB, тож КОЖЕН системний
+    # виклик — це мережева ходка. Раніше обхід ішов через Path.iterdir() +
+    # .is_dir() + .is_file() + os.stat(): для кожного запису окремий запит.
+    # На сотнях клієнтських тек це тисячі ходок і 65с у бойовому логу.
+    #
+    # os.scandir() віддає тип запису й розмір/час РАЗОМ зі списком теки —
+    # Windows кладе це в ту саму відповідь, тож entry.is_dir() і entry.stat()
+    # не коштують нічого. Лишається по одному запиту на теку замість запиту
+    # на кожен запис у ній.
+    def _entries(path) -> list:
+        try:
+            with os.scandir(path) as it:
+                return list(it)
+        except (PermissionError, OSError):
+            return []
+
     if not root.exists():
         return []
 
     entries = []
 
-    # Level 1: client folders
-    try:
-        level1_items = list(root.iterdir())
-    except (PermissionError, OSError):
-        return []
-
-    for client_folder in level1_items:
-        if not client_folder.is_dir():
-            continue
-
-        client_name = client_folder.name
-
-        # Level 2: batch folders (Windows auto-numbered)
+    for client in _entries(root):                       # рівень 1: клієнти
         try:
-            level2_items = list(client_folder.iterdir())
-        except (PermissionError, OSError):
+            if not client.is_dir():
+                continue
+        except OSError:
             continue
 
-        for batch_folder in level2_items:
-            if not batch_folder.is_dir():
-                continue
-
-            batch_name = batch_folder.name
-
-            # Get batch folder's creation timestamp
+        for batch in _entries(client.path):             # рівень 2: партії
             try:
-                created_ts = os.stat(str(batch_folder)).st_ctime
-                created_at = datetime.fromtimestamp(created_ts)
-            except (OSError, PermissionError):
-                # If we can't stat this batch folder, skip it entirely
-                continue
-
-            # Level 3: material-color folders
-            try:
-                level3_items = list(batch_folder.iterdir())
-            except (PermissionError, OSError):
-                continue
-
-            for material_folder in level3_items:
-                if not material_folder.is_dir():
+                if not batch.is_dir():
                     continue
+                created_at = datetime.fromtimestamp(batch.stat().st_ctime)
+            except (OSError, PermissionError, ValueError, OverflowError):
+                # без часу створення партію не відрізнити від сусідньої —
+                # пропускаємо цілком, як і раніше
+                continue
 
-                material_name = material_folder.name
-
-                # Level 4: files in material-color folder
+            for material in _entries(batch.path):       # рівень 3: матеріал+колір
                 try:
-                    files_list = [f.name for f in material_folder.iterdir() if f.is_file()]
-                except (PermissionError, OSError):
-                    # If we can't list files in this material folder, skip it
+                    if not material.is_dir():
+                        continue
+                except OSError:
                     continue
 
-                entry = ExportEntry(
-                    client_folder_name=client_name,
-                    batch_folder_name=batch_name,
-                    created_at=created_at,
-                    material_color_folder_name=material_name,
-                    files=files_list,
-                    folder_path=material_folder,
+                files_list = []
+                for f in _entries(material.path):       # рівень 4: файли
+                    try:
+                        if f.is_file():
+                            files_list.append(f.name)
+                    except OSError:
+                        continue
+
+                entries.append(
+                    ExportEntry(
+                        client_folder_name=client.name,
+                        batch_folder_name=batch.name,
+                        created_at=created_at,
+                        material_color_folder_name=material.name,
+                        files=files_list,
+                        folder_path=Path(material.path),
+                    )
                 )
-                entries.append(entry)
 
     return entries
 
