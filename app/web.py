@@ -1,198 +1,72 @@
-from collections import defaultdict
 from contextlib import asynccontextmanager
-import calendar
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
-import ipaddress
-import json
+from datetime import date
 import logging
 import os
-import socket
-import ssl
 import time
-import subprocess
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
-from threading import Event, Lock, Thread
+from threading import (
+    Event,
+    Thread,
+)
 from time import monotonic
-from typing import Annotated, Callable
-import uuid
-from urllib.parse import parse_qs, quote, urlencode, urlsplit
+from typing import Callable
 
-import gspread
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
+from fastapi import (
+    FastAPI,
+    HTTPException,
+)
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from imap_tools import MailBox
-from sqlalchemy import and_ as sa_and, func, select, update as sa_update
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 
 from app.__version__ import VERSION
-from app.changelog import load_changelog
-from app.auth import hash_password, verify_password
-from app.backup import BackupFormatError, BackupPasswordError, create_backup, restore_backup
-from app.client_profile import (
-    count_matching_orders,
-    find_matching_orders,
-    index_orders_by_name,
-    summarize_client_orders,
+from app.config import (
+    DB_PATH,
+    SESSION_SECRET_KEY,
 )
-from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH, SESSION_SECRET_KEY
 from app.db import Base, SessionLocal, engine
-from app.monthly_backup import ensure_monthly_snapshot, list_snapshots
-from app.export_scanner import (
-    clear_export_cache,
-    list_export_client_names_cached,
-)
+from app.monthly_backup import ensure_monthly_snapshot
+from app.export_scanner import list_export_client_names_cached
 from app import sync_control
-from app import sync_heartbeat
-from app.sync_heartbeat import sync_status_pair as _queue_sync_status
 from app.sync_control import (
     MAIL_SYNC_INITIAL_DELAY_SECONDS,
     MAIL_SYNC_INTERVAL_SECONDS,
-    SHEET_SYNC_HOT_INTERVAL_SECONDS,
     SHEET_SYNC_INITIAL_DELAY_SECONDS,
-    SHEET_SYNC_INTERVAL_SECONDS,
     hot_extra_days as _hot_extra_days,
-    record_viewed_day as _record_viewed_day,
 )
-from app.sync_heartbeat import (
-    heartbeat_status as _sync_heartbeat_status,
-    record_heartbeat as _record_sync_heartbeat,
-)
+from app.sync_heartbeat import record_heartbeat as _record_sync_heartbeat
 from app.services.config_state import (
-    sheets_access_error_message as _sheets_access_error_message,
     imap_configured as _imap_configured,
-    mail_preview_roots as _mail_preview_roots,
-    mail_trusted_roots as _mail_trusted_roots,
     sheets_configured as _sheets_configured,
 )
-from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed
-from app.license import get_license_status, get_machine_id, verify_license_key
-from app.mail_export import (
-    list_client_folders,
-    preview_export_target,
-    restore_attachments_to_spool,
-    save_attachments_to_export,
-)
-from app.mail_parser import material_candidates
-from app.link_attachments import (
-    LinkAttachment,
-    LinkDownloadError,
-    download_link,
-    extract_download_links,
-)
-from app.archive_extract import is_archive
-from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS, extract_archive_attachments
-from app.mail_reader import download_attachments_now
+from app.sync_control import get_sync_speed
+from app.license import get_license_status
 from app.mail_sync_service import (
     run_sync_owned_session as _run_mail_sync_owned_session,
     MailSyncBusyError,
     MailSyncError,
-    MailSyncTimeoutError,
-    sync_mail_background,
-    sync_mailbox,
-)
-from app.material_class import (
-    strip_material_word,
-    material_badge,
-    material_color_css_class,
-    split_material_color,
 )
 from app.material_catalog import (
-    MaterialCatalogError,
-    add_alias,
-    add_material,
     backfill_orders,
-    delete_alias,
     ensure_seeded,
-    list_materials,
-    load_alias_rows,
-    material_id_by_name,
-    resolve_material_id,
-    unresolved_order_count,
-)
-from app.mail_filters import apply_rule_retroactively
-from app.mail_spool import analyze_spool, prune_spool
-from app.models import ActionLog, AppSetting, Attachment, ClientNameAlias, ClientSenderMemory, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
-from app.sender_memory import list_sender_memories, lookup_sender, remember_sender
-from app.order_folder import (
-    attach_email_folder_availability,
-    attach_email_preview_tokens,
-    attach_export_folder_uris,
-    attach_job_code_folder_uris,
-    resolve_email_attachment_folder,
-)
-from app.queue_filters import (
-    READY_FILTERS,
-    SERVICE_TYPE_FILTERS,
-    SOURCE_FILTERS,
-    count_by_readiness,
-    count_by_service_type,
-    count_by_source,
-    filter_by_readiness,
-    filter_by_source,
-    filter_emails_by_service_type,
 )
 from app.runtime import resource_path
-from app.services.clients import (
-    ensure_client_profiles as _ensure_client_profiles,
-    quantity_units as _quantity_units,
-)
-from app.services.operators import (
-    normalize_initial as _normalize_initial,
-    validate_initial as _validate_initial,
-)
 from app.routers.auth import router as auth_router
 from app.routers.clients import router as clients_router
 from app.routers.handout import router as handout_router
 from app.routers.settings import router as settings_router
-from app.routers.mail import (
-    _mail_filter_categories,
-    router as mail_router,
-)
+from app.routers.mail import router as mail_router
 from app.routers.orders import router as orders_router
 from app.routers.queue import router as queue_router
 from app.routers.archive import router as archive_router
 from app.routers.stats import router as stats_router
 from app.routers.stl import router as stl_router
-from app.routers.deps import (
-    SYNC_PAUSED_MSG as _SYNC_PAUSED_MSG,
-    attach_action_toast as _attach_action_toast,
-    get_current_user,
-    get_db,
-    is_loopback_request as _is_loopback_request,
-    templates,
-    toast_response as _toast_response,
-)
-from app.services.order_dates import (
-    BUSINESS_TIMEZONE,
-    order_date as _order_date,
-    parse_sheet_tab as _parse_sheet_tab,
-    sheet_order_key as _sheet_order_key,
-)
-from app.services.queue import (
-    DATE_STRIP_WINDOW,
-    QUEUE_SORT_FIELDS,
-    RETENTION_DAYS,
-    date_window as _date_window,
-    handout_pending_client_count as _handout_pending_client_count,
-    known_order_dates as _known_order_dates,
-    order_is_archived as _order_is_archived,
-    queue_column_sort_value as _queue_column_sort_value,
-    queue_handout_summary as _queue_handout_summary,
-    queue_sort_key as _queue_sort_key,
-    queue_sync_summary as _queue_sync_summary,
-    queue_week_summary as _queue_week_summary,
-    sort_orders_by_column as _sort_orders_by_column,
-)
+from app.routers.deps import templates
+from app.services.order_dates import parse_sheet_tab as _parse_sheet_tab
 from app.services.handout import (
-    EXPORT_SCAN_WORKERS,
-    HANDOUT_ALL_DAYS,
-    entries_for_material as _entries_for_material,
     handout_client_matches as _handout_client_matches,
     handout_day_options as _handout_day_options,
     handout_eligible_orders as _handout_eligible_orders,
@@ -203,108 +77,22 @@ from app.services.handout import (
     scan_export_latest_for_clients as _scan_export_latest_for_clients,
 )
 from app.services.sheet_writeback import (
-    append_comment_background as _append_comment_background,
-    append_manual_rows_warm as _append_manual_rows_warm,
-    clear_sheet_row_background as _clear_sheet_row_background,
-    restore_sheet_row as _restore_sheet_row,
-    set_client_row_fill_background as _set_client_row_fill_background,
     sheet_writeback_pool as _sheet_writeback_pool,
     warm_sheet_writeback as _warm_sheet_writeback,
-    write_calculated_cell as _write_calculated,
-    write_rework_sum3d_fields as _write_rework_sum3d,
-    write_sheet_fields as _write_sheet_fields,
-    write_sheet_fields_background as _write_sheet_fields_background,
 )
-from app.services.undo import (
-    UNDOABLE_ACTION_TYPES,
-    UNDO_WINDOW_SECONDS,
-    UndoOutcome,
-    log_action,
-    perform_redo,
-    perform_undo,
-)
-from app.services.formatting import (
-    UK_MONTHS as _UK_MONTHS,
-    pluralize_uk as _pluralize_uk,
-    relative_time_uk as _relative_time_uk,
-    uk_month_label as _uk_month_label,
-)
-from app.settings_store import (
-    OPERATOR_EDITABLE_KEYS,
-    SETTING_FIELDS,
-    get_all_settings,
-    get_export_folder_path,
-    get_google_auth_mode,
-    get_google_oauth_client_json,
-    get_google_oauth_refresh_token,
-    get_google_service_account_json,
-    get_google_sheet_id,
-    get_imap_login,
-    get_imap_password,
-    get_mail_default_material,
-    get_mail_download_all,
-    get_service_account_email,
-    get_technician_files_path,
-    extract_sheet_id,
-    DEFAULT_NOTIFY_POSITION,
-    DEFAULT_NOTIFY_STYLE,
-    NOTIFY_EVENTS,
-    get_notify_events,
-    get_notify_position,
-    get_notify_style,
-    set_notify_prefs,
-    set_mail_default_material,
-    set_mail_download_all,
-    set_setting,
-)
+from app.settings_store import get_export_folder_path
 from app.sheet_sync_service import (
-    summary_message as _sync_summary_message,
     SheetSyncBusyError,
     SheetSyncError,
-    SheetSyncSummary,
-    sync_google_sheets,
     sync_hot_tab,
     sync_sheets_background,
 )
-from app.sheet_writer import (
-    append_mail_placeholder_row,
-    apply_status_markers,
-    clear_placeholder_row,
-)
-from app.parser import HEADER_ROWS
-from app.google_oauth import OAuthFlowError, parse_client_config, run_authorization_flow
-from app.sheets import (
-    get_worksheet_by_name,
-    measure_sheet_weight,
-    latest_worksheet_on_or_before,
-    open_spreadsheet,
-    reset_sheets_cache,
-)
-from app.statuses import STATUSES, is_overdue
-from app.triage_status import triage_readiness
-from app.stats import (
-    average_new_to_milled_hours,
-    parse_int_safe,
-    summarize_by_material,
-    summarize_rework_by_blame,
-)
-from app.stl_preview import resolve_preview_folder
-from app.update_check import (
-    _update_check_tick,
-    _update_check_worker,
-    download_and_verify,
-    get_known_update,
-    launch_silent_install,
-)
+from app.update_check import _update_check_worker
 
 logger = logging.getLogger(__name__)
 # Автоматизація Провідника Windows винесена в app/platform_windows.py
 # (Крок 2 розбиття web.py). Імпортуємо під старими іменами, щоб роути й
 # тести (які монкіпатчать web._open_folder_in_explorer) працювали без змін.
-from app.platform_windows import (  # noqa: E402
-    open_folder_in_explorer as _open_folder_in_explorer,
-    _raise_explorer_window,
-)
 
 
 def _mail_sync_tick(db: Session) -> None:

@@ -1,6 +1,6 @@
 """POST /settings/update/install: admin+loopback gates (same boundary as
 every other filesystem/process-touching settings action — see
-tests/test_settings_role_boundary.py and web._is_loopback_request), plus
+tests/test_settings_role_boundary.py and is_loopback_request), plus
 the "no update known" and "starts a background thread" branches. The
 download/verify/install itself is app/update_check.py's own responsibility
 and is tested there; here we only check that install_update wires it up
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers.deps import is_loopback_request
 from app.routers import settings as settings_router_mod
 from app.db import Base
 from app.models import User

@@ -12,6 +12,7 @@ import time
 from datetime import date, timedelta
 
 import app.web as web
+from app.sync_control import record_viewed_day
 
 
 def test_no_dict_changed_size_under_concurrent_access():
@@ -22,7 +23,7 @@ def test_no_dict_changed_size_under_concurrent_access():
         i = 0
         while not stop.is_set():
             try:
-                web._record_viewed_day(date(2026, 8, 1) + timedelta(days=i % 400))
+                record_viewed_day(date(2026, 8, 1) + timedelta(days=i % 400))
                 i += 1
             except Exception as exc:  # noqa: BLE001 — фіксуємо будь-яку гонку
                 errors.append(("writer", repr(exc)))

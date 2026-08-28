@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.services.config_state import sheets_access_error_message
 from app.db import Base
 from app.settings_store import extract_sheet_id, get_service_account_email, set_setting
 
@@ -98,7 +99,7 @@ def test_403_names_the_address_to_share_with():
             json.dumps({"client_email": "order-desk@proj.iam.gserviceaccount.com"}),
         )
         db.commit()
-        message = web._sheets_access_error_message(db, _api_error(403))
+        message = sheets_access_error_message(db, _api_error(403))
     assert "order-desk@proj.iam.gserviceaccount.com" in message
     assert "Поділитися" in message
 
@@ -106,7 +107,7 @@ def test_403_names_the_address_to_share_with():
 def test_404_points_at_the_id_not_at_permissions():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
-        message = web._sheets_access_error_message(db, _api_error(404))
+        message = sheets_access_error_message(db, _api_error(404))
     assert "не знайдено" in message
     assert "Поділитися" not in message
 
@@ -116,7 +117,7 @@ def test_oauth_mode_403_talks_about_the_account_not_a_service_address():
     with Session(engine, expire_on_commit=False) as db:
         set_setting(db, "google_auth_mode", "oauth")
         db.commit()
-        message = web._sheets_access_error_message(db, _api_error(403))
+        message = sheets_access_error_message(db, _api_error(403))
     assert "Акаунт Google" in message
     assert "gserviceaccount" not in message
 
@@ -124,6 +125,6 @@ def test_oauth_mode_403_talks_about_the_account_not_a_service_address():
 def test_unknown_failure_falls_back_without_leaking_raw_google_text():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
-        message = web._sheets_access_error_message(db, RuntimeError("boom: raw google detail"))
+        message = sheets_access_error_message(db, RuntimeError("boom: raw google detail"))
     assert "boom" not in message
     assert message

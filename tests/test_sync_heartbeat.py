@@ -214,7 +214,7 @@ def test_mail_tick_skips_and_leaves_heartbeat_untouched_when_unconfigured(
 ):
     monkeypatch.setattr(web, "_imap_configured", lambda db: False)
     monkeypatch.setattr(
-        web,
+        mail_sync_service,
         "sync_mail_background",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not sync when unconfigured")),
     )

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.settings_store import get_imap_login, get_imap_password
 from app.routers import settings as settings_router_mod
 from app.routers import mail as mail_router_mod
 from app.db import Base
@@ -331,7 +332,7 @@ def test_save_imap_settings_success_fires_toast_and_persists(monkeypatch):
         assert resp.context["result"]["state"] == "success"
         trigger = json.loads(resp.headers["HX-Trigger"])
         assert trigger["toast"]["kind"] == "success"
-        assert web.get_imap_login(db) == "user@ukr.net"
+        assert get_imap_login(db) == "user@ukr.net"
 
 
 def test_save_imap_settings_error_surfaces_reason_toast(monkeypatch):
@@ -367,8 +368,8 @@ def test_save_imap_settings_blank_password_keeps_saved(monkeypatch):
         with patch("app.routers.settings.MailBox") as mock_mailbox_cls:
             mock_mailbox_cls.return_value.login.return_value = MagicMock()
             asyncio.run(settings_router_mod.save_imap_settings(request=req, db=db))
-        assert web.get_imap_login(db) == "new@ukr.net"
-        assert web.get_imap_password(db) == "keep-me"
+        assert get_imap_login(db) == "new@ukr.net"
+        assert get_imap_password(db) == "keep-me"
 
 
 # --- POST /settings/test-sheets route (Google read-only access probe) ------

@@ -6,21 +6,23 @@ from unittest.mock import patch
 from app.auth import hash_password
 from app.models import EmailMessage, Order, User
 from app.sheet_sync_service import SheetSyncSummary
-from app.web import (
+from app.sync_control import (
     MAIL_SYNC_INTERVAL_SECONDS,
     SHEET_SYNC_INTERVAL_SECONDS,
-    _date_window,
-    _handout_pending_client_count,
-    _order_date,
-    _pluralize_uk,
-    _queue_column_sort_value,
-    _queue_handout_summary,
-    _queue_sort_key,
-    _sort_orders_by_column,
-    _sync_summary_message,
-    _write_sheet_fields,
-    get_current_user,
 )
+from app.routers.deps import get_current_user
+from app.services.formatting import pluralize_uk as _pluralize_uk
+from app.services.order_dates import order_date as _order_date
+from app.services.queue import (
+    date_window as _date_window,
+    handout_pending_client_count as _handout_pending_client_count,
+    queue_column_sort_value as _queue_column_sort_value,
+    queue_handout_summary as _queue_handout_summary,
+    queue_sort_key as _queue_sort_key,
+    sort_orders_by_column as _sort_orders_by_column,
+)
+from app.services.sheet_writeback import write_sheet_fields as _write_sheet_fields
+from app.sheet_sync_service import summary_message as _sync_summary_message
 from app.routers.mail import accept_email
 from app.routers import auth as auth_router_mod
 

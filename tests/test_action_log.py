@@ -13,6 +13,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers.deps import attach_action_toast
+from app.services.sheet_writeback import restore_sheet_row
+from app.services.undo import UNDOABLE_ACTION_TYPES, log_action
 from app.routers import orders as orders_router_mod
 from app.services import sheet_writeback as writeback_service
 from app.services import undo as undo_service
@@ -130,7 +133,7 @@ def test_log_action_helper_stringifies_values():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db)
-        web.log_action(db, order=order, operator=user, action_type="test",
+        log_action(db, order=order, operator=user, action_type="test",
                        field="quantity", old=None, new=5, note="п'ять")
         db.commit()
         e = db.scalar(select(ActionLog).where(ActionLog.action_type == "test"))
@@ -519,7 +522,7 @@ def test_restore_sheet_row_goes_through_the_writeback_pool():
 
         with patch.object(writeback_service, "restore_sheet_row_warm", return_value=None), \
              patch.object(web._sheet_writeback_pool, "submit", side_effect=spy):
-            assert web._restore_sheet_row(order) is None
+            assert restore_sheet_row(order) is None
         assert submitted.get("fn") is not None            # went through the pool
 
 
@@ -613,14 +616,14 @@ def test_recent_actions_includes_manually_created_works():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db, work_order_no="24122")
-        web.log_action(db, order=order, operator=user, action_type="create",
+        log_action(db, order=order, operator=user, action_type="create",
                        note="додано вручну: 24122")
         db.commit()
 
         entries = _recent_context(db, user)["entries"]
         assert [e.action_type for e in entries] == ["create"]
         assert "create" in orders_router_mod.RECENT_ACTION_TYPES
-        assert "create" not in web.UNDOABLE_ACTION_TYPES   # listed, not steppable
+        assert "create" not in UNDOABLE_ACTION_TYPES   # listed, not steppable
 
 
 def test_undo_last_skips_creations():
@@ -629,7 +632,7 @@ def test_undo_last_skips_creations():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db)
-        web.log_action(db, order=order, operator=user, action_type="create", note="додано")
+        log_action(db, order=order, operator=user, action_type="create", note="додано")
         db.commit()
         resp = _run_undo_last(db, user)
         assert resp.status_code == 204
@@ -668,9 +671,9 @@ def test_journal_lists_newest_first_and_filters_by_operator():
         roma = _user(db, username="roma")
         kostya = _user(db, username="kostya")
         order = _order(db)
-        web.log_action(db, order=order, operator=roma, action_type="status",
+        log_action(db, order=order, operator=roma, action_type="status",
                        field="status", old="нове", new="прийнято", note="A")
-        web.log_action(db, order=order, operator=kostya, action_type="status",
+        log_action(db, order=order, operator=kostya, action_type="status",
                        field="status", old="прийнято", new="прораховано", note="B")
         db.commit()
 
@@ -690,10 +693,10 @@ def test_journal_filters_by_day():
         user = _user(db)
         order = _order(db)
         # значення не потрібне — важливий сам запис у журнал
-        web.log_action(db, order=order, operator=user, action_type="status",
+        log_action(db, order=order, operator=user, action_type="status",
                        field="status", old="нове", new="прийнято", note="today")
         db.commit()
-        e_old = web.log_action(db, order=order, operator=user, action_type="status",
+        e_old = log_action(db, order=order, operator=user, action_type="status",
                                field="status", old="прийнято", new="прораховано", note="old")
         db.commit()
         # Backdate one entry to a known past day.
@@ -710,7 +713,7 @@ def test_order_detail_context_includes_actions():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db)
-        web.log_action(db, order=order, operator=user, action_type="sum3d",
+        log_action(db, order=order, operator=user, action_type="sum3d",
                        field="sum3d_id", old="{}", new="{}", note="Sum3D → x")
         db.commit()
         resp = orders_router_mod.get_order_detail(request=_request(user.id), order_id=order.id, db=db)
@@ -726,7 +729,7 @@ def test_action_toast_header_is_latin1_safe():
     toast no longer carries an undoUrl — undo is the static «Крок назад» button."""
     from starlette.responses import Response
     resp = Response()
-    web._attach_action_toast(resp, SimpleNamespace(id=7), "Sum3D очищено")
+    attach_action_toast(resp, SimpleNamespace(id=7), "Sum3D очищено")
     header = resp.headers["HX-Trigger"]
     header.encode("latin-1")   # must not raise
     assert "undoUrl" not in header

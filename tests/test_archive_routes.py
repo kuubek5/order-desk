@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.services.queue import RETENTION_DAYS, order_is_archived
 from app.routers import orders as orders_router_mod
 from app.routers import archive as archive_router_mod
 from app.db import Base
@@ -47,7 +48,7 @@ def test_parse_archive_month():
 
 def test_order_is_archived_predicate():
     today = date.today()
-    cutoff = today - timedelta(days=web.RETENTION_DAYS)
+    cutoff = today - timedelta(days=RETENTION_DAYS)
     old_tab = (today - timedelta(days=90)).strftime("%d.%m.%y")
 
     aged = Order(source="lab", sheet_tab=old_tab)
@@ -56,9 +57,9 @@ def test_order_is_archived_predicate():
         source="lab", sheet_tab=today.strftime("%d.%m.%y"), archived_at=datetime.utcnow()
     )
 
-    assert web._order_is_archived(aged, cutoff) is True
-    assert web._order_is_archived(active, cutoff) is False
-    assert web._order_is_archived(archived_in_window, cutoff) is True
+    assert order_is_archived(aged, cutoff) is True
+    assert order_is_archived(active, cutoff) is False
+    assert order_is_archived(archived_in_window, cutoff) is True
 
 
 def _seed(db):

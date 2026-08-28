@@ -15,6 +15,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.platform_windows import _raise_explorer_window
+from app.services.handout import entries_for_material
+from app.stl_preview import resolve_preview_folder
 from app.routers import handout as handout_router_mod
 from app.services import handout as handout_service
 from app.services import sheet_writeback as writeback_service
@@ -126,7 +129,8 @@ def test_issues_only_found_works_and_leaves_the_rest(monkeypatch):
         assert found.status == "видано"
         assert waiting.status == "нове"          # чекає наступної пічки
         # синю заливку знято рівно з виданого рядка, не з обох
-        assert captured["rows"] == [(42, 60 + web.HEADER_ROWS)]
+        from app.parser import HEADER_ROWS
+        assert captured["rows"] == [(42, 60 + HEADER_ROWS)]
         events = db.scalars(select(StatusEvent)).all()
         assert [e.status for e in events] == ["видано"]
 
@@ -526,18 +530,18 @@ class TestMaterialMatching:
 
     def test_entries_for_material_filters_and_sorts_by_time(self):
         from datetime import datetime
-        from app.web import _entries_for_material
+        
         e1 = SimpleNamespace(material_color_folder_name="emo a3", created_at=datetime(2026, 8, 14, 11, 0))
         e2 = SimpleNamespace(material_color_folder_name="emo a35", created_at=datetime(2026, 8, 14, 9, 0))
         e3 = SimpleNamespace(material_color_folder_name="emo a3", created_at=datetime(2026, 8, 14, 8, 0))
-        got = _entries_for_material("emo a3", [e1, e2, e3])
+        got = entries_for_material("emo a3", [e1, e2, e3])
         assert got == [e3, e1]  # only emo a3, oldest-first
 
     def test_entries_for_material_empty_when_no_colour(self):
-        from app.web import _entries_for_material
+        
         e1 = SimpleNamespace(material_color_folder_name="emo a3", created_at=None)
-        assert _entries_for_material("", [e1]) == []
-        assert _entries_for_material(None, [e1]) == []
+        assert entries_for_material("", [e1]) == []
+        assert entries_for_material(None, [e1]) == []
 
 
 class TestHandoutDayWindow:
@@ -811,7 +815,7 @@ class TestClientFolderOpens:
 
             group = ctx["client_groups"][0]
             assert group["client_folder_token"], "без токена кнопка знову буде мертвою"
-            assert web.resolve_preview_folder(db, group["client_folder_token"]) == client_folder
+            assert resolve_preview_folder(db, group["client_folder_token"]) == client_folder
 
     def test_the_matching_folder_reaches_the_row(self, monkeypatch, tmp_path):
         """Той самий випадок з іншого боку: `emo a3` у таблиці мусить знайти
@@ -871,54 +875,54 @@ class TestOneBatchPerRow:
 
     def test_only_the_nearest_earlier_batch_survives(self):
         from datetime import date, datetime
-        from app.web import _entries_for_material
+        
 
         entries = [
             self._entry("mono a3.5", datetime(2026, 8, 21, 8, 59)),
             self._entry("mono a3.5", datetime(2026, 8, 24, 9, 30)),
             self._entry("mono a3.5", datetime(2026, 8, 27, 8, 5)),
         ]
-        picked = _entries_for_material("mono a3.5", entries, date(2026, 8, 27))
+        picked = entries_for_material("mono a3.5", entries, date(2026, 8, 27))
         assert [e.created_at.day for e in picked] == [27]
 
     def test_several_folders_of_the_SAME_day_all_stay(self):
         """Дві теки одного дня — це справді неоднозначність, яку вирішує око
         оператора; ховати одну з них не можна."""
         from datetime import date, datetime
-        from app.web import _entries_for_material
+        
 
         entries = [
             self._entry("mono a3.5", datetime(2026, 8, 27, 8, 5)),
             self._entry("mono a3.5", datetime(2026, 8, 27, 12, 15)),
             self._entry("mono a3.5", datetime(2026, 8, 24, 9, 30)),
         ]
-        picked = _entries_for_material("mono a3.5", entries, date(2026, 8, 27))
+        picked = entries_for_material("mono a3.5", entries, date(2026, 8, 27))
         assert [e.created_at.hour for e in picked] == [8, 12]
 
     def test_files_uploaded_the_next_day_are_not_lost(self):
         """Партії раніше за роботу немає — беремо найранішу пізнішу, інакше
         рядок лишився б зовсім без теки."""
         from datetime import date, datetime
-        from app.web import _entries_for_material
+        
 
         entries = [
             self._entry("mono a3.5", datetime(2026, 8, 28, 9, 0)),
             self._entry("mono a3.5", datetime(2026, 8, 29, 9, 0)),
         ]
-        picked = _entries_for_material("mono a3.5", entries, date(2026, 8, 27))
+        picked = entries_for_material("mono a3.5", entries, date(2026, 8, 27))
         assert [e.created_at.day for e in picked] == [28]
 
     def test_without_a_work_day_nothing_is_narrowed(self):
         """Робота без дати вкладки не має на що спиратись — краще показати
         все, ніж навмання відрізати."""
         from datetime import datetime
-        from app.web import _entries_for_material
+        
 
         entries = [
             self._entry("mono a3.5", datetime(2026, 8, 21, 8, 59)),
             self._entry("mono a3.5", datetime(2026, 8, 27, 8, 5)),
         ]
-        assert len(_entries_for_material("mono a3.5", entries, None)) == 2
+        assert len(entries_for_material("mono a3.5", entries, None)) == 2
 
 
 class TestRaiseExplorerWindow:
@@ -932,12 +936,12 @@ class TestRaiseExplorerWindow:
         import time as _time
 
         started = _time.monotonic()
-        web._raise_explorer_window(Path("Тека-якої-точно-немає"), timeout=0.05)
+        _raise_explorer_window(Path("Тека-якої-точно-немає"), timeout=0.05)
         assert _time.monotonic() - started < 2
 
     def test_an_empty_name_is_not_searched_for(self):
         # Порожня ціль збіглася б із будь-яким вікном без заголовка.
-        web._raise_explorer_window(Path("   "), timeout=0.05)
+        _raise_explorer_window(Path("   "), timeout=0.05)
 
 
 class TestMarkFoundIsInstant:
