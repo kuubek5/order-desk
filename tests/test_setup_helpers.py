@@ -8,7 +8,8 @@ from sqlalchemy.pool import StaticPool
 from app.auth import verify_password
 from app.db import Base
 from app.models import User
-from app.web import _validate_first_admin, setup_submit
+from app.routers.auth import setup_submit
+from app.services.operators import validate_first_admin as _validate_first_admin
 
 
 def test_first_admin_validation_normalizes_values():

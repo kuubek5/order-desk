@@ -12,6 +12,7 @@ from starlette.responses import PlainTextResponse
 
 import app.license as license_module
 import app.web as web
+from app.routers import auth as auth_router_mod
 from app.db import Base
 from app.license import LicenseStatus, encode_license_key, get_license_status, verify_license_key
 from app.settings_store import set_setting
@@ -189,7 +190,7 @@ def test_full_activation_cycle_unblocks_the_gate(keypair, monkeypatch):
     key = _issue(keypair, machine_id=real_machine_id)
     with Session(engine, expire_on_commit=False) as db:
         response = asyncio.run(
-            web.license_submit(
+            auth_router_mod.license_submit(
                 request=None, license_key=key, db=db
             )
         )

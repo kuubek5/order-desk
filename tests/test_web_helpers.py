@@ -21,8 +21,8 @@ from app.web import (
     _write_sheet_fields,
     accept_email,
     get_current_user,
-    post_account_password,
 )
+from app.routers import auth as auth_router_mod
 
 
 def test_sheet_sync_interval_is_one_minute():
@@ -586,7 +586,7 @@ def test_account_password_change_succeeds_with_correct_current_password():
     request = SimpleNamespace(session={"user_id": user.id})
 
     response = asyncio.run(
-        post_account_password(
+        auth_router_mod.post_account_password(
             request=request,
             current_password="old-pw",
             new_password="new-secret",
@@ -609,7 +609,7 @@ def test_account_password_change_rejects_wrong_current_password():
     request = SimpleNamespace(session={"user_id": user.id})
 
     response = asyncio.run(
-        post_account_password(
+        auth_router_mod.post_account_password(
             request=request,
             current_password="wrong-pw",
             new_password="new-secret",
@@ -629,7 +629,7 @@ def test_account_password_change_rejects_mismatched_confirmation():
     request = SimpleNamespace(session={"user_id": user.id})
 
     response = asyncio.run(
-        post_account_password(
+        auth_router_mod.post_account_password(
             request=request,
             current_password="old-pw",
             new_password="new-secret",

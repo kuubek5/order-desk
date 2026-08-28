@@ -120,6 +120,11 @@ from app.queue_filters import (
     filter_emails_by_service_type,
 )
 from app.runtime import resource_path
+from app.services.operators import (
+    normalize_initial as _normalize_initial,
+    validate_initial as _validate_initial,
+)
+from app.routers.auth import router as auth_router
 from app.routers.archive import router as archive_router
 from app.routers.stats import router as stats_router
 from app.routers.stl import router as stl_router
@@ -260,7 +265,6 @@ from app.update_check import (
     launch_silent_install,
 )
 
-_FIRST_ADMIN_LOCK = Lock()
 logger = logging.getLogger(__name__)
 MAIL_SYNC_INTERVAL_SECONDS = 2 * 60
 MAIL_SYNC_INITIAL_DELAY_SECONDS = 10
@@ -997,32 +1001,6 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "version": VERSION}
 
 
-def _user_count(db: Session) -> int:
-    """Return the number of configured accounts without loading user records."""
-    return db.scalar(select(func.count()).select_from(User)) or 0
-
-
-def _validate_first_admin(
-    username: str,
-    full_name: str,
-    password: str,
-    password_confirmation: str,
-) -> tuple[dict[str, str] | None, str | None]:
-    """Normalize and validate the one-time first administrator form."""
-    values = {
-        "username": username.strip(),
-        "full_name": full_name.strip(),
-        "password": password,
-    }
-    if not values["username"] or not values["full_name"]:
-        return None, "Вкажіть логін та ім’я адміністратора"
-    if len(password) < 10:
-        return None, "Пароль має містити щонайменше 10 символів"
-    if password != password_confirmation:
-        return None, "Паролі не збігаються"
-    return values, None
-
-
 # Shown when a table-writing action is attempted while sync is paused. The
 # action is refused and NOTHING changes — not even the DB — so there is no
 # divergence for the resume read to revert. The operator retries after resume.
@@ -1044,187 +1022,8 @@ def _sum_units(orders) -> int:
     return total
 
 
-@app.get("/license", response_class=HTMLResponse)
-def license_form(request: Request, db: Session = Depends(get_db)):
-    status = get_license_status(db)
-    return templates.TemplateResponse(
-        request, "license.html", {"status": status, "machine_id": get_machine_id()}
-    )
-
-
-@app.post("/license", response_class=HTMLResponse)
-async def license_submit(
-    request: Request, license_key: str = Form(""), db: Session = Depends(get_db)
-):
-    machine_id = get_machine_id()
-    status = verify_license_key(license_key, machine_id)
-    if not status.valid:
-        return templates.TemplateResponse(
-            request,
-            "license.html",
-            {
-                "status": status,
-                "machine_id": machine_id,
-                "error": status.reason,
-                "license_key_input": license_key.strip(),
-            },
-            status_code=400,
-        )
-
-    set_setting(db, "license_key", license_key.strip())
-    db.commit()
-
-    destination = "/setup" if _user_count(db) == 0 else "/"
-    return RedirectResponse(destination, status_code=303)
-
-
-@app.get("/login", response_class=HTMLResponse)
-def login_form(request: Request, db: Session = Depends(get_db)):
-    if _user_count(db) == 0:
-        return RedirectResponse("/setup", status_code=303)
-    if get_current_user(request, db) is not None:
-        return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse(request, "login.html", {})
-
-
-@app.get("/setup", response_class=HTMLResponse)
-def setup_form(request: Request, db: Session = Depends(get_db)):
-    if _user_count(db) != 0:
-        return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(request, "setup.html", {})
-
-
-@app.post("/setup", response_class=HTMLResponse)
-async def setup_submit(
-    request: Request,
-    username: str = Form(""),
-    full_name: str = Form(""),
-    password: str = Form(""),
-    password_confirmation: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    if _user_count(db) != 0:
-        return RedirectResponse("/login", status_code=303)
-
-    values, error = _validate_first_admin(
-        username, full_name, password, password_confirmation
-    )
-    if error is not None:
-        return templates.TemplateResponse(
-            request,
-            "setup.html",
-            {"error": error, "username": username.strip(), "full_name": full_name.strip()},
-            status_code=400,
-        )
-
-    # The desktop build runs one application process. The lock keeps two local
-    # first-run submissions from both passing the empty-database check.
-    with _FIRST_ADMIN_LOCK:
-        if _user_count(db) != 0:
-            return RedirectResponse("/login", status_code=303)
-        assert values is not None
-        user = User(
-            username=values["username"],
-            full_name=values["full_name"],
-            password_hash=hash_password(values["password"]),
-            role="адмін",
-            is_active=True,
-        )
-        db.add(user)
-        try:
-            db.commit()
-        except IntegrityError:
-            db.rollback()
-            return RedirectResponse("/login", status_code=303)
-        db.refresh(user)
-
-    request.session.clear()
-    request.session["user_id"] = user.id
-    return RedirectResponse("/settings?welcome=1", status_code=303)
-
-
-@app.post("/login", response_class=HTMLResponse)
-async def login_submit(
-    request: Request, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)
-):
-    if _user_count(db) == 0:
-        return RedirectResponse("/setup", status_code=303)
-    user = db.scalar(select(User).where(User.username == username))
-    if user is None or not user.is_active or not verify_password(password, user.password_hash):
-        return templates.TemplateResponse(
-            request, "login.html", {"error": "Невірний логін або пароль"}
-        )
-    request.session.clear()
-    request.session["user_id"] = user.id
-    return RedirectResponse("/", status_code=303)
-
-
-@app.post("/logout")
-async def logout(request: Request):
-    request.session.clear()
-    return RedirectResponse("/login", status_code=303)
-
-
-@app.get("/account", response_class=HTMLResponse)
-async def get_account(request: Request, db: Session = Depends(get_db)):
-    user = get_current_user(request, db)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-
-    return templates.TemplateResponse(request, "account.html", {"user": user})
-
-
-@app.post("/account/password", response_class=HTMLResponse)
-async def post_account_password(
-    request: Request,
-    current_password: str = Form(...),
-    new_password: str = Form(...),
-    confirm_password: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    user = get_current_user(request, db)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-
-    error = None
-    if not verify_password(current_password, user.password_hash):
-        error = "Поточний пароль невірний"
-    elif len(new_password) < 6:
-        error = "Новий пароль має бути не коротшим за 6 символів"
-    elif new_password != confirm_password:
-        error = "Паролі не збігаються"
-
-    if error:
-        return templates.TemplateResponse(request, "account.html", {"user": user, "error": error})
-
-    user.password_hash = hash_password(new_password)
-    db.commit()
-
-    return templates.TemplateResponse(request, "account.html", {"user": user, "saved": "Пароль змінено"})
-
-
-@app.post("/account/initial", response_class=HTMLResponse)
-async def post_account_initial(
-    request: Request,
-    sheet_initial: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    """Operator sets their OWN sheet letter (the one stamped into «Прорахував»
-    when they enter a Sum3D). Self-service counterpart of the admin route
-    /settings/users/{id}/initial — same normalize + uniqueness validation."""
-    user = get_current_user(request, db)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-
-    initial = _normalize_initial(sheet_initial)
-    if initial is not None:
-        err = _validate_initial(db, initial, exclude_user_id=user.id)
-        if err:
-            return templates.TemplateResponse(request, "account.html", {"user": user, "error": err})
-
-    user.sheet_initial = initial
-    db.commit()
-    return templates.TemplateResponse(request, "account.html", {"user": user, "saved": "Літеру збережено"})
+# Вхід, ліцензія і кабінет оператора живуть в app/routers/auth.py.
+app.include_router(auth_router)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -4697,28 +4496,6 @@ async def create_operator(request: Request, db: Session = Depends(get_db)):
     db.commit()
 
     return RedirectResponse("/settings?saved=1", status_code=303)
-
-
-def _normalize_initial(raw: str) -> str | None:
-    """A sheet initial normalized: trimmed, upper-cased (Р/К/СТ), or None if
-    blank. Length is validated separately by _validate_initial."""
-    cleaned = (raw or "").strip().upper()
-    return cleaned or None
-
-
-def _validate_initial(db: Session, initial: str, *, exclude_user_id: int | None) -> str | None:
-    """Return a Ukrainian error message if the initial is invalid, else None.
-    Rules: 1-2 letters, unique across operators (letters identify who
-    calculated, so a shared letter would be ambiguous)."""
-    if not (1 <= len(initial) <= 2) or not initial.isalpha():
-        return "літера оператора — 1-2 букви"
-    query = select(User).where(User.sheet_initial == initial)
-    if exclude_user_id is not None:
-        query = query.where(User.id != exclude_user_id)
-    clash = db.scalar(query)
-    if clash is not None:
-        return f"літеру «{initial}» вже має {clash.full_name or clash.username}"
-    return None
 
 
 @app.post("/settings/users/{user_id}/initial", response_class=HTMLResponse)

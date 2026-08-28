@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import auth as auth_router_mod
 from app.db import Base
 from app.models import Order, ReworkRecord, StatusEvent, User
 
@@ -217,7 +218,7 @@ def test_account_initial_lets_operator_set_own_letter():
     with Session(engine, expire_on_commit=False) as db:
         op = _user(db, username="roma")
         with patch.object(web.templates, "TemplateResponse", return_value="ok"):
-            asyncio.run(web.post_account_initial(
+            asyncio.run(auth_router_mod.post_account_initial(
                 request=_request(op.id), sheet_initial="р", db=db))
         assert db.get(User, op.id).sheet_initial == "Р"  # normalized, saved
 
@@ -229,7 +230,7 @@ def test_account_initial_rejects_letter_taken_by_another_operator():
         _user(db, username="kostya", initial="К")
         op = _user(db, username="roma")
         with patch.object(web.templates, "TemplateResponse", return_value="err") as tr:
-            asyncio.run(web.post_account_initial(
+            asyncio.run(auth_router_mod.post_account_initial(
                 request=_request(op.id), sheet_initial="к", db=db))
         # error surfaced, letter NOT set
         assert tr.call_args[0][2].get("error")
@@ -241,6 +242,6 @@ def test_account_initial_keeping_own_letter_is_allowed():
     with Session(engine, expire_on_commit=False) as db:
         op = _user(db, username="stas", initial="СТ")
         with patch.object(web.templates, "TemplateResponse", return_value="ok"):
-            asyncio.run(web.post_account_initial(
+            asyncio.run(auth_router_mod.post_account_initial(
                 request=_request(op.id), sheet_initial="СТ", db=db))
         assert db.get(User, op.id).sheet_initial == "СТ"  # not a false "taken" clash
