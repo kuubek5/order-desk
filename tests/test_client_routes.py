@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import clients as clients_router_mod
 from app.db import Base
 from app.models import Client, Order, User
 
@@ -58,7 +59,7 @@ def _stub_templates(monkeypatch):
 def test_get_clients_requires_authentication():
     engine = _database()
     with Session(engine) as db:
-        response = web.get_clients(request=_request(None), db=db)
+        response = clients_router_mod.get_clients(request=_request(None), db=db)
     assert isinstance(response, RedirectResponse)
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
@@ -77,7 +78,7 @@ def test_get_clients_lists_clients_with_order_counts():
         db.add(_order("Хтось Інший"))
         db.commit()
 
-        context = web.get_clients(request=_request(operator.id), db=db)
+        context = clients_router_mod.get_clients(request=_request(operator.id), db=db)
 
     rows = {row["client"].canonical_name: row for row in context["client_rows"]}
     assert rows["Литвиненко Олег"]["order_count"] == 2   # both spellings, one card
@@ -92,8 +93,8 @@ def test_get_clients_is_idempotent_and_does_not_duplicate_cards():
         db.add(_order("Кривовид"))
         db.commit()
 
-        first = web.get_clients(request=_request(operator.id), db=db)
-        second = web.get_clients(request=_request(operator.id), db=db)
+        first = clients_router_mod.get_clients(request=_request(operator.id), db=db)
+        second = clients_router_mod.get_clients(request=_request(operator.id), db=db)
 
     assert len(first["client_rows"]) == len(second["client_rows"]) == 1
     assert db.query(Client).count() == 1
@@ -105,7 +106,7 @@ def test_get_clients_is_idempotent_and_does_not_duplicate_cards():
 def test_create_client_requires_authentication():
     engine = _database()
     with Session(engine) as db:
-        response = web.create_client(
+        response = clients_router_mod.create_client(
             request=_request(None), canonical_name="Вова", phone="", email="", notes="", db=db
         )
     assert response.status_code == 303
@@ -116,7 +117,7 @@ def test_create_client_requires_non_blank_name():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
-        response = web.create_client(
+        response = clients_router_mod.create_client(
             request=_request(operator.id), canonical_name="   ", phone="", email="", notes="", db=db
         )
     assert response.status_code == 303
@@ -129,7 +130,7 @@ def test_create_client_persists_and_redirects_to_card():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
-        response = web.create_client(
+        response = clients_router_mod.create_client(
             request=_request(operator.id),
             canonical_name="  Вова  ",
             phone="0501234567",
@@ -151,7 +152,7 @@ def test_create_client_persists_and_redirects_to_card():
 def test_get_client_detail_requires_authentication():
     engine = _database()
     with Session(engine) as db:
-        response = web.get_client_detail(request=_request(None), client_id=1, db=db)
+        response = clients_router_mod.get_client_detail(request=_request(None), client_id=1, db=db)
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
 
@@ -161,7 +162,7 @@ def test_get_client_detail_404_for_missing_client():
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
         with pytest.raises(HTTPException) as exc:
-            web.get_client_detail(request=_request(operator.id), client_id=999, db=db)
+            clients_router_mod.get_client_detail(request=_request(operator.id), client_id=999, db=db)
     assert exc.value.status_code == 404
 
 
@@ -176,7 +177,7 @@ def test_get_client_detail_aggregates_matched_orders():
         db.add(_order("Хтось Інший"))
         db.commit()
 
-        context = web.get_client_detail(request=_request(operator.id), client_id=client.id, db=db)
+        context = clients_router_mod.get_client_detail(request=_request(operator.id), client_id=client.id, db=db)
 
     assert context["summary"].total_count == 2
 
@@ -187,7 +188,7 @@ def test_get_client_detail_aggregates_matched_orders():
 def test_update_client_requires_authentication():
     engine = _database()
     with Session(engine) as db:
-        response = web.update_client(
+        response = clients_router_mod.update_client(
             request=_request(None), client_id=1, phone="", email="", notes="", db=db
         )
     assert response.status_code == 303
@@ -199,7 +200,7 @@ def test_update_client_404_for_missing_client():
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
         with pytest.raises(HTTPException) as exc:
-            web.update_client(
+            clients_router_mod.update_client(
                 request=_request(operator.id), client_id=999, phone="", email="", notes="", db=db
             )
     assert exc.value.status_code == 404
@@ -213,7 +214,7 @@ def test_update_client_saves_contact_info():
         db.add(client)
         db.commit()
 
-        response = web.update_client(
+        response = clients_router_mod.update_client(
             request=_request(operator.id),
             client_id=client.id,
             phone="0671112233",
@@ -252,7 +253,7 @@ class TestBindClientFolder:
         with Session(engine) as db:
             user = _operator(db)
             client = self._client(db)
-            web.bind_client_folder(
+            clients_router_mod.bind_client_folder(
                 request=_request(user.id), client_id=client.id,
                 export_folder_name="  Басараб Лаб  ", db=db,
             )
@@ -268,9 +269,9 @@ class TestBindClientFolder:
         with Session(engine) as db:
             user = _operator(db)
             client = self._client(db)
-            web.bind_client_folder(request=_request(user.id), client_id=client.id,
+            clients_router_mod.bind_client_folder(request=_request(user.id), client_id=client.id,
                                    export_folder_name="Стара", db=db)
-            web.bind_client_folder(request=_request(user.id), client_id=client.id,
+            clients_router_mod.bind_client_folder(request=_request(user.id), client_id=client.id,
                                    export_folder_name="Нова", db=db)
             alias = db.query(ClientNameAlias).one()          # not a second row
             assert alias.export_folder_name == "Нова"
@@ -282,9 +283,9 @@ class TestBindClientFolder:
         with Session(engine) as db:
             user = _operator(db)
             client = self._client(db)
-            web.bind_client_folder(request=_request(user.id), client_id=client.id,
+            clients_router_mod.bind_client_folder(request=_request(user.id), client_id=client.id,
                                    export_folder_name="Басараб Лаб", db=db)
-            web.bind_client_folder(request=_request(user.id), client_id=client.id,
+            clients_router_mod.bind_client_folder(request=_request(user.id), client_id=client.id,
                                    export_folder_name="", db=db)
             assert db.query(ClientNameAlias).count() == 0
 
@@ -292,7 +293,7 @@ class TestBindClientFolder:
         engine = _database()
         with Session(engine) as db:
             client = self._client(db)
-            response = web.bind_client_folder(
+            response = clients_router_mod.bind_client_folder(
                 request=_request(None), client_id=client.id,
                 export_folder_name="Басараб", db=db,
             )
@@ -303,7 +304,7 @@ class TestBindClientFolder:
         with Session(engine) as db:
             user = _operator(db)
             with pytest.raises(HTTPException) as exc:
-                web.bind_client_folder(request=_request(user.id), client_id=999,
+                clients_router_mod.bind_client_folder(request=_request(user.id), client_id=999,
                                        export_folder_name="X", db=db)
             assert exc.value.status_code == 404
 
@@ -330,7 +331,7 @@ class TestClientsMasterScreen:
         with Session(engine, expire_on_commit=False) as db:
             user = _operator(db)
             self._seed(db)
-            ctx = web.get_clients(request=_request(user.id), db=db)
+            ctx = clients_router_mod.get_clients(request=_request(user.id), db=db)
         assert ctx["state_counts"]["all"] == 2
         assert ctx["state_counts"]["unbound"] == 1      # Кривовид
         assert ctx["state_counts"]["active"] == 2
@@ -340,7 +341,7 @@ class TestClientsMasterScreen:
         with Session(engine, expire_on_commit=False) as db:
             user = _operator(db)
             self._seed(db)
-            ctx = web.get_clients(request=_request(user.id), state="unbound", db=db)
+            ctx = clients_router_mod.get_clients(request=_request(user.id), state="unbound", db=db)
         names = [r["client"].canonical_name for r in ctx["client_rows"]]
         assert names == ["Кривовид"]
         assert ctx["state_counts"]["all"] == 2          # чіпи описують увесь набір
@@ -350,8 +351,8 @@ class TestClientsMasterScreen:
         with Session(engine, expire_on_commit=False) as db:
             user = _operator(db)
             self._seed(db)
-            by_name = web.get_clients(request=_request(user.id), q="криво", db=db)
-            by_folder = web.get_clients(request=_request(user.id), q="seredyuk", db=db)
+            by_name = clients_router_mod.get_clients(request=_request(user.id), q="криво", db=db)
+            by_folder = clients_router_mod.get_clients(request=_request(user.id), q="seredyuk", db=db)
         assert [r["client"].canonical_name for r in by_name["client_rows"]] == ["Кривовид"]
         assert [r["client"].canonical_name for r in by_folder["client_rows"]] == ["Середюк"]
 
@@ -360,7 +361,7 @@ class TestClientsMasterScreen:
         with Session(engine, expire_on_commit=False) as db:
             user = _operator(db)
             self._seed(db)
-            ctx = web.get_clients(request=_request(user.id), db=db)
+            ctx = clients_router_mod.get_clients(request=_request(user.id), db=db)
         assert ctx["selected_id"] == ctx["client_rows"][0]["client"].id
         assert ctx["client"].canonical_name == ctx["client_rows"][0]["client"].canonical_name
 
@@ -370,7 +371,7 @@ class TestClientsMasterScreen:
         with Session(engine, expire_on_commit=False) as db:
             user = _operator(db)
             bound, _ = self._seed(db)
-            ctx = web.get_clients(request=_request(user.id), state="unbound", selected=bound.id, db=db)
+            ctx = clients_router_mod.get_clients(request=_request(user.id), state="unbound", selected=bound.id, db=db)
         assert ctx["selected_id"] != bound.id
         assert ctx["client"].canonical_name == "Кривовид"
 
@@ -379,7 +380,7 @@ class TestClientsMasterScreen:
         with Session(engine, expire_on_commit=False) as db:
             user = _operator(db)
             self._seed(db)
-            ctx = web.get_clients(request=_request(user.id), q="нікого-такого-немає", db=db)
+            ctx = clients_router_mod.get_clients(request=_request(user.id), q="нікого-такого-немає", db=db)
         assert ctx["client_rows"] == []
         assert ctx["selected_id"] is None
         assert "client" not in ctx
@@ -389,7 +390,7 @@ class TestClientsMasterScreen:
         with Session(engine, expire_on_commit=False) as db:
             user = _operator(db)
             _, unbound = self._seed(db)
-            ctx = web.get_client_pane(request=_request(user.id), client_id=unbound.id, db=db)
+            ctx = clients_router_mod.get_client_pane(request=_request(user.id), client_id=unbound.id, db=db)
         assert ctx["client"].canonical_name == "Кривовид"
         assert ctx["summary"].total_count == 2
         assert ctx["bound_folder"] is None
@@ -400,7 +401,7 @@ class TestClientsMasterScreen:
         with Session(engine, expire_on_commit=False) as db:
             user = _operator(db)
             _, unbound = self._seed(db)
-            ctx = web.bind_client_folder(
+            ctx = clients_router_mod.bind_client_folder(
                 request=_request(user.id, htmx=True), client_id=unbound.id,
                 export_folder_name="Krivovid", db=db,
             )
