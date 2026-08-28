@@ -171,7 +171,6 @@ export/<ім'я клієнта>/<дата, напр. 17.08.26>/<матеріал
   - `app/services/` — доменна логіка без Request/Response: `sheet_writeback` `undo` `handout` `queue` `clients` `config_state` `operators` `order_dates` `formatting`.
   - Процесний стан поза HTTP: `sync_control.py` (пауза, пресети швидкості, інтервали синку, «переглянуті дні»), `sync_heartbeat.py` (пульс + `sync_status_pair`), `platform_windows.py`.
   - `web.py` — лише створення app, middleware, lifespan, фонові воркери, `/health`, `include_router`.
-  - Фронтенд: `app.js` 1620 → 6 файлів (`app` оболонка + `queue` `mail` `handout` `clients` `settings`); `settings.html` 943 → оболонка + 10 партіалів `_settings_*.html`.
   - Фронтенд: `app.js` 1620 → 6 файлів; `settings.html` 943 → оболонка + 10 партіалів `_settings_*.html`; `base.css` 5704 → 12 файлів. **CSS різано суцільними шматками, не по екранах — порядок `<link>` у base.html і Є каскадом** (у файлі є навмисні перекриття). Переставляти лише свідомо.
   - **Правило межі:** бачить `Request` / будує `Response` → `routers/`. Ні → `services/`.
   - **Два сторожі, знімки оновлювати лише свідомо:** `tests/test_route_inventory.py` (105 пар метод/шлях; має `_walk()`, бо FastAPI 0.141 не розкладає `include_router` у плоский `app.routes`) і `tests/test_frontend_assets.py` (синтаксис JS, порядок скриптів, подвійні оголошення, парсинг шаблонів, склад розділів налаштувань).
