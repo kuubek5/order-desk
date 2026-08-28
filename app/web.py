@@ -1786,6 +1786,47 @@ def _write_sheet_fields_background(order_id: int, fields: set[str]) -> None:
     _sheet_writeback_pool.submit(worker)
 
 
+def _append_comment_background(order_id: int, comment_id: int, line: str) -> None:
+    """Дописати коментар у таблицю фоном, не тримаючи оператора.
+
+    Раніше `add_order_comment` відкривав таблицю прямо в потоці запиту, і
+    додавання коментаря зависало на час відповіді Google (на лаб-проксі
+    ~3с теплим, до ~40с холодним). Коментар у базі — головне; запис у
+    таблицю best-effort, як і решта write-back. Помилка йде в SyncLog, а не
+    в обличчя операторові.
+
+    Ставить `order.cam_comment` і `comment.synced_at` у власній сесії, тому
+    запит комітить коментар одразу, а таблиця наздоганяє."""
+    def worker() -> None:
+        try:
+            with SessionLocal() as bg:
+                order = bg.get(Order, order_id)
+                comment = bg.get(Comment, comment_id)
+                if order is None or order.sheet_tab is None or order.source != "lab":
+                    return
+                try:
+                    worksheet = get_worksheet_by_name(open_spreadsheet(db=bg), order.sheet_tab)
+                    if worksheet is None:
+                        raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
+                    order.cam_comment = append_order_comment(worksheet, order, line)
+                    if comment is not None:
+                        comment.synced_at = datetime.now()
+                    bg.add(SyncLog(
+                        direction="db_to_sheet", sheet_tab=order.sheet_tab,
+                        status="ok", message=f"order {order_id}: comment",
+                    ))
+                except Exception as exc:  # noqa: BLE001 — не валимо, лишаємо слід у SyncLog
+                    bg.add(SyncLog(
+                        direction="db_to_sheet", sheet_tab=order.sheet_tab,
+                        status="error", message=f"order {order_id}: comment: {exc}",
+                    ))
+                bg.commit()
+        except Exception:
+            logger.exception("Background comment append failed for order %s", order_id)
+
+    _sheet_writeback_pool.submit(worker)
+
+
 def _set_client_row_fill_background(order_id: int, *, blue: bool) -> None:
     """Перефарбувати рядок клієнта в таблиці, не тримаючи оператора.
 
@@ -3637,41 +3678,17 @@ async def add_order_comment(
         text=clean_text,
     )
     db.add(comment)
+    db.commit()
 
-    sync_error = None
+    # Запис коментаря в таблицю — best-effort і у ФОНІ: раніше це відкривало
+    # Google прямо в потоці запиту й додавання зависало на час відповіді
+    # (до ~40с холодним на лаб-проксі). Коментар у базі вже збережено; таблиця
+    # наздоганяє, помилка йде в SyncLog.
     if order.sheet_tab and order.source == "lab":
         line = f"[{now:%d.%m.%Y %H:%M} · {author}] {clean_text}"
-        try:
-            worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
-            if worksheet is None:
-                raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
-            order.cam_comment = append_order_comment(worksheet, order, line)
-            comment.synced_at = now
-            db.add(
-                SyncLog(
-                    direction="db_to_sheet",
-                    sheet_tab=order.sheet_tab,
-                    status="ok",
-                    message=f"order {order.id}: comment",
-                )
-            )
-        except Exception as exc:
-            sync_error = str(exc)
-            db.add(
-                SyncLog(
-                    direction="db_to_sheet",
-                    sheet_tab=order.sheet_tab,
-                    status="error",
-                    message=f"order {order.id}: comment: {exc}",
-                )
-            )
+        _append_comment_background(order.id, comment.id, line)
 
-    db.commit()
-    target = f"/orders/{order.id}"
-    if sync_error:
-        message = "Коментар збережено локально, але не записано в таблицю: " + sync_error
-        target += f"?error={quote(message)}"
-    return RedirectResponse(target, status_code=303)
+    return RedirectResponse(f"/orders/{order.id}", status_code=303)
 
 
 @app.get("/orders/{order_id}", response_class=HTMLResponse)
