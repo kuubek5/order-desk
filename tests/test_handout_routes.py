@@ -1060,3 +1060,80 @@ class TestScrollStaysPut:
         body = resp.body.decode("utf-8")
         assert 'id="handout-list"' in body
         assert "Basarab" in body
+
+
+class TestBoundClientWithoutFreshBatches:
+    """Тека прив'язана, але свіжих партій немає.
+
+    Бойовий випадок 28.08.26 (Светлана Криничко): у «Клієнтах» стоїть
+    «папку прив'язано», а видача пропонує «Прив'язати папку» й не показує
+    жодної теки. Причина — посилання на теку клієнта бралося з ЗНАЙДЕНИХ
+    ПАРТІЙ, тож «немає свіжих партій» виглядало як «не прив'язано». Це два
+    різні стани, і плутати їх не можна: у першому оператор шукає теку, якої
+    насправді не бракує."""
+
+    def test_the_folder_link_survives_an_empty_window(self, monkeypatch, tmp_path):
+        (tmp_path / "Светлана  Криничко").mkdir()
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            db.add(_client_order(client_name="Светлана Криничко", status="нове"))
+            db.commit()
+
+            monkeypatch.setattr(web, "get_export_folder_path", lambda db: str(tmp_path))
+            monkeypatch.setattr(
+                web, "list_export_client_names_cached", lambda root: ["Светлана  Криничко"]
+            )
+            # Вікно за датою не дало нічого, і запасний шлях теж порожній —
+            # тека є, партій немає.
+            monkeypatch.setattr(web, "scan_export_client_cached", lambda root, f, nb: [])
+            monkeypatch.setattr(web, "scan_export_client_latest_cached", lambda root, f: [])
+            monkeypatch.setattr(
+                web.templates, "TemplateResponse",
+                lambda request, template, context: context,
+            )
+            ctx = web.get_handout(request=_request(user.id), day="", db=db)
+
+        group = ctx["client_groups"][0]
+        assert group["client_folder_uri"], "тека прив'язана — посилання мусить бути"
+        assert ctx["unbound_count"] == 0
+
+    def test_the_latest_batches_are_used_when_the_window_is_empty(self, monkeypatch, tmp_path):
+        """Файли скачали задовго до фрезерування — робота однаково має знайти
+        свою теку, а не лишитись ні з чим."""
+        from datetime import datetime
+
+        material = tmp_path / "Клієнт" / "01.07.26" / "pmma kappa"
+        material.mkdir(parents=True)
+        entry = SimpleNamespace(
+            client_folder_name="Клієнт",
+            batch_folder_name="01.07.26",
+            material_color_folder_name="pmma kappa",
+            created_at=datetime(2026, 7, 1, 10, 0),
+            files=["a.stl"],
+            folder_path=material,
+        )
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            order = _client_order(client_name="Клієнт", status="нове")
+            order.material_color = "pmma kappa"
+            db.add(order)
+            db.commit()
+
+            monkeypatch.setattr(web, "get_export_folder_path", lambda db: str(tmp_path))
+            monkeypatch.setattr(
+                web, "list_export_client_names_cached", lambda root: ["Клієнт"]
+            )
+            monkeypatch.setattr(web, "scan_export_client_cached", lambda root, f, nb: [])
+            monkeypatch.setattr(
+                web, "scan_export_client_latest_cached", lambda root, f: [entry]
+            )
+            monkeypatch.setattr(
+                web.templates, "TemplateResponse",
+                lambda request, template, context: context,
+            )
+            ctx = web.get_handout(request=_request(user.id), day="", db=db)
+
+        matched = ctx["client_groups"][0]["orders"][0].export_matches
+        assert [e.batch_folder_name for e in matched] == ["01.07.26"]

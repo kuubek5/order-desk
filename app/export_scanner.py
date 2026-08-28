@@ -165,6 +165,61 @@ def scan_export_client(
     return entries
 
 
+def scan_export_client_latest(
+    root: Path, client_folder_name: str, count: int = 3
+) -> list[ExportEntry]:
+    """Найновіші `count` партій клієнта — без межі за датою.
+
+    Запасний шлях для видачі. Основний обхід відсікає партії, старіші за
+    вікно роботи, і це правильно для швидкодії — але буває, що клієнт
+    надіслав файли задовго до фрезерування, і тоді в вікні немає нічого,
+    хоча тека повна (бойовий випадок 28.08.26: «папку знайти не можу, хоча
+    вона є»).
+
+    Коштує один scandir теки клієнта плюс захід у `count` найновіших партій:
+    час створення scandir віддає безкоштовно разом зі списком, тож вибір
+    найновіших не коштує жодної зайвої ходки — на відміну від повного обходу
+    всіх ~176 партій, який і робив екран непридатним."""
+    client_root = Path(root) / client_folder_name
+    batches = []
+    for batch in _dir_entries(client_root):
+        try:
+            if not batch.is_dir():
+                continue
+            batches.append((datetime.fromtimestamp(batch.stat().st_ctime), batch))
+        except (OSError, PermissionError, ValueError, OverflowError):
+            continue
+    batches.sort(key=lambda pair: pair[0], reverse=True)
+
+    entries: list[ExportEntry] = []
+    for created_at, batch in batches[:count]:
+        for material in _dir_entries(batch.path):
+            try:
+                if not material.is_dir():
+                    continue
+            except OSError:
+                continue
+            files_list = []
+            for f in _dir_entries(material.path):
+                try:
+                    if f.is_file():
+                        files_list.append(f.name)
+                except OSError:
+                    continue
+            entries.append(
+                ExportEntry(
+                    client_folder_name=client_folder_name,
+                    batch_folder_name=batch.name,
+                    created_at=created_at,
+                    material_color_folder_name=material.name,
+                    files=files_list,
+                    folder_path=Path(material.path),
+                )
+            )
+    entries.sort(key=lambda e: e.created_at)
+    return entries
+
+
 # ── Кеш ──────────────────────────────────────────────────────────────────
 # stale-while-revalidate: свіже віддається одразу, протухле теж віддається
 # одразу з фоновим оновленням. Блокує лише найперший запит. TTL 90с — папка
@@ -219,6 +274,15 @@ def scan_export_client_cached(
     return _cached(
         ("client", str(root), client_folder_name, not_before),
         lambda: scan_export_client(root, client_folder_name, not_before),
+    )
+
+
+def scan_export_client_latest_cached(
+    root: Path, client_folder_name: str, count: int = 3
+) -> list[ExportEntry]:
+    return _cached(
+        ("client-latest", str(root), client_folder_name, count),
+        lambda: scan_export_client_latest(root, client_folder_name, count),
     )
 
 

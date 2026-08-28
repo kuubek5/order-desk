@@ -50,6 +50,7 @@ from app.export_scanner import (
     clear_export_cache,
     list_export_client_names_cached,
     scan_export_client_cached,
+    scan_export_client_latest_cached,
 )
 from app import sync_control
 from app.license import get_license_status, get_machine_id, verify_license_key
@@ -1327,6 +1328,10 @@ def export_warm_once(db: Session) -> int:
     folders = _matched_folders(_handout_client_matches(db, client_names, folder_names))
     started = time.monotonic()
     scanned = _scan_export_for_clients(root, folders, not_before)
+    # Той самий запасний шлях, що й на екрані — інакше перший, хто відкриє
+    # видачу, платив би за нього сам.
+    empty = {name: folder for name, folder in folders.items() if not scanned.get(name)}
+    scanned.update(_scan_export_latest_for_clients(root, empty))
     logger.info(
         "Export prewarm: %d тек, %d записів, %.2fс",
         len(folders),
@@ -3984,6 +3989,21 @@ def _scan_export_for_clients(
         return dict(zip(names, results))
 
 
+def _scan_export_latest_for_clients(
+    root: Path, folders_by_client: dict[str, str]
+) -> dict[str, list]:
+    """Найновіші партії — для клієнтів, у яких вікно за датою дало порожньо."""
+    if not folders_by_client:
+        return {}
+    names = list(folders_by_client)
+    with ThreadPoolExecutor(max_workers=min(EXPORT_SCAN_WORKERS, len(names))) as pool:
+        results = pool.map(
+            lambda folder: scan_export_client_latest_cached(root, folder),
+            (folders_by_client[name] for name in names),
+        )
+        return dict(zip(names, results))
+
+
 def _handout_client_matches(db: Session, client_names, folder_names: list[str]) -> dict:
     """{ім'я клієнта: результат нечіткого зіставлення з текою в export}.
 
@@ -4076,7 +4096,17 @@ def _handout_context(request: Request, user, source: str, day: str, db: Session)
         return clients_by_name.get(hit) if hit else None
 
     matches = _handout_client_matches(db, list(groups), folder_names)
-    scanned = _scan_export_for_clients(_export_root, _matched_folders(matches), _not_before)
+    _folders = _matched_folders(matches)
+    scanned = _scan_export_for_clients(_export_root, _folders, _not_before)
+    # Тека прив'язана, а в вікні порожньо — значить файли скачали задовго до
+    # фрезерування. Тоді дивимось найновіші партії клієнта без межі за датою:
+    # це один scandir теки плюс захід у три найсвіжіші партії, а не повний
+    # обхід усіх ~176. Бойовий випадок 28.08.26: «папку знайти не можу, хоча
+    # вона є» (Светлана Криничко, робота 27.08, файли значно старіші).
+    _empty = {name: folder for name, folder in _folders.items() if not scanned.get(name)}
+    if _empty:
+        for name, entries_ in _scan_export_latest_for_clients(_export_root, _empty).items():
+            scanned[name] = entries_
 
     client_groups = []
     for client_name, group_orders in groups.items():
@@ -4108,10 +4138,15 @@ def _handout_context(request: Request, user, source: str, day: str, db: Session)
         # Client-level folder (the parent of the material folders) so the client
         # name itself opens the right place on disk, and a link to the client
         # card so an unbound client can be fixed once instead of every morning.
+        # Тека клієнта береться з самого ЗІСТАВЛЕННЯ, а не з знайдених партій.
+        # Раніше вона залежала від `export_entries`, тож клієнт із прив'язаною
+        # текою, але без свіжих партій, отримував заклик «Прив'язати папку» —
+        # екран казав «не прив'язано» там, де насправді «немає свіжих партій»
+        # (бойовий випадок 28.08.26).
         client_folder_uri = None
         client_folder_token = None
-        if export_entries:
-            client_folder = export_entries[0].folder_path.parent.parent
+        if match.matched_folder_name:
+            client_folder = _export_root / match.matched_folder_name
             client_folder_uri = folder_to_file_uri(client_folder)
             # Токен, а не лише file://-посилання: браузер МОВЧКИ блокує перехід
             # на file:// зі сторінки на http, тому кнопка «Відкрити папку» досі
