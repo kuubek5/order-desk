@@ -474,42 +474,81 @@ class TestScanExportClientLatest:
     Основний обхід відсікає партії, старіші за вікно роботи. Але клієнт міг
     надіслати файли задовго до фрезерування, і тоді у вікні порожньо, хоча
     тека повна (бойовий випадок 28.08.26). Ціна має лишатись малою: захід
-    лише в найновіші партії, а не в усі ~176."""
+    лише в найновіші партії, а не в усі ~176.
 
-    def _client_with_batches(self, root, names):
-        for name in names:
-            folder = root / "Клієнт" / name / "mono a3"
-            folder.mkdir(parents=True)
-            (folder / "a.stl").write_text("x", encoding="utf-8")
+    Час створення тут підставний — так само, як у тесті відсіву вище: на
+    Windows це окреме поле, якого засобами тесту не підробити, а покладатись
+    на реальний годинник не можна (три теки, створені в один тік, дають
+    невизначений порядок — саме на цьому тест і був флейкі)."""
 
-    def test_older_batches_are_not_entered(self, tmp_path, monkeypatch):
+    def _fake_tree(self, tmp_path, monkeypatch, batches):
+        """batches: [(назва, час створення)]. Повертає список відкритих шляхів."""
+        from types import SimpleNamespace
         from app import export_scanner
 
-        # Створюються послідовно, тож «третя» — найновіша за часом створення
-        # (на Windows st_ctime саме він, і os.utime його не змінює).
-        self._client_with_batches(tmp_path, ["перша", "друга", "третя"])
+        def fake_batch(name, ctime):
+            return SimpleNamespace(
+                name=name,
+                path=str(tmp_path / "Клієнт" / name),
+                is_dir=lambda: True,
+                stat=lambda ctime=ctime: SimpleNamespace(st_ctime=ctime),
+            )
 
-        entered = []
-        real_dir_entries = export_scanner._dir_entries
+        entries = [fake_batch(name, ctime) for name, ctime in batches]
+        material = SimpleNamespace(
+            name="mono a3",
+            path=str(tmp_path / "material"),
+            is_dir=lambda: True,
+        )
+        stl = SimpleNamespace(name="a.stl", is_file=lambda: True)
+        opened = []
 
-        def spy(path):
-            entered.append(str(path))
-            return real_dir_entries(path)
+        def fake_entries(path):
+            opened.append(str(path))
+            text = str(path)
+            if text.endswith("Клієнт"):
+                return entries
+            if text.endswith("material"):
+                return [stl]
+            return [material]
 
-        monkeypatch.setattr(export_scanner, "_dir_entries", spy)
+        monkeypatch.setattr(export_scanner, "_dir_entries", fake_entries)
+        return opened
+
+    def test_older_batches_are_not_entered(self, tmp_path, monkeypatch):
+        from datetime import datetime
+        from app import export_scanner
+
+        now = datetime.now().timestamp()
+        opened = self._fake_tree(tmp_path, monkeypatch, [
+            ("перша", now - 200 * 86400),
+            ("друга", now - 100 * 86400),
+            ("третя", now - 86400),
+        ])
+
         entries = export_scanner.scan_export_client_latest(tmp_path, "Клієнт", count=1)
 
         assert [e.batch_folder_name for e in entries] == ["третя"]
-        assert not any(str(tmp_path / "Клієнт" / "перша") in path for path in entered)
+        assert not any("перша" in path for path in opened), (
+            "у стару партію не можна заходити — саме на цьому тримається ціна"
+        )
 
-    def test_it_returns_what_the_newest_batches_hold(self, tmp_path):
+    def test_it_returns_what_the_newest_batches_hold(self, tmp_path, monkeypatch):
+        from datetime import datetime
         from app import export_scanner
 
-        self._client_with_batches(tmp_path, ["перша", "друга"])
+        now = datetime.now().timestamp()
+        self._fake_tree(tmp_path, monkeypatch, [
+            ("перша", now - 200 * 86400),
+            ("друга", now - 86400),
+        ])
+
         entries = export_scanner.scan_export_client_latest(tmp_path, "Клієнт", count=2)
 
         assert {e.batch_folder_name for e in entries} == {"перша", "друга"}
         assert all(e.files == ["a.stl"] for e in entries)
+        # Найстаріша йде першою — той самий порядок, що й в основному обході.
+        assert [e.batch_folder_name for e in entries] == ["перша", "друга"]
 
     def test_a_missing_client_folder_is_not_an_error(self, tmp_path):
         from app import export_scanner
