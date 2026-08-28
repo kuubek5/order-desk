@@ -55,6 +55,36 @@
   // are recomputed below so the mesh is never solid black regardless of STL.
   const MODEL_COLOR = 0x5eead4;
 
+  // Швидкість авто-обертання запам'ятовується між сесіями (прохання оператора
+  // 28.08.26): виставив слайдером — так і лишається наступного разу, поки сам
+  // не зміниш. Правий клік «стоп щоб роздивитись» СЮДИ не пише — це разова
+  // заморозка, а збережений вибір повертається при новому відкритті.
+  const SPEED_STORAGE_KEY = "stl-preview-spin-speed";
+
+  function loadSavedSpeed() {
+    try {
+      const raw = window.localStorage.getItem(SPEED_STORAGE_KEY);
+      if (raw === null) return null;
+      const v = Number(raw);
+      if (!Number.isFinite(v)) return null;
+      return Math.min(3, Math.max(0, v)); // у межах слайдера
+    } catch (_) {
+      return null; // приватний режим / сховище вимкнене
+    }
+  }
+
+  function saveSpeed(v) {
+    try {
+      window.localStorage.setItem(SPEED_STORAGE_KEY, String(v));
+    } catch (_) {
+      /* сховище недоступне — просто не запам'ятаємо цю сесію */
+    }
+  }
+
+  // Збережене значення має пріоритет над дефолтом; якщо нічого не збережено —
+  // reduced-motion лишає 0, інакше звичний 1.
+  const SAVED_SPEED = loadSavedSpeed();
+
   const state = {
     token: null,
     triggerEl: null,
@@ -63,7 +93,7 @@
     activeIndex: -1,
     controller: null,
     rafId: null,
-    spinSpeed: REDUCED_MOTION ? 0 : 1, // multiplier on BASE_SPIN_*, driven by the slider
+    spinSpeed: SAVED_SPEED !== null ? SAVED_SPEED : (REDUCED_MOTION ? 0 : 1), // збережений вибір або дефолт
     dragging: false, // права кнопка затиснута — ручне обертання
     dragLastX: 0,
     dragLastY: 0,
@@ -141,6 +171,7 @@
     speedInput.setAttribute("aria-label", "Швидкість обертання");
     speedInput.addEventListener("input", () => {
       state.spinSpeed = Number(speedInput.value) || 0;
+      saveSpeed(state.spinSpeed); // тільки слайдер запам'ятовується, не правий клік
       // Nudge the loop: if it self-stopped at speed 0, resume it; renderOnce
       // keeps the frozen model visible when the operator drags back to 0.
       if (state.open && state.spinSpeed > 0 && state.rafId === null) {
