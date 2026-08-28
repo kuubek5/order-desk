@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import orders as orders_router_mod
 from app.routers import queue as queue_router_mod
 from app import sync_control
 from app.services import config_state
@@ -235,7 +236,7 @@ def _stub_sheet_write(monkeypatch, note_rows=None, tab=None):
     cap = {}
     # Fresh double-submit dedup state per test so module-level state can't leak
     # between tests that share a user id + payload.
-    monkeypatch.setattr(web, "_recent_manual_adds", {})
+    monkeypatch.setattr(orders_router_mod, "_recent_manual_adds", {})
     # Додавання рядків живе у сервісі write-back — підміняти треба там, де
     # його читають.
     monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
@@ -270,7 +271,7 @@ def test_create_manual_order_writes_client_row_and_creates_order(monkeypatch):
     cap = _stub_sheet_write(monkeypatch, note_rows=[65])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="client", db=db,
             **{**_empty_form(), "client_name": ["Басараб"],
                "material_color": ["mono a3"], "quantity": ["2"]},
@@ -292,7 +293,7 @@ def test_create_manual_lab_order_with_sum3d(monkeypatch):
     cap = _stub_sheet_write(monkeypatch, note_rows=[70])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="lab", db=db,
             **{**_empty_form(), "work_order_no": ["24999"], "kind": ["анатомія"],
                "material_color": ["mono a2"], "quantity": ["3"], "sum3d_id": ["10-19-48"]},
@@ -323,7 +324,7 @@ def test_create_manual_lab_order_allows_missing_naryad(monkeypatch):
     cap = _stub_sheet_write(monkeypatch, note_rows=[32])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="lab", db=db,
             **{**_empty_form(), "work_order_no": ["  "], "material_color": ["mono a2"]},
         )
@@ -341,7 +342,7 @@ def test_create_manual_lab_order_rejects_fully_blank(monkeypatch):
     _stub_sheet_write(monkeypatch)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="lab", db=db,
             **{**_empty_form(), "material_color": [""], "quantity": [""]},
         )
@@ -355,7 +356,7 @@ def test_create_manual_order_writes_job_code_and_technician(monkeypatch):
     cap = _stub_sheet_write(monkeypatch, note_rows=[33])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="lab", db=db,
             **{**_empty_form(), "work_order_no": ["24500"], "kind": ["анатомія"],
                "material_color": ["цирконій"], "quantity": ["1"],
@@ -376,7 +377,7 @@ def test_create_manual_order_multi_clients_one_push(monkeypatch):
     cap = _stub_sheet_write(monkeypatch, note_rows=[85, 86, 87])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="client", db=db,
             **{**_empty_form(),
                "client_name": ["Іван", "Петро", "Марія", ""],
@@ -401,7 +402,7 @@ def test_create_manual_order_multi_rejects_bad_row(monkeypatch):
     _stub_sheet_write(monkeypatch)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="client", db=db,
             **{**_empty_form(),
                "client_name": ["Іван", "Петро"],
@@ -418,7 +419,7 @@ def test_create_manual_order_requires_client_and_material(monkeypatch):
     _stub_sheet_write(monkeypatch)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="client", db=db,
             **{**_empty_form(), "client_name": ["   "], "material_color": ["x"]},
         )
@@ -429,13 +430,13 @@ def test_create_manual_order_requires_client_and_material(monkeypatch):
 
 def test_create_manual_order_reports_missing_today_tab(monkeypatch):
     engine = _database()
-    monkeypatch.setattr(web, "_recent_manual_adds", {})
+    monkeypatch.setattr(orders_router_mod, "_recent_manual_adds", {})
     monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
     # No dated tab anywhere in the document -> resolver returns None.
     monkeypatch.setattr(writeback_service, "latest_worksheet_on_or_before", lambda ss, d: None)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="client", db=db,
             **{**_empty_form(), "client_name": ["Басараб"],
                "material_color": ["mono a3"], "quantity": ["1"]},
@@ -452,7 +453,7 @@ def test_create_manual_order_returns_to_the_submitting_view(monkeypatch):
     _stub_sheet_write(monkeypatch, note_rows=[65])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="client", db=db,
             return_to="/?day=2026-08-25&source=client",
             **{**_empty_form(), "client_name": ["Неда"], "material_color": ["mono b1"]},
@@ -473,7 +474,7 @@ def test_create_manual_order_refuses_offsite_return_to(monkeypatch, hostile):
     _stub_sheet_write(monkeypatch, note_rows=[65])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="client", db=db,
             return_to=hostile,
             **{**_empty_form(), "client_name": ["Неда"], "material_color": ["mono b1"]},
@@ -485,15 +486,15 @@ def test_create_manual_order_refuses_offsite_return_to(monkeypatch, hostile):
 def test_create_manual_order_double_submit_is_ignored(monkeypatch):
     """An F5/back resubmit of the exact same batch by the same operator inside
     the dedup window writes NOTHING new — one order, one sheet append."""
-    monkeypatch.setattr(web, "_recent_manual_adds", {})
+    monkeypatch.setattr(orders_router_mod, "_recent_manual_adds", {})
     engine = _database()
     cap = _stub_sheet_write(monkeypatch, note_rows=[65])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         payload = {**_empty_form(), "client_name": ["Басараб"],
                    "material_color": ["mono a3"], "quantity": ["2"]}
-        first = web.create_manual_order(request=_request(user.id), work_type="client", db=db, **payload)
-        second = web.create_manual_order(request=_request(user.id), work_type="client", db=db, **payload)
+        first = orders_router_mod.create_manual_order(request=_request(user.id), work_type="client", db=db, **payload)
+        second = orders_router_mod.create_manual_order(request=_request(user.id), work_type="client", db=db, **payload)
 
         assert first.status_code == second.status_code == 303
         assert cap["calls"] == 1  # sheet written once, not twice
@@ -502,16 +503,16 @@ def test_create_manual_order_double_submit_is_ignored(monkeypatch):
 
 def test_create_manual_order_different_payload_not_deduped(monkeypatch):
     """A genuinely different second add (another client) is not swallowed."""
-    monkeypatch.setattr(web, "_recent_manual_adds", {})
+    monkeypatch.setattr(orders_router_mod, "_recent_manual_adds", {})
     engine = _database()
     cap = _stub_sheet_write(monkeypatch)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        web.create_manual_order(
+        orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="client", db=db,
             **{**_empty_form(), "client_name": ["Басараб"], "material_color": ["mono a3"], "quantity": ["1"]},
         )
-        web.create_manual_order(
+        orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="client", db=db,
             **{**_empty_form(), "client_name": ["Петренко"], "material_color": ["emo a2"], "quantity": ["1"]},
         )
@@ -1128,7 +1129,7 @@ def test_pending_list_reports_unread_count_of_unopened_letters(monkeypatch):
         web.templates, "TemplateResponse",
         lambda request, template, context: captured.update(ctx=context) or context,
     )
-    monkeypatch.setattr(web, "attach_email_preview_tokens", lambda *a, **k: None)
+    monkeypatch.setattr(orders_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add_all([
@@ -1153,7 +1154,7 @@ def test_mail_partial_list_renders_only_the_polled_fragment(monkeypatch):
         web.templates, "TemplateResponse",
         lambda request, template, context: captured.update(template=template, ctx=context) or context,
     )
-    monkeypatch.setattr(web, "attach_email_preview_tokens", lambda *a, **k: None)
+    monkeypatch.setattr(orders_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add(EmailMessage(uid="p1", status="нове"))
@@ -1176,7 +1177,7 @@ def test_opening_mail_detail_stamps_seen_at_once(monkeypatch):
         web.templates, "TemplateResponse",
         lambda request, template, context: context,
     )
-    monkeypatch.setattr(web, "attach_email_preview_tokens", lambda *a, **k: None)
+    monkeypatch.setattr(orders_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="open1", status="нове")
@@ -1409,7 +1410,7 @@ def test_get_mail_open_prerenders_panel_and_marks_row(monkeypatch):
         web.templates, "TemplateResponse",
         lambda request, template, context: captured.update(ctx=context) or context,
     )
-    monkeypatch.setattr(web, "attach_email_preview_tokens", lambda *a, **k: None)
+    monkeypatch.setattr(orders_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
@@ -1614,7 +1615,7 @@ def test_manual_add_writes_to_the_day_tab_on_screen(monkeypatch):
     engine = _database()
     seen = {}
     tomorrow = SimpleNamespace(title="26.08.26")
-    monkeypatch.setattr(web, "_recent_manual_adds", {})
+    monkeypatch.setattr(orders_router_mod, "_recent_manual_adds", {})
     monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
     monkeypatch.setattr(
         writeback_service, "get_worksheet_by_name",
@@ -1631,7 +1632,7 @@ def test_manual_add_writes_to_the_day_tab_on_screen(monkeypatch):
 
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="client", db=db,
             target_tab="26.08.26",
             **{**_empty_form(), "client_name": ["Неда"], "material_color": ["mono b1"]},
@@ -1650,7 +1651,7 @@ def test_manual_add_ignores_a_junk_target_tab(monkeypatch):
     cap = _stub_sheet_write(monkeypatch, note_rows=[65])
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        resp = web.create_manual_order(
+        resp = orders_router_mod.create_manual_order(
             request=_request(user.id), work_type="client", db=db,
             target_tab="../../etc/passwd",
             **{**_empty_form(), "client_name": ["Неда"], "material_color": ["mono b1"]},

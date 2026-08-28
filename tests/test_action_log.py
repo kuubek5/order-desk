@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import orders as orders_router_mod
 from app.services import sheet_writeback as writeback_service
 from app.services import undo as undo_service
 from app.db import Base
@@ -52,21 +53,21 @@ def _order(db, **kw):
 
 
 def _run_sum3d(db, user, order, value):
-    with patch.object(web, "_write_sheet_fields", return_value=None), \
-         patch.object(web, "_write_rework_sum3d", return_value=None), \
-         patch.object(web, "attach_export_folder_uris"), \
-         patch.object(web, "attach_job_code_folder_uris"), \
+    with patch.object(orders_router_mod, "write_sheet_fields", return_value=None), \
+         patch.object(orders_router_mod, "write_rework_sum3d_fields", return_value=None), \
+         patch.object(orders_router_mod, "attach_export_folder_uris"), \
+         patch.object(orders_router_mod, "attach_job_code_folder_uris"), \
          patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
-        asyncio.run(web.set_sum3d_id(
+        asyncio.run(orders_router_mod.set_sum3d_id(
             request=_request(user.id), order_id=order.id, sum3d_id=value, db=db))
 
 
 def _run_status(db, user, order, status):
-    with patch.object(web, "_write_sheet_fields", return_value=None), \
-         patch.object(web, "attach_export_folder_uris"), \
-         patch.object(web, "attach_job_code_folder_uris"), \
+    with patch.object(orders_router_mod, "write_sheet_fields", return_value=None), \
+         patch.object(orders_router_mod, "attach_export_folder_uris"), \
+         patch.object(orders_router_mod, "attach_job_code_folder_uris"), \
          patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
-        asyncio.run(web.set_status(
+        asyncio.run(orders_router_mod.set_status(
             request=_request(user.id), order_id=order.id, status=status, db=db))
 
 
@@ -141,9 +142,9 @@ def test_log_action_helper_stringifies_values():
 
 
 def _run_undo(db, user, action_id):
-    with patch.object(web, "_write_sheet_fields", return_value=None), \
-         patch.object(web, "_write_rework_sum3d", return_value=None):
-        return asyncio.run(web.undo_action(
+    with patch.object(orders_router_mod, "write_sheet_fields", return_value=None), \
+         patch.object(orders_router_mod, "write_rework_sum3d_fields", return_value=None):
+        return asyncio.run(orders_router_mod.undo_action(
             request=_request(user.id), action_id=action_id, db=db))
 
 
@@ -241,10 +242,10 @@ def test_undo_logs_an_undo_action():
 
 
 def _run_undo_last(db, user):
-    with patch.object(web, "_write_sheet_fields", return_value=None), \
-         patch.object(web, "_write_rework_sum3d", return_value=None), \
-         patch.object(web, "_write_calculated", return_value=None):
-        return asyncio.run(web.undo_last_action(request=_request(user.id), db=db))
+    with patch.object(orders_router_mod, "write_sheet_fields", return_value=None), \
+         patch.object(orders_router_mod, "write_rework_sum3d_fields", return_value=None), \
+         patch.object(orders_router_mod, "write_calculated_cell", return_value=None):
+        return asyncio.run(orders_router_mod.undo_last_action(request=_request(user.id), db=db))
 
 
 def test_undo_last_reverts_most_recent_action():
@@ -302,10 +303,10 @@ def test_undo_last_only_sees_own_actions():
 
 
 def _run_redo_last(db, user):
-    with patch.object(web, "_write_sheet_fields", return_value=None), \
-         patch.object(web, "_write_rework_sum3d", return_value=None), \
-         patch.object(web, "_write_calculated", return_value=None):
-        return asyncio.run(web.redo_last_action(request=_request(user.id), db=db))
+    with patch.object(orders_router_mod, "write_sheet_fields", return_value=None), \
+         patch.object(orders_router_mod, "write_rework_sum3d_fields", return_value=None), \
+         patch.object(orders_router_mod, "write_calculated_cell", return_value=None):
+        return asyncio.run(orders_router_mod.redo_last_action(request=_request(user.id), db=db))
 
 
 def test_redo_last_reapplies_undone_action():
@@ -368,11 +369,11 @@ def test_redo_with_nothing_to_redo_is_noop():
 
 
 def _run_set_operator(db, user, order, value):
-    with patch.object(web, "_write_calculated", return_value=None), \
-         patch.object(web, "attach_export_folder_uris"), \
-         patch.object(web, "attach_job_code_folder_uris"), \
+    with patch.object(orders_router_mod, "write_calculated_cell", return_value=None), \
+         patch.object(orders_router_mod, "attach_export_folder_uris"), \
+         patch.object(orders_router_mod, "attach_job_code_folder_uris"), \
          patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
-        return asyncio.run(web.set_operator(
+        return asyncio.run(orders_router_mod.set_operator(
             request=_request(user.id), order_id=order.id, operator=value, db=db))
 
 
@@ -420,11 +421,11 @@ def test_operator_set_undo_restores_and_redo_reapplies():
 
 
 def _run_cam_comment(db, user, order, text):
-    with patch.object(web, "_write_sheet_fields_background"), \
-         patch.object(web, "attach_export_folder_uris"), \
-         patch.object(web, "attach_job_code_folder_uris"), \
+    with patch.object(orders_router_mod, "write_sheet_fields_background"), \
+         patch.object(orders_router_mod, "attach_export_folder_uris"), \
+         patch.object(orders_router_mod, "attach_job_code_folder_uris"), \
          patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
-        asyncio.run(web.set_cam_comment(
+        asyncio.run(orders_router_mod.set_cam_comment(
             request=_request(user.id), order_id=order.id, cam_comment=text, db=db))
 
 
@@ -456,9 +457,9 @@ def test_cam_comment_unchanged_is_not_logged():
 
 
 def _run_delete(db, user, order):
-    with patch.object(web, "_clear_sheet_row_background"), \
+    with patch.object(orders_router_mod, "clear_sheet_row_background"), \
          patch.object(undo_service, "restore_sheet_row", return_value=None):
-        asyncio.run(web.delete_order(
+        asyncio.run(orders_router_mod.delete_order(
             request=_request(user.id), order_id=order.id, inline="1", db=db))
 
 
@@ -532,7 +533,7 @@ def test_delete_redo_archives_again():
             _run_undo_last(db, user)
         db.refresh(order)
         assert order.archived_at is None
-        with patch.object(web, "_clear_sheet_row_background"):
+        with patch.object(orders_router_mod, "clear_sheet_row_background"):
             _run_redo_last(db, user)
         db.refresh(order)
         assert order.archived_at is not None                # deleted again
@@ -548,7 +549,7 @@ def _recent_context(db, user, tab=""):
         return SimpleNamespace(headers={})
 
     with patch.object(web.templates, "TemplateResponse", side_effect=_fake):
-        web.get_recent_actions(request=_request(user.id), tab=tab, db=db)
+        orders_router_mod.get_recent_actions(request=_request(user.id), tab=tab, db=db)
     return captured
 
 
@@ -597,10 +598,10 @@ def test_recent_actions_capped_at_limit():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db, calculated_raw=None)
-        for i in range(web.RECENT_ACTIONS_LIMIT + 4):
+        for i in range(orders_router_mod.RECENT_ACTIONS_LIMIT + 4):
             _run_set_operator(db, user, order, f"O{i}")
         entries = _recent_context(db, user)["entries"]
-        assert len(entries) == web.RECENT_ACTIONS_LIMIT
+        assert len(entries) == orders_router_mod.RECENT_ACTIONS_LIMIT
 
 
 def test_recent_actions_includes_manually_created_works():
@@ -618,7 +619,7 @@ def test_recent_actions_includes_manually_created_works():
 
         entries = _recent_context(db, user)["entries"]
         assert [e.action_type for e in entries] == ["create"]
-        assert "create" in web.RECENT_ACTION_TYPES
+        assert "create" in orders_router_mod.RECENT_ACTION_TYPES
         assert "create" not in web.UNDOABLE_ACTION_TYPES   # listed, not steppable
 
 
@@ -674,12 +675,12 @@ def test_journal_lists_newest_first_and_filters_by_operator():
         db.commit()
 
         # No filter → both, newest first.
-        resp = web.get_journal(request=_request(roma.id), db=db)
+        resp = orders_router_mod.get_journal(request=_request(roma.id), db=db)
         entries = resp.context["entries"]
         assert [e.note for e in entries] == ["B", "A"]
 
         # Filter by operator → only theirs.
-        resp = web.get_journal(request=_request(roma.id), operator=str(roma.id), db=db)
+        resp = orders_router_mod.get_journal(request=_request(roma.id), operator=str(roma.id), db=db)
         assert [e.note for e in resp.context["entries"]] == ["A"]
 
 
@@ -699,7 +700,7 @@ def test_journal_filters_by_day():
         e_old.created_at = datetime(2026, 1, 15, 10, 0, 0)
         db.commit()
 
-        resp = web.get_journal(request=_request(user.id), day="2026-01-15", db=db)
+        resp = orders_router_mod.get_journal(request=_request(user.id), day="2026-01-15", db=db)
         notes = [e.note for e in resp.context["entries"]]
         assert notes == ["old"]
 
@@ -712,7 +713,7 @@ def test_order_detail_context_includes_actions():
         web.log_action(db, order=order, operator=user, action_type="sum3d",
                        field="sum3d_id", old="{}", new="{}", note="Sum3D → x")
         db.commit()
-        resp = web.get_order_detail(request=_request(user.id), order_id=order.id, db=db)
+        resp = orders_router_mod.get_order_detail(request=_request(user.id), order_id=order.id, db=db)
         actions = resp.context["actions"]
         assert len(actions) == 1 and actions[0].note == "Sum3D → x"
 

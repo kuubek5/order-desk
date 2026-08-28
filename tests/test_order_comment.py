@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import orders as orders_router_mod
 from app.db import Base
 from app.models import Comment, Order, User
 
@@ -55,12 +56,12 @@ class TestCommentIsInstant:
         monkeypatch.setattr(web, "open_spreadsheet",
                             lambda db=None: touched.append("open") or object())
         queued = []
-        monkeypatch.setattr(web, "_append_comment_background",
+        monkeypatch.setattr(orders_router_mod, "append_comment_background",
                             lambda order_id, comment_id, line: queued.append((order_id, line)))
         with Session(engine, expire_on_commit=False) as db:
             user = _user(db)
             order = _lab_order(db)
-            resp = asyncio.run(web.add_order_comment(
+            resp = asyncio.run(orders_router_mod.add_order_comment(
                 request=_request(user.id), order_id=order.id, text="  на швидку  ", db=db,
             ))
             assert resp.status_code == 303
@@ -73,7 +74,7 @@ class TestCommentIsInstant:
     def test_empty_comment_is_rejected_and_nothing_is_queued(self, monkeypatch):
         engine = _database()
         queued = []
-        monkeypatch.setattr(web, "_append_comment_background",
+        monkeypatch.setattr(orders_router_mod, "append_comment_background",
                             lambda *a, **k: queued.append(a))
         with Session(engine, expire_on_commit=False) as db:
             user = _user(db)
@@ -81,7 +82,7 @@ class TestCommentIsInstant:
             import pytest
             from fastapi import HTTPException
             with pytest.raises(HTTPException):
-                asyncio.run(web.add_order_comment(
+                asyncio.run(orders_router_mod.add_order_comment(
                     request=_request(user.id), order_id=order.id, text="   ", db=db,
                 ))
             assert db.scalars(select(Comment)).all() == []
@@ -92,13 +93,13 @@ class TestCommentIsInstant:
         зберігає, але в таблицю не пише."""
         engine = _database()
         queued = []
-        monkeypatch.setattr(web, "_append_comment_background",
+        monkeypatch.setattr(orders_router_mod, "append_comment_background",
                             lambda *a, **k: queued.append(a))
         with Session(engine, expire_on_commit=False) as db:
             user = _user(db)
             order = Order(source="email", sheet_tab="27.08.26", status="нове")
             db.add(order); db.commit()
-            asyncio.run(web.add_order_comment(
+            asyncio.run(orders_router_mod.add_order_comment(
                 request=_request(user.id), order_id=order.id, text="привіт", db=db,
             ))
             assert len(db.scalars(select(Comment)).all()) == 1

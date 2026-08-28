@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import orders as orders_router_mod
 from app.db import Base
 from app.models import Order, StatusEvent, User
 
@@ -58,8 +59,8 @@ def test_delete_archives_instead_of_destroying():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db)
-        with patch.object(web, "_clear_sheet_row_background") as clear:
-            asyncio.run(web.delete_order(request=_request(user.id), order_id=order.id, db=db))
+        with patch.object(orders_router_mod, "clear_sheet_row_background") as clear:
+            asyncio.run(orders_router_mod.delete_order(request=_request(user.id), order_id=order.id, db=db))
         clear.assert_called_once_with("25.08.26", 7)
 
     with Session(engine, expire_on_commit=False) as db:
@@ -73,8 +74,8 @@ def test_delete_records_who_did_it():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db)
-        with patch.object(web, "_clear_sheet_row_background"):
-            asyncio.run(web.delete_order(request=_request(user.id), order_id=order.id, db=db))
+        with patch.object(orders_router_mod, "clear_sheet_row_background"):
+            asyncio.run(orders_router_mod.delete_order(request=_request(user.id), order_id=order.id, db=db))
         events = db.scalars(select(StatusEvent).where(StatusEvent.order_id == order.id)).all()
     assert any(e.note == "видалено з черги" and e.operator_id == user.id for e in events)
 
@@ -84,8 +85,8 @@ def test_email_order_has_no_sheet_row_to_clear():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db, source="email", sheet_tab=None, row_number=None, work_order_no=None)
-        with patch.object(web, "_clear_sheet_row_background") as clear:
-            asyncio.run(web.delete_order(request=_request(user.id), order_id=order.id, db=db))
+        with patch.object(orders_router_mod, "clear_sheet_row_background") as clear:
+            asyncio.run(orders_router_mod.delete_order(request=_request(user.id), order_id=order.id, db=db))
         clear.assert_not_called()
         assert db.get(Order, order.id).archived_at is not None
 
@@ -95,10 +96,10 @@ def test_deleting_twice_is_harmless():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db)
-        with patch.object(web, "_clear_sheet_row_background") as clear:
-            asyncio.run(web.delete_order(request=_request(user.id), order_id=order.id, db=db))
+        with patch.object(orders_router_mod, "clear_sheet_row_background") as clear:
+            asyncio.run(orders_router_mod.delete_order(request=_request(user.id), order_id=order.id, db=db))
             first = db.get(Order, order.id).archived_at
-            asyncio.run(web.delete_order(request=_request(user.id), order_id=order.id, db=db))
+            asyncio.run(orders_router_mod.delete_order(request=_request(user.id), order_id=order.id, db=db))
             # другий виклик не чіпає таблицю й не перештамповує дату
             assert clear.call_count == 1
             assert db.get(Order, order.id).archived_at == first
@@ -109,7 +110,7 @@ def test_delete_requires_login():
     with Session(engine, expire_on_commit=False) as db:
         order = _order(db)
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(web.delete_order(request=_request(None), order_id=order.id, db=db))
+            asyncio.run(orders_router_mod.delete_order(request=_request(None), order_id=order.id, db=db))
     assert exc.value.status_code == 401
 
 
@@ -118,7 +119,7 @@ def test_delete_unknown_order_is_404():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(web.delete_order(request=_request(user.id), order_id=999, db=db))
+            asyncio.run(orders_router_mod.delete_order(request=_request(user.id), order_id=999, db=db))
     assert exc.value.status_code == 404
 
 
@@ -127,9 +128,9 @@ def test_htmx_delete_redirects_so_the_row_leaves_the_queue():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db)
-        with patch.object(web, "_clear_sheet_row_background"):
+        with patch.object(orders_router_mod, "clear_sheet_row_background"):
             response = asyncio.run(
-                web.delete_order(
+                orders_router_mod.delete_order(
                     request=_request(user.id, {"HX-Request": "true"}),
                     order_id=order.id, db=db,
                 )
@@ -146,9 +147,9 @@ def test_inline_delete_keeps_the_operator_in_place_and_still_toasts():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db)
-        with patch.object(web, "_clear_sheet_row_background"):
+        with patch.object(orders_router_mod, "clear_sheet_row_background"):
             response = asyncio.run(
-                web.delete_order(
+                orders_router_mod.delete_order(
                     request=_request(user.id, {"HX-Request": "true"}),
                     order_id=order.id, inline="1", db=db,
                 )
@@ -165,9 +166,9 @@ def test_card_delete_still_redirects_to_the_queue():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         order = _order(db)
-        with patch.object(web, "_clear_sheet_row_background"):
+        with patch.object(orders_router_mod, "clear_sheet_row_background"):
             response = asyncio.run(
-                web.delete_order(
+                orders_router_mod.delete_order(
                     request=_request(user.id, {"HX-Request": "true"}),
                     order_id=order.id, inline="", db=db,
                 )
@@ -192,7 +193,7 @@ def test_dismissing_a_change_clears_it_and_records_who_looked():
         db.commit()
 
         asyncio.run(
-            web.dismiss_sheet_change(
+            orders_router_mod.dismiss_sheet_change(
                 request=_request(user.id, {"HX-Request": "true"}),
                 order_id=order.id, db=db,
             )
@@ -211,6 +212,6 @@ def test_dismiss_requires_login():
         order = _order(db)
         with pytest.raises(HTTPException) as exc:
             asyncio.run(
-                web.dismiss_sheet_change(request=_request(None), order_id=order.id, db=db)
+                orders_router_mod.dismiss_sheet_change(request=_request(None), order_id=order.id, db=db)
             )
         assert exc.value.status_code == 401

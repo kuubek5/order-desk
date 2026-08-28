@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import orders as orders_router_mod
 from app.routers import queue as queue_router_mod
 from app import sync_control
 from app.db import Base
@@ -73,8 +74,8 @@ def test_set_sum3d_refused_while_paused_without_touching_db():
         user = _user(db)
         order = _order(db, sum3d_id=None)
         sync_control.pause()
-        with patch.object(web, "_write_sheet_fields") as write:
-            asyncio.run(web.set_sum3d_id(
+        with patch.object(orders_router_mod, "write_sheet_fields") as write:
+            asyncio.run(orders_router_mod.set_sum3d_id(
                 request=_request(user.id), order_id=order.id,
                 sum3d_id="12-01-45", db=db,
             ))
@@ -88,8 +89,8 @@ def test_delete_refused_while_paused():
         user = _user(db)
         order = _order(db)
         sync_control.pause()
-        with patch.object(web, "_clear_sheet_row_background") as clear:
-            asyncio.run(web.delete_order(
+        with patch.object(orders_router_mod, "clear_sheet_row_background") as clear:
+            asyncio.run(orders_router_mod.delete_order(
                 request=_request(user.id, headers={"HX-Request": "true"}),
                 order_id=order.id, inline="1", db=db,
             ))
@@ -103,7 +104,7 @@ def test_manual_add_refused_while_paused():
         user = _user(db)
         sync_control.pause()
         with patch.object(web, "_sheet_writeback_pool") as pool:
-            resp = web.create_manual_order(
+            resp = orders_router_mod.create_manual_order(
                 request=_request(user.id), work_type="client", db=db,
                 client_name=["Неда"], material_color=["mono b1"],
                 work_order_no=[], kind=[], quantity=[], sum3d_id=[],

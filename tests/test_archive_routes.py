@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import orders as orders_router_mod
 from app.routers import archive as archive_router_mod
 from app.db import Base
 from app.models import Order, User
@@ -130,8 +131,8 @@ def test_order_detail_read_only_for_archived_editable_for_active(monkeypatch):
         db.add_all([archived, active])
         db.commit()
 
-        arch_ctx = web.get_order_detail(request=_request(user.id), order_id=archived.id, db=db)
-        act_ctx = web.get_order_detail(request=_request(user.id), order_id=active.id, db=db)
+        arch_ctx = orders_router_mod.get_order_detail(request=_request(user.id), order_id=archived.id, db=db)
+        act_ctx = orders_router_mod.get_order_detail(request=_request(user.id), order_id=active.id, db=db)
 
     assert arch_ctx["read_only"] is True
     assert act_ctx["read_only"] is False

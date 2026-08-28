@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import orders as orders_router_mod
 from app.routers import auth as auth_router_mod
 from app.db import Base
 from app.models import Order, ReworkRecord, StatusEvent, User
@@ -132,12 +133,12 @@ def test_set_initial_is_admin_only():
 
 
 def _run_sum3d(db, user, order, value):
-    with patch.object(web, "_write_sheet_fields", return_value=None) as ws, \
-         patch.object(web, "_write_rework_sum3d", return_value=None) as wr, \
-         patch.object(web, "attach_export_folder_uris"), \
-         patch.object(web, "attach_job_code_folder_uris"), \
+    with patch.object(orders_router_mod, "write_sheet_fields", return_value=None) as ws, \
+         patch.object(orders_router_mod, "write_rework_sum3d_fields", return_value=None) as wr, \
+         patch.object(orders_router_mod, "attach_export_folder_uris"), \
+         patch.object(orders_router_mod, "attach_job_code_folder_uris"), \
          patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
-        asyncio.run(web.set_sum3d_id(
+        asyncio.run(orders_router_mod.set_sum3d_id(
             request=_request(user.id), order_id=order.id, sum3d_id=value, db=db))
     return ws, wr
 
