@@ -31,6 +31,23 @@ RETENTION_DAYS = 30
 QUEUE_SORT_FIELDS = ("material", "kind", "quantity")
 
 
+# Слова, якими технік у коментарі просить швидку програму спікання.
+# Це ЄДИНИЙ писаний сигнал терміновості для лабораторної роботи (CLAUDE.md §2:
+# «техніки пишуть у коментарі "на швидку"… трапляється регулярно»), і до цього
+# він ніде не був реалізований: рядок підсвічувався за наявністю "!!", тобто
+# «Чекаємо Скани!!!!» (блокер, не терміновість) читалось як термінове, а
+# «Якщо можно на швидку, я сам закрию» — ні. Сигнал був інвертований.
+RUSH_MARKERS = ("на швидку", "на швидке", "швидку", "швидке", "терміново")
+
+
+def is_rush_comment(text: str | None) -> bool:
+    """Чи просить коментар техніка швидку програму (= термінова робота)."""
+    if not text:
+        return False
+    lowered = text.casefold()
+    return any(marker in lowered for marker in RUSH_MARKERS)
+
+
 def queue_sort_key(order: Order) -> tuple:
     """Oldest overdue work first, then the earliest daily deadline."""
     due_rank = {"09:00": 0, "14:00": 1, "16:00": 2}.get(order.due_time, 3)

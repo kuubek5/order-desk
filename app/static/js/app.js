@@ -274,7 +274,12 @@ function showToast(message, kind = "info", timeout, undoUrl) {
   if (!stack) {
     stack = document.createElement("div");
     stack.id = "toast-stack";
-    stack.className = "toast-stack";
+    stack.className = "toast-stack";
+    // Тости несуть єдиний зворотний зв'язок для дій, які нічого не міняють на
+    // сторінці (запис у таблицю, скасування, помилка синку). Без aria-live
+    // вони не існують для зчитувача екрана взагалі.
+    stack.setAttribute("role", "status");
+    stack.setAttribute("aria-live", "polite");
     stack.dataset.toastPos = "tc";
     stack.dataset.toastStyle = "glass";
     document.body.appendChild(stack);

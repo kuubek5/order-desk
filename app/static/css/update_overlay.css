@@ -213,7 +213,7 @@ body[data-matstyle="code"] .matpair.mat-unknown{border:0}
    the operator clicks into the field, so the affordance to type is kept. */
 .q2 .cam-comment-input::placeholder{color:transparent}
 .q2 .cam-comment-input:focus::placeholder{color:var(--ink-3)}
-.q2 .cam-comment-input.shout{color:var(--warn);font-weight:600}
+.q2 .cam-comment-input.attn{color:var(--ink);font-weight:600}
 /* Has content but not focused → hint there's more with a soft right fade. */
 .q2 td.comment-cell{position:relative}
 

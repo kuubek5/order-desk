@@ -33,6 +33,7 @@ from app.settings_store import (
     get_notify_position,
     get_notify_style,
 )
+from app.services.queue import is_rush_comment
 from app.statuses import is_overdue
 from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed
 from app.triage_status import triage_readiness
@@ -182,6 +183,7 @@ templates.env.globals["material_badge"] = material_badge
 templates.env.globals["split_material_color"] = split_material_color
 templates.env.globals["strip_material_word"] = strip_material_word
 templates.env.globals["triage_readiness"] = triage_readiness
+templates.env.globals["is_rush_comment"] = is_rush_comment
 templates.env.globals["static_ver"] = static_ver
 templates.env.filters["changelog_md"] = changelog_md
 # Available in every template without every route threading it through its

@@ -198,6 +198,12 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
   transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease;cursor:pointer;
 }
 .q2 .pill:hover{color:var(--ink);border-color:var(--line-2);opacity:1}
+/* «Прострочено» мусить читатись як тривога ще ДО кліку — це вхід у стан, а
+   не перемикач режиму. Неактивна пігулка вже несе колір, активна лише
+   набирає ваги; обидві лишаються в одному сімействі. */
+.q2 .pill.alarm{border-color:rgba(248,113,113,.28);color:var(--alarm)}
+.q2 .pill.alarm:hover{border-color:rgba(248,113,113,.5);background:rgba(248,113,113,.08);color:var(--alarm)}
+.q2 .pill.alarm .n{font-family:var(--font-mono);font-size:11px;opacity:.9}
 .q2 .pill.alarm.is-active{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.42);color:var(--alarm)}
 .q2 .pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.85}
 .q2 .filters .flabel{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-right:-2px}
@@ -332,6 +338,19 @@ body.layout-edit .q2 table.qtable{user-select:none}
    monitors). Naryad + client name truncate with ellipsis; the full value stays
    in the row's title/hover and the work card. */
 .q2 td.order-id{max-width:182px}
+/* Комірка тримає до чотирьох чіпів (джерело, переробка, «на швидку»,
+   «змінено») плюс кнопку видалення. Виміряно 28.08.26: без переносу вміст
+   вилазив за праву межу на 82px — кнопка видалення фізично опинялась поза
+   своєю коміркою. flex-wrap робить це рядком чіпів, що переноситься, а не
+   переповненням; align-items тримає базову лінію рівною, коли чіпів немає. */
+.q2 td.order-id{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;align-content:center}
+.q2 td.order-id > .rework-badge,
+.q2 td.order-id > .rush-badge,
+.q2 td.order-id > .chg-form,
+.q2 td.order-id > .row-delete-form{margin-left:0}
+.q2 td.order-id .chg-form{max-width:100%}
+.q2 td.order-id .badge.chg{max-width:100%;overflow:hidden}
+.q2 td.order-id .badge.chg span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .q2 .ordbtn{display:inline-block;max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .q2 tr.queue-row-overdue .sdot{box-shadow:0 0 0 3px rgba(248,113,113,.22)}
 .q2 .ordbtn{font-family:var(--font-mono);font-size:12.5px;font-weight:500;color:var(--ink);letter-spacing:-.01em;text-decoration:none}
@@ -348,7 +367,11 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 tr.queue-row-client{background:rgba(96,165,250,.06)}
 .q2 tr.queue-row-client:hover{background:rgba(96,165,250,.1)}
 .q2 .cam{max-width:220px;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2);font-size:12.5px;white-space:nowrap}
-.q2 .cam.shout{color:var(--warn)}
+/* «!!» у коментарі — це «увага/блокер» («Чекаємо Скани!!!!»), а НЕ
+   терміновість: терміновість тепер несе окремий чіп .rush-badge за словом
+   «на швидку». Тому сигнал тихіший за колишній shout — він більше не
+   конкурує з тривогою. */
+.q2 .cam.attn{color:var(--ink);font-weight:600}
 .q2 .matchip{
   display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:6px;
   background:#1d2734;border:1px solid var(--line-2);font-size:12px;color:var(--ink);
@@ -377,6 +400,18 @@ body.layout-edit .q2 table.qtable{user-select:none}
   display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   vertical-align:middle;
   transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease;
+}
+/* Підтвердження копіювання шляху — найчастішої дії екрана, яка веде в
+   ЗОВНІШНЮ програму (Sum3D). Правило .copy-button.copy-success живе в
+   queue_table.css і мало ту саму специфічність, що й .q2 .job-code-link
+   нижче, але завантажувалось раніше — тобто зелений колір не застосовувався
+   ЖОДНОГО разу, і від підтвердження лишався самий стрибок масштабу.
+   Тут воно у своєму файлі й із власною специфічністю. */
+.q2 .job-code-link.copy-success,
+.q2 .copy-button.copy-success{
+  color:var(--accent-c);
+  border-color:rgba(45,212,191,.55);
+  background:rgba(20,184,166,.16);
 }
 .q2 .job-code-link:hover{background:rgba(20,184,166,.12);border-color:rgba(45,212,191,.3);color:var(--accent-c)}
 .q2 .job-code-found-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent-b);margin-left:5px;vertical-align:middle}

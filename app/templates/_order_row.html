@@ -47,6 +47,45 @@
             переробка{% if _rework.blame %} · {{ _rework.blame }}{% endif %}
         </span>
         {% endif %}
+        {# ПЕРЕНЕСЕНО з комірки «Статус» — з тієї ж причини, що й кнопка
+           видалення нижче: td.status{display:none}, і разом з нею зникало
+           попередження «технік змінив роботу». Фон рядка при цьому
+           малювався (правило на > td), тобто оператор бачив червоний рядок
+           без жодного пояснення І без можливості зняти позначку — кнопка
+           change-seen існує ЛИШЕ тут, більше в жодному шаблоні.
+           Коментар у sync.py називає фрезерування зміненої роботи браком,
+           тож цей сигнал не має права бути невидимим. #}
+        {% if _changed %}
+        <form class="chg-form"
+              hx-post="/orders/{{ order.id }}/change-seen"
+              hx-target="#order-row-{{ order.id }}"
+              hx-swap="outerHTML">
+            <button type="submit" class="badge chg{% if _changed_taken %} chg-taken{% endif %}"
+                    title="Технік змінив у таблиці: {{ order.sheet_changed_fields or '—' }}. Натисніть, щоб прибрати позначку.">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+                <span>{% if _changed_taken %}змінено після взяття{% else %}змінено{% endif %} {{ order.sheet_changed_at.strftime('%H:%M') }} · {{ order.sheet_changed_fields or '—' }}</span>
+            </button>
+        </form>
+        {% endif %}
+        {% if is_rush_comment(order.cam_comment) %}
+        {# «На швидку» — єдиний писаний сигнал терміновості для лабораторної
+           роботи (CLAUDE.md §2). Стоїть чіпом біля ідентичності рядка, а не
+           кольором тексту в колонці коментаря: та колонка обрізається
+           трикрапкою, тобто саме на довгому коментарі сигнал і зникав. #}
+        <span class="rush-badge" title="Технік просить швидку програму: {{ order.cam_comment }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h8l-1 8 10-12h-8z"/></svg>
+            на швидку
+        </span>
+        {% endif %}
+        {% if order.status == 'проблема' %}
+        <span class="badge problem">проблема</span>
+        {% elif order.status == 'переробка' and not _rework %}
+        {# Статус «переробка» без активного запису ReworkRecord — тоді
+           .rework-badge вище не рендериться, і без цього бейджа стан зник би
+           з рядка зовсім. Коли запис є, показуємо лише .rework-badge: два
+           бейджі про одне й те саме — шум. #}
+        <span class="badge redo">переробка</span>
+        {% endif %}
         {# ПЕРЕНЕСЕНО з комірки «Статус» у комірку наряду: колонку статусу
            тимчасово приховано (td.status{display:none}), і разом з нею зникала
            ЦЯ кнопка — getClientRects() порожній, видалити рядок було
@@ -114,7 +153,7 @@
            (app.js). Writes back to the sheet — see set_cam_comment. #}
         <form class="cam-comment-form" onsubmit="return false" hx-post="/orders/{{ order.id }}/cam-comment" hx-trigger="change" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
             <textarea name="cam_comment" rows="1"
-                   class="cam-comment-input cam-comment-text cam{% if order.cam_comment and '!!' in order.cam_comment %} shout{% endif %}"
+                   class="cam-comment-input cam-comment-text cam{% if order.cam_comment and '!!' in order.cam_comment %} attn{% endif %}"
                    placeholder="коментар…" title="{{ order.cam_comment or 'Введіть коментар для CAM-оператора' }}">{{ order.cam_comment or '' }}</textarea>
         </form>
     </td>
@@ -142,6 +181,14 @@
             <button type="button" class="sum3d-clear" title="Видалити Sum3D — робота повернеться в «можна брати»" aria-label="Видалити Sum3D">✕</button>
             {% endif %}
         </form>
+        {# ПЕРЕНЕСЕНО з прихованої комірки «Статус» СЮДИ: провалився запис саме
+           цього значення в таблицю, тож попередження має стояти біля нього, а
+           не в комірці, якої не видно. #}
+        {% if sync_error %}
+        <span class="sync-warning" title="Не записано в Google Таблицю: {{ sync_error }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+        </span>
+        {% endif %}
         {% if order.export_folder_uri %}
         {# data-stl-preview-token: клік по цій іконці відкриває стійку STL-панель
            (app/static/js/stl-preview.js) — колишню навігацію по href панель
@@ -167,25 +214,6 @@
         </form>
     </td>
     <td class="status">
-        {% if _changed %}
-        {# Says WHAT moved, not just "changed" — the operator has to know whether
-           it touches what they are about to mill. Dismissed by click only. #}
-        <form class="chg-form"
-              hx-post="/orders/{{ order.id }}/change-seen"
-              hx-target="#order-row-{{ order.id }}"
-              hx-swap="outerHTML">
-            <button type="submit" class="badge chg{% if _changed_taken %} chg-taken{% endif %}"
-                    title="Технік змінив у таблиці: {{ order.sheet_changed_fields or '—' }}. Натисніть, щоб прибрати позначку.">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
-                <span>{% if _changed_taken %}змінено після взяття{% else %}змінено{% endif %} {{ order.sheet_changed_at.strftime('%H:%M') }} · {{ order.sheet_changed_fields or '—' }}</span>
-            </button>
-        </form>
-        {% endif %}
-        {% if order.status == 'проблема' %}
-        <span class="badge problem">проблема</span>
-        {% elif order.status == 'переробка' %}
-        <span class="badge redo">переробка</span>
-        {% endif %}
         <form hx-post="/orders/{{ order.id }}/status" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML" hx-trigger="change">
             <select name="status" aria-label="Статус роботи" class="status-select status-badge status-{{ order.status|replace(' ', '-')|lower }}">
                 {% for s in statuses %}
@@ -193,10 +221,5 @@
                 {% endfor %}
             </select>
         </form>
-        {% if sync_error %}
-        <span class="sync-warning" title="Не записано в Google Таблицю: {{ sync_error }}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
-        </span>
-        {% endif %}
     </td>
 </tr>

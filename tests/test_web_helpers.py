@@ -642,3 +642,22 @@ def test_account_password_change_rejects_mismatched_confirmation():
 
     assert response.context["error"] == "Паролі не збігаються"
     assert db.committed is False
+
+
+def test_is_rush_comment_finds_the_written_urgency_signal():
+    """«На швидку» — ЄДИНИЙ писаний сигнал терміновості для лабораторної
+    роботи (CLAUDE.md §2). До 28.08.26 його не існувало в коді: рядок
+    підсвічувався за наявністю «!!», тобто сигнал був інвертований —
+    блокер читався як терміновість, а справжня терміновість не читалась."""
+    from app.services.queue import is_rush_comment
+
+    # Реальний зразок з PRODUCT.md — саме він раніше НЕ підсвічувався.
+    assert is_rush_comment("Якщо можно на швидку, я сам закрию") is True
+    assert is_rush_comment("на Швидку") is True
+    assert is_rush_comment("ТЕРМІНОВО!") is True
+
+    # А це блокер, а не терміновість — раніше підсвічувався як термінове.
+    assert is_rush_comment("Чекаємо Скани!!!!") is False
+    assert is_rush_comment("покрити опаком") is False
+    assert is_rush_comment("") is False
+    assert is_rush_comment(None) is False
