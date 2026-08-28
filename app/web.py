@@ -605,7 +605,9 @@ def _explorer_windows() -> list[int]:
     def _callback(hwnd, _lparam):
         buffer = ctypes.create_unicode_buffer(256)
         user32.GetClassNameW(hwnd, buffer, 256)
-        if buffer.value in _EXPLORER_WINDOW_CLASSES:
+        # Тільки видимі: Провідник тримає й службові вікна свого класу, і
+        # схопити таке замість справжнього означало б «підняти» ніщо.
+        if buffer.value in _EXPLORER_WINDOW_CLASSES and user32.IsWindowVisible(hwnd):
             found.append(hwnd)
         return True
 
@@ -635,6 +637,37 @@ def _titles_this_folder(title: str, target: str) -> bool:
         return False
     tail = lowered[len(target):1 + len(target)]
     return not tail.isalnum()
+
+
+_INSIST_SHOWN_SECONDS = 3.0
+_INSIST_CALM_TICKS = 4
+
+
+def _insist_window_shown(user32, hwnd) -> bool:
+    """Розгортати вікно, доки воно не лишиться розгорнутим.
+
+    Одного `SW_RESTORE` не досить, і це не здогад: у бойовому логу 28.08.26
+    стоїть «Провідник піднято (нове вікно)», а оператор бачив згорнуте вікно.
+    Провідник застосовує збережене положення ВЖЕ ПІСЛЯ створення вікна, тож
+    ми виграємо гонку й одразу програємо її — він згортає вікно назад.
+
+    Тому наполягаємо: поки вікно згорнуте — розгортаємо знову, і виходимо
+    лише коли воно кілька перевірок поспіль лишилось розгорнутим. Повертаємо
+    підсумковий стан, щоб у лог ішов ФАКТ, а не намір."""
+    deadline = time.monotonic() + _INSIST_SHOWN_SECONDS
+    calm = 0
+    while time.monotonic() < deadline:
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            user32.SwitchToThisWindow(hwnd, True)
+            user32.SetForegroundWindow(hwnd)
+            calm = 0
+        else:
+            calm += 1
+            if calm >= _INSIST_CALM_TICKS:
+                break
+        time.sleep(0.15)
+    return not bool(user32.IsIconic(hwnd))
 
 
 def _raise_explorer_window(
@@ -680,10 +713,10 @@ def _raise_explorer_window(
                         hwnd, how = candidate, "наявне вікно за заголовком"
                         break
             if hwnd is not None:
-                user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-                user32.SwitchToThisWindow(hwnd, True)
-                user32.SetForegroundWindow(hwnd)
-                logger.info("Провідник піднято (%s): %s", how, folder)
+                shown = _insist_window_shown(user32, hwnd)
+                logger.info(
+                    "Провідник піднято (%s, згорнуте=%s): %s", how, not shown, folder
+                )
                 return
             if time.monotonic() >= deadline:
                 logger.info("Вікно Провідника не знайдено за %.0fс: %s", timeout, folder)
