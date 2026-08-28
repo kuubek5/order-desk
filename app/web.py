@@ -1,7 +1,7 @@
 from collections import defaultdict
 from contextlib import asynccontextmanager
 import calendar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 import ipaddress
 import json
@@ -15,7 +15,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Lock, Thread
 from time import monotonic
-from typing import Annotated
+from typing import Annotated, Callable
 import uuid
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -1355,6 +1355,34 @@ def export_warm_once(db: Session) -> int:
     return len(folders)
 
 
+@dataclass
+class _BackgroundWorker:
+    """Один фоновий daemon-потік і його вимикач. Раніше кожен воркер
+    заводився в lifespan вручну п'ятьма однаковими блоками start/stop —
+    легко було проґавити один при зупинці. Тепер це список, а не копіпаст:
+    видно всі фонові процеси в одному місці, і додати новий (напр. майбутній
+    моніторинг печей) — один рядок.
+
+    Логіку самих воркерів НЕ чіпаємо — вона лишається у web.py; це лише
+    впорядкування їхнього життєвого циклу (перший, найбезпечніший крок
+    розбиття, див. ARCHITECTURE_PLAN.md)."""
+    name: str
+    target: Callable
+    stop_event: Event = field(default_factory=Event)
+    thread: Thread | None = None
+
+    def start(self) -> None:
+        self.thread = Thread(
+            target=self.target, args=(self.stop_event,), name=self.name, daemon=True
+        )
+        self.thread.start()
+
+    def stop(self, timeout: float = 1.0) -> None:
+        self.stop_event.set()
+        if self.thread is not None:
+            self.thread.join(timeout=timeout)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if os.environ.get("ORDER_DESK_SCHEMA_MANAGED") != "1":
@@ -1389,59 +1417,20 @@ async def lifespan(_: FastAPI):
 
     _sheet_writeback_pool.submit(_warm_sheet_writeback)
 
-    mail_stop_event = Event()
-    mail_thread = Thread(
-        target=_mail_sync_worker,
-        args=(mail_stop_event,),
-        name="order-desk-mail-sync",
-        daemon=True,
-    )
-    mail_thread.start()
-    sheet_stop_event = Event()
-    sheet_thread = Thread(
-        target=_sheet_sync_worker,
-        args=(sheet_stop_event,),
-        name="order-desk-sheet-sync",
-        daemon=True,
-    )
-    sheet_thread.start()
-    update_check_stop_event = Event()
-    update_check_thread = Thread(
-        target=_update_check_worker,
-        args=(update_check_stop_event,),
-        name="order-desk-update-check",
-        daemon=True,
-    )
-    update_check_thread.start()
-    monthly_backup_stop_event = Event()
-    monthly_backup_thread = Thread(
-        target=_monthly_backup_worker,
-        args=(monthly_backup_stop_event,),
-        name="order-desk-monthly-backup",
-        daemon=True,
-    )
-    monthly_backup_thread.start()
-    export_warm_stop_event = Event()
-    export_warm_thread = Thread(
-        target=_export_warm_worker,
-        args=(export_warm_stop_event,),
-        name="order-desk-export-warm",
-        daemon=True,
-    )
-    export_warm_thread.start()
+    workers = [
+        _BackgroundWorker("order-desk-mail-sync", _mail_sync_worker),
+        _BackgroundWorker("order-desk-sheet-sync", _sheet_sync_worker),
+        _BackgroundWorker("order-desk-update-check", _update_check_worker),
+        _BackgroundWorker("order-desk-monthly-backup", _monthly_backup_worker),
+        _BackgroundWorker("order-desk-export-warm", _export_warm_worker),
+    ]
+    for w in workers:
+        w.start()
     try:
         yield
     finally:
-        mail_stop_event.set()
-        mail_thread.join(timeout=1)
-        sheet_stop_event.set()
-        sheet_thread.join(timeout=1)
-        update_check_stop_event.set()
-        update_check_thread.join(timeout=1)
-        monthly_backup_stop_event.set()
-        monthly_backup_thread.join(timeout=1)
-        export_warm_stop_event.set()
-        export_warm_thread.join(timeout=1)
+        for w in workers:
+            w.stop()
 
 
 app = FastAPI(title="Order Desk", lifespan=lifespan)
