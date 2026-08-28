@@ -504,9 +504,9 @@ def test_write_sheet_fields_writes_for_sheet_client_rows():
     db = SimpleNamespace(add=added.append)
     wrote = []
 
-    with patch("app.web.open_spreadsheet", return_value=object()), \
-         patch("app.web.get_worksheet_by_name", return_value=object()), \
-         patch("app.web.write_order_fields", side_effect=lambda ws, o, f: wrote.append(f)):
+    with patch("app.services.sheet_writeback.open_spreadsheet", return_value=object()), \
+         patch("app.services.sheet_writeback.get_worksheet_by_name", return_value=object()), \
+         patch("app.services.sheet_writeback.write_order_fields", side_effect=lambda ws, o, f: wrote.append(f)):
         result = _write_sheet_fields(db, order, {"sum3d_id"})
 
     assert result is None  # no error

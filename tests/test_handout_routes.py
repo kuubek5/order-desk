@@ -16,6 +16,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.web as web
 from app.services import handout as handout_service
+from app.services import sheet_writeback as writeback_service
 from app.db import Base
 from app.models import Order, StatusEvent, User
 
@@ -60,8 +61,11 @@ def _stub_sheet(monkeypatch, sheet_id=42):
     fake_ws = SimpleNamespace(id=sheet_id, title=YESTERDAY)
     fake_ws.acell = lambda a1: SimpleNamespace(value="")
     fake_ws.batch_update = MagicMock()
-    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
-    monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: fake_ws)
+    # Відкриття таблиці бачать обидва боки: issue_group ще в web.py, а
+    # write_sheet_fields уже в сервісі write-back.
+    for mod in (web, writeback_service):
+        monkeypatch.setattr(mod, "open_spreadsheet", lambda db=None: object())
+        monkeypatch.setattr(mod, "get_worksheet_by_name", lambda ss, name: fake_ws)
     captured = {}
 
     def fake_clear(spreadsheet, rows):
@@ -375,11 +379,15 @@ def _stub_fills(monkeypatch, sheet_id=42):
     """Fake sheet layer for mark-found/unmark-found: captures which of
     clear_row_fills (blue→white) / paint_row_fills (white→blue) got which rows."""
     fake_ws = SimpleNamespace(id=sheet_id, title=YESTERDAY)
-    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
-    monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: fake_ws)
+    monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(writeback_service, "get_worksheet_by_name", lambda ss, name: fake_ws)
     captured = {}
-    monkeypatch.setattr(web, "clear_row_fills", lambda ss, rows: captured.__setitem__("clear", rows))
-    monkeypatch.setattr(web, "paint_row_fills", lambda ss, rows: captured.__setitem__("paint", rows))
+    monkeypatch.setattr(
+        writeback_service, "clear_row_fills", lambda ss, rows: captured.__setitem__("clear", rows)
+    )
+    monkeypatch.setattr(
+        writeback_service, "paint_row_fills", lambda ss, rows: captured.__setitem__("paint", rows)
+    )
     return captured
 
 
@@ -391,7 +399,7 @@ def _inline_fill_background(monkeypatch, db):
     monkeypatch.setattr(
         web,
         "_set_client_row_fill_background",
-        lambda order_id, *, blue: web._set_client_row_fill(
+        lambda order_id, *, blue: writeback_service.set_client_row_fill(
             db, db.get(Order, order_id), blue=blue
         ),
     )
@@ -941,7 +949,7 @@ class TestMarkFoundIsInstant:
         engine = _database()
         touched = []
         monkeypatch.setattr(
-            web, "_set_client_row_fill",
+            writeback_service, "set_client_row_fill",
             lambda db, order, *, blue: touched.append(blue) or None,
         )
         queued = []

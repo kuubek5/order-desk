@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.services import sheet_writeback as writeback_service
 from app.db import Base
 from app.models import Attachment, EmailMessage, Order, User
 from app.parser import HEADER_ROWS
@@ -222,10 +223,12 @@ def _stub_sheet_write(monkeypatch, note_rows=None, tab=None):
     # Fresh double-submit dedup state per test so module-level state can't leak
     # between tests that share a user id + payload.
     monkeypatch.setattr(web, "_recent_manual_adds", {})
-    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
-    monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: fake_ws)
+    # Додавання рядків живе у сервісі write-back — підміняти треба там, де
+    # його читають.
+    monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(writeback_service, "get_worksheet_by_name", lambda ss, name: fake_ws)
     # The warm append now resolves the newest dated tab ≤ today itself.
-    monkeypatch.setattr(web, "latest_worksheet_on_or_before", lambda ss, d: fake_ws)
+    monkeypatch.setattr(writeback_service, "latest_worksheet_on_or_before", lambda ss, d: fake_ws)
 
     cap["calls"] = 0
 
@@ -236,7 +239,7 @@ def _stub_sheet_write(monkeypatch, note_rows=None, tab=None):
         cap["placement"] = placement
         return note_rows if note_rows is not None else [60 + i for i in range(len(works))]
 
-    monkeypatch.setattr(web, "append_manual_work_rows", _fake_append)
+    monkeypatch.setattr(writeback_service, "append_manual_work_rows", _fake_append)
     return cap
 
 
@@ -414,9 +417,9 @@ def test_create_manual_order_requires_client_and_material(monkeypatch):
 def test_create_manual_order_reports_missing_today_tab(monkeypatch):
     engine = _database()
     monkeypatch.setattr(web, "_recent_manual_adds", {})
-    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
     # No dated tab anywhere in the document -> resolver returns None.
-    monkeypatch.setattr(web, "latest_worksheet_on_or_before", lambda ss, d: None)
+    monkeypatch.setattr(writeback_service, "latest_worksheet_on_or_before", lambda ss, d: None)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = web.create_manual_order(
@@ -1581,17 +1584,17 @@ def test_manual_add_writes_to_the_day_tab_on_screen(monkeypatch):
     seen = {}
     tomorrow = SimpleNamespace(title="26.08.26")
     monkeypatch.setattr(web, "_recent_manual_adds", {})
-    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
     monkeypatch.setattr(
-        web, "get_worksheet_by_name",
+        writeback_service, "get_worksheet_by_name",
         lambda ss, name: (seen.__setitem__("asked", name), tomorrow)[1],
     )
     monkeypatch.setattr(
-        web, "latest_worksheet_on_or_before",
+        writeback_service, "latest_worksheet_on_or_before",
         lambda ss, d: pytest.fail("must not fall back while the tab exists"),
     )
     monkeypatch.setattr(
-        web, "append_manual_work_rows",
+        writeback_service, "append_manual_work_rows",
         lambda ws, works, *, paint_blue, placement: [65],
     )
 

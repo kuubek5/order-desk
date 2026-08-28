@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.services import sheet_writeback as writeback_service
 from app.db import Base
 from app.models import ActionLog, Order, User
 
@@ -514,7 +515,7 @@ def test_restore_sheet_row_goes_through_the_writeback_pool():
             submitted["fn"] = fn
             return real_submit(fn, *a, **kw)
 
-        with patch.object(web, "_restore_sheet_row_warm", return_value=None), \
+        with patch.object(writeback_service, "restore_sheet_row_warm", return_value=None), \
              patch.object(web._sheet_writeback_pool, "submit", side_effect=spy):
             assert web._restore_sheet_row(order) is None
         assert submitted.get("fn") is not None            # went through the pool
