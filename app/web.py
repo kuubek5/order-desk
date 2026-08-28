@@ -167,6 +167,14 @@ from app.services.sheet_writeback import (
     write_sheet_fields as _write_sheet_fields,
     write_sheet_fields_background as _write_sheet_fields_background,
 )
+from app.services.undo import (
+    UNDOABLE_ACTION_TYPES,
+    UNDO_WINDOW_SECONDS,
+    UndoOutcome,
+    log_action,
+    perform_redo,
+    perform_undo,
+)
 from app.services.formatting import (
     UK_MONTHS as _UK_MONTHS,
     pluralize_uk as _pluralize_uk,
@@ -470,44 +478,6 @@ def _toast_response(message: str, *, kind: str = "success", triggers: dict | Non
     return response
 
 
-def log_action(
-    db: Session,
-    *,
-    order: "Order | None",
-    operator: "User | None",
-    action_type: str,
-    field: str | None = None,
-    old=None,
-    new=None,
-    note: str | None = None,
-) -> ActionLog:
-    """Record one state-CHANGING operator action into the ActionLog — the shared
-    backbone for "Скасувати" (undo) and the laconic action journal. Call it
-    inside the route's own transaction (committed together with the change), AND
-    only for actions that actually changed data — never for reads/navigation.
-
-    field/old/new capture enough to undo (restore the old value); note is the
-    pre-rendered one-line journal summary. Values are stringified so any column
-    type logs uniformly."""
-    entry = ActionLog(
-        order_id=order.id if order is not None else None,
-        operator_id=operator.id if operator is not None else None,
-        action_type=action_type,
-        field=field,
-        old_value=None if old is None else str(old),
-        new_value=None if new is None else str(new),
-        note=note,
-    )
-    db.add(entry)
-    return entry
-
-
-# How long after an action "Скасувати" stays valid. The toast lives ~15s, but a
-# direct call could arrive later; a short window keeps undo from clobbering work
-# others may have built on top of a change made long ago.
-UNDO_WINDOW_SECONDS = 5 * 60
-
-
 def _attach_action_toast(response: Response, entry: ActionLog, message: str) -> None:
     """Add a plain success HX-Trigger toast confirming a logged action. Undo is no
     longer offered here — a persistent «Крок назад» button in the queue header
@@ -521,14 +491,6 @@ def _attach_action_toast(response: Response, entry: ActionLog, message: str) -> 
     response.headers["HX-Trigger"] = json.dumps(
         {"toast": {"message": message, "kind": "success"}}
     )
-
-
-def _snapshot_target(order: Order, field: str):
-    """Resolve a snapshot field name to (object, attr). "rework.x" targets the
-    order's active rework record; everything else targets the order itself."""
-    if field.startswith("rework."):
-        return order.active_rework, field.split(".", 1)[1]
-    return order, field
 
 
 def _settings_changed_at(db: Session, keys: tuple[str, ...]) -> dict[str, str]:
@@ -2544,100 +2506,16 @@ async def set_status(
 
 
 # Action types a "крок назад" can revert, newest-first selection order.
-UNDOABLE_ACTION_TYPES = ("sum3d", "status", "operator", "cam_comment", "delete")
+def _undo_response(outcome: UndoOutcome) -> Response:
+    """Один переклад результату дії у відповідь HTMX. `refresh_queue` стає
+    HX-Trigger `refresh-queue`, щоб опитувана черга показала змінений рядок
+    одразу, а не через 15с."""
+    triggers = {"refresh-queue": True} if outcome.refresh_queue else None
+    return _toast_response(outcome.message, kind=outcome.kind, triggers=triggers)
 
 
 def _perform_undo(db: Session, user: "User", entry: ActionLog) -> Response:
-    """Revert one already-validated ActionLog entry to its before-state (Sum3D or
-    status), writing the old value back to DB + sheet. The caller has already
-    checked ownership, the not-yet-undone flag and the time window; this does the
-    revert, the concurrent-change guard, the log and the commit. On success it
-    also fires the `refresh-queue` HX-Trigger so the polled queue shows the
-    reverted row at once instead of after the next 15s tick."""
-    order = db.get(Order, entry.order_id) if entry.order_id else None
-    if order is None:
-        return _toast_response("Роботи більше немає — скасувати не можна", kind="error")
-
-    if entry.action_type == "sum3d":
-        before = json.loads(entry.old_value or "{}")
-        after = json.loads(entry.new_value or "{}")
-        # Guard: every field this action set must still hold what it set — else
-        # someone changed it since and undo would clobber them.
-        for f, v in after.items():
-            obj, attr = _snapshot_target(order, f)
-            if obj is None or getattr(obj, attr) != v:
-                return _toast_response("Не можна скасувати — значення вже змінили", kind="error")
-        # Restore the whole before-snapshot.
-        for f, v in before.items():
-            obj, attr = _snapshot_target(order, f)
-            if obj is not None:
-                setattr(obj, attr, v)
-        if entry.field == "rework.sum3d_id":
-            rework = order.active_rework
-            restored = (rework.sum3d_id if rework else None) or ""
-            restored_letter = (rework.calculated_raw if rework else None)
-            sync_error = _write_rework_sum3d(db, order, restored, letter=restored_letter)
-        else:
-            sync_error = _write_sheet_fields(db, order, {"sum3d_id", "calculated_raw"})
-            db.add(StatusEvent(
-                order_id=order.id, operator_id=user.id, status=order.status,
-                actor=user.username, note="скасовано (Sum3D)",
-            ))
-    elif entry.action_type == "status":
-        if order.status != entry.new_value:
-            return _toast_response("Не можна скасувати — статус уже змінили", kind="error")
-        order.status = entry.old_value
-        db.add(StatusEvent(
-            order_id=order.id, operator_id=user.id, status=order.status,
-            actor=user.username, note="скасовано (статус)",
-        ))
-        sync_error = None
-    elif entry.action_type == "operator":
-        if (order.calculated_raw or "") != (entry.new_value or ""):
-            return _toast_response("Не можна скасувати — оператора вже змінили", kind="error")
-        order.calculated_raw = entry.old_value or ""
-        sync_error = _write_calculated(db, order, order.calculated_raw)
-    elif entry.action_type == "cam_comment":
-        if (order.cam_comment or "") != (entry.new_value or ""):
-            return _toast_response("Не можна скасувати — коментар уже змінили", kind="error")
-        order.cam_comment = entry.old_value or None
-        sync_error = _write_sheet_fields(db, order, {"cam_comment"})
-    elif entry.action_type == "delete":
-        if order.archived_at is None:
-            return _toast_response("Робота вже повернута в чергу", kind="info")
-        # Restore the sheet row FIRST, and un-archive only if it actually came
-        # back. Both halves or neither: an order returned to the queue whose
-        # row_number now points at somebody else's row gets silently overwritten
-        # with their data by the next sync (sync_tab matches by row_number). On
-        # failure the entry stays not-undone, so ← can simply be pressed again
-        # once the sheet is sorted out.
-        restore_error = _restore_sheet_row(order)
-        if restore_error:
-            return _toast_response(
-                "Не вдалося відновити рядок у таблиці: " + restore_error, kind="error"
-            )
-        order.archived_at = None
-        sync_error = None
-        db.add(StatusEvent(
-            order_id=order.id, operator_id=user.id, status=order.status,
-            actor=user.username, note="відновлено з видалення",
-        ))
-    else:
-        return _toast_response("Цей тип дії поки не скасовується", kind="error")
-
-    entry.undone_at = datetime.utcnow()
-    log_action(
-        db, order=order, operator=user, action_type="undo",
-        field=entry.field, note=f"скасовано: {entry.note}",
-    )
-    db.commit()
-
-    if sync_error:
-        return _toast_response(
-            "Скасовано в системі, але таблиця не оновилась: " + sync_error,
-            kind="error", triggers={"refresh-queue": True},
-        )
-    return _toast_response("Дію скасовано", triggers={"refresh-queue": True})
+    return _undo_response(perform_undo(db, user, entry))
 
 
 @app.post("/actions/{action_id}/undo")
@@ -2695,85 +2573,7 @@ async def undo_last_action(request: Request, db: Session = Depends(get_db)):
 
 
 def _perform_redo(db: Session, user: "User", entry: ActionLog) -> Response:
-    """Re-apply an already-undone action — the mirror of _perform_undo. Restores
-    the entry's AFTER-state (the value the action originally set), guards that
-    nothing has changed since the undo (else the redo would clobber someone), then
-    clears `undone_at` so the entry is undoable again. Symmetric with undo, so
-    «Крок назад» / «Крок вперед» form a proper step chain."""
-    order = db.get(Order, entry.order_id) if entry.order_id else None
-    if order is None:
-        return _toast_response("Роботи більше немає — повторити не можна", kind="error")
-
-    if entry.action_type == "sum3d":
-        before = json.loads(entry.old_value or "{}")
-        after = json.loads(entry.new_value or "{}")
-        # Guard: the value must still be in the reverted (before) state — else
-        # something changed since the undo and a redo would clobber it.
-        for f, v in before.items():
-            obj, attr = _snapshot_target(order, f)
-            if obj is None or getattr(obj, attr) != v:
-                return _toast_response("Не можна повторити — значення вже змінили", kind="error")
-        for f, v in after.items():
-            obj, attr = _snapshot_target(order, f)
-            if obj is not None:
-                setattr(obj, attr, v)
-        if entry.field == "rework.sum3d_id":
-            rework = order.active_rework
-            restored = (rework.sum3d_id if rework else None) or ""
-            restored_letter = (rework.calculated_raw if rework else None)
-            sync_error = _write_rework_sum3d(db, order, restored, letter=restored_letter)
-        else:
-            sync_error = _write_sheet_fields(db, order, {"sum3d_id", "calculated_raw"})
-            db.add(StatusEvent(
-                order_id=order.id, operator_id=user.id, status=order.status,
-                actor=user.username, note="повторено (Sum3D)",
-            ))
-    elif entry.action_type == "status":
-        if order.status != entry.old_value:
-            return _toast_response("Не можна повторити — статус уже змінили", kind="error")
-        order.status = entry.new_value
-        db.add(StatusEvent(
-            order_id=order.id, operator_id=user.id, status=order.status,
-            actor=user.username, note="повторено (статус)",
-        ))
-        sync_error = None
-    elif entry.action_type == "operator":
-        if (order.calculated_raw or "") != (entry.old_value or ""):
-            return _toast_response("Не можна повторити — оператора вже змінили", kind="error")
-        order.calculated_raw = entry.new_value or ""
-        sync_error = _write_calculated(db, order, order.calculated_raw)
-    elif entry.action_type == "cam_comment":
-        if (order.cam_comment or "") != (entry.old_value or ""):
-            return _toast_response("Не можна повторити — коментар уже змінили", kind="error")
-        order.cam_comment = entry.new_value or None
-        sync_error = _write_sheet_fields(db, order, {"cam_comment"})
-    elif entry.action_type == "delete":
-        if order.archived_at is not None:
-            return _toast_response("Робота вже видалена", kind="info")
-        order.archived_at = datetime.utcnow()
-        if order.source in ("lab", "sheet_client") and order.sheet_tab and order.row_number:
-            _clear_sheet_row_background(order.sheet_tab, order.row_number)
-        sync_error = None
-        db.add(StatusEvent(
-            order_id=order.id, operator_id=user.id, status=order.status,
-            actor=user.username, note="видалено з черги (повторно)",
-        ))
-    else:
-        return _toast_response("Цей тип дії поки не повторюється", kind="error")
-
-    entry.undone_at = None
-    log_action(
-        db, order=order, operator=user, action_type="redo",
-        field=entry.field, note=f"повторено: {entry.note}",
-    )
-    db.commit()
-
-    if sync_error:
-        return _toast_response(
-            "Повторено в системі, але таблиця не оновилась: " + sync_error,
-            kind="error", triggers={"refresh-queue": True},
-        )
-    return _toast_response("Дію повторено", triggers={"refresh-queue": True})
+    return _undo_response(perform_redo(db, user, entry))
 
 
 @app.post("/actions/redo-last")

@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.web as web
 from app.services import sheet_writeback as writeback_service
+from app.services import undo as undo_service
 from app.db import Base
 from app.models import ActionLog, Order, User
 
@@ -456,7 +457,7 @@ def test_cam_comment_unchanged_is_not_logged():
 
 def _run_delete(db, user, order):
     with patch.object(web, "_clear_sheet_row_background"), \
-         patch.object(web, "_restore_sheet_row", return_value=None):
+         patch.object(undo_service, "restore_sheet_row", return_value=None):
         asyncio.run(web.delete_order(
             request=_request(user.id), order_id=order.id, inline="1", db=db))
 
@@ -474,7 +475,7 @@ def test_delete_is_logged_and_undo_restores_the_work():
         entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "delete"))
         assert entry is not None and "24122" in entry.note
 
-        with patch.object(web, "_restore_sheet_row", return_value=None) as restore:
+        with patch.object(undo_service, "restore_sheet_row", return_value=None) as restore:
             _run_undo_last(db, user)
         db.refresh(order)
         assert order.archived_at is None                    # back in the queue
@@ -494,7 +495,7 @@ def test_delete_undo_keeps_the_work_archived_when_the_row_cannot_be_restored():
         db.refresh(order)
         archived_at = order.archived_at
 
-        with patch.object(web, "_restore_sheet_row", return_value="рядок 9 уже зайнято"):
+        with patch.object(undo_service, "restore_sheet_row", return_value="рядок 9 уже зайнято"):
             _run_undo_last(db, user)
         db.refresh(order)
         assert order.archived_at == archived_at          # still deleted, not half-restored
@@ -527,7 +528,7 @@ def test_delete_redo_archives_again():
         user = _user(db)
         order = _order(db)
         _run_delete(db, user, order)
-        with patch.object(web, "_restore_sheet_row", return_value=None):
+        with patch.object(undo_service, "restore_sheet_row", return_value=None):
             _run_undo_last(db, user)
         db.refresh(order)
         assert order.archived_at is None
