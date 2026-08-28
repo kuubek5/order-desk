@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.web as web
 from app import sync_control
+from app.services import config_state
 from app.routers import stl as stl_router_mod
 from app.services import sheet_writeback as writeback_service
 from app.db import Base
@@ -41,7 +42,10 @@ def test_queue_eagerly_exposes_pending_mail_newest_first_independent_of_filters(
     engine = _database()
     mail_root = tmp_path / "mail"
     mail_root.mkdir()
-    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    # Корінь спула читають два боки: сам web (синк, спул) і предикати
+    # config_state (довірені корені для «Відкрити папку»).
+    for _mod in (web, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
     monkeypatch.setattr(
         web.templates, "TemplateResponse", lambda request, template, context: context
@@ -75,7 +79,10 @@ def _call_get_queue(db, user, monkeypatch, tmp_path, **kwargs):
     real HTML."""
     mail_root = tmp_path / "mail"
     mail_root.mkdir(exist_ok=True)
-    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    # Корінь спула читають два боки: сам web (синк, спул) і предикати
+    # config_state (довірені корені для «Відкрити папку»).
+    for _mod in (web, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
     monkeypatch.setattr(
         web.templates, "TemplateResponse", lambda request, template, context: context
@@ -93,7 +100,10 @@ def test_partial_rows_renders_fragment_not_full_page(tmp_path, monkeypatch):
     engine = _database()
     mail_root = tmp_path / "mail"
     mail_root.mkdir()
-    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    # Корінь спула читають два боки: сам web (синк, спул) і предикати
+    # config_state (довірені корені для «Відкрити папку»).
+    for _mod in (web, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
     captured = {}
     monkeypatch.setattr(
@@ -765,7 +775,10 @@ def test_open_mail_folder_opens_safe_db_path_and_returns_no_content(tmp_path, mo
     folder.mkdir(parents=True)
     file = folder / "case.stl"
     file.write_bytes(b"mesh")
-    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    # Корінь спула читають два боки: сам web (синк, спул) і предикати
+    # config_state (довірені корені для «Відкрити папку»).
+    for _mod in (web, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
     opened: list = []
     monkeypatch.setattr(web, "_open_folder_in_explorer", opened.append)
@@ -800,7 +813,10 @@ def test_open_mail_folder_rejects_db_path_outside_roots(tmp_path, monkeypatch):
     outside.mkdir()
     file = outside / "case.stl"
     file.write_bytes(b"mesh")
-    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    # Корінь спула читають два боки: сам web (синк, спул) і предикати
+    # config_state (довірені корені для «Відкрити папку»).
+    for _mod in (web, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
 
     with Session(engine, expire_on_commit=False) as db:
@@ -937,7 +953,10 @@ def test_open_mail_folder_reports_non_windows_backend(tmp_path, monkeypatch):
     mail_root.mkdir()
     file = mail_root / "case.stl"
     file.write_bytes(b"mesh")
-    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    # Корінь спула читають два боки: сам web (синк, спул) і предикати
+    # config_state (довірені корені для «Відкрити папку»).
+    for _mod in (web, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
     monkeypatch.setattr(
         web, "_open_folder_in_explorer", lambda _folder: (_ for _ in ()).throw(NotImplementedError())
@@ -1015,7 +1034,8 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
     """/mail/{id}/fetch-link downloads a single whitelisted link and returns its
     row marked done, with a new Attachment created."""
     engine = _database()
-    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
+    for _mod in (web, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
     saved = tmp_path / "model.stl"
     saved.write_bytes(b"STL")
     monkeypatch.setattr(web, "download_link", lambda link, dest, existing_names=frozenset(): saved)
@@ -1055,7 +1075,8 @@ def test_fetch_email_link_reports_error_row(monkeypatch, tmp_path):
     """A LinkDownloadError (e.g. file not shared) comes back as an error row, no
     attachment created."""
     engine = _database()
-    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
+    for _mod in (web, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
 
     def boom(link, dest, existing_names=frozenset()):
         raise web.LinkDownloadError("файл не розшарено")
@@ -1258,7 +1279,8 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
     spool = tmp_path / "spool" / "u1"
     spool.mkdir(parents=True)
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
-    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "spool"))
+    for _mod in (web, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "spool"))
     monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     monkeypatch.setattr(web.templates, "TemplateResponse", lambda request, template, context: context)
 
@@ -1507,7 +1529,10 @@ def test_pending_list_order_is_frozen_by_watermark(tmp_path, monkeypatch):
     engine = _database()
     mail_root = tmp_path / "mail"
     mail_root.mkdir()
-    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    # Корінь спула читають два боки: сам web (синк, спул) і предикати
+    # config_state (довірені корені для «Відкрити папку»).
+    for _mod in (web, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
     captured = {}
     monkeypatch.setattr(
@@ -1553,7 +1578,10 @@ def test_watermark_does_not_freeze_archive_or_filtered_views(tmp_path, monkeypat
     engine = _database()
     mail_root = tmp_path / "mail"
     mail_root.mkdir()
-    monkeypatch.setattr(web, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    # Корінь спула читають два боки: сам web (синк, спул) і предикати
+    # config_state (довірені корені для «Відкрити папку»).
+    for _mod in (web, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
     monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
     captured = {}
     monkeypatch.setattr(

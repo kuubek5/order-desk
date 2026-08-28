@@ -48,6 +48,17 @@ from app.export_scanner import (
     list_export_client_names_cached,
 )
 from app import sync_control
+from app import sync_heartbeat
+from app.sync_heartbeat import (
+    heartbeat_status as _sync_heartbeat_status,
+    record_heartbeat as _record_sync_heartbeat,
+)
+from app.services.config_state import (
+    imap_configured as _imap_configured,
+    mail_preview_roots as _mail_preview_roots,
+    mail_trusted_roots as _mail_trusted_roots,
+    sheets_configured as _sheets_configured,
+)
 from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed
 from app.license import get_license_status, get_machine_id, verify_license_key
 from app.mail_export import (
@@ -326,103 +337,6 @@ def _hot_extra_days() -> set[date]:
     )
     return {day for day, _ in fresh[:_VIEWED_DAYS_CAP]}
 
-# A heartbeat last-attempt older than this many sync intervals means the
-# background loop itself likely died (thread crashed, process wedged) rather
-# than just "ran and found nothing" — the scariest failure mode, since it's
-# the monitoring signal silently going quiet. See _sync_heartbeat_status.
-STALE_HEARTBEAT_MULTIPLIER = 3
-
-
-@dataclass(frozen=True)
-class SyncHeartbeat:
-    """Last-tick outcome of a background sync loop (mail IMAP or Google
-    Sheets), kept in memory only — this is a liveness signal ("is the loop
-    ticking right now"), not an audit trail. SyncLog remains the audit
-    trail and deliberately writes no row for a quiet/no-op background tick
-    or a background-triggered failure (see mail_sync_service.sync_mail /
-    sheet_sync_service.sync_google_sheets's `persist=trigger == "manual"`),
-    so silence there is ambiguous between "healthy and quiet" and "dead".
-    This heartbeat is updated on every single tick regardless, to remove
-    that ambiguity. Not persisted to the DB and does not survive a
-    restart — showing "unknown" until the next tick completes after a
-    restart is correct and honest, not a bug.
-    """
-
-    last_attempt_at: datetime | None = None
-    status: str = "unknown"  # "unknown" | "ok" | "error" | "skipped"
-    error_message: str | None = None
-
-
-# Keyed by sync type. Only the matching background worker thread ever writes
-# its own key (mail worker writes "mail", sheet worker writes "sheet"), so
-# there is never more than one writer per key and a Lock isn't needed for
-# the write side. Request-handling threads only read this dict to render the
-# queue page. Each write below swaps in a brand-new *immutable* SyncHeartbeat
-# instance in one dict-key assignment — under the GIL that single assignment
-# is atomic, so a concurrent reader always sees either the old or the new
-# heartbeat in full, never a partially-updated one. Do not turn this into a
-# multi-step mutation (e.g. `heartbeat.status = ...`) — that would reopen the
-# torn-read risk this comment is explaining away.
-_sync_heartbeats: dict[str, SyncHeartbeat] = {
-    "mail": SyncHeartbeat(),
-    "sheet": SyncHeartbeat(),
-}
-
-
-def _record_sync_heartbeat(key: str, *, status: str, error_message: str | None = None) -> None:
-    """Record one background sync tick's outcome for the queue page's status pair.
-
-    ``status="skipped"`` (another sync already holds the lock — MailSyncBusyError /
-    SheetSyncBusyError) is deliberately neutral: it proves the loop is alive
-    (last_attempt_at advances, which is what staleness detection cares about)
-    without overwriting a previously recorded real outcome with a false error.
-    """
-    now = datetime.now()
-    if status == "skipped":
-        previous = _sync_heartbeats[key]
-        _sync_heartbeats[key] = SyncHeartbeat(
-            last_attempt_at=now, status=previous.status, error_message=previous.error_message
-        )
-    else:
-        _sync_heartbeats[key] = SyncHeartbeat(
-            last_attempt_at=now, status=status, error_message=error_message
-        )
-
-
-def _sync_heartbeat_status(
-    heartbeat: SyncHeartbeat,
-    *,
-    configured: bool,
-    interval_seconds: int,
-    now: datetime,
-) -> dict[str, str]:
-    """Pure formatting for one sync-status line in the queue sidebar.
-
-    Precedence: unconfigured beats everything (nothing is supposed to be
-    running, so silence isn't a warning sign) — then staleness (see
-    STALE_HEARTBEAT_MULTIPLIER) beats whatever outcome was last recorded,
-    because a dead worker thread is worse than a recorded failure — only
-    then do we fall back to the last real success/error tick.
-    """
-    if not configured:
-        return {"state": "neutral", "label": "не налаштовано"}
-    if heartbeat.last_attempt_at is None:
-        return {"state": "neutral", "label": "очікує першої перевірки"}
-
-    age_seconds = max(0.0, (now - heartbeat.last_attempt_at).total_seconds())
-    if age_seconds > interval_seconds * STALE_HEARTBEAT_MULTIPLIER:
-        return {"state": "warning", "label": "⚠ немає відповіді від фонового процесу"}
-
-    relative = _relative_time_uk(heartbeat.last_attempt_at, now)
-    if heartbeat.status == "error":
-        return {"state": "error", "label": f"⚠ помилка · {relative}"}
-    if heartbeat.status == "ok":
-        return {"state": "success", "label": f"✓ {relative}"}
-    # "skipped" with no prior real outcome yet (busy on the very first tick
-    # this process ever attempted) — rare, but still an honest "unknown".
-    return {"state": "neutral", "label": "очікує результату"}
-
-
 def _sheets_access_error_message(db: Session, exc: BaseException) -> str:
     """Turn a failed spreadsheet open into the one sentence that says what to
     DO about it.
@@ -477,13 +391,13 @@ def _settings_changed_at(db: Session, keys: tuple[str, ...]) -> dict[str, str]:
 def _queue_sync_status(db: Session, now: datetime) -> dict[str, dict[str, str]]:
     return {
         "mail": _sync_heartbeat_status(
-            _sync_heartbeats["mail"],
+            sync_heartbeat.heartbeats["mail"],
             configured=_imap_configured(db),
             interval_seconds=MAIL_SYNC_INTERVAL_SECONDS,
             now=now,
         ),
         "sheet": _sync_heartbeat_status(
-            _sync_heartbeats["sheet"],
+            sync_heartbeat.heartbeats["sheet"],
             configured=_sheets_configured(db),
             interval_seconds=SHEET_SYNC_INTERVAL_SECONDS,
             now=now,
@@ -549,36 +463,6 @@ def _check_path_status(raw_path: str) -> dict[str, str]:
             pass
 
     return {"state": "success", "message": "Папку знайдено, доступна для запису"}
-
-
-def _mail_trusted_roots(db: Session) -> list[Path]:
-    roots: list[Path] = []
-    mail_root = str(MAIL_ATTACHMENTS_PATH).strip()
-    export_root = (get_export_folder_path(db) or "").strip()
-    if mail_root:
-        roots.append(Path(mail_root))
-    if export_root:
-        roots.append(Path(export_root))
-    return roots
-
-
-def _mail_preview_roots(db: Session) -> dict[str, str | None]:
-    return {"mail": str(MAIL_ATTACHMENTS_PATH), "export": get_export_folder_path(db)}
-
-
-def _sheets_configured(db: Session) -> bool:
-    if not (get_google_sheet_id(db) or "").strip():
-        return False
-    if get_google_auth_mode(db) == "oauth":
-        return bool(
-            (get_google_oauth_client_json(db) or "").strip()
-            and (get_google_oauth_refresh_token(db) or "").strip()
-        )
-    return bool((get_google_service_account_json(db) or "").strip())
-
-
-def _imap_configured(db: Session) -> bool:
-    return bool((get_imap_login(db) or "").strip() and (get_imap_password(db) or "").strip())
 
 
 def _run_mail_sync_owned_session(*, trigger: str) -> int:
