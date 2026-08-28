@@ -254,26 +254,40 @@ def get_sync_speed() -> dict:
 _viewed_days: dict[date, float] = {}
 _VIEWED_DAY_TTL_SECONDS = 120.0
 _VIEWED_DAYS_CAP = 2
+# `_viewed_days` має ДВОХ письменників у різних потоках: request-хендлери
+# (get_queue) вставляють переглянутий день, а фоновий воркер таблиці читає й
+# чистить його в _hot_extra_days. Без локу воркер міг упасти на
+# «dictionary changed size during iteration», коли оператор відкриває день
+# саме під час тіку. Лок дешевий (дві короткі критичні секції), а гонка
+# рідкісна й невідтворювана — рівно той баг, який інакше ловиться раз на
+# місяць. (Пор. _sync_heartbeats — там лок НЕ потрібен: один письменник на
+# ключ і атомарна заміна незмінного значення.)
+_viewed_days_lock = Lock()
 
 
 def _record_viewed_day(day: date | None) -> None:
     if day is None:
         return
-    _viewed_days[day] = monotonic()
+    with _viewed_days_lock:
+        _viewed_days[day] = monotonic()
 
 
 def _hot_extra_days() -> set[date]:
     """Recently-viewed days still worth fast-syncing, freshest first, capped so
     a filter-hopping operator can't balloon the 5s tick into a full sync."""
     now = monotonic()
+    with _viewed_days_lock:
+        # Знімок під локом — далі сортуємо/фільтруємо вже свою копію, не чіпаючи
+        # живий словник під час ітерації.
+        items = list(_viewed_days.items())
+        for day, ts in items:
+            if now - ts >= _VIEWED_DAY_TTL_SECONDS:
+                _viewed_days.pop(day, None)
     fresh = sorted(
-        ((day, ts) for day, ts in _viewed_days.items() if now - ts < _VIEWED_DAY_TTL_SECONDS),
+        ((day, ts) for day, ts in items if now - ts < _VIEWED_DAY_TTL_SECONDS),
         key=lambda item: item[1],
         reverse=True,
     )
-    for day, _ in list(_viewed_days.items()):
-        if now - _viewed_days.get(day, 0) >= _VIEWED_DAY_TTL_SECONDS:
-            _viewed_days.pop(day, None)
     return {day for day, _ in fresh[:_VIEWED_DAYS_CAP]}
 
 # A heartbeat last-attempt older than this many sync intervals means the
