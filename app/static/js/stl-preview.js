@@ -371,9 +371,12 @@
       const dy = event.clientY - state.dragLastY;
       state.dragLastX = event.clientX;
       state.dragLastY = event.clientY;
-      // Горизонтальний рух — навколо вертикалі, вертикальний — навколо горизонталі.
-      state.mesh.rotation.y += dx * DRAG_SENS;
-      state.mesh.rotation.x += dy * DRAG_SENS;
+      // Крутимо модель у напрямку руху миші (grab-and-drag): тягнеш праворуч —
+      // видима грань іде за курсором праворуч. Знак — мінус, бо обертання
+      // самої моделі протилежне до звичної в 3D-переглядачах орбіти камери;
+      // без нього рух відчувався реверсивним.
+      state.mesh.rotation.y -= dx * DRAG_SENS;
+      state.mesh.rotation.x -= dy * DRAG_SENS;
       renderOnce();
     });
 
