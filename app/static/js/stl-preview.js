@@ -64,6 +64,9 @@
     controller: null,
     rafId: null,
     spinSpeed: REDUCED_MOTION ? 0 : 1, // multiplier on BASE_SPIN_*, driven by the slider
+    dragging: false, // права кнопка затиснута — ручне обертання
+    dragLastX: 0,
+    dragLastY: 0,
     speedEl: null,
     fileListCache: new Map(), // token -> string[]
     geometryCache: new Map(), // "token filename" -> BufferGeometry (raw)
@@ -112,6 +115,7 @@
     const canvas = document.createElement("canvas");
     canvas.className = "stl-panel-canvas";
     stage.appendChild(canvas);
+    attachManualRotation(canvas);
     const status = document.createElement("div");
     status.className = "stl-panel-status";
     stage.appendChild(status);
@@ -298,6 +302,58 @@
 
     setStatus(null);
     startRenderLoop();
+  }
+
+  // Ручне обертання правою кнопкою (прохання оператора 28.08.26). Клік правою
+  // одразу глушить авто-обертання — щоб звіряти форму коронки зі STL, модель
+  // має стояти рівно там, де оператор її лишив, а не крутитись під рукою.
+  // Утримання правої + рух — крутить модель у двох осях. Ліве перетягування
+  // теж крутить (звична дія), тому ловимо будь-яку кнопку.
+  const DRAG_SENS = 0.01; // радіан на піксель
+
+  function freezeSpin() {
+    state.spinSpeed = 0;
+    if (state.speedEl) state.speedEl.value = "0"; // слайдер показує реальний стан
+    stopRenderLoop();
+    renderOnce();
+  }
+
+  function attachManualRotation(canvas) {
+    // Права кнопка не має відкривати системне меню поверх моделі.
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+
+    canvas.addEventListener("pointerdown", (event) => {
+      if (!state.mesh) return;
+      // Права (2) або ліва (0) кнопка. Права ще й глушить авто-спін.
+      if (event.button !== 0 && event.button !== 2) return;
+      freezeSpin();
+      state.dragging = true;
+      state.dragLastX = event.clientX;
+      state.dragLastY = event.clientY;
+      try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* ok */ }
+      event.preventDefault();
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      if (!state.dragging || !state.mesh) return;
+      const dx = event.clientX - state.dragLastX;
+      const dy = event.clientY - state.dragLastY;
+      state.dragLastX = event.clientX;
+      state.dragLastY = event.clientY;
+      // Горизонтальний рух — навколо вертикалі, вертикальний — навколо горизонталі.
+      state.mesh.rotation.y += dx * DRAG_SENS;
+      state.mesh.rotation.x += dy * DRAG_SENS;
+      renderOnce();
+    });
+
+    function endDrag(event) {
+      if (!state.dragging) return;
+      state.dragging = false;
+      try { canvas.releasePointerCapture(event.pointerId); } catch (_) { /* ok */ }
+    }
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+    canvas.addEventListener("pointerleave", endDrag);
   }
 
   function startRenderLoop() {
