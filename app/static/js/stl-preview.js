@@ -341,6 +341,9 @@
   // Утримання правої + рух — крутить модель у двох осях. Ліве перетягування
   // теж крутить (звична дія), тому ловимо будь-яку кнопку.
   const DRAG_SENS = 0.01; // радіан на піксель
+  const ZOOM_STEP = 1.1;  // множник відстані камери на одну «зубчик» колеса
+  const ZOOM_MIN = 1.5;   // ближче не пускаємо — модель не влітає в екран
+  const ZOOM_MAX = 8.0;   // далі не пускаємо — не губиться крапкою
 
   function freezeSpin() {
     state.spinSpeed = 0;
@@ -352,6 +355,23 @@
   function attachManualRotation(canvas) {
     // Права кнопка не має відкривати системне меню поверх моделі.
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+
+    // Зум колесом: наближає/віддаляє камеру вздовж її погляду. Множимо
+    // позицію камери на коефіцієнт (напрямок зберігається, міняється лише
+    // відстань), тримаємо в межах, щоб модель не влетіла в екран і не зникла.
+    // passive:false — щоб перехопити прокрутку сторінки під моделлю.
+    canvas.addEventListener("wheel", (event) => {
+      if (!state.camera) return;
+      event.preventDefault();
+      const factor = event.deltaY > 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+      const pos = state.camera.position;
+      const dist = pos.length() * factor;
+      if (dist >= ZOOM_MIN && dist <= ZOOM_MAX) {
+        pos.multiplyScalar(factor);
+        state.camera.lookAt(0, 0, 0);
+        renderOnce();
+      }
+    }, { passive: false });
 
     canvas.addEventListener("pointerdown", (event) => {
       if (!state.mesh) return;
