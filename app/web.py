@@ -120,6 +120,8 @@ from app.queue_filters import (
     filter_emails_by_service_type,
 )
 from app.runtime import resource_path
+from app.routers.archive import router as archive_router
+from app.routers.stats import router as stats_router
 from app.routers.stl import router as stl_router
 from app.routers.deps import (
     attach_action_toast as _attach_action_toast,
@@ -2639,128 +2641,8 @@ def get_journal(
     )
 
 
-def _parse_archive_month(value: str) -> tuple[int, int] | None:
-    """Parse an Archive month param 'YYYY-MM' into (year, month), or None."""
-    try:
-        year_s, month_s = value.split("-", 1)
-        year, month = int(year_s), int(month_s)
-    except (ValueError, AttributeError):
-        return None
-    if 1 <= month <= 12 and 2000 <= year <= 2100:
-        return year, month
-    return None
-
-
-@app.get("/archive", response_class=HTMLResponse)
-def get_archive(
-    request: Request,
-    month: str = "",
-    date_param: Annotated[str, Query(alias="date")] = "",
-    db: Session = Depends(get_db),
-):
-    """Archive (Concept 1 «Хроніка») — everything that rolled out of the working
-    queue: месяці → календар днів → роботи дня → повний паспорт. Drills down by
-    time; the detail is the existing /orders/{id} passport (Sum3D ID, history,
-    comments, rework) opened in the slide-over, so an old work is fully
-    recoverable, not just listed."""
-    user = get_current_user(request, db)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-
-    today = date.today()
-    cutoff = today - timedelta(days=RETENTION_DAYS)
-    all_orders = db.scalars(select(Order).options(selectinload(Order.material))).all()
-    archived = [o for o in all_orders if _order_is_archived(o, cutoff)]
-
-    # One pass: per-day and per-month tallies drive every level below.
-    day_counts: dict[tuple[int, int, int], int] = defaultdict(int)
-    month_counts: dict[tuple[int, int], int] = defaultdict(int)
-    for order in archived:
-        d = _order_date(order)
-        day_counts[(d.year, d.month, d.day)] += 1
-        month_counts[(d.year, d.month)] += 1
-
-    base = {"page_title": "Архів", "user": user, "archive_total": len(archived)}
-
-    # ── Level 3: a single day's works ──────────────────────────────────────
-    selected_date = _parse_sheet_tab(date_param) if date_param else None
-    if selected_date is not None:
-        day_orders = sorted(
-            (o for o in archived if _order_date(o) == selected_date),
-            key=lambda o: (o.work_order_no or o.client_name or "", o.id),
-        )
-        return templates.TemplateResponse(
-            request,
-            "archive.html",
-            {
-                **base,
-                "level": "day",
-                "selected_date": selected_date,
-                "day_label": selected_date.strftime("%d.%m.%Y"),
-                "back_month": f"{selected_date.year:04d}-{selected_date.month:02d}",
-                "day_orders": day_orders,
-            },
-        )
-
-    # ── Level 2: one month's calendar of days ──────────────────────────────
-    parsed_month = _parse_archive_month(month)
-    if parsed_month is not None:
-        year, mon = parsed_month
-        weeks = calendar.monthcalendar(year, mon)
-        grid = [
-            [
-                (
-                    {
-                        "day": dn,
-                        "count": day_counts.get((year, mon, dn), 0),
-                        "date": date(year, mon, dn).strftime("%d.%m.%y"),
-                    }
-                    if dn
-                    else None
-                )
-                for dn in week
-            ]
-            for week in weeks
-        ]
-        month_max = max(
-            (day_counts.get((year, mon, dn), 0) for week in weeks for dn in week if dn),
-            default=0,
-        )
-        return templates.TemplateResponse(
-            request,
-            "archive.html",
-            {
-                **base,
-                "level": "month",
-                "month_ym": f"{year:04d}-{mon:02d}",
-                "month_label": _uk_month_label(year, mon),
-                "month_grid": grid,
-                "month_max": month_max,
-                "month_total": month_counts.get((year, mon), 0),
-            },
-        )
-
-    # ── Level 1: months landing ────────────────────────────────────────────
-    months = []
-    for (year, mon), cnt in sorted(month_counts.items(), reverse=True):
-        weeks = calendar.monthcalendar(year, mon)
-        spark = [
-            sum(day_counts.get((year, mon, dn), 0) for dn in week if dn)
-            for week in weeks
-        ]
-        months.append(
-            {
-                "ym": f"{year:04d}-{mon:02d}",
-                "label": _uk_month_label(year, mon),
-                "count": cnt,
-                "spark": spark,
-                "spark_max": max(spark, default=1) or 1,
-            }
-        )
-    return templates.TemplateResponse(
-        request, "archive.html", {**base, "level": "months", "months": months}
-    )
-
+# Архів («Хроніка») живе в app/routers/archive.py.
+app.include_router(archive_router)
 
 
 def _handout_context(request: Request, user, source: str, day: str, db: Session) -> dict:
@@ -3263,63 +3145,8 @@ async def confirm_alias(
 app.include_router(stl_router)
 
 
-@app.get("/stats", response_class=HTMLResponse)
-def get_stats(request: Request, period: str = "week", db: Session = Depends(get_db)):
-    user = get_current_user(request, db)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-
-    if period not in ("today", "week", "month", "all"):
-        period = "week"
-
-    today = date.today()
-    period_start = {
-        "today": today,
-        "week": today - timedelta(days=6),
-        "month": today - timedelta(days=29),
-        "all": None,
-    }[period]
-
-    all_orders = db.scalars(
-        select(Order).options(
-            selectinload(Order.status_events), selectinload(Order.material)
-        )
-    ).all()
-
-    period_orders = []
-    for order in all_orders:
-        if period == "all":
-            period_orders.append(order)
-            continue
-        order_date = _order_date(order)
-        if period_start <= order_date <= today:
-            period_orders.append(order)
-
-    order_count = len(period_orders)
-    quantity_sum = sum(
-        qty for qty in (parse_int_safe(order.quantity) for order in period_orders) if qty is not None
-    )
-
-    rework_records = db.scalars(select(ReworkRecord)).all()
-    rework_groups = summarize_rework_by_blame(rework_records)
-
-    avg_hours = average_new_to_milled_hours(period_orders)
-    material_groups = summarize_by_material(period_orders)
-
-    return templates.TemplateResponse(
-        request,
-        "stats.html",
-        {
-            "page_title": "Статистика",
-            "user": user,
-            "period": period,
-            "order_count": order_count,
-            "quantity_sum": quantity_sum,
-            "rework_groups": rework_groups,
-            "avg_hours": avg_hours,
-            "material_groups": material_groups,
-        },
-    )
+# Статистика живе в app/routers/stats.py.
+app.include_router(stats_router)
 
 
 def _ensure_client_profiles(db: Session, named_orders: list[Order]) -> int:

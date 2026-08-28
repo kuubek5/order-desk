@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import archive as archive_router_mod
 from app.db import Base
 from app.models import Order, User
 
@@ -36,11 +37,11 @@ def _capture(monkeypatch):
 
 
 def test_parse_archive_month():
-    assert web._parse_archive_month("2026-07") == (2026, 7)
-    assert web._parse_archive_month("2026-12") == (2026, 12)
-    assert web._parse_archive_month("2026-13") is None
-    assert web._parse_archive_month("nope") is None
-    assert web._parse_archive_month("") is None
+    assert archive_router_mod.parse_archive_month("2026-07") == (2026, 7)
+    assert archive_router_mod.parse_archive_month("2026-12") == (2026, 12)
+    assert archive_router_mod.parse_archive_month("2026-13") is None
+    assert archive_router_mod.parse_archive_month("nope") is None
+    assert archive_router_mod.parse_archive_month("") is None
 
 
 def test_order_is_archived_predicate():
@@ -79,7 +80,7 @@ def test_archive_months_level_excludes_active(monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         old = _seed(db)
-        ctx = web.get_archive(request=_request(user.id), db=db)
+        ctx = archive_router_mod.get_archive(request=_request(user.id), db=db)
     assert ctx["level"] == "months"
     assert ctx["archive_total"] == 2  # the active order is excluded
     ym = f"{old.year:04d}-{old.month:02d}"
@@ -94,7 +95,7 @@ def test_archive_month_level_builds_calendar(monkeypatch):
         user = _user(db)
         old = _seed(db)
         ym = f"{old.year:04d}-{old.month:02d}"
-        ctx = web.get_archive(request=_request(user.id), month=ym, db=db)
+        ctx = archive_router_mod.get_archive(request=_request(user.id), month=ym, db=db)
     assert ctx["level"] == "month"
     assert ctx["month_total"] == 2
     assert ctx["month_max"] == 2
@@ -109,7 +110,7 @@ def test_archive_day_level_lists_works_with_passport_link(monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         old = _seed(db)
-        ctx = web.get_archive(
+        ctx = archive_router_mod.get_archive(
             request=_request(user.id), date_param=old.strftime("%d.%m.%y"), db=db
         )
     assert ctx["level"] == "day"
