@@ -344,6 +344,8 @@
   const ZOOM_STEP = 1.1;  // множник відстані камери на одну «зубчик» колеса
   const ZOOM_MIN = 1.5;   // ближче не пускаємо — модель не влітає в екран
   const ZOOM_MAX = 8.0;   // далі не пускаємо — не губиться крапкою
+  const WORLD_UP = new THREE.Vector3(0, 1, 0);
+  const WORLD_RIGHT = new THREE.Vector3(1, 0, 0);
 
   function freezeSpin() {
     state.spinSpeed = 0;
@@ -391,12 +393,16 @@
       const dy = event.clientY - state.dragLastY;
       state.dragLastX = event.clientX;
       state.dragLastY = event.clientY;
-      // Крутимо модель у напрямку руху миші (grab-and-drag): тягнеш праворуч —
-      // видима грань іде за курсором праворуч. Знак — мінус, бо обертання
-      // самої моделі протилежне до звичної в 3D-переглядачах орбіти камери;
-      // без нього рух відчувався реверсивним.
-      state.mesh.rotation.y -= dx * DRAG_SENS;
-      state.mesh.rotation.x -= dy * DRAG_SENS;
+      // Обертаємо навколо СВІТОВИХ осей (трекбол), а не додаємо кути Ейлера
+      // на модель: інакше після першого повороту осі «замикаються» (gimbal
+      // lock) і здається, що крутити можна не в усі боки. rotateOnWorldAxis
+      // множить у світовому просторі, тож рух миші завжди означає те саме,
+      // незалежно від поточного положення моделі.
+      // Горизонталь — навколо світової вертикалі, вертикаль — навколо
+      // світової горизонталі (правої осі екрана). Знак мінус — grab-and-drag:
+      // тягнеш праворуч, видима грань іде за курсором.
+      state.mesh.rotateOnWorldAxis(WORLD_UP, -dx * DRAG_SENS);
+      state.mesh.rotateOnWorldAxis(WORLD_RIGHT, -dy * DRAG_SENS);
       renderOnce();
     });
 
