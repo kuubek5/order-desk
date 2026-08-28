@@ -344,11 +344,37 @@ body.layout-edit .q2 table.qtable{user-select:none}
    своєю коміркою. flex-wrap робить це рядком чіпів, що переноситься, а не
    переповненням; align-items тримає базову лінію рівною, коли чіпів немає. */
 .q2 td.order-id{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;align-content:center}
-.q2 td.order-id > .rework-badge,
-.q2 td.order-id > .rush-badge,
-.q2 td.order-id > .chg-form,
-.q2 td.order-id > .row-delete-form{margin-left:0}
-.q2 td.order-id .chg-form{max-width:100%}
+/* Проміжками у flex-комірці володіє ТІЛЬКИ gap. Старі inline-марджини
+   (.sdot 7px, .source-badge 7+8px) у попередньому інлайновому розкладі були
+   єдиним проміжком, а тут додаються ЗВЕРХУ до gap: виміряно 28.08.26 —
+   178.6px потрібно проти 166px доступних, тобто звичайний рядок «джерело +
+   наряд + кошик» перескакував на другий рядок і 281 рядок із 567 виріс
+   з 43px до 66px. Обнуляємо їх тут, а не в базових правилах: поза цією
+   коміркою ті самі класи лишаються інлайновими. */
+.q2 td.order-id > *{margin-left:0;margin-right:0}
+/* Довге ім'я клієнта має вкорочуватись трикрапкою, а не виштовхувати
+   сусідів на новий рядок. */
+.q2 td.order-id > .ordbtn{min-width:0;flex:0 1 auto}
+/* Перенос дозволено лише тоді, коли в комірці є ЩО переносити — бейдж.
+   Інакше flex переносив кошик на другий рядок просто через довше ім'я
+   клієнта, і рядок ріс з 43px до 66px без жодного нового змісту (виміряно:
+   161 рядок із 567). Тепер без бейджів комірка в один рядок, а ім'я
+   вкорочується трикрапкою; з бейджем — переноситься, і зайві 20px
+   з'являються рівно там, де є що показати.
+   :has() не підтримується — відкат до звичайного переносу, тобто до
+   попередньої поведінки: вище, але нічого не зникає. */
+.q2 td.order-id{flex-wrap:nowrap}
+.q2 td.order-id:has(.rework-badge),
+.q2 td.order-id:has(.rush-badge),
+.q2 td.order-id:has(.badge.chg),
+.q2 td.order-id:has(.badge.problem),
+.q2 td.order-id:has(.badge.redo){flex-wrap:wrap}
+/* Бейдж «змінено» лишає місце кошику праворуч: на 100% ширини кошик
+   отримував ЦІЛИЙ третій рядок під свої 22px, і рядок ріс до 96px замість
+   ~70px (виміряно на 30 рядках). Тепер попередження і видалення діляться
+   одним рядком, а текст бейджа вкорочується трикрапкою — повний перелік
+   змінених полів лишається в title. */
+.q2 td.order-id .chg-form{max-width:calc(100% - 30px)}
 .q2 td.order-id .badge.chg{max-width:100%;overflow:hidden}
 .q2 td.order-id .badge.chg span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .q2 .ordbtn{display:inline-block;max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
