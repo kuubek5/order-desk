@@ -1,0 +1,86 @@
+        {# ── Крок 4 · Пошта (IMAP) ───────────────────────────────────── #}
+        {% set st = 'done' if step_done[4] else ('active' if ns.active == 4 else '') %}
+        <div class="wizard-step scon-sec {{ st }}" data-sec="imap">
+            <div class="num">{% if step_done[4] %}✓{% else %}4{% endif %}</div>
+            <div class="box">
+                <div class="wizard-step-head">
+                    <h2>Пошта (IMAP)</h2>
+                    <span class="connection-state {% if imap_configured %}connection-state-ready{% endif %}">
+                        {% if imap_configured %}Підключено{% else %}Не підключено{% endif %}
+                    </span>
+                </div>
+                <p class="wizard-sub">Замовлення клієнтів листами з усієї країни (ukr.net).</p>
+
+                <form method="post" action="/settings">
+                    <div class="settings-field">
+                        <label for="imap_login">{{ fields[2].label }}</label>
+                        {% if fields[2].help_text %}
+                        <p class="settings-help">{{ fields[2].help_text }}</p>
+                        {% endif %}
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <input
+                                    type="text"
+                                    id="imap_login"
+                                    name="imap_login"
+                                    class="login-input"
+                                    value="{{ values['imap_login'] or '' }}"
+                                    placeholder="example@ukr.net"
+                                >
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-field">
+                        <label for="imap_password">{{ fields[3].label }}</label>
+                        {% if fields[3].help_text %}
+                        <p class="settings-help">{{ fields[3].help_text }}</p>
+                        {% endif %}
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <input
+                                    type="password"
+                                    id="imap_password"
+                                    name="imap_password"
+                                    class="login-input"
+                                    placeholder="{% if values['imap_password'] %}•••••••• (збережено){% else %}не задано{% endif %}"
+                                >
+                                <button type="button" class="login-toggle-password" aria-label="Показати пароль">
+                                    <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-3.19 4.02M6.1 6.1C3.29 7.9 1 12 1 12s4 7 11 7a9.15 9.15 0 0 0 4.9-1.42"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-check-row">
+                        <button
+                            type="button"
+                            class="settings-secondary-button settings-check-button"
+                            hx-post="/settings/test-imap"
+                            hx-target="#imap-check-result"
+                            hx-swap="innerHTML"
+                            hx-indicator="#imap-check-spinner"
+                            hx-params="none"
+                        >Перевірити з'єднання</button>
+                        <span class="check-spinner htmx-indicator" id="imap-check-spinner" aria-hidden="true"></span>
+                        <span id="imap-check-result" class="settings-check-result" aria-live="polite"></span>
+                    </div>
+                    <p class="settings-help">Перевіряє логін і пароль, які вже <strong>збережено</strong> — спершу натисніть «Зберегти», якщо щойно їх змінили.{% if changed_at.imap_password %} Пароль востаннє змінено <span class="mono">{{ changed_at.imap_password }}</span>.{% endif %}</p>
+
+                    <div class="settings-actions">
+                        {# HTMX save: зберігає + одразу пробує вхід і повертає результат
+                           у #imap-check-result (+ тост). Без перезавантаження сторінки,
+                           тому екран не стрибає вгору. Без JS — звичайний POST на /settings. #}
+                        <button type="submit" name="action" value="save"
+                                class="login-submit settings-submit"
+                                hx-post="/settings/imap"
+                                hx-include="#imap_login, #imap_password"
+                                hx-target="#imap-check-result"
+                                hx-swap="innerHTML"
+                                hx-indicator="#imap-check-spinner"
+                                hx-disabled-elt="this">Зберегти</button>
+                    </div>
+                </form>
+            </div>
+        </div>

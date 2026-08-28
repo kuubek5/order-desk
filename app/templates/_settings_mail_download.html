@@ -1,0 +1,66 @@
+        {# ── Скачування вкладень · глобальний тоггл ───────────────────────
+           Off (default) → only trusted senders auto-download, the rest wait for
+           a manual pull. On → every incoming letter's files land in the spool
+           as mail arrives. Admin-only. #}
+        {% if user.role == 'адмін' %}
+        <section id="mail-download" class="wizard-step wizard-step-about scon-sec" data-sec="mail-download"
+                 data-dl-state="{{ 'all' if mail_download_all else 'trusted' }}">
+            <div class="num" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+            </div>
+            <div class="box">
+                <div class="wizard-step-head">
+                    <h2>Скачування вкладень</h2>
+                    <span class="connection-state {% if mail_download_all %}connection-state-ready{% endif %}">
+                        {% if mail_download_all %}Скачує всі{% else %}Лише довірені{% endif %}
+                    </span>
+                </div>
+                {# Обидва пояснення в DOM — перемикаються за data-dl-state секції,
+                   щоб текст не брехав після клієнтського перемикання тогла. #}
+                <p class="wizard-sub dl-when-trusted">
+                    Зараз авто-скачуються файли лише від довірених відправників; решта — «не скачано» до ручного натискання. Увімкни, щоб качалось <strong>усе</strong>, що заходить на пошту.
+                </p>
+                <p class="wizard-sub dl-when-all">
+                    Зараз файли з <strong>кожного</strong> листа авто-скачуються в тимчасові папки, щойно надходять. Вимкни, щоб качались лише від довірених відправників, а решта чекала ручного «Скачати вкладення».
+                </p>
+                {# Рідке скло: сегментний перемикач із SVG-дисторсією (порт
+                   компонента 21st.dev на наш стек — React у проєкті немає).
+                   Клік по неактивній стороні ковзає плитку й фоном шле POST на
+                   той самий /mail-download/toggle (він інвертує стан, тому
+                   активна сторона — no-op). При помилці стан відкочується. #}
+                <div class="dl-seg" data-dl-toggle
+                     data-state="{{ 'all' if mail_download_all else 'trusted' }}"
+                     role="group" aria-label="Режим скачування вкладень">
+                    <div class="dl-seg-glass" aria-hidden="true" style="filter:url('#radio-glass')"></div>
+                    <button type="button" class="dl-seg-opt" data-val="trusted"
+                            aria-pressed="{{ 'false' if mail_download_all else 'true' }}">Лише довірені</button>
+                    <button type="button" class="dl-seg-opt" data-val="all"
+                            aria-pressed="{{ 'true' if mail_download_all else 'false' }}">Усі підряд</button>
+                </div>
+                <span class="check-spinner htmx-indicator" id="dl-seg-spinner" aria-hidden="true"></span>
+                <div class="wiz-hint">Стосується вкладень листа (MIME). Файли за посиланням (Google Drive, ukr.net) якщо треба — тягнуться окремо у вкладці «Файли». Завеликі файли (понад 200 МБ) пропускаються.</div>
+
+                {% if spool_report %}
+                {# Disk usage of the mail spool + a MANUAL cleanup. Nothing is
+                   deleted automatically — see app/mail_spool.py. #}
+                <div class="dsec spool-usage">
+                    <div class="dlabel">Тимчасові папки пошти</div>
+                    <p class="wizard-sub">
+                        Зайнято <strong>{{ spool_report.total_mb }} МБ</strong> у {{ spool_report.total_dirs }} папк(ах).
+                        {% if spool_report.prunable_dirs %}
+                        Можна прибрати <strong>{{ spool_report.prunable_dirs|length }}</strong> — порожні, «нічиї» та файли відхилених листів, старших за 30 днів ({{ spool_report.prunable_mb }} МБ).
+                        {% else %}
+                        Прибирати нічого — усе на місці.
+                        {% endif %}
+                    </p>
+                    {% if spool_report.prunable_dirs %}
+                    <form method="post" action="/settings/mail-spool/prune"
+                          onsubmit="return confirm('Видалити {{ spool_report.prunable_dirs|length }} тимчасов(их) папок ({{ spool_report.prunable_mb }} МБ)? Файли прийнятих і активних листів не чіпаються.')">
+                        <button type="submit" class="settings-secondary-button">Прибрати {{ spool_report.prunable_mb }} МБ</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </section>
+        {% endif %}

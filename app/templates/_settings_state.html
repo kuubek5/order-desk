@@ -1,0 +1,81 @@
+        {# ── Стан системи ─────────────────────────────────────────────
+           Огляд-екран: жива карта конвеєра (лічильники з context) + реальна
+           самоперевірка (POST /settings/selfcheck, той самий бекенд, що й
+           окремі кнопки «Перевірити»). Видимий усім; кнопка перевірки —
+           лише адмін (ендпоінт admin+loopback). #}
+        <section class="wizard-step wizard-step-about scon-sec" data-sec="state">
+            <div class="box">
+                <div class="wizard-step-head">
+                    <h2>Стан системи</h2>
+                    <span class="connection-state connection-state-ready">Огляд</span>
+                </div>
+                <p class="wizard-sub">Куди рухаються роботи просто зараз, і чи все на місці.</p>
+
+                <div class="scon-map" role="img" aria-label="Стан конвеєра робіт">
+                    {% for node in state_nodes %}
+                    {% if not loop.first %}
+                    <span class="scon-link" aria-hidden="true">
+                        <svg viewBox="0 0 34 12" preserveAspectRatio="none"><path d="M0 6h27"/><path d="m27 6-5-3.5M27 6l-5 3.5"/></svg>
+                    </span>
+                    {% endif %}
+                    <div class="scon-node">
+                        <div class="scon-node-box">
+                            <div class="scon-n tnum">{{ node.n }}</div>
+                            <div class="scon-l">{{ node.l }}</div>
+                            <div class="scon-u">{{ node.u }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {# Фонові процеси: той самий heartbeat, що в сайдбарі черги.
+                   Головне тут — «немає відповіді від фонового процесу»: воно
+                   відрізняє «тихо, бо нічого не було» від «тред помер». #}
+                <div class="scon-beat">
+                    <div class="scon-beat-row scon-beat-{{ sync_status.mail.state }}">
+                        <span class="d" aria-hidden="true"></span>
+                        <span class="n">Пошта (IMAP)</span>
+                        <span class="v">{{ sync_status.mail.label }}</span>
+                        <span class="i mono">кожні {{ sync_intervals.mail }} хв</span>
+                    </div>
+                    <div class="scon-beat-row scon-beat-{{ sync_status.sheet.state }}">
+                        <span class="d" aria-hidden="true"></span>
+                        <span class="n">Google Таблиця</span>
+                        <span class="v">{{ sync_status.sheet.label }}</span>
+                        <span class="i mono">кожні {{ sync_intervals.sheet }} хв</span>
+                    </div>
+                </div>
+
+                {% if user.role == 'адмін' %}
+                <div class="scon-diag" data-selfcheck>
+                    <div class="scon-diag-head">
+                        <span class="t">Самоперевірка</span>
+                        <span class="sum mono" data-diag-sum>не запускалась</span>
+                    </div>
+                    <ul class="scon-diag-list" data-diag-list hidden></ul>
+                    <div class="settings-check-row">
+                        <button type="button" class="login-submit settings-submit" data-diag-run>Запустити самоперевірку</button>
+                        <button type="button" class="settings-secondary-button" data-diag-copy hidden>Скопіювати звіт</button>
+                        <span class="settings-help" style="margin:0">7 перевірок · нічого не змінює</span>
+                    </div>
+                    <p class="settings-help">Звіт лягає в буфер обміну текстом — можна вставити в чат підтримки. Секрети в нього не потрапляють, лише «задано / не задано».</p>
+                </div>
+
+                {# Діагностика «чому таблиця гальмує»: рахує правила умовного
+                   форматування. День-вкладка, зроблена копією вчорашньої, тягне
+                   правила поклітинково — на тестовій було 105 тис. правил і
+                   612 МБ метаданих, кожен виклик платив за них. Лише читає. #}
+                <div class="settings-check-row" style="margin-top:14px">
+                    <button type="button" class="settings-secondary-button settings-check-button"
+                            hx-post="/settings/sheet-weight"
+                            hx-target="#sheet-weight-result"
+                            hx-swap="innerHTML"
+                            hx-indicator="#sheet-weight-spinner"
+                            hx-params="none">Перевірити вагу таблиці</button>
+                    <span class="check-spinner htmx-indicator" id="sheet-weight-spinner" aria-hidden="true"></span>
+                    <span id="sheet-weight-result" class="settings-check-result" aria-live="polite"></span>
+                </div>
+                <p class="settings-help">Рахує умовне форматування — найчастішу причину повільного додавання. Нічого не змінює, лише читає (може зайняти кілька секунд).</p>
+                {% endif %}
+            </div>
+        </section>

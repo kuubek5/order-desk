@@ -1,0 +1,115 @@
+        {# ── Крок 2 · Оператори ──────────────────────────────────────── #}
+        {% set st = 'done' if step_done[2] else ('active' if ns.active == 2 else '') %}
+        <div class="wizard-step scon-sec {{ st }}" data-sec="operators">
+            <div class="num">{% if step_done[2] %}✓{% else %}2{% endif %}</div>
+            <div class="box">
+                <div class="wizard-step-head">
+                    <h2>Оператори</h2>
+                    <span class="connection-state {% if operators_exist %}connection-state-ready{% endif %}">
+                        {% if operators_exist %}{{ operators|length }} акаунт(и){% else %}Немає акаунтів{% endif %}
+                    </span>
+                </div>
+                <p class="wizard-sub">Облікові записи операторів. Дії в історії робіт прив’язані до кожного.</p>
+
+                <div class="table-scroll">
+                <table class="queue-table users-table">
+                    <thead>
+                        <tr>
+                            <th>Ім'я</th>
+                            <th>Логін</th>
+                            <th>Роль</th>
+                            <th>Літера</th>
+                            <th>Статус</th>
+                            <th>Скинути пароль</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for operator in operators %}
+                        <tr>
+                            <td>{{ operator.full_name or '—' }}</td>
+                            <td class="order-id">{{ operator.username }}</td>
+                            <td>{{ operator.role }}</td>
+                            <td>
+                                <form method="post" action="/settings/users/{{ operator.id }}/initial" class="users-reset-form">
+                                    <input type="text" name="sheet_initial" class="login-input users-initial-input"
+                                           value="{{ operator.sheet_initial or '' }}" maxlength="2"
+                                           placeholder="—" title="1-2 літери, напр. Р, СТ" style="width:3.2rem;text-align:center;text-transform:uppercase;">
+                                    <button type="submit" class="link-button">Зберегти</button>
+                                </form>
+                            </td>
+                            <td>
+                                <span class="status-badge {{ 'user-badge-active' if operator.is_active else 'user-badge-inactive' }}">
+                                    {{ 'активний' if operator.is_active else 'вимкнено' }}
+                                </span>
+                            </td>
+                            <td>
+                                <form method="post" action="/settings/users/{{ operator.id }}/reset-password" class="users-reset-form">
+                                    <input type="password" name="new_password" class="login-input users-reset-input" placeholder="новий пароль">
+                                    <button type="submit" class="link-button">Скинути</button>
+                                </form>
+                            </td>
+                            <td>
+                                {% if operator.id != user.id %}
+                                <form method="post" action="/settings/users/{{ operator.id }}/toggle-active">
+                                    <button type="submit" class="link-button">
+                                        {{ 'Вимкнути' if operator.is_active else 'Увімкнути' }}
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+
+                <form method="post" action="/settings/users" class="users-add-form">
+                    <div class="settings-field">
+                        <label for="full_name">Ім'я</label>
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <input type="text" id="full_name" name="full_name" class="login-input" placeholder="Ім'я Прізвище">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label for="username">Логін</label>
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <input type="text" id="username" name="username" class="login-input" placeholder="логін">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label for="password">Пароль</label>
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <input type="password" id="password" name="password" class="login-input" placeholder="пароль">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label for="role">Роль</label>
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <select id="role" name="role" class="login-input">
+                                    <option value="оператор">оператор</option>
+                                    <option value="адмін">адмін</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label for="sheet_initial">Літера в таблиці</label>
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <input type="text" id="sheet_initial" name="sheet_initial" class="login-input"
+                                       maxlength="2" placeholder="Р, К, СТ…" style="text-transform:uppercase;">
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="login-submit settings-submit">Додати оператора</button>
+                </form>
+            </div>
+        </div>

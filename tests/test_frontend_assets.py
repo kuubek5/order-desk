@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+TEMPLATES_DIR = Path(__file__).parent.parent / "app" / "templates"
 STATIC_JS = Path(__file__).parent.parent / "app" / "static" / "js"
 BASE_HTML = Path(__file__).parent.parent / "app" / "templates" / "base.html"
 
@@ -123,4 +124,54 @@ def test_global_scripts_have_no_duplicate_top_level_declarations(tmp_path):
     assert result.returncode == 0, (
         "Склеєні глобальні скрипти не парсяться — найімовірніше одне ім'я "
         "оголошено у двох файлах:\n" + result.stderr.strip()
+    )
+
+
+# Розділи екрана «Налаштування», у порядку показу. Кожен — окремий партіал
+# (Крок 5). Порядок тут і є порядком на екрані, тож він частина поведінки.
+SETTINGS_SECTIONS = [
+    "_settings_state.html",
+    "_settings_notifications.html",
+    "_settings_google.html",
+    "_settings_operators.html",
+    "_settings_backup.html",
+    "_settings_imap.html",
+    "_settings_paths.html",
+    "_settings_mail_download.html",
+    "_settings_mail_filters.html",
+    "_settings_about.html",
+]
+
+
+def test_every_template_parses():
+    """Кожен шаблон має бути валідним Jinja.
+
+    Include резолвиться в РАНТАЙМІ, тому розбиття екрана на партіали не
+    перевіряється відкриттям головного шаблону: помилка в партіалі спливе
+    лише тоді, коли оператор відкриє сторінку. Тому парсимо всі окремо."""
+    from jinja2 import TemplateSyntaxError
+
+    from app.routers.deps import templates
+
+    broken = []
+    for path in sorted(TEMPLATES_DIR.glob('*.html')):
+        try:
+            templates.env.parse(path.read_text(encoding='utf-8'), filename=path.name)
+        except TemplateSyntaxError as exc:
+            broken.append(f'{path.name}:{exc.lineno}: {exc.message}')
+    assert not broken, 'Шаблони не парсяться:' + chr(10) + chr(10).join(broken)
+
+
+def test_settings_screen_includes_its_sections_in_order():
+    """Склад і порядок розділів налаштувань — зі знімка.
+
+    Загублений include не впаде: сторінка відкриється, просто без цілого
+    розділу (напр. без IMAP), і помітять це не одразу."""
+    html = (TEMPLATES_DIR / 'settings.html').read_text(encoding='utf-8')
+    found = re.findall(r'\{%\s*include\s+"(_settings_[^"]+)"', html)
+    assert found == SETTINGS_SECTIONS, (
+        'Набір розділів у settings.html змінився.' + chr(10)
+        + f'  зараз:  {found}' + chr(10)
+        + f'  знімок: {SETTINGS_SECTIONS}' + chr(10)
+        + 'Якщо зміна свідома — онови SETTINGS_SECTIONS у цьому файлі.'
     )

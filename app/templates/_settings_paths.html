@@ -1,0 +1,105 @@
+        {# ── Крок 5 · Шляхи папок (operator-editable) ────────────────── #}
+        {% set st = 'done' if step_done[5] else ('active' if ns.active == 5 else '') %}
+        <div class="wizard-step scon-sec {{ st }}" data-sec="paths">
+            <div class="num">{% if step_done[5] %}✓{% else %}5{% endif %}</div>
+            <div class="box">
+                <div class="wizard-step-head">
+                    <h2>Шляхи папок</h2>
+                    <span class="connection-state {% if paths_set %}connection-state-ready{% endif %}">
+                        {% if paths_set %}Вказано{% else %}Потребує уваги{% endif %}
+                    </span>
+                </div>
+                <p class="wizard-sub">Локальні папки цього ПК — для ранкової видачі й файлів техніків.</p>
+
+                <form method="post" action="/settings">
+                    <div class="settings-field">
+                        <label for="export_folder_path">{{ fields[4].label }}</label>
+                        {% if fields[4].help_text %}
+                        <p class="settings-help">{{ fields[4].help_text }}</p>
+                        {% endif %}
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <input
+                                    type="text"
+                                    id="export_folder_path"
+                                    name="export_folder_path"
+                                    class="login-input"
+                                    value="{{ values['export_folder_path'] or '' }}"
+                                    placeholder="C:\export"
+                                    hx-post="/settings/check-path"
+                                    hx-trigger="blur, keyup changed delay:600ms"
+                                    hx-target="#export_folder_path-result"
+                                    hx-swap="innerHTML"
+                                    hx-indicator="#export_folder_path-spinner"
+                                    hx-vals='{"kind": "export"}'
+                                    hx-params="export_folder_path,kind"
+                                >
+                                <span class="check-spinner htmx-indicator" id="export_folder_path-spinner" aria-hidden="true"></span>
+                            </div>
+                        </div>
+                        <div class="settings-check-row">
+                            <button
+                                type="button"
+                                class="settings-secondary-button settings-check-button"
+                                hx-post="/settings/check-path"
+                                hx-include="#export_folder_path"
+                                hx-target="#export_folder_path-result"
+                                hx-swap="innerHTML"
+                                hx-indicator="#export_folder_path-spinner"
+                                hx-vals='{"kind": "export"}'
+                                hx-params="export_folder_path,kind"
+                            >Перевірити шлях</button>
+                            <div id="export_folder_path-result" class="settings-check-result" aria-live="polite"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-field">
+                        <label for="technician_files_path">{{ fields[5].label }}</label>
+                        {% if fields[5].help_text %}
+                        <p class="settings-help">{{ fields[5].help_text }}</p>
+                        {% endif %}
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <input
+                                    type="text"
+                                    id="technician_files_path"
+                                    name="technician_files_path"
+                                    class="login-input"
+                                    value="{{ values['technician_files_path'] or '' }}"
+                                    placeholder="C:\technician_files"
+                                    hx-post="/settings/check-path"
+                                    hx-trigger="blur, keyup changed delay:600ms"
+                                    hx-target="#technician_files_path-result"
+                                    hx-swap="innerHTML"
+                                    hx-indicator="#technician_files_path-spinner"
+                                    hx-vals='{"kind": "technician"}'
+                                    hx-params="technician_files_path,kind"
+                                >
+                                <span class="check-spinner htmx-indicator" id="technician_files_path-spinner" aria-hidden="true"></span>
+                            </div>
+                        </div>
+                        <div class="settings-check-row">
+                            <button
+                                type="button"
+                                class="settings-secondary-button settings-check-button"
+                                hx-post="/settings/check-path"
+                                hx-include="#technician_files_path"
+                                hx-target="#technician_files_path-result"
+                                hx-swap="innerHTML"
+                                hx-indicator="#technician_files_path-spinner"
+                                hx-vals='{"kind": "technician"}'
+                                hx-params="technician_files_path,kind"
+                            >Перевірити шлях</button>
+                            <div id="technician_files_path-result" class="settings-check-result" aria-live="polite"></div>
+                        </div>
+                    </div>
+
+                    <div class="settings-actions">
+                        <button type="submit" name="action" value="save" class="login-submit settings-submit"
+                                hx-post="/settings" hx-include="closest form"
+                                hx-indicator="#paths-save-spinner" hx-disabled-elt="this">Зберегти</button>
+                        <span class="check-spinner htmx-indicator" id="paths-save-spinner" aria-hidden="true"></span>
+                    </div>
+                </form>
+            </div>
+        </div>

@@ -1,0 +1,21 @@
+        {# ── Фільтри пошти · правила та категорії ─────────────────────────
+           Same shared panel as the triage «Відфільтровані» tab; actions here
+           land back on this section via return_to=settings. Admin-only. #}
+        {% if user.role == 'адмін' %}
+        <section id="mail-filters" class="wizard-step wizard-step-about scon-sec" data-sec="mail-filters">
+            <div class="num" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>
+            </div>
+            <div class="box">
+                <div class="wizard-step-head">
+                    <h2>Фільтри пошти</h2>
+                    <span class="connection-state {% if filter_rules %}connection-state-ready{% endif %}">
+                        {% if filter_rules %}{{ filter_rules|length }} правил{% else %}Немає правил{% endif %}
+                    </span>
+                </div>
+                <p class="wizard-sub">Листи 3D-друку, бухгалтерії та спам автоматично йдуть у вкладку «Відфільтровані» на екрані «Нові з пошти» — нічого не видаляється.</p>
+                {% set return_to = 'settings' %}
+                {% include "_mail_filter_panel.html" %}
+            </div>
+        </section>
+        {% endif %}
