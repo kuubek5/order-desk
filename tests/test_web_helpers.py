@@ -19,9 +19,9 @@ from app.web import (
     _sort_orders_by_column,
     _sync_summary_message,
     _write_sheet_fields,
-    accept_email,
     get_current_user,
 )
+from app.routers.mail import accept_email
 from app.routers import auth as auth_router_mod
 
 
@@ -343,8 +343,8 @@ def test_accept_email_stays_in_triage_after_full_accept():
     # settings-store lookup returns None) and make a live network call —
     # this test only cares about the queue-redirect behavior, so the
     # sheet-note write-back is stubbed out at the boundary instead.
-    with patch("app.web.open_spreadsheet"), patch(
-        "app.web.get_worksheet_by_name", return_value=None
+    with patch("app.routers.mail.open_spreadsheet"), patch(
+        "app.routers.mail.get_worksheet_by_name", return_value=None
     ):
         response = asyncio.run(
             accept_email(
@@ -416,9 +416,9 @@ def test_accept_email_links_order_to_appended_sheet_row():
     today = date.today().strftime("%d.%m.%y")
     fake_ws = SimpleNamespace(title=today)
 
-    with patch("app.web.open_spreadsheet"), \
-         patch("app.web.latest_worksheet_on_or_before", return_value=fake_ws), \
-         patch("app.web.append_mail_placeholder_row", return_value=70):
+    with patch("app.routers.mail.open_spreadsheet"), \
+         patch("app.routers.mail.latest_worksheet_on_or_before", return_value=fake_ws), \
+         patch("app.routers.mail.append_mail_placeholder_row", return_value=70):
         asyncio.run(accept_email(
             request=request, email_id=email.id,
             client_name="Клієнт", material_color="моно A2", kind="анатомія", quantity="1", attachment_ids=[], db=db,

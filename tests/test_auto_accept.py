@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import mail as mail_router_mod
 from app.db import Base
 from app.models import ClientSenderMemory, EmailMessage, User
 from app.sender_memory import is_auto_sender
@@ -47,15 +48,15 @@ def test_add_sender_by_email_and_toggle():
         user = User(username="op", password_hash="x")
         db.add(user)
         db.commit()
-        web.add_sender_auto(request=_req(user.id), email_address="New@Client.UA", db=db)
+        mail_router_mod.add_sender_auto(request=_req(user.id), email_address="New@Client.UA", db=db)
         row = db.scalar(select(ClientSenderMemory))
         assert row.sender_key == "new@client.ua" and row.auto_accept is True
         assert row.orders_count == 0
-        web.toggle_sender_auto(request=_req(user.id), memory_id=row.id, db=db)
+        mail_router_mod.toggle_sender_auto(request=_req(user.id), memory_id=row.id, db=db)
         db.refresh(row)
         assert row.auto_accept is False
         # adding again just switches on (idempotent, no duplicate)
-        web.add_sender_auto(request=_req(user.id), email_address="new@client.ua", db=db)
+        mail_router_mod.add_sender_auto(request=_req(user.id), email_address="new@client.ua", db=db)
         db.refresh(row)
         assert row.auto_accept is True
         assert db.scalar(select(func.count()).select_from(ClientSenderMemory)) == 1

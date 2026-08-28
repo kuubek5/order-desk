@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import mail as mail_router_mod
 from app.db import Base
 from app.mail_filters import apply_filters_to_email, apply_rule_retroactively
 from app.models import EmailMessage, MailFilterRule, User
@@ -136,7 +137,7 @@ def test_get_mail_pending_excludes_filtered_and_counts_split(monkeypatch):
         web.templates, "TemplateResponse",
         lambda request, template, context: captured.update(ctx=context) or context,
     )
-    monkeypatch.setattr(web, "attach_email_preview_tokens", lambda *a, **k: None)
+    monkeypatch.setattr(mail_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add_all([
@@ -145,13 +146,13 @@ def test_get_mail_pending_excludes_filtered_and_counts_split(monkeypatch):
         ])
         db.commit()
 
-        web.get_mail(request=_request(user.id), db=db)
+        mail_router_mod.get_mail(request=_request(user.id), db=db)
         ctx = captured["ctx"]
         assert [e.uid for e in ctx["emails"]] == ["p"]
         assert ctx["pending_count"] == 1
         assert ctx["filtered_count"] == 1
 
-        web.get_mail(request=_request(user.id), db=db, view="filtered")
+        mail_router_mod.get_mail(request=_request(user.id), db=db, view="filtered")
         assert [e.uid for e in captured["ctx"]["emails"]] == ["f"]
 
 
@@ -166,7 +167,7 @@ def test_unfilter_returns_letter_to_pending(monkeypatch):
         db.add(email)
         db.commit()
 
-        response = web.unfilter_email(request=_request(user.id, hx=True), email_id=email.id, db=db)
+        response = mail_router_mod.unfilter_email(request=_request(user.id, hx=True), email_id=email.id, db=db)
         assert response.status_code == 200
         db.refresh(email)
         assert email.filter_category is None
@@ -183,7 +184,7 @@ def test_manual_filter_moves_single_letter_without_rule(monkeypatch):
         db.add(email)
         db.commit()
 
-        response = web.filter_email_manually(
+        response = mail_router_mod.filter_email_manually(
             request=_request(user.id), email_id=email.id, category="спам", db=db
         )
         assert response.status_code == 303
@@ -196,7 +197,7 @@ def test_manual_filter_moves_single_letter_without_rule(monkeypatch):
         email2 = EmailMessage(uid="e2", status="нове")
         db.add(email2)
         db.commit()
-        web.filter_email_manually(
+        mail_router_mod.filter_email_manually(
             request=_request(user.id), email_id=email2.id, category="  ", db=db
         )
         db.refresh(email2)
@@ -208,7 +209,7 @@ def test_create_rule_requires_admin(monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         operator = _user(db, role="оператор")
         with pytest.raises(web.HTTPException) as exc:
-            web.create_mail_filter(
+            mail_router_mod.create_mail_filter(
                 request=_request(operator.id), kind="keyword",
                 pattern="спам", category="спам", db=db,
             )
@@ -223,7 +224,7 @@ def test_create_rule_applies_retroactively(monkeypatch):
         db.add(email)
         db.commit()
 
-        response = web.create_mail_filter(
+        response = mail_router_mod.create_mail_filter(
             request=_request(admin.id), kind="keyword",
             pattern="друк", category="3D-друк", db=db,
         )
@@ -243,7 +244,7 @@ def test_delete_rule_keeps_letters_filtered(monkeypatch):
         db.add(email)
         db.commit()
 
-        web.delete_mail_filter(request=_request(admin.id), rule_id=rule.id, db=db)
+        mail_router_mod.delete_mail_filter(request=_request(admin.id), rule_id=rule.id, db=db)
         db.refresh(email)
         assert email.filter_category == "3D-друк"  # badge stays (history)
         assert email.filter_rule_id is None
@@ -260,7 +261,7 @@ def test_edit_rule_updates_in_place_and_reapplies(monkeypatch):
         db.add(email)
         db.commit()
 
-        response = web.edit_mail_filter(
+        response = mail_router_mod.edit_mail_filter(
             request=_request(admin.id), rule_id=rule.id,
             kind="keyword", pattern="рахунок", category="бухгалтерія", db=db,
         )
@@ -278,12 +279,12 @@ def test_category_crud_rename_cascades_delete_guarded(monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         admin = _user(db)
-        web.create_filter_category(request=_request(admin.id), name="друкарня", db=db)
+        mail_router_mod.create_filter_category(request=_request(admin.id), name="друкарня", db=db)
         cat = db.scalar(select(MailFilterCategory).where(MailFilterCategory.name == "друкарня"))
         assert cat is not None
 
         # duplicate (case-insensitive) is silently ignored
-        web.create_filter_category(request=_request(admin.id), name="ДРУКАРНЯ", db=db)
+        mail_router_mod.create_filter_category(request=_request(admin.id), name="ДРУКАРНЯ", db=db)
         assert db.scalar(select(func.count()).select_from(MailFilterCategory)) == 1
 
         rule = MailFilterRule(kind="keyword", pattern="друк", category="друкарня")
@@ -292,7 +293,7 @@ def test_category_crud_rename_cascades_delete_guarded(monkeypatch):
         db.commit()
 
         # rename cascades into rules and stamped letters
-        web.rename_filter_category(
+        mail_router_mod.rename_filter_category(
             request=_request(admin.id), category_id=cat.id, name="3D-центр", db=db
         )
         db.refresh(rule)
@@ -301,20 +302,20 @@ def test_category_crud_rename_cascades_delete_guarded(monkeypatch):
         assert email.filter_category == "3D-центр"
 
         # delete refused while a rule uses it
-        web.delete_filter_category(request=_request(admin.id), category_id=cat.id, db=db)
+        mail_router_mod.delete_filter_category(request=_request(admin.id), category_id=cat.id, db=db)
         assert db.get(MailFilterCategory, cat.id) is not None
 
         # after the rule is gone, delete succeeds; the letter never blocks
         db.delete(rule)
         db.commit()
-        web.delete_filter_category(request=_request(admin.id), category_id=cat.id, db=db)
+        mail_router_mod.delete_filter_category(request=_request(admin.id), category_id=cat.id, db=db)
         assert db.get(MailFilterCategory, cat.id) is None
 
 
 def test_categories_helper_falls_back_to_defaults():
     engine = _database()
     with Session(engine) as db:
-        assert web._mail_filter_categories(db) == web._DEFAULT_FILTER_CATEGORIES
+        assert mail_router_mod._mail_filter_categories(db) == mail_router_mod._DEFAULT_FILTER_CATEGORIES
 
 
 def test_suggest_banner_after_two_rejections_without_rule(monkeypatch):
@@ -324,7 +325,7 @@ def test_suggest_banner_after_two_rejections_without_rule(monkeypatch):
         web.templates, "TemplateResponse",
         lambda request, template, context: captured.update(ctx=context) or context,
     )
-    monkeypatch.setattr(web, "attach_email_preview_tokens", lambda *a, **k: None)
+    monkeypatch.setattr(mail_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add_all([
@@ -334,12 +335,12 @@ def test_suggest_banner_after_two_rejections_without_rule(monkeypatch):
         ])
         db.commit()
 
-        web.get_mail(request=_request(user.id), db=db)
+        mail_router_mod.get_mail(request=_request(user.id), db=db)
         suggest = captured["ctx"]["filter_suggest"]
         assert suggest == {"address": "spam@x.com", "count": 2}
 
         # A sender rule (even DISABLED = "не питати") silences the banner.
         db.add(MailFilterRule(kind="sender", pattern="spam@x.com", category="відхилені", enabled=False))
         db.commit()
-        web.get_mail(request=_request(user.id), db=db)
+        mail_router_mod.get_mail(request=_request(user.id), db=db)
         assert captured["ctx"]["filter_suggest"] is None

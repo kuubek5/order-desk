@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import mail as mail_router_mod
 from app.routers import orders as orders_router_mod
 from app.routers import queue as queue_router_mod
 from app import sync_control
@@ -48,7 +49,7 @@ def test_queue_eagerly_exposes_pending_mail_newest_first_independent_of_filters(
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (web, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
     monkeypatch.setattr(
         web.templates, "TemplateResponse", lambda request, template, context: context
     )
@@ -85,7 +86,7 @@ def _call_get_queue(db, user, monkeypatch, tmp_path, **kwargs):
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (web, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
     monkeypatch.setattr(
         web.templates, "TemplateResponse", lambda request, template, context: context
     )
@@ -106,7 +107,7 @@ def test_partial_rows_renders_fragment_not_full_page(tmp_path, monkeypatch):
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (web, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
     captured = {}
     monkeypatch.setattr(
         web.templates,
@@ -755,7 +756,7 @@ def test_invalid_sort_field_is_ignored(tmp_path, monkeypatch):
 def test_open_mail_folder_requires_authentication(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine) as db, pytest.raises(HTTPException) as exc:
-        web.open_mail_folder(request=_request(None), email_id=1, db=db)
+        mail_router_mod.open_mail_folder(request=_request(None), email_id=1, db=db)
     assert exc.value.status_code == 401
 
 
@@ -764,7 +765,7 @@ def test_open_mail_folder_rejects_non_loopback(tmp_path, monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         with pytest.raises(HTTPException) as exc:
-            web.open_mail_folder(
+            mail_router_mod.open_mail_folder(
                 request=_request(user.id, "192.168.1.20"), email_id=1, db=db
             )
     assert exc.value.status_code == 403
@@ -781,9 +782,9 @@ def test_open_mail_folder_opens_safe_db_path_and_returns_no_content(tmp_path, mo
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (web, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
     opened: list = []
-    monkeypatch.setattr(web, "_open_folder_in_explorer", opened.append)
+    monkeypatch.setattr(mail_router_mod, "open_folder_in_explorer", opened.append)
 
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
@@ -799,7 +800,7 @@ def test_open_mail_folder_opens_safe_db_path_and_returns_no_content(tmp_path, mo
         )
         db.commit()
 
-        response = web.open_mail_folder(
+        response = mail_router_mod.open_mail_folder(
             request=_request(user.id), email_id=email.id, db=db
         )
 
@@ -819,7 +820,7 @@ def test_open_mail_folder_rejects_db_path_outside_roots(tmp_path, monkeypatch):
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (web, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
 
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
@@ -830,7 +831,7 @@ def test_open_mail_folder_rejects_db_path_outside_roots(tmp_path, monkeypatch):
         db.commit()
 
         with pytest.raises(HTTPException) as exc:
-            web.open_mail_folder(request=_request(user.id), email_id=email.id, db=db)
+            mail_router_mod.open_mail_folder(request=_request(user.id), email_id=email.id, db=db)
 
     assert exc.value.status_code == 404
 
@@ -915,14 +916,14 @@ def test_reject_email_marks_rejected_and_excludes_from_triage_list(tmp_path, mon
         db.commit()
 
         response = asyncio.run(
-            web.reject_email(request=_request(user.id), email_id=email.id, db=db)
+            mail_router_mod.reject_email(request=_request(user.id), email_id=email.id, db=db)
         )
         assert response.status_code == 303
 
         db.refresh(email)
         assert email.status == "відхилено"
 
-        mail_context = web.get_mail(request=_request(user.id), db=db)
+        mail_context = mail_router_mod.get_mail(request=_request(user.id), db=db)
         assert email.id not in [e.id for e in mail_context["emails"]]
 
 
@@ -941,7 +942,7 @@ def test_reject_from_triage_list_returns_empty_200_not_redirect(monkeypatch):
         request = _request(user.id)
         request.headers = {"HX-Request": "true"}
         response = asyncio.run(
-            web.reject_email(request=request, email_id=email.id, db=db)
+            mail_router_mod.reject_email(request=request, email_id=email.id, db=db)
         )
         assert response.status_code == 200
         assert response.body == b""  # empty body → htmx deletes just the target
@@ -959,9 +960,8 @@ def test_open_mail_folder_reports_non_windows_backend(tmp_path, monkeypatch):
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (web, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
-    monkeypatch.setattr(
-        web, "_open_folder_in_explorer", lambda _folder: (_ for _ in ()).throw(NotImplementedError())
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    monkeypatch.setattr(mail_router_mod, "open_folder_in_explorer", lambda _folder: (_ for _ in ()).throw(NotImplementedError())
     )
 
     with Session(engine, expire_on_commit=False) as db:
@@ -973,7 +973,7 @@ def test_open_mail_folder_reports_non_windows_backend(tmp_path, monkeypatch):
         db.commit()
 
         with pytest.raises(HTTPException) as exc:
-            web.open_mail_folder(request=_request(user.id), email_id=email.id, db=db)
+            mail_router_mod.open_mail_folder(request=_request(user.id), email_id=email.id, db=db)
 
     assert exc.value.status_code == 501
 
@@ -988,7 +988,7 @@ def test_restore_rejected_email_returns_to_triage():
         db.add(rejected)
         db.commit()
 
-        asyncio.run(web.restore_email(request=_request(user.id), email_id=rejected.id, db=db))
+        asyncio.run(mail_router_mod.restore_email(request=_request(user.id), email_id=rejected.id, db=db))
         db.refresh(rejected)
         assert rejected.status == "нове"
 
@@ -1000,15 +1000,14 @@ def test_restore_accepted_email_unwinds_order_and_files(monkeypatch):
     engine = _database()
     # Stub the filesystem move-back and the sheet blanking so no real IO happens.
     moved = {}
-    monkeypatch.setattr(
-        web, "restore_attachments_to_spool",
+    monkeypatch.setattr(mail_router_mod, "restore_attachments_to_spool",
         lambda root, uid, paths: moved.setdefault("call", (uid, paths)) or [__import__("pathlib").Path(f"/spool/{uid}/f.stl")],
     )
-    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(mail_router_mod, "open_spreadsheet", lambda db=None: object())
     fake_ws = SimpleNamespace(id=1, title="15.08.26")
-    monkeypatch.setattr(web, "get_worksheet_by_name", lambda ss, name: fake_ws)
+    monkeypatch.setattr(mail_router_mod, "get_worksheet_by_name", lambda ss, name: fake_ws)
     cleared = {}
-    monkeypatch.setattr(web, "clear_placeholder_row", lambda ws, row: cleared.setdefault("row", row))
+    monkeypatch.setattr(mail_router_mod, "clear_placeholder_row", lambda ws, row: cleared.setdefault("row", row))
 
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
@@ -1022,7 +1021,7 @@ def test_restore_accepted_email_unwinds_order_and_files(monkeypatch):
         db.commit()
         order_id = order.id
 
-        asyncio.run(web.restore_email(request=_request(user.id), email_id=email.id, db=db))
+        asyncio.run(mail_router_mod.restore_email(request=_request(user.id), email_id=email.id, db=db))
 
         db.refresh(email)
         assert email.status == "нове"
@@ -1040,7 +1039,7 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "mail"))
     saved = tmp_path / "model.stl"
     saved.write_bytes(b"STL")
-    monkeypatch.setattr(web, "download_link", lambda link, dest, existing_names=frozenset(): saved)
+    monkeypatch.setattr(mail_router_mod, "download_link", lambda link, dest, existing_names=frozenset(): saved)
     captured = {}
     def _fake_tr(request, template, context):
         captured.update(template=template, ctx=context)
@@ -1055,7 +1054,7 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
         db.add(email)
         db.commit()
 
-        response = web.fetch_email_link(request=_request(user.id), email_id=email.id, ref=fid, db=db)
+        response = mail_router_mod.fetch_email_link(request=_request(user.id), email_id=email.id, ref=fid, db=db)
 
         assert captured["template"] == "_mail_link_row.html"
         assert captured["ctx"]["link_status"] == "done"
@@ -1069,7 +1068,7 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
         # the link ref is recorded so the "ще N за посиланням" count drops to 0
         import json as _j
         assert fid in _j.loads(email.handled_link_refs)
-        ctx = web._mail_panel_context(db, email, user)
+        ctx = mail_router_mod._mail_panel_context(db, email, user)
         assert ctx["undownloaded_links"] == []
 
 
@@ -1083,7 +1082,7 @@ def test_fetch_email_link_reports_error_row(monkeypatch, tmp_path):
     def boom(link, dest, existing_names=frozenset()):
         raise web.LinkDownloadError("файл не розшарено")
 
-    monkeypatch.setattr(web, "download_link", boom)
+    monkeypatch.setattr(mail_router_mod, "download_link", boom)
     captured = {}
     monkeypatch.setattr(
         web.templates, "TemplateResponse",
@@ -1098,7 +1097,7 @@ def test_fetch_email_link_reports_error_row(monkeypatch, tmp_path):
         db.add(email)
         db.commit()
 
-        web.fetch_email_link(request=_request(user.id), email_id=email.id, ref=fid, db=db)
+        mail_router_mod.fetch_email_link(request=_request(user.id), email_id=email.id, ref=fid, db=db)
         assert captured["ctx"]["link_status"] == "error"
         assert "розшарено" in captured["ctx"]["link_message"]
         assert db.query(Attachment).count() == 0
@@ -1116,7 +1115,7 @@ def test_fetch_email_link_unknown_ref_is_error_row(monkeypatch, tmp_path):
         email = EmailMessage(uid="m3", status="нове", body_text="no links here")
         db.add(email)
         db.commit()
-        web.fetch_email_link(request=_request(user.id), email_id=email.id, ref="nope", db=db)
+        mail_router_mod.fetch_email_link(request=_request(user.id), email_id=email.id, ref="nope", db=db)
         assert captured["ctx"]["link_status"] == "error"
 
 
@@ -1140,7 +1139,7 @@ def test_pending_list_reports_unread_count_of_unopened_letters(monkeypatch):
         ])
         db.commit()
 
-        web.get_mail(request=_request(user.id), db=db)
+        mail_router_mod.get_mail(request=_request(user.id), db=db)
         assert captured["ctx"]["unread_count"] == 2
         assert captured["ctx"]["pending_count"] == 3
 
@@ -1160,12 +1159,12 @@ def test_mail_partial_list_renders_only_the_polled_fragment(monkeypatch):
         db.add(EmailMessage(uid="p1", status="нове"))
         db.commit()
 
-        web.get_mail(request=_request(user.id), db=db, partial="list")
+        mail_router_mod.get_mail(request=_request(user.id), db=db, partial="list")
         assert captured["template"] == "_mail_triage_list.html"
         assert [e.uid for e in captured["ctx"]["emails"]] == ["p1"]
         assert captured["ctx"]["view"] == "pending"
 
-        web.get_mail(request=_request(user.id), db=db)
+        mail_router_mod.get_mail(request=_request(user.id), db=db)
         assert captured["template"] == "mail_triage.html"
 
 
@@ -1185,11 +1184,11 @@ def test_opening_mail_detail_stamps_seen_at_once(monkeypatch):
         db.commit()
         assert email.seen_at is None
 
-        web.get_mail_detail(request=_request(user.id), email_id=email.id, db=db)
+        mail_router_mod.get_mail_detail(request=_request(user.id), email_id=email.id, db=db)
         first = email.seen_at
         assert first is not None
 
-        web.get_mail_detail(request=_request(user.id), email_id=email.id, db=db)
+        mail_router_mod.get_mail_detail(request=_request(user.id), email_id=email.id, db=db)
         assert email.seen_at == first
 
 
@@ -1203,8 +1202,8 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
     engine = _database()
     export_root = tmp_path / "export"
     export_root.mkdir()
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
-    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export_root))
+    monkeypatch.setattr(mail_router_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     spool = tmp_path / "spool" / "u1"
     spool.mkdir(parents=True)
     stl = spool / "crown.stl"
@@ -1225,7 +1224,7 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
         db.commit()
 
         # 1. accept with a typed client name → memory row created, folder recorded
-        asyncio.run(web.accept_email(
+        asyncio.run(mail_router_mod.accept_email(
             request=_request(user.id), email_id=first.id,
             client_name="Люмі-Дент", material_color="моно а3", kind="", quantity="",
             folder_pick="", folder_new="", material_folder="", attachment_ids=[], db=db,
@@ -1242,20 +1241,20 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
         db.add(second)
         db.commit()
 
-        web.get_mail_detail(request=_request(user.id), email_id=second.id, panel=1, db=db)
+        mail_router_mod.get_mail_detail(request=_request(user.id), email_id=second.id, panel=1, db=db)
         ctx = captured["ctx"]
         assert ctx["sender_hint"].client_name == "Люмі-Дент"
         assert ctx["client_name"] == "Люмі-Дент"  # step-1 field prefilled
 
         # step 2 with nothing typed → folder preselected from memory
-        web.mail_wizard(request=_request(user.id), email_id=second.id, step=2,
+        mail_router_mod.mail_wizard(request=_request(user.id), email_id=second.id, step=2,
                         client_name="Люмі-Дент", material_color="emo a2", kind="", quantity="",
                         folder_pick="", folder_new="", material_folder="", attachment_ids=[], db=db)
         assert captured["ctx"]["folder_pick"] == "Люмі-Дент"
         assert captured["ctx"]["preview"]["client_folder"] == "Люмі-Дент"
 
         # an explicit operator pick is never overridden by memory
-        web.mail_wizard(request=_request(user.id), email_id=second.id, step=2,
+        mail_router_mod.mail_wizard(request=_request(user.id), email_id=second.id, step=2,
                         client_name="Люмі-Дент", material_color="", kind="", quantity="",
                         folder_pick="", folder_new="Інша папка", material_folder="", attachment_ids=[], db=db)
         assert captured["ctx"]["folder_pick"] == ""
@@ -1265,7 +1264,7 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
         third = EmailMessage(uid="u3", status="нове", from_address="new@client.ua", subject="x")
         db.add(third)
         db.commit()
-        web.get_mail_detail(request=_request(user.id), email_id=third.id, panel=1, db=db)
+        mail_router_mod.get_mail_detail(request=_request(user.id), email_id=third.id, panel=1, db=db)
         assert captured["ctx"]["sender_hint"] is None
         assert captured["ctx"]["client_name"] == ""
         assert lookup_sender(db, third) is None
@@ -1280,10 +1279,10 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
     export_root.mkdir()
     spool = tmp_path / "spool" / "u1"
     spool.mkdir(parents=True)
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export_root))
     for _mod in (web, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "spool"))
-    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    monkeypatch.setattr(mail_router_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     monkeypatch.setattr(web.templates, "TemplateResponse", lambda request, template, context: context)
 
     with Session(engine, expire_on_commit=False) as db:
@@ -1303,7 +1302,7 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
         a1_id, a2_id = a1.id, a2.id
 
         # accept only file 1 as "моно а3"
-        asyncio.run(web.accept_email(
+        asyncio.run(mail_router_mod.accept_email(
             request=_request(user.id), email_id=email.id, client_name="Клієнт",
             material_color="моно а3", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[a1_id], db=db,
@@ -1317,7 +1316,7 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
         first_order = a1.order_id
 
         # accept the rest as "цирконій"
-        asyncio.run(web.accept_email(
+        asyncio.run(mail_router_mod.accept_email(
             request=_request(user.id), email_id=email.id, client_name="Клієнт",
             material_color="цирконій", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[a2_id], db=db,
@@ -1331,7 +1330,7 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
         assert len(orders) == 2
 
         # restore undoes BOTH orders and returns all files to spool
-        asyncio.run(web.restore_email(request=_request(user.id), email_id=email.id, db=db))
+        asyncio.run(mail_router_mod.restore_email(request=_request(user.id), email_id=email.id, db=db))
         db.refresh(email)
         db.refresh(a1)
         db.refresh(a2)
@@ -1348,8 +1347,8 @@ def test_accept_empty_selection_takes_all_unclaimed(monkeypatch, tmp_path):
     export_root.mkdir()
     spool = tmp_path / "spool" / "u2"
     spool.mkdir(parents=True)
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
-    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export_root))
+    monkeypatch.setattr(mail_router_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     monkeypatch.setattr(web.templates, "TemplateResponse", lambda request, template, context: context)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
@@ -1360,7 +1359,7 @@ def test_accept_empty_selection_takes_all_unclaimed(monkeypatch, tmp_path):
         f.write_bytes(b"A")
         db.add(Attachment(email_message_id=email.id, filename="one.stl", saved_path=str(f)))
         db.commit()
-        asyncio.run(web.accept_email(
+        asyncio.run(mail_router_mod.accept_email(
             request=_request(user.id), email_id=email.id, client_name="C",
             material_color="моно", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[], db=db,
@@ -1411,20 +1410,20 @@ def test_get_mail_open_prerenders_panel_and_marks_row(monkeypatch):
         lambda request, template, context: captured.update(ctx=context) or context,
     )
     monkeypatch.setattr(orders_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="op", status="нове", from_address="c@x.ua", subject="s")
         db.add(email)
         db.commit()
 
-        web.get_mail(request=_request(user.id), db=db, open=email.id)
+        mail_router_mod.get_mail(request=_request(user.id), db=db, open=email.id)
         assert captured["ctx"]["open_id"] == email.id
         assert captured["ctx"]["open_panel_html"]  # panel rendered to HTML
         assert "mail-seg" in captured["ctx"]["open_panel_html"]
 
         # unknown id → no panel, plain list
-        web.get_mail(request=_request(user.id), db=db, open=99999)
+        mail_router_mod.get_mail(request=_request(user.id), db=db, open=99999)
         assert captured["ctx"]["open_id"] is None
         assert captured["ctx"]["open_panel_html"] is None
 
@@ -1437,8 +1436,8 @@ def test_partial_accept_redirects_to_two_pane_open(monkeypatch, tmp_path):
     export_root.mkdir()
     spool = tmp_path / "spool" / "p"
     spool.mkdir(parents=True)
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
-    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export_root))
+    monkeypatch.setattr(mail_router_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="p", status="нове", from_address="c@x.ua", attachments_status="ready")
@@ -1454,7 +1453,7 @@ def test_partial_accept_redirects_to_two_pane_open(monkeypatch, tmp_path):
         db.commit()
         a1_id = a1.id
 
-        resp = asyncio.run(web.accept_email(
+        resp = asyncio.run(mail_router_mod.accept_email(
             request=_request(user.id), email_id=email.id, client_name="C",
             material_color="моно", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[a1_id], db=db,
@@ -1470,8 +1469,8 @@ def test_accept_sets_truthful_outcome_toast(monkeypatch, tmp_path):
     export_root.mkdir()
     spool = tmp_path / "spool" / "t"
     spool.mkdir(parents=True)
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: str(export_root))
-    monkeypatch.setattr(web, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export_root))
+    monkeypatch.setattr(mail_router_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="t", status="нове", from_address="c@x.ua", attachments_status="ready")
@@ -1489,7 +1488,7 @@ def test_accept_sets_truthful_outcome_toast(monkeypatch, tmp_path):
 
         req = _request(user.id)
         # partial: one file, one remains
-        asyncio.run(web.accept_email(
+        asyncio.run(mail_router_mod.accept_email(
             request=req, email_id=email.id, client_name="C", material_color="моно",
             kind="", quantity="", folder_pick="", folder_new="", material_folder="",
             attachment_ids=[a1_id], db=db,
@@ -1499,7 +1498,7 @@ def test_accept_sets_truthful_outcome_toast(monkeypatch, tmp_path):
         assert "збережено 1" in flash["message"] and "Лишилось 1" in flash["message"]
 
         # finish: last file, full accept
-        asyncio.run(web.accept_email(
+        asyncio.run(mail_router_mod.accept_email(
             request=req, email_id=email.id, client_name="C", material_color="цирконій",
             kind="", quantity="", folder_pick="", folder_new="", material_folder="",
             attachment_ids=[a2_id], db=db,
@@ -1517,7 +1516,7 @@ def test_restore_from_archive_sets_toast(monkeypatch):
         db.add(rejected)
         db.commit()
         req = _request(user.id)
-        resp = asyncio.run(web.restore_email(request=req, email_id=rejected.id, db=db))
+        resp = asyncio.run(mail_router_mod.restore_email(request=req, email_id=rejected.id, db=db))
         assert resp.status_code == 303 and resp.headers["location"] == "/mail"
         db.refresh(rejected)
         assert rejected.status == "нове"
@@ -1535,7 +1534,7 @@ def test_pending_list_order_is_frozen_by_watermark(tmp_path, monkeypatch):
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (web, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
     captured = {}
     monkeypatch.setattr(
         web.templates,
@@ -1550,7 +1549,7 @@ def test_pending_list_order_is_frozen_by_watermark(tmp_path, monkeypatch):
         db.commit()
 
         # Full render mints the watermark over the two existing letters.
-        web.get_mail(request=_request(user.id), db=db)
+        mail_router_mod.get_mail(request=_request(user.id), db=db)
         watermark = captured["ctx"]["list_watermark"]
         assert watermark > 0
         assert len(captured["ctx"]["emails"]) == 2
@@ -1561,14 +1560,14 @@ def test_pending_list_order_is_frozen_by_watermark(tmp_path, monkeypatch):
         db.commit()
 
         # The poll echoes the watermark: same two rows, newcomer only counted.
-        web.get_mail(request=_request(user.id), db=db, partial="list", since=watermark)
+        mail_router_mod.get_mail(request=_request(user.id), db=db, partial="list", since=watermark)
         assert captured["template"] == "_mail_triage_list.html"
         assert len(captured["ctx"]["emails"]) == 2
         assert captured["ctx"]["held_back_count"] == 1
         assert captured["ctx"]["list_watermark"] == watermark
 
         # Clicking «+N нових» is a full navigation → fresh watermark, all three.
-        web.get_mail(request=_request(user.id), db=db)
+        mail_router_mod.get_mail(request=_request(user.id), db=db)
         assert len(captured["ctx"]["emails"]) == 3
         assert captured["ctx"]["held_back_count"] == 0
         assert captured["ctx"]["list_watermark"] > watermark
@@ -1584,7 +1583,7 @@ def test_watermark_does_not_freeze_archive_or_filtered_views(tmp_path, monkeypat
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (web, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(web, "get_export_folder_path", lambda _db: "")
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
     captured = {}
     monkeypatch.setattr(
         web.templates,
@@ -1599,7 +1598,7 @@ def test_watermark_does_not_freeze_archive_or_filtered_views(tmp_path, monkeypat
         db.add(EmailMessage(uid="new", status="прийнято", received_at=datetime.now()))
         db.commit()
 
-        web.get_mail(request=_request(user.id), db=db, view="archive", since=1)
+        mail_router_mod.get_mail(request=_request(user.id), db=db, view="archive", since=1)
         assert len(captured["ctx"]["emails"]) == 2
         assert captured["ctx"]["held_back_count"] == 0
 

@@ -1,3 +1,4 @@
+from app.routers import mail as mail_router_mod
 from datetime import date
 from functools import partial
 from unittest.mock import patch
@@ -295,7 +296,7 @@ def test_save_attachments_material_override_targets_named_subfolder(tmp_path):
 
 
 def test_resolve_wizard_overrides_new_folder_wins():
-    from app.web import _resolve_wizard_overrides
+    from app.routers.mail import _resolve_wizard_overrides
     # typed new folder beats the dropdown pick
     assert _resolve_wizard_overrides("Стара", "Нова", "мат") == ("Нова", "мат")
     # empty new -> pick is used

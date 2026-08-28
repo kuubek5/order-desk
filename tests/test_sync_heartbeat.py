@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 import pytest
 
 import app.web as web
+from app import mail_sync_service
 from app.mail_sync_service import MailSyncBusyError, MailSyncError
 from app.sheet_sync_service import SheetSyncBusyError, SheetSyncError
 from app.services.formatting import relative_time_uk as _relative_time_uk
@@ -225,7 +226,7 @@ def test_mail_tick_skips_and_leaves_heartbeat_untouched_when_unconfigured(
 
 def test_mail_tick_records_success(isolated_heartbeats, monkeypatch):
     monkeypatch.setattr(web, "_imap_configured", lambda db: True)
-    monkeypatch.setattr(web, "sync_mail_background", lambda db, path: 3)
+    monkeypatch.setattr(mail_sync_service, "sync_mail_background", lambda db, path: 3)
 
     web._mail_sync_tick(db=None)
 
@@ -240,7 +241,7 @@ def test_mail_tick_records_skip_on_busy_without_marking_error(isolated_heartbeat
     def raise_busy(db, path):
         raise MailSyncBusyError("Синхронізація пошти вже виконується.")
 
-    monkeypatch.setattr(web, "sync_mail_background", raise_busy)
+    monkeypatch.setattr(mail_sync_service, "sync_mail_background", raise_busy)
 
     web._mail_sync_tick(db=None)
 
@@ -256,7 +257,7 @@ def test_mail_tick_records_safe_error_message(isolated_heartbeats, monkeypatch):
     def raise_sync_error(db, path):
         raise MailSyncError("Не вдалося синхронізувати пошту. Перевірте IMAP-логін.")
 
-    monkeypatch.setattr(web, "sync_mail_background", raise_sync_error)
+    monkeypatch.setattr(mail_sync_service, "sync_mail_background", raise_sync_error)
 
     web._mail_sync_tick(db=None)
 
@@ -276,7 +277,7 @@ def test_mail_tick_lets_unexpected_exceptions_propagate_to_worker_loop(
     def raise_unexpected(db, path):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(web, "sync_mail_background", raise_unexpected)
+    monkeypatch.setattr(mail_sync_service, "sync_mail_background", raise_unexpected)
 
     with pytest.raises(RuntimeError):
         web._mail_sync_tick(db=None)

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import mail as mail_router_mod
 from app.routers import orders as orders_router_mod
 from app.db import Base
 from app.models import Comment, Order, User
@@ -53,7 +54,7 @@ class TestCommentIsInstant:
     def test_request_commits_comment_without_touching_the_sheet_inline(self, monkeypatch):
         engine = _database()
         touched = []
-        monkeypatch.setattr(web, "open_spreadsheet",
+        monkeypatch.setattr(mail_router_mod, "open_spreadsheet",
                             lambda db=None: touched.append("open") or object())
         queued = []
         monkeypatch.setattr(orders_router_mod, "append_comment_background",

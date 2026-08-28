@@ -185,3 +185,29 @@ def sync_mail_background(session: Session, attachments_dir: Path) -> int:
 def sync_mailbox(session: Session, attachments_dir: Path, *, trigger: str = "manual") -> int:
     """Stable web/background API; returns the number of newly imported messages."""
     return sync_mail(session, attachments_dir, trigger=trigger)
+
+
+def run_sync_owned_session(*, trigger: str) -> int:
+    """Run one mail sync on a session this function owns and closes — EXCEPT
+    after a watchdog timeout, when the hung fetch thread still holds that
+    session and closing it from here would yank the connection out from under
+    it (sessions aren't thread-safe). In that case the session is deliberately
+    leaked to the zombie (daemon thread; a single SQLite connection) and the
+    error propagates so the caller can log/heartbeat/toast it."""
+    from app.config import MAIL_ATTACHMENTS_PATH
+    from app.db import SessionLocal
+
+    sync_db = SessionLocal()
+    timed_out = False
+    try:
+        # Background goes through sync_mail_background (the module-level name
+        # the heartbeat tests monkeypatch); manual through sync_mailbox.
+        if trigger == "background":
+            return sync_mail_background(sync_db, Path(MAIL_ATTACHMENTS_PATH))
+        return sync_mailbox(sync_db, Path(MAIL_ATTACHMENTS_PATH), trigger=trigger)
+    except MailSyncTimeoutError:
+        timed_out = True
+        raise
+    finally:
+        if not timed_out:
+            sync_db.close()
