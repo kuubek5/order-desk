@@ -18,7 +18,6 @@ from time import monotonic
 from typing import Annotated, Callable
 import uuid
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import gspread
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
@@ -124,6 +123,33 @@ from app.queue_filters import (
     filter_emails_by_service_type,
 )
 from app.runtime import resource_path
+from app.services.order_dates import (
+    BUSINESS_TIMEZONE,
+    order_date as _order_date,
+    parse_sheet_tab as _parse_sheet_tab,
+    sheet_order_key as _sheet_order_key,
+)
+from app.services.queue import (
+    DATE_STRIP_WINDOW,
+    QUEUE_SORT_FIELDS,
+    RETENTION_DAYS,
+    date_window as _date_window,
+    handout_pending_client_count as _handout_pending_client_count,
+    known_order_dates as _known_order_dates,
+    order_is_archived as _order_is_archived,
+    queue_column_sort_value as _queue_column_sort_value,
+    queue_handout_summary as _queue_handout_summary,
+    queue_sort_key as _queue_sort_key,
+    queue_sync_summary as _queue_sync_summary,
+    queue_week_summary as _queue_week_summary,
+    sort_orders_by_column as _sort_orders_by_column,
+)
+from app.services.formatting import (
+    UK_MONTHS as _UK_MONTHS,
+    pluralize_uk as _pluralize_uk,
+    relative_time_uk as _relative_time_uk,
+    uk_month_label as _uk_month_label,
+)
 from app.settings_store import (
     OPERATOR_EDITABLE_KEYS,
     SETTING_FIELDS,
@@ -200,12 +226,6 @@ from app.update_check import (
     get_known_update,
     launch_silent_install,
 )
-
-try:
-    BUSINESS_TIMEZONE = ZoneInfo("Europe/Kyiv")
-except ZoneInfoNotFoundError:  # Windows Python may not bundle the IANA tz database.
-    BUSINESS_TIMEZONE = None
-
 
 _FIRST_ADMIN_LOCK = Lock()
 logger = logging.getLogger(__name__)
@@ -351,22 +371,6 @@ def _record_sync_heartbeat(key: str, *, status: str, error_message: str | None =
         _sync_heartbeats[key] = SyncHeartbeat(
             last_attempt_at=now, status=status, error_message=error_message
         )
-
-
-def _relative_time_uk(reference: datetime, now: datetime) -> str:
-    """"N хв тому" / "N год тому" — no reusable relative-time helper exists
-    elsewhere in this codebase (received_at etc. are all rendered as absolute
-    "%d.%m.%y %H:%M" timestamps), so this is a small new one."""
-    seconds = max(0, int((now - reference).total_seconds()))
-    minutes = seconds // 60
-    if minutes < 1:
-        return "щойно"
-    if minutes < 60:
-        unit = _pluralize_uk(minutes, "хвилину", "хвилини", "хвилин")
-        return f"{minutes} {unit} тому"
-    hours = minutes // 60
-    unit = _pluralize_uk(hours, "годину", "години", "годин")
-    return f"{hours} {unit} тому"
 
 
 def _sync_heartbeat_status(
@@ -816,43 +820,6 @@ def _sync_summary_message(summary: SheetSyncSummary) -> str:
     return message
 
 
-def _parse_sheet_tab(sheet_tab: str | None) -> date | None:
-    if not sheet_tab:
-        return None
-    try:
-        return datetime.strptime(sheet_tab, "%d.%m.%y").date()
-    except ValueError:
-        return None
-
-
-def _order_date(order: Order) -> date:
-    """Business date for both sheet and email sourced orders."""
-    sheet_date = _parse_sheet_tab(order.sheet_tab)
-    if sheet_date is not None:
-        return sheet_date
-    if order.created_at is not None:
-        created_utc = order.created_at.replace(tzinfo=timezone.utc)
-        if BUSINESS_TIMEZONE is not None:
-            return created_utc.astimezone(BUSINESS_TIMEZONE).date()
-        # Europe/Kyiv follows the EU transition rule. This fallback keeps the
-        # app usable before `tzdata` is installed in a Windows development venv.
-        year = created_utc.year
-        march_last_sunday = 31 - (calendar.weekday(year, 3, 31) + 1) % 7
-        october_last_sunday = 31 - (calendar.weekday(year, 10, 31) + 1) % 7
-        dst_start = datetime(year, 3, march_last_sunday, 1, tzinfo=timezone.utc)
-        dst_end = datetime(year, 10, october_last_sunday, 1, tzinfo=timezone.utc)
-        offset = timedelta(hours=3 if dst_start <= created_utc < dst_end else 2)
-        return (created_utc + offset).date()
-    return date.today()
-
-
-def _sheet_order_key(order: Order) -> tuple:
-    """(day, row position) — the same top-to-bottom order the lab reads off
-    the physical table, used by the handout screen (see get_handout) as a
-    rough readiness timeline instead of DB insertion order."""
-    return (_order_date(order), order.row_number if order.row_number is not None else 0)
-
-
 def _entries_for_material(material_color: str | None, entries: list, work_day=None) -> list:
     """The export folders under a client whose material matches this work's
     material_color, oldest-first. Empty when the work has no colour or nothing
@@ -888,199 +855,6 @@ def _entries_for_material(material_color: str | None, entries: list, work_day=No
     not_after = [d for d in batch_days if d <= work_day]
     chosen = not_after[-1] if not_after else batch_days[0]
     return [e for e in matched if e.created_at.date() == chosen]
-
-
-def _queue_sort_key(order: Order) -> tuple:
-    """Oldest overdue work first, then the earliest daily deadline."""
-    due_rank = {"09:00": 0, "14:00": 1, "16:00": 2}.get(order.due_time, 3)
-    overdue_rank = 0 if is_overdue(order.sheet_tab, order.status) else 1
-    return overdue_rank, _order_date(order), due_rank, order.id
-
-
-# Column headers the operator can click to sort the queue table (queue.html
-# thead, via _sortable_th.html). Explicit, opt-in — with no `sort` query
-# param the queue keeps its default urgency-based _queue_sort_key ordering.
-QUEUE_SORT_FIELDS = ("material", "kind", "quantity")
-
-
-def _queue_column_sort_value(order: Order, sort: str) -> int | str | None:
-    """Sort value for one column, or None for "blank" (missing/unparseable)
-    — callers must always sort blanks last, never first, regardless of
-    direction (an operator sorting "by material" doesn't want blanks at the
-    top just because they picked descending)."""
-    if sort == "quantity":
-        # Order.quantity is a free-text Mapped[Optional[str]] column (see
-        # app/models.py), not a number — reuse the same defensive parser
-        # app/stats.py already established for this exact field instead of
-        # writing a third copy of "parse this string as an int or give up".
-        return parse_int_safe(order.quantity)
-    field = "material_color" if sort == "material" else "kind"
-    value = getattr(order, field, None)
-    if value is None or not value.strip():
-        return None
-    return value.strip().lower()
-
-
-def _sort_orders_by_column(orders: list[Order], sort: str, direction: str) -> list[Order]:
-    """Stable sort by one queue column. Blank/unparseable values always sort
-    last, in both directions — only the *present* values reverse order."""
-    reverse = direction == "desc"
-    paired = [(order, _queue_column_sort_value(order, sort)) for order in orders]
-    present = sorted((p for p in paired if p[1] is not None), key=lambda p: p[1], reverse=reverse)
-    missing = [order for order, value in paired if value is None]
-    return [order for order, _ in present] + missing
-
-
-DATE_STRIP_WINDOW = 3
-
-# Working-space retention: the queue, day-strip, KPIs and handout only surface
-# orders whose business date is within this many days back. Older work rolls
-# into the Archive screen (kept in the DB, never deleted) so the daily workspace
-# stays "the last month" while history stays findable. Google-tab deletions of
-# older days therefore never remove anything the operator still works with.
-RETENTION_DAYS = 30
-
-# Ukrainian month names (nominative) for the Archive screen's month headings.
-_UK_MONTHS = [
-    "", "Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень",
-    "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень",
-]
-
-
-def _uk_month_label(year: int, month: int) -> str:
-    return f"{_UK_MONTHS[month]} {year}"
-
-
-def _order_is_archived(order: Order, cutoff: date) -> bool:
-    """The Archive holds everything NOT in the working queue: orders explicitly
-    archived (removed from Google — a tab or a row) OR aged past the retention
-    window. The exact complement of the working-set filter in get_queue."""
-    return order.archived_at is not None or _order_date(order) < cutoff
-
-
-def _known_order_dates(db: Session) -> list[date]:
-    """Calendar days that actually have order data, derived straight from
-    `Order.sheet_tab` — the same column `app/sync.py` populates verbatim
-    from real Google Sheet tab names, and that `accept_email` stamps with
-    the Kyiv business date for mail-sourced orders. There is deliberately no
-    separate mechanism here that talks to Google Sheets to list its tabs:
-    `sheet_tab` already mirrors that list, refreshed every background sync
-    tick, so the queue's day-strip stays in sync "for free"."""
-    tabs = db.scalars(select(Order.sheet_tab).where(Order.sheet_tab.isnot(None)).distinct()).all()
-    parsed = {d for d in (_parse_sheet_tab(tab) for tab in tabs) if d is not None}
-    return sorted(parsed)
-
-
-def _date_window(
-    known_dates: list[date], today: date, date_page: int | None, window: int = DATE_STRIP_WINDOW
-) -> tuple[list[date], int, int]:
-    """Page through `known_dates` (ascending) `window` days at a time.
-
-    Returns `(visible_dates, current_page, total_pages)`. Pages tile from the
-    RIGHT (most-recent) end: page 0 is the newest full window ending at the last
-    date, higher page numbers step further back in time (the oldest page may be
-    partial). This keeps the default view a full recent week rather than a stub
-    when `today` happens to fall one short of a left-aligned block boundary.
-
-    With no explicit `date_page`, the default is the page whose window contains
-    `today` (or the newest page if today has no data yet). `date_page` counts
-    back from the newest window, so the template's ‹ (older) is `date_page + 1`
-    and › (newer) is `date_page - 1`."""
-    if not known_dates:
-        return [], 0, 0
-
-    n = len(known_dates)
-    total_pages = (n + window - 1) // window
-
-    if date_page is None:
-        anchor_idx = known_dates.index(today) if today in known_dates else n - 1
-        # How many whole windows the anchor sits back from the newest date.
-        current_page = ((n - 1) - anchor_idx) // window
-    else:
-        current_page = max(0, min(date_page, total_pages - 1))
-
-    end = n - current_page * window
-    start = max(0, end - window)
-    return known_dates[start:end], current_page, total_pages
-
-
-def _pluralize_uk(n: int, one: str, few: str, many: str) -> str:
-    """Ukrainian has three plural forms selected by the last one/two digits
-    of the count (1 клієнт, 2 клієнти, 5 клієнтів, 11 клієнтів, 21 клієнт…)."""
-    n_mod_100 = n % 100
-    n_mod_10 = n % 10
-    if n_mod_10 == 1 and n_mod_100 != 11:
-        return one
-    if 2 <= n_mod_10 <= 4 and not (12 <= n_mod_100 <= 14):
-        return few
-    return many
-
-
-def _handout_pending_client_count(orders: list[Order], today: date) -> int:
-    """Distinct clients with an outstanding (pre-today, not yet issued) order —
-    the same candidate rule get_handout groups by, minus the filesystem scan,
-    so the queue dashboard's KPI/peek cards stay cheap on every page load."""
-    clients: set[str] = set()
-    for order in orders:
-        if not order.client_name or order.status == "видано":
-            continue
-        order_date = _parse_sheet_tab(order.sheet_tab)
-        if order_date is not None and order_date >= today:
-            continue
-        clients.add(order.client_name)
-    return len(clients)
-
-
-def _queue_handout_summary(orders: list[Order], today: date) -> str:
-    count = _handout_pending_client_count(orders, today)
-    if count == 0:
-        return "Усе видано"
-    noun = _pluralize_uk(count, "клієнт очікує", "клієнти очікують", "клієнтів очікують")
-    return f"{count} {noun}"
-
-
-def _queue_week_summary(db: Session, all_orders: list[Order], today: date) -> str:
-    """Compact "quantity milled · rework %" line for the Статистика peek card.
-
-    Reuses the order list get_queue already fetched instead of re-running
-    get_stats's full scan, plus one light ReworkRecord query scoped to the
-    same window — a summary card, not a duplicate of the stats screen.
-    """
-    week_start = today - timedelta(days=6)
-    week_orders = [o for o in all_orders if week_start <= _order_date(o) <= today]
-    quantities = (parse_int_safe(o.quantity) for o in week_orders)
-    quantity_sum = sum(q for q in quantities if q is not None)
-
-    week_records = db.scalars(
-        select(ReworkRecord).where(
-            ReworkRecord.created_at >= datetime.combine(week_start, datetime.min.time())
-        )
-    ).all()
-    redo_quantities = (parse_int_safe(r.redo_quantity) for r in week_records)
-    redo_sum = sum(q for q in redo_quantities if q is not None)
-
-    if quantity_sum == 0:
-        return "Ще немає даних за тиждень"
-    if redo_sum == 0:
-        return f"{quantity_sum} од. · без браку"
-    rework_pct = round(redo_sum / quantity_sum * 100)
-    return f"{quantity_sum} од. · брак {rework_pct}%"
-
-
-def _queue_sync_summary(db: Session) -> str:
-    """Last Google Sheets import outcome for the queue dashboard's peek card."""
-    last_sync = db.scalar(
-        select(SyncLog)
-        .where(SyncLog.direction == "sheet_to_db")
-        .order_by(SyncLog.occurred_at.desc())
-        .limit(1)
-    )
-    if last_sync is None:
-        return "Ще не синхронізовано"
-    time_label = last_sync.occurred_at.strftime("%H:%M") if last_sync.occurred_at else "—"
-    if last_sync.status == "error":
-        return f"Помилка синхронізації ({time_label})"
-    return f"Синхронізовано {time_label}"
 
 
 # Monthly DB snapshot: check this often whether last month's archive exists
