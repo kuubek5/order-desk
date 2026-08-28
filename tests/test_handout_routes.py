@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.services import handout as handout_service
 from app.db import Base
 from app.models import Order, StatusEvent, User
 
@@ -602,7 +603,7 @@ def test_handout_reads_only_the_clients_on_screen(monkeypatch, tmp_path):
         deep_reads.append(name)
         return real_deep(r, name, not_before)
 
-    monkeypatch.setattr(web, "scan_export_client_cached", counting_deep)
+    monkeypatch.setattr(handout_service, "scan_export_client_cached", counting_deep)
     monkeypatch.setattr(
         web, "list_export_client_names_cached", export_scanner.list_export_client_names
     )
@@ -643,7 +644,7 @@ class TestExportPrewarm:
         )
         monkeypatch.setattr(web, "get_export_folder_path", lambda db: "Z:\\")
         monkeypatch.setattr(
-            web,
+            handout_service,
             "scan_export_client_cached",
             lambda root, folder, not_before: calls.append((str(root), folder, not_before)) or [],
         )
@@ -788,7 +789,7 @@ class TestClientFolderOpens:
                 web, "list_export_client_names_cached", lambda root: ["Pavlenko"]
             )
             monkeypatch.setattr(
-                web, "scan_export_client_cached", lambda root, folder, nb: [entry]
+                handout_service, "scan_export_client_cached", lambda root, folder, nb: [entry]
             )
             monkeypatch.setattr(
                 web.templates, "TemplateResponse",
@@ -829,7 +830,7 @@ class TestClientFolderOpens:
                 web, "list_export_client_names_cached", lambda root: ["Pavlenko"]
             )
             monkeypatch.setattr(
-                web, "scan_export_client_cached", lambda root, folder, nb: [entry]
+                handout_service, "scan_export_client_cached", lambda root, folder, nb: [entry]
             )
             monkeypatch.setattr(
                 web.templates, "TemplateResponse",
@@ -1086,8 +1087,8 @@ class TestBoundClientWithoutFreshBatches:
             )
             # Вікно за датою не дало нічого, і запасний шлях теж порожній —
             # тека є, партій немає.
-            monkeypatch.setattr(web, "scan_export_client_cached", lambda root, f, nb: [])
-            monkeypatch.setattr(web, "scan_export_client_latest_cached", lambda root, f: [])
+            monkeypatch.setattr(handout_service, "scan_export_client_cached", lambda root, f, nb: [])
+            monkeypatch.setattr(handout_service, "scan_export_client_latest_cached", lambda root, f: [])
             monkeypatch.setattr(
                 web.templates, "TemplateResponse",
                 lambda request, template, context: context,
@@ -1125,9 +1126,9 @@ class TestBoundClientWithoutFreshBatches:
             monkeypatch.setattr(
                 web, "list_export_client_names_cached", lambda root: ["Клієнт"]
             )
-            monkeypatch.setattr(web, "scan_export_client_cached", lambda root, f, nb: [])
+            monkeypatch.setattr(handout_service, "scan_export_client_cached", lambda root, f, nb: [])
             monkeypatch.setattr(
-                web, "scan_export_client_latest_cached", lambda root, f: [entry]
+                handout_service, "scan_export_client_latest_cached", lambda root, f: [entry]
             )
             monkeypatch.setattr(
                 web.templates, "TemplateResponse",
