@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import handout as handout_router_mod
 from app.services import handout as handout_service
 from app.services import sheet_writeback as writeback_service
 from app.db import Base
@@ -63,7 +64,7 @@ def _stub_sheet(monkeypatch, sheet_id=42):
     fake_ws.batch_update = MagicMock()
     # Відкриття таблиці бачать обидва боки: issue_group ще в web.py, а
     # write_sheet_fields уже в сервісі write-back.
-    for mod in (web, writeback_service):
+    for mod in (handout_router_mod, writeback_service):
         monkeypatch.setattr(mod, "open_spreadsheet", lambda db=None: object())
         monkeypatch.setattr(mod, "get_worksheet_by_name", lambda ss, name: fake_ws)
     captured = {}
@@ -71,7 +72,7 @@ def _stub_sheet(monkeypatch, sheet_id=42):
     def fake_clear(spreadsheet, rows):
         captured["rows"] = rows
 
-    monkeypatch.setattr(web, "clear_row_fills", fake_clear)
+    monkeypatch.setattr(handout_router_mod, "clear_row_fills", fake_clear)
     return captured
 
 
@@ -79,7 +80,7 @@ def test_requires_authentication():
     engine = _database()
     with Session(engine) as db, pytest.raises(HTTPException) as exc:
         import asyncio
-        asyncio.run(web.issue_handout_group(request=_request(None), client_name="X", day="", db=db))
+        asyncio.run(handout_router_mod.issue_handout_group(request=_request(None), client_name="X", day="", db=db))
     assert exc.value.status_code == 401
 
 
@@ -98,7 +99,7 @@ def test_issues_nothing_when_no_work_is_marked_found(monkeypatch):
         import asyncio
         request = _request(user.id)
         asyncio.run(
-            web.issue_handout_group(request=request, client_name="Basarab", day="", db=db)
+            handout_router_mod.issue_handout_group(request=request, client_name="Basarab", day="", db=db)
         )
         assert db.scalar(select(Order)).status == "нове"
         assert "handout_flash" in request.session
@@ -119,7 +120,7 @@ def test_issues_only_found_works_and_leaves_the_rest(monkeypatch):
 
         import asyncio
         asyncio.run(
-            web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
+            handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
 
         assert found.status == "видано"
@@ -142,7 +143,7 @@ def test_issues_group_and_clears_blue_fill(monkeypatch):
 
         import asyncio
         resp = asyncio.run(
-            web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
+            handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
         assert resp.status_code == 303
 
@@ -171,7 +172,7 @@ def test_already_issued_orders_are_left_alone_but_still_pass(monkeypatch):
 
         import asyncio
         resp = asyncio.run(
-            web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
+            handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
         assert resp.status_code == 303
         # order already excluded from candidates (status != "видано" filter)
@@ -195,7 +196,7 @@ def test_lab_orders_in_group_are_not_sent_to_clear_row_fills(monkeypatch):
 
         import asyncio
         asyncio.run(
-            web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
+            handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
         assert "rows" not in captured or captured["rows"] == []
 
@@ -209,7 +210,7 @@ def test_sheet_failure_still_marks_issued_and_flashes_error(monkeypatch):
     def boom(spreadsheet, rows):
         raise RuntimeError("проксі впав")
 
-    monkeypatch.setattr(web, "clear_row_fills", boom)
+    monkeypatch.setattr(handout_router_mod, "clear_row_fills", boom)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add(_client_order())
@@ -217,7 +218,7 @@ def test_sheet_failure_still_marks_issued_and_flashes_error(monkeypatch):
 
         request = _request(user.id)
         import asyncio
-        resp = asyncio.run(web.issue_handout_group(request=request, client_name="Basarab", day="", db=db))
+        resp = asyncio.run(handout_router_mod.issue_handout_group(request=request, client_name="Basarab", day="", db=db))
         assert resp.status_code == 303
         assert db.scalar(select(Order)).status == "видано"
         assert request.session["handout_flash"]["kind"] == "error"
@@ -233,7 +234,7 @@ def test_group_disappears_from_handout_listing_after_issue(monkeypatch):
 
         import asyncio
         asyncio.run(
-            web.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
+            handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
 
         with patch.object(web, "list_export_client_names_cached", return_value=[]):
@@ -242,7 +243,7 @@ def test_group_disappears_from_handout_listing_after_issue(monkeypatch):
                 web.templates, "TemplateResponse",
                 lambda request, template, context: ctx_holder.update(context) or context,
             )
-            web.get_handout(request=_request(user.id), db=db)
+            handout_router_mod.get_handout(request=_request(user.id), db=db)
         assert ctx_holder["client_groups"] == []
 
 
@@ -255,7 +256,7 @@ def _get_handout_context(monkeypatch, db, user_id, day="all"):
             web.templates, "TemplateResponse",
             lambda request, template, context: ctx_holder.update(context) or context,
         )
-        web.get_handout(request=_request(user_id), day=day, db=db)
+        handout_router_mod.get_handout(request=_request(user_id), day=day, db=db)
     return ctx_holder
 
 
@@ -338,7 +339,7 @@ def test_handout_day_filter_narrows_to_that_day(monkeypatch):
                 web.templates, "TemplateResponse",
                 lambda request, template, context: ctx_holder.update(context) or context,
             )
-            web.get_handout(request=_request(user.id), day=YESTERDAY, db=db)
+            handout_router_mod.get_handout(request=_request(user.id), day=YESTERDAY, db=db)
 
         assert ctx_holder["selected_day"] == YESTERDAY
         names = [g["client_name"] for g in ctx_holder["client_groups"]]
@@ -361,7 +362,7 @@ def test_issue_group_with_day_only_closes_that_day(monkeypatch):
 
         import asyncio
         resp = asyncio.run(
-            web.issue_handout_group(
+            handout_router_mod.issue_handout_group(
                 request=_request(user.id), client_name="Basarab", day=YESTERDAY, db=db
             )
         )
@@ -397,8 +398,8 @@ def _inline_fill_background(monkeypatch, db):
     сесії: перевіряємо, що фарбують правильно, не втрачаючи асинхронності
     самого обробника (для неї є окремий тест нижче)."""
     monkeypatch.setattr(
-        web,
-        "_set_client_row_fill_background",
+        handout_router_mod,
+        "set_client_row_fill_background",
         lambda order_id, *, blue: writeback_service.set_client_row_fill(
             db, db.get(Order, order_id), blue=blue
         ),
@@ -421,7 +422,7 @@ def test_mark_found_clears_blue_and_keeps_day(monkeypatch):
 
         import asyncio
         resp = asyncio.run(
-            web.mark_found(
+            handout_router_mod.mark_found(
                 request=_request(user.id), order_id=order.id,
                 source="all", day=YESTERDAY, db=db,
             )
@@ -450,7 +451,7 @@ def test_unmark_found_reverts_and_repaints_blue(monkeypatch):
 
         import asyncio
         resp = asyncio.run(
-            web.unmark_found(
+            handout_router_mod.unmark_found(
                 request=_request(user.id), order_id=order.id,
                 source="email", day=YESTERDAY, db=db,
             )
@@ -477,7 +478,7 @@ def test_unmark_found_ignores_already_issued(monkeypatch):
 
         import asyncio
         resp = asyncio.run(
-            web.unmark_found(
+            handout_router_mod.unmark_found(
                 request=_request(user.id), order_id=order.id,
                 source="all", day="", db=db,
             )
@@ -504,7 +505,7 @@ def test_mark_found_lab_order_skips_sheet_fill(monkeypatch):
 
         import asyncio
         resp = asyncio.run(
-            web.mark_found(
+            handout_router_mod.mark_found(
                 request=_request(user.id), order_id=order.id,
                 source="all", day=YESTERDAY, db=db,
             )
@@ -550,11 +551,11 @@ class TestHandoutDayWindow:
         return [date(2026, 8, d) for d in day_numbers]
 
     def _labels(self, days, selected):
-        return [d["label"] for d in web._handout_day_window(days, selected)]
+        return [d["label"] for d in handout_router_mod.handout_day_window(days, selected)]
 
     def test_window_centres_on_the_selected_day(self):
         days = self._days(20, 21, 22, 23, 24)
-        window = web._handout_day_window(days, days[2])
+        window = handout_router_mod.handout_day_window(days, days[2])
         assert [d["label"] for d in window] == ["21.08", "22.08", "23.08"]
         assert [d["active"] for d in window] == [False, True, False]
 
@@ -568,7 +569,7 @@ class TestHandoutDayWindow:
 
     def test_no_selection_anchors_on_the_newest_days(self):
         days = self._days(20, 21, 22, 23, 24)
-        window = web._handout_day_window(days, None)
+        window = handout_router_mod.handout_day_window(days, None)
         assert [d["label"] for d in window] == ["22.08", "23.08", "24.08"]
         assert not any(d["active"] for d in window)   # «усі дні» is the active state
 
@@ -577,11 +578,11 @@ class TestHandoutDayWindow:
         assert self._labels(days, days[0]) == ["24.08", "25.08"]
 
     def test_no_days_gives_an_empty_pager(self):
-        assert web._handout_day_window([], None) == []
+        assert handout_router_mod.handout_day_window([], None) == []
 
     def test_value_keeps_the_full_year_for_the_query_string(self):
         days = self._days(24)
-        entry = web._handout_day_window(days, days[0])[0]
+        entry = handout_router_mod.handout_day_window(days, days[0])[0]
         assert entry["label"] == "24.08" and entry["value"] == "24.08.26"
 
 
@@ -600,7 +601,7 @@ def test_handout_reads_only_the_clients_on_screen(monkeypatch, tmp_path):
         (root / f"Клієнт {i}" / "17.08.26" / "mono a3").mkdir(parents=True)
     (root / "Basarab" / "17.08.26" / "Ti").mkdir(parents=True)
 
-    monkeypatch.setattr(web, "get_export_folder_path", lambda db: str(root))
+    monkeypatch.setattr(handout_router_mod, "get_export_folder_path", lambda db: str(root))
     from app import export_scanner
     export_scanner.clear_export_cache()
 
@@ -621,7 +622,7 @@ def test_handout_reads_only_the_clients_on_screen(monkeypatch, tmp_path):
         db.add(_client_order(client_name="Basarab", status="знайдено при видачі"))
         db.commit()
         with patch.object(web.templates, "TemplateResponse", return_value="ok"):
-            web.get_handout(request=_request(user.id), source="all", day="", db=db)
+            handout_router_mod.get_handout(request=_request(user.id), source="all", day="", db=db)
 
     assert deep_reads == ["Basarab"], (
         f"глибина сховища мала читатись лише для клієнта на екрані, "
@@ -647,10 +648,13 @@ class TestExportPrewarm:
 
     def _record_scans(self, monkeypatch):
         calls = []
-        monkeypatch.setattr(
-            web, "list_export_client_names_cached", lambda root: ["Basarab", "Кривовид"]
-        )
-        monkeypatch.setattr(web, "get_export_folder_path", lambda db: "Z:\\")
+        # Екран уже в роутері, прогрів ще у web — саме тому тест і патчить
+        # обидва: він перевіряє, що вони звертаються до сховища однаково.
+        for mod in (web, handout_router_mod):
+            monkeypatch.setattr(
+                mod, "list_export_client_names_cached", lambda root: ["Basarab", "Кривовид"]
+            )
+            monkeypatch.setattr(mod, "get_export_folder_path", lambda db: "Z:\\")
         monkeypatch.setattr(
             handout_service,
             "scan_export_client_cached",
@@ -669,7 +673,7 @@ class TestExportPrewarm:
                 web.templates, "TemplateResponse",
                 lambda request, template, context: context,
             )
-            web.get_handout(request=_request(user_id), db=db)
+            handout_router_mod.get_handout(request=_request(user_id), db=db)
             from_screen = set(screen_calls)
 
             warm_calls = self._record_scans(monkeypatch)
@@ -785,7 +789,7 @@ class TestClientFolderOpens:
                 files=["a.stl"],
                 folder_path=material_folder,
             )
-            monkeypatch.setattr(web, "get_export_folder_path", lambda db: str(tmp_path))
+            monkeypatch.setattr(handout_router_mod, "get_export_folder_path", lambda db: str(tmp_path))
             # Токен резолвиться НЕ через web.get_export_folder_path, а через
             # власну мапу коренів stl_preview — саме вона тримає перевірку
             # «шлях справді всередині довіреного кореня».
@@ -803,7 +807,7 @@ class TestClientFolderOpens:
                 web.templates, "TemplateResponse",
                 lambda request, template, context: context,
             )
-            ctx = web.get_handout(request=_request(user.id), day="", db=db)
+            ctx = handout_router_mod.get_handout(request=_request(user.id), day="", db=db)
 
             group = ctx["client_groups"][0]
             assert group["client_folder_token"], "без токена кнопка знову буде мертвою"
@@ -833,7 +837,7 @@ class TestClientFolderOpens:
                 files=["a.stl"],
                 folder_path=material_folder,
             )
-            monkeypatch.setattr(web, "get_export_folder_path", lambda db: str(tmp_path))
+            monkeypatch.setattr(handout_router_mod, "get_export_folder_path", lambda db: str(tmp_path))
             monkeypatch.setattr(
                 web, "list_export_client_names_cached", lambda root: ["Pavlenko"]
             )
@@ -844,7 +848,7 @@ class TestClientFolderOpens:
                 web.templates, "TemplateResponse",
                 lambda request, template, context: context,
             )
-            ctx = web.get_handout(request=_request(user.id), day="", db=db)
+            ctx = handout_router_mod.get_handout(request=_request(user.id), day="", db=db)
 
         matched = ctx["client_groups"][0]["orders"][0].export_matches
         assert [e.material_color_folder_name for e in matched] == [
@@ -954,7 +958,7 @@ class TestMarkFoundIsInstant:
         )
         queued = []
         monkeypatch.setattr(
-            web, "_set_client_row_fill_background",
+            handout_router_mod, "set_client_row_fill_background",
             lambda order_id, *, blue: queued.append((order_id, blue)),
         )
         with Session(engine, expire_on_commit=False) as db:
@@ -965,7 +969,7 @@ class TestMarkFoundIsInstant:
 
             import asyncio
             asyncio.run(
-                web.mark_found(
+                handout_router_mod.mark_found(
                     request=_request(user.id), order_id=order.id,
                     source="all", day=YESTERDAY, db=db,
                 )
@@ -984,7 +988,7 @@ class TestMarkFoundIsInstant:
             db.commit()
             order = db.scalar(select(Order))
             monkeypatch.setattr(
-                web, "_set_client_row_fill_background",
+                handout_router_mod, "set_client_row_fill_background",
                 lambda order_id, *, blue: seen_status.update(
                     dirty=bool(db.dirty or db.new)
                 ),
@@ -992,7 +996,7 @@ class TestMarkFoundIsInstant:
 
             import asyncio
             asyncio.run(
-                web.mark_found(
+                handout_router_mod.mark_found(
                     request=_request(user.id), order_id=order.id,
                     source="all", day=YESTERDAY, db=db,
                 )
@@ -1012,13 +1016,13 @@ class TestScrollStaysPut:
     помилка в партіалі інакше знайшлась би вже в оператора."""
 
     def _screen(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(web, "get_export_folder_path", lambda db: str(tmp_path))
-        monkeypatch.setattr(web, "list_export_client_names_cached", lambda root: [])
+        monkeypatch.setattr(handout_router_mod, "get_export_folder_path", lambda db: str(tmp_path))
+        monkeypatch.setattr(handout_router_mod, "list_export_client_names_cached", lambda root: [])
 
     def test_an_htmx_mark_returns_the_card_list_not_a_redirect(self, monkeypatch, tmp_path):
         engine = _database()
         self._screen(monkeypatch, tmp_path)
-        monkeypatch.setattr(web, "_set_client_row_fill_background", lambda order_id, *, blue: None)
+        monkeypatch.setattr(handout_router_mod, "set_client_row_fill_background", lambda order_id, *, blue: None)
         with Session(engine, expire_on_commit=False) as db:
             user = _user(db)
             db.add(_client_order(client_name="Basarab", status="нове", sheet_tab=YESTERDAY))
@@ -1027,7 +1031,7 @@ class TestScrollStaysPut:
 
             import asyncio
             resp = asyncio.run(
-                web.mark_found(
+                handout_router_mod.mark_found(
                     request=_request(user.id, headers={"HX-Request": "true"}),
                     order_id=order.id, source="all", day=YESTERDAY, db=db,
                 )
@@ -1042,7 +1046,7 @@ class TestScrollStaysPut:
         """Без JS форма мусить працювати по-старому."""
         engine = _database()
         self._screen(monkeypatch, tmp_path)
-        monkeypatch.setattr(web, "_set_client_row_fill_background", lambda order_id, *, blue: None)
+        monkeypatch.setattr(handout_router_mod, "set_client_row_fill_background", lambda order_id, *, blue: None)
         with Session(engine, expire_on_commit=False) as db:
             user = _user(db)
             db.add(_client_order(client_name="Basarab", status="нове", sheet_tab=YESTERDAY))
@@ -1051,7 +1055,7 @@ class TestScrollStaysPut:
 
             import asyncio
             resp = asyncio.run(
-                web.mark_found(
+                handout_router_mod.mark_found(
                     request=_request(user.id), order_id=order.id,
                     source="all", day=YESTERDAY, db=db,
                 )
@@ -1065,7 +1069,7 @@ class TestScrollStaysPut:
             user = _user(db)
             db.add(_client_order(client_name="Basarab", status="нове", sheet_tab=YESTERDAY))
             db.commit()
-            resp = web.get_handout(request=_request(user.id), day="", db=db)
+            resp = handout_router_mod.get_handout(request=_request(user.id), day="", db=db)
         body = resp.body.decode("utf-8")
         assert 'id="handout-list"' in body
         assert "Basarab" in body
@@ -1089,7 +1093,7 @@ class TestBoundClientWithoutFreshBatches:
             db.add(_client_order(client_name="Светлана Криничко", status="нове"))
             db.commit()
 
-            monkeypatch.setattr(web, "get_export_folder_path", lambda db: str(tmp_path))
+            monkeypatch.setattr(handout_router_mod, "get_export_folder_path", lambda db: str(tmp_path))
             monkeypatch.setattr(
                 web, "list_export_client_names_cached", lambda root: ["Светлана  Криничко"]
             )
@@ -1101,7 +1105,7 @@ class TestBoundClientWithoutFreshBatches:
                 web.templates, "TemplateResponse",
                 lambda request, template, context: context,
             )
-            ctx = web.get_handout(request=_request(user.id), day="", db=db)
+            ctx = handout_router_mod.get_handout(request=_request(user.id), day="", db=db)
 
         group = ctx["client_groups"][0]
         assert group["client_folder_uri"], "тека прив'язана — посилання мусить бути"
@@ -1130,7 +1134,7 @@ class TestBoundClientWithoutFreshBatches:
             db.add(order)
             db.commit()
 
-            monkeypatch.setattr(web, "get_export_folder_path", lambda db: str(tmp_path))
+            monkeypatch.setattr(handout_router_mod, "get_export_folder_path", lambda db: str(tmp_path))
             monkeypatch.setattr(
                 web, "list_export_client_names_cached", lambda root: ["Клієнт"]
             )
@@ -1142,7 +1146,7 @@ class TestBoundClientWithoutFreshBatches:
                 web.templates, "TemplateResponse",
                 lambda request, template, context: context,
             )
-            ctx = web.get_handout(request=_request(user.id), day="", db=db)
+            ctx = handout_router_mod.get_handout(request=_request(user.id), day="", db=db)
 
         matched = ctx["client_groups"][0]["orders"][0].export_matches
         assert [e.batch_folder_name for e in matched] == ["01.07.26"]

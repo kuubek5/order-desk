@@ -41,6 +41,15 @@ from app.update_check import get_known_update
 logger = logging.getLogger(__name__)
 
 
+# Shown when a table-writing action is attempted while sync is paused. The
+# action is refused and NOTHING changes — not even the DB — so there is no
+# divergence for the resume read to revert. The operator retries after resume.
+SYNC_PAUSED_MSG = (
+    "Синхронізацію таблиці призупинено — зміну не збережено. "
+    "Зніміть паузу, щоб продовжити."
+)
+
+
 def get_db():
     session = SessionLocal()
     try:

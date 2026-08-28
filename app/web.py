@@ -34,7 +34,6 @@ from app.__version__ import VERSION
 from app.changelog import load_changelog
 from app.auth import hash_password, verify_password
 from app.backup import BackupFormatError, BackupPasswordError, create_backup, restore_backup
-from app.client_matcher import match_client_name
 from app.client_profile import (
     count_matching_orders,
     find_matching_orders,
@@ -95,28 +94,24 @@ from app.material_catalog import (
 )
 from app.mail_filters import apply_rule_retroactively
 from app.mail_spool import analyze_spool, prune_spool
-from app.models import ActionLog, AppSetting, Attachment, Client, ClientNameAlias, ClientSenderMemory, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
+from app.models import ActionLog, AppSetting, Attachment, ClientNameAlias, ClientSenderMemory, Comment, EmailMessage, MailFilterCategory, MailFilterRule, Order, ReworkRecord, StatusEvent, SyncLog, User
 from app.sender_memory import list_sender_memories, lookup_sender, remember_sender
 from app.order_folder import (
     attach_email_folder_availability,
     attach_email_preview_tokens,
     attach_export_folder_uris,
     attach_job_code_folder_uris,
-    folder_to_file_uri,
     resolve_email_attachment_folder,
 )
 from app.queue_filters import (
-    HANDOUT_SOURCE_FILTERS,
     READY_FILTERS,
     SERVICE_TYPE_FILTERS,
     SOURCE_FILTERS,
     count_by_readiness,
     count_by_service_type,
     count_by_source,
-    count_client_groups_by_source,
     filter_by_readiness,
     filter_by_source,
-    filter_client_groups_by_source,
     filter_emails_by_service_type,
 )
 from app.runtime import resource_path
@@ -130,10 +125,12 @@ from app.services.operators import (
 )
 from app.routers.auth import router as auth_router
 from app.routers.clients import router as clients_router
+from app.routers.handout import router as handout_router
 from app.routers.archive import router as archive_router
 from app.routers.stats import router as stats_router
 from app.routers.stl import router as stl_router
 from app.routers.deps import (
+    SYNC_PAUSED_MSG as _SYNC_PAUSED_MSG,
     attach_action_toast as _attach_action_toast,
     get_current_user,
     get_db,
@@ -242,7 +239,6 @@ from app.sheet_writer import (
     append_mail_placeholder_row,
     apply_status_markers,
     clear_placeholder_row,
-    clear_row_fills,
 )
 from app.parser import HEADER_ROWS
 from app.google_oauth import OAuthFlowError, parse_client_config, run_authorization_flow
@@ -261,7 +257,7 @@ from app.stats import (
     summarize_by_material,
     summarize_rework_by_blame,
 )
-from app.stl_preview import build_preview_token, list_stl_files, resolve_preview_folder, resolve_stl_file
+from app.stl_preview import resolve_preview_folder
 from app.update_check import (
     _update_check_tick,
     _update_check_worker,
@@ -1004,15 +1000,6 @@ async def health() -> dict[str, str]:
     post-relaunch check can confirm *which* build answered, not merely that
     one did — the version is not a secret and needs no auth here."""
     return {"status": "ok", "version": VERSION}
-
-
-# Shown when a table-writing action is attempted while sync is paused. The
-# action is refused and NOTHING changes — not even the DB — so there is no
-# divergence for the resume read to revert. The operator retries after resume.
-_SYNC_PAUSED_MSG = (
-    "Синхронізацію таблиці призупинено — зміну не збережено. "
-    "Зніміть паузу, щоб продовжити."
-)
 
 
 def _sum_units(orders) -> int:
@@ -2449,492 +2436,8 @@ def get_journal(
 app.include_router(archive_router)
 
 
-def _handout_context(request: Request, user, source: str, day: str, db: Session) -> dict:
-    """Усе, що показує екран видачі.
-
-    Винесено з роута, бо відмітка «знайдено» тепер підмінює список карток
-    через HTMX і мусить будувати рівно те саме, що й повне відкриття екрана —
-    інакше після галочки прогрес, кнопка «Видати N з M» чи позначка поточного
-    клієнта розійшлися б із рештою сторінки."""
-    if source not in HANDOUT_SOURCE_FILTERS:
-        source = "all"
-
-    today = date.today()
-    eligible = _handout_eligible_orders(db, today)
-
-    # Day chips (14.08, 15.08, …): every past day that still has unissued
-    # client works. `day` narrows the whole screen to that one day — the
-    # operator hands out one day's furnace output at a time.
-    handout_days = _handout_day_options(eligible)
-    selected_day = _handout_select_day(handout_days, day)
-    if selected_day is not None:
-        shown = [o for o in eligible if _parse_sheet_tab(o.sheet_tab) == selected_day]
-        # Скільки робіт лишилось на інших днях — щоб замовчування «останній
-        # день» ніколи не ховало хвіст мовчки.
-        other_days_count = len(eligible) - len(shown)
-        eligible = shown
-    else:
-        other_days_count = 0
-
-    groups: dict[str, list[Order]] = {}
-    for order in eligible:
-        groups.setdefault(order.client_name, []).append(order)
-
-    # Sheet order (day, then row position top-to-bottom), not DB insertion
-    # order — the lab reads this as a rough readiness timeline (furnaces close
-    # at different times through the day), so a client's own works AND the
-    # card order itself both follow it, same as flipping through the table.
-    for group_orders in groups.values():
-        group_orders.sort(key=_sheet_order_key)
-
-    # `export` — шара Synology через SMB, де ціну диктує КІЛЬКІСТЬ звернень.
-    # Повний обхід дерева тут коштував 65с (бойовий лог 25.08.26) і сторінка
-    # не відкривалась. Тепер обхід ЛІНИВИЙ:
-    #   рівень 1 (імена тек клієнтів) — один запит, потрібен для нечіткого
-    #       зіставлення «ім'я в таблиці ↔ назва теки»;
-    #   глибина — тільки для клієнтів, що реально на цьому екрані.
-    # Робота стала пропорційна показаному (10-20 клієнтів), а не вмісту
-    # сховища (сотні тек).
-    _export_root = Path(get_export_folder_path(db))
-    _scan_started = time.monotonic()
-    folder_names = list_export_client_names_cached(_export_root)
-    _not_before = _handout_not_before(eligible)
-    entries: list = []          # наповнюється нижче, після обходу
-    # Every client on this screen gets a card (idempotent), so «Клієнти» and the
-    # handout always show the same people and the folder binding is always one
-    # click away. Cheap next to the export scan above.
-    _ensure_client_profiles(db, eligible)
-    clients_by_name = {
-        c.canonical_name.strip().casefold(): c.id
-        for c in db.scalars(select(Client)).all()
-        if c.canonical_name
-    }
-    client_names = [c for c in clients_by_name]
-
-    def _client_id_for(name: str) -> int | None:
-        """Exact fold first, then the same fuzzy matcher — the sheet spells one
-        lab several ways and they must all reach the one card."""
-        folded = (name or "").strip().casefold()
-        if folded in clients_by_name:
-            return clients_by_name[folded]
-        hit = match_client_name(folded, client_names, {}).matched_folder_name
-        return clients_by_name.get(hit) if hit else None
-
-    matches = _handout_client_matches(db, list(groups), folder_names)
-    _folders = _matched_folders(matches)
-    scanned = _scan_export_for_clients(_export_root, _folders, _not_before)
-    # Тека прив'язана, а в вікні порожньо — значить файли скачали задовго до
-    # фрезерування. Тоді дивимось найновіші партії клієнта без межі за датою:
-    # це один scandir теки плюс захід у три найсвіжіші партії, а не повний
-    # обхід усіх ~176. Бойовий випадок 28.08.26: «папку знайти не можу, хоча
-    # вона є» (Светлана Криничко, робота 27.08, файли значно старіші).
-    _empty = {name: folder for name, folder in _folders.items() if not scanned.get(name)}
-    if _empty:
-        for name, entries_ in _scan_export_latest_for_clients(_export_root, _empty).items():
-            scanned[name] = entries_
-
-    client_groups = []
-    for client_name, group_orders in groups.items():
-        match = matches[client_name]
-        export_entries = scanned.get(client_name, [])
-        entries.extend(export_entries)
-        for entry in export_entries:
-            entry.folder_uri = folder_to_file_uri(entry.folder_path)
-            entry.preview_token = build_preview_token(
-                entry.folder_path, {"export": get_export_folder_path(db)}
-            )
-        # Per-row candidates: narrow the client's export folders to the ones
-        # whose material matches THIS work's material_color, oldest-first. The
-        # path carries no наряд/Sum3D ID (user decision 16.08.26: export stays
-        # "нова папка"), so this is an ASSIST, not an exact bind — when several
-        # works share a material the same folders show under each, and the
-        # operator picks by eye (Sum3D ID + STL preview are their anchor).
-        for order in group_orders:
-            order.export_matches = _entries_for_material(
-                order.material_color, export_entries, _parse_sheet_tab(order.sheet_tab)
-            )
-        # Теки, чий матеріал не збігся з жодним рядком, раніше показувались
-        # окремим підвалом «Інші папки». Прибрано на прохання оператора
-        # (28.08.26): на ранковій видачі це шум — звіряють коронку з STL за
-        # рядком роботи, а не гортають чужі теки. Тека клієнта цілком лишається
-        # одним кліком (`client_folder_uri`), якщо матеріал таки підписали не
-        # так і теку треба відкрити руками.
-        all_found = all(o.status in ("знайдено при видачі", "видано") for o in group_orders)
-        # Client-level folder (the parent of the material folders) so the client
-        # name itself opens the right place on disk, and a link to the client
-        # card so an unbound client can be fixed once instead of every morning.
-        # Тека клієнта береться з самого ЗІСТАВЛЕННЯ, а не з знайдених партій.
-        # Раніше вона залежала від `export_entries`, тож клієнт із прив'язаною
-        # текою, але без свіжих партій, отримував заклик «Прив'язати папку» —
-        # екран казав «не прив'язано» там, де насправді «немає свіжих партій»
-        # (бойовий випадок 28.08.26).
-        client_folder_uri = None
-        client_folder_token = None
-        if match.matched_folder_name:
-            client_folder = _export_root / match.matched_folder_name
-            client_folder_uri = folder_to_file_uri(client_folder)
-            # Токен, а не лише file://-посилання: браузер МОВЧКИ блокує перехід
-            # на file:// зі сторінки на http, тому кнопка «Відкрити папку» досі
-            # не робила нічого (бойовий випадок 28.08.26). Провідник відкриває
-            # сервер через /open-folder, як це вже роблять прев'ю і черга.
-            client_folder_token = build_preview_token(
-                client_folder, {"export": get_export_folder_path(db)}
-            )
-        client_groups.append(
-            {
-                "client_name": client_name,
-                "orders": group_orders,
-                "match": match,
-                "export_entries": export_entries,
-                "all_found": all_found,
-                "client_folder_uri": client_folder_uri,
-                "client_folder_token": client_folder_token,
-                "client_id": _client_id_for(client_name),
-            }
-        )
-
-    # Cards themselves follow the same top-to-bottom principle, keyed off
-    # each client's earliest (already-sorted) work.
-    client_groups.sort(key=lambda g: _sheet_order_key(g["orders"][0]))
-
-    source_counts = count_client_groups_by_source(client_groups)
-    client_groups = filter_client_groups_by_source(client_groups, source)
-    handout_flash = request.session.pop("handout_flash", None)
-
-    # Queue position + per-client totals. The position is THE anchor of the
-    # screen: the operator works strictly in the order the clients were milled
-    # (which is the sheet order these groups are already sorted by), so it is
-    # numbered explicitly rather than left implicit in the scroll position.
-    # `is_current` marks the first client not yet fully found — where the
-    # operator is right now.
-    current_marked = False
-    for index, group in enumerate(client_groups, start=1):
-        group["position"] = index
-        group["works_count"] = len(group["orders"])
-        group["units_total"] = sum(_quantity_units(o.quantity) for o in group["orders"])
-        group["found_count"] = sum(
-            1 for o in group["orders"] if o.status in ("знайдено при видачі", "видано")
-        )
-        group["is_current"] = not group["all_found"] and not current_marked
-        if group["is_current"]:
-            current_marked = True
-
-    done_groups = sum(1 for g in client_groups if g["all_found"])
-    # Clients with no bound export folder. Counted so the screen can say it ONCE
-    # at the top instead of putting a warning chip on every card — with nothing
-    # bound yet that was 34 amber calls-to-action, which reads as noise and
-    # buries the one client the operator is actually on.
-    unbound_count = sum(1 for g in client_groups if not g["client_folder_uri"])
-
-    # Таймінг обходу сховища в лог: без нього причину «сторінка не
-    # відкривається» доводиться вгадувати (так і сталось 27.08.26).
-    logger.info(
-        "Handout export scan: %d клієнтів на екрані, %d тек у сховищі, "
-        "%d записів, партії від %s, %.2fс",
-        len(groups), len(folder_names), len(entries),
-        _not_before.date() if _not_before else "усі",
-        time.monotonic() - _scan_started,
-    )
-    return {
-            "page_title": "Ранкова видача",
-            "user": user,
-            "client_groups": client_groups,
-            "source": source,
-            "source_counts": source_counts,
-            "handout_flash": handout_flash,
-            "handout_days": [d.strftime("%d.%m.%y") for d in handout_days],
-            "selected_day": selected_day.strftime("%d.%m.%y") if selected_day else "",
-            # Те, що треба покласти в посилання/форми, щоб повернутись СЮДИ ж:
-            # порожній рядок означав би «замовчування», а не «всі дні».
-            "day_param": selected_day.strftime("%d.%m.%y") if selected_day else HANDOUT_ALL_DAYS,
-            "other_days_count": other_days_count,
-            "prev_day": _adjacent_handout_day(handout_days, selected_day, -1),
-            "next_day": _adjacent_handout_day(handout_days, selected_day, +1),
-            "day_window": _handout_day_window(handout_days, selected_day),
-            "done_groups": done_groups,
-            "total_groups": len(client_groups),
-            "unbound_count": unbound_count,
-    }
-
-
-@app.get("/handout", response_class=HTMLResponse)
-def get_handout(
-    request: Request, source: str = "all", day: str = "", db: Session = Depends(get_db)
-):
-    user = get_current_user(request, db)
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-    return templates.TemplateResponse(
-        request, "handout.html", _handout_context(request, user, source, day, db)
-    )
-
-
-def _handout_cards_response(request: Request, user, source: str, day: str, db: Session):
-    """Лише список карток — відповідь на HTMX-відмітку.
-
-    Сторінка НЕ перезавантажується, тому екран лишається рівно там, де
-    оператор його прокрутив. Раніше кожна галочка йшла звичайною формою з
-    редіректом, і після кожної екран смикався на початок — на видачі, де
-    йдуть списком згори вниз і клацають підряд, це збивало саме те, заради
-    чого екран і робився."""
-    return templates.TemplateResponse(
-        request, "_handout_cards.html", _handout_context(request, user, source, day, db)
-    )
-
-
-HANDOUT_DAY_WINDOW = 3
-
-
-def _handout_day_window(days: list, selected) -> list[dict]:
-    """The few days shown in the pager, newest-last, with the selected one marked.
-
-    A single date with ‹ › arrows hid where the operator was in the week; a wall
-    of 30+ chips drowned the screen. Three days is the middle: the current day
-    plus its neighbours, so stepping back a day is one click and the position is
-    visible. Anchored on the selected day (or the newest one when the screen
-    shows all days), and clamped so the window stays full at either end."""
-    if not days:
-        return []
-    size = min(HANDOUT_DAY_WINDOW, len(days))
-    anchor = days.index(selected) if selected in days else len(days) - 1
-    start = max(0, min(anchor - size // 2, len(days) - size))
-    return [
-        {"value": d.strftime("%d.%m.%y"), "label": d.strftime("%d.%m"), "active": d == selected}
-        for d in days[start:start + size]
-    ]
-
-
-def _adjacent_handout_day(days: list, selected, step: int) -> str:
-    """Neighbouring day for the ‹ › pager, or "" at the ends. Replaces the wall
-    of 30+ day chips: the operator hands out one day at a time and steps between
-    them, so only the neighbours need to be one click away."""
-    if not days:
-        return ""
-    if selected is None:
-        # No day chosen: ‹ opens the newest day, › stays inert.
-        return days[-1].strftime("%d.%m.%y") if step < 0 else ""
-    try:
-        index = days.index(selected)
-    except ValueError:
-        return ""
-    target = index + step
-    if 0 <= target < len(days):
-        return days[target].strftime("%d.%m.%y")
-    return ""
-
-
-def _handout_back_url(source: str, day: str) -> str:
-    """Rebuild the exact handout view (source tab + day chip) the operator was
-    on, so a mark/unmark POST returns them there instead of the unfiltered
-    all-days list."""
-    params: list[str] = []
-    if source and source in HANDOUT_SOURCE_FILTERS and source != "all":
-        params.append(f"source={source}")
-    if day:
-        params.append(f"day={day}")
-    return "/handout" + ("?" + "&".join(params) if params else "")
-
-
-@app.post("/orders/{order_id}/mark-found")
-async def mark_found(
-    request: Request,
-    order_id: int,
-    source: str = Form("all"),
-    day: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    user = get_current_user(request, db)
-    if user is None:
-        raise HTTPException(status_code=401, detail="увійдіть в систему")
-
-    order = db.get(Order, order_id)
-    if order is None:
-        raise HTTPException(status_code=404, detail="order not found")
-
-    order.status = "знайдено при видачі"
-    db.add(
-        StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username)
-    )
-    db.commit()
-    # Found = physically located → clear the sheet's blue "pending" fill to
-    # white, per the lab's colour convention. У фоні: галочка має ставитись
-    # миттєво, бо оператор клацає їх підряд.
-    _set_client_row_fill_background(order.id, blue=False)
-    # HTMX-клік підмінює лише список карток — сторінка не перезавантажується,
-    # тож скрол лишається там, де оператор його поставив. Редірект лишається
-    # для звичайної форми (без JS) і для прямих переходів.
-    if request.headers.get("HX-Request"):
-        return _handout_cards_response(request, user, source, day, db)
-    return RedirectResponse(_handout_back_url(source, day), status_code=303)
-
-
-@app.post("/orders/{order_id}/unmark-found")
-async def unmark_found(
-    request: Request,
-    order_id: int,
-    source: str = Form("all"),
-    day: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    """Undo an accidental "знайдено" click: revert the order to pending and
-    repaint the sheet row blue so the next sync doesn't read the cleared fill
-    as issued. Refuses to touch an already-issued ("видано") order."""
-    user = get_current_user(request, db)
-    if user is None:
-        raise HTTPException(status_code=401, detail="увійдіть в систему")
-
-    order = db.get(Order, order_id)
-    if order is None:
-        raise HTTPException(status_code=404, detail="order not found")
-    if order.status != "знайдено при видачі":
-        return RedirectResponse(_handout_back_url(source, day), status_code=303)
-
-    order.status = "нове"
-    db.add(
-        StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username)
-    )
-    db.commit()
-    # Un-found = back to pending → repaint the blue fill so sheet state and
-    # portal status stay consistent (a white fill + "нове" would otherwise be
-    # read as issued on the next sync). Так само у фоні.
-    _set_client_row_fill_background(order.id, blue=True)
-    # HTMX-клік підмінює лише список карток — сторінка не перезавантажується,
-    # тож скрол лишається там, де оператор його поставив. Редірект лишається
-    # для звичайної форми (без JS) і для прямих переходів.
-    if request.headers.get("HX-Request"):
-        return _handout_cards_response(request, user, source, day, db)
-    return RedirectResponse(_handout_back_url(source, day), status_code=303)
-
-
-@app.post("/handout/issue-group")
-async def issue_handout_group(
-    request: Request,
-    client_name: str = Form(...),
-    day: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    """One click on a handout card's "Видати" button closes the whole client
-    group: every found-but-not-yet-issued order flips to "видано" (mirroring
-    the single-order status route), and every sheet_client row's blue
-    "pending" fill is cleared back to white in ONE batched sheet call — the
-    counterpart of the lab's own manual "clear the blue = issued" convention.
-
-    Re-derives the group server-side from client_name (never trusts a client
-    id list from the form) and issues EXACTLY the orders already marked
-    "знайдено при видачі"/"видано", leaving the rest of the card open.
-
-    Часткова видача — норма процесу, не виняток (CLAUDE.md §2): цирконій іде
-    через три пічки, які відкриваються ~9:00, в обід і під вечір, тож роботи
-    одного клієнта фізично виходять у різний час. Раніше тут стояв gate
-    all_found, і клієнт із 52 роботами не міг отримати «Видати» жодного разу
-    за день — оператор мусив або чекати до вечора, або обходити портал через
-    Google-таблицю."""
-    user = get_current_user(request, db)
-    if user is None:
-        raise HTTPException(status_code=401, detail="увійдіть в систему")
-
-    # Handout clears the blue "pending" fill in the sheet — a table write, so
-    # it's refused while paused; the operator issues after resume.
-    if sync_control.is_paused():
-        request.session["toast_flash"] = {"message": _SYNC_PAUSED_MSG, "kind": "info"}
-        return RedirectResponse(
-            f"/handout?day={day}" if day else "/handout", status_code=303
-        )
-
-    today = date.today()
-    candidates = db.scalars(
-        select(Order).where(Order.client_name == client_name, Order.status != "видано")
-    ).all()
-    group_orders = [
-        o for o in candidates
-        if (d := _parse_sheet_tab(o.sheet_tab)) is not None and d < today
-    ]
-    # When the handout screen is filtered to one day (day chips), the card
-    # the operator sees — and therefore what "Видати" closes — is that day's
-    # works only; the client's other days stay open.
-    selected_day = _parse_sheet_tab(day) if day else None
-    back_url = f"/handout?day={day}" if day else "/handout"
-    if selected_day is not None:
-        group_orders = [
-            o for o in group_orders if _parse_sheet_tab(o.sheet_tab) == selected_day
-        ]
-    if not group_orders:
-        return RedirectResponse(back_url, status_code=303)
-    # Видаємо рівно те, що оператор уже знайшов. Решта лишається в картці.
-    group_orders = [
-        o for o in group_orders if o.status in ("знайдено при видачі", "видано")
-    ]
-    if not group_orders:
-        request.session["handout_flash"] = {
-            "kind": "info",
-            "message": "Нічого видавати: жодну роботу цього клієнта не позначено «знайдено».",
-        }
-        return RedirectResponse(back_url, status_code=303)
-
-    actor = user.full_name or user.username
-    sync_error: str | None = None
-    clear_targets: list[tuple[str, int]] = []  # (sheet_tab, row_number)
-    for order in group_orders:
-        order.status = "видано"
-        sheet_fields = apply_status_markers(order, "видано", actor=actor)
-        db.add(
-            StatusEvent(order_id=order.id, operator_id=user.id, status="видано", actor=user.username)
-        )
-        err = _write_sheet_fields(db, order, sheet_fields)
-        sync_error = sync_error or err
-        if order.source == "sheet_client" and order.sheet_tab and order.row_number is not None:
-            clear_targets.append((order.sheet_tab, order.row_number))
-
-    if clear_targets:
-        try:
-            spreadsheet = open_spreadsheet(db=db)
-            rows_by_sheet_id: list[tuple[int, int]] = []
-            for sheet_tab, row_number in clear_targets:
-                worksheet = get_worksheet_by_name(spreadsheet, sheet_tab)
-                if worksheet is not None:
-                    rows_by_sheet_id.append((worksheet.id, row_number + HEADER_ROWS))
-            clear_row_fills(spreadsheet, rows_by_sheet_id)
-        except Exception as exc:  # noqa: BLE001 — never fail the видано status over this
-            logger.exception("Failed to clear blue fill for handout group %r", client_name)
-            sync_error = sync_error or str(exc)
-
-    db.commit()
-
-    if sync_error:
-        request.session["handout_flash"] = {
-            "kind": "error",
-            "message": f"Статус видано, але запис у таблицю не пройшов: {sync_error}",
-        }
-    return RedirectResponse(back_url, status_code=303)
-
-
-@app.post("/handout/confirm-alias")
-async def confirm_alias(
-    request: Request,
-    sheet_name: str = Form(...),
-    export_folder_name: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    if get_current_user(request, db) is None:
-        raise HTTPException(status_code=401, detail="увійдіть в систему")
-
-    existing = db.scalar(select(ClientNameAlias).where(ClientNameAlias.sheet_name == sheet_name))
-    if existing is not None:
-        existing.export_folder_name = export_folder_name
-        existing.confirmed = True
-        existing.confirmed_at = datetime.now()
-    else:
-        db.add(
-            ClientNameAlias(
-                sheet_name=sheet_name,
-                export_folder_name=export_folder_name,
-                confirmed=True,
-                confirmed_at=datetime.now(),
-            )
-        )
-    db.commit()
-
-    return RedirectResponse("/handout", status_code=303)
+# Екран видачі живе в app/routers/handout.py.
+app.include_router(handout_router)
 
 
 # STL-прев'ю живе в app/routers/stl.py. include_router стоїть саме тут, де
