@@ -23,7 +23,6 @@ import gspread
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from imap_tools import MailBox
 from sqlalchemy import and_ as sa_and, func, select, update as sa_update
 from sqlalchemy.exc import IntegrityError
@@ -50,6 +49,7 @@ from app.export_scanner import (
     list_export_client_names_cached,
 )
 from app import sync_control
+from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed
 from app.license import get_license_status, get_machine_id, verify_license_key
 from app.mail_export import (
     list_client_folders,
@@ -120,6 +120,13 @@ from app.queue_filters import (
     filter_emails_by_service_type,
 )
 from app.runtime import resource_path
+from app.routers.deps import (
+    attach_action_toast as _attach_action_toast,
+    get_current_user,
+    get_db,
+    templates,
+    toast_response as _toast_response,
+)
 from app.services.order_dates import (
     BUSINESS_TIMEZONE,
     order_date as _order_date,
@@ -267,28 +274,6 @@ SHEET_SYNC_INITIAL_DELAY_SECONDS = 10
 # the expensive 3-tab full sync stays at the interval above. See
 # app/sheet_sync_service.py::sync_hot_tab.
 SHEET_SYNC_HOT_INTERVAL_SECONDS = 15
-
-# Sync-speed presets (side-panel segmented switch on the queue screen).
-# "hot"    — seconds between hot-tab reads (one ~3s API call per tab through
-#            the lab proxy, so 5s is the physical floor — see the sizing
-#            discussion in CLAUDE.md's proxy notes);
-# "screen" — seconds between the queue's local partial=rows polls;
-# "full"   — seconds between expensive full syncs (listing + 3-day window).
-#            Turbo stretches it: the hot lane already covers the tabs being
-#            worked, and a ~15s full pass every minute would starve 5s ticks.
-# Held in process memory only: an operational knob, not a credential — after a
-# restart the app wakes up in "normal", which is the right default.
-SYNC_SPEED_PRESETS = {
-    "turbo": {"hot": 5, "screen": 5, "full": 120, "label": "Турбо", "hint": "5с"},
-    "normal": {"hot": 15, "screen": 15, "full": 60, "label": "Звичайно", "hint": "15с"},
-    "eco": {"hot": 60, "screen": 30, "full": 60, "label": "Економ", "hint": "60с"},
-}
-_sync_speed_preset = "normal"
-
-
-def get_sync_speed() -> dict:
-    return SYNC_SPEED_PRESETS[_sync_speed_preset]
-
 
 # Days operators are actually looking at right now (queue partial=rows polls
 # record them). The hot lane unions these with today/yesterday so "the open
@@ -462,35 +447,6 @@ def _sheets_access_error_message(db: Session, exc: BaseException) -> str:
         return "Google не прийняв облікові дані — перевірте JSON-ключ сервісного акаунта"
 
     return "Не вдалося відкрити таблицю. Перевірте ID, ключ і доступ до таблиці"
-
-
-def _toast_response(message: str, *, kind: str = "success", triggers: dict | None = None) -> Response:
-    """204 + an HX-Trigger toast — the reply for an HTMX action that changed
-    something server-side but has nothing to swap into the page. Same
-    {"toast": {...}} envelope app.js already listens for. `triggers` adds extra
-    HX-Trigger events alongside the toast (e.g. {"refresh-queue": True} to make
-    the polled #queue-rows refetch immediately)."""
-    payload = {"toast": {"message": message, "kind": kind}}
-    if triggers:
-        payload.update(triggers)
-    response = Response(status_code=204)
-    response.headers["HX-Trigger"] = json.dumps(payload)
-    return response
-
-
-def _attach_action_toast(response: Response, entry: ActionLog, message: str) -> None:
-    """Add a plain success HX-Trigger toast confirming a logged action. Undo is no
-    longer offered here — a persistent «Крок назад» button in the queue header
-    reverts the last action instead (POST /actions/undo-last), so the toast is
-    just confirmation and does not carry an undoUrl.
-
-    ensure_ascii MUST stay on (default): HTTP header values are latin-1, so any
-    Cyrillic in `message` has to ride as \\uXXXX escapes — htmx decodes them back
-    to real text. ensure_ascii=False here put raw Cyrillic in the header and 500'd
-    the whole request. `entry` is kept in the signature for callers/logging parity."""
-    response.headers["HX-Trigger"] = json.dumps(
-        {"toast": {"message": message, "kind": "success"}}
-    )
 
 
 def _settings_changed_at(db: Session, keys: tuple[str, ...]) -> dict[str, str]:
@@ -1033,94 +989,6 @@ async def license_gate(request: Request, call_next):
     return await call_next(request)
 
 
-_static_root = resource_path("app/static")
-
-
-def static_ver(relative: str) -> int:
-    """mtime of a static file, appended as a `?v=` query string in templates.
-
-    FastAPI's StaticFiles sends no Cache-Control/Expires header, so a
-    browser's own heuristic caching can keep serving a stale CSS/JS file
-    after a deploy until the user hard-refreshes. Baking the file's own
-    mtime into the URL forces a new URL — and a real fetch — every time the
-    file's content actually changes, with zero coordination needed.
-    """
-    try:
-        return int((_static_root / relative).stat().st_mtime)
-    except OSError:
-        return 0
-
-
-templates = Jinja2Templates(directory=str(resource_path("app/templates")))
-templates.env.globals["is_overdue"] = is_overdue
-templates.env.globals["material_color_css_class"] = material_color_css_class
-templates.env.globals["material_badge"] = material_badge
-templates.env.globals["split_material_color"] = split_material_color
-templates.env.globals["strip_material_word"] = strip_material_word
-templates.env.globals["triage_readiness"] = triage_readiness
-templates.env.globals["static_ver"] = static_ver
-
-
-def _changelog_md(text: str):
-    """Render the only markup a changelog line uses: **bold**. Escapes first, so
-    the CHANGELOG.md content can never inject HTML even though it's our own
-    trusted file — cheaper to be safe than to reason about it."""
-    import re as _re
-
-    from markupsafe import Markup, escape
-
-    escaped = str(escape(text))
-    bolded = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
-    return Markup(bolded)
-
-
-templates.env.filters["changelog_md"] = _changelog_md
-# Available in every template without every route threading it through its
-# own context dict — same rationale as static_ver above. Reads the
-# in-memory "last known result" (see app/update_check.py::get_known_update),
-# never touches the network from a request-handling thread.
-templates.env.globals["get_known_update"] = get_known_update
-# Product version, available in every template (rail foot, settings "about")
-# without threading it through each route's context — same rationale as the
-# globals above. Single source of truth is app/__version__.py.
-templates.env.globals["app_version"] = VERSION
-
-
-def notify_prefs() -> dict:
-    """Popup-notification preferences for base.html, on their own session.
-
-    A Jinja global rather than per-route context: base.html needs these on
-    EVERY page, and threading them through two dozen handlers would guarantee
-    one gets missed. Three primary-key reads on SQLite per render — cheap.
-    Falls back to the defaults if the DB isn't reachable yet (first run), since
-    a settings lookup must never keep a page from rendering.
-    """
-    try:
-        db = SessionLocal()
-        try:
-            return {
-                "style": get_notify_style(db),
-                "position": get_notify_position(db),
-                "events": sorted(get_notify_events(db)),
-                # The popup poll follows the sync-speed preset: on Турбо the
-                # "технік змінив роботу" alert lands in ~5s, not the fixed 30s —
-                # the whole point of the scrap warning is that it is timely.
-                "poll_seconds": get_sync_speed()["screen"],
-            }
-        finally:
-            db.close()
-    except Exception:  # noqa: BLE001 — never break page render over preferences
-        logger.debug("notify_prefs fell back to defaults", exc_info=True)
-        return {
-            "style": DEFAULT_NOTIFY_STYLE,
-            "position": DEFAULT_NOTIFY_POSITION,
-            "events": sorted(key for key, _, _, on in NOTIFY_EVENTS if on),
-            "poll_seconds": SYNC_SPEED_PRESETS["normal"]["screen"],
-        }
-
-
-templates.env.globals["notify_prefs"] = notify_prefs
-
 app.mount("/static", StaticFiles(directory=str(resource_path("app/static"))), name="static")
 
 
@@ -1132,25 +1000,6 @@ async def health() -> dict[str, str]:
     post-relaunch check can confirm *which* build answered, not merely that
     one did — the version is not a secret and needs no auth here."""
     return {"status": "ok", "version": VERSION}
-
-
-def get_db():
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-def get_current_user(request: Request, db: Session) -> User | None:
-    user_id = request.session.get("user_id")
-    if user_id is None:
-        return None
-    user = db.get(User, user_id)
-    if user is None or not user.is_active:
-        request.session.clear()
-        return None
-    return user
 
 
 def _user_count(db: Session) -> int:
@@ -1683,7 +1532,7 @@ def get_queue(
             "sort_dir": sort_dir,
             "rows_qs": rows_qs,
             "sync_speed": SYNC_SPEED_PRESETS,
-            "sync_speed_active": _sync_speed_preset,
+            "sync_speed_active": sync_control.get_speed_preset(),
             "sync_screen_seconds": get_sync_speed()["screen"],
             "viewed_tab": viewed_day.strftime("%d.%m.%y") if viewed_day else "",
             "sync_paused": sync_control.is_paused(),
@@ -1706,15 +1555,16 @@ def set_sync_speed(request: Request, preset: str = Form(""), db: Session = Depen
     control). Global on purpose: the hot lane is one worker for the whole
     process, so the fastest interest wins for everyone. Unknown preset values
     degrade to no-op (same spirit as the queue's filter params)."""
-    global _sync_speed_preset
     if get_current_user(request, db) is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
-    if preset in SYNC_SPEED_PRESETS:
-        _sync_speed_preset = preset
+    sync_control.set_speed_preset(preset)
     return templates.TemplateResponse(
         request,
         "_sync_speed_seg.html",
-        {"sync_speed": SYNC_SPEED_PRESETS, "sync_speed_active": _sync_speed_preset},
+        {
+            "sync_speed": SYNC_SPEED_PRESETS,
+            "sync_speed_active": sync_control.get_speed_preset(),
+        },
     )
 
 

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import deps
 from app.db import Base
 from app.models import User
 from app.settings_store import (
@@ -135,7 +136,7 @@ def test_route_requires_login():
 
 def test_notify_prefs_global_shape():
     """base.html renders these straight into data-attributes."""
-    prefs = web.notify_prefs()
+    prefs = deps.notify_prefs()
     assert set(prefs) == {"style", "position", "events", "poll_seconds"}
     assert prefs["style"] in {"glass", "card"}
     assert prefs["position"] in {"tc", "tr", "br", "bl"}

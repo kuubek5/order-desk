@@ -6,6 +6,7 @@ can't take down the settings page.
 """
 
 import app.web as web
+from app.routers import deps
 from app.changelog import parse_changelog, load_changelog
 
 SAMPLE = """# Журнал змін
@@ -76,9 +77,9 @@ def test_real_changelog_file_loads_and_has_current_version():
 
 def test_changelog_md_filter_bolds_and_escapes():
     # bold renders...
-    assert "<strong>Стан</strong>" in str(web._changelog_md("**Стан** системи"))
+    assert "<strong>Стан</strong>" in str(deps.changelog_md("**Стан** системи"))
     # ...but injected HTML is escaped, not executed
-    out = str(web._changelog_md("<script>alert(1)</script> **ок**"))
+    out = str(deps.changelog_md("<script>alert(1)</script> **ок**"))
     assert "<script>" not in out
     assert "&lt;script&gt;" in out
     assert "<strong>ок</strong>" in out

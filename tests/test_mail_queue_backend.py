@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app import sync_control
 from app.services import sheet_writeback as writeback_service
 from app.db import Base
 from app.models import Attachment, EmailMessage, Order, User
@@ -122,26 +123,26 @@ def test_sync_speed_route_switches_preset_and_rejects_unknown(tmp_path, monkeypa
         "TemplateResponse",
         lambda request, template, context: captured.update(template=template, ctx=context) or context,
     )
-    original = web._sync_speed_preset
+    original = sync_control.get_speed_preset()
     try:
         with Session(engine, expire_on_commit=False) as db:
             user = _user(db)
 
             web.set_sync_speed(request=_request(user.id), preset="turbo", db=db)
-            assert web._sync_speed_preset == "turbo"
-            assert web.get_sync_speed()["hot"] == 5
+            assert sync_control.get_speed_preset() == "turbo"
+            assert sync_control.get_sync_speed()["hot"] == 5
             assert captured["template"] == "_sync_speed_seg.html"
             assert captured["ctx"]["sync_speed_active"] == "turbo"
 
             # Unknown value degrades to a no-op, same as the queue filters.
             web.set_sync_speed(request=_request(user.id), preset="ludicrous", db=db)
-            assert web._sync_speed_preset == "turbo"
+            assert sync_control.get_speed_preset() == "turbo"
 
             with pytest.raises(HTTPException):
                 web.set_sync_speed(request=_request(None), preset="eco", db=db)
-            assert web._sync_speed_preset == "turbo"
+            assert sync_control.get_speed_preset() == "turbo"
     finally:
-        web._sync_speed_preset = original
+        sync_control.set_speed_preset(original)
 
 
 def test_queue_records_viewed_day_for_hot_lane(tmp_path, monkeypatch):

@@ -42,3 +42,40 @@ def set_paused(value: bool) -> None:
         _paused.set()
     else:
         _paused.clear()
+
+
+# Sync-speed presets (side-panel segmented switch on the queue screen).
+# "hot"    — seconds between hot-tab reads (one ~3s API call per tab through
+#            the lab proxy, so 5s is the physical floor — see the sizing
+#            discussion in CLAUDE.md's proxy notes);
+# "screen" — seconds between the queue's local partial=rows polls;
+# "full"   — seconds between expensive full syncs (listing + 3-day window).
+#            Turbo stretches it: the hot lane already covers the tabs being
+#            worked, and a ~15s full pass every minute would starve 5s ticks.
+# Held in process memory only: an operational knob, not a credential — after a
+# restart the app wakes up in "normal", which is the right default.
+SYNC_SPEED_PRESETS = {
+    "turbo": {"hot": 5, "screen": 5, "full": 120, "label": "Турбо", "hint": "5с"},
+    "normal": {"hot": 15, "screen": 15, "full": 60, "label": "Звичайно", "hint": "15с"},
+    "eco": {"hot": 60, "screen": 30, "full": 60, "label": "Економ", "hint": "60с"},
+}
+
+_speed_preset = "normal"
+
+
+def get_speed_preset() -> str:
+    return _speed_preset
+
+
+def set_speed_preset(preset: str) -> bool:
+    """Switch the preset. Returns False (and changes nothing) for an unknown
+    name — the value comes off a form, so it is never trusted."""
+    global _speed_preset
+    if preset not in SYNC_SPEED_PRESETS:
+        return False
+    _speed_preset = preset
+    return True
+
+
+def get_sync_speed() -> dict:
+    return SYNC_SPEED_PRESETS[_speed_preset]
