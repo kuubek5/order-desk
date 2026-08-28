@@ -402,7 +402,9 @@
       // світової горизонталі (правої осі екрана). Знак мінус — grab-and-drag:
       // тягнеш праворуч, видима грань іде за курсором.
       state.mesh.rotateOnWorldAxis(WORLD_UP, -dx * DRAG_SENS);
-      state.mesh.rotateOnWorldAxis(WORLD_RIGHT, -dy * DRAG_SENS);
+      // Вертикаль — плюс: тягнеш вгору, верх моделі відхиляється від тебе
+      // (за проханням оператора; горизонталь лишається grab-and-drag).
+      state.mesh.rotateOnWorldAxis(WORLD_RIGHT, dy * DRAG_SENS);
       renderOnce();
     });
 
