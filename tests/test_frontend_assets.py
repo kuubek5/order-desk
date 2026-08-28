@@ -38,6 +38,11 @@ VENDORED = {"three-0.128.0.min.js", "STLLoader-0.128.0.js", "htmx-1.9.10.min.js"
 # бачить те, що оголосив попередній.
 BASE_HTML_SCRIPTS = [
     "/static/js/app.js",
+    "/static/js/queue.js",
+    "/static/js/mail.js",
+    "/static/js/handout.js",
+    "/static/js/clients.js",
+    "/static/js/settings.js",
     "/static/js/three-0.128.0.min.js",
     "/static/js/STLLoader-0.128.0.js",
     "/static/js/stl-preview.js",
