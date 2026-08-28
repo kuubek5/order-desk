@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "app" / "templates"
+CSS_DIR = Path(__file__).parent.parent / "app" / "static" / "css"
 STATIC_JS = Path(__file__).parent.parent / "app" / "static" / "js"
 BASE_HTML = Path(__file__).parent.parent / "app" / "templates" / "base.html"
 
@@ -175,3 +176,55 @@ def test_settings_screen_includes_its_sections_in_order():
         + f'  знімок: {SETTINGS_SECTIONS}' + chr(10)
         + 'Якщо зміна свідома — онови SETTINGS_SECTIONS у цьому файлі.'
     )
+
+
+# Таблиці стилів, які base.html вантажить на кожну сторінку, У ПОРЯДКУ тегів.
+# Порядок тут — це КАСКАД: base.css свідомо розібрано на суцільні шматки, а не
+# по екранах, бо у файлі є правила, що перекривають попередні (коментарі
+# «this rule sits after the earlier … block»). Переставити = зламати вигляд.
+BASE_HTML_STYLESHEETS = [
+    "/static/css/fonts.css",
+    "/static/css/tokens.css",
+    "/static/css/base.css",
+    "/static/css/rail.css",
+    "/static/css/queue_table.css",
+    "/static/css/queue.css",
+    "/static/css/order_detail.css",
+    "/static/css/screens.css",
+    "/static/css/v2a_queue.css",
+    "/static/css/v2a_passport.css",
+    "/static/css/v2a_mail.css",
+    "/static/css/v2a_handout.css",
+    "/static/css/v2a_screens.css",
+    "/static/css/update_overlay.css",
+    "/static/css/treatment-a.css",
+]
+
+
+def test_base_html_loads_the_expected_stylesheets_in_order():
+    """Склад і ПОРЯДОК таблиць стилів — зі знімка (порядок = каскад)."""
+    html = BASE_HTML.read_text(encoding='utf-8')
+    head = html.split('</head>', 1)[0]
+    found = re.findall(r'<link[^>]+href="([^"?]+\.css)', head)
+    assert found == BASE_HTML_STYLESHEETS, (
+        'Список таблиць стилів у base.html змінився.' + chr(10)
+        + f'  зараз:  {found}' + chr(10)
+        + f'  знімок: {BASE_HTML_STYLESHEETS}' + chr(10)
+        + 'Порядок = каскад: переставляти можна лише свідомо.'
+    )
+
+
+def test_every_stylesheet_has_balanced_braces():
+    """Дужки в кожному .css збалансовані.
+
+    Рівно так ламається розріз великого файлу: шматок обривається всередині
+    правила або @media, браузер тихо викидає решту файлу — сторінка
+    відкривається, але «поїхала»."""
+    broken = []
+    for path in sorted(CSS_DIR.glob('*.css')):
+        text = path.read_text(encoding='utf-8')
+        text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
+        depth = text.count('{') - text.count('}')
+        if depth:
+            broken.append(f'{path.name}: незакритих дужок {depth}')
+    assert not broken, 'CSS з незбалансованими дужками:' + chr(10) + chr(10).join(broken)

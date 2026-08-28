@@ -1,0 +1,274 @@
+/* v2a_handout.css — виділено з base.css (Крок 5, 28.08.26).
+   v2a — ранкова видача.
+
+   ПОРЯДОК ЗАВАНТАЖЕННЯ = КАСКАД. Файли підключені в base.html рівно в тому
+   порядку, в якому ці правила стояли в base.css, і міняти його не можна:
+   у файлі є правила, що навмисно перекривають попередні (див. коментарі
+   «this rule sits after the earlier … block»). */
+/* ============================================================================
+   v2a — РАНКОВА ВИДАЧА (handout.html) ← v2a/handout.html
+   Statusline-прогрес + картки клієнтів (.ccard) з треком прогресу, банером
+   неоднозначного збігу (.ambig/.cand) і рядками робіт (.wrow/.wcheck).
+   Скоуплено під `.handoutv2`. Уся логіка (mark-found, confirm-alias,
+   source-фільтр) збережена.
+   ========================================================================== */
+/* 1200px лишало ~370px мертвого поля з кожного боку на робочому 1900px
+   моніторі. 1440 тримає довжину рядка читабельною і віддає екрану решту. */
+main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
+.handoutv2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}
+.handoutv2 h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 12px}
+.handoutv2 .tab-nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.handoutv2 .tab-link{height:30px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.handoutv2 .tab-link:hover{color:var(--ink);opacity:1}
+.handoutv2 .tab-link.active{background:rgba(20,184,166,.16);color:var(--accent-c);border-color:rgba(45,212,191,.34)}
+.handoutv2 .tab-link svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6}
+.handoutv2 .tab-badge{font-family:var(--font-mono);font-size:11px;opacity:.75}
+
+.handoutv2 .statusline{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 14px;margin-bottom:14px;border:1px solid var(--line);border-radius:var(--r-card);background:var(--card);box-shadow:var(--glow)}
+.handoutv2 .sl-item{display:inline-flex;align-items:baseline;gap:5px;font-size:12.5px;color:var(--ink-2)}
+.handoutv2 .sl-item b{font-family:var(--font-mono);font-weight:600;font-size:14px;color:var(--ink)}
+.handoutv2 .sl-item.is-ok b{color:var(--accent-c)}
+.handoutv2 .sl-item.is-warn b{color:var(--warn)}
+.handoutv2 .sl-sep{width:1px;height:14px;background:var(--line-2)}
+.handoutv2 .headline-track{flex:0 0 220px;max-width:40vw;height:8px;border-radius:4px;background:#111823;border:1px solid #1c2532;overflow:hidden;margin-left:auto}
+.handoutv2 .headline-track i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-d),var(--accent-b))}
+
+/* Ритм екрана — крок 4px. Проміжок МІЖ картками клієнтів (10px) навмисно
+   більший за проміжок між роботами всередині картки (рядки — хайрлайни без
+   зазору), щоб група читалась як одне ціле, а не розсипалась. */
+.handoutv2 .bindbar{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px;
+  padding:9px 13px;border-radius:var(--r-card);
+  border:1px solid rgba(240,163,94,.32);background:rgba(240,163,94,.08);
+  font-size:12.5px;color:var(--ink-2);
+}
+.handoutv2 .bindbar svg{width:15px;height:15px;flex:0 0 15px;stroke:var(--warn);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.handoutv2 .bindbar b{color:var(--warn);font-weight:600}
+.handoutv2 .bindbar a{margin-left:auto;color:var(--accent-c);text-decoration:none;white-space:nowrap;border-bottom:1px solid rgba(94,234,212,.35)}
+.handoutv2 .bindbar a:hover{opacity:1;border-bottom-color:var(--accent-c)}
+
+.handoutv2 .clients{display:flex;flex-direction:column;gap:10px}
+.handoutv2 .ccard{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);overflow:hidden}
+.handoutv2 .ccard.done{opacity:.82}
+.handoutv2 .ccard.done .card-head{background:linear-gradient(90deg,rgba(20,184,166,.1),rgba(20,184,166,0))}
+/* День видачі — chips 14.08 / 15.08 … по днях з невиданими роботами. */
+.handoutv2 .handout-days{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
+.handoutv2 .day-chip{height:30px;padding:0 14px;border-radius:999px;display:inline-flex;align-items:center;
+  font-family:var(--font-mono);font-size:12.5px;color:var(--ink-2);text-decoration:none;
+  /* Межа тут Є афордансом (це <a>, ним обирають день): на --line
+     виходило 1.20:1 і чіп не читався як клікабельний. */
+  background:var(--card);border:1px solid var(--control-edge);transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.handoutv2 .day-chip:hover{color:var(--ink);border-color:var(--line-2)}
+.handoutv2 .day-chip.active{background:rgba(20,184,166,.16);color:var(--accent-c);border-color:rgba(45,212,191,.42)}
+/* Кількість і день у рядку роботи. */
+.handoutv2 .wqty{font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.handoutv2 .wday{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);
+  padding:1px 7px;border-radius:5px;border:1px solid var(--line);background:#111823;white-space:nowrap}
+
+/* "Видати" stays fully legible on an otherwise dimmed done-card — it's the
+   one still-actionable control there. */
+.handoutv2 .ccard.done .issue-form{opacity:1}
+.handoutv2 .issue-btn{height:34px;padding:0 16px;border-radius:var(--r-ctl);border:1px solid rgba(45,212,191,.42);
+  background:rgba(20,184,166,.16);color:var(--accent-c);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,transform .12s ease}
+.handoutv2 .issue-btn:hover{background:rgba(20,184,166,.28);border-color:var(--accent);transform:translateY(-1px)}
+.handoutv2 .issue-btn:active{transform:translateY(0)}
+.handoutv2 .card-head{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+/* Collapse chevron: folds the card body away, stays expanded by default. */
+.handoutv2 .card-collapse{flex:0 0 auto;width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--line);border-radius:7px;background:#111823;color:var(--ink-2);cursor:pointer;
+  transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.handoutv2 .card-collapse:hover{color:var(--ink);border-color:var(--line-2)}
+.handoutv2 .card-collapse svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform var(--ui-speed) ease}
+.handoutv2 .ccard.is-collapsed .card-collapse svg{transform:rotate(-90deg)}
+.handoutv2 .ccard.is-collapsed .card-head{border-bottom:none}
+.handoutv2 .ccard.is-collapsed .cbody{display:none}
+.handoutv2 .card-head h2{font-family:var(--font-head);font-size:15.5px;font-weight:600;margin:0;letter-spacing:-.005em;display:flex;align-items:center;gap:8px}
+.handoutv2 .card-head .doneicon{width:18px;height:18px;flex:0 0 18px;border-radius:50%;background:rgba(20,184,166,.18);border:1px solid rgba(45,212,191,.5);display:inline-flex;align-items:center;justify-content:center}
+.handoutv2 .card-head .doneicon svg{width:11px;height:11px;stroke:var(--accent-c);fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+/* ── Видача, варіант «Черга» ──────────────────────────────────────────────
+   Хребет екрана — порядок, у якому клієнтів фрезерували. Номер стоїть першим,
+   папка клієнта — головна дія (саме з неї починається впізнавання), Sum3D ID
+   тихий праворуч як інструмент перевірки при сумніві. */
+.handoutv2 .hbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+/* Заголовок на цьому екрані менший за типовий h1: у стрічці сім елементів, і
+   при 1280px вона переносилась на три рядки — 88px хрому перед першою карткою. */
+.handoutv2 .hbar h1{font-size:19px;margin-right:2px}
+.handoutv2 .hbar .hspine{flex:1 1 60px;min-width:50px}
+
+.handoutv2 .hbar h1{margin:0;font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head)}
+.handoutv2 .daypick{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-2);border-radius:999px;padding:3px 4px}
+.handoutv2 .daypick .arw{
+  width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:700;
+  color:var(--accent-c);background:rgba(20,184,166,.12);text-decoration:none;line-height:1;
+}
+.handoutv2 .daypick .arw:hover{background:var(--accent-b);color:var(--bg);opacity:1}
+.handoutv2 .daypick .arw.off{color:var(--ink-3);opacity:.3;background:none}
+.handoutv2 .daypick .dchip{
+  height:24px;min-width:46px;padding:0 9px;border-radius:999px;font-size:11.5px;color:var(--ink-2);
+  display:inline-flex;align-items:center;justify-content:center;text-decoration:none;
+  transition:background var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.handoutv2 .daypick .dchip:hover{color:var(--ink);background:#1d2734;opacity:1}
+.handoutv2 .daypick .dchip.active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
+.handoutv2 .daypick .dchip.dall{font-family:var(--font-body)}
+.handoutv2 .fbtn.is-opening{opacity:.55;pointer-events:none}
+.handoutv2 .dayrest{font-size:12px;color:var(--ink-3);text-decoration:none;padding:4px 9px;border:1px dashed var(--line-2);border-radius:999px}
+.handoutv2 .dayrest:hover{color:var(--ink);border-color:var(--control-edge)}
+.handoutv2 .dayall{position:relative}
+.handoutv2 .dayall summary{list-style:none;cursor:pointer;font-size:12px;color:var(--ink-3);padding:4px 9px;border:1px solid var(--line);border-radius:999px}
+.handoutv2 .dayall summary::-webkit-details-marker{display:none}
+.handoutv2 .dayall summary:hover{color:var(--ink);border-color:var(--line-2)}
+.handoutv2 .dayall[open] summary{color:var(--accent-c);border-color:rgba(45,212,191,.4)}
+.handoutv2 .dayall-pop{
+  position:absolute;top:calc(100% + 6px);left:0;z-index:30;display:flex;flex-wrap:wrap;gap:4px;
+  width:290px;max-height:210px;overflow:auto;padding:9px;background:var(--card);
+  border:1px solid var(--line-2);border-radius:var(--r-card);box-shadow:0 18px 40px -18px rgba(0,0,0,.8);
+}
+.handoutv2 .hspine{flex:1;min-width:90px;max-width:220px;height:4px;background:#111823;border:1px solid var(--line);border-radius:2px;overflow:hidden}
+.handoutv2 .hspine i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-d),var(--accent-b))}
+.handoutv2 .hkpi{font-size:12px;color:var(--ink-2)}
+.handoutv2 .hkpi b{color:var(--ink);font-weight:500}
+.handoutv2 .hsrc{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+.handoutv2 .hsrc a{
+  display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 12px;border-radius:999px;
+  font-size:12.5px;color:var(--ink-2);text-decoration:none;
+}
+.handoutv2 .hsrc a span{font-size:11px;opacity:.75}
+.handoutv2 .hsrc a:hover{color:var(--ink);background:#1d2734;opacity:1}
+.handoutv2 .hsrc a.on{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
+
+/* Поточний клієнт — той, з якого оператор працює зараз. Після того як номери
+   прибрали, ця смуга лишилась єдиним «ти тут», тож вона й тримає порядок. */
+.handoutv2 .ccard.current{border-color:rgba(45,212,191,.34);box-shadow:inset 3px 0 0 var(--accent-b),var(--glow)}
+.handoutv2 .card-head .cstat{font-size:11.5px;color:var(--ink-3);white-space:nowrap}
+/* Папка клієнта — головна дія. Заливка лише в поточного клієнта. */
+.handoutv2 .fbtn{
+  display:inline-flex;align-items:center;gap:7px;white-space:nowrap;text-decoration:none;
+  border:1px solid var(--line-2);background:#1a222e;color:var(--ink-2);
+  border-radius:var(--r-ctl);padding:6px 12px;font-size:12.5px;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.handoutv2 .fbtn svg{width:14px;height:14px;flex:0 0 14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.handoutv2 .fbtn:hover{color:var(--ink);border-color:var(--line-2);background:var(--card-2);opacity:1}
+.handoutv2 .fbtn.lead{border-color:rgba(45,212,191,.4);background:rgba(20,184,166,.14);color:var(--accent-c)}
+.handoutv2 .fbtn.lead:hover{background:rgba(20,184,166,.22);border-color:var(--accent-b);color:var(--accent-c)}
+/* Sum3D ID у рядку роботи — інструмент перевірки, не заголовок */
+.handoutv2 .wsum{
+  font-size:11px;color:var(--ink-3);text-decoration:none;white-space:nowrap;
+  padding:3px 7px;border-radius:6px;border:1px solid transparent;
+  transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease;
+}
+.handoutv2 .wsum:hover{color:var(--accent-c);border-color:rgba(45,212,191,.3);opacity:1}
+.handoutv2 .wqty em{font-style:normal;color:var(--ink-3);font-size:11px}
+
+.handoutv2 .card-head .meta{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-3)}
+/* Ім'я клієнта як вхід у його папку. Читається як заголовок доти, доки на нього
+   не навели — іконка теки стоїть завжди, підкреслення й акцент на hover.
+   «Прив'язати папку» — не сіра примітка, а дія, що веде в картку клієнта, де
+   прив'язка задається раз і діє на кожну наступну видачу. */
+.handoutv2 .card-head .client-open{color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:7px}
+.handoutv2 .card-head .client-open svg{width:14px;height:14px;flex:0 0 14px;stroke:var(--ink-3);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;transition:stroke var(--ui-speed) ease}
+.handoutv2 .card-head .client-open:hover{opacity:1;text-decoration:underline;text-underline-offset:3px}
+.handoutv2 .card-head .client-open:hover svg{stroke:var(--accent-c)}
+.handoutv2 .card-head .bind-folder{
+  font-family:var(--font-body);color:var(--ink-3);text-decoration:none;
+  border:1px solid var(--line-2);border-radius:6px;padding:4px 10px;font-size:11.5px;white-space:nowrap;
+  transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease,background var(--ui-speed) ease;
+}
+.handoutv2 .card-head .bind-folder:hover{opacity:1;color:var(--warn);border-color:rgba(240,163,94,.45);background:rgba(240,163,94,.1)}
+.handoutv2 .card-head .bind-folder.lead{color:var(--warn);border-color:rgba(240,163,94,.45);background:rgba(240,163,94,.1)}
+.handoutv2 .card-head .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.handoutv2 .card-head .progress-wrap{display:flex;flex-direction:column;gap:5px;width:150px}
+.handoutv2 .card-head .progress-num{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);white-space:nowrap;text-align:right}
+.handoutv2 .card-head .progress-num b{color:var(--ink);font-weight:600}
+.handoutv2 .track{height:6px;border-radius:3px;background:#111823;overflow:hidden;border:1px solid #1c2532}
+.handoutv2 .track i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-d),var(--accent-b))}
+.handoutv2 .ccard.done .track i{background:linear-gradient(90deg,var(--accent-d),var(--accent-c))}
+.handoutv2 .cbody{padding:4px 16px 12px}
+
+.handoutv2 .ambig{display:flex;flex-direction:column;gap:9px;padding:11px 12px;border-radius:9px;margin:9px 0 13px;background:rgba(240,163,94,.08);border:1px solid rgba(240,163,94,.3)}
+.handoutv2 .ambig .ahead{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;color:var(--warn)}
+.handoutv2 .ambig .ahead svg{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
+.handoutv2 .ambig .ahead b{display:block;color:var(--ink);font-weight:600}
+.handoutv2 .ambig .ahead p{margin:2px 0 0;color:var(--ink-2);font-size:12px;line-height:1.4}
+.handoutv2 .cands{display:flex;flex-direction:column;gap:6px}
+.handoutv2 .cand{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:#111823;border:1px solid var(--line-2);cursor:pointer}
+.handoutv2 .cand:hover{background:var(--card-2);border-color:var(--line-2)}
+.handoutv2 .cand input{accent-color:var(--accent-b)}
+.handoutv2 .cand .p{font-family:var(--font-mono);font-size:11.5px;color:var(--ink);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.handoutv2 .cand .t{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
+.handoutv2 .ambig .abtn{align-self:flex-start;height:30px;padding:0 14px;border-radius:999px;border:1px solid rgba(45,212,191,.4);background:rgba(20,184,166,.14);color:var(--accent-c);font-size:12.5px;font-weight:500;cursor:pointer}
+.handoutv2 .ambig .abtn:hover{background:rgba(20,184,166,.24)}
+
+/* Compact one-line work rows (like the queue): check + ID + material + qty +
+   day + status all on a single dense row, minimal padding. */
+.handoutv2 .works{display:flex;flex-direction:column}
+.handoutv2 .wrow{display:flex;align-items:center;gap:12px;padding:8px 0;min-height:38px}
+.handoutv2 .wrow+.wrow{border-top:1px solid #1b2431}
+/* Знайдено ≠ скасовано. Перекреслений Sum3D ID читався як «цього ID більше
+   немає», хоча його ще звіряють: рядок лишається робочим до видачі, а сам
+   ID оператор порівнює з наміченим у Sum3D. Стан каже галочка й приглушення
+   рядка — цього досить. */
+.handoutv2 .wrow.found{opacity:.55}
+.handoutv2 .wcheck{flex:0 0 21px;width:26px;height:26px;border-radius:6px;border:1.5px solid var(--line-2);background:#111823;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.handoutv2 .wcheck svg{width:12px;height:12px;stroke:var(--bg);fill:none;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;opacity:0;transition:opacity var(--ui-speed) ease}
+.handoutv2 .wcheck:hover{border-color:var(--accent-b)}
+.handoutv2 .wrow.found .wcheck{background:var(--accent-b);border-color:var(--accent-b)}
+.handoutv2 .wrow.found .wcheck svg{opacity:1}
+.handoutv2 .wcheck.static{cursor:default}
+/* Found + clickable: filled check that on hover signals "click to un-mark". */
+.handoutv2 .wcheck.done{cursor:pointer}
+.handoutv2 .wcheck.done:hover{border-color:var(--danger,#e5658b);background:transparent}
+.handoutv2 .wcheck.done:hover svg{stroke:var(--danger,#e5658b)}
+.handoutv2 .wmain{flex:1;min-width:0;display:flex;flex-direction:row;align-items:center;gap:9px}
+.handoutv2 .wmain .top{flex:1;min-width:0;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.handoutv2 .matchip{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:6px;background:#1d2734;border:1px solid var(--line-2);font-size:11px;color:var(--ink-2)}
+/* Per-row folder shortcuts: one chip per matching export folder, time-labelled
+   so same-material candidates are distinguishable. Clicking opens STL preview. */
+.handoutv2 .wopen{flex:0 0 auto;display:flex;align-items:center;gap:6px}
+.handoutv2 .wfolder{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;
+  border:1px solid rgba(45,212,191,.32);background:rgba(20,184,166,.1);color:var(--accent-c);text-decoration:none;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.handoutv2 .wfolder:hover{background:rgba(20,184,166,.22);border-color:var(--accent);opacity:1}
+.handoutv2 .wfolder svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.handoutv2 .wfolder-t{font-size:10.5px;color:var(--accent-c)}
+
+/* View switch: Рядки (compact list) ⇄ Плитки (preview tiles). */
+/* Перемикач вигляду — той самий сегментований контрол, що й .hsrc поруч:
+   одна капсула з сегментами всередині, а не двi окремі кнопки. Раніше він був
+   окремим блоком під стрічкою (свої межі, radius 8px, height 30px, margin
+   знизу) і після переїзду в .hbar стирчав чужим елементом біля сусіда. */
+.handoutv2 .view-toggle{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;margin:0}
+.handoutv2 .view-btn{
+  display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 12px;border-radius:999px;
+  border:0;background:none;color:var(--ink-2);font:inherit;font-size:12.5px;cursor:pointer;
+  transition:color var(--ui-speed) ease,background var(--ui-speed) ease;
+}
+.handoutv2 .view-btn:hover{color:var(--ink);background:#1d2734}
+.handoutv2 .view-btn.active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
+.handoutv2 .view-btn:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+
+/* Tile mode: same work markup, re-laid out as a grid of preview cards. */
+.handoutv2 .clients.as-tiles .works{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.handoutv2 .clients.as-tiles .wrow{flex-direction:column;align-items:stretch;gap:7px;padding:10px;border:1px solid #1c2532;border-radius:10px;background:#111823}
+.handoutv2 .clients.as-tiles .wrow+.wrow{border-top:1px solid #1c2532}
+.handoutv2 .clients.as-tiles .wrow>form{align-self:flex-start}
+.handoutv2 .clients.as-tiles .wmain{flex-direction:column;align-items:flex-start;gap:5px}
+.handoutv2 .clients.as-tiles .wmain .top{flex:none}
+.handoutv2 .clients.as-tiles .wopen{width:100%}
+.handoutv2 .clients.as-tiles .wfolder{flex:1;justify-content:center;height:34px;font-size:12px}
+.handoutv2 .export-batches{display:flex;flex-direction:column;gap:8px}
+.handoutv2 .export-batch{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.handoutv2 .batch-time{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
+.handoutv2 .export-batch .matchip{font-family:var(--font-mono)}
+.handoutv2 .folder-link{color:var(--ink-3);display:inline-flex}
+.handoutv2 .folder-link svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6}
+.handoutv2 .folder-link:hover{color:var(--accent-c);opacity:1}
+.handoutv2 .not-found{font-size:12px;color:var(--ink-3)}
+
+.handoutv2 .queue-empty{padding:46px 22px;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card)}
+.handoutv2 .queue-empty-icon{width:26px;height:26px;stroke:var(--ink-3);fill:none;stroke-width:1.4;margin-bottom:10px}
+.handoutv2 .queue-empty h2{font-family:var(--font-head);font-size:16px;margin:0 0 6px}
+.handoutv2 .queue-empty p{font-size:13px;color:var(--ink-3);margin:0}
+

@@ -1,0 +1,600 @@
+/* v2a_queue.css — виділено з base.css (Крок 5, 28.08.26).
+   v2a — щільна черга (перенос мокапу v2a/index.html).
+
+   ПОРЯДОК ЗАВАНТАЖЕННЯ = КАСКАД. Файли підключені в base.html рівно в тому
+   порядку, в якому ці правила стояли в base.css, і міняти його не можна:
+   у файлі є правила, що навмисно перекривають попередні (див. коментарі
+   «this rule sits after the earlier … block»). */
+/* ============================================================================
+   v2a — ЩІЛЬНА ЧЕРГА (мокап v2a/index.html)
+   Повний перенос структури головного екрана: statusline (рядок лічильників),
+   горизонтальні seg-фільтри, одна щільна таблиця, вузька колапсибельна
+   side-панель, виїзний паспорт (detail-pane). Усе скоуплено під `.q2`, щоб
+   не конфліктувати з іншими екранами; detail-pane/backdrop — body-рівневі
+   унікальні класи. Значення/анімації взято 1:1 з мокапу.
+   ========================================================================== */
+
+main.q2{
+  max-width:none;margin:0;padding:16px 20px 16px;
+  display:flex;flex-direction:column;gap:0;min-height:100vh;
+}
+.q2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}
+.q2 .tnum{font-variant-numeric:tabular-nums}
+
+.q2 .q2-topbar{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.q2 .q2-topbar h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 4px}
+.q2 .topbar-live{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:12px;color:var(--ink-2)}
+.q2 .topbar-live b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:11.5px}
+.q2 .topbar-live .sep{width:1px;height:10px;background:var(--line-2)}
+.q2 .topbar-live .tl-unit{color:var(--ink-3)}
+.q2 .live{display:inline-flex;align-items:center;gap:7px}
+.q2 .live .beacon{width:6px;height:6px;border-radius:50%;background:var(--accent-b);box-shadow:0 0 0 0 rgba(45,212,191,.55);animation:q2beacon var(--beacon-duration) ease-out infinite}
+@keyframes q2beacon{0%{box-shadow:0 0 0 0 rgba(45,212,191,.5)}70%{box-shadow:0 0 0 7px rgba(45,212,191,0)}100%{box-shadow:0 0 0 0 rgba(45,212,191,0)}}
+/* Єдина нескінченна петля без захисту — решта 14 його мали. */
+@media (prefers-reduced-motion: reduce){
+  .q2 .live .beacon,.mailv2 .live .beacon{animation:none}
+}
+.q2 .head-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+.q2 .btn{
+  display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:var(--r-ctl);
+  border:1px solid var(--line-2);background:var(--card);color:var(--ink);font-size:13px;font-weight:500;
+  transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease;cursor:pointer;text-decoration:none;
+}
+.q2 .btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.q2 .btn:hover{background:var(--card-2);border-color:var(--line-2);opacity:1}
+.q2 .btn.primary{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.q2 .btn.primary:hover{background:rgba(20,184,166,.24);border-color:var(--accent)}
+.q2 .btn.sm{height:30px;padding:0 11px;font-size:12.5px}
+.q2 .btn:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+
+/* Крок назад / вперед — дві іконки-кнопки поруч (undo/redo). Той самий вигляд, що
+   й .btn, але квадратні й без тексту; тултип через native title. */
+.q2 .step-actions{display:inline-flex;gap:4px}
+.q2 .icon-btn{
+  display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;
+  border-radius:var(--r-ctl);border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);
+  cursor:pointer;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.q2 .icon-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.q2 .icon-btn:hover{background:var(--card-2);border-color:var(--line-2);color:var(--ink);opacity:1}
+.q2 .icon-btn:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+
+/* Попап «Останні дії» — середня кнопка ряду ← ⟳ →. Тінтований активний стан, як
+   у решти is-active елементів. Меню — абсолютне, вирівняне по правому краю
+   кнопки (кнопки стоять у правому верхньому куті, тож меню росте всередину). */
+.q2 .acthist{position:relative;display:inline-flex}
+.q2 .acthist.is-open .acthist-toggle{background:rgba(20,184,166,.16);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.q2 .acthist-slot{position:absolute;top:calc(100% + 6px);right:0;z-index:40}
+.q2 .acthist:not(.is-open) .acthist-slot{display:none}
+.q2 .acthist-menu{
+  width:330px;background:var(--card);border:1px solid var(--line-2);border-radius:var(--r-card);
+  box-shadow:0 18px 40px -18px rgba(0,0,0,.8),var(--glow);overflow:hidden;
+  animation:q2fade-slide var(--enter-duration,.32s) ease both;
+}
+.q2 .acthist-head{padding:9px 12px;border-bottom:1px solid var(--line);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+/* Щільні хайрлайн-рядки, не картки — той самий крок, що на тріажі пошти. */
+.q2 .acthist-list{max-height:min(52vh,340px);overflow-y:auto;scrollbar-width:thin}
+.q2 .acthist-row{
+  display:block;width:100%;text-align:left;padding:7px 12px;border:0;border-bottom:1px solid var(--line);
+  background:none;cursor:pointer;font:inherit;border-left:2px solid transparent;
+  transition:background var(--ui-speed) ease,border-left-color var(--ui-speed) ease;
+}
+.q2 .acthist-row:last-child{border-bottom:0}
+.q2 .acthist-row:hover:not(:disabled){background:rgba(20,184,166,.07);border-left-color:var(--accent-b)}
+.q2 .acthist-row:focus-visible{outline:2px solid var(--control-edge);outline-offset:-2px}
+.q2 .acthist-row:disabled{cursor:default;opacity:.45}
+.q2 .ah-line{display:flex;align-items:baseline;gap:8px}
+.q2 .ah-time{font-size:11px;color:var(--ink-3);flex:0 0 auto}
+.q2 .ah-note{font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q2 .ah-tag{margin-left:auto;flex:0 0 auto;font-size:10px;color:var(--ink-3);border:1px solid var(--line-2);border-radius:4px;padding:1px 5px}
+.q2 .ah-tag.warn{color:var(--warn);border-color:rgba(240,163,94,.4)}
+.q2 .ah-sub{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q2 .ah-sub b{font-weight:500;color:var(--ink-2)}
+.q2 .acthist-row.is-undone{opacity:.55}
+.q2 .acthist-row.is-undone .ah-note{text-decoration:line-through;color:var(--ink-3)}
+.q2 .acthist-empty{margin:0;padding:16px 12px;font-size:12px;color:var(--ink-3);line-height:1.45}
+.q2 .acthist-foot{display:flex;justify-content:space-between;gap:10px;padding:7px 12px;border-top:1px solid var(--line);font-size:11px;color:var(--ink-3)}
+.q2 .acthist-foot a{color:var(--accent-c);text-decoration:none}
+.q2 .acthist-foot a:hover{opacity:1;text-decoration:underline}
+
+/* «Ось ця робота» — довша й помітніша за row-flash (той підтверджує збереження,
+   цей веде око через увесь екран після стрибка). Тінт + бірюзова смуга зліва. */
+.q2 table.qtable tbody tr.row-locate{animation:q2row-locate 2.4s ease-out}
+.q2 table.qtable tbody tr.row-locate > td:first-child{box-shadow:inset 2px 0 0 var(--accent-b)}
+@keyframes q2row-locate{
+  0%{background:rgba(20,184,166,.3)}
+  55%{background:rgba(20,184,166,.18)}
+  100%{background:transparent}
+}
+@media (prefers-reduced-motion:reduce){
+  .q2 table.qtable tbody tr.row-locate{animation:none;background:rgba(20,184,166,.14)}
+  .q2 .acthist-menu{animation:none}
+}
+
+/* Кнопка-перемикач режиму вигляду + панель контролів (задача 1). Активний стан
+   перемикача підсвічений бірюзовим, як інші is-active елементи v2a. */
+.q2 .layout-edit-toggle[aria-pressed="true"]{
+  background:rgba(20,184,166,.16);border-color:rgba(45,212,191,.42);color:var(--accent-c);
+}
+.q2 .layout-controls{
+  display:none;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;
+  padding:9px 12px;border:1px solid rgba(45,212,191,.3);border-radius:var(--r-card);
+  background:rgba(20,184,166,.06);
+}
+body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--enter-duration,.32s) ease both}
+.q2 .layout-controls .lc-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.q2 .layout-controls .lc-hint{font-size:11.5px;color:var(--ink-3)}
+.q2 .layout-controls .seg button{
+  appearance:none;border:0;background:none;cursor:pointer;
+  padding:5px 11px;border-radius:999px;color:var(--ink-2);font:500 12px var(--font-body);
+  transition:color var(--ui-speed) ease,background var(--ui-speed) ease;
+}
+.q2 .layout-controls .seg button:hover{color:var(--ink);background:#1d2734}
+.q2 .layout-controls .seg button.is-active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
+.q2 .layout-controls .seg button:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+.q2 .layout-controls .lc-reset{margin-left:auto;cursor:pointer}
+.q2 .layout-controls .lc-reset:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+
+.q2 .statusline{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:var(--queue-density-sl-pad,9px) 14px;margin-bottom:10px;border:1px solid var(--line);border-radius:var(--r-card);
+  background:var(--card);box-shadow:var(--glow);
+}
+.q2 .sl-counters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex:1;min-width:0}
+.q2 .sl-item{
+  display:inline-flex;align-items:baseline;gap:5px;font-size:12.5px;color:var(--ink-2);
+  padding:3px 8px 3px 6px;border-radius:999px;border:1px solid transparent;text-decoration:none;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.q2 .sl-item:hover{background:var(--card-2);color:var(--ink);opacity:1}
+.q2 .sl-item b{font-family:var(--font-mono);font-weight:600;font-size:14px;color:var(--ink);letter-spacing:-.01em}
+.q2 .sl-item .sl-sub{color:var(--ink-3);font-size:11px}
+.q2 .sl-item.is-alarm b{color:var(--alarm)}
+.q2 .sl-item.is-warn b{color:var(--warn)}
+.q2 .sl-item.is-active{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.4);color:var(--accent-c)}
+.q2 .sl-item.is-alarm.is-active{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.42);color:var(--alarm)}
+.q2 .sl-item.is-active b{color:inherit}
+.q2 .sl-sep{width:1px;height:14px;background:var(--line-2);flex:0 0 auto}
+.q2 .sl-sync{
+  flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 12px;border-radius:999px;
+  border:1px solid rgba(45,212,191,.35);background:rgba(20,184,166,.1);color:var(--accent-c);font-size:12px;font-weight:500;
+  text-decoration:none;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease;cursor:pointer;
+}
+.q2 .sl-sync:hover{background:rgba(20,184,166,.18);opacity:1}
+.q2 .sl-sync.err{border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.1);color:var(--alarm)}
+.q2 .sl-sync.err:hover{background:rgba(248,113,113,.18)}
+.q2 .sl-sync .beacon{width:6px;height:6px;border-radius:50%;background:currentColor}
+.q2 .sl-sync b{font-family:var(--font-mono);font-weight:600}
+
+.q2 .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.q2 .seg{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+.q2 .seg a{
+  height:26px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:500;color:var(--ink-2);text-decoration:none;
+  display:inline-flex;align-items:center;gap:6px;transition:background var(--ui-speed) ease,color var(--ui-speed) ease;cursor:pointer;
+}
+.q2 .seg a:hover{color:var(--ink);background:#1d2734;opacity:1}
+.q2 .seg a.is-active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
+.q2 .seg .n{font-family:var(--font-mono);font-size:11px;opacity:.75}
+
+/* Перемикач швидкості оновлення (бічна панель «Google Таблиця»). Стек
+   лейбл-над-сегментом: панель вузька (260-280px), три кнопки в ряд з
+   лейблом збоку не влазять. Кнопки — той самий вигляд, що .seg a /
+   density-seg button. */
+.q2 .ss-row{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.q2 .ss-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.q2 .ss-seg{display:flex;width:100%}
+.q2 .ss-seg button{
+  appearance:none;border:0;background:transparent;flex:1;height:26px;padding:0 8px;border-radius:999px;
+  font:inherit;font-size:12px;font-weight:500;color:var(--ink-2);display:inline-flex;align-items:center;
+  justify-content:center;gap:5px;transition:background var(--ui-speed) ease,color var(--ui-speed) ease;cursor:pointer;
+}
+.q2 .ss-seg button:hover{color:var(--ink);background:#1d2734}
+.q2 .ss-seg button.is-active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
+.q2 .ss-seg button:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+.q2 .pill{
+  height:32px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);
+  color:var(--ink-2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:7px;text-decoration:none;
+  transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease;cursor:pointer;
+}
+.q2 .pill:hover{color:var(--ink);border-color:var(--line-2);opacity:1}
+.q2 .pill.alarm.is-active{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.42);color:var(--alarm)}
+.q2 .pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.85}
+.q2 .filters .flabel{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-right:-2px}
+.q2 .fchip{
+  height:28px;padding:0 6px 0 11px;border-radius:999px;border:1px dashed var(--line-2);background:transparent;
+  color:var(--ink-2);font-size:12px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+}
+.q2 .fchip:hover{opacity:1}
+.q2 .fchip .x{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:var(--ink-3)}
+.q2 .fchip:hover .x{background:rgba(248,113,113,.16);color:var(--alarm)}
+.q2 .fchip svg{width:10px;height:10px;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;fill:none}
+/* By default (bar fits one row on wide monitors) the date pager stays inline.
+   app.js measures the real layout and adds .filters-wrapped only when the bar
+   actually wraps — then the pager drops onto its own clean line, left-aligned
+   directly under the Період pills. .filters-break is a full-width zero-height
+   flex break; .flabel-ghost is an invisible "Період"-width spacer that reserves
+   the same lead width so the dates line up under Сьогодні/Вчора/…. Measuring in
+   JS (not a fixed breakpoint) keeps "one row on the big monitor" exact whatever
+   its width. */
+.q2 .filters .filters-break{display:none}
+.q2 .filters .flabel-ghost{display:none}
+.q2 .filters.filters-wrapped .filters-break{display:block;flex-basis:100%;height:0;margin:0;padding:0}
+.q2 .filters.filters-wrapped .flabel-ghost{display:inline;visibility:hidden}
+.q2 .date-strip{display:inline-flex;gap:2px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;max-width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+.q2 .date-strip::-webkit-scrollbar{display:none}
+.q2 .date-strip a,.q2 .date-strip span{flex:0 0 auto}
+.q2 .date-strip a,.q2 .date-strip span{
+  height:26px;min-width:26px;padding:0 8px;border-radius:999px;font-size:11.5px;color:var(--ink-2);
+  display:inline-flex;align-items:center;justify-content:center;text-decoration:none;font-family:var(--font-mono);
+}
+.q2 .date-strip a:hover{color:var(--ink);background:#1d2734;opacity:1}
+.q2 .date-strip a.is-active{background:rgba(20,184,166,.16);color:var(--accent-c)}
+/* Nav arrows ‹ › — small but clearly the "pager", tinted in the accent so they
+   read as controls, not dates. Bolder glyph + accent fill on hover. */
+.q2 .date-strip a.nav-arrow{
+  color:var(--accent-c);font-size:15px;font-weight:700;line-height:1;
+  background:rgba(20,184,166,.12);border:1px solid rgba(45,212,191,.30);
+}
+.q2 .date-strip a.nav-arrow:hover{
+  color:var(--bg);background:var(--accent-b);border-color:var(--accent-b);opacity:1;
+}
+.q2 .date-strip .nav-off{color:var(--ink-3);opacity:.3;font-size:15px;background:none;border:none}
+
+.q2 .worklayout{flex:1;min-height:0;display:flex;gap:12px;align-items:stretch}
+.q2 .queue-panel{
+  flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);
+  animation:q2fade-slide var(--enter-duration,.32s) ease both;
+}
+.q2 .card-head{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.q2 .card-head h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0;letter-spacing:-.005em}
+.q2 .card-head .meta{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
+.q2 .card-head .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.q2 .search{
+  display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:var(--r-ctl);
+  background:#111823;border:1px solid var(--line);min-width:200px;
+}
+.q2 .search svg{width:14px;height:14px;stroke:var(--ink-3);fill:none;stroke-width:1.7;stroke-linecap:round}
+.q2 .search input{background:none;border:0;outline:none;color:var(--ink);font:400 13px var(--font-body);width:100%}
+.q2 .search input::placeholder{color:var(--ink-3)}
+.q2 .search:focus-within{border-color:rgba(45,212,191,.45);box-shadow:inset 0 0 18px -12px rgba(45,212,191,.9)}
+
+.q2 .tablewrap{overflow:auto;flex:1;min-height:0;max-height:calc(100vh - 250px);scrollbar-width:thin}
+.q2 table.qtable{border-collapse:separate;border-spacing:0;width:100%;min-width:1120px}
+.q2 table.qtable thead th{
+  position:sticky;top:0;z-index:2;background:#131a24;border-bottom:1px solid var(--line-2);
+  text-align:left;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;padding:9px 8px;white-space:normal;line-height:1.15;
+}
+.q2 table.qtable thead th a.th-sort{color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.q2 table.qtable thead th a.th-sort:hover{color:var(--ink-2);opacity:1}
+.q2 table.qtable thead th .th-sort-active{color:var(--accent-c)}
+/* Перетягувана межа стовпця (режим вигляду, задача 1). th вже position:sticky,
+   тож абсолютна межа якориться до нього. Прихована/неактивна поза режимом, щоб
+   не заважати кліку сортування. */
+.q2 table.qtable thead th .colgrip{
+  position:absolute;top:0;right:0;width:9px;height:100%;
+  opacity:0;pointer-events:none;touch-action:none;
+  border-right:2px solid transparent;
+}
+body.layout-edit .q2 table.qtable thead th .colgrip{
+  opacity:1;pointer-events:auto;cursor:col-resize;
+}
+body.layout-edit .q2 table.qtable thead th .colgrip:hover,
+body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
+  border-right-color:var(--accent-b);
+}
+.q2 table.qtable tbody td{padding:var(--queue-density-pad,8px) 8px;border-bottom:1px solid #1c2532;font-size:var(--queue-density-font,13px);vertical-align:middle;white-space:nowrap}
+/* ТИМЧАСОВО приховано на прохання: колонка «Статус» у черзі. DOM лишається
+   (td/th на місці — регрес-тести шаблону рядка не ламаються, зміна статусу й
+   видалення рядка ще працюють, просто не показані). Повернути — прибрати ці два
+   рядки. Undo тепер робить статична кнопка «Крок назад» у шапці. */
+.q2 table.qtable td.status,
+.q2 table.qtable th.col-status{display:none}
+/* Колонка «Оператор» — хто прорахував (стовпець М таблиці, Order.calculated_raw).
+   Компактний моно-бейдж; коротке значення (літера/код St, D, EE…). */
+.q2 td.calc-op{white-space:nowrap}
+.q2 .operator-form{display:inline-flex;align-items:center}
+/* Лаконічний інпут «Оператор» (стовпець М). Значення короткі (літера/код St,
+   D, ЕЕ…), тож за замовчуванням він читається як звичайний моно-текст — без
+   рамки й фону. Афорданс поля (рамка+фон) з'являється на hover рядка або у
+   фокусі, як і решта «тихих доти, доки не потрібні» контролів у рядку. Вузький
+   під короткий код; функціонал (ввід + Enter/blur) незмінний. */
+.q2 .operator-input{
+  /* Нижня лінія — афорданс «сюди пишуть». У спокої поле не мало ЖОДНОЇ
+     межі (1.00:1) і читалось як текст. Повна рамка на 49 рядках
+     забоксувала б таблицю; одна лінія коштує піксель. */
+  width:34px;height:21px;padding:0 4px;border-radius:5px;background:transparent;
+  border:1px solid transparent;border-bottom-color:var(--control-edge);
+  color:var(--ink);font-family:var(--font-mono);font-size:11px;outline:none;
+  transition:border-color .12s ease,background .12s ease;
+}
+.q2 .queue-row:hover .operator-input{border-color:var(--line);background:#111823}
+.q2 .operator-input:focus{border-color:rgba(45,212,191,.45);background:#111823}
+.q2 .operator-input::placeholder{color:var(--ink-3)}
+/* Кеш: колишній моно-бейдж (замінено на інпут, лишаю на випадок ре-юзу деінде). */
+.q2 .op-badge{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;
+  background:#1d2734;border:1px solid var(--line-2);font-size:11.5px;color:var(--ink);letter-spacing:.01em}
+body.layout-edit .q2 table.qtable{user-select:none}
+.q2 table.qtable tbody tr{transition:background var(--ui-speed) ease}
+.q2 table.qtable tbody tr:hover{background:var(--card-2)}
+.q2 table.qtable tbody tr.queue-row-overdue{background:rgba(248,113,113,.055)}
+.q2 table.qtable tbody tr.queue-row-overdue:hover{background:rgba(248,113,113,.1)}
+.q2 td.dotcell{width:26px;padding-left:14px;padding-right:0}
+.q2 .sdot{width:8px;height:8px;border-radius:50%;display:block}
+/* У продакшні статус-крапка вкладена у комірку наряду (без окремої dot-колонки,
+   як у мокапі), тож тут вона має бути inline поруч із номером, а не block на
+   власному рядку. */
+.q2 td.order-id .sdot{display:inline-block;vertical-align:middle;margin-right:7px}
+/* Adaptive: cap the naryad/client cell so a long client name can no longer push
+   the whole table wider than the panel (it clipped СТАТУС off-screen on ~1900px
+   monitors). Naryad + client name truncate with ellipsis; the full value stays
+   in the row's title/hover and the work card. */
+.q2 td.order-id{max-width:182px}
+.q2 .ordbtn{display:inline-block;max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.q2 tr.queue-row-overdue .sdot{box-shadow:0 0 0 3px rgba(248,113,113,.22)}
+.q2 .ordbtn{font-family:var(--font-mono);font-size:12.5px;font-weight:500;color:var(--ink);letter-spacing:-.01em;text-decoration:none}
+.q2 .ordbtn:hover{color:var(--accent-c);opacity:1}
+.q2 .src{
+  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;
+  border:1px solid rgba(45,212,191,.32);color:var(--accent-c);background:rgba(20,184,166,.1);margin-left:7px;
+}
+.q2 .rowclient{font-size:11.5px;color:var(--ink-2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+/* Client rows entered in the sheet without a наряд (blue-filled by the lab) —
+   a soft blue that echoes that sheet convention, distinct from the teal email
+   badge and the material chips. */
+.q2 .source-badge-client.src{border-color:rgba(96,165,250,.42);color:#93c5fd;background:rgba(96,165,250,.13)}
+.q2 tr.queue-row-client{background:rgba(96,165,250,.06)}
+.q2 tr.queue-row-client:hover{background:rgba(96,165,250,.1)}
+.q2 .cam{max-width:220px;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2);font-size:12.5px;white-space:nowrap}
+.q2 .cam.shout{color:var(--warn)}
+.q2 .matchip{
+  display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:6px;
+  background:#1d2734;border:1px solid var(--line-2);font-size:12px;color:var(--ink);
+}
+/* Header word and number centred together in the column: left-aligning the
+   number put it under the header's first letter while the wide "Кількість"
+   label extended right, so the count looked shifted off its header. Centring
+   both lines the number up under the middle of the label. */
+.q2 th.col-qty{text-align:center}
+.q2 th.col-qty .th-sort{justify-content:center}
+.q2 td.quantity{font-family:var(--font-mono);font-size:12.5px;text-align:center;color:var(--ink)}
+.q2 td.src-tab{white-space:nowrap}
+.q2 .src-tab-link{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);text-decoration:none;
+  padding:2px 7px;border-radius:6px;border:1px solid var(--line);background:#111a24;
+  transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.q2 .src-tab-link:hover{color:var(--accent-c);border-color:rgba(45,212,191,.35)}
+.q2 td.job-code{position:relative;max-width:184px}
+/* Wide enough for a full mill path ID (2026-07-09_01939-003) — this is the value
+   the operator copies into Sum3D, so it must stay fully readable; ellipsis is a
+   safety net only for the rare longer ID. The Статус column (last, auto) yields
+   this slack, so widening here does not push the table wider. */
+.q2 .job-code-link{max-width:100%;overflow:hidden;text-overflow:ellipsis;text-align:left}
+.q2 .job-code-link{
+  font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);padding:3px 7px;border-radius:6px;
+  border:1px solid transparent;background:none;cursor:pointer;
+  display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  vertical-align:middle;
+  transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease;
+}
+.q2 .job-code-link:hover{background:rgba(20,184,166,.12);border-color:rgba(45,212,191,.3);color:var(--accent-c)}
+.q2 .job-code-found-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent-b);margin-left:5px;vertical-align:middle}
+/* Clickable STL-preview icon for lab jobs (replaces the passive found-dot when
+   the folder resolved). Subtle by default, teal on hover — matches folder-link. */
+.q2 .job-code-preview{margin-left:5px;padding:2px;border:0;background:none;color:var(--accent-b);
+  display:inline-flex;align-items:center;vertical-align:middle;cursor:pointer;border-radius:5px;
+  transition:color var(--ui-speed) ease,background var(--ui-speed) ease}
+.q2 .job-code-preview svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.q2 .job-code-preview:hover{color:var(--accent-c);background:rgba(20,184,166,.14)}
+.q2 .job-code-preview:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+.q2 td.technician{font-size:12.5px;color:var(--ink-2)}
+.q2 td.kind-cell{max-width:160px}
+.q2 .kindbtn{color:var(--ink-2);font-size:12.5px;text-decoration:none;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.q2 .kindbtn:hover{color:var(--accent-c);opacity:1}
+.q2 .sum3d-form{display:inline-flex;gap:4px;align-items:center}
+.q2 .sum3d-input{
+  width:74px;height:26px;padding:0 8px;border-radius:6px;background:#111823;
+  /* Межа тут Є афордансом (сюди пишуть Sum3D ID), тож --control-edge:
+     на --line виходило 1.12:1 — поле не читалось як поле. */
+  border:1px solid var(--control-edge);
+  color:var(--ink);font-family:var(--font-mono);font-size:11.5px;outline:none;
+}
+/* Плейсхолдер лишався сірим кольором браузера rgb(117,117,117) = 3.87:1. */
+.q2 .sum3d-input::placeholder{color:var(--ink-3);opacity:1}
+.q2 .sum3d-input:focus{border-color:rgba(45,212,191,.45)}
+.q2 .sum3d-clear{width:22px;height:26px;flex:0 0 22px;border:0;background:none;cursor:pointer;
+  color:var(--ink-3);font-size:12px;line-height:1;border-radius:6px;padding:0;opacity:0;
+  display:inline-flex;align-items:center;justify-content:center;transition:opacity .12s ease,color .12s,background .12s}
+/* Тихий за замовчуванням — проявляється лише коли курсор над рядком (або кнопка
+   у фокусі з клавіатури), як і кошик видалення рядка. На тач-екрані завжди трохи
+   видимий, бо hover там нема. */
+.q2 .queue-row:hover .sum3d-clear{opacity:1}
+.q2 .sum3d-clear:focus-visible{opacity:1;outline:2px solid var(--control-edge);outline-offset:1px}
+.q2 .sum3d-clear:hover{color:var(--color-overdue,#e5736a);background:rgba(229,115,106,.12)}
+@media (hover:none){.q2 .sum3d-clear{opacity:.55}}
+.q2 .sum3d-save{
+  width:26px;height:26px;flex:0 0 26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;
+  color:var(--ink-2);border:1px solid var(--line-2);background:none;cursor:pointer;
+}
+.q2 .sum3d-save:hover{color:var(--accent-c);border-color:rgba(45,212,191,.35);background:rgba(20,184,166,.12)}
+.q2 .sum3d-save svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.q2 .folder-link{margin-left:6px;color:var(--ink-3);display:inline-flex;vertical-align:middle}
+.q2 .folder-link svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.q2 .folder-link:hover{color:var(--accent-c);opacity:1}
+.q2 .status-select{
+  height:26px;border-radius:999px;background:#111823;border:1px solid var(--line);color:var(--ink);
+  font-size:12px;padding:0 8px;font-family:var(--font-body);cursor:pointer;
+  /* Adaptive: pin the width instead of letting the widest <option> ("знайдено
+     при видачі") set the column's min-width — that longest option alone made the
+     Статус column ~160px wider than needed and pushed the table off ~1900px
+     screens. Fits every status shown in the queue; the rare handout-stage label
+     clips by a couple chars and stays readable in the open dropdown. */
+  width:140px;max-width:140px;
+}
+.q2 .badge{font-size:11px;padding:1px 7px;border-radius:5px;font-weight:500}
+.q2 .badge.problem{background:rgba(248,113,113,.14);color:#f87878;border:1px solid rgba(248,113,113,.3)}
+.q2 .badge.redo{background:rgba(240,163,94,.13);color:var(--warn);border:1px solid rgba(240,163,94,.3)}
+.q2 .sync-warning{color:var(--warn);margin-left:5px;display:inline-flex;vertical-align:middle}
+.q2 .sync-warning svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7}
+
+/* Paused-sync note in the sidebar: amber, calm — a standing state, not an alarm. */
+.q2 .sync-paused-note{margin:8px 0;padding:8px 10px;border:1px solid rgba(240,163,94,.4);border-radius:8px;background:rgba(240,163,94,.12);color:var(--warn);font-size:12px;line-height:1.4}
+
+/* "Technician corrected this row" — a warm tint on the row plus a badge naming
+   what moved. Two levels: a plain change is amber; a change to a work already
+   TAKEN (Sum3D filled) is red, because that is the one that turns into scrap.
+   The badge is a button — the operator dismisses it, nothing expires on a
+   timer, so a change made during a break is still flagged on their return. */
+.q2 .queue-row-changed > td{background:rgba(240,163,94,.10)}
+.q2 .queue-row-changed-taken > td{background:rgba(248,113,113,.12)}
+.q2 .chg-form{display:inline-flex;margin:0 0 4px}
+.q2 .badge.chg{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:3px 8px;border:1px solid rgba(240,163,94,.42);border-radius:7px;background:rgba(240,163,94,.14);color:var(--warn);font-size:11px;line-height:1.25;text-align:left;cursor:pointer}
+.q2 .badge.chg svg{flex:0 0 auto;width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.q2 .badge.chg span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q2 .badge.chg:hover{background:rgba(240,163,94,.24)}
+.q2 .badge.chg.chg-taken{border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.16);color:#f87878}
+.q2 .badge.chg.chg-taken:hover{background:rgba(248,113,113,.26)}
+.q2 .badge.chg:focus-visible{outline:2px solid var(--control-edge);outline-offset:1px}
+
+/* Delete-from-queue: destructive, so it stays out of the way until the row is
+   hovered or the button is tabbed to — 130 always-visible bins would be noise
+   in a dense table, and an easy misclick. Kept in tab order (opacity, not
+   display) so it is reachable by keyboard, and always visible where there is
+   no hover to reveal it (touch). */
+.q2 .row-delete-form{display:inline-flex;vertical-align:middle;margin-left:5px}
+.q2 .row-delete{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:6px;background:none;color:var(--ink-3);cursor:pointer;opacity:0;transition:opacity .12s ease,color .12s ease,background .12s ease}
+.q2 .row-delete svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.q2 .queue-row:hover .row-delete{opacity:1}
+.q2 .row-delete:focus-visible{opacity:1;outline:2px solid var(--control-edge);outline-offset:1px}
+.q2 .row-delete:hover{color:#f87878;background:rgba(248,113,113,.14)}
+@media (hover:none){.q2 .row-delete{opacity:.55}}
+
+.q2 .qfoot{display:flex;align-items:center;gap:10px;padding:9px 15px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3);flex-wrap:wrap}
+.q2 .queue-empty{padding:46px 22px;text-align:center;background:none;border:0}
+.q2 .queue-empty-icon{width:26px;height:26px;stroke:var(--ink-3);fill:none;stroke-width:1.4;margin-bottom:10px}
+
+.q2 .sweep{position:absolute;inset:0;pointer-events:none;overflow:hidden;border-radius:inherit;opacity:0}
+.q2 .sweep i{
+  position:absolute;left:0;right:0;top:0;height:150px;display:block;
+  background:linear-gradient(180deg,rgba(45,212,191,0) 0%,rgba(45,212,191,.13) 45%,rgba(94,234,212,.3) 62%,rgba(45,212,191,0) 100%);
+  transform:translateY(-160px);
+}
+.q2 .queue-panel.sweeping .sweep{opacity:1}
+.q2 .queue-panel.sweeping .sweep i{animation:q2sweep var(--sweep-duration) cubic-bezier(.16,.84,.32,1) forwards}
+@keyframes q2sweep{from{transform:translateY(-160px)}to{transform:translateY(105%)}}
+/* Мікроанімації (задача 3): поява панелі/рядка та флеш-підтвердження статусу. */
+@keyframes q2fade-slide{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes q2row-enter{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+@keyframes q2status-flash{0%{background:rgba(20,184,166,.22)}100%{background:transparent}}
+/* Рядок, який щойно з'явився у черзі (HTMX-свап або перший рендер). */
+.q2 table.qtable tbody tr.row-enter{animation:q2row-enter var(--enter-duration,.32s) cubic-bezier(.16,.84,.32,1) both}
+/* Короткий флеш після зміни статусу/збереження Sum3D ID через HTMX. */
+.q2 table.qtable tbody tr.row-flash{animation:q2status-flash var(--flash-duration,.9s) ease-out}
+
+.q2 .side-panel{flex:0 0 296px;width:296px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;display:flex;flex-direction:column;gap:var(--queue-density-side-gap,10px)}
+.q2 .side-sec{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);overflow:hidden;flex:0 0 auto}
+.q2 .side-head{
+  width:100%;display:flex;align-items:center;gap:8px;padding:11px 12px;text-align:left;background:none;cursor:pointer;
+  font-family:var(--font-head);font-size:13px;font-weight:600;color:var(--ink);
+}
+.q2 .side-head:hover{background:var(--card-2)}
+.q2 .side-head .side-count{
+  font-family:var(--font-mono);font-size:11px;font-weight:500;padding:1px 6px;border-radius:5px;
+  background:rgba(45,212,191,.14);color:var(--accent-c);border:1px solid rgba(45,212,191,.26);
+}
+.q2 .side-head .side-count.err{background:rgba(248,113,113,.14);color:var(--alarm);border-color:rgba(248,113,113,.3)}
+.q2 .side-head .side-count.warn{background:rgba(240,163,94,.13);color:var(--warn);border-color:rgba(240,163,94,.28)}
+.q2 .side-head .chev{margin-left:auto;width:14px;height:14px;flex:0 0 14px;stroke:var(--ink-3);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .16s ease}
+.q2 .side-sec[data-open="true"] .chev{transform:rotate(180deg)}
+.q2 .side-body{padding:0 var(--queue-density-card-pad,13px) var(--queue-density-card-pad,13px);border-top:1px solid var(--line)}
+.q2 .side-sec[data-open="false"] .side-body{display:none}
+.q2 .side-sec[data-open="true"] .side-body{padding-top:11px}
+
+/* Spotlight cards (inspired by KokonutUI spotlight-cards, reimplemented in our
+   vanilla stack): a teal radial glow follows the cursor, the border lifts, and
+   the card tilts a few degrees toward the pointer. Position vars (--mx/--my)
+   and tilt (--rx/--ry) are written by app.js on mousemove; .spotlight is added
+   by that JS so a no-JS card keeps its normal flat look. overflow:hidden
+   (already on .side-sec) clips the glow to the rounded card. */
+.q2 .side-sec{position:relative;transition:transform .18s ease,box-shadow .2s ease,border-color .2s ease}
+.q2 .side-sec::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0;opacity:0;transition:opacity .25s ease;background:radial-gradient(300px circle at var(--mx,50%) var(--my,50%),rgba(45,212,191,.16),transparent 60%)}
+.q2 .side-sec.spotlight:hover::before{opacity:1}
+.q2 .side-sec.spotlight:hover{border-color:rgba(45,212,191,.35);box-shadow:0 12px 32px -16px rgba(45,212,191,.45),var(--glow)}
+.q2 .side-sec.spotlight{transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg))}
+.q2 .side-head,.q2 .side-body{position:relative;z-index:1}
+@media (prefers-reduced-motion:reduce){
+  .q2 .side-sec.spotlight{transform:none}
+  .q2 .side-sec::before{transition:none}
+}
+.q2 .state{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;margin-bottom:11px}
+.q2 .state svg{width:17px;height:17px;flex:0 0 17px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.q2 .state strong{display:block;font-size:12.5px;font-weight:600}
+.q2 .state p{margin:2px 0 0;font-size:11.5px;line-height:1.4}
+.q2 .state.err{background:rgba(248,113,113,.09);border:1px solid rgba(248,113,113,.28);color:var(--alarm)}
+.q2 .state.err p{color:#f0b4b4}
+.q2 .state.ok{background:rgba(20,184,166,.1);border:1px solid rgba(45,212,191,.3);color:var(--accent-c)}
+.q2 .state.ok p{color:#9fd8d0}
+.q2 .kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:var(--queue-density-kv-pad,6px) 0;font-size:12px;color:var(--ink-2)}
+.q2 .kv+.kv{border-top:1px solid #1b2431}
+.q2 .kv b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:11.5px}
+.q2 .maillist{display:flex;flex-direction:column;gap:2px}
+.q2 .mailrow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 9px;border-radius:9px;text-align:left;width:100%;text-decoration:none;transition:background var(--ui-speed) ease}
+.q2 .mailrow:hover{background:var(--card-2);opacity:1}
+.q2 .mailrow .from{font-size:12.5px;font-weight:500;color:var(--ink)}
+.q2 .mailrow .subj{font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q2 .mailrow .t{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3)}
+.q2 .mailrow .att{font-family:var(--font-mono);font-size:10.5px;color:var(--accent-c);justify-self:end}
+.q2 .side-actions{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
+.q2 .side-empty{font-size:12px;color:var(--ink-3);padding:4px 0}
+
+.detail-pane{
+  position:fixed;top:0;right:0;bottom:0;width:420px;max-width:92vw;
+  background:var(--card);border-left:1px solid var(--line);box-shadow:var(--sh-pop);
+  transform:translateX(105%);transition:transform var(--panel-duration) cubic-bezier(.16,.84,.32,1);
+  z-index:80;overflow-y:auto;scrollbar-width:thin;
+}
+.detail-pane.open{transform:translateX(0)}
+.detail-pane .detail-head{display:flex;align-items:flex-start;gap:10px;padding:15px 16px 13px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);z-index:1}
+.detail-pane .detail-body{padding:0}
+.detail-pane .detail-body iframe{width:100%;border:0;min-height:calc(100vh - 60px);background:var(--card)}
+.detail-close{margin-left:auto;width:28px;height:28px;flex:0 0 28px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-2);border:1px solid var(--line-2);background:none;cursor:pointer}
+.detail-close:hover{color:var(--ink);background:var(--card-2)}
+.detail-close svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
+.detail-head .ord{font-family:var(--font-mono);font-size:19px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.detail-backdrop{position:fixed;inset:0;background:rgba(5,8,12,.6);opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:70}
+.detail-backdrop.open{opacity:1;pointer-events:auto}
+
+/* Бічна панель складається під таблицю ТАМ, ДЕ ПОЧИНАЄ КОШТУВАТИ КОЛОНОК,
+   а не на телефонному брейкпоінті. Виміряно на реальних 49 рядках:
+   таблиця має власну ширину 1120px + 296px панелі + проміжки.
+
+     1920 → приховано 0      (робочий монітор — панель поруч, усе видно)
+     1600 → приховано 123px
+     1440 → приховано 283px
+     1280 → приховано 443px  (ховаються Технік, Коментар, Sum3D ID, Оператор)
+
+   Раніше панель лишалась збоку аж до 940px, тобто на ноутбуці чи в
+   половині екрана оператор втрачав Sum3D ID — поле, заради якого чергу
+   й відкривають. Тепер нижче 1650px вона стає горизонтальною смугою під
+   таблицею: лічильники видно, ширину таблиця забирає собі. */
+@media (max-width:1650px){
+  .q2 .worklayout{flex-direction:column}
+  .q2 .side-panel{flex:0 0 auto;width:100%;flex-direction:row;flex-wrap:wrap}
+  .q2 .side-sec{flex:1 1 260px}
+  .q2 .tablewrap{max-height:none}
+}
+@media (max-width:560px){
+  .q2 .statusline{flex-direction:column;align-items:stretch}
+  .q2 .sl-sync{align-self:flex-start}
+  .detail-pane{width:100%;max-width:100%}
+}
+@media (prefers-reduced-motion:reduce){
+  .q2 .queue-panel.sweeping .sweep{opacity:0}
+  body.layout-edit .q2 .layout-controls{animation:none}
+  .q2 .queue-panel{animation:none}
+  .q2 table.qtable tbody tr.row-enter,
+  .q2 table.qtable tbody tr.row-flash{animation:none}
+  .q2 .filters .seg a,.q2 .pill,.q2 .fchip{transition:none}
+}
+

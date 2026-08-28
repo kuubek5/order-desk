@@ -1,0 +1,528 @@
+/* queue_table.css — виділено з base.css (Крок 5, 28.08.26).
+   Таблиця черги: колонки, сортування, вбудований коментар, позначка теки.
+
+   ПОРЯДОК ЗАВАНТАЖЕННЯ = КАСКАД. Файли підключені в base.html рівно в тому
+   порядку, в якому ці правила стояли в base.css, і міняти його не можна:
+   у файлі є правила, що навмисно перекривають попередні (див. коментарі
+   «this rule sits after the earlier … block»). */
+/* Queue Table Styles */
+.queue-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-5);
+}
+
+.queue-table thead {
+  border-bottom: 2px solid var(--color-card-border);
+}
+
+.queue-table th {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Clickable column headers (Матеріал/Колір, Вид роботи, Кількість) —
+   toggles an explicit sort order for the visible queue rows. Reuses the
+   same muted-to-accent hover language as .rail-item / .rail-date-nav. */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.th-sort:hover {
+  color: var(--color-text);
+}
+
+.th-sort:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.th-sort-active {
+  color: var(--color-accent);
+}
+
+.th-sort-icon {
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
+.queue-row {
+  border-bottom: 1px solid var(--color-card-border);
+  transition: background-color 0.2s ease;
+}
+
+.queue-row:hover {
+  background-color: rgba(230, 230, 240, 0.02);
+}
+
+.queue-table td {
+  padding: var(--space-4);
+  font-size: 0.95rem;
+  vertical-align: middle;
+}
+
+.queue-table td.order-id {
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+/* Order.cam_comment (Google Sheet column K, the CAM-operator's own
+   instructions — e.g. "покрити опаком") shown as always-visible text in its
+   own queue column, matching how it reads directly in the sheet's own
+   column rather than being hidden behind a hover. */
+.comment-cell {
+  max-width: 220px;
+}
+
+.cam-comment-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.queue-table td.material-cell,
+.queue-table td.kind-cell {
+  max-width: 200px;
+  word-wrap: break-word;
+}
+
+.queue-table td.quantity {
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.queue-table td.job-code {
+  max-width: 150px;
+  white-space: nowrap;
+}
+
+.job-code-link {
+  display: inline-block;
+  max-width: 7.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+/* Small accent dot signalling "a matching folder was found on disk" next to
+   the job code — CSS-drawn instead of a bare "●" glyph so it carries its own
+   color regardless of font/rendering, and stays crisp at any zoom level. */
+.job-code-found-dot {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-left: var(--space-2);
+  border-radius: 50%;
+  background: var(--color-accent);
+  vertical-align: middle;
+}
+
+.copy-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: copy;
+}
+
+.copy-button.copy-success {
+  color: var(--color-success, #83c995);
+  animation: copyPop 0.32s ease;
+}
+@keyframes copyPop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .copy-button.copy-success { animation: none; }
+}
+
+.job-code-link:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.queue-table td.status {
+  text-align: center;
+}
+
+/* Text utility */
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+.queue-summary {
+  margin-bottom: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+}
+
+.queue-summary strong {
+  color: var(--color-text);
+}
+
+.queue-empty {
+  text-align: center;
+  padding: 3.5rem var(--space-6);
+  display: grid;
+  justify-items: center;
+}
+
+.queue-empty p {
+  color: var(--color-text-muted);
+  max-width: 58ch;
+  margin-bottom: var(--space-5);
+}
+
+.queue-empty h2 {
+  font-size: 1.45rem;
+  margin-bottom: var(--space-2);
+}
+
+.queue-empty-icon {
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: var(--space-5);
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sync-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid rgba(20, 184, 166, 0.45);
+  border-radius: var(--radius-chip);
+  background: rgba(20, 184, 166, 0.08);
+  color: var(--color-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.sync-button svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sync-button:hover {
+  opacity: 1;
+  background: rgba(20, 184, 166, 0.15);
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
+.sync-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.sync-button-primary {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.sync-button-primary:hover {
+  background: #f0c2b7;
+}
+
+.sync-notice {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-card);
+  color: var(--color-text);
+}
+
+.sync-notice-success {
+  background: rgba(131, 201, 149, 0.1);
+  border-color: rgba(131, 201, 149, 0.35);
+}
+
+.sync-notice-error {
+  background: rgba(232, 90, 90, 0.1);
+  border-color: rgba(232, 90, 90, 0.35);
+  color: #f1b2b2;
+}
+
+.search-container {
+  margin-top: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.search-form {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.search-input {
+  flex: 1;
+  min-width: 300px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-input);
+  background: var(--color-input-bg);
+  color: var(--color-text);
+  font-size: 0.95rem;
+}
+
+.search-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.search-button {
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-input);
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.search-button:hover {
+  background-color: rgba(20, 184, 166, 0.1);
+}
+
+.search-results {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  main {
+    padding: var(--space-4);
+  }
+
+  h1 {
+    font-size: 2rem;
+  }
+
+  .topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .topbar-user {
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .mail-pending-notice {
+    grid-template-columns: auto 1fr;
+  }
+
+  .mail-pending-notice > a {
+    grid-column: 2;
+  }
+
+  /* .search-input's 300px min-width (comfortable on desktop) left no room
+     for the search button beside it once the page padding + button width
+     are subtracted from a ~375px phone screen, pushing .search-form (and
+     the whole page) into horizontal scroll on the search screen. */
+  .search-input {
+    min-width: 0;
+  }
+
+  /* Period/source/readiness tab bars don't wrap; let them scroll
+     horizontally within their own strip instead of forcing the page wide. */
+  .tab-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--space-1);
+  }
+
+  .tab-link {
+    flex: 0 0 auto;
+  }
+
+  /* grid-template-columns for .dash-kpis/.dash-peeks is set further down,
+     right after their base rule — see the comment there for why it can't
+     live in this earlier block. */
+  .dash-peek-sync {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 460px) {
+  .dash-peek-sync {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 900px) {
+  .queue-layout {
+    flex-direction: column;
+  }
+
+  .queue-sidebar {
+    position: static;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: var(--space-5);
+    padding-bottom: var(--space-2);
+  }
+
+  .rail-clear {
+    flex: 0 0 auto;
+    margin-bottom: 0;
+  }
+
+  .rail-group {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-1);
+    margin-bottom: 0;
+  }
+
+  .rail-group-label {
+    padding: 0;
+    margin-bottom: 0;
+    white-space: nowrap;
+  }
+
+  .rail-item {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .rail-period-dates {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0 0 0 var(--space-3);
+    border-top: none;
+    border-left: 1px solid var(--color-card-border);
+  }
+
+  .rail-date-strip {
+    flex-wrap: nowrap;
+  }
+
+  .rail-date-item {
+    flex: 0 0 auto;
+  }
+
+  .rail-period-dates .rail-clear {
+    flex: 0 0 auto;
+    margin: 0;
+  }
+}
+
+.sum3d-form {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.sum3d-input {
+  background: var(--color-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-chip);
+  color: var(--color-text);
+  padding: var(--space-1) var(--space-2);
+  width: 8rem;
+  font-size: 0.85rem;
+}
+
+.sum3d-save {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-chip);
+  color: var(--color-bg);
+  width: 1.75rem;
+  height: 1.75rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.sum3d-save:focus-visible,
+.folder-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.sum3d-save svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.folder-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--space-2);
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-chip);
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  color: var(--color-text);
+  text-decoration: none;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.folder-link svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.folder-link:hover {
+  border-color: var(--color-accent);
+}

@@ -1,0 +1,620 @@
+/* rail.css — виділено з base.css (Крок 5, 28.08.26).
+   Верхня панель і ліве меню: згорнутий режим, під-рейка налаштувань, «магнітний фокус».
+
+   ПОРЯДОК ЗАВАНТАЖЕННЯ = КАСКАД. Файли підключені в base.html рівно в тому
+   порядку, в якому ці правила стояли в base.css, і міняти його не можна:
+   у файлі є правила, що навмисно перекривають попередні (див. коментарі
+   «this rule sits after the earlier … block»). */
+/* Top bar */
+.topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.topbar h1 {
+  margin-bottom: 0;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 0.9rem;
+}
+
+/* Left rail (desktop only — ≥721px, the complement of the existing
+   `@media (max-width: 720px)` stacking rule below, which is untouched and
+   still governs narrow viewports exactly as before). Every link inside
+   is still the same anchor/form the pre-rail markup rendered — this only
+   repositions and regroups them; no route, condition, or label changed. */
+@media (min-width: 721px) {
+  /* Reserve the fixed rail's width ONLY on pages that actually render it.
+     Login and other rail-less auth pages share this <body>, so an
+     unconditional padding-left shoved their centered card to the right.
+     :has(.topbar-user) ties the offset to the rail's real presence. */
+  body:has(.topbar-user) {
+    padding-left: 228px;
+  }
+
+  .topbar-user {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 228px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-5);
+    padding: var(--space-4) var(--space-3) var(--space-3);
+    background-color: var(--color-card-bg);
+    border-right: 1px solid var(--color-card-border);
+    overflow-y: auto;
+    font-size: 0.85rem;
+  }
+
+  .rail-top {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .rail-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0 var(--space-2);
+    color: var(--color-text);
+    min-width: 0;
+    flex: 1;
+  }
+
+  .rail-brand-mark {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    border-radius: var(--radius-input);
+    object-fit: contain;
+  }
+
+  .rail-brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+    min-width: 0;
+  }
+
+  .rail-brand-text b {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.95rem;
+    white-space: nowrap;
+  }
+
+  .rail-brand-text span {
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+  }
+
+  /* Collapse toggle */
+  .rail-collapse {
+    flex: 0 0 28px;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-input);
+    border: 1px solid var(--color-card-border);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: color 0.14s ease, background 0.14s ease, border-color 0.14s ease;
+  }
+
+  .rail-collapse:hover,
+  .rail-collapse:focus-visible {
+    color: var(--color-text);
+    background: var(--color-card-border);
+  }
+
+  .rail-collapse-icon {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 0.18s ease;
+  }
+
+  .rail-nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .rail-nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-input);
+    color: var(--color-text-muted);
+    font-weight: 500;
+    position: relative;
+    transition: color 0.14s ease, background 0.14s ease;
+  }
+
+  .rail-nav-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.9;
+  }
+
+  /* «Магнітний фокус»: під курсором їде м'яка пляма світла (не заливка всього
+     пункту), активний має глибину — інсет-підсвітку зверху й акцентне ребро,
+     а його іконка трохи більша й товща. Пляма — окремий ::after з
+     радіальним градієнтом за координатами курсора (--mx/--my ставить app.js),
+     тому hover не перемальовує фон самого пункту. */
+  .rail-nav-item::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    opacity: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      120px circle at var(--mx, 50%) var(--my, 50%),
+      rgba(45, 212, 191, 0.14),
+      transparent 60%
+    );
+    transition: opacity 0.2s ease;
+  }
+
+  .rail-nav-item:hover::after,
+  .rail-nav-item:focus-visible::after {
+    opacity: 1;
+  }
+
+  .rail-nav-item:hover,
+  .rail-nav-item:focus-visible {
+    color: var(--color-text);
+  }
+
+  .rail-nav-item.is-active {
+    background: linear-gradient(90deg, rgba(20, 184, 166, 0.18), rgba(20, 184, 166, 0.04));
+    color: var(--color-success, #5eead4);
+    box-shadow:
+      inset 2px 0 0 var(--color-accent),
+      inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  }
+
+  .rail-nav-item.is-active .rail-nav-icon {
+    opacity: 1;
+    stroke-width: 2;
+    transform: scale(1.08);
+  }
+
+  .rail-nav-icon {
+    transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.16s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rail-nav-item::after,
+    .rail-nav-icon {
+      transition: none;
+    }
+  }
+
+  .rail-foot {
+    margin-top: auto;
+    padding: var(--space-3) var(--space-2) 0;
+    border-top: 1px solid var(--color-card-border);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  /* Product version: quiet mono line on its own row under the user/logout row.
+     Low prominence on purpose (a persistent "what build am I on" marker, not a
+     call to action); the canonical spot with the update button is Settings. */
+  .rail-version {
+    flex: 0 0 100%;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+    opacity: 0.6;
+    transition: opacity 0.15s ease;
+  }
+
+  .rail-version:hover,
+  .rail-version:focus-visible {
+    opacity: 0.95;
+  }
+
+  .rail-foot-user {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .rail-logout {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex: 0 0 auto;
+  }
+
+  .rail-logout-icon {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* ---- Settings drill-in sub-rail ----
+     On settings-family pages the rail swaps the main nav for the settings
+     sections. Reuses .rail-nav-item / .rail-label; only the back link, head,
+     group labels and the progress pill are new. Lives here (not in
+     settings_console.css) because materials/recognition/account render the
+     same sub-rail without loading that page-only stylesheet. */
+  .rail-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-height: 0;
+  }
+
+  .rail-settings-back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 6px 10px;
+    border-radius: 8px;
+    color: var(--ink-3);
+    text-decoration: none;
+    font-weight: 600;
+    align-self: flex-start;
+    transition: color var(--ui-speed) ease, background-color var(--ui-speed) ease;
+  }
+
+  .rail-settings-back:hover {
+    color: var(--ink);
+    background-color: var(--card-2);
+  }
+
+  .rail-settings-back svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .rail-settings-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: 2px 10px 8px;
+  }
+
+  .rail-settings-head b {
+    font-size: 15px;
+    letter-spacing: -0.01em;
+  }
+
+  .rail-settings-prog {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent-c);
+    background: rgba(20, 184, 166, 0.12);
+    border: 1px solid rgba(45, 212, 191, 0.3);
+    border-radius: 999px;
+    padding: 1px 8px;
+  }
+
+  .rail-settings-group {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 12px 10px 4px;
+  }
+
+  .rail-settings .rail-nav-group {
+    margin: 0;
+  }
+
+  /* ---- Collapsed rail (icons only) ---- */
+  body.rail-collapsed:has(.topbar-user) {
+    padding-left: 64px;
+  }
+
+  body.rail-collapsed .topbar-user {
+    width: 64px;
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+    align-items: stretch;
+  }
+
+  body.rail-collapsed .rail-label,
+  body.rail-collapsed .rail-brand-text {
+    display: none;
+  }
+
+  body.rail-collapsed .rail-top {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  body.rail-collapsed .rail-brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  body.rail-collapsed .rail-collapse-icon {
+    transform: rotate(180deg);
+  }
+
+  body.rail-collapsed .rail-nav-item {
+    justify-content: center;
+    padding: var(--space-2) 0;
+  }
+
+  body.rail-collapsed .mail-nav-count {
+    position: absolute;
+    top: 2px;
+    right: 6px;
+    min-width: 0.9rem;
+    height: 0.9rem;
+    padding: 0 0.2rem;
+    font-size: 0.6rem;
+  }
+
+  body.rail-collapsed .rail-update-notice {
+    display: none;
+  }
+
+  body.rail-collapsed .rail-foot {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  body.rail-collapsed .rail-foot-user {
+    display: none;
+  }
+
+  body.rail-collapsed .rail-version {
+    text-align: center;
+    font-size: 10px;
+    /* Column foot centres its children on content width; without nowrap the
+       version wraps ("v0.3." / "5") and reads as a cut-off "v0.3". Keep it one
+       line — it fits the 64px rail. flex:0 0 auto drops the inherited
+       flex-basis:100% that otherwise stretched this link to the whole foot
+       height. */
+    white-space: nowrap;
+    letter-spacing: 0;
+    flex: 0 0 auto;
+  }
+
+  body.rail-collapsed .rail-logout .rail-label {
+    display: none;
+  }
+
+  .rail-update-notice {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--color-accent);
+    border-radius: var(--radius-card);
+    background: var(--color-card-bg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .rail-update-notice p {
+    margin: 0;
+    font-size: 0.84rem;
+    color: var(--color-text);
+  }
+
+  .rail-update-install-button {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: none;
+    border-radius: var(--radius-input);
+    background: var(--color-accent);
+    color: var(--color-bg, #14100e);
+    font-weight: 700;
+    font-size: 0.84rem;
+    cursor: pointer;
+  }
+
+  .rail-update-install-button:hover,
+  .rail-update-install-button:focus-visible {
+    opacity: 0.9;
+  }
+
+  .rail-update-notice > a {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    text-align: center;
+  }
+}
+
+.topbar-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 300px;
+}
+
+.topbar-search-input {
+  flex: 1;
+  min-width: 200px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-input);
+  background: var(--color-input-bg);
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+
+.topbar-search-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.topbar-search-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  background: var(--color-input-bg);
+}
+
+.topbar-search-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-input);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.topbar-search-button:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.topbar-search-button svg {
+  width: 1rem;
+  height: 1rem;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+}
+
+.link-button:hover {
+  opacity: 0.8;
+}
+
+.mail-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.mail-nav-count {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.3rem;
+  height: 1.3rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: rgba(20, 184, 166, 0.16);
+  border: 1px solid rgba(45, 212, 191, 0.4);
+  color: var(--color-success, #5eead4);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.45);
+  animation: mailCountPulse 2.6s ease-out infinite;
+}
+
+@keyframes mailCountPulse {
+  0% { box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(45, 212, 191, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(45, 212, 191, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mail-nav-count { animation: none; }
+}
+
+.mail-pending-notice {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-email-border);
+  border-radius: var(--radius-card);
+  background: var(--color-email-surface);
+}
+
+.mail-pending-notice > svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  fill: none;
+  stroke: var(--color-email);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mail-pending-notice strong {
+  color: var(--color-text);
+}
+
+.mail-pending-notice p {
+  margin: 0;
+  color: #b9d8d5;
+  font-size: 0.84rem;
+}
+
+.mail-pending-notice > a {
+  white-space: nowrap;
+  color: var(--color-email);
+  font-weight: 700;
+}
+
+/* Every .queue-table can end up wider than its column (long job codes,
+   client names, the users table on narrow viewports). Auto table layout
+   doesn't reliably honor a cell's max-width, so without this wrapper the
+   overflow escapes the table and forces the whole page to scroll
+   horizontally. Wrap every <table class="queue-table"> in this div instead
+   of letting the table itself own the scroll. */
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}

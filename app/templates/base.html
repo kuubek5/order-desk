@@ -6,7 +6,21 @@
     <title>{% block title %}Order Desk{% endblock %}</title>
     <link rel="stylesheet" href="/static/css/fonts.css?v={{ static_ver('css/fonts.css') }}">
     <link rel="stylesheet" href="/static/css/tokens.css?v={{ static_ver('css/tokens.css') }}">
+    {# base.css розібрано на 12 файлів (Крок 5). ПОРЯДОК = КАСКАД: вони
+       підключені рівно в тому порядку, в якому правила стояли в base.css.
+       Переставити — зламати перекриття, на яких тримаються екрани v2a. #}
     <link rel="stylesheet" href="/static/css/base.css?v={{ static_ver('css/base.css') }}">
+    <link rel="stylesheet" href="/static/css/rail.css?v={{ static_ver('css/rail.css') }}">
+    <link rel="stylesheet" href="/static/css/queue_table.css?v={{ static_ver('css/queue_table.css') }}">
+    <link rel="stylesheet" href="/static/css/queue.css?v={{ static_ver('css/queue.css') }}">
+    <link rel="stylesheet" href="/static/css/order_detail.css?v={{ static_ver('css/order_detail.css') }}">
+    <link rel="stylesheet" href="/static/css/screens.css?v={{ static_ver('css/screens.css') }}">
+    <link rel="stylesheet" href="/static/css/v2a_queue.css?v={{ static_ver('css/v2a_queue.css') }}">
+    <link rel="stylesheet" href="/static/css/v2a_passport.css?v={{ static_ver('css/v2a_passport.css') }}">
+    <link rel="stylesheet" href="/static/css/v2a_mail.css?v={{ static_ver('css/v2a_mail.css') }}">
+    <link rel="stylesheet" href="/static/css/v2a_handout.css?v={{ static_ver('css/v2a_handout.css') }}">
+    <link rel="stylesheet" href="/static/css/v2a_screens.css?v={{ static_ver('css/v2a_screens.css') }}">
+    <link rel="stylesheet" href="/static/css/update_overlay.css?v={{ static_ver('css/update_overlay.css') }}">
     {# ПРОБНИЙ шар: трактування контролів «A · Machined Bezel» (v0, 27.08.26).
        Вантажиться після base.css і перекриває його. Відкат — прибрати цей рядок. #}
     <link rel="stylesheet" href="/static/css/treatment-a.css?v={{ static_ver('css/treatment-a.css') }}">

@@ -1,0 +1,253 @@
+/* order_detail.css — виділено з base.css (Крок 5, 28.08.26).
+   Паспорт роботи: хронологія, переробки, «Sum3D минулого прорахунку».
+
+   ПОРЯДОК ЗАВАНТАЖЕННЯ = КАСКАД. Файли підключені в base.html рівно в тому
+   порядку, в якому ці правила стояли в base.css, і міняти його не можна:
+   у файлі є правила, що навмисно перекривають попередні (див. коментарі
+   «this rule sits after the earlier … block»). */
+/* Order Detail Page Styles */
+.detail-header {
+  margin-bottom: var(--space-5);
+}
+
+.detail-back {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  transition: color 0.2s ease;
+}
+
+.detail-back:hover {
+  color: var(--color-accent);
+}
+
+.detail-passport {
+  margin-bottom: var(--space-5);
+}
+
+.passport-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.passport-row:last-child {
+  margin-bottom: 0;
+}
+
+.passport-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.passport-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.passport-value {
+  font-size: 1rem;
+  color: var(--color-text);
+}
+
+.detail-section {
+  margin-bottom: var(--space-5);
+}
+
+.detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.detail-section-title {
+  font-size: 1.25rem;
+  margin-bottom: var(--space-4);
+  margin-top: 0;
+}
+
+.detail-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline-event {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.timeline-event:last-child {
+  border-bottom: none;
+}
+
+.timeline-status {
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: var(--space-2);
+}
+
+.timeline-meta {
+  display: flex;
+  gap: var(--space-4);
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.timeline-operator {
+  font-weight: 500;
+}
+
+.timeline-time {
+  color: var(--color-text-muted);
+}
+
+.detail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.detail-comment,
+/* "Sum3D минулого прорахунку" callout — the original calc's ID the operator
+   opens in Sum3D to review the flawed run before redoing it. Warm-orange like
+   the rework theme; the ID is a copy-button. */
+.rework-prev-calc {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid rgba(240, 163, 94, 0.32);
+  background: rgba(240, 163, 94, 0.07);
+  border-radius: var(--radius-card, 10px);
+}
+.rework-prev-calc .rpc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.rework-prev-calc .rpc-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #f0a35e;
+  letter-spacing: 0.01em;
+}
+.rework-prev-calc .rpc-id {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.rework-prev-calc .rpc-hint {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.detail-rework {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.detail-comment:last-child,
+.detail-rework:last-child {
+  border-bottom: none;
+}
+
+.comment-header,
+.rework-header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  font-size: 0.95rem;
+}
+
+.comment-author,
+.rework-blame {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.comment-time,
+.rework-date {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.comment-text {
+  color: var(--color-text);
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.comment-form {
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.sync-warning {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--space-2);
+  color: var(--color-warning, #f2a65a);
+  cursor: help;
+}
+
+.sync-warning svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.comment-input {
+  width: 100%;
+  margin-top: var(--space-2);
+  resize: vertical;
+  min-height: 5.5rem;
+}
+
+.comment-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .comment-form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+.rework-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.rework-detail-item {
+  display: inline-block;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  padding: var(--space-1) var(--space-2);
+  background-color: var(--color-bg);
+  border-radius: 4px;
+}
+
+.rework-comment {
+  font-size: 0.9rem;
+  color: var(--color-text);
+  padding: var(--space-2);
+  background-color: var(--color-bg);
+  border-radius: 4px;
+}

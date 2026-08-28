@@ -1,0 +1,559 @@
+/* update_overlay.css — виділено з base.css (Крок 5, 28.08.26).
+   Тематичний оверлей оновлення.
+
+   ПОРЯДОК ЗАВАНТАЖЕННЯ = КАСКАД. Файли підключені в base.html рівно в тому
+   порядку, в якому ці правила стояли в base.css, і міняти його не можна:
+   у файлі є правила, що навмисно перекривають попередні (див. коментарі
+   «this rule sits after the earlier … block»). */
+/* ============================================================================
+   Тематичний оверлей оновлення (app/templates/_update_overlay.html,
+   app/static/js/app.js → showUpdateOverlay). Мотив фрезерування у бірюзовому
+   світі v2a: обертовий шпиндель, G-code progress-дуга, блюпринт-сітка. Всі
+   класи скоуплені під .update-overlay, щоб нічого не зачепити.
+   ========================================================================== */
+.update-overlay{
+  position:fixed;inset:0;z-index:1000;
+  display:flex;align-items:center;justify-content:center;padding:24px;
+  background:radial-gradient(120% 120% at 50% 30%, rgba(19,28,40,.94), rgba(8,11,16,.97));
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+  opacity:0;transition:opacity .28s ease;
+}
+.update-overlay[hidden]{display:none}
+.update-overlay.is-shown{opacity:1}
+
+/* тонка блюпринт-сітка на задньому плані (перегук з темою точної механіки) */
+.update-overlay-grid{
+  position:absolute;inset:0;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(45,212,191,.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45,212,191,.06) 1px, transparent 1px);
+  background-size:34px 34px;
+  -webkit-mask-image:radial-gradient(closest-side at 50% 45%, #000 40%, transparent 85%);
+  mask-image:radial-gradient(closest-side at 50% 45%, #000 40%, transparent 85%);
+  animation:updateGridDrift 9s linear infinite;
+}
+@keyframes updateGridDrift{from{background-position:0 0,0 0}to{background-position:34px 34px,34px 34px}}
+
+.update-card{
+  position:relative;z-index:1;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  width:min(420px,100%);padding:34px 30px 30px;text-align:center;
+  border:1px solid var(--line-2);border-radius:16px;
+  background:linear-gradient(180deg, rgba(27,36,49,.9), rgba(18,24,33,.92));
+  box-shadow:var(--glow), 0 40px 90px -50px rgba(0,0,0,.9);
+}
+
+.update-stage{width:160px;height:160px;margin-bottom:6px}
+.update-mill{width:100%;height:100%;overflow:visible}
+.update-mill circle,.update-mill path{fill:none;stroke-linecap:round;stroke-linejoin:round}
+
+.mill-ring-static{stroke:var(--line-2);stroke-width:1.5}
+.mill-ring-static.faint{stroke:rgba(45,212,191,.14)}
+
+/* G-code траса — короткий світний штрих, що біжить по колу */
+.mill-path{
+  stroke:var(--accent-b);stroke-width:2.4;opacity:.9;
+  stroke-dasharray:26 490;
+  filter:drop-shadow(0 0 5px rgba(45,212,191,.7));
+  transform-origin:100px 100px;
+  animation:updateTrace 2.4s linear infinite;
+}
+@keyframes updateTrace{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+
+/* дуга прогресу — циклічно «фрезерує» коло */
+.mill-progress{
+  stroke:var(--accent-c);stroke-width:3;opacity:.85;
+  stroke-dasharray:440;stroke-dashoffset:440;
+  transform:rotate(-90deg);transform-origin:100px 100px;
+  animation:updateProgress 3.2s ease-in-out infinite;
+}
+@keyframes updateProgress{
+  0%{stroke-dashoffset:440}
+  55%{stroke-dashoffset:70}
+  100%{stroke-dashoffset:440}
+}
+
+.mill-cross path{stroke:rgba(143,163,187,.35);stroke-width:1.2}
+
+.mill-spindle{transform-origin:100px 100px;animation:updateSpin 1s linear infinite}
+@keyframes updateSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.mill-hub{stroke:var(--accent);stroke-width:2;fill:rgba(20,184,166,.1)}
+.mill-flutes path{fill:rgba(94,234,212,.22);stroke:var(--accent-c);stroke-width:1.4}
+.mill-tip{fill:var(--accent-c);stroke:none;filter:drop-shadow(0 0 4px rgba(94,234,212,.8))}
+
+.update-title{font-family:var(--font-head);font-size:18px;font-weight:600;color:var(--ink);letter-spacing:var(--ls-head)}
+.update-status{
+  min-height:20px;font-size:13px;color:var(--accent-c);
+  letter-spacing:.01em;
+  transition:opacity .18s ease;
+}
+.update-status.is-fading{opacity:0}
+
+/* тонка sweep-полоска як у синхронізації черги */
+.update-track{
+  position:relative;width:210px;height:3px;margin-top:12px;
+  border-radius:999px;background:rgba(45,212,191,.12);overflow:hidden;
+}
+.update-track i{
+  position:absolute;top:0;left:0;height:100%;width:42%;border-radius:inherit;
+  background:linear-gradient(90deg, transparent, var(--accent-b), transparent);
+  animation:updateSweep 1.25s cubic-bezier(.4,0,.2,1) infinite;
+}
+@keyframes updateSweep{from{transform:translateX(-120%)}to{transform:translateX(360%)}}
+
+.update-note{margin-top:14px;font-size:11.5px;color:var(--ink-3);max-width:280px}
+
+@media (prefers-reduced-motion: reduce){
+  .update-overlay,.update-overlay.is-shown{transition:none}
+  .update-overlay-grid,.mill-path,.mill-progress,.mill-spindle,.update-track i{animation:none}
+  /* статична, але змістовна композиція: дуга прогресу зафіксована частково
+     пройденою, траса та шпиндель просто стоять на місці */
+  .mill-progress{stroke-dashoffset:180}
+  .mill-path{opacity:.6}
+  .update-track i{position:relative;width:60%;transform:none;left:0}
+}
+
+
+
+/* ── Матеріал + Колір: одне маркування з двох половин ────────────────────
+   Замінює пару «бейдж + окремий чіп» у черзі. Причина: колір кодувався
+   двічі (бейдж мав свою палітру, чіп — свою, і лише для 2 матеріалів із 5),
+   а сам чіп із рамкою й фіксованою шириною читався як поле вводу — поруч
+   у стовпці SUM3D стоять справжні редаговані поля.
+
+   ДВА РЕЖИМИ з однієї розмітки, перемикач «Колір роботи» в панелі «Вигляд»:
+     (типово)                  — «Маркування»: зрощена пара
+     body[data-matstyle=code]  — «Технічний код»: без коробки, моноширинний
+
+   Ширина ключа фіксована (42px) — саме вона вирівнює колонку, тобто задає
+   спільну ліву межу для значень. Найдовший символ — `PMMA`, 4 знаки. */
+.q2 .matpair{--matpair-fs:var(--queue-density-font,12.5px)}
+.matpair{
+  display:inline-flex;align-items:stretch;vertical-align:middle;
+  height:var(--matpair-h,22px);border-radius:5px;overflow:hidden;max-width:100%;
+}
+.matpair .mp-k{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:42px;padding:0 7px;flex:0 0 auto;border-radius:5px;
+  /* Символ теж масштабується щільністю: був прибитий до 10px, тож
+     «Просторий» збільшував значення і НЕ збільшував ключ. */
+  font-family:var(--font-mono);font-size:calc(var(--matpair-fs,12.5px) - 2.5px);
+  font-weight:600;letter-spacing:.07em;
+  line-height:1;
+}
+.matpair .mp-v{
+  display:inline-flex;align-items:center;padding:0 9px;min-width:0;
+  font-size:var(--matpair-fs,12.5px);color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.matpair .mp-word,.matpair .mp-code{font-style:normal;font-weight:inherit}
+
+/* Відтінки матеріалів — ті самі, що були в бейджі (погоджені з Романом:
+   Zr крижаний блакитний, PMMA бурштин, Ti смарагд, SLM сталь, Wax троянда). */
+.matpair.mat-zr .mp-k{color:#8fbfe0;background:rgba(143,191,224,.20)}
+.matpair.mat-pmma .mp-k{color:#d8b46a;background:rgba(216,180,106,.20)}
+.matpair.mat-ti .mp-k{color:#63c88b;background:rgba(79,180,119,.21)}
+.matpair.mat-slm .mp-k{color:#9aa7b4;background:rgba(154,167,180,.21)}
+.matpair.mat-wax .mp-k{color:#d99bb0;background:rgba(217,155,176,.21)}
+.matpair.mat-other .mp-k{color:var(--ink-2);background:var(--card-3)}
+/* «Не визначено» лишається пунктиром: пунктир і Є повідомленням про
+   невизначеність, суцільна межа тут збрехала б. */
+.matpair.mat-unknown .mp-k{
+  color:var(--ink-2);background:rgba(107,118,132,.16);
+  box-shadow:inset 0 0 0 1px rgba(143,163,187,.55);
+}
+/* Матеріал не розпізнано взагалі — половини ключа немає, лишається значення. */
+/* «Не матеріал» (етапні/деталеві рядки): символу немає, але місце ключа
+   лишається зайнятим порожнім слотом — інакше значення таких рядків
+   з'їжджало на 42px ліворуч і колонка переставала бути стовпчиком. */
+.matpair.mat-none .mp-k{background:none;box-shadow:none}
+
+/* ── Режим «Технічний код» ───────────────────────────────────────────────
+   Коробка зникає повністю: колір — це дані для читання, не контрол.
+   Символ матеріалу лишається кольоровим (він і несе матеріал), значення
+   стає моноширинним, а назва притишується, щоб код читався першим. */
+body[data-matstyle="code"] .matpair{border:0;border-radius:0;height:auto;align-items:baseline;gap:9px}
+body[data-matstyle="code"] .matpair .mp-k{
+  min-width:34px;padding:0;justify-content:flex-start;font-size:10.5px;background:none;
+}
+body[data-matstyle="code"] .matpair .mp-v{
+  padding:0;background:none;font-family:var(--font-mono);letter-spacing:.02em;
+  /* Моноширинний на пів пікселя вужчий за Golos — тому на крок менший, але
+     ВІД щільності, а не прибитий: інакше «Просторий» не діяв саме в режимі,
+     де оператор і намагається розрізнити A3.5 від A3. */
+  font-size:calc(var(--matpair-fs,12.5px) - .5px);
+}
+body[data-matstyle="code"] .matpair .mp-word{color:var(--ink-3)}
+body[data-matstyle="code"] .matpair .mp-code{color:var(--ink);font-weight:500}
+body[data-matstyle="code"] .matpair.mat-unknown{border:0}
+
+/* Бейджі .matbadge видалено: колонку замінив .matpair, жоден шаблон
+   їх більше не рендерить (перевірено grep по app/templates). */
+
+/* Інлайн-редагування коментаря в рядку черги — виглядає як текст, на hover/focus
+   стає полем; авто-збереження через HTMX (див. set_cam_comment). */
+.q2 .cam-comment-form{margin:0}
+/* Textarea, not input: collapsed it's exactly one line (overflow clipped);
+   focus/edit grows it (app.js sets height) and it wraps, so a long comment is
+   fully readable+editable. resize:none — height is driven by content, not a
+   drag handle. */
+.q2 .cam-comment-input{display:block;width:100%;max-width:240px;box-sizing:border-box;background:transparent;
+  border:1px solid transparent;border-bottom-color:var(--control-edge);border-radius:6px;padding:3px 6px;margin:-2px -4px;resize:none;overflow:hidden;
+  font-family:var(--font-body);font-size:12.5px;line-height:1.45;color:var(--ink-2);
+  height:calc(1.45em + 6px);min-height:calc(1.45em + 6px);white-space:nowrap;
+  outline:none;transition:border-color .12s ease,background .12s ease,color .12s ease}
+.q2 .cam-comment-input:hover{border-color:var(--line-2)}
+/* While editing it floats above neighbouring rows (raised z-index + shadow)
+   so growing the box never shoves the table around. app.js sets the height. */
+.q2 .cam-comment-input:focus{border-color:var(--focus-border);background:#0f1620;color:var(--ink);
+  white-space:pre-wrap;word-break:break-word;position:relative;z-index:5;
+  box-shadow:0 8px 22px rgba(0,0,0,.45)}
+/* Empty comment cells stay truly blank — no "коментар…" ghost text on every
+   row (the column header already says what it is). The hint appears only when
+   the operator clicks into the field, so the affordance to type is kept. */
+.q2 .cam-comment-input::placeholder{color:transparent}
+.q2 .cam-comment-input:focus::placeholder{color:var(--ink-3)}
+.q2 .cam-comment-input.shout{color:var(--warn);font-weight:600}
+/* Has content but not focused → hint there's more with a soft right fade. */
+.q2 td.comment-cell{position:relative}
+
+/* Архівний паспорт — банер «лише перегляд». */
+.passport2 .p2-archived{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--accent-c);background:var(--accent-bg,rgba(20,184,166,.12));border:1px solid rgba(45,212,191,.32);border-radius:10px;padding:9px 13px;margin-bottom:14px}
+.passport2 .p2-archived svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+
+/* ── Архів (Концепт «Хроніка»): місяці → календар → день → паспорт ──────── */
+main.arch{max-width:1120px;margin:0 auto;padding:18px 20px}
+.arch .mono{font-family:var(--font-mono);font-variant-ligatures:none}
+.arch-top{margin-bottom:16px}
+.arch-top h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 4px}
+.arch-sub{font-size:12.5px;color:var(--ink-2);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.arch-sub b{color:var(--ink);font-weight:500}
+.arch-sub .sep{width:1px;height:11px;background:var(--line-2)}
+.arch-crumb{color:var(--accent-c);text-decoration:none}
+.arch-crumb:hover{color:var(--accent-b)}
+
+/* Level 1 — months */
+.arch-months{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.arch-month{display:flex;align-items:center;gap:14px;padding:13px 15px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);text-decoration:none;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
+.arch-month:hover{border-color:rgba(45,212,191,.4);background:var(--card-2)}
+.am-info{flex:1;min-width:0}
+.am-label{font-size:13.5px;color:var(--ink);font-weight:500}
+.am-count{font-size:20px;color:var(--accent-c);line-height:1.2}
+.am-spark{display:flex;align-items:flex-end;gap:2px;height:30px;width:96px;flex:0 0 auto}
+.am-spark i{flex:1;background:var(--accent);border-radius:1px;opacity:.8;display:block;min-height:2px}
+
+/* Level 2 — month calendar heatmap */
+.arch-cal{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:14px;max-width:560px}
+.arch-cal .cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+.arch-cal .cal-head b{font-family:var(--font-mono);font-size:10.5px;text-align:center;color:var(--ink-3);font-weight:400}
+.arch-cal .cal-week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+.cal-cell{aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;text-decoration:none;border:1px solid var(--line);background:var(--card-2)}
+.cal-cell.pad{border:0;background:none}
+.cal-cell.empty{opacity:.5}
+.cal-cell .cc-day{font-size:11px;color:var(--ink-3)}
+.cal-cell .cc-n{font-size:13px;color:var(--ink);font-weight:500}
+.cal-cell.h1{background:rgba(20,184,166,.14);border-color:rgba(45,212,191,.2)}
+.cal-cell.h2{background:rgba(20,184,166,.30);border-color:rgba(45,212,191,.3)}
+.cal-cell.h3{background:rgba(20,184,166,.52);border-color:rgba(45,212,191,.5)}
+.cal-cell.h1 .cc-day,.cal-cell.h2 .cc-day{color:var(--ink-2)}
+.cal-cell.h3 .cc-day{color:#04342C}
+.cal-cell.h3 .cc-n{color:#04342C}
+a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
+
+/* Level 3 — day works list */
+.arch-list{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;box-shadow:var(--glow)}
+.arch-row{display:grid;grid-template-columns:70px 1fr 130px 130px auto auto;gap:12px;align-items:center;padding:10px 15px;border-bottom:1px solid var(--line);text-decoration:none;transition:background var(--ui-speed) ease}
+.arch-row:last-child{border-bottom:0}
+.arch-row:hover{background:var(--card-2)}
+.arch-row .ar-id{font-size:12.5px;color:var(--accent-c)}
+.arch-row .ar-client{font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arch-row .ar-mat,.arch-row .ar-kind{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arch-row .ar-sum{font-size:11.5px;color:var(--ink-3);background:var(--card-2);border:1px solid var(--line-2);border-radius:6px;padding:1px 7px}
+.arch-row .ar-status{justify-self:end}
+
+.arch-empty{text-align:center;padding:56px 20px;color:var(--ink-2)}
+.arch-empty .icon svg{width:40px;height:40px;stroke:var(--ink-3);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;margin-bottom:10px}
+.arch-empty h3{font-family:var(--font-head);font-size:16px;color:var(--ink);margin:0 0 6px}
+.arch-empty p{font-size:13px;margin:0;color:var(--ink-3)}
+@media (max-width:720px){
+  .arch-row{grid-template-columns:60px 1fr auto;gap:8px}
+  .arch-row .ar-mat,.arch-row .ar-kind,.arch-row .ar-sum{display:none}
+}
+
+/* ── Спливаючі сповіщення ────────────────────────────────────────────────
+   Вигляд (скляна / картка) і позиція керуються з Налаштувань і приходять
+   у data-атрибутах на .toast-stack (див. base.html + app.js). Рівень задає
+   колір ребра й час життя; критичні не зникають самі. */
+.toast-stack{position:fixed;z-index:1200;display:flex;flex-direction:column;gap:10px;
+  padding:18px;pointer-events:none;max-width:min(440px,calc(100vw - 36px))}
+.toast-stack>*{pointer-events:auto}
+/* позиції */
+.toast-stack[data-toast-pos="br"]{right:0;bottom:0;align-items:flex-end}
+.toast-stack[data-toast-pos="bl"]{left:0;bottom:0;align-items:flex-start}
+/* Верхні позиції відступають нижче шапки: при top:0 тост лягав просто на
+   <h1> і рядок «49 у вигляді · пошта · таблиця», тобто повідомлення про
+   збій закривало саме те, за чим оператор і дивиться в шапку. */
+.toast-stack[data-toast-pos="tr"]{right:0;top:62px;align-items:flex-end}
+.toast-stack[data-toast-pos="tc"]{top:62px;left:50%;transform:translateX(-50%);align-items:center}
+/* паспорт роботи фіксований справа (420px) і має нижчий z-index — без цього
+   зсуву тост лягав би просто на нього */
+body:has(.detail-pane.open) .toast-stack[data-toast-pos="br"],
+body:has(.detail-pane.open) .toast-stack[data-toast-pos="tr"]{right:420px}
+
+.toast{position:relative;display:flex;gap:12px;width:380px;max-width:100%;
+  color:var(--ink,#e8eff7);font-size:13px;line-height:1.45;overflow:hidden}
+.toast-ic{width:28px;height:28px;flex:none;border-radius:8px;display:grid;place-items:center}
+.toast-ic svg{width:15px;height:15px;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.toast-body{flex:1;min-width:0}
+.toast-title{font-size:13px;font-weight:600}
+.toast-text{font-size:12px;color:var(--ink-2,#8fa3bb);margin-top:3px;word-break:break-word}
+.toast-close{position:absolute;top:8px;right:9px;background:none;border:0;color:var(--ink-3,#8698ad);
+  font-size:15px;line-height:1;cursor:pointer;padding:2px 5px;border-radius:5px}
+.toast-close:hover{color:var(--ink,#e8eff7);background:rgba(255,255,255,.08)}
+.toast-undo{align-self:center;margin-right:20px;background:none;border:1px solid var(--control-edge,#5f7490);
+  color:var(--ink,#e8eff7);font:inherit;font-size:12px;font-weight:600;cursor:pointer;
+  padding:4px 12px;border-radius:7px;white-space:nowrap;transition:border-color .15s,color .15s}
+.toast-undo:hover{border-color:var(--accent-c,#2dd4bf);color:var(--accent-c,#2dd4bf)}
+.toast-undo:disabled{opacity:.5;cursor:default}
+.toast-life{position:absolute;left:0;bottom:0;height:2px;width:100%;transform-origin:left;
+  background:var(--accent-b,#2dd4bf);animation:toastLife linear forwards}
+.toast:hover .toast-life{animation-play-state:paused}
+@keyframes toastLife{to{transform:scaleX(0)}}
+
+/* ── стиль: скляна (основний) ── */
+.toast-style-glass .toast{padding:13px 14px 13px 16px;border-radius:12px;isolation:isolate;
+  background:linear-gradient(157deg,rgba(255,255,255,.10) 0%,rgba(94,234,212,.07) 40%,rgba(255,255,255,.03) 100%);
+  -webkit-backdrop-filter:blur(14px) saturate(1.3);backdrop-filter:blur(14px) saturate(1.3);
+  border:1px solid rgba(255,255,255,.10);
+  box-shadow:0 1px 3px rgba(0,0,0,.5),0 12px 34px -14px rgba(0,0,0,.85),
+    inset 0 1px .5px rgba(255,255,255,.35),inset -1px -1px 1px -.5px rgba(255,255,255,.4)}
+/* фолбек там, де немає backdrop-filter — суцільна підкладка замість скла */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .toast-style-glass .toast{background:var(--card-2,#1b2431)}
+}
+.toast-style-glass .toast::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--accent-b,#2dd4bf)}
+.toast-style-glass .toast-ic{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12)}
+
+/* ── стиль: картка (допоміжний) ── */
+.toast-style-card .toast{padding:12px 13px;border-radius:9px;background:var(--card-2,#1b2431);
+  border:1px solid var(--line-2,#3a4a5f);box-shadow:0 26px 60px -30px rgba(0,0,0,.95),0 4px 12px -6px rgba(0,0,0,.7)}
+.toast-style-card .toast-ic{background:var(--card-3,#202b3a)}
+
+/* ── рівні ── */
+.toast-error .toast-ic svg,.toast-crit .toast-ic svg{stroke:var(--alarm,#f87171)}
+.toast-error::before,.toast-crit::before{background:var(--alarm,#f87171)!important}
+.toast-error .toast-life,.toast-crit .toast-life{background:var(--alarm,#f87171)}
+.toast-style-card .toast-error,.toast-style-card .toast-crit{border-color:rgba(248,113,113,.45)}
+.toast-warning .toast-ic svg{stroke:var(--warn,#f0a35e)}
+.toast-warning::before{background:var(--warn,#f0a35e)!important}
+.toast-warning .toast-life{background:var(--warn,#f0a35e)}
+.toast-style-card .toast-warning{border-color:rgba(240,163,94,.42)}
+.toast-success .toast-ic svg{stroke:var(--accent-c,#5eead4)}
+.toast-success::before{background:var(--accent-c,#5eead4)!important}
+.toast-info .toast-ic svg{stroke:var(--accent-b,#2dd4bf)}
+
+/* ── поява/зникання залежно від краю ── */
+@keyframes toastInR{from{opacity:0;transform:translateX(26px)}to{opacity:1;transform:none}}
+@keyframes toastInL{from{opacity:0;transform:translateX(-26px)}to{opacity:1;transform:none}}
+@keyframes toastInT{from{opacity:0;transform:translateY(-18px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes toastOutR{to{opacity:0;transform:translateX(26px)}}
+@keyframes toastOutL{to{opacity:0;transform:translateX(-26px)}}
+@keyframes toastOutT{to{opacity:0;transform:translateY(-14px) scale(.97)}}
+.toast-stack[data-toast-pos="br"] .toast-in,.toast-stack[data-toast-pos="tr"] .toast-in{animation:toastInR .3s cubic-bezier(.16,1,.3,1) both}
+.toast-stack[data-toast-pos="bl"] .toast-in{animation:toastInL .3s cubic-bezier(.16,1,.3,1) both}
+.toast-stack[data-toast-pos="tc"] .toast-in{animation:toastInT .3s cubic-bezier(.16,1,.3,1) both}
+.toast-stack[data-toast-pos="br"] .toast-out,.toast-stack[data-toast-pos="tr"] .toast-out{animation:toastOutR .2s ease forwards}
+.toast-stack[data-toast-pos="bl"] .toast-out{animation:toastOutL .2s ease forwards}
+.toast-stack[data-toast-pos="tc"] .toast-out{animation:toastOutT .2s ease forwards}
+
+@media (prefers-reduced-motion:reduce){
+  .toast-in,.toast-out{animation:none!important}
+  .toast-life{animation:none!important}
+}
+
+/* «Постійний клієнт» hint (sender memory) — card Лист pane + wizard step 1. */
+.sender-hint{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-radius:9px;margin-bottom:14px;background:rgba(20,184,166,.09);border:1px solid rgba(45,212,191,.3);color:var(--accent-c)}
+.sender-hint svg{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
+.sender-hint .sh-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sender-hint b{font-size:12.5px;font-weight:600}
+.sender-hint .sh-meta{font-size:11px;color:var(--ink-2)}
+
+/* Multi-colour partial accept: file picker + «частково прийнято» badge. */
+.mailv2 .wiz-files{margin-top:2px}
+.mailv2 .wiz-files .wf-hint{font-weight:400;font-size:11px;color:var(--ink-3);margin-left:6px}
+.mailv2 .wf-list{display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:160px;overflow-y:auto}
+.mailv2 .wf-item{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:8px;background:#111823;border:1px solid var(--line);cursor:pointer}
+.mailv2 .wf-item:hover{border-color:var(--line-2)}
+.mailv2 .wf-item input{accent-color:var(--accent);width:15px;height:15px;flex:0 0 auto}
+.mailv2 .wf-name{font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mailv2 .wiz-partial{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 11px;border-radius:9px;margin-bottom:12px;background:rgba(240,163,94,.1);border:1px solid rgba(240,163,94,.3);color:var(--warn);font-size:12px}
+.mailv2 .wiz-partial b{color:#f0d3ae}
+.mailv2 .wiz-partial form{margin:0 0 0 auto}
+.mailv2 .wp-undo{background:transparent;border:1px solid rgba(240,163,94,.4);color:var(--warn);border-radius:7px;padding:3px 9px;font-size:11.5px;cursor:pointer;font-family:inherit}
+.mailv2 .wp-undo:hover{background:rgba(240,163,94,.15)}
+
+/* «Авто-прийняття» — trusted-sender list + toggle (shares .filter-rules shell). */
+.mailv2 .auto-panel .senderlist{display:flex;flex-direction:column;gap:6px}
+.mailv2 .senderrow{display:grid;grid-template-columns:1fr auto;grid-template-areas:"main toggle" "meta toggle";gap:2px 12px;align-items:center;padding:9px 11px;border-radius:9px;background:#111823;border:1px solid var(--line)}
+.mailv2 .senderrow.is-auto{border-color:rgba(45,212,191,.4);background:rgba(20,184,166,.06)}
+.mailv2 .sr-main{grid-area:main;display:flex;align-items:baseline;gap:9px;min-width:0}
+.mailv2 .sr-name{font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mailv2 .sr-key{font-size:11px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mailv2 .sr-meta{grid-area:meta;font-size:11px;color:var(--ink-3)}
+.mailv2 .sr-toggle{grid-area:toggle;margin:0}
+.mailv2 .autotoggle{display:inline-flex;align-items:center;gap:8px;background:none;border:none;cursor:pointer;font-family:inherit;color:var(--ink-3);font-size:12px}
+.mailv2 .autotoggle .at-track{width:38px;height:21px;border-radius:11px;background:var(--card-3);border:1px solid var(--line-2);position:relative;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease;flex:0 0 auto}
+.mailv2 .autotoggle .at-knob{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--ink-3);transition:transform var(--ui-speed) ease,background var(--ui-speed) ease}
+.mailv2 .autotoggle.on{color:var(--accent-c)}
+.mailv2 .autotoggle.on .at-track{background:rgba(20,184,166,.3);border-color:rgba(45,212,191,.5)}
+.mailv2 .autotoggle.on .at-knob{transform:translateX(17px);background:var(--accent-b)}
+.mailv2 .autotoggle .at-label{font-weight:500;min-width:38px;text-align:left}
+
+/* Auto-download: manual add form + staged-files note. */
+.mailv2 .sender-add{display:flex;gap:8px;align-items:center;margin-top:6px}
+.mailv2 .sender-add .suminput{flex:1;min-width:0}
+.mailv2 .staged-note{display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:9px;margin-bottom:14px;background:rgba(20,184,166,.08);border:1px solid rgba(45,212,191,.28);color:var(--accent-c);font-size:12px}
+.mailv2 .staged-note svg{width:15px;height:15px;flex:0 0 15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.mailv2 .skipped-files{display:flex;flex-direction:column;gap:9px;align-items:flex-start}
+
+/* «Скачати файли» — live feedback while the on-demand IMAP re-fetch runs. */
+.mailv2 .dl-btn .dl-spin,.mailv2 .dl-btn .dl-lbl-busy{display:none}
+.mailv2 .dl-btn.htmx-request .dl-icon,.mailv2 .dl-btn.htmx-request .dl-lbl-idle{display:none}
+.mailv2 .dl-btn.htmx-request .dl-spin,.mailv2 .dl-btn.htmx-request .dl-lbl-busy{display:inline-flex}
+.mailv2 .dl-btn.htmx-request .dl-spin{animation:mailSyncSpin .8s linear infinite;transform-origin:50% 50%}
+.mailv2 .dl-btn:disabled,.mailv2 .dl-btn.htmx-request{opacity:.85;cursor:progress}
+.mailv2 .metabar-hint{font-size:11px;color:var(--ink-3)}
+
+/* Files-tab total summary: is everything on disk, or are some files behind links? */
+.mailv2 .files-summary{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:9px;margin-bottom:14px;font-size:12px;border:1px solid var(--line-2)}
+.mailv2 .files-summary svg{width:15px;height:15px;flex:0 0 15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.mailv2 .files-summary b{font-weight:600}
+.mailv2 .files-summary.ok{background:rgba(20,184,166,.08);border-color:rgba(45,212,191,.28);color:var(--accent-c)}
+.mailv2 .files-summary.warn{background:rgba(240,163,94,.1);border-color:rgba(240,163,94,.3);color:var(--warn)}
+
+/* ── «рідке скло»: сегментний перемикач скачування вкладень ──
+   Порт компонента 21st.dev на наш стек (React немає). Спільний для
+   /settings і шапки тріажу /mail. Скляна плитка (::after) ковзає між
+   двома станами; матування дає backdrop-filter, «скляність» — набір
+   rim-інсетів із референсу (яскравий нижньо-правий край). SVG-фільтр
+   #radio-glass (у base.html) заломлює фон під плиткою. */
+.dl-glass-def { position: absolute; width: 0; height: 0; overflow: hidden; }
+.dl-seg {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  height: 40px;
+  padding: 4px;
+  border-radius: 11px;
+  background: rgba(15, 22, 32, 0.7);
+  border: 1px solid var(--line-2);
+  font-size: 13px;
+  font-weight: 600;
+  isolation: isolate;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.dl-seg::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 8px;
+  /* Градієнтний sheen дає скляний блиск НЕЗАЛЕЖНО від backdrop-filter (той у
+     деяких середовищах не композититься); blur — приємне підсилення зверху.
+     У середину вплетено шепіт бірюзи (акцент застосунку) — щоб плитка була в
+     загальному стилі, але лишалась склом, а не зеленою кнопкою. */
+  background:
+    linear-gradient(157deg,
+      rgba(255, 255, 255, 0.22) 0%,
+      rgba(94, 234, 212, 0.12) 36%,
+      rgba(20, 184, 166, 0.07) 66%,
+      rgba(255, 255, 255, 0.10) 100%);
+  -webkit-backdrop-filter: blur(5px) saturate(1.4);
+  backdrop-filter: blur(5px) saturate(1.4);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.5),
+    0 4px 10px rgba(0, 0, 0, 0.45),
+    0 0 10px rgba(45, 212, 191, 0.14),
+    inset 0 1px 0.5px rgba(255, 255, 255, 0.55),
+    inset 3px 3px 0.5px -3px rgba(255, 255, 255, 0.5),
+    inset -3px -3px 0.5px -3px rgba(255, 255, 255, 0.9),
+    inset 1px 1px 1px -0.5px rgba(255, 255, 255, 0.7),
+    inset -1px -1px 1px -0.5px rgba(255, 255, 255, 0.7),
+    inset 0 0 8px 6px rgba(94, 234, 212, 0.08);
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dl-seg[data-state="all"]::after { transform: translateX(100%); }
+.dl-seg-glass {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: 11px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.dl-seg-opt {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  padding: 0 18px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.25s ease;
+}
+.dl-seg-opt:hover { color: var(--ink-2); }
+/* активна сторона — бірюзовий напис (те саме «активне = акцент», що й у решті
+   сегментних контролів застосунку) */
+.dl-seg-opt[aria-pressed="true"] { color: var(--accent-c); cursor: default; }
+.dl-seg-opt:focus-visible { outline: 2px solid var(--accent-b); outline-offset: 2px; border-radius: 8px; }
+.dl-seg.is-busy { opacity: 0.75; pointer-events: none; }
+
+/* пояснення під тоглом перемикається зі станом секції (лише /settings) */
+.scon-sec[data-dl-state="trusted"] .dl-when-all,
+.scon-sec[data-dl-state="all"] .dl-when-trusted { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dl-seg::after { transition: none; }
+}
+
+/* Підказка для згорнутої rail. Живе на <body>, а не всередині rail: у rail
+   `overflow-y:auto`, тому будь-який виступ убік обрізався б. Позицію ставить
+   app.js за прямокутником пункту. */
+.rail-tip{position:fixed;z-index:1300;pointer-events:none;white-space:nowrap;
+  padding:5px 10px;border-radius:7px;background:var(--card-2,#1b2431);
+  border:1px solid var(--line-2,#3a4a5f);color:var(--ink,#e8eff7);
+  font-size:12px;font-weight:500;opacity:0;transform:translateX(-6px);
+  box-shadow:0 10px 26px -14px rgba(0,0,0,.9);
+  transition:opacity .16s ease,transform .16s cubic-bezier(.16,1,.3,1)}
+.rail-tip.is-on{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){ .rail-tip{transition:none} }
+
+/* Лічильник «Нові з пошти» в rail.
+   1) Пульсація була НЕСКІНЧЕННОЮ, а rail видно на кожному екрані цілий день
+      біля верстатів — рівно той випадок, який CLAUDE.md §14 забороняє (на
+      тріажі такі петлі вже прибрані). Увага має триматись на числі, а не на
+      русі, тому анімацію знято.
+   2) Заливка конкурувала з активним пунктом меню — обидва бірюзові плями.
+      Лишаємо контур: помітно, але не свариться з навігацією. */
+.mail-nav-count{background:transparent;border-color:var(--line-2,#3a4a5f);
+  color:var(--ink-2,#8fa3bb);box-shadow:none;animation:none}
+.rail-nav-item.is-active .mail-nav-count{border-color:rgba(45,212,191,.4);color:var(--accent-c,#5eead4)}
+
+/* Зона видалення в паспорті роботи — відокремлена червоним, щоб не стояла
+   врівень зі звичайними діями (правило «безпека дій» з CLAUDE.md §14). */
+.passport2 .p2-danger{border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.04)}
+.passport2 .p2-danger h3{color:#ffc9c9}
+.passport2 .p2-delete{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 15px;
+  border-radius:var(--r-ctl);border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.06);
+  color:#f0b4b4;font-size:13px;font-weight:600;cursor:pointer;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease}
+.passport2 .p2-delete:hover{background:rgba(248,113,113,.14);border-color:var(--alarm);color:#ffd7d7}

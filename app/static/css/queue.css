@@ -1,0 +1,1370 @@
+/* queue.css — виділено з base.css (Крок 5, 28.08.26).
+   Черга: статуси-бейджі, «Нові з пошти», дашборд-KPI, фільтр-рейка, смужка днів, пульс синку, групування джерел.
+
+   ПОРЯДОК ЗАВАНТАЖЕННЯ = КАСКАД. Файли підключені в base.html рівно в тому
+   порядку, в якому ці правила стояли в base.css, і міняти його не можна:
+   у файлі є правила, що навмисно перекривають попередні (див. коментарі
+   «this rule sits after the earlier … block»). */
+/* Status Badge Styles */
+.status-badge {
+  display: inline-block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-chip);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  /* No text-transform: statuses are multi-word Ukrainian phrases with
+     prepositions ("знайдено при видачі") — CSS `capitalize` title-cases
+     every word ("Знайдено При Видачі"), which reads as broken translation.
+     STATUSES (app/statuses.py) is already written the way it should display. */
+}
+
+.status-badge-icon {
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 0.2em;
+  vertical-align: -0.08em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.status-badge.status-нове {
+  background-color: rgba(20, 184, 166, 0.15);
+  color: var(--color-accent);
+  border: 1px solid rgba(20, 184, 166, 0.3);
+}
+
+.status-badge.status-прийнято {
+  background-color: rgba(168, 200, 232, 0.15);
+  color: #a8c8e8;
+  border: 1px solid rgba(168, 200, 232, 0.3);
+}
+
+.status-badge.status-прораховано {
+  background-color: rgba(200, 168, 232, 0.15);
+  color: #c8a8e8;
+  border: 1px solid rgba(200, 168, 232, 0.3);
+}
+
+.status-badge.status-у-фрезеруванні {
+  background-color: rgba(232, 216, 168, 0.15);
+  color: #e8d8a8;
+  border: 1px solid rgba(232, 216, 168, 0.3);
+}
+
+.status-badge.status-відфрезеровано {
+  background-color: rgba(168, 232, 200, 0.15);
+  color: #a8e8c8;
+  border: 1px solid rgba(168, 232, 200, 0.3);
+}
+
+.status-badge.status-знайдено-при-видачі {
+  background-color: rgba(200, 232, 168, 0.15);
+  color: #c8e8a8;
+  border: 1px solid rgba(200, 232, 168, 0.3);
+}
+
+.status-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.status-select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.status-badge.status-видано {
+  background-color: rgba(168, 232, 168, 0.15);
+  color: #a8e8a8;
+  border: 1px solid rgba(168, 232, 168, 0.3);
+}
+
+/* переробка — очікує на повторне фрезерування (той самий сенс, що й
+   паперове "помаранчевий = очікує щось") */
+.status-badge.status-переробка {
+  background-color: rgba(232, 152, 96, 0.18);
+  color: #e89860;
+  border: 1px solid rgba(232, 152, 96, 0.4);
+}
+
+/* проблема — єдиний статус, що навмисно виходить за межі м'якої
+   пастельної палітри решти статусів: потребує уваги, а не просто
+   ще один відтінок у ряду */
+.status-badge.status-проблема {
+  background-color: rgba(232, 90, 90, 0.18);
+  color: #e85a5a;
+  border: 1px solid rgba(232, 90, 90, 0.4);
+}
+
+/* Two-phase mail fetch (app.mail_reader.fetch_new_emails): whether an
+   email's attachments have finished downloading yet. Same visual language
+   as .status-badge (14-18% opacity fill + solid border of the same color),
+   just its own pair of classes since this tracks attachment download state,
+   not the email's triage status. Amber for "still working" echoes
+   .status-badge.status-у-фрезеруванні (also "in progress"); teal for
+   "done" reuses the email-source accent (--color-email) so a finished
+   download reads as "arrived", not just "not amber anymore". */
+.attachment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-chip);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.attachment-badge-pending {
+  background-color: rgba(232, 216, 168, 0.15);
+  color: #e8d8a8;
+  border: 1px solid rgba(232, 216, 168, 0.3);
+}
+
+.attachment-badge-ready {
+  background-color: var(--color-email-surface);
+  color: var(--color-email);
+  border: 1px solid var(--color-email-border);
+}
+
+.attachment-badge-dot {
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: attachment-badge-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes attachment-badge-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* Прострочені роботи (день вкладки вже минув, робота не готова) */
+.queue-row-overdue {
+  background-color: rgba(232, 90, 90, 0.04);
+}
+
+.queue-row-overdue:hover {
+  background-color: rgba(232, 90, 90, 0.07);
+}
+
+/* Роботи з пошти (Order.source == "email") — позначення ДЖЕРЕЛА, а не
+   стану чи терміновості, тому свій приглушений бірюзовий відтінок,
+   якого ще нема серед status-badge (сині/фіолетові/зелені/жовті вже
+   зайняті) і який явно відрізняється від теплого блюш-акценту та
+   червоного overdue. Той самий паттерн "14-18% opacity фон + суцільний
+   бордер того ж кольору", що й у status-badge. */
+.queue-row-email {
+  background-color: var(--color-email-surface);
+}
+
+.queue-row-email:hover {
+  background-color: rgba(134, 212, 206, 0.12);
+}
+
+/* Переробки (rework) — теплий оранж (CLAUDE.md §13). Рядок підсвічується, а
+   причину показує окремий бейдж у комірці наряду. */
+.queue-row-rework {
+  background-color: rgba(240, 163, 94, 0.06);
+}
+.queue-row-rework:hover {
+  background-color: rgba(240, 163, 94, 0.1);
+}
+.rework-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 1px 8px 1px 6px;
+  border-radius: var(--radius-chip, 999px);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #f0a35e;
+  background: rgba(240, 163, 94, 0.12);
+  border: 1px solid rgba(240, 163, 94, 0.32);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.rework-badge svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Робота може бути одночасно і з пошти, і простроченою. Термінове (overdue)
+   важливіше за джерело, тому в такому випадку фон рядка лишається
+   червоним — джерело при цьому не губиться, бо позначка "з пошти"
+   винесена в окремий бейдж (див. .source-badge-email), який показується
+   завжди, незалежно від фону рядка. Так уникаємо змішування двох
+   напівпрозорих кольорів в один каламутний відтінок. */
+.queue-row-overdue.queue-row-email {
+  background-color: rgba(232, 90, 90, 0.04);
+}
+
+.queue-row-overdue.queue-row-email:hover {
+  background-color: rgba(232, 90, 90, 0.07);
+}
+
+/* Прострочене й «пошта» — операційні стани рядка, вони й лишаються
+   єдиними власниками фону. Матеріал звідси прибрано: він тонував рядок
+   лише для 2 родин із 5, третьою палітрою (не тією, що в маркуванні), і
+   конкурував з тими самими станами. Матеріал тепер живе виключно в
+   `.matpair .mp-k` — символ плюс колір, з текстовим дублем для тих, хто
+   не розрізняє відтінки. */
+.queue-row-overdue.queue-row-email {
+  background-color: rgba(232, 90, 90, 0.04);
+}
+
+.queue-row-overdue.queue-row-email:hover {
+  background-color: rgba(232, 90, 90, 0.07);
+}
+
+/* Pending mail is an operational inbox pinned above queue filters. It uses
+   one continuous surface with separated rows so six letters remain scannable
+   without turning the page into a stack of cards. */
+.pending-mail {
+  margin-bottom: var(--space-5);
+  overflow: hidden;
+  border: 1px solid var(--color-email-border);
+  border-radius: var(--radius-card);
+  background: rgba(12, 27, 28, 0.88);
+}
+
+.pending-mail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-bottom: 1px solid rgba(134, 212, 206, 0.2);
+  background: rgba(134, 212, 206, 0.07);
+}
+
+.pending-mail-heading,
+.pending-mail-title-line {
+  display: flex;
+  align-items: center;
+}
+
+.pending-mail-heading {
+  gap: var(--space-3);
+}
+
+.pending-mail-title-line {
+  gap: var(--space-2);
+}
+
+.pending-mail-heading h2,
+.pending-mail-heading p {
+  margin: 0;
+}
+
+.pending-mail-heading h2 {
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+
+.pending-mail-heading p {
+  margin-top: var(--space-1);
+  color: #b9d8d5;
+  font-size: 0.8rem;
+}
+
+.pending-mail-icon {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(134, 212, 206, 0.12);
+  color: var(--color-email);
+}
+
+.pending-mail-icon svg,
+.pending-mail-attachments svg,
+.pending-mail-folder svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pending-mail-icon svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  stroke-width: 1.8;
+}
+
+.pending-mail-count,
+.pending-mail-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-chip);
+  font-weight: 750;
+}
+
+.pending-mail-count {
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 var(--space-2);
+  background: var(--color-email);
+  color: #081312;
+  font-size: 0.75rem;
+}
+
+.pending-mail-review-all {
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-chip);
+  color: var(--color-email);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pending-mail-list {
+  display: grid;
+}
+
+.pending-mail-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.8fr) minmax(15rem, 1.7fr) auto auto;
+  grid-template-areas: "who message attachments actions";
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid rgba(134, 212, 206, 0.14);
+  transition: background-color 0.18s ease;
+}
+
+.pending-mail-row:last-child {
+  border-bottom: 0;
+}
+
+.pending-mail-row:hover {
+  background: rgba(134, 212, 206, 0.06);
+}
+
+.pending-mail-who,
+.pending-mail-message {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.pending-mail-who {
+  grid-area: who;
+  justify-items: start;
+}
+
+.pending-mail-status {
+  min-height: 1.35rem;
+  padding: 0 var(--space-2);
+  border: 1px solid rgba(134, 212, 206, 0.32);
+  background: rgba(134, 212, 206, 0.1);
+  color: var(--color-email);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pending-mail-who strong {
+  /* `.pending-mail-who` sets `justify-items: start` so the status pill and
+     timestamp hug their own content instead of stretching full-width; that
+     leaves this element sized to its own max-content too, so `max-width:
+     100%` had nothing to clamp against and a long client name pushed the
+     whole row (and page) wider. `justify-self: stretch` opts this one grid
+     item back into filling the column so the ellipsis below has a real
+     boundary to truncate at. */
+  justify-self: stretch;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-mail-received {
+  color: #9fc2bf;
+  font-size: 0.76rem;
+}
+
+.pending-mail-message {
+  grid-area: message;
+}
+
+.pending-mail-subject {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-text);
+  font-weight: 700;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.pending-mail-subject:hover {
+  color: var(--color-email);
+}
+
+.pending-mail-guesses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.pending-mail-guesses span {
+  padding: 0.15rem var(--space-2);
+  border-radius: var(--radius-chip);
+  background: rgba(134, 212, 206, 0.08);
+  color: #b9d8d5;
+  font-size: 0.72rem;
+}
+
+.pending-mail-guesses .pending-mail-guess-empty {
+  background: transparent;
+  color: #9fc2bf;
+  padding-left: 0;
+}
+
+.pending-mail-attachments {
+  grid-area: attachments;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: #b9d8d5;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.pending-mail-attachments svg {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 1.8;
+}
+
+.pending-mail-actions {
+  grid-area: actions;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.pending-mail-actions form {
+  margin: 0;
+}
+
+.pending-mail-folder,
+.pending-mail-process {
+  min-height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-chip);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.pending-mail-folder {
+  border: 1px solid var(--color-email-border);
+  background: rgba(134, 212, 206, 0.08);
+  color: var(--color-email);
+  cursor: pointer;
+}
+
+.pending-mail-folder svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  stroke-width: 1.8;
+}
+
+.pending-mail-folder:hover:not(:disabled) {
+  background: rgba(134, 212, 206, 0.16);
+  border-color: var(--color-email);
+}
+
+.pending-mail-folder:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.pending-mail-process {
+  background: var(--color-email);
+  color: #081312;
+}
+
+.pending-mail-review-all:focus-visible,
+.pending-mail-subject:focus-visible,
+.pending-mail-folder:focus-visible,
+.pending-mail-process:focus-visible {
+  outline: 2px solid var(--color-email);
+  outline-offset: 3px;
+}
+
+@media (max-width: 980px) {
+  .pending-mail-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "who attachments"
+      "message message"
+      "actions actions";
+  }
+}
+
+@media (max-width: 720px) {
+  .pending-mail-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pending-mail-review-all {
+    width: 100%;
+    justify-content: center;
+    border: 1px solid var(--color-email-border);
+  }
+
+  .pending-mail-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "who"
+      "message"
+      "attachments"
+      "actions";
+    gap: var(--space-3);
+  }
+
+  .pending-mail-actions,
+  .pending-mail-actions form,
+  .pending-mail-folder,
+  .pending-mail-process {
+    width: 100%;
+  }
+}
+
+/* Малий бейдж-позначка джерела "з пошти" — компактніший за .status-badge,
+   ставиться поруч із номером наряду. Не border-left понад 1px: тут узагалі
+   без border-left, лише округлена іконка-чіп у тому ж дизайн-паттерні. */
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.45rem;
+  border-radius: var(--radius-chip);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-right: var(--space-2);
+  vertical-align: middle;
+  padding: 0 var(--space-2);
+  gap: var(--space-1);
+}
+
+.source-badge svg,
+.tab-link-email svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.source-badge-email {
+  background-color: rgba(134, 212, 206, 0.14);
+  color: var(--color-email);
+  border: 1px solid var(--color-email-border);
+}
+
+.tab-nav-source {
+  margin-top: calc(-1 * var(--space-2));
+}
+
+.tab-nav-source .tab-link {
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.84rem;
+}
+
+.tab-link-email {
+  gap: var(--space-1);
+}
+
+.tab-nav-source .tab-link-email.active {
+  background-color: var(--color-email);
+  border-color: var(--color-email);
+  color: #081312;
+}
+
+/* Queue dashboard header (Варіант B) — KPI shortcuts and peek cards into the
+   three neighboring screens, plus the vertical filter rail that replaces the
+   old three tab-nav rows on the queue screen only (handout/mail/stats keep
+   .tab-nav as-is, see above). Every card here is a real link/filter/action —
+   never decoration — and the entrance animation is the one authored moment
+   this section gets: a brief, bounded stagger, not a page-load show. */
+@keyframes dash-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dash-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  margin-bottom: var(--space-3);
+}
+
+.dash-peeks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+/* Same cascade-order issue as the queue-sidebar fix above: the earlier
+   `@media (max-width: 720px/460px)` blocks set grid-template-columns to 2
+   then 1, but this unconditional base rule comes later in the file at equal
+   specificity and always won, so the KPI/peek cards never actually
+   collapsed to fewer columns on narrow screens — re-declared here so the
+   override wins where the media query is meant to apply. */
+@media (max-width: 720px) {
+  .dash-kpis,
+  .dash-peeks {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 460px) {
+  .dash-kpis,
+  .dash-peeks {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dash-kpi,
+.dash-peek {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: 12px;
+  border: 1px solid var(--color-card-border);
+  color: var(--color-text);
+  text-decoration: none;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: dash-card-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--kpi-i, 0) * 45ms);
+  transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.15s ease, box-shadow 0.18s ease;
+}
+
+.dash-kpi {
+  background-color: var(--color-card-bg);
+}
+
+.dash-peek {
+  background-color: rgba(255, 255, 255, 0.015);
+}
+
+.dash-kpi:hover {
+  border-color: rgba(230, 230, 240, 0.24);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+}
+
+.dash-peek:not(.dash-peek-sync):hover {
+  border-color: rgba(230, 230, 240, 0.22);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+}
+
+.dash-kpi:active,
+.dash-peek:not(.dash-peek-sync):active {
+  transform: translateY(0) scale(0.98);
+  transition-duration: 0.08s;
+}
+
+.dash-kpi:focus-visible,
+.dash-peek:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.dash-kpi-value {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.dash-kpi-label {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.dash-kpi-overdue {
+  border-color: var(--color-overdue-border);
+  background-color: var(--color-overdue-surface);
+}
+
+.dash-kpi-overdue .dash-kpi-value {
+  color: var(--color-overdue);
+}
+
+.dash-kpi-overdue.is-active {
+  border-color: var(--color-overdue);
+  background-color: rgba(232, 90, 90, 0.14);
+}
+
+.dash-kpi-accent .dash-kpi-value {
+  color: var(--color-accent);
+}
+
+.dash-kpi-accent.is-active {
+  border-color: var(--color-accent);
+  background-color: rgba(20, 184, 166, 0.1);
+}
+
+.dash-kpi-email {
+  border-color: var(--color-email-border);
+  background-color: var(--color-email-surface);
+}
+
+.dash-kpi-email .dash-kpi-value {
+  color: var(--color-email);
+}
+
+.dash-peek-title {
+  font-size: 0.76rem;
+  color: var(--color-text-muted);
+}
+
+.dash-peek-value {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.dash-peek-sync {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  cursor: default;
+}
+
+.dash-peek-sync-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.dash-peek-sync-form {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.dash-peek-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  border: 1px solid rgba(20, 184, 166, 0.4);
+  background: rgba(20, 184, 166, 0.08);
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.15s ease;
+}
+
+.dash-peek-sync-btn:hover {
+  background: rgba(20, 184, 166, 0.16);
+  border-color: var(--color-accent);
+}
+
+.dash-peek-sync-btn:active {
+  transform: scale(0.92);
+  transition-duration: 0.08s;
+}
+
+.dash-peek-sync-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.dash-peek-sync-btn svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Queue layout: sticky vertical filter rail + table content (Варіант B). */
+.queue-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-5);
+  margin-top: var(--space-4);
+}
+
+/* This rule sits after the earlier `@media (max-width: 900px)` block (which
+   switches .queue-layout to flex-direction: column) and at the same
+   selector specificity, so without this override the unconditional
+   align-items: flex-start above always wins the cascade on mobile too. In
+   row direction flex-start only affects cross-axis (vertical) alignment —
+   harmless — but once the axis flips to column at <=900px, flex-start
+   governs the horizontal cross axis instead: .queue-content shrink-wraps to
+   the queue-table's full intrinsic width (1272px+) rather than filling the
+   viewport, and the whole page gains horizontal scroll. Restore stretch
+   only where the column layout is active. */
+@media (max-width: 900px) {
+  .queue-layout {
+    align-items: stretch;
+  }
+}
+
+.queue-sidebar {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  position: sticky;
+  top: var(--space-4);
+}
+
+.queue-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.rail-clear {
+  align-self: flex-start;
+  margin-bottom: var(--space-2);
+  border-color: var(--color-overdue-border);
+  color: var(--color-overdue);
+  background-color: var(--color-overdue-surface);
+  cursor: pointer;
+}
+
+.rail-clear::after {
+  color: var(--color-overdue);
+}
+
+.rail-clear:hover::after {
+  color: #f1a49c;
+}
+
+.rail-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--space-3);
+}
+
+.rail-group-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+  padding: 0 var(--space-3);
+  margin: 0 0 var(--space-1);
+}
+
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.rail-item span:first-of-type {
+  flex: 1;
+}
+
+.rail-badge {
+  font-size: 0.78rem;
+  color: inherit;
+  opacity: 0.75;
+}
+
+.rail-item:hover {
+  background-color: rgba(230, 230, 240, 0.05);
+  color: var(--color-text);
+}
+
+.rail-item.active {
+  background-color: rgba(20, 184, 166, 0.1);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.rail-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.rail-item-email svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rail-item-email.active {
+  background-color: rgba(134, 212, 206, 0.12);
+  color: var(--color-email);
+}
+
+/* Background sync heartbeat pair (queue sidebar, bottom, non-interactive).
+   Reuses the same success/warning/error color vocabulary as settings.css's
+   .check-pill-* (that file isn't loaded on the queue page, so the exact
+   color values are repeated here rather than shared across a <link>). */
+.rail-group-sync {
+  margin-top: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-card-border);
+}
+
+.rail-status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.rail-status-name {
+  font-weight: 600;
+}
+
+.rail-status-value {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  text-align: right;
+}
+
+.rail-status-success .rail-status-value {
+  color: #a7ddb4;
+}
+
+.rail-status-warning .rail-status-value {
+  color: #e89860;
+}
+
+.rail-status-error .rail-status-value {
+  color: var(--color-overdue);
+}
+
+.rail-status-neutral .rail-status-value {
+  color: var(--color-text-muted);
+}
+
+/* Day-strip: paged 7-at-a-time list of the calendar days that actually
+   have order data (Order.sheet_tab). Lives inside the "Період" rail-group,
+   right below the Сьогодні/Вчора/Завтра/Раніше items, as one cohesive
+   section rather than its own separately-labeled group. */
+.rail-period-dates {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-card-border);
+}
+
+.rail-date-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.rail-date-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  line-height: 1;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.rail-date-nav:hover {
+  background-color: rgba(230, 230, 240, 0.05);
+  color: var(--color-text);
+}
+
+.rail-date-nav:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.rail-date-nav-disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.rail-date-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+}
+
+.rail-date-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.6rem;
+  padding: var(--space-1) var(--space-2);
+  border-radius: 8px;
+  border: 1px solid transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+/* The earlier `@media (max-width: 900px)` block (around line 731) turns the
+   sticky vertical filter rail into a horizontal scrolling strip — but every
+   one of these selectors also has an unconditional, same-specificity base
+   rule further down the file (.queue-sidebar, .rail-clear, .rail-group,
+   .rail-group-label, .rail-period-dates, .rail-date-strip), so on mobile
+   the later, unconditional declaration always won the cascade regardless of
+   viewport and the rail silently stayed a tall sticky column above the
+   table instead of becoming the intended horizontal strip. Re-asserting the
+   same overrides here, after all of those base rules, is what actually
+   makes them win at <=900px. */
+@media (max-width: 900px) {
+  .queue-sidebar {
+    position: static;
+    /* Base sets `flex: 0 0 200px`, a fixed WIDTH basis for the desktop row
+       layout. .queue-layout's main axis is now column (mobile), so that
+       same flex-basis instead forces a fixed 200px HEIGHT on the sidebar
+       regardless of its content — auto lets it size to one row of chips. */
+    flex: 0 0 auto;
+    flex-direction: row;
+    gap: var(--space-5);
+  }
+
+  .rail-clear {
+    margin-bottom: 0;
+  }
+
+  .rail-group {
+    flex-direction: row;
+    margin-bottom: 0;
+  }
+
+  .rail-group-label {
+    padding: 0;
+    margin: 0;
+  }
+
+  .rail-period-dates {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .rail-date-strip {
+    flex-wrap: nowrap;
+  }
+}
+
+.rail-date-item:hover {
+  background-color: rgba(230, 230, 240, 0.05);
+  color: var(--color-text);
+}
+
+.rail-date-item.active {
+  background-color: rgba(20, 184, 166, 0.1);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.rail-date-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.rail-period-dates .rail-clear {
+  margin: var(--space-2) var(--space-3) 0;
+}
+
+/* Pending mail: collapsible list (CLAUDE.md section 8 — collapses to one
+   summary row by default, expands on click). The grid-template-rows 0fr/1fr
+   trick animates to real content height without JS measuring it. */
+.pending-mail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.pending-mail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1px solid var(--color-email-border);
+  background: rgba(134, 212, 206, 0.08);
+  color: var(--color-email);
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+
+.pending-mail-toggle:hover {
+  background: rgba(134, 212, 206, 0.16);
+}
+
+.pending-mail-toggle:focus-visible {
+  outline: 2px solid var(--color-email);
+  outline-offset: 2px;
+}
+
+.pending-mail-chevron {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.22s ease;
+}
+
+.pending-mail.is-collapsed .pending-mail-chevron {
+  transform: rotate(-90deg);
+}
+
+.pending-mail-preview {
+  display: none;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+}
+
+.pending-mail.is-collapsed .pending-mail-preview {
+  display: flex;
+}
+
+.pending-mail.is-collapsed .pending-mail-hint {
+  display: none;
+}
+
+.pending-mail-preview-chip {
+  padding: 0.1rem var(--space-2);
+  border-radius: var(--radius-chip);
+  background: rgba(134, 212, 206, 0.1);
+  color: #b9d8d5;
+  font-size: 0.72rem;
+}
+
+.pending-mail-preview-more {
+  background: transparent;
+  color: #9fc2bf;
+}
+
+.pending-mail-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.28s ease;
+}
+
+.pending-mail.is-collapsed .pending-mail-collapse {
+  grid-template-rows: 0fr;
+}
+
+.pending-mail-collapse > .pending-mail-list {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Queue table source grouping ("Лабораторні роботи" / "Роботи з пошти",
+   queue.html) — same collapse mechanism as .pending-mail above (is-collapsed
+   class toggled in app.js + aria-expanded + grid-template-rows 0fr/1fr so
+   the height animates without JS measuring content), but its own class
+   names since, unlike pending-mail, both sections start expanded rather
+   than collapsed. */
+.queue-group + .queue-group {
+  margin-top: var(--space-6);
+}
+
+.queue-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.queue-group-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.queue-group-heading h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.queue-group-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-chip);
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.queue-group-email .queue-group-count {
+  background: rgba(134, 212, 206, 0.1);
+  border-color: var(--color-email-border);
+  color: var(--color-email);
+}
+
+.queue-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1px solid var(--color-card-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.queue-group-toggle:hover {
+  background: rgba(230, 230, 240, 0.06);
+  color: var(--color-text);
+}
+
+.queue-group-toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.queue-group-chevron {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.22s ease;
+}
+
+.queue-group.is-collapsed .queue-group-chevron {
+  transform: rotate(-90deg);
+}
+
+.queue-group-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.28s ease;
+}
+
+.queue-group.is-collapsed .queue-group-collapse {
+  grid-template-rows: 0fr;
+}
+
+.queue-group-collapse > .queue-group-body {
+  overflow: hidden;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-kpi,
+  .dash-peek {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .dash-kpi:hover,
+  .dash-kpi:active,
+  .dash-peek:hover,
+  .dash-peek:active,
+  .dash-peek-sync-btn:active {
+    transform: none;
+  }
+
+  .pending-mail-collapse,
+  .pending-mail-chevron,
+  .queue-group-collapse,
+  .queue-group-chevron {
+    transition: none;
+  }
+
+  .attachment-badge-dot {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
