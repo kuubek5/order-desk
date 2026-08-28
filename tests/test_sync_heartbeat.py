@@ -322,16 +322,16 @@ def test_sheet_tick_records_skip_on_busy_without_marking_error(isolated_heartbea
 
 
 # ---------------------------------------------------------------------------
-# _queue_sync_status — the small glue function get_queue calls, combining
+# sync_status_pair — the small glue function get_queue calls, combining
 # configuration state with the recorded heartbeat for both sync types.
 # ---------------------------------------------------------------------------
 
 
 def test_queue_sync_status_reports_not_configured_for_both_when_fresh(isolated_heartbeats, monkeypatch):
-    monkeypatch.setattr(web, "_imap_configured", lambda db: False)
-    monkeypatch.setattr(web, "_sheets_configured", lambda db: False)
+    monkeypatch.setattr(heartbeat_mod, "imap_configured", lambda db: False)
+    monkeypatch.setattr(heartbeat_mod, "sheets_configured", lambda db: False)
 
-    result = web._queue_sync_status(db=None, now=datetime(2026, 8, 9, 12, 0, 0))
+    result = heartbeat_mod.sync_status_pair(db=None, now=datetime(2026, 8, 9, 12, 0, 0))
 
     assert result["mail"]["label"] == "не налаштовано"
     assert result["sheet"]["label"] == "не налаштовано"

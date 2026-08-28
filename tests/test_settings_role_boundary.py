@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import queue as queue_router_mod
 from app.db import Base
 from app.models import User
 from app.settings_store import get_setting
@@ -184,7 +185,7 @@ def test_post_settings_still_requires_login():
 @pytest.mark.parametrize(
     "call",
     [
-        lambda request, db: web.sync_sheets(request=request, db=db),
+        lambda request, db: queue_router_mod.sync_sheets(request=request, db=db),
         lambda request, db: web.test_imap_connection(request=request, db=db),
         lambda request, db: asyncio.run(web.create_operator(request=request, db=db)),
         lambda request, db: web.export_backup(

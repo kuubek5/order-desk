@@ -401,3 +401,20 @@ def sync_hot_tab(
         raise _safe_failure(exc) from exc
     finally:
         _sync_lock.release()
+
+
+def summary_message(summary: "SheetSyncSummary") -> str:
+    """Один рядок для оператора про результат синку — те, що показує тост.
+
+    Живе поруч із самим підсумком: його показують і черга (ручний синк,
+    імпорт історії), і налаштування, тож формулювання має бути одне."""
+    if summary.tabs_processed == 0:
+        return "Підключення працює, але в доступному періоді не знайдено датованих вкладок."
+    message = (
+        f"Синхронізовано вкладок: {summary.tabs_processed}. "
+        f"Нових робіт: {summary.created}, оновлено: {summary.updated}, "
+        f"без змін: {summary.unchanged}."
+    )
+    if summary.deleted:
+        message += f" Видалено (немає в таблиці): {summary.deleted}."
+    return message

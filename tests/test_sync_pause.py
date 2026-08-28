@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import queue as queue_router_mod
 from app import sync_control
 from app.db import Base
 from app.models import Order, User
@@ -118,7 +119,7 @@ def test_pause_toggle_route_is_admin_only():
     with Session(engine, expire_on_commit=False) as db:
         op = _user(db, role="оператор")
         with pytest.raises(HTTPException) as exc:
-            web.toggle_sync_pause(request=_request(op.id), db=db)
+            queue_router_mod.toggle_sync_pause(request=_request(op.id), db=db)
         assert exc.value.status_code == 403
         assert sync_control.is_paused() is False
 
@@ -127,7 +128,7 @@ def test_pause_toggle_route_flips_state_for_admin():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         admin = _user(db, role="адмін")
-        web.toggle_sync_pause(request=_request(admin.id), db=db)
+        queue_router_mod.toggle_sync_pause(request=_request(admin.id), db=db)
         assert sync_control.is_paused() is True
-        web.toggle_sync_pause(request=_request(admin.id), db=db)
+        queue_router_mod.toggle_sync_pause(request=_request(admin.id), db=db)
         assert sync_control.is_paused() is False

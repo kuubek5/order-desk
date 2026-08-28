@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 from starlette.requests import Request
 
 import app.web as web
+from app.routers import queue as queue_router_mod
 from app.routers import handout as handout_router_mod
 from app.routers import stats as stats_router_mod
 from app.db import Base
@@ -17,7 +18,7 @@ from app.models import Order, StatusEvent, User
 
 
 def test_blocking_get_handlers_are_sync_for_fastapi_threadpool():
-    assert not inspect.iscoroutinefunction(web.get_queue)
+    assert not inspect.iscoroutinefunction(queue_router_mod.get_queue)
     assert not inspect.iscoroutinefunction(stats_router_mod.get_stats)
     assert not inspect.iscoroutinefunction(web.get_settings)
     assert not inspect.iscoroutinefunction(handout_router_mod.get_handout)

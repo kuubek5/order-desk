@@ -19,7 +19,9 @@ process, so a plain threading.Event is enough — no cross-process coordination.
 
 from __future__ import annotations
 
+from datetime import date
 import threading
+from time import monotonic
 
 # set() = paused. Chosen so the default (clear) is the running state.
 _paused = threading.Event()
@@ -79,3 +81,64 @@ def set_speed_preset(preset: str) -> bool:
 
 def get_sync_speed() -> dict:
     return SYNC_SPEED_PRESETS[_speed_preset]
+
+
+# ── Розклад фонових синхронізацій ────────────────────────────────────────
+MAIL_SYNC_INTERVAL_SECONDS = 2 * 60
+MAIL_SYNC_INITIAL_DELAY_SECONDS = 10
+# One sync cycle costs ~4 Google Sheets API calls (spreadsheet.worksheets() +
+# get_all_values() per relevant tab, typically 3 tabs) — Google's quota is
+# hundreds of reads/minute, far above that. The old 2-minute value was never
+# based on a real technical constraint, it was just copied from
+# MAIL_SYNC_INTERVAL_SECONDS above; confirmed safe to halve so the queue
+# reflects sheet edits sooner.
+SHEET_SYNC_INTERVAL_SECONDS = 1 * 60
+SHEET_SYNC_INITIAL_DELAY_SECONDS = 10
+# Fast lane: between full syncs, re-read ONLY the current day's tab this often.
+# With the worker thread's spreadsheet/worksheet cache warm that's a single
+# ~3s API call, so today's technician edits reach the CRM within ~15-20s while
+# the expensive 3-tab full sync stays at the interval above. See
+# app/sheet_sync_service.py::sync_hot_tab.
+SHEET_SYNC_HOT_INTERVAL_SECONDS = 15
+
+# Days operators are actually looking at right now (queue partial=rows polls
+# record them). The hot lane unions these with today/yesterday so "the open
+# tab in the CRM" is always among the fast-synced ones, whatever day it is.
+_viewed_days: dict[date, float] = {}
+_VIEWED_DAY_TTL_SECONDS = 120.0
+_VIEWED_DAYS_CAP = 2
+# `_viewed_days` має ДВОХ письменників у різних потоках: request-хендлери
+# (get_queue) вставляють переглянутий день, а фоновий воркер таблиці читає й
+# чистить його в hot_extra_days. Без локу воркер міг упасти на
+# «dictionary changed size during iteration», коли оператор відкриває день
+# саме під час тіку. Лок дешевий (дві короткі критичні секції), а гонка
+# рідкісна й невідтворювана — рівно той баг, який інакше ловиться раз на
+# місяць. (Пор. app/sync_heartbeat.py — там лок НЕ потрібен: один письменник
+# на ключ і атомарна заміна незмінного значення.)
+_viewed_days_lock = threading.Lock()
+
+
+def record_viewed_day(day: date | None) -> None:
+    if day is None:
+        return
+    with _viewed_days_lock:
+        _viewed_days[day] = monotonic()
+
+
+def hot_extra_days() -> set[date]:
+    """Recently-viewed days still worth fast-syncing, freshest first, capped so
+    a filter-hopping operator can't balloon the 5s tick into a full sync."""
+    now = monotonic()
+    with _viewed_days_lock:
+        # Знімок під локом — далі сортуємо/фільтруємо вже свою копію, не чіпаючи
+        # живий словник під час ітерації.
+        items = list(_viewed_days.items())
+        for day, ts in items:
+            if now - ts >= _VIEWED_DAY_TTL_SECONDS:
+                _viewed_days.pop(day, None)
+    fresh = sorted(
+        ((day, ts) for day, ts in items if now - ts < _VIEWED_DAY_TTL_SECONDS),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    return {day for day, _ in fresh[:_VIEWED_DAYS_CAP]}

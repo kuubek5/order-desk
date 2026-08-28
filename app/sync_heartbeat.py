@@ -15,7 +15,11 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy.orm import Session
+
+from app.services.config_state import imap_configured, sheets_configured
 from app.services.formatting import relative_time_uk
+from app.sync_control import MAIL_SYNC_INTERVAL_SECONDS, SHEET_SYNC_INTERVAL_SECONDS
 
 # A heartbeat last-attempt older than this many sync intervals means the
 # background loop itself likely died (thread crashed, process wedged) rather
@@ -112,3 +116,21 @@ def heartbeat_status(
     # "skipped" with no prior real outcome yet (busy on the very first tick
     # this process ever attempted) — rare, but still an honest "unknown".
     return {"state": "neutral", "label": "очікує результату"}
+
+
+def sync_status_pair(db: Session, now: datetime) -> dict[str, dict[str, str]]:
+    """Пара індикаторів «пошта / таблиця» для бічної панелі черги."""
+    return {
+        "mail": heartbeat_status(
+            heartbeats["mail"],
+            configured=imap_configured(db),
+            interval_seconds=MAIL_SYNC_INTERVAL_SECONDS,
+            now=now,
+        ),
+        "sheet": heartbeat_status(
+            heartbeats["sheet"],
+            configured=sheets_configured(db),
+            interval_seconds=SHEET_SYNC_INTERVAL_SECONDS,
+            now=now,
+        ),
+    }

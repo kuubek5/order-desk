@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import queue as queue_router_mod
 from app import sync_control
 from app.services import config_state
 from app.routers import stl as stl_router_mod
@@ -61,7 +62,7 @@ def test_queue_eagerly_exposes_pending_mail_newest_first_independent_of_filters(
         db.add(Order(source="lab", sheet_tab=date.today().strftime("%d.%m.%y")))
         db.commit()
 
-        context = web.get_queue(
+        context = queue_router_mod.get_queue(
             request=_request(user.id), period="today", ready="all", source="lab", db=db
         )
 
@@ -90,7 +91,7 @@ def _call_get_queue(db, user, monkeypatch, tmp_path, **kwargs):
     kwargs.setdefault("period", "today")
     kwargs.setdefault("ready", "all")
     kwargs.setdefault("source", "all")
-    return web.get_queue(request=_request(user.id), db=db, **kwargs)
+    return queue_router_mod.get_queue(request=_request(user.id), db=db, **kwargs)
 
 
 def test_partial_rows_renders_fragment_not_full_page(tmp_path, monkeypatch):
@@ -117,12 +118,12 @@ def test_partial_rows_renders_fragment_not_full_page(tmp_path, monkeypatch):
         db.add(Order(source="lab", sheet_tab=date.today().strftime("%d.%m.%y")))
         db.commit()
 
-        web.get_queue(request=_request(user.id), db=db, partial="rows")
+        queue_router_mod.get_queue(request=_request(user.id), db=db, partial="rows")
         assert captured["template"] == "_queue_rows.html"
         # rows_qs carries the active filters so the poll re-requests this view.
         assert "period=today" in captured["ctx"]["rows_qs"]
 
-        web.get_queue(request=_request(user.id), db=db)
+        queue_router_mod.get_queue(request=_request(user.id), db=db)
         assert captured["template"] == "queue.html"
 
 
@@ -139,18 +140,18 @@ def test_sync_speed_route_switches_preset_and_rejects_unknown(tmp_path, monkeypa
         with Session(engine, expire_on_commit=False) as db:
             user = _user(db)
 
-            web.set_sync_speed(request=_request(user.id), preset="turbo", db=db)
+            queue_router_mod.set_sync_speed(request=_request(user.id), preset="turbo", db=db)
             assert sync_control.get_speed_preset() == "turbo"
             assert sync_control.get_sync_speed()["hot"] == 5
             assert captured["template"] == "_sync_speed_seg.html"
             assert captured["ctx"]["sync_speed_active"] == "turbo"
 
             # Unknown value degrades to a no-op, same as the queue filters.
-            web.set_sync_speed(request=_request(user.id), preset="ludicrous", db=db)
+            queue_router_mod.set_sync_speed(request=_request(user.id), preset="ludicrous", db=db)
             assert sync_control.get_speed_preset() == "turbo"
 
             with pytest.raises(HTTPException):
-                web.set_sync_speed(request=_request(None), preset="eco", db=db)
+                queue_router_mod.set_sync_speed(request=_request(None), preset="eco", db=db)
             assert sync_control.get_speed_preset() == "turbo"
     finally:
         sync_control.set_speed_preset(original)
@@ -158,7 +159,7 @@ def test_sync_speed_route_switches_preset_and_rejects_unknown(tmp_path, monkeypa
 
 def test_queue_records_viewed_day_for_hot_lane(tmp_path, monkeypatch):
     engine = _database()
-    web._viewed_days.clear()
+    sync_control._viewed_days.clear()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add(Order(source="lab", sheet_tab="08.08.26", row_number=1, status="нове"))
@@ -167,7 +168,7 @@ def test_queue_records_viewed_day_for_hot_lane(tmp_path, monkeypatch):
         _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26")
 
     assert date(2026, 8, 8) in web._hot_extra_days()
-    web._viewed_days.clear()
+    sync_control._viewed_days.clear()
     assert web._hot_extra_days() == set()
 
 
@@ -1676,7 +1677,7 @@ def test_queue_hands_the_add_form_the_day_the_period_tab_shows(period, offset_da
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         request = _request(user.id)
-        html = web.get_queue(request=request, db=db, period=period).body.decode()
+        html = queue_router_mod.get_queue(request=request, db=db, period=period).body.decode()
 
     expected = (date.today() + timedelta(days=offset_days)).strftime("%d.%m.%y")
     assert f'name="target_tab" value="{expected}"' in html
@@ -1688,7 +1689,7 @@ def test_earlier_tab_leaves_the_target_day_empty():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        html = web.get_queue(request=_request(user.id), db=db, period="earlier").body.decode()
+        html = queue_router_mod.get_queue(request=_request(user.id), db=db, period="earlier").body.decode()
 
     assert 'name="target_tab" value=""' in html
 
@@ -1705,7 +1706,7 @@ def test_sum_units_counts_only_clean_integers():
         SimpleNamespace(quantity=None),      # none — skipped
         SimpleNamespace(quantity=" 2 "),     # padded int — counted
     ]
-    assert web._sum_units(orders) == 6
+    assert queue_router_mod.sum_units(orders) == 6
 
 
 def test_total_units_reflects_source_filter(monkeypatch, tmp_path):
