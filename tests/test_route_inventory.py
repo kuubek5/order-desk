@@ -23,13 +23,28 @@ import app.web as web
 INVENTORY = Path(__file__).parent / "route_inventory.txt"
 
 
-def _current_routes() -> set[str]:
-    rows = set()
-    for r in web.app.routes:
+def _walk(routes, prefix: str = ""):
+    """Пройти роути застосунку, розгортаючи підключені APIRouter.
+
+    FastAPI 0.141 НЕ розкладає include_router у плоский app.routes — кладе туди
+    один _IncludedRouter із вкладеними роутами всередині. Без цього обходу
+    сторож просто не бачив би винесені роути й мовчки вважав їх зниклими
+    (саме так і сталося при виносі stl.py у Кроці 4)."""
+    for r in routes:
+        inner = getattr(r, "original_router", None)
+        if inner is not None:
+            ctx = getattr(r, "include_context", None)
+            yield from _walk(inner.routes, prefix + getattr(ctx, "prefix", ""))
+            continue
         path = getattr(r, "path", None)
         if not path:
             continue
-        methods = getattr(r, "methods", None)
+        yield prefix + path, getattr(r, "methods", None)
+
+
+def _current_routes() -> set[str]:
+    rows = set()
+    for path, methods in _walk(web.app.routes):
         if not methods:
             rows.add(f"MOUNT {path}")
             continue

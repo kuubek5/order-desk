@@ -10,6 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.web as web
 from app import sync_control
+from app.routers import stl as stl_router_mod
 from app.services import sheet_writeback as writeback_service
 from app.db import Base
 from app.models import Attachment, EmailMessage, Order, User
@@ -176,11 +177,11 @@ def test_open_preview_folder_opens_token_path(tmp_path, monkeypatch):
     tech = tmp_path / "tech"
     token, folder = _make_tech_token(tech, "2026-07-21_21112-001", monkeypatch)
     opened: list = []
-    monkeypatch.setattr(web, "_open_folder_in_explorer", opened.append)
+    monkeypatch.setattr(stl_router_mod, "open_folder_in_explorer", opened.append)
 
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        response = web.open_preview_folder(request=_request(user.id), token=token, db=db)
+        response = stl_router_mod.open_preview_folder(request=_request(user.id), token=token, db=db)
 
     assert response.status_code == 204
     assert opened == [folder.resolve()]
@@ -190,7 +191,7 @@ def test_open_preview_folder_requires_authentication(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         with pytest.raises(HTTPException) as exc:
-            web.open_preview_folder(request=_request(None), token="x", db=db)
+            stl_router_mod.open_preview_folder(request=_request(None), token="x", db=db)
     assert exc.value.status_code == 401
 
 
@@ -199,7 +200,7 @@ def test_open_preview_folder_rejects_non_loopback(tmp_path, monkeypatch):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         with pytest.raises(HTTPException) as exc:
-            web.open_preview_folder(
+            stl_router_mod.open_preview_folder(
                 request=_request(user.id, host="10.0.0.9"), token="x", db=db
             )
     assert exc.value.status_code == 403
@@ -207,11 +208,11 @@ def test_open_preview_folder_rejects_non_loopback(tmp_path, monkeypatch):
 
 def test_open_preview_folder_bad_token_is_404(tmp_path, monkeypatch):
     engine = _database()
-    monkeypatch.setattr(web, "_open_folder_in_explorer", lambda f: None)
+    monkeypatch.setattr(stl_router_mod, "open_folder_in_explorer", lambda f: None)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         with pytest.raises(HTTPException) as exc:
-            web.open_preview_folder(request=_request(user.id), token="not-a-real-token", db=db)
+            stl_router_mod.open_preview_folder(request=_request(user.id), token="not-a-real-token", db=db)
     assert exc.value.status_code == 404
 
 

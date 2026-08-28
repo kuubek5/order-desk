@@ -5,6 +5,7 @@
 імпортує ні `app.web`, ні жоден роутер.
 """
 
+import ipaddress
 import json
 import logging
 from pathlib import Path
@@ -57,6 +58,19 @@ def get_current_user(request: Request, db: Session) -> User | None:
         request.session.clear()
         return None
     return user
+
+
+def is_loopback_request(request: Request) -> bool:
+    """Чи прийшов запит із цього ж комп'ютера. Захисний конверт для дій, що
+    керують самою машиною (відкрити теку в Провіднику, поставити оновлення):
+    вони мають сенс лише за фізичним ПК, тому мережеві клієнти відсікаються
+    навіть з валідною сесією."""
+    if request.client is None:
+        return False
+    try:
+        return ipaddress.ip_address(request.client.host).is_loopback
+    except ValueError:
+        return False
 
 
 def toast_response(message: str, *, kind: str = "success", triggers: dict | None = None) -> Response:
