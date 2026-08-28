@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import settings as settings_router_mod
 from app.db import Base
 from app.material_catalog import ensure_seeded, material_id_by_name, unresolved_order_count
 from app.models import MaterialAlias, Order, User
@@ -51,7 +52,7 @@ def test_add_alias_reclassifies_and_flashes():
 
         zircon_id = material_id_by_name(db)["Цирконій"]
         req = _request(admin.id)
-        resp = web.add_material_alias(req, material_id=zircon_id, pattern="небула", match_type="contains", db=db)
+        resp = settings_router_mod.add_material_alias(req, material_id=zircon_id, pattern="небула", match_type="contains", db=db)
 
         assert resp.status_code == 303
         assert req.session["materials_flash"]["kind"] == "success"
@@ -67,7 +68,7 @@ def test_add_alias_duplicate_flashes_error():
         zircon_id = material_id_by_name(db)["Цирконій"]
         req = _request(admin.id)
         # 'моно' is already a seeded zircon alias
-        web.add_material_alias(req, material_id=zircon_id, pattern="моно", match_type="contains", db=db)
+        settings_router_mod.add_material_alias(req, material_id=zircon_id, pattern="моно", match_type="contains", db=db)
         assert req.session["materials_flash"]["kind"] == "error"
 
 
@@ -79,11 +80,11 @@ def test_delete_alias_reevaluates_orders():
         db.add(Order(source="lab", material_color="kappa", status="нове"))
         db.commit()
         # first classify it
-        web.reclassify_materials(_request(admin.id), db=db)
+        settings_router_mod.reclassify_materials(_request(admin.id), db=db)
         assert unresolved_order_count(db) == 0
 
         kappa = db.scalar(select(MaterialAlias).where(MaterialAlias.pattern == "kappa"))
-        web.remove_material_alias(kappa.id, _request(admin.id), db=db)
+        settings_router_mod.remove_material_alias(kappa.id, _request(admin.id), db=db)
         # with the rule gone, the order is unresolved again
         assert unresolved_order_count(db) == 1
 
@@ -92,7 +93,7 @@ def test_create_material_adds_category():
     with _db() as db:
         admin = _admin(db)
         ensure_seeded(db)
-        resp = web.create_material(_request(admin.id), name="Скло", is_production="on", db=db)
+        resp = settings_router_mod.create_material(_request(admin.id), name="Скло", is_production="on", db=db)
         assert resp.status_code == 303
         assert "Скло" in material_id_by_name(db)
 
@@ -103,7 +104,7 @@ def test_operator_is_forbidden():
         ensure_seeded(db)
         zircon_id = material_id_by_name(db)["Цирконій"]
         with pytest.raises(HTTPException) as exc:
-            web.add_material_alias(_request(op.id), material_id=zircon_id, pattern="x", match_type="contains", db=db)
+            settings_router_mod.add_material_alias(_request(op.id), material_id=zircon_id, pattern="x", match_type="contains", db=db)
         assert exc.value.status_code == 403
 
 
@@ -112,5 +113,5 @@ def test_non_loopback_is_forbidden():
         admin = _admin(db)
         ensure_seeded(db)
         with pytest.raises(HTTPException) as exc:
-            web.reclassify_materials(_request(admin.id, host="10.0.0.5"), db=db)
+            settings_router_mod.reclassify_materials(_request(admin.id, host="10.0.0.5"), db=db)
         assert exc.value.status_code == 403

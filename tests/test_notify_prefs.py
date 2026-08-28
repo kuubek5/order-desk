@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import settings as settings_router_mod
 from app.routers import deps
 from app.db import Base
 from app.models import User
@@ -113,7 +114,7 @@ def test_route_saves_and_answers_toast_for_htmx():
                   ("notify_events", "offline"), ("notify_events", "new_mail")],
             headers={"HX-Request": "true"},
         )
-        response = asyncio.run(web.save_notification_prefs(request=request, db=db))
+        response = asyncio.run(settings_router_mod.save_notification_prefs(request=request, db=db))
 
     assert response.status_code == 204
     assert json.loads(response.headers["HX-Trigger"])["toast"]["kind"] == "success"
@@ -127,7 +128,7 @@ def test_route_requires_login():
     engine = _database()
     with Session(engine) as db:
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(web.save_notification_prefs(request=_request(None), db=db))
+            asyncio.run(settings_router_mod.save_notification_prefs(request=_request(None), db=db))
     assert exc.value.status_code == 401
 
 
@@ -152,7 +153,7 @@ def test_notify_state_requires_login():
     engine = _database()
     with Session(engine) as db:
         with pytest.raises(HTTPException) as exc:
-            web.api_notify_state(request=_request(None), db=db)
+            settings_router_mod.api_notify_state(request=_request(None), db=db)
     assert exc.value.status_code == 401
 
 
@@ -160,7 +161,7 @@ def test_notify_state_returns_the_fields_the_client_diffs():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        state = web.api_notify_state(request=_request(user.id), db=db)
+        state = settings_router_mod.api_notify_state(request=_request(user.id), db=db)
     assert set(state) >= {"sheet", "mail", "orders", "mail_pending", "update"}
     assert isinstance(state["orders"], int)
     assert isinstance(state["mail_pending"], int)

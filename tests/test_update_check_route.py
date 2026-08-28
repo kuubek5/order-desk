@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import settings as settings_router_mod
 from app.db import Base
 from app.models import User
 from app.update_check import ReleaseInfo
@@ -58,7 +59,7 @@ def test_requires_login():
     engine = _database()
     with Session(engine) as db:
         with pytest.raises(HTTPException) as exc:
-            web.check_update(request=_request(None), db=db)
+            settings_router_mod.check_update(request=_request(None), db=db)
     assert exc.value.status_code == 401
 
 
@@ -67,7 +68,7 @@ def test_rejects_operator():
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
         with pytest.raises(HTTPException) as exc:
-            web.check_update(request=_request(operator.id), db=db)
+            settings_router_mod.check_update(request=_request(operator.id), db=db)
     assert exc.value.status_code == 403
 
 
@@ -76,7 +77,7 @@ def test_rejects_non_loopback_admin():
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
         with pytest.raises(HTTPException) as exc:
-            web.check_update(request=_request(admin.id, host="203.0.113.5"), db=db)
+            settings_router_mod.check_update(request=_request(admin.id, host="203.0.113.5"), db=db)
     assert exc.value.status_code == 403
 
 
@@ -87,10 +88,10 @@ def test_runs_tick_and_reports_newer_version(monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
-        with patch("app.web._update_check_tick") as tick, patch(
-            "app.web.get_known_update", return_value=_RELEASE
+        with patch("app.routers.settings._update_check_tick") as tick, patch(
+            "app.routers.settings.get_known_update", return_value=_RELEASE
         ):
-            context = web.check_update(request=_request(admin.id), db=db)
+            context = settings_router_mod.check_update(request=_request(admin.id), db=db)
     tick.assert_called_once()
     assert context["release"] is _RELEASE
     assert context["current_version"] == web.VERSION
@@ -103,9 +104,9 @@ def test_reports_up_to_date_when_no_release(monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
-        with patch("app.web._update_check_tick"), patch(
-            "app.web.get_known_update", return_value=None
+        with patch("app.routers.settings._update_check_tick"), patch(
+            "app.routers.settings.get_known_update", return_value=None
         ):
-            context = web.check_update(request=_request(admin.id), db=db)
+            context = settings_router_mod.check_update(request=_request(admin.id), db=db)
     assert context["release"] is None
     assert context["current_version"] == web.VERSION

@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import settings as settings_router_mod
 from app.routers import queue as queue_router_mod
 from app.db import Base
 from app.models import User
@@ -77,7 +78,7 @@ def test_get_settings_allows_operator():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
-        response = web.get_settings(request=SimpleNamespace(session={"user_id": operator.id}), db=db)
+        response = settings_router_mod.get_settings(request=SimpleNamespace(session={"user_id": operator.id}), db=db)
     # A real TemplateResponse (not a redirect/exception) — status 200 by default.
     assert getattr(response, "status_code", 200) == 200
 
@@ -89,14 +90,14 @@ def test_get_settings_hides_operator_list_from_non_admin(monkeypatch):
     )
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
-        context = web.get_settings(request=SimpleNamespace(session={"user_id": operator.id}), db=db)
+        context = settings_router_mod.get_settings(request=SimpleNamespace(session={"user_id": operator.id}), db=db)
     assert context["operators"] == []
 
 
 def test_get_settings_still_requires_login():
     engine = _database()
     with Session(engine) as db:
-        response = web.get_settings(request=SimpleNamespace(session={}), db=db)
+        response = settings_router_mod.get_settings(request=SimpleNamespace(session={}), db=db)
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
 
@@ -112,7 +113,7 @@ def test_operator_can_save_path_fields():
             operator.id,
             {"action": "save", "export_folder_path": r"D:\export", "technician_files_path": r"D:\tech"},
         )
-        response = asyncio.run(web.post_settings(request=request, db=db))
+        response = asyncio.run(settings_router_mod.post_settings(request=request, db=db))
     assert response.status_code == 303
     assert get_setting(db, "export_folder_path") == r"D:\export"
     assert get_setting(db, "technician_files_path") == r"D:\tech"
@@ -133,7 +134,7 @@ def test_operator_cannot_set_credentials_even_when_posted():
                 "imap_password": "attacker-supplied-password",
             },
         )
-        asyncio.run(web.post_settings(request=request, db=db))
+        asyncio.run(settings_router_mod.post_settings(request=request, db=db))
     assert get_setting(db, "export_folder_path") == r"D:\export"
     assert get_setting(db, "google_sheet_id") is None
     assert get_setting(db, "imap_password") is None
@@ -144,7 +145,7 @@ def test_operator_cannot_trigger_sync_even_when_requested():
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
         request = _form_request(operator.id, {"action": "save_and_sync", "export_folder_path": r"D:\export"})
-        response = asyncio.run(web.post_settings(request=request, db=db))
+        response = asyncio.run(settings_router_mod.post_settings(request=request, db=db))
     # Falls back to a plain save-and-redirect-to-/settings, never the
     # sync branch's redirect to "/".
     assert response.headers["location"] == "/settings?saved=1"
@@ -163,7 +164,7 @@ def test_admin_can_still_set_everything():
                 "export_folder_path": r"D:\export",
             },
         )
-        asyncio.run(web.post_settings(request=request, db=db))
+        asyncio.run(settings_router_mod.post_settings(request=request, db=db))
     assert get_setting(db, "google_sheet_id") == "real-sheet-id"
     assert get_setting(db, "imap_login") == "lab@ukr.net"
     assert get_setting(db, "export_folder_path") == r"D:\export"
@@ -174,7 +175,7 @@ def test_post_settings_still_requires_login():
     with Session(engine) as db:
         request = _form_request(None, {})
         request.session = {}
-        response = asyncio.run(web.post_settings(request=request, db=db))
+        response = asyncio.run(settings_router_mod.post_settings(request=request, db=db))
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
 
@@ -186,9 +187,9 @@ def test_post_settings_still_requires_login():
     "call",
     [
         lambda request, db: queue_router_mod.sync_sheets(request=request, db=db),
-        lambda request, db: web.test_imap_connection(request=request, db=db),
-        lambda request, db: asyncio.run(web.create_operator(request=request, db=db)),
-        lambda request, db: web.export_backup(
+        lambda request, db: settings_router_mod.test_imap_connection(request=request, db=db),
+        lambda request, db: asyncio.run(settings_router_mod.create_operator(request=request, db=db)),
+        lambda request, db: settings_router_mod.export_backup(
             request=request, backup_password="pw123456", backup_password_confirm="pw123456", db=db
         ),
     ],
@@ -214,7 +215,7 @@ def test_operator_cannot_import_backup():
         upload = UploadFile(filename="backup.json", file=io.BytesIO(b"{}"))
         with pytest.raises(HTTPException) as exc:
             asyncio.run(
-                web.import_backup(
+                settings_router_mod.import_backup(
                     request=request,
                     backup_password="whatever",
                     confirm_replace="on",
@@ -242,7 +243,7 @@ def test_htmx_save_answers_204_with_toast_instead_of_redirect():
             {"action": "save", "export_folder_path": r"C:\export"},
             headers={"HX-Request": "true"},
         )
-        response = asyncio.run(web.post_settings(request=request, db=db))
+        response = asyncio.run(settings_router_mod.post_settings(request=request, db=db))
 
     assert response.status_code == 204
     assert "HX-Trigger" in response.headers
@@ -258,7 +259,7 @@ def test_plain_post_still_redirects_for_no_js():
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
         request = _form_request(operator.id, {"action": "save", "export_folder_path": r"C:\export"})
-        response = asyncio.run(web.post_settings(request=request, db=db))
+        response = asyncio.run(settings_router_mod.post_settings(request=request, db=db))
 
     assert response.status_code == 303
     assert response.headers["location"] == "/settings?saved=1"

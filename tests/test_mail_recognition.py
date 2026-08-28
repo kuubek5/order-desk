@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import settings as settings_router_mod
 from app.db import Base
 from app.mail_parser import guess_fields_from_text
 from app.material_catalog import ensure_seeded as ensure_materials_seeded
@@ -116,9 +117,9 @@ def test_recognition_default_material_set_and_clear():
     with _db() as db:
         admin = _admin(db)
         ensure_materials_seeded(db)
-        web.set_recognition_default_material(_request(admin.id), material_name="Цирконій", db=db)
+        settings_router_mod.set_recognition_default_material(_request(admin.id), material_name="Цирконій", db=db)
         assert get_mail_default_material(db) == "Цирконій"
-        web.set_recognition_default_material(_request(admin.id), material_name="", db=db)
+        settings_router_mod.set_recognition_default_material(_request(admin.id), material_name="", db=db)
         assert get_mail_default_material(db) is None
 
 
@@ -127,7 +128,7 @@ def test_recognition_default_material_rejects_unknown():
         admin = _admin(db)
         ensure_materials_seeded(db)
         req = _request(admin.id)
-        web.set_recognition_default_material(req, material_name="Неонове скло", db=db)
+        settings_router_mod.set_recognition_default_material(req, material_name="Неонове скло", db=db)
         assert req.session["recognition_flash"]["kind"] == "error"
         assert get_mail_default_material(db) is None
 
@@ -137,7 +138,7 @@ def test_recognition_operator_forbidden():
         op = _operator(db)
         ensure_materials_seeded(db)
         with pytest.raises(HTTPException) as exc:
-            web.set_recognition_default_material(_request(op.id), material_name="Цирконій", db=db)
+            settings_router_mod.set_recognition_default_material(_request(op.id), material_name="Цирконій", db=db)
         assert exc.value.status_code == 403
 
 
@@ -146,7 +147,7 @@ def test_recognition_non_loopback_forbidden():
         admin = _admin(db)
         ensure_materials_seeded(db)
         with pytest.raises(HTTPException) as exc:
-            web.set_recognition_default_material(
+            settings_router_mod.set_recognition_default_material(
                 _request(admin.id, host="10.0.0.5"), material_name="Цирконій", db=db
             )
         assert exc.value.status_code == 403

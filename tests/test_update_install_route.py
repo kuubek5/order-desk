@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import settings as settings_router_mod
 from app.db import Base
 from app.models import User
 from app.update_check import ReleaseInfo
@@ -59,7 +60,7 @@ _RELEASE = ReleaseInfo(
 def test_requires_login():
     engine = _database()
     with Session(engine) as db:
-        response = web.install_update(request=_request(None), db=db)
+        response = settings_router_mod.install_update(request=_request(None), db=db)
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
 
@@ -69,7 +70,7 @@ def test_rejects_operator():
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
         with pytest.raises(HTTPException) as exc:
-            web.install_update(request=_request(operator.id), db=db)
+            settings_router_mod.install_update(request=_request(operator.id), db=db)
     assert exc.value.status_code == 403
 
 
@@ -78,7 +79,7 @@ def test_rejects_non_loopback_admin():
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
         with pytest.raises(HTTPException) as exc:
-            web.install_update(request=_request(admin.id, host="203.0.113.5"), db=db)
+            settings_router_mod.install_update(request=_request(admin.id, host="203.0.113.5"), db=db)
     assert exc.value.status_code == 403
 
 
@@ -87,8 +88,8 @@ def test_no_known_update_flashes_and_redirects_without_starting_thread():
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
         request = _request(admin.id)
-        with patch("app.web.get_known_update", return_value=None), patch("app.web.Thread") as mock_thread:
-            response = web.install_update(request=request, db=db)
+        with patch("app.routers.settings.get_known_update", return_value=None), patch("app.routers.settings.Thread") as mock_thread:
+            response = settings_router_mod.install_update(request=request, db=db)
     mock_thread.assert_not_called()
     assert response.status_code == 303
     assert response.headers["location"] == "/settings"
@@ -100,8 +101,8 @@ def test_known_update_starts_background_thread_and_flashes_success():
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
         request = _request(admin.id)
-        with patch("app.web.get_known_update", return_value=_RELEASE), patch("app.web.Thread") as mock_thread:
-            response = web.install_update(request=request, db=db)
+        with patch("app.routers.settings.get_known_update", return_value=_RELEASE), patch("app.routers.settings.Thread") as mock_thread:
+            response = settings_router_mod.install_update(request=request, db=db)
     mock_thread.assert_called_once()
     _, kwargs = mock_thread.call_args
     assert kwargs["args"] == (_RELEASE,)
@@ -115,14 +116,14 @@ def test_known_update_starts_background_thread_and_flashes_success():
 
 
 def test_install_in_background_download_failure_is_swallowed():
-    with patch("app.web.download_and_verify", side_effect=Exception("boom")):
-        web._install_update_in_background(_RELEASE)  # must not raise
+    with patch("app.routers.settings.download_and_verify", side_effect=Exception("boom")):
+        settings_router_mod._install_update_in_background(_RELEASE)  # must not raise
 
 
 def test_install_in_background_calls_download_then_launch():
-    with patch("app.web.download_and_verify", return_value="C:/fake/installer.exe") as mock_download, patch(
-        "app.web.launch_silent_install"
+    with patch("app.routers.settings.download_and_verify", return_value="C:/fake/installer.exe") as mock_download, patch(
+        "app.routers.settings.launch_silent_install"
     ) as mock_launch:
-        web._install_update_in_background(_RELEASE)
+        settings_router_mod._install_update_in_background(_RELEASE)
     mock_download.assert_called_once_with(_RELEASE)
     mock_launch.assert_called_once_with("C:/fake/installer.exe")

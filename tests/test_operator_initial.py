@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import settings as settings_router_mod
 from app.routers import orders as orders_router_mod
 from app.routers import auth as auth_router_mod
 from app.db import Base
@@ -70,7 +71,7 @@ def test_create_operator_stores_uppercased_initial():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         admin = _user(db, role="адмін", username="admin")
-        asyncio.run(web.create_operator(
+        asyncio.run(settings_router_mod.create_operator(
             request=_form_request(admin.id, {
                 "username": "roma", "password": "pw", "full_name": "Рома",
                 "role": "оператор", "sheet_initial": "р",
@@ -86,11 +87,11 @@ def test_set_operator_initial_route_updates_and_clears():
     with Session(engine, expire_on_commit=False) as db:
         admin = _user(db, role="адмін", username="admin")
         op = _user(db, username="kostya")
-        asyncio.run(web.set_operator_initial(
+        asyncio.run(settings_router_mod.set_operator_initial(
             request=_form_request(admin.id, {"sheet_initial": "К"}), user_id=op.id, db=db))
         assert db.get(User, op.id).sheet_initial == "К"
         # empty clears it
-        asyncio.run(web.set_operator_initial(
+        asyncio.run(settings_router_mod.set_operator_initial(
             request=_form_request(admin.id, {"sheet_initial": ""}), user_id=op.id, db=db))
         assert db.get(User, op.id).sheet_initial is None
 
@@ -100,7 +101,7 @@ def test_duplicate_initial_is_rejected():
     with Session(engine, expire_on_commit=False) as db:
         admin = _user(db, role="адмін", username="admin", initial="Р")
         op = _user(db, username="other")
-        resp = asyncio.run(web.set_operator_initial(
+        resp = asyncio.run(settings_router_mod.set_operator_initial(
             request=_form_request(admin.id, {"sheet_initial": "р"}), user_id=op.id, db=db))
         assert resp.status_code == 303
         assert "error" in resp.headers["location"]
@@ -112,7 +113,7 @@ def test_too_long_initial_is_rejected():
     with Session(engine, expire_on_commit=False) as db:
         admin = _user(db, role="адмін", username="admin")
         op = _user(db, username="stas")
-        resp = asyncio.run(web.set_operator_initial(
+        resp = asyncio.run(settings_router_mod.set_operator_initial(
             request=_form_request(admin.id, {"sheet_initial": "СТС"}), user_id=op.id, db=db))
         assert "error" in resp.headers["location"]
         assert db.get(User, op.id).sheet_initial is None
@@ -124,7 +125,7 @@ def test_set_initial_is_admin_only():
         op = _user(db, role="оператор", username="op1")
         other = _user(db, username="op2")
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(web.set_operator_initial(
+            asyncio.run(settings_router_mod.set_operator_initial(
                 request=_form_request(op.id, {"sheet_initial": "Х"}), user_id=other.id, db=db))
         assert exc.value.status_code == 403
 

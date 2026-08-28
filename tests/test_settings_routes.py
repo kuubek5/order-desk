@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.routers import settings as settings_router_mod
 from app.routers import mail as mail_router_mod
 from app.db import Base
 from app.google_oauth import OAuthFlowError
@@ -51,14 +52,14 @@ def _request(user_id: int | None, host: str = "127.0.0.1"):
 
 
 def test_check_path_status_neutral_for_empty_path():
-    assert web._check_path_status("") == {"state": "neutral", "message": ""}
-    assert web._check_path_status("   ") == {"state": "neutral", "message": ""}
+    assert settings_router_mod.check_path_status("") == {"state": "neutral", "message": ""}
+    assert settings_router_mod.check_path_status("   ") == {"state": "neutral", "message": ""}
 
 
 def test_check_path_status_errors_when_path_missing(tmp_path):
     missing = tmp_path / "does-not-exist"
 
-    result = web._check_path_status(str(missing))
+    result = settings_router_mod.check_path_status(str(missing))
 
     assert result["state"] == "error"
     assert "не знайдено" in result["message"]
@@ -68,14 +69,14 @@ def test_check_path_status_errors_when_path_is_a_file(tmp_path):
     file_path = tmp_path / "not-a-folder.txt"
     file_path.write_text("x")
 
-    result = web._check_path_status(str(file_path))
+    result = settings_router_mod.check_path_status(str(file_path))
 
     assert result["state"] == "error"
     assert "папка" in result["message"]
 
 
 def test_check_path_status_succeeds_for_writable_directory(tmp_path):
-    result = web._check_path_status(str(tmp_path))
+    result = settings_router_mod.check_path_status(str(tmp_path))
 
     assert result["state"] == "success"
     # The write-probe marker must never survive the check.
@@ -91,7 +92,7 @@ def test_check_path_status_warns_when_not_writable(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Path, "write_bytes", _raise)
 
-    result = web._check_path_status(str(directory))
+    result = settings_router_mod.check_path_status(str(directory))
 
     assert result["state"] == "warning"
     assert "запис" in result["message"]
@@ -109,7 +110,7 @@ def test_check_path_status_warns_when_not_writable(tmp_path, monkeypatch):
 def test_check_settings_path_requires_authentication():
     engine = _database()
     with Session(engine) as db, pytest.raises(HTTPException) as exc:
-        web.check_settings_path(request=_request(None), kind="export", db=db)
+        settings_router_mod.check_settings_path(request=_request(None), kind="export", db=db)
     assert exc.value.status_code == 401
 
 
@@ -122,7 +123,7 @@ def test_check_settings_path_allows_operator_role(tmp_path, monkeypatch):
     )
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
-        context = web.check_settings_path(
+        context = settings_router_mod.check_settings_path(
             request=_request(operator.id),
             kind="export",
             export_folder_path=str(tmp_path),
@@ -137,7 +138,7 @@ def test_check_settings_path_requires_loopback():
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
         with pytest.raises(HTTPException) as exc:
-            web.check_settings_path(
+            settings_router_mod.check_settings_path(
                 request=_request(admin.id, host="203.0.113.5"),
                 kind="export",
                 db=db,
@@ -152,7 +153,7 @@ def test_check_settings_path_reports_success_for_export_folder(tmp_path, monkeyp
     )
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
-        context = web.check_settings_path(
+        context = settings_router_mod.check_settings_path(
             request=_request(admin.id),
             kind="export",
             export_folder_path=str(tmp_path),
@@ -170,7 +171,7 @@ def test_check_settings_path_uses_technician_field_for_that_kind(tmp_path, monke
     missing = tmp_path / "gone"
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
-        context = web.check_settings_path(
+        context = settings_router_mod.check_settings_path(
             request=_request(admin.id),
             kind="technician",
             export_folder_path=str(tmp_path),
@@ -189,7 +190,7 @@ def test_check_settings_path_uses_technician_field_for_that_kind(tmp_path, monke
 def test_test_imap_connection_requires_authentication():
     engine = _database()
     with Session(engine) as db, pytest.raises(HTTPException) as exc:
-        web.test_imap_connection(request=_request(None), db=db)
+        settings_router_mod.test_imap_connection(request=_request(None), db=db)
     assert exc.value.status_code == 401
 
 
@@ -198,7 +199,7 @@ def test_test_imap_connection_requires_admin_role():
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
         with pytest.raises(HTTPException) as exc:
-            web.test_imap_connection(request=_request(operator.id), db=db)
+            settings_router_mod.test_imap_connection(request=_request(operator.id), db=db)
     assert exc.value.status_code == 403
 
 
@@ -209,7 +210,7 @@ def test_test_imap_connection_reports_error_when_not_configured(monkeypatch):
     )
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
-        context = web.test_imap_connection(request=_request(admin.id), db=db)
+        context = settings_router_mod.test_imap_connection(request=_request(admin.id), db=db)
     assert context["result"]["state"] == "error"
     assert "логін і пароль" in context["result"]["message"]
 
@@ -225,9 +226,9 @@ def test_test_imap_connection_reports_success_on_login(monkeypatch):
         set_setting(db, "imap_password", "app-password")
         db.commit()
 
-        with patch("app.web.MailBox") as mock_mailbox_cls:
+        with patch("app.routers.settings.MailBox") as mock_mailbox_cls:
             mock_mailbox_cls.return_value.login.return_value = MagicMock()
-            context = web.test_imap_connection(request=_request(admin.id), db=db)
+            context = settings_router_mod.test_imap_connection(request=_request(admin.id), db=db)
 
     assert context["result"]["state"] == "success"
 
@@ -243,11 +244,11 @@ def test_test_imap_connection_reports_safe_error_on_failed_login(monkeypatch):
         set_setting(db, "imap_password", "wrong-password")
         db.commit()
 
-        with patch("app.web.MailBox") as mock_mailbox_cls:
+        with patch("app.routers.settings.MailBox") as mock_mailbox_cls:
             mock_mailbox_cls.return_value.login.side_effect = Exception(
                 "AUTHENTICATIONFAILED some raw server detail"
             )
-            context = web.test_imap_connection(request=_request(admin.id), db=db)
+            context = settings_router_mod.test_imap_connection(request=_request(admin.id), db=db)
 
     assert context["result"]["state"] == "error"
     # The raw IMAP exception text must never leak into the UI-facing message.
@@ -295,15 +296,15 @@ def test_imap_error_reason_classifies_login_rejection_without_leaking_raw():
         command_result=("NO", [b"AUTHENTICATIONFAILED raw server detail"]),
         expected="OK",
     )
-    msg = web._imap_error_reason(exc)
+    msg = settings_router_mod._imap_error_reason(exc)
     assert "ukr.net" in msg
     assert "пароль для програм" in msg
     assert "AUTHENTICATIONFAILED" not in msg
 
 
 def test_imap_error_reason_distinguishes_network_from_auth():
-    assert "інтернет" in web._imap_error_reason(TimeoutError())
-    assert "з'єднання" in web._imap_error_reason(ConnectionError("boom"))
+    assert "інтернет" in settings_router_mod._imap_error_reason(TimeoutError())
+    assert "з'єднання" in settings_router_mod._imap_error_reason(ConnectionError("boom"))
 
 
 def test_save_imap_settings_requires_admin():
@@ -312,7 +313,7 @@ def test_save_imap_settings_requires_admin():
         operator = _operator(db)
         req = _imap_request(operator.id, {"imap_login": "a@ukr.net", "imap_password": "p"})
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(web.save_imap_settings(request=req, db=db))
+            asyncio.run(settings_router_mod.save_imap_settings(request=req, db=db))
     assert exc.value.status_code == 403
 
 
@@ -324,9 +325,9 @@ def test_save_imap_settings_success_fires_toast_and_persists(monkeypatch):
         req = _imap_request(
             admin.id, {"imap_login": "user@ukr.net", "imap_password": "app-pw"}
         )
-        with patch("app.web.MailBox") as mock_mailbox_cls:
+        with patch("app.routers.settings.MailBox") as mock_mailbox_cls:
             mock_mailbox_cls.return_value.login.return_value = MagicMock()
-            resp = asyncio.run(web.save_imap_settings(request=req, db=db))
+            resp = asyncio.run(settings_router_mod.save_imap_settings(request=req, db=db))
         assert resp.context["result"]["state"] == "success"
         trigger = json.loads(resp.headers["HX-Trigger"])
         assert trigger["toast"]["kind"] == "success"
@@ -341,11 +342,11 @@ def test_save_imap_settings_error_surfaces_reason_toast(monkeypatch):
         req = _imap_request(
             admin.id, {"imap_login": "user@ukr.net", "imap_password": "bad"}
         )
-        with patch("app.web.MailBox") as mock_mailbox_cls:
+        with patch("app.routers.settings.MailBox") as mock_mailbox_cls:
             mock_mailbox_cls.return_value.login.side_effect = Exception(
                 "AUTHENTICATIONFAILED raw server detail"
             )
-            resp = asyncio.run(web.save_imap_settings(request=req, db=db))
+            resp = asyncio.run(settings_router_mod.save_imap_settings(request=req, db=db))
         assert resp.context["result"]["state"] == "error"
         trigger = json.loads(resp.headers["HX-Trigger"])
         assert trigger["toast"]["kind"] == "error"
@@ -363,9 +364,9 @@ def test_save_imap_settings_blank_password_keeps_saved(monkeypatch):
         req = _imap_request(
             admin.id, {"imap_login": "new@ukr.net", "imap_password": ""}
         )
-        with patch("app.web.MailBox") as mock_mailbox_cls:
+        with patch("app.routers.settings.MailBox") as mock_mailbox_cls:
             mock_mailbox_cls.return_value.login.return_value = MagicMock()
-            asyncio.run(web.save_imap_settings(request=req, db=db))
+            asyncio.run(settings_router_mod.save_imap_settings(request=req, db=db))
         assert web.get_imap_login(db) == "new@ukr.net"
         assert web.get_imap_password(db) == "keep-me"
 
@@ -380,7 +381,7 @@ def test_save_imap_settings_blank_password_keeps_saved(monkeypatch):
 def test_test_sheets_connection_requires_authentication():
     engine = _database()
     with Session(engine) as db, pytest.raises(HTTPException) as exc:
-        web.test_sheets_connection(request=_request(None), db=db)
+        settings_router_mod.test_sheets_connection(request=_request(None), db=db)
     assert exc.value.status_code == 401
 
 
@@ -389,7 +390,7 @@ def test_test_sheets_connection_requires_admin_role():
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
         with pytest.raises(HTTPException) as exc:
-            web.test_sheets_connection(request=_request(operator.id), db=db)
+            settings_router_mod.test_sheets_connection(request=_request(operator.id), db=db)
     assert exc.value.status_code == 403
 
 
@@ -398,7 +399,7 @@ def test_test_sheets_connection_requires_loopback():
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
         with pytest.raises(HTTPException) as exc:
-            web.test_sheets_connection(
+            settings_router_mod.test_sheets_connection(
                 request=_request(admin.id, host="203.0.113.5"), db=db
             )
     assert exc.value.status_code == 403
@@ -411,7 +412,7 @@ def test_test_sheets_connection_reports_error_when_not_configured(monkeypatch):
     )
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
-        context = web.test_sheets_connection(request=_request(admin.id), db=db)
+        context = settings_router_mod.test_sheets_connection(request=_request(admin.id), db=db)
     assert context["result"]["state"] == "error"
     assert "збережіть" in context["result"]["message"]
 
@@ -427,9 +428,9 @@ def test_test_sheets_connection_reports_success_on_access(monkeypatch):
         set_setting(db, "google_service_account_json", '{"type": "service_account"}')
         db.commit()
 
-        with patch("app.web.open_spreadsheet") as mock_open:
+        with patch("app.routers.settings.open_spreadsheet") as mock_open:
             mock_open.return_value.worksheets.return_value = [MagicMock()]
-            context = web.test_sheets_connection(request=_request(admin.id), db=db)
+            context = settings_router_mod.test_sheets_connection(request=_request(admin.id), db=db)
 
     assert context["result"]["state"] == "success"
 
@@ -445,9 +446,9 @@ def test_test_sheets_connection_reports_safe_error_on_failure(monkeypatch):
         set_setting(db, "google_service_account_json", '{"type": "service_account"}')
         db.commit()
 
-        with patch("app.web.open_spreadsheet") as mock_open:
+        with patch("app.routers.settings.open_spreadsheet") as mock_open:
             mock_open.side_effect = Exception("PermissionDenied raw google detail")
-            context = web.test_sheets_connection(request=_request(admin.id), db=db)
+            context = settings_router_mod.test_sheets_connection(request=_request(admin.id), db=db)
 
     assert context["result"]["state"] == "error"
     # Raw gspread/Google error text must never leak into the UI message.
@@ -503,7 +504,7 @@ def test_start_google_oauth_requires_admin_role():
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
         with pytest.raises(HTTPException) as exc:
-            web.start_google_oauth(request=_request(operator.id), db=db)
+            settings_router_mod.start_google_oauth(request=_request(operator.id), db=db)
     assert exc.value.status_code == 403
 
 
@@ -512,7 +513,7 @@ def test_start_google_oauth_requires_loopback():
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
         with pytest.raises(HTTPException) as exc:
-            web.start_google_oauth(request=_request(admin.id, host="203.0.113.5"), db=db)
+            settings_router_mod.start_google_oauth(request=_request(admin.id, host="203.0.113.5"), db=db)
     assert exc.value.status_code == 403
 
 
@@ -523,7 +524,7 @@ def test_start_google_oauth_reports_error_when_client_json_missing(monkeypatch):
     )
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
-        context = web.start_google_oauth(request=_request(admin.id), db=db)
+        context = settings_router_mod.start_google_oauth(request=_request(admin.id), db=db)
     assert context["result"]["state"] == "error"
     assert "OAuth Client JSON" in context["result"]["message"]
 
@@ -538,9 +539,9 @@ def test_start_google_oauth_success_saves_refresh_token_and_switches_mode(monkey
         set_setting(db, "google_oauth_client_json", '{"installed": {"client_id": "a", "client_secret": "b"}}')
         db.commit()
 
-        with patch("app.web.run_authorization_flow", return_value="rt-new-token") as mock_flow, \
-             patch("app.web.reset_sheets_cache") as mock_reset:
-            context = web.start_google_oauth(request=_request(admin.id), db=db)
+        with patch("app.routers.settings.run_authorization_flow", return_value="rt-new-token") as mock_flow, \
+             patch("app.routers.settings.reset_sheets_cache") as mock_reset:
+            context = settings_router_mod.start_google_oauth(request=_request(admin.id), db=db)
 
         mock_flow.assert_called_once()
         mock_reset.assert_called_once()
@@ -561,8 +562,8 @@ def test_start_google_oauth_reports_flow_error_safely(monkeypatch):
         set_setting(db, "google_oauth_client_json", '{"installed": {"client_id": "a", "client_secret": "b"}}')
         db.commit()
 
-        with patch("app.web.run_authorization_flow", side_effect=OAuthFlowError("Google відхилив авторизацію: access_denied")):
-            context = web.start_google_oauth(request=_request(admin.id), db=db)
+        with patch("app.routers.settings.run_authorization_flow", side_effect=OAuthFlowError("Google відхилив авторизацію: access_denied")):
+            context = settings_router_mod.start_google_oauth(request=_request(admin.id), db=db)
 
     assert context["result"]["state"] == "error"
     assert "access_denied" in context["result"]["message"]
@@ -578,8 +579,8 @@ def test_start_google_oauth_reports_safe_error_on_unexpected_exception(monkeypat
         set_setting(db, "google_oauth_client_json", '{"installed": {"client_id": "a", "client_secret": "b"}}')
         db.commit()
 
-        with patch("app.web.run_authorization_flow", side_effect=Exception("raw internal detail")):
-            context = web.start_google_oauth(request=_request(admin.id), db=db)
+        with patch("app.routers.settings.run_authorization_flow", side_effect=Exception("raw internal detail")):
+            context = settings_router_mod.start_google_oauth(request=_request(admin.id), db=db)
 
     assert context["result"]["state"] == "error"
     assert "raw internal detail" not in context["result"]["message"]
@@ -593,7 +594,7 @@ def test_disconnect_google_oauth_requires_admin_role():
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
         with pytest.raises(HTTPException) as exc:
-            web.disconnect_google_oauth(request=_request(operator.id), db=db)
+            settings_router_mod.disconnect_google_oauth(request=_request(operator.id), db=db)
     assert exc.value.status_code == 403
 
 
@@ -605,8 +606,8 @@ def test_disconnect_google_oauth_clears_token_and_resets_mode():
         set_setting(db, "google_oauth_refresh_token", "rt-old")
         db.commit()
 
-        with patch("app.web.reset_sheets_cache") as mock_reset:
-            resp = web.disconnect_google_oauth(request=_request(admin.id), db=db)
+        with patch("app.routers.settings.reset_sheets_cache") as mock_reset:
+            resp = settings_router_mod.disconnect_google_oauth(request=_request(admin.id), db=db)
 
         mock_reset.assert_called_once()
         assert resp.status_code == 303
@@ -645,7 +646,7 @@ def test_selfcheck_streams_manifest_then_result_per_step():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
-        response = web.settings_selfcheck(request=_request(admin.id), db=db)
+        response = settings_router_mod.settings_selfcheck(request=_request(admin.id), db=db)
         messages = _drain(response)
 
     assert response.media_type == "application/x-ndjson"
@@ -672,7 +673,7 @@ def test_selfcheck_reports_unconfigured_rather_than_crashing():
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
-        messages = _drain(web.settings_selfcheck(request=_request(admin.id), db=db))
+        messages = _drain(settings_router_mod.settings_selfcheck(request=_request(admin.id), db=db))
 
     results = {m["key"]: m for m in messages if "ok" in m}
     assert results["sheets"]["ok"] is False
@@ -694,13 +695,13 @@ def test_selfcheck_abandons_a_probe_that_exceeds_the_deadline(monkeypatch):
     import threading
 
     release = threading.Event()
-    monkeypatch.setattr(web, "SELFCHECK_STEP_DEADLINE_SECONDS", 0.2)
+    monkeypatch.setattr(settings_router_mod, "SELFCHECK_STEP_DEADLINE_SECONDS", 0.2)
 
     def _hang(*args, **kwargs):
         release.wait(10)
         return {"state": "success", "message": "занадто пізно"}
 
-    monkeypatch.setattr(web, "_probe_imap_login", _hang)
+    monkeypatch.setattr(settings_router_mod, "_probe_imap_login", _hang)
 
     engine = _database()
     try:
@@ -709,7 +710,7 @@ def test_selfcheck_abandons_a_probe_that_exceeds_the_deadline(monkeypatch):
             set_setting(db, "imap_login", "lab@ukr.net")
             set_setting(db, "imap_password", "secret")
             db.commit()
-            messages = _drain(web.settings_selfcheck(request=_request(admin.id), db=db))
+            messages = _drain(settings_router_mod.settings_selfcheck(request=_request(admin.id), db=db))
     finally:
         release.set()
 
@@ -726,5 +727,5 @@ def test_selfcheck_rejects_operator():
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
         with pytest.raises(HTTPException) as exc:
-            web.settings_selfcheck(request=_request(operator.id), db=db)
+            settings_router_mod.settings_selfcheck(request=_request(operator.id), db=db)
     assert exc.value.status_code == 403
