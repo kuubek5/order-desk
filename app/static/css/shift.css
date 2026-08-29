@@ -11,7 +11,10 @@
    Кольори тільки з tokens.css: бірюза = до відома, --warn = потребує дії. */
 
 main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-height:100vh}
-.shiftv2 .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+/* font-size:inherit тут ОБОВ'ЯЗКОВИЙ: глобальний .mono в base.css несе
+   font-size:0.85em, і час у підвалі стікера всихав з 11.5px до 9.775px.
+   Час у передачі зміни — це зміст («відкрити о 9:00»), а не дрібний підпис. */
+.shiftv2 .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:inherit;color:inherit}
 
 /* --- шапка --- */
 .shiftv2 .sh-bar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
@@ -132,7 +135,7 @@ main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-
 .sh-card{display:block;margin:0 0 12px;padding:11px 13px;background:var(--card);
   border:1px solid var(--line);border-radius:var(--r-card)}
 .sh-card[hidden]{display:none}
-.sh-card .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.sh-card .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:inherit;color:inherit}
 
 .sh-card-head{display:flex;align-items:center;gap:9px;margin-bottom:7px}
 .sh-card-title{display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-weight:600;font-size:13px;text-decoration:none}
