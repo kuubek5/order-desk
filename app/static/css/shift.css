@@ -126,8 +126,11 @@ main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-
    Свідомо БЕЗ префікса .shiftv2: цей самий файл підключає й queue.html, де
    такого предка немає. Тон стриманіший за дошку — на черзі це нагадування,
    а не робоча поверхня. */
+/* Без акцентної смуги збоку: у цьому проєкті border-left:2px означає стан
+   рядка (вибір/ховер у списку клієнтів, у хронології дій), а не постійну
+   прикрасу картки. Картку й так відрізняє бірюзова іконка з лічильником. */
 .sh-card{display:block;margin:0 0 12px;padding:11px 13px;background:var(--card);
-  border:1px solid var(--line);border-left:2px solid var(--accent);border-radius:var(--r-card)}
+  border:1px solid var(--line);border-radius:var(--r-card)}
 .sh-card[hidden]{display:none}
 .sh-card .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 
