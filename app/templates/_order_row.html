@@ -28,7 +28,12 @@
    техніка чи імені техніка — це поля лабораторного процесу. Для них порожні
    клітинки лишаємо просто пустими, без «—» (щоб не читалось як «бракує даних»). #}
 {% set _is_client = order.source in ('email', 'sheet_client') %}
-<tr class="queue-row {% if _changed %}queue-row-changed{% endif %} {% if _changed_taken %}queue-row-changed-taken{% endif %} {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if order.source == 'sheet_client' %}queue-row-client{% endif %} {% if _rework %}queue-row-rework{% endif %}" id="order-row-{{ order.id }}">
+{# Смуга матеріалу на краю рядка. Клас береться з ТОГО САМОГО джерела, що й
+   ключ маркування (material_badge → каталог матеріалів), тому смуга й чип
+   фізично не можуть розійтись. Цирконій свідомо без смуги — правило живе в
+   CSS (для mat-zr просто немає рядка), бо це рішення про вигляд, а не про дані. #}
+{% set _matrow = material_badge(order) %}
+<tr{% if _matrow %} data-mat="{{ _matrow.cls }}"{% endif %} class="queue-row {% if _changed %}queue-row-changed{% endif %} {% if _changed_taken %}queue-row-changed-taken{% endif %} {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if order.source == 'sheet_client' %}queue-row-client{% endif %} {% if _rework %}queue-row-rework{% endif %}" id="order-row-{{ order.id }}">
     {# Джерело рядка — вкладка (день) Google-таблиці, де його знайдено. Показуємо
        лише у пошуку (show_source), де результати охоплюють усі дні; у черзі
        колонки нема (рядок лишається 9-колонковим). #}

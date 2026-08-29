@@ -10,6 +10,7 @@ which already has the `is_overdue`/`material_color_css_class` globals
 registered, and assert on the resulting HTML.
 """
 
+from datetime import datetime
 from types import SimpleNamespace
 
 import app.web as web
@@ -133,3 +134,56 @@ def test_client_row_leaves_kind_job_tech_blank_not_dash():
     assert '<span class="text-muted">—</span>' not in html   # kind dash gone
     assert '<span class="mono">—</span>' not in html         # job-code dash gone
     assert '<td class="technician"></td>' in html            # technician left blank
+
+
+# ── Смуга матеріалу на краю рядка ────────────────────────────────────────
+
+
+def _with_material(name, **overrides):
+    """Рядок із розпізнаним матеріалом каталогу."""
+    return _order(material=SimpleNamespace(name=name), **overrides)
+
+
+def test_row_carries_the_material_class_from_the_catalog():
+    """Смуга і ключ маркування беруть клас з ОДНОГО джерела (material_badge →
+    каталог). Якби рядок вигадував собі клас окремо, два сигнали розійшлись би
+    на першому ж новому матеріалі."""
+    for material, expected in (
+        ("Титан", "mat-ti"),
+        ("ПММА", "mat-pmma"),
+        ("СЛМ", "mat-slm"),
+        ("Віск", "mat-wax"),
+        ("Цирконій", "mat-zr"),
+    ):
+        html = _render(_with_material(material))
+        assert f'data-mat="{expected}"' in html, material
+
+
+def test_unresolved_material_is_marked_unknown_never_guessed():
+    """Матеріал не зіставлено — рядок каже «не знаю» (і смуги в CSS для цього
+    стану немає). Вгадувати колір за текстом не можна: саме через це смуга не
+    ходить через регулярку."""
+    html = _render(_order(material=None, material_color="щось незрозуміле"))
+    assert 'data-mat="mat-unknown"' in html
+
+
+def test_row_without_any_material_text_gets_no_material_attribute():
+    html = _render(_order(material=None, material_color=None))
+    assert "data-mat=" not in html
+
+
+def test_material_stripe_does_not_disturb_the_state_classes():
+    """Сторож каналів: матеріал живе в атрибуті, стани — у класах. Титановий
+    рядок, який ще й прострочений і змінений техніком, зберігає ОБИДВА сигнали."""
+    html = _render(
+        _with_material(
+            "Титан",
+            sheet_tab="01.01.20",
+            sheet_changed_at=datetime(2026, 8, 29, 14, 5),
+            sheet_changed_fields="колір",
+            sum3d_id="",
+        )
+    )
+    assert 'data-mat="mat-ti"' in html
+    assert "queue-row-overdue" in html
+    assert "queue-row-changed" in html

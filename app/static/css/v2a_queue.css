@@ -659,3 +659,23 @@ body.layout-edit .q2 table.qtable{user-select:none}
   .q2 .filters .seg a,.q2 .pill,.q2 .fchip{transition:none}
 }
 
+
+/* ── Смуга матеріалу на краю рядка ───────────────────────────────────────
+   Паперова практика лабораторії: титан зелений, пластмаса жовта. У порталі
+   вона НЕ може бути заливкою рядка — фон уже несе шість станів (прострочено,
+   пошта, клієнт, переробка, «технік змінив», «змінив уже взяту»), і сьомий
+   змагач утопив би попередження, яке sync.py прямо називає захистом від браку.
+   Тому матеріал бере власний канал: край рядка.
+
+   Колір той самий, що в ключі маркування (.matpair .mp-k) — обидва йдуть від
+   material_badge(), тобто від каталогу матеріалів. Розійтись не можуть.
+
+   `inset box-shadow`, а не `border-left`: межа зсунула б текст і поїхала б у
+   режимах щільності (--queue-density-pad). Тінь місця не займає.
+
+   Цирконію рядка тут НЕМАЄ свідомо: він — більшість черги, і пофарбувати все
+   означає не пофарбувати нічого. Його ключ лишається блакитним у маркуванні. */
+.q2 table.qtable tbody tr[data-mat="mat-ti"] > td:first-child{box-shadow:inset 3px 0 0 #63c88b}
+.q2 table.qtable tbody tr[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 #d8b46a}
+.q2 table.qtable tbody tr[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 #9aa7b4}
+.q2 table.qtable tbody tr[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #d99bb0}
