@@ -255,6 +255,12 @@ NOTIFY_EVENTS: tuple[tuple[str, str, str, bool], ...] = (
     # operator must not scroll past.
     ("sheet_changed", "Технік змінив роботу в таблиці", "warn", True),
     ("new_mail", "Нові листи в тріажі", "info", True),
+    # Записка передачі зміни. Рівень warn, поруч із «Технік змінив роботу»:
+    # це те, що написав колега, який уже пішов, і перепитати нема в кого.
+    # Чесна межа: тост ловить лише появу записки при вже відкритому
+    # застосунку. Носій фічі — картка на черзі й бейдж у рейці, бо вони
+    # правильні й на холодному завантаженні. Див. app.js::initNotifyTriggers.
+    ("shift", "Нова записка передачі зміни", "warn", True),
     ("update_available", "Доступне оновлення", "warn", True),
 )
 NOTIFY_EVENT_KEYS = {key for key, _, _, _ in NOTIFY_EVENTS}

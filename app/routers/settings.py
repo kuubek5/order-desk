@@ -83,6 +83,7 @@ from app.services.config_state import (
     sheets_access_error_message,
     sheets_configured,
 )
+from app.services.shift import open_note_count as open_shift_note_count
 from app.services.operators import normalize_initial, user_count, validate_initial
 from app.settings_store import (
     OPERATOR_EDITABLE_KEYS,
@@ -869,6 +870,10 @@ def api_notify_state(request: Request, db: Session = Depends(get_db)):
             .select_from(Order)
             .where(Order.sheet_changed_at.is_not(None), Order.archived_at.is_(None))
         ) or 0,
+        # Відкриті записки передачі зміни — приріст означає, що колега
+        # щойно щось передав. Той самий предикат, що й дошка/бейдж
+        # (app/services/shift.py), щоб три місця не розходились.
+        "shift": open_shift_note_count(db),
         "update": release.version if release else None,
     }
 
