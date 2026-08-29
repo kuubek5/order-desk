@@ -43,15 +43,16 @@ body {
    pins the origin to the group's own bounding-box centre (the disc centre after
    the parent translate), so it spins in place rather than orbiting. Very slow
    and low-contrast on purpose — ambient motion, not a focal point. */
-/* Обертання й пульсацію радара ВИМКНЕНО. На черзі одночасно крутились три
-   нескінченні петлі (radar-spin 120s, radar-ticks-pulse 4s, q2beacon 2.6s)
-   на екрані, який відкритий цілий день біля верстатів. Правило «один живий
-   сигнал на екран» виведене на тріажі (CLAUDE.md п.14) — сигналом лишається
-   маячок «черга жива», бо він щось означає. Радар — декорація, до того ж
-   метафора авіадиспетчера, а не фрезерування. Графіка лишається статичною. */
+/* Обертання ввімкнене на прохання власника: диск на фоні і має жити.
+   Правило «один живий сигнал на екран» стосується сигналів у черзі — тих, що
+   вимагають реакції; фон під картками до них не належить і нічого не означає.
+   Тому петлі свідомо повільні й тьмяні: 120 с на оберт — рух, який видно, лише
+   якщо на нього дивитись, і який не смикає око над рядками робіт. Вимикається
+   разом з усією анімацією через prefers-reduced-motion (нижче). */
 .radar-spin {
   transform-box: fill-box;
   transform-origin: center;
+  animation: radar-spin 120s linear infinite;
 }
 
 @keyframes radar-spin {
@@ -65,6 +66,7 @@ body {
    clearly brighten and bloom, then dim back, rather than shift position. */
 .radar-ticks {
   opacity: 0.35;
+  animation: radar-ticks-pulse 4s ease-in-out infinite;
 }
 
 @keyframes radar-ticks-pulse {

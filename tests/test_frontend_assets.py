@@ -230,3 +230,23 @@ def test_every_stylesheet_has_balanced_braces():
         if depth:
             broken.append(f'{path.name}: незакритих дужок {depth}')
     assert not broken, 'CSS з незбалансованими дужками:' + chr(10) + chr(10).join(broken)
+
+
+def test_backdrop_radar_keeps_its_motion():
+    """Диск на фоні крутиться, а шкала пульсує.
+
+    Це вже одного разу тихо померло: `@keyframes` лишились на місці, а
+    оголошення `animation` прибрали — CSS валідний, тести зелені, фон
+    застиглий. Власник помітив і попросив повернути. Перевіряємо саме
+    оголошення, бо саме їх легко зняти «заодно»."""
+    css = (CSS_DIR / 'base.css').read_text(encoding='utf-8')
+    body = re.sub(r'/\*.*?\*/', '', css, flags=re.S)
+    for selector, keyframe in (('.radar-spin', 'radar-spin'), ('.radar-ticks', 'radar-ticks-pulse')):
+        rule = re.search(re.escape(selector) + r'\s*\{([^}]*)\}', body)
+        assert rule, f'правило {selector} зникло з base.css'
+        assert f'animation: {keyframe}' in rule.group(1), (
+            f'{selector} більше не запускає {keyframe} — фон застиг.'
+        )
+    assert 'prefers-reduced-motion' in body, (
+        'Зник guard prefers-reduced-motion: анімацію мусить бути видно як вимкнути.'
+    )
