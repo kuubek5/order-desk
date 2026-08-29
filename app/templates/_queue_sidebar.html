@@ -37,6 +37,28 @@
     </a>
     {% endif %}
 
+    {# Робочий набір оператора. Стоїть першим серед фільтрів, бо це не «як
+       дивитись на чергу», а «що я зараз тримаю в руках». Лічильник і сам
+       фільтр — те саме місце, тому набір не можна зібрати й забути про нього.
+       Порядок рядків фільтр НЕ міняє: він лише ховає чуже. #}
+    {% if focus_count or focus_mine %}
+    <span class="flabel">Мої зараз</span>
+    <div class="seg">
+        <a href="/?{{ ctx_qs }}&ready={{ ready }}&source={{ source }}" class="{% if not focus_mine %}is-active{% endif %}">Уся черга</a>
+        <a href="/?{{ ctx_qs }}&ready={{ ready }}&source={{ source }}&mine=1" class="{% if focus_mine %}is-active{% endif %}" title="Показати лише роботи, які я взяв у набір">Лише мої <span class="n">{{ focus_count }}</span></a>
+        {% if focus_count %}
+        <button type="button" class="seg-drop"
+                hx-post="/orders/focus/clear"
+                hx-swap="none"
+                {# Число тут НЕ цитуємо свідомо: лічильник відрендерився при завантаженні
+                   сторінки, а мітки встигають зникати самі (після Sum3D). Діалог,
+                   який називає застаріле число, підриває довіру до всіх діалогів. #}
+                hx-confirm="Зняти всі мої позначки? Роботи лишаться в черзі — зникне тільки твоя мітка."
+                title="Зняти всі мої позначки">Зняти всі</button>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <span class="flabel">Джерело</span>
     <div class="seg">
         <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=all" class="{% if source == 'all' %}is-active{% endif %}">Усі <span class="n">{{ source_counts.all }}</span></a>

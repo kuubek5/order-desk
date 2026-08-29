@@ -679,3 +679,42 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 table.qtable tbody tr[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 #d8b46a}
 .q2 table.qtable tbody tr[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 #9aa7b4}
 .q2 table.qtable tbody tr[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #d99bb0}
+
+/* ── Робочий набір «мої зараз» ────────────────────────────────────────────
+   Третій канал рядка. Фон уже за станами, край — за матеріалом, тож мітка
+   бере контур і шпильку. Один акцент, не палітра: набір відповідає на одне
+   питання — «це моє зараз?». */
+.q2 .focus-form{display:inline-flex;align-items:center;margin:0}
+.q2 .focus-btn{
+  display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;
+  border-radius:5px;border:1px solid transparent;background:transparent;cursor:pointer;
+  transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease;
+}
+/* Тихо, доки не потрібно — як і решта контролів у рядку (пор. .operator-input):
+   афорданс проступає на hover рядка, а не боксує 500 рядків одразу. */
+.q2 .queue-row:hover .focus-btn{border-color:var(--line)}
+.q2 .focus-btn svg{width:12px;height:12px;stroke:var(--control-edge);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.q2 .focus-btn:hover svg{stroke:var(--ink-2)}
+.q2 .focus-btn.on{border-color:rgba(45,212,191,.5);background:rgba(20,184,166,.16)}
+.q2 .focus-btn.on svg{stroke:var(--accent-c);fill:rgba(94,234,212,.28)}
+.q2 .focus-btn:focus-visible{outline:2px solid var(--focus-border);outline-offset:1px}
+/* Контур відміченого рядка — inset-тінь, а не border: межа зсунула б рядок
+   на 1px і таблиця «дихала» б на кожен клік. Смуга матеріалу лишається
+   першою тінню першої комірки, тому тут вона повторюється. */
+.q2 table.qtable tbody tr.queue-row-focus > td{
+  box-shadow:inset 0 1px 0 rgba(45,212,191,.55),inset 0 -1px 0 rgba(45,212,191,.55);
+}
+.q2 table.qtable tbody tr.queue-row-focus > td:last-child{
+  box-shadow:inset -1px 0 0 rgba(45,212,191,.55),inset 0 1px 0 rgba(45,212,191,.55),inset 0 -1px 0 rgba(45,212,191,.55);
+}
+.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-ti"] > td:first-child{box-shadow:inset 3px 0 0 #63c88b,inset 0 1px 0 rgba(45,212,191,.55),inset 0 -1px 0 rgba(45,212,191,.55)}
+.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 #d8b46a,inset 0 1px 0 rgba(45,212,191,.55),inset 0 -1px 0 rgba(45,212,191,.55)}
+.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 #9aa7b4,inset 0 1px 0 rgba(45,212,191,.55),inset 0 -1px 0 rgba(45,212,191,.55)}
+.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #d99bb0,inset 0 1px 0 rgba(45,212,191,.55),inset 0 -1px 0 rgba(45,212,191,.55)}
+/* «Зняти всі» живе в тому ж сегменті, що й фільтр, але це дія, а не вигляд —
+   тому тиха, з попередженням у підтвердженні. */
+.q2 .seg .seg-drop{
+  display:inline-flex;align-items:center;height:26px;padding:0 11px;border:0;border-radius:999px;
+  background:none;color:var(--ink-3);font:inherit;font-size:12.5px;cursor:pointer;
+}
+.q2 .seg .seg-drop:hover{color:var(--color-overdue)}

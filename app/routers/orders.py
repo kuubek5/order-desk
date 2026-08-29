@@ -60,6 +60,7 @@ from app.services.sheet_writeback import (
     write_sheet_fields,
     write_sheet_fields_background,
 )
+from app.services.focus import clear_all as clear_focus, focused_ids, release as release_focus, toggle as toggle_focus
 from app.services.undo import (
     UNDOABLE_ACTION_TYPES,
     UNDO_WINDOW_SECONDS,
@@ -81,6 +82,25 @@ from app.statuses import STATUSES
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _row_context(request: Request, db: Session, order, sync_error) -> dict:
+    """Контекст для повторного рендера ОДНОГО рядка черги.
+
+    Існує рівно заради `focused_ids`: мітка «мої зараз» персональна, тож рядок
+    може її намалювати лише знаючи, хто дивиться. Кожен роут, що віддає
+    _order_row.html, мусить іти через цей хелпер — інакше після будь-якої дії
+    (Sum3D, оператор, коментар) рядок повернувся б без чужої… власної мітки, і
+    це читалось би як «система забула», а не як пропущений ключ контексту.
+    Сторож: tests/test_order_focus.py::test_every_row_render_passes_focused_ids.
+    """
+    user = get_current_user(request, db)
+    return {
+        "order": order,
+        "statuses": STATUSES,
+        "sync_error": sync_error,
+        "focused_ids": focused_ids(db, user),
+    }
 
 
 @router.post("/orders/{order_id}/sum3d-id", response_class=HTMLResponse)
@@ -105,7 +125,7 @@ async def set_sum3d_id(
     if sync_control.is_paused():
         return templates.TemplateResponse(
             request, "_order_row.html",
-            {"order": order, "statuses": STATUSES, "sync_error": SYNC_PAUSED_MSG},
+            _row_context(request, db, order, SYNC_PAUSED_MSG),
         )
 
     value = sum3d_id.strip() or None
@@ -164,6 +184,14 @@ async def set_sum3d_id(
         old=json.dumps(before, ensure_ascii=False),
         new=json.dumps(after, ensure_ascii=False), note=note,
     )
+    # Мітка «беру зараз» існує рівно для того, щоб не загубити, КУДИ вписувати
+    # Sum3D. Вписали — причина відпала, мітка знімається в тій самій транзакції.
+    # Набір самоочищується, і «Зняти всі» лишається рідкісною ручною дією.
+    # Знімається лише МОЯ мітка: якщо роботу тримає в наборі й колега, це його
+    # набір, і чистити його не наша справа. При очищенні ID (value порожнє)
+    # мітку не чіпаємо — робота знову «в руках».
+    if value:
+        release_focus(db, order, user)
     db.commit()
     db.refresh(order)
 
@@ -171,7 +199,7 @@ async def set_sum3d_id(
     attach_job_code_folder_uris(db, [order])
 
     response = templates.TemplateResponse(
-        request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": sync_error}
+        request, "_order_row.html", _row_context(request, db, order, sync_error)
     )
     if sync_error is None:
         attach_action_toast(response, log_entry, note)
@@ -199,7 +227,7 @@ async def set_operator(request: Request, order_id: int, operator: str = Form("")
     if sync_control.is_paused():
         return templates.TemplateResponse(
             request, "_order_row.html",
-            {"order": order, "statuses": STATUSES, "sync_error": SYNC_PAUSED_MSG},
+            _row_context(request, db, order, SYNC_PAUSED_MSG),
         )
 
     value = operator.strip()
@@ -209,7 +237,7 @@ async def set_operator(request: Request, order_id: int, operator: str = Form("")
         attach_export_folder_uris(db, [order])
         attach_job_code_folder_uris(db, [order])
         return templates.TemplateResponse(
-            request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": None}
+            request, "_order_row.html", _row_context(request, db, order, None)
         )
 
     order.calculated_raw = value
@@ -226,7 +254,7 @@ async def set_operator(request: Request, order_id: int, operator: str = Form("")
     attach_job_code_folder_uris(db, [order])
 
     response = templates.TemplateResponse(
-        request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": sync_error}
+        request, "_order_row.html", _row_context(request, db, order, sync_error)
     )
     if sync_error is None:
         attach_action_toast(response, log_entry, note)
@@ -256,7 +284,7 @@ async def set_cam_comment(
     if sync_control.is_paused():
         return templates.TemplateResponse(
             request, "_order_row.html",
-            {"order": order, "statuses": STATUSES, "sync_error": SYNC_PAUSED_MSG},
+            _row_context(request, db, order, SYNC_PAUSED_MSG),
         )
 
     old_comment = order.cam_comment
@@ -278,7 +306,7 @@ async def set_cam_comment(
     attach_job_code_folder_uris(db, [order])
 
     return templates.TemplateResponse(
-        request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": None}
+        request, "_order_row.html", _row_context(request, db, order, None)
     )
 
 
@@ -525,6 +553,46 @@ def create_manual_order(
     return RedirectResponse(target, status_code=303)
 
 
+@router.post("/orders/{order_id}/focus", response_class=HTMLResponse)
+def toggle_order_focus(request: Request, order_id: int, db: Session = Depends(get_db)):
+    """Поставити/зняти особисту мітку «беру зараз».
+
+    Відповідь — сам рядок: свап одного <tr> дає миттєвий відгук і не чіпає
+    решту таблиці, тобто нічого не стрибає під рукою оператора. Порядок рядків
+    мітка не міняє НІКОЛИ — ізоляція набору робиться фільтром «Мої зараз».
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="роботу не знайдено")
+
+    toggle_focus(db, order, user)
+    db.commit()
+
+    attach_export_folder_uris(db, [order])
+    attach_job_code_folder_uris(db, [order])
+    return templates.TemplateResponse(request, "_order_row.html", _row_context(request, db, order, None))
+
+
+@router.post("/orders/focus/clear")
+def clear_order_focus(request: Request, db: Session = Depends(get_db)):
+    """Зняти всі свої мітки. Підтвердження питає інтерфейс (hx-confirm):
+    набір із двох десятків рядків збирається руками, і випадковий клік
+    коштував би заходу."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    removed = clear_focus(db, user)
+    db.commit()
+    if not removed:
+        return toast_response("Набір і так порожній.", kind="info")
+    return toast_response(f"Знято позначок: {removed}.", triggers={"refresh-queue": True})
+
+
 @router.post("/orders/{order_id}/change-seen", response_class=HTMLResponse)
 async def dismiss_sheet_change(
     request: Request, order_id: int, db: Session = Depends(get_db)
@@ -561,7 +629,7 @@ async def dismiss_sheet_change(
     attach_job_code_folder_uris(db, [order])
     return templates.TemplateResponse(
         request, "_order_row.html",
-        {"order": order, "statuses": STATUSES, "sync_error": None},
+        _row_context(request, db, order, None),
     )
 
 
@@ -661,7 +729,7 @@ async def set_status(
     if sync_control.is_paused():
         return templates.TemplateResponse(
             request, "_order_row.html",
-            {"order": order, "statuses": STATUSES, "sync_error": SYNC_PAUSED_MSG},
+            _row_context(request, db, order, SYNC_PAUSED_MSG),
         )
 
     old_status = order.status
@@ -689,7 +757,7 @@ async def set_status(
     attach_job_code_folder_uris(db, [order])
 
     response = templates.TemplateResponse(
-        request, "_order_row.html", {"order": order, "statuses": STATUSES, "sync_error": sync_error}
+        request, "_order_row.html", _row_context(request, db, order, sync_error)
     )
     if log_entry is not None and sync_error is None:
         attach_action_toast(response, log_entry, f"статус → {status}")

@@ -66,11 +66,13 @@ POST /mail/{email_id}/restore
 POST /mail/{email_id}/unfilter
 POST /mail/{email_id}/wizard
 POST /open-folder
+POST /orders/focus/clear
 POST /orders/new
 POST /orders/{order_id}/cam-comment
 POST /orders/{order_id}/change-seen
 POST /orders/{order_id}/comments
 POST /orders/{order_id}/delete
+POST /orders/{order_id}/focus
 POST /orders/{order_id}/mark-found
 POST /orders/{order_id}/operator
 POST /orders/{order_id}/status

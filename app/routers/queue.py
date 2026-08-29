@@ -42,6 +42,7 @@ from app.services.config_state import (
     sheets_configured,
 )
 from app.services.order_dates import order_date, parse_sheet_tab
+from app.services.focus import count as focus_count, focused_ids
 from app.services.shift import open_notes as open_shift_notes
 from app.services.queue import (
     DATE_STRIP_WINDOW,
@@ -93,6 +94,12 @@ def get_queue(
     ready: str = "all",
     source: str = "all",
     overdue: str = "0",
+    # «Мої зараз»: mine=1 лишає в таблиці лише мій робочий набір. Назва саме
+    # `mine`, бо `focus` у цьому роуті ВЖЕ зайнятий — ним «Останні дії»
+    # передають id рядка, на який треба проскролити. Значення мусить
+    # потрапити і в rows_qs, інакше перший же 15-секундний тік полла
+    # поверне приховані рядки назад.
+    mine: str = "",
     # `date` (query key) can't be the python parameter name — it would
     # shadow the `date` class imported at module level and used throughout
     # this function (`date.today()` etc). `Annotated` keeps the *default*
@@ -213,6 +220,12 @@ def get_queue(
     else:
         orders = sorted(buckets[period], key=queue_sort_key)
 
+    # Робочий набір оператора — одним запитом, до будь-яких циклів по рядках.
+    my_focus = focused_ids(db, user)
+    focus_mine = mine == "1"
+    if focus_mine:
+        orders = [o for o in orders if o.id in my_focus]
+
     # Source chip counts cover the selected period before applying source.
     source_counts = count_by_source(orders)
     orders = filter_by_source(orders, source)
@@ -326,6 +339,8 @@ def get_queue(
     if show_overdue:
         _qs_items.append(("overdue", "1"))
     _qs_items += [("period", period), ("ready", ready), ("source", source)]
+    if focus_mine:
+        _qs_items.append(("mine", "1"))
     if date_param:
         _qs_items.append(("date", date_param))
         _qs_items.append(("date_page", str(current_date_page)))
@@ -382,6 +397,12 @@ def get_queue(
             # (app/templates/_shift_card.html). Далі картка оновлює себе
             # сама через /shift/card — тут лише перший рендер.
             "shift_open_notes": open_shift_notes(db),
+            # Мітки «мої зараз» — персональні, тому контекст, а не глобал.
+            # ОБИДВІ гілки (сторінка й partial=rows) читають цей самий
+            # словник: якби полл рахував інакше, мітки зникали б кожні 15с.
+            "focused_ids": my_focus,
+            "focus_count": focus_count(db, user),
+            "focus_mine": focus_mine,
             "selected_date": selected_date,
             "date_tabs": date_tabs,
             "date_page": current_date_page,
@@ -477,6 +498,7 @@ def get_search(
         {
             "query": query_term,
             "results": results,
+            "focused_ids": focused_ids(db, user),
             "truncated": truncated,
             "user": user,
             "statuses": STATUSES,
