@@ -67,7 +67,7 @@ def _tonight_start():
 @router.get("/shift", response_class=HTMLResponse)
 def get_shift(request: Request, partial: str = "", db: Session = Depends(get_db)):
     """Дошка передачі зміни. `partial=board` віддає саму дошку — цим свапом
-    відповідають на «Прийняв»/«Прийнято»/редагування, тому поле написання
+    відповідають на «Прийняв»/«Закрито»/редагування, тому поле написання
     свідомо лежить ПОЗА цим фрагментом: інакше свап зітер би недописаний текст
     колеги (та сама пастка, через яку полл черги свапає рівно `#queue-rows`)."""
     user = get_current_user(request, db)

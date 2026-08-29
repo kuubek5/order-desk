@@ -40,7 +40,7 @@
             {% elif note.kind == 'action' %}
             <button type="button" class="sh-card-btn"
                     hx-post="/shift/notes/{{ note.id }}/resolve"
-                    hx-swap="none">Прийнято</button>
+                    hx-swap="none">Закрито</button>
             {% endif %}
         </li>
         {% endfor %}

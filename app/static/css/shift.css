@@ -47,7 +47,7 @@ main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-
    .btn у цьому проєкті скоупиться на екран (.mailv2 .btn, .neworder .btn),
    спільного визначення немає — тому екран несе своє.
    Залите трактування (.apex) зарезервоване за ОДНІЄЮ дією: пришпилити
-   записку і прийняти її. «Прийнято» (закриття справи) — другого рівня,
+   записку і прийняти її. «Закрито» (справу зроблено) — другого рівня,
    інакше на одному стікері два залиті прямокутники сперечались би. */
 .shiftv2 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 14px;
   border-radius:var(--r-ctl);border:1px solid var(--control-edge);background:var(--card);color:var(--ink);
