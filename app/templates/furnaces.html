@@ -12,7 +12,17 @@
 
 {# Тільки перегляд. Жодної кнопки, що щось робить із піччю, тут немає і не
    планується: «Оновити» знімає НАШ кадр, а не чіпає програму спікання. #}
-<main class="furnaces">
+<main class="furnaces"{% if furnace_heat %} style="--heat: {{ furnace_heat }}"{% endif %}>
+    {# Фон — фотографія пічки, затонована й розмита. Показується лише коли
+       увімкнено в налаштуваннях: екран біля верстатів має лишатись читабельним
+       за будь-яких умов, тому картинку можна прибрати одним кліком. #}
+    {% if furnace_bg %}
+    <div class="fu-bg" aria-hidden="true">
+        <img src="/static/img/furnace-bg.jpg?v={{ static_ver('img/furnace-bg.jpg') }}" alt="">
+        <i></i>
+    </div>
+    {% endif %}
+
     <div class="fu-bar">
         <div>
             <h1>Пічки</h1>

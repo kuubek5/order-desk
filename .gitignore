@@ -18,6 +18,9 @@ dist-installer/
 .coverage
 
 # License signing key (scripts/license_keygen.py) — never in git, ever.
+# Ключ API kie.ai — читає scripts/kie_image.py, у git не потрапляє.
+.kie_key
+
 license_private_key.pem
 *_private_key.pem
 

@@ -117,6 +117,7 @@ OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operato
 # notify_events: comma-separated list of system triggers that are allowed to pop
 # a toast — an empty value means "none", an absent value means "the defaults".
 PREFERENCE_KEYS = {
+    "furnace_background",
     "mail_default_material",
     "mail_download_all",
     "notify_style",
@@ -323,3 +324,18 @@ def set_notify_prefs(
 
 def get_furnace_vnc_password(session: Session) -> Optional[str]:
     return get_setting(session, "furnace_vnc_password")
+
+
+def get_furnace_background(session: Session) -> bool:
+    """Чи показувати фотографію пічки фоном екрана «Пічки».
+
+    Увімкнено за замовчуванням: фон приглушений і не заважає. Але вимикач
+    існує не для краси — екран стоїть біля верстатів, і якщо комусь картинка
+    заважає читати числа, вона має зникати одним кліком, а не обговоренням.
+    """
+    value = get_setting(session, "furnace_background")
+    return True if value is None else value == "1"
+
+
+def set_furnace_background(session: Session, value: bool) -> None:
+    set_setting(session, "furnace_background", "1" if value else "")

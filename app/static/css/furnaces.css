@@ -165,3 +165,43 @@ body.furnace-collapsed .q2 .fu-strip{padding-top:6px;padding-bottom:6px}
 .fu-add-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .fu-add-row .login-input{height:32px;padding:0 9px;font-size:12.5px;flex:1 1 150px;min-width:120px}
 .fu-add-row .fu-col-port{flex:0 0 78px}
+
+/* ── Фон екрана: фотографія пічки ────────────────────────────────────────
+   Знімок 624i, затонований і трохи розмитий, з заревом, яке йде за реальною
+   температурою найгарячішої пічки.
+
+   Три правила, які тут не косметика:
+   1. Фон НЕ конкурує з числами. Тому яскравість 0.5, розмиття 3px і темна
+      завіса зліва, де стоять плитки. Читабельність важливіша за красу.
+   2. Зарево — єдиний рух на екрані, і воно повільне (10 с). Екран відкритий
+      цілу зміну; усе, що встигаєш помітити як «блимає», через годину дратує.
+   3. Рух вимикається і системним «менше руху», і власним налаштуванням. Фон,
+      який не можна вимкнути, — це не фон, а перешкода. */
+/* absolute ВСЕРЕДИНІ екрана, а не fixed по вікну: fixed накривав ліву рейку
+   цілком — меню зникало під картинкою. Фон належить робочій області, і межі
+   в нього мають бути її. */
+main.furnaces{position:relative;min-height:100vh}
+.furnaces .fu-bg{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.furnaces .fu-bg img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  object-position:70% 50%;filter:blur(3px) brightness(.5) saturate(.85) contrast(1.05)}
+/* Завіса: ліворуч, де картки, темніше; праворуч машину видно. */
+.furnaces .fu-bg::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,rgba(13,17,23,.95) 0%,rgba(13,17,23,.88) 38%,
+    rgba(13,17,23,.62) 66%,rgba(13,17,23,.30) 100%)}
+/* Зарево з камери. mix-blend-mode:screen — щоб воно СВІТИЛО фото, а не лежало
+   перед ним помаранчевою плямою. --heat ставить роут за температурою. */
+.furnaces .fu-bg i{position:absolute;left:62%;top:34%;width:46vmin;height:30vmin;
+  transform:translate(-50%,-50%);border-radius:50%;mix-blend-mode:screen;
+  background:radial-gradient(closest-side,
+    rgba(255,236,190,calc(.55*var(--heat,0))) 0%,
+    rgba(255,150,60,calc(.30*var(--heat,0))) 45%,
+    transparent 100%);
+  animation:fu-breathe 10s ease-in-out infinite}
+@keyframes fu-breathe{0%,100%{opacity:.78}50%{opacity:1}}
+
+/* Вміст лягає поверх фону. */
+.furnaces > *:not(.fu-bg){position:relative;z-index:1}
+
+@media (prefers-reduced-motion:reduce){
+  .furnaces .fu-bg i{animation:none}
+}

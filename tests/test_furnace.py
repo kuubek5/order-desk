@@ -593,3 +593,48 @@ def test_widget_hides_a_furnace_with_no_data_but_the_screen_keeps_it(monkeypatch
 
         assert [c.target.name for c in service.strip_cards(db)] == ["Бочка"]
         assert [c.target.name for c in service.snapshot(db)] == ["Бочка", "Мовчить"]
+
+
+def test_background_heat_follows_the_hottest_running_furnace():
+    """Фон каже те саме, що числа, тільки бічним зором: сила зарева йде за
+    найгарячішою пічкою, яка ЗАРАЗ працює. Пічка, що просто не встигла
+    охолонути, не має підсвічувати екран так, ніби в ній іде програма."""
+    from app.routers.furnace import _heat
+
+    hot = service.FurnaceState(target=_target())
+    hot.reading = read_panel(_frame("run"))  # RUN, 759 °C
+
+    cold = service.FurnaceState(target=service.FurnaceTarget(name="Піч 2", host="192.168.1.61"))
+    cold.reading = read_panel(_frame("wait"))  # WAIT, 40 °C
+
+    running = service.FurnaceCard(target=hot.target, state=hot)
+    idle = service.FurnaceCard(target=cold.target, state=cold)
+
+    # (759 - 200) / (1500 - 200) = 0.43
+    assert _heat([running, idle]) == 0.43
+    # Сама лише охолола пічка не гріє фон.
+    assert _heat([idle]) == 0.0
+    assert _heat([]) == 0.0
+
+
+def test_background_can_be_switched_off():
+    """Екран стоїть біля верстатів. Фон, який не можна вимкнути, — це не фон,
+    а перешкода, тому вимикач існує і за замовчуванням фон увімкнено."""
+    from app.settings_store import get_furnace_background, set_furnace_background
+
+    with Session(_database()) as db:
+        assert get_furnace_background(db) is True
+        set_furnace_background(db, False)
+        db.commit()
+        assert get_furnace_background(db) is False
+
+
+def test_background_toggle_route_is_not_eaten_by_the_id_route():
+    """Та сама пастка, що з /password: FastAPI приміряє маршрути в порядку
+    оголошення, і «background» поїхав би як номер пічки."""
+    from app.routers.settings import router
+
+    paths = [route.path for route in router.routes if "furnaces" in route.path]
+    assert paths.index("/settings/furnaces/background") < paths.index(
+        "/settings/furnaces/{furnace_id}"
+    )

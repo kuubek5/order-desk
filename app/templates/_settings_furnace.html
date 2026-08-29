@@ -90,6 +90,17 @@
                     </form>
                 </div>
 
+                <div class="settings-field">
+                    <label>Фон екрана «Пічки»</label>
+                    <p class="settings-help">Фотографія пічки, затонована й розмита; зарево йде за температурою. Вимкни, якщо заважає читати числа.</p>
+                    <form method="post" action="/settings/furnaces/background">
+                        <input type="hidden" name="enabled" value="{{ '' if furnace_bg else '1' }}">
+                        <button type="submit" class="settings-secondary-button">
+                            {% if furnace_bg %}Вимкнути фон{% else %}Увімкнути фон{% endif %}
+                        </button>
+                    </form>
+                </div>
+
                 <p class="settings-help">Стан пічок — на екрані <a href="/furnaces">Пічки</a>.</p>
             </div>
         </div>

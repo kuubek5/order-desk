@@ -23,6 +23,7 @@ from starlette.requests import Request
 
 from app.furnace_ocr import EYE_CROPS
 from app.routers.deps import get_current_user, get_db, templates
+from app.settings_store import get_furnace_background
 from app.services.furnace import (
     POLL_INTERVAL_SECONDS,
     config_error,
@@ -39,14 +40,37 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# Від якої температури фон починає жевріти й на якій сягає повної сили.
+# Нижче 200° пічка на око холодна, вище 1500° яскравіше вже нема куди.
+HEAT_FROM_C = 200
+HEAT_TO_C = 1500
+
+
+def _heat(cards) -> float:
+    """Сила зарева на фоні: 0…1 за найгарячішою пічкою, що зараз працює.
+
+    Саме за працюючою, а не за будь-якою: пічка, що просто не встигла охолонути
+    після відкриття, не має підсвічувати екран так, ніби в ній іде програма.
+    Фон тут не прикраса — він каже те саме, що числа, тільки бічним зором.
+    """
+    temps = [c.state.temp_c for c in cards if c.is_running and c.state and c.state.temp_c]
+    if not temps:
+        return 0.0
+    hottest = max(temps)
+    return round(min(1.0, max(0.0, (hottest - HEAT_FROM_C) / (HEAT_TO_C - HEAT_FROM_C))), 3)
+
+
 def _context(request: Request, db: Session, user) -> dict:
+    cards = snapshot(db)
     return {
         "request": request,
         "user": user,
         "topbar_active": "furnaces",
-        "cards": snapshot(db),
+        "cards": cards,
         "config_error": config_error(db),
         "poll_seconds": int(POLL_INTERVAL_SECONDS),
+        "furnace_bg": get_furnace_background(db),
+        "furnace_heat": _heat(cards),
     }
 
 

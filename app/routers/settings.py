@@ -98,6 +98,7 @@ from app.settings_store import (
     get_google_oauth_refresh_token,
     get_google_service_account_json,
     get_google_sheet_id,
+    get_furnace_background,
     get_furnace_vnc_password,
     get_mail_default_material,
     get_imap_login,
@@ -108,6 +109,7 @@ from app.settings_store import (
     get_notify_style,
     get_service_account_email,
     get_technician_files_path,
+    set_furnace_background,
     set_mail_default_material,
     set_mail_download_all,
     set_notify_prefs,
@@ -332,6 +334,7 @@ def get_settings(
             # не підставляється, у шаблон іде лише ознака «збережено».
             "furnaces": list_furnaces(db),
             "furnace_password_set": bool(get_furnace_vnc_password(db)),
+            "furnace_bg": get_furnace_background(db),
             "spool_report": (_spool_report := analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH))),
             # "Стан системи" flow map — honest, cheap counts (one scalar each).
             # No export-folder scan here; that's the heavy walk we keep off page load.
@@ -884,6 +887,26 @@ def add_furnace(
 # маршрути в порядку оголошення, і /settings/furnaces/{furnace_id} нижче радо
 # з'їдав «password» як номер пічки (спіймано живою перевіркою — 422 замість
 # збереження пароля).
+@router.post("/settings/furnaces/background")
+def toggle_furnace_background(
+    request: Request, enabled: str = Form(""), db: Session = Depends(get_db)
+):
+    """Увімкнути або вимкнути фотографію-фон на екрані «Пічки».
+
+    Оголошено ВИЩЕ /settings/furnaces/{furnace_id} з тієї ж причини, що й
+    /password: FastAPI приміряє маршрути в порядку оголошення й з'їв би слово
+    «background» як номер пічки.
+    """
+    require_settings_admin(request, db)
+    set_furnace_background(db, enabled == "1")
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": "Фон екрана «Пічки» увімкнено." if enabled == "1" else "Фон екрана «Пічки» вимкнено.",
+    }
+    return RedirectResponse("/settings#furnaces", status_code=303)
+
+
 @router.post("/settings/furnaces/password")
 def save_furnace_password(
     request: Request, password: str = Form(""), db: Session = Depends(get_db)
