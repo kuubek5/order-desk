@@ -39,6 +39,7 @@ from app.models import (
     Comment,
     EmailMessage,
     Order,
+    OrderFocus,
     ReworkRecord,
     ShiftNote,
     ShiftNoteImage,
@@ -64,6 +65,7 @@ _TABLE_MODELS = [
     ClientNameAlias,
     Client,
     SyncLog,
+    OrderFocus,
     ShiftNote,
     ShiftNoteImage,
 ]

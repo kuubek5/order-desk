@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -555,3 +555,38 @@ class ShiftNoteImage(Base):
     )
 
     note: Mapped["ShiftNote"] = relationship("ShiftNote", back_populates="images")
+
+
+class OrderFocus(Base):
+    """Особиста мітка «беру зараз» на роботі — робочий набір оператора.
+
+    Навіщо: взявши кілька нарядів у роботу, оператор має не загубити, КУДИ
+    вписувати Sum3D ID. На папері це робиться маркером; тут — мітка плюс
+    фільтр «лише мої».
+
+    Чому окрема таблиця, а не колонка в orders: мітка ПЕРСОНАЛЬНА. Одну роботу
+    можуть тримати в наборі двоє (у зміні максимум двоє), і чужа мітка не має
+    затирати мою — тому оператор входить у ключ.
+
+    Мітка знімається сама, щойно вписано Sum3D: причина її існування зникла.
+    """
+
+    __tablename__ = "order_focus"
+    __table_args__ = (
+        # Подвійний клік (або дві вкладки) інакше дадуть два рядки — і
+        # лічильник у бейджі почне брехати.
+        UniqueConstraint("order_id", "user_id", name="uq_order_focus_order_user"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    # Час локальний, без server_default: на SQLite func.now() пише UTC (див.
+    # ShiftNote). Тут це не зміст, але й розходження двох часових баз у сусідніх
+    # таблицях нікому не потрібне.
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+
+    order: Mapped["Order"] = relationship("Order")
+    user: Mapped["User"] = relationship("User")
