@@ -141,3 +141,27 @@ body.furnace-collapsed .q2 .fu-strip{padding-top:6px;padding-bottom:6px}
   .q2 .fu-strip{align-items:flex-start;flex-direction:column;gap:7px}
   .q2 .fu-strip-items{width:100%}
 }
+
+/* ── Перелік пічок у налаштуваннях ───────────────────────────────────────
+   Рядок на пічку. Табличний вигляд навмисно: колонки читаються згори вниз,
+   і «яка з них вимкнена» видно одним поглядом, а не переліком карток. */
+.fu-table{width:100%;border-collapse:collapse;margin:6px 0 14px}
+.fu-table th{text-align:left;padding:0 8px 6px 0;color:var(--ink-3);font-size:10.5px;
+  text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.fu-table td{padding:0 8px 8px 0;vertical-align:middle}
+.fu-table .login-input{height:32px;padding:0 9px;font-size:12.5px}
+.fu-table .mono{font-family:var(--font-mono)}
+.fu-col-port{max-width:78px}
+.fu-col-mid{text-align:center}
+/* Кнопки в одному рядку. `display:flex` на самій комірці ламає табличну
+   розкладку, а форма видалення — блок, тому без цього хрестик з'їжджав під
+   «Зберегти». */
+.fu-col-act{white-space:nowrap;width:1%}
+.fu-col-act .settings-secondary-button{vertical-align:middle}
+.fu-del{color:var(--ink-3);font-size:14px;line-height:1;padding:6px 8px;margin-left:4px;
+  border-radius:var(--r-ctl);vertical-align:middle}
+.fu-del:hover{color:var(--alarm);background:var(--card-2)}
+
+.fu-add-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.fu-add-row .login-input{height:32px;padding:0 9px;font-size:12.5px;flex:1 1 150px;min-width:120px}
+.fu-add-row .fu-col-port{flex:0 0 78px}

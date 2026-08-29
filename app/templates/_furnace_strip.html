@@ -25,15 +25,15 @@
          hx-swap="outerHTML"
          hx-disinherit="*"
          {% if not furnace_cards %}hidden{% endif %}
-         aria-label="Печі спікання">
+         aria-label="Пічки спікання">
     {% if furnace_cards %}
     {% set summary = furnace_summary %}
     <button type="button" class="fu-strip-toggle" data-furnace-collapse
             aria-expanded="true" aria-controls="furnace-strip-items"
-            title="Згорнути смугу печей">
+            title="Згорнути смугу пічок">
         <svg class="fu-strip-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
         <svg class="fu-strip-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
-        <span class="fu-strip-label">Печі</span>
+        <span class="fu-strip-label">Пічки</span>
     </button>
 
     {# Згорнутий стан лишається корисним: скільки печей у роботі й котра

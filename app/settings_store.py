@@ -90,14 +90,15 @@ SETTING_FIELDS = [
         secret=True,
         help_text="Заповнюється автоматично після входу через Google — не редагувати вручну",
     ),
-    # Пароль VNC печей. Один на всі печі — це заводський пароль моделі, не
-    # особистий. Секрет, бо ним відкривається екран обладнання в цеху; у код і
-    # в git він не потрапляє (CLAUDE.md §7).
+    # Спільний пароль VNC пічок — заводський пароль моделі, не особистий.
+    # Пічка може мати власний (колонка в таблиці furnaces); цей діє для всіх
+    # решти. Секрет, бо ним відкривається екран обладнання в цеху; у код і в
+    # git він не потрапляє (CLAUDE.md §7).
     SettingField(
         key="furnace_vnc_password",
-        label="Пароль VNC печей",
+        label="Спільний пароль VNC пічок",
         secret=True,
-        help_text="Пароль екрана печі Austromat (той самий, що в RealVNC)",
+        help_text="Пароль екрана пічки Austromat (той самий, що в RealVNC)",
     ),
 ]
 
@@ -115,12 +116,7 @@ OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operato
 # notifications (see app/static/js/app.js showToast + .toast-zone in base.css).
 # notify_events: comma-separated list of system triggers that are allowed to pop
 # a toast — an empty value means "none", an absent value means "the defaults".
-# furnace_hosts: перелік печей у вигляді «Назва=IP», по одній на рядок. Не
-# секрет — це адреси в цеховій мережі; пароль до них лежить окремо, у
-# SETTING_FIELDS. Порожній перелік = моніторинг вимкнено, і фоновий воркер
-# навіть не прокидається.
 PREFERENCE_KEYS = {
-    "furnace_hosts",
     "mail_default_material",
     "mail_download_all",
     "notify_style",
@@ -319,18 +315,10 @@ def set_notify_prefs(
     set_setting(session, "notify_events", ",".join(kept))
 
 
-# ── Печі спікання ───────────────────────────────────────────────────────────
-# Піч віддає дані лише власним екраном по VNC (чистих протоколів на ній не
-# відкрито), тому тут — адреси екранів. Формат рядка: «Назва=адреса» або просто
-# «адреса»; порт за потреби через двокрапку.
-
-
-def get_furnace_hosts_raw(session: Session) -> str:
-    return get_setting(session, "furnace_hosts") or ""
-
-
-def set_furnace_hosts_raw(session: Session, value: str) -> None:
-    set_setting(session, "furnace_hosts", (value or "").strip())
+# ── Пічки спікання ──────────────────────────────────────────────────────────
+# Самі пічки живуть у таблиці `furnaces` (назва, адреса, порт, вимикач, свій
+# пароль). Тут лишається лише СПІЛЬНИЙ пароль: він заводський, один на модель,
+# і пічка без власного відкривається саме ним.
 
 
 def get_furnace_vnc_password(session: Session) -> Optional[str]:

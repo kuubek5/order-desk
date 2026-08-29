@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Печі — Order Desk{% endblock %}
+{% block title %}Пічки — Order Desk{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="/static/css/furnaces.css?v={{ static_ver('css/furnaces.css') }}">
@@ -15,7 +15,7 @@
 <main class="furnaces">
     <div class="fu-bar">
         <div>
-            <h1>Печі</h1>
+            <h1>Пічки</h1>
             <p class="fu-sub">Тільки перегляд · кадр раз на {{ poll_seconds }} с</p>
         </div>
         <form hx-post="/furnaces/refresh" hx-target="#furnace-cards" hx-swap="innerHTML">

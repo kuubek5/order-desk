@@ -27,7 +27,7 @@ from app.furnace_ocr import (
     read_panel,
 )
 from app.furnace_vnc import FurnaceVncError
-from app.models import FurnaceReading, User
+from app.models import Furnace, FurnaceReading, User
 from app.services import furnace as service
 
 FIXTURES = Path(__file__).parent / "fixtures" / "furnace"
@@ -143,20 +143,15 @@ def test_format_remaining_shows_dash_for_unknown():
 # ── Перелік печей ───────────────────────────────────────────────────────────
 
 
-def test_parse_targets_accepts_name_port_and_plain_address():
-    targets = service.parse_targets("Піч 1=192.168.1.76\n192.168.1.61:5901\n\n# коментар")
-    assert [(t.name, t.host, t.port) for t in targets] == [
-        ("Піч 1", "192.168.1.76", 5900),
-        ("192.168.1.61", "192.168.1.61", 5901),
-    ]
-
-
-def test_parse_targets_drops_duplicates_but_rejects_nonsense():
-    assert len(service.parse_targets("a=192.168.1.76\nb=192.168.1.76")) == 1
+def test_validate_address_rejects_nonsense():
+    """Адресу перевіряємо на збереженні, а не при читанні: криву краще відбити
+    у формі, ніж потім показувати плитку «немає зв'язку»."""
+    assert service.validate_address(" 192.168.1.76 ", "") == ("192.168.1.76", 5900)
+    assert service.validate_address("192.168.1.61", "5901") == ("192.168.1.61", 5901)
     with pytest.raises(service.FurnaceConfigError):
-        service.parse_targets("Піч=192.168.1.76/../etc")
+        service.validate_address("192.168.1.76/../etc", "")
     with pytest.raises(service.FurnaceConfigError):
-        service.parse_targets("Піч=192.168.1.76:99999")
+        service.validate_address("192.168.1.76", "99999")
 
 
 # ── Опитування й запис ──────────────────────────────────────────────────────
@@ -164,6 +159,16 @@ def test_parse_targets_drops_duplicates_but_rejects_nonsense():
 
 def _target():
     return service.FurnaceTarget(name="Піч 1", host="192.168.1.76")
+
+
+def _add_furnace(db, name="Піч 1", host="192.168.1.76", port=5900, enabled=True):
+    furnace = Furnace(
+        name=name, host=host, port=port, enabled=enabled,
+        sort_order=0, created_at=datetime(2026, 8, 29, 9, 0, 0),
+    )
+    db.add(furnace)
+    db.commit()
+    return furnace
 
 
 def test_poll_writes_a_row_and_saves_the_frame(monkeypatch, tmp_path):
@@ -290,13 +295,12 @@ def test_furnaces_page_sends_a_guest_to_login(monkeypatch):
 
 def test_furnaces_page_lists_a_card_per_configured_furnace(monkeypatch):
     from app.routers import furnace as router
-    from app.settings_store import set_furnace_hosts_raw
 
     _capture_context(monkeypatch)
     with Session(_database()) as db:
         user = User(username="op", password_hash="x", full_name="Оп")
         db.add(user)
-        set_furnace_hosts_raw(db, "Піч 1=192.168.1.76")
+        _add_furnace(db)
         db.commit()
 
         context = router.furnaces_page(_request(user.id), db)
@@ -307,58 +311,84 @@ def test_furnaces_page_lists_a_card_per_configured_furnace(monkeypatch):
         assert context["config_error"] is None
 
 
-def test_broken_host_list_explains_itself_instead_of_hiding_the_screen(monkeypatch):
-    from app.routers import furnace as router
-    from app.settings_store import set_furnace_hosts_raw
-
-    _capture_context(monkeypatch)
+def test_disabled_furnace_is_kept_but_not_polled():
+    """«Вимкнена» — не те саме, що видалена: пічку виводять на ремонт і
+    повертають, її налаштування мають дочекатись."""
     with Session(_database()) as db:
-        user = User(username="op", password_hash="x", full_name="Оп")
-        db.add(user)
-        set_furnace_hosts_raw(db, "Піч 1=не адреса")
+        _add_furnace(db, name="На ремонті", enabled=False)
+        assert [f.name for f in service.list_furnaces(db)] == ["На ремонті"]
+        assert service.configured_targets(db) == []
+
+
+def test_furnace_can_carry_its_own_password():
+    """Дві моделі в цеху вже є, тож місце під різні паролі краще мати одразу."""
+    from app.crypto import encrypt_value
+
+    with Session(_database()) as db:
+        furnace = _add_furnace(db)
+        furnace.password_encrypted = encrypt_value("OWNPASS")
         db.commit()
-
-        context = router.furnaces_page(_request(user.id), db)
-        assert context["cards"] == []
-        assert "Некоректна адреса" in context["config_error"]
+        assert service.configured_targets(db)[0].password == "OWNPASS"
 
 
-def test_saving_furnaces_keeps_the_password_when_the_field_is_left_empty(monkeypatch):
-    """Форму відкривають, щоб дописати піч. Порожнє поле пароля означає «не
-    міняти», інакше збережений пароль тихо зникав би при кожному редагуванні."""
+def test_editing_a_furnace_keeps_its_password_when_the_field_is_left_empty():
+    """Рядок відкривають, щоб виправити адресу. Порожнє поле пароля означає
+    «не міняти», інакше збережений пароль тихо зникав би при кожній правці."""
+    from app.crypto import encrypt_value
     from app.routers import settings as settings_router
-    from app.settings_store import get_furnace_hosts_raw, get_furnace_vnc_password
 
     with Session(_database()) as db:
         admin = User(username="root", password_hash="x", full_name="Адмін", role="адмін")
         db.add(admin)
+        furnace = _add_furnace(db)
+        furnace.password_encrypted = encrypt_value("OWNPASS")
         db.commit()
         request = _request(admin.id)
 
-        settings_router.save_furnaces(request, hosts="Піч 1=192.168.1.76", password="DEKEMA", db=db)
-        assert get_furnace_vnc_password(db) == "DEKEMA"
-
-        settings_router.save_furnaces(
-            request, hosts="Піч 1=192.168.1.76\nПіч 2=192.168.1.61", password="", db=db
+        settings_router.update_furnace(
+            request, furnace.id, name="Бочка", host="192.168.1.61", port="5900",
+            enabled="1", password="", db=db,
         )
-        assert get_furnace_vnc_password(db) == "DEKEMA"
-        assert "192.168.1.61" in get_furnace_hosts_raw(db)
+        db.refresh(furnace)
+        assert furnace.host == "192.168.1.61" and furnace.name == "Бочка"
+        assert service.configured_targets(db)[0].password == "OWNPASS"
+
+        # Явне «-» повертає пічку на спільний пароль.
+        settings_router.update_furnace(
+            request, furnace.id, name="Бочка", host="192.168.1.61", port="5900",
+            enabled="1", password="-", db=db,
+        )
+        db.refresh(furnace)
+        assert furnace.password_encrypted is None
 
 
-def test_saving_a_broken_address_changes_nothing():
+def test_adding_a_broken_address_changes_nothing():
     from app.routers import settings as settings_router
-    from app.settings_store import get_furnace_hosts_raw
+
+    with Session(_database()) as db:
+        admin = User(username="root", password_hash="x", full_name="Адмін", role="адмін")
+        db.add(admin)
+        db.commit()
+        response = settings_router.add_furnace(
+            _request(admin.id), name="Пічка", host="1 2 3", port="", password="", db=db
+        )
+        assert response.status_code == 303
+        assert service.list_furnaces(db) == []
+
+
+def test_the_same_address_cannot_be_added_twice():
+    """Дві пічки на одній адресі — це та сама пічка, заведена двічі: два
+    потоки опитування й подвійна історія."""
+    from app.routers import settings as settings_router
 
     with Session(_database()) as db:
         admin = User(username="root", password_hash="x", full_name="Адмін", role="адмін")
         db.add(admin)
         db.commit()
         request = _request(admin.id)
-
-        settings_router.save_furnaces(request, hosts="Піч 1=192.168.1.76", password="x", db=db)
-        response = settings_router.save_furnaces(request, hosts="Піч=1 2 3", password="", db=db)
-        assert response.status_code == 303
-        assert get_furnace_hosts_raw(db) == "Піч 1=192.168.1.76"
+        settings_router.add_furnace(request, name="Бочка", host="192.168.1.76", port="", password="", db=db)
+        settings_router.add_furnace(request, name="Копія", host="192.168.1.76", port="5900", password="", db=db)
+        assert len(service.list_furnaces(db)) == 1
 
 
 def test_poll_all_grabs_frames_in_parallel(monkeypatch, tmp_path):
@@ -366,8 +396,6 @@ def test_poll_all_grabs_frames_in_parallel(monkeypatch, tmp_path):
     живі печі на екрані старіють через мертві, тому знімки йдуть одночасно."""
     import threading
     import time
-
-    from app.settings_store import set_furnace_hosts_raw
 
     monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
     started = threading.Barrier(3, timeout=5)
@@ -380,8 +408,9 @@ def test_poll_all_grabs_frames_in_parallel(monkeypatch, tmp_path):
     monkeypatch.setattr(service, "capture", _slow_capture)
 
     with Session(_database()) as db:
-        set_furnace_hosts_raw(db, "a=192.168.1.76\nb=192.168.1.61\nc=192.168.1.62")
-        db.commit()
+        _add_furnace(db, name="a", host="192.168.1.76")
+        _add_furnace(db, name="b", host="192.168.1.61")
+        _add_furnace(db, name="c", host="192.168.1.62")
         states = service.poll_all(db)
         assert len(states) == 3
         assert all(state.status == STATUS_RUN for state in states)
@@ -531,3 +560,36 @@ def test_chip_order_is_temperature_then_time_left_then_opening():
 
     html = Path("app/templates/_furnace_strip.html").read_text(encoding="utf-8")
     assert html.index("fu-chip-temp") < html.index("fu-chip-left") < html.index("fu-chip-open")
+
+
+def test_shared_password_route_is_not_eaten_by_the_id_route():
+    """FastAPI приміряє маршрути в порядку оголошення. Поки
+    /settings/furnaces/{furnace_id} стояв вище, «password» їхав у нього як
+    номер пічки й пароль не зберігався — спіймано живою перевіркою (422)."""
+    from app.routers.settings import router
+
+    paths = [route.path for route in router.routes if "furnaces" in route.path]
+    assert paths.index("/settings/furnaces/password") < paths.index(
+        "/settings/furnaces/{furnace_id}"
+    )
+
+
+def test_widget_hides_a_furnace_with_no_data_but_the_screen_keeps_it(monkeypatch, tmp_path):
+    """Віджет відповідає на питання, екран показує правду.
+
+    Пічка, з якої даних немає (щойно додали, вимкнули з мережі), у смузі над
+    чергою не з'являється взагалі — інакше оператор читав би «немає зв'язку»
+    там, де він шукає час відкриття. На повному екрані вона лишається: саме
+    там розбираються, ЧОМУ мовчить.
+    """
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    monkeypatch.setattr(service, "capture", lambda host, *a, **k: _frame("run"))
+
+    with Session(_database()) as db:
+        _add_furnace(db, name="Бочка", host="192.168.1.76")
+        _add_furnace(db, name="Мовчить", host="192.168.1.61")
+        # Опитуємо лише одну — друга лишається без жодного показання.
+        service.poll_target(db, service.FurnaceTarget(name="Бочка", host="192.168.1.76"), None)
+
+        assert [c.target.name for c in service.strip_cards(db)] == ["Бочка"]
+        assert [c.target.name for c in service.snapshot(db)] == ["Бочка", "Мовчить"]

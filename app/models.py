@@ -629,3 +629,39 @@ class FurnaceReading(Base):
     # Кадр узагалі не знявся (піч вимкнена, мережа, пароль). Тоді решта полів
     # порожня, а рядок лишається слідом, що ми пробували і що саме сказала піч.
     error: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+
+
+class Furnace(Base):
+    """Пічка спікання: назва, адреса екрана, чи стежимо за нею.
+
+    Раніше перелік жив одним текстовим полем у налаштуваннях («Назва=адреса»
+    по рядку). Це трималось, поки пічка була одна; з трьома потрібні окремі
+    поля, вимикач і власний пароль — тобто рядки таблиці, а не рядки тексту.
+
+    `enabled` — не те саме, що видалити. Пічку виводять із мережі на ремонт і
+    повертають; вимкнена лишається в переліку зі своїми налаштуваннями, але не
+    опитується й не показується у віджеті.
+
+    `password_encrypted` — необов'язковий власний пароль. Порожній означає
+    «спільний з налаштувань», і так буде майже завжди: пароль заводський, один
+    на модель. Але дві моделі в цеху вже є, тому місце під різні паролі краще
+    мати одразу, ніж переробляти таблицю потім.
+    """
+
+    __tablename__ = "furnaces"
+    __table_args__ = (
+        # Дві пічки на одній адресі й порту — це та сама пічка, заведена двічі.
+        # Без цього вона опитувалась би двома потоками й писала подвійну історію.
+        UniqueConstraint("host", "port", name="uq_furnace_host_port"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    host: Mapped[str] = mapped_column(String(60))
+    port: Mapped[int] = mapped_column(default=5900)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    password_encrypted: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Порядок у переліку й у віджеті задає оператор: пічки в цеху стоять у
+    # відомому йому порядку, і сортування за id чи назвою його ламає.
+    sort_order: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))

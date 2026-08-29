@@ -46,9 +46,10 @@ from app.furnace_ocr import (
     read_panel,
 )
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
-from app.models import FurnaceReading
+from app.models import Furnace, FurnaceReading
 from app.services.order_dates import BUSINESS_TIMEZONE
-from app.settings_store import get_furnace_hosts_raw, get_furnace_vnc_password
+from app.crypto import decrypt_value
+from app.settings_store import get_furnace_vnc_password
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,9 @@ class FurnaceTarget:
     name: str
     host: str
     port: int = DEFAULT_PORT
+    # Власний пароль пічки. None означає «спільний з налаштувань» — так буде
+    # майже завжди, бо пароль заводський, один на модель.
+    password: Optional[str] = None
 
     @property
     def key(self) -> str:
@@ -179,53 +183,61 @@ _states: dict[str, FurnaceState] = {}
 _states_lock = threading.Lock()
 
 
-def parse_targets(raw: str) -> list[FurnaceTarget]:
-    """«Назва=192.168.1.76:5900» по рядку → перелік печей.
+def list_furnaces(db: Session, *, only_enabled: bool = False) -> list[Furnace]:
+    """Пічки з таблиці, у порядку, який задав оператор.
 
-    Розбір навмисно суворий: адреса, яка не схожа на адресу, — це друкарська
-    помилка в налаштуваннях, і краще сказати про неї одразу, ніж потім довго
-    дивитись на порожню плитку «немає зв'язку».
+    Порядок його, а не наш: пічки в цеху стоять у відомій людині
+    послідовності, і сортування за id чи назвою її ламає.
     """
-    targets: list[FurnaceTarget] = []
-    seen: set[str] = set()
-    for line in (raw or "").replace(",", "\n").splitlines():
-        entry = line.strip()
-        if not entry or entry.startswith("#"):
-            continue
-        name, _, address = entry.rpartition("=")
-        address = address.strip()
-        host, _, port_text = address.partition(":")
-        host = host.strip()
-        if not _HOST_RE.match(host):
-            raise FurnaceConfigError(f"Некоректна адреса печі: «{entry}»")
+    query = select(Furnace).order_by(Furnace.sort_order, Furnace.id)
+    if only_enabled:
+        query = query.where(Furnace.enabled.is_(True))
+    return list(db.scalars(query))
+
+
+def target_of(furnace: Furnace) -> FurnaceTarget:
+    """Рядок таблиці → ціль опитування, з розшифрованим власним паролем."""
+    password = None
+    if furnace.password_encrypted:
         try:
-            port = int(port_text) if port_text else DEFAULT_PORT
-        except ValueError as exc:
-            raise FurnaceConfigError(f"Некоректний порт печі: «{entry}»") from exc
-        if not 1 <= port <= 65535:
-            raise FurnaceConfigError(f"Некоректний порт печі: «{entry}»")
-        target = FurnaceTarget(name=name.strip() or host, host=host, port=port)
-        if target.key in seen:
-            continue
-        seen.add(target.key)
-        targets.append(target)
-    return targets
+            password = decrypt_value(furnace.password_encrypted)
+        except Exception:  # noqa: BLE001 — зіпсований шифротекст не валить опитування
+            logger.warning("Не вдалось розшифрувати пароль пічки %s", furnace.host)
+    return FurnaceTarget(
+        name=furnace.name, host=furnace.host, port=furnace.port, password=password
+    )
+
+
+def validate_address(host: str, port: str | int | None) -> tuple[str, int]:
+    """Перевірити адресу пічки перед збереженням.
+
+    Суворо навмисно: адреса, яка не схожа на адресу, — це друкарська помилка в
+    налаштуваннях, і сказати про неї одразу дешевше, ніж потім довго дивитись
+    на плитку «немає зв'язку».
+    """
+    clean = (host or "").strip()
+    if not _HOST_RE.match(clean):
+        raise FurnaceConfigError(f"Некоректна адреса пічки: «{host}»")
+    raw_port = str(port or "").strip() or str(DEFAULT_PORT)
+    try:
+        number = int(raw_port)
+    except ValueError as exc:
+        raise FurnaceConfigError(f"Некоректний порт пічки: «{port}»") from exc
+    if not 1 <= number <= 65535:
+        raise FurnaceConfigError(f"Некоректний порт пічки: «{port}»")
+    return clean, number
 
 
 def configured_targets(db: Session) -> list[FurnaceTarget]:
-    """Печі з налаштувань. Помилка розбору не має валити сторінку — вона
-    показується як порожній перелік плюс пояснення (див. config_error)."""
-    try:
-        return parse_targets(get_furnace_hosts_raw(db))
-    except FurnaceConfigError:
-        return []
+    """Увімкнені пічки. Вимкнена лишається в переліку зі своїми
+    налаштуваннями, але не опитується й ніде не показується — це стан «на
+    ремонті», а не видалення."""
+    return [target_of(furnace) for furnace in list_furnaces(db, only_enabled=True)]
 
 
 def config_error(db: Session) -> Optional[str]:
-    try:
-        parse_targets(get_furnace_hosts_raw(db))
-    except FurnaceConfigError as exc:
-        return str(exc)
+    """Лишилось як шов для екрана: тепер адреси перевіряються на збереженні,
+    тож дійти до екрана криве значення вже не може."""
     return None
 
 
@@ -419,13 +431,17 @@ def poll_all(db: Session, now: Optional[datetime] = None) -> list[FurnaceState]:
     targets = configured_targets(db)
     if not targets:
         return []
-    password = get_furnace_vnc_password(db)
+    shared = get_furnace_vnc_password(db)
+
+    def password_for(target: FurnaceTarget) -> Optional[str]:
+        return target.password or shared
+
     if len(targets) == 1:
-        return [poll_target(db, targets[0], password, now=now)]
+        return [poll_target(db, targets[0], password_for(targets[0]), now=now)]
     with ThreadPoolExecutor(max_workers=min(len(targets), 6)) as pool:
-        grabbed = list(pool.map(lambda target: grab(target, password), targets))
+        grabbed = list(pool.map(lambda target: grab(target, password_for(target)), targets))
     return [
-        poll_target(db, target, password, now=now, frame=frame, error=error)
+        poll_target(db, target, password_for(target), now=now, frame=frame, error=error)
         for target, (frame, error) in zip(targets, grabbed)
     ]
 
@@ -473,6 +489,19 @@ class FurnaceCard:
     @property
     def offline(self) -> bool:
         return bool(self.state and self.state.error)
+
+    @property
+    def has_data(self) -> bool:
+        """Чи є що показувати у ВІДЖЕТІ на черзі.
+
+        Віджет відповідає на питання («коли відкривати»), тому пічка без
+        відповіді в ньому не з'являється взагалі: ще не опитана, недоступна,
+        або кадр не прочитався. Це свідомий поділ — повний екран «Пічки»
+        навпаки показує кожну налаштовану пічку з її справжнім станом, бо
+        саме там розбираються, ЧОМУ мовчить.
+        """
+        state = self.state
+        return bool(state and state.reading and state.error is None)
 
     @property
     def never_polled(self) -> bool:
@@ -530,6 +559,11 @@ def strip_summary(cards: list["FurnaceCard"]) -> StripSummary:
         total=len(cards),
         nearest_done_at=min(finishes) if finishes else None,
     )
+
+
+def strip_cards(db: Session) -> list[FurnaceCard]:
+    """Пічки для віджета: лише ті, у яких справді є показання."""
+    return [card for card in snapshot(db) if card.has_data]
 
 
 def recent_readings(db: Session, host: str, limit: int = 40) -> list[FurnaceReading]:

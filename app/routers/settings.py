@@ -59,6 +59,7 @@ from app.material_catalog import (
     unresolved_order_count,
 )
 from app.models import (
+    Furnace,
     AppSetting,
     Attachment,
     Client,
@@ -97,7 +98,6 @@ from app.settings_store import (
     get_google_oauth_refresh_token,
     get_google_service_account_json,
     get_google_sheet_id,
-    get_furnace_hosts_raw,
     get_furnace_vnc_password,
     get_mail_default_material,
     get_imap_login,
@@ -108,13 +108,13 @@ from app.settings_store import (
     get_notify_style,
     get_service_account_email,
     get_technician_files_path,
-    set_furnace_hosts_raw,
     set_mail_default_material,
     set_mail_download_all,
     set_notify_prefs,
     set_setting,
 )
-from app.services.furnace import FurnaceConfigError, parse_targets
+from app.crypto import encrypt_value
+from app.services.furnace import FurnaceConfigError, list_furnaces, validate_address
 from app.sheet_sync_service import SheetSyncError, summary_message, sync_google_sheets
 from app.sheets import measure_sheet_weight, open_spreadsheet, reset_sheets_cache
 from app.sync_control import MAIL_SYNC_INTERVAL_SECONDS, SHEET_SYNC_INTERVAL_SECONDS
@@ -328,9 +328,9 @@ def get_settings(
                 select(MailFilterCategory).order_by(MailFilterCategory.id.asc())
             ).all(),
             "mail_download_all": get_mail_download_all(db),
-            # Печі: адреси показуємо як є, пароль — НІКОЛИ. Назад у поле
-            # секрет не підставляється, у шаблон іде лише ознака «збережено».
-            "furnace_hosts": get_furnace_hosts_raw(db),
+            # Пічки: рядки таблиці як є, паролі — НІКОЛИ. Назад у поле секрет
+            # не підставляється, у шаблон іде лише ознака «збережено».
+            "furnaces": list_furnaces(db),
             "furnace_password_set": bool(get_furnace_vnc_password(db)),
             "spool_report": (_spool_report := analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH))),
             # "Стан системи" flow map — honest, cheap counts (one scalar each).
@@ -831,41 +831,148 @@ def prune_mail_spool(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/settings/furnaces")
-def save_furnaces(
+def add_furnace(
     request: Request,
-    hosts: str = Form(""),
+    name: str = Form(...),
+    host: str = Form(...),
+    port: str = Form(""),
     password: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    """Зберегти перелік печей і пароль VNC.
+    """Додати пічку в перелік.
 
-    Порожній пароль означає «не міняти», а не «стерти»: форму відкривають, щоб
-    дописати піч, і збережений пароль не має зникати від того, що поле не
-    заповнили вдруге. Стерти пароль можна, лише прибравши всі печі — тоді
-    моніторинг вимкнено й пароль ні до чого.
-
-    Адреси перевіряються ДО збереження: криво написаний рядок краще відбити
+    Адреса перевіряється ДО збереження: криво написаний рядок краще відбити
     тут, ніж потім показувати оператору порожню плитку «немає зв'язку».
     """
     require_settings_admin(request, db)
     try:
-        parse_targets(hosts)
+        clean_host, clean_port = validate_address(host, port)
     except FurnaceConfigError as exc:
         request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
         return RedirectResponse("/settings#furnaces", status_code=303)
 
-    set_furnace_hosts_raw(db, hosts)
-    if password.strip():
-        set_setting(db, "furnace_vnc_password", password.strip())
+    if db.scalar(
+        select(Furnace).where(Furnace.host == clean_host, Furnace.port == clean_port)
+    ):
+        request.session["settings_flash"] = {
+            "kind": "error",
+            "message": f"Пічка {clean_host}:{clean_port} уже в переліку.",
+        }
+        return RedirectResponse("/settings#furnaces", status_code=303)
+
+    last = db.scalar(select(func.max(Furnace.sort_order)))
+    db.add(
+        Furnace(
+            name=name.strip() or clean_host,
+            host=clean_host,
+            port=clean_port,
+            enabled=True,
+            password_encrypted=encrypt_value(password.strip()) if password.strip() else None,
+            sort_order=(last or 0) + 1,
+            created_at=datetime.now(),
+        )
+    )
     db.commit()
-    count = len(parse_targets(hosts))
     request.session["settings_flash"] = {
         "kind": "success",
-        "message": (
-            f"Збережено. Печей під наглядом: {count}."
-            if count
-            else "Збережено. Моніторинг печей вимкнено."
-        ),
+        "message": f"Пічку «{name.strip() or clean_host}» додано.",
+    }
+    return RedirectResponse("/settings#furnaces", status_code=303)
+
+
+# Літеральний шлях мусить стояти ПЕРЕД параметризованим: FastAPI приміряє
+# маршрути в порядку оголошення, і /settings/furnaces/{furnace_id} нижче радо
+# з'їдав «password» як номер пічки (спіймано живою перевіркою — 422 замість
+# збереження пароля).
+@router.post("/settings/furnaces/password")
+def save_furnace_password(
+    request: Request, password: str = Form(""), db: Session = Depends(get_db)
+):
+    """Спільний пароль VNC. Порожнє поле означає «не міняти» — з тієї ж
+    причини, що й у рядку пічки вище."""
+    require_settings_admin(request, db)
+    if password.strip():
+        set_setting(db, "furnace_vnc_password", password.strip())
+        db.commit()
+        message = "Спільний пароль пічок збережено."
+    else:
+        message = "Пароль не змінено — поле лишилось порожнім."
+    request.session["settings_flash"] = {"kind": "success", "message": message}
+    return RedirectResponse("/settings#furnaces", status_code=303)
+
+
+@router.post("/settings/furnaces/{furnace_id}")
+def update_furnace(
+    request: Request,
+    furnace_id: int,
+    name: str = Form(...),
+    host: str = Form(...),
+    port: str = Form(""),
+    enabled: str = Form(""),
+    password: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Змінити пічку.
+
+    Порожній пароль означає «не міняти», а не «стерти»: рядок відкривають, щоб
+    виправити адресу, і збережений пароль не має зникати від того, що поле не
+    заповнили вдруге. Стерти власний пароль можна словом `-` — так є явний
+    спосіб повернути пічку на спільний пароль.
+    """
+    require_settings_admin(request, db)
+    furnace = db.get(Furnace, furnace_id)
+    if furnace is None:
+        raise HTTPException(status_code=404, detail="пічку не знайдено")
+
+    try:
+        clean_host, clean_port = validate_address(host, port)
+    except FurnaceConfigError as exc:
+        request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
+        return RedirectResponse("/settings#furnaces", status_code=303)
+
+    clash = db.scalar(
+        select(Furnace).where(
+            Furnace.host == clean_host, Furnace.port == clean_port, Furnace.id != furnace_id
+        )
+    )
+    if clash is not None:
+        request.session["settings_flash"] = {
+            "kind": "error",
+            "message": f"Пічка {clean_host}:{clean_port} уже в переліку.",
+        }
+        return RedirectResponse("/settings#furnaces", status_code=303)
+
+    furnace.name = name.strip() or clean_host
+    furnace.host = clean_host
+    furnace.port = clean_port
+    furnace.enabled = enabled == "1"
+    if password.strip() == "-":
+        furnace.password_encrypted = None
+    elif password.strip():
+        furnace.password_encrypted = encrypt_value(password.strip())
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": f"Пічку «{furnace.name}» збережено.",
+    }
+    return RedirectResponse("/settings#furnaces", status_code=303)
+
+
+@router.post("/settings/furnaces/{furnace_id}/delete")
+def delete_furnace(request: Request, furnace_id: int, db: Session = Depends(get_db)):
+    """Прибрати пічку з переліку. Її показання лишаються в історії — рядки
+    підписані адресою, і чистити їх разом із записом означало б втратити те,
+    що вже сталося."""
+    require_settings_admin(request, db)
+    furnace = db.get(Furnace, furnace_id)
+    if furnace is None:
+        raise HTTPException(status_code=404, detail="пічку не знайдено")
+    name = furnace.name
+    db.delete(furnace)
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": f"Пічку «{name}» прибрано з переліку.",
     }
     return RedirectResponse("/settings#furnaces", status_code=303)
 

@@ -89,6 +89,9 @@ POST /settings/backup/export
 POST /settings/backup/import
 POST /settings/check-path
 POST /settings/furnaces
+POST /settings/furnaces/password
+POST /settings/furnaces/{furnace_id}
+POST /settings/furnaces/{furnace_id}/delete
 POST /settings/google-oauth/disconnect
 POST /settings/google-oauth/start
 POST /settings/imap

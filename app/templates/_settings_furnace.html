@@ -1,10 +1,14 @@
-        {# ── Печі спікання ────────────────────────────────────────────────
-           Адреси екранів печей і спільний пароль VNC. Пароль — секрет: він
-           зберігається зашифрованим у базі, як решта (CLAUDE.md §7), і назад у
-           поле не підставляється — показується лише ознака «збережено».
+        {# ── Пічки спікання ───────────────────────────────────────────────
+           Рядок на пічку: назва, адреса, порт, вимикач, власний пароль.
+           Раніше це було одне текстове поле «Назва=адреса» — трималось, поки
+           пічка була одна.
 
-           Тут навмисно НЕМАЄ нічого про керування піччю: застосунок читає
-           екран і більше нічого з піччю не робить. #}
+           «Вимкнена» — не те саме, що видалена: пічку виводять на ремонт і
+           повертають, її налаштування мають дочекатись. Вимкнена не
+           опитується й не показується у віджеті на черзі.
+
+           Тут навмисно НЕМАЄ нічого про керування пічкою: застосунок читає її
+           екран і більше нічого з нею не робить. #}
         {% if user.role == 'адмін' %}
         <div class="wizard-step scon-sec" data-sec="furnaces">
             <div class="num" aria-hidden="true">
@@ -12,40 +16,81 @@
             </div>
             <div class="box">
                 <div class="wizard-step-head">
-                    <h2>Печі спікання</h2>
-                    <span class="connection-state {% if furnace_hosts %}connection-state-ready{% endif %}">
-                        {% if furnace_hosts %}Налаштовано{% else %}Вимкнено{% endif %}
+                    <h2>Пічки спікання</h2>
+                    <span class="connection-state {% if furnaces %}connection-state-ready{% endif %}">
+                        {% if furnaces %}{{ furnaces|length }} у переліку{% else %}Немає{% endif %}
                     </span>
                 </div>
                 <p class="wizard-sub">
-                    Піч не віддає даних жодним протоколом — читаємо її власний екран по VNC,
-                    тільки перегляд. Порожній перелік вимикає моніторинг повністю:
-                    фоновий опитувач тоді нічого не робить.
+                    Пічка не віддає даних жодним протоколом — читаємо її власний екран по VNC,
+                    тільки перегляд. На черзі показуються лише ті пічки, з яких справді
+                    приходять дані.
                 </p>
 
-                <form method="post" action="/settings/furnaces">
-                    <div class="settings-field">
-                        <label for="furnace_hosts">Печі, по одній на рядок</label>
-                        <p class="settings-help">Формат: <code>Назва=адреса</code> або просто адреса; порт за потреби через двокрапку (типовий 5900).</p>
-                        <textarea id="furnace_hosts" name="hosts" rows="4"
-                                  class="settings-textarea"
-                                  placeholder="Піч 1=192.168.1.76">{{ furnace_hosts }}</textarea>
-                    </div>
+                {% if furnaces %}
+                <table class="fu-table">
+                    <thead>
+                        <tr><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th>Пароль VNC</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                    {% for furnace in furnaces %}
+                    <tr>
+                        {# Обидві форми — порожні й поза коміркою (браузер і так
+                           виносить <form> із <tr>), а кнопки тягнуться до них
+                           атрибутом form=. Так у комірці немає вкладеного
+                           блоку, який штовхав би хрестик на новий рядок. #}
+                        <form method="post" action="/settings/furnaces/{{ furnace.id }}" id="furnace-{{ furnace.id }}"></form>
+                        <form method="post" action="/settings/furnaces/{{ furnace.id }}/delete" id="furnace-del-{{ furnace.id }}"
+                              onsubmit="return confirm('Видалити пічку «{{ furnace.name }}» з переліку? Її показання лишаться в історії.')"></form>
+                        <td><input form="furnace-{{ furnace.id }}" class="login-input" name="name" value="{{ furnace.name }}" maxlength="80" required></td>
+                        <td><input form="furnace-{{ furnace.id }}" class="login-input mono" name="host" value="{{ furnace.host }}" maxlength="60" required></td>
+                        <td><input form="furnace-{{ furnace.id }}" class="login-input mono fu-col-port" name="port" value="{{ furnace.port }}" inputmode="numeric"></td>
+                        <td class="fu-col-mid">
+                            <input form="furnace-{{ furnace.id }}" type="checkbox" name="enabled" value="1" {% if furnace.enabled %}checked{% endif %}
+                                   aria-label="Стежити за пічкою {{ furnace.name }}">
+                        </td>
+                        <td>
+                            <input form="furnace-{{ furnace.id }}" class="login-input" type="password" name="password"
+                                   autocomplete="new-password"
+                                   placeholder="{% if furnace.password_encrypted %}свій, збережено{% else %}спільний{% endif %}">
+                        </td>
+                        <td class="fu-col-act">
+                            <button form="furnace-{{ furnace.id }}" type="submit" class="settings-secondary-button">Зберегти</button>
+                            <button form="furnace-del-{{ furnace.id }}" type="submit" class="link-button fu-del"
+                                    title="Видалити пічку">✕</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
 
+                <form method="post" action="/settings/furnaces" class="fu-add">
                     <div class="settings-field">
-                        <label for="furnace_password">Пароль VNC</label>
-                        <p class="settings-help">Один на всі печі — заводський пароль моделі. Порожнє поле лишає збережений пароль без змін.</p>
-                        <div class="login-input-wrap">
-                            <input type="password" id="furnace_password" name="password"
-                                   class="login-input" autocomplete="new-password"
-                                   placeholder="{% if furnace_password_set %}збережено{% else %}пароль екрана печі{% endif %}">
+                        <label for="furnace_new_name">Додати пічку</label>
+                        <p class="settings-help">Назву видно на черзі; порт типовий 5900. Пароль лишай порожнім, якщо він спільний.</p>
+                        <div class="fu-add-row">
+                            <input id="furnace_new_name" class="login-input" name="name" placeholder="Бочка" maxlength="80" required>
+                            <input class="login-input mono" name="host" placeholder="192.168.1.76" maxlength="60" required>
+                            <input class="login-input mono fu-col-port" name="port" placeholder="5900" inputmode="numeric">
+                            <input class="login-input" type="password" name="password" placeholder="свій пароль (не обов'язково)" autocomplete="new-password">
+                            <button type="submit" class="settings-secondary-button">Додати</button>
                         </div>
                     </div>
-
-                    <button type="submit" class="settings-secondary-button">Зберегти печі</button>
                 </form>
 
-                <p class="settings-help">Стан печей — на екрані <a href="/furnaces">Печі</a>.</p>
+                <div class="settings-field">
+                    <label for="furnace_shared_password">Спільний пароль VNC</label>
+                    <p class="settings-help">Заводський пароль моделі — ним відкриваються пічки без власного. Порожнє поле лишає збережений пароль без змін.</p>
+                    <form method="post" action="/settings/furnaces/password" class="fu-add-row">
+                        <input id="furnace_shared_password" class="login-input" type="password" name="password"
+                               autocomplete="new-password"
+                               placeholder="{% if furnace_password_set %}збережено{% else %}пароль екрана пічки{% endif %}">
+                        <button type="submit" class="settings-secondary-button">Зберегти пароль</button>
+                    </form>
+                </div>
+
+                <p class="settings-help">Стан пічок — на екрані <a href="/furnaces">Пічки</a>.</p>
             </div>
         </div>
         {% endif %}
