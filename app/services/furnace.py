@@ -63,6 +63,10 @@ MIN_DB_INTERVAL_SECONDS = 60.0
 ERROR_DB_INTERVAL_SECONDS = 15 * 60.0
 # Показання старші за це прибираються — це оперативні дані, а не архів.
 READINGS_RETENTION_DAYS = 30
+# За скільки мовчання плитка визнає, що опитування СТАЛО. Поріг мусить бути
+# більший за «інтервал + дедлайн знімка» (6 + 20 с), інакше кожна недоступна
+# піч блимала б «стоїть» просто тому, що знімок довго не відповідав.
+STALE_AFTER_SECONDS = 90.0
 
 _HOST_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -112,17 +116,28 @@ class FurnaceState:
     error_stored_at: Optional[datetime] = None
     frame_at: Optional[datetime] = None
 
+    # Кожна властивість нижче читає self.reading РІВНО ОДИН раз, у локальну
+    # змінну. Це не стиль: `self.reading.temp_c if self.reading else None` —
+    # два окремі читання поля, а між ними воркер печей (інший потік) може
+    # поставити None, коли піч у цю мить зникла з мережі. Тоді сторінка
+    # падала б з AttributeError просто тому, що піч вимкнули під час запиту.
+    # Той самий стан читає HTTP-потік і пише фоновий, тому знімок посилання —
+    # найдешевший спосіб не мати гонки взагалі.
+
     @property
     def status(self) -> str:
-        return self.reading.status if self.reading else STATUS_UNKNOWN
+        reading = self.reading
+        return reading.status if reading else STATUS_UNKNOWN
 
     @property
     def temp_c(self) -> Optional[int]:
-        return self.reading.temp_c if self.reading else None
+        reading = self.reading
+        return reading.temp_c if reading else None
 
     @property
     def remaining_seconds(self) -> Optional[int]:
-        return self.reading.remaining_seconds if self.reading else None
+        reading = self.reading
+        return reading.remaining_seconds if reading else None
 
     @property
     def remaining_text(self) -> str:
@@ -133,13 +148,16 @@ class FurnaceState:
         """Коли програма добіжить. Рахується від часу кадру, а не «зараз»:
         між знімком і показом сторінки минає час, і оператор має бачити
         момент, а не залишок, який уже трохи протух."""
-        if self.captured_at is None or not self.remaining_seconds:
+        captured_at = self.captured_at
+        remaining = self.remaining_seconds
+        if captured_at is None or not remaining:
             return None
-        return self.captured_at + timedelta(seconds=self.remaining_seconds)
+        return captured_at + timedelta(seconds=remaining)
 
     @property
     def warnings(self) -> list[str]:
-        return list(self.reading.warnings) if self.reading else []
+        reading = self.reading
+        return list(reading.warnings) if reading else []
 
 
 # Стан усіх печей процесу. Читає HTTP-потік, пише фоновий воркер — тому лок.
@@ -443,6 +461,20 @@ class FurnaceCard:
     @property
     def never_polled(self) -> bool:
         return self.state is None or self.state.attempted_at is None
+
+    def stale(self, now: Optional[datetime] = None) -> bool:
+        """Чи замовк сам опитувач.
+
+        Без цієї ознаки смерть фонового потоку виглядала б як спокійна піч:
+        числа лишились би на екрані, час кадру просто перестав би йти — а
+        оператор дивиться на числа, не на час у підвалі. Пульс печі свідомо
+        НЕ вішається на спільний heartbeat пошти й таблиці: там пара
+        «джерело робіт», а тут стан кожної печі окремий, і одна мовчазна піч
+        не має позначати решту здоровими чи хворими.
+        """
+        if self.state is None or self.state.attempted_at is None:
+            return False
+        return ((now or datetime.now()) - self.state.attempted_at).total_seconds() > STALE_AFTER_SECONDS
 
 
 def snapshot(db: Session) -> list[FurnaceCard]:

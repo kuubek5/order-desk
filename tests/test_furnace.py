@@ -385,3 +385,45 @@ def test_poll_all_grabs_frames_in_parallel(monkeypatch, tmp_path):
         states = service.poll_all(db)
         assert len(states) == 3
         assert all(state.status == STATUS_RUN for state in states)
+
+
+def test_state_properties_survive_the_furnace_vanishing_mid_read(monkeypatch, tmp_path):
+    """Властивості стану читають self.reading один раз, у локальну змінну.
+
+    Інакше `self.reading.temp_c if self.reading else None` — це два окремі
+    читання поля, і фоновий воркер може поставити None між ними, щойно піч
+    зникла з мережі. Сторінка падала б з AttributeError просто тому, що піч
+    вимкнули під час запиту. Тут це відтворюється детерміновано: поле
+    підмінене об'єктом, який після першого читання віддає None.
+    """
+
+    class _VanishingState(service.FurnaceState):
+        _reads = 0
+
+        @property
+        def reading(self):
+            type(self)._reads += 1
+            return self._reading if type(self)._reads == 1 else None
+
+        @reading.setter
+        def reading(self, value):
+            self._reading = value
+
+    state = _VanishingState(target=_target())
+    state.reading = read_panel(_frame("run"))
+    assert state.temp_c == 759  # друге читання вже None — не має бути AttributeError
+
+
+def test_card_reports_when_the_poller_itself_went_quiet():
+    """Смерть фонового потоку не сміє виглядати як спокійна піч: числа
+    лишились би на екрані, а час кадру просто перестав би йти."""
+    now = datetime(2026, 8, 29, 9, 0, 0)
+    state = service.FurnaceState(target=_target())
+    state.attempted_at = now - timedelta(seconds=service.STALE_AFTER_SECONDS + 1)
+    card = service.FurnaceCard(target=_target(), state=state)
+    assert card.stale(now=now) is True
+
+    state.attempted_at = now - timedelta(seconds=10)
+    assert card.stale(now=now) is False
+    # Піч, яку ще жодного разу не опитували, не «стоїть» — вона просто нова.
+    assert service.FurnaceCard(target=_target(), state=None).stale(now=now) is False

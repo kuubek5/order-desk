@@ -22,7 +22,11 @@
                 <b>{{ card.target.name }}</b>
                 <span class="mono text-muted">{{ card.target.host }}</span>
             </div>
-            {% if card.offline %}
+            {% if card.stale() %}
+            {# Замовк сам опитувач, а не піч: числа на плитці могли застаріти
+               на будь-скільки, тому вони більше не мають виглядати свіжими. #}
+            <span class="fu-pill is-unknown">опитування стоїть</span>
+            {% elif card.offline %}
             <span class="fu-pill is-offline">немає зв'язку</span>
             {% elif card.never_polled %}
             <span class="fu-pill is-wait">чекаємо кадр</span>
@@ -79,7 +83,7 @@
 
         <footer class="fu-foot text-muted">
             {% if state and state.attempted_at %}
-            Кадр {{ state.attempted_at.strftime('%H:%M:%S') }}
+            Кадр {{ state.attempted_at.strftime('%H:%M:%S') }}{% if card.stale() %} · опитувач мовчить{% endif %}
             {% else %}
             Ще не опитували
             {% endif %}
