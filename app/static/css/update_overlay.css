@@ -149,12 +149,19 @@
 .matpair .mp-word,.matpair .mp-code{font-style:normal;font-weight:inherit}
 
 /* Відтінки матеріалів — ті самі, що були в бейджі (погоджені з Романом:
-   Zr крижаний блакитний, PMMA бурштин, Ti смарагд, SLM сталь, Wax троянда). */
+   Zr крижаний блакитний, PMMA бурштин, Ti смарагд, SLM сталь, Wax бірюза).
+   Віск переведено з троянди в бірюзу 29.08.26 на прохання. Тон навмисно
+   зсунуто в ціан і притемнено проти акценту (--accent-b #2dd4bf): бірюза
+   акценту означає «моє зараз» і «пошта», і матеріал не має говорити тим
+   самим кольором. Від крижаного блакитного цирконію (#8fbfe0) відрізняється
+   насиченістю й тим, що зеленіший. Міняти — ТІЛЬКИ разом зі смугою
+   матеріалу у v2a_queue.css: два кольори одного матеріалу = та сама
+   розбіжність, від якої ця робота відштовхувалась. */
 .matpair.mat-zr .mp-k{color:#8fbfe0;background:rgba(143,191,224,.20)}
 .matpair.mat-pmma .mp-k{color:#d8b46a;background:rgba(216,180,106,.20)}
 .matpair.mat-ti .mp-k{color:#63c88b;background:rgba(79,180,119,.21)}
 .matpair.mat-slm .mp-k{color:#9aa7b4;background:rgba(154,167,180,.21)}
-.matpair.mat-wax .mp-k{color:#d99bb0;background:rgba(217,155,176,.21)}
+.matpair.mat-wax .mp-k{color:#3fb6c9;background:rgba(63,182,201,.21)}
 .matpair.mat-other .mp-k{color:var(--ink-2);background:var(--card-3)}
 /* «Не визначено» лишається пунктиром: пунктир і Є повідомленням про
    невизначеність, суцільна межа тут збрехала б. */

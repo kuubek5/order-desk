@@ -678,7 +678,7 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 table.qtable tbody tr[data-mat="mat-ti"] > td:first-child{box-shadow:inset 3px 0 0 #63c88b}
 .q2 table.qtable tbody tr[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 #d8b46a}
 .q2 table.qtable tbody tr[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 #9aa7b4}
-.q2 table.qtable tbody tr[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #d99bb0}
+.q2 table.qtable tbody tr[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #3fb6c9}
 
 /* ── Робочий набір «мої зараз» ────────────────────────────────────────────
    Третій канал рядка. Фон уже за станами, край — за матеріалом, тож мітка
@@ -710,7 +710,7 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-ti"] > td:first-child{box-shadow:inset 3px 0 0 #63c88b,inset 0 1px 0 rgba(45,212,191,.55),inset 0 -1px 0 rgba(45,212,191,.55)}
 .q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 #d8b46a,inset 0 1px 0 rgba(45,212,191,.55),inset 0 -1px 0 rgba(45,212,191,.55)}
 .q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 #9aa7b4,inset 0 1px 0 rgba(45,212,191,.55),inset 0 -1px 0 rgba(45,212,191,.55)}
-.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #d99bb0,inset 0 1px 0 rgba(45,212,191,.55),inset 0 -1px 0 rgba(45,212,191,.55)}
+.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #3fb6c9,inset 0 1px 0 rgba(45,212,191,.55),inset 0 -1px 0 rgba(45,212,191,.55)}
 /* «Зняти всі» живе в тому ж сегменті, що й фільтр, але це дія, а не вигляд —
    тому тиха, з попередженням у підтвердженні. */
 .q2 .seg .seg-drop{
