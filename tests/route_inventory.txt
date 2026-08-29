@@ -25,6 +25,7 @@ GET /settings/materials
 GET /settings/recognition
 GET /setup
 GET /shift
+GET /shift/card
 GET /stats
 GET /stl-preview/{token}
 GET /stl-preview/{token}/{filename}

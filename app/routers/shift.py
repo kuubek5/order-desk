@@ -82,6 +82,22 @@ def get_shift(request: Request, partial: str = "", db: Session = Depends(get_db)
     return templates.TemplateResponse(request, "shift.html", context)
 
 
+@router.get("/shift/card", response_class=HTMLResponse)
+def get_shift_card(request: Request, db: Session = Depends(get_db)):
+    """Картка передачі зміни над чергою — на власному 60-секундному годиннику.
+
+    Обгортку віддаємо ЗАВЖДИ, навіть порожню: якби на «немає записок» роут
+    повертав нічого, елемент зник би з DOM разом зі своїм поллом, і нічна
+    записка більше ніколи б тут не проступила.
+    """
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    return templates.TemplateResponse(
+        request, "_shift_card.html", {"shift_open_notes": open_notes(db)}
+    )
+
+
 def _require_user(request: Request, db: Session):
     user = get_current_user(request, db)
     if user is None:

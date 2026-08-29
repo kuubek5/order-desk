@@ -42,6 +42,7 @@ from app.services.config_state import (
     sheets_configured,
 )
 from app.services.order_dates import order_date, parse_sheet_tab
+from app.services.shift import open_notes as open_shift_notes
 from app.services.queue import (
     DATE_STRIP_WINDOW,
     QUEUE_SORT_FIELDS,
@@ -377,6 +378,10 @@ def get_queue(
             "toast_flash": toast_flash,
             "pending_emails": pending_emails,
             "pending_mail_count": pending_mail_count,
+            # Записки передачі зміни для картки над чергою
+            # (app/templates/_shift_card.html). Далі картка оновлює себе
+            # сама через /shift/card — тут лише перший рендер.
+            "shift_open_notes": open_shift_notes(db),
             "selected_date": selected_date,
             "date_tabs": date_tabs,
             "date_page": current_date_page,

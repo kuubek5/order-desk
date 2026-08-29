@@ -1,0 +1,53 @@
+{# Передача зміни на черзі — компактний слід дошки там, де оператор і так
+   стоїть 90% часу.
+
+   Обгортка віддається ЗАВЖДИ, навіть коли записок немає: якби роут повертав
+   порожнечу, елемент зник би з DOM і разом із ним — власний полл, тож нова
+   нічна записка більше ніколи б тут не з'явилась.
+
+   Картка лежить ВИЩЕ `.worklayout` у queue.html і тому фізично поза
+   `#queue-rows`, який свапає 15-секундний полл черги. Свій годинник у неї
+   повільніший (60с): це стан зміни, а не жива черга. #}
+<section id="shift-card"
+         class="sh-card{% if not shift_open_notes %} is-empty{% endif %}"
+         hx-get="/shift/card"
+         hx-trigger="every 60s, refresh-shift from:body"
+         hx-target="this"
+         hx-swap="outerHTML"
+         hx-disinherit="*"
+         {% if not shift_open_notes %}hidden{% endif %}
+         aria-label="Передача зміни">
+    {% if shift_open_notes %}
+    <div class="sh-card-head">
+        <a href="/shift" class="sh-card-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            Зміна
+        </a>
+        <span class="sh-card-count tnum">{{ shift_open_notes|length }}</span>
+        <span class="sh-card-sep" aria-hidden="true"></span>
+        <a href="/shift" class="sh-card-all">Відкрити дошку</a>
+    </div>
+
+    <ul class="sh-card-list">
+        {% for note in shift_open_notes[:3] %}
+        <li class="sh-card-row{% if note.kind == 'action' %} is-action{% endif %}">
+            <span class="mono">{{ note.created_at.strftime('%H:%M') }}</span>
+            <span class="sh-card-text">{{ note.text }}</span>
+            {% if not note.acknowledged_at %}
+            <button type="button" class="sh-card-btn apex"
+                    hx-post="/shift/notes/{{ note.id }}/ack"
+                    hx-swap="none">Прийняв</button>
+            {% elif note.kind == 'action' %}
+            <button type="button" class="sh-card-btn"
+                    hx-post="/shift/notes/{{ note.id }}/resolve"
+                    hx-swap="none">Прийнято</button>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+
+    {% if shift_open_notes|length > 3 %}
+    <a href="/shift" class="sh-card-more">ще {{ shift_open_notes|length - 3 }} на дошці</a>
+    {% endif %}
+    {% endif %}
+</section>

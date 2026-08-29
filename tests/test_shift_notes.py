@@ -6,6 +6,7 @@
 """
 
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +19,7 @@ from sqlalchemy.pool import StaticPool
 import app.web as web
 from app.db import Base
 from app.models import ShiftNote, User
+from app.routers import queue as queue_router
 from app.routers import shift as shift_router
 from app.services.shift import (
     KIND_ACTION,
@@ -392,3 +394,51 @@ def test_board_partial_renders_for_real():
     assert "Потребує дії" in html
     assert 'hx-post="/shift/notes' in html
     assert "Ніч 20→21.08" in html, "заголовок минулої ночі рендериться фільтром night_label"
+
+
+# 8-9 — картка на черзі
+
+
+def test_queue_context_carries_open_shift_notes(monkeypatch):
+    _stub_templates(monkeypatch)
+    with Session(_database()) as db:
+        user = _user(db)
+        open_note = _note(db, text="піч 2 о 9:00")
+        seen = _note(db, text="вже прийняте")
+        acknowledge(db, seen, user=user)
+        db.commit()
+
+        context = queue_router.get_queue(request=_request(user.id), db=db)
+
+    assert [n.id for n in context["shift_open_notes"]] == [open_note.id]
+
+
+def test_shift_card_route_always_returns_its_wrapper():
+    """Порожня картка мусить лишитись у DOM: віддай роут нічого — зникне сам
+    елемент, а з ним і його полл, тож нічна записка більше не проступить."""
+    with Session(_database()) as db:
+        user = _user(db)
+        empty = shift_router.get_shift_card(request=_request(user.id), db=db)
+        assert 'id="shift-card"' in empty.body.decode("utf-8")
+
+        _note(db, kind=KIND_ACTION, text="верстат 4 стоїть")
+        filled = shift_router.get_shift_card(request=_request(user.id), db=db).body.decode("utf-8")
+
+    assert 'id="shift-card"' in filled
+    assert "верстат 4 стоїть" in filled
+    assert 'hx-get="/shift/card"' in filled
+
+    with Session(_database()) as db, pytest.raises(HTTPException) as exc:
+        shift_router.get_shift_card(request=_request(None), db=db)
+    assert exc.value.status_code == 401
+
+
+def test_shift_card_sits_outside_the_polled_queue_rows():
+    """Сторож розташування. Картка мусить стояти ВИЩЕ `#queue-rows`: полл
+    черги свапає рівно цей елемент кожні 15 секунд, і все, що всередині,
+    зникне разом із ним. Дешева сітка проти випадкового перенесення."""
+    markup = (Path("app/templates/queue.html")).read_text(encoding="utf-8")
+    card = markup.index('_shift_card.html')
+    rows = markup.index('_queue_rows.html')
+    assert card < rows, "картку пересунули всередину полла черги"
+    assert '"worklayout"' in markup and card < markup.index('"worklayout"')

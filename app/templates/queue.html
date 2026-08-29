@@ -3,6 +3,11 @@
 
 {% block title %}{{ page_title }} — Order Desk{% endblock %}
 
+{% block extra_head %}
+{# Стилі картки передачі зміни (.sh-card) — той самий файл, що й на /shift. #}
+<link rel="stylesheet" href="/static/css/shift.css?v={{ static_ver('css/shift.css') }}">
+{% endblock %}
+
 {% block content %}
 {% set topbar_active = 'queue' %}
 {% include "_topbar_nav.html" %}
@@ -89,6 +94,10 @@
        повернути, розкоментувавши цей include; сам _queue_kpi_row.html цілий. #}
     {# {% include "_queue_kpi_row.html" %} #}
     {% include "_queue_peek_row.html" %}
+    {# Передача зміни. Стоїть тут СВІДОМО — вище `.worklayout`, тобто поза
+       `#queue-rows`, який свапає 15-секундний полл. Пересунути всередину
+       — і картка зникатиме на кожному тіку. #}
+    {% include "_shift_card.html" %}
     {% include "_queue_sidebar.html" %}
 
     <div class="worklayout">
