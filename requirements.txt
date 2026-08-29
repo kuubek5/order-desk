@@ -15,7 +15,7 @@ passlib[bcrypt]>=1.7
 # installed version; bcrypt>=4.1 removed that attribute, breaking passlib's
 # self-test with a misleading '72 bytes' error instead of the real
 # AttributeError. Found on a real deploy (fresh container pulled latest
-# bcrypt; dev venv had an older cached one masking it) — pin exactly rather
+# bcrypt; dev venv had an older cached one masking it) -- pin exactly rather
 # than range until passlib's bcrypt backend is updated to not need it.
 bcrypt==4.0.1
 rapidfuzz>=3.0
@@ -29,9 +29,13 @@ rarfile>=4.0
 # sheet sync, quit). Pillow renders/loads the icon image pystray needs.
 pystray>=0.19
 pillow>=10
-# Знімок екрана печі спікання по VNC (екран «Печі», лише читання). Тягне за
-# собою numpy — asyncvnc віддає кадр як масив. Пастка на майбутнє:
-# VNC-автентифікація тримається на TripleDES, який cryptography переносить у
-# `decrepit` і збирається прибрати зі старого місця; asyncvnc імпортує його зі
-# старого. Коли зникне — впаде саме на підключенні до печі.
+# Sintering-furnace screen over VNC (the Furnaces page, read-only). Pulls in
+# numpy with asyncvnc, which the OCR needs anyway. Trap for later:
+# VNC auth rests on TripleDES, which cryptography is moving into
+# `decrepit` and will eventually drop; asyncvnc still imports it from the
+# old place. The day they remove it, connecting to a furnace breaks.
+#
+# ASCII only in this file. pip decodes a requirements file with the machine's
+# locale encoding when there is no BOM, and the CI runner is cp1252 -- one
+# Cyrillic comment here failed the whole 0.3.32 build with a UnicodeDecodeError.
 asyncvnc>=1.3
