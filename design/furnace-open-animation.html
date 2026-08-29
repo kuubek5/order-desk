@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Відкриття пічки — анімація фону</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1117; --card:#161d27; --card-2:#1b2431; --card-3:#202b3a;
+  --line:#222c3a; --line-2:#3a4a5f;
+  --ink:#e8eff7; --ink-2:#8fa3bb; --ink-3:#8698ad;
+  --accent:#14b8a6; --accent-c:#5eead4; --accent-d:#0f766e;
+  --r-card:10px;
+  --font-body:'Golos Text',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);margin:0;padding:22px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1{font-size:21px;font-weight:700;letter-spacing:-.015em;margin:0 0 4px}
+.lead{color:var(--ink-3);font-size:13px;margin:0;line-height:1.55;max-width:80ch}
+
+.panel{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:11px 14px;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--r-card)}
+.panel label{display:flex;align-items:center;gap:8px;color:var(--ink-2);font-size:12.5px}
+.panel input[type=range]{width:200px;accent-color:var(--accent)}
+.panel output{font-family:var(--font-mono);color:#ffb26b;min-width:70px}
+.panel button{height:31px;padding:0 14px;border-radius:999px;border:1px solid var(--line-2);
+  background:var(--card-2);color:var(--ink-2);font:500 12.5px var(--font-body);cursor:pointer}
+.panel button:hover{color:var(--ink);background:var(--card-3)}
+.panel button.apex{border-color:var(--accent-d);background:rgba(45,212,191,.12);color:var(--accent-c)}
+
+/* ── Сцена: те саме, що екран «Пічки» ─────────────────────────────────── */
+.scene{position:relative;isolation:isolate;overflow:hidden;border:1px solid var(--line);
+  border-radius:var(--r-card);min-height:520px;background:var(--bg)}
+
+/* Пічка стоїть праворуч і навмисно ЧАСТКОВО за краєм: фон має бути тлом, а
+   не другим героєм екрана. Плитки лишаються ліворуч, на спокійному місці. */
+.stage{position:absolute;inset:0;display:flex;justify-content:flex-end;align-items:center;
+  padding-right:2%;pointer-events:none}
+.stage svg{height:104%;opacity:.9}
+
+.content{position:relative;z-index:2;padding:16px;display:grid;gap:12px;
+  grid-template-columns:repeat(auto-fill,minmax(230px,1fr));max-width:62%}
+.tile{background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(3px);
+  border:1px solid var(--line);border-radius:var(--r-card);padding:11px 13px;display:flex;
+  flex-direction:column;gap:7px}
+.tile.run{border-color:var(--accent-d)}
+.tile-top{display:flex;align-items:center;justify-content:space-between}
+.tile-name{font-size:13px;font-weight:600}
+.pill{font-family:var(--font-mono);font-size:11px;color:var(--accent-c);border:1px solid var(--accent-d);
+  border-radius:999px;padding:2px 9px;background:rgba(45,212,191,.10)}
+.pill.wait{color:var(--ink-2);border-color:var(--line-2);background:none}
+.tile-main{display:flex;align-items:baseline;gap:9px}
+.tile-temp{font-family:var(--font-mono);font-size:26px;line-height:1}
+.tile-sub{color:var(--ink-3);font-size:11.5px;font-family:var(--font-mono)}
+
+/* ── Рух ────────────────────────────────────────────────────────────────
+   Усе — transform і opacity, тобто робота відеокарти. Жодного полотна,
+   жодного циклу в JS, жодного фільтра поверх рухомого елемента. */
+
+/* Столик їде вниз — саме так відкривається 624i: камера лишається зверху. */
+#lift{transform:translateY(0);transition:transform 2.6s cubic-bezier(.33,.02,.24,1)}
+.scene.is-open #lift{transform:translateY(112px)}
+
+/* Жар з камери. Двошаровий: ядро (майже біле при 1500°) і широкий ореол. */
+#heatCore,#heatHalo,#mouth{opacity:0;transition:opacity 1.5s ease}
+.scene.is-open #heatCore{opacity:.95;transition-delay:.35s}
+.scene.is-open #heatHalo{opacity:.85;transition-delay:.35s}
+.scene.is-open #mouth{opacity:1;transition-delay:.2s}
+
+/* Розжарений столик, що виїжджає з камери, — саме він світиться найдужче. */
+#trayHot{opacity:0;transition:opacity 1.2s ease .5s}
+.scene.is-open #trayHot{opacity:1}
+
+/* Дихання жару. 7 с — навмисно повільно: усе, що встигаєш помітити оком як
+   «блимає», через годину на цілоденному екрані дратує. */
+.scene.is-open #heatHalo{animation:breathe 7s ease-in-out 1.6s infinite}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:.72}50%{transform:scale(1.06);opacity:.92}}
+#heatHalo{transform-origin:300px 430px;transform-box:view-box}
+
+/* Тепло в закритій камері, поки програма йде: ледь помітне, за температурою. */
+#idleWarm{opacity:calc(var(--heat,0) * .55);transition:opacity 1.2s ease}
+.scene.is-open #idleWarm{opacity:0}
+
+/* Іскри — шість штук, кожна окремий шар композитора. */
+.embers{position:absolute;inset:0;pointer-events:none;z-index:1;opacity:0;transition:opacity 1s ease}
+.scene.is-open .embers{opacity:1;transition-delay:.8s}
+.embers i{position:absolute;bottom:22%;width:3px;height:3px;border-radius:50%;
+  background:rgba(255,170,90,.9);animation:rise linear infinite;will-change:transform,opacity}
+@keyframes rise{
+  0%{transform:translateY(0) scale(.6);opacity:0}
+  14%{opacity:.9}
+  100%{transform:translateY(-230px) translateX(var(--drift,12px)) scale(1);opacity:0}
+}
+
+/* Кому рух заважає — фон просто стоїть. Це умова, за якої такий фон узагалі
+   можна вішати на робочий екран. */
+@media (prefers-reduced-motion:reduce){
+  #lift,#heatCore,#heatHalo,#mouth,#trayHot,#idleWarm{transition:none}
+  #heatHalo{animation:none}
+  .embers i{animation:none;opacity:0}
+}
+
+
+/* ── Крупний план столика (за другим фото) ───────────────────────────────
+   Той самий принцип руху: камера зверху нерухома, вниз їде вся збірка —
+   ступінчаста керамічна основа з двоярусним тиглем. */
+.scene.closeup{min-height:620px}
+.closeup .stage{justify-content:center;padding:0}
+.closeup .stage svg{height:100%;width:auto;opacity:1}
+
+#rig{transform:translateY(-104px);transition:transform 2.8s cubic-bezier(.33,.02,.24,1)}
+.closeup.is-open #rig{transform:translateY(0)}
+
+/* Свічення: з камери згори, з вікон тигля і теплий обідок на кераміці.
+   Кераміка при 1500 °C світиться сама — це найважливіша деталь кадру. */
+#chamberGlow,#windowGlow,#ceramicHot{opacity:0;transition:opacity 1.8s ease}
+.closeup.is-open #chamberGlow{opacity:.95;transition-delay:.15s}
+.closeup.is-open #windowGlow{opacity:1;transition-delay:.5s}
+.closeup.is-open #ceramicHot{opacity:.9;transition-delay:.5s}
+
+.closeup.is-open #chamberGlow{animation:breathe2 8s ease-in-out 2s infinite}
+@keyframes breathe2{0%,100%{opacity:.78}50%{opacity:1}}
+
+.note{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
+  padding:13px 15px;color:var(--ink-2);font-size:13px;line-height:1.6}
+.note b{color:var(--ink)}
+.note ul{margin:8px 0 0;padding-left:18px}
+.note li{margin:4px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Відкриття пічки — анімація фону</h1>
+  <p class="lead">
+    Намальовано за фото DEKEMA 624i. Рухається те, що рухається насправді: камера лишається зверху,
+    <b>вниз їде столик</b> — і з камери б'є жар. Натисни «Відкрити пічку»; повзунок міняє температуру,
+    від неї залежить і колір жару, і ледь помітне тепло в закритій камері.
+  </p>
+</header>
+
+<div class="panel">
+  <label>Температура
+    <input id="temp" type="range" min="40" max="1530" value="1500">
+    <output id="tempOut">1500 °C</output>
+  </label>
+  <button id="open" type="button" class="apex">Відкрити пічку ▾</button>
+  <button id="close" type="button">Закрити</button>
+</div>
+
+
+<div class="scene closeup" id="closeup">
+  <div class="stage">
+    <svg viewBox="0 0 900 780" aria-hidden="true">
+      <defs>
+        <radialGradient id="cGlow" cx="50%" cy="18%">
+          <stop offset="0%"   stop-color="#fff4d6" stop-opacity=".95"/>
+          <stop offset="28%"  stop-color="#ffbb63" stop-opacity=".70"/>
+          <stop offset="62%"  stop-color="#ff7a28" stop-opacity=".32"/>
+          <stop offset="100%" stop-color="#7d1a04" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="cWindow" cx="50%" cy="55%">
+          <stop offset="0%"   stop-color="#fff8e4"/>
+          <stop offset="40%"  stop-color="#ffc061"/>
+          <stop offset="100%" stop-color="#ff6a1a" stop-opacity=".15"/>
+        </radialGradient>
+        <linearGradient id="cCeramic" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"   stop-color="#aab4c2"/>
+          <stop offset="26%"  stop-color="#eef1f5"/>
+          <stop offset="62%"  stop-color="#dfe4ea"/>
+          <stop offset="100%" stop-color="#98a3b1"/>
+        </linearGradient>
+        <linearGradient id="cChrome" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#39434f"/>
+          <stop offset="30%" stop-color="#c3ccd6"/>
+          <stop offset="55%" stop-color="#8e99a6"/>
+          <stop offset="100%" stop-color="#39434f"/>
+        </linearGradient>
+        <linearGradient id="cHot" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffd79a" stop-opacity=".95"/>
+          <stop offset="100%" stop-color="#ff7a28" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Жар із камери: б'є згори вниз, як і насправді. -->
+      <ellipse id="chamberGlow" cx="450" cy="150" rx="430" ry="300" fill="url(#cGlow)"/>
+
+      <!-- Столик: тигель + ступінчаста основа + хромований диск. -->
+      <g id="rig">
+        <!-- верхнє кільце тигля -->
+        <path d="M310 196h280v128a140 26 0 0 1-280 0z" fill="url(#cCeramic)"/>
+        <ellipse cx="450" cy="196" rx="140" ry="26" fill="#f4f7fa"/>
+        <ellipse cx="450" cy="196" rx="140" ry="26" fill="none" stroke="#9aa5b3" stroke-width="2"/>
+        <path d="M508 246a34 34 0 0 1-68 0z" fill="#2a2f38"/>
+        <path id="windowGlow" d="M508 246a34 34 0 0 1-68 0z" fill="url(#cWindow)"/>
+
+        <!-- нижнє кільце тигля -->
+        <path d="M310 330h280v122a140 26 0 0 1-280 0z" fill="url(#cCeramic)"/>
+        <ellipse cx="450" cy="330" rx="140" ry="26" fill="#e9edf2"/>
+        <path d="M448 382a34 34 0 0 1-68 0z" fill="#2a2f38"/>
+        <path d="M448 382a34 34 0 0 1-68 0z" fill="url(#cWindow)" opacity=".85"/>
+
+        <!-- ступінчаста основа: чотири диски, що ширшають донизу -->
+        <path d="M300 452h300v34a150 28 0 0 1-300 0z" fill="url(#cCeramic)"/>
+        <ellipse cx="450" cy="452" rx="150" ry="28" fill="#eef1f5"/>
+        <path d="M272 512h356v34a178 30 0 0 1-356 0z" fill="url(#cCeramic)"/>
+        <ellipse cx="450" cy="512" rx="178" ry="30" fill="#e7ebf1"/>
+        <path d="M244 572h412v34a206 32 0 0 1-412 0z" fill="url(#cCeramic)"/>
+        <ellipse cx="450" cy="572" rx="206" ry="32" fill="#e2e7ee"/>
+        <path d="M216 632h468v30a234 34 0 0 1-468 0z" fill="url(#cCeramic)"/>
+        <ellipse cx="450" cy="632" rx="234" ry="34" fill="#dde3ea"/>
+
+        <!-- теплий обідок: розжарена кераміка світиться сама -->
+        <g id="ceramicHot">
+          <ellipse cx="450" cy="196" rx="140" ry="26" fill="url(#cHot)"/>
+          <ellipse cx="450" cy="330" rx="140" ry="26" fill="url(#cHot)" opacity=".8"/>
+          <ellipse cx="450" cy="452" rx="150" ry="28" fill="url(#cHot)" opacity=".6"/>
+          <ellipse cx="450" cy="512" rx="178" ry="30" fill="url(#cHot)" opacity=".45"/>
+          <ellipse cx="450" cy="572" rx="206" ry="32" fill="url(#cHot)" opacity=".3"/>
+        </g>
+
+        <!-- хромований диск і шток -->
+        <ellipse cx="450" cy="690" rx="252" ry="38" fill="url(#cChrome)"/>
+        <ellipse cx="450" cy="684" rx="252" ry="38" fill="#0b0f15" opacity=".35"/>
+        <rect x="352" y="706" width="196" height="74" rx="14" fill="#12171f"/>
+      </g>
+
+      <!-- Дно камери: темна перфорована плита над столиком. -->
+      <g>
+        <rect x="-40" y="0" width="980" height="92" fill="#10151c"/>
+        <ellipse cx="450" cy="92" rx="470" ry="34" fill="#0b0f15"/>
+        <g fill="#05080c" opacity=".9">
+          <ellipse cx="230" cy="84" rx="7" ry="3"/><ellipse cx="290" cy="88" rx="7" ry="3"/>
+          <ellipse cx="350" cy="91" rx="7" ry="3"/><ellipse cx="410" cy="93" rx="7" ry="3"/>
+          <ellipse cx="470" cy="93" rx="7" ry="3"/><ellipse cx="530" cy="92" rx="7" ry="3"/>
+          <ellipse cx="590" cy="90" rx="7" ry="3"/><ellipse cx="650" cy="86" rx="7" ry="3"/>
+        </g>
+      </g>
+
+    </svg>
+  </div>
+
+  <div class="content">
+    <div class="tile run">
+      <div class="tile-top"><span class="tile-name">Бочка</span><span class="pill">RUN</span></div>
+      <div class="tile-main"><span class="tile-temp" data-temp>1500</span><span class="tile-sub">°C · відкриється 17:54</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="scene" id="scene">
+  <div class="stage">
+    <svg viewBox="0 0 600 1000" aria-hidden="true">
+      <defs>
+        <linearGradient id="steel" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#2b3646"/>
+          <stop offset="18%" stop-color="#6d7d92"/>
+          <stop offset="52%" stop-color="#9fb0c4"/>
+          <stop offset="86%" stop-color="#5b6a7d"/>
+          <stop offset="100%" stop-color="#2b3646"/>
+        </linearGradient>
+        <linearGradient id="steelSoft" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#33404f"/>
+          <stop offset="40%" stop-color="#7c8b9e"/>
+          <stop offset="100%" stop-color="#38434f"/>
+        </linearGradient>
+        <!-- Жар: ядро майже біле, далі бурштин, далі глибокий червоний у ніщо. -->
+        <radialGradient id="gCore" cx="50%" cy="50%">
+          <stop offset="0%"   stop-color="#fff6de"/>
+          <stop offset="26%"  stop-color="#ffd27a"/>
+          <stop offset="55%"  stop-color="#ff8f36"/>
+          <stop offset="100%" stop-color="#ff5a12" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="gHalo" cx="50%" cy="50%">
+          <stop offset="0%"   stop-color="#ff9b3d" stop-opacity=".75"/>
+          <stop offset="45%"  stop-color="#ff6a1f" stop-opacity=".34"/>
+          <stop offset="100%" stop-color="#8c1c05" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="gTray" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#fff2cf"/>
+          <stop offset="55%" stop-color="#ffb055"/>
+          <stop offset="100%" stop-color="#ff7a22"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Широкий ореол позаду всього: це він заливає фон теплом. -->
+      <ellipse id="heatHalo" cx="300" cy="430" rx="290" ry="200" fill="url(#gHalo)"/>
+      <!-- Тепло в закритій камері, поки програма йде. -->
+
+      <!-- Верхня камера: корпус, темна кромка, дно з отвором. -->
+      <g>
+        <rect x="98" y="18" width="404" height="330" rx="16" fill="url(#steel)"/>
+        <rect x="98" y="18" width="404" height="18" rx="9" fill="#141a22"/>
+        <path d="M112 348h376l-30 26H142z" fill="#151b24"/>
+        <!-- Логотип-натяк: три язики полум'я, як на корпусі. -->
+        <g fill="#0f141b" opacity=".8">
+          <path d="M286 150c10 14 8 26-2 38 12-6 20-18 18-32z"/>
+          <path d="M300 142c12 17 10 31-2 45 15-7 24-22 21-39z"/>
+          <path d="M316 150c10 14 8 26-2 38 12-6 20-18 18-32z"/>
+        </g>
+        <rect x="243" y="212" width="114" height="9" rx="2" fill="#0f141b" opacity=".55"/>
+        <!-- Отвір камери: чорний, поки закрито; світиться, коли відкрито. -->
+        <ellipse cx="300" cy="374" rx="146" ry="26" fill="#0a0e14"/>
+        <ellipse id="mouth" cx="300" cy="374" rx="140" ry="23" fill="url(#gCore)"/>
+      </g>
+
+      <!-- Тепло закритої камери: ширше за корпус, тому видно з боків. -->
+      <ellipse id="idleWarm" cx="300" cy="380" rx="250" ry="70" fill="url(#gHalo)"/>
+
+      <!-- Стійка, уздовж якої ходить столик. -->
+      <rect x="196" y="374" width="208" height="286" fill="url(#steelSoft)"/>
+      <rect x="196" y="374" width="208" height="286" fill="#0a0e14" opacity=".22"/>
+
+      <!-- Столик: тигель, тарілка, шток. Їде вниз одним вузлом. -->
+      <g id="lift">
+        <!-- Розжарений німб під тиглем — те, що світиться найдужче. -->
+        <ellipse id="heatCore" cx="300" cy="516" rx="150" ry="66" fill="url(#gCore)"/>
+        <g id="trayHot">
+          <path d="M246 528l16-84h76l16 84z" fill="url(#gTray)" opacity=".9"/>
+        </g>
+        <path d="M244 530l18-88h76l18 88z" fill="#c9d4e0"/>
+        <path d="M244 530l18-88h20l-10 88z" fill="#eef3f8" opacity=".55"/>
+        <ellipse cx="300" cy="534" rx="112" ry="17" fill="#dfe7ef"/>
+        <ellipse cx="300" cy="534" rx="112" ry="17" fill="none" stroke="#0f141b" stroke-width="4" opacity=".55"/>
+        <rect x="246" y="540" width="108" height="60" rx="12" fill="#12171f"/>
+      </g>
+
+      <!-- База з чорним екраном. -->
+      <path d="M46 662h508l22 26H24z" fill="#141a22"/>
+      <rect x="24" y="688" width="552" height="292" rx="12" fill="url(#steel)"/>
+      <rect x="52" y="712" width="496" height="244" rx="8" fill="#10151c"/>
+      <rect x="78" y="734" width="392" height="200" rx="4" fill="#0a0e14"/>
+      <g fill="#dfe7ef" opacity=".85">
+        <path d="M286 806c10 14 8 26-2 38 12-6 20-18 18-32z"/>
+        <path d="M300 798c12 17 10 31-2 45 15-7 24-22 21-39z"/>
+        <path d="M316 806c10 14 8 26-2 38 12-6 20-18 18-32z"/>
+      </g>
+      <rect x="243" y="858" width="114" height="9" rx="2" fill="#dfe7ef" opacity=".8"/>
+      <rect x="492" y="756" width="14" height="118" rx="7" fill="#1b2430" opacity=".9"/>
+      <circle cx="500" cy="908" r="13" fill="none" stroke="#5eead4" stroke-width="3" opacity=".85"/>
+    </svg>
+  </div>
+
+  <div class="embers" id="embers"></div>
+
+  <div class="content">
+    <div class="tile run">
+      <div class="tile-top"><span class="tile-name">Бочка</span><span class="pill">RUN</span></div>
+      <div class="tile-main"><span class="tile-temp" data-temp>1500</span><span class="tile-sub">°C · відкриється 17:54</span></div>
+    </div>
+    <div class="tile">
+      <div class="tile-top"><span class="tile-name">Пічка 2</span><span class="pill wait">WAIT</span></div>
+      <div class="tile-main"><span class="tile-temp">40</span><span class="tile-sub">°C · вільна</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="note">
+  <b>Що тут відбувається і чого це коштує.</b>
+  <ul>
+    <li><b>Рух правдивий.</b> У 624i камера лишається зверху, а вниз їде столик — саме це й анімовано. Гріх фонової картинки в тому, що вона показує вигадану механіку; тут її немає.</li>
+    <li><b>Жар живий.</b> Колір і сила зарева йдуть за справжньою температурою: при 1500 °C ядро майже біле, при 600 °C — глибокий помаранч. Закрита пічка, поки програма йде, лише ледь тепліє.</li>
+    <li><b>Рухається тільки прозорість і зсув</b> — це малює відеокарта. Ні полотна, ні циклу в JS, ні фільтрів поверх рухомого.</li>
+    <li><b>Дихання 7 секунд</b> — навмисно повільне. Усе, що встигаєш помітити як «блимає», через годину дратує.</li>
+    <li><b>Системне «менше руху» вимикає все</b> автоматично; в застосунку додам ще й вимикач у налаштуваннях оператора.</li>
+    <li>Вага — <b>кілобайти</b>. Нічого не тягнути в інсталятор, нічого не декодувати цілу зміну.</li>
+  </ul>
+</div>
+
+</div>
+
+<script>
+const scene = document.getElementById('scene');
+const temp = document.getElementById('temp');
+const tempOut = document.getElementById('tempOut');
+
+function applyTemp() {
+  const value = Number(temp.value);
+  tempOut.textContent = value + ' °C';
+  // Жар рахуємо від 200 °C: нижче пічка на око холодна.
+  const heat = Math.max(0, Math.min(1, (value - 200) / 1330));
+  scene.style.setProperty('--heat', heat.toFixed(3));
+  document.querySelectorAll('[data-temp]').forEach((n) => { n.textContent = value; });
+  // Гарячіше — біліше ядро й ширший ореол.
+  const halo = document.getElementById('heatHalo');
+  halo.setAttribute('rx', String(210 + Math.round(110 * heat)));
+  halo.setAttribute('ry', String(130 + Math.round(80 * heat)));
+}
+temp.addEventListener('input', applyTemp);
+applyTemp();
+
+const closeup = document.getElementById('closeup');
+document.getElementById('open').addEventListener('click', () => {
+  scene.classList.add('is-open');
+  closeup.classList.add('is-open');
+});
+document.getElementById('close').addEventListener('click', () => {
+  scene.classList.remove('is-open');
+  closeup.classList.remove('is-open');
+});
+
+const embers = document.getElementById('embers');
+for (let i = 0; i < 6; i += 1) {
+  const spark = document.createElement('i');
+  spark.style.right = (12 + i * 7) + '%';
+  spark.style.animationDuration = (8 + i * 1.6) + 's';
+  spark.style.animationDelay = (i * 1.9) + 's';
+  spark.style.setProperty('--drift', (i % 2 ? 16 : -12) + 'px');
+  embers.appendChild(spark);
+}
+</script>
+</body>
+</html>

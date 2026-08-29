@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Віджет печей на черзі — варіанти</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Токени скопійовані з app/static/css/tokens.css, щоб файл був самодостатнім
+   і відкривався будь-де, без запущеного застосунку. */
+:root{
+  --bg:#0d1117; --card:#161d27; --card-2:#1b2431; --card-3:#202b3a;
+  --line:#222c3a; --line-2:#3a4a5f; --control-edge:#5f7490;
+  --ink:#e8eff7; --ink-2:#8fa3bb; --ink-3:#8698ad;
+  --accent:#14b8a6; --accent-b:#2dd4bf; --accent-c:#5eead4; --accent-d:#0f766e;
+  --warn:#f0a35e; --alarm:#f87171;
+  --r-card:10px; --r-ctl:9px;
+  --font-body:'Golos Text',system-ui,-apple-system,Segoe UI,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);margin:0;padding:26px 22px 60px;
+  background-image:linear-gradient(rgba(45,212,191,.035) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(45,212,191,.035) 1px,transparent 1px);
+  background-size:38px 38px}
+.wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:30px}
+h1{font-size:22px;font-weight:700;letter-spacing:-.015em;margin:0 0 4px}
+.lead{color:var(--ink-3);font-size:13px;margin:0;line-height:1.5}
+.lead b{color:var(--ink-2);font-weight:600}
+.vh{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 10px;
+  padding-bottom:8px;border-bottom:1px solid var(--line)}
+.vh b{font-size:15px}
+.vh span{color:var(--ink-3);font-size:12.5px}
+.pair{display:flex;flex-direction:column;gap:9px}
+.state{color:var(--ink-3);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.fakequeue{border:1px dashed var(--line-2);border-radius:var(--r-card);padding:14px;color:var(--ink-3);
+  font-size:12px;min-height:150px}
+.verdict{background:var(--card);border:1px solid var(--line);
+  border-radius:var(--r-card);padding:14px 16px;font-size:13.5px;line-height:1.6;color:var(--ink-2)}
+.verdict b{color:var(--ink)}
+
+/* A · стрічка чіпів */
+.a-strip{display:flex;align-items:center;gap:12px;padding:9px 12px;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--r-card)}
+.a-title{display:inline-flex;align-items:center;gap:7px;color:var(--ink-2);font-size:12px;font-weight:600;white-space:nowrap}
+.a-title svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7}
+.a-items{display:flex;gap:8px;flex-wrap:wrap}
+.a-chip{display:inline-flex;align-items:baseline;gap:9px;padding:5px 11px;border-radius:999px;
+  border:1px solid var(--line-2);background:var(--card-2);white-space:nowrap}
+.a-chip.run{border-color:var(--accent-d)}
+.a-chip .n{color:var(--ink-2);font-size:11.5px}
+.a-chip .m{font-size:13.5px;font-weight:600}
+.a-chip .s{color:var(--ink-3);font-size:11px}
+.a-chip .t{color:var(--accent-c);font-size:12.5px}
+
+/* B · герой + супутники */
+.b-wrap{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap}
+.b-hero{flex:1 1 360px;max-width:430px;display:flex;flex-direction:column;gap:8px;padding:12px 14px;
+  background:var(--card);border:1px solid var(--accent-d);border-radius:var(--r-card)}
+.b-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.b-name{font-size:13.5px;font-weight:600}
+.b-pill{font-family:var(--font-mono);font-size:11px;color:var(--accent-c);border:1px solid var(--accent-d);
+  border-radius:999px;padding:2px 9px;background:rgba(45,212,191,.10)}
+.b-main{display:flex;align-items:baseline;gap:12px}
+.b-time{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:34px;line-height:1}
+.b-lab{color:var(--ink-3);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em}
+.b-temp{margin-left:auto;font-family:var(--font-mono);font-size:19px;color:var(--accent-c)}
+.b-bar{height:4px;border-radius:3px;background:var(--card-3);overflow:hidden}
+.b-bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.b-sub{display:flex;justify-content:space-between;color:var(--ink-3);font-size:11px;font-family:var(--font-mono)}
+.b-side{display:flex;flex-direction:column;gap:8px;justify-content:center}
+.b-mini{display:flex;align-items:baseline;gap:10px;padding:8px 12px;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--r-ctl);min-width:215px}
+.b-mini .n{color:var(--ink-2);font-size:11.5px}
+.b-mini .m{font-size:12.5px;font-weight:600;margin-left:auto;font-family:var(--font-mono)}
+.b-mini .t{font-family:var(--font-mono);font-size:12px;color:var(--ink-2)}
+
+/* B-lite */
+.bl{display:flex;align-items:center;gap:14px;padding:9px 14px;background:var(--card);
+  border:1px solid var(--accent-d);border-radius:var(--r-card);flex-wrap:wrap}
+.bl .n{font-size:12.5px;font-weight:600}
+.bl .lab{color:var(--ink-3);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em}
+.bl .time{font-family:var(--font-mono);font-size:24px;line-height:1}
+.bl .t{font-family:var(--font-mono);font-size:15px;color:var(--accent-c)}
+.bl .rest{color:var(--ink-3);font-size:11.5px;font-family:var(--font-mono)}
+.bl .mini{margin-left:auto;display:flex;gap:8px}
+.bl .mini span{padding:4px 10px;border:1px solid var(--line-2);border-radius:999px;
+  font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+
+/* C · у шапці */
+.c-line{display:flex;align-items:center;gap:10px;color:var(--ink-2);font-size:12.5px;flex-wrap:wrap}
+.c-line .sep{width:1px;height:12px;background:var(--line-2)}
+.c-furn{display:inline-flex;align-items:baseline;gap:7px;color:var(--ink)}
+.c-furn .dot{width:7px;height:7px;border-radius:50%;background:var(--accent-b);align-self:center}
+.c-furn .dot.idle{background:var(--ink-3)}
+.c-furn .t{font-family:var(--font-mono);color:var(--accent-c)}
+.c-furn .m{font-family:var(--font-mono)}
+
+/* D · картка праворуч */
+.d-grid{display:grid;grid-template-columns:1fr 300px;gap:12px}
+.d-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:12px 13px;
+  display:flex;flex-direction:column;gap:12px;align-self:start}
+.d-head{display:flex;align-items:center;justify-content:space-between;color:var(--ink-2);font-size:12px;font-weight:600}
+.d-head span:last-child{font-weight:400;color:var(--ink-3)}
+.d-row{display:flex;flex-direction:column;gap:5px}
+.d-row-top{display:flex;align-items:baseline;gap:8px}
+.d-row-top .n{font-size:12.5px}
+.d-row-top .m{margin-left:auto;font-family:var(--font-mono);font-size:14px;font-weight:600}
+.d-row-top .t{font-family:var(--font-mono);font-size:12px;color:var(--accent-c)}
+.d-bar{height:3px;border-radius:2px;background:var(--card-3);overflow:hidden}
+.d-bar i{display:block;height:100%;background:var(--accent)}
+.d-sub{color:var(--ink-3);font-size:11px;font-family:var(--font-mono)}
+@media (max-width:760px){.d-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Віджет печей на черзі — варіанти</h1>
+  <p class="lead">
+    У кожному варіанті два стани: <b>сьогодні</b> (працює сама «Бочка») і <b>потім</b> (усі три печі).<br>
+    Дані однакові в усіх варіантах і вже приходять з печі — різниця лише в тому, як їх покласти на екран.
+  </p>
+</header>
+
+<section>
+  <div class="vh"><b>A · Стрічка чіпів</b><span>те, що стоїть зараз · найменше місця, росте вбік</span></div>
+  <div class="pair">
+    <div class="state">сьогодні</div>
+    <div class="a-strip">
+      <span class="a-title">
+        <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
+        Печі
+      </span>
+      <div class="a-items">
+        <span class="a-chip run"><span class="n">Бочка</span><span class="m mono">о 17:54</span><span class="s mono">лишилось 26:59</span><span class="t mono">759°</span></span>
+      </div>
+    </div>
+    <div class="state">потім</div>
+    <div class="a-strip">
+      <span class="a-title">
+        <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
+        Печі
+      </span>
+      <div class="a-items">
+        <span class="a-chip run"><span class="n">Бочка</span><span class="m mono">о 17:54</span><span class="s mono">лишилось 26:59</span><span class="t mono">759°</span></span>
+        <span class="a-chip run"><span class="n">Піч 2</span><span class="m mono">о 19:07</span><span class="s mono">лишилось 1:12:40</span><span class="t mono">1180°</span></span>
+        <span class="a-chip"><span class="n">Піч 3</span><span class="m">вільна</span><span class="t mono">40°</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="vh"><b>B · Головна піч великим, решта поруч</b><span>та, що закінчить першою, — крупно; видно від верстата</span></div>
+  <div class="pair">
+    <div class="state">сьогодні</div>
+    <div class="b-wrap">
+      <div class="b-hero">
+        <div class="b-top"><span class="b-name">Бочка</span><span class="b-pill">RUN</span></div>
+        <div class="b-main"><span class="b-lab">готова</span><span class="b-time">17:54</span><span class="b-temp">759 °C</span></div>
+        <div class="b-bar"><i style="width:57%"></i></div>
+        <div class="b-sub"><span>минуло 35:30</span><span>лишилось 26:59</span></div>
+      </div>
+    </div>
+    <div class="state">потім</div>
+    <div class="b-wrap">
+      <div class="b-hero">
+        <div class="b-top"><span class="b-name">Бочка</span><span class="b-pill">RUN</span></div>
+        <div class="b-main"><span class="b-lab">готова</span><span class="b-time">17:54</span><span class="b-temp">759 °C</span></div>
+        <div class="b-bar"><i style="width:57%"></i></div>
+        <div class="b-sub"><span>минуло 35:30</span><span>лишилось 26:59</span></div>
+      </div>
+      <div class="b-side">
+        <div class="b-mini"><span class="n">Піч 2</span><span class="m">о 19:07</span><span class="t">1180°</span></div>
+        <div class="b-mini"><span class="n">Піч 3</span><span class="m" style="font-weight:400;font-family:var(--font-body)">вільна</span><span class="t">40°</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="vh"><b>B-lite · те саме в один рядок</b><span>висота як у A, число лишається великим</span></div>
+  <div class="pair">
+    <div class="state">потім</div>
+    <div class="bl">
+      <span class="n">Бочка</span>
+      <span class="lab">готова</span>
+      <span class="time">17:54</span>
+      <span class="t">759 °C</span>
+      <span class="rest">лишилось 26:59</span>
+      <span class="mini"><span>Піч 2 · о 19:07 · 1180°</span><span>Піч 3 · вільна</span></span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="vh"><b>C · Рядком у шапці, поруч із «пошта / таблиця»</b><span>нуль зайвого місця, але й нуль ваги</span></div>
+  <div class="pair">
+    <div class="state">сьогодні</div>
+    <div class="c-line">
+      <span>12 у вигляді</span><span class="sep"></span><span>34 од.</span><span class="sep"></span>
+      <span>пошта: <b>✓ щойно</b></span><span class="sep"></span><span>таблиця: <b>✓ щойно</b></span><span class="sep"></span>
+      <span class="c-furn"><i class="dot"></i>Бочка <span class="m">о 17:54</span> <span class="t">759°</span></span>
+    </div>
+    <div class="state">потім</div>
+    <div class="c-line">
+      <span>12 у вигляді</span><span class="sep"></span><span>34 од.</span><span class="sep"></span>
+      <span>пошта: <b>✓ щойно</b></span><span class="sep"></span>
+      <span class="c-furn"><i class="dot"></i>Бочка <span class="m">о 17:54</span> <span class="t">759°</span></span><span class="sep"></span>
+      <span class="c-furn"><i class="dot"></i>Піч 2 <span class="m">о 19:07</span> <span class="t">1180°</span></span><span class="sep"></span>
+      <span class="c-furn"><i class="dot idle"></i>Піч 3 <span class="m">вільна</span> <span class="t">40°</span></span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="vh"><b>D · Картка в правій колонці черги</b><span>росте вниз, місце під три печі є завжди</span></div>
+  <div class="pair">
+    <div class="state">потім</div>
+    <div class="d-grid">
+      <div class="fakequeue">… тут таблиця черги …</div>
+      <div class="d-card">
+        <div class="d-head"><span>Печі</span><span>2 у роботі</span></div>
+        <div class="d-row">
+          <div class="d-row-top"><span class="n">Бочка</span><span class="t">759°</span><span class="m">о 17:54</span></div>
+          <div class="d-bar"><i style="width:57%"></i></div>
+          <div class="d-sub">лишилось 26:59</div>
+        </div>
+        <div class="d-row">
+          <div class="d-row-top"><span class="n">Піч 2</span><span class="t">1180°</span><span class="m">о 19:07</span></div>
+          <div class="d-bar"><i style="width:31%"></i></div>
+          <div class="d-sub">лишилось 1:12:40</div>
+        </div>
+        <div class="d-row">
+          <div class="d-row-top"><span class="n">Піч 3</span><span class="t" style="color:var(--ink-3)">40°</span><span class="m" style="font-weight:400;color:var(--ink-2)">вільна</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="verdict">
+  <b>Раджу B.</b> Печей у роботі майже завжди одна-дві, третя стоїть вільна — і B читається саме так:
+  одна відповідь крупно («о котрій відкривати»), решта тихо поруч. A однаково розмазує увагу між
+  активною й порожньою піччю, C ховає піч серед службових написів, D не «зверху».
+  Смуга прогресу в B нічого не коштує: табло дає і «минуло», і «лишилось», тобто повний час програми ми знаємо.
+  Якщо B здасться заважким — є <b>B-lite</b>: висота як у A, число лишається великим.
+</div>
+
+</div>
+</body>
+</html>

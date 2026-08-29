@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en" class="root">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0d1117" />
+<title>MILL-OPS Control System — 3 Treatments (Dental Milling Lab)</title>
+<style>
+/* ============================================================
+   MILL-OPS / CONTROL SYSTEM SPEC SHEET
+   Dark dense industrial dashboard — dental milling lab floor
+   THREE treatments of one control set, every state exposed.
+   Tokens are fixed. No color outside the token list below.
+   ============================================================ */
+
+:root{
+  /* ---- fixed token set (do not extend) ---- */
+  --bg:#0d1117;
+  --card:#161d27;
+  --card-2:#1b2431;
+  --card-3:#202b3a;
+  --line:#222c3a;
+  --line-2:#3a4a5f;
+  --control-edge:#5f7490;
+  --ink:#e8eff7;
+  --ink-2:#8fa3bb;
+  --ink-3:#8698ad;
+  --accent:#14b8a6;
+  --accent-b:#2dd4bf;
+  --accent-c:#5eead4;
+  --accent-d:#0f766e;
+  --alarm:#f87171;
+  --warn:#f0a35e;
+
+  /* ---- motion: deceleration only, no overshoot, no loops ---- */
+  --ease:cubic-bezier(0.20,0.70,0.20,1);
+  --t-fast:110ms;
+  --t-base:150ms;
+  --t-slow:220ms;
+
+  --font-ui:'Golos Text','Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+
+@media (prefers-reduced-motion: reduce){
+  *{transition-duration:1ms !important}
+}
+
+*{box-sizing:border-box}
+html.root{background:var(--bg)}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:var(--font-ui);font-size:14px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{margin:0;font-weight:600;letter-spacing:-0.01em}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* ---------- page shell ---------- */
+.shell{max-width:1680px;margin:0 auto;padding:20px 20px 56px}
+
+.topbar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:16px;
+  background:var(--card);border:1px solid var(--line-2);border-radius:8px;
+  padding:14px 16px;margin-bottom:14px;
+}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand h1{font-size:16px}
+.brand .tag{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);letter-spacing:.08em}
+.topbar .spacer{flex:1}
+.readout{display:flex;gap:20px;flex-wrap:wrap}
+.readout div{display:flex;flex-direction:column;gap:2px}
+.readout dt,.readout .k{font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;color:var(--ink-3)}
+.readout .v{font-family:var(--font-mono);font-size:13px;color:var(--ink)}
+.readout .v.ok{color:var(--accent-c)}
+.readout .v.warn{color:var(--warn)}
+.readout .v.alarm{color:var(--alarm)}
+
+.brief{
+  border:1px solid var(--line);border-left:3px solid var(--accent-d);
+  background:var(--card);border-radius:6px;padding:12px 14px;margin-bottom:18px;
+  color:var(--ink-2);font-size:13px;max-width:1100px;
+}
+.brief b{color:var(--ink);font-weight:600}
+.brief code{font-family:var(--font-mono);font-size:12px;color:var(--accent-c)}
+
+/* ---------- three-column comparison ---------- */
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+@media (max-width:1300px){.grid3{grid-template-columns:1fr}}
+
+.col{
+  background:var(--card);border:1px solid var(--line-2);border-radius:10px;
+  overflow:hidden;
+}
+.col > header{
+  padding:14px 16px;border-bottom:1px solid var(--line-2);background:var(--card-2);
+}
+.col > header .code{
+  display:inline-block;font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;
+  color:var(--bg);background:var(--accent-c);padding:2px 7px;border-radius:3px;margin-bottom:8px;
+}
+.col > header h2{font-size:16px;margin-bottom:6px}
+.col > header p{margin:0;font-size:12.5px;color:var(--ink-2)}
+.col > header .use{
+  margin-top:10px;font-family:var(--font-mono);font-size:11px;color:var(--ink-3);
+  border-top:1px dashed var(--line-2);padding-top:9px;letter-spacing:.02em;
+}
+.colbody{padding:6px 16px 18px}
+
+.sec{padding:14px 0;border-bottom:1px solid var(--line)}
+.sec:last-child{border-bottom:0}
+.sec > h3{
+  font-family:var(--font-mono);font-size:10.5px;letter-spacing:.16em;
+  color:var(--ink-3);text-transform:uppercase;margin-bottom:12px;
+}
+
+/* ---------- state matrix scaffolding ---------- */
+.matrix{display:grid;grid-template-columns:74px repeat(5,minmax(0,1fr));gap:8px 8px;align-items:center}
+.matrix.wide{grid-template-columns:74px repeat(2,minmax(0,1fr))}
+.mh{
+  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;color:var(--ink-3);
+  text-transform:uppercase;padding-bottom:2px;
+}
+.rl{
+  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;color:var(--ink-2);
+  text-transform:uppercase;
+}
+.cell{min-width:0;display:flex;align-items:center;justify-content:flex-start}
+.cell > *{max-width:100%}
+.live{
+  margin-top:14px;padding:12px;border:1px dashed var(--line-2);border-radius:6px;background:var(--card-2);
+}
+.live .lh{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;color:var(--ink-3);margin-bottom:10px}
+.live .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* ============================================================
+   SHARED CONTROL STRUCTURE
+   All visual differences between treatments come from the
+   per-treatment custom properties defined further down.
+   ============================================================ */
+
+.btn{
+  position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  height:var(--ctl-h);padding:0 var(--btn-px);
+  border:var(--ctl-bw) solid transparent;border-radius:var(--ctl-r);
+  font-family:var(--font-ui);font-size:var(--ctl-fs);font-weight:var(--ctl-fw);
+  letter-spacing:var(--ctl-ls);text-transform:var(--ctl-tt);
+  color:var(--ink);background:transparent;cursor:pointer;white-space:nowrap;overflow:hidden;
+  transition:
+    background-color var(--t-base) var(--ease),
+    border-color var(--t-base) var(--ease),
+    color var(--t-base) var(--ease),
+    box-shadow var(--t-base) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+.btn svg{width:16px;height:16px;flex:0 0 auto;display:block}
+.btn-icon{width:var(--ctl-h);padding:0}
+
+/* primary */
+.btn-primary{background:var(--pri-bg);border-color:var(--pri-bd);color:var(--pri-fg);box-shadow:var(--relief)}
+.btn-primary:hover:not(:disabled),.btn-primary.s-hover{background:var(--pri-bg-h);border-color:var(--pri-bd-h)}
+.btn-primary:active:not(:disabled),.btn-primary.s-active{background:var(--pri-bg-a);border-color:var(--pri-bd-h);transform:translateY(var(--press-y));box-shadow:var(--relief-a)}
+
+/* secondary */
+.btn-secondary{background:var(--sec-bg);border-color:var(--sec-bd);color:var(--ink);box-shadow:var(--relief)}
+.btn-secondary:hover:not(:disabled),.btn-secondary.s-hover{background:var(--sec-bg-h);border-color:var(--sec-bd-h)}
+.btn-secondary:active:not(:disabled),.btn-secondary.s-active{background:var(--sec-bg-a);border-color:var(--sec-bd-h);transform:translateY(var(--press-y));box-shadow:var(--relief-a)}
+
+/* ghost */
+.btn-ghost{background:transparent;border-color:var(--ghost-bd);color:var(--ink-2)}
+.btn-ghost:hover:not(:disabled),.btn-ghost.s-hover{background:var(--ghost-bg-h);border-color:var(--ghost-bd-h);color:var(--ink)}
+.btn-ghost:active:not(:disabled),.btn-ghost.s-active{background:var(--ghost-bg-a);border-color:var(--ghost-bd-h);color:var(--ink);transform:translateY(var(--press-y))}
+
+/* icon-only inherits secondary skin */
+.btn-icon{background:var(--sec-bg);border-color:var(--sec-bd);color:var(--ink);box-shadow:var(--relief)}
+.btn-icon:hover:not(:disabled),.btn-icon.s-hover{background:var(--sec-bg-h);border-color:var(--sec-bd-h)}
+.btn-icon:active:not(:disabled),.btn-icon.s-active{background:var(--sec-bg-a);border-color:var(--sec-bd-h);transform:translateY(var(--press-y));box-shadow:var(--relief-a)}
+
+/* ---------- chip ---------- */
+.chip{
+  display:inline-flex;align-items:center;gap:6px;height:var(--chip-h);
+  padding:0 4px 0 var(--chip-px);
+  background:var(--chip-bg);border:var(--ctl-bw) solid var(--chip-bd);border-radius:var(--chip-r);
+  font-size:12.5px;color:var(--ink);max-width:100%;
+  transition:background-color var(--t-base) var(--ease),border-color var(--t-base) var(--ease);
+}
+.chip .txt{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip:hover,.chip.s-hover{background:var(--chip-bg-h);border-color:var(--chip-bd-h)}
+.chip.s-active{background:var(--chip-bg-a);border-color:var(--chip-bd-h)}
+.chip .x{
+  flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;
+  width:calc(var(--chip-h) - 10px);height:calc(var(--chip-h) - 10px);
+  border:1px solid transparent;border-radius:calc(var(--chip-r) - 2px);
+  background:transparent;color:var(--ink-2);font-family:var(--font-mono);font-size:12px;line-height:1;
+  cursor:pointer;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease);
+}
+.chip .x:hover:not(:disabled),.chip .x.s-hover{background:var(--card-3);color:var(--ink);border-color:var(--control-edge)}
+.chip .x:active:not(:disabled),.chip .x.s-active{background:var(--alarm);color:var(--bg);border-color:var(--alarm)}
+
+/* ---------- status badge (interactive: acts as a filter toggle) ---------- */
+.badge{
+  display:inline-flex;align-items:center;gap:6px;height:var(--badge-h);padding:0 9px;
+  border:var(--ctl-bw) solid var(--bd);border-radius:var(--badge-r);
+  background:var(--badge-bg);color:var(--fg);
+  font-family:var(--font-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-base) var(--ease),border-color var(--t-base) var(--ease),color var(--t-base) var(--ease),transform var(--t-fast) var(--ease);
+}
+.badge .dot{width:7px;height:7px;border-radius:50%;background:var(--fg);flex:0 0 auto}
+.badge.ok{--fg:var(--accent-c);--bd:var(--accent-d)}
+.badge.warning{--fg:var(--warn);--bd:var(--warn)}
+.badge.alarm{--fg:var(--alarm);--bd:var(--alarm)}
+.badge:hover:not(:disabled),.badge.s-hover{background:var(--card-3);border-color:var(--fg)}
+.badge:active:not(:disabled),.badge.s-active{background:var(--fg);color:var(--bg);border-color:var(--fg);transform:translateY(var(--press-y))}
+.badge:active .dot,.badge.s-active .dot{background:var(--bg)}
+
+/* ---------- text input + select ---------- */
+.field{display:flex;flex-direction:column;gap:5px;width:100%;min-width:0}
+.field > label{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;color:var(--ink-3);text-transform:uppercase}
+.input,.select{
+  width:100%;height:var(--ctl-h);padding:0 10px;
+  background:var(--in-bg);border:var(--in-bw) solid var(--in-bd);border-radius:var(--ctl-r);
+  color:var(--ink);font-family:var(--font-mono);font-size:12.5px;
+  box-shadow:var(--in-relief);
+  transition:background-color var(--t-base) var(--ease),border-color var(--t-base) var(--ease),box-shadow var(--t-base) var(--ease);
+}
+.input::placeholder{color:var(--ink-3)}
+.input:hover:not(:disabled),.input.s-hover,.select:hover:not(:disabled),.select.s-hover{border-color:var(--in-bd-h);background:var(--in-bg-h)}
+.input.s-active,.input:active:not(:disabled),.select.s-active{border-color:var(--accent-b);background:var(--in-bg-h)}
+.selwrap{position:relative;width:100%;min-width:0}
+.select{appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer}
+.selwrap::after{
+  content:"";position:absolute;right:12px;top:50%;margin-top:-2px;pointer-events:none;
+  width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;
+  border-top:5px solid var(--ink-2);
+}
+
+/* ---------- dense table (rows exactly 30px) ---------- */
+.tbl{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
+.tbl thead th{
+  height:26px;padding:0 8px;text-align:left;background:var(--card-2);
+  border-bottom:1px solid var(--line-2);
+  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.1em;color:var(--ink-3);
+  text-transform:uppercase;font-weight:500;
+}
+/* 29 px cell + 1 px divider = exactly 30 px of vertical pitch per row */
+.tbl tbody tr{height:29px;background:var(--row-bg);transition:background-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.tbl tbody td{
+  height:29px;padding:0 8px;border-bottom:1px solid var(--line);
+  font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.tbl tbody td.id{color:var(--ink)}
+.tbl tbody td.num{text-align:right;color:var(--ink)}
+.tbl tbody tr:hover,.tbl tbody tr.s-hover{background:var(--row-bg-h);box-shadow:var(--row-mark)}
+.tbl tbody tr.s-active{background:var(--row-bg-a);box-shadow:var(--row-mark)}
+.tbl tbody tr.s-disabled td{color:var(--ink-3);opacity:.5}
+.tbl tbody tr.is-selected{background:var(--row-bg-sel);box-shadow:var(--row-mark-sel)}
+.tbl .stat{display:inline-flex;align-items:center;gap:5px;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.tbl .stat i{width:6px;height:6px;border-radius:50%;display:block}
+.tbl .stat.ok{color:var(--accent-c)} .tbl .stat.ok i{background:var(--accent-c)}
+.tbl .stat.warning{color:var(--warn)} .tbl .stat.warning i{background:var(--warn)}
+.tbl .stat.alarm{color:var(--alarm)} .tbl .stat.alarm i{background:var(--alarm)}
+.tcol-a{width:22%} .tcol-b{width:26%} .tcol-c{width:24%} .tcol-d{width:16%} .tcol-e{width:12%}
+
+/* checkbox-like action inside a 30px row */
+.chk{
+  appearance:none;-webkit-appearance:none;margin:0;
+  width:var(--chk-s);height:var(--chk-s);flex:0 0 auto;
+  background:var(--in-bg);border:var(--ctl-bw) solid var(--control-edge);border-radius:var(--chk-r);
+  cursor:pointer;position:relative;display:block;
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease);
+}
+.chk:hover:not(:disabled),.chk.s-hover{border-color:var(--accent-b);background:var(--card-3)}
+.chk:active:not(:disabled),.chk.s-active{background:var(--accent-d);border-color:var(--accent-b)}
+.chk:checked{background:var(--accent);border-color:var(--accent-b)}
+.chk:checked::after{
+  content:"";position:absolute;left:50%;top:48%;
+  width:calc(var(--chk-s) * .30);height:calc(var(--chk-s) * .55);
+  border-right:2px solid var(--bg);border-bottom:2px solid var(--bg);
+  transform:translate(-50%,-55%) rotate(45deg);
+}
+.chkwrap{display:flex;align-items:center;justify-content:center;height:29px}
+
+/* ---------- focus-visible: solid ring, no glow, no color bleed ---------- */
+:where(.btn,.badge,.input,.select,.chk,.chip .x):focus{outline:none}
+:where(.btn,.badge,.input,.select,.chk,.chip .x):focus-visible,
+:where(.btn,.badge,.input,.select,.chk,.chip .x).s-focus{
+  outline:var(--focus-w) solid var(--accent-c);
+  outline-offset:var(--focus-off);
+}
+.tbl tbody tr.s-focus{outline:2px solid var(--accent-c);outline-offset:-2px}
+
+/* ---------- disabled: single consistent rule ---------- */
+:where(.btn,.badge,.input,.select,.chk,.chip .x):disabled,
+:where(.btn,.badge,.input,.select,.chk,.chip .x).s-disabled,
+.chip.s-disabled{
+  opacity:.42;cursor:not-allowed;transform:none;box-shadow:none;
+}
+.chip.s-disabled .x{pointer-events:none}
+
+/* ============================================================
+   TREATMENT A — "MACHINED BEZEL"
+   Raised, tactile, hardware-like. 40px controls, 6px radius,
+   neutral 1px top highlight for lift, 1px physical press.
+   ============================================================ */
+.tA{
+  --ctl-h:40px; --ctl-r:6px; --ctl-bw:1px; --btn-px:14px;
+  --ctl-fs:13.5px; --ctl-fw:600; --ctl-ls:.01em; --ctl-tt:none;
+  --press-y:1px; --focus-w:2px; --focus-off:2px;
+  --relief:inset 0 1px 0 rgba(232,239,247,.07);
+  --relief-a:inset 0 2px 3px rgba(13,17,23,.55);
+
+  --pri-bg:var(--accent); --pri-bg-h:var(--accent-b); --pri-bg-a:var(--accent-d);
+  --pri-bd:var(--accent-c); --pri-bd-h:var(--accent-c); --pri-fg:var(--bg);
+
+  --sec-bg:var(--card-2); --sec-bg-h:var(--card-3); --sec-bg-a:var(--card);
+  --sec-bd:var(--control-edge); --sec-bd-h:var(--accent-b);
+
+  --ghost-bd:transparent; --ghost-bd-h:var(--control-edge);
+  --ghost-bg-h:var(--card-2); --ghost-bg-a:var(--card);
+
+  --chip-h:28px; --chip-r:6px; --chip-px:9px;
+  --chip-bg:var(--card-2); --chip-bg-h:var(--card-3); --chip-bg-a:var(--card);
+  --chip-bd:var(--control-edge); --chip-bd-h:var(--accent-b);
+
+  --badge-h:24px; --badge-r:5px; --badge-bg:var(--card-2);
+
+  --in-bg:var(--card-2); --in-bg-h:var(--card-3); --in-bw:1px;
+  --in-bd:var(--control-edge); --in-bd-h:var(--accent-b);
+  --in-relief:inset 0 2px 3px rgba(13,17,23,.45);
+
+  --chk-s:18px; --chk-r:4px;
+
+  --row-bg:var(--card); --row-bg-h:var(--card-2); --row-bg-a:var(--card-3);
+  --row-bg-sel:var(--card-3); --row-mark:none;
+  --row-mark-sel:inset 3px 0 0 var(--accent);
+}
+
+/* ============================================================
+   TREATMENT B — "FLAT SIGNAL"
+   Zero depth, outline-first, 44px targets, 2px borders,
+   2px radius. Built to be read across a noisy shop at 1.5 m.
+   ============================================================ */
+.tB{
+  --ctl-h:44px; --ctl-r:2px; --ctl-bw:2px; --btn-px:14px;
+  --ctl-fs:13px; --ctl-fw:600; --ctl-ls:.06em; --ctl-tt:uppercase;
+  --press-y:0px; --focus-w:3px; --focus-off:2px;
+  --relief:none; --relief-a:none;
+
+  --pri-bg:var(--accent); --pri-bg-h:var(--accent-c); --pri-bg-a:var(--accent-d);
+  --pri-bd:var(--accent); --pri-bd-h:var(--accent-c); --pri-fg:var(--bg);
+
+  --sec-bg:transparent; --sec-bg-h:var(--card-2); --sec-bg-a:var(--accent-d);
+  --sec-bd:var(--control-edge); --sec-bd-h:var(--accent-b);
+
+  --ghost-bd:transparent; --ghost-bd-h:var(--accent-b);
+  --ghost-bg-h:transparent; --ghost-bg-a:var(--card-2);
+
+  --chip-h:32px; --chip-r:2px; --chip-px:10px;
+  --chip-bg:transparent; --chip-bg-h:var(--card-2); --chip-bg-a:var(--card-3);
+  --chip-bd:var(--control-edge); --chip-bd-h:var(--accent-b);
+
+  --badge-h:26px; --badge-r:2px; --badge-bg:transparent;
+
+  --in-bg:var(--bg); --in-bg-h:var(--card); --in-bw:2px;
+  --in-bd:var(--control-edge); --in-bd-h:var(--accent-b);
+  --in-relief:none;
+
+  --chk-s:20px; --chk-r:2px;
+
+  --row-bg:transparent; --row-bg-h:var(--card-2); --row-bg-a:var(--card-3);
+  --row-bg-sel:var(--card-2); --row-mark:none;
+  --row-mark-sel:inset 0 0 0 2px var(--accent-d);
+}
+/* B: pressed secondary flips to a filled slab — unmistakable at distance */
+.tB .btn-secondary:active:not(:disabled),.tB .btn-secondary.s-active,
+.tB .btn-icon:active:not(:disabled),.tB .btn-icon.s-active{color:var(--ink)}
+.tB .btn-ghost{text-decoration:underline;text-decoration-color:var(--line-2);text-underline-offset:4px}
+.tB .btn-ghost:hover:not(:disabled),.tB .btn-ghost.s-hover{text-decoration-color:var(--accent-b)}
+
+/* ============================================================
+   TREATMENT C — "INSET WELL / EDGE-CODED"
+   48px glove-first targets, 10px radius, recessed inputs,
+   3px accent edge marker slides in on hover/press.
+   ============================================================ */
+.tC{
+  --ctl-h:48px; --ctl-r:10px; --ctl-bw:1px; --btn-px:18px;
+  --ctl-fs:14px; --ctl-fw:600; --ctl-ls:.01em; --ctl-tt:none;
+  --press-y:0px; --focus-w:2px; --focus-off:3px;
+  --relief:none; --relief-a:inset 0 0 0 1px var(--accent-d);
+
+  --pri-bg:var(--accent-d); --pri-bg-h:var(--accent); --pri-bg-a:var(--accent-b);
+  --pri-bd:var(--accent-b); --pri-bd-h:var(--accent-c); --pri-fg:var(--ink);
+
+  --sec-bg:var(--card-3); --sec-bg-h:var(--card-2); --sec-bg-a:var(--bg);
+  --sec-bd:var(--control-edge); --sec-bd-h:var(--accent-c);
+
+  --ghost-bd:transparent; --ghost-bd-h:transparent;
+  --ghost-bg-h:var(--card-2); --ghost-bg-a:var(--bg);
+
+  --chip-h:34px; --chip-r:17px; --chip-px:12px;
+  --chip-bg:var(--card-3); --chip-bg-h:var(--card-2); --chip-bg-a:var(--bg);
+  --chip-bd:var(--control-edge); --chip-bd-h:var(--accent-c);
+
+  --badge-h:28px; --badge-r:14px; --badge-bg:var(--card-3);
+
+  --in-bg:var(--bg); --in-bg-h:var(--bg); --in-bw:1px;
+  --in-bd:var(--control-edge); --in-bd-h:var(--accent-c);
+  --in-relief:inset 0 3px 6px rgba(13,17,23,.7);
+
+  --chk-s:22px; --chk-r:6px;
+
+  --row-bg:var(--card); --row-bg-h:var(--card-2); --row-bg-a:var(--card-3);
+  --row-bg-sel:var(--card-2);
+  --row-mark:inset 3px 0 0 var(--line-2);
+  --row-mark-sel:inset 3px 0 0 var(--accent-b);
+}
+/* C: primary text is light ink on accent-d — verified 4.5:1+ */
+.tC .btn-primary:hover:not(:disabled),.tC .btn-primary.s-hover,
+.tC .btn-primary:active:not(:disabled),.tC .btn-primary.s-active{color:var(--bg)}
+/* C: edge marker on secondary / icon / ghost */
+.tC .btn-secondary::before,.tC .btn-icon::before,.tC .btn-ghost::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:0;background:var(--accent-b);
+  transition:width var(--t-base) var(--ease);
+}
+.tC .btn-secondary:hover:not(:disabled)::before,.tC .btn-secondary.s-hover::before,
+.tC .btn-icon:hover:not(:disabled)::before,.tC .btn-icon.s-hover::before,
+.tC .btn-ghost:hover:not(:disabled)::before,.tC .btn-ghost.s-hover::before{width:3px}
+.tC .btn-secondary:active:not(:disabled)::before,.tC .btn-secondary.s-active::before,
+.tC .btn-icon:active:not(:disabled)::before,.tC .btn-icon.s-active::before,
+.tC .btn-ghost:active:not(:disabled)::before,.tC .btn-ghost.s-active::before{width:5px;background:var(--accent-c)}
+
+/* ---------- spec footnotes ---------- */
+.notes{
+  margin-top:20px;background:var(--card);border:1px solid var(--line-2);border-radius:10px;padding:16px 18px;
+}
+.notes h3{font-size:14px;margin-bottom:10px}
+.notes .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.notes ul{margin:0;padding-left:18px;color:var(--ink-2);font-size:12.5px}
+.notes li{margin-bottom:6px}
+.notes .k{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.12em;color:var(--ink-3);text-transform:uppercase;display:block;margin-bottom:6px}
+.notes b{color:var(--ink)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ===================== TOP BAR ===================== -->
+  <header class="topbar">
+    <div class="brand">
+      <h1>MILL-OPS</h1>
+      <span class="tag">CONTROL SYSTEM / SPEC SHEET v3</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="readout">
+      <div><span class="k">CELL</span><span class="v">DM-04 / 5-AXIS</span></div>
+      <div><span class="k">SPINDLE</span><span class="v ok">38 400 RPM</span></div>
+      <div><span class="k">COOLANT</span><span class="v warn">21.4 L</span></div>
+      <div><span class="k">TOOL LIFE</span><span class="v alarm">T3 · 4 %</span></div>
+      <div><span class="k">QUEUE</span><span class="v">17 CASES</span></div>
+    </div>
+  </header>
+
+  <p class="brief">
+    <b>Same control set, three treatments, evaluated side by side.</b> Every control is shown in all five states —
+    <code>rest / hover / active / focus-visible / disabled</code> — using forced state classes
+    (<code>.s-hover</code>, <code>.s-active</code>, <code>.s-focus</code>, <code>.s-disabled</code>) so the full matrix is
+    visible at once. Each treatment also has a <b>LIVE</b> strip at the bottom of every section: hover, click, and
+    <code>Tab</code> through those to confirm the forced states match real behavior. Motion is deceleration-only,
+    ≤ 220 ms, no loops, no elastic easing, no colored glow — focus is a solid offset ring. All control borders use
+    <code>--control-edge</code> on <code>--card</code>/<code>--card-2</code> surfaces (≈ 3.5:1).
+  </p>
+
+  <div class="grid3">
+
+    <!-- ============================================================
+         COLUMN 1 — TREATMENT A
+         ============================================================ -->
+    <section class="col tA" aria-labelledby="tA-h">
+      <header>
+        <span class="code">TREATMENT A</span>
+        <h2 id="tA-h">Machined Bezel</h2>
+        <p>Raised, hardware-like controls. 40 px targets, 6 px radius, a neutral 1 px top highlight for lift, and a real 1 px downward press with an inset shadow on hold.</p>
+        <div class="use">STRENGTH: PRESS IS FELT VISUALLY · RISK: DENSEST OF THE THREE, SMALLEST TARGETS</div>
+      </header>
+      <div class="colbody">
+
+        <!-- BUTTONS -->
+        <div class="sec">
+          <h3>A1 · Buttons</h3>
+          <div class="matrix">
+            <div></div>
+            <div class="mh">rest</div><div class="mh">hover</div><div class="mh">active</div><div class="mh">focus</div><div class="mh">disabled</div>
+
+            <div class="rl">primary</div>
+            <div class="cell"><button class="btn btn-primary">Start</button></div>
+            <div class="cell"><button class="btn btn-primary s-hover">Start</button></div>
+            <div class="cell"><button class="btn btn-primary s-active">Start</button></div>
+            <div class="cell"><button class="btn btn-primary s-focus">Start</button></div>
+            <div class="cell"><button class="btn btn-primary" disabled>Start</button></div>
+
+            <div class="rl">secondary</div>
+            <div class="cell"><button class="btn btn-secondary">Hold</button></div>
+            <div class="cell"><button class="btn btn-secondary s-hover">Hold</button></div>
+            <div class="cell"><button class="btn btn-secondary s-active">Hold</button></div>
+            <div class="cell"><button class="btn btn-secondary s-focus">Hold</button></div>
+            <div class="cell"><button class="btn btn-secondary" disabled>Hold</button></div>
+
+            <div class="rl">ghost</div>
+            <div class="cell"><button class="btn btn-ghost">Log</button></div>
+            <div class="cell"><button class="btn btn-ghost s-hover">Log</button></div>
+            <div class="cell"><button class="btn btn-ghost s-active">Log</button></div>
+            <div class="cell"><button class="btn btn-ghost s-focus">Log</button></div>
+            <div class="cell"><button class="btn btn-ghost" disabled>Log</button></div>
+
+            <div class="rl">icon</div>
+            <div class="cell"><button class="btn btn-icon" aria-label="Pause spindle"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3" width="3" height="10" fill="currentColor"/><rect x="9" y="3" width="3" height="10" fill="currentColor"/></svg></button></div>
+            <div class="cell"><button class="btn btn-icon s-hover" aria-label="Pause spindle"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3" width="3" height="10" fill="currentColor"/><rect x="9" y="3" width="3" height="10" fill="currentColor"/></svg></button></div>
+            <div class="cell"><button class="btn btn-icon s-active" aria-label="Pause spindle"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3" width="3" height="10" fill="currentColor"/><rect x="9" y="3" width="3" height="10" fill="currentColor"/></svg></button></div>
+            <div class="cell"><button class="btn btn-icon s-focus" aria-label="Pause spindle"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3" width="3" height="10" fill="currentColor"/><rect x="9" y="3" width="3" height="10" fill="currentColor"/></svg></button></div>
+            <div class="cell"><button class="btn btn-icon" disabled aria-label="Pause spindle"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3" width="3" height="10" fill="currentColor"/><rect x="9" y="3" width="3" height="10" fill="currentColor"/></svg></button></div>
+          </div>
+          <div class="live">
+            <div class="lh">LIVE — A / BUTTONS</div>
+            <div class="row">
+              <button class="btn btn-primary">Start</button>
+              <button class="btn btn-secondary">Hold</button>
+              <button class="btn btn-ghost">Log</button>
+              <button class="btn btn-icon" aria-label="Pause spindle"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3" width="3" height="10" fill="currentColor"/><rect x="9" y="3" width="3" height="10" fill="currentColor"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- CHIPS -->
+        <div class="sec">
+          <h3>A2 · Removable chip</h3>
+          <div class="matrix">
+            <div></div>
+            <div class="mh">rest</div><div class="mh">hover</div><div class="mh">active ×</div><div class="mh">focus ×</div><div class="mh">disabled</div>
+            <div class="rl">filter</div>
+            <div class="cell"><span class="chip"><span class="txt">ZrO2-A2</span><button class="x" aria-label="Remove filter ZrO2-A2">×</button></span></div>
+            <div class="cell"><span class="chip s-hover"><span class="txt">ZrO2-A2</span><button class="x s-hover" aria-label="Remove filter ZrO2-A2">×</button></span></div>
+            <div class="cell"><span class="chip s-hover"><span class="txt">ZrO2-A2</span><button class="x s-active" aria-label="Remove filter ZrO2-A2">×</button></span></div>
+            <div class="cell"><span class="chip"><span class="txt">ZrO2-A2</span><button class="x s-focus" aria-label="Remove filter ZrO2-A2">×</button></span></div>
+            <div class="cell"><span class="chip s-disabled"><span class="txt">ZrO2-A2</span><button class="x" disabled aria-label="Remove filter ZrO2-A2">×</button></span></div>
+          </div>
+          <div class="live">
+            <div class="lh">LIVE — A / CHIPS</div>
+            <div class="row">
+              <span class="chip"><span class="txt">PMMA</span><button class="x" aria-label="Remove filter PMMA">×</button></span>
+              <span class="chip"><span class="txt">T3 · 2.0 mm</span><button class="x" aria-label="Remove filter T3 2.0 mm">×</button></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- BADGES -->
+        <div class="sec">
+          <h3>A3 · Status badges (filter toggles)</h3>
+          <div class="matrix">
+            <div></div>
+            <div class="mh">rest</div><div class="mh">hover</div><div class="mh">active</div><div class="mh">focus</div><div class="mh">disabled</div>
+            <div class="rl">ok</div>
+            <div class="cell"><button class="badge ok"><i class="dot"></i>Ok</button></div>
+            <div class="cell"><button class="badge ok s-hover"><i class="dot"></i>Ok</button></div>
+            <div class="cell"><button class="badge ok s-active"><i class="dot"></i>Ok</button></div>
+            <div class="cell"><button class="badge ok s-focus"><i class="dot"></i>Ok</button></div>
+            <div class="cell"><button class="badge ok" disabled><i class="dot"></i>Ok</button></div>
+            <div class="rl">warning</div>
+            <div class="cell"><button class="badge warning"><i class="dot"></i>Warn</button></div>
+            <div class="cell"><button class="badge warning s-hover"><i class="dot"></i>Warn</button></div>
+            <div class="cell"><button class="badge warning s-active"><i class="dot"></i>Warn</button></div>
+            <div class="cell"><button class="badge warning s-focus"><i class="dot"></i>Warn</button></div>
+            <div class="cell"><button class="badge warning" disabled><i class="dot"></i>Warn</button></div>
+            <div class="rl">alarm</div>
+            <div class="cell"><button class="badge alarm"><i class="dot"></i>Alarm</button></div>
+            <div class="cell"><button class="badge alarm s-hover"><i class="dot"></i>Alarm</button></div>
+            <div class="cell"><button class="badge alarm s-active"><i class="dot"></i>Alarm</button></div>
+            <div class="cell"><button class="badge alarm s-focus"><i class="dot"></i>Alarm</button></div>
+            <div class="cell"><button class="badge alarm" disabled><i class="dot"></i>Alarm</button></div>
+          </div>
+        </div>
+
+        <!-- FIELDS -->
+        <div class="sec">
+          <h3>A4 · Text input &amp; select</h3>
+          <div class="matrix wide">
+            <div></div><div class="mh">text input</div><div class="mh">select</div>
+            <div class="rl">rest</div>
+            <div class="cell"><input class="input" value="CASE-40817" aria-label="Case ID rest" /></div>
+            <div class="cell"><span class="selwrap"><select class="select" aria-label="Material rest"><option>Zirconia · A2</option><option>PMMA</option></select></span></div>
+            <div class="rl">hover</div>
+            <div class="cell"><input class="input s-hover" value="CASE-40817" aria-label="Case ID hover" /></div>
+            <div class="cell"><span class="selwrap"><select class="select s-hover" aria-label="Material hover"><option>Zirconia · A2</option></select></span></div>
+            <div class="rl">active</div>
+            <div class="cell"><input class="input s-active" value="CASE-40817" aria-label="Case ID active" /></div>
+            <div class="cell"><span class="selwrap"><select class="select s-active" aria-label="Material active"><option>Zirconia · A2</option></select></span></div>
+            <div class="rl">focus</div>
+            <div class="cell"><input class="input s-focus" value="CASE-40817" aria-label="Case ID focus" /></div>
+            <div class="cell"><span class="selwrap"><select class="select s-focus" aria-label="Material focus"><option>Zirconia · A2</option></select></span></div>
+            <div class="rl">disabled</div>
+            <div class="cell"><input class="input" value="CASE-40817" disabled aria-label="Case ID disabled" /></div>
+            <div class="cell"><span class="selwrap"><select class="select" disabled aria-label="Material disabled"><option>Zirconia · A2</option></select></span></div>
+          </div>
+          <div class="live">
+            <div class="lh">LIVE — A / FIELDS</div>
+            <div class="row" style="gap:10px">
+              <span class="field" style="flex:1;min-width:120px"><label for="a-in">case id</label><input class="input" id="a-in" placeholder="CASE-…" /></span>
+              <span class="field" style="flex:1;min-width:120px"><label for="a-sel">material</label><span class="selwrap"><select class="select" id="a-sel"><option>Zirconia · A2</option><option>PMMA</option><option>Wax</option></select></span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TABLE -->
+        <div class="sec">
+          <h3>A5 · Dense queue rows — 30 px</h3>
+          <table class="tbl">
+            <caption class="sr-only">Treatment A dense job queue, one row per state</caption>
+            <thead><tr><th class="tcol-a">Job</th><th class="tcol-b">Case</th><th class="tcol-c">Status</th><th class="tcol-d">%</th><th class="tcol-e">Done</th></tr></thead>
+            <tbody>
+              <tr><td class="id">J-40817</td><td>Crown 26 · ZrO2</td><td><span class="stat ok"><i></i>Cutting</span></td><td class="num">62</td><td><span class="chkwrap"><input class="chk" type="checkbox" aria-label="Mark J-40817 done" /></span></td></tr>
+              <tr class="s-hover"><td class="id">J-40818</td><td>Bridge 14-16</td><td><span class="stat ok"><i></i>Queued</span></td><td class="num">0</td><td><span class="chkwrap"><input class="chk s-hover" type="checkbox" aria-label="Mark J-40818 done" /></span></td></tr>
+              <tr class="s-active"><td class="id">J-40819</td><td>Inlay 37 · PMMA</td><td><span class="stat warning"><i></i>Tool wear</span></td><td class="num">88</td><td><span class="chkwrap"><input class="chk s-active" type="checkbox" aria-label="Mark J-40819 done" /></span></td></tr>
+              <tr class="s-focus"><td class="id">J-40820</td><td>Abutment 11</td><td><span class="stat alarm"><i></i>Coolant</span></td><td class="num">41</td><td><span class="chkwrap"><input class="chk s-focus" type="checkbox" aria-label="Mark J-40820 done" /></span></td></tr>
+              <tr class="is-selected"><td class="id">J-40821</td><td>Splint · Wax</td><td><span class="stat ok"><i></i>Done</span></td><td class="num">100</td><td><span class="chkwrap"><input class="chk" type="checkbox" checked aria-label="Mark J-40821 done" /></span></td></tr>
+              <tr class="s-disabled"><td class="id">J-40822</td><td>Veneer 21 · locked</td><td><span class="stat ok"><i></i>Hold</span></td><td class="num">—</td><td><span class="chkwrap"><input class="chk" type="checkbox" disabled aria-label="Mark J-40822 done" /></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================
+         COLUMN 2 — TREATMENT B
+         ============================================================ -->
+    <section class="col tB" aria-labelledby="tB-h">
+      <header>
+        <span class="code">TREATMENT B</span>
+        <h2 id="tB-h">Flat Signal</h2>
+        <p>No depth at all. 44 px targets, 2 px borders, 2 px radius, uppercase labels. Press fills the control as a solid slab instead of moving it, so state reads from across the shop.</p>
+        <div class="use">STRENGTH: LEGIBLE AT 1.5 M, CHEAPEST TO PAINT · RISK: NO TACTILE FEEDBACK CUE</div>
+      </header>
+      <div class="colbody">
+
+        <div class="sec">
+          <h3>B1 · Buttons</h3>
+          <div class="matrix">
+            <div></div>
+            <div class="mh">rest</div><div class="mh">hover</div><div class="mh">active</div><div class="mh">focus</div><div class="mh">disabled</div>
+
+            <div class="rl">primary</div>
+            <div class="cell"><button class="btn btn-primary">Start</button></div>
+            <div class="cell"><button class="btn btn-primary s-hover">Start</button></div>
+            <div class="cell"><button class="btn btn-primary s-active">Start</button></div>
+            <div class="cell"><button class="btn btn-primary s-focus">Start</button></div>
+            <div class="cell"><button class="btn btn-primary" disabled>Start</button></div>
+
+            <div class="rl">secondary</div>
+            <div class="cell"><button class="btn btn-secondary">Hold</button></div>
+            <div class="cell"><button class="btn btn-secondary s-hover">Hold</button></div>
+            <div class="cell"><button class="btn btn-secondary s-active">Hold</button></div>
+            <div class="cell"><button class="btn btn-secondary s-focus">Hold</button></div>
+            <div class="cell"><button class="btn btn-secondary" disabled>Hold</button></div>
+
+            <div class="rl">ghost</div>
+            <div class="cell"><button class="btn btn-ghost">Log</button></div>
+            <div class="cell"><button class="btn btn-ghost s-hover">Log</button></div>
+            <div class="cell"><button class="btn btn-ghost s-active">Log</button></div>
+            <div class="cell"><button class="btn btn-ghost s-focus">Log</button></div>
+            <div class="cell"><button class="btn btn-ghost" disabled>Log</button></div>
+
+            <div class="rl">icon</div>
+            <div class="cell"><button class="btn btn-icon" aria-label="Retract axis"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M8 3 4 7M8 3l4 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="square"/></svg></button></div>
+            <div class="cell"><button class="btn btn-icon s-hover" aria-label="Retract axis"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M8 3 4 7M8 3l4 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="square"/></svg></button></div>
+            <div class="cell"><button class="btn btn-icon s-active" aria-label="Retract axis"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M8 3 4 7M8 3l4 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="square"/></svg></button></div>
+            <div class="cell"><button class="btn btn-icon s-focus" aria-label="Retract axis"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M8 3 4 7M8 3l4 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="square"/></svg></button></div>
+            <div class="cell"><button class="btn btn-icon" disabled aria-label="Retract axis"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M8 3 4 7M8 3l4 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="square"/></svg></button></div>
+          </div>
+          <div class="live">
+            <div class="lh">LIVE — B / BUTTONS</div>
+            <div class="row">
+              <button class="btn btn-primary">Start</button>
+              <button class="btn btn-secondary">Hold</button>
+              <button class="btn btn-ghost">Log</button>
+              <button class="btn btn-icon" aria-label="Retract axis"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M8 3 4 7M8 3l4 4" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="square"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h3>B2 · Removable chip</h3>
+          <div class="matrix">
+            <div></div>
+            <div class="mh">rest</div><div class="mh">hover</div><div class="mh">active ×</div><div class="mh">focus ×</div><div class="mh">disabled</div>
+            <div class="rl">filter</div>
+            <div class="cell"><span class="chip"><span class="txt">ZrO2-A2</span><button class="x" aria-label="Remove filter ZrO2-A2">×</button></span></div>
+            <div class="cell"><span class="chip s-hover"><span class="txt">ZrO2-A2</span><button class="x s-hover" aria-label="Remove filter ZrO2-A2">×</button></span></div>
+            <div class="cell"><span class="chip s-hover"><span class="txt">ZrO2-A2</span><button class="x s-active" aria-label="Remove filter ZrO2-A2">×</button></span></div>
+            <div class="cell"><span class="chip"><span class="txt">ZrO2-A2</span><button class="x s-focus" aria-label="Remove filter ZrO2-A2">×</button></span></div>
+            <div class="cell"><span class="chip s-disabled"><span class="txt">ZrO2-A2</span><button class="x" disabled aria-label="Remove filter ZrO2-A2">×</button></span></div>
+          </div>
+          <div class="live">
+            <div class="lh">LIVE — B / CHIPS</div>
+            <div class="row">
+              <span class="chip"><span class="txt">PMMA</span><button class="x" aria-label="Remove filter PMMA">×</button></span>
+              <span class="chip"><span class="txt">T3 · 2.0 mm</span><button class="x" aria-label="Remove filter T3 2.0 mm">×</button></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h3>B3 · Status badges (filter toggles)</h3>
+          <div class="matrix">
+            <div></div>
+            <div class="mh">rest</div><div class="mh">hover</div><div class="mh">active</div><div class="mh">focus</div><div class="mh">disabled</div>
+            <div class="rl">ok</div>
+            <div class="cell"><button class="badge ok"><i class="dot"></i>Ok</button></div>
+            <div class="cell"><button class="badge ok s-hover"><i class="dot"></i>Ok</button></div>
+            <div class="cell"><button class="badge ok s-active"><i class="dot"></i>Ok</button></div>
+            <div class="cell"><button class="badge ok s-focus"><i class="dot"></i>Ok</button></div>
+            <div class="cell"><button class="badge ok" disabled><i class="dot"></i>Ok</button></div>
+            <div class="rl">warning</div>
+            <div class="cell"><button class="badge warning"><i class="dot"></i>Warn</button></div>
+            <div class="cell"><button class="badge warning s-hover"><i class="dot"></i>Warn</button></div>
+            <div class="cell"><button class="badge warning s-active"><i class="dot"></i>Warn</button></div>
+            <div class="cell"><button class="badge warning s-focus"><i class="dot"></i>Warn</button></div>
+            <div class="cell"><button class="badge warning" disabled><i class="dot"></i>Warn</button></div>
+            <div class="rl">alarm</div>
+            <div class="cell"><button class="badge alarm"><i class="dot"></i>Alarm</button></div>
+            <div class="cell"><button class="badge alarm s-hover"><i class="dot"></i>Alarm</button></div>
+            <div class="cell"><button class="badge alarm s-active"><i class="dot"></i>Alarm</button></div>
+            <div class="cell"><button class="badge alarm s-focus"><i class="dot"></i>Alarm</button></div>
+            <div class="cell"><button class="badge alarm" disabled><i class="dot"></i>Alarm</button></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h3>B4 · Text input &amp; select</h3>
+          <div class="matrix wide">
+            <div></div><div class="mh">text input</div><div class="mh">select</div>
+            <div class="rl">rest</div>
+            <div class="cell"><input class="input" value="CASE-40817" aria-label="Case ID rest B" /></div>
+            <div class="cell"><span class="selwrap"><select class="select" aria-label="Material rest B"><option>Zirconia · A2</option><option>PMMA</option></select></span></div>
+            <div class="rl">hover</div>
+            <div class="cell"><input class="input s-hover" value="CASE-40817" aria-label="Case ID hover B" /></div>
+            <div class="cell"><span class="selwrap"><select class="select s-hover" aria-label="Material hover B"><option>Zirconia · A2</option></select></span></div>
+            <div class="rl">active</div>
+            <div class="cell"><input class="input s-active" value="CASE-40817" aria-label="Case ID active B" /></div>
+            <div class="cell"><span class="selwrap"><select class="select s-active" aria-label="Material active B"><option>Zirconia · A2</option></select></span></div>
+            <div class="rl">focus</div>
+            <div class="cell"><input class="input s-focus" value="CASE-40817" aria-label="Case ID focus B" /></div>
+            <div class="cell"><span class="selwrap"><select class="select s-focus" aria-label="Material focus B"><option>Zirconia · A2</option></select></span></div>
+            <div class="rl">disabled</div>
+            <div class="cell"><input class="input" value="CASE-40817" disabled aria-label="Case ID disabled B" /></div>
+            <div class="cell"><span class="selwrap"><select class="select" disabled aria-label="Material disabled B"><option>Zirconia · A2</option></select></span></div>
+          </div>
+          <div class="live">
+            <div class="lh">LIVE — B / FIELDS</div>
+            <div class="row" style="gap:10px">
+              <span class="field" style="flex:1;min-width:120px"><label for="b-in">case id</label><input class="input" id="b-in" placeholder="CASE-…" /></span>
+              <span class="field" style="flex:1;min-width:120px"><label for="b-sel">material</label><span class="selwrap"><select class="select" id="b-sel"><option>Zirconia · A2</option><option>PMMA</option><option>Wax</option></select></span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h3>B5 · Dense queue rows — 30 px</h3>
+          <table class="tbl">
+            <caption class="sr-only">Treatment B dense job queue, one row per state</caption>
+            <thead><tr><th class="tcol-a">Job</th><th class="tcol-b">Case</th><th class="tcol-c">Status</th><th class="tcol-d">%</th><th class="tcol-e">Done</th></tr></thead>
+            <tbody>
+              <tr><td class="id">J-40817</td><td>Crown 26 · ZrO2</td><td><span class="stat ok"><i></i>Cutting</span></td><td class="num">62</td><td><span class="chkwrap"><input class="chk" type="checkbox" aria-label="B mark J-40817 done" /></span></td></tr>
+              <tr class="s-hover"><td class="id">J-40818</td><td>Bridge 14-16</td><td><span class="stat ok"><i></i>Queued</span></td><td class="num">0</td><td><span class="chkwrap"><input class="chk s-hover" type="checkbox" aria-label="B mark J-40818 done" /></span></td></tr>
+              <tr class="s-active"><td class="id">J-40819</td><td>Inlay 37 · PMMA</td><td><span class="stat warning"><i></i>Tool wear</span></td><td class="num">88</td><td><span class="chkwrap"><input class="chk s-active" type="checkbox" aria-label="B mark J-40819 done" /></span></td></tr>
+              <tr class="s-focus"><td class="id">J-40820</td><td>Abutment 11</td><td><span class="stat alarm"><i></i>Coolant</span></td><td class="num">41</td><td><span class="chkwrap"><input class="chk s-focus" type="checkbox" aria-label="B mark J-40820 done" /></span></td></tr>
+              <tr class="is-selected"><td class="id">J-40821</td><td>Splint · Wax</td><td><span class="stat ok"><i></i>Done</span></td><td class="num">100</td><td><span class="chkwrap"><input class="chk" type="checkbox" checked aria-label="B mark J-40821 done" /></span></td></tr>
+              <tr class="s-disabled"><td class="id">J-40822</td><td>Veneer 21 · locked</td><td><span class="stat ok"><i></i>Hold</span></td><td class="num">—</td><td><span class="chkwrap"><input class="chk" type="checkbox" disabled aria-label="B mark J-40822 done" /></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================
+         COLUMN 3 — TREATMENT C
+         ============================================================ -->
+    <section class="col tC" aria-labelledby="tC-h">
+      <header>
+        <span class="code">TREATMENT C</span>
+        <h2 id="tC-h">Inset Well · Edge-Coded</h2>
+        <p>Glove-first. 48 px targets, 10 px radius, deeply recessed inputs so entry fields never read as buttons, and a 3 px accent edge marker that slides in on hover and thickens on press.</p>
+        <div class="use">STRENGTH: LARGEST TARGETS, CLEAREST INPUT-VS-ACTION SPLIT · RISK: EATS VERTICAL SPACE</div>
+      </header>
+      <div class="colbody">
+
+        <div class="sec">
+          <h3>C1 · Buttons</h3>
+          <div class="matrix">
+            <div></div>
+            <div class="mh">rest</div><div class="mh">hover</div><div class="mh">active</div><div class="mh">focus</div><div class="mh">disabled</div>
+
+            <div class="rl">primary</div>
+            <div class="cell"><button class="btn btn-primary">Start</button></div>
+            <div class="cell"><button class="btn btn-primary s-hover">Start</button></div>
+            <div class="cell"><button class="btn btn-primary s-active">Start</button></div>
+            <div class="cell"><button class="btn btn-primary s-focus">Start</button></div>
+            <div class="cell"><button class="btn btn-primary" disabled>Start</button></div>
+
+            <div class="rl">secondary</div>
+            <div class="cell"><button class="btn btn-secondary">Hold</button></div>
+            <div class="cell"><button class="btn btn-secondary s-hover">Hold</button></div>
+            <div class="cell"><button class="btn btn-secondary s-active">Hold</button></div>
+            <div class="cell"><button class="btn btn-secondary s-focus">Hold</button></div>
+            <div class="cell"><button class="btn btn-secondary" disabled>Hold</button></div>
+
+            <div class="rl">ghost</div>
+            <div class="cell"><button class="btn btn-ghost">Log</button></div>
+            <div class="cell"><button class="btn btn-ghost s-hover">Log</button></div>
+            <div class="cell"><button class="btn btn-ghost s-active">Log</button></div>
+            <div class="cell"><button class="btn btn-ghost s-focus">Log</button></div>
+            <div class="cell"><button class="btn btn-ghost" disabled>Log</button></div>
+
+            <div class="rl">icon</div>
+            <div class="cell"><button class="btn btn-icon" aria-label="Open door"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2.5" width="10" height="11" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="10.5" cy="8" r="1" fill="currentColor"/></svg></button></div>
+            <div class="cell"><button class="btn btn-icon s-hover" aria-label="Open door"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2.5" width="10" height="11" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="10.5" cy="8" r="1" fill="currentColor"/></svg></button></div>
+            <div class="cell"><button class="btn btn-icon s-active" aria-label="Open door"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2.5" width="10" height="11" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="10.5" cy="8" r="1" fill="currentColor"/></svg></button></div>
+            <div class="cell"><button class="btn btn-icon s-focus" aria-label="Open door"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2.5" width="10" height="11" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="10.5" cy="8" r="1" fill="currentColor"/></svg></button></div>
+            <div class="cell"><button class="btn btn-icon" disabled aria-label="Open door"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2.5" width="10" height="11" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="10.5" cy="8" r="1" fill="currentColor"/></svg></button></div>
+          </div>
+          <div class="live">
+            <div class="lh">LIVE — C / BUTTONS</div>
+            <div class="row">
+              <button class="btn btn-primary">Start</button>
+              <button class="btn btn-secondary">Hold</button>
+              <button class="btn btn-ghost">Log</button>
+              <button class="btn btn-icon" aria-label="Open door"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2.5" width="10" height="11" rx="1" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="10.5" cy="8" r="1" fill="currentColor"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h3>C2 · Removable chip</h3>
+          <div class="matrix">
+            <div></div>
+            <div class="mh">rest</div><div class="mh">hover</div><div class="mh">active ×</div><div class="mh">focus ×</div><div class="mh">disabled</div>
+            <div class="rl">filter</div>
+            <div class="cell"><span class="chip"><span class="txt">ZrO2-A2</span><button class="x" aria-label="Remove filter ZrO2-A2">×</button></span></div>
+            <div class="cell"><span class="chip s-hover"><span class="txt">ZrO2-A2</span><button class="x s-hover" aria-label="Remove filter ZrO2-A2">×</button></span></div>
+            <div class="cell"><span class="chip s-hover"><span class="txt">ZrO2-A2</span><button class="x s-active" aria-label="Remove filter ZrO2-A2">×</button></span></div>
+            <div class="cell"><span class="chip"><span class="txt">ZrO2-A2</span><button class="x s-focus" aria-label="Remove filter ZrO2-A2">×</button></span></div>
+            <div class="cell"><span class="chip s-disabled"><span class="txt">ZrO2-A2</span><button class="x" disabled aria-label="Remove filter ZrO2-A2">×</button></span></div>
+          </div>
+          <div class="live">
+            <div class="lh">LIVE — C / CHIPS</div>
+            <div class="row">
+              <span class="chip"><span class="txt">PMMA</span><button class="x" aria-label="Remove filter PMMA">×</button></span>
+              <span class="chip"><span class="txt">T3 · 2.0 mm</span><button class="x" aria-label="Remove filter T3 2.0 mm">×</button></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h3>C3 · Status badges (filter toggles)</h3>
+          <div class="matrix">
+            <div></div>
+            <div class="mh">rest</div><div class="mh">hover</div><div class="mh">active</div><div class="mh">focus</div><div class="mh">disabled</div>
+            <div class="rl">ok</div>
+            <div class="cell"><button class="badge ok"><i class="dot"></i>Ok</button></div>
+            <div class="cell"><button class="badge ok s-hover"><i class="dot"></i>Ok</button></div>
+            <div class="cell"><button class="badge ok s-active"><i class="dot"></i>Ok</button></div>
+            <div class="cell"><button class="badge ok s-focus"><i class="dot"></i>Ok</button></div>
+            <div class="cell"><button class="badge ok" disabled><i class="dot"></i>Ok</button></div>
+            <div class="rl">warning</div>
+            <div class="cell"><button class="badge warning"><i class="dot"></i>Warn</button></div>
+            <div class="cell"><button class="badge warning s-hover"><i class="dot"></i>Warn</button></div>
+            <div class="cell"><button class="badge warning s-active"><i class="dot"></i>Warn</button></div>
+            <div class="cell"><button class="badge warning s-focus"><i class="dot"></i>Warn</button></div>
+            <div class="cell"><button class="badge warning" disabled><i class="dot"></i>Warn</button></div>
+            <div class="rl">alarm</div>
+            <div class="cell"><button class="badge alarm"><i class="dot"></i>Alarm</button></div>
+            <div class="cell"><button class="badge alarm s-hover"><i class="dot"></i>Alarm</button></div>
+            <div class="cell"><button class="badge alarm s-active"><i class="dot"></i>Alarm</button></div>
+            <div class="cell"><button class="badge alarm s-focus"><i class="dot"></i>Alarm</button></div>
+            <div class="cell"><button class="badge alarm" disabled><i class="dot"></i>Alarm</button></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h3>C4 · Text input &amp; select</h3>
+          <div class="matrix wide">
+            <div></div><div class="mh">text input</div><div class="mh">select</div>
+            <div class="rl">rest</div>
+            <div class="cell"><input class="input" value="CASE-40817" aria-label="Case ID rest C" /></div>
+            <div class="cell"><span class="selwrap"><select class="select" aria-label="Material rest C"><option>Zirconia · A2</option><option>PMMA</option></select></span></div>
+            <div class="rl">hover</div>
+            <div class="cell"><input class="input s-hover" value="CASE-40817" aria-label="Case ID hover C" /></div>
+            <div class="cell"><span class="selwrap"><select class="select s-hover" aria-label="Material hover C"><option>Zirconia · A2</option></select></span></div>
+            <div class="rl">active</div>
+            <div class="cell"><input class="input s-active" value="CASE-40817" aria-label="Case ID active C" /></div>
+            <div class="cell"><span class="selwrap"><select class="select s-active" aria-label="Material active C"><option>Zirconia · A2</option></select></span></div>
+            <div class="rl">focus</div>
+            <div class="cell"><input class="input s-focus" value="CASE-40817" aria-label="Case ID focus C" /></div>
+            <div class="cell"><span class="selwrap"><select class="select s-focus" aria-label="Material focus C"><option>Zirconia · A2</option></select></span></div>
+            <div class="rl">disabled</div>
+            <div class="cell"><input class="input" value="CASE-40817" disabled aria-label="Case ID disabled C" /></div>
+            <div class="cell"><span class="selwrap"><select class="select" disabled aria-label="Material disabled C"><option>Zirconia · A2</option></select></span></div>
+          </div>
+          <div class="live">
+            <div class="lh">LIVE — C / FIELDS</div>
+            <div class="row" style="gap:10px">
+              <span class="field" style="flex:1;min-width:120px"><label for="c-in">case id</label><input class="input" id="c-in" placeholder="CASE-…" /></span>
+              <span class="field" style="flex:1;min-width:120px"><label for="c-sel">material</label><span class="selwrap"><select class="select" id="c-sel"><option>Zirconia · A2</option><option>PMMA</option><option>Wax</option></select></span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h3>C5 · Dense queue rows — 30 px</h3>
+          <table class="tbl">
+            <caption class="sr-only">Treatment C dense job queue, one row per state</caption>
+            <thead><tr><th class="tcol-a">Job</th><th class="tcol-b">Case</th><th class="tcol-c">Status</th><th class="tcol-d">%</th><th class="tcol-e">Done</th></tr></thead>
+            <tbody>
+              <tr><td class="id">J-40817</td><td>Crown 26 · ZrO2</td><td><span class="stat ok"><i></i>Cutting</span></td><td class="num">62</td><td><span class="chkwrap"><input class="chk" type="checkbox" aria-label="C mark J-40817 done" /></span></td></tr>
+              <tr class="s-hover"><td class="id">J-40818</td><td>Bridge 14-16</td><td><span class="stat ok"><i></i>Queued</span></td><td class="num">0</td><td><span class="chkwrap"><input class="chk s-hover" type="checkbox" aria-label="C mark J-40818 done" /></span></td></tr>
+              <tr class="s-active"><td class="id">J-40819</td><td>Inlay 37 · PMMA</td><td><span class="stat warning"><i></i>Tool wear</span></td><td class="num">88</td><td><span class="chkwrap"><input class="chk s-active" type="checkbox" aria-label="C mark J-40819 done" /></span></td></tr>
+              <tr class="s-focus"><td class="id">J-40820</td><td>Abutment 11</td><td><span class="stat alarm"><i></i>Coolant</span></td><td class="num">41</td><td><span class="chkwrap"><input class="chk s-focus" type="checkbox" aria-label="C mark J-40820 done" /></span></td></tr>
+              <tr class="is-selected"><td class="id">J-40821</td><td>Splint · Wax</td><td><span class="stat ok"><i></i>Done</span></td><td class="num">100</td><td><span class="chkwrap"><input class="chk" type="checkbox" checked aria-label="C mark J-40821 done" /></span></td></tr>
+              <tr class="s-disabled"><td class="id">J-40822</td><td>Veneer 21 · locked</td><td><span class="stat ok"><i></i>Hold</span></td><td class="num">—</td><td><span class="chkwrap"><input class="chk" type="checkbox" disabled aria-label="C mark J-40822 done" /></span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </section>
+  </div>
+
+  <!-- ===================== SPEC NOTES ===================== -->
+  <section class="notes" aria-label="System rules and recommendation">
+    <h3>System rules applied to all three treatments</h3>
+    <div class="cols">
+      <div>
+        <span class="k">Motion</span>
+        <ul>
+          <li>Single easing curve, <b>cubic-bezier(0.20,0.70,0.20,1)</b> — deceleration only, no overshoot or elastic return.</li>
+          <li>110 ms for press feedback, 150 ms for color/border, 220 ms ceiling. Nothing animates on load, nothing loops.</li>
+          <li>Only state-carrying properties move: background, border, color, 1 px press offset, edge-marker width.</li>
+          <li><code>prefers-reduced-motion</code> collapses all durations to 1 ms.</li>
+        </ul>
+      </div>
+      <div>
+        <span class="k">Contrast &amp; focus</span>
+        <ul>
+          <li>Every control border is <b>--control-edge</b> on <b>--card</b> / <b>--card-2</b> / <b>--bg</b> → ≈ 3.3–3.9:1, above the 3:1 non-text minimum. <b>--line</b> and <b>--line-2</b> are reserved for structural dividers only, never control edges.</li>
+          <li>Focus is a solid <b>--accent-c</b> outline with a 2–3 px offset — a ring, not a glow. No blurred or colored shadows anywhere in the file.</li>
+          <li>Disabled controls drop to 42 % opacity, the one intentional sub-3:1 case (WCAG exempts inactive controls).</li>
+          <li>Status is never color-only: every badge and cell carries a text label beside its dot.</li>
+        </ul>
+      </div>
+      <div>
+        <span class="k">8-hour / gloved-hand recommendation</span>
+        <ul>
+          <li><b>Ship C at the machine.</b> 48 px targets survive gloves, recessed wells keep operators from stabbing an input expecting an action, and the edge marker reads in peripheral vision while their eyes are on the spindle.</li>
+          <li><b>Ship B for the wall board and supervisor view.</b> Flat, uppercase, 2 px outlines hold up at 1.5 m and in glare; no depth means nothing to misread as a live state.</li>
+          <li><b>Keep A for the dense queue screen only</b> — the press affordance is the best of the three, but 40 px targets are the first thing to fail with gloves on.</li>
+          <li>All three share one token set and one motion spec, so mixing them across screens stays coherent.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

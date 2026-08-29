@@ -1,0 +1,194 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Golos Text', system-ui, sans-serif; background: #0d1117; color: #e8eff7; }
+    a { color: #5eead4; text-decoration: none; }
+    a:hover { color: #2dd4bf; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+    /* Головна дія: блік проходить по кнопці на наведенні, не циклом. Екран
+       черги відкритий цілий день біля верстатів — постійна петля тут заборонена
+       правилом проєкту, та й брехала б: у продакшні це реакція на дію. */
+    .btn-lead { position: relative; overflow: hidden; transition: transform .16s ease, box-shadow .16s ease; }
+    .btn-lead::after {
+      content: ""; position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.42) 50%, transparent 62%);
+      transform: translateX(-120%); transition: transform .5s cubic-bezier(.22,1,.36,1);
+    }
+    .btn-lead:hover::after { transform: translateX(120%); }
+    /* Підйом читається нейтральною тінню, а не кольоровим ореолом: бірюзове
+       світіння на темному — найвпізнаваніший штамп «згенерованого» інтерфейсу. */
+    .btn-lead:hover { transform: translateY(-1px); box-shadow: 0 6px 16px -8px rgba(0,0,0,.85); }
+
+    /* Іконкові: підкладка розкривається з центру, іконка трохи більшає. */
+    .ico { position: relative; transition: color .16s ease, border-color .16s ease; }
+    .ico::before {
+      content: ""; position: absolute; inset: 0; border-radius: inherit; background: rgba(20,184,166,.16);
+      transform: scale(.4); opacity: 0; transition: transform .18s cubic-bezier(.22,1,.36,1), opacity .18s ease;
+    }
+    .ico:hover::before { transform: scale(1); opacity: 1; }
+    .ico:hover { border-color: rgba(45,212,191,.5); }
+    .ico svg { position: relative; transition: transform .18s cubic-bezier(.22,1,.36,1); }
+    .ico:hover svg { transform: scale(1.12); }
+
+    /* Сегменти: індикатор ковзає під активним, не перемальовується. */
+    .seg { position: relative; }
+    .seg .slide {
+      position: absolute; top: 4px; bottom: 4px; left: 4px; width: 118px; border-radius: 9px;
+      background: #14b8a6; transition: transform .24s cubic-bezier(.22,1,.36,1), width .24s cubic-bezier(.22,1,.36,1);
+    }
+
+    /* Готовність: кільце пульсує лише на стані «можна брати». */
+    .ready-dot { position: relative; }
+    .ready-dot::after {
+      content: ""; position: absolute; inset: -4px; border-radius: 50%;
+      border: 1px solid rgba(45,212,191,.6); animation: ring 2.4s ease-out infinite;
+    }
+    @keyframes ring { 0% { transform: scale(.6); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+
+    .chip-x { transition: background .14s ease, color .14s ease; }
+    .chip-x:hover { background: rgba(248,113,113,.16); color: #f87171; }
+    .ghost { transition: background .16s ease, border-color .16s ease, color .16s ease; }
+    .ghost:hover { background: #1b2431; border-color: #5f7490; color: #e8eff7; }
+    .row-live { transition: background .18s ease; }
+    .row-live:hover { background: rgba(20,184,166,.06); }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; background: #0d1117; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box;">
+
+  <div style="display: flex; align-items: center; gap: 14px;">
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <div style="font-size: 21px; font-weight: 600; letter-spacing: -0.01em;">Черга робіт</div>
+      <div style="display: flex; align-items: center; gap: 9px; font-size: 12px; color: #8fa3bb;">
+        <span class="ready-dot" style="width: 6px; height: 6px; border-radius: 50%; background: #2dd4bf; display: block;"></span>
+        <span>74 у вигляді</span>
+        <span style="width: 1px; height: 10px; background: #222c3a; display: block;"></span>
+        <span class="mono">276 од.</span>
+      </div>
+    </div>
+
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+      <div class="ghost" style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 13px; border-radius: 10px; background: #111823; border: 1px solid #222c3a; width: 230px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8698ad" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4.5 4.5"></path></svg>
+        <span style="font-size: 13px; color: #5f7490;">Наряд, технік, шлях-ID</span>
+      </div>
+
+      <div style="display: flex; gap: 6px;">
+        <div class="ico" style="width: 36px; height: 36px; border-radius: 10px; background: #161d27; border: 1px solid #3a4a5f; display: flex; align-items: center; justify-content: center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8fa3bb" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"></path><path d="M4 9h12a4 4 0 0 1 0 8h-4"></path></svg>
+        </div>
+        <div class="ico" style="width: 36px; height: 36px; border-radius: 10px; background: #161d27; border: 1px solid #3a4a5f; display: flex; align-items: center; justify-content: center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path><path d="M12 8v4l3 2"></path></svg>
+        </div>
+        <div class="ico" style="width: 36px; height: 36px; border-radius: 10px; background: #161d27; border: 1px solid #3a4a5f; display: flex; align-items: center; justify-content: center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8fa3bb" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"></path><path d="M20 9H8a4 4 0 0 0 0 8h4"></path></svg>
+        </div>
+      </div>
+
+      <div class="btn-lead" style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 17px; border-radius: 10px; background: #14b8a6; color: #04231d; font-size: 13px; font-weight: 600;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#04231d" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+        <span style="position: relative;">Додати роботу</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+    <div class="seg" style="display: flex; background: #161d27; border: 1px solid #222c3a; border-radius: 13px; padding: 4px; gap: 0;">
+      <span class="slide"></span>
+      <div style="position: relative; width: 118px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 13px; color: #04231d; font-weight: 600;">Вчора <span class="mono" style="font-size: 11px;">76</span></div>
+      <div style="position: relative; width: 104px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 13px; color: #8fa3bb;">Завтра <span class="mono" style="font-size: 11px; opacity: .7;">0</span></div>
+      <div style="position: relative; width: 108px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 13px; color: #8fa3bb;">Раніше <span class="mono" style="font-size: 11px; opacity: .7;">539</span></div>
+    </div>
+
+    <div style="display: flex; gap: 7px;">
+      <div style="height: 30px; padding: 0 13px; border-radius: 9px; border: 1px solid rgba(45,212,191,.4); background: rgba(20,184,166,.12); color: #5eead4; font-size: 12.5px; display: flex; align-items: center; gap: 9px;">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: #2dd4bf; display: block;"></span>Можна брати <span class="mono">2</span>
+      </div>
+      <div class="ghost" style="height: 30px; padding: 0 13px; border-radius: 9px; border: 1px solid #3a4a5f; color: #8fa3bb; font-size: 12.5px; display: flex; align-items: center; gap: 7px;">В роботі <span class="mono">74</span></div>
+      <div style="height: 30px; padding: 0 5px 0 13px; border-radius: 9px; border: 1px dashed #3a4a5f; color: #8698ad; font-size: 12.5px; display: flex; align-items: center; gap: 8px;">
+        моноліт A2
+        <span class="chip-x" style="width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #8698ad;">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex: 1; min-height: 0; background: #161d27; border: 1px solid #222c3a; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column;">
+    <div style="display: grid; grid-template-columns: 96px 66px 178px 156px 206px 92px 1fr 126px 92px; gap: 14px; padding: 12px 18px; border-bottom: 1px solid #222c3a; font-size: 10px; letter-spacing: .13em; text-transform: uppercase; color: #8698ad; font-weight: 600;">
+      <span>Наряд</span><span>К-сть</span><span>Матеріал</span><span>Вид</span><span>Шлях</span><span>Технік</span><span>Коментар</span><span>Sum3D</span><span>Оператор</span>
+    </div>
+
+    <sc-for list="{{rows}}" as="row" hint-placeholder-count="6">
+      <div class="row-live" style="display: grid; grid-template-columns: 96px 66px 178px 156px 206px 92px 1fr 126px 92px; gap: 14px; padding: 13px 18px; border-bottom: 1px solid #1a222e; align-items: center;">
+        <span style="display: flex; align-items: center; gap: 9px;">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: {{row.dot}}; display: block;"></span>
+          <span class="mono" style="font-size: 12.5px; font-weight: 500;">{{row.no}}</span>
+        </span>
+        <span class="mono" style="font-size: 12.5px;">{{row.qty}}</span>
+        <span style="display: flex; align-items: center; gap: 7px;">
+          <span class="mono" style="font-size: 10px; color: {{row.matink}}; background: {{row.matbg}}; border: 1px solid {{row.matline}}; border-radius: 6px; padding: 2px 6px;">{{row.sym}}</span>
+          <span class="mono" style="font-size: 11.5px; background: #1b2431; border: 1px solid #3a4a5f; border-radius: 7px; padding: 3px 9px;">{{row.mat}}</span>
+        </span>
+        <span style="font-size: 12.5px; color: #8fa3bb;">{{row.kind}}</span>
+        <span class="mono ghost" style="font-size: 11.5px; color: #8fa3bb; background: #111823; border: 1px solid #222c3a; border-radius: 7px; padding: 4px 8px;">{{row.path}}</span>
+        <span style="font-size: 12.5px; color: #8fa3bb;">{{row.tech}}</span>
+        <span style="font-size: 12.5px; color: {{row.cmtink}};">{{row.cmt}}</span>
+        <span class="mono ghost" style="font-size: 11.5px; background: #111823; border: 1px solid #3a4a5f; border-radius: 7px; padding: 5px 9px; text-align: center;">{{row.sum}}</span>
+        <span class="mono ghost" style="font-size: 11.5px; color: #8fa3bb; background: #1b2431; border: 1px solid #222c3a; border-radius: 6px; padding: 4px 8px; text-align: center;">{{row.op}}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="background: #111823; border: 1px solid #222c3a; border-radius: 14px; padding: 15px 18px; display: flex; align-items: center; gap: 26px;">
+    <span class="mono" style="font-size: 9.5px; letter-spacing: .2em; text-transform: uppercase; color: #5f7490; width: 78px;">Кнопки</span>
+
+    <div class="btn-lead" style="height: 34px; padding: 0 16px; border-radius: 10px; background: #14b8a6; color: #04231d; font-size: 12.5px; font-weight: 600; display: flex; align-items: center;"><span style="position: relative;">Головна</span></div>
+    <div class="ghost" style="height: 34px; padding: 0 16px; border-radius: 10px; background: #161d27; border: 1px solid #3a4a5f; color: #8fa3bb; font-size: 12.5px; display: flex; align-items: center;">Другорядна</div>
+    <div style="height: 34px; padding: 0 16px; border-radius: 10px; border: 1px solid rgba(45,212,191,.4); background: rgba(20,184,166,.12); color: #5eead4; font-size: 12.5px; display: flex; align-items: center;">Тінтована</div>
+    <div class="ghost" style="height: 34px; padding: 0 16px; border-radius: 10px; border: 1px solid rgba(248,113,113,.4); color: #f0b4b4; font-size: 12.5px; display: flex; align-items: center;">Небезпечна</div>
+
+    <div class="ico" style="width: 34px; height: 34px; border-radius: 10px; background: #161d27; border: 1px solid #3a4a5f; display: flex; align-items: center; justify-content: center;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8fa3bb" stroke-width="1.7" stroke-linecap="round"><path d="M3 7h7l2 2h9v10H3z"></path></svg>
+    </div>
+
+    <div style="height: 34px; padding: 0 16px; border-radius: 10px; background: #1a222e; color: #5f7490; font-size: 12.5px; display: flex; align-items: center; gap: 8px;">
+      <span style="width: 12px; height: 12px; border-radius: 50%; border: 2px solid #3a4a5f; border-top-color: #5eead4; display: block; animation: spin .8s linear infinite;"></span>
+      Зберігаю
+    </div>
+    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+
+    <span style="margin-left: auto; font-size: 11.5px; color: #5f7490;">наведи — кнопки відповідають</span>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const zr = { sym: 'Zr', matink: '#5eead4', matbg: 'rgba(20,184,166,0.12)', matline: 'rgba(45,212,191,0.32)' };
+    const ti = { sym: 'Ti', matink: '#8fa3bb', matbg: '#1b2431', matline: '#3a4a5f' };
+    return {
+      rows: [
+        { no: '22356', qty: '4', mat: 'титан корея', kind: 'абатмент', path: '2026-07-09_01939-003', tech: 'Даня', cmt: 'робота за 08.07', cmtink: '#8698ad', sum: '11-29-53', op: 'St', dot: '#14b8a6', ...ti },
+        { no: '21885', qty: '2', mat: 'моно a3', kind: 'анатомія', path: '2026-07-03_00015-006', tech: 'Юля', cmt: 'погодження Садовий', cmtink: '#8698ad', sum: '9090', op: 'D', dot: '#0f766e', ...zr },
+        { no: '22470', qty: '13', mat: 'емо a2', kind: 'анатомія', path: '2026-07-09_00003-001', tech: 'Овчаров', cmt: 'покрити опаком', cmtink: '#8fa3bb', sum: '15-05-58', op: 'D', dot: '#14b8a6', ...zr },
+        { no: '22454', qty: '2', mat: 'моноліт a3,5', kind: 'анатомія гвинтова', path: '22454', tech: 'dim', cmt: 'на 36 фреза 1,06!!', cmtink: '#f0a35e', sum: '20-22-43', op: 'St', dot: '#2dd4bf', ...zr },
+        { no: '22513', qty: '1', mat: '1333', kind: 'каркас', path: '2026-07-09_00015-002', tech: 'Юля', cmt: '', cmtink: '#8698ad', sum: '16-47-28', op: 'ЕЕ', dot: '#14b8a6', ...zr },
+        { no: '22144', qty: '1', mat: 'моноліт бліч 4', kind: 'анатомія', path: '2026-07-07_00010-017', tech: 'Юля', cmt: 'робота за 07.07', cmtink: '#8698ad', sum: '16-51-21', op: 'D', dot: '#5eead4', ...zr }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Фон «Пічки» — з фото, на весь екран</title>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0d1117; --card:#161d27; --card-2:#1b2431; --card-3:#202b3a;
+  --line:#222c3a; --line-2:#3a4a5f; --ink:#e8eff7; --ink-2:#8fa3bb; --ink-3:#8698ad;
+  --accent:#14b8a6; --accent-c:#5eead4; --accent-d:#0f766e; --r-card:10px;
+  --font-body:'Golos Text',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);overflow:hidden}
+
+/* ── Фон на весь екран ────────────────────────────────────────────────────
+   Це НЕ мальована пічка: три шари, нарізані з офіційного рендера DEKEMA.
+   Задній — стійка й база, середній — столик (він і рухається), передній —
+   камера. Столик їде між ними, тому, заїжджаючи вгору, він ховається за
+   камерою, як і в житті. Жодного відеофайлу: три PNG, разом ~380 КБ. */
+.bgstage{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;
+  display:grid;place-items:center}
+.bgstage .layer{position:absolute;height:112%;width:auto;
+  filter:brightness(.58) contrast(1.04) saturate(.9)}
+.bgstage .back{z-index:1}
+.bgstage .lift{z-index:3;transform:translateY(-330px);
+  transition:transform 3s cubic-bezier(.34,.03,.22,1)}
+.bgstage .front{z-index:4}
+body.is-open .bgstage .lift{transform:translateY(0)}
+
+/* Жар. Два шари: вузьке яскраве ядро в горловині камери і широкий ореол,
+   що заливає теплом увесь фон. Обидва — прозорість, тобто відеокарта. */
+/* mix-blend-mode:screen — ключова річ: жар не лежить ПЕРЕД фото, а СВІТИТЬ
+   його. Без цього зарево виглядає як наліплений помаранчевий круг. */
+.heat{position:absolute;z-index:5;pointer-events:none;opacity:0;
+  mix-blend-mode:screen;transition:opacity 2.2s ease}
+/* Горловина камери: 32% висоти екрана — саме там, де рендер розрізаний. */
+.heat.core{width:30vmin;height:13vmin;top:27%;
+  background:radial-gradient(closest-side,
+    rgba(255,246,222,calc(.95*var(--heat,1))) 0%,
+    rgba(255,183,92,calc(.75*var(--heat,1))) 38%,
+    rgba(255,110,40,calc(.30*var(--heat,1))) 70%,
+    transparent 100%)}
+.heat.halo{width:130vmin;height:86vmin;top:20%;
+  background:radial-gradient(closest-side,
+    rgba(255,140,60,calc(.46*var(--heat,1))) 0%,
+    rgba(255,90,30,calc(.22*var(--heat,1))) 45%,
+    transparent 78%)}
+/* Світло, що лягає на сам столик, — воно й робить кераміку розжареною. */
+.heat.spill{width:46vmin;height:30vmin;top:38%;
+  background:radial-gradient(closest-side,
+    rgba(255,226,170,calc(.78*var(--heat,1))) 0%,
+    rgba(255,150,60,calc(.34*var(--heat,1))) 46%,
+    transparent 100%)}
+body.is-open .heat{opacity:1;transition-delay:.6s}
+/* Відкрита камера підсвічує всю сцену — фото трохи світлішає. */
+body.is-open .bgstage .layer{filter:brightness(.74) contrast(1.02) saturate(.95)}
+.bgstage .layer{transition:filter 2.4s ease}
+body.is-open .heat.halo{animation:breathe 8s ease-in-out 2.6s infinite}
+@keyframes breathe{0%,100%{opacity:.8;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}
+
+/* Затемнення, щоб текст читався поверх фото за будь-якого жару. */
+.scrim{position:fixed;inset:0;z-index:5;pointer-events:none;
+  background:linear-gradient(90deg,rgba(13,17,23,.95) 0%,rgba(13,17,23,.86) 34%,
+    rgba(13,17,23,.52) 62%,rgba(13,17,23,.14) 100%)}
+
+/* Іскри. Шість штук — не хмара. */
+.embers{position:fixed;inset:0;z-index:6;pointer-events:none;opacity:0;transition:opacity 1.2s ease}
+body.is-open .embers{opacity:1;transition-delay:1.2s}
+.embers i{position:absolute;top:58%;width:3px;height:3px;border-radius:50%;
+  background:rgba(255,175,95,.9);animation:rise linear infinite;will-change:transform,opacity}
+@keyframes rise{
+  0%{transform:translateY(0) scale(.6);opacity:0}
+  15%{opacity:.9}
+  100%{transform:translateY(-42vh) translateX(var(--drift,14px)) scale(1);opacity:0}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .bgstage .lift,.heat{transition:none}
+  .heat.halo{animation:none}
+  .embers i{animation:none;opacity:0}
+}
+
+/* ── Інтерфейс поверх ─────────────────────────────────────────────────── */
+.ui{position:relative;z-index:7;height:100%;display:flex;flex-direction:column;gap:14px;
+  padding:22px 26px;overflow:auto}
+h1{font-size:22px;font-weight:700;letter-spacing:-.015em;margin:0}
+.sub{color:var(--ink-3);font-size:12.5px;margin:2px 0 0}
+.panel{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:10px 13px;
+  background:color-mix(in srgb,var(--card) 82%,transparent);backdrop-filter:blur(6px);
+  border:1px solid var(--line);border-radius:var(--r-card);align-self:flex-start}
+.panel label{display:flex;align-items:center;gap:8px;color:var(--ink-2);font-size:12.5px}
+.panel input[type=range]{width:180px;accent-color:var(--accent)}
+.panel output{font-family:var(--font-mono);color:#ffb26b;min-width:70px}
+.panel button{height:30px;padding:0 13px;border-radius:999px;border:1px solid var(--line-2);
+  background:var(--card-2);color:var(--ink-2);font:500 12.5px var(--font-body);cursor:pointer}
+.panel button:hover{color:var(--ink)}
+.panel button.apex{border-color:var(--accent-d);background:rgba(45,212,191,.14);color:var(--accent-c)}
+
+.tiles{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));max-width:56%}
+.tile{background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(6px);
+  border:1px solid var(--line);border-radius:var(--r-card);padding:11px 13px;
+  display:flex;flex-direction:column;gap:7px}
+.tile.run{border-color:var(--accent-d)}
+.tile-top{display:flex;align-items:center;justify-content:space-between}
+.tile-name{font-size:13px;font-weight:600}
+.pill{font-family:var(--font-mono);font-size:11px;color:var(--accent-c);border:1px solid var(--accent-d);
+  border-radius:999px;padding:2px 9px;background:rgba(45,212,191,.10)}
+.pill.wait{color:var(--ink-2);border-color:var(--line-2);background:none}
+.tile-main{display:flex;align-items:baseline;gap:9px}
+.tile-temp{font-family:var(--font-mono);font-size:26px;line-height:1}
+.tile-sub{color:var(--ink-3);font-size:11.5px;font-family:var(--font-mono)}
+.note{max-width:56%;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(6px);
+  border:1px solid var(--line);border-radius:var(--r-card);padding:12px 14px;
+  color:var(--ink-2);font-size:12.5px;line-height:1.6}
+.note b{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<div class="bgstage">
+  <img class="layer back"  src="furnace-layers/back.png"  alt="">
+  <div class="heat halo"></div>
+  <div class="heat core"></div>
+  <div class="heat spill"></div>
+  <img class="layer lift"  src="furnace-layers/lift.png"  alt="">
+  <img class="layer front" src="furnace-layers/front.png" alt="">
+</div>
+<div class="scrim"></div>
+<div class="embers" id="embers"></div>
+
+<div class="ui">
+  <div>
+    <h1>Пічки</h1>
+    <p class="sub">Фон — офіційний рендер DEKEMA 624i, розрізаний на шари. Рухається столик, а не картинка цілком.</p>
+  </div>
+
+  <div class="panel">
+    <label>Температура
+      <input id="temp" type="range" min="40" max="1530" value="1500">
+      <output id="tempOut">1500 °C</output>
+    </label>
+    <button id="open" type="button" class="apex">Відкрити пічку ▾</button>
+    <button id="close" type="button">Закрити</button>
+  </div>
+
+  <div class="tiles">
+    <div class="tile run">
+      <div class="tile-top"><span class="tile-name">Бочка</span><span class="pill">RUN</span></div>
+      <div class="tile-main"><span class="tile-temp" data-temp>1500</span><span class="tile-sub">°C · відкриється 17:54</span></div>
+    </div>
+    <div class="tile">
+      <div class="tile-top"><span class="tile-name">Пічка 2</span><span class="pill wait">WAIT</span></div>
+      <div class="tile-main"><span class="tile-temp">40</span><span class="tile-sub">°C · вільна</span></div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Три PNG замість відео.</b> Задній шар — стійка й база, середній — столик, передній — камера.
+    Столик їде між ними, тому вгорі ховається за камерою, як у житті. Разом ~380 КБ, нічого не декодується,
+    працює офлайн. Жар світиться з горловини камери й підсилюється з температурою; затемнення зліва тримає
+    текст читабельним за будь-якого зарева.
+  </div>
+</div>
+
+<script>
+const temp = document.getElementById('temp');
+const tempOut = document.getElementById('tempOut');
+function applyTemp(){
+  const v = Number(temp.value);
+  tempOut.textContent = v + ' °C';
+  const heat = Math.max(0, Math.min(1, (v - 200) / 1330));
+  document.body.style.setProperty('--heat', heat.toFixed(3));
+  document.querySelectorAll('[data-temp]').forEach(n => { n.textContent = v; });
+}
+temp.addEventListener('input', applyTemp);
+applyTemp();
+
+document.getElementById('open').addEventListener('click', () => document.body.classList.add('is-open'));
+document.getElementById('close').addEventListener('click', () => document.body.classList.remove('is-open'));
+
+const embers = document.getElementById('embers');
+for (let i = 0; i < 6; i += 1) {
+  const s = document.createElement('i');
+  s.style.left = (46 + i * 3) + '%';
+  s.style.animationDuration = (9 + i * 1.5) + 's';
+  s.style.animationDelay = (i * 2) + 's';
+  s.style.setProperty('--drift', (i % 2 ? 18 : -14) + 'px');
+  embers.appendChild(s);
+}
+</script>
+</body>
+</html>

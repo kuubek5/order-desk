@@ -638,3 +638,28 @@ def test_background_toggle_route_is_not_eaten_by_the_id_route():
     assert paths.index("/settings/furnaces/background") < paths.index(
         "/settings/furnaces/{furnace_id}"
     )
+
+
+def test_background_shows_the_closed_frame_while_something_is_firing():
+    """Фон — не картинка заради картинки: він показує стан цеху. Щось
+    гріється → пічка на фоні закрита; усі стоять → відкрита."""
+    from app.routers import furnace as router
+
+    hot = service.FurnaceState(target=_target())
+    hot.reading = read_panel(_frame("run"))
+    cold = service.FurnaceState(target=service.FurnaceTarget(name="Піч 2", host="192.168.1.61"))
+    cold.reading = read_panel(_frame("wait"))
+
+    running = service.FurnaceCard(target=hot.target, state=hot)
+    idle = service.FurnaceCard(target=cold.target, state=cold)
+
+    assert any(c.is_running for c in [running, idle]) is True
+    assert any(c.is_running for c in [idle]) is False
+
+    # Обидва кадри мусять існувати — інакше перехід показав би порожнечу.
+    from pathlib import Path
+
+    for name in ("furnace-bg-open.jpg", "furnace-bg-closed.jpg"):
+        asset = Path("app/static/img") / name
+        assert asset.exists(), f"немає {name}"
+        assert asset.stat().st_size < 400_000, f"{name} завеликий для фону"

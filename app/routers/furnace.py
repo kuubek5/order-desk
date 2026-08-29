@@ -71,6 +71,8 @@ def _context(request: Request, db: Session, user) -> dict:
         "poll_seconds": int(POLL_INTERVAL_SECONDS),
         "furnace_bg": get_furnace_background(db),
         "furnace_heat": _heat(cards),
+        # Стан фону: закрита пічка означає «зараз щось печеться».
+        "furnace_firing": any(card.is_running for card in cards),
     }
 
 

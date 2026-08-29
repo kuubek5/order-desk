@@ -17,8 +17,12 @@
        увімкнено в налаштуваннях: екран біля верстатів має лишатись читабельним
        за будь-яких умов, тому картинку можна прибрати одним кліком. #}
     {% if furnace_bg %}
-    <div class="fu-bg" aria-hidden="true">
-        <img src="/static/img/furnace-bg.jpg?v={{ static_ver('img/furnace-bg.jpg') }}" alt="">
+    {# Два кадри однієї сцени. Видимий той, що відповідає станові цеху:
+       щось гріється → пічка закрита; усі стоять → відкрита. Перехід плавний,
+       бо стан міняється раз на годину, а не щосекунди. #}
+    <div class="fu-bg{% if furnace_firing %} is-firing{% endif %}" aria-hidden="true">
+        <img class="fu-bg-open" src="/static/img/furnace-bg-open.jpg?v={{ static_ver('img/furnace-bg-open.jpg') }}" alt="">
+        <img class="fu-bg-closed" src="/static/img/furnace-bg-closed.jpg?v={{ static_ver('img/furnace-bg-closed.jpg') }}" alt="">
         <i></i>
     </div>
     {% endif %}

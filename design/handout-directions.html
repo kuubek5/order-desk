@@ -1,0 +1,861 @@
+<meta charset="utf-8">
+<title>Три напрями видачі</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+/* ============================================================
+   Токени — канон Order Desk (app/static/css/tokens.css).
+   Мокапи свідомо одно-темні: застосунок працює на темному
+   екрані біля верстатів цілий день. Тому фон малюється явно,
+   без media-перемикача — це вибір, не пропуск.
+   ============================================================ */
+:root{
+  --bg:#0d1117;
+  --bg-rail:#0a0e14;
+  --card:#161d27;
+  --card-2:#1b2431;
+  --card-3:#202b3a;
+  --line:#222c3a;
+  --line-2:#3a4a5f;
+  --control-edge:#5f7490;
+  --ink:#e8eff7;
+  --ink-2:#8fa3bb;
+  --ink-3:#8698ad;
+  --accent:#14b8a6;
+  --accent-b:#2dd4bf;
+  --accent-c:#5eead4;
+  --accent-d:#0f766e;
+  --alarm:#f87171;
+  --warn:#f0a35e;
+
+  --r-card:10px;
+  --r-ctl:9px;
+  --r-chip:999px;
+
+  --font-head:'Golos Text',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+
+  --ui-speed:.14s;
+  --sweep:980ms;
+}
+
+*{box-sizing:border-box}
+
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--font-head);
+  font-size:14px;
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* Блюпринт-сітка на задньому плані — відсилання до точної механіки.
+   Дуже тиха: 5% бірюзи, як у проді. */
+body::before{
+  content:'';
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background-image:
+    linear-gradient(rgba(45,212,191,.045) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(45,212,191,.045) 1px,transparent 1px);
+  background-size:52px 52px;
+  mask-image:radial-gradient(ellipse 90% 70% at 50% 0%,#000 30%,transparent 100%);
+}
+
+.wrap{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:40px 24px 96px}
+
+/* ---------- Шапка сторінки ---------- */
+.pagehead{margin-bottom:28px}
+.eyebrow{
+  font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent-b);margin:0 0 10px;
+}
+.pagehead h1{
+  font-size:clamp(28px,4.4vw,44px);font-weight:800;letter-spacing:-.025em;
+  margin:0 0 14px;text-wrap:balance;line-height:1.06;
+}
+.pagehead p{margin:0;max-width:63ch;color:var(--ink-2);font-size:15px}
+.pagehead p b{color:var(--ink);font-weight:600}
+
+/* ---------- Правила, які жоден напрям не порушує ---------- */
+.rules{
+  display:grid;gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:var(--r-card);overflow:hidden;margin:24px 0 32px;
+  grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+}
+.rule{background:var(--card);padding:14px 16px}
+.rule b{display:block;font-size:12px;letter-spacing:.02em;margin-bottom:4px}
+.rule span{font-size:12.5px;color:var(--ink-3);line-height:1.4}
+.rule i{
+  font-family:var(--font-mono);font-style:normal;font-size:10px;
+  color:var(--accent);display:block;margin-bottom:6px;letter-spacing:.1em;
+}
+
+/* ---------- Перемикач напрямів ---------- */
+.switch{
+  position:sticky;top:0;z-index:20;display:flex;gap:6px;flex-wrap:wrap;
+  padding:12px 0;margin-bottom:22px;
+  background:linear-gradient(var(--bg) 72%,rgba(13,17,23,0));
+}
+.sw{
+  appearance:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;
+  color:var(--ink-2);background:var(--card);border:1px solid var(--control-edge);
+  border-radius:var(--r-ctl);padding:9px 15px;
+  transition:color var(--ui-speed),border-color var(--ui-speed),background var(--ui-speed);
+  display:flex;align-items:center;gap:9px;
+}
+.sw:hover{color:var(--ink);border-color:var(--accent-d)}
+.sw em{
+  font-family:var(--font-mono);font-style:normal;font-size:10px;
+  color:var(--ink-3);letter-spacing:.08em;
+}
+.sw[aria-selected="true"]{
+  color:#04211d;background:var(--accent);border-color:var(--accent-c);
+}
+.sw[aria-selected="true"] em{color:rgba(4,33,29,.62)}
+.sw:focus-visible{outline:2px solid var(--accent-c);outline-offset:2px}
+
+/* ---------- Оболонка напряму ---------- */
+.dir[hidden]{display:none}
+.dirhead{margin-bottom:16px}
+.dirhead h2{font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px}
+.dirhead > p{margin:0;color:var(--ink-2);max-width:66ch;font-size:14px}
+
+.specs{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:var(--r-card);overflow:hidden;margin:16px 0 20px;
+  grid-template-columns:repeat(auto-fit,minmax(210px,1fr));}
+.spec{background:var(--card);padding:12px 14px}
+.spec b{display:block;font-family:var(--font-mono);font-size:10px;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--accent-b);margin-bottom:5px}
+.spec span{font-size:12.5px;color:var(--ink-2);line-height:1.42}
+
+/* Рамка «монітор у цеху» — щоб мокап читався як екран, а не як секція сторінки */
+.screen{
+  border:1px solid var(--line);border-radius:14px;background:var(--bg);
+  overflow:hidden;box-shadow:0 30px 70px -50px #000,inset 0 1px 0 rgba(255,255,255,.03);
+}
+.screenbar{
+  display:flex;align-items:center;gap:10px;padding:9px 14px;
+  background:var(--bg-rail);border-bottom:1px solid var(--line);
+}
+.screenbar .dot{width:8px;height:8px;border-radius:50%;background:var(--line-2)}
+.screenbar .ttl{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);letter-spacing:.05em}
+.screenbar .day{
+  margin-left:auto;font-family:var(--font-mono);font-size:11px;
+  color:var(--accent-b);letter-spacing:.06em;
+}
+.stage{padding:18px}
+
+/* Спільні дрібниці */
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.matchip{
+  display:inline-flex;align-items:center;padding:2px 9px;border-radius:var(--r-chip);
+  background:var(--card-3);border:1px solid var(--line-2);
+  font-size:11.5px;font-weight:500;color:var(--ink);white-space:nowrap;
+}
+.qty{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.qty b{color:var(--ink);font-weight:600}
+.sid{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-3);letter-spacing:.02em}
+
+/* ============================================================
+   A — КОНВЕЄР
+   Один клієнт на екрані. Кнопка — величезна залита плита.
+   Рух горизонтальний: зроблене їде праворуч, наступне заїжджає.
+   ============================================================ */
+.conv{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:18px}
+@media(max-width:860px){.conv{grid-template-columns:1fr}}
+
+.stlbox{
+  position:relative;border:1px solid var(--line);border-radius:var(--r-card);
+  background:radial-gradient(120% 90% at 50% 0%,#18222e,#0f151d);
+  aspect-ratio:1/1;overflow:hidden;
+}
+.stlbox canvas{display:block;width:100%;height:100%}
+.stlbox .stltag{
+  position:absolute;left:10px;top:10px;font-family:var(--font-mono);font-size:10px;
+  letter-spacing:.09em;color:var(--accent-b);background:rgba(13,17,23,.72);
+  border:1px solid var(--line-2);border-radius:var(--r-chip);padding:3px 9px;
+}
+.stlbox .stlhint{
+  position:absolute;left:10px;right:10px;bottom:10px;font-size:11px;color:var(--ink-3);
+  text-align:center;
+}
+
+.convcard{display:flex;flex-direction:column;min-height:0}
+.convhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.convhead h3{font-size:26px;font-weight:700;letter-spacing:-.02em;margin:0}
+.convhead .of{font-family:var(--font-mono);font-size:12px;color:var(--ink-3)}
+.convsub{color:var(--ink-2);font-size:12.5px;margin:0 0 14px}
+
+.convstack{position:relative;flex:1;min-height:212px}
+.convwork{
+  position:absolute;inset:0 0 auto 0;
+  border:1px solid var(--line-2);border-radius:var(--r-card);background:var(--card-2);
+  padding:16px;display:flex;flex-direction:column;gap:12px;
+  box-shadow:0 14px 34px -18px rgba(0,0,0,.86);
+}
+.convwork .row1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.convwork .row1 .matchip{font-size:14px;padding:4px 12px}
+.convwork .row2{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding-top:10px;border-top:1px solid var(--line)}
+.convwork .fold{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--r-ctl);
+  border:1px solid var(--control-edge);background:var(--card);color:var(--ink-2);
+  font-family:var(--font-mono);font-size:11px;
+}
+.convwork .fold svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.7}
+
+/* Плита «Знайдено» — єдине залите трактування на екрані */
+.slab{
+  appearance:none;cursor:pointer;font-family:inherit;position:relative;overflow:hidden;
+  width:100%;padding:20px;border:0;border-radius:var(--r-card);
+  background:var(--accent);color:#04211d;font-size:19px;font-weight:800;letter-spacing:-.01em;
+  display:flex;align-items:center;justify-content:center;gap:12px;
+  box-shadow:0 10px 0 -2px var(--accent-d),0 22px 40px -22px rgba(20,184,166,.75);
+  transition:transform .07s ease,box-shadow .07s ease;
+}
+.slab:hover{background:var(--accent-b)}
+.slab:active{
+  transform:translateY(6px);
+  box-shadow:0 4px 0 -2px var(--accent-d),0 10px 20px -16px rgba(20,184,166,.7);
+}
+.slab:focus-visible{outline:3px solid var(--accent-c);outline-offset:3px}
+.slab svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:3;
+  stroke-linecap:round;stroke-linejoin:round}
+/* Промінь по плиті при натисканні — підтвердження, що дію прийнято */
+.slab .ray{
+  position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.55),transparent 70%);
+  transform:translateX(-110%);
+}
+.slab.fired .ray{animation:ray var(--sweep) ease-out}
+@keyframes ray{to{transform:translateX(110%)}}
+
+.convactions{display:flex;gap:10px;margin-top:14px}
+.ghost{
+  appearance:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;
+  padding:0 18px;border-radius:var(--r-ctl);border:1px solid var(--control-edge);
+  background:transparent;color:var(--ink-2);transition:color var(--ui-speed),border-color var(--ui-speed);
+}
+.ghost:hover{color:var(--ink);border-color:var(--line-2)}
+.ghost:focus-visible{outline:2px solid var(--accent-c);outline-offset:2px}
+
+/* Виїзд роботи праворуч */
+.convwork.gone{animation:convout .42s cubic-bezier(.4,0,.75,.2) forwards}
+@keyframes convout{
+  to{transform:translateX(38%) scale(.94);opacity:0}
+}
+.convwork.enter{animation:convin .38s cubic-bezier(.16,.8,.3,1)}
+@keyframes convin{
+  from{transform:translateX(-16%) scale(.97);opacity:0}
+}
+
+/* Стрічка наступних клієнтів — видно, куди рухається конвеєр */
+.filmstrip{
+  display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--line);
+  overflow-x:auto;
+}
+.fs{
+  flex:0 0 auto;padding:8px 12px;border-radius:var(--r-ctl);border:1px solid var(--line);
+  background:var(--card);font-size:12px;color:var(--ink-3);white-space:nowrap;
+  transition:border-color var(--ui-speed),color var(--ui-speed);
+}
+.fs .n{font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-left:7px}
+.fs.now{border-color:var(--accent);color:var(--ink);background:rgba(20,184,166,.09)}
+.fs.done{opacity:.42;text-decoration:line-through;text-decoration-color:var(--accent-d)}
+
+/* ============================================================
+   B — ЛОТОК
+   Клієнти-доріжки, роботи-плитки. Плитка сама і є кнопка.
+   Рух — переворот на місці, нічого не пересувається.
+   ============================================================ */
+.lanes{display:flex;flex-direction:column;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden}
+.lane{background:var(--card);padding:13px 14px;display:grid;
+  grid-template-columns:minmax(0,190px) minmax(0,1fr);gap:14px;align-items:start}
+@media(max-width:760px){.lane{grid-template-columns:1fr;gap:10px}}
+.lane.settled{background:linear-gradient(90deg,rgba(20,184,166,.07),transparent 60%)}
+
+.laneid{display:flex;flex-direction:column;gap:7px}
+.laneid h3{font-size:15px;font-weight:600;margin:0;letter-spacing:-.01em}
+.lanemeta{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
+.lanetrack{height:3px;border-radius:2px;background:var(--card-3);overflow:hidden}
+/* Прогрес їде через scaleX, не через width: ширина — layout-властивість,
+   її анімація змушує браузер переверстувати доріжку на кожному кадрі. */
+.lanetrack i{display:block;height:100%;width:100%;background:var(--accent);
+  transform:scaleX(0);transform-origin:left center;
+  transition:transform .34s cubic-bezier(.16,.8,.3,1)}
+
+.tiles{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(126px,1fr))}
+
+/* Плитка = кнопка. Перспектива на батьку, переворот на дитині. */
+.tile{
+  appearance:none;font-family:inherit;cursor:pointer;padding:0;border:0;background:none;
+  perspective:640px;text-align:left;
+}
+.tile:focus-visible{outline:2px solid var(--accent-c);outline-offset:3px;border-radius:var(--r-ctl)}
+.tileface{
+  position:relative;transform-style:preserve-3d;
+  /* Чисте сповільнення без відскоку. Плитку тиснуть сотні разів за зміну —
+     перестрибування, миле на першому кліку, до обіду дратує. */
+  transition:transform .42s cubic-bezier(.22,1,.36,1);
+  border-radius:var(--r-ctl);
+}
+.tile.on .tileface{transform:rotateY(180deg)}
+.side{
+  border-radius:var(--r-ctl);border:1px solid var(--line-2);background:var(--card-2);
+  padding:10px;display:flex;flex-direction:column;gap:7px;min-height:104px;
+  backface-visibility:hidden;
+}
+.side.back{
+  position:absolute;inset:0;transform:rotateY(180deg);
+  background:linear-gradient(150deg,rgba(20,184,166,.17),rgba(20,184,166,.05));
+  border-color:var(--accent-d);align-items:center;justify-content:center;gap:5px;
+}
+.tile:hover .side.front{border-color:var(--control-edge);background:var(--card-3)}
+.side.front .thumb{
+  height:34px;border-radius:6px;border:1px solid var(--line);
+  background:
+    radial-gradient(60% 120% at 50% 120%,rgba(45,212,191,.22),transparent 70%),
+    repeating-linear-gradient(115deg,#1d2836 0 6px,#19222e 6px 12px);
+}
+.side.front .tqty{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:6px}
+.side.back .bigcheck{width:30px;height:30px;fill:none;stroke:var(--accent-c);
+  stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.side.back .bigcheck path{stroke-dasharray:32;stroke-dashoffset:32}
+.tile.on .side.back .bigcheck path{animation:draw .34s .2s ease-out forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.side.back b{font-size:12px;color:var(--accent-c);font-weight:600}
+.side.back .undo{font-family:var(--font-mono);font-size:9.5px;color:var(--ink-3);letter-spacing:.06em}
+
+/* Кнопка «Видати» проявляється лише коли доріжка зібрана повністю */
+.laneissue{
+  margin-top:9px;appearance:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;
+  width:100%;padding:9px;border-radius:var(--r-ctl);border:0;
+  background:var(--accent);color:#04211d;
+  opacity:0;transform:translateY(-4px);pointer-events:none;
+  transition:opacity .26s ease,transform .26s cubic-bezier(.16,.8,.3,1);
+}
+.lane.settled .laneissue{opacity:1;transform:none;pointer-events:auto}
+.laneissue:hover{background:var(--accent-b)}
+.laneissue:focus-visible{outline:2px solid var(--accent-c);outline-offset:2px}
+.laneissue[data-issued="1"]{background:transparent;color:var(--accent-c);
+  border:1px solid var(--accent-d);cursor:default}
+
+/* ============================================================
+   C — ЛІНІЯ
+   Кнопок немає. Рядок сам клікабельний, курсор іде згори вниз,
+   працює з клавіатури. Ніщо не пересувається — тільки чорнило.
+   ============================================================ */
+.rail{border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;background:var(--card)}
+.railkeys{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 12px;
+  background:var(--bg-rail);border-bottom:1px solid var(--line);
+  font-size:11.5px;color:var(--ink-3);
+}
+.railkeys kbd{
+  font-family:var(--font-mono);font-size:10.5px;color:var(--ink);background:var(--card-3);
+  border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:1px 6px;margin-right:5px;
+}
+.railkeys .live{margin-left:auto;font-family:var(--font-mono);color:var(--accent-b)}
+
+.grp{border-bottom:1px solid var(--line)}
+.grp:last-child{border-bottom:0}
+.grphead{
+  display:flex;align-items:center;gap:10px;padding:7px 12px;
+  background:var(--card-2);border-bottom:1px solid var(--line);
+}
+.grphead h3{font-size:13px;font-weight:600;margin:0;letter-spacing:-.005em}
+.grphead .gcount{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin-left:auto}
+.grphead .gissue{
+  appearance:none;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer;
+  padding:4px 12px;border-radius:var(--r-chip);border:0;background:var(--accent);color:#04211d;
+  opacity:0;pointer-events:none;transition:opacity .22s ease;
+}
+.grp.full .gissue{opacity:1;pointer-events:auto}
+.grphead .gissue:focus-visible{outline:2px solid var(--accent-c);outline-offset:2px}
+
+/* Рядок: 30px, хайрлайн замість картки. Уся площа — ціль кліку. */
+.ln{
+  position:relative;display:grid;
+  grid-template-columns:16px minmax(0,1fr) auto auto auto;
+  align-items:center;gap:10px;padding:0 12px 0 0;height:30px;
+  border-bottom:1px solid rgba(34,44,58,.55);cursor:pointer;
+  transition:background var(--ui-speed);
+}
+.ln:last-child{border-bottom:0}
+.ln:hover{background:var(--card-2)}
+.ln .cur{
+  width:3px;height:100%;background:transparent;transition:background var(--ui-speed);
+}
+.ln.at .cur{background:var(--accent)}
+.ln.at{background:rgba(20,184,166,.06)}
+.ln:focus-visible{outline:2px solid var(--accent-c);outline-offset:-2px}
+.ln .lmat{font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ln .lqty,.ln .lid,.ln .lfold{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);
+  font-variant-numeric:tabular-nums}
+.ln .lfold{color:var(--ink-2)}
+
+/* Чорнильний змах — єдина анімація на екрані. Нічого не рухається. */
+.ln .ink{
+  position:absolute;inset:0;pointer-events:none;transform-origin:left center;
+  background:linear-gradient(90deg,rgba(20,184,166,.30),rgba(20,184,166,.05));
+  transform:scaleX(0);
+}
+.ln.hit .ink{animation:ink .5s cubic-bezier(.2,.7,.3,1)}
+@keyframes ink{40%{transform:scaleX(1)}100%{transform:scaleX(1);opacity:0}}
+.ln.done .lmat{color:var(--ink-3);text-decoration:line-through;
+  text-decoration-color:var(--accent-d);text-decoration-thickness:1px}
+.ln.done{background:transparent}
+.ln.done .cur{background:var(--accent-d)}
+.ln .tick{
+  width:13px;height:13px;fill:none;stroke:var(--accent-c);stroke-width:3;
+  stroke-linecap:round;stroke-linejoin:round;opacity:0;
+}
+.ln.done .tick{opacity:1}
+.ln.done .tick path{stroke-dasharray:32;stroke-dashoffset:32;animation:draw .3s .12s ease-out forwards}
+
+/* ---------- Підсумкове порівняння ---------- */
+.compare{margin-top:44px;border-top:1px solid var(--line);padding-top:28px}
+.compare h2{font-size:20px;font-weight:700;margin:0 0 16px;letter-spacing:-.02em}
+.ctable{width:100%;overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:620px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);
+  font-size:12.5px;vertical-align:top}
+th{font-family:var(--font-mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--accent-b);font-weight:500}
+td:first-child{color:var(--ink-2);width:132px}
+td b{color:var(--ink);font-weight:600}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.001ms!important}
+}
+</style>
+
+<div class="wrap">
+
+  <header class="pagehead">
+    <p class="eyebrow">Order Desk · екран 4</p>
+    <h1>Ранкова видача — три напрями</h1>
+    <p>Один і той самий екран, три принципово різні відповіді на питання «якою має бути кнопка «знайдено»». Не три скіни — три різні способи організувати роботу оператора, який стоїть біля лотка з коронками. <b>Усе клікається: тисни й дивись, як поводиться рух.</b></p>
+  </header>
+
+  <section class="rules" aria-label="Правила видачі, спільні для всіх напрямів">
+    <div class="rule"><i>ПРАВИЛО 1</i><b>Порядок фіксується зранку</b><span>Жоден напрям не пересортовує список під руками. Зроблене лишається на своєму місці.</span></div>
+    <div class="rule"><i>ПРАВИЛО 2</i><b>Один клік, не два</b><span>«Знайшов» і «видав» — та сама дія. Ніде немає двоступеневого підтвердження.</span></div>
+    <div class="rule"><i>ПРАВИЛО 3</i><b>Ніякого авто-зіставлення</b><span>Система показує кандидатів і STL. Рішення завжди за оком оператора.</span></div>
+  </section>
+
+  <div class="switch" role="tablist" aria-label="Напрям дизайну">
+    <button class="sw" role="tab" id="tab-a" aria-controls="dir-a" aria-selected="true">Конвеєр <em>A</em></button>
+    <button class="sw" role="tab" id="tab-b" aria-controls="dir-b" aria-selected="false">Лоток <em>B</em></button>
+    <button class="sw" role="tab" id="tab-c" aria-controls="dir-c" aria-selected="false">Лінія <em>C</em></button>
+  </div>
+
+  <!-- ============ A ============ -->
+  <section class="dir" id="dir-a" role="tabpanel" aria-labelledby="tab-a">
+    <div class="dirhead">
+      <h2>A · Конвеєр</h2>
+      <p>Один клієнт і одна робота на екрані, у повний розмір. Оператор не шукає рядок очима — екран сам подає наступне. STL крутиться постійно, бо це головний інструмент звірки.</p>
+    </div>
+    <div class="specs">
+      <div class="spec"><b>Кнопка</b><span>Плита на всю ширину з фізичною глибиною — тиснеться на 6px, як реальна клавіша. Промахнутись неможливо навіть у рукавичках.</span></div>
+      <div class="spec"><b>Організація</b><span>Черга-стрічка: одна робота в фокусі, решта — тонкою стрічкою внизу. Нуль когнітивного навантаження.</span></div>
+      <div class="spec"><b>Анімація</b><span>Горизонтальний рух конвеєра: зроблене їде праворуч, наступне заїжджає зліва. Промінь по плиті = дію прийнято.</span></div>
+    </div>
+    <div class="screen">
+      <div class="screenbar"><span class="dot"></span><span class="ttl">handout · конвеєр</span><span class="day">26.08.26</span></div>
+      <div class="stage">
+        <div class="conv">
+          <div class="stlbox">
+            <canvas id="crownA" width="620" height="620" aria-label="Обертається STL-модель коронки"></canvas>
+            <span class="stltag">STL · ПРЕВʼЮ</span>
+            <span class="stlhint">Порівняй форму з коронкою в лотку</span>
+          </div>
+          <div class="convcard">
+            <div class="convhead">
+              <h3 id="convName">Стоматологія «Люмі»</h3>
+              <span class="of mono" id="convOf">1 / 4</span>
+            </div>
+            <p class="convsub" id="convSub">Папка прив'язана · 2 партії за день</p>
+            <div class="convstack" id="convStack"></div>
+            <div class="convactions">
+              <button class="slab" id="convSlab">
+                <span class="ray"></span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                Знайдено
+              </button>
+              <button class="ghost" id="convSkip">Пропустити</button>
+            </div>
+            <div class="filmstrip" id="convStrip"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ B ============ -->
+  <section class="dir" id="dir-b" role="tabpanel" aria-labelledby="tab-b" hidden>
+    <div class="dirhead">
+      <h2>B · Лоток</h2>
+      <p>Екран повторює фізичний лоток: клієнт — доріжка, робота — плитка. Оператор запам'ятовує розташування просторово («Люмі, друга плитка»), а не читає рядок за рядком.</p>
+    </div>
+    <div class="specs">
+      <div class="spec"><b>Кнопка</b><span>Окремої кнопки немає — плитка сама і є кнопка. Ціль ~126×104px: найбільша можлива площа на одиницю екрана.</span></div>
+      <div class="spec"><b>Організація</b><span>Доріжки клієнтів, плитки всередині. Прогрес доріжки — волосяна лінія, не блок.</span></div>
+      <div class="spec"><b>Анімація</b><span>Переворот на місці (rotateY) + промальовка галочки. Нічого не пересувається — правило 1 виконується буквально.</span></div>
+    </div>
+    <div class="screen">
+      <div class="screenbar"><span class="dot"></span><span class="ttl">handout · лоток</span><span class="day">26.08.26</span></div>
+      <div class="stage"><div class="lanes" id="laneRoot"></div></div>
+    </div>
+  </section>
+
+  <!-- ============ C ============ -->
+  <section class="dir" id="dir-c" role="tabpanel" aria-labelledby="tab-c" hidden>
+    <div class="dirhead">
+      <h2>C · Лінія</h2>
+      <p>Найщільніший варіант: 30px на роботу, усі 15 робіт в одному екрані без прокрутки. Розрахований на оператора, який уже знає процес напам'ять і хоче швидкості.</p>
+    </div>
+    <div class="specs">
+      <div class="spec"><b>Кнопка</b><span>Кнопок немає взагалі. Рядок сам є ціллю кліку; з клавіатури — <kbd>Space</kbd>. Одна залита кнопка на групу, і лише коли вона зібрана.</span></div>
+      <div class="spec"><b>Організація</b><span>Одна вертикальна лінія, курсор іде згори вниз. Групи клієнтів — тонкі роздільники, не картки.</span></div>
+      <div class="spec"><b>Анімація</b><span>Чорнильний змах по рядку і закреслення на місці. Жоден піксель не змінює позиції — нульовий ризик промаху.</span></div>
+    </div>
+    <div class="screen">
+      <div class="screenbar"><span class="dot"></span><span class="ttl">handout · лінія</span><span class="day">26.08.26</span></div>
+      <div class="stage">
+        <div class="rail">
+          <div class="railkeys">
+            <span><kbd>Space</kbd>знайдено</span>
+            <span><kbd>↑</kbd><kbd>↓</kbd>курсор</span>
+            <span><kbd>F</kbd>відкрити папку</span>
+            <span class="live" id="railLive">0 / 15</span>
+          </div>
+          <div id="railRoot"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="compare">
+    <h2>Чим вони справді різні</h2>
+    <div class="ctable">
+      <table>
+        <thead><tr><th></th><th>A · Конвеєр</th><th>B · Лоток</th><th>C · Лінія</th></tr></thead>
+        <tbody>
+          <tr><td>Кнопка</td><td><b>Плита 100%</b> з глибиною натискання</td><td><b>Сам об'єкт</b> — плитка є кнопкою</td><td><b>Немає</b> — рядок + клавіатура</td></tr>
+          <tr><td>Робіт в екрані</td><td>1</td><td>~12</td><td>15+</td></tr>
+          <tr><td>Рух</td><td>Горизонтальний конвеєр</td><td>Переворот на місці</td><td>Тільки чорнило, нуль руху</td></tr>
+          <tr><td>Кому пасує</td><td>Новому оператору; шумний цех, рукавички</td><td>Тому, хто працює просторовою пам'яттю</td><td>Досвідченому — максимум швидкості</td></tr>
+          <tr><td>Ризик промаху</td><td>Найнижчий</td><td>Низький</td><td>Середній (щільно)</td></tr>
+          <tr><td>Слабке місце</td><td>Не видно картини дня цілком</td><td>3D-переворот — найважча анімація</td><td>Без клавіатури не розкривається</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* Реальні дані з таблиці: матеріали, кольори виробника (500 = A1 опак,
+     800 = A2 опак), Sum3D ID у форматі HH-MM-SS, час створення папки export. */
+  const DATA = [
+    {name:'Стоматологія «Люмі»', note:"Папка прив'язана · 2 партії за день", works:[
+      {mat:'моно А3.5', qty:6, id:'12-01-45', folds:['09:12']},
+      {mat:'цирконій 500', qty:2, id:'12-04-10', folds:['09:12']},
+      {mat:'пмма A2', qty:4, id:'12-18-33', folds:['11:40']},
+      {mat:'моно А2', qty:1, id:'12-22-07', folds:['09:12','11:40']}
+    ]},
+    {name:'Ортос Дент', note:"Папка прив'язана · 1 партія", works:[
+      {mat:'титан корея', qty:2, id:'13-40-55', folds:['10:05']},
+      {mat:'цирконій 800', qty:3, id:'13-44-19', folds:['10:05']}
+    ]},
+    {name:'Біла Лінія', note:"Папка прив'язана · 3 партії за день", works:[
+      {mat:'моно А2', qty:8, id:'09-14-02', folds:['08:40']},
+      {mat:'пмма A3', qty:2, id:'09-31-50', folds:['08:40']},
+      {mat:'цирконій 500', qty:5, id:'15-02-11', folds:['12:15']},
+      {mat:'моно А3', qty:3, id:'15-08-44', folds:['12:15']},
+      {mat:'титан корея', qty:1, id:'16-20-09', folds:['16:30']}
+    ]},
+    {name:'Кравченко О. М.', note:'Приватний технік · 1 партія', works:[
+      {mat:'пмма A2', qty:2, id:'17-55-28', folds:['17:58']}
+    ]},
+    {name:'Дента-Плюс', note:"Папка прив'язана · 1 партія", works:[
+      {mat:'цирконій 800', qty:4, id:'11-06-31', folds:['11:10']},
+      {mat:'моно А3.5', qty:2, id:'11-09-58', folds:['11:10']},
+      {mat:'пмма A1', qty:1, id:'11-12-40', folds:['11:10']}
+    ]}
+  ];
+
+  const TOTAL = DATA.reduce((n,c) => n + c.works.length, 0);
+  const folderSvg = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>';
+  const el = (id) => document.getElementById(id);
+
+  /* ---------- Перемикач напрямів ---------- */
+  const tabs = [...document.querySelectorAll('.sw')];
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      tabs.forEach((t) => {
+        const on = t === tab;
+        t.setAttribute('aria-selected', String(on));
+        el(t.getAttribute('aria-controls')).hidden = !on;
+      });
+    });
+  });
+
+  /* ============================================================
+     A — Конвеєр
+     ============================================================ */
+  const A = {ci:0, wi:0, done:new Set()};
+
+  function renderStripA(){
+    el('convStrip').innerHTML = DATA.map((c,i) => {
+      const cls = i < A.ci ? 'fs done' : (i === A.ci ? 'fs now' : 'fs');
+      return `<span class="${cls}">${c.name}<span class="n">${c.works.length}</span></span>`;
+    }).join('');
+  }
+
+  function renderWorkA(entering){
+    const client = DATA[A.ci];
+    const work = client.works[A.wi];
+    el('convName').textContent = client.name;
+    el('convSub').textContent = client.note;
+    el('convOf').textContent = `${A.wi + 1} / ${client.works.length}`;
+    const folds = work.folds.map((t) =>
+      `<span class="fold">${folderSvg}${t}</span>`).join('');
+    el('convStack').innerHTML =
+      `<div class="convwork${entering ? ' enter' : ''}">
+         <div class="row1">
+           <span class="matchip">${work.mat}</span>
+           <span class="qty"><b>${work.qty}</b> од.</span>
+         </div>
+         <div class="row2">
+           <span class="sid">Sum3D ${work.id}</span>
+           ${folds}
+         </div>
+       </div>`;
+    renderStripA();
+  }
+
+  function advanceA(){
+    const card = el('convStack').firstElementChild;
+    if (card) card.classList.add('gone');
+    const client = DATA[A.ci];
+    if (A.wi + 1 < client.works.length) { A.wi++; }
+    else { A.ci = (A.ci + 1) % DATA.length; A.wi = 0; }
+    setTimeout(() => renderWorkA(true), 210);
+  }
+
+  el('convSlab').addEventListener('click', (e) => {
+    const b = e.currentTarget;
+    b.classList.remove('fired');
+    void b.offsetWidth;          // перезапуск анімації променя
+    b.classList.add('fired');
+    advanceA();
+  });
+  el('convSkip').addEventListener('click', advanceA);
+  renderWorkA(false);
+
+  /* ---------- STL-превʼю: обертається каркас коронки на canvas ----------
+     Профіль-лате з чотирма горбками — впізнаване як зуб, дешеве для
+     малювання, і воно справді крутиться, а не є картинкою. */
+  function mountCrown(canvas){
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const RINGS = 15, SEG = 26;
+    const pts = [];
+    for (let r = 0; r < RINGS; r++){
+      const v = r / (RINGS - 1);                 // 0 — низ, 1 — верх
+      const y = (v - .5) * 200;
+      const base = 96 * Math.sin(Math.PI * (.22 + v * .74));
+      const ring = [];
+      for (let s = 0; s < SEG; s++){
+        const a = (s / SEG) * Math.PI * 2;
+        const cusp = 1 + Math.cos(a * 4) * .13 * Math.pow(v, 1.9);
+        ring.push([Math.cos(a) * base * cusp, y, Math.sin(a) * base * cusp]);
+      }
+      pts.push(ring);
+    }
+    let t = 0, raf = 0;
+    const slow = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function frame(){
+      t += slow ? 0 : .0055;
+      ctx.clearRect(0, 0, W, H);
+      const cos = Math.cos(t), sin = Math.sin(t);
+      const proj = pts.map((ring) => ring.map(([x,y,z]) => {
+        const rx = x * cos - z * sin, rz = x * sin + z * cos;
+        const k = 520 / (520 + rz + 240);
+        return [W/2 + rx * k * 1.35, H/2 - y * k * 1.35, rz];
+      }));
+      for (let r = 0; r < proj.length; r++){
+        for (let s = 0; s < SEG; s++){
+          const p = proj[r][s], q = proj[r][(s+1) % SEG];
+          const depth = (p[2] + 130) / 260;            // 0 — далеко, 1 — близько
+          ctx.strokeStyle = `rgba(45,212,191,${(.06 + depth * .40).toFixed(3)})`;
+          ctx.lineWidth = .55 + depth * .85;
+          ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+          if (r < proj.length - 1 && s % 2 === 0){
+            const n = proj[r+1][s];
+            ctx.strokeStyle = `rgba(45,212,191,${(.03 + depth * .17).toFixed(3)})`;
+            ctx.lineWidth = .5;
+            ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(n[0], n[1]); ctx.stroke();
+          }
+        }
+      }
+      raf = requestAnimationFrame(frame);
+    }
+    frame();
+    return () => cancelAnimationFrame(raf);
+  }
+  mountCrown(el('crownA'));
+
+  /* ============================================================
+     B — Лоток
+     ============================================================ */
+  function buildB(){
+    const root = el('laneRoot');
+    root.innerHTML = DATA.map((c, ci) => {
+      const tiles = c.works.map((w, wi) => `
+        <button class="tile" data-c="${ci}" data-w="${wi}"
+                aria-pressed="false" aria-label="${w.mat}, ${w.qty} од., Sum3D ${w.id}">
+          <span class="tileface">
+            <span class="side front">
+              <span class="thumb"></span>
+              <span class="matchip">${w.mat}</span>
+              <span class="tqty">
+                <span class="qty"><b>${w.qty}</b> од.</span>
+                <span class="sid">${w.folds[0]}</span>
+              </span>
+            </span>
+            <span class="side back">
+              <svg class="bigcheck" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              <b>Знайдено</b>
+              <span class="undo">клік — скасувати</span>
+            </span>
+          </span>
+        </button>`).join('');
+      const units = c.works.reduce((n, w) => n + w.qty, 0);
+      return `
+        <div class="lane" data-lane="${ci}">
+          <div class="laneid">
+            <h3>${c.name}</h3>
+            <span class="lanemeta"><span data-fnd>0</span>/${c.works.length} · ${units} од.</span>
+            <span class="lanetrack"><i style="transform:scaleX(0)"></i></span>
+            <button class="laneissue" tabindex="-1">Видати клієнта</button>
+          </div>
+          <div class="tiles">${tiles}</div>
+        </div>`;
+    }).join('');
+
+    root.addEventListener('click', (e) => {
+      const tile = e.target.closest('.tile');
+      if (tile) { tile.classList.toggle('on');
+        tile.setAttribute('aria-pressed', String(tile.classList.contains('on')));
+        syncLane(tile.closest('.lane')); return; }
+      const issue = e.target.closest('.laneissue');
+      if (issue && !issue.dataset.issued){ issue.dataset.issued = '1'; issue.textContent = 'Видано ✓'; }
+    });
+  }
+
+  function syncLane(lane){
+    const tiles = [...lane.querySelectorAll('.tile')];
+    const found = tiles.filter((t) => t.classList.contains('on')).length;
+    lane.querySelector('[data-fnd]').textContent = found;
+    lane.querySelector('.lanetrack i').style.transform = `scaleX(${found / tiles.length})`;
+    const full = found === tiles.length;
+    lane.classList.toggle('settled', full);
+    const btn = lane.querySelector('.laneissue');
+    btn.tabIndex = full ? 0 : -1;
+    if (!full && btn.dataset.issued){ delete btn.dataset.issued; btn.textContent = 'Видати клієнта'; }
+  }
+  buildB();
+
+  /* ============================================================
+     C — Лінія
+     ============================================================ */
+  let cursor = 0;
+
+  function buildC(){
+    const root = el('railRoot');
+    let n = 0;
+    root.innerHTML = DATA.map((c) => {
+      const rows = c.works.map((w) => {
+        const i = n++;
+        return `
+          <div class="ln" data-i="${i}" tabindex="0" role="button" aria-pressed="false"
+               aria-label="${c.name}: ${w.mat}, ${w.qty} од.">
+            <span class="ink"></span><span class="cur"></span>
+            <span class="lmat">${w.mat}</span>
+            <span class="lqty">${w.qty} од.</span>
+            <span class="lid">${w.id}</span>
+            <span class="lfold">${w.folds.join(' · ')}</span>
+            <svg class="tick" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>`;
+      }).join('');
+      return `
+        <div class="grp">
+          <div class="grphead">
+            <h3>${c.name}</h3>
+            <button class="gissue" tabindex="-1">Видати</button>
+            <span class="gcount mono">${c.works.length}</span>
+          </div>
+          ${rows}
+        </div>`;
+    }).join('');
+
+    root.addEventListener('click', (e) => {
+      const issue = e.target.closest('.gissue');
+      if (issue){ issue.textContent = 'Видано ✓'; issue.disabled = true; return; }
+      const line = e.target.closest('.ln');
+      if (line) hit(line);
+    });
+    root.addEventListener('keydown', (e) => {
+      const line = e.target.closest('.ln');
+      if (!line) return;
+      if (e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); hit(line); }
+      if (e.key === 'ArrowDown'){ e.preventDefault(); move(1); }
+      if (e.key === 'ArrowUp'){ e.preventDefault(); move(-1); }
+    });
+    setCursor(0);
+  }
+
+  const lines = () => [...document.querySelectorAll('#railRoot .ln')];
+
+  function setCursor(i){
+    const all = lines();
+    cursor = Math.max(0, Math.min(i, all.length - 1));
+    all.forEach((l, k) => l.classList.toggle('at', k === cursor));
+  }
+  function move(d){ setCursor(cursor + d); lines()[cursor].focus(); }
+
+  function hit(line){
+    const on = line.classList.toggle('done');
+    line.setAttribute('aria-pressed', String(on));
+    if (on){
+      line.classList.remove('hit'); void line.offsetWidth; line.classList.add('hit');
+      /* Курсор іде далі — але список не пересортовується: зроблений рядок
+         лишається рівно там, де був (правило 1). */
+      setCursor(Number(line.dataset.i) + 1);
+    }
+    const grp = line.closest('.grp');
+    const rows = [...grp.querySelectorAll('.ln')];
+    const full = rows.every((r) => r.classList.contains('done'));
+    grp.classList.toggle('full', full);
+    const btn = grp.querySelector('.gissue');
+    btn.tabIndex = full ? 0 : -1;
+    if (!full){ btn.disabled = false; btn.textContent = 'Видати'; }
+    el('railLive').textContent =
+      `${lines().filter((l) => l.classList.contains('done')).length} / ${TOTAL}`;
+  }
+  buildC();
+  el('railLive').textContent = `0 / ${TOTAL}`;
+})();
+</script>

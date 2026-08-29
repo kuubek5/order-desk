@@ -1,0 +1,300 @@
+<meta charset="utf-8">
+<title>React чи HTMX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+/* Документ, не інтерфейс: та сама палітра Order Desk заради спадковості,
+   але трактування текстове — міра рядка, ієрархія, нуль ефектів.
+   Одна тема свідомо: сторінка живе поруч з темним застосунком. */
+:root{
+  --bg:#0d1117;
+  --bg-rail:#0a0e14;
+  --card:#161d27;
+  --card-2:#1b2431;
+  --card-3:#202b3a;
+  --line:#222c3a;
+  --line-2:#3a4a5f;
+  --ink:#e8eff7;
+  --ink-2:#8fa3bb;
+  --ink-3:#8698ad;
+  --accent:#14b8a6;
+  --accent-b:#2dd4bf;
+  --accent-c:#5eead4;
+  --accent-d:#0f766e;
+  --react:#61dafb;         /* колір самого React — щоб сторона читалась без підпису */
+  --react-d:#1d5f7a;
+  --alarm:#f87171;
+  --warn:#f0a35e;
+  --r:10px;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:'Golos Text',system-ui,sans-serif;font-size:15px;line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:900px;margin:0 auto;padding:44px 24px 110px}
+
+/* ---------- Шапка ---------- */
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent-b);margin:0 0 12px}
+h1{font-size:clamp(30px,5vw,46px);font-weight:800;letter-spacing:-.028em;line-height:1.05;
+  margin:0 0 16px;text-wrap:balance}
+.lede{font-size:17px;color:var(--ink-2);margin:0;max-width:64ch}
+.lede b{color:var(--ink);font-weight:600}
+
+/* Вердикт одразу вгорі — читач не має гортати документ, щоб дізнатись висновок.
+   Виділяється піднятою поверхнею і мono-міткою, а не акцентною смугою збоку:
+   кольоровий рейлик на картці — найвпізнаваніший шаблон, і він тут нічого
+   не кодує, бо блок такий один. */
+.verdict{
+  margin:26px 0 40px;padding:20px 22px;border-radius:var(--r);
+  background:var(--card-2);border:1px solid var(--line-2);
+}
+.verdict .vlabel{
+  display:block;font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent-b);margin-bottom:10px;
+}
+.verdict b{display:block;font-size:16px;margin-bottom:5px}
+.verdict p{margin:0;color:var(--ink-2);font-size:14.5px;max-width:62ch}
+
+h2{font-size:22px;font-weight:700;letter-spacing:-.02em;margin:52px 0 6px;text-wrap:balance}
+h2 + .sub{margin:0 0 18px;color:var(--ink-3);font-size:14px;max-width:62ch}
+h3{font-size:15px;font-weight:600;margin:26px 0 8px;letter-spacing:-.008em}
+p{max-width:64ch}
+
+/* ---------- Панель фактів ---------- */
+.facts{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:var(--r);overflow:hidden;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin:18px 0}
+.fact{background:var(--card);padding:13px 15px}
+.fact .n{font-family:var(--mono);font-size:21px;font-weight:700;color:var(--accent-c);
+  font-variant-numeric:tabular-nums;display:block;line-height:1.2}
+.fact .l{font-size:12px;color:var(--ink-3);display:block;margin-top:3px}
+
+/* ---------- Ваги: хто виграє на кожному вимірі ---------- */
+.scale{display:flex;flex-direction:column;gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:18px 0}
+.dim{background:var(--card);padding:12px 15px;display:grid;
+  grid-template-columns:minmax(0,1fr) 128px;gap:14px;align-items:center}
+@media(max-width:620px){.dim{grid-template-columns:1fr;gap:8px}}
+.dim .t{font-size:13.5px}
+.dim .t b{display:block;font-weight:600;margin-bottom:2px}
+.dim .t span{color:var(--ink-3);font-size:12.5px;line-height:1.4}
+.bar{height:8px;border-radius:4px;background:var(--card-3);position:relative;overflow:hidden;
+  display:flex}
+.bar i{display:block;height:100%}
+.bar .r{background:var(--react)}
+.bar .h{background:var(--accent)}
+.dim .cap{font-family:var(--mono);font-size:10px;letter-spacing:.07em;color:var(--ink-3);
+  margin-top:5px;display:block}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--ink-3);margin:10px 0 0;align-items:center}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:11px;height:11px;border-radius:3px;display:block}
+
+/* ---------- Дві колонки: набуваємо / зберігаємо ---------- */
+.two{display:grid;gap:14px;grid-template-columns:1fr 1fr;margin:18px 0}
+@media(max-width:720px){.two{grid-template-columns:1fr}}
+.col{border:1px solid var(--line);border-radius:var(--r);background:var(--card);overflow:hidden}
+.col > header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;
+  align-items:center;gap:9px;background:var(--card-2)}
+.col > header b{font-size:14px;font-weight:700}
+.col.r > header{border-bottom-color:var(--react-d)}
+.col.r > header b{color:var(--react)}
+.col.h > header b{color:var(--accent-c)}
+.col ul{margin:0;padding:12px 16px 14px 16px;list-style:none;display:flex;flex-direction:column;gap:11px}
+.col li{font-size:13.5px;line-height:1.45;padding-left:16px;position:relative;color:var(--ink-2)}
+.col li::before{content:'';position:absolute;left:0;top:7px;width:6px;height:6px;border-radius:2px}
+.col.r li::before{background:var(--react-d)}
+.col.h li::before{background:var(--accent-d)}
+.col li b{color:var(--ink);font-weight:600}
+.col li code{font-family:var(--mono);font-size:12px;color:var(--accent-c);
+  background:var(--card-3);padding:1px 5px;border-radius:4px}
+.col .when{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);border:1px solid var(--line-2);border-radius:999px;padding:1px 7px;
+  margin-left:auto;white-space:nowrap}
+
+/* ---------- Таблиці ---------- */
+.tw{overflow-x:auto;margin:16px 0}
+table{width:100%;border-collapse:collapse;min-width:560px}
+th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line);font-size:13.5px;
+  vertical-align:top}
+th{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--accent-b);font-weight:500}
+td:first-child{color:var(--ink-2);width:34%}
+td b{color:var(--ink);font-weight:600}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+
+/* ---------- Тригери перегляду ---------- */
+.trig{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:var(--r);overflow:hidden;margin:18px 0}
+.tr{background:var(--card);padding:13px 15px;display:grid;grid-template-columns:22px 1fr;gap:12px;
+  align-items:start}
+.tr .box{width:15px;height:15px;border:1.5px solid var(--line-2);border-radius:4px;margin-top:3px}
+.tr.hit .box{border-color:var(--warn);background:rgba(240,163,94,.16)}
+.tr b{display:block;font-size:13.5px;font-weight:600;margin-bottom:2px}
+.tr span{font-size:12.5px;color:var(--ink-3);line-height:1.42}
+.tr.hit b{color:var(--warn)}
+
+/* ---------- Виноска ---------- */
+.note{border-left:2px solid var(--line-2);padding:2px 0 2px 16px;margin:20px 0;
+  color:var(--ink-3);font-size:13.5px;max-width:62ch}
+.note b{color:var(--ink-2)}
+hr{border:0;border-top:1px solid var(--line);margin:46px 0 0}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow">Order Desk · архітектурне рішення · 27.08.26</p>
+  <h1>React чи HTMX</h1>
+  <p class="lede">Порівняння на реальних цифрах цього репозиторію, а не на загальних міркуваннях. Питання не «що краще взагалі», а <b>що вигідніше саме тут: один розробник, двоє операторів, 92 рядки на день, standalone Windows</b>.</p>
+
+  <div class="verdict">
+    <span class="vlabel">Вердикт</span>
+    <b>Коротко: лишаємось. Але один аргумент за React справжній, і його треба закрити окремо.</b>
+    <p>Перехід не окупається: він множить кількість місць на фічу, додає другий тулчейн в інсталятор і вимагає ~100 JSON-ендпоінтів там, де зараз роут віддає HTML напряму. Проте <code>app.js</code> на 1545 рядків і CSS на 7868 — це реальний борг, і його треба лікувати. Просто не React'ом.</p>
+  </div>
+
+  <h2>Де ми зараз</h2>
+  <p class="sub">Виміряно в репозиторії, 27.08.26.</p>
+  <div class="facts">
+    <div class="fact"><span class="n">42</span><span class="l">Jinja-шаблони<br>4 761 рядок</span></div>
+    <div class="fact"><span class="n">100</span><span class="l">роутів<br>віддають HTML</span></div>
+    <div class="fact"><span class="n">2 902</span><span class="l">рядки власного JS<br>без фреймворку</span></div>
+    <div class="fact"><span class="n">7 868</span><span class="l">рядків CSS<br>без ізоляції</span></div>
+    <div class="fact"><span class="n">899</span><span class="l">тестів<br>у 64 файлах</span></div>
+    <div class="fact"><span class="n">0</span><span class="l">кроків збірки<br>фронтенду</span></div>
+  </div>
+
+  <p class="note"><b>Одна цифра варта окремої уваги:</b> <span class="mono">app.js — 1 545 рядків</span>. Це один файл з делегованими слухачами на всі екрани застосунку. Саме він, а не «відсутність React», є джерелом відчуття, що фронтенд стало важко правити.</p>
+
+  <h2>Що дає перехід, що дає залишитись</h2>
+  <p class="sub">Позначка праворуч від пункту каже, коли він спрацьовує: вже сьогодні чи лише в перспективі.</p>
+
+  <div class="two">
+    <section class="col r">
+      <header><b>React дає</b></header>
+      <ul>
+        <li><b>Ізоляцію компонентів.</b> Кнопка = один файл зі своїм станом і стилем. Наші 7 868 рядків CSS без scope перестають бути міною <span class="when">зараз</span></li>
+        <li><b>Готові доступні компоненти.</b> Radix / shadcn: модалка, комбобокс, тултіп — з клавіатурою і screen reader'ом з коробки. Ми пишемо це руками <span class="when">зараз</span></li>
+        <li><b>Типи наскрізь.</b> TypeScript ловить «поле перейменували на бекенді, шаблон мовчки порожній» — зараз це знаходиться очима <span class="when">зараз</span></li>
+        <li><b>Вихід AI-інструментів.</b> v0 / Lovable / Bolt віддають React. Лягало б у код без переписування <span class="when">зараз</span></li>
+        <li><b>Віртуалізацію таблиць.</b> TanStack Table тримає десятки тисяч рядків. У нас 92/день — поки не болить <span class="when">потім</span></li>
+        <li><b>Складний клієнтський стан.</b> Драг-дроп планувальник завантаження верстатів, редактор на канві — там ручний DOM перетворюється на кашу <span class="when">потім</span></li>
+        <li><b>Ринок праці.</b> Якщо колись треба буде найняти фронтендера — React знайти незрівнянно легше <span class="when">потім</span></li>
+      </ul>
+    </section>
+
+    <section class="col h">
+      <header><b>Поточний стек дає</b></header>
+      <ul>
+        <li><b>Нуль другого тулчейну.</b> Зараз збірка = PyInstaller + Inno Setup. Node додає крок у <code>release.yml</code>, lockfile, npm-аудити, ще одну вісь оновлень <span class="when">зараз</span></li>
+        <li><b>Одну мову стану.</b> 100 роутів віддають HTML прямо з SQLAlchemy. SPA вимагає ~100 JSON-ендпоінтів + схеми + типи + клієнтський fetch <span class="when">зараз</span></li>
+        <li><b>899 тестів, що бачать фінальний HTML.</b> Pytest перевіряє те, що реально піде в браузер. З SPA половина логіки їде в JS і потребує окремого раннера <span class="when">зараз</span></li>
+        <li><b>Стійкість до збою JS.</b> Форми — звичайні <code>&lt;form method="post"&gt;</code>. Сторінка працює навіть частково. SPA при помилці білить екран — у цеху це не абстракція <span class="when">зараз</span></li>
+        <li><b>Швидкість фічі.</b> Шаблон + роут. Проти: ендпоінт → схема → fetch → стан → компонент <span class="when">зараз</span></li>
+        <li><b>Одне місце правки для AI-агента.</b> Соло-розробник + Claude: фіча в одному файлі правиться надійніше, ніж синхронізація чотирьох <span class="when">потім</span></li>
+        <li><b>Малу поверхню старіння.</b> HTMX 1.9 працюватиме через п'ять років. npm-екосистема ламається щопівроку <span class="when">потім</span></li>
+      </ul>
+    </section>
+  </div>
+
+  <h2>Ваги по вимірах</h2>
+  <p class="sub">Скільки кожна сторона важить саме в наших умовах. Не «взагалі», а при двох операторах і соло-розробнику.</p>
+
+  <div class="legend">
+    <span><i style="background:var(--react)"></i> React</span>
+    <span><i style="background:var(--accent)"></i> Поточний стек</span>
+  </div>
+
+  <div class="scale">
+    <div class="dim">
+      <div class="t"><b>Ізоляція UI-коду</b><span>Єдиний вимір, де React виграє чисто. <code>app.js</code> 1545 рядків це підтверджує.</span></div>
+      <div><span class="bar"><i class="r" style="width:78%"></i><i class="h" style="width:22%"></i></span><span class="cap">REACT +56</span></div>
+    </div>
+    <div class="dim">
+      <div class="t"><b>Доступність з коробки</b><span>Radix дає клавіатуру й ARIA безкоштовно. Ми це вже пишемо руками — і місцями недописали.</span></div>
+      <div><span class="bar"><i class="r" style="width:70%"></i><i class="h" style="width:30%"></i></span><span class="cap">REACT +40</span></div>
+    </div>
+    <div class="dim">
+      <div class="t"><b>Складний клієнтський стан</b><span>Драг-дроп, редактори. У нас таких екранів <b>нуль</b>, тому вага виміру мала.</span></div>
+      <div><span class="bar"><i class="r" style="width:85%"></i><i class="h" style="width:15%"></i></span><span class="cap">REACT +70 · ВАГА НИЗЬКА</span></div>
+    </div>
+    <div class="dim">
+      <div class="t"><b>Швидкість додати фічу</b><span>Головний вимір для соло-розробника. Один шаблон проти чотирьох файлів.</span></div>
+      <div><span class="bar"><i class="r" style="width:26%"></i><i class="h" style="width:74%"></i></span><span class="cap">HTMX +48</span></div>
+    </div>
+    <div class="dim">
+      <div class="t"><b>Простота збірки й оновлення</b><span>Standalone Windows, автооновлення через GitHub-реліз. Node — ще одна вісь, що ламається.</span></div>
+      <div><span class="bar"><i class="r" style="width:18%"></i><i class="h" style="width:82%"></i></span><span class="cap">HTMX +64</span></div>
+    </div>
+    <div class="dim">
+      <div class="t"><b>Надійність у цеху</b><span>Форми працюють без JS. Білий екран біля верстата коштує зміни.</span></div>
+      <div><span class="bar"><i class="r" style="width:24%"></i><i class="h" style="width:76%"></i></span><span class="cap">HTMX +52</span></div>
+    </div>
+    <div class="dim">
+      <div class="t"><b>Анімації та візуал</b><span>Нічия. Це CSS, а не фреймворк. Три мокапи видачі зроблено без React взагалі.</span></div>
+      <div><span class="bar"><i class="r" style="width:50%"></i><i class="h" style="width:50%"></i></span><span class="cap">НІЧИЯ</span></div>
+    </div>
+    <div class="dim">
+      <div class="t"><b>3D та STL-превʼю</b><span>Нічия, і це важливо: three.js уже працює в проді як звичайний JS.</span></div>
+      <div><span class="bar"><i class="r" style="width:50%"></i><i class="h" style="width:50%"></i></span><span class="cap">НІЧИЯ</span></div>
+    </div>
+  </div>
+
+  <p class="note">Два останні виміри варто прочитати уважно. <b>Найпоширеніша причина, з якої хочуть React — «щоб було красиво й анімовано»</b> — не є аргументом узагалі. Анімації дає CSS. Обертання STL у наших мокапах — це <code>canvas</code> і 60 рядків. У проді вже лежить <code>three-0.128.0.min.js</code> і працює без жодного фреймворку.</p>
+
+  <h2>Скільки коштує перехід</h2>
+  <p class="sub">Обсяг роботи, якщо переписувати повністю. Не оцінка в годинах — оцінка в тому, що доведеться перекласти.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Що</th><th>Обсяг</th><th>Доля при переході</th></tr></thead>
+      <tbody>
+        <tr><td>Jinja-шаблони</td><td class="num">42 файли / 4 761</td><td>Переписати в компоненти</td></tr>
+        <tr><td>Роути</td><td class="num">100</td><td><b>Розділити надвоє:</b> JSON API + схеми відповіді</td></tr>
+        <tr><td>Власний JS</td><td class="num">2 902 рядки</td><td>Переписати в React-логіку</td></tr>
+        <tr><td>CSS</td><td class="num">7 868 рядків</td><td>Перенести або перекласти в Tailwind</td></tr>
+        <tr><td>Тести</td><td class="num">899</td><td>Серверні лишаються, UI-перевірки переписати</td></tr>
+        <tr><td>CI / інсталятор</td><td class="num">26 МБ, 2 workflow</td><td>Додати Node-збірку перед PyInstaller</td></tr>
+        <tr><td>Онбординг, DPAPI, автооновлення</td><td class="num">—</td><td>Не змінюється</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Це не «тиждень на вихідних». Це місяці вечорів, протягом яких застосунок <b>не отримує нових фіч</b> — а v0.4 «Видача», найболючіше ручне місце процесу, ще не закритий.</p>
+
+  <h2>Що робити натомість</h2>
+  <p class="sub">Аргумент про ізоляцію справжній. Ось три способи закрити його, не платячи за міграцію.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Крок</th><th>Ціна</th><th>Що лікує</th></tr></thead>
+      <tbody>
+        <tr><td><b>Розбити <code>app.js</code> по екранах</b></td><td>Один вечір</td><td>1 545 рядків делегованих слухачів → файл на екран. Найбільша віддача за найменші гроші</td></tr>
+        <tr><td><b>Розбити CSS по екранах</b></td><td>Один вечір</td><td>7 868 рядків без scope. Частково вже є: <code>clients.css</code>, <code>stats.css</code>, <code>settings.css</code></td></tr>
+        <tr><td><b>Alpine.js для локального стану</b></td><td>15 КБ, нуль збірки</td><td>Дає «реактивність у межах блоку» — те, чого бракує HTMX. Дописується в наявні шаблони, оборотно</td></tr>
+        <tr><td>React-острів на <b>одному</b> екрані</td><td>Помірна</td><td>Якщо колись зʼявиться планувальник з драг-дропом — вставити React лише туди, решту не чіпати</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="note">Останній рядок — важливий запобіжник. <b>Вибір не бінарний.</b> React можна додати пізніше на один екран, не переписуючи 42 шаблони. Тому рішення «лишаємось» нічого не закриває назавжди — воно просто не платить за міграцію наперед.</p>
+
+  <h2>Коли перевідкрити питання</h2>
+  <p class="sub">Рішення діє, доки жоден пункт не спрацював. Спрацював — переглядаємо, не сперечаючись.</p>
+
+  <div class="trig">
+    <div class="tr"><span class="box"></span><div><b>Порталом користується весь персонал одночасно</b><span>Логісти, адміністратори, техніки — зі спільним живим станом і взаємними оновленнями. Зараз: максимум двоє операторів.</span></div></div>
+    <div class="tr"><span class="box"></span><div><b>Зʼявився екран зі складним перетягуванням</b><span>Планувальник завантаження десяти верстатів, редактор розкладки заготовки. Зараз таких нуль.</span></div></div>
+    <div class="tr"><span class="box"></span><div><b>Один вигляд тримає десятки тисяч рядків</b><span>Потрібна віртуалізація. Зараз: 92 рядки на день, вікно 30 днів.</span></div></div>
+    <div class="tr"><span class="box"></span><div><b>У команді зʼявився фронтенд-розробник</b><span>Тоді вартість «одного місця правки» падає, а вартість готової екосистеми зростає.</span></div></div>
+    <div class="tr hit"><span class="box"></span><div><b>Фронтенд стало важко правити</b><span>Спрацював частково — <code>app.js</code> 1545 рядків. Але лікується розбиттям файлів, а не зміною стека. Перевірити ще раз після розбиття.</span></div></div>
+  </div>
+
+  <hr>
+  <p class="note" style="margin-top:26px">Джерело цифр — вимірювання репозиторію <code>P:\AI-Projects\CRM_Laba</code> станом на 27.08.26: <code>find</code>/<code>wc -l</code> по <code>app/templates</code>, <code>app/static</code>, <code>tests</code> і підрахунок декораторів роутів. Оцінки ваг — судження, а не вимір; вони відбивають профіль «двоє операторів, соло-розробник, standalone Windows» і зміняться, якщо зміниться профіль.</p>
+</div>

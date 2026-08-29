@@ -1,0 +1,284 @@
+<meta charset="utf-8">
+<title>Чіп кольору роботи</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap">
+
+<style>
+/* Токени — канон Order Desk (app/static/css/tokens.css), значення 1:1.
+   Одна тема: сторінка існує поруч з темним застосунком у цеху. */
+:root{
+  --bg:#0d1117; --card:#161d27; --card-2:#1b2431; --card-3:#202b3a;
+  --line:#222c3a; --line-2:#3a4a5f; --control-edge:#5f7490;
+  --ink:#e8eff7; --ink-2:#8fa3bb; --ink-3:#8698ad;
+  --accent:#14b8a6; --accent-b:#2dd4bf; --accent-c:#5eead4; --accent-d:#0f766e;
+  --alarm:#f87171; --warn:#f0a35e;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --sans:'Golos Text',system-ui,sans-serif;
+
+  /* Кольори бейджів матеріалу — погоджені, не чіпаємо */
+  --zr:#8fbfe0; --pmma:#d8b46a; --ti:#4fb477; --slm:#9aa7b4; --wax:#d99bb0;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1000px;margin:0 auto;padding:40px 22px 100px}
+
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent-b);margin:0 0 11px}
+h1{font-size:clamp(27px,4.4vw,40px);font-weight:800;letter-spacing:-.026em;
+  margin:0 0 14px;line-height:1.06;text-wrap:balance}
+.lede{margin:0;color:var(--ink-2);max-width:64ch;font-size:15px}
+.lede b{color:var(--ink);font-weight:600}
+
+.why{margin:24px 0 40px;padding:16px 18px;border-radius:10px;
+  background:var(--card-2);border:1px solid var(--line-2)}
+.why .l{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--warn);margin-bottom:8px}
+.why p{margin:0;color:var(--ink-2);font-size:13.5px;max-width:62ch}
+.why p + p{margin-top:8px}
+.why b{color:var(--ink);font-weight:600}
+
+section.v{margin-top:38px}
+.vhead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:5px}
+.vtag{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;color:var(--accent-c);
+  border:1px solid rgba(45,212,191,.34);background:rgba(20,184,166,.10);
+  border-radius:5px;padding:2px 8px}
+.vhead h2{font-size:18px;font-weight:700;letter-spacing:-.015em;margin:0}
+.vnote{margin:0 0 13px;color:var(--ink-3);font-size:13px;max-width:66ch}
+.vnote b{color:var(--ink-2);font-weight:600}
+
+/* Реальна таблиця черги — щоб чіп оцінювався в контексті, а не в вакуумі */
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+table{width:100%;border-collapse:collapse;min-width:640px}
+thead th{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;text-align:left;padding:9px 12px;
+  border-bottom:1px solid var(--line);background:var(--card-2);white-space:nowrap}
+td{padding:0 12px;height:44px;border-bottom:1px solid rgba(34,44,58,.6);
+  font-size:13px;vertical-align:middle;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:var(--card-2)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+.qty{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink-2);text-align:right}
+.kind{color:var(--ink-2)}
+.dot{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--control-edge);
+  display:inline-block;margin-right:9px;vertical-align:middle}
+.dot.on{background:var(--accent);border-color:var(--accent)}
+
+/* Бейдж матеріалу — однаковий у всіх варіантах, він не обговорюється */
+.mb{display:inline-flex;align-items:center;justify-content:center;min-width:42px;height:20px;
+  border-radius:5px;font-family:var(--mono);font-size:10.5px;font-weight:600;
+  letter-spacing:.07em;line-height:1;border:1px solid transparent;vertical-align:middle}
+.mb.zr{color:var(--zr);background:rgba(143,191,224,.20);border-color:rgba(143,191,224,.60)}
+.mb.pmma{color:var(--pmma);background:rgba(216,180,106,.20);border-color:rgba(216,180,106,.60)}
+.mb.ti{color:var(--ti);background:rgba(79,180,119,.21);border-color:rgba(79,180,119,.62)}
+.mcell{display:flex;align-items:center;gap:10px}
+
+/* ---------- 0 · ЗАРАЗ ---------- */
+.c0{display:inline-flex;align-items:center;height:22px;min-width:96px;padding:0 9px;
+  border-radius:6px;background:#1d2734;border:1px solid var(--line-2);
+  font-size:12px;color:var(--ink)}
+
+/* ---------- 1 · ГОЛИЙ ТЕКСТ ---------- */
+.c1{font-size:13px;color:var(--ink);min-width:96px;display:inline-block}
+
+/* ---------- 2 · ТИХИЙ ТЕГ ---------- */
+.c2{display:inline-flex;align-items:center;height:21px;padding:0 9px;border-radius:5px;
+  background:rgba(232,239,247,.055);font-size:12.5px;color:var(--ink)}
+
+/* ---------- 3 · ТЕХНІЧНИЙ КОД ---------- */
+.c3{font-family:var(--mono);font-size:12px;letter-spacing:.03em;color:var(--ink);
+  min-width:96px;display:inline-block}
+.c3 em{font-style:normal;color:var(--ink-3)}
+
+/* ---------- 4 · ЗРАЗОК ВІДТІНКУ ---------- */
+.c4{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink)}
+.sw{width:13px;height:13px;border-radius:3px;flex:0 0 13px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+.sw.unk{background:repeating-linear-gradient(45deg,#2a3543 0 3px,#1d2734 3px 6px);
+  box-shadow:inset 0 0 0 1px var(--line-2)}
+
+/* ---------- 5 · ЗРОЩЕНО З БЕЙДЖЕМ ---------- */
+.c5{display:inline-flex;align-items:stretch;height:22px;border-radius:5px;overflow:hidden;
+  border:1px solid var(--line-2);vertical-align:middle}
+.c5 .k{display:inline-flex;align-items:center;justify-content:center;min-width:38px;padding:0 7px;
+  font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.07em}
+.c5 .val{display:inline-flex;align-items:center;padding:0 10px;font-size:12.5px;
+  color:var(--ink);background:rgba(232,239,247,.04)}
+.c5.zr .k{color:var(--zr);background:rgba(143,191,224,.20)}
+.c5.pmma .k{color:var(--pmma);background:rgba(216,180,106,.20)}
+.c5.ti .k{color:var(--ti);background:rgba(79,180,119,.21)}
+
+.verdict{margin-top:44px;border-top:1px solid var(--line);padding-top:26px}
+.verdict h2{font-size:19px;font-weight:700;margin:0 0 14px;letter-spacing:-.018em}
+.verdict table{min-width:560px}
+.verdict td{height:auto;padding:9px 12px;white-space:normal;vertical-align:top}
+.verdict td:first-child{width:150px;color:var(--ink-2)}
+.verdict b{color:var(--ink);font-weight:600}
+.foot{margin-top:22px;color:var(--ink-3);font-size:13px;max-width:62ch;
+  border-left:2px solid var(--line-2);padding-left:15px}
+.foot b{color:var(--ink-2)}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Order Desk · черга · колонка «Матеріал / Колір»</p>
+  <h1>Чіп кольору роботи</h1>
+  <p class="lede">П'ять трактувань того самого поля, на <b>справжніх значеннях з таблиці за 21.08</b> і в справжньому рядку черги — з бейджем матеріалу, нарядом і видом роботи поруч. Чіп у вакуумі оцінити неможливо, він живе серед сорока дев'яти таких.</p>
+
+  <div class="why">
+    <span class="l">Що зараз не так</span>
+    <p>Чіп має рамку, темний фон і однакову ширину 96px. Це три ознаки <b>поля вводу</b> — а в сусідній колонці SUM3D стоять справжні редаговані поля, майже такі самі. Чіп обіцяє редагування, якого немає.</p>
+    <p>Ширина 96px була потрібна, щоб вирівняти колонку. Але вирівнювання насправді тримається на <b>фіксованій ширині бейджа (42px)</b> — саме він задає, звідки починається текст. Чіпу рамка й фіксована ширина для цього не потрібні взагалі.</p>
+  </div>
+
+  <!-- 0 -->
+  <section class="v">
+    <div class="vhead"><span class="vtag">ЗАРАЗ</span><h2>Коробка</h2></div>
+    <p class="vnote">Для порівняння. Рамка + фон + рівна ширина читаються як неактивне поле вводу.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Наряд</th><th style="text-align:right">К-сть</th><th>Матеріал / Колір</th><th>Вид роботи</th></tr></thead>
+      <tbody id="t0"></tbody>
+    </table></div>
+  </section>
+
+  <!-- 1 -->
+  <section class="v">
+    <div class="vhead"><span class="vtag">ВАРІАНТ 1</span><h2>Голий текст</h2></div>
+    <p class="vnote">Жодної коробки. Колір — це <b>дані для читання</b>, а не елемент керування, тож він і виглядає як текст. Колонка лишається вирівняною бейджем. Найтихіший варіант і найменше візуального шуму на 49 рядках.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Наряд</th><th style="text-align:right">К-сть</th><th>Матеріал / Колір</th><th>Вид роботи</th></tr></thead>
+      <tbody id="t1"></tbody>
+    </table></div>
+  </section>
+
+  <!-- 2 -->
+  <section class="v">
+    <div class="vhead"><span class="vtag">ВАРІАНТ 2</span><h2>Тихий тег</h2></div>
+    <p class="vnote">Мʼяка заливка без рамки. Лишається відчуття «це окрема сутність, а не просто слово», але з полем вводу вже не плутається — саме рамка робила його схожим на поле.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Наряд</th><th style="text-align:right">К-сть</th><th>Матеріал / Колір</th><th>Вид роботи</th></tr></thead>
+      <tbody id="t2"></tbody>
+    </table></div>
+  </section>
+
+  <!-- 3 -->
+  <section class="v">
+    <div class="vhead"><span class="vtag">ВАРІАНТ 3</span><h2>Технічний код</h2></div>
+    <p class="vnote">Моноширинний, як Sum3D ID і номер наряду. Аргумент простий: <b><code>800</code>, <code>500</code>, <code>1333</code> і <code>A3.5</code> — це коди виробника, а не слова</b>. Цифри вишиковуються в стовпчик самі. Текстова частина («моно», «титан») притишена, щоб код читався першим.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Наряд</th><th style="text-align:right">К-сть</th><th>Матеріал / Колір</th><th>Вид роботи</th></tr></thead>
+      <tbody id="t3"></tbody>
+    </table></div>
+  </section>
+
+  <!-- 4 -->
+  <section class="v">
+    <div class="vhead"><span class="vtag">ВАРІАНТ 4</span><h2>Зразок відтінку</h2></div>
+    <p class="vnote">Квадратик показує <b>справжній відтінок зуба</b>. Оператор і так звіряє коронки оком за кольором — тут інтерфейс говорить його мовою. Де відтінок невідомий (<code>1333</code>), квадратик стає штрихованим і чесно каже «не знаю», а не вигадує колір.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Наряд</th><th style="text-align:right">К-сть</th><th>Матеріал / Колір</th><th>Вид роботи</th></tr></thead>
+      <tbody id="t4"></tbody>
+    </table></div>
+  </section>
+
+  <!-- 5 -->
+  <section class="v">
+    <div class="vhead"><span class="vtag">ВАРІАНТ 5</span><h2>Зрощено з бейджем</h2></div>
+    <p class="vnote">Бейдж і колір — одна деталь із двох половин, як маркування на коробці матеріалу. Найщільніший варіант: економить проміжок і читається як єдине маркування, а не як дві сутності поруч.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Наряд</th><th style="text-align:right">К-сть</th><th>Матеріал / Колір</th><th>Вид роботи</th></tr></thead>
+      <tbody id="t5"></tbody>
+    </table></div>
+  </section>
+
+  <section class="verdict">
+    <h2>Порівняння</h2>
+    <div class="tw"><table>
+      <tbody>
+        <tr><td>1 · Голий текст</td><td><b>Найтихіший.</b> Нуль шуму на 49 рядках. Мінус — колір може загубитись серед іншого тексту рядка</td></tr>
+        <tr><td>2 · Тихий тег</td><td><b>Найбезпечніший.</b> Мінімальна зміна від нинішнього, прибирає плутанину з полем вводу і все</td></tr>
+        <tr><td>3 · Технічний код</td><td><b>Найточніший до суті.</b> Це справді коди. Цифри вирівнюються самі. Мінус — «титан штрауман репліка» моноширинним стає довшим</td></tr>
+        <tr><td>4 · Зразок відтінку</td><td><b>Найкорисніший, але не безкоштовний.</b> Потрібна таблиця відповідності «код → відтінок». Без неї половина квадратиків буде штрихована</td></tr>
+        <tr><td>5 · Зрощено</td><td><b>Найщільніший.</b> Одне маркування замість двох. Мінус — повертає рамку, хоч і навколо пари</td></tr>
+      </tbody>
+    </table></div>
+
+    <p class="foot"><b>Відтінки у варіанті 4 — приблизні.</b> Vita A1–A3.5 узяті як орієнтир, <code>500</code> і <code>800</code> показані як опакові A1 і A2 за твоїм поясненням, титан — металевий сірий. <code>1333</code> залишено невідомим навмисно. Якщо цей варіант береться, точну таблицю відповідності треба звірити з тобою, а не вгадувати — інакше квадратик брехатиме, а це гірше, ніж не показувати нічого.</p>
+  </section>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  // Справжні рядки з черги за 21.08.26
+  const ROWS = [
+    {no:'23702', q:2,  m:'zr',   sym:'Zr',   c:'1333',                   k:'абатмент',            on:true},
+    {no:'23080', q:2,  m:'zr',   sym:'Zr',   c:'800',                    k:'абатмент',            on:true},
+    {no:'24166', q:1,  m:'ti',   sym:'Ti',   c:'титан корея',            k:'абатмент'},
+    {no:'24286', q:1,  m:'ti',   sym:'Ti',   c:'титан штрауман репліка', k:'абатмент'},
+    {no:'24122', q:1,  m:'pmma', sym:'PMMA', c:'пмма A2',                k:'анатомія гвинтова'},
+    {no:'24168', q:1,  m:'zr',   sym:'Zr',   c:'моно a3',                k:'анатомія'},
+    {no:'24103', q:2,  m:'zr',   sym:'Zr',   c:'моно A3.5',              k:'анатомія гвинтова'},
+    {no:'24281', q:1,  m:'zr',   sym:'Zr',   c:'500',                    k:'вкладка'},
+    {no:'24284', q:6,  m:'zr',   sym:'Zr',   c:'a2 транс',               k:'каркас міст 13-23'},
+    {no:'24184', q:1,  m:'zr',   sym:'Zr',   c:'емо a3',                 k:'анатомія'}
+  ];
+
+  /* Приблизні відтінки — орієнтир, не довідник. Ключі підбираються за
+     найдовшим збігом, щоб `A3.5` не ловився правилом для `A3`. */
+  const SHADES = [
+    ['a3.5','#d6c7a5'], ['а3,5','#d6c7a5'], ['a3','#ddd0b4'], ['а3','#ddd0b4'],
+    ['a2','#e3d9c6'], ['а2','#e3d9c6'], ['a1','#e8e0d0'], ['а1','#e8e0d0'],
+    ['800','#e3d9c6'],  // A2 опаковий
+    ['500','#e8e0d0'],  // A1 опаковий
+    ['титан','#b8bcc0'] // метал
+  ];
+  const shade = (text) => {
+    const t = text.toLowerCase();
+    let best = null;
+    for (const [key, hex] of SHADES){
+      if (t.includes(key) && (!best || key.length > best[0].length)) best = [key, hex];
+    }
+    return best ? best[1] : null;
+  };
+
+  /* Код відділяється від слова: «моно a3» → моно + A3, «800» → 800.
+     Так у варіанті 3 код читається першим, а назва лишається підписом. */
+  const splitCode = (text) => {
+    const m = text.match(/^(.*?)\s*([aаA-Za-zА-Яа-я]?\d[\d.,]*\s*(?:транс)?)$/);
+    if (!m) return {word: text, code: ''};
+    return {word: m[1].trim(), code: m[2].trim()};
+  };
+
+  const head = (r) => `<td class="num"><span class="dot${r.on ? ' on' : ''}"></span>${r.no}</td>
+                       <td class="qty">${r.q}</td>`;
+  const tail = (r) => `<td class="kind">${r.k}</td>`;
+  const badge = (r) => `<span class="mb ${r.m}">${r.sym}</span>`;
+  const fill = (id, chip) => {
+    document.getElementById(id).innerHTML = ROWS.map((r) =>
+      `<tr>${head(r)}<td><div class="mcell">${badge(r)}${chip(r)}</div></td>${tail(r)}</tr>`
+    ).join('');
+  };
+
+  fill('t0', (r) => `<span class="c0">${r.c}</span>`);
+  fill('t1', (r) => `<span class="c1">${r.c}</span>`);
+  fill('t2', (r) => `<span class="c2">${r.c}</span>`);
+  fill('t3', (r) => {
+    const {word, code} = splitCode(r.c);
+    // Без коду («титан корея») друкуємо текст один раз — інакше слово
+    // виводилось і як word, і як запасне значення, тобто двічі.
+    if (!code) return `<span class="c3">${r.c}</span>`;
+    return `<span class="c3">${word ? `<em>${word}</em> ` : ''}${code}</span>`;
+  });
+  fill('t4', (r) => {
+    const hex = shade(r.c);
+    const sw = hex ? `<span class="sw" style="background:${hex}"></span>`
+                   : `<span class="sw unk" title="відтінок невідомий"></span>`;
+    return `<span class="c4">${sw}${r.c}</span>`;
+  });
+  // У п'ятому бейдж уже всередині чіпа — власного бейджа рядок не отримує
+  document.getElementById('t5').innerHTML = ROWS.map((r) =>
+    `<tr>${head(r)}<td><span class="c5 ${r.m}"><span class="k">${r.sym}</span><span class="val">${r.c}</span></span></td>${tail(r)}</tr>`
+  ).join('');
+})();
+</script>
