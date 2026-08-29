@@ -40,6 +40,26 @@ _sync_lock = Lock()
 MAIL_SYNC_DEADLINE_SECONDS = 180
 
 
+# Рядок, у якому IMAP-сервер відповідає на LOGIN, може містити саму команду
+# з паролем. У лог він потрапити не сміє — лог читають і копіюють у листи.
+_SECRET_MARKERS = ("login ", "authenticate ", "pass ")
+
+
+def redact(message: str) -> str:
+    """Обрізати повідомлення помилки перед записом у лог.
+
+    Тип помилки й код відповіді сервера — це те, заради чого лог існує
+    («AUTHENTICATIONFAILED» проти «connection refused» — різні діагнози).
+    А от усе після слова LOGIN може бути паролем, тому туди не заглядаємо.
+    """
+    low = message.lower()
+    for marker in _SECRET_MARKERS:
+        index = low.find(marker)
+        if index != -1:
+            return message[:index + len(marker)] + "…[приховано]"
+    return message[:300]
+
+
 def _safe_error(exc: Exception) -> MailSyncError:
     if isinstance(exc, MailSyncError):
         return exc
@@ -168,6 +188,13 @@ def sync_mail(session: Session, attachments_dir: Path, *, trigger: str = "manual
             raise
         except Exception as exc:
             safe_error = _safe_error(exc)
+            # Оператору показуємо загальне («перевірте логін і пароль»), але в
+            # лог кладемо СПРАВЖНЮ причину: без неї падіння синку виглядає
+            # однаково і при неправильному паролі, і при обірваній мережі, і
+            # діагностика починається з нуля щоразу.
+            logger.warning(
+                "Синк пошти впав: %s: %s", type(exc).__name__, redact(str(exc))
+            )
             # Manual failures remain visible in the audit table. Background
             # failures go to the rotating application log, avoiding a DB write
             # every two minutes during an internet outage.

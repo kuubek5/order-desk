@@ -140,3 +140,21 @@ def test_fetch_exception_in_worker_is_reraised_as_safe_error(monkeypatch, tmp_pa
         with pytest.raises(MailSyncError) as raised:
             sync_mail(session, tmp_path)
         assert "hunter2" not in str(raised.value)
+
+
+def test_redact_hides_anything_after_the_login_command():
+    """Лог читають і копіюють у листи. Відповідь IMAP-сервера на LOGIN може
+    містити саму команду з паролем — у лог вона потрапити не сміє, а от тип
+    помилки й код відповіді там потрібні: «AUTHENTICATIONFAILED» і
+    «connection refused» — це різні діагнози."""
+    from app.mail_sync_service import redact
+
+    assert redact('LOGIN user@ukr.net s3cr3t-app-pass') == "LOGIN …[приховано]"
+    assert redact('command AUTHENTICATE PLAIN dXNlcgBwYXNz') == "command AUTHENTICATE …[приховано]"
+    # Те, заради чого лог і ведеться, лишається читабельним.
+    assert redact("b'[AUTHENTICATIONFAILED] Invalid credentials'") == (
+        "b'[AUTHENTICATIONFAILED] Invalid credentials'"
+    )
+    assert redact("[Errno 11001] getaddrinfo failed") == "[Errno 11001] getaddrinfo failed"
+    # Довгі полотна обрізаються, щоб один збій не залив лог.
+    assert len(redact("x" * 5000)) == 300
