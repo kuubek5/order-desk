@@ -47,6 +47,7 @@ from app.furnace_ocr import (
 )
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
 from app.models import FurnaceReading
+from app.services.order_dates import BUSINESS_TIMEZONE
 from app.settings_store import get_furnace_hosts_raw, get_furnace_vnc_password
 
 logger = logging.getLogger(__name__)
@@ -145,14 +146,27 @@ class FurnaceState:
 
     @property
     def done_at(self) -> Optional[datetime]:
-        """Коли програма добіжить. Рахується від часу кадру, а не «зараз»:
-        між знімком і показом сторінки минає час, і оператор має бачити
-        момент, а не залишок, який уже трохи протух."""
+        """Коли програма добіжить — за київським часом.
+
+        Рахується від часу кадру, а не «зараз»: між знімком і показом сторінки
+        минає час, і оператор має бачити момент, а не залишок, який уже трохи
+        протух.
+
+        Київ, а не «час цієї машини»: оператор звіряє число з годинником на
+        стіні, і якщо ПК колись опиниться в іншому поясі (RDP, машину
+        переставили, годинник збили на UTC), «відкриється о 17:54» мусить
+        лишитись київським. `astimezone()` без аргументу підставляє поясу
+        системи саме те, що є, — це і є перетворення «наївний локальний → з
+        поясом», після якого переклад у Київ чесний.
+        """
         captured_at = self.captured_at
         remaining = self.remaining_seconds
         if captured_at is None or not remaining:
             return None
-        return captured_at + timedelta(seconds=remaining)
+        finish = captured_at + timedelta(seconds=remaining)
+        if BUSINESS_TIMEZONE is None:
+            return finish
+        return finish.astimezone().astimezone(BUSINESS_TIMEZONE)
 
     @property
     def warnings(self) -> list[str]:
@@ -492,6 +506,30 @@ def snapshot(db: Session) -> list[FurnaceCard]:
     for target in configured_targets(db):
         cards.append(FurnaceCard(target=target, state=states.get(target.key)))
     return cards
+
+
+@dataclass
+class StripSummary:
+    """Що показує згорнута смуга печей: скільки в роботі й котра відкриється
+    найближче. Згорнутий стан має лишатись корисним — інакше оператор його
+    просто не згортатиме."""
+
+    running: int
+    total: int
+    nearest_done_at: Optional[datetime] = None
+
+    @property
+    def nearest_text(self) -> str:
+        return self.nearest_done_at.strftime("%H:%M") if self.nearest_done_at else ""
+
+
+def strip_summary(cards: list["FurnaceCard"]) -> StripSummary:
+    finishes = [card.state.done_at for card in cards if card.state and card.state.done_at]
+    return StripSummary(
+        running=sum(1 for card in cards if card.is_running),
+        total=len(cards),
+        nearest_done_at=min(finishes) if finishes else None,
+    )
 
 
 def recent_readings(db: Session, host: str, limit: int = 40) -> list[FurnaceReading]:

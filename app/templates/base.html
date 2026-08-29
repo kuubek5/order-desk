@@ -39,7 +39,7 @@
     <script src="/static/js/htmx-1.9.10.min.js"></script>
 </head>
 <body>
-    <script>try{if(localStorage.getItem('railCollapsed')==='1')document.body.classList.add('rail-collapsed');var _d=localStorage.getItem('queueDensity');if(_d==='compact'||_d==='spacious'||_d==='normal')document.body.setAttribute('data-density',_d);var _m=localStorage.getItem('queueMatStyle');if(_m==='code')document.body.setAttribute('data-matstyle',_m);if(localStorage.getItem('layoutEditMode')==='1')document.body.classList.add('layout-edit');}catch(e){}</script>
+    <script>try{if(localStorage.getItem('railCollapsed')==='1')document.body.classList.add('rail-collapsed');var _d=localStorage.getItem('queueDensity');if(_d==='compact'||_d==='spacious'||_d==='normal')document.body.setAttribute('data-density',_d);var _m=localStorage.getItem('queueMatStyle');if(_m==='code')document.body.setAttribute('data-matstyle',_m);if(localStorage.getItem('layoutEditMode')==='1')document.body.classList.add('layout-edit');if(localStorage.getItem('furnaceStripCollapsed')==='1')document.body.classList.add('furnace-collapsed');}catch(e){}</script>
     {% include "_backdrop.html" %}
     {# SVG-фільтр «рідкого скла» для перемикача скачування (див. .dl-seg у
        base.css). Визначається раз на сторінку, бо тогл є і в /settings, і в

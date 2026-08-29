@@ -1,5 +1,8 @@
-{# Печі над чергою — те, за чим оператор бігає до цеху: коли відкривати і
-   скільки градусів зараз.
+{# Печі над чергою — те, за чим оператор бігає до цеху.
+
+   Порядок усередині чіпа заданий власником і читається як одне речення:
+   скільки градусів → скільки ще йти → о котрій відкриється. Час київський
+   (див. FurnaceState.done_at), бо його звіряють із годинником на стіні.
 
    Обгортка віддається ЗАВЖДИ, навіть коли печей немає: якби роут повертав
    порожнечу, елемент зник би з DOM разом зі своїм поллом, і після
@@ -10,8 +13,10 @@
    який свапає 15-секундний полл черги. Перенести всередину — і смуга
    мигтітиме на кожному тіку.
 
-   Свій годинник повільніший за чергу (30 с): піч міряється хвилинами, а
-   зайвий рух угорі екрана, відкритого цілу зміну, — це шум. #}
+   Згорнутий стан живе КЛАСОМ НА `body`, а не на цьому елементі: смуга
+   свапається цілком кожні 30 с, і клас на ній помирав би разом зі старою
+   розміткою. Клас ставить анти-мигтючий скрипт у base.html до першого
+   малювання, а перемикає queue.js. #}
 <section id="furnace-strip"
          class="fu-strip{% if not furnace_cards %} is-empty{% endif %}"
          hx-get="/furnaces/strip"
@@ -22,15 +27,33 @@
          {% if not furnace_cards %}hidden{% endif %}
          aria-label="Печі спікання">
     {% if furnace_cards %}
-    <a href="/furnaces" class="fu-strip-title">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
-        Печі
-    </a>
-    <div class="fu-strip-items">
+    {% set summary = furnace_summary %}
+    <button type="button" class="fu-strip-toggle" data-furnace-collapse
+            aria-expanded="true" aria-controls="furnace-strip-items"
+            title="Згорнути смугу печей">
+        <svg class="fu-strip-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+        <svg class="fu-strip-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
+        <span class="fu-strip-label">Печі</span>
+    </button>
+
+    {# Згорнутий стан лишається корисним: скільки печей у роботі й котра
+       відкриється найближче. Інакше його просто не згортали б. #}
+    <span class="fu-strip-brief">
+        {% if summary.running %}{{ summary.running }} у роботі{% else %}усі вільні{% endif %}
+        {% if summary.nearest_text %}<span class="fu-strip-brief-sep" aria-hidden="true">·</span>
+        найближча <b class="mono">{{ summary.nearest_text }}</b>{% endif %}
+    </span>
+
+    <div class="fu-strip-items" id="furnace-strip-items">
         {% for card in furnace_cards %}
         {% set state = card.state %}
         <a href="/furnaces" class="fu-chip{% if card.is_running %} is-run{% elif card.offline or card.stale() %} is-off{% endif %}">
             <span class="fu-chip-name">{{ card.target.name }}</span>
+
+            {% if state and state.temp_c is not none %}
+            <span class="fu-chip-temp mono">{{ state.temp_c }}°</span>
+            {% endif %}
+
             {% if card.stale() %}
             <span class="fu-chip-main">опитування стоїть</span>
             {% elif card.offline %}
@@ -38,17 +61,15 @@
             {% elif card.never_polled %}
             <span class="fu-chip-main">чекаємо кадр</span>
             {% elif state.done_at %}
-            {# Головне число смуги — момент, а не залишок: «о 17:41» лишається
-               правдою, поки картка висить, а «26:59» протухає щосекунди. #}
-            <span class="fu-chip-main mono">о {{ state.done_at.strftime('%H:%M') }}</span>
-            <span class="fu-chip-sub mono">лишилось {{ state.remaining_text }}</span>
+            <span class="fu-chip-left mono">{{ state.remaining_text }}</span>
+            <span class="fu-chip-open">
+                <span class="fu-chip-open-lab">відкриється</span>
+                <b class="mono">{{ state.done_at.strftime('%H:%M') }}</b>
+            </span>
             {% elif card.is_idle %}
             <span class="fu-chip-main">вільна</span>
             {% else %}
             <span class="fu-chip-main">—</span>
-            {% endif %}
-            {% if state and state.temp_c is not none %}
-            <span class="fu-chip-temp mono">{{ state.temp_c }}°</span>
             {% endif %}
         </a>
         {% endfor %}

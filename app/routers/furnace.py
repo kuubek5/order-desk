@@ -30,6 +30,7 @@ from app.services.furnace import (
     poll_all,
     resolve_frame,
     snapshot,
+    strip_summary,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,8 +85,11 @@ def furnaces_strip(request: Request, db: Session = Depends(get_db)):
     """
     if get_current_user(request, db) is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
+    cards = snapshot(db)
     return templates.TemplateResponse(
-        request, "_furnace_strip.html", {"furnace_cards": snapshot(db)}
+        request,
+        "_furnace_strip.html",
+        {"furnace_cards": cards, "furnace_summary": strip_summary(cards)},
     )
 
 

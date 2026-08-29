@@ -821,3 +821,36 @@ document.addEventListener("htmx:afterSwap", (event) => {
     if (event.key === "Escape" && pane.classList.contains("open")) close();
   });
 })();
+
+// Згортання смуги печей над чергою.
+//
+// Стан живе класом на <body>, а не на самій смузі: смуга свапається цілком
+// кожні 30 секунд (hx-swap="outerHTML"), і клас на ній помирав би разом зі
+// старою розміткою — згорнута смуга сама розгорталася б через півхвилини.
+// Клас на body переживає будь-який свап, а анти-мигтючий скрипт у base.html
+// ставить його ще до першого малювання, тому смуга не встигає блимнути
+// розгорнутою.
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-furnace-collapse]");
+  if (!button) return;
+  const collapsed = document.body.classList.toggle("furnace-collapsed");
+  try {
+    localStorage.setItem("furnaceStripCollapsed", collapsed ? "1" : "0");
+  } catch (_error) {
+    /* приватний режим — перемикач усе одно працює в межах сторінки */
+  }
+  syncFurnaceToggle(button, collapsed);
+});
+
+function syncFurnaceToggle(button, collapsed) {
+  button.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  button.setAttribute("title", collapsed ? "Розгорнути смугу печей" : "Згорнути смугу печей");
+}
+
+// Полл приносить свіжу розмітку з aria-expanded="true" за замовчуванням —
+// після кожного свапу підпис і aria мусять знову збігтися зі станом на body.
+document.body.addEventListener("htmx:afterSwap", (event) => {
+  const button = (event.target.id === "furnace-strip" ? event.target : document)
+    .querySelector?.("[data-furnace-collapse]");
+  if (button) syncFurnaceToggle(button, document.body.classList.contains("furnace-collapsed"));
+});

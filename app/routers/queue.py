@@ -43,7 +43,7 @@ from app.services.config_state import (
 )
 from app.services.order_dates import order_date, parse_sheet_tab
 from app.services.focus import count as focus_count, focused_ids
-from app.services.furnace import snapshot as furnace_snapshot
+from app.services.furnace import snapshot as furnace_snapshot, strip_summary as furnace_summary
 from app.services.shift import open_notes as open_shift_notes
 from app.services.queue import (
     DATE_STRIP_WINDOW,
@@ -402,7 +402,8 @@ def get_queue(
             # Далі смуга оновлює себе сама через /furnaces/strip — тут лише
             # перший рендер, щоб на завантаженні сторінки не було 30 секунд
             # порожнечі. Читає стан у памʼяті, до печей не ходить.
-            "furnace_cards": furnace_snapshot(db),
+            "furnace_cards": (_furnace_cards := furnace_snapshot(db)),
+            "furnace_summary": furnace_summary(_furnace_cards),
             # Мітки «мої зараз» — персональні, тому контекст, а не глобал.
             # ОБИДВІ гілки (сторінка й partial=rows) читають цей самий
             # словник: якби полл рахував інакше, мітки зникали б кожні 15с.

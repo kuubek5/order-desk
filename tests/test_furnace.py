@@ -463,3 +463,71 @@ def test_strip_shows_the_moment_not_the_countdown():
 
     html = (Path("app/templates/_furnace_strip.html")).read_text(encoding="utf-8")
     assert "done_at.strftime('%H:%M')" in html
+
+
+def test_done_at_is_kyiv_time_not_the_machine_clock():
+    """Оператор звіряє «відкриється о 17:54» з годинником на стіні. Якщо ПК
+    колись опиниться в іншому поясі (RDP, збитий годинник), число мусить
+    лишитись київським."""
+    from app.services.order_dates import BUSINESS_TIMEZONE
+
+    state = service.FurnaceState(target=_target())
+    state.reading = read_panel(_frame("run"))
+    state.captured_at = datetime(2026, 8, 29, 17, 27, 0)
+    done = state.done_at
+    assert done is not None
+    if BUSINESS_TIMEZONE is not None:
+        assert done.tzinfo is not None
+        assert str(done.tzinfo) == "Europe/Kyiv"
+    # 17:27 + 26:59 = 17:53:59 → на табло оператор побачить 17:53
+    assert done.strftime("%H:%M") == "17:53"
+
+
+def test_collapsed_strip_still_answers_the_question():
+    """Згорнутий стан має лишатись корисним: скільки печей у роботі й котра
+    відкриється найближче. Інакше його просто не згортали б."""
+    hot = service.FurnaceState(target=_target())
+    hot.reading = read_panel(_frame("run"))
+    hot.captured_at = datetime(2026, 8, 29, 17, 27, 0)
+
+    cold = service.FurnaceState(target=service.FurnaceTarget(name="Піч 2", host="192.168.1.61"))
+    cold.reading = read_panel(_frame("wait"))
+    cold.captured_at = datetime(2026, 8, 29, 17, 27, 0)
+
+    cards = [
+        service.FurnaceCard(target=hot.target, state=hot),
+        service.FurnaceCard(target=cold.target, state=cold),
+    ]
+    summary = service.strip_summary(cards)
+    assert summary.running == 1
+    assert summary.total == 2
+    assert summary.nearest_text == "17:53"
+
+
+def test_empty_summary_says_nothing_rather_than_zero():
+    summary = service.strip_summary([])
+    assert summary.running == 0 and summary.nearest_text == ""
+
+
+def test_collapsed_state_lives_on_body_not_on_the_swapped_strip():
+    """Смуга свапається цілком кожні 30 с. Якби клас згортання жив на ній,
+    згорнута смуга сама розгорталася б через півхвилини."""
+    from pathlib import Path
+
+    css = Path("app/static/css/furnaces.css").read_text(encoding="utf-8")
+    js = Path("app/static/js/queue.js").read_text(encoding="utf-8")
+    base = Path("app/templates/base.html").read_text(encoding="utf-8")
+
+    assert "body.furnace-collapsed .q2 .fu-strip-items{display:none}" in css
+    assert 'document.body.classList.toggle("furnace-collapsed")' in js
+    # Анти-мигтючий скрипт мусить ставити клас ДО першого малювання.
+    assert "furnaceStripCollapsed" in base
+
+
+def test_chip_order_is_temperature_then_time_left_then_opening():
+    """Порядок заданий власником і читається як речення. Тест сторожить саме
+    порядок, бо переставити рядки в шаблоні легко й непомітно."""
+    from pathlib import Path
+
+    html = Path("app/templates/_furnace_strip.html").read_text(encoding="utf-8")
+    assert html.index("fu-chip-temp") < html.index("fu-chip-left") < html.index("fu-chip-open")
