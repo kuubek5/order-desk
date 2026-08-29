@@ -8,6 +8,8 @@ venv/
 credentials/
 mail_attachments/
 shift_images/
+# Кадри табло печей — робочі дані машини (один PNG на піч, перезаписується).
+furnace_frames/
 build/
 dist/
 dist-installer/
