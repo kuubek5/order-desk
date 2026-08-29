@@ -427,3 +427,39 @@ def test_card_reports_when_the_poller_itself_went_quiet():
     assert card.stale(now=now) is False
     # Піч, яку ще жодного разу не опитували, не «стоїть» — вона просто нова.
     assert service.FurnaceCard(target=_target(), state=None).stale(now=now) is False
+
+
+def test_queue_strip_is_returned_even_with_no_furnaces(monkeypatch):
+    """Порожня обгортка — не косметика. Якби роут повертав нічого, елемент
+    зник би з DOM разом зі своїм поллом, і після налаштування печей смуга вже
+    ніколи б не проступила без перезавантаження сторінки."""
+    from app.routers import furnace as router
+
+    _capture_context(monkeypatch)
+    with Session(_database()) as db:
+        user = User(username="op", password_hash="x", full_name="Оп")
+        db.add(user)
+        db.commit()
+        context = router.furnaces_strip(_request(user.id), db)
+        assert context["furnace_cards"] == []
+
+
+def test_queue_page_renders_the_strip_outside_the_polled_rows():
+    """Сторож розкладки: смуга мусить лежати ВИЩЕ `.worklayout`, тобто поза
+    `#queue-rows`, який свапає 15-секундний полл черги. Усередині вона
+    зникала б на кожному тіку — та сама пастка, що з карткою зміни."""
+    from pathlib import Path
+
+    html = (Path("app/templates/queue.html")).read_text(encoding="utf-8")
+    assert '_furnace_strip.html' in html
+    assert html.index('_furnace_strip.html') < html.index('<div class="worklayout">')
+
+
+def test_strip_shows_the_moment_not_the_countdown():
+    """Головне число смуги — момент («о 17:41»), а не залишок: сторінка живе
+    між поллами, і «26:59» на ній протухає щосекунди, а момент лишається
+    правдою."""
+    from pathlib import Path
+
+    html = (Path("app/templates/_furnace_strip.html")).read_text(encoding="utf-8")
+    assert "done_at.strftime('%H:%M')" in html

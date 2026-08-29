@@ -54,9 +54,12 @@ main.furnaces{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex
 
 /* Смужка табло під числом. БЕЗ згладжування й без розтягування: мета —
    побачити ті самі пікселі, що читав розпізнавач, а не гарну картинку.
+   align-self обовʼязковий: .fu-num — колонковий flex, а його елементи за
+   замовчуванням тягнуться на всю ширину, і смужка їхала в масштаб 2× —
+   тобто ставала не доказом, а такою ж мальованою картинкою, як число над нею.
    max-width тримає її в межах колонки на вузькому вікні. */
-.furnaces .fu-eye{display:block;max-width:100%;margin-top:6px;border:1px solid var(--line);
-  border-radius:5px;image-rendering:pixelated}
+.furnaces .fu-eye{display:block;align-self:flex-start;width:auto;max-width:100%;margin-top:6px;
+  border:1px solid var(--line);border-radius:5px;image-rendering:pixelated}
 
 .furnaces .fu-warn{margin:0;color:var(--warn);font-size:12px}
 .furnaces .fu-alert{margin:0;color:var(--alarm);font-size:12.5px}
@@ -71,4 +74,46 @@ main.furnaces{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex
 @media (max-width:640px){
   .furnaces .fu-nums{grid-template-columns:1fr}
   .furnaces .fu-num-value{font-size:22px}
+}
+
+/* ── Смуга печей над чергою ──────────────────────────────────────────────
+   Живе на екрані черги, але стилі тут: це той самий компонент, і розводити
+   його по двох файлах означало б розсинхрон кольорів станів.
+
+   Одна лінія, а не картки: черга — головний екран, і піч на ньому має
+   відповідати на одне питання («коли відкривати»), не забираючи місце в робіт.
+   Жодної анімації: екран відкритий цілу зміну. */
+.q2 .fu-strip{display:flex;align-items:center;gap:12px;padding:9px 12px;margin-bottom:10px;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden}
+.q2 .fu-strip.is-empty{display:none}
+
+.q2 .fu-strip-title{display:inline-flex;align-items:center;gap:7px;flex:none;
+  color:var(--ink-2);font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap}
+.q2 .fu-strip-title svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7}
+.q2 .fu-strip-title:hover{color:var(--ink)}
+
+.q2 .fu-strip-items{display:flex;align-items:stretch;gap:8px;overflow-x:auto;padding-bottom:1px}
+
+/* Чіп печі. Ліворуч назва, посередині головне («о 17:41»), праворуч градуси —
+   температура крайня навмисно: її читають рідше, ніж час відкриття. */
+.q2 .fu-chip{display:inline-flex;align-items:baseline;gap:9px;flex:none;padding:5px 11px;
+  border-radius:var(--radius-chip);border:1px solid var(--line-2);background:var(--card-2);
+  color:var(--ink);text-decoration:none;white-space:nowrap;
+  transition:border-color var(--ui-speed),background var(--ui-speed)}
+.q2 .fu-chip:hover{background:var(--card-3);border-color:var(--control-edge)}
+.q2 .fu-chip.is-run{border-color:var(--accent-d)}
+.q2 .fu-chip.is-off{opacity:.66}
+
+.q2 .fu-chip-name{color:var(--ink-2);font-size:11.5px}
+.q2 .fu-chip-main{font-size:13.5px;font-weight:600}
+.q2 .fu-chip-main.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.q2 .fu-chip-sub{color:var(--ink-3);font-size:11px}
+.q2 .fu-chip-sub.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.q2 .fu-chip-temp{font-family:var(--font-mono);font-variant-numeric:tabular-nums;
+  font-size:12.5px;color:var(--accent-c)}
+.q2 .fu-chip.is-off .fu-chip-temp{color:var(--ink-3)}
+
+@media (max-width:760px){
+  .q2 .fu-strip{align-items:flex-start;flex-direction:column;gap:7px}
+  .q2 .fu-strip-items{width:100%}
 }

@@ -1,0 +1,57 @@
+{# Печі над чергою — те, за чим оператор бігає до цеху: коли відкривати і
+   скільки градусів зараз.
+
+   Обгортка віддається ЗАВЖДИ, навіть коли печей немає: якби роут повертав
+   порожнечу, елемент зник би з DOM разом зі своїм поллом, і після
+   налаштування печей смуга більше ніколи б тут не з'явилась. Той самий урок,
+   що на картці передачі зміни.
+
+   Лежить ВИЩЕ `.worklayout` у queue.html, тобто фізично поза `#queue-rows`,
+   який свапає 15-секундний полл черги. Перенести всередину — і смуга
+   мигтітиме на кожному тіку.
+
+   Свій годинник повільніший за чергу (30 с): піч міряється хвилинами, а
+   зайвий рух угорі екрана, відкритого цілу зміну, — це шум. #}
+<section id="furnace-strip"
+         class="fu-strip{% if not furnace_cards %} is-empty{% endif %}"
+         hx-get="/furnaces/strip"
+         hx-trigger="every 30s"
+         hx-target="this"
+         hx-swap="outerHTML"
+         hx-disinherit="*"
+         {% if not furnace_cards %}hidden{% endif %}
+         aria-label="Печі спікання">
+    {% if furnace_cards %}
+    <a href="/furnaces" class="fu-strip-title">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
+        Печі
+    </a>
+    <div class="fu-strip-items">
+        {% for card in furnace_cards %}
+        {% set state = card.state %}
+        <a href="/furnaces" class="fu-chip{% if card.is_running %} is-run{% elif card.offline or card.stale() %} is-off{% endif %}">
+            <span class="fu-chip-name">{{ card.target.name }}</span>
+            {% if card.stale() %}
+            <span class="fu-chip-main">опитування стоїть</span>
+            {% elif card.offline %}
+            <span class="fu-chip-main">немає зв'язку</span>
+            {% elif card.never_polled %}
+            <span class="fu-chip-main">чекаємо кадр</span>
+            {% elif state.done_at %}
+            {# Головне число смуги — момент, а не залишок: «о 17:41» лишається
+               правдою, поки картка висить, а «26:59» протухає щосекунди. #}
+            <span class="fu-chip-main mono">о {{ state.done_at.strftime('%H:%M') }}</span>
+            <span class="fu-chip-sub mono">лишилось {{ state.remaining_text }}</span>
+            {% elif card.is_idle %}
+            <span class="fu-chip-main">вільна</span>
+            {% else %}
+            <span class="fu-chip-main">—</span>
+            {% endif %}
+            {% if state and state.temp_c is not none %}
+            <span class="fu-chip-temp mono">{{ state.temp_c }}°</span>
+            {% endif %}
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>

@@ -70,6 +70,25 @@ def furnaces_cards(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "_furnace_cards.html", _context(request, db, user))
 
 
+@router.get("/furnaces/strip", response_class=HTMLResponse)
+def furnaces_strip(request: Request, db: Session = Depends(get_db)):
+    """Смуга печей над чергою — на власному 30-секундному годиннику.
+
+    Обгортку віддаємо ЗАВЖДИ, навіть порожню: якби на «печей немає» роут
+    повертав нічого, елемент зник би з DOM разом зі своїм поллом, і після
+    налаштування печей смуга більше ніколи б не проступила (той самий урок,
+    що на картці передачі зміни).
+
+    Читає ЛИШЕ стан у памʼяті процесу — жодного підключення до печі з потоку,
+    який обслуговує запит: інакше мовчазна піч тримала б чергу 20 секунд.
+    """
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    return templates.TemplateResponse(
+        request, "_furnace_strip.html", {"furnace_cards": snapshot(db)}
+    )
+
+
 @router.post("/furnaces/refresh", response_class=HTMLResponse)
 def furnaces_refresh(request: Request, db: Session = Depends(get_db)):
     """Зняти кадр просто зараз, не чекаючи фонового тіку.

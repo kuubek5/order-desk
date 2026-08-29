@@ -189,7 +189,14 @@ class FakeFurnace:
                 elif message == 3:  # FramebufferUpdateRequest
                     await reader.readexactly(9)
                     if self.hang:
-                        await asyncio.sleep(3600)
+                        # Не спимо, а ЧИТАЄМО: read() повертає b"" рівно тоді,
+                        # коли клієнт закрив зʼєднання. Кадру піч так само не
+                        # дає (це і є «зависла»), але лічильник зʼєднань більше
+                        # не бреше — інакше стенд показував би «7 відкритих»
+                        # там, де їх давно закрито з нашого боку.
+                        if await reader.read(1) == b"":
+                            return
+                        continue
                     self._write_frame(writer)
                     await writer.drain()
                 elif message == 6:  # ClientCutText — теж ввід, теж свідчення

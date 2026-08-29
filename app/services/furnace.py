@@ -293,7 +293,9 @@ def _should_store(state: FurnaceState, reading: PanelReading, now: datetime) -> 
 def _store(db: Session, target: FurnaceTarget, reading: PanelReading, now: datetime) -> None:
     db.add(
         FurnaceReading(
-            host=target.host,
+            # Ключ, а не гола адреса: дві печі за одним хостом на різних портах
+            # (стенд, проброшений порт) інакше зливали б історію в одну.
+            host=target.key,
             captured_at=now,
             status=reading.status,
             temp_c=reading.temp_c,
@@ -312,7 +314,7 @@ def _store(db: Session, target: FurnaceTarget, reading: PanelReading, now: datet
 def _store_error(db: Session, target: FurnaceTarget, message: str, now: datetime) -> None:
     db.add(
         FurnaceReading(
-            host=target.host,
+            host=target.key,
             captured_at=now,
             status=STATUS_UNKNOWN,
             error=message[:300],
