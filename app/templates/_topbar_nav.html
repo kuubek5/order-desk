@@ -130,6 +130,16 @@
     </div>
     {% else %}
     <nav class="rail-nav-group" aria-label="Основна навігація">
+        {# Передача зміни стоїть ПЕРЕД чергою: о 08:00 це перше, що має
+           побачити оператор. Лічильник — Jinja-глобал (deps.shift_pending),
+           а не змінна контексту, тому бейдж живий на КОЖНОМУ екрані, а не
+           лише там, де роут не забув його порахувати. #}
+        {% set shift_open = shift_pending() %}
+        <a href="/shift" class="rail-nav-item{% if topbar_active == 'shift' %} is-active{% endif %}"{% if topbar_active == 'shift' %} aria-current="page"{% endif %}>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <span class="rail-label">Зміна</span>
+            {% if shift_open %}<span class="mail-nav-count tnum">{{ shift_open }}</span>{% endif %}
+        </a>
         <a href="/" class="rail-nav-item{% if topbar_active == 'queue' %} is-active{% endif %}"{% if topbar_active == 'queue' %} aria-current="page"{% endif %}>
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg>
             <span class="rail-label">Черга</span>

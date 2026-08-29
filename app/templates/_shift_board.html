@@ -1,0 +1,110 @@
+{# Дошка поточної ночі + минулі ночі списком.
+
+   Свапається цілком (outerHTML) на подію refresh-shift, яку шлють
+   «Прийняв» / «Прийнято» / редагування. Тому всередині НЕ має бути нічого,
+   що оператор набирає руками: поле написання лежить у shift.html. #}
+<section id="shift-board"
+         hx-get="/shift?partial=board"
+         hx-trigger="refresh-shift from:body"
+         hx-target="this"
+         hx-swap="outerHTML"
+         hx-disinherit="*">
+
+    <div class="sh-board">
+        {% if board %}
+        <div class="sh-stack">
+            {% for note in board %}
+            {% set is_action = note.kind == 'action' %}
+            <article class="sh-note{% if is_action %} is-action{% endif %}">
+                <span class="sh-pin-dot" aria-hidden="true"></span>
+
+                {% if is_action %}
+                <div class="sh-kind-tag">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18l7-5 7 5V3z"/></svg>
+                    Потребує дії
+                </div>
+                {% endif %}
+
+                <div class="sh-text">{{ note.text }}</div>
+
+                <div class="sh-foot">
+                    <span class="mono">{{ note.created_at.strftime('%H:%M') }}</span>
+                    <span>·</span>
+                    <span>{% if note.author %}{{ note.author.full_name or note.author.username }}{% else %}—{% endif %}</span>
+                    {% if note.acknowledged_at %}
+                    <span class="sh-ack">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg>
+                        прийняв {% if note.acknowledged_by %}{{ note.acknowledged_by.full_name or note.acknowledged_by.username }}{% endif %}
+                        {{ note.acknowledged_at.strftime('%H:%M') }}
+                    </span>
+                    {% else %}
+                    <span class="sh-unread">не прийнято</span>
+                    {% endif %}
+                    {% if note.edited_at %}<span>·</span><span class="sh-edited">редаговано</span>{% endif %}
+                </div>
+
+                <div class="sh-actions">
+                    {% if not note.acknowledged_at %}
+                    <button type="button" class="btn apex sh-btn"
+                            hx-post="/shift/notes/{{ note.id }}/ack"
+                            hx-swap="none">Прийняв</button>
+                    {% elif is_action %}
+                    {# «Прийнято» закриває справу — залита кнопка лишається за
+                       прийняттям, тому тут другий рівень (обведена). #}
+                    <button type="button" class="btn sh-btn"
+                            hx-post="/shift/notes/{{ note.id }}/resolve"
+                            hx-swap="none">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg>
+                        Прийнято
+                    </button>
+                    {% endif %}
+
+                    {% if note.author_id == user.id %}
+                    <details class="sh-edit">
+                        <summary>Змінити</summary>
+                        <form hx-post="/shift/notes/{{ note.id }}/edit" hx-swap="none">
+                            <textarea name="text" rows="3" maxlength="4000"
+                                      aria-label="Новий текст записки">{{ note.text }}</textarea>
+                            <p class="sh-edit-warn">Зміна тексту скидає прийняття — записку доведеться прийняти наново.</p>
+                            <button type="submit" class="btn sh-btn">Зберегти</button>
+                        </form>
+                    </details>
+                    {% endif %}
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="sh-empty">Дошка порожня — усе передане прийнято.</p>
+        {% endif %}
+    </div>
+
+    {% if history %}
+    <details class="sh-history">
+        <summary>
+            <span>Дошки за минулі ночі</span>
+            <span class="sh-hr"></span>
+        </summary>
+        {% for start, notes in history %}
+        <div class="sh-night">
+            <h2>{{ start | night_label }}</h2>
+            <ul>
+                {% for note in notes %}
+                <li>
+                    <span class="mono">{{ note.created_at.strftime('%H:%M') }}</span>
+                    <span class="sh-hist-text">{{ note.text }}</span>
+                    <span class="sh-hist-meta">
+                        {% if note.author %}{{ note.author.full_name or note.author.username }}{% endif %}
+                        {% if note.resolved_at %}· закрито{% elif note.acknowledged_at %}· прийнято{% endif %}
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endfor %}
+        {% if history_truncated %}
+        <p class="sh-empty">Показано останні записки; давніші сюди не влізли.</p>
+        {% endif %}
+    </details>
+    {% endif %}
+</section>

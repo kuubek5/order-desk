@@ -1,0 +1,123 @@
+/* Зміна — дошка передачі між нічними змінами (варіант D, обрано 29.08.26).
+
+   Стікери на стриманій «грифельній» поверхні. Свідомі рішення виконання,
+   щоб їх не відкотили випадково:
+   — БЕЗ яскравих жовтих папірців: тон бренду темний, екран відкритий цілу
+     зміну біля верстатів;
+   — БЕЗ вільного drag-по-xy: картки лягають автопотоком у колонки (CSS
+     columns). П'ятеро операторів, різні монітори, дотик — зберігати
+     координати кожного стікера не варте того при 3-5 записках за ніч;
+   — дошка = поточна ніч; минулі ночі — списком нижче, не дошкою.
+   Кольори тільки з tokens.css: бірюза = до відома, --warn = потребує дії. */
+
+main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px;min-height:100vh}
+.shiftv2 .mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* --- шапка --- */
+.shiftv2 .sh-bar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.shiftv2 .sh-bar h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:700;letter-spacing:var(--ls-head);margin:0}
+.shiftv2 .sh-sub{margin:3px 0 0;color:var(--ink-3);font-size:12.5px}
+/* Ім'я поточного оператора навмисно велике: кука живе 8 годин, тож чужа
+   сесія має бути помітна ДО того, як хтось натисне «Прийняв». */
+.shiftv2 .sh-who{display:flex;align-items:center;gap:8px;color:var(--ink-3);font-size:12px}
+.shiftv2 .sh-who-chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:var(--radius-chip);
+  background:var(--card-2);border:1px solid var(--line-2);color:var(--ink);font-weight:600;font-size:12.5px}
+.shiftv2 .sh-who-chip i{width:6px;height:6px;border-radius:50%;background:var(--accent-c)}
+
+/* --- поле написання ---
+   Стоїть ПОЗА #shift-board: дошка свапається цілком на refresh-shift, і
+   всередині недописаний текст загинув би на першому ж чужому «Прийняв». */
+.shiftv2 .sh-compose{background:transparent;border:1px dashed var(--line-2);border-radius:var(--r-card);padding:13px 14px 11px}
+.shiftv2 .sh-compose textarea{width:100%;box-sizing:border-box;resize:vertical;min-height:52px;background:none;border:0;outline:none;
+  color:var(--ink);font:400 14px/1.5 var(--font-body)}
+.shiftv2 .sh-compose textarea::placeholder{color:var(--control-edge)}
+.shiftv2 .sh-compose:focus-within{border-color:var(--focus-border);box-shadow:var(--focus-glow)}
+.shiftv2 .sh-compose-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:9px}
+
+.shiftv2 .sh-kind{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-chip);padding:3px;gap:2px}
+.shiftv2 .sh-kind label{display:inline-flex}
+.shiftv2 .sh-kind input{position:absolute;opacity:0;width:0;height:0}
+.shiftv2 .sh-kind span{display:inline-flex;align-items:center;height:26px;padding:0 12px;border-radius:var(--radius-chip);
+  font-size:12.5px;color:var(--ink-2);cursor:pointer;transition:background var(--ui-speed),color var(--ui-speed)}
+.shiftv2 .sh-kind input:checked+span{background:var(--card-3);color:var(--ink);font-weight:600}
+.shiftv2 .sh-kind label:last-child input:checked+span{color:var(--warn)}
+.shiftv2 .sh-kind input:focus-visible+span{outline:2px solid var(--focus-border);outline-offset:2px}
+
+/* --- кнопки ---
+   .btn у цьому проєкті скоупиться на екран (.mailv2 .btn, .neworder .btn),
+   спільного визначення немає — тому екран несе своє.
+   Залите трактування (.apex) зарезервоване за ОДНІЄЮ дією: пришпилити
+   записку і прийняти її. «Прийнято» (закриття справи) — другого рівня,
+   інакше на одному стікері два залиті прямокутники сперечались би. */
+.shiftv2 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 14px;
+  border-radius:var(--r-ctl);border:1px solid var(--control-edge);background:var(--card);color:var(--ink);
+  font:500 12.5px var(--font-body);cursor:pointer;transition:background var(--ui-speed),border-color var(--ui-speed)}
+.shiftv2 .btn:hover{background:var(--card-2);border-color:var(--line-2)}
+.shiftv2 .btn.apex{background:var(--accent-b);border-color:var(--accent-b);color:#06231f;font-weight:600}
+.shiftv2 .btn.apex:hover{background:var(--accent-c);border-color:var(--accent-c);color:#06231f}
+.shiftv2 .btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.shiftv2 .sh-btn{height:28px;padding:0 13px;font-size:12.5px}
+
+/* --- поверхня дошки --- */
+.shiftv2 .sh-board{background:
+    linear-gradient(var(--color-bg-grid-line) 1px,transparent 1px) 0 0/26px 26px,
+    linear-gradient(90deg,var(--color-bg-grid-line) 1px,transparent 1px) 0 0/26px 26px,
+    radial-gradient(120% 90% at 50% 0%,#101722 0%,#0b0f16 100%);
+  border:1px solid #1c2532;border-radius:12px;padding:18px}
+.shiftv2 .sh-empty{margin:0;padding:18px 2px;text-align:center;color:var(--ink-3);font-size:13px}
+
+.shiftv2 .sh-stack{columns:3;column-gap:14px}
+@media (max-width:1100px){.shiftv2 .sh-stack{columns:2}}
+@media (max-width:720px){.shiftv2 .sh-stack{columns:1}}
+
+/* --- стікер --- */
+.shiftv2 .sh-note{break-inside:avoid;-webkit-column-break-inside:avoid;margin:0 0 14px;position:relative;
+  background:var(--card-2);border:1px solid #26313f;border-radius:var(--r-card);padding:15px 15px 12px;
+  box-shadow:var(--sh-pop);animation:sh-appear var(--enter-duration) ease both}
+.shiftv2 .sh-note.is-action{background:rgba(240,163,94,.07);border-color:rgba(240,163,94,.4)}
+@keyframes sh-appear{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.shiftv2 .sh-note{animation:none}}
+
+/* шпилька зверху по центру — єдина декоративна деталь «дошки» */
+.shiftv2 .sh-pin-dot{position:absolute;top:-7px;left:50%;transform:translateX(-50%);width:14px;height:14px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#7fe9dc,var(--accent) 60%,#0d7c70);box-shadow:0 2px 5px -1px rgba(0,0,0,.7)}
+.shiftv2 .sh-note.is-action .sh-pin-dot{background:radial-gradient(circle at 35% 30%,#f6c68e,var(--warn) 60%,#b9782f)}
+
+.shiftv2 .sh-kind-tag{display:inline-flex;align-items:center;gap:6px;margin-bottom:7px;color:var(--warn);
+  font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.shiftv2 .sh-kind-tag svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.shiftv2 .sh-text{font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+
+.shiftv2 .sh-foot{margin-top:11px;display:flex;align-items:center;gap:9px;flex-wrap:wrap;color:var(--ink-3);font-size:11.5px}
+.shiftv2 .sh-ack{display:inline-flex;align-items:center;gap:5px;color:var(--accent-c)}
+.shiftv2 .sh-ack svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.shiftv2 .sh-unread{color:var(--warn);font-weight:600}
+.shiftv2 .sh-edited{color:var(--control-edge)}
+
+.shiftv2 .sh-actions{margin-top:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.shiftv2 .sh-edit{font-size:12px}
+.shiftv2 .sh-edit summary{cursor:pointer;color:var(--ink-3);list-style:none}
+.shiftv2 .sh-edit summary::-webkit-details-marker{display:none}
+.shiftv2 .sh-edit summary:hover{color:var(--ink-2)}
+.shiftv2 .sh-edit form{margin-top:9px;display:flex;flex-direction:column;gap:7px}
+.shiftv2 .sh-edit textarea{width:100%;box-sizing:border-box;resize:vertical;background:var(--color-input-bg);
+  border:1px solid var(--control-edge);border-radius:var(--r-ctl);padding:8px 10px;color:var(--ink);
+  font:400 13px/1.5 var(--font-body);outline:none}
+.shiftv2 .sh-edit textarea:focus{border-color:var(--focus-border);box-shadow:var(--focus-glow)}
+.shiftv2 .sh-edit-warn{margin:0;color:var(--ink-3);font-size:11.5px}
+
+/* --- минулі ночі: список, не дошка --- */
+.shiftv2 .sh-history{margin-top:2px}
+.shiftv2 .sh-history summary{display:flex;align-items:center;gap:11px;cursor:pointer;opacity:.55;list-style:none}
+.shiftv2 .sh-history summary::-webkit-details-marker{display:none}
+.shiftv2 .sh-history summary:hover{opacity:.85}
+.shiftv2 .sh-history summary>span:first-child{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.shiftv2 .sh-hr{flex:1;height:1px;background:var(--line)}
+.shiftv2 .sh-night{margin-top:14px}
+.shiftv2 .sh-night h2{margin:0 0 6px;font-family:var(--font-head);font-size:13px;font-weight:600;color:var(--ink-2)}
+.shiftv2 .sh-night ul{margin:0;padding:0;list-style:none;border-top:1px solid var(--line)}
+.shiftv2 .sh-night li{display:flex;align-items:baseline;gap:10px;padding:7px 2px;border-bottom:1px solid var(--line);font-size:13px}
+.shiftv2 .sh-night li .mono{color:var(--ink-3);font-size:12px;flex:0 0 auto}
+.shiftv2 .sh-hist-text{flex:1;min-width:0;overflow-wrap:anywhere}
+.shiftv2 .sh-hist-meta{color:var(--ink-3);font-size:11.5px;flex:0 0 auto}

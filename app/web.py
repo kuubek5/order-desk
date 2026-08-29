@@ -64,6 +64,7 @@ from app.routers.queue import router as queue_router
 from app.routers.archive import router as archive_router
 from app.routers.stats import router as stats_router
 from app.routers.stl import router as stl_router
+from app.routers.shift import router as shift_router
 from app.routers.deps import templates
 from app.services.order_dates import parse_sheet_tab as _parse_sheet_tab
 from app.services.handout import (
@@ -521,3 +522,7 @@ app.include_router(settings_router)
 
 # Тріаж пошти й фільтри живуть в app/routers/mail.py.
 app.include_router(mail_router)
+
+
+# Дошка передачі зміни живе в app/routers/shift.py.
+app.include_router(shift_router)

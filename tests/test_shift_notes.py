@@ -6,14 +6,19 @@
 """
 
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
+from fastapi.responses import RedirectResponse
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+import app.web as web
 from app.db import Base
 from app.models import ShiftNote, User
+from app.routers import shift as shift_router
 from app.services.shift import (
     KIND_ACTION,
     KIND_INFO,
@@ -270,3 +275,120 @@ def test_history_reports_truncation_and_groups_newest_first():
         groups, truncated = history(db, limit=2)
         assert truncated is True
         assert sum(len(notes) for _, notes in groups) == 2
+
+
+# 7 — роути: доступ, дії, і що дошка справді малюється
+
+
+def _request(user_id=None):
+    return SimpleNamespace(session={} if user_id is None else {"user_id": user_id},
+                           query_params={}, headers={})
+
+
+def _stub_templates(monkeypatch):
+    """Роут віддає контекст замість рендера — стиль тестів роутів у проєкті.
+    Патчиться атрибут ОБ'ЄКТА templates (спільного для web і deps), а не
+    змінна в модулі: після розбиття web.py друге стало б тихим no-op."""
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+
+
+def test_shift_screen_requires_login():
+    with Session(_database()) as db:
+        response = shift_router.get_shift(request=_request(None), db=db)
+    assert isinstance(response, RedirectResponse)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+def test_shift_actions_return_401_without_session():
+    with Session(_database()) as db:
+        note = _note(db)
+        for call in (
+            lambda: shift_router.ack_shift_note(request=_request(None), note_id=note.id, db=db),
+            lambda: shift_router.resolve_shift_note(request=_request(None), note_id=note.id, db=db),
+            lambda: shift_router.create_shift_note(request=_request(None), text="x", kind=KIND_INFO, db=db),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                call()
+            assert exc.value.status_code == 401
+
+
+def test_board_shows_open_notes_and_history_shows_the_rest(monkeypatch):
+    _stub_templates(monkeypatch)
+    with Session(_database()) as db:
+        user = _user(db)
+        open_note = _note(db, text="піч 3 о 12:00", at=datetime(2026, 8, 28, 2, 0))
+        old = _note(db, text="давня", at=datetime(2026, 8, 20, 23, 0))
+        acknowledge(db, old, user=user)
+        db.commit()
+
+        context = shift_router.get_shift(request=_request(user.id), db=db)
+
+    assert [n.id for n in context["board"]] == [open_note.id]
+    assert [n.text for _, notes in context["history"] for n in notes] == ["давня"]
+
+
+def test_night_with_an_open_note_stays_whole_on_the_board(monkeypatch):
+    """Одна ніч не має розриватись між дошкою і історією: прийняте з тієї ж
+    ночі не повинно поїхати вниз, поки ніч ще жива."""
+    _stub_templates(monkeypatch)
+    with Session(_database()) as db:
+        user = _user(db)
+        _note(db, text="відкрите", at=datetime(2026, 8, 28, 1, 0))
+        seen = _note(db, text="прийняте тієї ж ночі", at=datetime(2026, 8, 27, 23, 0))
+        acknowledge(db, seen, user=user)
+        db.commit()
+
+        context = shift_router.get_shift(request=_request(user.id), db=db)
+
+    assert context["history"] == []
+
+
+def test_ack_route_marks_the_note_and_asks_the_page_to_refresh(monkeypatch):
+    with Session(_database()) as db:
+        user = _user(db)
+        note = _note(db)
+
+        response = shift_router.ack_shift_note(request=_request(user.id), note_id=note.id, db=db)
+
+        assert response.status_code == 204
+        assert "refresh-shift" in response.headers["HX-Trigger"]
+        assert note.acknowledged_by_id == user.id
+
+
+def test_edit_route_is_author_only():
+    with Session(_database()) as db:
+        author = _user(db, username="a")
+        other = _user(db, username="b")
+        note = _note(db, text="моє", author=author)
+
+        response = shift_router.edit_shift_note(
+            request=_request(other.id), note_id=note.id, text="чуже", db=db
+        )
+
+        assert response.status_code == 204
+        assert "refresh-shift" not in response.headers["HX-Trigger"]
+        assert note.text == "моє"
+
+
+def test_board_partial_renders_for_real():
+    """Справжній рендер фрагмента: `partial=board` віддає саме його, а не
+    сторінку, і всі фільтри/атрибути в шаблоні існують. Контекст-стаб цього
+    не спіймав би — він взагалі не вмикає Jinja."""
+    with Session(_database()) as db:
+        user = _user(db, full_name="Вадим")
+        _note(db, kind=KIND_ACTION, text="верстат 4 стоїть", author=user,
+              at=datetime(2026, 8, 28, 1, 20))
+        old = _note(db, text="давня записка", author=user, at=datetime(2026, 8, 20, 23, 0))
+        acknowledge(db, old, user=user)
+        db.commit()
+
+        response = shift_router.get_shift(request=_request(user.id), partial="board", db=db)
+        html = response.body.decode("utf-8")
+
+    assert "верстат 4 стоїть" in html
+    assert "Потребує дії" in html
+    assert 'hx-post="/shift/notes' in html
+    assert "Ніч 20→21.08" in html, "заголовок минулої ночі рендериться фільтром night_label"

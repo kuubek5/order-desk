@@ -34,6 +34,7 @@ from app.settings_store import (
     get_notify_style,
 )
 from app.services.queue import is_rush_comment
+from app.services.shift import night_label, open_note_count
 from app.statuses import is_overdue
 from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed
 from app.triage_status import triage_readiness
@@ -176,6 +177,27 @@ def notify_prefs() -> dict:
         }
 
 
+def shift_pending() -> int:
+    """Скільки записок передачі зміни ще на дошці — для бейджа в рейці.
+
+    Jinja-глобал зі своєю сесією, а НЕ змінна контексту, і це принципово:
+    pending_mail_count ставить лише роут черги, тому бейдж пошти є тільки на
+    черзі. Для передачі зміни це рівно хибний результат — о 08:00 оператор
+    цілком може відкрити застосунок одразу на /handout (це його перша справа
+    дня) і не побачити нічого. Один COUNT на рендер, і збій БД не має права
+    завалити сторінку — тому широкий except, як у notify_prefs.
+    """
+    try:
+        db = SessionLocal()
+        try:
+            return open_note_count(db)
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001 — бейдж не варт того, щоб ламати рендер
+        logger.debug("shift_pending fell back to 0", exc_info=True)
+        return 0
+
+
 templates = Jinja2Templates(directory=str(resource_path("app/templates")))
 templates.env.globals["is_overdue"] = is_overdue
 templates.env.globals["material_color_css_class"] = material_color_css_class
@@ -196,3 +218,5 @@ templates.env.globals["get_known_update"] = get_known_update
 # globals above. Single source of truth is app/__version__.py.
 templates.env.globals["app_version"] = VERSION
 templates.env.globals["notify_prefs"] = notify_prefs
+templates.env.globals["shift_pending"] = shift_pending
+templates.env.filters["night_label"] = night_label

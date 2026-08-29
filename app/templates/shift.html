@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Зміна — Order Desk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/shift.css?v={{ static_ver('css/shift.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'shift' %}
+{% include "_topbar_nav.html" %}
+
+{# Дошка передачі зміни. Поле написання стоїть ПОЗА `#shift-board`: дошка
+   свапається цілком на подію refresh-shift (чуже «Прийняв», власне
+   редагування), і якби поле було всередині, свап зітер би недописаний текст. #}
+<main class="shiftv2">
+    <div class="sh-bar">
+        <div>
+            <h1>Зміна</h1>
+            <p class="sh-sub">Дошка передачі · {{ tonight }}</p>
+        </div>
+        {# Хто зараз залогінений — навмисно великим і поруч із полем: кука живе
+           8 годин, тож машина цілком може стояти під сесією денного оператора,
+           і тоді «прийняв» назве не ту людину. Видно ДО відправки. #}
+        <div class="sh-who">
+            <span>Ти зараз</span>
+            <span class="sh-who-chip"><i></i>{{ user.full_name or user.username }}</span>
+        </div>
+    </div>
+
+    <form class="sh-compose" method="post" action="/shift/notes">
+        <textarea name="text" rows="2" maxlength="4000"
+                  placeholder="Написати для наступної зміни…"
+                  aria-label="Текст записки"></textarea>
+        <div class="sh-compose-foot">
+            <div class="sh-kind" role="radiogroup" aria-label="Тип записки">
+                <label>
+                    <input type="radio" name="kind" value="info" checked>
+                    <span>До відома</span>
+                </label>
+                <label>
+                    <input type="radio" name="kind" value="action">
+                    <span>Потребує дії</span>
+                </label>
+            </div>
+            <button type="submit" class="btn apex sh-pin">Пришпилити</button>
+        </div>
+    </form>
+
+    {% include "_shift_board.html" %}
+</main>
+{% endblock %}
