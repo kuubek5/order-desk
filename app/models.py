@@ -590,3 +590,42 @@ class OrderFocus(Base):
 
     order: Mapped["Order"] = relationship("Order")
     user: Mapped["User"] = relationship("User")
+
+
+class FurnaceReading(Base):
+    """Один знімок табло печі: що показував екран у цю секунду.
+
+    Пишеться НЕ на кожен кадр. Кадр знімається кожні кілька секунд (щоб
+    картинка на екрані була живою), а рядок з'являється лише коли щось
+    змінилось або минула хвилина — інакше одна піч давала б ~17 тис. рядків на
+    добу заради даних, які не змінювались.
+
+    Порожні temp_c / remaining_seconds — нормальний стан, а не збій: у цьому
+    проєкті хибне число гірше за жодне (див. app/furnace_ocr.py). Тому поруч
+    лежать raw_* — рівно те, що прочиталось із пікселів, разом зі знаками «?»
+    на невпізнаних символах. За ними видно, ЧОМУ поле порожнє, і за ними ж
+    донавчаються еталони цифр.
+
+    Час локальний і без server_default=func.now(): на SQLite func.now() пише
+    UTC, а тут час — це відповідь на питання «коли пекти закінчить», яку
+    оператор звіряє з годинником на стіні (та сама причина, що в ShiftNote).
+    """
+
+    __tablename__ = "furnace_readings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Адреса печі, а не її назва: назву в налаштуваннях можуть перейменувати,
+    # і історія показань не має від цього розсипатись.
+    host: Mapped[str] = mapped_column(String(60), index=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    # RUN / WAIT / "?" — останнє означає, що сигнали розійшлись між собою.
+    status: Mapped[str] = mapped_column(String(10))
+    temp_c: Mapped[Optional[int]] = mapped_column(nullable=True)
+    remaining_seconds: Mapped[Optional[int]] = mapped_column(nullable=True)
+    elapsed_seconds: Mapped[Optional[int]] = mapped_column(nullable=True)
+    command: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    raw_temp: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    raw_remaining: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Кадр узагалі не знявся (піч вимкнена, мережа, пароль). Тоді решта полів
+    # порожня, а рядок лишається слідом, що ми пробували і що саме сказала піч.
+    error: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)

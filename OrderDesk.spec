@@ -8,6 +8,9 @@ hiddenimports = (
     # analysis — name them explicitly. If tray build ever fails at runtime the
     # app falls back to running without it, but we want it to actually ship.
     + ["pystray._win32", "PIL.Image", "PIL.ImageDraw"]
+    # Знімок екрана печі по VNC: asyncvnc імпортується ліниво (тільки коли
+    # печі налаштовані), тому статичний аналіз його не бачить.
+    + ["asyncvnc", "keysymdef"]
 )
 datas = [
     ("app/templates", "app/templates"),
@@ -20,6 +23,9 @@ datas = [
     ("CHANGELOG.md", "."),
     # App/tray icon (resource_path("assets/orderdesk.ico")).
     ("assets/orderdesk.ico", "assets"),
+    # Еталони цифр табло печей — без них екран печей читає лише статус
+    # (resource_path("app/data/furnace_glyphs.json")).
+    ("app/data", "app/data"),
 ]
 datas += collect_data_files("tzdata")
 

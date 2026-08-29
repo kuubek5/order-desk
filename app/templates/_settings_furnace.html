@@ -1,0 +1,51 @@
+        {# ── Печі спікання ────────────────────────────────────────────────
+           Адреси екранів печей і спільний пароль VNC. Пароль — секрет: він
+           зберігається зашифрованим у базі, як решта (CLAUDE.md §7), і назад у
+           поле не підставляється — показується лише ознака «збережено».
+
+           Тут навмисно НЕМАЄ нічого про керування піччю: застосунок читає
+           екран і більше нічого з піччю не робить. #}
+        {% if user.role == 'адмін' %}
+        <div class="wizard-step scon-sec" data-sec="furnaces">
+            <div class="num" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
+            </div>
+            <div class="box">
+                <div class="wizard-step-head">
+                    <h2>Печі спікання</h2>
+                    <span class="connection-state {% if furnace_hosts %}connection-state-ready{% endif %}">
+                        {% if furnace_hosts %}Налаштовано{% else %}Вимкнено{% endif %}
+                    </span>
+                </div>
+                <p class="wizard-sub">
+                    Піч не віддає даних жодним протоколом — читаємо її власний екран по VNC,
+                    тільки перегляд. Порожній перелік вимикає моніторинг повністю:
+                    фоновий опитувач тоді нічого не робить.
+                </p>
+
+                <form method="post" action="/settings/furnaces">
+                    <div class="settings-field">
+                        <label for="furnace_hosts">Печі, по одній на рядок</label>
+                        <p class="settings-help">Формат: <code>Назва=адреса</code> або просто адреса; порт за потреби через двокрапку (типовий 5900).</p>
+                        <textarea id="furnace_hosts" name="hosts" rows="4"
+                                  class="settings-textarea"
+                                  placeholder="Піч 1=192.168.1.76">{{ furnace_hosts }}</textarea>
+                    </div>
+
+                    <div class="settings-field">
+                        <label for="furnace_password">Пароль VNC</label>
+                        <p class="settings-help">Один на всі печі — заводський пароль моделі. Порожнє поле лишає збережений пароль без змін.</p>
+                        <div class="login-input-wrap">
+                            <input type="password" id="furnace_password" name="password"
+                                   class="login-input" autocomplete="new-password"
+                                   placeholder="{% if furnace_password_set %}збережено{% else %}пароль екрана печі{% endif %}">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="settings-secondary-button">Зберегти печі</button>
+                </form>
+
+                <p class="settings-help">Стан печей — на екрані <a href="/furnaces">Печі</a>.</p>
+            </div>
+        </div>
+        {% endif %}

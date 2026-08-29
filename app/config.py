@@ -40,6 +40,12 @@ MAIL_ATTACHMENTS_PATH = os.environ.get(
 SHIFT_IMAGES_PATH = os.environ.get(
     "SHIFT_IMAGES_PATH", str(DATA_DIR / "shift_images")
 )
+# Останній кадр табло кожної печі. Тримаємо ОДИН файл на піч і перезаписуємо:
+# історія картинок нікому не потрібна (у базі лежать числа), а тека, що росте
+# по кадру кожні кілька секунд, з'їла б диск за тиждень.
+FURNACE_FRAMES_PATH = os.environ.get(
+    "FURNACE_FRAMES_PATH", str(DATA_DIR / "furnace_frames")
+)
 DB_ENCRYPTION_KEY = os.environ["DB_ENCRYPTION_KEY"]
 SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY") or hashlib.sha256(
     ("order-desk-session:" + DB_ENCRYPTION_KEY).encode()

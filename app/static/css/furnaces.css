@@ -1,0 +1,74 @@
+/* Печі — екран перегляду стану печей спікання.
+
+   Три свідомі рішення виконання:
+   — числа великі й моноширинні: на них дивляться з кількох метрів, стоячи
+     біля верстата, а не з крісла;
+   — під числами смужка справжніх пікселів табло. Поки дані читаються з
+     картинки, останнє слово лишається за оком оператора, і смужка має бути
+     на видноті, а не в «деталях»;
+   — жодного пульсуючого/біжучого елемента. Екран висить відкритим цілу зміну;
+     той самий урок, що на тріажі пошти (там свідомо лишили один живий сигнал).
+   Кольори — тільки з tokens.css. */
+
+main.furnaces{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+
+.furnaces .fu-bar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.furnaces .fu-bar h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:700;letter-spacing:var(--ls-head);margin:0}
+.furnaces .fu-sub{margin:3px 0 0;color:var(--ink-3);font-size:12.5px}
+
+/* .btn скоупиться на екран (спільного визначення в проєкті немає) — див.
+   shift.css. Тут єдина кнопка й вона утилітарна, тож без залитого трактування:
+   заливка в цьому проєкті означає «коміт», а знімок кадру нічого не змінює. */
+.furnaces .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 14px;
+  border-radius:var(--r-ctl);border:1px solid var(--control-edge);background:var(--card);color:var(--ink);
+  font:500 12.5px var(--font-body);cursor:pointer;transition:background var(--ui-speed),border-color var(--ui-speed)}
+.furnaces .btn:hover{background:var(--card-2);border-color:var(--line-2)}
+
+.furnaces .fu-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+
+.furnaces .fu-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
+  padding:13px 14px 11px;display:flex;flex-direction:column;gap:11px}
+/* Контур, а не заливка: піч у роботі має вирізнятись, але заливка тут
+   конкурувала б із кольорами самого кадру табло всередині плитки. */
+.furnaces .fu-card.is-running{border-color:var(--accent-d)}
+.furnaces .fu-card.is-offline{border-color:var(--line);opacity:.72}
+
+.furnaces .fu-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.furnaces .fu-name{display:flex;flex-direction:column;gap:2px;min-width:0}
+.furnaces .fu-name b{font-size:14px;font-weight:600}
+.furnaces .fu-name .mono{font-family:var(--font-mono);font-size:11.5px}
+
+.furnaces .fu-pill{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:var(--radius-chip);
+  font:600 11.5px/1 var(--font-mono);letter-spacing:.04em;border:1px solid transparent;white-space:nowrap}
+.furnaces .fu-pill.is-run{color:var(--accent-c);border-color:var(--accent-d);background:rgba(45,212,191,.10)}
+.furnaces .fu-pill.is-wait{color:var(--ink-2);border-color:var(--line-2)}
+.furnaces .fu-pill.is-offline{color:var(--alarm);border-color:var(--color-overdue-border);background:var(--color-overdue-surface)}
+.furnaces .fu-pill.is-unknown{color:var(--warn);border-color:var(--warn)}
+
+.furnaces .fu-nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.furnaces .fu-num{display:flex;flex-direction:column;gap:2px;min-width:0}
+.furnaces .fu-num-label{color:var(--ink-3);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.furnaces .fu-num-value{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:26px;line-height:1.1;color:var(--ink)}
+.furnaces .fu-num-note{color:var(--ink-2);font-size:11.5px}
+.furnaces .fu-num-note.mono{font-family:var(--font-mono)}
+
+/* Смужка табло під числом. БЕЗ згладжування й без розтягування: мета —
+   побачити ті самі пікселі, що читав розпізнавач, а не гарну картинку.
+   max-width тримає її в межах колонки на вузькому вікні. */
+.furnaces .fu-eye{display:block;max-width:100%;margin-top:6px;border:1px solid var(--line);
+  border-radius:5px;image-rendering:pixelated}
+
+.furnaces .fu-warn{margin:0;color:var(--warn);font-size:12px}
+.furnaces .fu-alert{margin:0;color:var(--alarm);font-size:12.5px}
+.furnaces .fu-note,.furnaces .fu-empty{margin:0;color:var(--ink-3);font-size:12.5px}
+.furnaces .fu-empty a{color:var(--accent-b)}
+
+.furnaces .fu-frame summary{cursor:pointer;color:var(--ink-2);font-size:12px}
+.furnaces .fu-frame img{display:block;width:100%;margin-top:8px;border:1px solid var(--line);border-radius:6px}
+
+.furnaces .fu-foot{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
+
+@media (max-width:640px){
+  .furnaces .fu-nums{grid-template-columns:1fr}
+  .furnaces .fu-num-value{font-size:22px}
+}

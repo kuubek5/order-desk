@@ -65,6 +65,13 @@ from app.routers.archive import router as archive_router
 from app.routers.stats import router as stats_router
 from app.routers.stl import router as stl_router
 from app.routers.shift import router as shift_router
+from app.routers.furnace import router as furnace_router
+from app.services.furnace import (
+    POLL_INTERVAL_SECONDS as FURNACE_POLL_INTERVAL_SECONDS,
+    is_configured as _furnaces_configured,
+    poll_all as _poll_furnaces,
+    prune_readings as _prune_furnace_readings,
+)
 from app.shift_images import prune_shift_images
 from app.routers.deps import templates
 from app.services.order_dates import parse_sheet_tab as _parse_sheet_tab
@@ -298,6 +305,50 @@ def _shift_images_prune_worker(stop_event: Event) -> None:
         stop_event.wait(SHIFT_IMAGES_PRUNE_INTERVAL_SECONDS)
 
 
+# ── Печі спікання ───────────────────────────────────────────────────────────
+# Кадр табло раз на кілька секунд. Це ЧИТАННЯ і тільки читання: у застосунку
+# немає коду, який шле печі байт вводу (див. app/furnace_vnc.py). Керування
+# піччю свідомо лишається людині коло печі.
+FURNACE_INITIAL_DELAY_SECONDS = 10.0
+# Прибирання старих показань — раз на добу, разом із першим тіком нової доби.
+FURNACE_PRUNE_INTERVAL_SECONDS = 24 * 60 * 60
+
+
+def _furnace_tick(db: Session) -> None:
+    """Один прохід по всіх налаштованих печах.
+
+    Ґейт на «чи налаштовано» стоїть ТУТ, а не в poll_all: без нього кожні
+    кілька секунд ходив би зайвий запит у налаштування на машині, де печей
+    немає взагалі.
+    """
+    if not _furnaces_configured(db):
+        return
+    _poll_furnaces(db)
+
+
+def _furnace_worker(stop_event: Event) -> None:
+    """Опитувати печі, не займаючи цикл запитів і не затримуючи вимкнення —
+    та сама форма, що в синків пошти й таблиці вище.
+
+    Помилка знімка (піч вимкнена на ніч, обірваний кабель) — нормальний стан і
+    гаситься всередині poll_target; сюди долітає лише те, чого ми не
+    передбачили, і воно не має вбивати потік.
+    """
+    if stop_event.wait(FURNACE_INITIAL_DELAY_SECONDS):
+        return
+    next_prune = 0.0
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                _furnace_tick(db)
+                if monotonic() >= next_prune:
+                    _prune_furnace_readings(db)
+                    next_prune = monotonic() + FURNACE_PRUNE_INTERVAL_SECONDS
+        except Exception:
+            logger.exception("Неочікуваний збій опитування печей")
+        stop_event.wait(FURNACE_POLL_INTERVAL_SECONDS)
+
+
 EXPORT_WARM_INITIAL_DELAY_SECONDS = 20.0
 EXPORT_WARM_INTERVAL_SECONDS = 120.0
 
@@ -419,6 +470,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("order-desk-monthly-backup", _monthly_backup_worker),
         _BackgroundWorker("order-desk-export-warm", _export_warm_worker),
         _BackgroundWorker("order-desk-shift-images-prune", _shift_images_prune_worker),
+        _BackgroundWorker("order-desk-furnace", _furnace_worker),
     ]
     for w in workers:
         w.start()
@@ -563,3 +615,7 @@ app.include_router(mail_router)
 
 # Дошка передачі зміни живе в app/routers/shift.py.
 app.include_router(shift_router)
+
+
+# Екран печей (тільки перегляд) живе в app/routers/furnace.py.
+app.include_router(furnace_router)

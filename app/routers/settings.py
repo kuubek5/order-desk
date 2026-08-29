@@ -97,6 +97,8 @@ from app.settings_store import (
     get_google_oauth_refresh_token,
     get_google_service_account_json,
     get_google_sheet_id,
+    get_furnace_hosts_raw,
+    get_furnace_vnc_password,
     get_mail_default_material,
     get_imap_login,
     get_imap_password,
@@ -106,11 +108,13 @@ from app.settings_store import (
     get_notify_style,
     get_service_account_email,
     get_technician_files_path,
+    set_furnace_hosts_raw,
     set_mail_default_material,
     set_mail_download_all,
     set_notify_prefs,
     set_setting,
 )
+from app.services.furnace import FurnaceConfigError, parse_targets
 from app.sheet_sync_service import SheetSyncError, summary_message, sync_google_sheets
 from app.sheets import measure_sheet_weight, open_spreadsheet, reset_sheets_cache
 from app.sync_control import MAIL_SYNC_INTERVAL_SECONDS, SHEET_SYNC_INTERVAL_SECONDS
@@ -324,6 +328,10 @@ def get_settings(
                 select(MailFilterCategory).order_by(MailFilterCategory.id.asc())
             ).all(),
             "mail_download_all": get_mail_download_all(db),
+            # Печі: адреси показуємо як є, пароль — НІКОЛИ. Назад у поле
+            # секрет не підставляється, у шаблон іде лише ознака «збережено».
+            "furnace_hosts": get_furnace_hosts_raw(db),
+            "furnace_password_set": bool(get_furnace_vnc_password(db)),
             "spool_report": (_spool_report := analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH))),
             # "Стан системи" flow map — honest, cheap counts (one scalar each).
             # No export-folder scan here; that's the heavy walk we keep off page load.
@@ -820,6 +828,46 @@ def prune_mail_spool(request: Request, db: Session = Depends(get_db)):
         ),
     }
     return RedirectResponse("/settings#mail-download", status_code=303)
+
+
+@router.post("/settings/furnaces")
+def save_furnaces(
+    request: Request,
+    hosts: str = Form(""),
+    password: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Зберегти перелік печей і пароль VNC.
+
+    Порожній пароль означає «не міняти», а не «стерти»: форму відкривають, щоб
+    дописати піч, і збережений пароль не має зникати від того, що поле не
+    заповнили вдруге. Стерти пароль можна, лише прибравши всі печі — тоді
+    моніторинг вимкнено й пароль ні до чого.
+
+    Адреси перевіряються ДО збереження: криво написаний рядок краще відбити
+    тут, ніж потім показувати оператору порожню плитку «немає зв'язку».
+    """
+    require_settings_admin(request, db)
+    try:
+        parse_targets(hosts)
+    except FurnaceConfigError as exc:
+        request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
+        return RedirectResponse("/settings#furnaces", status_code=303)
+
+    set_furnace_hosts_raw(db, hosts)
+    if password.strip():
+        set_setting(db, "furnace_vnc_password", password.strip())
+    db.commit()
+    count = len(parse_targets(hosts))
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": (
+            f"Збережено. Печей під наглядом: {count}."
+            if count
+            else "Збережено. Моніторинг печей вимкнено."
+        ),
+    }
+    return RedirectResponse("/settings#furnaces", status_code=303)
 
 
 # One self-check probe may not wedge the run. Mirrors the reasoning behind

@@ -1,0 +1,89 @@
+{# Плитка на кожну налаштовану піч.
+
+   Порядок читання зверху вниз навмисно такий самий, як питання коло печі:
+   працює? скільки лишилось? скільки градусів? — і одразу під числами смужка
+   справжніх пікселів табло, щоб число можна було звірити оком, не встаючи.
+
+   Піч, яку ще не опитували, теж має плитку: порожня плитка чесніша за
+   відсутність печі на екрані. #}
+{% if not cards %}
+<p class="fu-empty">
+    Печі ще не налаштовані. Адреси екранів і пароль VNC — у
+    <a href="/settings#furnaces">Налаштуваннях</a>.
+</p>
+{% endif %}
+
+<div class="fu-grid">
+    {% for card in cards %}
+    {% set state = card.state %}
+    <article class="fu-card{% if card.is_running %} is-running{% elif card.offline %} is-offline{% endif %}">
+        <header class="fu-head">
+            <div class="fu-name">
+                <b>{{ card.target.name }}</b>
+                <span class="mono text-muted">{{ card.target.host }}</span>
+            </div>
+            {% if card.offline %}
+            <span class="fu-pill is-offline">немає зв'язку</span>
+            {% elif card.never_polled %}
+            <span class="fu-pill is-wait">чекаємо кадр</span>
+            {% elif card.is_running %}
+            <span class="fu-pill is-run">RUN</span>
+            {% elif card.is_idle %}
+            <span class="fu-pill is-wait">WAIT</span>
+            {% else %}
+            <span class="fu-pill is-unknown">?</span>
+            {% endif %}
+        </header>
+
+        {% if card.offline %}
+        <p class="fu-alert">{{ state.error }}</p>
+        {% elif card.never_polled %}
+        <p class="fu-note">Перший кадр ще не знято.</p>
+        {% else %}
+        {% set stamp = (state.frame_at.timestamp() | int) if state.frame_at else 0 %}
+        {# Під кожним числом — його ж пікселі з табло, у рідному масштабі.
+           Це не прикраса: поки значення читається з картинки, останнє слово
+           лишається за оком оператора, і доказ має стояти впритул до числа,
+           а не ховатись у «деталях». #}
+        <div class="fu-nums">
+            <div class="fu-num">
+                <span class="fu-num-label">Лишилось</span>
+                <span class="fu-num-value mono">{{ state.remaining_text }}</span>
+                {% if state.done_at %}
+                <span class="fu-num-note">буде о {{ state.done_at.strftime('%H:%M') }}</span>
+                {% endif %}
+                <img class="fu-eye" src="/furnaces/{{ card.key }}/crop/srok.png?t={{ stamp }}"
+                     alt="Рядок «срок» на табло печі" loading="lazy">
+            </div>
+            <div class="fu-num">
+                <span class="fu-num-label">Температура</span>
+                <span class="fu-num-value mono">{% if state.temp_c is not none %}{{ state.temp_c }} °C{% else %}—{% endif %}</span>
+                {% if state.reading and state.reading.command %}
+                <span class="fu-num-note mono">{{ state.reading.command }}</span>
+                {% endif %}
+                <img class="fu-eye" src="/furnaces/{{ card.key }}/crop/temp.png?t={{ stamp }}"
+                     alt="Температура на табло печі" loading="lazy">
+            </div>
+        </div>
+
+        {% for warning in state.warnings %}
+        <p class="fu-warn">{{ warning }}</p>
+        {% endfor %}
+
+        <details class="fu-frame">
+            <summary>Весь екран печі</summary>
+            <img src="/furnaces/{{ card.key }}/frame.png?t={{ stamp }}"
+                 alt="Екран печі {{ card.target.name }}" loading="lazy">
+        </details>
+        {% endif %}
+
+        <footer class="fu-foot text-muted">
+            {% if state and state.attempted_at %}
+            Кадр {{ state.attempted_at.strftime('%H:%M:%S') }}
+            {% else %}
+            Ще не опитували
+            {% endif %}
+        </footer>
+    </article>
+    {% endfor %}
+</div>

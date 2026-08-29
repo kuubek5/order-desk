@@ -29,3 +29,9 @@ rarfile>=4.0
 # sheet sync, quit). Pillow renders/loads the icon image pystray needs.
 pystray>=0.19
 pillow>=10
+# Знімок екрана печі спікання по VNC (екран «Печі», лише читання). Тягне за
+# собою numpy — asyncvnc віддає кадр як масив. Пастка на майбутнє:
+# VNC-автентифікація тримається на TripleDES, який cryptography переносить у
+# `decrepit` і збирається прибрати зі старого місця; asyncvnc імпортує його зі
+# старого. Коли зникне — впаде саме на підключенні до печі.
+asyncvnc>=1.3

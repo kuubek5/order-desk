@@ -8,6 +8,10 @@ GET /clients/{client_id}
 GET /clients/{client_id}/pane
 GET /docs
 GET /docs/oauth2-redirect
+GET /furnaces
+GET /furnaces/cards
+GET /furnaces/{key}/crop/{name}.png
+GET /furnaces/{key}/frame.png
 GET /handout
 GET /health
 GET /journal
@@ -39,6 +43,7 @@ POST /actions/{action_id}/undo
 POST /clients
 POST /clients/{client_id}
 POST /clients/{client_id}/folder
+POST /furnaces/refresh
 POST /handout/confirm-alias
 POST /handout/issue-group
 POST /license
@@ -82,6 +87,7 @@ POST /settings
 POST /settings/backup/export
 POST /settings/backup/import
 POST /settings/check-path
+POST /settings/furnaces
 POST /settings/google-oauth/disconnect
 POST /settings/google-oauth/start
 POST /settings/imap

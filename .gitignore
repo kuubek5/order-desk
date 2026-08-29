@@ -22,6 +22,11 @@ license_private_key.pem
 # Видані ключі активації клієнтів (журнал власника, не для git)
 keys/
 data/
+# ...але не app/data: там лежать еталони цифр табло печей — це вихідний код
+# проєкту, а не робочі дані машини (правило «data/ не в git» цілилось у
+# %LOCALAPPDATA%-теки, не в пакет застосунку).
+!app/data/
+!app/data/**
 export/
 
 # Impeccable design-hook dedup cache (machine-local)

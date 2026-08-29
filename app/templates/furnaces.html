@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Печі — Order Desk{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/furnaces.css?v={{ static_ver('css/furnaces.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'furnaces' %}
+{% include "_topbar_nav.html" %}
+
+{# Тільки перегляд. Жодної кнопки, що щось робить із піччю, тут немає і не
+   планується: «Оновити» знімає НАШ кадр, а не чіпає програму спікання. #}
+<main class="furnaces">
+    <div class="fu-bar">
+        <div>
+            <h1>Печі</h1>
+            <p class="fu-sub">Тільки перегляд · кадр раз на {{ poll_seconds }} с</p>
+        </div>
+        <form hx-post="/furnaces/refresh" hx-target="#furnace-cards" hx-swap="innerHTML">
+            <button type="submit" class="btn">Оновити зараз</button>
+        </form>
+    </div>
+
+    {% if config_error %}
+    <p class="fu-alert">{{ config_error }}</p>
+    {% endif %}
+
+    {# Полл перемальовує плитки цілком: тут немає нічого, що оператор тримав би
+       під курсором (ні полів, ні дій над рядком), тож повний свап безпечний. #}
+    <div id="furnace-cards"
+         hx-get="/furnaces/cards"
+         hx-trigger="every {{ poll_seconds }}s"
+         hx-swap="innerHTML">
+        {% include "_furnace_cards.html" %}
+    </div>
+</main>
+{% endblock %}
