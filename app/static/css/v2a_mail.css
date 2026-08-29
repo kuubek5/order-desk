@@ -23,22 +23,22 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .live{display:inline-flex;align-items:center;gap:7px}
 /* The ONE live signal kept in motion on this screen (see .newdot above for
    why the other two were made static): it says "the 2-minute poll is alive". */
-.mailv2 .live .beacon{width:6px;height:6px;border-radius:50%;background:var(--accent-b);box-shadow:0 0 0 0 rgba(45,212,191,.55);animation:q2beacon var(--beacon-duration) ease-out infinite}
+.mailv2 .live .beacon{width:6px;height:6px;border-radius:50%;background:var(--accent-b);box-shadow:0 0 0 0 rgba(var(--accent-rgb), .55);animation:q2beacon var(--beacon-duration) ease-out infinite}
 .mailv2 .head-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
 .mailv2 .btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;border-radius:var(--r-ctl);border:1px solid var(--control-edge);background:var(--card);color:var(--ink);font-size:13px;font-weight:500;cursor:pointer;text-decoration:none;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease}
 .mailv2 .btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .btn:hover{background:var(--card-2);border-color:var(--line-2);opacity:1}
-.mailv2 .btn.primary{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
-.mailv2 .btn.primary:hover{background:rgba(20,184,166,.24);border-color:var(--accent)}
-.mailv2 .btn.accent-outline{background:transparent;border-color:rgba(45,212,191,.4);color:var(--accent-c)}
-.mailv2 .btn.accent-outline:hover{background:rgba(20,184,166,.12);border-color:var(--accent)}
+.mailv2 .btn.primary{background:rgba(var(--accent-base-rgb), .15);border-color:rgba(var(--accent-rgb), .42);color:var(--accent-c)}
+.mailv2 .btn.primary:hover{background:rgba(var(--accent-base-rgb), .24);border-color:var(--accent)}
+.mailv2 .btn.accent-outline{background:transparent;border-color:rgba(var(--accent-rgb), .4);color:var(--accent-c)}
+.mailv2 .btn.accent-outline:hover{background:rgba(var(--accent-base-rgb), .12);border-color:var(--accent)}
 /* THE apex. Exactly one filled button per screen, reserved for accepting a
    letter into the milling queue — the action that creates an order, moves the
    files into export and writes back to the sheet. Every other control here,
    including .btn.primary, is a tint; this is the only solid fill, so the eye
    lands on it without reading. Do not reuse .btn.apex for utilities. */
-.mailv2 .btn.apex{background:var(--accent-b);border-color:var(--accent-b);color:#06231f;font-weight:600}
-.mailv2 .btn.apex:hover{background:var(--accent-c);border-color:var(--accent-c);color:#06231f}
+.mailv2 .btn.apex{background:var(--accent-b);border-color:var(--accent-b);color:var(--accent-well);font-weight:600}
+.mailv2 .btn.apex:hover{background:var(--accent-c);border-color:var(--accent-c);color:var(--accent-well)}
 .mailv2 .btn.apex.sm{height:36px;padding:0 18px;font-size:13px;min-width:150px;justify-content:center}
 .mailv2 .btn:disabled{opacity:.62;cursor:not-allowed}
 .mailv2 .mail-sync-btn svg{transform-origin:50% 50%}
@@ -60,7 +60,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .btn.sm{height:30px;padding:0 11px;font-size:12.5px}
 
 /* Скринька, яку моніторить система — акцентний чіп у шапці. */
-.mailv2 .mailbox-chip{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;border:1px solid rgba(45,212,191,.28);background:rgba(20,184,166,.1)}
+.mailv2 .mailbox-chip{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;border:1px solid rgba(var(--accent-rgb), .28);background:rgba(var(--accent-base-rgb), .1)}
 .mailv2 .mailbox-chip svg{width:12px;height:12px;stroke:var(--accent-c);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .mailbox-chip b{font-family:var(--font-mono);font-weight:500;font-size:11.5px;color:var(--accent-c)}
 
@@ -77,7 +77,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .tab-nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:0}
 .mailv2 .tab-link{height:30px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;text-decoration:none;transition:background var(--ui-speed) ease,color var(--ui-speed) ease}
 .mailv2 .tab-link:hover{color:var(--ink);opacity:1}
-.mailv2 .tab-link.active{background:rgba(20,184,166,.16);color:var(--accent-c);border-color:rgba(45,212,191,.34)}
+.mailv2 .tab-link.active{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .34)}
 .mailv2 .tab-badge{font-family:var(--font-mono);font-size:11px;opacity:.75}
 
 .mailv2 .settings-success,.mailv2 .settings-error,.mailv2 .settings-alert{border-radius:9px;padding:10px 13px;margin-bottom:12px;font-size:13px;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink)}
@@ -110,7 +110,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .mailrow:last-child{border-bottom:0}
 .mailv2 .mailrow:hover{background:var(--card-2);opacity:1}
 .mailv2 .mailrow:focus-visible{outline:2px solid var(--accent-b);outline-offset:-2px}
-.mailv2 .mailrow.active{background:var(--card-2);box-shadow:inset 0 0 0 1px rgba(45,212,191,.45)}
+.mailv2 .mailrow.active{background:var(--card-2);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .45)}
 .mailv2 .mailrow.active .from{color:var(--accent-c)}
 /* The two text lines. 2px between them — tighter than the 8px of padding that
    separates one row from the next, so proximity now groups correctly. */
@@ -125,10 +125,10 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .mailrow .att{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;margin-left:auto}
 .mailv2 .mailrow .att svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .reco{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;white-space:nowrap}
-.mailv2 .reco.ok{background:rgba(20,184,166,.14);color:var(--accent-c);border:1px solid rgba(45,212,191,.3)}
+.mailv2 .reco.ok{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border:1px solid rgba(var(--accent-rgb), .3)}
 .mailv2 .reco.warn{background:rgba(240,163,94,.13);color:var(--warn);border:1px solid rgba(240,163,94,.3)}
 .mailv2 .reco.danger{background:rgba(248,113,113,.13);color:var(--alarm);border:1px solid rgba(248,113,113,.32)}
-.mailv2 .reco.muted{background:#1a222e;color:var(--ink-3);border:1px solid var(--line-2)}
+.mailv2 .reco.muted{background:var(--raise-3);color:var(--ink-3);border:1px solid var(--line-2)}
 
 /* Unread-by-operator (seen_at IS NULL): a warm left bar + faint tint mark the
    letter as "not read by me". The dot breathes so a fresh arrival pulls the
@@ -167,14 +167,14 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .tab-nav.sub{margin-top:-4px}
 .mailv2 .tab-nav.sub .tab-link{font-size:12px;opacity:.9}
 /* Archive read-only state block in the detail panel. */
-.mailv2 .archive-state{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 14px;border-radius:9px;border:1px solid var(--line-2);background:#111823;font-size:13px;color:var(--ink-2)}
-.mailv2 .archive-state.ok{border-color:rgba(45,212,191,.32)}
+.mailv2 .archive-state{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 14px;border-radius:9px;border:1px solid var(--line-2);background:var(--field);font-size:13px;color:var(--ink-2)}
+.mailv2 .archive-state.ok{border-color:rgba(var(--accent-rgb), .32)}
 .mailv2 .archive-state .btn.sm{margin-left:auto}
 /* «+N нових» — the only thing that grows the frozen list. Sticky at the top of
    the scroller so it stays reachable without hunting, quiet enough not to
    compete with the letters themselves. */
-.mailv2 .newmail-bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 12px;background:rgba(20,184,166,.13);border-bottom:1px solid rgba(45,212,191,.3);color:var(--accent-c);font-size:12.5px;font-weight:500;text-decoration:none;cursor:pointer}
-.mailv2 .newmail-bar:hover{background:rgba(20,184,166,.2)}
+.mailv2 .newmail-bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 12px;background:rgba(var(--accent-base-rgb), .13);border-bottom:1px solid rgba(var(--accent-rgb), .3);color:var(--accent-c);font-size:12.5px;font-weight:500;text-decoration:none;cursor:pointer}
+.mailv2 .newmail-bar:hover{background:rgba(var(--accent-base-rgb), .2)}
 .mailv2 .newmail-bar:focus-visible{outline:2px solid var(--accent-b);outline-offset:-2px}
 .mailv2 .newmail-bar .newmail-dot{width:6px;height:6px;border-radius:50%;background:var(--accent-b);flex:0 0 auto}
 
@@ -186,24 +186,24 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .list-foot{padding:9px 15px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-3)}
 
 /* Accept wizard (semi-auto): stepper + step body inside the triage panel. */
-.mailv2 .wizard{border:1px solid var(--line);border-radius:11px;background:#111823;padding:12px 13px}
+.mailv2 .wizard{border:1px solid var(--line);border-radius:11px;background:var(--field);padding:12px 13px}
 .mailv2 .wiz-progress{display:flex;align-items:center;gap:6px;margin-bottom:12px}
 .mailv2 .wp-dot{width:22px;height:22px;border-radius:50%;flex:0 0 22px;display:inline-flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;border:1px solid var(--line-2);background:var(--card);color:var(--ink-3)}
-.mailv2 .wp-dot.on{background:rgba(20,184,166,.18);border-color:rgba(45,212,191,.5);color:var(--accent-c)}
+.mailv2 .wp-dot.on{background:rgba(var(--accent-base-rgb), .18);border-color:rgba(var(--accent-rgb), .5);color:var(--accent-c)}
 .mailv2 .wp-dot.done{background:var(--accent-b);border-color:var(--accent-b);color:var(--bg)}
 .mailv2 .wp-line{flex:1;height:1px;background:var(--line-2)}
 .mailv2 .wp-line.done{background:var(--accent-b)}
 .mailv2 .wiz-title{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:11px}
 .mailv2 .wiz-cands{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:7px}
 .mailv2 .wc-label{font-size:11px;color:var(--ink-3)}
-.mailv2 .wc-chip{height:24px;padding:0 10px;border-radius:999px;border:1px solid rgba(45,212,191,.34);background:rgba(20,184,166,.1);color:var(--accent-c);font:inherit;font-size:12px;cursor:pointer;transition:background var(--ui-speed) ease}
-.mailv2 .wc-chip:hover{background:rgba(20,184,166,.22)}
+.mailv2 .wc-chip{height:24px;padding:0 10px;border-radius:999px;border:1px solid rgba(var(--accent-rgb), .34);background:rgba(var(--accent-base-rgb), .1);color:var(--accent-c);font:inherit;font-size:12px;cursor:pointer;transition:background var(--ui-speed) ease}
+.mailv2 .wc-chip:hover{background:rgba(var(--accent-base-rgb), .22)}
 .mailv2 .wiz-pathbox{border:1px solid var(--line-2);border-radius:9px;background:var(--card);padding:11px 12px;margin-bottom:11px}
 .mailv2 .wpb-label{font-size:11.5px;color:var(--ink-2);margin-bottom:6px}
 .mailv2 .wpb-path{font-size:12.5px;color:var(--ink-2);line-height:1.8;word-break:break-word}
 .mailv2 .wpb-root{color:var(--ink-3)}
-.mailv2 .wpb-seg{padding:1px 6px;border-radius:5px;background:#1d2734;border:1px solid var(--line-2);color:var(--ink)}
-.mailv2 .wpb-seg.exists{border-color:rgba(45,212,191,.4);color:var(--accent-c)}
+.mailv2 .wpb-seg{padding:1px 6px;border-radius:5px;background:var(--raise);border:1px solid var(--line-2);color:var(--ink)}
+.mailv2 .wpb-seg.exists{border-color:rgba(var(--accent-rgb), .4);color:var(--accent-c)}
 .mailv2 .wpb-seg.new{border-color:rgba(240,163,94,.4);color:var(--warn)}
 .mailv2 .wpb-seg.mat{color:var(--ink)}
 .mailv2 .wpb-hints{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
@@ -211,7 +211,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .wpb-hint.ok{color:var(--accent-c)}
 .mailv2 .wpb-hint.new{color:var(--warn)}
 .mailv2 .wiz-summary{margin:0}
-.mailv2 .wiz-summary>div{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-top:1px solid #1b2431}
+.mailv2 .wiz-summary>div{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-top:1px solid var(--card-2)}
 .mailv2 .wiz-summary>div:first-child{border-top:none}
 .mailv2 .wiz-summary dt{font-size:12px;color:var(--ink-3);margin:0}
 .mailv2 .wiz-summary dd{font-size:12.5px;color:var(--ink);margin:0;text-align:right;min-width:0;word-break:break-word}
@@ -219,7 +219,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .wiz-hint{font-size:11px;color:var(--ink-3);margin-top:5px}
 /* Files attached as share links (Drive / ukr.net) — per-file download rows. */
 .mailv2 .linklist{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
-.mailv2 .linkrow{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;background:#111823;border:1px solid var(--line-2);cursor:pointer;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
+.mailv2 .linkrow{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;background:var(--field);border:1px solid var(--line-2);cursor:pointer;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
 .mailv2 .linkrow:hover{border-color:var(--line-2);background:var(--card-2)}
 .mailv2 .linkrow:focus-visible{outline:2px solid var(--accent-b);outline-offset:1px}
 .mailv2 .linkrow .link-ic{display:inline-flex;flex:0 0 15px}
@@ -228,7 +228,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .linkrow .link-note{flex:0 0 auto;font-size:11px;color:var(--ink-3)}
 .mailv2 .linkrow .link-note.err{color:var(--alarm)}
 /* Done / error tint the whole row and its icon. */
-.mailv2 .linkrow.done{border-color:rgba(45,212,191,.4);background:rgba(20,184,166,.08);cursor:default}
+.mailv2 .linkrow.done{border-color:rgba(var(--accent-rgb), .4);background:rgba(var(--accent-base-rgb), .08);cursor:default}
 .mailv2 .linkrow.done .link-ic svg{stroke:var(--accent-c);stroke-width:2.4}
 .mailv2 .linkrow.skip{cursor:default}
 .mailv2 .linkrow.error{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.07)}
@@ -259,7 +259,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .dsec .dlabel{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:8px}
 /* Capped + own scroll: one client pasting a 3000-character quoted thread must
    not blow the pane past the viewport and defeat the sticky action bar. */
-.mailv2 .camtext{font-size:13px;color:var(--ink);background:#111823;border:1px solid var(--line);border-radius:8px;padding:11px 12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0;font-family:var(--font-body);max-height:40vh;overflow-y:auto}
+.mailv2 .camtext{font-size:13px;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:8px;padding:11px 12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;margin:0;font-family:var(--font-body);max-height:40vh;overflow-y:auto}
 .mailv2 .type-flag{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-radius:9px;margin-bottom:14px;background:rgba(240,163,94,.09);border:1px solid rgba(240,163,94,.3);color:var(--warn)}
 .mailv2 .type-flag svg{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
 .mailv2 .type-flag p{margin:0;font-size:12px;line-height:1.4;color:#f0d3ae}
@@ -269,17 +269,17 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .field.full{grid-column:1/-1}
 .mailv2 .field label{font-size:11.5px;color:var(--ink-2);font-weight:500}
 .mailv2 .field .form-required{color:var(--alarm);margin-left:2px}
-.mailv2 .suminput{height:36px;padding:0 11px;border-radius:var(--r-ctl);background:#111823;border:1px solid var(--line);color:var(--ink);font-size:13px;outline:none;width:100%;font-family:var(--font-body)}
+.mailv2 .suminput{height:36px;padding:0 11px;border-radius:var(--r-ctl);background:var(--field);border:1px solid var(--line);color:var(--ink);font-size:13px;outline:none;width:100%;font-family:var(--font-body)}
 .mailv2 .suminput.mono{font-family:var(--font-mono)}
 .mailv2 .suminput::placeholder{color:var(--ink-3)}
-.mailv2 .suminput:focus{border-color:rgba(45,212,191,.45);box-shadow:inset 0 0 18px -12px rgba(45,212,191,.9)}
+.mailv2 .suminput:focus{border-color:rgba(var(--accent-rgb), .45);box-shadow:inset 0 0 18px -12px rgba(var(--accent-rgb), .9)}
 .mailv2 .attlist{display:flex;flex-direction:column;gap:6px}
-.mailv2 .attrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:#111823;border:1px solid var(--line)}
+.mailv2 .attrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--field);border:1px solid var(--line)}
 .mailv2 .attrow svg{width:15px;height:15px;flex:0 0 15px;stroke:var(--ink-3);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .attrow .name{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .mailv2 .attrow .size{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);flex:0 0 auto}
 .mailv2 .attachment-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--line-2);color:var(--ink-2)}
-.mailv2 .attachment-badge-ready{background:rgba(20,184,166,.1);color:var(--accent-c);border-color:rgba(45,212,191,.3)}
+.mailv2 .attachment-badge-ready{background:rgba(var(--accent-base-rgb), .1);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .3)}
 .mailv2 .attachment-badge-pending{background:rgba(240,163,94,.1);color:var(--warn);border-color:rgba(240,163,94,.3)}
 .mailv2 .attachment-badge-warn{background:rgba(240,163,94,.1);color:var(--warn);border-color:rgba(240,163,94,.35);cursor:help}
 .mailv2 .attachment-badge-warn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -295,10 +295,10 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .seg-tabs{display:flex;gap:4px;padding:10px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card-2);z-index:2}
 .mailv2 .seg-tab{position:relative;appearance:none;-webkit-appearance:none;font-family:var(--font-head);font-size:13px;font-weight:500;color:var(--ink-3);background:transparent;border:1px solid transparent;border-radius:9px;padding:7px 13px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .mailv2 .seg-tab:hover{background:rgba(255,255,255,.04);color:var(--ink-2)}
-.mailv2 .seg-tab.on{background:rgba(20,184,166,.14);color:var(--accent-c);border-color:rgba(45,212,191,.34);box-shadow:inset 0 0 14px -9px rgba(45,212,191,.95)}
+.mailv2 .seg-tab.on{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .34);box-shadow:inset 0 0 14px -9px rgba(var(--accent-rgb), .95)}
 .mailv2 .seg-tab:focus-visible{outline:2px solid var(--accent-b);outline-offset:1px}
 .mailv2 .seg-cnt{font-family:var(--font-mono);font-size:11px;background:var(--card-3);color:var(--ink-2);border-radius:5px;padding:1px 6px;line-height:1.5;transition:background var(--ui-speed) ease,color var(--ui-speed) ease}
-.mailv2 .seg-tab.on .seg-cnt{background:rgba(20,184,166,.22);color:var(--accent-c)}
+.mailv2 .seg-tab.on .seg-cnt{background:rgba(var(--accent-base-rgb), .22);color:var(--accent-c)}
 .mailv2 .seg-dot{width:6px;height:6px;border-radius:50%;background:var(--warn);flex:0 0 auto}
 .mailv2 .seg-body{padding:16px 20px 20px}
 .mailv2 .seg-pane{display:none;animation:segPaneIn .2s ease}
@@ -336,7 +336,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .filter-rules .dsec{margin-bottom:18px}
 .filter-rules .dlabel{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:8px}
 .filter-rules .rulelist{display:flex;flex-direction:column;gap:6px}
-.filter-rules .ruleitem{border:1px solid var(--line);border-radius:8px;background:#111823;overflow:hidden}
+.filter-rules .ruleitem{border:1px solid var(--line);border-radius:8px;background:var(--field);overflow:hidden}
 .filter-rules .ruleitem.is-off{opacity:.55}
 .filter-rules .rulerow{display:flex;align-items:center;gap:9px;padding:8px 10px;cursor:pointer;list-style:none}
 .filter-rules .rulerow::-webkit-details-marker{display:none}
@@ -356,15 +356,15 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .filter-rules .catrow{display:flex;gap:8px;align-items:center;margin:0}
 .filter-rules .catrow .suminput{flex:1;min-width:0}
 /* Self-contained control styling (settings page lacks .mailv2's rules). */
-.filter-rules .suminput{height:36px;padding:0 11px;border-radius:9px;background:#111823;border:1px solid var(--line);color:var(--ink);font-size:13px;outline:none;width:100%;font-family:inherit}
+.filter-rules .suminput{height:36px;padding:0 11px;border-radius:9px;background:var(--field);border:1px solid var(--line);color:var(--ink);font-size:13px;outline:none;width:100%;font-family:inherit}
 .filter-rules .suminput.sm{height:30px;width:auto;padding:0 8px;font-size:12px;flex:0 1 auto}
 .filter-rules .suminput.mono{font-family:var(--font-mono)}
-.filter-rules .suminput:focus{border-color:rgba(45,212,191,.45)}
+.filter-rules .suminput:focus{border-color:rgba(var(--accent-rgb), .45)}
 .filter-rules .btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;border-radius:9px;border:1px solid var(--line-2);background:var(--card);color:var(--ink);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit}
 .filter-rules .btn:hover{background:var(--card-2)}
 .filter-rules .btn.sm{height:30px;padding:0 11px;font-size:12.5px}
-.filter-rules .btn.primary{background:rgba(20,184,166,.15);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
-.filter-rules .btn.primary:hover{background:rgba(20,184,166,.24)}
+.filter-rules .btn.primary{background:rgba(var(--accent-base-rgb), .15);border-color:rgba(var(--accent-rgb), .42);color:var(--accent-c)}
+.filter-rules .btn.primary:hover{background:rgba(var(--accent-base-rgb), .24)}
 .filter-rules .btn.danger{border-color:rgba(248,113,113,.35);color:#f0b4b4;background:transparent}
 .filter-rules .btn.danger:hover{background:rgba(248,113,113,.12)}
 .filter-rules .wiz-hint{font-size:11.5px;color:var(--ink-3);margin-top:7px}
@@ -380,7 +380,7 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .detail-back a{color:var(--ink-2);text-decoration:none}
 .mailv2 .detail-back a:hover{color:var(--accent-c);opacity:1}
 .mailv2 .empty-triage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:40px 20px;text-align:center}
-.mailv2 .empty-triage .icon{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:rgba(20,184,166,.1);border:1px solid rgba(45,212,191,.28);color:var(--accent-c)}
+.mailv2 .empty-triage .icon{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:rgba(var(--accent-base-rgb), .1);border:1px solid rgba(var(--accent-rgb), .28);color:var(--accent-c)}
 .mailv2 .empty-triage .icon svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .empty-triage h3{font-family:var(--font-head);font-size:15.5px;font-weight:600;margin:2px 0 0}
 .mailv2 .empty-triage p{margin:0;font-size:12.5px;color:var(--ink-3);max-width:36ch;line-height:1.5}
@@ -388,15 +388,15 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 
 /* --- inline STL gallery (app/static/js/stl-gallery.js) --- */
 .mailv2 .stl-gallery{display:flex;gap:12px;align-items:stretch}
-.mailv2 .stl-gallery-stage{position:relative;flex:1;min-width:0;height:360px;border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);background:radial-gradient(120% 120% at 50% 0,#131c28,#0e141d 70%);overflow:hidden}
+.mailv2 .stl-gallery-stage{position:relative;flex:1;min-width:0;height:360px;border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);background:radial-gradient(120% 120% at 50% 0,var(--mid),var(--mid-2) 70%);overflow:hidden}
 .mailv2 .stl-gallery-canvas{display:block;width:100%;height:100%}
 .mailv2 .stl-gallery-status{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;font-size:12.5px;color:var(--ink-3)}
 .mailv2 .stl-gallery-files{flex:0 0 200px;width:200px;min-width:0;display:flex;flex-direction:column;gap:4px;overflow-y:auto;max-height:360px;scrollbar-width:thin}
-.mailv2 .stl-gallery-file{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:9px 10px;border-radius:8px;background:#111823;border:1px solid var(--line);color:var(--ink-2);cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease}
+.mailv2 .stl-gallery-file{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:9px 10px;border-radius:8px;background:var(--field);border:1px solid var(--line);color:var(--ink-2);cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease}
 .mailv2 .stl-gallery-file:hover{background:var(--card-2);border-color:var(--line-2);color:var(--ink)}
 .mailv2 .stl-gallery-file svg{width:15px;height:15px;flex:0 0 15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;opacity:.75}
 .mailv2 .stl-gallery-file .name{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
-.mailv2 .stl-gallery-file.is-active{background:rgba(20,184,166,.12);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
+.mailv2 .stl-gallery-file.is-active{background:rgba(var(--accent-base-rgb), .12);border-color:rgba(var(--accent-rgb), .42);color:var(--accent-c)}
 .mailv2 .stl-gallery-file.is-active svg{opacity:1}
 
 @media (max-width:940px){

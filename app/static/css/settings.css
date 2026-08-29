@@ -20,9 +20,9 @@
   gap: var(--space-5);
   margin-bottom: var(--space-5);
   padding: var(--space-5);
-  border: 1px solid rgba(20, 184, 166, 0.3);
+  border: 1px solid rgba(var(--accent-base-rgb), 0.3);
   border-radius: var(--radius-card);
-  background: rgba(20, 184, 166, 0.06);
+  background: rgba(var(--accent-base-rgb), 0.06);
 }
 
 .setup-intro h2 {
@@ -209,9 +209,9 @@
    were missing the border, so they sat flatter than every other badge in
    the app despite sharing the same .status-badge shape. */
 .user-badge-active {
-  background-color: rgba(20, 184, 166, 0.15);
+  background-color: rgba(var(--accent-base-rgb), 0.15);
   color: var(--color-accent);
-  border: 1px solid rgba(20, 184, 166, 0.3);
+  border: 1px solid rgba(var(--accent-base-rgb), 0.3);
 }
 
 .user-badge-inactive {
@@ -452,8 +452,8 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .settings-group > h2,.setv2 .settings-group-heading h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0 0 4px;letter-spacing:-.005em}
 .setv2 .settings-group-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
 .setv2 .settings-help{font-size:11.5px;color:var(--ink-3);line-height:1.4;margin:0 0 2px}
-.setv2 .connection-state{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);background:#1d2734;color:var(--ink-2);white-space:nowrap;flex:0 0 auto}
-.setv2 .connection-state-ready{background:rgba(20,184,166,.14);color:var(--accent-c);border-color:rgba(45,212,191,.3)}
+.setv2 .connection-state{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--raise);color:var(--ink-2);white-space:nowrap;flex:0 0 auto}
+.setv2 .connection-state-ready{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .3)}
 
 /* поля */
 .setv2 .settings-field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
@@ -465,9 +465,9 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .settings-field > label{font-size:12px;font-weight:500;color:var(--ink-2)}
 .setv2 .login-glow{background:none;border:0;padding:0;box-shadow:none}
 .setv2 .login-input-wrap{position:relative;display:flex;align-items:center;gap:8px}
-.setv2 .login-input{width:100%;height:40px;padding:0 13px;border-radius:var(--r-ctl);background:#111823;border:1px solid var(--line);color:var(--ink);font-family:var(--font-body);font-size:13.5px;outline:none;transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease}
+.setv2 .login-input{width:100%;height:40px;padding:0 13px;border-radius:var(--r-ctl);background:var(--field);border:1px solid var(--line);color:var(--ink);font-family:var(--font-body);font-size:13.5px;outline:none;transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease}
 .setv2 .login-input:hover{border-color:var(--line-2)}
-.setv2 .login-input:focus{border-color:var(--focus-border);background:#0f1620;box-shadow:var(--focus-glow)}
+.setv2 .login-input:focus{border-color:var(--focus-border);background:var(--well);box-shadow:var(--focus-glow)}
 .setv2 .login-input::placeholder{color:var(--ink-3)}
 .setv2 .settings-textarea{height:auto;min-height:118px;padding:9px 11px;line-height:1.5;resize:vertical;font-family:var(--font-mono);font-size:12.5px}
 .setv2 .login-toggle-password{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-3);border:0;background:none;cursor:pointer}
@@ -480,15 +480,15 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
   font:inherit;font-size:12.5px;font-weight:500;color:var(--ink-2);cursor:pointer;
   transition:background .15s ease,color .15s ease}
 .setv2 .addwork-seg button:hover{color:var(--ink);background:var(--card-3)}
-.setv2 .addwork-seg button.is-active{background:rgba(20,184,166,.16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(45,212,191,.34)}
+.setv2 .addwork-seg button.is-active{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .34)}
 
 /* кнопки */
 .setv2 .settings-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:2px}
 .setv2 .settings-secondary-button,.setv2 .login-submit,.setv2 .settings-submit{height:40px;padding:0 18px;border-radius:var(--r-ctl);font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink);transition:background .15s ease,border-color .15s ease,color .15s ease,transform .12s ease,box-shadow .15s ease}
-.setv2 .settings-secondary-button:hover{background:var(--card-3);border-color:#3a4a5f;transform:translateY(-1px)}
+.setv2 .settings-secondary-button:hover{background:var(--card-3);border-color:var(--line-2);transform:translateY(-1px)}
 .setv2 .settings-secondary-button:active{transform:translateY(0)}
-.setv2 .login-submit,.setv2 .settings-submit{background:rgba(20,184,166,.16);border-color:rgba(45,212,191,.42);color:var(--accent-c)}
-.setv2 .login-submit:hover,.setv2 .settings-submit:hover{background:rgba(20,184,166,.26);border-color:var(--accent);transform:translateY(-1px);box-shadow:0 6px 18px -10px rgba(45,212,191,.6)}
+.setv2 .login-submit,.setv2 .settings-submit{background:rgba(var(--accent-base-rgb), .16);border-color:rgba(var(--accent-rgb), .42);color:var(--accent-c)}
+.setv2 .login-submit:hover,.setv2 .settings-submit:hover{background:rgba(var(--accent-base-rgb), .26);border-color:var(--accent);transform:translateY(-1px);box-shadow:0 6px 18px -10px rgba(var(--accent-rgb), .6)}
 .setv2 .login-submit:active,.setv2 .settings-submit:active{transform:translateY(0);box-shadow:none}
 .setv2 .settings-backup-danger{border-color:rgba(248,113,113,.4);color:#f0b4b4;background:rgba(248,113,113,.06)}
 .setv2 .settings-backup-danger:hover{background:rgba(248,113,113,.12)}
@@ -499,8 +499,8 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
    ховає textarea за замовчуванням, щоб крок не розтягувався. */
 .setv2 .cred-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .setv2 .cred-row-label{font-size:12px;font-weight:500;color:var(--ink-2)}
-.setv2 .cred-status{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);background:#1d2734;color:var(--ink-3)}
-.setv2 .cred-status-ready{background:rgba(20,184,166,.14);color:var(--accent-c);border-color:rgba(45,212,191,.3)}
+.setv2 .cred-status{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--raise);color:var(--ink-3)}
+.setv2 .cred-status-ready{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .3)}
 .setv2 [data-cred-field]{margin-top:8px}
 
 /* перевірка з'єднання / шляхів */
@@ -521,19 +521,19 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 /* Match the teal node treatment of a completed step, so the info glyph reads as
    part of the same rail rather than a dull grey outlier. Doubled class beats the
    later `.wizard-step .num` base rule (equal specificity would lose on order). */
-.setv2 .wizard-step.wizard-step-about .num{background:rgba(20,184,166,.16);border-color:var(--accent);color:var(--accent-c)}
+.setv2 .wizard-step.wizard-step-about .num{background:rgba(var(--accent-base-rgb), .16);border-color:var(--accent);color:var(--accent-c)}
 .setv2 .update-check-found{flex-wrap:wrap;gap:8px 10px}
 .setv2 .update-check-install{display:inline-flex;margin:0}
 .setv2 .update-check-found .settings-secondary-button{height:28px;padding:0 11px;font-size:12px;font-weight:500}
 .setv2 .update-check-found a{color:var(--accent-c);font-size:12px}
 
 /* сповіщення */
-.setv2 .settings-success{border-radius:9px;padding:10px 13px;font-size:13px;border:1px solid rgba(45,212,191,.3);background:rgba(20,184,166,.1);color:var(--accent-c);margin-bottom:12px}
+.setv2 .settings-success{border-radius:9px;padding:10px 13px;font-size:13px;border:1px solid rgba(var(--accent-rgb), .3);background:rgba(var(--accent-base-rgb), .1);color:var(--accent-c);margin-bottom:12px}
 .setv2 .settings-success p{margin:0}
 .setv2 .settings-error{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#f0b4b4}
 .setv2 .settings-alert{border-radius:9px;padding:10px 13px;margin-bottom:12px;border:1px solid var(--line-2);background:var(--card-2);font-size:13px}
 .setv2 .settings-alert-error{border-color:rgba(248,113,113,.4);background:rgba(248,113,113,.08);color:#f0b4b4}
-.setv2 .setup-intro{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 16px;border:1px solid rgba(45,212,191,.28);background:rgba(20,184,166,.07);border-radius:var(--r-card);margin-bottom:14px}
+.setv2 .setup-intro{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 16px;border:1px solid rgba(var(--accent-rgb), .28);background:rgba(var(--accent-base-rgb), .07);border-radius:var(--r-card);margin-bottom:14px}
 .setv2 .setup-intro h2{font-family:var(--font-head);font-size:15px;margin:0 0 3px}
 .setv2 .setup-intro p{margin:0;font-size:12.5px;color:var(--ink-2)}
 .setv2 .setup-progress{font-family:var(--font-mono);font-size:11.5px;color:var(--accent-c);flex:0 0 auto}
@@ -541,10 +541,10 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 /* таблиця операторів */
 .setv2 .users-table{border-collapse:separate;border-spacing:0;width:100%}
 .setv2 .users-table thead th{text-align:left;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line-2);white-space:nowrap}
-.setv2 .users-table tbody td{padding:9px 10px;border-bottom:1px solid #1c2532;font-size:12.5px;color:var(--ink-2);vertical-align:middle}
+.setv2 .users-table tbody td{padding:9px 10px;border-bottom:1px solid var(--raise-2);font-size:12.5px;color:var(--ink-2);vertical-align:middle}
 .setv2 .users-table .order-id{font-family:var(--font-mono);color:var(--ink)}
-.setv2 .status-badge{font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--line-2);background:#1d2734;color:var(--ink-2)}
-.setv2 .user-badge-active{background:rgba(20,184,166,.14);color:var(--accent-c);border-color:rgba(45,212,191,.3)}
+.setv2 .status-badge{font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--line-2);background:var(--raise);color:var(--ink-2)}
+.setv2 .user-badge-active{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .3)}
 .setv2 .user-badge-inactive{background:rgba(248,113,113,.1);color:#f0b4b4;border-color:rgba(248,113,113,.3)}
 .setv2 .users-reset-form{display:flex;gap:6px;align-items:center}
 .setv2 .users-reset-input{height:30px;width:130px;font-size:12px}
@@ -561,23 +561,23 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .settings-backup-confirm input[type=checkbox]{
   appearance:none;-webkit-appearance:none;flex:0 0 auto;margin-top:1px;
   width:18px;height:18px;border-radius:5px;border:1px solid var(--line-2);
-  background:#111823;cursor:pointer;position:relative;
+  background:var(--field);cursor:pointer;position:relative;
   transition:background .15s ease,border-color .15s ease}
 .setv2 .settings-backup-confirm input[type=checkbox]:hover{border-color:var(--accent-b)}
 .setv2 .settings-backup-confirm input[type=checkbox]:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 .setv2 .settings-backup-confirm input[type=checkbox]:checked{background:var(--accent);border-color:var(--accent)}
 .setv2 .settings-backup-confirm input[type=checkbox]:checked::after{
   content:"";position:absolute;left:5px;top:1px;width:5px;height:10px;
-  border:solid #07120f;border-width:0 2px 2px 0;transform:rotate(45deg)}
+  border:solid var(--on-accent);border-width:0 2px 2px 0;transform:rotate(45deg)}
 
 /* Drag-and-drop file zone (backup restore). */
 .setv2 .dropzone{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;text-align:center;padding:22px 16px;border:1.5px dashed var(--line-2);border-radius:var(--r-card);background:rgba(255,255,255,.015);cursor:pointer;transition:border-color .15s ease,background .15s ease}
-.setv2 .dropzone:hover{border-color:var(--accent-b);background:rgba(20,184,166,.05)}
-.setv2 .dropzone.is-dragover{border-color:var(--accent);background:rgba(20,184,166,.1)}
-.setv2 .dropzone.has-file{border-style:solid;border-color:var(--accent-b);background:rgba(20,184,166,.06)}
+.setv2 .dropzone:hover{border-color:var(--accent-b);background:rgba(var(--accent-base-rgb), .05)}
+.setv2 .dropzone.is-dragover{border-color:var(--accent);background:rgba(var(--accent-base-rgb), .1)}
+.setv2 .dropzone.has-file{border-style:solid;border-color:var(--accent-b);background:rgba(var(--accent-base-rgb), .06)}
 .setv2 .dropzone-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .setv2 .dropzone-icon{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--card-2);border:1px solid var(--line-2);color:var(--ink-2);transition:color .15s ease,border-color .15s ease}
-.setv2 .dropzone:hover .dropzone-icon,.setv2 .dropzone.is-dragover .dropzone-icon,.setv2 .dropzone.has-file .dropzone-icon{color:var(--accent-c);border-color:rgba(45,212,191,.4)}
+.setv2 .dropzone:hover .dropzone-icon,.setv2 .dropzone.is-dragover .dropzone-icon,.setv2 .dropzone.has-file .dropzone-icon{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .4)}
 .setv2 .dropzone-icon svg{width:21px;height:21px}
 .setv2 .dropzone-title{font-size:13px;font-weight:500;color:var(--ink)}
 .setv2 .dropzone-hint{font-size:11.5px;color:var(--ink-3)}
@@ -609,7 +609,7 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .setup-wizard-progress{display:flex;align-items:center;gap:12px;margin:0 0 18px;padding:12px 16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow)}
 .setv2 .setup-wizard-progress .lbl{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);white-space:nowrap}
 .setv2 .setup-wizard-progress .lbl-pct{color:var(--accent-c)}
-.setv2 .setup-wizard-progress .bar{flex:1;height:8px;border-radius:4px;background:#111823;border:1px solid var(--line);overflow:hidden}
+.setv2 .setup-wizard-progress .bar{flex:1;height:8px;border-radius:4px;background:var(--field);border:1px solid var(--line);overflow:hidden}
 .setv2 .setup-wizard-progress .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-d),var(--accent-b))}
 
 .setv2 .wizard-flow{position:relative;padding-left:44px}
@@ -617,10 +617,10 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .wizard-step{position:relative;margin-bottom:14px}
 .setv2 .wizard-step:last-child{margin-bottom:0}
 .setv2 .wizard-step .num{position:absolute;left:-44px;top:0;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-weight:600;font-size:14px;background:var(--card-2);border:2px solid var(--line-2);color:var(--ink-3);z-index:2}
-.setv2 .wizard-step.done .num{background:rgba(20,184,166,.16);border-color:var(--accent);color:var(--accent-c)}
-.setv2 .wizard-step.active .num{border-color:var(--accent-b);color:var(--accent-c);box-shadow:0 0 0 4px rgba(45,212,191,.12)}
+.setv2 .wizard-step.done .num{background:rgba(var(--accent-base-rgb), .16);border-color:var(--accent);color:var(--accent-c)}
+.setv2 .wizard-step.active .num{border-color:var(--accent-b);color:var(--accent-c);box-shadow:0 0 0 4px rgba(var(--accent-rgb), .12)}
 .setv2 .wizard-step .box{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);padding:16px}
-.setv2 .wizard-step.active .box{border-color:rgba(45,212,191,.3)}
+.setv2 .wizard-step.active .box{border-color:rgba(var(--accent-rgb), .3)}
 .setv2 .wizard-step-head{display:flex;align-items:center;gap:12px;margin-bottom:4px}
 .setv2 .wizard-step-head h2{font-family:var(--font-head);font-size:15px;font-weight:600;margin:0;letter-spacing:-.005em}
 .setv2 .wizard-step-head .connection-state{margin-left:auto}
@@ -644,7 +644,7 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .matlib-back{display:inline-block;margin-bottom:10px;color:var(--ink-3);font-size:12.5px;text-decoration:none}
 .matlib-back:hover{color:var(--accent)}
 .matlib-flash{padding:10px 13px;border-radius:var(--r-ctl);margin-bottom:14px;font-size:13px;border:1px solid var(--line)}
-.matlib-flash.is-ok{background:rgba(45,212,191,.10);border-color:rgba(45,212,191,.35);color:var(--ink)}
+.matlib-flash.is-ok{background:rgba(var(--accent-rgb), .10);border-color:rgba(var(--accent-rgb), .35);color:var(--ink)}
 .matlib-flash.is-error{background:rgba(244,114,110,.10);border-color:rgba(244,114,110,.4);color:#f4726e}
 .matlib-summary .panel-body{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .matlib-summary .dlabel{color:var(--ink-3);font-size:12px;margin-right:8px}
@@ -654,8 +654,8 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .matlib-material{margin-bottom:12px}
 .matlib-tag{margin-left:8px;font-size:11px;padding:2px 7px;border-radius:6px;background:var(--line);color:var(--ink-3);vertical-align:middle}
 .matlib-aliases{display:flex;flex-wrap:wrap;gap:7px;padding:2px 0 12px}
-.matlib-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:999px;border:1px solid var(--line-2);background:#111823;font-size:12.5px;color:var(--ink)}
-.matlib-chip.is-token{border-color:rgba(45,212,191,.4)}
+.matlib-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:999px;border:1px solid var(--line-2);background:var(--field);font-size:12.5px;color:var(--ink)}
+.matlib-chip.is-token{border-color:rgba(var(--accent-rgb), .4)}
 .matlib-chip .mono{font-family:var(--font-mono)}
 .matlib-mt{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);width:14px;text-align:center}
 .matlib-x-form{display:inline-flex;margin:0}
@@ -668,5 +668,14 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .matlib-check{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2);font-size:12.5px}
 .matlib-newmat{margin-top:16px}
 .matlib-add-material .login-input{flex:1;min-width:180px}
-.matlib-link{display:inline-flex;align-items:center;gap:6px;margin-bottom:14px;padding:8px 13px;border-radius:var(--r-ctl);border:1px solid var(--line-2);background:#111823;color:var(--ink);font-size:13px;text-decoration:none;transition:border-color .15s ease,color .15s ease}
-.matlib-link:hover{border-color:rgba(45,212,191,.45);color:var(--accent)}
+.matlib-link{display:inline-flex;align-items:center;gap:6px;margin-bottom:14px;padding:8px 13px;border-radius:var(--r-ctl);border:1px solid var(--line-2);background:var(--field);color:var(--ink);font-size:13px;text-decoration:none;transition:border-color .15s ease,color .15s ease}
+.matlib-link:hover{border-color:rgba(var(--accent-rgb), .45);color:var(--accent)}
+
+/* Кабінет: вибір теми (30.08.26). Активна тема — залита акцентом,
+   неактивна — звичайний .btn; aria-pressed і є станом. */
+.acc-theme-row{display:flex;gap:10px;flex-wrap:wrap}
+.acc-theme-btn[aria-pressed="true"]{
+  background:var(--accent);border-color:var(--accent);color:var(--on-accent);
+  font-weight:700;
+}
+.acc-theme-btn[aria-pressed="true"]:hover{filter:brightness(1.06)}

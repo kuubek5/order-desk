@@ -1,0 +1,73 @@
+/* Тема «Amber Forge» — альтернативне тепле оформлення (30.08.26).
+   Обрана власником з трьох демо-варіантів (артефакт «OrderDesk — три
+   оформлення», варіант C). Працює ЛИШЕ перевизначенням токенів з
+   tokens.css під body[data-theme="forge"] — компонентний CSS не знає
+   про тему нічого. Вмикається в кабінеті оператора (/account),
+   зберігається в localStorage ('uiTheme'), анти-мигтючий init —
+   у стартовому скрипті base.html (той самий патерн, що density).
+
+   ПАСТКА: атрибут МУСИТЬ жити на <html> (documentElement), не на <body>.
+   treatment-a.css будує похідні токени (--pri-bd: var(--accent-c) тощо)
+   у своєму :root{} — вони обчислюються на корені, і перевизначення на
+   body до них уже не дотягується: похідні застигли б бірюзовими.
+
+   Семантика НЕ перефарбовується: пошта лишається синьою, прострочене —
+   червоним, брак/переробка — своїми кольорами. Міняється світ:
+   бірюзовий телеметричний пульт → теплий графіт із бурштином. */
+
+:root[data-theme="forge"] {
+  /* Background & Surface (legacy --color-*) */
+  --color-bg: #14100a;
+  --color-bg-grid-line: rgba(255, 180, 84, 0.045);
+  --color-card-bg: #1b150c;
+  --color-card-border: #2c2214;
+  --color-text: #f2e8d8;
+  --color-text-muted: #a89578;
+  --color-accent: #ffb454;
+  /* success зсунуто в зелень: бірюзовий успіх на бурштиновому тлі
+     зливався б з акцентом */
+  --color-success: #a8e08a;
+  /* warning гарячіший за акцент, інакше «увага» = «звичайний акцент» */
+  --color-warning: #ff8a3d;
+
+  /* v2a canon */
+  --bg: #14100a;
+  --bg-rail: #0f0b06;
+  --card: #1b150c;
+  --card-2: #221a0e;
+  --card-3: #2a2013;
+  --line: #2c2214;
+  --line-2: #45361d;
+  --control-edge: #8a7350;
+  --ink: #f2e8d8;
+  --ink-2: #a89578;
+  --ink-3: #a08c68;
+  --accent: #ffb454;
+  --accent-b: #ffc670;
+  --accent-c: #ffd894;
+  --accent-d: #a8752b;
+  --alarm: #ff6b52;
+  --warn: #ff8a3d;
+
+  --focus-glow: inset 0 0 18px -12px rgba(255, 180, 84, 0.9);
+  --focus-border: rgba(255, 180, 84, 0.45);
+  --glow: inset 0 1px 0 rgba(255,255,255,.045), inset 0 0 44px -26px rgba(255,180,84,.6), 0 18px 38px -30px rgba(0,0,0,.95);
+
+  /* алі-токени поверхонь */
+  --accent-rgb: 255, 180, 84;
+  --accent-base-rgb: 255, 180, 84;
+  --accent-soft-rgb: 255, 216, 148;
+  --field: #1a1409;
+  --raise: #241b0e;
+  --raise-2: #211910;
+  --raise-3: #1f1810;
+  --well: #171106;
+  --mid: #1c150c;
+  --mid-2: #150f08;
+  --on-accent: #2a1a04;
+  --accent-well: #2a1c08;
+  --accent-ink: #e6d4b2;
+  --accent-ink-2: #c9b088;
+  --accent-e: #ffe7b8;
+  --stl-model: #ffd894;
+}

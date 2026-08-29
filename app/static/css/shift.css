@@ -56,8 +56,8 @@ main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-
   border-radius:var(--r-ctl);border:1px solid var(--control-edge);background:var(--card);color:var(--ink);
   font:500 12.5px var(--font-body);cursor:pointer;transition:background var(--ui-speed),border-color var(--ui-speed)}
 .shiftv2 .btn:hover{background:var(--card-2);border-color:var(--line-2)}
-.shiftv2 .btn.apex{background:var(--accent-b);border-color:var(--accent-b);color:#06231f;font-weight:600}
-.shiftv2 .btn.apex:hover{background:var(--accent-c);border-color:var(--accent-c);color:#06231f}
+.shiftv2 .btn.apex{background:var(--accent-b);border-color:var(--accent-b);color:var(--accent-well);font-weight:600}
+.shiftv2 .btn.apex:hover{background:var(--accent-c);border-color:var(--accent-c);color:var(--accent-well)}
 .shiftv2 .btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .shiftv2 .sh-btn{height:28px;padding:0 13px;font-size:12.5px}
 
@@ -66,7 +66,7 @@ main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-
     linear-gradient(var(--color-bg-grid-line) 1px,transparent 1px) 0 0/26px 26px,
     linear-gradient(90deg,var(--color-bg-grid-line) 1px,transparent 1px) 0 0/26px 26px,
     radial-gradient(120% 90% at 50% 0%,#101722 0%,#0b0f16 100%);
-  border:1px solid #1c2532;border-radius:12px;padding:18px}
+  border:1px solid var(--raise-2);border-radius:12px;padding:18px}
 .shiftv2 .sh-empty{margin:0;padding:18px 2px;text-align:center;color:var(--ink-3);font-size:13px}
 
 .shiftv2 .sh-stack{columns:3;column-gap:14px}
@@ -75,7 +75,7 @@ main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-
 
 /* --- стікер --- */
 .shiftv2 .sh-note{break-inside:avoid;-webkit-column-break-inside:avoid;margin:0 0 14px;position:relative;
-  background:var(--card-2);border:1px solid #26313f;border-radius:var(--r-card);padding:15px 15px 12px;
+  background:var(--card-2);border:1px solid var(--line-2);border-radius:var(--r-card);padding:15px 15px 12px;
   box-shadow:var(--sh-pop);animation:sh-appear var(--enter-duration) ease both}
 .shiftv2 .sh-note.is-action{background:rgba(240,163,94,.07);border-color:rgba(240,163,94,.4)}
 @keyframes sh-appear{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -83,7 +83,7 @@ main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-
 
 /* шпилька зверху по центру — єдина декоративна деталь «дошки» */
 .shiftv2 .sh-pin-dot{position:absolute;top:-7px;left:50%;transform:translateX(-50%);width:14px;height:14px;border-radius:50%;
-  background:radial-gradient(circle at 35% 30%,#7fe9dc,var(--accent) 60%,#0d7c70);box-shadow:0 2px 5px -1px rgba(0,0,0,.7)}
+  background:radial-gradient(circle at 35% 30%,var(--accent-c),var(--accent) 60%,var(--accent-d));box-shadow:0 2px 5px -1px rgba(0,0,0,.7)}
 .shiftv2 .sh-note.is-action .sh-pin-dot{background:radial-gradient(circle at 35% 30%,#f6c68e,var(--warn) 60%,#b9782f)}
 
 .shiftv2 .sh-kind-tag{display:inline-flex;align-items:center;gap:6px;margin-bottom:7px;color:var(--warn);
@@ -141,7 +141,7 @@ main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-
 .sh-card-title{display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-weight:600;font-size:13px;text-decoration:none}
 .sh-card-title svg{width:14px;height:14px;stroke:var(--accent-c);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .sh-card-count{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;
-  border-radius:var(--radius-chip);background:var(--accent);color:#06231f;font-size:11px;font-weight:700}
+  border-radius:var(--radius-chip);background:var(--accent);color:var(--accent-well);font-size:11px;font-weight:700}
 .sh-card-sep{flex:1;height:1px;background:var(--line)}
 .sh-card-all,.sh-card-more{color:var(--ink-3);font-size:12px;text-decoration:none}
 .sh-card-all:hover,.sh-card-more:hover{color:var(--accent-c)}
@@ -158,7 +158,7 @@ main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-
 .sh-card-btn{flex:0 0 auto;height:24px;padding:0 11px;border-radius:7px;border:1px solid var(--control-edge);
   background:var(--card-2);color:var(--ink);font:500 12px var(--font-body);cursor:pointer}
 .sh-card-btn:hover{background:var(--card-3)}
-.sh-card-btn.apex{background:var(--accent-b);border-color:var(--accent-b);color:#06231f;font-weight:600}
+.sh-card-btn.apex{background:var(--accent-b);border-color:var(--accent-b);color:var(--accent-well);font-weight:600}
 .sh-card-btn.apex:hover{background:var(--accent-c);border-color:var(--accent-c)}
 
 /* --- скріншоти ---

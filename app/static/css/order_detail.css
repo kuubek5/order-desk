@@ -131,7 +131,7 @@
 .rework-prev-calc .rpc-label {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #f0a35e;
+  color: var(--warn);
   letter-spacing: 0.01em;
 }
 .rework-prev-calc .rpc-id {

@@ -32,9 +32,9 @@
 }
 
 .status-badge.status-нове {
-  background-color: rgba(20, 184, 166, 0.15);
+  background-color: rgba(var(--accent-base-rgb), 0.15);
   color: var(--color-accent);
-  border: 1px solid rgba(20, 184, 166, 0.3);
+  border: 1px solid rgba(var(--accent-base-rgb), 0.3);
 }
 
 .status-badge.status-прийнято {
@@ -194,8 +194,8 @@
   font-weight: 600;
   line-height: 1.5;
   color: var(--accent-c);
-  background: rgba(20, 184, 166, 0.14);
-  border: 1px solid rgba(45, 212, 191, 0.34);
+  background: rgba(var(--accent-base-rgb), 0.14);
+  border: 1px solid rgba(var(--accent-rgb), 0.34);
   white-space: nowrap;
   vertical-align: middle;
 }
@@ -217,7 +217,7 @@
   font-size: 10.5px;
   font-weight: 600;
   line-height: 1.5;
-  color: #f0a35e;
+  color: var(--warn);
   background: rgba(240, 163, 94, 0.12);
   border: 1px solid rgba(240, 163, 94, 0.32);
   white-space: nowrap;
@@ -309,7 +309,7 @@
 
 .pending-mail-heading p {
   margin-top: var(--space-1);
-  color: #b9d8d5;
+  color: var(--accent-ink);
   font-size: 0.8rem;
 }
 
@@ -352,7 +352,7 @@
   height: 1.5rem;
   padding: 0 var(--space-2);
   background: var(--color-email);
-  color: #081312;
+  color: var(--on-accent);
   font-size: 0.75rem;
 }
 
@@ -431,7 +431,7 @@
 }
 
 .pending-mail-received {
-  color: #9fc2bf;
+  color: var(--accent-ink-2);
   font-size: 0.76rem;
 }
 
@@ -463,13 +463,13 @@
   padding: 0.15rem var(--space-2);
   border-radius: var(--radius-chip);
   background: rgba(134, 212, 206, 0.08);
-  color: #b9d8d5;
+  color: var(--accent-ink);
   font-size: 0.72rem;
 }
 
 .pending-mail-guesses .pending-mail-guess-empty {
   background: transparent;
-  color: #9fc2bf;
+  color: var(--accent-ink-2);
   padding-left: 0;
 }
 
@@ -478,7 +478,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  color: #b9d8d5;
+  color: var(--accent-ink);
   font-size: 0.78rem;
   white-space: nowrap;
 }
@@ -540,7 +540,7 @@
 
 .pending-mail-process {
   background: var(--color-email);
-  color: #081312;
+  color: var(--on-accent);
 }
 
 .pending-mail-review-all:focus-visible,
@@ -642,7 +642,7 @@
 .tab-nav-source .tab-link-email.active {
   background-color: var(--color-email);
   border-color: var(--color-email);
-  color: #081312;
+  color: var(--on-accent);
 }
 
 /* Queue dashboard header (Варіант B) — KPI shortcuts and peek cards into the
@@ -778,7 +778,7 @@
 
 .dash-kpi-accent.is-active {
   border-color: var(--color-accent);
-  background-color: rgba(20, 184, 166, 0.1);
+  background-color: rgba(var(--accent-base-rgb), 0.1);
 }
 
 .dash-kpi-email {
@@ -829,15 +829,15 @@
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 50%;
-  border: 1px solid rgba(20, 184, 166, 0.4);
-  background: rgba(20, 184, 166, 0.08);
+  border: 1px solid rgba(var(--accent-base-rgb), 0.4);
+  background: rgba(var(--accent-base-rgb), 0.08);
   color: var(--color-accent);
   cursor: pointer;
   transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.15s ease;
 }
 
 .dash-peek-sync-btn:hover {
-  background: rgba(20, 184, 166, 0.16);
+  background: rgba(var(--accent-base-rgb), 0.16);
   border-color: var(--color-accent);
 }
 
@@ -960,7 +960,7 @@
 }
 
 .rail-item.active {
-  background-color: rgba(20, 184, 166, 0.1);
+  background-color: rgba(var(--accent-base-rgb), 0.1);
   color: var(--color-accent);
   font-weight: 600;
 }
@@ -1154,7 +1154,7 @@
 }
 
 .rail-date-item.active {
-  background-color: rgba(20, 184, 166, 0.1);
+  background-color: rgba(var(--accent-base-rgb), 0.1);
   border-color: var(--color-accent);
   color: var(--color-accent);
   font-weight: 600;
@@ -1237,13 +1237,13 @@
   padding: 0.1rem var(--space-2);
   border-radius: var(--radius-chip);
   background: rgba(134, 212, 206, 0.1);
-  color: #b9d8d5;
+  color: var(--accent-ink);
   font-size: 0.72rem;
 }
 
 .pending-mail-preview-more {
   background: transparent;
-  color: #9fc2bf;
+  color: var(--accent-ink-2);
 }
 
 .pending-mail-collapse {

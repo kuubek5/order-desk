@@ -194,7 +194,7 @@
 .setv2 .btn.primary,
 .arch .btn.primary,
 .worldv2 .btn.primary{
-  background: rgba(20,184,166,.15);
+  background: rgba(var(--accent-base-rgb), .15);
   border-color: var(--pri-bd);
   color: var(--accent-c);
 }
@@ -208,7 +208,7 @@
 .setv2 .btn.primary:hover,
 .arch .btn.primary:hover,
 .worldv2 .btn.primary:hover{
-  background: rgba(20,184,166,.24);
+  background: rgba(var(--accent-base-rgb), .24);
   border-color: var(--accent-c);
   color: var(--accent-c);
 }
@@ -306,7 +306,7 @@
 }
 /* Був підйом на -1px при наведенні. У A рух іде вниз при натисканні, а не
    вгору при наведенні: підйом обіцяє натискання, якого ще не сталося. */
-.handoutv2 .issue-btn:hover{ background: rgba(20,184,166,.26); border-color: var(--accent-c); transform: none; }
+.handoutv2 .issue-btn:hover{ background: rgba(var(--accent-base-rgb), .26); border-color: var(--accent-c); transform: none; }
 .handoutv2 .issue-btn:active{ transform: translateY(var(--press-y)); box-shadow: var(--relief-a); }
 .handoutv2 .issue-btn:focus-visible{ outline: var(--focus-w) solid var(--accent-c); outline-offset: var(--focus-off); }
 
@@ -327,7 +327,7 @@
 }
 .handoutv2 .fbtn:hover{ background: var(--sec-bg-h); border-color: var(--sec-bd-h); color: var(--ink); }
 .handoutv2 .fbtn:active{ transform: translateY(var(--press-y)); box-shadow: var(--relief-a); }
-.handoutv2 .fbtn.lead{ background: rgba(20,184,166,.14); border-color: var(--pri-bd); color: var(--accent-c); }
+.handoutv2 .fbtn.lead{ background: rgba(var(--accent-base-rgb), .14); border-color: var(--pri-bd); color: var(--accent-c); }
 
 /* Відмітка «знайдено» — головна ціль екрана, один клік = видано.
    БУЛО 26px, і це виявилось перевернутою ставкою: на тому ж екрані

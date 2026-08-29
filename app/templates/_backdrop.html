@@ -11,10 +11,10 @@
   <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <pattern id="bd-fine" width="30" height="30" patternUnits="userSpaceOnUse">
-        <path d="M30 0H0V30" fill="none" stroke="#2dd4bf" stroke-width="1" stroke-opacity="0.045"/>
+        <path d="M30 0H0V30" fill="none" stroke="var(--accent-b)" stroke-width="1" stroke-opacity="0.045"/>
       </pattern>
       <pattern id="bd-coarse" width="150" height="150" patternUnits="userSpaceOnUse">
-        <path d="M150 0H0V150" fill="none" stroke="#2dd4bf" stroke-width="1" stroke-opacity="0.075"/>
+        <path d="M150 0H0V150" fill="none" stroke="var(--accent-b)" stroke-width="1" stroke-opacity="0.075"/>
       </pattern>
       <radialGradient id="bd-vign" cx="50%" cy="46%" r="72%">
         <stop offset="0%" stop-color="#0d1117" stop-opacity="0"/>
@@ -22,9 +22,9 @@
         <stop offset="100%" stop-color="#080b10" stop-opacity="0.9"/>
       </radialGradient>
       <radialGradient id="bd-radarGlow" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stop-color="#2dd4bf" stop-opacity="0.08"/>
-        <stop offset="60%" stop-color="#2dd4bf" stop-opacity="0.02"/>
-        <stop offset="100%" stop-color="#2dd4bf" stop-opacity="0"/>
+        <stop offset="0%" stop-color="var(--accent-b)" stop-opacity="0.08"/>
+        <stop offset="60%" stop-color="var(--accent-b)" stop-opacity="0.02"/>
+        <stop offset="100%" stop-color="var(--accent-b)" stop-opacity="0"/>
       </radialGradient>
     </defs>
 
@@ -34,7 +34,7 @@
     <rect width="1920" height="1080" fill="url(#bd-coarse)"/>
 
     <!-- centre construction diagonals -->
-    <g stroke="#2dd4bf" stroke-opacity="0.08" stroke-width="1">
+    <g stroke="var(--accent-b)" stroke-opacity="0.08" stroke-width="1">
       <line x1="0" y1="0" x2="1920" y2="1080"/>
       <line x1="1920" y1="0" x2="0" y2="1080"/>
       <line x1="960" y1="0" x2="960" y2="1080" stroke-opacity="0.05"/>
@@ -47,19 +47,19 @@
       <circle r="360" fill="url(#bd-radarGlow)"/>
       <!-- everything below turns slowly around the disc centre -->
       <g class="radar-spin">
-        <g fill="none" stroke="#2dd4bf">
+        <g fill="none" stroke="var(--accent-b)">
           <circle r="70"  stroke-opacity="0.30"/>
           <circle r="140" stroke-opacity="0.22"/>
           <circle r="220" stroke-opacity="0.15"/>
           <circle r="300" stroke-opacity="0.10"/>
           <circle r="12"  stroke-opacity="0.5"/>
         </g>
-        <g stroke="#5eead4" stroke-opacity="0.35" stroke-width="1">
+        <g stroke="var(--accent-c)" stroke-opacity="0.35" stroke-width="1">
           <line x1="-330" y1="0" x2="330" y2="0"/>
           <line x1="0" y1="-330" x2="0" y2="330"/>
         </g>
         <!-- tick scale: pulses with a teal glow (see base.css → radar-ticks-pulse) -->
-        <g class="radar-ticks" stroke="#5eead4">
+        <g class="radar-ticks" stroke="var(--accent-c)">
           <circle r="312" fill="none" stroke-width="11" stroke-dasharray="4 22"/>
           <circle r="332" fill="none" stroke-width="20" stroke-dasharray="4 68"/>
         </g>
@@ -67,7 +67,7 @@
     </g>
 
     <!-- corner index marks -->
-    <g stroke="#2dd4bf" stroke-opacity="0.18" stroke-width="1.5" fill="none">
+    <g stroke="var(--accent-b)" stroke-opacity="0.18" stroke-width="1.5" fill="none">
       <path d="M40 40h40M40 40v40"/>
       <path d="M1880 40h-40M1880 40v40"/>
       <path d="M40 1040h40M40 1040v-40"/>

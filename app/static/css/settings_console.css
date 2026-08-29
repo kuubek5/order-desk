@@ -70,7 +70,7 @@ main.setv2.scon {
   gap: 9px;
   padding: 9px 13px;
   border-radius: var(--r-ctl);
-  background: #111823;
+  background: var(--field);
   border: 1px solid var(--line-2);
   color: var(--ink-3);
   font-size: 13px;
@@ -127,7 +127,7 @@ main.setv2.scon {
 }
 .scon-node.is-hot .scon-node-box {
   border-color: var(--accent-b);
-  background: rgba(20, 184, 166, 0.08);
+  background: rgba(var(--accent-base-rgb), 0.08);
 }
 .scon-n {
   font-family: var(--font-mono);
@@ -260,7 +260,7 @@ main.setv2.scon {
   min-width: 0;
   padding: 9px 12px;
   border-radius: var(--r-ctl);
-  background: #0f1620;
+  background: var(--well);
   border: 1px solid var(--line-2);
   color: var(--accent-c);
   font-size: 12.5px;
@@ -285,7 +285,7 @@ main.setv2.scon {
   align-items: center;
   gap: 10px;
   padding: 10px 13px;
-  background: #0f1620;
+  background: var(--well);
   font-size: 12.5px;
 }
 .scon-beat-row .d {
@@ -327,7 +327,7 @@ main.setv2.scon {
 .scon-diag {
   border: 1px solid var(--line);
   border-radius: var(--r-ctl);
-  background: #0f1620;
+  background: var(--well);
   margin-top: 16px;
   overflow: hidden;
 }
@@ -467,12 +467,12 @@ main.setv2.scon {
   padding: 12px 14px;
   border-radius: var(--r-ctl);
   border: 1px solid var(--line-2);
-  background: #0f1620;
+  background: var(--well);
   cursor: pointer;
   transition: border-color var(--ui-speed) ease, background-color var(--ui-speed) ease;
 }
 .notify-pick:hover { border-color: var(--control-edge); }
-.notify-pick.is-on { border-color: var(--accent-b); background: rgba(20, 184, 166, 0.07); }
+.notify-pick.is-on { border-color: var(--accent-b); background: rgba(var(--accent-base-rgb), 0.07); }
 .notify-pick input { position: absolute; opacity: 0; pointer-events: none; }
 .notify-pick:focus-within { outline: 2px solid var(--accent-b); outline-offset: 2px; }
 /* мініатюра стилю: ребро + підпис */
@@ -488,7 +488,7 @@ main.setv2.scon {
 }
 .np-demo i { width: 3px; align-self: stretch; border-radius: 2px; background: var(--accent-b); }
 .np-glass {
-  background: linear-gradient(157deg, rgba(255,255,255,.10) 0%, rgba(94,234,212,.07) 40%, rgba(255,255,255,.03) 100%);
+  background: linear-gradient(157deg, rgba(255,255,255,.10) 0%, rgba(var(--accent-soft-rgb), .07) 40%, rgba(255,255,255,.03) 100%);
   border: 1px solid rgba(255,255,255,.10);
   -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
 }
@@ -522,7 +522,7 @@ main.setv2.scon {
   align-items: center;
   gap: 10px;
   padding: 10px 13px;
-  background: #0f1620;
+  background: var(--well);
   cursor: pointer;
   font-size: 12.5px;
   transition: background-color var(--ui-speed) ease;
@@ -573,8 +573,8 @@ main.setv2.scon {
   font-size: 10.5px;
   font-weight: 600;
   color: var(--accent-c);
-  background: rgba(20, 184, 166, 0.12);
-  border: 1px solid rgba(45, 212, 191, 0.3);
+  background: rgba(var(--accent-base-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.3);
   border-radius: 999px;
   padding: 1px 8px;
 }
@@ -703,7 +703,7 @@ main.setv2.scon {
   color: var(--ink-3);
 }
 .scon-pal-list li[aria-selected="true"] button {
-  background: rgba(20, 184, 166, 0.12);
+  background: rgba(var(--accent-base-rgb), 0.12);
   color: var(--ink);
 }
 .scon-pal-empty {
@@ -723,8 +723,8 @@ main.setv2.scon {
 
 /* field the palette jumped to gets a brief ring */
 @keyframes sconRing {
-  0%   { box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.45); }
-  100% { box-shadow: 0 0 0 9px rgba(45, 212, 191, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.45); }
+  100% { box-shadow: 0 0 0 9px rgba(var(--accent-rgb), 0); }
 }
 .scon-flash {
   animation: sconRing 0.8s cubic-bezier(0.16, 1, 0.3, 1) 2;

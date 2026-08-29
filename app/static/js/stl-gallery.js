@@ -34,7 +34,16 @@
 
   // Warm accent that stays visible against the dark v2a stage; normals are
   // recomputed below so the mesh is never solid black regardless of the STL.
-  const MODEL_COLOR = 0x5eead4;
+  // Колір читається з токена --stl-model, щоб тема (theme-forge.css) могла
+  // перефарбувати модель; 0x5eead4 — запасний, якщо токена нема.
+  function stlModelColor() {
+    try {
+      var v = getComputedStyle(document.body).getPropertyValue('--stl-model').trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) return parseInt(v.slice(1), 16);
+    } catch (e) {}
+    return 0x5eead4;
+  }
+  const MODEL_COLOR = stlModelColor();
 
   function setupGallery(root) {
     if (root.dataset.galleryInit) return; // already wired (e.g. re-scanned after an HTMX swap)
@@ -85,7 +94,7 @@
       const key = new THREE.DirectionalLight(0xffffff, 0.9);
       key.position.set(2, 3, 4);
       scene.add(key);
-      const rim = new THREE.DirectionalLight(0x5eead4, 0.45);
+      const rim = new THREE.DirectionalLight(MODEL_COLOR, 0.45);
       rim.position.set(-3, -2, -2);
       scene.add(rim);
 

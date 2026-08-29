@@ -175,7 +175,7 @@
 .form-input:focus {
   outline: none;
   border-color: var(--color-accent);
-  background-color: rgba(20, 184, 166, 0.05);
+  background-color: rgba(var(--accent-base-rgb), 0.05);
 }
 
 .form-input::placeholder {
@@ -223,7 +223,7 @@
 .folder-suggest-btn:hover {
   border-style: solid;
   border-color: var(--color-accent);
-  background: rgba(20, 184, 166, 0.1);
+  background: rgba(var(--accent-base-rgb), 0.1);
   color: var(--color-accent);
 }
 
@@ -262,7 +262,7 @@
 }
 
 .form-reject:hover {
-  border-color: rgba(20, 184, 166, 0.3);
+  border-color: rgba(var(--accent-base-rgb), 0.3);
   color: var(--color-accent);
 }
 
@@ -386,7 +386,7 @@
   border: 1px solid var(--line);
   border-radius: var(--r-card);
   overflow: hidden;
-  background: radial-gradient(120% 120% at 50% 0, #131c28, #0e141d 70%);
+  background: radial-gradient(120% 120% at 50% 0, var(--mid), var(--mid-2) 70%);
 }
 
 .stl-panel-canvas {
@@ -438,7 +438,7 @@
   height: 4px;
   -webkit-appearance: none;
   appearance: none;
-  background: #1c2532;
+  background: var(--raise-2);
   border-radius: 3px;
   outline: none;
   cursor: pointer;
@@ -481,7 +481,7 @@
   text-align: left;
   padding: 8px 10px;
   border-radius: 8px;
-  background: #111823;
+  background: var(--field);
   border: 1px solid var(--line);
   color: var(--ink-2);
   cursor: pointer;
@@ -490,7 +490,7 @@
 
 .stl-panel-file:hover {
   background: var(--card-2);
-  border-color: #3a4a5f;
+  border-color: var(--line-2);
   color: var(--ink);
 }
 
@@ -516,8 +516,8 @@
 }
 
 .stl-panel-file.is-active {
-  background: rgba(20, 184, 166, 0.12);
-  border-color: rgba(45, 212, 191, 0.42);
+  background: rgba(var(--accent-base-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.42);
   color: var(--accent-c);
 }
 
@@ -558,7 +558,7 @@
 
 .stl-panel-folder:hover {
   color: var(--accent-c);
-  border-color: rgba(45, 212, 191, 0.42);
+  border-color: rgba(var(--accent-rgb), 0.42);
   background: var(--card-3);
 }
 

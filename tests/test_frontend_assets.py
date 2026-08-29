@@ -200,6 +200,7 @@ BASE_HTML_STYLESHEETS = [
     "/static/css/v2a_screens.css",
     "/static/css/update_overlay.css",
     "/static/css/treatment-a.css",
+    "/static/css/theme-forge.css",
 ]
 
 
