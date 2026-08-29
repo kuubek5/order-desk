@@ -45,6 +45,7 @@ BASE_HTML_SCRIPTS = [
     "/static/js/handout.js",
     "/static/js/clients.js",
     "/static/js/settings.js",
+    "/static/js/shift.js",
     "/static/js/three-0.128.0.min.js",
     "/static/js/STLLoader-0.128.0.js",
     "/static/js/stl-preview.js",

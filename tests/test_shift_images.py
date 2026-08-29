@@ -216,3 +216,76 @@ def test_media_type_comes_from_a_whitelist(db, note):
     assert media_type_for(shift_images.resolve_image_file(row)) == "image/png"
     assert media_type_for(shift_images.images_root() / "x.svg") is None
     assert media_type_for(shift_images.images_root() / "x.exe") is None
+
+
+# 16 — віддача байтів через роут
+
+
+def _request(user_id=None):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        session={} if user_id is None else {"user_id": user_id}, query_params={}, headers={}
+    )
+
+
+def test_image_route_serves_bytes_only_with_a_session(db, note):
+    from app.routers import shift as shift_router
+
+    row = _add(db, note, _png_bytes())
+    db.commit()
+    user = db.query(User).first()
+
+    response = shift_router.get_shift_image(request=_request(user.id), image_id=row.id, db=db)
+    assert response.media_type == "image/png"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+    with pytest.raises(Exception) as exc:
+        shift_router.get_shift_image(request=_request(None), image_id=row.id, db=db)
+    assert exc.value.status_code == 401
+
+
+def test_image_route_404s_on_unknown_id_and_on_a_pruned_row(db, note):
+    from app.routers import shift as shift_router
+
+    row = _add(db, note, _png_bytes())
+    db.commit()
+    user = db.query(User).first()
+
+    with pytest.raises(Exception) as unknown:
+        shift_router.get_shift_image(request=_request(user.id), image_id=9999, db=db)
+    assert unknown.value.status_code == 404
+
+    row.pruned_at = datetime(2027, 3, 1)
+    db.commit()
+    with pytest.raises(Exception) as pruned:
+        shift_router.get_shift_image(request=_request(user.id), image_id=row.id, db=db)
+    assert pruned.value.status_code == 404, "прибране й зникле дають однаковий 404"
+
+
+def test_failed_screenshot_never_takes_the_note_text_with_it(db, note, monkeypatch):
+    """Головне правило конвеєра: завеликий скріншот не сміє забрати з собою
+    речення «піч №2 відкрити о 9:00»."""
+    from app.routers import shift as shift_router
+
+    monkeypatch.setattr(shift_images, "MAX_IMAGE_BYTES", 512)
+    upload = type("U", (), {"filename": "big.png", "file": io.BytesIO(b"\x00" * 4096)})()
+
+    problems = shift_router._attach_images(db, note, [upload])
+
+    assert problems and "big.png" in problems[0]
+    assert db.query(ShiftNoteImage).count() == 0
+    db.refresh(note)
+    assert note.text == "піч 2 о 9:00", "текст записки лишився на місці"
+
+
+def test_delete_removes_both_the_row_and_the_file(db, note):
+    row = _add(db, note, _png_bytes())
+    db.commit()
+    path = shift_images.resolve_image_file(row)
+
+    delete_image(db, row)
+    db.commit()
+
+    assert not path.exists()
+    assert db.query(ShiftNoteImage).count() == 0

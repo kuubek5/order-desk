@@ -26,6 +26,7 @@ GET /settings/recognition
 GET /setup
 GET /shift
 GET /shift/card
+GET /shift/images/{image_id}
 GET /stats
 GET /stl-preview/{token}
 GET /stl-preview/{token}/{filename}
@@ -103,9 +104,11 @@ POST /settings/users/{user_id}/toggle-active
 POST /setup
 POST /sheets/import-history
 POST /sheets/sync
+POST /shift/images/{image_id}/delete
 POST /shift/notes
 POST /shift/notes/{note_id}/ack
 POST /shift/notes/{note_id}/edit
+POST /shift/notes/{note_id}/images
 POST /shift/notes/{note_id}/resolve
 POST /sync-speed
 POST /sync/pause

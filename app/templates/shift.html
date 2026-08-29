@@ -28,11 +28,21 @@
         </div>
     </div>
 
-    <form class="sh-compose" method="post" action="/shift/notes">
+    {# data-shift-drop — зона, у якій shift.js ловить Ctrl+V і перетягування.
+       Видимий вибір файлу лишається навмисно: без JS форма має працювати. #}
+    <form class="sh-compose" method="post" action="/shift/notes"
+          enctype="multipart/form-data" data-shift-drop>
         <textarea name="text" rows="2" maxlength="4000"
-                  placeholder="Написати для наступної зміни…"
+                  placeholder="Написати для наступної зміни… (Ctrl+V — вставити скріншот)"
                   aria-label="Текст записки"></textarea>
+        <div class="sh-thumbs" data-shift-thumbs hidden></div>
         <div class="sh-compose-foot">
+            <label class="sh-file">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10"/><circle cx="9" cy="9" r="2"/><path d="m3 17 5-4 4 3"/></svg>
+                <span>Скріншот</span>
+                <input type="file" name="images" multiple
+                       accept="image/png,image/jpeg,image/webp">
+            </label>
             <div class="sh-kind" role="radiogroup" aria-label="Тип записки">
                 <label>
                     <input type="radio" name="kind" value="info" checked>

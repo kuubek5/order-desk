@@ -27,6 +27,30 @@
 
                 <div class="sh-text">{{ note.text }}</div>
 
+                {% if note.images %}
+                <div class="sh-shots">
+                    {% for shot in note.images %}
+                    {# Прибране через 6 місяців і файл, якого немає (бекап не
+                       несе байтів), виглядають ОДНАКОВО — один деградований
+                       стан, не два. Другий випадок ставить shift.js по img.error. #}
+                    <span class="sh-shot{% if shot.pruned_at %} is-gone{% endif %}">
+                        {% if not shot.pruned_at %}
+                        <a href="/shift/images/{{ shot.id }}" target="_blank" rel="noopener">
+                            <img src="/shift/images/{{ shot.id }}" alt="{{ shot.filename }}"
+                                 loading="lazy" data-shot>
+                        </a>
+                        {% endif %}
+                        <span class="sh-shot-gone">зображення прибрано<br>(зберігаємо 6 міс.)</span>
+                        {% if note.author_id == user.id and not shot.pruned_at %}
+                        <button type="button" class="sh-shot-x" aria-label="Видалити скріншот"
+                                hx-post="/shift/images/{{ shot.id }}/delete"
+                                hx-swap="none">✕</button>
+                        {% endif %}
+                    </span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
                 <div class="sh-foot">
                     <span class="mono">{{ note.created_at.strftime('%H:%M') }}</span>
                     <span>·</span>
