@@ -58,5 +58,24 @@
     </form>
 
     {% include "_shift_board.html" %}
+
+    {% if images_report %}
+    {# Скріншоти живуть 6 місяців, текст записки — назавжди. Прибирання йде
+       і фоном (раз на добу), і руками; кнопка тут — щоб адмін бачив, скільки
+       займає тека, а не дізнавався про це від диска. #}
+    <details class="sh-upkeep">
+        <summary>Скріншоти на диску: {{ images_report.total_mb }} МБ ({{ images_report.total_files }} файл.)</summary>
+        <p>
+            Зберігаємо {{ images_prune_days }} днів. Готово до прибирання:
+            {{ images_report.prunable_rows }} зображ. ({{ images_report.prunable_mb }} МБ){% if images_report.orphan_files %},
+            плюс {{ images_report.orphan_files }} файл(ів) без запису{% endif %}.
+            Текст записок лишається назавжди.
+        </p>
+        <button type="button" class="btn sh-btn"
+                hx-post="/shift/images/prune"
+                hx-swap="none"
+                hx-confirm="Прибрати старі скріншоти? Текст записок лишиться.">Прибрати зараз</button>
+    </details>
+    {% endif %}
 </main>
 {% endblock %}

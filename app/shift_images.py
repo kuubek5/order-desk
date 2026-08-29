@@ -19,10 +19,12 @@ Windows-скріншот із буфера завжди приходить як 
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import SHIFT_IMAGES_PATH
@@ -247,3 +249,163 @@ def delete_image(db: Session, image: ShiftNoteImage) -> None:
         except OSError:
             logger.warning("не вдалось видалити файл скріншота %s", path, exc_info=True)
     db.delete(image)
+
+
+# --- прибирання за 6 місяців -------------------------------------------------
+#
+# Це СВІДОМИЙ виняток із писаного правила app/mail_spool.py («нічого не
+# видаляється саме»). Різниця в тому, ЩО саме прибирається: спул тримає файли
+# робіт клієнтів — незамінні STL, де помилкове видалення невідворотне. Тут
+# прибирається скріншот табло печі піврічної давнини, а речення про нього
+# лишається назавжди. Шість місяців — рішення власника, а не евристика коду.
+# Прибране лишає видимий слід (`pruned_at` → «зображення прибрано»), а не
+# зникає тихо.
+
+PRUNE_AFTER_DAYS = 180
+
+
+@dataclass(frozen=True)
+class ImagesReport:
+    """Незмінний знімок стану теки. Читальник нічого не чіпає — прибиральник
+    перераховує все сам, а не довіряє звіту зі сторінки, яку могли відкрити
+    годину тому."""
+
+    total_bytes: int
+    total_files: int
+    prunable_bytes: int
+    prunable_rows: int
+    orphan_files: int
+
+    @property
+    def total_mb(self) -> float:
+        return round(self.total_bytes / (1024 * 1024), 1)
+
+    @property
+    def prunable_mb(self) -> float:
+        return round(self.prunable_bytes / (1024 * 1024), 1)
+
+
+def _file_size(path: Path) -> int:
+    try:
+        return path.stat().st_size if path.is_file() else 0
+    except OSError:
+        return 0
+
+
+def _known_paths(db: Session) -> set[str]:
+    rows = db.execute(select(ShiftNoteImage.saved_path)).scalars().all()
+    out = set()
+    for value in rows:
+        try:
+            out.add(str(Path(value).absolute()))
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def _all_files(root: Path):
+    if not root.is_dir():
+        return
+    for child in root.rglob("*"):
+        try:
+            if child.is_file() and not _is_link(child):
+                yield child
+        except OSError:
+            continue
+
+
+def analyze_shift_images(db: Session, *, now: datetime | None = None) -> ImagesReport:
+    """Скільки місця займають скріншоти і що можна прибрати. Нічого не змінює."""
+    root = images_root()
+    cutoff = (now or datetime.now()) - timedelta(days=PRUNE_AFTER_DAYS)
+
+    known = _known_paths(db)
+    total_bytes = 0
+    total_files = 0
+    orphan_files = 0
+    for path in _all_files(root):
+        size = _file_size(path)
+        total_bytes += size
+        total_files += 1
+        if str(path) not in known:
+            orphan_files += 1
+
+    prunable_bytes = 0
+    prunable_rows = 0
+    for image in db.execute(
+        select(ShiftNoteImage).where(
+            ShiftNoteImage.pruned_at.is_(None), ShiftNoteImage.created_at < cutoff
+        )
+    ).scalars():
+        prunable_rows += 1
+        path = resolve_image_file(image)
+        if path is not None:
+            prunable_bytes += _file_size(path)
+
+    return ImagesReport(total_bytes, total_files, prunable_bytes, prunable_rows, orphan_files)
+
+
+def prune_shift_images(db: Session, *, now: datetime | None = None) -> tuple[int, int]:
+    """Прибрати байти старших за 180 днів скріншотів, файли-сироти й порожні
+    теки. Повертає (скільки файлів прибрано, скільки байтів звільнено).
+
+    Список перераховується тут, а не береться зі звіту: між рендером сторінки
+    й натисканням кнопки могло минути скільки завгодно часу.
+
+    Текст записок не чіпається НІКОЛИ — рядок лишається з міткою `pruned_at`,
+    щоб у стрічці було видно, що тут був скріншот.
+    """
+    root = images_root()
+    cutoff = (now or datetime.now()) - timedelta(days=PRUNE_AFTER_DAYS)
+    removed = 0
+    freed = 0
+
+    for image in db.execute(
+        select(ShiftNoteImage).where(
+            ShiftNoteImage.pruned_at.is_(None), ShiftNoteImage.created_at < cutoff
+        )
+    ).scalars():
+        path = resolve_image_file(image)
+        if path is not None:
+            size = _file_size(path)
+            try:
+                path.unlink()
+            except OSError:
+                logger.warning("не вдалось прибрати скріншот %s", path, exc_info=True)
+                continue
+            removed += 1
+            freed += size
+        # Мітку ставимо і тоді, коли файлу вже немає: рядок не має щоразу
+        # потрапляти в наступний прохід.
+        image.pruned_at = now or datetime.now()
+
+    # Файли-сироти: рядка немає взагалі. Покриває відновлення з бекапу (він не
+    # несе байтів) і недописані .part після аварійного завершення.
+    known = _known_paths(db)
+    for path in list(_all_files(root)):
+        if str(path) in known:
+            continue
+        size = _file_size(path)
+        try:
+            path.unlink()
+        except OSError:
+            logger.warning("не вдалось прибрати файл-сироту %s", path, exc_info=True)
+            continue
+        removed += 1
+        freed += size
+
+    _remove_empty_dirs(root)
+    if removed:
+        logger.info("Прибрано скріншотів зміни: %s, звільнено %s байт", removed, freed)
+    return removed, freed
+
+
+def _remove_empty_dirs(root: Path) -> None:
+    if not root.is_dir():
+        return
+    for path in sorted(root.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        try:
+            if path.is_dir() and not _is_link(path) and not any(path.iterdir()):
+                path.rmdir()
+        except OSError:
+            continue

@@ -104,6 +104,7 @@ POST /settings/users/{user_id}/toggle-active
 POST /setup
 POST /sheets/import-history
 POST /sheets/sync
+POST /shift/images/prune
 POST /shift/images/{image_id}/delete
 POST /shift/notes
 POST /shift/notes/{note_id}/ack

@@ -65,6 +65,7 @@ from app.routers.archive import router as archive_router
 from app.routers.stats import router as stats_router
 from app.routers.stl import router as stl_router
 from app.routers.shift import router as shift_router
+from app.shift_images import prune_shift_images
 from app.routers.deps import templates
 from app.services.order_dates import parse_sheet_tab as _parse_sheet_tab
 from app.services.handout import (
@@ -262,6 +263,41 @@ def _monthly_backup_worker(stop_event: Event) -> None:
         stop_event.wait(MONTHLY_BACKUP_INTERVAL_SECONDS)
 
 
+# Скріншоти записок передачі зміни живуть 6 місяців (рішення власника), текст
+# записки — назавжди. Раз на добу досить: різниця між «прибрано сьогодні» і
+# «прибрано завтра» тут нульова, а тік — один SELECT і обхід невеликої теки.
+SHIFT_IMAGES_PRUNE_INTERVAL_SECONDS = 24 * 60 * 60
+SHIFT_IMAGES_PRUNE_INITIAL_DELAY_SECONDS = 90
+
+
+def _shift_images_prune_tick() -> None:
+    """Одна спроба прибирання. Ніколи не кидає — збій прибирання не має
+    чіпати застосунок, наступний тік спробує знову."""
+    try:
+        db = SessionLocal()
+        try:
+            removed, freed = prune_shift_images(db)
+            if removed:
+                db.commit()
+                logger.info(
+                    "Прибрано скріншотів зміни: %s, звільнено %s байт", removed, freed
+                )
+            else:
+                db.rollback()
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Прибирання скріншотів зміни не вдалось")
+
+
+def _shift_images_prune_worker(stop_event: Event) -> None:
+    if stop_event.wait(SHIFT_IMAGES_PRUNE_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        _shift_images_prune_tick()
+        stop_event.wait(SHIFT_IMAGES_PRUNE_INTERVAL_SECONDS)
+
+
 EXPORT_WARM_INITIAL_DELAY_SECONDS = 20.0
 EXPORT_WARM_INTERVAL_SECONDS = 120.0
 
@@ -382,6 +418,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("order-desk-update-check", _update_check_worker),
         _BackgroundWorker("order-desk-monthly-backup", _monthly_backup_worker),
         _BackgroundWorker("order-desk-export-warm", _export_warm_worker),
+        _BackgroundWorker("order-desk-shift-images-prune", _shift_images_prune_worker),
     ]
     for w in workers:
         w.start()

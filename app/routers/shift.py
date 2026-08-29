@@ -17,9 +17,12 @@ from starlette.requests import Request
 
 from app.models import ShiftNote, ShiftNoteImage
 from app.shift_images import (
+    PRUNE_AFTER_DAYS,
     ShiftImageError,
+    analyze_shift_images,
     delete_image,
     media_type_for,
+    prune_shift_images,
     resolve_image_file,
     save_image,
 )
@@ -82,6 +85,11 @@ def get_shift(request: Request, partial: str = "", db: Session = Depends(get_db)
         return RedirectResponse("/login", status_code=303)
 
     context = _shift_context(request, db, user)
+    # Звіт про місце — лише адміну й лише на повній сторінці: він обходить
+    # теку, і платити за це на кожному свапі дошки нема за що.
+    if partial != "board" and user.role == "адмін":
+        context["images_report"] = analyze_shift_images(db)
+        context["images_prune_days"] = PRUNE_AFTER_DAYS
     if partial == "board":
         return templates.TemplateResponse(request, "_shift_board.html", context)
 
@@ -311,3 +319,26 @@ def edit_shift_note(
     if was_acknowledged and note.acknowledged_at is None:
         message = "Записку змінено — прийняття скинуто, треба прийняти наново."
     return toast_response(message, triggers={"refresh-shift": True})
+
+
+@router.post("/shift/images/prune")
+def prune_shift_images_now(request: Request, db: Session = Depends(get_db)):
+    """«Прибрати зараз» — те саме, що робить добовий фоновий тік.
+
+    Список перераховується всередині prune_shift_images, а не береться зі
+    звіту на сторінці: між рендером і натисканням могло минути скільки
+    завгодно. Текст записок не чіпається — лишається мітка «зображення
+    прибрано».
+    """
+    user = _require_user(request, db)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    removed, freed = prune_shift_images(db)
+    db.commit()
+    if not removed:
+        return toast_response("Прибирати нічого.", kind="info")
+    return toast_response(
+        f"Прибрано {removed} файл(ів), звільнено {round(freed / (1024 * 1024), 1)} МБ.",
+        triggers={"refresh-shift": True},
+    )

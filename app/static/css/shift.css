@@ -181,3 +181,10 @@ main.shiftv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-
 .shiftv2 .sh-shot-gone{display:none;padding:14px 12px;color:var(--ink-3);font-size:11.5px;text-align:center;line-height:1.4}
 .shiftv2 .sh-shot.is-gone img,.shiftv2 .sh-shot.is-gone a{display:none}
 .shiftv2 .sh-shot.is-gone .sh-shot-gone{display:block}
+
+/* --- звіт про місце (адмін) --- */
+.shiftv2 .sh-upkeep{margin-top:4px;color:var(--ink-3);font-size:12px}
+.shiftv2 .sh-upkeep summary{cursor:pointer;list-style:none}
+.shiftv2 .sh-upkeep summary::-webkit-details-marker{display:none}
+.shiftv2 .sh-upkeep summary:hover{color:var(--ink-2)}
+.shiftv2 .sh-upkeep p{margin:8px 0;max-width:64ch;line-height:1.5}

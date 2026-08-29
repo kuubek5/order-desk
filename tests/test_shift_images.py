@@ -6,7 +6,7 @@
 """
 
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 from PIL import Image
@@ -289,3 +289,103 @@ def test_delete_removes_both_the_row_and_the_file(db, note):
 
     assert not path.exists()
     assert db.query(ShiftNoteImage).count() == 0
+
+
+# 17 — прибирання за 6 місяців
+
+
+def _age(db, row, days):
+    """Зістарити зображення й записку на N днів (мітки ставить сервіс, тому
+    в тесті їх правимо прямо)."""
+    old = datetime.now() - timedelta(days=days)
+    row.created_at = old
+    row.note.created_at = old
+    db.commit()
+
+
+def test_prune_removes_bytes_after_180_days_but_keeps_the_note_text(db, note):
+    from app.shift_images import analyze_shift_images, prune_shift_images
+
+    row = _add(db, note, _png_bytes())
+    db.commit()
+    path = shift_images.resolve_image_file(row)
+    _age(db, row, 200)
+
+    report = analyze_shift_images(db)
+    assert report.prunable_rows == 1
+
+    removed, freed = prune_shift_images(db)
+    db.commit()
+
+    assert removed == 1 and freed > 0
+    assert not path.exists()
+    assert row.pruned_at is not None, "лишається видимий слід, а не тихе зникнення"
+    assert db.query(ShiftNoteImage).count() == 1, "рядок лишається"
+    db.refresh(note)
+    assert note.text == "піч 2 о 9:00"
+
+
+def test_prune_leaves_a_179_day_old_image_alone(db, note):
+    from app.shift_images import prune_shift_images
+
+    row = _add(db, note, _png_bytes())
+    db.commit()
+    _age(db, row, 179)
+
+    removed, _ = prune_shift_images(db)
+    db.commit()
+
+    assert removed == 0
+    assert row.pruned_at is None
+    assert shift_images.resolve_image_file(row) is not None
+
+
+def test_prune_removes_orphan_files_and_empty_folders(db, note):
+    """Покриває відновлення з бекапу (він не несе байтів файлів) і недописані
+    .part після аварійного завершення."""
+    from app.shift_images import prune_shift_images
+
+    folder = shift_images.images_root() / "2025-01" / "999"
+    folder.mkdir(parents=True)
+    orphan = folder / "01.png"
+    orphan.write_bytes(_png_bytes())
+    (folder / "02.part").write_bytes(b"\x00" * 10)
+
+    removed, _ = prune_shift_images(db)
+    db.commit()
+
+    assert removed == 2
+    assert not orphan.exists()
+    assert not folder.exists(), "порожня тека теж прибирається"
+
+
+def test_prune_is_idempotent(db, note):
+    from app.shift_images import prune_shift_images
+
+    row = _add(db, note, _png_bytes())
+    db.commit()
+    _age(db, row, 200)
+
+    first, _ = prune_shift_images(db)
+    db.commit()
+    second, freed = prune_shift_images(db)
+    db.commit()
+
+    assert first == 1
+    assert (second, freed) == (0, 0), "повторний запуск нічого не робить"
+
+
+def test_prune_route_is_admin_only(db, note):
+    from fastapi import HTTPException
+
+    from app.routers import shift as shift_router
+
+    operator = db.query(User).first()
+    with pytest.raises(HTTPException) as exc:
+        shift_router.prune_shift_images_now(request=_request(operator.id), db=db)
+    assert exc.value.status_code == 403
+
+    operator.role = "адмін"
+    db.commit()
+    response = shift_router.prune_shift_images_now(request=_request(operator.id), db=db)
+    assert response.status_code == 204
