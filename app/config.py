@@ -34,6 +34,12 @@ EXPORT_FOLDER_PATH = os.environ.get("EXPORT_FOLDER_PATH", str(DATA_DIR / "export
 MAIL_ATTACHMENTS_PATH = os.environ.get(
     "MAIL_ATTACHMENTS_PATH", str(DATA_DIR / "mail_attachments")
 )
+# Скріншоти записок передачі зміни. Свідомо НЕ в /static: та тека віддається
+# з бандла PyInstaller (лише читання, затирається кожним оновленням) і виведена
+# з-під ліцензійного гейту, тобто доступна без сесії — роботам клієнтів там не місце.
+SHIFT_IMAGES_PATH = os.environ.get(
+    "SHIFT_IMAGES_PATH", str(DATA_DIR / "shift_images")
+)
 DB_ENCRYPTION_KEY = os.environ["DB_ENCRYPTION_KEY"]
 SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY") or hashlib.sha256(
     ("order-desk-session:" + DB_ENCRYPTION_KEY).encode()

@@ -457,3 +457,101 @@ class Attachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now())
 
     email_message: Mapped["EmailMessage"] = relationship("EmailMessage", back_populates="attachments")
+
+
+class ShiftNote(Base):
+    """Одна записка передачі зміни (екран «Зміна»).
+
+    Нічний оператор іде о ~05:00, наступний приходить о ~08:00 — три години,
+    коли в цеху нікого. Печі, стан верстатів і «цю не запускай» зараз
+    передаються СМС-ками; ця таблиця — їхня заміна.
+
+    Час тут — зміст, а не метадані («піч №2 відкрити о 9:00»), тому жодне поле
+    НЕ має server_default=func.now(): на SQLite func.now() пише UTC, і живий
+    наслідок цього вже видно на ActionLog.created_at (/journal показує зсув
+    3 години). Усі мітки ставить сервісний шар через datetime.now(). Прецедент
+    обов'язкової недефолтної дати — ClientSenderMemory.last_seen_at.
+    """
+
+    __tablename__ = "shift_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # "info" — до відома (зникає з дошки після прийняття);
+    # "action" — потребує дії (лишається, доки хтось не закриє).
+    kind: Mapped[str] = mapped_column(String(20), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    author_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    # Автор змінив текст. Редагування СКИДАЄ прийняття (див. сервіс): інакше
+    # хтось «прийняв» один текст, а на дошці висить інший.
+    edited_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    # Прочитано. Одне на записку, не персональний стан: перший, хто натиснув,
+    # закриває для всіх.
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    acknowledged_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    # Виконано — лише для kind="action".
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    resolved_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+
+    # Три FK на users в одній таблиці — foreign_keys обов'язковий на КОЖНОМУ.
+    # Без нього SQLAlchemy не виведе умову з'єднання й упаде
+    # AmbiguousForeignKeysError на конфігурації маперів, тобто на імпорті
+    # app.models — уся збірка червона ще до першого тесту. Зразок ActionLog
+    # (relationship("User") без уточнень) тут скопіювати НЕ можна.
+    author: Mapped[Optional["User"]] = relationship("User", foreign_keys=[author_id])
+    acknowledged_by: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[acknowledged_by_id]
+    )
+    resolved_by: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[resolved_by_id]
+    )
+    images: Mapped[list["ShiftNoteImage"]] = relationship(
+        "ShiftNoteImage",
+        back_populates="note",
+        cascade="all, delete-orphan",
+        order_by="ShiftNoteImage.id",
+    )
+
+
+class ShiftNoteImage(Base):
+    """Скріншот, вставлений у записку зміни (Ctrl+V, файл або drag'n'drop).
+
+    Байти лежать під SHIFT_IMAGES_PATH за розкладкою <YYYY-MM>/<note_id>/<NN><ext>:
+    ім'я на диску наше, з клієнтського імені жоден байт у шлях не потрапляє
+    (Windows-скріншот у буфері завжди приходить як image.png — усі вставки мали
+    б однакове ім'я). filename — санітизований оригінал ЛИШЕ для показу.
+    """
+
+    __tablename__ = "shift_note_images"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    note_id: Mapped[int] = mapped_column(
+        ForeignKey("shift_notes.id", ondelete="CASCADE"), index=True
+    )
+    filename: Mapped[str] = mapped_column(String(300))
+    saved_path: Mapped[str] = mapped_column(String(500))
+    size_bytes: Mapped[Optional[int]] = mapped_column(nullable=True)
+    width: Mapped[Optional[int]] = mapped_column(nullable=True)
+    height: Mapped[Optional[int]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    # Файл прибрано автоприбиранням за 6 місяців — рядок лишається, щоб текст
+    # записки й слід «тут був скріншот» жили далі. Бекап не несе байтів файлів,
+    # тому шаблон малює відсутній файл ТАК САМО, як прибраний: один
+    # деградований стан, не два.
+    pruned_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+
+    note: Mapped["ShiftNote"] = relationship("ShiftNote", back_populates="images")
