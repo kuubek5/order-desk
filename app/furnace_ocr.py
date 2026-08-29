@@ -287,7 +287,11 @@ def _dominant(
     """Скільки пікселів зони близькі до заданого кольору."""
     crop = panel.crop(rect).convert("RGB")
     hits = 0
-    for count, pixel in crop.getcolors(maxcolors=1 << 20) or []:
+    # Межа рівно за розміром зони. З великою межею (1<<20) Pillow щоразу
+    # виділяє таблицю на мільйон кольорів — 6.5 мс на виклик замість нуля, а
+    # викликів чотири на кадр. Різних кольорів у зоні фізично не більше, ніж
+    # пікселів, тож тісна межа нічого не втрачає.
+    for count, pixel in crop.getcolors(maxcolors=crop.width * crop.height) or []:
         if all(abs(a - b) <= _COLOR_TOLERANCE for a, b in zip(pixel, color)):
             hits += count
     return hits
