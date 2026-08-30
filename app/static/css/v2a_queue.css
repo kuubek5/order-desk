@@ -88,7 +88,7 @@ main.q2{
 .q2 .ah-time{font-size:11px;color:var(--ink-3);flex:0 0 auto}
 .q2 .ah-note{font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .q2 .ah-tag{margin-left:auto;flex:0 0 auto;font-size:10px;color:var(--ink-3);border:1px solid var(--line-2);border-radius:4px;padding:1px 5px}
-.q2 .ah-tag.warn{color:var(--warn);border-color:rgba(240,163,94,.4)}
+.q2 .ah-tag.warn{color:var(--warn);border-color:rgba(var(--warn-rgb), .4)}
 .q2 .ah-sub{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .q2 .ah-sub b{font-weight:500;color:var(--ink-2)}
 .q2 .acthist-row.is-undone{opacity:.55}
@@ -153,7 +153,7 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .sl-item.is-alarm b{color:var(--alarm)}
 .q2 .sl-item.is-warn b{color:var(--warn)}
 .q2 .sl-item.is-active{background:rgba(var(--accent-base-rgb), .15);border-color:rgba(var(--accent-rgb), .4);color:var(--accent-c)}
-.q2 .sl-item.is-alarm.is-active{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.42);color:var(--alarm)}
+.q2 .sl-item.is-alarm.is-active{background:rgba(var(--alarm-rgb), .14);border-color:rgba(var(--alarm-rgb), .42);color:var(--alarm)}
 .q2 .sl-item.is-active b{color:inherit}
 .q2 .sl-sep{width:1px;height:14px;background:var(--line-2);flex:0 0 auto}
 .q2 .sl-sync{
@@ -162,8 +162,8 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
   text-decoration:none;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease;cursor:pointer;
 }
 .q2 .sl-sync:hover{background:rgba(var(--accent-base-rgb), .18);opacity:1}
-.q2 .sl-sync.err{border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.1);color:var(--alarm)}
-.q2 .sl-sync.err:hover{background:rgba(248,113,113,.18)}
+.q2 .sl-sync.err{border-color:rgba(var(--alarm-rgb), .35);background:rgba(var(--alarm-rgb), .1);color:var(--alarm)}
+.q2 .sl-sync.err:hover{background:rgba(var(--alarm-rgb), .18)}
 .q2 .sl-sync .beacon{width:6px;height:6px;border-radius:50%;background:currentColor}
 .q2 .sl-sync b{font-family:var(--font-mono);font-weight:600}
 
@@ -201,10 +201,10 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 /* «Прострочено» мусить читатись як тривога ще ДО кліку — це вхід у стан, а
    не перемикач режиму. Неактивна пігулка вже несе колір, активна лише
    набирає ваги; обидві лишаються в одному сімействі. */
-.q2 .pill.alarm{border-color:rgba(248,113,113,.28);color:var(--alarm)}
-.q2 .pill.alarm:hover{border-color:rgba(248,113,113,.5);background:rgba(248,113,113,.08);color:var(--alarm)}
+.q2 .pill.alarm{border-color:rgba(var(--alarm-rgb), .28);color:var(--alarm)}
+.q2 .pill.alarm:hover{border-color:rgba(var(--alarm-rgb), .5);background:rgba(var(--alarm-rgb), .08);color:var(--alarm)}
 .q2 .pill.alarm .n{font-family:var(--font-mono);font-size:11px;opacity:.9}
-.q2 .pill.alarm.is-active{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.42);color:var(--alarm)}
+.q2 .pill.alarm.is-active{background:rgba(var(--alarm-rgb), .14);border-color:rgba(var(--alarm-rgb), .42);color:var(--alarm)}
 .q2 .pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.85}
 .q2 .filters .flabel{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-right:-2px}
 .q2 .fchip{
@@ -213,7 +213,7 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 }
 .q2 .fchip:hover{opacity:1}
 .q2 .fchip .x{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:var(--ink-3)}
-.q2 .fchip:hover .x{background:rgba(248,113,113,.16);color:var(--alarm)}
+.q2 .fchip:hover .x{background:rgba(var(--alarm-rgb), .16);color:var(--alarm)}
 .q2 .fchip svg{width:10px;height:10px;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;fill:none}
 /* By default (bar fits one row on wide monitors) the date pager stays inline.
    app.js measures the real layout and adds .filters-wrapped only when the bar
@@ -325,8 +325,8 @@ body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
 body.layout-edit .q2 table.qtable{user-select:none}
 .q2 table.qtable tbody tr{transition:background var(--ui-speed) ease}
 .q2 table.qtable tbody tr:hover{background:var(--card-2)}
-.q2 table.qtable tbody tr.queue-row-overdue{background:rgba(248,113,113,.055)}
-.q2 table.qtable tbody tr.queue-row-overdue:hover{background:rgba(248,113,113,.1)}
+.q2 table.qtable tbody tr.queue-row-overdue{background:rgba(var(--alarm-rgb), .055)}
+.q2 table.qtable tbody tr.queue-row-overdue:hover{background:rgba(var(--alarm-rgb), .1)}
 .q2 td.dotcell{width:26px;padding-left:14px;padding-right:0}
 .q2 .sdot{width:8px;height:8px;border-radius:50%;display:block}
 /* У продакшні статус-крапка вкладена у комірку наряду (без окремої dot-колонки,
@@ -378,7 +378,7 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 td.order-id .badge.chg{max-width:100%;overflow:hidden}
 .q2 td.order-id .badge.chg span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .q2 .ordbtn{display:inline-block;max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
-.q2 tr.queue-row-overdue .sdot{box-shadow:0 0 0 3px rgba(248,113,113,.22)}
+.q2 tr.queue-row-overdue .sdot{box-shadow:0 0 0 3px rgba(var(--alarm-rgb), .22)}
 .q2 .ordbtn{font-family:var(--font-mono);font-size:12.5px;font-weight:500;color:var(--ink);letter-spacing:-.01em;text-decoration:none}
 .q2 .ordbtn:hover{color:var(--accent-c);opacity:1}
 .q2 .src{
@@ -494,28 +494,28 @@ body.layout-edit .q2 table.qtable{user-select:none}
   width:140px;max-width:140px;
 }
 .q2 .badge{font-size:11px;padding:1px 7px;border-radius:5px;font-weight:500}
-.q2 .badge.problem{background:rgba(248,113,113,.14);color:#f87878;border:1px solid rgba(248,113,113,.3)}
-.q2 .badge.redo{background:rgba(240,163,94,.13);color:var(--warn);border:1px solid rgba(240,163,94,.3)}
+.q2 .badge.problem{background:rgba(var(--alarm-rgb), .14);color:var(--alarm);border:1px solid rgba(var(--alarm-rgb), .3)}
+.q2 .badge.redo{background:rgba(var(--warn-rgb), .13);color:var(--warn);border:1px solid rgba(var(--warn-rgb), .3)}
 .q2 .sync-warning{color:var(--warn);margin-left:5px;display:inline-flex;vertical-align:middle}
 .q2 .sync-warning svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7}
 
 /* Paused-sync note in the sidebar: amber, calm — a standing state, not an alarm. */
-.q2 .sync-paused-note{margin:8px 0;padding:8px 10px;border:1px solid rgba(240,163,94,.4);border-radius:8px;background:rgba(240,163,94,.12);color:var(--warn);font-size:12px;line-height:1.4}
+.q2 .sync-paused-note{margin:8px 0;padding:8px 10px;border:1px solid rgba(var(--warn-rgb), .4);border-radius:8px;background:rgba(var(--warn-rgb), .12);color:var(--warn);font-size:12px;line-height:1.4}
 
 /* "Technician corrected this row" — a warm tint on the row plus a badge naming
    what moved. Two levels: a plain change is amber; a change to a work already
    TAKEN (Sum3D filled) is red, because that is the one that turns into scrap.
    The badge is a button — the operator dismisses it, nothing expires on a
    timer, so a change made during a break is still flagged on their return. */
-.q2 .queue-row-changed > td{background:rgba(240,163,94,.10)}
-.q2 .queue-row-changed-taken > td{background:rgba(248,113,113,.12)}
+.q2 .queue-row-changed > td{background:rgba(var(--warn-rgb), .10)}
+.q2 .queue-row-changed-taken > td{background:rgba(var(--alarm-rgb), .12)}
 .q2 .chg-form{display:inline-flex;margin:0 0 4px}
-.q2 .badge.chg{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:3px 8px;border:1px solid rgba(240,163,94,.42);border-radius:7px;background:rgba(240,163,94,.14);color:var(--warn);font-size:11px;line-height:1.25;text-align:left;cursor:pointer}
+.q2 .badge.chg{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:3px 8px;border:1px solid rgba(var(--warn-rgb), .42);border-radius:7px;background:rgba(var(--warn-rgb), .14);color:var(--warn);font-size:11px;line-height:1.25;text-align:left;cursor:pointer}
 .q2 .badge.chg svg{flex:0 0 auto;width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .q2 .badge.chg span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.q2 .badge.chg:hover{background:rgba(240,163,94,.24)}
-.q2 .badge.chg.chg-taken{border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.16);color:#f87878}
-.q2 .badge.chg.chg-taken:hover{background:rgba(248,113,113,.26)}
+.q2 .badge.chg:hover{background:rgba(var(--warn-rgb), .24)}
+.q2 .badge.chg.chg-taken{border-color:rgba(var(--alarm-rgb), .45);background:rgba(var(--alarm-rgb), .16);color:var(--alarm)}
+.q2 .badge.chg.chg-taken:hover{background:rgba(var(--alarm-rgb), .26)}
 .q2 .badge.chg:focus-visible{outline:2px solid var(--control-edge);outline-offset:1px}
 
 /* Delete-from-queue: destructive, so it stays out of the way until the row is
@@ -528,7 +528,7 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .row-delete svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .q2 .queue-row:hover .row-delete{opacity:1}
 .q2 .row-delete:focus-visible{opacity:1;outline:2px solid var(--control-edge);outline-offset:1px}
-.q2 .row-delete:hover{color:#f87878;background:rgba(248,113,113,.14)}
+.q2 .row-delete:hover{color:var(--alarm);background:rgba(var(--alarm-rgb), .14)}
 @media (hover:none){.q2 .row-delete{opacity:.55}}
 
 .q2 .qfoot{display:flex;align-items:center;gap:10px;padding:9px 15px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3);flex-wrap:wrap}
@@ -564,8 +564,8 @@ body.layout-edit .q2 table.qtable{user-select:none}
   font-family:var(--font-mono);font-size:11px;font-weight:500;padding:1px 6px;border-radius:5px;
   background:rgba(var(--accent-rgb), .14);color:var(--accent-c);border:1px solid rgba(var(--accent-rgb), .26);
 }
-.q2 .side-head .side-count.err{background:rgba(248,113,113,.14);color:var(--alarm);border-color:rgba(248,113,113,.3)}
-.q2 .side-head .side-count.warn{background:rgba(240,163,94,.13);color:var(--warn);border-color:rgba(240,163,94,.28)}
+.q2 .side-head .side-count.err{background:rgba(var(--alarm-rgb), .14);color:var(--alarm);border-color:rgba(var(--alarm-rgb), .3)}
+.q2 .side-head .side-count.warn{background:rgba(var(--warn-rgb), .13);color:var(--warn);border-color:rgba(var(--warn-rgb), .28)}
 .q2 .side-head .chev{margin-left:auto;width:14px;height:14px;flex:0 0 14px;stroke:var(--ink-3);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .16s ease}
 .q2 .side-sec[data-open="true"] .chev{transform:rotate(180deg)}
 .q2 .side-body{padding:0 var(--queue-density-card-pad,13px) var(--queue-density-card-pad,13px);border-top:1px solid var(--line)}
@@ -592,8 +592,8 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .state svg{width:17px;height:17px;flex:0 0 17px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .q2 .state strong{display:block;font-size:12.5px;font-weight:600}
 .q2 .state p{margin:2px 0 0;font-size:11.5px;line-height:1.4}
-.q2 .state.err{background:rgba(248,113,113,.09);border:1px solid rgba(248,113,113,.28);color:var(--alarm)}
-.q2 .state.err p{color:#f0b4b4}
+.q2 .state.err{background:rgba(var(--alarm-rgb), .09);border:1px solid rgba(var(--alarm-rgb), .28);color:var(--alarm)}
+.q2 .state.err p{color:var(--alarm-ink)}
 .q2 .state.ok{background:rgba(var(--accent-base-rgb), .1);border:1px solid rgba(var(--accent-rgb), .3);color:var(--accent-c)}
 .q2 .state.ok p{color:var(--accent-ink)}
 .q2 .kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:var(--queue-density-kv-pad,6px) 0;font-size:12px;color:var(--ink-2)}
@@ -718,3 +718,38 @@ body.layout-edit .q2 table.qtable{user-select:none}
   background:none;color:var(--ink-3);font:inherit;font-size:12.5px;cursor:pointer;
 }
 .q2 .seg .seg-drop:hover{color:var(--color-overdue)}
+
+/* ── «Ось ця робота» на кольоровому матеріалі ──────────────────────────────
+   `.row-locate` (рядок ~104) і смуга матеріалу (~678) мають ОДНАКОВУ
+   специфічність, а смуга оголошена нижче — тобто на Ti/PMMA/SLM/Wax поводир
+   не малювався взагалі. Правила фокуса цю пастку вже обходять комбінованими
+   селекторами; locate — ні. Наслідок був відчутний: «Останні дії» → клік →
+   стрибок через сотні рядків, і оператор шукає рядок очима вручну, бо
+   лишався тільки 2,4-секундний тінт, який на прострочених майже не читається.
+   Порядок у файлі = каскад, тому дублюємо селектор нижче, а не переносимо. */
+.q2 table.qtable tbody tr.row-locate[data-mat="mat-ti"] > td:first-child{box-shadow:inset 3px 0 0 #63c88b,inset 2px 0 0 var(--accent-b)}
+.q2 table.qtable tbody tr.row-locate[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 #d8b46a,inset 2px 0 0 var(--accent-b)}
+.q2 table.qtable tbody tr.row-locate[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 #9aa7b4,inset 2px 0 0 var(--accent-b)}
+.q2 table.qtable tbody tr.row-locate[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #3fb6c9,inset 2px 0 0 var(--accent-b)}
+
+/* ── Джерело роботи: пошта синя, клієнт фіолетовий ─────────────────────────
+   Були два майже однакові сині: рядок пошти 8% і рядок клієнта 6%, тобто
+   різниця в 2% альфи. Гірше — чіп «Пошта» перефарбовувався бірюзовим
+   акцентом через .q2 .src, а чіп «Клієнт» лишався синім, тож фон рядка і
+   чіп вказували в різні боки. Джерела різняться правилами видачі й наявністю
+   вкладень, тому кожне отримує власний канал. */
+.q2 .source-badge-email.src{border-color:var(--color-email-border);color:var(--color-email);background:var(--color-email-surface)}
+.q2 .source-badge-client.src{border-color:rgba(167,139,250,.42);color:#c4b5fd;background:rgba(167,139,250,.13)}
+.q2 table.qtable tbody tr.queue-row-client{background:rgba(167,139,250,.06)}
+.q2 table.qtable tbody tr.queue-row-client:hover{background:rgba(167,139,250,.1)}
+
+/* ── Єдине залите трактування черги ───────────────────────────────────────
+   На екрані, де оператор проводить 90% дня, не було ЖОДНОЇ залитої кнопки:
+   шість елементів несли той самий тінт 15-24%, тож «Додати в чергу і таблицю»
+   (єдиний справжній коміт) виглядав рівно як «Відкрити видачу». Це той самий
+   дефект, який тріаж пошти виправив окремим проходом.
+   Не перевикористовувати .apex на утилітах: тінт = крок, заливка = коміт. */
+.q2 .btn.apex,
+.q2 .addwork-submit.apex{background:var(--accent-b);border-color:var(--accent-b);color:var(--accent-well);font-weight:600}
+.q2 .btn.apex:hover,
+.q2 .addwork-submit.apex:hover{background:var(--accent-c);border-color:var(--accent-c);color:var(--accent-well)}

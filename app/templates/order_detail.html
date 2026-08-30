@@ -11,8 +11,8 @@
   'відфрезеровано': ('var(--accent-c)', false),
   'знайдено при видачі': ('var(--accent-e)', false),
   'видано': ('#5c6b80', false),
-  'проблема': ('#f87171', false),
-  'переробка': ('#f0a35e', false)
+  'проблема': ('var(--alarm)', false),
+  'переробка': ('var(--warn)', false)
 } %}
 <main class="passport2">
     {% if error %}
@@ -106,7 +106,7 @@
             </button>
             {% endfor %}
         </form>
-        <div class="p2-toast" id="p2-status-toast" role="status" aria-live="polite">Статус збережено — оновіть сторінку, щоб побачити нову хронологію</div>
+        <div class="p2-toast" id="p2-status-toast" role="status" aria-live="polite">Збережено</div>
         {% endif %}
     </div>
 
@@ -239,13 +239,37 @@
 
 <script>
 (function(){
+  // Паспорт відкривається у slide-over черги, тому «оновіть сторінку» тут
+  // означало F5 усієї черги — тобто втрату скролу, фільтрів і дня. Замість
+  // прохання перезавантажуємо сам паспорт, коли хронологія справді змінилась.
+  // Друга половина фіксу: збереження Sum3D раніше не давало НІЯКОГО локального
+  // фідбеку — мовчазна кнопка за чеклістом §15 це «не готово».
   var toast = document.getElementById("p2-status-toast");
+  if (!toast) return;
+
+  function flash(text, reloadAfter) {
+    toast.textContent = text;
+    toast.classList.add("on");
+    window.setTimeout(function () {
+      toast.classList.remove("on");
+      if (reloadAfter) window.location.reload();
+    }, reloadAfter ? 900 : 2200);
+  }
+
   var opts = document.querySelector(".passport2 .status-opts");
-  if(opts && toast){
-    opts.addEventListener("htmx:afterRequest", function(){
-      toast.classList.add("on");
+  if (opts) {
+    opts.addEventListener("htmx:afterRequest", function (e) {
+      if (e.detail && e.detail.successful === false) return;
+      flash("Статус збережено", true);
     });
   }
+
+  document.querySelectorAll(".passport2 form.sumrow").forEach(function (form) {
+    form.addEventListener("htmx:afterRequest", function (e) {
+      if (e.detail && e.detail.successful === false) return;
+      flash("Sum3D збережено", false);
+    });
+  });
 })();
 </script>
 {% endblock %}

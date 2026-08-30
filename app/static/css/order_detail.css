@@ -117,8 +117,8 @@
 .rework-prev-calc {
   margin-bottom: var(--space-3);
   padding: var(--space-3);
-  border: 1px solid rgba(240, 163, 94, 0.32);
-  background: rgba(240, 163, 94, 0.07);
+  border: 1px solid rgba(var(--warn-rgb),  0.32);
+  background: rgba(var(--warn-rgb),  0.07);
   border-radius: var(--radius-card, 10px);
 }
 .rework-prev-calc .rpc-row {

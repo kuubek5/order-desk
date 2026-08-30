@@ -113,6 +113,27 @@ def attach_action_toast(response: Response, entry: ActionLog, message: str) -> N
     )
 
 
+def attach_sync_error_toast(response: Response, note: str, sync_error: str) -> None:
+    """Гучно сказати, що в порталі збережено, а в таблицю НЕ записано.
+
+    Раніше гілка помилки не чіпляла нічого: єдиним слідом лишався трикутник
+    у самому рядку, а полл черги перемальовує рядок кожні 15 секунд — і
+    попередження зникало разом зі старою розміткою. Для логіста, техніка й
+    другого оператора робота при цьому лишалась «можна брати», тобто прямий
+    шлях відфрезерувати її вдруге. Тост живе поза #queue-rows і свап його не
+    вбиває.
+
+    ensure_ascii лишається увімкненим із тієї ж причини, що й вище."""
+    response.headers["HX-Trigger"] = json.dumps(
+        {
+            "toast": {
+                "message": f"{note}: у таблицю НЕ записано — {sync_error}",
+                "kind": "error",
+            }
+        }
+    )
+
+
 _static_root: Path = resource_path("app/static")
 
 

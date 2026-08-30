@@ -14,8 +14,8 @@
   'відфрезеровано': ('var(--accent-c)', false),
   'знайдено при видачі': ('var(--accent-e)', false),
   'видано': ('#5c6b80', false),
-  'проблема': ('#f87171', false),
-  'переробка': ('#f0a35e', false)
+  'проблема': ('var(--alarm)', false),
+  'переробка': ('var(--warn)', false)
 } %}
 {% set _dc = _dot.get(order.status, ('#8fa3bb', false)) %}
 {% set _rework = order.active_rework %}

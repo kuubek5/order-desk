@@ -63,8 +63,8 @@ main.passport2{max-width:760px;margin:0 auto;padding:20px}
 }
 .passport2 .sbtn:hover{color:var(--ink);border-color:var(--line-2)}
 .passport2 .sbtn[aria-pressed="true"]{background:rgba(var(--accent-base-rgb), .16);border-color:rgba(var(--accent-rgb), .42);color:var(--accent-c)}
-.passport2 .sbtn.alarm[aria-pressed="true"]{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.42);color:var(--alarm)}
-.passport2 .sbtn.warn[aria-pressed="true"]{background:rgba(240,163,94,.13);border-color:rgba(240,163,94,.4);color:var(--warn)}
+.passport2 .sbtn.alarm[aria-pressed="true"]{background:rgba(var(--alarm-rgb), .14);border-color:rgba(var(--alarm-rgb), .42);color:var(--alarm)}
+.passport2 .sbtn.warn[aria-pressed="true"]{background:rgba(var(--warn-rgb), .13);border-color:rgba(var(--warn-rgb), .4);color:var(--warn)}
 .passport2 .sbtn .sdot{width:7px;height:7px;border-radius:50%}
 .passport2 .timeline{display:flex;flex-direction:column}
 .passport2 .tl-item{display:flex;gap:12px;padding:9px 0}
@@ -99,3 +99,10 @@ main.passport2{max-width:760px;margin:0 auto;padding:20px}
 .passport2 .p2-toast.on{opacity:1}
 @media (max-width:560px){ main.passport2{padding:14px} .passport2 .tl-item .t{flex-basis:64px} }
 
+
+/* Тривожні статуси в паспорті лишають колір. Сірий пілюль (.status-badge вище)
+   оголошений після queue.css, тому перекривав ВСІ статуси однаково — «проблема»
+   і «видано» неможливо було розрізнити периферійним зором, хоча кнопки вибору
+   нижче колір мали. Сірий лишається базою, ці два — винятками. */
+.passport2 .status-badge.status-проблема{background:rgba(var(--alarm-rgb), .18);border-color:rgba(var(--alarm-rgb), .4);color:var(--alarm)}
+.passport2 .status-badge.status-переробка{background:rgba(var(--warn-rgb), .18);border-color:rgba(var(--warn-rgb), .4);color:var(--warn)}

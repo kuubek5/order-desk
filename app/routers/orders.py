@@ -41,6 +41,7 @@ from app.parser import HEADER_ROWS
 from app.routers.deps import (
     SYNC_PAUSED_MSG,
     attach_action_toast,
+    attach_sync_error_toast,
     get_current_user,
     get_db,
     templates,
@@ -203,6 +204,8 @@ async def set_sum3d_id(
     )
     if sync_error is None:
         attach_action_toast(response, log_entry, note)
+    else:
+        attach_sync_error_toast(response, note, sync_error)
     return response
 
 
@@ -258,6 +261,8 @@ async def set_operator(request: Request, order_id: int, operator: str = Form("")
     )
     if sync_error is None:
         attach_action_toast(response, log_entry, note)
+    else:
+        attach_sync_error_toast(response, note, sync_error)
     return response
 
 
@@ -759,7 +764,9 @@ async def set_status(
     response = templates.TemplateResponse(
         request, "_order_row.html", _row_context(request, db, order, sync_error)
     )
-    if log_entry is not None and sync_error is None:
+    if sync_error is not None:
+        attach_sync_error_toast(response, f"статус → {status}", sync_error)
+    elif log_entry is not None:
         attach_action_toast(response, log_entry, f"статус → {status}")
     return response
 

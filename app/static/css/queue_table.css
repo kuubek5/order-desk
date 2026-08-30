@@ -572,7 +572,11 @@
 .empty-mill .em-burr {
   -webkit-mask-image: url(/static/img/empty-spindle-burr.png);
   mask-image: url(/static/img/empty-spindle-burr.png);
-  animation: emPlunge 3.6s cubic-bezier(.35, 0, .3, 1) .3s infinite both;
+  /* ОДИН прохід, не петля. Разом із дванадцятьма пилинками це давало 13
+     нескінченних анімацій на екрані — прямо проти правила «один живий сигнал»,
+     яке тріаж пошти виборював окремо. Порожню чергу бачать кілька разів на
+     день, і фреза, що довбає диск без упину, тягне око з робочої частини. */
+  animation: emPlunge 3.6s cubic-bezier(.35, 0, .3, 1) .3s 1 both;
 }
 /* Точка контакту фрези з диском — виміряна по самій масці, не на око. */
 .empty-mill .em-dust { position: absolute; left: 46.4%; top: 45.8%; width: 0; height: 0; }
@@ -582,7 +586,7 @@
   border-radius: 50%;
   background: var(--accent);
   opacity: 0;
-  animation: emDust 3.6s linear infinite;
+  animation: emDust 3.6s linear 1 both;
   animation-delay: calc(.3s + var(--t));
 }
 @keyframes emBaseIn { from { opacity: 0; transform: translateY(6px) } to { opacity: .8; transform: none } }
