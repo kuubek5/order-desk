@@ -142,7 +142,12 @@
   line-height:1;
 }
 .matpair .mp-v{
-  display:inline-flex;align-items:center;padding:0 9px;min-width:0;
+  /* column-gap ОБОВ'ЯЗКОВИЙ: це flex-контейнер, і пробільний текстовий вузол
+     між <span>моно</span> і <span>А3</span> у flex колапсується — «моно А3»
+     з таблиці читалось як «моноА3». Оператор порівнює це значення з
+     таблицею оком, і зниклий пробіл виглядав як зіпсований синк
+     (бойовий скрін 30.08.26). */
+  display:inline-flex;align-items:center;column-gap:.35em;padding:0 9px;min-width:0;
   font-size:var(--matpair-fs,12.5px);color:var(--ink);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }

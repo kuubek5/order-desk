@@ -255,3 +255,25 @@ def test_backdrop_radar_keeps_its_motion():
     assert 'prefers-reduced-motion' in body, (
         'Зник guard prefers-reduced-motion: анімацію мусить бути видно як вимкнути.'
     )
+
+
+def test_flex_value_slot_keeps_the_space_between_word_and_code():
+    """«моно А3» з таблиці показувалось як «моноА3» — і виглядало як зіпсований
+    синк (бойовий скрін 30.08.26, власник назвав це неприємним багом).
+
+    Причина не в даних: .mp-v — flex-контейнер, а пробільний текстовий вузол
+    між <span>моно</span> і <span>А3</span> у flex КОЛАПСУЄТЬСЯ. Дані були
+    цілі, пробіл з'їдав CSS. Сторож: доки слот значення лишається flex, він
+    мусить нести власний gap — бо на пробіл у розмітці покладатись не можна.
+    """
+    import re
+
+    css = (STATIC_JS.parent / "css" / "update_overlay.css").read_text(encoding="utf-8")
+    match = re.search(r"\.matpair \.mp-v\{(?:[^}]*)\}", css)
+    assert match, "правило .matpair .mp-v зникло — перевірте, куди переїхало"
+    rule = match.group(0)
+    if "flex" in rule:
+        assert "gap" in rule, (
+            ".mp-v — flex без gap: пробіл між словом і кодом матеріалу "
+            "колапсує, і «моно А3» знову стане «моноА3»"
+        )
