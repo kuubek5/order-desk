@@ -361,6 +361,29 @@ document.body.addEventListener("mailFilesChanged", () => {
   }, 450);
 });
 
+// Провал HTMX-запиту мусить бути ЧУТНИМ.
+//
+// Сторінка помилки свідомо не віддається на HX-Request (вона зламала б
+// розмітку, вставившись у середину таблиці) — але заміни в неї не було, тобто
+// на черзі й у тріажі, де майже все ходить через HTMX, 500 не показував
+// НІЧОГО. Оператор тисне «Взяти», сервер падає, кнопка мовчить. Це рівно та
+// пастка, яку в цьому проєкті вже ловили з тихим провалом запису в таблицю:
+// мовчазна помилка гірша за гучну, бо робота лишається «можна брати» для всіх
+// інших і піде в повторне фрезерування.
+document.body.addEventListener("htmx:responseError", (event) => {
+  const status = (event.detail && event.detail.xhr && event.detail.xhr.status) || 0;
+  // 401 — окремий випадок: сесія скінчилась, і тост тут нічого не дає.
+  if (status === 401) { window.location.href = "/login"; return; }
+  const what = status ? " (код " + status + ")" : "";
+  showToast("Дію не виконано" + what + " — спробуйте ще раз", "error");
+});
+
+// Мережа обірвалась посеред дії — окремо від 5xx: тут винен не застосунок, і
+// порада інша.
+document.body.addEventListener("htmx:sendError", () => {
+  showToast("Немає зв'язку із застосунком — дію не виконано", "error");
+});
+
 // HTMX fires a DOM event named after each key in the response's HX-Trigger
 // header. The server sends {"toast": {...}} for anything the operator must see.
 document.body.addEventListener("toast", (event) => {

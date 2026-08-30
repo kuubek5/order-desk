@@ -68,6 +68,7 @@
                 руками. Ширини стовпців лишаються перетягуванням межі, тому
                 «Скинути» в панелі шле подію, яку ловить queue.js. #}
             {{ lookgear('queue', 'body', _up.queue_row_pad, _up.queue_step,
+                        pad_probe='.q2 table.qtable tbody td',
                         presets=[('compact', 0, 'Компактний'), ('', 0, 'Звичайний'),
                                  ('spacious', 0, 'Просторий')],
                         density=_up.queue_density,

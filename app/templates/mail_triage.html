@@ -92,9 +92,9 @@
            12px — на дотик пальцем біля верстата. #}
         {{ lookgear('mail', 'main.mailv2', _up.mail_row_pad, _up.mail_step,
                     width=_up.mail_list_w, width_target='.mailv2 .list-panel',
+                    pad_probe='.mailv2 .mailrow',
                     presets=[('', 3, 'Щільно'), ('', 0, 'Звичайно'), ('', 12, 'Просторо')],
                     pad_default=6) }}
-        </div>
     </div>
 
     {% if filter_suggest %}

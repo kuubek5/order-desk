@@ -36,9 +36,22 @@
     var toggle = root.querySelector("[data-look-toggle]");
     if (!scope || !host || !panel || !toggle) return;
 
-    // Значення, з якого починає лічильник відступу, якщо оператор ще нічого
-    // не крутив. Мусить збігатися з дефолтом CSS-змінної на цьому екрані.
-    var padFallback = parseInt(root.dataset.lookPadDefault || "6", 10);
+    // Стартовий відступ, коли оператор ще нічого не крутив, БЕРЕТЬСЯ З ЕКРАНА,
+    // а не зі сталої в розмітці. Стала брехала одразу в трьох місцях: на черзі
+    // пресет «Компактний» дає 4px, «Просторий» 12px, а панель писала 8; у
+    // пошті вузький режим списку має 8px, широкий 6. Наслідок гірший за
+    // неточний підпис: після «Компактного» клік по «−» рахувався від 8 і
+    // давав 6, тобто кнопка «менший відступ» робила рядок ВИЩИМ.
+    // dataset лишається запасним значенням на випадок, коли міряти нема чого.
+    function padNow() {
+      var probe = document.querySelector(root.dataset.lookPadProbe || "");
+      if (probe) {
+        var measured = parseFloat(getComputedStyle(probe).paddingTop);
+        if (measured > 0) return Math.round(measured);
+      }
+      return parseInt(root.dataset.lookPadDefault || "6", 10) || 6;
+    }
+    var padFallback = padNow();
 
     var state = {
       pad: parseInt(root.dataset.pad || "0", 10) || 0,
@@ -189,6 +202,20 @@
       window.addEventListener(name, stopHold, true);
     });
 
+    // Клавіатура. Крок робиться на pointerdown, тому Enter/Space на
+    // сфокусованій кнопці не робили НІЧОГО — мовчазна кнопка з підписом, який
+    // обіцяє дію. Утримання клавіші браузер віддає як потік keydown з
+    // repeat=true, і цього досить: власний таймер тут зайвий.
+    root.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" && event.key !== " " && event.key !== "Spacebar") return;
+      var dec = event.target.closest("[data-look-dec]");
+      var inc = dec ? null : event.target.closest("[data-look-inc]");
+      var btn = dec || inc;
+      if (!btn || btn.disabled) return;
+      event.preventDefault();
+      nudge(dec ? dec.dataset.lookDec : inc.dataset.lookInc, dec ? -1 : 1);
+    });
+
     root.addEventListener("click", function (event) {
       var preset = event.target.closest("[data-look-preset]");
       if (preset) {
@@ -196,6 +223,10 @@
         // інакше «Компактний» лишався б із чужими 20px і виглядав зламаним.
         state.density = preset.dataset.lookPreset;
         state.pad = parseInt(preset.dataset.lookPresetPad || "0", 10) || 0;
+        apply();
+        // Пресет міняє набір токенів, тобто й фактичний відступ — переміряти,
+        // інакше наступний «−» знову рахувався б від старого числа.
+        padFallback = padNow();
         apply();
         save();
         return;
@@ -219,6 +250,10 @@
         state.width = 0;
         state.density = "";
         state.matStyle = "";
+        // Крок теж канонний: інакше «Скинути» лишало оператору чужі 8px кроку
+        // при канонному відступі, і наступний клік стрибав удвічі далі, ніж він
+        // очікує від щойно скинутого вигляду.
+        state.step = 2;
         host.style.removeProperty("--look-row-pad");
         host.style.removeProperty("--look-list-w");
         apply();

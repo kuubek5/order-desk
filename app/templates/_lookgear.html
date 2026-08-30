@@ -14,6 +14,8 @@
    pad/step     — поточні значення з акаунта (0 = канон)
    width        — None, якщо на цьому екрані ширина не регулюється
    width_target — селектор, з якого брати стартову ширину при першому «−»
+   pad_probe    — селектор РЯДКА, з якого міряти фактичний відступ: стала в
+                  розмітці брехала (пресети дають 4/8/12px, а підпис був один)
    presets      — [(щільність, відступ, підпис)]: пресет ставить обидва
                   разом, бо «Компактний» із чужими 20px виглядав би зламаним
    mat_styles   — [(значення, підпис, підказка)] для колонки «Матеріал / Колір»
@@ -21,7 +23,7 @@
    col_edit     — показати рядок «Ширини стовпців» (лише черга): вмикає режим
                   перетягування межі заголовка
 #}
-{% macro lookgear(scope, host, pad, step, width=None, width_target='', presets=[],
+{% macro lookgear(scope, host, pad, step, width=None, width_target='', pad_probe='', presets=[],
                   density='', mat_styles=[], mat_style='', pad_default=6,
                   reset_event='', col_edit=false, title='Вигляд списку') %}
 <div class="lookgear" data-look-gear data-look-scope="{{ scope }}"
@@ -30,6 +32,7 @@
      data-density="{{ density }}" data-mat-style="{{ mat_style }}"
      data-look-pad-default="{{ pad_default }}"
      {% if width_target %}data-look-width-target="{{ width_target }}"{% endif %}
+     {% if pad_probe %}data-look-pad-probe="{{ pad_probe }}"{% endif %}
      {% if reset_event %}data-look-reset-event="{{ reset_event }}"{% endif %}>
     <button type="button" class="lookgear-btn" data-look-toggle
             aria-expanded="false" aria-controls="look-panel-{{ scope }}"

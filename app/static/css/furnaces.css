@@ -271,3 +271,11 @@ main.furnaces{position:relative;min-height:100vh}
 .q2 .fu-tile-foot b{font-family:var(--font-mono);font-weight:500;color:var(--ink)}
 .q2 .fu-tile-sep{margin:0 5px;color:var(--line-2)}
 .q2 .fu-tile-err{display:block;margin-top:6px;font-size:12px;color:var(--alarm-ink)}
+
+/* Відкритість секції печей у бічній панелі — КЛАСОМ НА body, а не атрибутом на
+   самій секції: вона свапається цілком кожні 30 с, і атрибут гинув разом зі
+   старою розміткою (плитки схлопувались самі під рукою оператора). Той самий
+   урок і те саме рішення, що в смуги над чергою. */
+.q2 .side-sec-furnace .side-body{display:none}
+body.furnace-side-open .q2 .side-sec-furnace .side-body{display:block;padding-top:11px}
+body.furnace-side-open .q2 .side-sec-furnace .chev{transform:rotate(180deg)}

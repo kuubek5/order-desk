@@ -28,6 +28,14 @@ function applyHandoutView(mode) {
 document.addEventListener("click", (event) => {
   const btn = event.target.closest(".view-btn");
   if (!btn) return;
+  // Кнопки РОЗКЛАДКИ мають той самий клас .view-btn, але не мають
+  // data-view-mode — і без цього рядка падали сюди ж, писали в localStorage
+  // "rows" і мовчки викидали оператора з «Плиток». А плитки на видачі — це
+  // STL-прев'ю, тобто головний інструмент звірки (§9.4): втратити його від
+  // кліку по сусідньому перемикачу означає зламати сам сенс екрана.
+  // Підсвітку від цієї ж колізії вже лікували в applyHandoutView, але лише в
+  // один бік — ось другий.
+  if (btn.hasAttribute("data-layout-set")) return;
   const mode = btn.dataset.viewMode === "tiles" ? "tiles" : "rows";
   try {
     window.localStorage.setItem(HANDOUT_VIEW_KEY, mode);

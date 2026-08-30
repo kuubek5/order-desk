@@ -753,10 +753,19 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 table.qtable tbody tr.queue-row-focus + tr.queue-row-focus::after{border-top:0}
 /* Смуга матеріалу лишається на своєму місці — це окремий канал, і рамка його
    не з'їдає (вона тепер узагалі не торкається комірок). */
-.q2 table.qtable tbody tr.queue-row-focus > td{
+/* Заливка пришпиленого — ТІЛЬКИ на рядку без стану.
+   `:not()` тут не про смак, а про безпеку. Попередження «технік змінив уже
+   взяту» і «технік змінив» малюються на КОМІРЦІ (.queue-row-changed > td,
+   специфічність 0-2-1), а це правило має 0-3-4 і стоїть нижче — тобто
+   перекривало їх повністю. Шпилять саме те, що тримають у руках, тобто рівно
+   ті роботи, де попередження коштує заготовки: sync.py прямо називає його
+   захистом від браку. Пришпилений рядок зі станом лишається без заливки —
+   його вже позначають контур і шпилька (§14: фон = стани, контур+шпилька =
+   «мої зараз»), а фон належить стану. */
+.q2 table.qtable tbody tr.queue-row-focus:not(.queue-row-changed):not(.queue-row-changed-taken):not(.queue-row-overdue):not(.queue-row-rework):not(.queue-row-email):not(.queue-row-client) > td{
   background:linear-gradient(rgba(var(--accent-base-rgb), .09), rgba(var(--accent-base-rgb), .09));
 }
-.q2 table.qtable tbody tr.queue-row-focus:hover > td{
+.q2 table.qtable tbody tr.queue-row-focus:not(.queue-row-changed):not(.queue-row-changed-taken):not(.queue-row-overdue):not(.queue-row-rework):not(.queue-row-email):not(.queue-row-client):hover > td{
   background:linear-gradient(rgba(var(--accent-base-rgb), .14), rgba(var(--accent-base-rgb), .14));
 }
 /* «Зняти всі» живе в тому ж сегменті, що й фільтр, але це дія, а не вигляд —

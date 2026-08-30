@@ -881,3 +881,31 @@ document.addEventListener("htmx:afterSettle", (event) => {
   // Страховка: transitionend не прийде, якщо рядок замінить полл на півдорозі.
   window.setTimeout(done, 700);
 });
+
+
+// ── Секція печей у бічній панелі: відкритість живе на body ───────────────
+// Секція свапається цілком кожні 30 с (власний полл), тому стан відкриття не
+// можна тримати атрибутом на ній: він помирав разом зі старою розміткою, і
+// розгорнуті плитки самі схлопувались менш ніж за півхвилини. Клас на body
+// свап переживає — той самий прийом, що й у смуги печей над чергою.
+const FURNACE_SIDE_KEY = "furnaceSideOpen";
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("[data-furnace-side-toggle]")) return;
+  const open = document.body.classList.toggle("furnace-side-open");
+  try { localStorage.setItem(FURNACE_SIDE_KEY, open ? "1" : "0"); } catch (e) { /* приватний режим */ }
+  document.querySelectorAll("[data-furnace-side-toggle]").forEach((btn) => {
+    btn.setAttribute("aria-expanded", String(open));
+  });
+});
+
+// aria мусить збігатися з класом і ПІСЛЯ свапу: нова розмітка приходить без
+// нього, і для скрінрідера секція лишалась би «згорнутою» завжди.
+document.addEventListener("htmx:afterSettle", (event) => {
+  const swapped = event.target && event.target.id === "furnace-side";
+  if (!swapped) return;
+  const open = document.body.classList.contains("furnace-side-open");
+  document.querySelectorAll("[data-furnace-side-toggle]").forEach((btn) => {
+    btn.setAttribute("aria-expanded", String(open));
+  });
+});
