@@ -532,3 +532,72 @@
 .folder-link:hover {
   border-color: var(--color-accent);
 }
+
+/* Ілюстрація порожньої черги: фреза пірнає до диска й піднімає пил
+   (30.08.26, обрана власником з двох ступенів — «виразний»).
+   Малюнок перемальовано з реального фото цеху, розрізано на два шари
+   ОДНІЄЇ маски: тримач із диском і шпиндель із фрезою. Обидва шари —
+   суцільна заливка акцентом крізь mask-image, тому ілюстрація сама
+   підхоплює і бірюзову тему, і Amber Forge.
+
+   Чому масками, а не картинкою: PNG не перефарбувати під тему, а SVG
+   такої деталізації довелося б малювати вручну.
+
+   ПАСТКА поділу шарів: різати прямокутним стовпцем не можна — дуги
+   тримача, що проходять ЗА фрезою, потрапляють у шар шпинделя і їздять
+   разом із ним, наче з фрези стирчать вуса. Шпинделю віддаються лише
+   вузькі (≤8px) горизонтальні пробіги біля осі фрези; решта лишається
+   базі. Скрипт поділу — scratchpad/split_layers.py, вихід у design/. */
+.empty-mill {
+  position: relative;
+  display: block;
+  width: 118px;
+  height: 118px;
+  margin-bottom: var(--space-5);
+}
+.empty-mill .em-lyr {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  opacity: .8;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center;  mask-position: center;
+  -webkit-mask-size: contain;     mask-size: contain;
+}
+.empty-mill .em-base {
+  -webkit-mask-image: url(/static/img/empty-spindle-base.png);
+  mask-image: url(/static/img/empty-spindle-base.png);
+  animation: emBaseIn .5s cubic-bezier(.22, 1, .36, 1) both;
+}
+.empty-mill .em-burr {
+  -webkit-mask-image: url(/static/img/empty-spindle-burr.png);
+  mask-image: url(/static/img/empty-spindle-burr.png);
+  animation: emPlunge 3.6s cubic-bezier(.35, 0, .3, 1) .3s infinite both;
+}
+/* Точка контакту фрези з диском — виміряна по самій масці, не на око. */
+.empty-mill .em-dust { position: absolute; left: 46.4%; top: 45.8%; width: 0; height: 0; }
+.empty-mill .em-dust i {
+  position: absolute; left: 0; top: 0;
+  width: var(--s); height: var(--s);
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  animation: emDust 3.6s linear infinite;
+  animation-delay: calc(.3s + var(--t));
+}
+@keyframes emBaseIn { from { opacity: 0; transform: translateY(6px) } to { opacity: .8; transform: none } }
+@keyframes emPlunge {
+  0%, 5%    { transform: translateY(-6px); opacity: .6 }
+  20%, 55%  { transform: translateY(9px);  opacity: .95 }
+  72%, 100% { transform: translateY(-6px); opacity: .6 }
+}
+@keyframes emDust {
+  0%, 18% { opacity: 0; transform: translate(0, 0) scale(1) }
+  23%     { opacity: .85 }
+  58%     { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(.35) }
+  100%    { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(.35) }
+}
+@media (prefers-reduced-motion: reduce) {
+  .empty-mill .em-lyr { animation: none; opacity: .8; transform: none }
+  .empty-mill .em-dust { display: none }
+}

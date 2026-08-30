@@ -31,9 +31,23 @@
     </div>
     {% else %}
     <div class="queue-empty">
-        <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3" class="duo"/>
-            <ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 11v6c0 1.7 3.1 3 7 3 1.2 0 2.4-.1 3.3-.4"/><path d="M17 16h5m-2.5-2.5L22 16l-2.5 2.5"/>
-        </svg>
+        {# Ілюстрація порожньої черги: фреза пірнає до диска й піднімає пил.
+           Два шари ОДНІЄЇ маски (empty-spindle-base / -burr), тому фарбуються
+           акцентом теми й рухаються незалежно. Пилинки — 12 порожніх <i>,
+           напрямок і затримка кожної в inline-змінних, щоб один keyframe
+           обслуговував усі. Рух вимикається за prefers-reduced-motion. #}
+        <span class="empty-mill" aria-hidden="true">
+            <i class="em-lyr em-base"></i>
+            <i class="em-lyr em-burr"></i>
+            <span class="em-dust">
+                <i style="--dx:-13px;--dy:4px;--s:2.4px;--t:0s"></i><i style="--dx:11px;--dy:5px;--s:2.2px;--t:.04s"></i>
+                <i style="--dx:-8px;--dy:9px;--s:1.8px;--t:.09s"></i><i style="--dx:9px;--dy:10px;--s:2px;--t:.14s"></i>
+                <i style="--dx:-16px;--dy:-2px;--s:1.6px;--t:.19s"></i><i style="--dx:14px;--dy:-3px;--s:1.7px;--t:.24s"></i>
+                <i style="--dx:-5px;--dy:12px;--s:1.5px;--t:.29s"></i><i style="--dx:6px;--dy:13px;--s:1.6px;--t:.34s"></i>
+                <i style="--dx:-19px;--dy:6px;--s:1.4px;--t:.39s"></i><i style="--dx:17px;--dy:8px;--s:1.5px;--t:.44s"></i>
+                <i style="--dx:-3px;--dy:-8px;--s:1.3px;--t:.49s"></i><i style="--dx:4px;--dy:-9px;--s:1.4px;--t:.54s"></i>
+            </span>
+        </span>
         {% if show_overdue %}
         <h2>Прострочених робіт немає</h2>
         <p>Усе, що мало бути готове до сьогодні, вже здане або в фінальному статусі.</p>
