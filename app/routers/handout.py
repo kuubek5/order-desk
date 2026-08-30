@@ -281,6 +281,10 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             "total_works": total_works,
             "found_works": found_works,
             "total_units": total_units,
+            # Розкладка з акаунта. Потрібна і фрагменту карток (покажчик дня
+            # живе всередині нього, щоб оновлюватись разом із галочками), тому
+            # їде контекстом, а не читається в шаблоні.
+            "handout_layout": (user.handout_layout or "") if user else "",
             "unbound_count": unbound_count,
     }
 

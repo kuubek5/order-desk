@@ -131,3 +131,39 @@ def test_markup_only_offers_values_the_server_accepts():
     queue = Path("app/templates/queue.html").read_text(encoding="utf-8")
     presets = set(re.findall(r"\('([a-z]*)', \d+, '", queue))
     assert presets <= set(look_prefs.QUEUE_DENSITIES), presets
+
+
+def test_handout_layout_saves_and_comes_back():
+    """Розкладка видачі — теж на акаунті, а не в localStorage: власник просив
+    саме «запам'ятовування останнього вибору», а вибір, який гине при зміні
+    браузера, це не запам'ятовування."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        _save(_request(user.id), db, scope="handout", layout="nav")
+        db.refresh(user)
+        assert user.handout_layout == "nav"
+
+        # Невідома розкладка не зберігається: значення приходить із розмітки,
+        # тож несподіване тут означає помилку, яку краще побачити.
+        assert _save(_request(user.id), db, scope="handout", layout="хех").status_code == 422
+        db.refresh(user)
+        assert user.handout_layout == "nav"
+
+        # Повернення до звичайного списку — порожній рядок, а не окреме слово.
+        _save(_request(user.id), db, scope="handout", layout="")
+        db.refresh(user)
+        assert user.handout_layout == ""
+
+
+def test_navigator_lives_inside_the_swapped_fragment():
+    """Галочка «знайдено» підмінює #handout-list. Якби покажчик дня лежав
+    ЗОВНІ цього фрагмента, його смужки прогресу застигли б на стані початку
+    дня — а він існує рівно для того, щоб показувати, скільки лишилось."""
+    from pathlib import Path
+
+    fragment = Path("app/templates/_handout_cards.html").read_text(encoding="utf-8")
+    page = Path("app/templates/handout.html").read_text(encoding="utf-8")
+    assert 'id="handout-list"' in fragment
+    assert "daynav" in fragment, "покажчик мусить бути у фрагменті, який свапається"
+    assert "daynav" not in page, "у сторінці його бути не повинно — застигне"

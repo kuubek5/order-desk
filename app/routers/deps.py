@@ -258,6 +258,7 @@ def ui_prefs(request: Request) -> dict:
         "queue_row_pad": 0,
         "queue_mat_style": "",
         "queue_step": 0,
+        "handout_layout": "",
     }
     mirrored = False
     try:
@@ -280,6 +281,7 @@ def ui_prefs(request: Request) -> dict:
                         "queue_row_pad": user.queue_row_pad or 0,
                         "queue_mat_style": user.queue_mat_style or "",
                         "queue_step": user.queue_ui_step or 0,
+                        "handout_layout": user.handout_layout or "",
                     }
                     mirrored = True
             finally:

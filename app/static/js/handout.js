@@ -16,7 +16,11 @@ function applyHandoutView(mode) {
   if (!root) return;
   const tiles = mode === "tiles";
   root.classList.toggle("as-tiles", tiles);
-  document.querySelectorAll(".view-btn").forEach((btn) => {
+  // Селектор звужено до СВОГО перемикача. Поруч стоїть другий (розкладка
+  // екрана) з тим самим класом .view-btn, і широкий запит знімав з нього
+  // підсвітку на кожному відновленні — кнопка «Список + покажчик» виглядала
+  // невибраною, хоча розкладка була саме та.
+  document.querySelectorAll(".view-toggle .view-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.viewMode === (tiles ? "tiles" : "rows"));
   });
 }
@@ -50,4 +54,33 @@ document.addEventListener("DOMContentLoaded", restoreHandoutView);
 // самому списку — без цього кожна галочка мовчки скидала «Плитки» на «Рядки».
 document.body.addEventListener("htmx:afterSwap", (event) => {
   if (event.target && event.target.id === "handout-list") restoreHandoutView();
+});
+
+// ── Перемикач розкладки: «Список» ⇄ «Список + покажчик» ─────────────────
+// Вибір зберігається на АКАУНТІ (POST /account/look, scope=handout), а не в
+// localStorage: розкладка їде за оператором на будь-який браузер цього ПК і
+// повертається при наступному вході — так само, як теми й шестерня черги.
+//
+// Після збереження сторінка перезавантажується цілком. Розкладка міняє каркас
+// НАВКОЛО списку (з'являється друга колонка), і підміняти половину каркаса
+// заради економії пів секунди означало б плодити стани, у яких видача
+// виглядає наполовину так, наполовину інакше.
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-layout-set]");
+  if (!btn) return;
+  const layout = btn.dataset.layoutSet === "nav" ? "nav" : "";
+  const body = new URLSearchParams({ scope: "handout", layout: layout });
+  fetch("/account/look", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+    credentials: "same-origin",
+  })
+    .then((response) => {
+      if (response.ok) { window.location.reload(); return; }
+      if (window.showToast) window.showToast("Не вдалось зберегти розкладку", "error");
+    })
+    .catch(() => {
+      if (window.showToast) window.showToast("Не вдалось зберегти розкладку", "error");
+    });
 });

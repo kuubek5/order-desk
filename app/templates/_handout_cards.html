@@ -2,8 +2,33 @@
    його через HTMX. Форма з перезавантаженням сторінки кидала оператора на
    початок екрана після КОЖНОЇ галочки — а він іде списком згори вниз і
    клацає їх підряд (CLAUDE.md §2, правило про стабільний порядок). #}
-<div id="handout-list">
+<div id="handout-list"{% if handout_layout == 'nav' %} class="with-nav"{% endif %}>
     {% if client_groups %}
+
+    {% if handout_layout == 'nav' %}
+    {# Покажчик дня стоїть УСЕРЕДИНІ цього ж фрагмента свідомо: галочка
+       «знайдено» підмінює саме `#handout-list`, і якби покажчик лежав зовні,
+       його смужки прогресу застигли б на стані початку дня — а він існує рівно
+       для того, щоб показувати, скільки лишилось. Порядок у ньому той самий,
+       що й у картках (порядок таблиці), тому номер збігається з номером на
+       картці. #}
+    <aside class="daynav" aria-label="Покажчик дня">
+        <p class="daynav-h">{% if selected_day %}День {{ selected_day[:5] }}{% else %}Усі дні{% endif %}</p>
+        <div class="daynav-list">
+            {% for g in client_groups %}
+            {% set nfound = g.orders|selectattr('status', 'in', ['знайдено при видачі', 'видано'])|list|length %}
+            {% set ntotal = g.orders|length %}
+            <a class="dni{% if g.all_found %} done{% elif g.is_current %} cur{% endif %}"
+               href="#handout-client-{{ g.position }}"
+               title="{{ g.client_name }} — {{ nfound }} з {{ ntotal }} знайдено">
+                <span class="dni-n mono">{{ g.position }}</span>
+                <span class="dni-name">{{ g.client_name }}</span>
+                <span class="dni-bar" aria-hidden="true"><i style="width:{{ (nfound / ntotal * 100)|round(0) if ntotal else 0 }}%"></i></span>
+            </a>
+            {% endfor %}
+        </div>
+    </aside>
+    {% endif %}
 
     <div class="clients" data-view-root>
         {% for group in client_groups %}
@@ -12,7 +37,8 @@
         {# Клієнти йдуть у тому порядку, у якому їх фрезерували, і оператор іде
            згори вниз. Номер прибрано — порядок несе сам список; `current`
            підсвічує першого незібраного, тобто де оператор зараз. #}
-        <section class="ccard {% if group.all_found %}done{% endif %} {% if group.is_current %}current{% endif %}">
+        <section class="ccard {% if group.all_found %}done{% endif %} {% if group.is_current %}current{% endif %}"
+                 id="handout-client-{{ group.position }}">
             <div class="card-head">
                 <button type="button" class="card-collapse" aria-expanded="true" title="Згорнути / розгорнути">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -149,3 +175,8 @@
     </div>
     {% endif %}
 </div>
+
+{# Лічильник живе в шапці, поза цим фрагментом — тож летить
+   позасписковою підміною, інакше після кожної галочки він показував би
+   стан початку дня. #}
+{% with oob = true %}{% include "_handout_kpi.html" %}{% endwith %}

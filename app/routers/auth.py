@@ -19,7 +19,12 @@ from app.auth import hash_password, verify_password
 from app.license import get_license_status, get_machine_id, verify_license_key
 from app.models import User
 from app.routers.deps import UI_SESSION_KEY, get_current_user, get_db, templates
-from app.services.look_prefs import LookError, apply_mail_look, apply_queue_look
+from app.services.look_prefs import (
+    LookError,
+    apply_handout_look,
+    apply_mail_look,
+    apply_queue_look,
+)
 from app.services.operators import (
     normalize_initial,
     user_count,
@@ -220,6 +225,7 @@ async def post_account_look(
     density: str = Form(""),
     mat_style: str = Form(""),
     step: int = Form(0),
+    layout: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Зберегти вигляд списку (шестерня) — один роут на обидва екрани.
@@ -240,6 +246,8 @@ async def post_account_look(
             apply_queue_look(
                 user, density=density, row_pad=row_pad, mat_style=mat_style, step=step
             )
+        elif scope == "handout":
+            apply_handout_look(user, layout=layout)
         else:
             return Response(status_code=422)
     except LookError:

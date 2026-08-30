@@ -21,6 +21,8 @@ UI_STEPS = (0, 1, 2, 4, 8)
 QUEUE_DENSITIES = ("", "compact", "spacious")
 #: Вигляд колонки «Матеріал / Колір»: канон — маркування, "code" — техкод.
 QUEUE_MAT_STYLES = ("", "code")
+#: Розкладка видачі: канон — один стовпець карток, "nav" — плюс покажчик дня.
+HANDOUT_LAYOUTS = ("", "nav")
 
 
 @dataclass(frozen=True)
@@ -66,3 +68,9 @@ def apply_queue_look(
     user.queue_row_pad = ROW_PAD.clamp_or_zero(row_pad)
     user.queue_mat_style = mat_style
     user.queue_ui_step = step
+
+
+def apply_handout_look(user: User, *, layout: str) -> None:
+    if layout not in HANDOUT_LAYOUTS:
+        raise LookError("невідома розкладка видачі")
+    user.handout_layout = layout

@@ -61,6 +61,10 @@ class User(Base):
     queue_row_pad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     queue_mat_style: Mapped[str] = mapped_column(String(20), default="", server_default="")
     queue_ui_step: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Розкладка екрана видачі: "" — список як був, "nav" — список плюс вузький
+    # покажчик дня збоку. Теж на акаунті, а не в localStorage: вибір їде за
+    # оператором і повертається при наступному вході.
+    handout_layout: Mapped[str] = mapped_column(String(20), default="", server_default="")
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()

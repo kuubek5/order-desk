@@ -3,6 +3,7 @@
 {% block title %}Ранкова видача — KuubMill{% endblock %}
 
 {% block content %}
+{% set _up = ui_prefs(request) %}
 {% set topbar_active = 'handout' %}
 {% include "_topbar_nav.html" %}
 
@@ -48,17 +49,7 @@
 
         {% if client_groups %}
         <div class="hspine" aria-hidden="true"><i style="width:{{ (done_groups / total_groups * 100)|round(0) if total_groups else 0 }}%"></i></div>
-        {# Рахунок за ОБРАНИЙ ДЕНЬ і за поточним фільтром джерела — тобто описує
-           рівно те, що на екрані. Роботи стоять поруч із клієнтами свідомо:
-           «3 / 11 клієнтів» нічого не каже про те, скільки ще шукати в лотку —
-           у решті восьми може бути і вісім робіт, і сорок. Одиниці третім
-           числом, дрібним: їх рахують не при видачі, а в звітності. #}
-        <span class="hkpi mono">
-            <b>{{ done_groups }}</b> / {{ total_groups }} кл.
-            <span class="hkpi-sep" aria-hidden="true">·</span>
-            <b>{{ found_works }}</b> / {{ total_works }} роб.
-            <span class="hkpi-units">{{ total_units }} од.</span>
-        </span>
+        {% include "_handout_kpi.html" %}
         {% endif %}
 
         <nav class="hsrc" aria-label="Джерело робіт">
@@ -70,6 +61,20 @@
         <nav class="view-toggle" aria-label="Вигляд робіт">
             <button type="button" class="view-btn active" data-view-mode="rows" title="Черга — клієнти в порядку фрезерування">Черга</button>
             <button type="button" class="view-btn" data-view-mode="tiles" title="Плитки">Плитки</button>
+        </nav>
+        {# Розкладка екрана. Дві, бо саме дві мають сенс: звичний список і той
+           самий список із покажчиком дня збоку. Вибір зберігається НА АКАУНТІ
+           (як теми й шестерня черги), тому їде за оператором, а не за
+           браузером, і повертається при наступному вході.
+           Перемикання — повне перезавантаження сторінки, а не свап: розкладка
+           міняє каркас навколо списку, і підміняти половину каркаса заради
+           економії пів секунди означало б плодити стани, у яких видача
+           виглядає наполовину так, наполовину інакше. #}
+        <nav class="layout-toggle" data-handout-layout aria-label="Розкладка екрана">
+            <button type="button" class="view-btn{% if not _up.handout_layout %} active{% endif %}"
+                    data-layout-set="" title="Тільки список карток — як було">Список</button>
+            <button type="button" class="view-btn{% if _up.handout_layout == 'nav' %} active{% endif %}"
+                    data-layout-set="nav" title="Список плюс покажчик дня збоку: видно весь день і де ти зараз">Список + покажчик</button>
         </nav>
         {% endif %}
     </div>
