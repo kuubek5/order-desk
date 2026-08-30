@@ -91,7 +91,12 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 .mailv2 .settings-error,.mailv2 .settings-alert-error{border-color:rgba(var(--alarm-rgb), .4);background:rgba(var(--alarm-rgb), .08);color:var(--alarm-ink)}
 .mailv2 .settings-hint{font-size:12px;color:var(--ink-3)}
 
-.mailv2 .worklayout{display:flex;gap:16px;align-items:stretch;min-height:60vh;margin-top:18px}
+/* Панелі беруть ВЛАСНУ висоту, а не тягнуться на 60vh кожна. Було
+   align-items:stretch + min-height:60vh — з одинадцятьма листами й без
+   відкритого листа це давало дві порожні коробки на пів екрана, і чим
+   більший монітор, тим гірше. Обмеження висоти лишається на самих панелях,
+   тож із сотнею листів список так само скролиться. */
+.mailv2 .worklayout{display:flex;gap:16px;align-items:flex-start;margin-top:18px}
 /* Depth split: the list stays flat and slightly recessed (darker ground, no
    glow) while the detail card lifts — lighter surface + a real drop shadow — so
    «де шукаю» vs «де працюю» read as two planes, not one flat strip. */
@@ -393,7 +398,13 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 /* Порожній стан не має вдавати картку з вмістом: рамка стає пунктирною,
    фон і тінь знімаються, тож велика площа читається як «місце для листа»,
    а не як зламаний блок. */
-.mailv2 .detail-panel:has(.empty-triage){background:transparent;border-style:dashed;box-shadow:none}
+/* Порожній стан: пунктирна межа, прозорий фон і НЕВЕЛИКА висота. Раніше
+   панель розтягувалась на всю висоту вікна навколо крихітної підказки —
+   на широкому моніторі це і був той «величезний порожній блок». Тепер це
+   компактна підказка «сюди стане лист», яка не претендує на пів екрана. */
+.mailv2 .detail-panel:has(.empty-triage){background:transparent;border-style:dashed;box-shadow:none;
+  min-height:0;align-self:stretch}
+.mailv2 .detail-panel:has(.empty-triage) .empty-triage{padding:56px 20px}
 .mailv2 .empty-triage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:40px 20px;text-align:center}
 .mailv2 .empty-triage .icon{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:rgba(var(--accent-base-rgb), .1);border:1px solid rgba(var(--accent-rgb), .28);color:var(--accent-c)}
 .mailv2 .empty-triage .icon svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
@@ -451,3 +462,23 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
   .mailv2 .mailrow .r2{flex:1 1 auto}
   .mailv2 .mailrow{padding:6px 14px}
 }
+
+/* ── Поки лист не обрано: список на всю ширину ────────────────────────────
+   Двопанельна розкладка має сенс, коли є ЩО показувати праворуч. Доки лист
+   не відкрито, права половина — порожнеча, і чим ширший монітор, тим вона
+   більша: на 2000px це була дірка ~1100px завширшки з крихітною підказкою
+   посередині. Тепер список розтягується на всю ширину (а разом із ним
+   спрацьовує контейнерний запит — рядок в один поверх, видно більше листів),
+   а підказка стає смужкою під ним. Клік по листу повертає дві колонки. */
+.mailv2 .worklayout:has(.empty-triage){display:block}
+/* Ширина обмежена, вирівняна ПО ЛІВОМУ краю — як заголовок і таби вище.
+   Розтягнутий на 1700px рядок давав діру посередині між темою й часом (та
+   сама вада, тільки дзеркальна), а центрований список розходився з рештою
+   сторінки, яка починається зліва. 1180px — стеля, за якою рядок перестає
+   читатись як рядок. */
+.mailv2 .worklayout:has(.empty-triage) .list-panel{width:100%;max-width:1180px;max-height:calc(100vh - 260px)}
+.mailv2 .worklayout:has(.empty-triage) .detail-panel{margin:12px 0 0;max-width:1180px;max-height:none}
+.mailv2 .worklayout:has(.empty-triage) .empty-triage{flex-direction:row;align-items:center;justify-content:center;gap:16px;padding:16px 20px;text-align:left}
+.mailv2 .worklayout:has(.empty-triage) .empty-triage .icon{width:38px;height:38px;border-radius:10px;flex:0 0 auto}
+.mailv2 .worklayout:has(.empty-triage) .empty-triage h3{margin:0}
+.mailv2 .worklayout:has(.empty-triage) .empty-triage p{max-width:none}
