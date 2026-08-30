@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -43,6 +44,8 @@ from app.runtime import resource_path
 # Рідне розділення панелі Lasal. Зони нижче — піксельні координати В ЦІЙ
 # системі; кадр іншого розміру ми свідомо НЕ масштабуємо (див. read_panel).
 PANEL_SIZE = (800, 600)
+
+logger = logging.getLogger(__name__)
 
 GLYPHS_PATH = "app/data/furnace_glyphs.json"
 
@@ -163,6 +166,12 @@ def load_glyphs() -> dict[int, dict[str, list[list[str]]]]:
     """Еталони цифр: висота шрифту → цифра → список бітмап-варіантів."""
     path = Path(resource_path(GLYPHS_PATH))
     if not path.exists():
+        # Мовчазне «нічого не знаю» — найгірша з можливих відповідей: статус
+        # читається кольором і далі працює, а ВСІ числа зникають, і причина
+        # ніде не написана. Саме так це виглядало у зібраному застосунку.
+        logger.error(
+            "Еталони цифр не знайдено: %s — числа з табло читатись не будуть", path
+        )
         return {}
     raw = json.loads(path.read_text(encoding="utf-8"))
     return {int(h): chars for h, chars in raw.get("fonts", {}).items()}
@@ -222,7 +231,10 @@ def _segments(image: Image.Image, ink: Callable) -> list[tuple[int, int, int, in
             start = None
     if start is not None:
         runs.append((start, width))
-    runs = _split_glued(runs)
+    ink_per_column = [
+        sum(1 for y in range(height) if ink(px[x, y][:3])) for x in range(width)
+    ]
+    runs = _split_glued(runs, ink_per_column)
     boxes = []
     for left, right in runs:
         ys = [y for y in range(height) for x in range(left, right) if ink(px[x, y][:3])]
@@ -230,18 +242,21 @@ def _segments(image: Image.Image, ink: Callable) -> list[tuple[int, int, int, in
     return boxes
 
 
-def _split_glued(runs: list[tuple[int, int]]) -> list[tuple[int, int]]:
+def _split_glued(
+    runs: list[tuple[int, int]], columns: Optional[list[int]] = None
+) -> list[tuple[int, int]]:
     """Розрізати склеєні сусідні символи.
 
     Табло монохромне й моноширинне, але деякі пари торкаються: на живій печі
-    «09:23:44» давало один блок завширшки 22px замість двох по 9-11 — у цього
-    шрифту в четвірки є діагональ, яка дотягується до сусіда. Наслідок був
-    тихий: число не читалось цілком, поле віддавалось порожнім, і оператор не
-    бачив, коли відкривати піч.
+    «09:23:44» приходило одним блоком 22px замість двох по 9-11 — у цього
+    шрифту діагональ четвірки дотягується до сусіда. Наслідок був тихий: число
+    не читалось цілком, і оператор не бачив, коли відкривати піч.
 
-    Ріжемо ЛИШЕ те, що явно склеєне: ширина кратна типовій із запасом. Типову
-    беремо як медіану самих же символів кадру (роздільники «:» вужчі за 4px і
-    в підрахунок не йдуть), тому число не залежить від розміру шрифту зони.
+    Ріжемо ЛИШЕ те, що явно склеєне (ширина кратна типовій), і ріжемо ПО
+    ДОЛИНАХ — колонках із найменшою кількістю чорнила, — а не рівними
+    частинами. Рівний поділ давав частини на піксель ширші за еталон, а
+    звірка тепер точна: символ інакшого розміру не збігається ні з чим, і
+    «виправлення» перетворювало одну ваду на іншу.
     """
     widths = sorted(right - left for left, right in runs if right - left > 4)
     if not widths:
@@ -253,20 +268,40 @@ def _split_glued(runs: list[tuple[int, int]]) -> list[tuple[int, int]]:
     for left, right in runs:
         span = right - left
         parts = round(span / typical)
-        # Ріжемо лише при впевненому збігу: два-три символи, і ширина справді
-        # близька до кратної. Інакше лишаємо як є — краще нерозпізнаний
-        # символ, ніж вигаданий поділ.
-        # Допуск пропорційний, а не в пікселях: склеєна пара «44» дала 22px
-        # при типовій 9 (18 + діагональ четвірки), і жорсткий допуск її не
-        # пускав. 40% від очікуваної ширини відсікає випадкові збіги, але
-        # ловить реальне склеювання.
-        if 2 <= parts <= 3 and abs(span - parts * typical) <= 0.4 * typical * parts:
-            step = span / parts
-            for i in range(parts):
-                out.append((left + round(i * step), left + round((i + 1) * step)))
-        else:
+        # Допуск пропорційний: склеєна пара «44» дала 22px при типовій 9.
+        if not (2 <= parts <= 4 and abs(span - parts * typical) <= 0.4 * typical * parts):
             out.append((left, right))
+            continue
+        cuts = _valley_cuts(columns, left, right, parts) if columns else None
+        if cuts is None:
+            step = span / parts
+            cuts = [left + round(i * step) for i in range(1, parts)]
+        edges = [left, *cuts, right]
+        out.extend((edges[i], edges[i + 1]) for i in range(len(edges) - 1))
     return out
+
+
+def _valley_cuts(
+    columns: list[int], left: int, right: int, parts: int
+) -> Optional[list[int]]:
+    """Місця розрізу — найтонші колонки біля очікуваних меж символів.
+
+    `columns[x]` — скільки пікселів чорнила в колонці x. Шукаємо мінімум у
+    вікні ±2px навколо рівномірної межі: справжня межа склеєних символів десь
+    поруч, і саме там перемичка найтонша.
+    """
+    span = right - left
+    step = span / parts
+    cuts: list[int] = []
+    for i in range(1, parts):
+        centre = left + round(i * step)
+        window = [x for x in range(centre - 2, centre + 3) if left < x < right]
+        if not window:
+            return None
+        cuts.append(min(window, key=lambda x: (columns[x], abs(x - centre))))
+    if len(set(cuts)) != len(cuts):
+        return None
+    return cuts
 
 
 def _bitmap(image: Image.Image, box: tuple[int, int, int, int], ink: Callable) -> list[str]:
@@ -467,6 +502,12 @@ def read_panel(image: Image.Image) -> PanelReading:
                 % (reading.fields["step"].text, reading.status)
             )
 
+    if not load_glyphs():
+        # Причина мусить дійти до екрана, а не лишитись у лозі: без еталонів
+        # порожні поля виглядають як «піч мовчить», хоча піч якраз відповідає.
+        reading.warnings.append(
+            "Немає файлу еталонів цифр — жодне число з табло не читається"
+        )
     if reading.temp_c is None:
         reading.warnings.append("Температуру не розпізнано")
     if reading.remaining_seconds is None:
