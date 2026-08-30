@@ -16,10 +16,12 @@ from fastapi import (
     FastAPI,
     HTTPException,
 )
-from fastapi.responses import RedirectResponse
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
 from app.__version__ import VERSION
@@ -53,7 +55,7 @@ from app.material_catalog import (
     backfill_orders,
     ensure_seeded,
 )
-from app.runtime import resource_path
+from app.runtime import data_dir, resource_path
 from app.routers.auth import router as auth_router
 from app.routers.clients import router as clients_router
 from app.routers.handout import router as handout_router
@@ -489,6 +491,60 @@ app.add_middleware(
     https_only=False,  # Loopback-only HTTP; no network listener is opened.
     max_age=8 * 60 * 60,
 )
+
+
+# ── Сторінки помилок ──────────────────────────────────────────────────────
+# До цього їх не було: FastAPI віддавав голий «Internal Server Error» чорним
+# текстом на білому — оператор біля верстата бачив зламаний застосунок без
+# назви, без виходу назад і без натяку, що робити.
+#
+# Текст винятку у відповідь НЕ йде: він може містити шляхи, фрагменти рядків
+# таблиці й імена клієнтів. У лог — так, на екран — ні.
+
+_ERROR_COPY = {
+    404: ("Сторінки немає", "Можливо, роботу вже прибрали з черги або посилання застаріло."),
+    403: ("Доступ закрито", "Ця дія доступна лише адміністратору або лише з цього комп'ютера."),
+    409: ("Уже оброблено", "Хтось встиг зробити це раніше — оновіть сторінку, щоб побачити свіжий стан."),
+    500: ("Щось пішло не так", "Помилка на боці застосунку. Дані не втрачені — спробуйте ще раз."),
+}
+
+
+def _error_page(request: Request, code: int) -> Response:
+    title, message = _ERROR_COPY.get(code, _ERROR_COPY[500])
+    return templates.TemplateResponse(
+        request,
+        "error.html",
+        {
+            "code": code,
+            "title": title,
+            "message": message,
+            "log_path": str(data_dir() / "logs" / "kuubmill.log"),
+        },
+        status_code=code,
+    )
+
+
+def _wants_html(request: Request) -> bool:
+    """HTMX-фрагменти й API лишають звичайну JSON/текстову відповідь: сторінка
+    помилки, вставлена в середину таблиці, зіпсувала б розмітку черги."""
+    if request.headers.get("HX-Request"):
+        return False
+    return "text/html" in request.headers.get("accept", "")
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code in _ERROR_COPY and _wants_html(request):
+        return _error_page(request, exc.status_code)
+    return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(Exception)
+async def unhandled_error_handler(request: Request, exc: Exception):
+    logger.exception("Необроблена помилка на %s %s", request.method, request.url.path)
+    if _wants_html(request):
+        return _error_page(request, 500)
+    raise exc
 
 
 @app.middleware("http")

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}{{ code }} — KuubMill{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
+{% endblock %}
+
+{% block content %}
+{# Сторінка помилки. До цього їх не було взагалі: FastAPI віддавав голий
+   «Internal Server Error» чорним текстом на білому — без назви застосунку,
+   без виходу назад і без натяку, що робити.
+
+   Три речі, які ця сторінка мусить дати оператору біля верстата:
+   що сталося людською мовою, куди натиснути, і — для 500 — де лежить лог,
+   бо саме його просять надіслати. Технічні подробиці НЕ показуємо: текст
+   винятку може містити шляхи й фрагменти даних клієнтів. #}
+<div class="login-page errpage">
+    <div class="card login-card errcard">
+        <div class="err-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 6 L5 26"/><path d="M14 6 L5 16"/><path d="M5 16 L14 26"/>
+                <path d="M18 26 L18 6 L23 15.5 L28 6 L28 26"/>
+            </svg>
+        </div>
+
+        <div class="err-code mono" aria-hidden="true">{{ code }}</div>
+        <h1>{{ title }}</h1>
+        <p class="login-subtitle">{{ message }}</p>
+
+        {% if code == 500 %}
+        <p class="login-hint err-log">Якщо повторюється — надішліть власнику файл
+            <span class="mono">{{ log_path }}</span>.</p>
+        {% endif %}
+
+        <div class="err-actions">
+            <a class="login-submit err-primary" href="/">На чергу робіт</a>
+            {% if code != 404 %}
+            <button type="button" class="btn err-retry" onclick="location.reload()">Спробувати ще раз</button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
