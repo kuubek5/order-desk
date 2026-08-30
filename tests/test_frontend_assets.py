@@ -201,6 +201,7 @@ BASE_HTML_STYLESHEETS = [
     "/static/css/update_overlay.css",
     "/static/css/treatment-a.css",
     "/static/css/theme-forge.css",
+    "/static/css/icon-styles.css",
 ]
 
 

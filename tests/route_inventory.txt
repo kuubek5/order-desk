@@ -36,6 +36,7 @@ GET /stats
 GET /stl-preview/{token}
 GET /stl-preview/{token}/{filename}
 MOUNT /static
+POST /account/appearance
 POST /account/initial
 POST /account/password
 POST /actions/redo-last

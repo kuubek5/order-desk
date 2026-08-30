@@ -1,0 +1,40 @@
+/* Стилі іконок оператора (30.08.26) — html[data-icons=…], пара до теми.
+   Обираються в кабінеті /account, зберігаються на акаунті (User.ui_icon_style),
+   рендеряться сервер-сайд атрибутом на <html> у base.html.
+
+   Всі UI-іконки застосунку — інлайн-SVG зі stroke="currentColor", тому
+   селектор svg[stroke="currentColor"] влучає рівно в них і не чіпає:
+   бекдроп (страйп-групи зі своїми кольорами), SVG-фільтр «рідкого скла»,
+   canvas STL-прев'ю. Дуотон/повна заливка як окремі НАБОРИ розмітки сюди
+   свідомо не входять — це заміна кожної іконки, а не стиль поверх.
+
+   "" (без атрибута) = канон: stroke 2, як намальовано. */
+
+/* Тонкий («блюпринт») — креслярський штрих із квадратними зрізами. */
+html[data-icons="thin"] svg[stroke="currentColor"],
+html[data-icons="thin"] svg[stroke="currentColor"] * {
+  stroke-width: 1.4;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+/* Дуотон — той самий контур + тінь-заливка власним кольором. Працює на
+   закритих формах (конверт, папка, щит); лінійні гліфи (меню, стрілки)
+   заливки просто не мають — деградує тихо. */
+html[data-icons="duo"] svg[stroke="currentColor"] {
+  fill: currentColor;
+  fill-opacity: 0.13;
+}
+
+/* Жирний — упевненіший штрих для великих моніторів цеху. */
+html[data-icons="bold"] svg[stroke="currentColor"],
+html[data-icons="bold"] svg[stroke="currentColor"] * {
+  stroke-width: 2.6;
+}
+
+/* Неон — контур зі світінням акцентом теми. drop-shadow важчий за звичайний
+   рендер, тому лише один шар; на reduced-motion не впливає (це не анімація). */
+html[data-icons="neon"] svg[stroke="currentColor"] {
+  stroke-width: 1.75;
+  filter: drop-shadow(0 0 3px rgba(var(--accent-rgb), 0.85));
+}

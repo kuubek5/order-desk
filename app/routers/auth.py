@@ -8,7 +8,7 @@ middleware, решта ні.
 from threading import Lock
 
 from fastapi import APIRouter, Depends, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -159,6 +159,32 @@ async def get_account(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/login", status_code=303)
 
     return templates.TemplateResponse(request, "account.html", {"user": user})
+
+
+UI_THEMES = {"", "forge"}
+UI_ICON_STYLES = {"", "thin", "duo", "bold", "neon"}
+
+
+@router.post("/account/appearance")
+async def post_account_appearance(
+    request: Request,
+    theme: str = Form(""),
+    icons: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Зберегти тему/стиль іконок оператора. Викликається fetch'ем з кабінету
+    після миттєвого застосування на клієнті — тому відповідь 204, без
+    перерендеру сторінки. Невалідні значення відсікаються, а не «якось
+    зберігаються»: атрибут з форми летить прямо в <html> кожної сторінки."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if theme not in UI_THEMES or icons not in UI_ICON_STYLES:
+        return Response(status_code=422)
+    user.ui_theme = theme
+    user.ui_icon_style = icons
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.post("/account/password", response_class=HTMLResponse)

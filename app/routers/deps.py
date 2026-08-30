@@ -198,6 +198,47 @@ def shift_pending() -> int:
         return 0
 
 
+def ui_prefs(request: Request) -> dict:
+    """Візуальні налаштування залогіненого оператора для base.html:
+    {"theme": ""|"forge", "icons": ""|"thin"|"duo"|"bold"|"neon"}.
+
+    Jinja-глобал з request-аргументом (base.html завжди має request у
+    контексті): тема мусить бути на <html> у САМОМУ HTML, інакше сторінка
+    мигне канонним кольором до першого скрипта. Кеш у request.state — один
+    lookup на рендер, а не на кожен виклик у шаблоні. Збій БД чи відсутність
+    сесії дає канон і ніколи не ламає рендер (той самий контракт, що
+    notify_prefs/shift_pending).
+    """
+    # request.state може бути відсутній у фейкових request'ах тестів —
+    # хелпер мусить пережити БУДЬ-ЯКИЙ request, бо стоїть у base.html.
+    state = getattr(request, "state", None)
+    cached = getattr(state, "ui_prefs_cache", None) if state is not None else None
+    if cached is not None:
+        return cached
+    prefs = {"theme": "", "icons": ""}
+    try:
+        user_id = request.session.get("user_id")
+        if user_id is not None:
+            db = SessionLocal()
+            try:
+                user = db.get(User, user_id)
+                if user is not None and user.is_active:
+                    prefs = {
+                        "theme": user.ui_theme or "",
+                        "icons": user.ui_icon_style or "",
+                    }
+            finally:
+                db.close()
+    except Exception:  # noqa: BLE001 — тема не варта зламаної сторінки
+        logger.debug("ui_prefs fell back to defaults", exc_info=True)
+    if state is not None:
+        try:
+            state.ui_prefs_cache = prefs
+        except Exception:  # noqa: BLE001
+            pass
+    return prefs
+
+
 templates = Jinja2Templates(directory=str(resource_path("app/templates")))
 templates.env.globals["is_overdue"] = is_overdue
 templates.env.globals["material_color_css_class"] = material_color_css_class
@@ -219,4 +260,5 @@ templates.env.globals["get_known_update"] = get_known_update
 templates.env.globals["app_version"] = VERSION
 templates.env.globals["notify_prefs"] = notify_prefs
 templates.env.globals["shift_pending"] = shift_pending
+templates.env.globals["ui_prefs"] = ui_prefs
 templates.env.filters["night_label"] = night_label

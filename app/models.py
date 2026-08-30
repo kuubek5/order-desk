@@ -21,6 +21,13 @@ class User(Base):
     # Sum3D ID, so the sheet keeps its existing human convention. Unique across
     # operators (enforced in the settings route); NULL until an admin assigns it.
     sheet_initial: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    # Візуальні налаштування оператора (кабінет /account): тема інтерфейсу
+    # ("" = бірюзовий канон, "forge" = Amber Forge) і стиль іконок
+    # ("" = канон, "thin"/"duo"/"bold"/"neon"). Рендеряться сервер-сайд
+    # атрибутами на <html> у base.html — тому підуть за оператором на будь-який
+    # браузер цього ПК, а не житимуть у localStorage конкретного профілю.
+    ui_theme: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    ui_icon_style: Mapped[str] = mapped_column(String(20), default="", server_default="")
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()

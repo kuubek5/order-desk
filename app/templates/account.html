@@ -89,10 +89,23 @@
 
     <div class="card settings-group">
         <h2>Оформлення</h2>
-        <p class="settings-help">Тема інтерфейсу на цьому комп'ютері. Діє одразу, зберігається в браузері.</p>
-        <div class="acc-theme-row" role="group" aria-label="Тема інтерфейсу">
-            <button type="button" class="btn acc-theme-btn" data-set-theme="">Бірюзовий пульт</button>
-            <button type="button" class="btn acc-theme-btn" data-set-theme="forge">Amber Forge</button>
+        <p class="settings-help">Зберігається на вашому обліковому записі: під ким увійшли — так і виглядає.</p>
+        <div class="settings-field">
+            <label>Тема</label>
+            <div class="acc-theme-row" role="group" aria-label="Тема інтерфейсу">
+                <button type="button" class="btn acc-theme-btn" data-set-theme="">Бірюзовий пульт</button>
+                <button type="button" class="btn acc-theme-btn" data-set-theme="forge">Amber Forge</button>
+            </div>
+        </div>
+        <div class="settings-field">
+            <label>Іконки</label>
+            <div class="acc-theme-row" role="group" aria-label="Стиль іконок">
+                <button type="button" class="btn acc-icons-btn" data-set-icons="">Канон</button>
+                <button type="button" class="btn acc-icons-btn" data-set-icons="thin">Тонкі</button>
+                <button type="button" class="btn acc-icons-btn" data-set-icons="duo">Дуотон</button>
+                <button type="button" class="btn acc-icons-btn" data-set-icons="bold">Жирні</button>
+                <button type="button" class="btn acc-icons-btn" data-set-icons="neon">Неон</button>
+            </div>
         </div>
     </div>
 
@@ -112,24 +125,41 @@
 <script src="/static/js/login.js"></script>
 <script>
   (function(){
-    var btns = document.querySelectorAll('.acc-theme-btn');
-    var rootEl = document.documentElement; // тема живе на <html>, див. theme-forge.css
+    // Тема/іконки живуть на <html> (див. theme-forge.css) і на акаунті
+    // (POST /account/appearance): клік застосовує одразу, потім зберігає.
+    var rootEl = document.documentElement;
     function paint(){
-      var cur = rootEl.getAttribute('data-theme') || '';
-      btns.forEach(function(b){ b.setAttribute('aria-pressed', String(b.dataset.setTheme === cur)); });
-    }
-    btns.forEach(function(b){
-      b.addEventListener('click', function(){
-        var t = b.dataset.setTheme;
-        if (t) { rootEl.setAttribute('data-theme', t); }
-        else { rootEl.removeAttribute('data-theme'); }
-        try {
-          if (t) { localStorage.setItem('uiTheme', t); }
-          else { localStorage.removeItem('uiTheme'); }
-        } catch(e){}
-        paint();
-        if (window.showToast) window.showToast(t ? 'Тема: Amber Forge' : 'Тема: Бірюзовий пульт', 'info');
+      var th = rootEl.getAttribute('data-theme') || '';
+      var ic = rootEl.getAttribute('data-icons') || '';
+      document.querySelectorAll('.acc-theme-btn').forEach(function(b){
+        b.setAttribute('aria-pressed', String(b.dataset.setTheme === th));
       });
+      document.querySelectorAll('.acc-icons-btn').forEach(function(b){
+        b.setAttribute('aria-pressed', String(b.dataset.setIcons === ic));
+      });
+    }
+    function save(){
+      var body = new URLSearchParams({
+        theme: rootEl.getAttribute('data-theme') || '',
+        icons: rootEl.getAttribute('data-icons') || ''
+      });
+      fetch('/account/appearance', {method:'POST', body: body})
+        .then(function(r){
+          if (r.ok && window.showToast) window.showToast('Оформлення збережено на акаунті', 'success');
+          if (!r.ok && window.showToast) window.showToast('Не вдалося зберегти оформлення', 'error');
+        })
+        .catch(function(){ if (window.showToast) window.showToast('Не вдалося зберегти оформлення', 'error'); });
+    }
+    function setAttr(name, val){
+      if (val) rootEl.setAttribute(name, val);
+      else rootEl.removeAttribute(name);
+      paint(); save();
+    }
+    document.querySelectorAll('.acc-theme-btn').forEach(function(b){
+      b.addEventListener('click', function(){ setAttr('data-theme', b.dataset.setTheme); });
+    });
+    document.querySelectorAll('.acc-icons-btn').forEach(function(b){
+      b.addEventListener('click', function(){ setAttr('data-icons', b.dataset.setIcons); });
     });
     paint();
   })();
