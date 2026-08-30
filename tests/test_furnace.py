@@ -737,4 +737,43 @@ def test_side_panel_and_strip_share_one_source(monkeypatch, tmp_path):
     strip = inspect.getsource(furnace_router.furnaces_strip)
     for source in (side, strip):
         assert "strip_cards(db)" in source
-        assert "strip_summary(cards)" in source
+        # Контекст будує спільний хелпер — саме він і є тим одним джерелом.
+        assert "_side_context(db, cards)" in source
+    shared = inspect.getsource(furnace_router._side_context)
+    assert "strip_summary(cards)" in shared
+
+
+def test_empty_side_section_does_not_claim_furnaces_are_unconfigured():
+    """Сторож на брехню порожнього стану: `strip_cards` свідомо не пускає ще
+    не опитану піч, тому одразу після рестарту список порожній. Секція писала
+    «Печей не налаштовано», хоча вони налаштовані — оператор ішов шукати
+    проблему, якої немає, або додавав дубль печі.
+
+    Перевіряємо ОБИДВІ точки вставки: роут /furnaces/side і сторінку черги,
+    яка вкладає той самий партіал СВОЇМ контекстом (саме там поля й забули —
+    спіймано живою перевіркою, не тестом)."""
+    import inspect
+
+    from app.routers import furnace as furnace_router
+    from app.routers import queue as queue_router
+
+    shared = inspect.getsource(furnace_router._side_context)
+    assert "furnaces_configured" in shared and "furnaces_all_idle" in shared
+
+    page = inspect.getsource(queue_router.get_queue)
+    assert "furnaces_configured" in page, "сторінка черги вкладає партіал своїм контекстом"
+    assert "furnaces_all_idle" in page
+
+
+def test_strip_and_tile_read_numbers_in_the_same_order():
+    """Порядок чисел заданий власником: температура → залишок → час відкриття.
+    Плитка в панелі колись міняла останні два місцями, і на одному екрані два
+    моноширинні числа, обидва схожі на час, читались у двох порядках."""
+    from pathlib import Path
+
+    strip = (Path("app/templates") / "_furnace_strip.html").read_text(encoding="utf-8")
+    # У чіпі смуги залишок несе .fu-chip-left, момент відкриття — .fu-chip-open.
+    assert strip.index("fu-chip-left") < strip.index("fu-chip-open")
+
+    side = (Path("app/templates") / "_furnace_side.html").read_text(encoding="utf-8")
+    assert side.index("ще <b") < side.index("відкриється <b")

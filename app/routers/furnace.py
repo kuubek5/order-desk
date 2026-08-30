@@ -26,7 +26,9 @@ from app.routers.deps import get_current_user, get_db, templates
 from app.settings_store import get_furnace_background
 from app.services.furnace import (
     POLL_INTERVAL_SECONDS,
+    all_idle,
     config_error,
+    configured_targets,
     eye_crop,
     poll_all,
     resolve_frame,
@@ -98,6 +100,23 @@ def furnaces_cards(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "_furnace_cards.html", _context(request, db, user))
 
 
+def _side_context(db: Session, cards) -> dict:
+    """Спільний контекст смуги й секції.
+
+    `furnaces_configured` потрібен, щоб порожній стан не брехав: `strip_cards`
+    свідомо не пускає ще не опитану піч, тому одразу після рестарту список
+    порожній — і секція писала «Печей не налаштовано», хоча вони налаштовані.
+    Оператор ішов у налаштування шукати проблему, якої немає, або додавав
+    дубль печі.
+    """
+    return {
+        "furnace_cards": cards,
+        "furnace_summary": strip_summary(cards),
+        "furnaces_configured": len(configured_targets(db)),
+        "furnaces_all_idle": all_idle(cards),
+    }
+
+
 @router.get("/furnaces/side", response_class=HTMLResponse)
 def furnaces_side(request: Request, db: Session = Depends(get_db)):
     """Секція «Пічки» в бічній панелі черги — власний 30-секундний годинник.
@@ -116,7 +135,7 @@ def furnaces_side(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request,
         "_furnace_side.html",
-        {"furnace_cards": cards, "furnace_summary": strip_summary(cards)},
+        _side_context(db, cards),
     )
 
 
@@ -138,7 +157,7 @@ def furnaces_strip(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request,
         "_furnace_strip.html",
-        {"furnace_cards": cards, "furnace_summary": strip_summary(cards)},
+        _side_context(db, cards),
     )
 
 

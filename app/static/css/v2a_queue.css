@@ -582,7 +582,7 @@ body.layout-edit .q2 table.qtable{user-select:none}
   font-family:var(--font-mono);font-size:11px;font-weight:500;padding:1px 6px;border-radius:5px;
   background:rgba(var(--accent-rgb), .14);color:var(--accent-c);border:1px solid rgba(var(--accent-rgb), .26);
 }
-.q2 .side-head .side-count.err{background:rgba(var(--alarm-rgb), .14);color:var(--alarm);border-color:rgba(var(--alarm-rgb), .3)}
+.q2 .side-head .side-count.err{background:rgba(var(--alarm-rgb), .14);color:var(--alarm-ink);border-color:rgba(var(--alarm-rgb), .3)}
 .q2 .side-head .side-count.warn{background:rgba(var(--warn-rgb), .13);color:var(--warn);border-color:rgba(var(--warn-rgb), .28)}
 .q2 .side-head .chev{margin-left:auto;width:14px;height:14px;flex:0 0 14px;stroke:var(--ink-3);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .16s ease}
 .q2 .side-sec[data-open="true"] .chev{transform:rotate(180deg)}

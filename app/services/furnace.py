@@ -539,7 +539,8 @@ class FurnaceCard:
         вона з'їдає рівно те місце, де мала б бути причина.
         """
         if self.stale():
-            return "опитування стоїть"
+            # Це не про піч, а про НАШ фоновий воркер — і дія інша.
+            return "застосунок не опитує печі — потрібен перезапуск"
         state = self.state
         error = state.error if state else None
         if not error:
@@ -610,6 +611,17 @@ def strip_summary(cards: list["FurnaceCard"]) -> StripSummary:
         nearest_done_at=min(finishes) if finishes else None,
         broken=sum(1 for card in cards if card.has_problem),
     )
+
+
+def all_idle(cards: list["FurnaceCard"]) -> bool:
+    """Чи можна чесно сказати «усі вільні».
+
+    Не можна, якщо бодай одна піч мовчить або її статус не прочитався: раніше
+    згорнута смуга писала «усі вільні · 2 без зв'язку» в одному рядку —
+    два твердження, з яких перше просто неправда. `running == 0` цього не
+    ловить, бо мовчазна піч у RUN не потрапляє в лічильник працюючих.
+    """
+    return bool(cards) and all(card.is_idle for card in cards)
 
 
 def strip_cards(db: Session) -> list[FurnaceCard]:

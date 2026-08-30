@@ -43,7 +43,12 @@ from app.services.config_state import (
 )
 from app.services.order_dates import order_date, parse_sheet_tab
 from app.services.focus import count as focus_count, focused_ids, ranks as focus_ranks
-from app.services.furnace import strip_cards as furnace_cards, strip_summary as furnace_summary
+from app.services.furnace import (
+    all_idle as furnaces_all_idle,
+    configured_targets as furnace_targets,
+    strip_cards as furnace_cards,
+    strip_summary as furnace_summary,
+)
 from app.services.shift import open_notes as open_shift_notes
 from app.services.queue import (
     DATE_STRIP_WINDOW,
@@ -430,6 +435,12 @@ def get_queue(
             # порожнечі. Читає стан у памʼяті, до печей не ходить.
             "furnace_cards": (_furnace_cards := furnace_cards(db)),
             "furnace_summary": furnace_summary(_furnace_cards),
+            # Ті самі два поля, що й у роутів /furnaces/strip і /furnaces/side:
+            # сторінка черги вкладає обидва партіали своїм контекстом, і без
+            # них секція одразу після рестарту писала «печей не налаштовано»,
+            # хоча вони налаштовані — просто ще не опитані.
+            "furnaces_configured": len(furnace_targets(db)),
+            "furnaces_all_idle": furnaces_all_idle(_furnace_cards),
             # Мітки «мої зараз» — персональні, тому контекст, а не глобал.
             # ОБИДВІ гілки (сторінка й partial=rows) читають цей самий
             # словник: якби полл рахував інакше, мітки зникали б кожні 15с.

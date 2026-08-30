@@ -66,23 +66,38 @@
                 {% if state.progress is not none %}
                 <span class="fu-tile-bar" aria-hidden="true"><i style="width:{{ state.progress }}%"></i></span>
                 {% endif %}
+                {# Порядок ТОЙ САМИЙ, що в смузі над чергою: залишок, потім
+                   момент відкриття. Раніше плитка міняла їх місцями, і на
+                   одному екрані два моноширинні числа, обидва схожі на час,
+                   читались у двох різних порядках — «26:59» рано чи пізно
+                   прочитали б як момент відкриття. #}
                 <span class="fu-tile-foot">
-                    відкриється <b class="mono">{{ state.done_at.strftime('%H:%M') }}</b>
-                    <span class="fu-tile-sep" aria-hidden="true">·</span>
                     ще <b class="mono">{{ state.remaining_text }}</b>
+                    <span class="fu-tile-sep" aria-hidden="true">·</span>
+                    відкриється <b class="mono">{{ state.done_at.strftime('%H:%M') }}</b>
                 </span>
                 {% elif card.is_idle %}
                 <span class="fu-tile-foot">вільна</span>
-                {% elif card.never_polled %}
-                <span class="fu-tile-foot">чекаємо кадр</span>
                 {% else %}
-                <span class="fu-tile-foot">—</span>
+                {# Піч відповідає, але табло не прочиталось (великому червоному
+                   шрифту бракує кількох еталонів цифр — §14). Голий прочерк не
+                   давав відрізнити «не прочиталось» від «нічого не робить», і
+                   оператор не знав, чи треба йти дивитись очима. #}
+                <span class="fu-tile-foot">табло не читається</span>
                 {% endif %}
             </a>
             {% endfor %}
         </div>
         {% else %}
+        {# Два РІЗНІ порожні стани. `strip_cards` свідомо не пускає ще не
+           опитану піч, тому одразу після рестарту список порожній — і текст
+           «печей не налаштовано» був неправдою: оператор ішов у налаштування
+           шукати проблему, якої немає. #}
+        {% if furnaces_configured %}
+        <p class="side-empty">Чекаємо перший кадр із {% if furnaces_configured == 1 %}печі{% else %}печей{% endif %}…</p>
+        {% else %}
         <p class="side-empty">Печей не налаштовано. Додати — Налаштування → Печі спікання.</p>
+        {% endif %}
         {% endif %}
         <div class="side-actions">
             <a class="btn sm" href="/furnaces">Відкрити пічки</a>
