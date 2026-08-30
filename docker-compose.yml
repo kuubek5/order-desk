@@ -1,5 +1,5 @@
 services:
-  order-desk:
+  kuubmill:
     build: .
     restart: unless-stopped
     ports:
@@ -8,7 +8,7 @@ services:
       - .env
     environment:
       DB_PATH: /app/data/order_desk.db
-      ORDER_DESK_SCHEMA_MANAGED: "1"
+      KUUBMILL_SCHEMA_MANAGED: "1"
     healthcheck:
       test:
         - CMD

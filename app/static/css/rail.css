@@ -70,12 +70,14 @@
     flex: 1;
   }
 
+  /* Знак тепер інлайн-SVG у currentColor, а не растрова картинка: колір бере
+     з теми. object-fit тут більше не потрібен, натомість треба явний color —
+     успадкований від посилання він був би кольором тексту, а не акценту. */
   .rail-brand-mark {
     width: 30px;
     height: 30px;
     flex: 0 0 30px;
-    border-radius: var(--radius-input);
-    object-fit: contain;
+    color: var(--accent-b);
   }
 
   .rail-brand-text {

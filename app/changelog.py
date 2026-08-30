@@ -2,7 +2,7 @@
 "Про застосунок" screen.
 
 The markdown file is the single source of truth (Keep a Changelog format); it
-ships with the build (see OrderDesk.spec) so the changelog renders offline in
+ships with the build (see KuubMill.spec) so the changelog renders offline in
 the installed app, with no GitHub round-trip. Parsing is deliberately tolerant:
 a malformed heading is skipped rather than raising, because a broken changelog
 must never take down the settings page.

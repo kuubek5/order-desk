@@ -1,6 +1,6 @@
 """Offline license key generator/issuer for the Order Desk product owner.
 
-This script is NOT packaged into the Windows build (see `OrderDesk.spec` —
+This script is NOT packaged into the Windows build (see `KuubMill.spec` —
 `scripts/` is absent from `datas`) and must never ship to a customer machine.
 It is the only place the private signing key is allowed to exist.
 

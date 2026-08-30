@@ -1,4 +1,4 @@
-"""Generate assets/orderdesk.ico — the app/tray icon.
+"""Generate assets/kuubmill.ico — the app/tray icon.
 
 Run once (or after a brand change) to regenerate the committed .ico:
     python scripts/make_tray_icon.py
@@ -19,7 +19,7 @@ _BG = (13, 17, 23, 255)      # --bg  #0d1117
 _ACCENT = (20, 184, 166, 255)  # --accent #14b8a6
 _ACCENT_SOFT = (20, 184, 166, 70)
 
-_OUT = Path(__file__).resolve().parents[1] / "assets" / "orderdesk.ico"
+_OUT = Path(__file__).resolve().parents[1] / "assets" / "kuubmill.ico"
 
 
 def _render(size: int) -> Image.Image:

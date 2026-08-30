@@ -1,11 +1,11 @@
 ---
-name: orderdesk-release
-description: Випустити нову версію OrderDesk на прод (8000) через GitHub-реліз і авто-оновлення. Runbook: bump версії → тести → тег → CI → перевірка релізу.
+name: kuubmill-release
+description: Випустити нову версію KuubMill на прод (8000) через GitHub-реліз і авто-оновлення. Runbook: bump версії → тести → тег → CI → перевірка релізу.
 ---
 
-# Реліз OrderDesk на прод
+# Реліз KuubMill на прод
 
-Прод (`127.0.0.1:8000`, встановлений `OrderDesk.exe`) оновлюється **сам**, раз на добу перевіряючи GitHub Releases і встановлюючи новіший інсталятор. Твоя робота — зібрати й опублікувати цей інсталятор через тег. Хмара робить решту.
+Прод (`127.0.0.1:8000`, встановлений `KuubMill.exe`) оновлюється **сам**, раз на добу перевіряючи GitHub Releases і встановлюючи новіший інсталятор. Твоя робота — зібрати й опублікувати цей інсталятор через тег. Хмара робить решту.
 
 **Ланцюг:** bump версії → тести → commit → tag `vX.Y.Z` → push → CI збирає+smoke-тестить+публікує реліз → 8000 підхоплює.
 
@@ -26,13 +26,13 @@ description: Випустити нову версію OrderDesk на прод (8
 
 3. **Закомітити бамп** (окремим комітом, із Co-Authored-By трейлером):
    ```
-   git add app/__version__.py installer/OrderDesk.iss .github/workflows/release.yml
+   git add app/__version__.py installer/KuubMill.iss .github/workflows/release.yml
    git commit -m "Release X.Y.Z: bump version ..."
    ```
 
 4. **Тег + пуш = тригер релізу** (це незворотна вихідна дія — підтверди в користувача перед пушем):
    ```
-   git tag -a vX.Y.Z -m "OrderDesk X.Y.Z — <підсумок>"
+   git tag -a vX.Y.Z -m "KuubMill X.Y.Z — <підсумок>"
    git push origin vX.Y.Z
    ```
    Пуш тега несе й коміти. CI (`.github/workflows/release.yml`) запускається на `tags: v*`.
@@ -47,7 +47,7 @@ description: Випустити нову версію OrderDesk на прод (8
    ```
    gh release view vX.Y.Z --repo kuubek5/order-desk --json assets --jq '.assets[].name'
    ```
-   Мають бути `OrderDesk-Setup-X.Y.Z.exe` + `.sha256`.
+   Мають бути `KuubMill-Setup-X.Y.Z.exe` + `.sha256`.
 
 7. **Доставка на 8000:** автоматична, до доби. Прискорити — рестарт встановленого додатку (update-check спрацьовує через ~30с після старту). Рестарт прод-процесу — лише з дозволу користувача.
 
@@ -55,5 +55,5 @@ description: Випустити нову версію OrderDesk на прод (8
 
 - Версія зашита в 4 місцях — `bump_version.py` покриває всі; ручний sed колись проґавлював workflow і завалював «Verify installer exists».
 - Провал smoke-тесту в CI → реліз НЕ створюється (безпечно, 8000 лишається на старій версії). Читай хвіст логу CI + `startup-error.txt` із артефактів.
-- Авто-оновлення має відому пастку (watchdog + frozen-app subprocess) — див. `[[project_orderdesk_autoupdate_trap]]` у пам'яті. Якщо 8000 не оновлюється — інсталятор можна запустити вручну з `%LOCALAPPDATA%\OrderDesk\updates\`.
+- Авто-оновлення має відому пастку (watchdog + frozen-app subprocess) — див. `[[project_orderdesk_autoupdate_trap]]` у пам'яті. Якщо 8000 не оновлюється — інсталятор можна запустити вручну з `%LOCALAPPDATA%\KuubMill\updates\`.
 - Тег незворотний — перед пушем звірити версію й що всі потрібні коміти в HEAD.

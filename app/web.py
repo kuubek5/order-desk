@@ -443,7 +443,7 @@ class _BackgroundWorker:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    if os.environ.get("ORDER_DESK_SCHEMA_MANAGED") != "1":
+    if os.environ.get("KUUBMILL_SCHEMA_MANAGED") != "1":
         Base.metadata.create_all(engine)
     # Seed the material catalog and classify any still-unresolved orders once at
     # boot. Idempotent and cheap; covers both the create_all path (no migration

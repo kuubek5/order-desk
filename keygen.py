@@ -7,7 +7,7 @@
     keygen.bat                  # подвійний клік (Windows)
 
 Цей файл, як і приватний ключ, НЕ входить у білд для клієнта
-(OrderDesk.spec бере лише app/templates та app/static). Приватний ключ
+(KuubMill.spec бере лише app/templates та app/static). Приватний ключ
 license_private_key.pem має існувати поруч — це єдине джерело підпису.
 """
 

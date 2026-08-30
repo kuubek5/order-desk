@@ -29,7 +29,7 @@ jobs:
       - name: Verify installer exists
         shell: powershell
         run: |
-          $installerPath = "dist-installer\OrderDesk-Setup-0.3.32.exe"
+          $installerPath = "dist-installer\KuubMill-Setup-0.3.32.exe"
           if (-not (Test-Path $installerPath)) {
             Write-Error "Installer not found at $installerPath"
             exit 1
@@ -40,8 +40,8 @@ jobs:
       - name: Compute installer checksum
         shell: powershell
         run: |
-          $installerPath = "dist-installer\OrderDesk-Setup-0.3.32.exe"
-          $checksumPath = "dist-installer\OrderDesk-Setup-0.3.32.exe.sha256"
+          $installerPath = "dist-installer\KuubMill-Setup-0.3.32.exe"
+          $checksumPath = "dist-installer\KuubMill-Setup-0.3.32.exe.sha256"
           $hash = (Get-FileHash -Algorithm SHA256 -Path $installerPath).Hash.ToLower()
           Set-Content -Path $checksumPath -Value $hash -NoNewline
           Write-Host "SHA256: $hash"
@@ -50,9 +50,9 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $installerPath = "dist-installer\OrderDesk-Setup-0.3.32.exe"
-          $installDir = "$env:LOCALAPPDATA\Programs\OrderDesk"
-          $exePath = "$installDir\OrderDesk.exe"
+          $installerPath = "dist-installer\KuubMill-Setup-0.3.32.exe"
+          $installDir = "$env:LOCALAPPDATA\Programs\KuubMill"
+          $exePath = "$installDir\KuubMill.exe"
 
           # Verify installer exists first
           if (-not (Test-Path $installerPath)) {
@@ -61,7 +61,7 @@ jobs:
           }
 
           # Silently install the exe
-          Write-Host "Installing OrderDesk silently from $installerPath..."
+          Write-Host "Installing KuubMill silently from $installerPath..."
           $process = Start-Process -FilePath $installerPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -NoNewWindow -Wait -PassThru
           $installExitCode = $process.ExitCode
           Write-Host "Installer exited with code: $installExitCode"
@@ -83,14 +83,14 @@ jobs:
           # auto-updater's restart path), but a headless CI runner has no
           # interactive desktop session, so `runasoriginaluser` [Run] is a no-op
           # here — meaning the mutex is free and this manual launch is what the
-          # smoke test actually exercises. ORDER_DESK_NONINTERACTIVE keeps a
+          # smoke test actually exercises. KUUBMILL_NONINTERACTIVE keeps a
           # startup-failure MessageBox from hanging the runner.
-          Write-Host "Launching OrderDesk..."
-          $env:ORDER_DESK_NONINTERACTIVE = "1"
+          Write-Host "Launching KuubMill..."
+          $env:KUUBMILL_NONINTERACTIVE = "1"
           $logFile = "$env:TEMP\orderdesk-smoke-test.log"
           $errFile = "$env:TEMP\orderdesk-smoke-test-err.log"
           Start-Process -FilePath $exePath -WindowStyle Hidden -RedirectStandardOutput $logFile -RedirectStandardError $errFile | Out-Null
-          Write-Host "Waiting for OrderDesk to answer /health..."
+          Write-Host "Waiting for KuubMill to answer /health..."
 
           $healthUrl = "http://127.0.0.1:8000/health"
           # 180s: the onedir bundle grew (self-hosted fonts, three.js, extra JS),
@@ -126,7 +126,7 @@ jobs:
 
           # Stop whatever the installer launched
           try {
-            Stop-Process -Name OrderDesk -Force -ErrorAction SilentlyContinue
+            Stop-Process -Name KuubMill -Force -ErrorAction SilentlyContinue
             Write-Host "Process stopped"
           } catch {
             # Process may have already exited
@@ -140,21 +140,21 @@ jobs:
           if (-not $healthy) {
             Write-Host "Health check failed after $maxRetries retries"
             if (Test-Path $logFile) {
-              Write-Host "Last stdout from OrderDesk:"
+              Write-Host "Last stdout from KuubMill:"
               Get-Content $logFile -Tail 20
             }
             if (Test-Path $errFile) {
-              Write-Host "Last stderr from OrderDesk:"
+              Write-Host "Last stderr from KuubMill:"
               Get-Content $errFile -Tail 20
             }
-            $appLogFile = "$env:LOCALAPPDATA\OrderDesk\logs\order-desk.log"
+            $appLogFile = "$env:LOCALAPPDATA\KuubMill\logs\kuubmill.log"
             if (Test-Path $appLogFile) {
-              Write-Host "Last OrderDesk.log entries:"
+              Write-Host "Last KuubMill.log entries:"
               Get-Content $appLogFile -Tail 30
             }
-            $startupErr = "$env:LOCALAPPDATA\OrderDesk\logs\startup-error.txt"
+            $startupErr = "$env:LOCALAPPDATA\KuubMill\logs\startup-error.txt"
             if (Test-Path $startupErr) {
-              Write-Host "=== OrderDesk startup-error.txt (the real cause) ==="
+              Write-Host "=== KuubMill startup-error.txt (the real cause) ==="
               Get-Content $startupErr
             } else {
               Write-Host "No startup-error.txt present (launcher except block not reached)."
@@ -179,6 +179,6 @@ jobs:
           token: ${{ secrets.RELEASES_REPO_TOKEN }}
           tag_name: ${{ github.ref_name }}
           files: |
-            dist-installer/OrderDesk-Setup-0.3.32.exe
-            dist-installer/OrderDesk-Setup-0.3.32.exe.sha256
+            dist-installer/KuubMill-Setup-0.3.32.exe
+            dist-installer/KuubMill-Setup-0.3.32.exe.sha256
           fail_on_unmatched_files: true

@@ -260,7 +260,7 @@ def download_and_verify(release: ReleaseInfo, dest_dir: Path | None = None) -> P
     """
     directory = dest_dir if dest_dir is not None else _updates_dir()
     directory.mkdir(parents=True, exist_ok=True)
-    installer_path = directory / f"OrderDesk-Setup-{release.version}.exe"
+    installer_path = directory / f"KuubMill-Setup-{release.version}.exe"
 
     response = _http_get(release.installer_url, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS)
     response.raise_for_status()
@@ -309,7 +309,7 @@ def _strip_mark_of_the_web(path: Path) -> None:
 
 
 _WATCHDOG_SCRIPT = r"""
-$logDir = Join-Path $env:LOCALAPPDATA 'OrderDesk\logs'
+$logDir = Join-Path $env:LOCALAPPDATA 'KuubMill\logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir 'update-watchdog.log'
 function W($m) { "$(Get-Date -Format o) $m" | Out-File -FilePath $log -Append -Encoding utf8 }
@@ -348,7 +348,7 @@ while ((Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessNam
 W "installer finished; relaunching with health retries"
 Start-Sleep -Seconds 2
 for ($i = 0; $i -lt 20; $i++) {
-    if (-not (Get-Process -Name OrderDesk -ErrorAction SilentlyContinue)) {
+    if (-not (Get-Process -Name KuubMill -ErrorAction SilentlyContinue)) {
         W "launch attempt $i"
         Start-Process -FilePath $exe -ArgumentList '--open-browser'
     }

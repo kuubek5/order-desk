@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $projectRoot
 
-$buildRoot = Join-Path $env:LOCALAPPDATA "OrderDeskBuild"
+$buildRoot = Join-Path $env:LOCALAPPDATA "KuubMillBuild"
 $buildVenv = Join-Path $buildRoot "venv"
 $buildPython = Join-Path $buildVenv "Scripts\python.exe"
 
@@ -18,7 +18,7 @@ if (-not (Test-Path -LiteralPath $buildPython)) {
     --clean `
     --workpath (Join-Path $buildRoot "work") `
     --distpath (Join-Path $buildRoot "dist") `
-    OrderDesk.spec
+    KuubMill.spec
 
 $innoCandidates = @(
     (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
@@ -33,16 +33,16 @@ if (-not $iscc) {
 $installerOutput = Join-Path $buildRoot "installer"
 New-Item -ItemType Directory -Path $installerOutput -Force | Out-Null
 & $iscc `
-    "/DBuildRoot=$(Join-Path $buildRoot 'dist\OrderDesk')" `
+    "/DBuildRoot=$(Join-Path $buildRoot 'dist\KuubMill')" `
     "/DOutputRoot=$installerOutput" `
-    (Join-Path $projectRoot "installer\OrderDesk.iss")
+    (Join-Path $projectRoot "installer\KuubMill.iss")
 
 # Version comes from the single source of truth (app/__version__.py) so the
 # installer filename never drifts from the code version — the exact drift that
 # broke the v0.1.1 release build when this was hardcoded to 0.1.0.
 $versionLine = Select-String -Path (Join-Path $projectRoot "app\__version__.py") -Pattern 'VERSION\s*=\s*"([^"]+)"'
 $version = $versionLine.Matches[0].Groups[1].Value
-$installerName = "OrderDesk-Setup-$version.exe"
+$installerName = "KuubMill-Setup-$version.exe"
 
 $projectOutput = Join-Path $projectRoot "dist-installer"
 New-Item -ItemType Directory -Path $projectOutput -Force | Out-Null

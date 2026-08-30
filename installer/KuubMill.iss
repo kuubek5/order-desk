@@ -2,9 +2,9 @@
 ; Must be bumped by hand together with app/__version__.py::VERSION at every
 ; release — tests/test_version_sync.py fails the suite if these two drift.
 #define MyAppVersion "0.3.32"
-#define MyAppExeName "OrderDesk.exe"
+#define MyAppExeName "KuubMill.exe"
 #ifndef BuildRoot
-  #define BuildRoot "..\dist\OrderDesk"
+  #define BuildRoot "..\dist\KuubMill"
 #endif
 #ifndef OutputRoot
   #define OutputRoot "..\dist-installer"
@@ -14,18 +14,18 @@
 AppId={{D2C25C62-8303-4D8F-A525-8B45E4059B88}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-DefaultDirName={localappdata}\Programs\OrderDesk
+DefaultDirName={localappdata}\Programs\KuubMill
 DefaultGroupName={#MyAppName}
 PrivilegesRequired=lowest
 OutputDir={#OutputRoot}
-OutputBaseFilename=OrderDesk-Setup-{#MyAppVersion}
+OutputBaseFilename=KuubMill-Setup-{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
-SetupIconFile=..\assets\orderdesk.ico
+SetupIconFile=..\assets\kuubmill.ico
 
 [Files]
 Source: "{#BuildRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -39,7 +39,7 @@ Name: "desktopicon"; Description: "Створити ярлик на робочо
 Name: "autostart"; Description: "Запускати KuubMill при вході у Windows"; Flags: checkedonce
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "OrderDesk"; ValueData: """{app}\{#MyAppExeName}"""; Tasks: autostart; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "KuubMill"; ValueData: """{app}\{#MyAppExeName}"""; Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
 ; Interactive installs relaunch via this postinstall entry (skipped under

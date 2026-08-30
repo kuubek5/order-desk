@@ -64,10 +64,10 @@ def test_is_newer_version_rejects_unparseable_tags(candidate, current):
 
 
 def _release_payload(tag_name: str, *, with_checksum: bool = True) -> dict:
-    assets = [{"name": "OrderDesk-Setup-9.9.9.exe", "browser_download_url": "https://example/installer.exe"}]
+    assets = [{"name": "KuubMill-Setup-9.9.9.exe", "browser_download_url": "https://example/installer.exe"}]
     if with_checksum:
         assets.append(
-            {"name": "OrderDesk-Setup-9.9.9.exe.sha256", "browser_download_url": "https://example/installer.sha256"}
+            {"name": "KuubMill-Setup-9.9.9.exe.sha256", "browser_download_url": "https://example/installer.sha256"}
         )
     return {
         "tag_name": tag_name,
@@ -205,7 +205,7 @@ def test_launch_silent_install_noop_in_dev(tmp_path):
     """Not a frozen/packaged build (the normal state under pytest) — must
     not attempt to spawn any subprocess."""
     with patch("app.update_check.subprocess.Popen") as mock_popen:
-        launch_silent_install(tmp_path / "OrderDesk-Setup-9.9.9.exe")
+        launch_silent_install(tmp_path / "KuubMill-Setup-9.9.9.exe")
     mock_popen.assert_not_called()
 
 
@@ -222,7 +222,7 @@ def test_launch_silent_install_frozen_spawns_single_watchdog(tmp_path):
     """
     import subprocess
 
-    installer = tmp_path / "OrderDesk-Setup-9.9.9.exe"
+    installer = tmp_path / "KuubMill-Setup-9.9.9.exe"
     with patch("app.update_check.is_frozen", return_value=True), patch(
         "app.update_check.data_dir", return_value=tmp_path
     ), patch("app.update_check.subprocess.Popen") as mock_popen:

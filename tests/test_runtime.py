@@ -15,7 +15,7 @@ def test_frozen_windows_data_dir_uses_local_app_data(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     monkeypatch.setattr(runtime.sys, "frozen", True, raising=False)
 
-    assert runtime.data_dir() == tmp_path / "OrderDesk"
+    assert runtime.data_dir() == tmp_path / "KuubMill"
 
 
 def test_source_resource_path_is_rooted_at_project(monkeypatch):

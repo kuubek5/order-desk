@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Підняти версію застосунку в УСІХ чотирьох місцях за один крок.
 
-Навіщо: версія зашита руками в app/__version__.py, installer/OrderDesk.iss і
+Навіщо: версія зашита руками в app/__version__.py, installer/KuubMill.iss і
 .github/workflows/release.yml (6 разів). У минулих сесіях це робилось потрійним
 `sed` по чотири рази — легко проґавити одне місце й отримати провал релізу.
 Див. SESSIONS_DIAGNOSTICS.md, кластер 10.
@@ -72,7 +72,7 @@ def bump(new: str, check: bool) -> int:
         return 2
 
     version_py = ROOT / "app" / "__version__.py"
-    iss = ROOT / "installer" / "OrderDesk.iss"
+    iss = ROOT / "installer" / "KuubMill.iss"
     workflow = ROOT / ".github" / "workflows" / "release.yml"
 
     old_match = re.search(r'VERSION\s*=\s*"([^"]+)"', _read(version_py))
@@ -99,13 +99,13 @@ def bump(new: str, check: bool) -> int:
         if not check:
             path.write_text(text.replace(frm, to), encoding="utf-8")
 
-    # Workflow: усі згадки OrderDesk-Setup-<old> -> <new> (їх 6)
+    # Workflow: усі згадки KuubMill-Setup-<old> -> <new> (їх 6)
     wtext = _read(workflow)
-    count = wtext.count(f"OrderDesk-Setup-{old}")
+    count = wtext.count(f"KuubMill-Setup-{old}")
     print(f"  .github/workflows/release.yml: {count} замін")
     if not check:
         workflow.write_text(
-            wtext.replace(f"OrderDesk-Setup-{old}", f"OrderDesk-Setup-{new}"), encoding="utf-8"
+            wtext.replace(f"KuubMill-Setup-{old}", f"KuubMill-Setup-{new}"), encoding="utf-8"
         )
 
     _roll_changelog(new, check)

@@ -7,6 +7,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}KuubMill{% endblock %}</title>
+    {# Знак KuubMill. SVG для сучасних браузерів (масштабується без замилення),
+       .ico запасним — у ньому 16/32/48 намальовані кожен своєю товщиною штриха,
+       а не зменшені з великого. Обидва генеруються з design/brandmark.py. #}
+    <link rel="icon" type="image/svg+xml" href="/static/img/logo-kmill.svg">
+    <link rel="alternate icon" href="/static/favicon.ico" sizes="16x16 32x32 48x48">
     <link rel="stylesheet" href="/static/css/fonts.css?v={{ static_ver('css/fonts.css') }}">
     <link rel="stylesheet" href="/static/css/tokens.css?v={{ static_ver('css/tokens.css') }}">
     {# base.css розібрано на 12 файлів (Крок 5). ПОРЯДОК = КАСКАД: вони

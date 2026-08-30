@@ -21,8 +21,8 @@ datas = [
     # Shipped so the "Про застосунок" changelog renders offline in the
     # installed app — resource_path("CHANGELOG.md") resolves here in the bundle.
     ("CHANGELOG.md", "."),
-    # App/tray icon (resource_path("assets/orderdesk.ico")).
-    ("assets/orderdesk.ico", "assets"),
+    # App/tray icon (resource_path("assets/kuubmill.ico")).
+    ("assets/kuubmill.ico", "assets"),
     # Еталони цифр табло печей — без них екран печей читає лише статус
     # (resource_path("app/data/furnace_glyphs.json")).
     ("app/data", "app/data"),
@@ -46,13 +46,13 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="OrderDesk",
+    name="KuubMill",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     console=False,
-    icon="assets/orderdesk.ico",
+    icon="assets/kuubmill.ico",
 )
 coll = COLLECT(
     exe,
@@ -60,5 +60,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    name="OrderDesk",
+    name="KuubMill",
 )

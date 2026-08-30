@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import os
 from pathlib import Path
 
@@ -29,7 +30,33 @@ load_dotenv(ENV_PATH)
 
 GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
-DB_PATH = os.environ.get("DB_PATH", str(DATA_DIR / "order_desk.db"))
+def _db_path() -> str:
+    """Шлях до бази з переїздом зі старого імені.
+
+    Файл називався order_desk.db. Просто змінити ім'я не можна: встановлений
+    застосунок створив би порожню базу поруч зі старою, і оператор побачив би
+    чергу без жодної роботи. Тому при першому запуску під новим іменем файл
+    переїжджає разом із супутниками -wal і -shm (без них SQLite вважає базу
+    пошкодженою). Не вдалося — лишаємось на старому шляху: краще старе ім'я
+    з даними, ніж нове й порожнє.
+    """
+    new = DATA_DIR / "kuubmill.db"
+    legacy = DATA_DIR / "order_desk.db"
+    if not new.exists() and legacy.exists():
+        try:
+            for suffix in ("", "-wal", "-shm"):
+                src = legacy.with_name(legacy.name + suffix)
+                if src.exists():
+                    os.replace(src, new.with_name(new.name + suffix))
+        except OSError:
+            logging.getLogger(__name__).exception(
+                "Не вдалося перейменувати базу %s → %s", legacy, new
+            )
+            return str(legacy)
+    return str(new)
+
+
+DB_PATH = os.environ.get("DB_PATH", _db_path())
 EXPORT_FOLDER_PATH = os.environ.get("EXPORT_FOLDER_PATH", str(DATA_DIR / "export"))
 MAIL_ATTACHMENTS_PATH = os.environ.get(
     "MAIL_ATTACHMENTS_PATH", str(DATA_DIR / "mail_attachments")

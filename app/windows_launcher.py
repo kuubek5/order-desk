@@ -16,10 +16,17 @@ import webbrowser
 from app.runtime import data_dir, resource_path
 
 APP_URL = "http://127.0.0.1:8000"
-MUTEX_NAME = "Local\\OrderDeskStandalone"
-SHUTDOWN_EVENT_NAME = "Local\\OrderDeskShutdown"
+MUTEX_NAME = "Local\\KuubMillStandalone"
+SHUTDOWN_EVENT_NAME = "Local\\KuubMillShutdown"
+# Імена з часів назви Order Desk. Потрібні рівно на одне оновлення: інсталятор
+# нової версії просить СТАРИЙ процес вийти, а той відгукується лише на старі
+# імена. Без цього Windows показав би діалог про зайняті файли, і оновлення
+# зупинилось би. Прибрати можна після того, як на всіх машинах уже стоїть
+# збірка з новими іменами.
+LEGACY_MUTEX_NAME = "Local\\Order" "DeskStandalone"
+LEGACY_SHUTDOWN_EVENT_NAME = "Local\\Order" "DeskShutdown"
 DATA_DIR = data_dir()
-DB_PATH = str(DATA_DIR / "order_desk.db")
+DB_PATH = str(DATA_DIR / "kuubmill.db")
 _mutex_handle = None
 _shutdown_event_handle = None
 
@@ -63,7 +70,13 @@ def _signal_shutdown(timeout_seconds: int = 15) -> bool:
 
     kernel32 = ctypes.windll.kernel32
     kernel32.OpenMutexW.restype = wintypes.HANDLE
+    # Спершу шукаємо процес під новим іменем, потім під старим: під час
+    # оновлення з версії до перейменування працює саме старий.
     mutex_handle = kernel32.OpenMutexW(0x00100000, False, MUTEX_NAME)
+    event_name = SHUTDOWN_EVENT_NAME
+    if not mutex_handle:
+        mutex_handle = kernel32.OpenMutexW(0x00100000, False, LEGACY_MUTEX_NAME)
+        event_name = LEGACY_SHUTDOWN_EVENT_NAME
     if not mutex_handle:
         return True
     kernel32.OpenEventW.restype = wintypes.HANDLE
@@ -71,7 +84,7 @@ def _signal_shutdown(timeout_seconds: int = 15) -> bool:
     try:
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
-            event_handle = kernel32.OpenEventW(0x0002, False, SHUTDOWN_EVENT_NAME)
+            event_handle = kernel32.OpenEventW(0x0002, False, event_name)
             if event_handle:
                 break
             # The process may exit while still in migrations, before creating
@@ -96,7 +109,7 @@ def _configure_logging() -> None:
     log_dir = DATA_DIR / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(
-        log_dir / "order-desk.log",
+        log_dir / "kuubmill.log",
         maxBytes=2_000_000,
         backupCount=5,
         encoding="utf-8",
@@ -115,7 +128,7 @@ def _show_startup_error() -> None:
 
     ctypes.windll.user32.MessageBoxW(
         0,
-        f"KuubMill не вдалося запустити.\n\nДеталі: {DATA_DIR / 'logs' / 'order-desk.log'}",
+        f"KuubMill не вдалося запустити.\n\nДеталі: {DATA_DIR / 'logs' / 'kuubmill.log'}",
         "KuubMill",
         0x10,
     )
@@ -144,9 +157,18 @@ def _backup_database(db_file: Path) -> Path | None:
         return None
     backup_dir = DATA_DIR / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
-    destination = backup_dir / f"order_desk_{datetime.now():%Y%m%d_%H%M%S}.db"
+    destination = backup_dir / f"kuubmill_{datetime.now():%Y%m%d_%H%M%S}.db"
     shutil.copy2(db_file, destination)
-    backups = sorted(backup_dir.glob("order_desk_*.db"), reverse=True)
+    # Ротація бачить і копії зі старим префіксом — інакше вони лишились би на
+    # диску назавжди, поза лічильником «тримаємо останні п'ять».
+    # Сортування за ЧАСОМ, не за іменем: два різні префікси роблять порядок
+    # імен безглуздим, і свіжа копія «kuubmill_» опинялась би після старих
+    # «order_desk_» — тобто видалялася б першою.
+    backups = sorted(
+        [*backup_dir.glob("kuubmill_*.db"), *backup_dir.glob("order_desk_*.db")],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
     for old_backup in backups[5:]:
         old_backup.unlink(missing_ok=True)
     return destination
@@ -206,7 +228,7 @@ def _load_tray_image():
     try:
         from PIL import Image
 
-        return Image.open(resource_path("assets/orderdesk.ico"))
+        return Image.open(resource_path("assets/kuubmill.ico"))
     except Exception:
         logging.exception("Tray icon image unavailable")
         return None
@@ -223,7 +245,7 @@ def _run_server_with_tray(server, tray_holder: dict) -> None:
     # Headless/non-interactive (CI smoke test, service context): no desktop to
     # host a tray, so skip it outright and just serve. Keeps the smoke test
     # deterministic instead of relying on the tray-failure fallback below.
-    if os.name == "nt" and not os.environ.get("ORDER_DESK_NONINTERACTIVE"):
+    if os.name == "nt" and not os.environ.get("KUUBMILL_NONINTERACTIVE"):
         try:
             import pystray
 
@@ -257,7 +279,7 @@ def _run_server_with_tray(server, tray_holder: dict) -> None:
                     pystray.Menu.SEPARATOR,
                     pystray.MenuItem("Вийти", _quit),
                 )
-                icon = pystray.Icon("OrderDesk", image, "KuubMill", menu)
+                icon = pystray.Icon("KuubMill", image, "KuubMill", menu)
                 tray_holder["icon"] = icon
         except Exception:
             logging.exception("Tray unavailable — running without it")
@@ -311,7 +333,7 @@ def main() -> int:
         # Alembic's logging config targets stderr; restore the rotating file
         # handler required by the no-console Windows build.
         _configure_logging()
-        os.environ["ORDER_DESK_SCHEMA_MANAGED"] = "1"
+        os.environ["KUUBMILL_SCHEMA_MANAGED"] = "1"
         from app.web import app
         import uvicorn
 
@@ -371,7 +393,7 @@ def main() -> int:
         # A modal MessageBox blocks forever on a non-interactive host (no one to
         # dismiss it) — which is exactly what hung the release smoke test and hid
         # the real error. Skip it when there's no desktop to show it on.
-        if not os.environ.get("ORDER_DESK_NONINTERACTIVE"):
+        if not os.environ.get("KUUBMILL_NONINTERACTIVE"):
             _show_startup_error()
         return 1
 
