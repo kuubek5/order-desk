@@ -690,6 +690,15 @@ def mail_wizard(
         "material_folder": material_folder,
         "material_cands": candidates,
         "attachment_ids": attachment_ids,
+        # Крок 3 мусить бачити те саме, що й картка листа: без цього ключа
+        # попередження про нескачані файли за посиланням фізично не могло
+        # відрендеритись, бо візард будується не з _mail_panel_context.
+        "undownloaded_links": [
+            link
+            for link in extract_download_links(email.body_text)
+            if (link.file_id or link.url)
+            not in (set(json.loads(email.handled_link_refs)) if email.handled_link_refs else set())
+        ],
         **_email_partial_state(db, email),
     }
     # Files that will move in THIS batch: the operator's selection, or all
@@ -831,6 +840,7 @@ async def accept_email(
     folder_new: str = Form(""),
     material_folder: str = Form(""),
     attachment_ids: list[int] = Form(default=[]),
+    accept_anyway: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)
@@ -851,6 +861,29 @@ async def accept_email(
         # would ever move them into export. Refuse instead of losing files.
         return RedirectResponse(
             f"/mail/{email.id}?error={quote('Вкладення ще завантажуються, зачекайте і спробуйте ще раз')}",
+            status_code=303,
+        )
+
+    # Файли за посиланням (Drive, ukr.net) не є вкладеннями листа, тому
+    # attachments_status їх не бачить: лист зі статусом «skipped» і трьома STL
+    # на Drive проходив прийняття мовчки, створюючи роботу БЕЗ жодного файлу.
+    # Оператор бере її в Sum3D, файлів немає, а лист уже в архіві. Гейт на
+    # клієнті обходиться, тому він мусить бути й тут; свідоме «однаково
+    # прийняти» проходить через accept_anyway.
+    _handled_raw = getattr(email, "handled_link_refs", None)
+    _handled = set(json.loads(_handled_raw)) if _handled_raw else set()
+    unfetched = [
+        link
+        for link in extract_download_links(getattr(email, "body_text", "") or "")
+        if (link.file_id or link.url) not in _handled
+    ]
+    if unfetched and not accept_anyway:
+        return RedirectResponse(
+            f"/mail/{email.id}?error="
+            + quote(
+                f"Ще {len(unfetched)} файл(ів) за посиланням не скачано — "
+                "скачайте у вкладці «Файли + STL» або підтвердіть прийняття без них"
+            ),
             status_code=303,
         )
 

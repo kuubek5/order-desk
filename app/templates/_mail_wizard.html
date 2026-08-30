@@ -171,6 +171,25 @@
         <div><dt>Вкладень</dt><dd class="mono">{{ attachment_count }}</dd></div>
     </dl>
 
+    {# Файли за посиланням (Drive, ukr.net) не є вкладеннями, тому
+       attachments_status їх не бачить: лист із трьома STL на Drive проходив
+       прийняття мовчки, створюючи роботу БЕЗ жодного файлу. Оператор бере її в
+       Sum3D, файлів немає, а лист уже в архіві. Той самий гейт продубльовано
+       на сервері — цей лише робить його видимим до кліку. #}
+    {% if undownloaded_links or attachment_count == 0 %}
+    <div class="files-summary warn">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5h.01"/></svg>
+        <span>
+            {% if attachment_count == 0 %}<b>Жодного файлу</b> не переїде в export.{% else %}Ще <b>{{ undownloaded_links|length }}</b> файл(ів) за посиланням не скачано.{% endif %}
+            Скачайте у вкладці «Файли + STL» — або прийміть свідомо без них.
+        </span>
+    </div>
+    <label class="wiz-anyway">
+        <input type="checkbox" name="accept_anyway" value="1">
+        <span>Прийняти без цих файлів</span>
+    </label>
+    {% endif %}
+
     <div class="wiz-foot">
         <button type="button" class="btn"
                 hx-post="/mail/{{ email.id }}/wizard" hx-include="#wiz3form"

@@ -77,7 +77,11 @@
                 <input type="hidden" name="return_to" value="{{ return_to }}">
                 <input type="text" name="name" class="suminput sm" value="{{ cat.name }}" aria-label="Назва категорії">
                 <button type="submit" class="btn sm" title="Перейменувати (оновить правила й листи)">Зберегти</button>
+                {# Видалення ПРАВИЛА поруч підтвердження має — один контракт
+                   безпеки не може мати двох трактувань за 8 px одне від одного,
+                   тим паче що поруч стоїть «Зберегти». #}
                 <button type="submit" class="btn sm danger" formaction="/mail/filter-categories/{{ cat.id }}/delete"
+                        onclick="return confirm('Видалити категорію «{{ cat.name }}»?')"
                         title="Видалити (лише якщо не використовується правилами)">✕</button>
             </form>
             {% endfor %}

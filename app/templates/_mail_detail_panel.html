@@ -285,7 +285,10 @@
             <form method="post" action="/mail/{{ email.id }}/filter" class="manual-filter">
                 <select name="category" class="suminput sm" aria-label="Категорія фільтра">
                     {% for cat in filter_categories %}
-                    <option value="{{ cat }}" {% if loop.last %}selected{% endif %}>{{ cat }}</option>
+                    {# Дефолт — «інше», а не loop.last: категорії сортуються за id, тож
+   останньою була найновіша («моделювання»), і кожна нова категорія
+   мовчки ставала дефолтом для КОЖНОГО листа. #}
+                    <option value="{{ cat }}" {% if cat == 'інше' or (loop.first and 'інше' not in filter_categories) %}selected{% endif %}>{{ cat }}</option>
                     {% endfor %}
                 </select>
                 <button type="submit" class="btn sm" title="Перенести лист у «Відфільтровані» (без правила, «↩» повертає)">У фільтр</button>
@@ -296,7 +299,7 @@
                 <button type="submit" class="btn danger sm">Відхилити</button>
             </form>
             <span class="ssum-div" aria-hidden="true"></span>
-            <button type="button" class="btn apex sm" data-seg-go="accept">Прийняти →</button>
+            <button type="button" class="btn primary seg-go" data-seg-go="accept">Прийняти →</button>
         </div>
     </div>
     {% endif %}

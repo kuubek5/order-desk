@@ -40,7 +40,7 @@ document.addEventListener("htmx:afterSettle", (event) => {
 // Mail triage: highlight the row whose letter is open in the right-hand detail
 // panel. The HTMX get itself fills #mail-detail; this only tracks which row is
 // the active one so the master-detail selection reads clearly.
-document.addEventListener("click", (event) => {
+function markMailRowActive(event) {
   const row = event.target.closest(".mailrow");
   if (!row) return;
   if (event.target.closest(".mail-reject-form")) return; // reject button isn't a selection
@@ -52,6 +52,16 @@ document.addEventListener("click", (event) => {
   row.classList.remove("unread");
   const dot = row.querySelector(".newdot");
   if (dot) dot.remove();
+}
+
+document.addEventListener("click", markMailRowActive);
+// Рядок відкривається ще й з клавіатури (hx-trigger keyup Enter/Space у
+// _mail_triage_list.html), а підсвітка жила лише на кліку: Tab+Enter відкривав
+// лист, але «активним» лишався попередній рядок і крапка «непрочитано» не
+// гасла — оператор не бачив, який лист він читає.
+document.addEventListener("keyup", (event) => {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  markMailRowActive(event);
 });
 
 // Segmented triage detail (variant C — _mail_detail_panel.html): [Лист] /

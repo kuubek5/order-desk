@@ -6,7 +6,7 @@
 <div class="linkrow {{ link_status }}"
      hx-post="/mail/{{ email.id }}/fetch-link"
      hx-vals='{"ref": {{ (link.file_id or link.url)|tojson }}}'
-     hx-trigger="click, dl-all from:body"
+     hx-trigger="click, keyup[key=='Enter'], keyup[key==' '], dl-all from:body"
      hx-target="this" hx-swap="outerHTML"
      hx-disabled-elt="this"
      role="button" tabindex="0" title="Скачати цей файл">

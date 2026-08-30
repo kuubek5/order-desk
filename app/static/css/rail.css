@@ -557,18 +557,12 @@
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: -0.02em;
-  box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.45);
-  animation: mailCountPulse 2.6s ease-out infinite;
-}
-
-@keyframes mailCountPulse {
-  0% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.4); }
-  70% { box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0); }
-  100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mail-nav-count { animation: none; }
+  /* Статичне кільце замість пульсації. Клас висить і на бейджі «Зміна»
+     (_topbar_nav), а shift_pending() — Jinja-глобал, тобто рендериться на
+     КОЖНОМУ екрані: на тріажі пошти виходила друга нескінченна петля поряд із
+     маячком, хоч той екран спеціально зрізали з трьох пульсацій до однієї.
+     Присутність лишається, рух — ні. */
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
 }
 
 .mail-pending-notice {
