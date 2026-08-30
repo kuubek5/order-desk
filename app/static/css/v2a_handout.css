@@ -91,6 +91,26 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
    папка клієнта — головна дія (саме з неї починається впізнавання), Sum3D ID
    тихий праворуч як інструмент перевірки при сумніві. */
 .handoutv2 .hbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+/* Графічна шапка «Холодний лоток» (обрано власником 30.08.26 з трьох
+   згенерованих варіантів; арт design/kuubmill_handout-a-coldtray-pro…).
+   Той самий прийом, що плитки печей: фото спечених коронок на лотку як фон,
+   контроли й лічильник дня — поверх, під градієнтом-затемненням, що густішає
+   праворуч (арт скомпоновано коронками в лівий нижній кут). Фон статичний
+   свідомо: це шапка робочого екрана, їй нема чого сигналізувати анімацією.
+   Кольори затемнення — від самого арту (холодний майже чорний), не від
+   токенів теми: фото однакове в обох темах. */
+.handoutv2 .hbar{position:relative;isolation:isolate;overflow:hidden;
+  border:1px solid var(--line-2);border-radius:var(--r-card);
+  padding:15px 18px;min-height:92px;
+  background-color:#0d0f12;
+  background-image:url("../img/handout-tray.jpg");
+  background-size:cover;background-position:center 55%}
+.handoutv2 .hbar::before{content:"";position:absolute;inset:0;z-index:0;
+  background:linear-gradient(100deg,rgba(13,15,18,.28) 0%,rgba(13,15,18,.74) 46%,rgba(13,15,18,.92) 100%)}
+.handoutv2 .hbar>*{position:relative;z-index:1}
+.handoutv2 .hbar h1{text-shadow:0 1px 8px rgba(0,0,0,.65)}
+/* Числа дня — головний акцент шапки, як у мокапі. */
+.handoutv2 .hbar .hkpi b{font-size:17px}
 /* Заголовок на цьому екрані менший за типовий h1: у стрічці сім елементів, і
    при 1280px вона переносилась на три рядки — 88px хрому перед першою карткою. */
 .handoutv2 .hbar h1{font-size:19px;margin-right:2px}

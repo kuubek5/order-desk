@@ -166,7 +166,12 @@ main.furnaces{position:relative;min-height:100vh}
    Живуть у цьому ж файлі, що й екран печей і смуга над чергою: усе про печі
    в одному місці, і колір «гарячої» печі не розповзається по трьох файлах.
    Скоуплено під .q2 (черга), як і решта бічної панелі. */
-.q2 .fu-tiles{display:flex;flex-direction:column;gap:8px}
+/* Прохання власника 30.08.26: арт на всю ширину й висоту віджета. Плитки
+   виходять за внутрішні поля картки (негативні поля рівно на card-pad) і
+   притискаються до країв секції — краї ріже overflow:hidden самої .side-sec,
+   тож бокові межі й радіуси плитці не потрібні. */
+.q2 .fu-tiles{display:flex;flex-direction:column;gap:6px;
+  margin:-11px calc(-1*var(--queue-density-card-pad,13px)) 0}
 /* Графічна плитка «Жар коронок» (обрано власником 30.08.26 з чотирьох
    згенерованих варіантів; арт design/kuubmill_furnwidget-b-crowns-pro…).
    Фон — фото розжарених коронок на лотку; числа живуть ПОВЕРХ, під шаром
@@ -174,9 +179,9 @@ main.furnaces{position:relative;min-height:100vh}
    тонуть. Затемнення густішає праворуч — арт скомпоновано так, що коронки
    в лівому нижньому куті. Кольори затемнення прив'язані до самого арту
    (теплий майже чорний), а не до токенів теми: фото однакове в обох темах. */
-.q2 .fu-tile{position:relative;display:block;padding:11px 12px;border-radius:10px;
-  overflow:hidden;isolation:isolate;text-decoration:none;min-height:76px;
-  border:1px solid var(--line-2);color:var(--ink);
+.q2 .fu-tile{position:relative;display:flex;flex-direction:column;padding:13px 15px;border-radius:0;
+  overflow:hidden;isolation:isolate;text-decoration:none;min-height:112px;
+  border:0;border-top:1px solid var(--line-2);border-bottom:1px solid var(--line-2);color:var(--ink);
   background-color:#14100a;
   background-image:url("../img/furnace-crowns.jpg");
   background-size:cover;background-position:center 60%;
@@ -230,10 +235,10 @@ main.furnaces{position:relative;min-height:100vh}
   margin:9px 0 7px;overflow:hidden}
 .q2 .fu-tile-bar i{display:block;height:100%;background:var(--accent);border-radius:99px;
   transition:width .4s cubic-bezier(.22,1,.36,1)}
-.q2 .fu-tile-foot{display:block;margin-top:7px;font-size:12px;color:var(--ink-2)}
+.q2 .fu-tile-foot{display:block;margin-top:auto;padding-top:7px;font-size:12px;color:var(--ink-2)}
 .q2 .fu-tile-foot b{font-family:var(--font-mono);font-weight:500;color:var(--ink)}
 .q2 .fu-tile-sep{margin:0 5px;color:var(--line-2)}
-.q2 .fu-tile-err{display:block;margin-top:6px;font-size:12px;color:var(--alarm-ink)}
+.q2 .fu-tile-err{display:block;margin-top:auto;padding-top:6px;font-size:12px;color:var(--alarm-ink)}
 
 /* Відкритість секції печей у бічній панелі — КЛАСОМ НА body, а не атрибутом на
    самій секції: вона свапається цілком кожні 30 с, і атрибут гинув разом зі
