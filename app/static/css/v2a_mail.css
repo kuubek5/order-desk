@@ -513,3 +513,8 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 .mailv2 .worklayout:has(.empty-triage) .empty-triage h3{margin:0}
 .mailv2 .worklayout:has(.empty-triage) .empty-triage p{max-width:none}
 
+
+/* Рядок листа, у якого частини файлів немає на диску. Той самий колір тривоги,
+   що й у панелі: «3 з 5 файл.» має читатись як проблема, а не як подробиця. */
+.mailv2 .mailrow .att.att-gone{color:var(--alarm-ink)}
+.mailv2 .mailrow .att.att-gone svg{stroke:var(--alarm)}

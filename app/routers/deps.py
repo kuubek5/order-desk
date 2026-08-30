@@ -37,7 +37,7 @@ from app.services.queue import is_rush_comment
 from app.services.shift import night_label, open_note_count
 from app.statuses import is_overdue
 from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed
-from app.triage_status import triage_readiness
+from app.triage_status import files_on_disk, triage_readiness
 from app.update_check import get_known_update
 
 logger = logging.getLogger(__name__)
@@ -315,6 +315,7 @@ templates.env.globals["material_badge"] = material_badge
 templates.env.globals["split_material_color"] = split_material_color
 templates.env.globals["strip_material_word"] = strip_material_word
 templates.env.globals["triage_readiness"] = triage_readiness
+templates.env.globals["files_on_disk"] = files_on_disk
 templates.env.globals["is_rush_comment"] = is_rush_comment
 templates.env.globals["static_ver"] = static_ver
 templates.env.filters["changelog_md"] = changelog_md

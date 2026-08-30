@@ -40,6 +40,7 @@ from app.routers.deps import (
 )
 from app.services.clients import ensure_client_profiles, quantity_units
 from app.services.handout import (
+    handout_day_totals,
     HANDOUT_ALL_DAYS,
     entries_for_material,
     handout_client_matches,
@@ -242,9 +243,26 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     # Клієнтів мало (десятки), робіт — більше, і саме роботи кажуть, скільки
     # ще фізично шукати в лотку: «3 / 11 клієнтів» нічого не каже про те, що в
     # тих восьми може бути і вісім робіт, і сорок.
-    total_works = sum(g["works_count"] for g in client_groups)
-    found_works = sum(g["found_count"] for g in client_groups)
-    total_units = sum(g["units_total"] for g in client_groups)
+    # Знаменники — ЗА ЦІЛИЙ ДЕНЬ, разом із уже виданим. Інакше вони
+    # зменшуються протягом дня (видане випадає з `eligible`), і лічильник їде
+    # НАЗАД після успішної видачі: «1 / 34 кл.» → «0 / 33 кл.». Найгірше, що
+    # «X од.» при цьому виглядало як обсяг дня — число, яке диктують
+    # керівництву, — хоча означало залишок.
+    #
+    # Один день = один знаменник, чисельник росте. Коли день не обрано (режим
+    # «усі дні»), фіксувати нема чого — рахуємо показане, як раніше.
+    day_totals = handout_day_totals(db, selected_day) if selected_day else {}
+    if day_totals:
+        total_groups_all = day_totals["clients"]
+        done_groups = day_totals["clients_done"]
+        total_works = day_totals["works"]
+        found_works = day_totals["works_done"]
+        total_units = day_totals["units"]
+    else:
+        total_groups_all = len(client_groups)
+        total_works = sum(g["works_count"] for g in client_groups)
+        found_works = sum(g["found_count"] for g in client_groups)
+        total_units = sum(g["units_total"] for g in client_groups)
     # Clients with no bound export folder. Counted so the screen can say it ONCE
     # at the top instead of putting a warning chip on every card — with nothing
     # bound yet that was 34 amber calls-to-action, which reads as noise and
@@ -277,7 +295,7 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             "next_day": adjacent_handout_day(handout_days, selected_day, +1),
             "day_window": handout_day_window(handout_days, selected_day),
             "done_groups": done_groups,
-            "total_groups": len(client_groups),
+            "total_groups": total_groups_all,
             "total_works": total_works,
             "found_works": found_works,
             "total_units": total_units,

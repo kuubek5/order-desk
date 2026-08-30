@@ -55,9 +55,15 @@
                    subject — it wasted the whole line on «Fwd:». #}
                 {% set subj = (email.subject or '')|trim %}
                 <span class="subj">{% if subj|lower in ('fwd:', 're:', 'fw:', 'fwd', 're', '') %}Без теми{% else %}{{ subj }}{% endif %}</span>
-                <span class="att">
+                {# Рахуємо файли НА ДИСКУ, а не рядки в базі: це той самий обман,
+                   від якого вже полагодили панель. «3 з 5» аварійним кольором
+                   каже правду там, де оператор веде очима. #}
+                {% set _on_disk = files_on_disk(email) %}
+                {% set _rows = email.attachments|length %}
+                <span class="att{% if _on_disk < _rows %} att-gone{% endif %}"
+                      {% if _on_disk < _rows %}title="{{ _rows - _on_disk }} файл(ів) немає на диску — відкрий лист і скачай наново"{% endif %}>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V6a4 4 0 0 1 8 0v9a2.5 2.5 0 0 1-5 0V7"/></svg>
-                    {% if email.attachments_status == 'pending' %}завантаження…{% elif email.attachments_status == 'skipped' %}не скачано{% else %}{{ email.attachments|length }} файл.{% endif %}
+                    {% if email.attachments_status == 'pending' %}завантаження…{% elif email.attachments_status == 'skipped' %}не скачано{% elif _on_disk < _rows %}{{ _on_disk }} з {{ _rows }} файл.{% else %}{{ _rows }} файл.{% endif %}
                 </span>
                 <span class="t">{% if email.received_at %}{{ email.received_at.strftime('%d.%m %H:%M') }}{% else %}—{% endif %}</span>
             </span>
@@ -84,7 +90,12 @@
                     </form>
                 {% else %}
                     {% set rd = triage_readiness(email) %}
-                    {% if rd.state == '3d' %}
+                    {% if rd.state == 'no_files' %}
+                    {# Файли видалили з диска після скачування. Стоїть ПЕРШИМ:
+                       готовність без файлів неможлива, і саме цей лист не
+                       можна приймати — у ньому нема чого приймати. #}
+                    <span class="reco danger" title="Вкладення є в базі, але файлів немає на диску — відкрий лист і скачай наново.">немає файлів</span>
+                    {% elif rd.state == '3d' %}
                     <span class="reco danger" title="Схоже на 3D-друк — лабораторія цього не робить. Можна навчити фільтр (у листі) прибирати такі автоматично.">3D-друк?</span>
                     {% elif rd.state == 'incomplete' %}
                     <span class="reco warn" title="Не розпізнано: {{ rd.missing|join(', ') }} — відкрий лист і заповни перед прийняттям.">{{ rd.missing|join(', ') }}?</span>

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.client_matcher import match_client_name
 from app.export_scanner import scan_export_client_cached, scan_export_client_latest_cached
 from app.material_match import materials_match
+from app.services.clients import quantity_units
 from app.models import ClientNameAlias, Order
 from app.services.order_dates import parse_sheet_tab
 
@@ -174,4 +175,34 @@ def matched_folders(matches: dict) -> dict[str, str]:
         name: match.matched_folder_name
         for name, match in matches.items()
         if match.matched_folder_name
+    }
+
+
+def handout_day_totals(db: Session, day) -> dict:
+    """Скільки робіт і одиниць у дні ВСЬОГО, разом із уже виданими.
+
+    Лічильник у шапці рахувався по `client_groups`, а вони будуються з
+    `handout_eligible_orders`, який відкидає видане. Тобто знаменник ЗМЕНШУВАВСЯ
+    протягом дня: щойно клієнта видано, «1 / 34 кл.» ставало «0 / 33 кл.» —
+    лічильник їхав назад після успішної роботи, а «X од.» виглядало як обсяг
+    дня, хоча означало залишок. Саме те число, яке диктують керівництву.
+
+    Тут рахуємо цілий день як він є: знаменник фіксований, чисельник росте.
+    """
+    if day is None:
+        return {}
+    rows = db.scalars(
+        select(Order).where(Order.client_name.is_not(None))
+    ).all()
+    same_day = [o for o in rows if parse_sheet_tab(o.sheet_tab) == day]
+    issued = {"видано", "знайдено при видачі"}
+    return {
+        "clients": len({o.client_name for o in same_day}),
+        "clients_done": len(
+            {o.client_name for o in same_day}
+            - {o.client_name for o in same_day if o.status not in issued}
+        ),
+        "works": len(same_day),
+        "works_done": sum(1 for o in same_day if o.status in issued),
+        "units": sum(quantity_units(o.quantity) for o in same_day),
     }
