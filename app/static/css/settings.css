@@ -61,9 +61,9 @@
 }
 
 .connection-state-ready {
-  color: #a7ddb4;
-  border-color: rgba(131, 201, 149, 0.38);
-  background: rgba(131, 201, 149, 0.08);
+  color: var(--ok);
+  border-color: rgba(var(--ok-rgb), 0.38);
+  background: rgba(var(--ok-rgb), 0.08);
 }
 
 .settings-actions {
@@ -121,13 +121,16 @@
   gap: var(--space-2);
 }
 
+/* КАПС був успадкований від старої адмінки: заголовки карток на цьому екрані
+   реченнєві, тож у одній картці жили дві типографські мови, а кирилиця 12px
+   капсом із трекінгом («СПІЛЬНИЙ ПАРОЛЬ VNC») читається помітно повільніше.
+   Скидання вже писали двічі локально — прибираємо з кореня, щоб кожен новий
+   партіал не успадковував ваду й не породжував третій локальний фікс. */
 .settings-field label {
   display: block;
   font-size: 0.85rem;
   color: var(--color-text-muted);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .settings-help {
@@ -274,16 +277,16 @@
 }
 
 .check-pill-success {
-  color: #a7ddb4;
-  border-color: rgba(131, 201, 149, 0.38);
-  background: rgba(131, 201, 149, 0.08);
+  color: var(--ok);
+  border-color: rgba(var(--ok-rgb), 0.38);
+  background: rgba(var(--ok-rgb), 0.08);
   animation: checkPillIn 0.22s ease-out both, checkPillPulse 0.5s ease-out 0.22s;
 }
 
 .check-pill-warning {
-  color: #e89860;
-  border-color: rgba(232, 152, 96, 0.4);
-  background: rgba(232, 152, 96, 0.1);
+  color: var(--warn);
+  border-color: rgba(var(--warn-rgb), 0.4);
+  background: rgba(var(--warn-rgb), 0.1);
 }
 
 .check-pill-error {
@@ -305,10 +308,10 @@
 
 @keyframes checkPillPulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(131, 201, 149, 0.35);
+    box-shadow: 0 0 0 0 rgba(var(--ok-rgb), 0.35);
   }
   100% {
-    box-shadow: 0 0 0 6px rgba(131, 201, 149, 0);
+    box-shadow: 0 0 0 6px rgba(var(--ok-rgb), 0);
   }
 }
 
@@ -645,7 +648,7 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .matlib-back:hover{color:var(--accent)}
 .matlib-flash{padding:10px 13px;border-radius:var(--r-ctl);margin-bottom:14px;font-size:13px;border:1px solid var(--line)}
 .matlib-flash.is-ok{background:rgba(var(--accent-rgb), .10);border-color:rgba(var(--accent-rgb), .35);color:var(--ink)}
-.matlib-flash.is-error{background:rgba(244,114,110,.10);border-color:rgba(244,114,110,.4);color:#f4726e}
+.matlib-flash.is-error{background:rgba(244,114,110,.10);border-color:rgba(244,114,110,.4);color:var(--alarm)}
 .matlib-summary .panel-body{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .matlib-summary .dlabel{color:var(--ink-3);font-size:12px;margin-right:8px}
 .matlib-summary .tnum{font-family:var(--font-mono);font-size:22px;font-weight:700;color:var(--ink)}
@@ -659,8 +662,10 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .matlib-chip .mono{font-family:var(--font-mono)}
 .matlib-mt{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);width:14px;text-align:center}
 .matlib-x-form{display:inline-flex;margin:0}
-.matlib-x{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border:0;background:none;color:var(--ink-3);cursor:pointer;padding:0}
-.matlib-x:hover{color:#f4726e}
+/* Ціль кліку 24px без зміни малюнка (від'ємні поля тримають щільність
+   ряду): 18px на дію, що стирає правило класифікації, — це промах. */
+.matlib-x{width:24px;height:24px;margin:-3px -3px -3px 0;display:inline-flex;align-items:center;justify-content:center;border:0;background:none;color:var(--ink-3);cursor:pointer;padding:0}
+.matlib-x:hover{color:var(--alarm)}
 .matlib-x svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
 .matlib-add-alias,.matlib-add-material{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .matlib-add-alias .login-input{flex:1;min-width:160px}
@@ -707,7 +712,6 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 
 /* Підписи полів були капсом із трекінгом (успадкований text-transform), а
    заголовки карток — у реченнєвому регістрі: дві типографські мови поруч. */
-.setv2-narrow .settings-field > label{text-transform:none;letter-spacing:normal}
 
 /* Банер «збережено» лишався position:fixed і відлітав у правий верхній кут —
    за півекрана від поля, яке зберігали. */
@@ -759,3 +763,28 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .icsw{display:grid;place-items:center;width:34px;height:34px;color:var(--ink)}
 .icsw svg{width:24px;height:24px}
 .setv2 .acc-swatch.is-icon[aria-pressed="true"] .icsw{color:var(--accent-c)}
+
+/* ── Консоль налаштувань: банер у потоці та єдиний ритм (30.08.26) ─────────
+   Банер підтвердження був position:fixed у куті екрана — на панелі 1080px це
+   ~800px від рядка, який щойно зберегли, без автозакриття й без кнопки
+   закрити. А це головний канал підтвердження ~20 роутів (пічки, оператори,
+   бекап, оновлення), а не рідкісний виняток. show() і так скролить main на
+   початок, тож нефіксований банер — перше, що бачить оператор. */
+.scon .settings-success{position:static;margin:0 0 var(--space-3)}
+.scon .settings-error{top:auto}
+
+/* Один ритм, як на /account: інтервал задає gap контейнера, margin'и дітей
+   обнулені. До цього на одній картці жили 2/4/6/14/16/24 px — сума gap і
+   власних margin, до того ж половина сирими px повз шкалу --space-*.
+   Скоуплено під .scon: майстер першого запуску свій ритм уже має. */
+.scon .settings-group{gap:var(--space-4)}
+.scon .settings-field{margin-bottom:0}
+.scon .wizard-step-head{margin-bottom:0}
+.scon .wizard-sub{margin:0}
+.scon .settings-help{margin:0}
+.scon .settings-check-row{margin-top:0}
+.scon .settings-actions{margin-top:0}
+.scon .wizard-step .box{display:flex;flex-direction:column;gap:var(--space-4)}
+/* Підказка належить полю НАД нею — притискаємо назад до підпису, інакше 2px
+   до підпису й 14px до наступного поля читались як один блок випадково. */
+.scon .settings-field > label + .settings-help{margin-top:calc(-1 * var(--space-2))}

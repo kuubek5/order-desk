@@ -457,7 +457,6 @@ main.setv2.scon {
    `.settings-field label` у settings.css робить КАПС усім вкладеним <label>;
    тут вибір — це самі <label>, тож регістр повертаємо в нормальний. */
 .scon .notify-pick,
-.scon .notify-ev { text-transform: none; letter-spacing: normal; }
 .notify-styles { display: flex; gap: 12px; flex-wrap: wrap; }
 .notify-pick {
   position: relative;

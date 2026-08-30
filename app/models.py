@@ -167,8 +167,14 @@ class ActionLog(Base):
     old_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     new_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Локальний час, БЕЗ server_default=func.now(): на SQLite func.now() пише
+    # UTC, і /journal показував кожну дію на 3 години в минулому. Це екран, за
+    # яким розбирають брак і чия це провина, тож час тут і є змістом — та сама
+    # причина, з якої від server_default відмовились у ShiftNote.
+    # Наявні рядки лишаються в UTC: разова міграція нижче їх не чіпає свідомо,
+    # бо зсув невідомий для машин в інших зонах.
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=False), server_default=func.now(), index=True
+        DateTime(timezone=False), default=datetime.now, index=True
     )
     undone_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True

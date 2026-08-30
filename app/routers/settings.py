@@ -87,7 +87,9 @@ from app.services.config_state import (
 from app.services.shift import open_note_count as open_shift_note_count
 from app.services.operators import normalize_initial, user_count, validate_initial
 from app.settings_store import (
+    CLEARABLE_SETTING_KEYS,
     OPERATOR_EDITABLE_KEYS,
+    SECRET_SETTING_KEYS,
     SETTING_FIELDS,
     NOTIFY_EVENTS,
     extract_sheet_id,
@@ -229,7 +231,15 @@ def get_settings(
     # HTMX checks are actually operator-facing; settings.html hides every
     # other card behind {% if user.role == 'адмін' %}, and the POST handler
     # enforces the same boundary server-side regardless of what the DOM shows.
-    values = get_all_settings(db)
+    # Секрети НЕ їдуть у шаблон значеннями — лише ознакою «задано».
+    # get_all_settings повертає їх розшифрованими, тож у контексті лежав
+    # відкритий IMAP-пароль, service-account JSON і refresh token. Жоден
+    # шаблон їх не друкує, але від витоку захищала тільки дисципліна автора:
+    # одне майбутнє {{ values['imap_password'] }} або сторінка помилки Jinja
+    # з дампом контексту — і пароль пошти в HTML.
+    _raw = get_all_settings(db)
+    values = {k: ("" if k in SECRET_SETTING_KEYS else v) for k, v in _raw.items()}
+    values_set = {k: bool(_raw.get(k)) for k in SECRET_SETTING_KEYS}
     operators = db.scalars(select(User).order_by(User.created_at)).all() if user.role == "адмін" else []
     settings_flash = request.session.pop("settings_flash", None)
 
@@ -265,6 +275,7 @@ def get_settings(
         {
             "fields": SETTING_FIELDS,
             "values": values,
+            "values_set": values_set,
             "user": user,
             "saved": saved is not None or (settings_flash and settings_flash["kind"] == "success"),
             "saved_message": (
@@ -401,7 +412,12 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
         if field.key == "google_sheet_id":
             # Operators paste the whole address-bar URL; store the bare id.
             value = extract_sheet_id(value)
-        if value:
+        # Порожнє = «не міняти» ЛИШЕ для секретів: їхнє поле рендериться
+        # порожнім навмисно (placeholder «збережено»), тож повторний сабміт
+        # не має їх стерти. Для шляхів і Sheet ID порожнє = «прибрати»,
+        # інакше помилковий мережевий шлях, що вішає видачу, неможливо було
+        # зняти — а тост при цьому рапортував «Збережено».
+        if value or field.key in CLEARABLE_SETTING_KEYS:
             set_setting(db, field.key, value)
     db.commit()
 

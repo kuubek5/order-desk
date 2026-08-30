@@ -104,6 +104,27 @@ SETTING_FIELDS = [
 
 OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operator_editable}
 
+# Ключі, значення яких НЕ мають потрапляти в Jinja-контекст. Екран показує їх
+# лише ознакою «збережено» (placeholder), тож маскування нічого не ламає, але
+# прибирає цілий клас багів: випадковий {{ values[...] }} або сторінка помилки
+# Jinja з дампом контексту віддала б пароль пошти прямо в HTML.
+SECRET_SETTING_KEYS = {
+    "imap_password",
+    "google_service_account_json",
+    "google_oauth_client_json",
+    "google_oauth_refresh_token",
+}
+
+# Ключі, які МОЖНА очистити порожнім значенням. Для секретів порожнє поле
+# означає «не міняти» (їх поле рендериться порожнім навмисно), а для шляхів
+# і Sheet ID — «прибрати»: без цього помилковий мережевий шлях, що вішає
+# видачу, неможливо було зняти з екрана, а тост при цьому казав «Збережено».
+CLEARABLE_SETTING_KEYS = {
+    "google_sheet_id",
+    "export_folder_path",
+    "technician_files_path",
+}
+
 # Non-secret preference keys stored in the same AppSetting table but NOT part of
 # the credentials screen (SETTING_FIELDS) — set from their own settings screens.
 # mail_default_material: which material the mail triage assumes when a milling

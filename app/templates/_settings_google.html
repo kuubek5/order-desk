@@ -59,7 +59,7 @@
                         <input type="hidden" name="google_auth_mode" value="{{ auth_mode }}" data-authmode-input>
                     </div>
 
-                    {% set sa_saved = values['google_service_account_json'] %}
+                    {% set sa_saved = values_set['google_service_account_json'] %}
                     <div class="settings-field" data-authmode-block="service_account" {% if auth_mode == 'oauth' %}hidden{% endif %}>
                         <div class="cred-row" data-cred-toggle-group>
                             <label for="google_service_account_json" class="cred-row-label">JSON-ключ сервісного акаунта</label>
@@ -79,7 +79,7 @@
                         </div>
                     </div>
 
-                    {% set oauth_saved = values['google_oauth_client_json'] %}
+                    {% set oauth_saved = values_set['google_oauth_client_json'] %}
                     <div class="settings-field" data-authmode-block="oauth" {% if auth_mode != 'oauth' %}hidden{% endif %}>
                         <div class="cred-row" data-cred-toggle-group>
                             <label for="google_oauth_client_json" class="cred-row-label">OAuth Client JSON</label>
@@ -99,8 +99,8 @@
                         </div>
 
                         <div class="settings-check-row">
-                            <span class="connection-state {% if values['google_oauth_refresh_token'] %}connection-state-ready{% endif %}">
-                                {% if values['google_oauth_refresh_token'] %}Акаунт підключено{% else %}Акаунт не підключено{% endif %}
+                            <span class="connection-state {% if values_set['google_oauth_refresh_token'] %}connection-state-ready{% endif %}">
+                                {% if values_set['google_oauth_refresh_token'] %}Акаунт підключено{% else %}Акаунт не підключено{% endif %}
                             </span>
                             <button
                                 type="button"
@@ -111,7 +111,7 @@
                                 hx-indicator="#oauth-check-spinner"
                                 hx-params="none"
                             >Увійти через Google</button>
-                            {% if values['google_oauth_refresh_token'] %}
+                            {% if values_set['google_oauth_refresh_token'] %}
                             <button type="submit" formaction="/settings/google-oauth/disconnect" formnovalidate class="link-button">Відключити</button>
                             {% endif %}
                             <span class="check-spinner htmx-indicator" id="oauth-check-spinner" aria-hidden="true"></span>

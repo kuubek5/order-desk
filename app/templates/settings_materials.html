@@ -49,7 +49,12 @@
             <span class="matlib-chip {{ 'is-token' if alias.match_type == 'token' else '' }}">
                 <span class="mono">{{ alias.pattern }}</span>
                 <span class="matlib-mt" title="{{ 'точний токен' if alias.match_type == 'token' else 'підрядок' }}">{{ 'T' if alias.match_type == 'token' else '~' }}</span>
-                <form method="post" action="/settings/materials/alias/{{ alias.id }}/delete" class="matlib-x-form">
+                {# Промах по хрестику тихо стирав правило («моно» → цирконій), і
+                   роботи мовчки їхали в «не розпізнано». Сторінка сама попереджає
+                   про масштаб («система перекласифікує всі роботи»), а клік нічим
+                   не гальмувався — на відміну від видалення пічки поруч. #}
+                <form method="post" action="/settings/materials/alias/{{ alias.id }}/delete" class="matlib-x-form"
+                      onsubmit="return confirm('Видалити правило «{{ alias.pattern }}»? Роботи з цим написанням стануть нерозпізнаними.')">
                     <button type="submit" class="matlib-x" aria-label="Видалити правило" title="Видалити">
                         <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg>
                     </button>

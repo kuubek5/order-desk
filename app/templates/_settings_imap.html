@@ -43,7 +43,7 @@
                                     id="imap_password"
                                     name="imap_password"
                                     class="login-input"
-                                    placeholder="{% if values['imap_password'] %}•••••••• (збережено){% else %}не задано{% endif %}"
+                                    placeholder="{% if values_set['imap_password'] %}•••••••• (збережено){% else %}не задано{% endif %}"
                                 >
                                 <button type="button" class="login-toggle-password" aria-label="Показати пароль">
                                     <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" class="duo"/><circle cx="12" cy="12" r="3" class="duo"/><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
