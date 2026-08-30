@@ -98,6 +98,28 @@ def furnaces_cards(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "_furnace_cards.html", _context(request, db, user))
 
 
+@router.get("/furnaces/side", response_class=HTMLResponse)
+def furnaces_side(request: Request, db: Session = Depends(get_db)):
+    """Секція «Пічки» в бічній панелі черги — власний 30-секундний годинник.
+
+    Той самий контракт, що й у смуги: обгортку віддаємо ЗАВЖДИ (інакше на
+    «печей немає» елемент зник би з DOM разом зі своїм поллом), і читаємо
+    ЛИШЕ стан у пам'яті процесу — до печі з потоку запиту не ходимо, бо
+    мовчазна піч тримала б чергу двадцять секунд.
+
+    Дані беруться з тих самих strip_cards/strip_summary, що годують смугу:
+    два погляди на одне значення — нормально, два джерела — ні.
+    """
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    cards = strip_cards(db)
+    return templates.TemplateResponse(
+        request,
+        "_furnace_side.html",
+        {"furnace_cards": cards, "furnace_summary": strip_summary(cards)},
+    )
+
+
 @router.get("/furnaces/strip", response_class=HTMLResponse)
 def furnaces_strip(request: Request, db: Session = Depends(get_db)):
     """Смуга печей над чергою — на власному 30-секундному годиннику.

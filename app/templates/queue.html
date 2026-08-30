@@ -208,6 +208,10 @@
                 </div>
             </section>
 
+            {# Пічки — одразу під поштою, як просив власник. Свій полл, бо
+               панель лежить поза `#queue-rows`. #}
+            {% include "_furnace_side.html" %}
+
             <section class="side-sec" data-open="false" data-sec="sync">
                 <button class="side-head" type="button" data-side-toggle aria-expanded="false">
                     Google Таблиця

@@ -801,26 +801,32 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
   if (button) syncFurnaceToggle(button, document.body.classList.contains("furnace-collapsed"));
 });
 
-// ── Пришпилена робота йде нагору ОДРАЗУ ─────────────────────────────────
+// ── Пришпилена робота їде нагору ────────────────────────────────────────
 // Сервер сортує пришпилені вгору і після кліку шле refresh-queue, але повне
-// перемальовування черги на шести сотнях рядків коштує ~4 с. Чотири секунди
-// «нічого не сталось» після кліку читаються як зламана кнопка, тому рядок
-// переїжджає на клієнті негайно, а серверний свап потім лише підтверджує те,
-// що вже видно.
+// перемальовування черги на шести сотнях рядків коштує ~3.5 с. Стільки
+// «нічого не сталось» після кліку читається як зламана кнопка, тому рядок
+// переїжджає на клієнті, а серверний свап потім лише підтверджує видиме.
+//
+// Їде, а не телепортується: FLIP — запам'ятати, де рядок був, перенести в
+// DOM, і зіграти різницю трансформом. Стрибок через півсотні рядків без руху
+// не читається як «мій рядок піднявся» — читається як «список перемішався»,
+// а це рівно та тривога, від якої в цьому проєкті є писане правило.
+// Анімується transform, не позиція: рядок таблиці, зсунутий геометрично,
+// перекладає всю таблицю на кожному кадрі.
+//
+// Дві пастки, на які це наткнулось по черзі (обидві мовчазні):
+//  1. Рядок не можна шукати через event.target: свап іде outerHTML, тому
+//     подія приходить на БАТЬКА заміненого <tr>, і closest("tr") там нічого
+//     не знаходить. Шукаємо за шляхом запиту.
+//  2. Слухати треба afterSettle, а не afterSwap: на afterSwap у DOM ще висить
+//     СТАРИЙ рядок (htmx-swapping), тобто getElementById віддає його — без
+//     свіжого класу queue-row-focus, і перевірка тихо відсіювала рух.
 //
 // Рухаємо ВСЕРЕДИНІ свого tbody: черга поділена на «лабораторні» й «з пошти»,
 // і рядок, що перестрибнув у чужу секцію, збрехав би про джерело роботи.
-//
-// Знімаючи шпильку, рядок НЕ повертаємо на місце: куди саме — знає лише
-// сервер, а стрибок під курсором відразу після кліку гірший за рядок, який
+// Знімаючи шпильку, рядок на місце НЕ повертаємо: куди саме — знає лише
+// сервер, а стрибок під курсором одразу після кліку гірший за рядок, який
 // спокійно стане на місце з наступним оновленням.
-// Дві пастки, на які ця дрібниця наткнулась по черзі:
-//  1. Рядок не можна шукати через event.target: свап іде з
-//     hx-swap="outerHTML", тому подія приходить на БАТЬКА заміненого <tr>, і
-//     closest("tr") там нічого не знаходить. Шукаємо за шляхом запиту.
-//  2. Слухати треба afterSettle, а не afterSwap: на afterSwap у DOM ще висить
-//     СТАРИЙ рядок (htmx-swapping), тобто getElementById віддає його — без
-//     свіжого класу queue-row-focus, і перевірка мовчки відсіювала рух.
 document.addEventListener("htmx:afterSettle", (event) => {
   const cfg = event.detail && event.detail.requestConfig;
   const path = (cfg && cfg.path) || "";
@@ -830,11 +836,36 @@ document.addEventListener("htmx:afterSettle", (event) => {
   if (!row || !row.classList.contains("queue-row-focus")) return;
   const body = row.parentElement;
   if (!body || body.firstElementChild === row) return;
+
+  const from = row.getBoundingClientRect().top;
   body.insertBefore(row, body.firstElementChild);
-  // Коротка мітка руху — інакше рядок просто «телепортується», і оператор не
-  // певен, що переїхав саме той, по якому він клацнув.
-  row.classList.remove("row-flash");
-  void row.offsetWidth;
-  row.classList.add("row-flash");
-  window.setTimeout(() => row.classList.remove("row-flash"), 1000);
+  const to = row.getBoundingClientRect().top;
+  const shift = from - to;
+  if (!shift) return;
+
+  // Прокрутити до верху списку, інакше рядок «поїде» туди, де оператор його
+  // не бачить, і рух втратить весь сенс.
+  const scroller = row.closest(".tablewrap");
+  if (scroller && scroller.scrollTop > 0) scroller.scrollTo({ top: 0, behavior: "smooth" });
+
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  row.classList.add("row-rising");
+  row.style.transform = "translateY(" + shift + "px)";
+  // Один кадр із початковим зсувом — інакше браузер згорне обидві зміни в
+  // одну й анімації не буде взагалі.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      row.style.transition = "transform .42s cubic-bezier(.22,1,.36,1)";
+      row.style.transform = "translateY(0)";
+    });
+  });
+  const done = () => {
+    row.style.transition = "";
+    row.style.transform = "";
+    row.classList.remove("row-rising");
+    row.removeEventListener("transitionend", done);
+  };
+  row.addEventListener("transitionend", done);
+  // Страховка: transitionend не прийде, якщо рядок замінить полл на півдорозі.
+  window.setTimeout(done, 700);
 });

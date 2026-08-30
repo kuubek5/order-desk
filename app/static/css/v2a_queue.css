@@ -298,16 +298,7 @@ body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
    рядки. Undo тепер робить статична кнопка «Крок назад» у шапці. */
 .q2 table.qtable td.status,
 .q2 table.qtable th.col-status{display:none}
-/* НАСЛІДОК, який коштував відкритого контуру пришпиленого рядка: прихована
-   колонка лишається ОСТАННЬОЮ коміркою в DOM, тому `td:last-child` — це вона,
-   і права грань малювалась на комірці нульової ширини, тобто ніде. Рядок
-   виглядав обведеним з трьох боків.
-   Грань переїжджає на сусідку зліва — на ту, ЩО ВИДНО. Правило свідомо стоїть
-   тут, впритул до `display:none`: повернуть колонку «Статус» — треба прибрати
-   обидва рядки разом, інакше в середині рядка з'явиться зайва вертикаль. */
-.q2 table.qtable tbody tr.queue-row-focus > td:has(+ td.status){
-  box-shadow:inset -1px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55);
-}
+
 /* Колонка «Оператор» — хто прорахував (стовпець М таблиці, Order.calculated_raw).
    Компактний моно-бейдж; коротке значення (літера/код St, D, EE…). */
 .q2 td.calc-op{white-space:nowrap}
@@ -722,32 +713,28 @@ body.layout-edit .q2 table.qtable{user-select:none}
 /* Контур відміченого рядка — inset-тінь, а не border: межа зсунула б рядок
    на 1px і таблиця «дихала» б на кожен клік. Смуга матеріалу лишається
    першою тінню першої комірки, тому тут вона повторюється. */
-/* Контур мусить бути ЗАМКНУТИЙ. Був відкритий зліва: перша комірка діставала
-   лише верх і низ, а ліву грань малювала смуга матеріалу — якої в цирконію
-   свідомо немає (він 448 рядків із 564, тобто у більшості пришпилених рядків
-   рамка просто не сходилась). Тепер ліва грань є завжди; там, де смуга
-   матеріалу є, вона стоїть поруч із нею, а не замість неї. */
-.q2 table.qtable tbody tr.queue-row-focus > td{
-  box-shadow:inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55);
+/* КОНТУР ПРИШПИЛЕНОГО РЯДКА — ОДНА РАМКА, А НЕ СУМА ГРАНЕЙ ПО КОМІРКАХ.
+
+   Дві спроби зібрати його з inset-тіней окремих комірок провалились, і обидві
+   однаково: контур залежав від того, які колонки зараз ВИДНО. Спершу ліва
+   грань діставалась смузі матеріалу, якої в цирконію немає; потім права
+   грань лягала на колонку «Статус», а вона прихована (display:none) — тобто
+   малювалась на нульовій ширині. Кожна нова прихована чи порожня колонка
+   ламала б рамку знову.
+
+   Тому рамка більше не рахується по комірках. Один абсолютний шар поверх
+   рядка: він завжди прямокутний, завжди замкнутий і не знає, скільки колонок
+   показано. `position:relative` на <tr> для цього достатньо в усіх сучасних
+   рушіях; pointer-events:none лишає кліки рядку. Це НЕ border на самому
+   рядку — той зсував би комірки на 1px, і таблиця «дихала» б на кожен клік
+   (саме через це від нього відмовились із самого початку). */
+.q2 table.qtable tbody tr.queue-row-focus{position:relative}
+.q2 table.qtable tbody tr.queue-row-focus::after{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
+  border:1px solid rgba(var(--accent-rgb), .55);border-radius:4px;
 }
-.q2 table.qtable tbody tr.queue-row-focus > td:first-child{
-  box-shadow:inset 1px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55);
-}
-.q2 table.qtable tbody tr.queue-row-focus > td:last-child{
-  box-shadow:inset -1px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55);
-}
-/* Смуга матеріалу лишається на своєму місці (3px), контур відсувається на
-   4px — два сигнали, два канали, жоден не з'їдає інший. */
-.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-ti"] > td:first-child{box-shadow:inset 3px 0 0 #63c88b,inset 4px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55)}
-.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 #d8b46a,inset 4px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55)}
-.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 #9aa7b4,inset 4px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55)}
-.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #3fb6c9,inset 4px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55)}
-/* Заливка пришпиленого рядка. Це СЬОМА заливка на екрані, де канал фону вже
-   зайнятий станами (прострочено, пошта, клієнт, переробка, «технік змінив»),
-   тому вона свідомо слабка — 9%: пришпилені й так стоять угорі окремою
-   групою, а колір станів під нею мусить лишатись читабельним. Текст не
-   чіпаємо: контраст ink на цьому тінті вже проходить, і підсилення кольору
-   тут зіпсувало б саме те, заради чого заливка й робилась. */
+/* Смуга матеріалу лишається на своєму місці — це окремий канал, і рамка його
+   не з'їдає (вона тепер узагалі не торкається комірок). */
 .q2 table.qtable tbody tr.queue-row-focus > td{
   background:linear-gradient(rgba(var(--accent-base-rgb), .09), rgba(var(--accent-base-rgb), .09));
 }
@@ -796,3 +783,12 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .addwork-submit.apex{background:var(--accent-b);border-color:var(--accent-b);color:var(--accent-well);font-weight:600}
 .q2 .btn.apex:hover,
 .q2 .addwork-submit.apex:hover{background:var(--accent-c);border-color:var(--accent-c);color:var(--accent-well)}
+
+/* Рядок, який зараз їде нагору (FLIP у queue.js). Піднімаємо його над
+   сусідами, щоб рамка й заливка не пірнали під наступний рядок посеред руху,
+   і вимикаємо перехоплення кліків: поки рядок летить, він проходить під
+   курсором, і випадкове влучання по кошику коштувало б роботи. */
+.q2 table.qtable tbody tr.row-rising{position:relative;z-index:3;pointer-events:none;will-change:transform}
+@media (prefers-reduced-motion:reduce){
+  .q2 table.qtable tbody tr.row-rising{transition:none !important;transform:none !important}
+}

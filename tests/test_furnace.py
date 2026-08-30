@@ -701,3 +701,40 @@ def test_widget_keeps_a_broken_furnace_and_names_the_reason(monkeypatch, tmp_pat
         # згорнута смуга теж мусить це показувати: у згорнутому вигляді вона
         # висить більшу частину дня
         assert service.strip_summary(cards).broken == 1
+
+
+def test_progress_needs_both_halves_of_the_program():
+    """Смужка на плитці малюється лише тоді, коли є з чого рахувати: табло дає
+    і «пройшло», і «лишилось», тож тривалість — їхня сума. Без будь-якого з
+    двох смужки немає: намальований прогрес без відомої тривалості — це
+    здогадка, яку оператор прочитає як факт."""
+    state = service.FurnaceState(target=service.FurnaceTarget(name="Бочка", host="h"))
+    assert state.progress is None  # кадру ще немає
+
+    state.reading = service.PanelReading(
+        status=service.STATUS_RUN, temp_c=1540,
+        remaining_seconds=600, elapsed_seconds=1800, command=None,
+    )
+    assert state.progress == 75
+
+    state.reading = service.PanelReading(
+        status=service.STATUS_RUN, temp_c=1540,
+        remaining_seconds=None, elapsed_seconds=1800, command=None,
+    )
+    assert state.progress is None, "без «лишилось» тривалість невідома"
+
+
+def test_side_panel_and_strip_share_one_source(monkeypatch, tmp_path):
+    """Два ПОГЛЯДИ на один стан — нормально, два ДЖЕРЕЛА — ні: у цьому проєкті
+    два місця для одного значення вже одного разу розійшлись (furnace_hosts).
+    Секція в бічній панелі й смуга над чергою мусять годуватись з тих самих
+    функцій."""
+    import inspect
+
+    from app.routers import furnace as furnace_router
+
+    side = inspect.getsource(furnace_router.furnaces_side)
+    strip = inspect.getsource(furnace_router.furnaces_strip)
+    for source in (side, strip):
+        assert "strip_cards(db)" in source
+        assert "strip_summary(cards)" in source

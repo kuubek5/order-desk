@@ -149,6 +149,29 @@ class FurnaceState:
         return format_remaining(self.remaining_seconds)
 
     @property
+    def elapsed_seconds(self) -> Optional[int]:
+        reading = self.reading
+        return reading.elapsed_seconds if reading else None
+
+    @property
+    def progress(self) -> Optional[int]:
+        """Скільки програми пройдено, у відсотках — для смужки на плитці.
+
+        Віддає None, коли рахувати нема з чого: намальована смужка без
+        відомої тривалості — це здогадка, яку оператор прочитає як факт.
+        Табло дає і «пройшло», і «лишилось», тому тривалість — їхня сума;
+        якщо бракує будь-якого з двох, смужки просто немає.
+        """
+        elapsed = self.elapsed_seconds
+        remaining = self.remaining_seconds
+        if not elapsed or not remaining:
+            return None
+        total = elapsed + remaining
+        if total <= 0:
+            return None
+        return max(0, min(100, round(elapsed * 100 / total)))
+
+    @property
     def done_at(self) -> Optional[datetime]:
         """Коли програма добіжить — за київським часом.
 

@@ -237,3 +237,37 @@ main.furnaces{position:relative;min-height:100vh}
 /* Непрочитана температура — приглушена, але видима: слот мусить лишатись,
    інакше залишок з'їжджає на позицію градусів (див. _furnace_strip.html). */
 .q2 .fu-chip-temp.is-none{color:var(--ink-3)}
+
+/* ── Пічки в бічній панелі черги: «Живі плитки» (обрано власником) ───────
+   Живуть у цьому ж файлі, що й екран печей і смуга над чергою: усе про печі
+   в одному місці, і колір «гарячої» печі не розповзається по трьох файлах.
+   Скоуплено під .q2 (черга), як і решта бічної панелі. */
+.q2 .fu-tiles{display:flex;flex-direction:column;gap:8px}
+.q2 .fu-tile{display:block;padding:10px 11px;border-radius:9px;text-decoration:none;
+  border:1px solid var(--line);background:var(--card-2);color:var(--ink);
+  transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
+.q2 .fu-tile:hover{border-color:var(--control-edge);opacity:1}
+/* Працює — акцентом; збій — тривогою і БЕЗ приглушення: приглушити означає
+   сказати «менш важливо», а тут рівно навпаки. */
+.q2 .fu-tile.run{border-color:rgba(var(--accent-rgb), .35);background:var(--accent-well)}
+.q2 .fu-tile.bad{border-color:rgba(var(--alarm-rgb), .45);background:rgba(var(--alarm-rgb), .08)}
+.q2 .fu-tile.bad:hover{border-color:var(--alarm)}
+.q2 .fu-tile-top{display:flex;align-items:baseline;gap:8px}
+.q2 .fu-tile-name{font-size:12.5px;color:var(--ink-2);min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.q2 .fu-tile.bad .fu-tile-name{color:var(--alarm-ink)}
+/* Головне число плитки — його читають з іншого кінця кімнати, заради цього
+   варіант і обрано. tabular-nums, щоб чотиризначна температура не смикала
+   сусідні плитки на кожному кадрі. */
+.q2 .fu-tile-temp{margin-left:auto;font-family:var(--font-mono);font-variant-numeric:tabular-nums;
+  font-size:20px;font-weight:500;line-height:1.1;color:var(--accent-c)}
+.q2 .fu-tile-temp.is-none{color:var(--ink-3);font-size:16px}
+.q2 .fu-tile.bad .fu-tile-temp{color:var(--ink-3)}
+.q2 .fu-tile-bar{display:block;height:4px;border-radius:99px;background:var(--card-3);
+  margin:9px 0 7px;overflow:hidden}
+.q2 .fu-tile-bar i{display:block;height:100%;background:var(--accent);border-radius:99px;
+  transition:width .4s cubic-bezier(.22,1,.36,1)}
+.q2 .fu-tile-foot{display:block;margin-top:7px;font-size:12px;color:var(--ink-2)}
+.q2 .fu-tile-foot b{font-family:var(--font-mono);font-weight:500;color:var(--ink)}
+.q2 .fu-tile-sep{margin:0 5px;color:var(--line-2)}
+.q2 .fu-tile-err{display:block;margin-top:6px;font-size:12px;color:var(--alarm-ink)}

@@ -1,0 +1,84 @@
+{# Пічки в бічній панелі черги — варіант «Живі плитки», обраний власником.
+
+   Дані ті самі, що й у смузі над чергою (strip_cards / strip_summary): два
+   ПОГЛЯДИ на одне значення це нормально, два ДЖЕРЕЛА — ні. Тому обидва
+   шаблони годуються з тих самих функцій, і розійтись не можуть.
+
+   Секція має власний полл (30 с), бо `.side-panel` лежить поза `#queue-rows`
+   і 15-секундний полл черги її не перемальовує. Обгортка віддається ЗАВЖДИ,
+   навіть коли печей немає: якби роут повертав порожнечу, елемент зник би з
+   DOM разом зі своїм поллом — і після налаштування печей секція більше
+   ніколи б тут не проступила. Той самий урок, що на смузі й на картці зміни.
+
+   Секція розгорнута за замовчуванням (data-open="true"): піч показують не
+   «за потреби» — її відкриття планують, і закритий блок означав би, що по
+   цю цифру треба лізти. Оператор може згорнути сам. #}
+<section class="side-sec side-sec-furnace" data-open="true" data-sec="furnace"
+         id="furnace-side"
+         hx-get="/furnaces/side"
+         hx-trigger="every 30s"
+         hx-target="this"
+         hx-swap="outerHTML"
+         hx-disinherit="*">
+    <button class="side-head" type="button" data-side-toggle aria-expanded="true">
+        Пічки
+        {% if furnace_summary.broken %}
+        {# Тривога в самій шапці: секцію можна згорнути, і збій, видимий лише
+           розгорнутою, повернув би те саме тихе зникнення на рівень глибше. #}
+        <span class="side-count err">{{ furnace_summary.broken }} без зв'язку</span>
+        {% elif furnace_cards %}
+        <span class="side-count">{% if furnace_summary.running %}{{ furnace_summary.running }} у роботі{% else %}усі вільні{% endif %}</span>
+        {% endif %}
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+    <div class="side-body">
+        {% if furnace_cards %}
+        <div class="fu-tiles">
+            {% for card in furnace_cards %}
+            {% set state = card.state %}
+            <a class="fu-tile{% if card.has_problem %} bad{% elif card.is_running %} run{% endif %}"
+               href="/furnaces"
+               {% if card.has_problem %}title="{{ card.target.name }} ({{ card.target.host }}): {{ card.problem_text }}"{% endif %}>
+                <span class="fu-tile-top">
+                    <span class="fu-tile-name">{{ card.target.name }}</span>
+                    {# Слот температури лишається завжди: великому шрифту табло
+                       бракує еталонів кількох цифр, і коли число зникає
+                       безслідно, сусіднє значення читається як градуси. #}
+                    {% if state and state.temp_c is not none %}
+                    <span class="fu-tile-temp mono">{{ state.temp_c }}°</span>
+                    {% else %}
+                    <span class="fu-tile-temp mono is-none" title="Температуру не прочитано з табло">—°</span>
+                    {% endif %}
+                </span>
+
+                {% if card.has_problem %}
+                <span class="fu-tile-err">{{ card.problem_text }}</span>
+                {% elif state and state.done_at %}
+                {# Смужка — тільки коли є з чого її рахувати. Прогрес без
+                   відомої тривалості був би намальованою здогадкою. #}
+                {% if state.progress is not none %}
+                <span class="fu-tile-bar" aria-hidden="true"><i style="width:{{ state.progress }}%"></i></span>
+                {% endif %}
+                <span class="fu-tile-foot">
+                    відкриється <b class="mono">{{ state.done_at.strftime('%H:%M') }}</b>
+                    <span class="fu-tile-sep" aria-hidden="true">·</span>
+                    ще <b class="mono">{{ state.remaining_text }}</b>
+                </span>
+                {% elif card.is_idle %}
+                <span class="fu-tile-foot">вільна</span>
+                {% elif card.never_polled %}
+                <span class="fu-tile-foot">чекаємо кадр</span>
+                {% else %}
+                <span class="fu-tile-foot">—</span>
+                {% endif %}
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="side-empty">Печей не налаштовано. Додати — Налаштування → Печі спікання.</p>
+        {% endif %}
+        <div class="side-actions">
+            <a class="btn sm" href="/furnaces">Відкрити пічки</a>
+        </div>
+    </div>
+</section>
