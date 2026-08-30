@@ -42,12 +42,18 @@
         {% if summary.running %}{{ summary.running }} у роботі{% else %}усі вільні{% endif %}
         {% if summary.nearest_text %}<span class="fu-strip-brief-sep" aria-hidden="true">·</span>
         найближча <b class="mono">{{ summary.nearest_text }}</b>{% endif %}
+        {# Збій видно і згорнутою смугою: саме в такому вигляді вона висить
+           більшу частину дня, і сховати помилку сюди означало б повернути
+           те саме тихе зникнення, тільки на рівень глибше. #}
+        {% if summary.broken %}<span class="fu-strip-brief-sep" aria-hidden="true">·</span>
+        <b class="fu-strip-broken">{{ summary.broken }} без зв'язку</b>{% endif %}
     </span>
 
     <div class="fu-strip-items" id="furnace-strip-items">
         {% for card in furnace_cards %}
         {% set state = card.state %}
-        <a href="/furnaces" class="fu-chip{% if card.is_running %} is-run{% elif card.offline or card.stale() %} is-off{% endif %}">
+        <a href="/furnaces" class="fu-chip{% if card.has_problem %} is-broken{% elif card.is_running %} is-run{% endif %}"
+           {% if card.has_problem %}title="{{ card.target.name }} ({{ card.target.host }}): {{ card.problem_text }}. Відкрий «Пічки», щоб розібратись."{% endif %}>
             <span class="fu-chip-name">{{ card.target.name }}</span>
 
             {# Слот температури лишається ЗАВЖДИ. Порядок «температура → залишок
@@ -62,10 +68,13 @@
             <span class="fu-chip-temp mono is-none" title="Температуру не прочитано з табло">—°</span>
             {% endif %}
 
-            {% if card.stale() %}
-            <span class="fu-chip-main">опитування стоїть</span>
-            {% elif card.offline %}
-            <span class="fu-chip-main">немає зв'язку</span>
+            {# Причина ВИДИМА, не лише в підказці: «немає зв'язку» без причини
+               змушує йти шукати, а піч зазвичай мовчить із конкретної й
+               однієї причини — не відповіла, не пустила з паролем, не
+               прочитався кадр. Довгий текст обрізається трикрапкою, повний —
+               у title усього чіпа. #}
+            {% if card.has_problem %}
+            <span class="fu-chip-main fu-chip-err">{{ card.problem_text }}</span>
             {% elif card.never_polled %}
             <span class="fu-chip-main">чекаємо кадр</span>
             {% elif state.done_at %}

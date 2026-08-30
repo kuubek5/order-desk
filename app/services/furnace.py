@@ -492,16 +492,39 @@ class FurnaceCard:
 
     @property
     def has_data(self) -> bool:
-        """Чи є що показувати у ВІДЖЕТІ на черзі.
-
-        Віджет відповідає на питання («коли відкривати»), тому пічка без
-        відповіді в ньому не з'являється взагалі: ще не опитана, недоступна,
-        або кадр не прочитався. Це свідомий поділ — повний екран «Пічки»
-        навпаки показує кожну налаштовану пічку з її справжнім станом, бо
-        саме там розбираються, ЧОМУ мовчить.
-        """
+        """Чи є з печі свіжий кадр із числами."""
         state = self.state
         return bool(state and state.reading and state.error is None)
+
+    @property
+    def has_problem(self) -> bool:
+        """Піч, яку опитували і не вийшло: немає зв'язку або опитувач стоїть.
+
+        Раніше такі пічки просто зникали з віджета — «немає даних, отже нема
+        що показувати». На робочому місці це найгірший з можливих варіантів:
+        налаштована піч, яка злетіла вночі, поводилась рівно так само, як
+        піч, якої ніколи не існувало, і помітити різницю було ніяк. Тепер
+        збій лишається на екрані й називає причину.
+        """
+        return self.offline or self.stale()
+
+    @property
+    def problem_text(self) -> str:
+        """Причина збою людською мовою, без адреси на початку.
+
+        Адреса вже стоїть у назві печі й у налаштуваннях; у вузькому чіпі
+        вона з'їдає рівно те місце, де мала б бути причина.
+        """
+        if self.stale():
+            return "опитування стоїть"
+        state = self.state
+        error = state.error if state else None
+        if not error:
+            return "немає зв'язку"
+        host = self.target.host
+        if host and error.startswith(f"Піч {host} "):
+            return error[len(f"Піч {host} "):]
+        return error
 
     @property
     def never_polled(self) -> bool:
@@ -546,6 +569,10 @@ class StripSummary:
     running: int
     total: int
     nearest_done_at: Optional[datetime] = None
+    # Скільки печей зі збоєм. Мусить бути ТУТ, а не лише в розгорнутих чіпах:
+    # згорнута смуга — це стан, у якому оператор проводить більшість дня, і
+    # якби збій було видно лише розгорнутою, він так само тихо губився б.
+    broken: int = 0
 
     @property
     def nearest_text(self) -> str:
@@ -558,12 +585,23 @@ def strip_summary(cards: list["FurnaceCard"]) -> StripSummary:
         running=sum(1 for card in cards if card.is_running),
         total=len(cards),
         nearest_done_at=min(finishes) if finishes else None,
+        broken=sum(1 for card in cards if card.has_problem),
     )
 
 
 def strip_cards(db: Session) -> list[FurnaceCard]:
-    """Пічки для віджета: лише ті, у яких справді є показання."""
-    return [card for card in snapshot(db) if card.has_data]
+    """Пічки для віджета: з показаннями АБО зі збоєм.
+
+    Було «лише ті, у яких є показання» — і піч, яка злетіла, тихо зникала з
+    головного екрана. Прохання власника прямо про це: налаштована піч, яка
+    перестала відповідати, мусить лишитись на видноті й назвати причину, а не
+    прикинутись, що її ніколи не було.
+
+    Ще не опитану піч (перші секунди після старту застосунку) далі не
+    показуємо: це не збій, а нормальний проміжний стан, і блимати нею на
+    кожному рестарті означало б привчити не читати цю смугу.
+    """
+    return [card for card in snapshot(db) if card.has_data or card.has_problem]
 
 
 def recent_readings(db: Session, host: str, limit: int = 40) -> list[FurnaceReading]:

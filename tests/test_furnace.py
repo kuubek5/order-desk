@@ -574,13 +574,12 @@ def test_shared_password_route_is_not_eaten_by_the_id_route():
     )
 
 
-def test_widget_hides_a_furnace_with_no_data_but_the_screen_keeps_it(monkeypatch, tmp_path):
-    """Віджет відповідає на питання, екран показує правду.
+def test_widget_hides_a_furnace_never_polled_but_the_screen_keeps_it(monkeypatch, tmp_path):
+    """Ще НЕ ОПИТАНА пічка у смузі не з'являється — це не збій, а нормальний
+    проміжний стан перших секунд після старту. На повному екрані вона є.
 
-    Пічка, з якої даних немає (щойно додали, вимкнули з мережі), у смузі над
-    чергою не з'являється взагалі — інакше оператор читав би «немає зв'язку»
-    там, де він шукає час відкриття. На повному екрані вона лишається: саме
-    там розбираються, ЧОМУ мовчить.
+    Пічка, яку опитали і не вийшло, — інша річ: див. наступний тест, вона
+    лишається у смузі з причиною.
     """
     monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
     monkeypatch.setattr(service, "capture", lambda host, *a, **k: _frame("run"))
@@ -663,3 +662,42 @@ def test_background_shows_the_closed_frame_while_something_is_firing():
         asset = Path("app/static/img") / name
         assert asset.exists(), f"немає {name}"
         assert asset.stat().st_size < 400_000, f"{name} завеликий для фону"
+
+
+def test_widget_keeps_a_broken_furnace_and_names_the_reason(monkeypatch, tmp_path):
+    """Прохання власника, дослівно: якщо налаштована піч «злетить», вона не
+    має тихенько пропасти — має показати помилку і саме причину.
+
+    Раніше `strip_cards` пускав лише пічки З ПОКАЗАННЯМИ, тому піч, яка
+    вночі перестала відповідати, зникала з головного екрана і ставала
+    невідрізненною від печі, якої ніколи не існувало.
+    """
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+
+    with Session(_database()) as db:
+        _add_furnace(db, name="Бочка", host="192.168.1.76")
+        target = service.FurnaceTarget(name="Бочка", host="192.168.1.76")
+
+        # спершу піч жива — вона у смузі з даними
+        monkeypatch.setattr(service, "capture", lambda host, *a, **k: _frame("run"))
+        service.poll_target(db, target, None)
+        assert [c.target.name for c in service.strip_cards(db)] == ["Бочка"]
+
+        # потім злітає — і мусить ЛИШИТИСЬ, з причиною. Помилку передаємо тим
+        # самим шляхом, яким її передає паралельний знімок у poll_all.
+        service.poll_target(
+            db, target, None, error="Піч 192.168.1.76 не відповіла за 20 с"
+        )
+
+        cards = service.strip_cards(db)
+        assert [c.target.name for c in cards] == ["Бочка"], "піч не має зникати зі смуги"
+        card = cards[0]
+        assert card.has_problem
+        assert not card.has_data
+        assert "не відповіла" in card.problem_text
+        # адреса в тексті причини зайва — вона вже є в назві й налаштуваннях
+        assert not card.problem_text.startswith("Піч ")
+
+        # згорнута смуга теж мусить це показувати: у згорнутому вигляді вона
+        # висить більшу частину дня
+        assert service.strip_summary(cards).broken == 1
