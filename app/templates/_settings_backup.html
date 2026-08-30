@@ -77,7 +77,7 @@
                     <ul class="monthly-backups-list">
                         {% for snap in monthly_snapshots %}
                         <li>
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg>
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v13H4z" class="duo"/><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg>
                             <span class="mono name">{{ snap.name }}</span>
                             <span class="size mono">{{ snap.size_mb }} МБ</span>
                         </li>

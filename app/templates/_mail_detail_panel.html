@@ -37,7 +37,7 @@
         <section class="seg-pane on" data-pane="letter" role="tabpanel">
             {% if email.service_type_guess == '3d_print' %}
             <div class="type-flag">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><circle cx="12" cy="16.4" r=".9" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="16.4" r=".9" fill="currentColor" stroke="none" class="duo"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z" class="duo"/><path d="M12 9v4"/><circle cx="12" cy="16.4" r=".9" fill="currentColor" stroke="none"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
                 <span><strong>Схоже на запит 3D-друку, не фрезерування</strong><p>Автоматична підказка за ключовими словами — перевірте текст листа, перш ніж приймати в чергу.</p></span>
             </div>
             {% endif %}
@@ -71,7 +71,7 @@
                 {% endif %}
                 {% if undownloaded_links %}
                 <span class="attachment-badge attachment-badge-warn" title="Ці файли лежать за посиланням і НЕ скачуються автоматично. Скачайте їх у вкладці «Файли» перед прийняттям у чергу.">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.6 17.6A1.9 1.9 0 0 0 4.3 20.5h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
                     +{{ undownloaded_links|length }} за посиланням
                 </span>
                 {% endif %}
@@ -112,10 +112,10 @@
             {% if email.attachments_status != 'pending' %}
             <div class="files-summary {% if undownloaded_links or email.attachments_status == 'skipped' %}warn{% else %}ok{% endif %}">
                 {% if email.attachments_status == 'skipped' %}
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
                 <span>Файли не скачані (відправник не в авто-списку){% if undownloaded_links %} + {{ undownloaded_links|length }} за посиланням{% endif %} — скачайте нижче.</span>
                 {% elif undownloaded_links %}
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
                 <span>На диску <b>{{ att_count }}</b> файл(ів) · за посиланням ще <b>{{ undownloaded_links|length }}</b> не скачано — скачайте нижче, щоб було повністю.</span>
                 {% else %}
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
@@ -136,7 +136,7 @@
                 <div class="attlist">
                     {% for attachment in email.attachments %}
                     <div class="attrow">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" class="duo"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
                         <span class="name">{{ attachment.filename }}</span>
                         <span class="size">
                             {% if attachment.size_bytes %}
@@ -174,7 +174,7 @@
                             hx-post="/mail/{{ email.id }}/extract-archives"
                             hx-target="#mail-detail" hx-swap="innerHTML"
                             hx-indicator="this" hx-disabled-elt="this">
-                        <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1zM10 12h4"/></svg>
+                        <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M1 3h22v5H1zM10 12h4" class="duo"/><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1zM10 12h4"/></svg>
                         <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
                         <span class="dl-lbl-idle">Розпакувати архіви</span>
                         <span class="dl-lbl-busy">Розпаковую…</span>
@@ -184,7 +184,7 @@
                             hx-post="/mail/{{ email.id }}/open-folder"
                             hx-swap="none"
                             hx-on::after-request="if(event.detail.successful){showToast('Відкрито папку у Провіднику','success')}else{showToast('Не вдалося відкрити папку зі скачаними файлами','error')}">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z"/></svg>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z" class="duo"/><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z"/></svg>
                         Відкрити папку у Провіднику
                     </button>
                 </div>

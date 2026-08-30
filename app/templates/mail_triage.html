@@ -14,7 +14,7 @@
                 <span class="live"><span class="beacon" aria-hidden="true"></span>перевіряється кожні <b>2 хв</b></span>
                 <span class="sep" aria-hidden="true"></span>
                 <span class="mailbox-chip" title="Скринька, яку моніторить система">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 5 8-5"/></svg>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" class="duo"/><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 5 8-5"/></svg>
                     <b>{{ mailbox or 'скриньку не налаштовано' }}</b>
                 </span>
                 <span class="sep" aria-hidden="true"></span>
@@ -80,7 +80,7 @@
 
     {% if filter_suggest %}
     <div class="filter-suggest" role="status">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
         <span>Ви відхилили <b>{{ filter_suggest.count }}</b> листи від <b class="mono">{{ filter_suggest.address }}</b> — фільтрувати цього відправника автоматично?</span>
         <form method="post" action="/mail/filters">
             <input type="hidden" name="kind" value="sender">
@@ -119,7 +119,7 @@
             {% include "_mail_filter_panel.html" %}
             {% else %}
             <div class="empty-triage">
-                <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 7 8 5 8-5"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></span>
+                <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" class="duo"/><path d="m4 7 8 5 8-5"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></span>
                 {% if view == 'filtered' %}
                 <h3>Відфільтровані листи</h3>
                 <p>Сюди потрапляють листи, що збіглися з правилами фільтрації (3D-друк, бухгалтерія, спам). Клік по листу відкриє картку; «↩» у списку повертає лист у чергу.</p>

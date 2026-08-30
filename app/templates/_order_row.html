@@ -52,7 +52,7 @@
             <button type="submit" class="focus-btn{% if _focused %} on{% endif %}"
                     title="{% if _focused %}Прибрати з «мої зараз»{% else %}Взяти в «мої зараз»{% endif %}"
                     aria-pressed="{{ 'true' if _focused else 'false' }}">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z" class="duo"/><path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg>
             </button>
         </form>
         <span class="sdot" aria-hidden="true" style="{% if _dc[1] %}background:transparent;box-shadow:inset 0 0 0 1.6px {{ _dc[0] }}{% else %}background:{{ _dc[0] }}{% endif %}"></span>
@@ -83,7 +83,7 @@
               hx-swap="outerHTML">
             <button type="submit" class="badge chg{% if _changed_taken %} chg-taken{% endif %}"
                     title="Технік змінив у таблиці: {{ order.sheet_changed_fields or '—' }}. Натисніть, щоб прибрати позначку.">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
                 <span>{% if _changed_taken %}змінено після взяття{% else %}змінено{% endif %} {{ order.sheet_changed_at.strftime('%H:%M') }} · {{ order.sheet_changed_fields or '—' }}</span>
             </button>
         </form>
@@ -94,7 +94,7 @@
            кольором тексту в колонці коментаря: та колонка обрізається
            трикрапкою, тобто саме на довгому коментарі сигнал і зникав. #}
         <span class="rush-badge" title="Технік просить швидку програму: {{ order.cam_comment }}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h8l-1 8 10-12h-8z"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h8l-1 8 10-12h-8z" class="duo"/><path d="M13 2 3 14h8l-1 8 10-12h-8z"/></svg>
             на швидку
         </span>
         {% endif %}
@@ -157,7 +157,7 @@
                     data-stl-preview-token="{{ order.job_code_folder_preview_token }}"
                     {% if order.job_code_folder_uri %}data-folder-uri="{{ order.job_code_folder_uri }}"{% endif %}
                     title="Переглянути STL / відкрити папку" aria-label="Переглянути STL цієї роботи">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 7.5v9L12 22l10-5.5v-9L12 2z"/><path d="M2 7.5 12 13l10-5.5M12 13v9"/></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 7.5v9L12 22l10-5.5v-9L12 2z" class="duo"/><path d="M12 2 2 7.5v9L12 22l10-5.5v-9L12 2z"/><path d="M2 7.5 12 13l10-5.5M12 13v9"/></svg>
             </button>
             {% elif order.job_code_folder_uri %}<span class="job-code-found-dot" title="Папку з файлами знайдено"></span>{% endif %}
         {% elif not _is_client %}
@@ -207,7 +207,7 @@
            не в комірці, якої не видно. #}
         {% if sync_error %}
         <span class="sync-warning" title="Не записано в Google Таблицю: {{ sync_error }}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
         </span>
         {% endif %}
         {% if order.export_folder_uri %}
@@ -215,7 +215,7 @@
            (app/static/js/stl-preview.js) — колишню навігацію по href панель
            перехоплює, всередині є кнопка «Відкрити папку». #}
         <a href="{{ order.export_folder_uri }}" class="folder-link" {% if order.export_folder_preview_token %}data-stl-preview-token="{{ order.export_folder_preview_token }}"{% endif %} title="Переглянути STL / відкрити папку">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z" class="duo"/><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
         </a>
         {% endif %}
     </td>

@@ -162,7 +162,7 @@ async def get_account(request: Request, db: Session = Depends(get_db)):
 
 
 UI_THEMES = {"", "forge"}
-UI_ICON_STYLES = {"", "thin", "duo", "bold", "neon"}
+UI_ICON_STYLES = {"", "thin", "duo", "fill", "bold", "neon"}
 
 
 @router.post("/account/appearance")

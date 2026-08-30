@@ -2,39 +2,56 @@
    Обираються в кабінеті /account, зберігаються на акаунті (User.ui_icon_style),
    рендеряться сервер-сайд атрибутом на <html> у base.html.
 
-   Всі UI-іконки застосунку — інлайн-SVG зі stroke="currentColor", тому
-   селектор svg[stroke="currentColor"] влучає рівно в них і не чіпає:
-   бекдроп (страйп-групи зі своїми кольорами), SVG-фільтр «рідкого скла»,
-   canvas STL-прев'ю. Дуотон/повна заливка як окремі НАБОРИ розмітки сюди
-   свідомо не входять — це заміна кожної іконки, а не стиль поверх.
+   СЕЛЕКТОР: усі UI-іконки застосунку — інлайн-SVG 24×24, і РІВНО вони мають
+   viewBox="0 0 24 24" (перевірено: 128 з 135 svg; 7 інших — бекдроп,
+   спарклайни 34×12, крапки 12×12, glass-фільтр, млин оверлея — і їх чіпати
+   не можна). Атрибут stroke="currentColor" ознакою НЕ є: іконки рейки
+   стилізуються класом із CSS, атрибута не мають.
+
+   DUO-ШАР: закриті форми кожної іконки продубльовані першими дітьми з
+   class="duo" (скрипт add_duo_layers, 71 svg). За замовчуванням шар
+   вимкнений і не існує для рендера; його вмикають лише режими duo/fill.
+   Лінійні гліфи (меню, стрілки) шару не мають — деградують до контуру.
 
    "" (без атрибута) = канон: stroke 2, як намальовано. */
 
-/* Тонкий («блюпринт») — креслярський штрих із квадратними зрізами. */
-html[data-icons="thin"] svg[stroke="currentColor"],
-html[data-icons="thin"] svg[stroke="currentColor"] * {
+svg[viewBox="0 0 24 24"] .duo { display: none; }
+
+/* Тонкі («блюпринт») — креслярський штрих із квадратними зрізами. */
+html[data-icons="thin"] svg[viewBox="0 0 24 24"],
+html[data-icons="thin"] svg[viewBox="0 0 24 24"] * {
   stroke-width: 1.4;
   stroke-linecap: square;
   stroke-linejoin: miter;
 }
 
-/* Дуотон — той самий контур + тінь-заливка власним кольором. Працює на
-   закритих формах (конверт, папка, щит); лінійні гліфи (меню, стрілки)
-   заливки просто не мають — деградує тихо. */
-html[data-icons="duo"] svg[stroke="currentColor"] {
+/* Дуотон — контур + тінь-заливка власним кольором під ним. */
+html[data-icons="duo"] svg[viewBox="0 0 24 24"] .duo {
+  display: inline;
   fill: currentColor;
-  fill-opacity: 0.13;
+  fill-opacity: 0.16;
+  stroke: none;
 }
 
-/* Жирний — упевненіший штрих для великих моніторів цеху. */
-html[data-icons="bold"] svg[stroke="currentColor"],
-html[data-icons="bold"] svg[stroke="currentColor"] * {
+/* Заливка — той самий duo-шар, але щільний: суцільні гліфи. Контур лишається
+   і тримає форму (в чистій заливці дрібні деталі — стрілка в конверті,
+   зубці шестерні — просто зникли б). */
+html[data-icons="fill"] svg[viewBox="0 0 24 24"] .duo {
+  display: inline;
+  fill: currentColor;
+  fill-opacity: 0.55;
+  stroke: none;
+}
+
+/* Жирні — упевненіший штрих для великих моніторів цеху. */
+html[data-icons="bold"] svg[viewBox="0 0 24 24"],
+html[data-icons="bold"] svg[viewBox="0 0 24 24"] * {
   stroke-width: 2.6;
 }
 
 /* Неон — контур зі світінням акцентом теми. drop-shadow важчий за звичайний
    рендер, тому лише один шар; на reduced-motion не впливає (це не анімація). */
-html[data-icons="neon"] svg[stroke="currentColor"] {
+html[data-icons="neon"] svg[viewBox="0 0 24 24"] {
   stroke-width: 1.75;
   filter: drop-shadow(0 0 3px rgba(var(--accent-rgb), 0.85));
 }

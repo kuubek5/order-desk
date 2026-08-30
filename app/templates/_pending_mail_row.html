@@ -29,7 +29,7 @@
     <div class="pending-mail-actions">
         <form method="post" action="/mail/{{ email.id }}/open-folder">
             <button type="submit" class="pending-mail-folder" aria-label="Відкрити папку зі скачаними файлами" {% if not email.folder_available %}disabled aria-disabled="true" title="Збережених файлів немає"{% endif %} {% if email.stl_preview_token %}data-stl-preview-token="{{ email.stl_preview_token }}"{% endif %}>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z" class="duo"/><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
                 <span>Відкрити файли</span>
             </button>
         </form>

@@ -32,7 +32,7 @@
                        data-folder-uri="{{ group.client_folder_uri }}"
                        {% if group.client_folder_token %}data-open-folder-token="{{ group.client_folder_token }}"{% endif %}
                        title="{{ group.match.matched_folder_name }} — відкрити у Провіднику">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z" class="duo"/><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
                         {% if group.is_current %}Відкрити папку{% else %}Папка{% endif %}
                     </a>
                     {% else %}
@@ -117,7 +117,7 @@
                             {% for entry in order.export_matches %}
                             <a href="{{ entry.folder_uri }}" class="wfolder" {% if entry.preview_token %}data-stl-preview-token="{{ entry.preview_token }}"{% endif %}
                                title="{{ entry.material_color_folder_name }} · {{ entry.created_at.strftime('%d.%m %H:%M') }} · {{ entry.files|length }} файл. — прев'ю / відкрити">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z" class="duo"/><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
                                 {# Партія з іншого дня, ніж сама робота (файли дозалили
                                    раніше/пізніше) — тоді час без дати брехав би, що це
                                    сьогоднішня тека. #}

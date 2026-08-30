@@ -47,16 +47,16 @@
         <nav class="rail-nav-group" aria-label="Джерела робіт">
             {% if user.role == 'адмін' %}
             <a href="/settings#sheets" class="rail-nav-item rail-sset" data-sec="sheets">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" class="duo"/><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
                 <span class="rail-label">Google Таблиця</span>
             </a>
             <a href="/settings#imap" class="rail-nav-item rail-sset" data-sec="imap">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/></svg>
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" class="duo"/><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/></svg>
                 <span class="rail-label">Пошта (IMAP)</span>
             </a>
             {% endif %}
             <a href="/settings#paths" class="rail-nav-item rail-sset" data-sec="paths">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/></svg>
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z" class="duo"/><path d="M3 7h6l2 2h10v10H3z"/></svg>
                 <span class="rail-label">Шляхи папок</span>
             </a>
         </nav>
@@ -67,7 +67,7 @@
         <div class="rail-settings-group rail-label">Обладнання</div>
         <nav class="rail-nav-group" aria-label="Обладнання">
             <a href="/settings#furnaces" class="rail-nav-item rail-sset" data-sec="furnaces">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" class="duo"/><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
                 <span class="rail-label">Пічки</span>
             </a>
         </nav>
@@ -89,15 +89,15 @@
                 <span class="rail-label">Скачування вкладень</span>
             </a>
             <a href="/settings#mail-filters" class="rail-nav-item rail-sset" data-sec="mail-filters">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7z" class="duo"/><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>
                 <span class="rail-label">Фільтри пошти</span>
             </a>
             <a href="/settings/materials" class="rail-nav-item{% if spath == '/settings/materials' %} is-active{% endif %}">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/></svg>
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z" class="duo"/><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/></svg>
                 <span class="rail-label">Матеріали</span>
             </a>
             <a href="/settings/recognition" class="rail-nav-item{% if spath == '/settings/recognition' %} is-active{% endif %}">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                 <span class="rail-label">Розпізнавання</span>
             </a>
         </nav>
@@ -111,12 +111,12 @@
         <nav class="rail-nav-group" aria-label="Люди й система">
             {% if user.role == 'адмін' %}
             <a href="/settings#operators" class="rail-nav-item rail-sset" data-sec="operators">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.2"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.2" class="duo"/><circle cx="12" cy="8" r="3.2"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
                 <span class="rail-label">Оператори</span>
             </a>
             {% endif %}
             <a href="/account" class="rail-nav-item{% if spath == '/account' %} is-active{% endif %}">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" class="duo"/><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
                 <span class="rail-label">Мій акаунт</span>
             </a>
             <a href="/journal" class="rail-nav-item{% if spath == '/journal' %} is-active{% endif %}">
@@ -125,7 +125,7 @@
             </a>
             {% if user.role == 'адмін' %}
             <a href="/settings#backup" class="rail-nav-item rail-sset" data-sec="backup">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/></svg>
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3" class="duo"/><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/></svg>
                 <span class="rail-label">Резервна копія</span>
             </a>
             {% endif %}
@@ -135,7 +135,7 @@
                `data-sec` мусить збігатися з якорем #update, на який веде
                посилання версії в підвалі rail. #}
             <a href="/settings#update" class="rail-nav-item rail-sset" data-sec="update">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
                 <span class="rail-label">Про застосунок</span>
             </a>
         </nav>
@@ -143,16 +143,16 @@
     {% else %}
     <nav class="rail-nav-group" aria-label="Основна навігація">
         <a href="/" class="rail-nav-item{% if topbar_active == 'queue' %} is-active{% endif %}"{% if topbar_active == 'queue' %} aria-current="page"{% endif %}>
-            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="3.5" cy="6" r="1.2" class="duo"/><circle cx="3.5" cy="12" r="1.2" class="duo"/><circle cx="3.5" cy="18" r="1.2" class="duo"/><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/></svg>
             <span class="rail-label">Черга</span>
         </a>
         <a href="/mail" class="rail-nav-item mail-nav-link{% if topbar_active == 'mail' %} is-active{% endif %}"{% if topbar_active == 'mail' %} aria-current="page"{% endif %}>
-            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/></svg>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" class="duo"/><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/></svg>
             <span class="rail-label">Нові з пошти</span>
             {% if pending_mail_count %}<span class="mail-nav-count tnum">{{ pending_mail_count }}</span>{% endif %}
         </a>
         <a href="/handout" class="rail-nav-item{% if topbar_active == 'handout' %} is-active{% endif %}"{% if topbar_active == 'handout' %} aria-current="page"{% endif %}>
-            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v7"/></svg>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5z" class="duo"/><path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v7"/></svg>
             <span class="rail-label">Ранкова видача</span>
         </a>
         {# Передача зміни — після видачі, за проханням власника. Лічильник —
@@ -161,29 +161,29 @@
            порахувати. #}
         {% set shift_open = shift_pending() %}
         <a href="/shift" class="rail-nav-item{% if topbar_active == 'shift' %} is-active{% endif %}"{% if topbar_active == 'shift' %} aria-current="page"{% endif %}>
-            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
             <span class="rail-label">Зміна</span>
             {% if shift_open %}<span class="mail-nav-count tnum">{{ shift_open }}</span>{% endif %}
         </a>
         {# Пічки стоять після видачі: спікання — етап МІЖ фрезеруванням і
            видачею, і в рейці читається в тому ж порядку, що й у цеху. #}
         <a href="/furnaces" class="rail-nav-item{% if topbar_active == 'furnaces' %} is-active{% endif %}"{% if topbar_active == 'furnaces' %} aria-current="page"{% endif %}>
-            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" class="duo"/><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
             <span class="rail-label">Пічки</span>
         </a>
         <a href="/clients" class="rail-nav-item{% if topbar_active == 'clients' %} is-active{% endif %}"{% if topbar_active == 'clients' %} aria-current="page"{% endif %}>
-            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5"/><path d="M16 6.2A3.2 3.2 0 0 1 16 14"/><path d="M18 19c-.3-1.7-1-3-2-3.9"/></svg>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" class="duo"/><circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5"/><path d="M16 6.2A3.2 3.2 0 0 1 16 14"/><path d="M18 19c-.3-1.7-1-3-2-3.9"/></svg>
             <span class="rail-label">Клієнти</span>
         </a>
         <a href="/archive" class="rail-nav-item{% if topbar_active == 'archive' %} is-active{% endif %}"{% if topbar_active == 'archive' %} aria-current="page"{% endif %}>
-            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="4" rx="1" class="duo"/><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg>
             <span class="rail-label">Архів</span>
         </a>
     </nav>
 
     <nav class="rail-nav-group" aria-label="Система">
         <a href="/search" class="rail-nav-item{% if topbar_active == 'search' %} is-active{% endif %}"{% if topbar_active == 'search' %} aria-current="page"{% endif %}>
-            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" class="duo"/><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
             <span class="rail-label">Пошук</span>
         </a>
         <a href="/stats" class="rail-nav-item{% if topbar_active == 'stats' %} is-active{% endif %}"{% if topbar_active == 'stats' %} aria-current="page"{% endif %}>
@@ -191,7 +191,7 @@
             <span class="rail-label">Статистика</span>
         </a>
         <a href="/settings" class="rail-nav-item{% if topbar_active == 'settings' %} is-active{% endif %}"{% if topbar_active == 'settings' %} aria-current="page"{% endif %}>
-            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="16" cy="7" r="2.2" class="duo"/><circle cx="10" cy="17" r="2.2" class="duo"/><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
             <span class="rail-label">Налаштування</span>
         </a>
     </nav>
