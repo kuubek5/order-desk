@@ -1,7 +1,15 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -34,6 +42,16 @@ class User(Base):
     ui_button_style: Mapped[str] = mapped_column(String(20), default="", server_default="")
     ui_loader_style: Mapped[str] = mapped_column(String(20), default="", server_default="")
     ui_chip_style: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    # Вигляд списку листів на екрані тріажу (шестерня над списком). Усе в
+    # пікселях, 0 = «як було»: вертикальний відступ рядка, ширина панелі
+    # списку і крок, яким оператор ці два значення підкручує. Тримається тут,
+    # а не в localStorage, з тієї ж причини, що й решта візуального набору:
+    # налаштування їде за оператором на будь-який браузер цього ПК і
+    # повертається при наступному вході. Застосовується сервер-сайд на
+    # <main class="mailv2">, тому список не мигає канонним виглядом.
+    mail_row_pad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    mail_list_width: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    mail_ui_step: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()

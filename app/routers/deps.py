@@ -219,6 +219,10 @@ def shift_pending() -> int:
         return 0
 
 
+#: Ключ дзеркала візуального набору в сесії — див. коментар усередині ui_prefs.
+UI_SESSION_KEY = "ui"
+
+
 def ui_prefs(request: Request) -> dict:
     """Візуальні налаштування залогіненого оператора для base.html:
     {"theme": ""|"forge", "icons": ""|"thin"|"duo"|"bold"|"neon"}.
@@ -232,11 +236,26 @@ def ui_prefs(request: Request) -> dict:
     """
     # request.state може бути відсутній у фейкових request'ах тестів —
     # хелпер мусить пережити БУДЬ-ЯКИЙ request, бо стоїть у base.html.
+    # Дзеркало набору в сесії (підписана кука, без БД). Потрібне рівно для
+    # одного випадку — сторінки помилки: вона показується САМЕ ТОДІ, коли з
+    # базою погано, а тодішній відкат у канон означав, що оператор бачить чужу
+    # тему в найгіршу мить і думає, що зламалось іще й оформлення.
+    # Джерело правди лишається в БД, кука тільки повторює її останнє значення.
     state = getattr(request, "state", None)
     cached = getattr(state, "ui_prefs_cache", None) if state is not None else None
     if cached is not None:
         return cached
-    prefs = {"theme": "", "icons": "", "buttons": "", "loader": "", "chips": ""}
+    prefs = {
+        "theme": "",
+        "icons": "",
+        "buttons": "",
+        "loader": "",
+        "chips": "",
+        "mail_row_pad": 0,
+        "mail_list_w": 0,
+        "mail_step": 0,
+    }
+    mirrored = False
     try:
         user_id = request.session.get("user_id")
         if user_id is not None:
@@ -250,11 +269,27 @@ def ui_prefs(request: Request) -> dict:
                         "buttons": user.ui_button_style or "",
                         "loader": user.ui_loader_style or "",
                         "chips": user.ui_chip_style or "",
+                        "mail_row_pad": user.mail_row_pad or 0,
+                        "mail_list_w": user.mail_list_width or 0,
+                        "mail_step": user.mail_ui_step or 0,
                     }
+                    mirrored = True
             finally:
                 db.close()
+            # Пишемо лише коли значення справді змінилось: інакше кожна
+            # відповідь тягла б за собою зайвий Set-Cookie.
+            if mirrored and request.session.get(UI_SESSION_KEY) != prefs:
+                request.session[UI_SESSION_KEY] = dict(prefs)
     except Exception:  # noqa: BLE001 — тема не варта зламаної сторінки
         logger.debug("ui_prefs fell back to defaults", exc_info=True)
+    if not mirrored:
+        # БД мовчить (або сторінка помилки) — беремо останнє відоме з сесії.
+        try:
+            saved = request.session.get(UI_SESSION_KEY)
+            if isinstance(saved, dict):
+                prefs = {key: saved.get(key, prefs[key]) for key in prefs}
+        except Exception:  # noqa: BLE001
+            logger.debug("ui_prefs session mirror unreadable", exc_info=True)
     if state is not None:
         try:
             state.ui_prefs_cache = prefs

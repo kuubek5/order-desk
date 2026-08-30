@@ -481,7 +481,7 @@ document.body.addEventListener("toast", (event) => {
       // єдиний тригер, який визначається на клієнті.
       if (!offlineShown) {
         offlineShown = true;
-        fire("offline", "Втрачено зв'язок із застосунком. Дані на екрані могли застаріти — перевірте, чи працює Order Desk.", "error");
+        fire("offline", "Втрачено зв'язок із застосунком. Дані на екрані могли застаріти — перевірте, чи працює KuubMill.", "error");
       }
       return;
     }

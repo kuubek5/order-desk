@@ -337,7 +337,7 @@
     }
 
     copyBtn.addEventListener("click", function () {
-      var text = "Order Desk · самоперевірка " + new Date().toLocaleString("uk-UA") + "\n" + report.join("\n");
+      var text = "KuubMill · самоперевірка " + new Date().toLocaleString("uk-UA") + "\n" + report.join("\n");
       if (navigator.clipboard) navigator.clipboard.writeText(text);
       if (window.showToast) window.showToast("Звіт скопійовано", "success");
     });

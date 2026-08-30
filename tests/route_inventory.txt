@@ -61,6 +61,7 @@ POST /mail/filters/{rule_id}/edit
 POST /mail/filters/{rule_id}/toggle
 POST /mail/senders/add
 POST /mail/senders/{memory_id}/auto
+POST /mail/prefs
 POST /mail/sync
 POST /mail/{email_id}/accept
 POST /mail/{email_id}/download-attachments

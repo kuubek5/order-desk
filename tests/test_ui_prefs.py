@@ -106,13 +106,15 @@ def test_ui_prefs_reads_logged_in_user_and_caches(monkeypatch):
     req = _request(forge_op.id)
     prefs = deps_mod.ui_prefs(req)
     assert prefs == {"theme": "forge", "icons": "thin", "buttons": "glass",
-                     "loader": "ring", "chips": "marker"}
+                     "loader": "ring", "chips": "marker",
+                     "mail_row_pad": 0, "mail_list_w": 0, "mail_step": 0}
     # кеш на request.state: другий виклик не ходить у БД
     monkeypatch.setattr(deps_mod, "SessionLocal", lambda: (_ for _ in ()).throw(AssertionError("no cache")))
     assert deps_mod.ui_prefs(req) is prefs
 
     monkeypatch.setattr(deps_mod, "SessionLocal", lambda: Session(engine))
-    canon = {"theme": "", "icons": "", "buttons": "", "loader": "", "chips": ""}
+    canon = {"theme": "", "icons": "", "buttons": "", "loader": "", "chips": "",
+             "mail_row_pad": 0, "mail_list_w": 0, "mail_step": 0}
     assert deps_mod.ui_prefs(_request(teal_op.id)) == canon
     # без сесії — канон, без падіння
     assert deps_mod.ui_prefs(_request(None)) == canon
@@ -141,3 +143,35 @@ def test_base_html_renders_theme_attrs_on_html_tag():
     assert '<html lang="uk" data-theme="forge" data-icons="neon">' in html
     html = _render("", "")
     assert '<html lang="uk">' in html
+
+
+def test_theme_survives_a_dead_database(monkeypatch):
+    """Сторінка помилки показується САМЕ ТОДІ, коли з базою погано — і колись
+    саме там оператор бачив чужу тему. ui_prefs дзеркалить набір у сесію
+    (підписана кука, без БД) і бере його звідти, коли БД мовчить."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        op = _user(db, username="forge_offline")
+        op.ui_theme = "forge"
+        op.ui_icon_style = "thin"
+        db.commit()
+
+    monkeypatch.setattr(deps_mod, "SessionLocal", lambda: Session(engine))
+    healthy = _request(op.id)
+    assert deps_mod.ui_prefs(healthy)["theme"] == "forge"
+    # набір осів у сесії — саме її несе браузер на наступний запит
+    mirror = healthy.session[deps_mod.UI_SESSION_KEY]
+    assert mirror["theme"] == "forge"
+
+    def _dead():
+        raise RuntimeError("no such column: users.ui_theme")
+
+    monkeypatch.setattr(deps_mod, "SessionLocal", _dead)
+    broken = _request(op.id)
+    broken.session[deps_mod.UI_SESSION_KEY] = mirror
+    prefs = deps_mod.ui_prefs(broken)
+    assert prefs["theme"] == "forge", "тема мусить пережити мертву БД"
+    assert prefs["icons"] == "thin"
+
+    # Анонім із мертвою БД лишається на каноні — дзеркала в нього немає.
+    assert deps_mod.ui_prefs(_request(None))["theme"] == ""
