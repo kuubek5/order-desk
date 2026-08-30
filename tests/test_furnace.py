@@ -831,3 +831,50 @@ def test_strip_and_tile_read_numbers_in_the_same_order():
 
     side = (Path("app/templates") / "_furnace_side.html").read_text(encoding="utf-8")
     assert side.index("ще <b") < side.index("відкриється <b")
+
+
+def test_unknown_glyph_is_never_guessed_as_another_digit():
+    """Найважливіший сторож модуля, і поставлений він за реальною подією.
+
+    30.08.26 на живій печі табло показувало 138 °C, а застосунок показав 133.
+    Причина: звірка допускала 15% незбігу «на антиаліасинг», і невідома «8»
+    відрізнялась від еталона «3» на 23 пікселі з 187 — тобто 12%, у межах
+    допуску. Вигадане число пройшло як упевнений збіг.
+
+    За температурою судять, чи піч вийшла на режим, тож хибне число тут гірше
+    за порожнє поле. Тепер збіг мусить бути ТОЧНИЙ; незнайоме накреслення
+    видно як «?» і доучується явно.
+
+    Тест бере справжній кадр тієї печі й перевіряє обидві половини правила:
+    з еталоном «8» число читається, без нього — поле порожнє, а не «133».
+    """
+    import app.furnace_ocr as ocr
+
+    frame = _frame("live_138")
+    assert read_panel(frame).temp_c == 138
+
+    # Прибираємо «8» зі сховища — читання мусить стати порожнім, а не хибним.
+    glyphs = ocr.load_glyphs()
+    stripped = {
+        height: {d: v for d, v in table.items() if not (height == 17 and d == "8")}
+        for height, table in glyphs.items()
+    }
+    original = ocr.load_glyphs
+    try:
+        ocr.load_glyphs = lambda: stripped  # type: ignore[assignment]
+        reading = read_panel(frame)
+        assert reading.temp_c is None, "невідома цифра не має ставати іншою"
+        assert reading.fields["temp"].raw == "13?"
+    finally:
+        ocr.load_glyphs = original
+        ocr.load_glyphs.cache_clear()
+
+
+def test_glued_digits_are_split_not_lost():
+    """«09:23:44» приходило одним блоком 22px замість двох по 9-11: у цього
+    шрифту діагональ четвірки дотягується до сусідньої цифри. Число, з якого
+    рахується час відкриття печі, через це просто зникало — поле порожнє, а
+    «44» у секундах трапляється щохвилини."""
+    reading = read_panel(_frame("live_glued_44"))
+    assert reading.remaining_seconds == 9 * 3600 + 23 * 60 + 44
+    assert reading.fields["remaining"].raw == "09:23:44"

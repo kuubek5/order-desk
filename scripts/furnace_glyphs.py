@@ -77,7 +77,7 @@ def cmd_check(args) -> int:
         f"   (сире: {reading.fields.get('remaining')})"
     )
     print(f"Команда:     {reading.command}")
-    print(f"Пройшло:     {format_remaining(reading.elapsed_seconds)}")
+    print(f"Крок:        {format_remaining(reading.step_seconds)}")
     for warning in reading.warnings:
         print(f"  ! {warning}")
     return 0

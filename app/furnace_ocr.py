@@ -141,13 +141,21 @@ STATUS_RUN = "RUN"
 STATUS_WAIT = "WAIT"
 STATUS_UNKNOWN = "?"
 
-# Допуск на згладжування шрифту: скільки часток пікселів еталона можуть не
-# збігтись. 0.15 з запасом покриває антиаліасинг і водночас далеко не дотягує
-# до відстані між різними цифрами (у цьому шрифті вона понад 25%).
-_MAX_MISMATCH_RATIO = 0.15
-# Наскільки найкращий збіг має випереджати другий. Без цієї умови «8» на межі
-# допуску могла б виграти в «0» одним пікселем.
-_MIN_MARGIN_PIXELS = 4
+# ЗБІГ МУСИТЬ БУТИ ТОЧНИЙ. Раніше тут стояв допуск 15% «на антиаліасинг», і
+# коментар запевняв, що відстань між різними цифрами понад 25%. На живій печі
+# це виявилось неправдою: невідома «8» відрізнялась від еталона «3» на 23
+# пікселі з 187, тобто 12% — і пройшла як упевнений збіг. Табло показувало
+# 138, застосунок показав 133.
+#
+# Вигадане число тут гірше за порожнє поле: за температурою судять, чи піч
+# вийшла на режим. Тому — рівно нуль розбіжностей.
+#
+# Допуск і не потрібен: панель приходить сирим фреймбуфером VNC, без
+# масштабування й без згладжування. Виміряно на дев'яти кадрах живої печі —
+# 87 символів з 89 збіглися піксель-у-піксель. Два, що не збіглися, і були
+# двома справжніми знахідками: невідома «8» та інший варіант накреслення «4».
+# Незнайоме накреслення тепер видно як «?» і доучується явно, а не вгадується.
+_MAX_MISMATCH_PIXELS = 0
 
 
 @lru_cache(maxsize=1)
@@ -214,11 +222,51 @@ def _segments(image: Image.Image, ink: Callable) -> list[tuple[int, int, int, in
             start = None
     if start is not None:
         runs.append((start, width))
+    runs = _split_glued(runs)
     boxes = []
     for left, right in runs:
         ys = [y for y in range(height) for x in range(left, right) if ink(px[x, y][:3])]
         boxes.append((left, min(ys), right, max(ys) + 1))
     return boxes
+
+
+def _split_glued(runs: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Розрізати склеєні сусідні символи.
+
+    Табло монохромне й моноширинне, але деякі пари торкаються: на живій печі
+    «09:23:44» давало один блок завширшки 22px замість двох по 9-11 — у цього
+    шрифту в четвірки є діагональ, яка дотягується до сусіда. Наслідок був
+    тихий: число не читалось цілком, поле віддавалось порожнім, і оператор не
+    бачив, коли відкривати піч.
+
+    Ріжемо ЛИШЕ те, що явно склеєне: ширина кратна типовій із запасом. Типову
+    беремо як медіану самих же символів кадру (роздільники «:» вужчі за 4px і
+    в підрахунок не йдуть), тому число не залежить від розміру шрифту зони.
+    """
+    widths = sorted(right - left for left, right in runs if right - left > 4)
+    if not widths:
+        return runs
+    typical = widths[len(widths) // 2]
+    if typical <= 0:
+        return runs
+    out: list[tuple[int, int]] = []
+    for left, right in runs:
+        span = right - left
+        parts = round(span / typical)
+        # Ріжемо лише при впевненому збігу: два-три символи, і ширина справді
+        # близька до кратної. Інакше лишаємо як є — краще нерозпізнаний
+        # символ, ніж вигаданий поділ.
+        # Допуск пропорційний, а не в пікселях: склеєна пара «44» дала 22px
+        # при типовій 9 (18 + діагональ четвірки), і жорсткий допуск її не
+        # пускав. 40% від очікуваної ширини відсікає випадкові збіги, але
+        # ловить реальне склеювання.
+        if 2 <= parts <= 3 and abs(span - parts * typical) <= 0.4 * typical * parts:
+            step = span / parts
+            for i in range(parts):
+                out.append((left + round(i * step), left + round((i + 1) * step)))
+        else:
+            out.append((left, right))
+    return out
 
 
 def _bitmap(image: Image.Image, box: tuple[int, int, int, int], ink: Callable) -> list[str]:
@@ -253,10 +301,12 @@ def _match_digit(bitmap: list[str], glyphs: dict) -> Optional[str]:
         return None
     scored.sort()
     best_distance, best_digit = scored[0]
-    if best_distance > _MAX_MISMATCH_RATIO * width * height:
+    if best_distance > _MAX_MISMATCH_PIXELS:
         return None
-    runner_up = next((d for d, digit in scored if digit != best_digit), None)
-    if runner_up is not None and runner_up - best_distance < _MIN_MARGIN_PIXELS:
+    # Дві РІЗНІ цифри не можуть збігтися точно з одним і тим самим малюнком —
+    # якщо це сталось, у сховищі дубль, і мовчки вибирати одну з них не можна.
+    exact_digits = {digit for distance, digit in scored if distance <= _MAX_MISMATCH_PIXELS}
+    if len(exact_digits) > 1:
         return None
     return best_digit
 
