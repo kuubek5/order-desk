@@ -42,7 +42,10 @@
     </g>
 
     <!-- radar HUD, lower-right (blueprint of a milling disc) -->
-    <g transform="translate(1600,760)">
+    <!-- class="radar-hud": named so single pages can hide the whole HUD without
+         guessing at child order — /login draws its own workshop scene instead,
+         and two ambient layers in one frame fight for attention. -->
+    <g class="radar-hud" transform="translate(1600,760)">
       <!-- static glow (rotation-invariant, kept out of the spin group) -->
       <circle r="360" fill="url(#bd-radarGlow)"/>
       <!-- everything below turns slowly around the disc centre -->

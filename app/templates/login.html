@@ -8,6 +8,19 @@
 
 {% block content %}
 <div class="login-page">
+    {# Фон входу: чотири предмети цеху, перемальовані з реальних фото
+       (диск у затискачі, фрезерування, абатменти, пічка спікання). Кожен —
+       маска, залита акцентом, тому фон сам живе в обох темах. Дрейфують
+       повільно й у різному темпі, щоб малюнок ніколи не повторював себе.
+       На цій сторінці ховається радар з app-backdrop (див. login.css):
+       дві атмосфери в одному кадрі сперечались би. #}
+    <div class="login-scene" aria-hidden="true">
+        <i class="ls-obj ls-milling"></i>
+        <i class="ls-obj ls-disc"></i>
+        <i class="ls-obj ls-furnace"></i>
+        <i class="ls-obj ls-abutment"></i>
+    </div>
+
     <div class="dyn-text" id="login-quotes" aria-label="Цехові репліки"></div>
 
     <div class="card login-card">

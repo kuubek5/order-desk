@@ -466,6 +466,14 @@ document.body.addEventListener("toast", (event) => {
     let s;
     try {
       const r = await fetch("/api/notify-state", { headers: { "X-Requested-With": "fetch" } });
+      // 401/403 — це «ще не увійшли», а не «застосунок упав». Без цієї гілки
+      // сторінка входу сама собі повідомляла, що зв'язок втрачено: сервер
+      // живий, просто сесії ще немає. Опитування там і не потрібне — нема
+      // чого сповіщати, поки нема оператора.
+      if (r.status === 401 || r.status === 403) {
+        stop();
+        return;
+      }
       if (!r.ok) throw new Error("HTTP " + r.status);
       s = await r.json();
     } catch (e) {
@@ -531,8 +539,16 @@ document.body.addEventListener("toast", (event) => {
     prev = s;
   }
 
+  let timer = null;
+  function stop() {
+    if (timer !== null) {
+      window.clearInterval(timer);
+      timer = null;
+    }
+  }
+
   poll();
-  window.setInterval(poll, POLL_MS);
+  timer = window.setInterval(poll, POLL_MS);
 })();
 
 // ── Ліве меню: «магнітний фокус» + підказки у згорнутому режимі ─────────
