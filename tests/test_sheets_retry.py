@@ -99,10 +99,26 @@ def test_exhausts_attempts_and_reraises_last_transient_error():
 
     def always_flaky():
         calls["n"] += 1
-        raise _api_error(429)
+        raise _api_error(503)
 
     with pytest.raises(gspread.exceptions.APIError):
         call_with_retry(always_flaky, attempts=4, base_delay=1.0, sleep=sleeps.append)
     assert calls["n"] == 4  # initial + 3 retries
     # sleeps between the 4 attempts: 1, 2, 4 (no sleep after the last failure)
     assert sleeps == [1.0, 2.0, 4.0]
+
+
+def test_429_quota_waits_out_the_minute_not_seconds():
+    """429 — квота «читань ЗА ХВИЛИНУ». Бекоф 1-2-4с марний: усі чотири
+    спроби влучають у ту саму хвилину, і синк падав, хоча квота відновилась би
+    сама (бойовий лог 30.08.26 — дві невдачі поспіль саме так). Для квоти
+    затримки мусять виходити за межу хвилини."""
+    sleeps: list[float] = []
+
+    def always_over_quota():
+        raise _api_error(429)
+
+    with pytest.raises(gspread.exceptions.APIError):
+        call_with_retry(always_over_quota, attempts=4, base_delay=1.0, sleep=sleeps.append)
+    assert sleeps == [20.0, 40.0, 60.0], "сума пауз мусить перевищувати хвилину"
+    assert sum(sleeps) > 60

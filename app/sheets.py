@@ -60,6 +60,15 @@ def is_transient_sheet_error(exc: BaseException) -> bool:
     )
 
 
+def _is_quota_error(exc: Exception) -> bool:
+    """429 з текстом про квоту — окремий випадок: він лікується не повтором,
+    а ЧАСОМ, бо ліміт хвилинний."""
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status == 429:
+        return True
+    return "429" in str(exc) and "Quota exceeded" in str(exc)
+
+
 def call_with_retry(
     fn: Callable[[], _T],
     *,
@@ -79,6 +88,12 @@ def call_with_retry(
             if not is_transient_sheet_error(exc) or attempt == attempts - 1:
                 raise
             delay = base_delay * (2 ** attempt)
+            # 429 — квота «читань ЗА ХВИЛИНУ». Бекоф 1-2-4с марний: усі
+            # чотири спроби влучають у ту саму хвилину, і синк падає, хоча
+            # квота відновиться сама (бойовий лог 30.08.26 — дві невдачі
+            # поспіль саме так). Тут чекаємо так, щоб вийти за межу хвилини.
+            if _is_quota_error(exc):
+                delay = max(delay, 20.0 * (attempt + 1))
             logger.warning(
                 "Transient Google Sheets error (attempt %d/%d), retrying in %.0fs: %s",
                 attempt + 1,
@@ -282,7 +297,10 @@ def measure_sheet_weight(spreadsheet: gspread.Spreadsheet) -> dict:
     from time import perf_counter
 
     started = perf_counter()
-    payload = spreadsheet.client.http_client.fetch_sheet_metadata(
+    # У gspread 6.x Spreadsheet.client — це ВЖЕ сам HTTPClient; зайва ланка
+    # .http_client падала AttributeError, і пробник ваги був мертвий з моменту
+    # оновлення бібліотеки (спіймано логом бойового ПК 30.08.26).
+    payload = spreadsheet.client.fetch_sheet_metadata(
         spreadsheet.id,
         params={
             "includeGridData": "false",

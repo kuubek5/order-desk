@@ -12,8 +12,12 @@ from app.sheets import measure_sheet_weight
 
 
 def _spreadsheet(payload):
-    client = SimpleNamespace(http_client=MagicMock())
-    client.http_client.fetch_sheet_metadata.return_value = payload
+    # Стаб повторює СПРАВЖНЮ структуру gspread 6.x: Spreadsheet.client — це
+    # вже сам HTTPClient. Попередній стаб мав зайву ланку .http_client — тобто
+    # закріпив мертвий шлях, і тести були зелені, поки бойовий пробник падав
+    # AttributeError на кожному виклику (лог 30.08.26).
+    client = MagicMock()
+    client.fetch_sheet_metadata.return_value = payload
     return SimpleNamespace(id="SHEET", client=client)
 
 
@@ -77,6 +81,6 @@ def test_asks_only_for_conditional_formats():
     """Не тягнути ґрід — інакше сам замір став би тим, що він діагностує."""
     sp = _spreadsheet({"sheets": []})
     measure_sheet_weight(sp)
-    params = sp.client.http_client.fetch_sheet_metadata.call_args.kwargs["params"]
+    params = sp.client.fetch_sheet_metadata.call_args.kwargs["params"]
     assert params["includeGridData"] == "false"
     assert "conditionalFormats" in params["fields"]
