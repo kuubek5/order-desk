@@ -105,7 +105,10 @@ def test_end_to_end_a_real_socket_becomes_a_row_in_the_database(tmp_path, monkey
             state = service.poll_target(db, target, password="DEKEMA")
             assert state.status == STATUS_RUN
             assert state.temp_c == 759
-            assert state.remaining_seconds == 26 * 60 + 59
+            # 26:59 — «срок», залишок поточної команди; час відкриття рахується
+            # із залишку УСІЄЇ програми (правий лічильник табло).
+            assert state.reading.step_seconds == 26 * 60 + 59
+            assert state.remaining_seconds == 28207
 
             # Піч перемкнулась у спокій — те саме підключення, інший кадр.
             furnace.frame_rgba = frame_bytes(_image("wait"))

@@ -51,13 +51,13 @@
            а не ховатись у «деталях». #}
         <div class="fu-nums">
             <div class="fu-num">
-                <span class="fu-num-label">Лишилось</span>
+                <span class="fu-num-label">До кінця програми</span>
                 <span class="fu-num-value mono">{{ state.remaining_text }}</span>
                 {% if state.done_at %}
                 <span class="fu-num-note">буде о {{ state.done_at.strftime('%H:%M') }}</span>
                 {% endif %}
                 <img class="fu-eye" src="/furnaces/{{ card.key }}/crop/srok.png?t={{ stamp }}"
-                     alt="Рядок «срок» на табло печі" loading="lazy">
+                     alt="Лічильник залишку програми на табло печі" loading="lazy">
             </div>
             <div class="fu-num">
                 <span class="fu-num-label">Температура</span>

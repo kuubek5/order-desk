@@ -149,29 +149,6 @@ class FurnaceState:
         return format_remaining(self.remaining_seconds)
 
     @property
-    def elapsed_seconds(self) -> Optional[int]:
-        reading = self.reading
-        return reading.elapsed_seconds if reading else None
-
-    @property
-    def progress(self) -> Optional[int]:
-        """Скільки програми пройдено, у відсотках — для смужки на плитці.
-
-        Віддає None, коли рахувати нема з чого: намальована смужка без
-        відомої тривалості — це здогадка, яку оператор прочитає як факт.
-        Табло дає і «пройшло», і «лишилось», тому тривалість — їхня сума;
-        якщо бракує будь-якого з двох, смужки просто немає.
-        """
-        elapsed = self.elapsed_seconds
-        remaining = self.remaining_seconds
-        if not elapsed or not remaining:
-            return None
-        total = elapsed + remaining
-        if total <= 0:
-            return None
-        return max(0, min(100, round(elapsed * 100 / total)))
-
-    @property
     def done_at(self) -> Optional[datetime]:
         """Коли програма добіжить — за київським часом.
 
@@ -189,6 +166,12 @@ class FurnaceState:
         captured_at = self.captured_at
         remaining = self.remaining_seconds
         if captured_at is None or not remaining:
+            return None
+        # ЛИШЕ у RUN. Правий лічильник у спокої показує не нуль, а повну
+        # тривалість програми, яка стоїть напоготові (на живому кадрі WAIT це
+        # було 09:24:02). Без цієї умови вільна піч обіцяла б «відкриється за
+        # дев'ять годин» — і це читалось би як «вона працює».
+        if self.status != STATUS_RUN:
             return None
         finish = captured_at + timedelta(seconds=remaining)
         if BUSINESS_TIMEZONE is None:
@@ -349,7 +332,10 @@ def _store(db: Session, target: FurnaceTarget, reading: PanelReading, now: datet
             status=reading.status,
             temp_c=reading.temp_c,
             remaining_seconds=reading.remaining_seconds,
-            elapsed_seconds=reading.elapsed_seconds,
+            # У колонку історії тепер лягає залишок ПОТОЧНОГО КРОКУ («срок»).
+            # Раніше сюди писався середній лічильник табло, який виявився
+            # часом доби — тобто стовпчик історії був беззмістовний.
+            elapsed_seconds=reading.step_seconds,
             command=reading.command,
             raw_temp=(reading.fields.get("temp").raw if reading.fields.get("temp") else None),
             raw_remaining=(

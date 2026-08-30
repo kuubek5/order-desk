@@ -96,13 +96,22 @@ ZONES: dict[str, Zone] = {
     "temp": Zone((55, 22, 132, 56), "red", "Температура", r"^\d{1,4}$"),
     # RUN / WAIT — читається не текстом, а кольором (див. read_status).
     "status": Zone((730, 44, 795, 72), "dark", "Статус"),
-    # «срок 00:26:59» — скільки лишилось до кінця програми.
-    "remaining": Zone((506, 421, 627, 441), "light", "Лишилось", r"^\d{2}:\d{2}:\d{2}$"),
+    # «срок 01:59:26» — залишок ПОТОЧНОЇ КОМАНДИ рецепту, не програми.
+    # Розібрано на живій печі 30.08.26: рецепт із табло
+    # (T008.A990 … C1150 T1800 … C1530 T7200 … A200) дає перший крок «нагрів
+    # 20→990 при 8°/хв» = 2,02 год, і «срок» показував рівно 01:59:26.
+    # Оператору це число не потрібне — його цікавить, коли ВІДКРИВАТИ піч.
+    # Лишається як третій сигнал статусу (ненульове = щось іде).
+    "step": Zone((506, 421, 627, 441), "light", "Крок", r"^\d{2}:\d{2}:\d{2}$"),
     # «Текущая команда» — рядок рецепту (T008.A990) або C0 у спокої.
     "command": Zone((281, 421, 402, 441), "light", "Команда", r"^[0-9A-Z.]{1,12}$"),
-    # Два годинники вгорі: пройдений час програми і час доби.
-    "elapsed": Zone((552, 4, 672, 28), "dark", "Пройшло", r"^\d{2}:\d{2}:\d{2}$"),
-    "clock": Zone((682, 4, 793, 28), "dark", "Годинник", r"^\d{2}:\d{2}:\d{2}$"),
+    # Два лічильники вгорі. ЛІВИЙ іде вперед — це час доби. ПРАВИЙ іде НАЗАД:
+    # на двох кадрах поспіль 09:24:02 → 09:22:34, тобто годинником він бути не
+    # може, хоч раніше так і був підписаний. Це залишок УСІЄЇ програми: сума
+    # кроків того ж рецепту дає 9 год 23 хв, а табло показувало 9:22:34.
+    # Саме з нього рахується час відкриття печі.
+    "clock": Zone((552, 4, 672, 28), "dark", "Час доби", r"^\d{2}:\d{2}:\d{2}$"),
+    "remaining": Zone((682, 4, 793, 28), "dark", "Лишилось", r"^\d{2}:\d{2}:\d{2}$"),
     # Кнопка внизу: червона «Отменить программу» / зелена «Запустить».
     "button": Zone((545, 535, 660, 595), "dark", "Кнопка"),
 }
@@ -113,7 +122,10 @@ ZONES: dict[str, Zone] = {
 # перевірка, заради якої вона існує, зникала б.
 EYE_CROPS: dict[str, tuple[int, int, int, int]] = {
     "temp": (20, 18, 175, 58),
-    "srok": (450, 412, 630, 448),
+    # Смужка під числом «Лишилось» мусить показувати ТОЙ САМИЙ лічильник, який
+    # ми читаємо — правий верхній (залишок усієї програми). Раніше тут стояв
+    # «срок» унизу екрана, тобто доказ був від іншого числа.
+    "srok": (676, 0, 800, 32),
     "status": (700, 40, 800, 78),
 }
 
@@ -171,7 +183,7 @@ class PanelReading:
     temp_c: Optional[int] = None
     remaining_seconds: Optional[int] = None
     command: Optional[str] = None
-    elapsed_seconds: Optional[int] = None
+    step_seconds: Optional[int] = None
     # Три незалежні сигнали «йде / не йде». Тримаємо їх окремо навмисно: коли
     # вони розійдуться, статус має стати «?», а не тихо обрати один з них.
     signals: dict[str, Optional[str]] = field(default_factory=dict)
@@ -382,24 +394,27 @@ def read_panel(image: Image.Image) -> PanelReading:
 
     reading.status, reading.signals = read_status(panel)
 
-    for name in ("temp", "remaining", "command", "elapsed"):
+    for name in ("temp", "remaining", "command", "step"):
         reading.fields[name] = read_zone(panel, name)
 
     reading.temp_c = parse_temperature(reading.fields["temp"].text)
+    # remaining — залишок УСІЄЇ програми (правий лічильник), тобто те, з чого
+    # рахується час відкриття. step — залишок поточної команди, лише для
+    # перевірки статусу.
     reading.remaining_seconds = parse_clock(reading.fields["remaining"].text)
-    reading.elapsed_seconds = parse_clock(reading.fields["elapsed"].text)
+    reading.step_seconds = parse_clock(reading.fields["step"].text)
     reading.command = reading.fields["command"].text
 
     # Третій сигнал стану — залишок часу. Додається лише як перевірка: сам
     # призначити статус він не може (у RUN бувають нулі на межі сегментів),
     # але мовчазна розбіжність із двома іншими має бути видною.
-    if reading.remaining_seconds is not None:
-        expected = STATUS_RUN if reading.remaining_seconds > 0 else STATUS_WAIT
-        reading.signals["remaining"] = expected
+    if reading.step_seconds is not None:
+        expected = STATUS_RUN if reading.step_seconds > 0 else STATUS_WAIT
+        reading.signals["step"] = expected
         if reading.status != STATUS_UNKNOWN and expected != reading.status:
             reading.warnings.append(
                 "«срок» %s не сходиться зі статусом %s"
-                % (reading.fields["remaining"].text, reading.status)
+                % (reading.fields["step"].text, reading.status)
             )
 
     if reading.temp_c is None:

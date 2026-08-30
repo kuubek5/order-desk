@@ -57,7 +57,10 @@ def test_running_frame_reads_all_three_numbers():
     reading = read_panel(_frame("run"))
     assert reading.status == STATUS_RUN
     assert reading.temp_c == 759
-    assert reading.remaining_seconds == 26 * 60 + 59
+    # remaining — залишок УСІЄЇ програми (правий лічильник табло), а «срок»
+    # (26:59) — лише поточної команди. Розібрано на живій печі 30.08.26.
+    assert reading.step_seconds == 26 * 60 + 59
+    assert reading.remaining_seconds == 28207
     assert reading.command == "T008.A990"
     assert reading.warnings == []
 
@@ -66,7 +69,11 @@ def test_idle_frame_reads_as_wait_with_zero_left():
     reading = read_panel(_frame("wait"))
     assert reading.status == STATUS_WAIT
     assert reading.temp_c == 40
-    assert reading.remaining_seconds == 0
+    # У спокої «срок» нульовий, а правий лічильник показує ПОВНУ тривалість
+    # програми, яка стоїть напоготові: 33823 с = 9 год 23 хв — рівно стільки
+    # дає сума кроків рецепта з табло.
+    assert reading.step_seconds == 0
+    assert reading.remaining_seconds == 33823
     assert reading.command == "C0"
 
 
@@ -76,7 +83,7 @@ def test_all_three_signals_agree_on_each_frame():
     одного з сигналів."""
     for name, expected in (("run", STATUS_RUN), ("wait", STATUS_WAIT)):
         signals = read_panel(_frame(name)).signals
-        assert set(signals) == {"word", "button", "remaining"}
+        assert set(signals) == {"word", "button", "step"}
         assert set(signals.values()) == {expected}
 
 
@@ -97,7 +104,10 @@ def test_damaged_digit_yields_empty_value_not_a_guess():
     assert any("Температуру" in w for w in reading.warnings)
     # Решта табло не постраждала — статус і залишок читаються далі.
     assert reading.status == STATUS_RUN
-    assert reading.remaining_seconds == 26 * 60 + 59
+    # remaining — залишок УСІЄЇ програми (правий лічильник табло), а «срок»
+    # (26:59) — лише поточної команди. Розібрано на живій печі 30.08.26.
+    assert reading.step_seconds == 26 * 60 + 59
+    assert reading.remaining_seconds == 28207
 
 
 def test_contradicting_signals_give_unknown_status():
@@ -184,7 +194,7 @@ def test_poll_writes_a_row_and_saves_the_frame(monkeypatch, tmp_path):
         assert len(rows) == 1
         assert rows[0].host == "192.168.1.76"
         assert rows[0].temp_c == 759
-        assert rows[0].raw_remaining == "00:26:59"
+        assert rows[0].raw_remaining == "07:50:07"  # правий лічильник — залишок УСІЄЇ програми
     assert (tmp_path / "192.168.1.76.png").exists()
 
 
@@ -508,8 +518,9 @@ def test_done_at_is_kyiv_time_not_the_machine_clock():
     if BUSINESS_TIMEZONE is not None:
         assert done.tzinfo is not None
         assert str(done.tzinfo) == "Europe/Kyiv"
-    # 17:27 + 26:59 = 17:53:59 → на табло оператор побачить 17:53
-    assert done.strftime("%H:%M") == "17:53"
+    # 17:27 + 07:50:07 = 01:17 наступної доби — залишок УСІЄЇ програми,
+    # а не поточної команди: піч відкривають після циклу, не після кроку.
+    assert done.strftime("%H:%M") == "01:17"
 
 
 def test_collapsed_strip_still_answers_the_question():
@@ -530,7 +541,8 @@ def test_collapsed_strip_still_answers_the_question():
     summary = service.strip_summary(cards)
     assert summary.running == 1
     assert summary.total == 2
-    assert summary.nearest_text == "17:53"
+        # Момент відкриття — із залишку ВСІЄЇ програми (07:50:07), не кроку.
+    assert summary.nearest_text == "01:17"
 
 
 def test_empty_summary_says_nothing_rather_than_zero():
@@ -703,25 +715,19 @@ def test_widget_keeps_a_broken_furnace_and_names_the_reason(monkeypatch, tmp_pat
         assert service.strip_summary(cards).broken == 1
 
 
-def test_progress_needs_both_halves_of_the_program():
-    """Смужка на плитці малюється лише тоді, коли є з чого рахувати: табло дає
-    і «пройшло», і «лишилось», тож тривалість — їхня сума. Без будь-якого з
-    двох смужки немає: намальований прогрес без відомої тривалості — це
-    здогадка, яку оператор прочитає як факт."""
-    state = service.FurnaceState(target=service.FurnaceTarget(name="Бочка", host="h"))
-    assert state.progress is None  # кадру ще немає
+def test_no_fabricated_progress_bar():
+    """Смужки прогресу тут БУЛА і брехала: вона рахувала «скільки пройдено» з
+    лівого лічильника табло, а той виявився часом доби — на щойно стартованій
+    програмі виходило 90%. Піч не показує надійного «скільки пройдено», а
+    мальований відсоток читають як факт.
 
-    state.reading = service.PanelReading(
-        status=service.STATUS_RUN, temp_c=1540,
-        remaining_seconds=600, elapsed_seconds=1800, command=None,
-    )
-    assert state.progress == 75
+    Сторож проти повернення: ні стану, ні плитки з відсотком.
+    """
+    from pathlib import Path
 
-    state.reading = service.PanelReading(
-        status=service.STATUS_RUN, temp_c=1540,
-        remaining_seconds=None, elapsed_seconds=1800, command=None,
-    )
-    assert state.progress is None, "без «лишилось» тривалість невідома"
+    assert not hasattr(service.FurnaceState, "progress")
+    tile = Path("app/templates/_furnace_side.html").read_text(encoding="utf-8")
+    assert "fu-tile-bar" not in tile.split("#}")[-1], "смужка повернулась у розмітку"
 
 
 def test_side_panel_and_strip_show_the_same_numbers(monkeypatch, tmp_path):
