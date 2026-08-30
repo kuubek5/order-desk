@@ -341,7 +341,9 @@ def _apply_attachments(
         email_message.attachments_status = "skipped"
 
 
-def _save_message_attachments(session, email_message, msg, attachments_dir: Path) -> int:
+def _save_message_attachments(
+    session, email_message, msg, attachments_dir: Path, skip_names: set[str] | None = None
+) -> int:
     """Write a fetched message's attachments to the spool and add Attachment
     rows. Returns how many were saved. Shared by the whitelisted auto-download
     and the manual «Скачати файли» action.
@@ -363,11 +365,15 @@ def _save_message_attachments(session, email_message, msg, attachments_dir: Path
                 email_message.uid,
             )
             continue
-        message_dir.mkdir(parents=True, exist_ok=True)
         # Inline attachments (embedded images, signatures, calendar
         # invites) can arrive with no filename — write_bytes() to a
         # bare directory path would otherwise raise PermissionError.
         filename = safe_attachment_filename(att.filename, i, att.content_type)
+        # Повторне скачування: те, що ціле лежить на диску, пропускаємо, інакше
+        # поруч із живим файлом лягав би його «(1)»-двійник.
+        if skip_names and filename in skip_names:
+            continue
+        message_dir.mkdir(parents=True, exist_ok=True)
         dest_path = unique_destination(message_dir, filename)
         dest_path.write_bytes(payload)
         session.info.setdefault("mail_sync_created_paths", []).append(dest_path)
@@ -381,6 +387,62 @@ def _save_message_attachments(session, email_message, msg, attachments_dir: Path
         )
         saved += 1
     return saved
+
+
+def redownload_missing_attachments(
+    session: Session, email_message: EmailMessage, attachments_dir: Path
+) -> tuple[int, int]:
+    """Повторно скачати вкладення листа, файли якого зникли з диска.
+
+    Реальний випадок: файли скачались, а потім теку в спулі хтось прибрав
+    (чистка диска, ручне видалення). У базі рядки лишались, панель писала
+    «Усі файли на диску», «Відкрити папку» падало — і зробити з цим не можна
+    було нічого.
+
+    Правила:
+    - зносяться рядки ЛИШЕ тих вкладень, файлів яких справді немає; те, що
+      лежить на диску, не чіпається (інакше повторне скачування створювало б
+      «(1)»-двійників поруч із цілими файлами);
+    - вкладення, вже прийняте в чергу (order_id), не чіпається взагалі: його
+      файл переїхав у export, і його відсутність у спулі — норма, а не втрата;
+    - якщо після чистки не лишилось жодного живого файлу, скидаються
+      handled_link_refs: файли, стягнуті за посиланням, у самому листі не
+      лежать, і без цього дістати їх повторно було б нічим.
+
+    Повертає (скільки рядків прибрано, скільки скачано наново).
+    """
+    login = get_imap_login(session)
+    password = get_imap_password(session)
+    if not login or not password:
+        raise RuntimeError("IMAP не налаштовано — задайте логін і пароль у Налаштуваннях")
+
+    missing = [
+        a for a in email_message.attachments
+        if a.order_id is None and not Path(a.saved_path).exists()
+    ]
+    if not missing:
+        return (0, 0)
+    alive_names = {
+        a.filename for a in email_message.attachments
+        if Path(a.saved_path).exists()
+    }
+    for attachment in missing:
+        session.delete(attachment)
+    # Рядки треба прибрати з сесії ДО повторного збереження, інакше
+    # unique_destination побачить на диску лише те, що є, а в базі — і старе.
+    session.flush()
+
+    with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:
+        full = list(mailbox.fetch(AND(uid=email_message.uid), mark_seen=False))
+        if not full:
+            raise RuntimeError("Лист більше недоступний на сервері")
+        saved = _save_message_attachments(
+            session, email_message, full[0], attachments_dir, skip_names=alive_names
+        )
+    if not alive_names:
+        email_message.handled_link_refs = None
+    email_message.attachments_status = "ready"
+    return (len(missing), saved)
 
 
 def download_attachments_now(session: Session, email_message: EmailMessage, attachments_dir: Path) -> int:

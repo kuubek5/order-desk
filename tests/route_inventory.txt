@@ -69,6 +69,7 @@ POST /mail/{email_id}/extract-archives
 POST /mail/{email_id}/fetch-link
 POST /mail/{email_id}/filter
 POST /mail/{email_id}/open-folder
+POST /mail/{email_id}/redownload
 POST /mail/{email_id}/reject
 POST /mail/{email_id}/restore
 POST /mail/{email_id}/unfilter

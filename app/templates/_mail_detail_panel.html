@@ -9,6 +9,11 @@
    and reset to the letter tab when a different letter is opened. #}
 {% set is_new = email.status == 'нове' %}
 {% set att_count = email.attachments|length %}
+{# Файли, рядки яких є в базі, а на диску їх немає (теку прибрали після
+   скачування). Довгий час панель рахувала РЯДКИ і писала «Усі файли на
+   диску», хоча відкрити папку вже було нічим — глухий кут без жодної дії. #}
+{% set missing_count = missing_attachment_ids|length if missing_attachment_ids else 0 %}
+{% set on_disk_count = att_count - missing_count %}
 <div class="detail-head">
     <div>
         <div class="from">{{ email.from_address or 'Відправник не визначений' }}</div>
@@ -66,6 +71,12 @@
                    («→ вкладка «Файли + STL», кнопка …»). Put the button under
                    the operator's cursor instead of describing where it lives. #}
                 <button type="button" class="btn sm metabar-go" data-seg-go="files">Скачати вкладення →</button>
+                {% elif missing_count %}
+                {# Той самий обов'язок, що й у зведенні всередині вкладки: у
+                   шапці не має стояти «✓ Скачано», коли файлів на диску вже
+                   немає. Кнопка веде туди, де є дія. #}
+                <span class="attachment-badge attachment-badge-missing">✕ Немає на диску ({{ missing_count }})</span>
+                <button type="button" class="btn sm metabar-go" data-seg-go="files">Скачати наново →</button>
                 {% else %}
                 <span class="attachment-badge attachment-badge-ready">✓ Скачано ({{ att_count }})</span>
                 {% endif %}
@@ -110,8 +121,11 @@
             {# Total-files summary so the operator knows whether everything is on
                disk or some files still sit behind links. #}
             {% if email.attachments_status != 'pending' %}
-            <div class="files-summary {% if undownloaded_links or email.attachments_status == 'skipped' %}warn{% else %}ok{% endif %}">
-                {% if email.attachments_status == 'skipped' %}
+            <div class="files-summary {% if missing_count or undownloaded_links or email.attachments_status == 'skipped' %}warn{% else %}ok{% endif %}">
+                {% if missing_count %}
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+                <span>Немає на диску: <b>{{ missing_count }}</b> з <b>{{ att_count }}</b> — файли видалили після скачування. Скачайте наново кнопкою нижче.</span>
+                {% elif email.attachments_status == 'skipped' %}
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
                 <span>Файли не скачані (відправник не в авто-списку){% if undownloaded_links %} + {{ undownloaded_links|length }} за посиланням{% endif %} — скачайте нижче.</span>
                 {% elif undownloaded_links %}
@@ -129,15 +143,21 @@
                     {% if email.attachments_status == 'pending' %}
                         <span class="attachment-badge attachment-badge-pending"><span class="attachment-badge-dot" aria-hidden="true"></span>Завантаження…</span>
                     {% else %}
+                        {% if missing_count %}
+                        <span class="attachment-badge attachment-badge-missing">✕ Немає на диску ({{ missing_count }})</span>
+                        {% else %}
                         <span class="attachment-badge attachment-badge-ready">✓ Скачано ({{ att_count }})</span>
+                        {% endif %}
                     {% endif %}
                 </div>
                 {% if email.attachments %}
                 <div class="attlist">
                     {% for attachment in email.attachments %}
-                    <div class="attrow">
+                    {% set is_missing = missing_attachment_ids and attachment.id in missing_attachment_ids %}
+                    <div class="attrow{% if is_missing %} is-missing{% endif %}"{% if is_missing %} title="Файла немає на диску — його видалили після скачування"{% endif %}>
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" class="duo"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
                         <span class="name">{{ attachment.filename }}</span>
+                        {% if is_missing %}<span class="attmissing">немає файлу</span>{% endif %}
                         <span class="size">
                             {% if attachment.size_bytes %}
                                 {% if attachment.size_bytes >= 1024 * 1024 %}{{ (attachment.size_bytes / (1024 * 1024))|round(1) }} МБ{% else %}{{ (attachment.size_bytes / 1024)|round(1) }} КБ{% endif %}
@@ -169,6 +189,21 @@
                 {% endif %}
                 {% if email.attachments %}
                 <div class="att-actions">
+                    {% if missing_count %}
+                    {# Єдина дія, яка розв'язує цей стан. Стоїть першою і має
+                       трактування: решта кнопок тут — утиліти, а ця повертає
+                       листу працездатність. #}
+                    <button type="button" class="btn primary dl-btn"
+                            hx-post="/mail/{{ email.id }}/redownload"
+                            hx-target="#mail-detail" hx-swap="innerHTML"
+                            hx-indicator="this" hx-disabled-elt="this"
+                            title="Забрати з пошти ті файли, яких немає на диску. Наявні не чіпаються.">
+                        <svg class="dl-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+                        <svg class="dl-spin" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9"/><path d="M4 4v4h4M20 20v-4h-4"/></svg>
+                        <span class="dl-lbl-idle">Скачати наново ({{ missing_count }})</span>
+                        <span class="dl-lbl-busy">Скачую наново…</span>
+                    </button>
+                    {% endif %}
                     {% if has_archive %}
                     <button type="button" class="btn dl-btn"
                             hx-post="/mail/{{ email.id }}/extract-archives"
@@ -180,6 +215,7 @@
                         <span class="dl-lbl-busy">Розпаковую…</span>
                     </button>
                     {% endif %}
+                    {% if on_disk_count %}
                     <button type="button" class="btn sm accent-outline"
                             hx-post="/mail/{{ email.id }}/open-folder"
                             hx-swap="none"
@@ -187,6 +223,7 @@
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z" class="duo"/><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z"/></svg>
                         Відкрити папку у Провіднику
                     </button>
+                    {% endif %}
                 </div>
                 {% endif %}
             </div>

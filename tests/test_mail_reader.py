@@ -436,3 +436,63 @@ def test_safe_filename_repairs_utf8_mojibake():
     # clean ASCII / already-correct Cyrillic names are unchanged
     assert _repair_mojibake("crown_A2.stl") == "crown_A2.stl"
     assert _repair_mojibake("коронка.stl") == "коронка.stl"
+
+
+def test_redownload_pulls_back_files_deleted_from_disk(monkeypatch, tmp_path):
+    """Реальний глухий кут: файли скачались, потім теку в спулі прибрали.
+    Рядки в базі лишались, панель писала «Усі файли на диску», «Відкрити
+    папку» падало — і зробити було нічого. Тепер зниклі скачуються наново, а
+    ті, що ціло лежать, не чіпаються (інакше поруч ляг би «(1)»-двійник)."""
+    from pathlib import Path
+
+    from app.mail_reader import redownload_missing_attachments
+    from app.models import EmailMessage
+
+    attachments = [
+        _fake_attachment("crown.stl", payload=b"STL-1"),
+        _fake_attachment("bridge.stl", payload=b"STL-2"),
+    ]
+    mailbox = FakeMailbox(
+        headers=[_header_message("9")],
+        full_by_uid={"9": _full_message("9", attachments=attachments)},
+    )
+    _patch_common(monkeypatch, mailbox)
+    with _engine_session() as session:
+        fetch_new_emails(session, tmp_path)
+        email = session.query(EmailMessage).one()
+        assert len(email.attachments) == 2
+
+        # Хтось видалив ОДИН файл з диска.
+        gone = next(a for a in email.attachments if a.filename == "crown.stl")
+        survivor = next(a for a in email.attachments if a.filename == "bridge.stl")
+        survivor_path = Path(survivor.saved_path)
+        Path(gone.saved_path).unlink()
+
+        removed, saved = redownload_missing_attachments(session, email, tmp_path)
+        session.commit()
+
+        assert (removed, saved) == (1, 1)
+        session.refresh(email)
+        names = sorted(a.filename for a in email.attachments)
+        assert names == ["bridge.stl", "crown.stl"], "двійників бути не має"
+        assert all(Path(a.saved_path).exists() for a in email.attachments)
+        # Цілий файл не перезаписувався і не подвоївся.
+        assert survivor_path.read_bytes() == b"STL-2"
+        assert len(list(survivor_path.parent.glob("bridge*"))) == 1
+
+
+def test_redownload_is_a_no_op_when_every_file_is_in_place(monkeypatch, tmp_path):
+    """Кнопка не має тихо перескачувати цілі файли: без втрат — без дій."""
+    from app.mail_reader import redownload_missing_attachments
+    from app.models import EmailMessage
+
+    mailbox = FakeMailbox(
+        headers=[_header_message("11")],
+        full_by_uid={"11": _full_message("11", attachments=[_fake_attachment("a.stl", payload=b"X")])},
+    )
+    _patch_common(monkeypatch, mailbox)
+    with _engine_session() as session:
+        fetch_new_emails(session, tmp_path)
+        email = session.query(EmailMessage).one()
+        assert redownload_missing_attachments(session, email, tmp_path) == (0, 0)
+        assert len(email.attachments) == 1

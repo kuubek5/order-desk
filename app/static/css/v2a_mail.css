@@ -311,6 +311,15 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 .mailv2 .attachment-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--line-2);color:var(--ink-2)}
 .mailv2 .attachment-badge-ready{background:rgba(var(--accent-base-rgb), .1);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .3)}
 .mailv2 .attachment-badge-pending{background:rgba(var(--warn-rgb), .1);color:var(--warn);border-color:rgba(var(--warn-rgb), .3)}
+/* Файл є в базі, а на диску його немає. Рядок гасне і перекреслюється — так
+   видно, що це запис про файл, а не файл; тривожним лишається зведення вгорі
+   і кнопка «Скачати наново», щоб десяток згаслих рядків не кричав десять
+   разів про одне й те саме. */
+.mailv2 .attrow.is-missing{background:transparent;border-style:dashed;border-color:rgba(var(--alarm-rgb), .3)}
+.mailv2 .attrow.is-missing .name{color:var(--ink-3);text-decoration:line-through}
+.mailv2 .attrow.is-missing svg{stroke:var(--alarm)}
+.mailv2 .attmissing{font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:var(--alarm-ink);flex:0 0 auto}
+.mailv2 .attachment-badge-missing{background:rgba(var(--alarm-rgb), .12);color:var(--alarm-ink);border-color:rgba(var(--alarm-rgb), .35)}
 .mailv2 .attachment-badge-warn{background:rgba(var(--warn-rgb), .1);color:var(--warn);border-color:rgba(var(--warn-rgb), .35);cursor:help}
 .mailv2 .attachment-badge-warn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .attachment-badge-dot{width:6px;height:6px;border-radius:50%;background:currentColor}

@@ -297,11 +297,15 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
 /* позиції */
 .toast-stack[data-toast-pos="br"]{right:0;bottom:0;align-items:flex-end}
 .toast-stack[data-toast-pos="bl"]{left:0;bottom:0;align-items:flex-start}
-/* Верхні позиції відступають нижче шапки: при top:0 тост лягав просто на
-   <h1> і рядок «49 у вигляді · пошта · таблиця», тобто повідомлення про
-   збій закривало саме те, за чим оператор і дивиться в шапку. */
+/* Праворуч тост відступає нижче шапки: там живуть кнопки дій («Перевірити
+   пошту», пошук, крок назад/вперед), і накрити їх означає забрати доступ
+   саме тоді, коли щось пішло не так.
+   По центру — навпаки, вгору під самий край: середина шапки порожня на
+   кожному екрані (заголовок ліворуч, дії праворуч), а на 62px тост лягав на
+   смугу вкладок і перші рядки списку — тобто на те, за чим оператор і
+   дивиться. Два тости поспіль з'їдали пів екрана листів. */
 .toast-stack[data-toast-pos="tr"]{right:0;top:62px;align-items:flex-end}
-.toast-stack[data-toast-pos="tc"]{top:62px;left:50%;transform:translateX(-50%);align-items:center}
+.toast-stack[data-toast-pos="tc"]{top:0;left:50%;transform:translateX(-50%);align-items:center;padding-top:8px}
 /* паспорт роботи фіксований справа (420px) і має нижчий z-index — без цього
    зсуву тост лягав би просто на нього */
 body:has(.detail-pane.open) .toast-stack[data-toast-pos="br"],

@@ -44,7 +44,11 @@ from app.mail_export import (
 )
 from app.mail_filters import apply_rule_retroactively
 from app.mail_parser import material_candidates
-from app.mail_reader import download_attachments_now, extract_archive_attachments
+from app.mail_reader import (
+    download_attachments_now,
+    extract_archive_attachments,
+    redownload_missing_attachments,
+)
 from app.mail_sync_service import (
     MailSyncBusyError,
     MailSyncError,
@@ -455,6 +459,14 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
         # is off) → offer the manual «Розпакувати» reserve button.
         "has_archive": any(is_archive(a.filename) for a in email.attachments),
         "staged_count": sum(1 for a in email.attachments if a.staged_to_export and a.order_id is None),
+        # ПРАВДА ПРО ДИСК, а не про базу. Панель рахувала рядки Attachment і
+        # писала «Усі файли на диску: 4» навіть тоді, коли теку зі спула хтось
+        # видалив: «Відкрити папку» падало, STL не малювався, і зробити з цим
+        # не можна було нічого. Тепер зниклі файли названі прямо, і для них є
+        # кнопка повторного скачування.
+        "missing_attachment_ids": {
+            a.id for a in email.attachments if not Path(a.saved_path).exists()
+        },
         "link_flash": None,
         # Admin-editable category names for the card's «У фільтр» select.
         "filter_categories": _mail_filter_categories(db),
@@ -777,6 +789,46 @@ def download_email_attachments(
         context = _mail_panel_context(db, email, user, error=f"Не вдалося скачати файли: {exc}")
         return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
     context = _mail_panel_context(db, email, user)
+    return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
+
+
+@router.post("/mail/{email_id}/redownload", response_class=HTMLResponse)
+def redownload_email_attachments(
+    request: Request,
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    """Скачати наново вкладення, файли яких зникли з диска.
+
+    Раніше цей стан був глухим кутом: рядки в базі є, файлів немає, «Відкрити
+    папку» падає, STL не малюється — і жодної дії, крім як відхилити лист.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    email = db.get(EmailMessage, email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="email not found")
+    try:
+        removed, saved = redownload_missing_attachments(
+            db, email, Path(MAIL_ATTACHMENTS_PATH)
+        )
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 — показати причину, а не 500
+        db.rollback()
+        logger.exception("Повторне скачування не вдалось для листа %s", email.id)
+        context = _mail_panel_context(
+            db, email, user, error=f"Не вдалося скачати файли наново: {exc}"
+        )
+        return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
+
+    if removed and not saved:
+        # Лист на сервері вже без вкладень (їх видалили і там) — сказати прямо,
+        # інакше порожня панель виглядає як зламана кнопка.
+        note = "Файлів більше немає й на сервері пошти — скачувати нічого."
+        context = _mail_panel_context(db, email, user, error=note)
+    else:
+        context = _mail_panel_context(db, email, user)
     return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
 
 
