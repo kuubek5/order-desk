@@ -15,24 +15,37 @@
         <p class="login-subtitle">
             Активовано{% if status.customer %} для «{{ status.customer }}»{% endif %}{% if status.expires_at %}, дійсна до {{ status.expires_at.strftime('%d.%m.%Y') }}{% endif %}.
         </p>
-        <p class="login-subtitle"><a href="/">Продовжити →</a></p>
+        {# На активованій машині головна дія — піти працювати, а не вводити
+           ще один ключ. Раніше «Продовжити» було найдрібнішим елементом
+           сторінки, форма рендерилась безумовно, фокус стояв у порожньому
+           обов'язковому полі, і найпомітніша кнопка робила непотрібне. #}
+        <a class="login-submit license-continue" href="/">Продовжити →</a>
         {% else %}
         <p class="login-subtitle">Введіть ліцензійний ключ, виданий власником KuubMill для цього комп'ютера.</p>
         {% endif %}
 
         {% if error %}
-        <p class="login-error">{{ error }}</p>
+        <p class="login-error" role="alert">{{ error }}</p>
         {% endif %}
 
         <div class="login-field">
-            <label>Ідентифікатор цього комп'ютера (machine ID)</label>
-            <div class="login-input-wrap">
-                <button type="button" class="mono copy-button license-machine-id" data-copy="{{ machine_id }}"
-                        title="Клік — скопіювати machine ID для надсилання власнику продукту">{{ machine_id }}</button>
+            {# label без for і без обгортання був мертвим кліком, а кнопка —
+               без назви в дереві доступності. Плюс явна підказка «копіювати»:
+               це разова дія по телефону з власником, і «а я скопіював?»
+               коштує дзвінка. #}
+            <label for="machine-id-copy">Ідентифікатор цього комп'ютера (machine ID)</label>
+            <div class="login-glow">
+                <div class="login-input-wrap">
+                    <button type="button" id="machine-id-copy" class="mono copy-button license-machine-id"
+                            data-copy="{{ machine_id }}"
+                            aria-label="Скопіювати machine ID {{ machine_id }}"
+                            title="Клік — скопіювати machine ID для надсилання власнику продукту">{{ machine_id }}<span class="lmi-cue" aria-hidden="true">копіювати</span></button>
+                </div>
             </div>
             <p class="login-hint">Надішліть цей ID власнику KuubMill, щоб отримати ліцензійний ключ.</p>
         </div>
 
+        {% if status and status.valid %}<details class="license-rekey"><summary class="login-hint">Ввести інший ключ</summary>{% endif %}
         <form method="post" action="/license">
             <div class="login-field">
                 <label for="license_key">Ліцензійний ключ</label>
@@ -41,13 +54,14 @@
                         <input type="text" id="license_key" name="license_key" class="login-input mono"
                                value="{{ license_key_input|default('') }}"
                                placeholder="вставте ключ, виданий власником"
-                               autocomplete="off" required autofocus>
+                               autocomplete="off" required{% if not (status and status.valid) %} autofocus{% endif %}>
                     </div>
                 </div>
             </div>
 
             <button type="submit" class="login-submit">Активувати</button>
         </form>
+        {% if status and status.valid %}</details>{% endif %}
     </div>
 </div>
 {% endblock %}

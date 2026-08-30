@@ -221,7 +221,7 @@
 }
 
 .login-error {
-  color: #e8a8a8;
+  color: var(--alarm);
   font-size: 0.85rem;
   margin-bottom: var(--space-4);
 }
@@ -340,3 +340,22 @@ body:has(.login-page) .app-backdrop .radar-hud { display: none; }
   /* Пил без руху — просто крапки на екрані, тому ховається цілком. */
   .login-scene .ls-dust { display: none; }
 }
+
+/* Ліцензія: на активованій машині «Продовжити» — головна дія, а форма ключа
+   ховається у <details>. Раніше форма рендерилась безумовно, фокус стояв у
+   порожньому обов'язковому полі, і найпомітніша кнопка робила непотрібне. */
+.license-continue { display: block; text-align: center; text-decoration: none; }
+.license-rekey { margin-top: var(--space-5); }
+.license-rekey summary { cursor: pointer; }
+/* Machine ID копіюється одним кліком — але афорданс жив лише в title.
+   Явна підказка поруч, і ✓ після copy-success (клас вішає app.js). */
+.license-machine-id { display: flex; align-items: center; gap: var(--space-3); justify-content: space-between; }
+.license-machine-id .lmi-cue {
+  font: 500 11px var(--font-body);
+  color: var(--accent-c);
+  border: 1px solid rgba(var(--accent-rgb), 0.4);
+  border-radius: 6px;
+  padding: 2px 8px;
+  flex: 0 0 auto;
+}
+.license-machine-id.copy-success .lmi-cue::after { content: " ✓"; }

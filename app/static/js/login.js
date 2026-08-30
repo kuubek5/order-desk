@@ -15,6 +15,10 @@ document.querySelectorAll(".login-glow").forEach((wrap) => {
 (function () {
   const box = document.getElementById("login-quotes");
   if (!box) return;
+  // Третя нескінченна петля на екрані входу (поряд із диском і пилом), і
+  // єдина, що міняє ТЕКСТ кожні 2.4 с. CSS гасив лише transform, тож для
+  // reduced-motion рядок усе одно мигтів. Показуємо одну репліку й виходимо.
+  const stillPlease = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const quotes = [
     "а коли буде пічка?",
     "коли буде слм?",
@@ -23,16 +27,10 @@ document.querySelectorAll(".login-glow").forEach((wrap) => {
   ];
   const EXIT_MS = 460; // a hair past the .dyn-item transition, before removal
   // Curated bright palette — each letter takes the next colour, wrapping round.
-  const palette = [
-    "#5eead4", // teal
-    "#7dd3fc", // sky
-    "#a5b4fc", // indigo
-    "#c4b5fd", // violet
-    "#f0abfc", // fuchsia
-    "#fda4af", // rose
-    "#fcd34d", // amber
-    "#86efac", // green
-  ];
+  // Кольори з токенів теми, а не сирі hex: вісім захардкоджених відтінків
+  // лишались бірюзово-фіолетовими в Amber Forge, тобто екран входу єдиний
+  // не підхоплював тему оператора.
+  const palette = ["var(--accent-c)", "var(--accent-b)", "var(--accent-e)", "var(--ink-2)"];
 
   function makeItem(text) {
     const item = document.createElement("span");
@@ -67,6 +65,8 @@ document.querySelectorAll(".login-glow").forEach((wrap) => {
   let i = 0;
   let current = makeItem(quotes[0]);
   box.appendChild(current); // first line sits at rest, no entrance
+
+  if (stillPlease) return; // одна репліка, без каруселі
 
   setInterval(() => {
     i = (i + 1) % quotes.length;

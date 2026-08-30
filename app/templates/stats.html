@@ -45,9 +45,13 @@
                 </div>
             </div>
         </section>
-        <section class="panel stat-card">
+        {# Ця плитка НЕ періодна: rework_records читаються без period_start,
+           тобто завжди за весь час. Стоячи четвертою в ряду з трьома
+           періодними й у тому самому стилі, вона читалась як «за обраний
+           період» — а це цифра, що йде в гроші й звітність. #}
+        <section class="panel stat-card is-alltime">
             <div class="panel-body">
-                <div class="dlabel">Переробок · за весь час</div>
+                <div class="dlabel">Переробок · за весь час, не за період</div>
                 <div class="stat-chips">
                     <span class="stat-chip is-warn"><b class="tnum">{{ rework_groups|sum(attribute='count') if rework_groups else 0 }}</b> <span class="unit">випадків</span></span>
                     <span class="stat-sep" aria-hidden="true"></span>
@@ -90,12 +94,12 @@
             <div class="stage-row">
                 <span class="lb">{{ group.blame or 'без причини' }}</span>
                 <span class="bar"><i style="width:{{ (group.redo_quantity_sum / max_units * 100)|round(0) if max_units else 0 }}%"></i></span>
-                <span class="n">{{ group.redo_quantity_sum }} од. <span class="pct">· {{ group.count }}×</span></span>
+                <span class="n">{{ group.redo_quantity_sum }} од. <span class="pct">· {{ group.count }} випадків</span></span>
             </div>
             {% endfor %}
         </div>
         {% else %}
-        <p class="empty-note">переробок не зафіксовано</p>
+        <p class="empty-note">переробок не зафіксовано — за весь час обліку</p>
         {% endif %}
     </section>
 </main>

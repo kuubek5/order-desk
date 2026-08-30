@@ -138,8 +138,13 @@ async def login_submit(
         return RedirectResponse("/setup", status_code=303)
     user = db.scalar(select(User).where(User.username == username))
     if user is None or not user.is_active or not verify_password(password, user.password_hash):
+        # Логін повертаємо в поле: стирати його після одруківки в ПАРОЛІ
+        # означає змушувати набирати обидва заново щозміни. Setup цю саму
+        # ввічливість уже має.
         return templates.TemplateResponse(
-            request, "login.html", {"error": "Невірний логін або пароль"}
+            request,
+            "login.html",
+            {"error": "Невірний логін або пароль", "username": username.strip()},
         )
     request.session.clear()
     request.session["user_id"] = user.id

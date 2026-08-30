@@ -25,9 +25,9 @@
         </form>
 
         <nav class="cl-seg" aria-label="Стан клієнтів">
-            <a href="/clients?state=all{% if q %}&q={{ q }}{% endif %}" class="{% if state == 'all' %}on{% endif %}"{% if state == 'all' %} aria-current="page"{% endif %}>Усі <span class="mono">{{ state_counts.all }}</span></a>
-            <a href="/clients?state=unbound{% if q %}&q={{ q }}{% endif %}" class="{% if state == 'unbound' %}on warn{% endif %}"{% if state == 'unbound' %} aria-current="page"{% endif %}>Без папки <span class="mono">{{ state_counts.unbound }}</span></a>
-            <a href="/clients?state=active{% if q %}&q={{ q }}{% endif %}" class="{% if state == 'active' %}on{% endif %}"{% if state == 'active' %} aria-current="page"{% endif %}>З роботами <span class="mono">{{ state_counts.active }}</span></a>
+            <a href="/clients?state=all{% if q %}&q={{ q|urlencode }}{% endif %}" class="{% if state == 'all' %}on{% endif %}"{% if state == 'all' %} aria-current="page"{% endif %}>Усі <span class="mono">{{ state_counts.all }}</span></a>
+            <a href="/clients?state=unbound{% if q %}&q={{ q|urlencode }}{% endif %}" class="{% if state == 'unbound' %}on warn{% endif %}"{% if state == 'unbound' %} aria-current="page"{% endif %}>Без папки <span class="mono">{{ state_counts.unbound }}</span></a>
+            <a href="/clients?state=active{% if q %}&q={{ q|urlencode }}{% endif %}" class="{% if state == 'active' %}on{% endif %}"{% if state == 'active' %} aria-current="page"{% endif %}>З роботами <span class="mono">{{ state_counts.active }}</span></a>
         </nav>
 
         <details class="cl-add">
@@ -53,9 +53,9 @@
                HTMX міняє лише панель і клас `on` інакше лишився б на старому. #}
             <div role="listitem">
             <a data-cl-item class="cl-item {% if row.client.id == selected_id %}on{% endif %}"
-               href="/clients?state={{ state }}{% if q %}&q={{ q }}{% endif %}&selected={{ row.client.id }}"
+               href="/clients?state={{ state }}{% if q %}&q={{ q|urlencode }}{% endif %}&selected={{ row.client.id }}"
                hx-get="/clients/{{ row.client.id }}/pane" hx-target="#client-pane" hx-swap="outerHTML"
-               hx-push-url="/clients?state={{ state }}{% if q %}&q={{ q }}{% endif %}&selected={{ row.client.id }}">
+               hx-push-url="/clients?state={{ state }}{% if q %}&q={{ q|urlencode }}{% endif %}&selected={{ row.client.id }}">
                 <span id="cl-dot-{{ row.client.id }}" class="cl-dot {% if row.bound_folder %}ok{% else %}warn{% endif %}"></span>
                 <span class="cl-name">
                     {{ row.client.canonical_name }}
