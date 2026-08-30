@@ -295,11 +295,19 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .dni:hover{background:var(--card-2);color:var(--ink);opacity:1}
 .handoutv2 .dni.cur{background:var(--accent-well);color:var(--accent-c)}
 .handoutv2 .dni.done{color:var(--ink-3)}
-.handoutv2 .dni-n{font-size:10.5px;color:var(--ink-3);min-width:16px;text-align:right}
+/* Номер був --ink-3 на 10.5px — той самий колір, який у цьому проєкті вже
+   одного разу піднімали через провал контрасту. Тут він ще й єдина опора
+   для ока в стовпчику схожих імен. */
+.handoutv2 .dni-n{font-size:10.5px;color:var(--ink-2);min-width:16px;text-align:right}
+.handoutv2 .dni:focus-visible{outline:2px solid var(--accent-c);outline-offset:-2px}
 .handoutv2 .dni-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Смужка прогресу вузька свідомо: покажчик відповідає на «де я і скільки
    лишилось», а не заміняє картку. */
-.handoutv2 .dni-bar{margin-left:auto;width:32px;height:3px;border-radius:99px;background:var(--card-3);overflow:hidden;flex:none}
+/* Число поруч зі смужкою: смужка сама по собі є лише для ока під мишкою, а
+   «3/7» читається і з клавіатури, і читалкою екрана. */
+.handoutv2 .dni-count{margin-left:auto;font-size:10.5px;color:var(--ink-3);flex:none;font-variant-numeric:tabular-nums}
+.handoutv2 .dni.cur .dni-count{color:var(--accent-c)}
+.handoutv2 .dni-bar{margin-left:6px;width:32px;height:3px;border-radius:99px;background:var(--card-3);overflow:hidden;flex:none}
 .handoutv2 .dni-bar i{display:block;height:100%;background:var(--accent);border-radius:99px}
 /* На вузькому екрані покажчик з'їв би половину списку — там повертаємось до
    одного стовпця, тобто до звичайної розкладки. */
@@ -307,3 +315,18 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
   .handoutv2 #handout-list.with-nav{display:block}
   .handoutv2 .daynav{display:none}
 }
+
+/* Перемикач розкладки — іконка, а не третя капсула в ряду однакових. Стан
+   несе сама кнопка (aria-pressed + клас), тож пари кнопок тут не потрібно. */
+.handoutv2 .layout-icon{display:inline-flex;align-items:center;justify-content:center;
+  width:30px;height:30px;padding:0;border-radius:8px;cursor:pointer;
+  background:transparent;border:1px solid var(--control-edge);color:var(--ink-3);
+  transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease,background var(--ui-speed) ease}
+.handoutv2 .layout-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;
+  stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.handoutv2 .layout-icon:hover{color:var(--ink);border-color:var(--accent-b);background:var(--raise-3)}
+.handoutv2 .layout-icon.on{color:var(--accent-c);border-color:var(--accent-b);background:var(--accent-well)}
+.handoutv2 .layout-icon:focus-visible{outline:2px solid var(--accent-c);outline-offset:2px}
+/* Нижче 1100px покажчика немає взагалі — отже й кнопки бути не повинно:
+   інакше клік давав би перезавантаження без жодної зміни («мовчазна кнопка»). */
+@media (max-width:1100px){ .handoutv2 .layout-icon{display:none} }

@@ -38,8 +38,21 @@
 
         <div class="err-actions">
             <a class="login-submit err-primary" href="/">На чергу робіт</a>
-            {% if code != 404 %}
-            <button type="button" class="btn err-retry" onclick="location.reload()">Спробувати ще раз</button>
+            {# Повтор пропонуємо лише там, де він може допомогти.
+               На 403 («лише адміністратору / лише з цього комп'ютера») та сама
+               адреса дасть ту саму відмову — кнопка обіцяла б неможливе. На
+               409 повтор теж не потрібен: там треба ОНОВИТИ, щоб побачити
+               свіжий стан, і саме це каже текст помилки.
+               location.replace, а не reload: сторінка помилки могла прийти у
+               відповідь на POST, і reload викликав би системне вікно
+               «Підтвердити повторне надсилання форми» — незрозумілий діалог
+               замість дії. #}
+            {% if code == 500 %}
+            <button type="button" class="btn err-retry"
+                    onclick="location.replace(location.href)">Спробувати ще раз</button>
+            {% elif code == 409 %}
+            <button type="button" class="btn err-retry"
+                    onclick="location.replace(location.href)">Оновити сторінку</button>
             {% endif %}
         </div>
     </div>

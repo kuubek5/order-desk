@@ -18,11 +18,17 @@
             {% for g in client_groups %}
             {% set nfound = g.orders|selectattr('status', 'in', ['знайдено при видачі', 'видано'])|list|length %}
             {% set ntotal = g.orders|length %}
+            {# Прогрес мусить бути ЧИТАБЕЛЬНИМ, а не лише в спливаючій підказці:
+               підказка з'являється тільки під мишкою, тож із клавіатури і для
+               читалки екрана покажчик мовчав. Число дублює смужку текстом, а
+               `aria-current` каже, де оператор зараз. #}
             <a class="dni{% if g.all_found %} done{% elif g.is_current %} cur{% endif %}"
                href="#handout-client-{{ g.position }}"
+               {% if g.is_current %}aria-current="true"{% endif %}
                title="{{ g.client_name }} — {{ nfound }} з {{ ntotal }} знайдено">
                 <span class="dni-n mono">{{ g.position }}</span>
                 <span class="dni-name">{{ g.client_name }}</span>
+                <span class="dni-count mono">{{ nfound }}/{{ ntotal }}</span>
                 <span class="dni-bar" aria-hidden="true"><i style="width:{{ (nfound / ntotal * 100)|round(0) if ntotal else 0 }}%"></i></span>
             </a>
             {% endfor %}

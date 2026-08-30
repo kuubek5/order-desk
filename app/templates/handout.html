@@ -58,9 +58,13 @@
         </nav>
 
         {% if client_groups %}
+        {# «Рядки», а не «Черга»: поруч стоїть перемикач розкладки зі словом
+           «Список», і в побутовій мові «черга» та «список» — те саме, хоча це
+           різні осі (вигляд робіт усередині картки проти каркаса екрана).
+           У самому коді цей режим і зветься `rows` — шаблон розійшовся з ним. #}
         <nav class="view-toggle" aria-label="Вигляд робіт">
-            <button type="button" class="view-btn active" data-view-mode="rows" title="Черга — клієнти в порядку фрезерування">Черга</button>
-            <button type="button" class="view-btn" data-view-mode="tiles" title="Плитки">Плитки</button>
+            <button type="button" class="view-btn active" data-view-mode="rows" title="Рядки — компактний список робіт клієнта">Рядки</button>
+            <button type="button" class="view-btn" data-view-mode="tiles" title="Плитки — з STL-прев'ю для звірки">Плитки</button>
         </nav>
         {# Розкладка екрана. Дві, бо саме дві мають сенс: звичний список і той
            самий список із покажчиком дня збоку. Вибір зберігається НА АКАУНТІ
@@ -70,12 +74,20 @@
            міняє каркас навколо списку, і підміняти половину каркаса заради
            економії пів секунди означало б плодити стани, у яких видача
            виглядає наполовину так, наполовину інакше. #}
-        <nav class="layout-toggle" data-handout-layout aria-label="Розкладка екрана">
-            <button type="button" class="view-btn{% if not _up.handout_layout %} active{% endif %}"
-                    data-layout-set="" title="Тільки список карток — як було">Список</button>
-            <button type="button" class="view-btn{% if _up.handout_layout == 'nav' %} active{% endif %}"
-                    data-layout-set="nav" title="Список плюс покажчик дня збоку: видно весь день і де ти зараз">Список + покажчик</button>
-        </nav>
+        {# Розкладка — ОДНА кнопка-іконка, а не третя капсула поспіль. Три
+           однакові пари перемикачів у шапці неможливо розрізнити без підказки,
+           а помилковий клік по цій ще й перезавантажує сторінку. Це до того ж
+           налаштування «раз і назавжди», а не робочий контрол дня. #}
+        <button type="button" class="layout-icon{% if _up.handout_layout == 'nav' %} on{% endif %}"
+                data-layout-set="{% if _up.handout_layout == 'nav' %}{% else %}nav{% endif %}"
+                aria-pressed="{{ 'true' if _up.handout_layout == 'nav' else 'false' }}"
+                title="{% if _up.handout_layout == 'nav' %}Сховати покажчик дня{% else %}Показати покажчик дня збоку{% endif %}"
+                aria-label="{% if _up.handout_layout == 'nav' %}Сховати покажчик дня{% else %}Показати покажчик дня збоку{% endif %}">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="3" y="4" width="11" height="16" rx="1.5"/>
+                <path d="M17 5h4M17 9h4M17 13h4M17 17h4"/>
+            </svg>
+        </button>
         {% endif %}
     </div>
 
