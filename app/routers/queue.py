@@ -42,7 +42,7 @@ from app.services.config_state import (
     sheets_configured,
 )
 from app.services.order_dates import order_date, parse_sheet_tab
-from app.services.focus import count as focus_count, focused_ids
+from app.services.focus import count as focus_count, focused_ids, ranks as focus_ranks
 from app.services.furnace import strip_cards as furnace_cards, strip_summary as furnace_summary
 from app.services.shift import open_notes as open_shift_notes
 from app.services.queue import (
@@ -222,7 +222,10 @@ def get_queue(
         orders = sorted(buckets[period], key=queue_sort_key)
 
     # Робочий набір оператора — одним запитом, до будь-яких циклів по рядках.
-    my_focus = focused_ids(db, user)
+    # Не просто множина, а ще й порядок пришпилення: за ним нижче шикуються
+    # пришпилені рядки, і рівно той самий порядок тримає клієнт.
+    my_focus_rank = focus_ranks(db, user)
+    my_focus = set(my_focus_rank)
     focus_mine = mine == "1"
     if focus_mine:
         orders = [o for o in orders if o.id in my_focus]
@@ -277,7 +280,16 @@ def get_queue(
     # рахує його з тих самих даних. Рядок переїжджає лише у відповідь на
     # свідоме клацання по шпильці.
     if my_focus:
-        orders.sort(key=lambda o: 0 if o.id in my_focus else 1)
+        # Ключ — місце в наборі за часом пришпилення; непришпилені йдуть після
+        # всіх. Стабільне сортування зберігає порядок терміновості серед
+        # непришпилених, а серед пришпилених порядок задає сам набір.
+        #
+        # Це головне, що тримає рядки на місці: нова мітка стає В КІНЕЦЬ
+        # набору, тож жоден уже пришпилений рядок не рухається. Коли сервер
+        # шикував пришпилені за порядком черги, а клієнт клав щойно
+        # пришпилену вгору, кожна нова шпилька перемішувала весь набір.
+        big = len(my_focus_rank)
+        orders.sort(key=lambda o: my_focus_rank.get(o.id, big))
 
     orders_lab = [o for o in orders if o.source != "email"]
     orders_email = [o for o in orders if o.source == "email"]

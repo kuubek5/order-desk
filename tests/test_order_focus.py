@@ -256,3 +256,57 @@ def test_clear_all_route_is_personal_and_reports_nothing_to_clear():
 
         again = orders_router.clear_order_focus(request=_request(user.id), db=db)
         assert b"" == again.body
+
+
+def test_pinned_rows_keep_the_order_they_were_pinned_in():
+    """Прохання власника: коли пришпилюєш багато робіт підряд, вони не мають
+    рухатись між собою.
+
+    Причина руху була в двох різних порядках: клієнт клав щойно пришпилену
+    роботу ВГОРУ набору, а сервер шикував пришпилені за порядком черги — і за
+    кілька секунд серверне оновлення все перемішувало. Тепер обидві сторони
+    тримають один порядок: час пришпилення за зростанням, тобто нова мітка
+    ДОДАЄТЬСЯ В КІНЕЦЬ і жоден уже пришпилений рядок не рухається.
+    """
+    from datetime import datetime, timedelta
+
+    from app.services import focus as focus_service
+
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        orders = [_order(db, no=f"1000{i}") for i in range(4)]
+        base = datetime(2026, 8, 30, 12, 0, 0)
+
+        # Пришпилюємо НЕ в порядку черги: третю, потім першу, потім четверту.
+        for offset, order in enumerate((orders[2], orders[0], orders[3])):
+            focus_service.toggle(db, order, user, now=base + timedelta(seconds=offset))
+        db.commit()
+
+        ranks = focus_service.ranks(db, user)
+        assert ranks == {orders[2].id: 0, orders[0].id: 1, orders[3].id: 2}
+
+        # Порядок набору не залежить від порядку черги — лише від того, коли
+        # яку роботу взяли в руки.
+        ordered = sorted(ranks, key=lambda oid: ranks[oid])
+        assert ordered == [orders[2].id, orders[0].id, orders[3].id]
+
+        # Ще одна шпилька не рухає попередні: вона стає останньою.
+        focus_service.toggle(db, orders[1], user, now=base + timedelta(seconds=9))
+        db.commit()
+        ranks_after = focus_service.ranks(db, user)
+        assert ranks_after[orders[1].id] == 3
+        for order in (orders[2], orders[0], orders[3]):
+            assert ranks_after[order.id] == ranks[order.id], "уже пришпилене не рухається"
+
+
+def test_client_and_server_agree_on_where_a_new_pin_lands():
+    """Сторож на розбіжність, яка й спричинила рух: клієнтський код мусить
+    вставляти рядок ПІСЛЯ всіх пришпилених, а не на початок tbody."""
+    from pathlib import Path
+
+    js = Path("app/static/js/queue.js").read_text(encoding="utf-8")
+    assert "body.insertBefore(row, anchor)" in js
+    assert "body.insertBefore(row, body.firstElementChild)" not in js, (
+        "вставка на початок повертає перемішування набору"
+    )

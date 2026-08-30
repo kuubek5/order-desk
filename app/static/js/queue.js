@@ -835,10 +835,22 @@ document.addEventListener("htmx:afterSettle", (event) => {
   const row = document.getElementById("order-row-" + match[1]);
   if (!row || !row.classList.contains("queue-row-focus")) return;
   const body = row.parentElement;
-  if (!body || body.firstElementChild === row) return;
+  if (!body) return;
+
+  // В КІНЕЦЬ набору, а не вгору. Сервер шикує пришпилені за часом
+  // пришпилення (services/focus.ranks), і клієнт мусить тримати рівно той
+  // самий порядок — інакше кожна нова шпилька спершу стрибала вгору, а через
+  // кілька секунд серверне оновлення повертало її на місце, і весь набір
+  // перемішувався під рукою. Заразом це найспокійніший порядок: жоден уже
+  // пришпилений рядок не рухається взагалі, набір росте вниз.
+  let anchor = body.firstElementChild;
+  while (anchor && anchor !== row && anchor.classList.contains("queue-row-focus")) {
+    anchor = anchor.nextElementSibling;
+  }
+  if (anchor === row) return; // уже стоїть одразу за набором
 
   const from = row.getBoundingClientRect().top;
-  body.insertBefore(row, body.firstElementChild);
+  body.insertBefore(row, anchor);
   const to = row.getBoundingClientRect().top;
   const shift = from - to;
   if (!shift) return;
