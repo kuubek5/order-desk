@@ -373,7 +373,11 @@ async def mark_found(
     # Found = physically located → clear the sheet's blue "pending" fill to
     # white, per the lab's colour convention. У фоні: галочка має ставитись
     # миттєво, бо оператор клацає їх підряд.
-    set_client_row_fill_background(order.id, blue=False)
+    # Пауза синку означає «жодного запису в таблицю» — інакше оператор, що
+    # поставив паузу перед чисткою таблиці, тихо отримав би десятки
+    # перефарбувань повз неї. Решта write-роутів гейт мають, ці два не мали.
+    if not sync_control.is_paused():
+        set_client_row_fill_background(order.id, blue=False)
     # HTMX-клік підмінює лише список карток — сторінка не перезавантажується,
     # тож скрол лишається там, де оператор його поставив. Редірект лишається
     # для звичайної форми (без JS) і для прямих переходів.
@@ -403,15 +407,28 @@ async def unmark_found(
     if order.status != "знайдено при видачі":
         return RedirectResponse(handout_back_url(source, day), status_code=303)
 
-    order.status = "нове"
+    # Повертаємо ПОПЕРЕДНІЙ статус, а не «нове». Робота на видачі за
+    # визначенням уже відфрезерована, тож скидання в «нове» означало б, що
+    # випадковий клік по галочці й назад показує її невиготовленою — рівно
+    # той стан, який §5 називає «записалась, а не зробилась».
+    previous = db.scalars(
+        select(StatusEvent)
+        .where(
+            StatusEvent.order_id == order.id,
+            StatusEvent.status != "знайдено при видачі",
+        )
+        .order_by(StatusEvent.id.desc())
+    ).first()
+    order.status = previous.status if previous else "відфрезеровано"
     db.add(
         StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username)
     )
     db.commit()
     # Un-found = back to pending → repaint the blue fill so sheet state and
     # portal status stay consistent (a white fill + "нове" would otherwise be
-    # read as issued on the next sync). Так само у фоні.
-    set_client_row_fill_background(order.id, blue=True)
+    # read as issued on the next sync). Так само у фоні, і так само під паузою.
+    if not sync_control.is_paused():
+        set_client_row_fill_background(order.id, blue=True)
     # HTMX-клік підмінює лише список карток — сторінка не перезавантажується,
     # тож скрол лишається там, де оператор його поставив. Редірект лишається
     # для звичайної форми (без JS) і для прямих переходів.
@@ -424,6 +441,7 @@ async def unmark_found(
 async def issue_handout_group(
     request: Request,
     client_name: str = Form(...),
+    source: str = Form("all"),
     day: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -451,9 +469,7 @@ async def issue_handout_group(
     # it's refused while paused; the operator issues after resume.
     if sync_control.is_paused():
         request.session["toast_flash"] = {"message": SYNC_PAUSED_MSG, "kind": "info"}
-        return RedirectResponse(
-            f"/handout?day={day}" if day else "/handout", status_code=303
-        )
+        return RedirectResponse(handout_back_url(source, day), status_code=303)
 
     today = date.today()
     candidates = db.scalars(
@@ -467,7 +483,7 @@ async def issue_handout_group(
     # the operator sees — and therefore what "Видати" closes — is that day's
     # works only; the client's other days stay open.
     selected_day = parse_sheet_tab(day) if day else None
-    back_url = f"/handout?day={day}" if day else "/handout"
+    back_url = handout_back_url(source, day)
     if selected_day is not None:
         group_orders = [
             o for o in group_orders if parse_sheet_tab(o.sheet_tab) == selected_day
@@ -519,6 +535,12 @@ async def issue_handout_group(
             "kind": "error",
             "message": f"Статус видано, але запис у таблицю не пройшов: {sync_error}",
         }
+    # Той самий контракт, що й у галочки: HTMX підмінює лише список карток.
+    # Раніше видача клієнта перезавантажувала сторінку, кидала оператора на
+    # початок списку й скидала фільтр джерела — тобто ламала правило «порядок
+    # фіксується на початку дня», заради якого галочку вже полагодили.
+    if request.headers.get("HX-Request"):
+        return handout_cards_response(request, user, source, day, db)
     return RedirectResponse(back_url, status_code=303)
 
 

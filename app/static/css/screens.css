@@ -577,3 +577,49 @@
     transition: none;
   }
 }
+
+/* STL на весь екран (30.08.26). CLAUDE.md §2 і §9.4 називають прев'ю ГОЛОВНИМ
+   інструментом звірки — оператор порівнює форму коронки з лотка з моделлю,
+   «зазвичай у повноекранному режимі». Панель була 300×240 і не розгорталась
+   узагалі: на такому розмірі сусідні анатомії не розрізняються, і це прямий
+   шлях видати не ту роботу. Кнопка ⤢ у шапці, перший Esc згортає. */
+.stl-panel.is-max {
+  inset: 24px;
+  width: auto;
+  z-index: 210;
+}
+.stl-panel.is-max .stl-panel-stage {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+}
+.stl-panel-max {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--card-2);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: color var(--ui-speed) ease, border-color var(--ui-speed) ease;
+}
+.stl-panel-max svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.stl-panel-max:hover {
+  color: var(--ink);
+  border-color: var(--control-edge);
+}
+.stl-panel-max:focus-visible {
+  outline: 2px solid var(--accent-b);
+  outline-offset: 2px;
+}

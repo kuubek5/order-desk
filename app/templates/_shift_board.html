@@ -5,7 +5,12 @@
    що оператор набирає руками: поле написання лежить у shift.html. #}
 <section id="shift-board"
          hx-get="/shift?partial=board"
-         hx-trigger="refresh-shift from:body"
+         {# `refresh-shift` летить лише у відповідь на ВЛАСНУ дію, тобто до
+            чужого браузера не доходить: нічний пришпилював записку, а денний
+            із відкритою дошкою не бачив її до ручного F5. Додано полл.
+            Умова в тригері обов'язкова — усередині дошки живе <details> з
+            текстовим полем редагування, і свап затер би недописане. #}
+         hx-trigger="refresh-shift from:body, every 60s[!document.querySelector('#shift-board .sh-edit[open]')]"
          hx-target="this"
          hx-swap="outerHTML"
          hx-disinherit="*">

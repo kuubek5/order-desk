@@ -41,11 +41,13 @@
     <p class="fu-alert">{{ config_error }}</p>
     {% endif %}
 
-    {# Полл перемальовує плитки цілком: тут немає нічого, що оператор тримав би
-       під курсором (ні полів, ні дій над рядком), тож повний свап безпечний. #}
+    {# Полл перемальовує плитки цілком. Виняток — розгорнутий повний кадр
+       (<details class="fu-frame">): його відкривають саме тоді, коли число
+       підозріле й треба звірити оком по табло, а свап закривав би його
+       кожні кілька секунд просто під час розглядання. #}
     <div id="furnace-cards"
          hx-get="/furnaces/cards"
-         hx-trigger="every {{ poll_seconds }}s"
+         hx-trigger="every {{ poll_seconds }}s[!document.querySelector('#furnace-cards .fu-frame[open]')]"
          hx-swap="innerHTML">
         {% include "_furnace_cards.html" %}
     </div>

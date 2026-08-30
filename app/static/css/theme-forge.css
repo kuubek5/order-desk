@@ -51,6 +51,13 @@
   --accent-d: #a8752b;
   --alarm: #ff6b52;
   --warn: #ff8a3d;
+  --alarm-rgb: 255, 107, 82;
+  --warn-rgb: 255, 138, 61;
+  --bg-rgb: 20, 16, 10;
+  --ok: #a8e08a;
+  --ok-rgb: 168, 224, 138;
+  --alarm-ink: #ffc4b6;
+  --warn-ink: #ffd9a8;
 
   --focus-glow: inset 0 0 18px -12px rgba(255, 180, 84, 0.9);
   --focus-border: rgba(255, 180, 84, 0.45);

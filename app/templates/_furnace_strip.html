@@ -50,8 +50,16 @@
         <a href="/furnaces" class="fu-chip{% if card.is_running %} is-run{% elif card.offline or card.stale() %} is-off{% endif %}">
             <span class="fu-chip-name">{{ card.target.name }}</span>
 
+            {# Слот температури лишається ЗАВЖДИ. Порядок «температура → залишок
+               → час відкриття» читається як речення; коли перший елемент
+               безслідно зникає (а він зникає часто — великому шрифту табло
+               бракує еталонів кількох цифр), оператор читає залишок на позиції
+               градусів. Порожнє поле чесніше за здогадку, але його має бути
+               ВИДНО. Слот на місці — сторож порядку чіпа не зачіпається. #}
             {% if state and state.temp_c is not none %}
             <span class="fu-chip-temp mono">{{ state.temp_c }}°</span>
+            {% else %}
+            <span class="fu-chip-temp mono is-none" title="Температуру не прочитано з табло">—°</span>
             {% endif %}
 
             {% if card.stale() %}

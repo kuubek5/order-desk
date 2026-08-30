@@ -53,8 +53,15 @@
                     </div>
                     {% endif %}
                     {% if found_n %}
-                    <form method="post" action="/handout/issue-group" class="issue-form">
+                    {# Той самий HTMX-контракт, що й у галочки: підмінюємо лише
+                       список карток. Через повне перезавантаження видача клієнта
+                       кидала оператора на початок списку й скидала фільтр
+                       джерела — тобто ламала правило «порядок фіксується на
+                       початку дня», заради якого галочку вже полагодили. #}
+                    <form method="post" action="/handout/issue-group" class="issue-form"
+                          hx-post="/handout/issue-group" hx-target="#handout-list" hx-swap="outerHTML">
                         <input type="hidden" name="client_name" value="{{ group.client_name }}">
+                        <input type="hidden" name="source" value="{{ source }}">
                         <input type="hidden" name="day" value="{{ day_param }}">
                         <button type="submit" class="issue-btn"
                                 title="{% if found_n < total_n %}Видати {{ found_n }} знайдених; решта {{ total_n - found_n }} лишиться в картці{% else %}Видати всі роботи клієнта{% endif %}">

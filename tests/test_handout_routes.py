@@ -440,9 +440,13 @@ def test_mark_found_clears_blue_and_keeps_day(monkeypatch):
 
 
 def test_unmark_found_reverts_and_repaints_blue(monkeypatch):
-    """Un-marking an accidental "знайдено" reverts the order to "нове" and
-    repaints the sheet row blue — otherwise a white fill + "нове" would be
-    read as issued on the next sync."""
+    """Зняття випадкової галочки повертає ПОПЕРЕДНІЙ статус і перефарбовує
+    рядок таблиці в синій.
+
+    Раніше тут стояло «нове», і це було помилкою: робота на видачі за
+    визначенням уже відфрезерована, тож випадковий клік і назад показував її
+    невиготовленою — рівно той стан, який §5 називає «записалась, а не
+    зробилась». Без історії статусів відкочуємось у «відфрезеровано»."""
     engine = _database()
     captured = _stub_fills(monkeypatch)
     from app.parser import HEADER_ROWS
@@ -464,9 +468,37 @@ def test_unmark_found_reverts_and_repaints_blue(monkeypatch):
         # source is preserved alongside the day
         assert resp.headers["location"] == f"/handout?source=email&day={YESTERDAY}"
         db.refresh(order)
-        assert order.status == "нове"
+        assert order.status == "відфрезеровано"
         assert captured["paint"] == [(42, 60 + HEADER_ROWS)]
         assert "clear" not in captured
+
+
+def test_unmark_found_restores_the_real_previous_status(monkeypatch):
+    """Коли історія статусів є — повертаємо саме її останній запис, а не
+    здогадку. Інакше зняття галочки стирало б реальний стан роботи."""
+    engine = _database()
+    _stub_fills(monkeypatch)
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(_client_order(status="знайдено при видачі", row_number=61, sheet_tab=YESTERDAY))
+        db.commit()
+        order = db.scalar(select(Order))
+        db.add(StatusEvent(order_id=order.id, operator_id=user.id,
+                           status="переробка", actor=user.username))
+        db.add(StatusEvent(order_id=order.id, operator_id=user.id,
+                           status="знайдено при видачі", actor=user.username))
+        db.commit()
+        _inline_fill_background(monkeypatch, db)
+
+        import asyncio
+        asyncio.run(
+            handout_router_mod.unmark_found(
+                request=_request(user.id), order_id=order.id,
+                source="all", day=YESTERDAY, db=db,
+            )
+        )
+        db.refresh(order)
+        assert order.status == "переробка"
 
 
 def test_unmark_found_ignores_already_issued(monkeypatch):

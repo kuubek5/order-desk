@@ -140,6 +140,25 @@
     title.className = "stl-panel-title mono";
     title.textContent = "STL прев'ю";
     head.appendChild(title);
+    // Розгортання на весь екран. CLAUDE.md §2 і §9.4 називають STL-прев'ю
+    // ГОЛОВНИМ інструментом звірки — оператор порівнює форму коронки з лотка
+    // з моделлю, «зазвичай у повноекранному режимі». На 300×240 сусідні
+    // анатомії не розрізняються, і це прямий шлях видати не ту роботу.
+    const maxBtn = document.createElement("button");
+    maxBtn.type = "button";
+    maxBtn.className = "stl-panel-max";
+    maxBtn.setAttribute("aria-label", "Розгорнути на весь екран");
+    maxBtn.title = "Розгорнути на весь екран";
+    maxBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+    maxBtn.addEventListener("click", () => {
+      const on = state.panelEl.classList.toggle("is-max");
+      maxBtn.setAttribute("aria-label", on ? "Згорнути" : "Розгорнути на весь екран");
+      maxBtn.title = maxBtn.getAttribute("aria-label");
+      resizeRenderer();
+    });
+    head.appendChild(maxBtn);
+
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
     closeBtn.className = "stl-panel-close";
@@ -665,7 +684,7 @@
       state.controller = null;
     }
     if (state.panelEl) {
-      state.panelEl.classList.remove("is-open");
+      state.panelEl.classList.remove("is-open", "is-max");
       state.panelEl.hidden = true;
     }
     state.token = null;
@@ -693,7 +712,16 @@
   });
 
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && state.open) closePanel();
+    // Перший Esc виходить із повного екрана, другий закриває панель —
+    // інакше оператор, що розгорнув модель, закриває її разом із фулскріном
+    // і мусить шукати ту саму теку знову.
+    if (event.key !== "Escape" || !state.open) return;
+    if (state.panelEl && state.panelEl.classList.contains("is-max")) {
+      state.panelEl.classList.remove("is-max");
+      resizeRenderer();
+      return;
+    }
+    closePanel();
   });
 
   window.addEventListener("resize", () => {

@@ -221,3 +221,6 @@ main.furnaces{position:relative;min-height:100vh}
 @media (prefers-reduced-motion:reduce){
   .furnaces .fu-bg i{animation:none}
 }
+/* Непрочитана температура — приглушена, але видима: слот мусить лишатись,
+   інакше залишок з'їжджає на позицію градусів (див. _furnace_strip.html). */
+.q2 .fu-chip-temp.is-none{color:var(--ink-3)}
