@@ -562,9 +562,15 @@ def create_manual_order(
 def toggle_order_focus(request: Request, order_id: int, db: Session = Depends(get_db)):
     """Поставити/зняти особисту мітку «беру зараз».
 
-    Відповідь — сам рядок: свап одного <tr> дає миттєвий відгук і не чіпає
-    решту таблиці, тобто нічого не стрибає під рукою оператора. Порядок рядків
-    мітка не міняє НІКОЛИ — ізоляція набору робиться фільтром «Мої зараз».
+    Відповідь — сам рядок: свап одного <tr> дає миттєвий відгук на самій
+    шпильці. Слідом летить `refresh-queue`, бо пришпилені роботи спливають
+    нагору (див. сортування в routers/queue.py): без нього рядок переїжджав
+    би аж на наступному 15-секундному поллі, тобто до пів хвилини «нічого не
+    сталось» після кліку.
+
+    Переїзд — це відповідь на СВІДОМЕ клацання оператора, а не самовільний
+    рух списку, тому писане правило стабільного порядку (CLAUDE.md §2) не
+    зачіпається: фоновий полл порядку не міняє.
     """
     user = get_current_user(request, db)
     if user is None:
@@ -579,7 +585,11 @@ def toggle_order_focus(request: Request, order_id: int, db: Session = Depends(ge
 
     attach_export_folder_uris(db, [order])
     attach_job_code_folder_uris(db, [order])
-    return templates.TemplateResponse(request, "_order_row.html", _row_context(request, db, order, None))
+    response = templates.TemplateResponse(
+        request, "_order_row.html", _row_context(request, db, order, None)
+    )
+    response.headers["HX-Trigger-After-Swap"] = json.dumps({"refresh-queue": True})
+    return response
 
 
 @router.post("/orders/focus/clear")

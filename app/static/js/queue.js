@@ -800,3 +800,41 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
     .querySelector?.("[data-furnace-collapse]");
   if (button) syncFurnaceToggle(button, document.body.classList.contains("furnace-collapsed"));
 });
+
+// ── Пришпилена робота йде нагору ОДРАЗУ ─────────────────────────────────
+// Сервер сортує пришпилені вгору і після кліку шле refresh-queue, але повне
+// перемальовування черги на шести сотнях рядків коштує ~4 с. Чотири секунди
+// «нічого не сталось» після кліку читаються як зламана кнопка, тому рядок
+// переїжджає на клієнті негайно, а серверний свап потім лише підтверджує те,
+// що вже видно.
+//
+// Рухаємо ВСЕРЕДИНІ свого tbody: черга поділена на «лабораторні» й «з пошти»,
+// і рядок, що перестрибнув у чужу секцію, збрехав би про джерело роботи.
+//
+// Знімаючи шпильку, рядок НЕ повертаємо на місце: куди саме — знає лише
+// сервер, а стрибок під курсором відразу після кліку гірший за рядок, який
+// спокійно стане на місце з наступним оновленням.
+// Дві пастки, на які ця дрібниця наткнулась по черзі:
+//  1. Рядок не можна шукати через event.target: свап іде з
+//     hx-swap="outerHTML", тому подія приходить на БАТЬКА заміненого <tr>, і
+//     closest("tr") там нічого не знаходить. Шукаємо за шляхом запиту.
+//  2. Слухати треба afterSettle, а не afterSwap: на afterSwap у DOM ще висить
+//     СТАРИЙ рядок (htmx-swapping), тобто getElementById віддає його — без
+//     свіжого класу queue-row-focus, і перевірка мовчки відсіювала рух.
+document.addEventListener("htmx:afterSettle", (event) => {
+  const cfg = event.detail && event.detail.requestConfig;
+  const path = (cfg && cfg.path) || "";
+  const match = path.match(/^\/orders\/(\d+)\/focus$/);
+  if (!match) return;
+  const row = document.getElementById("order-row-" + match[1]);
+  if (!row || !row.classList.contains("queue-row-focus")) return;
+  const body = row.parentElement;
+  if (!body || body.firstElementChild === row) return;
+  body.insertBefore(row, body.firstElementChild);
+  // Коротка мітка руху — інакше рядок просто «телепортується», і оператор не
+  // певен, що переїхав саме той, по якому він клацнув.
+  row.classList.remove("row-flash");
+  void row.offsetWidth;
+  row.classList.add("row-flash");
+  window.setTimeout(() => row.classList.remove("row-flash"), 1000);
+});

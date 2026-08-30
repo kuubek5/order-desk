@@ -298,6 +298,16 @@ body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
    рядки. Undo тепер робить статична кнопка «Крок назад» у шапці. */
 .q2 table.qtable td.status,
 .q2 table.qtable th.col-status{display:none}
+/* НАСЛІДОК, який коштував відкритого контуру пришпиленого рядка: прихована
+   колонка лишається ОСТАННЬОЮ коміркою в DOM, тому `td:last-child` — це вона,
+   і права грань малювалась на комірці нульової ширини, тобто ніде. Рядок
+   виглядав обведеним з трьох боків.
+   Грань переїжджає на сусідку зліва — на ту, ЩО ВИДНО. Правило свідомо стоїть
+   тут, впритул до `display:none`: повернуть колонку «Статус» — треба прибрати
+   обидва рядки разом, інакше в середині рядка з'явиться зайва вертикаль. */
+.q2 table.qtable tbody tr.queue-row-focus > td:has(+ td.status){
+  box-shadow:inset -1px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55);
+}
 /* Колонка «Оператор» — хто прорахував (стовпець М таблиці, Order.calculated_raw).
    Компактний моно-бейдж; коротке значення (літера/код St, D, EE…). */
 .q2 td.calc-op{white-space:nowrap}
@@ -377,7 +387,18 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 td.order-id .chg-form{max-width:calc(100% - 30px)}
 .q2 td.order-id .badge.chg{max-width:100%;overflow:hidden}
 .q2 td.order-id .badge.chg span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.q2 .ordbtn{display:inline-block;max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+/* Ім'я клієнта стоїть у тій самій комірці, що й наряд, і різалось до
+   «Vis…» / «Баса…». Дві причини разом: жорсткі 132px на самому елементі і
+   вузька колонка (184px на 1500px екрана), у якій до імені ще стоять
+   шпилька, крапка стану, бейдж «Клієнт» і кошик.
+   Стеля знята — ширину тепер визначає комірка; колонці задано мінімум.
+   260px виміряно, а не вгадано: на 1500px це прибирає обрізку в 335 із 365
+   клієнтських рядків і НЕ вмикає горизонтальний скрол (на 280px він уже
+   з'являється). Мінімум, не фіксована ширина — на 1920px колонка візьме
+   більше сама. */
+.q2 table.qtable th:first-child,
+.q2 table.qtable td.order-id{min-width:260px}
+.q2 .ordbtn{display:inline-block;max-width:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .q2 tr.queue-row-overdue .sdot{box-shadow:0 0 0 3px rgba(var(--alarm-rgb), .22)}
 .q2 .ordbtn{font-family:var(--font-mono);font-size:12.5px;font-weight:500;color:var(--ink);letter-spacing:-.01em;text-decoration:none}
 .q2 .ordbtn:hover{color:var(--accent-c);opacity:1}
