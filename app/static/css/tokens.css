@@ -18,7 +18,8 @@
    Усередині плитки дозволені лише БАЗОВІ токени: похідні з treatment-a.css
    обчислені на :root і темі плитки не піддаються. */
 :root,
-.thsw[data-pal="teal"] {
+.thsw[data-pal="teal"],
+.acc-live[data-pal="teal"] {
   /* Background & Surface */
   --color-bg: #0d1117;
   --color-bg-grid-line: rgba(45, 212, 191, 0.05);

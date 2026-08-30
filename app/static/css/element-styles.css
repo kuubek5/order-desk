@@ -19,13 +19,15 @@
 
 /* 1 · Тихий контур — рівний штрих, без рельєфу. */
 html[data-buttons="outline"] .btn:not(.apex),
-.btnsw[data-buttons-sample="outline"] .btn {
+.btnsw[data-buttons-sample="outline"] .btn,
+.acc-live[data-buttons-sample="outline"] .btn {
   background: transparent;
   border: 1px solid var(--control-edge);
   box-shadow: none;
 }
 html[data-buttons="outline"] .btn:not(.apex):hover,
-.btnsw[data-buttons-sample="outline"] .btn:hover {
+.btnsw[data-buttons-sample="outline"] .btn:hover,
+.acc-live[data-buttons-sample="outline"] .btn:hover {
   border-color: var(--accent-b);
   color: var(--accent-c);
   background: transparent;
@@ -33,7 +35,8 @@ html[data-buttons="outline"] .btn:not(.apex):hover,
 
 /* 2 · Скляний тінт — напівпрозоре скло з розмиттям під ним. */
 html[data-buttons="glass"] .btn:not(.apex),
-.btnsw[data-buttons-sample="glass"] .btn {
+.btnsw[data-buttons-sample="glass"] .btn,
+.acc-live[data-buttons-sample="glass"] .btn {
   background: linear-gradient(120deg, rgba(var(--accent-rgb), .16), rgba(var(--accent-rgb), .05));
   border: 1px solid rgba(var(--accent-rgb), .4);
   color: var(--accent-c);
@@ -41,21 +44,24 @@ html[data-buttons="glass"] .btn:not(.apex),
   backdrop-filter: blur(6px);
 }
 html[data-buttons="glass"] .btn:not(.apex):hover,
-.btnsw[data-buttons-sample="glass"] .btn:hover {
+.btnsw[data-buttons-sample="glass"] .btn:hover,
+.acc-live[data-buttons-sample="glass"] .btn:hover {
   background: linear-gradient(120deg, rgba(var(--accent-rgb), .26), rgba(var(--accent-rgb), .1));
   border-color: var(--accent-b);
 }
 
 /* 3 · Пунктир-привид — для дій, які не претендують на увагу. */
 html[data-buttons="dashed"] .btn:not(.apex),
-.btnsw[data-buttons-sample="dashed"] .btn {
+.btnsw[data-buttons-sample="dashed"] .btn,
+.acc-live[data-buttons-sample="dashed"] .btn {
   background: transparent;
   border: 1px dashed var(--line-2);
   color: var(--ink-2);
   box-shadow: none;
 }
 html[data-buttons="dashed"] .btn:not(.apex):hover,
-.btnsw[data-buttons-sample="dashed"] .btn:hover {
+.btnsw[data-buttons-sample="dashed"] .btn:hover,
+.acc-live[data-buttons-sample="dashed"] .btn:hover {
   border-style: solid;
   border-color: var(--accent-b);
   color: var(--accent-c);
@@ -63,14 +69,16 @@ html[data-buttons="dashed"] .btn:not(.apex):hover,
 
 /* 4 · Суцільна — плоска заливка приглушеною поверхнею, без межі. */
 html[data-buttons="solid"] .btn:not(.apex),
-.btnsw[data-buttons-sample="solid"] .btn {
+.btnsw[data-buttons-sample="solid"] .btn,
+.acc-live[data-buttons-sample="solid"] .btn {
   background: var(--raise);
   border: 1px solid transparent;
   color: var(--ink);
   box-shadow: none;
 }
 html[data-buttons="solid"] .btn:not(.apex):hover,
-.btnsw[data-buttons-sample="solid"] .btn:hover {
+.btnsw[data-buttons-sample="solid"] .btn:hover,
+.acc-live[data-buttons-sample="solid"] .btn:hover {
   background: var(--raise-2);
   color: var(--accent-c);
 }
@@ -81,10 +89,12 @@ html[data-buttons="solid"] .btn:not(.apex):hover,
    лишається одним елементом, який HTMX показує через .htmx-indicator. */
 
 html[data-loader]:not([data-loader=""]) .mill-spin,
-.ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-spin { display: none; }
+.ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-spin { display: none; },
+.acc-live[data-loader-sample]:not([data-loader-sample=""]) .mill-spin { display: none; }
 
 html[data-loader]:not([data-loader=""]) .mill-wrap,
-.ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-wrap {
+.ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-wrap,
+.acc-live[data-loader-sample]:not([data-loader-sample=""]) .mill-wrap {
   position: relative;
   display: inline-grid;
   place-items: center;
@@ -92,14 +102,16 @@ html[data-loader]:not([data-loader=""]) .mill-wrap,
   height: 16px;
 }
 html[data-loader]:not([data-loader=""]) .mill-wrap::after,
-.ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-wrap::after {
+.ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-wrap::after,
+.acc-live[data-loader-sample]:not([data-loader-sample=""]) .mill-wrap::after {
   content: "";
   display: block;
 }
 
 /* 1 · Маячок — крапка, що розходиться кільцем. */
 html[data-loader="beacon"] .mill-wrap::after,
-.ldsw[data-loader-sample="beacon"] .mill-wrap::after {
+.ldsw[data-loader-sample="beacon"] .mill-wrap::after,
+.acc-live[data-loader-sample="beacon"] .mill-wrap::after {
   width: 7px; height: 7px; border-radius: 50%;
   background: var(--accent-b);
   animation: elBeacon 2.2s ease-out infinite;
@@ -114,11 +126,13 @@ html[data-loader="beacon"] .mill-wrap::after,
 /* :not(...) тут не декорація, а вага: у загального правила розміру вище
    специфічність через той самий :not, тож без нього смуга лишалась 16×16. */
 html[data-loader="sweep"]:not([data-loader=""]) .mill-wrap,
-.ldsw[data-loader-sample="sweep"]:not([data-loader-sample=""]) .mill-wrap {
+.ldsw[data-loader-sample="sweep"]:not([data-loader-sample=""]) .mill-wrap,
+.acc-live[data-loader-sample="sweep"]:not([data-loader-sample=""]) .mill-wrap {
   width: 34px; height: 4px; overflow: hidden; border-radius: 2px; background: var(--raise);
 }
 html[data-loader="sweep"] .mill-wrap::after,
-.ldsw[data-loader-sample="sweep"] .mill-wrap::after {
+.ldsw[data-loader-sample="sweep"] .mill-wrap::after,
+.acc-live[data-loader-sample="sweep"] .mill-wrap::after {
   position: absolute; top: 0; bottom: 0; width: 45%;
   background: linear-gradient(90deg, transparent, var(--accent-b), transparent);
   animation: elSweep 1.4s cubic-bezier(.4, 0, .2, 1) infinite;
@@ -127,7 +141,8 @@ html[data-loader="sweep"] .mill-wrap::after,
 
 /* 3 · Орбіта — три точки на колі. */
 html[data-loader="orbit"] .mill-wrap::after,
-.ldsw[data-loader-sample="orbit"] .mill-wrap::after {
+.ldsw[data-loader-sample="orbit"] .mill-wrap::after,
+.acc-live[data-loader-sample="orbit"] .mill-wrap::after {
   width: 15px; height: 15px; border-radius: 50%;
   background:
     radial-gradient(circle 2.2px at 50% 8%, var(--accent-b) 99%, transparent) no-repeat,
@@ -139,7 +154,8 @@ html[data-loader="orbit"] .mill-wrap::after,
 
 /* 4 · Кільце — класична дуга. */
 html[data-loader="ring"] .mill-wrap::after,
-.ldsw[data-loader-sample="ring"] .mill-wrap::after {
+.ldsw[data-loader-sample="ring"] .mill-wrap::after,
+.acc-live[data-loader-sample="ring"] .mill-wrap::after {
   width: 14px; height: 14px; border-radius: 50%;
   border: 2px solid rgba(var(--accent-rgb), .25);
   border-top-color: var(--accent-b);
@@ -157,7 +173,8 @@ html[data-loader="ring"] .mill-wrap::after,
 
 /* 1 · Залита — щільна пляма акценту. */
 html[data-chips="solid"] .status-badge,
-.chsw[data-chips-sample="solid"] .status-badge {
+.chsw[data-chips-sample="solid"] .status-badge,
+.acc-live[data-chips-sample="solid"] .status-badge {
   background: var(--accent-b);
   border-color: var(--accent-b);
   color: var(--accent-well);
@@ -166,7 +183,8 @@ html[data-chips="solid"] .status-badge,
 
 /* 2 · Пунктир — тихий контур без заливки. */
 html[data-chips="dashed"] .status-badge,
-.chsw[data-chips-sample="dashed"] .status-badge {
+.chsw[data-chips-sample="dashed"] .status-badge,
+.acc-live[data-chips-sample="dashed"] .status-badge {
   background: transparent;
   border: 1px dashed currentColor;
 }
@@ -174,7 +192,8 @@ html[data-chips="dashed"] .status-badge,
 /* 3 · Смуга-маркер — прямокутник із кольоровим краєм замість пігулки.
    inset box-shadow, а не border-left: межа зсувала б текст. */
 html[data-chips="marker"] .status-badge,
-.chsw[data-chips-sample="marker"] .status-badge {
+.chsw[data-chips-sample="marker"] .status-badge,
+.acc-live[data-chips-sample="marker"] .status-badge {
   border-radius: 4px;
   border-color: transparent;
   background: var(--raise);
@@ -184,7 +203,8 @@ html[data-chips="marker"] .status-badge,
 
 /* 4 · Градієнтна межа — колір живе в самій межі. */
 html[data-chips="gradient"] .status-badge,
-.chsw[data-chips-sample="gradient"] .status-badge {
+.chsw[data-chips-sample="gradient"] .status-badge,
+.acc-live[data-chips-sample="gradient"] .status-badge {
   border-color: transparent;
   background:
     linear-gradient(var(--card), var(--card)) padding-box,
@@ -196,5 +216,6 @@ html[data-chips="gradient"] .status-badge,
    (v2a_screens.css). У кабінеті плитка мусить показувати індикатор постійно,
    інакше порівнювати нічого. Канон крутиться тут так само, як у роботі. */
 .ldsw .mill-spin { display: inline-block; animation: mill-spin .75s linear infinite; }
-.ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-spin { display: none; }
+.ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-spin { display: none; },
+.acc-live[data-loader-sample]:not([data-loader-sample=""]) .mill-spin { display: none; }
 @media (prefers-reduced-motion: reduce) { .ldsw .mill-spin { animation: none } }

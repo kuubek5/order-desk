@@ -93,7 +93,62 @@
 
     <div class="card settings-group">
         <h2>Оформлення</h2>
-        <p class="settings-help">Зберігається на вашому обліковому записі й застосовується одразу — окремої кнопки немає.</p>
+        <p class="settings-help">Наведіть на варіант — сторінка вгорі перемалюється так, як буде після застосування. Клік застосовує; зберігається на вашому обліковому записі.</p>
+
+        {# Жива міні-сторінка. Це не картинка: справжні класи застосунку
+           (.btn, .status-badge, .mill-wrap, іконки з шаром .duo) усередині
+           контейнера, який НЕСЕ ВЛАСНІ атрибути вибору. Тому вона малюється
+           тими самими правилами, що й реальні екрани, — просто локально.
+           Механіка: .acc-live[data-pal] оголошує токени теми на собі
+           (tokens.css / theme-forge.css), а .acc-live[data-*-sample] стоїть
+           поряд із плитковими селекторами в element-styles.css та
+           icon-styles.css. Жодної другої копії стилів. #}
+        <div class="acc-live" id="acc-live" aria-hidden="true"
+             data-pal="teal" data-icons-sample="" data-buttons-sample=""
+             data-loader-sample="" data-chips-sample="">
+            <div class="al-rail">
+                <span class="al-mark">
+                    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 6 L5 26"/><path d="M14 6 L5 16"/><path d="M5 16 L14 26"/><path d="M18 26 L18 6 L23 15.5 L28 6 L28 26"/>
+                    </svg>
+                </span>
+                {% for d in [
+                    '<path d="M4 6h16M4 12h16M4 18h10"/>',
+                    '<rect x="3" y="5" width="18" height="14" rx="2" class="duo"/><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+                    '<path d="M12 3c-2 3-6 4-6 9a6 6 0 0 0 12 0c0-5-4-6-6-9z" class="duo"/><path d="M12 3c-2 3-6 4-6 9a6 6 0 0 0 12 0c0-5-4-6-6-9z"/>'
+                ] %}
+                <span class="al-nav{% if loop.first %} on{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ d|safe }}</svg>
+                </span>
+                {% endfor %}
+            </div>
+
+            <div class="al-body">
+                <div class="al-head">
+                    <span class="al-title">Черга робіт</span>
+                    <span class="al-acts">
+                        <span class="btn sm">Файли</span>
+                        <span class="btn sm apex">Взяти</span>
+                    </span>
+                </div>
+
+                <div class="al-row">
+                    <i class="al-mat" style="--m:var(--accent-c)"></i>
+                    <b class="mono">17-55-28</b>
+                    <span class="status-badge status-прораховано">в роботі</span>
+                </div>
+                <div class="al-row">
+                    <i class="al-mat" style="--m:var(--warn)"></i>
+                    <b class="mono">12-01-45</b>
+                    <span class="status-badge status-переробка">переробка</span>
+                </div>
+                <div class="al-row is-busy">
+                    <i class="al-mat" style="--m:var(--alarm)"></i>
+                    <b class="mono">09-14-02</b>
+                    <span class="al-load">{% include "_mill_spinner.svg" %}<span>запис у таблицю…</span></span>
+                </div>
+            </div>
+        </div>
 
         {# Кожна кнопка теми несе мініатюру черги, намальовану СВОЄЮ палітрою:
            .thsw[data-pal] оголошує токени на самій плитці (див. tokens.css і
@@ -208,13 +263,31 @@
     var rootEl = document.documentElement;
     // Одна таблиця замість п'яти майже однакових обробників: атрибут на <html>,
     // клас кнопки, ключ у data-* і поле у формі збереження.
+    // `live` — атрибут, яким той самий вибір записується на міні-сторінку.
+    // Тема там зветься data-pal, бо data-theme на вкладеному елементі
+    // перехопили б глобальні правила теми.
     var GROUPS = [
-      { attr: 'data-theme',   btn: '.acc-theme-btn',   key: 'setTheme',   field: 'theme'   },
-      { attr: 'data-icons',   btn: '.acc-icons-btn',   key: 'setIcons',   field: 'icons'   },
-      { attr: 'data-buttons', btn: '.acc-buttons-btn', key: 'setButtons', field: 'buttons' },
-      { attr: 'data-loader',  btn: '.acc-loader-btn',  key: 'setLoader',  field: 'loader'  },
-      { attr: 'data-chips',   btn: '.acc-chips-btn',   key: 'setChips',   field: 'chips'   }
+      { attr: 'data-theme',   btn: '.acc-theme-btn',   key: 'setTheme',   field: 'theme',   live: 'data-pal',            liveMap: function(v){ return v === 'forge' ? 'forge' : 'teal'; } },
+      { attr: 'data-icons',   btn: '.acc-icons-btn',   key: 'setIcons',   field: 'icons',   live: 'data-icons-sample'   },
+      { attr: 'data-buttons', btn: '.acc-buttons-btn', key: 'setButtons', field: 'buttons', live: 'data-buttons-sample' },
+      { attr: 'data-loader',  btn: '.acc-loader-btn',  key: 'setLoader',  field: 'loader',  live: 'data-loader-sample'  },
+      { attr: 'data-chips',   btn: '.acc-chips-btn',   key: 'setChips',   field: 'chips',   live: 'data-chips-sample'   }
     ];
+    var live = document.getElementById('acc-live');
+
+    function liveValue(g, raw){ return g.liveMap ? g.liveMap(raw) : raw; }
+
+    // Міні-сторінка показує ЗБЕРЕЖЕНИЙ вибір, поки ні на що не наведено.
+    function liveReset(){
+      if (!live) return;
+      GROUPS.forEach(function(g){
+        live.setAttribute(g.live, liveValue(g, rootEl.getAttribute(g.attr) || ''));
+      });
+    }
+    // …і тимчасово показує наведений варіант, не застосовуючи його.
+    function livePeek(g, raw){
+      if (live) live.setAttribute(g.live, liveValue(g, raw));
+    }
     function paint(){
       GROUPS.forEach(function(g){
         var cur = rootEl.getAttribute(g.attr) || '';
@@ -241,9 +314,17 @@
     }
     GROUPS.forEach(function(g){
       document.querySelectorAll(g.btn).forEach(function(b){
-        b.addEventListener('click', function(){ setAttr(g.attr, b.dataset[g.key]); });
+        var value = b.dataset[g.key];
+        b.addEventListener('click', function(){ setAttr(g.attr, value); });
+        // Наведення й фокус — те саме: вибір з клавіатури мусить показувати
+        // прев'ю так само, як мишею.
+        b.addEventListener('mouseenter', function(){ livePeek(g, value); });
+        b.addEventListener('focus', function(){ livePeek(g, value); });
+        b.addEventListener('mouseleave', liveReset);
+        b.addEventListener('blur', liveReset);
       });
     });
+    liveReset();
     paint();
   })();
 </script>
