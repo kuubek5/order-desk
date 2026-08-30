@@ -26,7 +26,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 logger = logging.getLogger(__name__)
 
-# Public half of the Order Desk product-owner keypair. Generated once,
+# Public half of the KuubMill product-owner keypair. Generated once,
 # offline, with `python scripts/license_keygen.py generate-keypair`; the
 # matching private key never enters this repository. Tests must never rely
 # on this being the "real" key — they monkeypatch it with a throwaway

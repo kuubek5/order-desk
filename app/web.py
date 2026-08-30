@@ -481,7 +481,7 @@ async def lifespan(_: FastAPI):
             w.stop()
 
 
-app = FastAPI(title="Order Desk", lifespan=lifespan)
+app = FastAPI(title="KuubMill", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET_KEY,

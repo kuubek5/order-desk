@@ -1,4 +1,4 @@
-﻿# Запускає Order Desk у dev-режимі з live reload.
+﻿# Запускає KuubMill у dev-режимі з live reload.
 #
 # Порт 8002 (не 8000) навмисно - щоб не конфліктувати з реальним встановленим
 # OrderDesk.exe, якщо той теж запущений. Дані тут - окрема dev-база
@@ -18,7 +18,7 @@ Set-Location $projectRoot
 $port = 8002
 $url = "http://127.0.0.1:$port"
 
-Write-Host "Order Desk (dev, live reload) -> $url"
+Write-Host "KuubMill (dev, live reload) -> $url"
 Write-Host "Дані: локальна dev-база (order_desk.db), не реальні дані лабораторії."
 Write-Host "Зупинити: Ctrl+C у цьому вікні."
 Write-Host ""

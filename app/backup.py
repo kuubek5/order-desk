@@ -1,7 +1,7 @@
 """Encrypted full-database backup and restore.
 
 CLAUDE.md section 14 names this an outstanding need: "backup для перенесення
-ПК" — moving Order Desk to a new Windows PC or user account. That's exactly
+ПК" — moving KuubMill to a new Windows PC or user account. That's exactly
 the case the app's normal secret storage can't handle on its own: every
 secret in `app_settings` is Fernet-encrypted under a key derived from this
 machine's DPAPI store (app/windows_dpapi.py), which by design cannot be
@@ -76,7 +76,7 @@ class BackupPasswordError(Exception):
 
 
 class BackupFormatError(Exception):
-    """Not a recognizable Order Desk backup file."""
+    """Not a recognizable KuubMill backup file."""
 
 
 def _row_to_dict(obj: Any) -> dict[str, Any]:
@@ -150,7 +150,7 @@ def restore_backup(session: Session, file_bytes: bytes, password: str) -> dict[s
     """Replace all operational data and secrets with what's in the backup.
 
     Destructive by design — this is a restore, not a merge. Raises
-    `BackupFormatError` for anything that isn't an Order Desk backup file
+    `BackupFormatError` for anything that isn't an KuubMill backup file
     and `BackupPasswordError` for a password that doesn't match (Fernet's
     own authentication tag fails to verify rather than silently producing
     garbage, so a wrong password is always caught here, never left to
@@ -159,16 +159,16 @@ def restore_backup(session: Session, file_bytes: bytes, password: str) -> dict[s
     try:
         envelope = json.loads(file_bytes.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise BackupFormatError("Файл резервної копії пошкоджений або це не бекап Order Desk.") from exc
+        raise BackupFormatError("Файл резервної копії пошкоджений або це не бекап KuubMill.") from exc
 
     if not isinstance(envelope, dict) or envelope.get("app") != "order-desk" or "payload" not in envelope or "salt" not in envelope:
-        raise BackupFormatError("Файл резервної копії пошкоджений або це не бекап Order Desk.")
+        raise BackupFormatError("Файл резервної копії пошкоджений або це не бекап KuubMill.")
 
     iterations = envelope.get("kdf_iterations", KDF_ITERATIONS)
     try:
         salt = base64.b64decode(envelope["salt"])
     except (ValueError, TypeError) as exc:
-        raise BackupFormatError("Файл резервної копії пошкоджений або це не бекап Order Desk.") from exc
+        raise BackupFormatError("Файл резервної копії пошкоджений або це не бекап KuubMill.") from exc
 
     key = _derive_key(password, salt, iterations)
 

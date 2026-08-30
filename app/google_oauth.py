@@ -72,7 +72,7 @@ class _CallbackHandler(BaseHTTPRequestHandler):
         if "error" in params:
             body = "<h3>Помилка авторизації Google.</h3><p>Можна закрити цю вкладку.</p>"
         else:
-            body = "<h3>Авторизацію Google завершено.</h3><p>Можна закрити цю вкладку і повернутись у Order Desk.</p>"
+            body = "<h3>Авторизацію Google завершено.</h3><p>Можна закрити цю вкладку і повернутись у KuubMill.</p>"
         encoded = f"<html><body style='font-family:sans-serif'>{body}</body></html>".encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")

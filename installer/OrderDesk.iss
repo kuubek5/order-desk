@@ -1,4 +1,4 @@
-#define MyAppName "Order Desk"
+#define MyAppName "KuubMill"
 ; Must be bumped by hand together with app/__version__.py::VERSION at every
 ; release — tests/test_version_sync.py fails the suite if these two drift.
 #define MyAppVersion "0.3.32"
@@ -31,12 +31,12 @@ SetupIconFile=..\assets\orderdesk.ico
 Source: "{#BuildRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Order Desk"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-browser"
-Name: "{autodesktop}\Order Desk"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-browser"; Tasks: desktopicon
+Name: "{group}\KuubMill"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-browser"
+Name: "{autodesktop}\KuubMill"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-browser"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Створити ярлик на робочому столі"; Flags: checkedonce
-Name: "autostart"; Description: "Запускати Order Desk при вході у Windows"; Flags: checkedonce
+Name: "autostart"; Description: "Запускати KuubMill при вході у Windows"; Flags: checkedonce
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "OrderDesk"; ValueData: """{app}\{#MyAppExeName}"""; Tasks: autostart; Flags: uninsdeletevalue
@@ -47,7 +47,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 ; headless/service context has no desktop session for the launch — so the
 ; in-app updater handles its own relaunch via a watchdog script (see
 ; app/update_check.py::launch_silent_install).
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-browser"; Description: "Запустити Order Desk"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--open-browser"; Description: "Запустити KuubMill"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--shutdown"; Flags: runhidden waituntilterminated; RunOnceId: "StopOrderDesk"
@@ -68,10 +68,10 @@ begin
   if not Exec(ExistingExe, '--shutdown', '', SW_HIDE,
     ewWaitUntilTerminated, ResultCode) then
   begin
-    Result := 'Не вдалося зупинити Order Desk перед оновленням.';
+    Result := 'Не вдалося зупинити KuubMill перед оновленням.';
     Exit;
   end;
 
   if ResultCode <> 0 then
-    Result := 'Order Desk не завершив роботу вчасно. Закрийте програму та повторіть спробу.';
+    Result := 'KuubMill не завершив роботу вчасно. Закрийте програму та повторіть спробу.';
 end;

@@ -151,7 +151,7 @@ def safe_attachment_filename(filename: str | None, index: int, content_type: str
         return fallback
     filename = _repair_mojibake(filename)
     # Treat both POSIX and Windows separators as path separators regardless of
-    # which OS currently runs Order Desk.
+    # which OS currently runs KuubMill.
     basename = re.split(r"[\\/]", filename)[-1].strip().rstrip(". ")
     basename = _UNSAFE_FILENAME_CHARS.sub("_", basename)
     return basename if basename not in {"", ".", ".."} else fallback
@@ -421,7 +421,7 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
 
     We intentionally inspect *all* messages from the bounded recent window,
     rather than only unread messages: opening an order in webmail must not make
-    it invisible to Order Desk.  The database UID constraint makes repeat runs
+    it invisible to KuubMill.  The database UID constraint makes repeat runs
     idempotent.
     """
     login = get_imap_login(session)

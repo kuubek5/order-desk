@@ -1,4 +1,4 @@
-# Розгортання Order Desk у Docker
+# Розгортання KuubMill у Docker
 
 ## 1. Підготовка
 

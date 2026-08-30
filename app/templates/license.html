@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Активація ліцензії — Order Desk{% endblock %}
+{% block title %}Активація ліцензії — KuubMill{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
@@ -9,7 +9,7 @@
 {% block content %}
 <div class="login-page">
     <div class="card login-card setup-card">
-        <h1>Активація Order Desk</h1>
+        <h1>Активація KuubMill</h1>
 
         {% if status and status.valid %}
         <p class="login-subtitle">
@@ -17,7 +17,7 @@
         </p>
         <p class="login-subtitle"><a href="/">Продовжити →</a></p>
         {% else %}
-        <p class="login-subtitle">Введіть ліцензійний ключ, виданий власником Order Desk для цього комп'ютера.</p>
+        <p class="login-subtitle">Введіть ліцензійний ключ, виданий власником KuubMill для цього комп'ютера.</p>
         {% endif %}
 
         {% if error %}
@@ -30,7 +30,7 @@
                 <button type="button" class="mono copy-button license-machine-id" data-copy="{{ machine_id }}"
                         title="Клік — скопіювати machine ID для надсилання власнику продукту">{{ machine_id }}</button>
             </div>
-            <p class="login-hint">Надішліть цей ID власнику Order Desk, щоб отримати ліцензійний ключ.</p>
+            <p class="login-hint">Надішліть цей ID власнику KuubMill, щоб отримати ліцензійний ключ.</p>
         </div>
 
         <form method="post" action="/license">

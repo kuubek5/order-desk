@@ -115,8 +115,8 @@ def _show_startup_error() -> None:
 
     ctypes.windll.user32.MessageBoxW(
         0,
-        f"Order Desk не вдалося запустити.\n\nДеталі: {DATA_DIR / 'logs' / 'order-desk.log'}",
-        "Order Desk",
+        f"KuubMill не вдалося запустити.\n\nДеталі: {DATA_DIR / 'logs' / 'order-desk.log'}",
+        "KuubMill",
         0x10,
     )
 
@@ -248,7 +248,7 @@ def _run_server_with_tray(server, tray_holder: dict) -> None:
                         icon.stop()
 
                 menu = pystray.Menu(
-                    pystray.MenuItem("Відкрити Order Desk", _open, default=True),
+                    pystray.MenuItem("Відкрити KuubMill", _open, default=True),
                     pystray.MenuItem(
                         "Синхронізація таблиці на паузі",
                         _toggle_pause,
@@ -257,7 +257,7 @@ def _run_server_with_tray(server, tray_holder: dict) -> None:
                     pystray.Menu.SEPARATOR,
                     pystray.MenuItem("Вийти", _quit),
                 )
-                icon = pystray.Icon("OrderDesk", image, "Order Desk", menu)
+                icon = pystray.Icon("OrderDesk", image, "KuubMill", menu)
                 tray_holder["icon"] = icon
         except Exception:
             logging.exception("Tray unavailable — running without it")
@@ -354,7 +354,7 @@ def main() -> int:
 
         try:
             _configure_logging()
-            logging.exception("Order Desk failed to start")
+            logging.exception("KuubMill failed to start")
         except Exception:
             pass
         # Standalone traceback file that never depends on logging being set up —

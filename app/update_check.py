@@ -1,4 +1,4 @@
-"""Check GitHub Releases for a newer Order Desk build, verify, and install it.
+"""Check GitHub Releases for a newer KuubMill build, verify, and install it.
 
 Background-loop shape copied verbatim from app/web.py's mail/sheet sync
 workers (see _mail_sync_tick/_mail_sync_worker there): a `_tick()` doing one
