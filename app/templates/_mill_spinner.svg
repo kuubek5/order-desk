@@ -1,6 +1,12 @@
-{# Milling-cutter spinner: a blade with radial flutes that spins while the
-   sheet write is in flight. Shown only when the button carries .is-loading
-   (see .addwork-submit / .neworder .btn.primary in base.css). #}
+{# Індикатор очікування. Канон — фреза: диск із радіальними зубцями, що
+   крутиться, поки летить запис у таблицю. Показується лише коли кнопка несе
+   .is-loading (див. .addwork-submit / .neworder .btn.primary у base.css).
+
+   Обгортка .mill-wrap потрібна не для розкладки: оператор може обрати інший
+   індикатор (кабінет /account → Оформлення), а SVG не має ::after, тобто
+   намалювати замість нього CSS-фігуру нема на чому. Альтернативи з
+   element-styles.css ховають сам малюнок і малюються на цій обгортці. #}
+<span class="mill-wrap" aria-hidden="true">
 <svg class="mill-spin" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
   <g class="mill-spin-rot">
     <circle cx="12" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -17,3 +23,4 @@
     </g>
   </g>
 </svg>
+</span>

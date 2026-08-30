@@ -236,7 +236,7 @@ def ui_prefs(request: Request) -> dict:
     cached = getattr(state, "ui_prefs_cache", None) if state is not None else None
     if cached is not None:
         return cached
-    prefs = {"theme": "", "icons": ""}
+    prefs = {"theme": "", "icons": "", "buttons": "", "loader": "", "chips": ""}
     try:
         user_id = request.session.get("user_id")
         if user_id is not None:
@@ -247,6 +247,9 @@ def ui_prefs(request: Request) -> dict:
                     prefs = {
                         "theme": user.ui_theme or "",
                         "icons": user.ui_icon_style or "",
+                        "buttons": user.ui_button_style or "",
+                        "loader": user.ui_loader_style or "",
+                        "chips": user.ui_chip_style or "",
                     }
             finally:
                 db.close()

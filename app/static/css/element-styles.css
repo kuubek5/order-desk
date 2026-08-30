@@ -1,0 +1,200 @@
+/* Візуальний набір оператора: кнопки, індикатор очікування, чіпи (30.08.26).
+   Трактування взяті з галереї «графічний фонд», обираються в кабінеті
+   /account і зберігаються на акаунті (User.ui_button_style / ui_loader_style /
+   ui_chip_style). Порожнє значення = канон, тобто атрибута на <html> немає
+   й жодне правило звідси не діє.
+
+   ДВА РЕЖИМИ КОЖНОГО ПРАВИЛА, і це головне в файлі:
+     html[data-buttons="x"] …   — застосовано на весь застосунок;
+     .btnsw[data-buttons-sample="x"] … — той самий вигляд на ОДНІЙ плитці
+                                          прев'ю, незалежно від вибраного.
+   Без другого режиму всі кнопки прев'ю показували б поточний вибір, і
+   порівнювати було б нічого. Специфічність локального селектора вища за
+   глобальний, тож на сторінці кабінету виграє плитка.
+
+   ЩО НЕ ЧІПАЄТЬСЯ: .btn.apex лишається залитим у будь-якому трактуванні —
+   «єдине залите трактування на екран» це контракт сенсу, а не смаку. */
+
+/* ══ КНОПКИ ══════════════════════════════════════════════════════════════ */
+
+/* 1 · Тихий контур — рівний штрих, без рельєфу. */
+html[data-buttons="outline"] .btn:not(.apex),
+.btnsw[data-buttons-sample="outline"] .btn {
+  background: transparent;
+  border: 1px solid var(--control-edge);
+  box-shadow: none;
+}
+html[data-buttons="outline"] .btn:not(.apex):hover,
+.btnsw[data-buttons-sample="outline"] .btn:hover {
+  border-color: var(--accent-b);
+  color: var(--accent-c);
+  background: transparent;
+}
+
+/* 2 · Скляний тінт — напівпрозоре скло з розмиттям під ним. */
+html[data-buttons="glass"] .btn:not(.apex),
+.btnsw[data-buttons-sample="glass"] .btn {
+  background: linear-gradient(120deg, rgba(var(--accent-rgb), .16), rgba(var(--accent-rgb), .05));
+  border: 1px solid rgba(var(--accent-rgb), .4);
+  color: var(--accent-c);
+  box-shadow: none;
+  backdrop-filter: blur(6px);
+}
+html[data-buttons="glass"] .btn:not(.apex):hover,
+.btnsw[data-buttons-sample="glass"] .btn:hover {
+  background: linear-gradient(120deg, rgba(var(--accent-rgb), .26), rgba(var(--accent-rgb), .1));
+  border-color: var(--accent-b);
+}
+
+/* 3 · Пунктир-привид — для дій, які не претендують на увагу. */
+html[data-buttons="dashed"] .btn:not(.apex),
+.btnsw[data-buttons-sample="dashed"] .btn {
+  background: transparent;
+  border: 1px dashed var(--line-2);
+  color: var(--ink-2);
+  box-shadow: none;
+}
+html[data-buttons="dashed"] .btn:not(.apex):hover,
+.btnsw[data-buttons-sample="dashed"] .btn:hover {
+  border-style: solid;
+  border-color: var(--accent-b);
+  color: var(--accent-c);
+}
+
+/* 4 · Суцільна — плоска заливка приглушеною поверхнею, без межі. */
+html[data-buttons="solid"] .btn:not(.apex),
+.btnsw[data-buttons-sample="solid"] .btn {
+  background: var(--raise);
+  border: 1px solid transparent;
+  color: var(--ink);
+  box-shadow: none;
+}
+html[data-buttons="solid"] .btn:not(.apex):hover,
+.btnsw[data-buttons-sample="solid"] .btn:hover {
+  background: var(--raise-2);
+  color: var(--accent-c);
+}
+
+/* ══ ІНДИКАТОР ОЧІКУВАННЯ ════════════════════════════════════════════════
+   Канон — фреза (.mill-spin, інлайн-SVG). Альтернативи ховають її й малюють
+   CSS-фігуру в тому ж місці, тому розмітку правити не треба: індикатор
+   лишається одним елементом, який HTMX показує через .htmx-indicator. */
+
+html[data-loader]:not([data-loader=""]) .mill-spin,
+.ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-spin { display: none; }
+
+html[data-loader]:not([data-loader=""]) .mill-wrap,
+.ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-wrap {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+html[data-loader]:not([data-loader=""]) .mill-wrap::after,
+.ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-wrap::after {
+  content: "";
+  display: block;
+}
+
+/* 1 · Маячок — крапка, що розходиться кільцем. */
+html[data-loader="beacon"] .mill-wrap::after,
+.ldsw[data-loader-sample="beacon"] .mill-wrap::after {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent-b);
+  animation: elBeacon 2.2s ease-out infinite;
+}
+@keyframes elBeacon {
+  0%   { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), .55) }
+  70%  { box-shadow: 0 0 0 9px rgba(var(--accent-rgb), 0) }
+  100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0) }
+}
+
+/* 2 · Смуга-прохід — світло, що йде вздовж, як прохід фрези. */
+/* :not(...) тут не декорація, а вага: у загального правила розміру вище
+   специфічність через той самий :not, тож без нього смуга лишалась 16×16. */
+html[data-loader="sweep"]:not([data-loader=""]) .mill-wrap,
+.ldsw[data-loader-sample="sweep"]:not([data-loader-sample=""]) .mill-wrap {
+  width: 34px; height: 4px; overflow: hidden; border-radius: 2px; background: var(--raise);
+}
+html[data-loader="sweep"] .mill-wrap::after,
+.ldsw[data-loader-sample="sweep"] .mill-wrap::after {
+  position: absolute; top: 0; bottom: 0; width: 45%;
+  background: linear-gradient(90deg, transparent, var(--accent-b), transparent);
+  animation: elSweep 1.4s cubic-bezier(.4, 0, .2, 1) infinite;
+}
+@keyframes elSweep { from { left: -45% } to { left: 100% } }
+
+/* 3 · Орбіта — три точки на колі. */
+html[data-loader="orbit"] .mill-wrap::after,
+.ldsw[data-loader-sample="orbit"] .mill-wrap::after {
+  width: 15px; height: 15px; border-radius: 50%;
+  background:
+    radial-gradient(circle 2.2px at 50% 8%, var(--accent-b) 99%, transparent) no-repeat,
+    radial-gradient(circle 2.2px at 90% 72%, rgba(var(--accent-rgb), .6) 99%, transparent) no-repeat,
+    radial-gradient(circle 2.2px at 10% 72%, rgba(var(--accent-rgb), .3) 99%, transparent) no-repeat;
+  animation: elSpin 1.6s linear infinite;
+}
+@keyframes elSpin { to { transform: rotate(360deg) } }
+
+/* 4 · Кільце — класична дуга. */
+html[data-loader="ring"] .mill-wrap::after,
+.ldsw[data-loader-sample="ring"] .mill-wrap::after {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(var(--accent-rgb), .25);
+  border-top-color: var(--accent-b);
+  animation: elSpin .7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-loader] .mill-wrap::after,
+  .ldsw[data-loader-sample] .mill-wrap::after { animation: none }
+}
+
+/* ══ ЧІПИ ════════════════════════════════════════════════════════════════
+   Канон — тінт-пігулка. Кольори станів (проблема, переробка, пошта) НЕ
+   чіпаються: вони несуть сенс, а не смак. Міняється лише форма. */
+
+/* 1 · Залита — щільна пляма акценту. */
+html[data-chips="solid"] .status-badge,
+.chsw[data-chips-sample="solid"] .status-badge {
+  background: var(--accent-b);
+  border-color: var(--accent-b);
+  color: var(--accent-well);
+  font-weight: 600;
+}
+
+/* 2 · Пунктир — тихий контур без заливки. */
+html[data-chips="dashed"] .status-badge,
+.chsw[data-chips-sample="dashed"] .status-badge {
+  background: transparent;
+  border: 1px dashed currentColor;
+}
+
+/* 3 · Смуга-маркер — прямокутник із кольоровим краєм замість пігулки.
+   inset box-shadow, а не border-left: межа зсувала б текст. */
+html[data-chips="marker"] .status-badge,
+.chsw[data-chips-sample="marker"] .status-badge {
+  border-radius: 4px;
+  border-color: transparent;
+  background: var(--raise);
+  box-shadow: inset 3px 0 0 currentColor;
+  padding-left: 11px;
+}
+
+/* 4 · Градієнтна межа — колір живе в самій межі. */
+html[data-chips="gradient"] .status-badge,
+.chsw[data-chips-sample="gradient"] .status-badge {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    linear-gradient(120deg, currentColor, transparent 65%) border-box;
+}
+
+/* ── Прев'ю індикатора в кабінеті ─────────────────────────────────────────
+   У застосунку .mill-spin схований, доки кнопка не отримає .is-loading
+   (v2a_screens.css). У кабінеті плитка мусить показувати індикатор постійно,
+   інакше порівнювати нічого. Канон крутиться тут так само, як у роботі. */
+.ldsw .mill-spin { display: inline-block; animation: mill-spin .75s linear infinite; }
+.ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-spin { display: none; }
+@media (prefers-reduced-motion: reduce) { .ldsw .mill-spin { animation: none } }

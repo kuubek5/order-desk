@@ -28,6 +28,12 @@ class User(Base):
     # браузер цього ПК, а не житимуть у localStorage конкретного профілю.
     ui_theme: Mapped[str] = mapped_column(String(20), default="", server_default="")
     ui_icon_style: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    # Решта візуального набору з галереї «графічний фонд»: трактування кнопок,
+    # індикатор очікування і форма чіпів. Порожній рядок скрізь = канон, тобто
+    # рівно те, що бачить оператор, який нічого не міняв.
+    ui_button_style: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    ui_loader_style: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    ui_chip_style: Mapped[str] = mapped_column(String(20), default="", server_default="")
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()

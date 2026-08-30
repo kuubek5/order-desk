@@ -202,6 +202,7 @@ BASE_HTML_STYLESHEETS = [
     "/static/css/treatment-a.css",
     "/static/css/theme-forge.css",
     "/static/css/icon-styles.css",
+    "/static/css/element-styles.css",
 ]
 
 

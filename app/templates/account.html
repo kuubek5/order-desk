@@ -139,6 +139,51 @@
                 {% endfor %}
             </div>
         </div>
+
+        {# Кожна плитка малює СВОЄ трактування незалежно від вибраного — за
+           це відповідає режим *-sample у element-styles.css. Інакше всі
+           п'ять кнопок показували б поточний вибір. #}
+        <div class="settings-field">
+            <label>Кнопки</label>
+            <div class="acc-icons-row" role="group" aria-label="Трактування кнопок">
+                {% for value, title in [('', 'Канон'), ('outline', 'Контур'), ('glass', 'Скло'), ('dashed', 'Пунктир'), ('solid', 'Суцільна')] %}
+                <button type="button" class="acc-swatch is-icon acc-buttons-btn" data-set-buttons="{{ value }}">
+                    <span class="btnsw" data-buttons-sample="{{ value }}">
+                        <span class="btn sm" aria-hidden="true">Взяти</span>
+                    </span>
+                    <span class="acc-swatch-name">{{ title }}</span>
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="settings-field">
+            <label>Індикатор очікування</label>
+            <div class="acc-icons-row" role="group" aria-label="Індикатор очікування">
+                {% for value, title in [('', 'Фреза'), ('beacon', 'Маячок'), ('sweep', 'Смуга'), ('orbit', 'Орбіта'), ('ring', 'Кільце')] %}
+                <button type="button" class="acc-swatch is-icon acc-loader-btn" data-set-loader="{{ value }}">
+                    <span class="ldsw" data-loader-sample="{{ value }}">
+                        {% include "_mill_spinner.svg" %}
+                    </span>
+                    <span class="acc-swatch-name">{{ title }}</span>
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="settings-field">
+            <label>Чіпи</label>
+            <div class="acc-icons-row" role="group" aria-label="Форма чіпів">
+                {% for value, title in [('', 'Канон'), ('solid', 'Залита'), ('dashed', 'Пунктир'), ('marker', 'Маркер'), ('gradient', 'Градієнт')] %}
+                <button type="button" class="acc-swatch is-icon acc-chips-btn" data-set-chips="{{ value }}">
+                    <span class="chsw" data-chips-sample="{{ value }}">
+                        <span class="status-badge status-прораховано" aria-hidden="true">в роботі</span>
+                    </span>
+                    <span class="acc-swatch-name">{{ title }}</span>
+                </button>
+                {% endfor %}
+            </div>
+        </div>
     </div>
 
     </div>
@@ -161,21 +206,27 @@
     // Тема/іконки живуть на <html> (див. theme-forge.css) і на акаунті
     // (POST /account/appearance): клік застосовує одразу, потім зберігає.
     var rootEl = document.documentElement;
+    // Одна таблиця замість п'яти майже однакових обробників: атрибут на <html>,
+    // клас кнопки, ключ у data-* і поле у формі збереження.
+    var GROUPS = [
+      { attr: 'data-theme',   btn: '.acc-theme-btn',   key: 'setTheme',   field: 'theme'   },
+      { attr: 'data-icons',   btn: '.acc-icons-btn',   key: 'setIcons',   field: 'icons'   },
+      { attr: 'data-buttons', btn: '.acc-buttons-btn', key: 'setButtons', field: 'buttons' },
+      { attr: 'data-loader',  btn: '.acc-loader-btn',  key: 'setLoader',  field: 'loader'  },
+      { attr: 'data-chips',   btn: '.acc-chips-btn',   key: 'setChips',   field: 'chips'   }
+    ];
     function paint(){
-      var th = rootEl.getAttribute('data-theme') || '';
-      var ic = rootEl.getAttribute('data-icons') || '';
-      document.querySelectorAll('.acc-theme-btn').forEach(function(b){
-        b.setAttribute('aria-pressed', String(b.dataset.setTheme === th));
-      });
-      document.querySelectorAll('.acc-icons-btn').forEach(function(b){
-        b.setAttribute('aria-pressed', String(b.dataset.setIcons === ic));
+      GROUPS.forEach(function(g){
+        var cur = rootEl.getAttribute(g.attr) || '';
+        document.querySelectorAll(g.btn).forEach(function(b){
+          b.setAttribute('aria-pressed', String(b.dataset[g.key] === cur));
+        });
       });
     }
     function save(){
-      var body = new URLSearchParams({
-        theme: rootEl.getAttribute('data-theme') || '',
-        icons: rootEl.getAttribute('data-icons') || ''
-      });
+      var payload = {};
+      GROUPS.forEach(function(g){ payload[g.field] = rootEl.getAttribute(g.attr) || ''; });
+      var body = new URLSearchParams(payload);
       fetch('/account/appearance', {method:'POST', body: body})
         .then(function(r){
           if (r.ok && window.showToast) window.showToast('Оформлення збережено на акаунті', 'success');
@@ -188,11 +239,10 @@
       else rootEl.removeAttribute(name);
       paint(); save();
     }
-    document.querySelectorAll('.acc-theme-btn').forEach(function(b){
-      b.addEventListener('click', function(){ setAttr('data-theme', b.dataset.setTheme); });
-    });
-    document.querySelectorAll('.acc-icons-btn').forEach(function(b){
-      b.addEventListener('click', function(){ setAttr('data-icons', b.dataset.setIcons); });
+    GROUPS.forEach(function(g){
+      document.querySelectorAll(g.btn).forEach(function(b){
+        b.addEventListener('click', function(){ setAttr(g.attr, b.dataset[g.key]); });
+      });
     });
     paint();
   })();

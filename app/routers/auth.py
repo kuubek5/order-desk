@@ -168,6 +168,9 @@ async def get_account(request: Request, db: Session = Depends(get_db)):
 
 UI_THEMES = {"", "forge"}
 UI_ICON_STYLES = {"", "thin", "duo", "fill", "bold", "neon"}
+UI_BUTTON_STYLES = {"", "outline", "glass", "dashed", "solid"}
+UI_LOADER_STYLES = {"", "beacon", "sweep", "orbit", "ring"}
+UI_CHIP_STYLES = {"", "solid", "dashed", "marker", "gradient"}
 
 
 @router.post("/account/appearance")
@@ -175,19 +178,31 @@ async def post_account_appearance(
     request: Request,
     theme: str = Form(""),
     icons: str = Form(""),
+    buttons: str = Form(""),
+    loader: str = Form(""),
+    chips: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    """Зберегти тему/стиль іконок оператора. Викликається fetch'ем з кабінету
+    """Зберегти візуальний набір оператора. Викликається fetch'ем з кабінету
     після миттєвого застосування на клієнті — тому відповідь 204, без
     перерендеру сторінки. Невалідні значення відсікаються, а не «якось
-    зберігаються»: атрибут з форми летить прямо в <html> кожної сторінки."""
+    зберігаються»: атрибути з форми летять прямо в <html> кожної сторінки."""
     user = get_current_user(request, db)
     if user is None:
         return RedirectResponse("/login", status_code=303)
-    if theme not in UI_THEMES or icons not in UI_ICON_STYLES:
+    if (
+        theme not in UI_THEMES
+        or icons not in UI_ICON_STYLES
+        or buttons not in UI_BUTTON_STYLES
+        or loader not in UI_LOADER_STYLES
+        or chips not in UI_CHIP_STYLES
+    ):
         return Response(status_code=422)
     user.ui_theme = theme
     user.ui_icon_style = icons
+    user.ui_button_style = buttons
+    user.ui_loader_style = loader
+    user.ui_chip_style = chips
     db.commit()
     return Response(status_code=204)
 

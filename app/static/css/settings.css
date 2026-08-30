@@ -788,3 +788,9 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 /* Підказка належить полю НАД нею — притискаємо назад до підпису, інакше 2px
    до підпису й 14px до наступного поля читались як один блок випадково. */
 .scon .settings-field > label + .settings-help{margin-top:calc(-1 * var(--space-2))}
+
+/* Плитки прев'ю кнопок / лоадера / чіпів у кабінеті. Той самий каркас, що в
+   іконок (.icsw), але вміст різний за розміром, тому власні висоти. */
+.btnsw,.ldsw,.chsw{display:grid;place-items:center;min-height:34px;width:100%;color:var(--ink)}
+.btnsw .btn{pointer-events:none;font-size:11.5px;padding:5px 10px;min-height:0;height:auto}
+.chsw .status-badge{pointer-events:none;font-size:10.5px}

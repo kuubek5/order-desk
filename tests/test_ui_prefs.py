@@ -48,12 +48,16 @@ def test_appearance_saves_theme_and_icons():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         resp = asyncio.run(auth_router_mod.post_account_appearance(
-            request=_request(user.id), theme="forge", icons="neon", db=db,
+            request=_request(user.id), theme="forge", icons="neon",
+            buttons="glass", loader="ring", chips="marker", db=db,
         ))
         assert resp.status_code == 204
         db.refresh(user)
         assert user.ui_theme == "forge"
         assert user.ui_icon_style == "neon"
+        assert user.ui_button_style == "glass"
+        assert user.ui_loader_style == "ring"
+        assert user.ui_chip_style == "marker"
 
 
 def test_appearance_rejects_unknown_values():
@@ -74,6 +78,16 @@ def test_appearance_rejects_unknown_values():
         db.refresh(user)
         assert user.ui_icon_style == ""
 
+        # Решта набору відсікається так само: значення летить атрибутом
+        # у <html> кожної сторінки, тож «якось зберегти» не можна.
+        for bad in ({"buttons": "neon-pink"}, {"loader": "spinner3000"}, {"chips": "blob"}):
+            kwargs = {"theme": "", "icons": "", "buttons": "", "loader": "", "chips": ""}
+            kwargs.update(bad)
+            resp = asyncio.run(auth_router_mod.post_account_appearance(
+                request=_request(user.id), db=db, **kwargs,
+            ))
+            assert resp.status_code == 422
+
 
 def test_ui_prefs_reads_logged_in_user_and_caches(monkeypatch):
     engine = _database()
@@ -81,6 +95,9 @@ def test_ui_prefs_reads_logged_in_user_and_caches(monkeypatch):
         forge_op = _user(db, username="forge_op")
         forge_op.ui_theme = "forge"
         forge_op.ui_icon_style = "thin"
+        forge_op.ui_button_style = "glass"
+        forge_op.ui_loader_style = "ring"
+        forge_op.ui_chip_style = "marker"
         teal_op = _user(db, username="teal_op")
         db.commit()
 
@@ -88,15 +105,17 @@ def test_ui_prefs_reads_logged_in_user_and_caches(monkeypatch):
 
     req = _request(forge_op.id)
     prefs = deps_mod.ui_prefs(req)
-    assert prefs == {"theme": "forge", "icons": "thin"}
+    assert prefs == {"theme": "forge", "icons": "thin", "buttons": "glass",
+                     "loader": "ring", "chips": "marker"}
     # кеш на request.state: другий виклик не ходить у БД
     monkeypatch.setattr(deps_mod, "SessionLocal", lambda: (_ for _ in ()).throw(AssertionError("no cache")))
     assert deps_mod.ui_prefs(req) is prefs
 
     monkeypatch.setattr(deps_mod, "SessionLocal", lambda: Session(engine))
-    assert deps_mod.ui_prefs(_request(teal_op.id)) == {"theme": "", "icons": ""}
+    canon = {"theme": "", "icons": "", "buttons": "", "loader": "", "chips": ""}
+    assert deps_mod.ui_prefs(_request(teal_op.id)) == canon
     # без сесії — канон, без падіння
-    assert deps_mod.ui_prefs(_request(None)) == {"theme": "", "icons": ""}
+    assert deps_mod.ui_prefs(_request(None)) == canon
 
 
 def test_base_html_renders_theme_attrs_on_html_tag():
@@ -110,7 +129,10 @@ def test_base_html_renders_theme_attrs_on_html_tag():
     def _render(theme, icons):
         req = _Req(
             session={},
-            state=SimpleNamespace(ui_prefs_cache={"theme": theme, "icons": icons}),
+            state=SimpleNamespace(ui_prefs_cache={
+                "theme": theme, "icons": icons,
+                "buttons": "", "loader": "", "chips": "",
+            }),
             url_for=lambda *a, **k: "/",
         )
         return tpl.render(request=req, toast_flash=None)

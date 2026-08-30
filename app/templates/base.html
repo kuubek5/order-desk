@@ -2,7 +2,7 @@
 {# Тема/іконки оператора — атрибутами прямо в HTML (без JS і мигтіння).
    Атрибути МУСЯТЬ жити на <html>, не на body — див. theme-forge.css. #}
 {% set _up = ui_prefs(request) %}
-<html lang="uk"{% if _up.theme %} data-theme="{{ _up.theme }}"{% endif %}{% if _up.icons %} data-icons="{{ _up.icons }}"{% endif %}>
+<html lang="uk"{% if _up.theme %} data-theme="{{ _up.theme }}"{% endif %}{% if _up.icons %} data-icons="{{ _up.icons }}"{% endif %}{% if _up.buttons %} data-buttons="{{ _up.buttons }}"{% endif %}{% if _up.loader %} data-loader="{{ _up.loader }}"{% endif %}{% if _up.chips %} data-chips="{{ _up.chips }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -36,6 +36,7 @@
        тому місце в каскаді некритичне — але тримаємо останньою для ясності. #}
     <link rel="stylesheet" href="/static/css/theme-forge.css?v={{ static_ver('css/theme-forge.css') }}">
     <link rel="stylesheet" href="/static/css/icon-styles.css?v={{ static_ver('css/icon-styles.css') }}">
+    <link rel="stylesheet" href="/static/css/element-styles.css?v={{ static_ver('css/element-styles.css') }}">
     <script src="/static/js/app.js?v={{ static_ver('js/app.js') }}" defer></script>
     <script src="/static/js/queue.js?v={{ static_ver('js/queue.js') }}" defer></script>
     <script src="/static/js/mail.js?v={{ static_ver('js/mail.js') }}" defer></script>
