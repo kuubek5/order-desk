@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -21,6 +22,9 @@ from app.parser import HEADER_ROWS, OrderRow
 # that handles cleared rows. The grey row FILL is the second marker for the
 # same thing (batch blocks whose D column is empty) — see sync_tab's row_fills.
 NON_QUEUE_KINDS = {"слм", "cлм", "елайнери", "моделі", "сканування", "моделювання"}
+
+
+logger = logging.getLogger(__name__)
 
 
 def _is_non_queue_row(row: OrderRow, row_fills: dict[int, str] | None) -> bool:
@@ -475,7 +479,30 @@ def sync_tab(
             else:
                 was = (existing.work_order_no or "").strip()
                 now_in_sheet = (fields.get("work_order_no") or "").strip()
-            if now_in_sheet and now_in_sheet != was:
+            if now_in_sheet and now_in_sheet == was:
+                # ТА САМА робота стоїть у таблиці, а замовлення в архіві. Так
+                # виглядає помилкова архівація (обірване читання, разовий збій
+                # кольорів): бойовий випадок 30.08.26 — синк одним тіком
+                # заархівував 17 клієнтських робіт, які нікуди з таблиці не
+                # зникали, і жоден наступний синк їх не повертав, бо ця гілка
+                # воскрешала лише ІНШУ роботу.
+                # Умова «інша робота» існувала через гонку з фоновим бланкером
+                # (видалення з CRM чистить рядок таблиці у фоні, і синк встигав
+                # прочитати ще не почищений рядок). Тому воскрешаємо ту саму
+                # роботу ЛИШЕ коли архівації більше 10 хвилин: бланкінг за цей
+                # час давно завершився б, отже робота в таблиці — це правда, а
+                # не хвіст видалення.
+                archived_for = datetime.utcnow() - existing.archived_at
+                if archived_for > timedelta(minutes=10):
+                    existing.archived_at = None
+                    session.add(
+                        StatusEvent(
+                            order_id=existing.id, status=existing.status, actor="sync",
+                            note="рядок і далі в таблиці — повернуто з архіву",
+                        )
+                    )
+                    changed = True
+            elif now_in_sheet and now_in_sheet != was:
                 # A genuinely different work now occupies this row — reset the
                 # revived order to the NEW work's shape completely, don't merge.
                 # Merging left the old kind's fields behind: a deleted CLIENT row
@@ -595,28 +622,53 @@ def sync_tab(
     # manual sync in that window skipped it.
     grace_cutoff = datetime.utcnow() - timedelta(seconds=deletion_grace_seconds)
     if had_raw_rows:
-        for order in tab_orders:
-            # "Matched" beats "its number is present": after a row above it was
-            # deleted, a vanished order's OLD number is occupied by the row that
-            # shifted up, so presence of the number proves nothing.
-            if order.id is not None and order.id in matched_ids:
-                continue
-            if order.source not in ("lab", "sheet_client"):
-                continue
-            if (
-                deletion_grace_seconds > 0
-                and order.created_at is not None
-                and order.created_at > grace_cutoff
-            ):
-                continue
-            if order.archived_at is not None:
-                continue  # already archived — don't re-stamp on every sync
-            # Keep, don't delete: a row cleared/removed in the sheet leaves the
-            # working queue but is preserved for the Archive (the lab prunes old
-            # rows/tabs for space, which must never lose our copy). Aged-out
-            # active orders drop from the queue by date; this marks the ones
-            # removed EARLY, before they would have aged out.
-            order.archived_at = datetime.utcnow()
-            result.deleted += 1
+        # ЗАПОБІЖНИК ВІД МАСОВОЇ АРХІВАЦІЇ. Техніки чистять рядки по одному-два;
+        # коли за один тік «зникає» чверть вкладки — це майже напевно не
+        # видалення, а погане читання (обірваний респонс, разовий збій
+        # заливок), і архівувати за ним означає зняти з черги живі роботи.
+        # Бойовий випадок 30.08.26: один тік заархівував 17 клієнтських робіт,
+        # які стояли в таблиці неторкані. Поріг: більше 5 робіт І більше 25%
+        # активних рядків вкладки — тік пропускає реконсиляцію видалень цілком
+        # і голосно пише про це в лог; справжнє масове чищення надолужить
+        # наступний тік, коли читання буде повним.
+        active = [
+            o for o in tab_orders
+            if o.source in ("lab", "sheet_client") and o.archived_at is None
+        ]
+        vanished = [
+            o for o in active
+            if not (o.id is not None and o.id in matched_ids)
+        ]
+        if len(vanished) > 5 and active and len(vanished) > 0.25 * len(active):
+            logger.warning(
+                "Синк %s: %d із %d рядків «зникли» за один тік — схоже на "
+                "обірване читання, архівацію пропущено (наступний повний тік "
+                "надолужить справжні видалення)",
+                sheet_tab, len(vanished), len(active),
+            )
+        else:
+            for order in tab_orders:
+                # "Matched" beats "its number is present": after a row above it
+                # was deleted, a vanished order's OLD number is occupied by the
+                # row that shifted up, so presence proves nothing.
+                if order.id is not None and order.id in matched_ids:
+                    continue
+                if order.source not in ("lab", "sheet_client"):
+                    continue
+                if (
+                    deletion_grace_seconds > 0
+                    and order.created_at is not None
+                    and order.created_at > grace_cutoff
+                ):
+                    continue
+                if order.archived_at is not None:
+                    continue  # already archived — don't re-stamp on every sync
+                # Keep, don't delete: a row cleared/removed in the sheet leaves
+                # the working queue but is preserved for the Archive (the lab
+                # prunes old rows/tabs for space, which must never lose our
+                # copy). Aged-out active orders drop from the queue by date;
+                # this marks the ones removed EARLY.
+                order.archived_at = datetime.utcnow()
+                result.deleted += 1
 
     return result

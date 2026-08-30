@@ -761,13 +761,17 @@ def test_deleted_work_stays_deleted_while_its_row_is_still_being_blanked():
     in flight. Resurrecting on presence alone bounced every delete straight
     back into the queue — the row still held the same наряд.
     """
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     session = make_session()
     order = Order(
         source="lab", sheet_tab="25.08.26", row_number=25,
         work_order_no="28393", material_color="1333", status="нове",
-        archived_at=datetime(2026, 8, 25, 9, 0, 0),
+        # СВІЖА архівація — саме так виглядає гонка з бланкером: видалили
+        # секунди тому, фоновий запис у таблицю ще летить. Стара дата тут
+        # означала б інший випадок — помилкову архівацію, яку синк тепер
+        # ПОВЕРТАЄ (див. тест нижче про 17 робіт).
+        archived_at=datetime.utcnow() - timedelta(seconds=30),
     )
     session.add(order)
     session.commit()
@@ -1208,3 +1212,73 @@ def test_clearing_naryad_on_an_active_lab_work_keeps_it_lab():
         assert order.sum3d_id == "12-01-45"
         assert order.archived_at is None
 
+
+
+def test_mistakenly_archived_work_returns_when_its_row_is_still_in_the_sheet():
+    """Бойовий випадок 30.08.26: один тік синку заархівував 17 клієнтських
+    робіт, які нікуди з таблиці не зникали (обірване читання), і ЖОДЕН
+    наступний синк їх не повертав — гілка воскресіння спрацьовувала лише коли
+    в рядку ІНША робота. Помилка ставала вічною.
+
+    Тепер та сама робота, що стоїть у таблиці при архівованому замовленні,
+    повертається з архіву — але лише коли архівації більше 10 хвилин, щоб не
+    зламати гонку з бланкером (попередній тест)."""
+    from datetime import datetime, timedelta
+
+    session = make_session()
+    order = Order(
+        source="sheet_client", sheet_tab="27.08.26", row_number=61,
+        client_name="Неда", material_color="mono a2", quantity="2",
+        status="нове",
+        archived_at=datetime.utcnow() - timedelta(hours=2),
+    )
+    session.add(order)
+    session.commit()
+
+    sync_tab(session, "27.08.26", [make_row(
+        row_number=61, work_order_no="", material_color="mono a2",
+        kind="Неда", quantity="2", job_code="", sum3d_id="",
+        calculated="", milled="", technician_name="",
+    )])
+    session.commit()
+
+    revived = session.get(Order, order.id)
+    assert revived.archived_at is None, "робота, що стоїть у таблиці, не має жити в архіві"
+    assert revived.client_name == "Неда"
+
+
+def test_one_bad_read_cannot_archive_a_quarter_of_the_tab():
+    """Другий кінець того ж бойового випадку: техніки чистять рядки по
+    одному-два, а «зникнення» чверті вкладки за один тік — це майже напевно
+    погане читання. Такий тік мусить пропустити архівацію цілком і голосно
+    сказати про це, а не зняти з черги живі роботи."""
+    session = make_session()
+    for i in range(20):
+        session.add(Order(
+            source="lab", sheet_tab="27.08.26", row_number=10 + i,
+            work_order_no=str(29000 + i), material_color="mono a3", status="нове",
+        ))
+    session.commit()
+
+    # «Читання» повернуло лише перші 8 рядків із 20 — обрив на середині.
+    partial = [make_row(
+        row_number=10 + i, work_order_no=str(29000 + i), material_color="mono a3",
+        kind="анатомія", quantity="1", job_code="", sum3d_id="",
+        calculated="", milled="",
+    ) for i in range(8)]
+    result = sync_tab(session, "27.08.26", partial, deletion_grace_seconds=0)
+    session.commit()
+
+    assert result.deleted == 0, "масове зникнення не має архівувати нікого"
+    still_active = session.query(Order).filter(Order.archived_at.is_(None)).count()
+    assert still_active == 20
+
+    # А звичайне точкове видалення (1 рядок із 20) працює як і працювало.
+    normal = [make_row(
+        row_number=10 + i, work_order_no=str(29000 + i), material_color="mono a3",
+        kind="анатомія", quantity="1", job_code="", sum3d_id="",
+        calculated="", milled="",
+    ) for i in range(19)]
+    result = sync_tab(session, "27.08.26", normal, deletion_grace_seconds=0)
+    session.commit()
+    assert result.deleted == 1
