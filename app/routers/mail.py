@@ -822,6 +822,20 @@ def redownload_email_attachments(
         )
         return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
 
+    # Файли клієнта часто приїздять у ZIP/RAR, і на диску живуть уже
+    # РОЗПАКОВАНІ. Повторне скачування тягне з пошти сам архів — без цього
+    # кроку кнопка повертала б архів замість робочих STL, і оператору
+    # довелось би окремо шукати «Розпакувати». Те саме вже робить скачування
+    # за посиланням, тож поведінка збігається.
+    if saved and any(is_archive(a.filename) for a in email.attachments):
+        try:
+            extracted, extract_errors = extract_archive_attachments(db, email)
+            if extracted or extract_errors:
+                db.commit()
+        except Exception:  # noqa: BLE001 — розпакування не має ламати панель
+            logger.exception("Розпакування після повторного скачування, лист %s", email.id)
+            db.rollback()
+
     if removed and not saved:
         # Лист на сервері вже без вкладень (їх видалили і там) — сказати прямо,
         # інакше порожня панель виглядає як зламана кнопка.

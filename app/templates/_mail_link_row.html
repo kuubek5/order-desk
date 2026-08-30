@@ -9,9 +9,9 @@
      hx-trigger="click, keyup[key=='Enter'], keyup[key==' '], dl-all from:body"
      hx-target="this" hx-swap="outerHTML"
      hx-disabled-elt="this"
-     role="button" tabindex="0" title="Скачати цей файл">
+     role="button" tabindex="0" title="{% if link_status in ('done', 'skip', 'handled') %}Скачати ще раз{% else %}Скачати цей файл{% endif %}">
     <span class="link-ic" aria-hidden="true">
-        {% if link_status in ('done', 'skip') %}
+        {% if link_status in ('done', 'skip', 'handled') %}
         <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
         {% elif link_status == 'error' %}
         <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -20,7 +20,8 @@
         {% endif %}
     </span>
     <span class="name mono">{{ result_name or link.display }}</span>
-    {% if link_status == 'skip' %}<span class="link-note">вже є</span>{% endif %}
+    {% if link_status == 'skip' %}<span class="link-note">такий файл уже є серед вкладень</span>{% endif %}
+    {% if link_status == 'handled' %}<span class="link-note">опрацьовано</span>{% endif %}
     {% if link_status == 'error' %}<span class="link-note err">{{ link_message }}</span>{% endif %}
     <span class="link-spin1 htmx-indicator" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg>

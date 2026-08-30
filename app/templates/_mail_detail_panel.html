@@ -216,7 +216,7 @@
                     </button>
                     {% endif %}
                     {% if on_disk_count %}
-                    <button type="button" class="btn sm accent-outline"
+                    <button type="button" class="btn accent-outline"
                             hx-post="/mail/{{ email.id }}/open-folder"
                             hx-swap="none"
                             hx-on::after-request="if(event.detail.successful){showToast('Відкрито папку у Провіднику','success')}else{showToast('Не вдалося відкрити папку зі скачаними файлами','error')}">
@@ -232,10 +232,20 @@
             {# Files the client attached as SHARE LINKS (Gmail/Drive, ukr.net eDisk)
                instead of MIME parts — downloadable on demand into the letter. #}
             <div class="dsec">
-                <div class="dlabel">Файли за посиланням · {{ body_links|length }}</div>
+                {# Рахуємо ПОСИЛАННЯ, а не файли — і кажемо це прямо. Заголовок
+                   «Файли за посиланням · 1» біля «Вкладення · 4» читався як
+                   «4 + 1 = 5 файлів», хоча посилання цілком може вести на той
+                   самий файл, що вже лежить у вкладеннях (тоді воно
+                   пропускається, і п'ятого файлу не з'являється). #}
+                <div class="dlabel">Посилання в листі · {{ body_links|length }}</div>
                 <div class="linklist">
                     {% for link in body_links %}
-                    {% set link_status = 'skip' if (link.file_id or link.url) in handled_link_refs else '' %}
+                    {# 'handled' ≠ 'skip': перше означає «це посилання вже
+                       опрацьоване» (файл або скачався, або виявився дублем),
+                       друге — живу відповідь «саме зараз пропущено, бо такий
+                       файл уже є». Один підпис на два стани й давав рахунок
+                       «4 + 1», який не сходився з текою. #}
+                    {% set link_status = 'handled' if (link.file_id or link.url) in handled_link_refs else '' %}
                     {% include "_mail_link_row.html" %}
                     {% endfor %}
                 </div>
