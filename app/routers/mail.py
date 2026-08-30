@@ -476,7 +476,22 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
     return context
 
 
-def _files_changed_response(response, email: EmailMessage, extra: dict | None = None):
+def _attachment_count(db: Session | None, email: EmailMessage) -> int:
+    if db is None:
+        return len(email.attachments)
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(Attachment)
+            .where(Attachment.email_message_id == email.id)
+        )
+        or 0
+    )
+
+
+def _files_changed_response(
+    response, email: EmailMessage, extra: dict | None = None, db: Session | None = None
+):
     """Сказати екрану, що склад файлів листа змінився.
 
     Рядок у списку тріажу несе `hx-preserve`, тому 15-секундний полл його НЕ
@@ -489,7 +504,12 @@ def _files_changed_response(response, email: EmailMessage, extra: dict | None = 
     triggers = dict(extra or {})
     triggers["mailFilesChanged"] = {
         "id": email.id,
-        "count": len(email.attachments),
+        # Рахуємо ЗАПИТОМ, а не по email.attachments: сесія створена з
+        # expire_on_commit=False, тож після коміту (розпакування архіву міняє
+        # склад вкладень) колекція лишається старою. Список писав 4 файли там,
+        # де панель уже показувала 3 — два числа про одне на одному екрані.
+        # Спіймано живим прогоном повного циклу, не тестом.
+        "count": _attachment_count(db, email),
     }
     # ensure_ascii ОБОВ'ЯЗКОВО за замовчуванням (True): значення HTTP-заголовка
     # мусить бути latin-1, а тости тут українською — з ensure_ascii=False роут
@@ -590,7 +610,7 @@ def fetch_email_link(
     if status in ("done", "skip"):
         db.refresh(email)
         return _files_changed_response(
-            response, email, {"toast": toast} if toast is not None else None
+            response, email, {"toast": toast} if toast is not None else None, db=db
         )
     if toast is not None:
         response.headers["HX-Trigger"] = json.dumps({"toast": toast})
@@ -628,7 +648,7 @@ def extract_mail_archives(request: Request, email_id: int, db: Session = Depends
         toast = {"message": "Архівів для розпакування немає", "kind": "info"}
     # Розпакування міняє склад файлів найпомітніше: архів зникає, на його місці
     # з'являються кілька STL. Рядок у списку мусить дізнатись нове число.
-    return _files_changed_response(response, email, {"toast": toast})
+    return _files_changed_response(response, email, {"toast": toast}, db=db)
 
 
 def _lab_material_colors(db: Session) -> list[str]:
@@ -813,7 +833,7 @@ def download_email_attachments(
         return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
     context = _mail_panel_context(db, email, user)
     return _files_changed_response(
-        templates.TemplateResponse(request, "_mail_detail_panel.html", context), email
+        templates.TemplateResponse(request, "_mail_detail_panel.html", context), email, db=db
     )
 
 
@@ -857,6 +877,12 @@ def redownload_email_attachments(
             extracted, extract_errors = extract_archive_attachments(db, email)
             if extracted or extract_errors:
                 db.commit()
+                # Перечитати ОБОВ'ЯЗКОВО: розпакування міняє склад вкладень
+                # (архів зникає, з нього з'являються файли), і без цього число
+                # у тригері рахувалось по застарілій колекції — список писав
+                # 5 файлів там, де панель уже показувала 4. Спіймано живим
+                # прогоном повного циклу, не тестом.
+                db.refresh(email)
         except Exception:  # noqa: BLE001 — розпакування не має ламати панель
             logger.exception("Розпакування після повторного скачування, лист %s", email.id)
             db.rollback()
@@ -869,7 +895,7 @@ def redownload_email_attachments(
     else:
         context = _mail_panel_context(db, email, user)
     return _files_changed_response(
-        templates.TemplateResponse(request, "_mail_detail_panel.html", context), email
+        templates.TemplateResponse(request, "_mail_detail_panel.html", context), email, db=db
     )
 
 
