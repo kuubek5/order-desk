@@ -679,3 +679,83 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
   font-weight:700;
 }
 .acc-theme-btn[aria-pressed="true"]:hover{filter:brightness(1.06)}
+
+/* ── Кабінет оператора: вузька колонка + прев'ю оформлення (30.08.26) ──────
+   Було: main.setv2 центрований на 960px, а .setv2-stack усередині — 26rem
+   БЕЗ margin:auto, тобто картки притиснуті до лівого краю, і 500+ px порожнечі
+   праворуч. Заголовок при цьому жив поза стеком і мав інший оптичний центр.
+   Тепер колонку звужено й центровано цілком — саме це читається як
+   «посередині», а не text-align на заголовку (той розвів би краї).
+
+   Скоуплено під .setv2-narrow: на .setv2 їздять ще налаштування, майстер
+   першого запуску й журнал — їм широка сітка потрібна. */
+main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
+.setv2-narrow h1{margin:0 0 var(--space-1)}
+.setv2-narrow .acc-sub{margin:0 0 var(--space-5);font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.setv2-narrow .acc-sub strong{color:var(--ink);font-weight:600}
+.setv2-narrow .setv2-stack{max-width:none;gap:var(--space-3)}
+
+/* Один ритм: інтервали задає gap картки, margin'и дітей обнулені. До цього на
+   одному екрані жили 14/16/18/20/22/30 px — сума gap і власних margin. */
+.setv2-narrow .settings-group{gap:var(--space-3);padding:var(--space-4)}
+.setv2-narrow .settings-group > h2{margin:0}
+.setv2-narrow .settings-help{margin:0}
+.setv2-narrow .settings-field{margin-bottom:0;gap:var(--space-2)}
+.setv2-narrow .settings-form{gap:var(--space-3);margin-top:0}
+.setv2-narrow .settings-submit{margin-top:var(--space-1)}
+.setv2-narrow .settings-group > h2 + .settings-help{margin-top:calc(-1 * var(--space-2))}
+
+/* Підписи полів були капсом із трекінгом (успадкований text-transform), а
+   заголовки карток — у реченнєвому регістрі: дві типографські мови поруч. */
+.setv2-narrow .settings-field > label{text-transform:none;letter-spacing:normal}
+
+/* Банер «збережено» лишався position:fixed і відлітав у правий верхній кут —
+   за півекрана від поля, яке зберігали. */
+.setv2-narrow .settings-success{position:static;margin:0 0 var(--space-3)}
+
+/* Вихід зі зміни — поза стеком, за розділювачем: дія завершує сеанс, а
+   виглядала як четверта рядова картка списку. */
+.acc-endzone{margin-top:var(--space-5);padding-top:var(--space-4);border-top:1px solid var(--line);
+  display:flex;flex-direction:column;gap:var(--space-2)}
+
+/* ── Прев'ю теми ──────────────────────────────────────────────────────────
+   Плитка — мініатюра черги з рейкою: це екран, де оператор проводить 90%
+   часу, і кружечок кольору не показав би головного. Палітру плитці дає
+   .thsw[data-pal] у tokens.css / theme-forge.css. Усередині дозволені лише
+   БАЗОВІ токени — похідні (--pri-bd, --sec-bg з treatment-a.css) обчислені
+   на :root і темі плитки не піддаються. */
+.setv2 .acc-theme-row{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}
+.setv2 .acc-icons-row{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-2)}
+.setv2 .acc-swatch{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2);
+  border:1px solid var(--line-2);border-radius:var(--r-card);background:var(--card-2);
+  color:var(--ink);font:inherit;font-size:12.5px;cursor:pointer;text-align:left;
+  transition:border-color .15s ease,box-shadow .15s ease}
+.setv2 .acc-swatch:hover{border-color:var(--control-edge)}
+.setv2 .acc-swatch:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+/* Активний стан — кільце, а не заливка: суцільний акцент з'їв би мініатюру. */
+.setv2 .acc-swatch[aria-pressed="true"]{border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent), 0 0 0 5px rgba(var(--accent-rgb), .14)}
+.setv2 .acc-swatch-name{padding-left:2px}
+.setv2 .acc-swatch[aria-pressed="true"] .acc-swatch-name{color:var(--accent-c);font-weight:600}
+
+.thsw{display:flex;height:86px;border-radius:calc(var(--r-card) - 3px);overflow:hidden;
+  background:var(--bg);border:1px solid var(--line)}
+.thsw-rail{flex:0 0 22px;background:var(--bg-rail);display:flex;flex-direction:column;gap:5px;padding:7px 5px}
+.thsw-rail i{height:3px;border-radius:2px;background:var(--line-2)}
+.thsw-rail i:first-child{background:var(--accent)}
+.thsw-body{flex:1;display:flex;flex-direction:column;gap:4px;padding:7px}
+.thsw-head{height:4px;width:46%;border-radius:2px;background:var(--ink-3);opacity:.6}
+.thsw-row{display:flex;align-items:center;gap:5px;padding:3px 5px;border-radius:3px;
+  background:var(--card);border:1px solid var(--line)}
+.thsw-row b{font-family:var(--font-mono);font-size:8.5px;font-weight:500;color:var(--ink)}
+.thsw-mat{width:2px;align-self:stretch;border-radius:1px;background:var(--accent-b);opacity:.75}
+.thsw-chip{margin-left:auto;width:16px;height:5px;border-radius:999px;
+  background:rgba(var(--accent-rgb), .22);border:1px solid rgba(var(--accent-rgb), .4)}
+.thsw-row.is-sel{border-color:var(--accent);background:var(--card-2)}
+
+/* Прев'ю іконок */
+.setv2 .acc-swatch.is-icon{align-items:center;text-align:center;gap:var(--space-1);
+  padding:var(--space-3) var(--space-2)}
+.icsw{display:grid;place-items:center;width:34px;height:34px;color:var(--ink)}
+.icsw svg{width:24px;height:24px}
+.setv2 .acc-swatch.is-icon[aria-pressed="true"] .icsw{color:var(--accent-c)}

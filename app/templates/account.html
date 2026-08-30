@@ -11,8 +11,12 @@
 {% set topbar_active = 'account' %}
 {% include "_topbar_nav.html" %}
 
-<main class="setv2">
+{# setv2-narrow: одна вузька колонка, центрована в контентній області.
+   Клас окремий, бо на .setv2 їздять ще налаштування, майстер і журнал —
+   їм широка сітка потрібна. #}
+<main class="setv2 setv2-narrow">
     <h1>Мій обліковий запис</h1>
+    <p class="acc-sub">Ви увійшли як <strong>{{ user.full_name or user.username }}</strong>{% if user.sheet_initial %} · літера <span class="acc-letter">{{ user.sheet_initial }}</span>{% endif %}.</p>
 
     {% if saved %}
     <div class="settings-success">
@@ -30,7 +34,7 @@
     <div class="card settings-group">
         <h2>Моя літера</h2>
         <p class="settings-help">Додається в колонку «Прорахував», коли ви вписуєте Sum3D. 1–2 літери, унікальна.</p>
-        <form method="post" action="/account/initial" class="settings-form" style="margin-top: 0;">
+        <form method="post" action="/account/initial" class="settings-form">
             <div class="settings-field">
                 <label for="sheet_initial">Літера</label>
                 <div class="login-glow">
@@ -46,7 +50,7 @@
 
     <div class="card settings-group">
         <h2>Змінити пароль</h2>
-        <form method="post" action="/account/password" class="settings-form" style="margin-top: 0;">
+        <form method="post" action="/account/password" class="settings-form">
             <div class="settings-field">
                 <label for="current_password">Поточний пароль</label>
                 <div class="login-glow">
@@ -89,35 +93,63 @@
 
     <div class="card settings-group">
         <h2>Оформлення</h2>
-        <p class="settings-help">Зберігається на вашому обліковому записі: під ким увійшли — так і виглядає.</p>
+        <p class="settings-help">Зберігається на вашому обліковому записі й застосовується одразу — окремої кнопки немає.</p>
+
+        {# Кожна кнопка теми несе мініатюру черги, намальовану СВОЄЮ палітрою:
+           .thsw[data-pal] оголошує токени на самій плитці (див. tokens.css і
+           theme-forge.css), тому бурштиновий зразок видно ще до перемикання. #}
         <div class="settings-field">
             <label>Тема</label>
             <div class="acc-theme-row" role="group" aria-label="Тема інтерфейсу">
-                <button type="button" class="btn acc-theme-btn" data-set-theme="">Бірюзовий пульт</button>
-                <button type="button" class="btn acc-theme-btn" data-set-theme="forge">Amber Forge</button>
+                {% for pal, value, title in [('teal', '', 'Бірюзовий пульт'), ('forge', 'forge', 'Amber Forge')] %}
+                <button type="button" class="acc-swatch acc-theme-btn" data-set-theme="{{ value }}">
+                    <span class="thsw" data-pal="{{ pal }}" aria-hidden="true">
+                        <span class="thsw-rail"><i></i><i></i><i></i></span>
+                        <span class="thsw-body">
+                            <span class="thsw-head"></span>
+                            <span class="thsw-row"><i class="thsw-mat"></i><b>17-55-28</b><i class="thsw-chip"></i></span>
+                            <span class="thsw-row"><i class="thsw-mat"></i><b>12-01-45</b><i class="thsw-chip"></i></span>
+                            <span class="thsw-row is-sel"><i class="thsw-mat"></i><b>09-14-02</b><i class="thsw-chip"></i></span>
+                        </span>
+                    </span>
+                    <span class="acc-swatch-name">{{ title }}</span>
+                </button>
+                {% endfor %}
             </div>
         </div>
+
+        {# Та сама іконка в кожному стилі — різницю видно на самій кнопці.
+           Іконка мусить мати шар .duo, інакше «Дуотон» і «Заливка» не
+           відрізнятимуться від канону. #}
         <div class="settings-field">
             <label>Іконки</label>
-            <div class="acc-theme-row" role="group" aria-label="Стиль іконок">
-                <button type="button" class="btn acc-icons-btn" data-set-icons="">Канон</button>
-                <button type="button" class="btn acc-icons-btn" data-set-icons="thin">Тонкі</button>
-                <button type="button" class="btn acc-icons-btn" data-set-icons="duo">Дуотон</button>
-                <button type="button" class="btn acc-icons-btn" data-set-icons="fill">Заливка</button>
-                <button type="button" class="btn acc-icons-btn" data-set-icons="bold">Жирні</button>
-                <button type="button" class="btn acc-icons-btn" data-set-icons="neon">Неон</button>
+            <div class="acc-icons-row" role="group" aria-label="Стиль іконок">
+                {% for value, title in [('', 'Канон'), ('thin', 'Тонкі'), ('duo', 'Дуотон'), ('fill', 'Заливка'), ('bold', 'Жирні'), ('neon', 'Неон')] %}
+                <button type="button" class="acc-swatch is-icon acc-icons-btn" data-set-icons="{{ value }}">
+                    <span class="icsw" data-icons-sample="{{ value }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="3.5" cy="6" r="1.2" class="duo"/><circle cx="3.5" cy="12" r="1.2" class="duo"/><circle cx="3.5" cy="18" r="1.2" class="duo"/>
+                            <path d="M8 6h13M8 12h13M8 18h13"/>
+                            <circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/>
+                        </svg>
+                    </span>
+                    <span class="acc-swatch-name">{{ title }}</span>
+                </button>
+                {% endfor %}
             </div>
         </div>
     </div>
 
-    <div class="card settings-group">
-        <h2>Зміна</h2>
-        <p class="acc-who">Ви увійшли як <strong>{{ user.full_name or user.username }}</strong>{% if user.sheet_initial %} · літера <span class="acc-letter">{{ user.sheet_initial }}</span>{% endif %}.</p>
+    </div>
+
+    {# Завершення сеансу — поза стеком карток і за розділювачем: це не ще одне
+       налаштування в списку, а вихід із застосунку. #}
+    <div class="acc-endzone">
         <p class="settings-help">Завершили роботу — вийдіть, щоб наступний оператор увійшов у свій обліковий запис.</p>
         <form method="post" action="/logout">
             <button type="submit" class="login-submit settings-submit acc-endshift">Закінчити зміну</button>
         </form>
-    </div>
     </div>
 </main>
 {% endblock %}

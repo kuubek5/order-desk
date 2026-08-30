@@ -55,3 +55,36 @@ html[data-icons="neon"] svg[viewBox="0 0 24 24"] {
   stroke-width: 1.75;
   filter: drop-shadow(0 0 3px rgba(var(--accent-rgb), 0.85));
 }
+
+/* ── Прев'ю стилів у кабінеті (/account) ──────────────────────────────────
+   Тут стиль задає САМА плитка (.icsw[data-icons-sample]), а не <html>:
+   інакше всі шість кнопок показували б поточний вибір і порівнювати було б
+   нічого.
+
+   Специфічність: .icsw[data-icons-sample] svg[viewBox] * = (0,3,1) проти
+   html[data-icons=…] svg[viewBox] * = (0,2,2) — локальне правило виграє.
+   Скидання йде ПЕРШИМ: у нього рівна вага з конкретними правилами нижче,
+   тож вирішує порядок у файлі. Порядок не міняти. */
+.icsw[data-icons-sample] svg[viewBox="0 0 24 24"] .duo { display: none; }
+.icsw[data-icons-sample] svg[viewBox="0 0 24 24"],
+.icsw[data-icons-sample] svg[viewBox="0 0 24 24"] * {
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; filter: none;
+}
+
+.icsw[data-icons-sample="thin"] svg[viewBox="0 0 24 24"],
+.icsw[data-icons-sample="thin"] svg[viewBox="0 0 24 24"] * {
+  stroke-width: 1.4; stroke-linecap: square; stroke-linejoin: miter;
+}
+.icsw[data-icons-sample="duo"] svg[viewBox="0 0 24 24"] .duo {
+  display: inline; fill: currentColor; fill-opacity: .16; stroke: none;
+}
+.icsw[data-icons-sample="fill"] svg[viewBox="0 0 24 24"] .duo {
+  display: inline; fill: currentColor; fill-opacity: .55; stroke: none;
+}
+.icsw[data-icons-sample="bold"] svg[viewBox="0 0 24 24"],
+.icsw[data-icons-sample="bold"] svg[viewBox="0 0 24 24"] * { stroke-width: 2.6; }
+/* neon бере --accent-rgb активної теми — правильно: стиль іконок і тема
+   ортогональні, зразок показує штрих, а не колір. */
+.icsw[data-icons-sample="neon"] svg[viewBox="0 0 24 24"] {
+  stroke-width: 1.75; filter: drop-shadow(0 0 3px rgba(var(--accent-rgb), .85));
+}
