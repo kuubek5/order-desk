@@ -11,7 +11,6 @@ GET /docs/oauth2-redirect
 GET /furnaces
 GET /furnaces/cards
 GET /furnaces/side
-GET /furnaces/strip
 GET /furnaces/{key}/crop/{name}.png
 GET /furnaces/{key}/frame.png
 GET /handout

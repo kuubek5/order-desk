@@ -468,42 +468,6 @@ def test_card_reports_when_the_poller_itself_went_quiet():
     assert service.FurnaceCard(target=_target(), state=None).stale(now=now) is False
 
 
-def test_queue_strip_is_returned_even_with_no_furnaces(monkeypatch):
-    """Порожня обгортка — не косметика. Якби роут повертав нічого, елемент
-    зник би з DOM разом зі своїм поллом, і після налаштування печей смуга вже
-    ніколи б не проступила без перезавантаження сторінки."""
-    from app.routers import furnace as router
-
-    _capture_context(monkeypatch)
-    with Session(_database()) as db:
-        user = User(username="op", password_hash="x", full_name="Оп")
-        db.add(user)
-        db.commit()
-        context = router.furnaces_strip(_request(user.id), db)
-        assert context["furnace_cards"] == []
-
-
-def test_queue_page_renders_the_strip_outside_the_polled_rows():
-    """Сторож розкладки: смуга мусить лежати ВИЩЕ `.worklayout`, тобто поза
-    `#queue-rows`, який свапає 15-секундний полл черги. Усередині вона
-    зникала б на кожному тіку — та сама пастка, що з карткою зміни."""
-    from pathlib import Path
-
-    html = (Path("app/templates/queue.html")).read_text(encoding="utf-8")
-    assert '_furnace_strip.html' in html
-    assert html.index('_furnace_strip.html') < html.index('<div class="worklayout">')
-
-
-def test_strip_shows_the_moment_not_the_countdown():
-    """Головне число смуги — момент («о 17:41»), а не залишок: сторінка живе
-    між поллами, і «26:59» на ній протухає щосекунди, а момент лишається
-    правдою."""
-    from pathlib import Path
-
-    html = (Path("app/templates/_furnace_strip.html")).read_text(encoding="utf-8")
-    assert "done_at.strftime('%H:%M')" in html
-
-
 def test_done_at_is_kyiv_time_not_the_machine_clock():
     """Оператор звіряє «відкриється о 17:54» з годинником на стіні. Якщо ПК
     колись опиниться в іншому поясі (RDP, збитий годинник), число мусить
@@ -548,30 +512,6 @@ def test_collapsed_strip_still_answers_the_question():
 def test_empty_summary_says_nothing_rather_than_zero():
     summary = service.strip_summary([])
     assert summary.running == 0 and summary.nearest_text == ""
-
-
-def test_collapsed_state_lives_on_body_not_on_the_swapped_strip():
-    """Смуга свапається цілком кожні 30 с. Якби клас згортання жив на ній,
-    згорнута смуга сама розгорталася б через півхвилини."""
-    from pathlib import Path
-
-    css = Path("app/static/css/furnaces.css").read_text(encoding="utf-8")
-    js = Path("app/static/js/queue.js").read_text(encoding="utf-8")
-    base = Path("app/templates/base.html").read_text(encoding="utf-8")
-
-    assert "body.furnace-collapsed .q2 .fu-strip-items{display:none}" in css
-    assert 'document.body.classList.toggle("furnace-collapsed")' in js
-    # Анти-мигтючий скрипт мусить ставити клас ДО першого малювання.
-    assert "furnaceStripCollapsed" in base
-
-
-def test_chip_order_is_temperature_then_time_left_then_opening():
-    """Порядок заданий власником і читається як речення. Тест сторожить саме
-    порядок, бо переставити рядки в шаблоні легко й непомітно."""
-    from pathlib import Path
-
-    html = Path("app/templates/_furnace_strip.html").read_text(encoding="utf-8")
-    assert html.index("fu-chip-temp") < html.index("fu-chip-left") < html.index("fu-chip-open")
 
 
 def test_shared_password_route_is_not_eaten_by_the_id_route():
@@ -730,41 +670,6 @@ def test_no_fabricated_progress_bar():
     assert "fu-tile-bar" not in tile.split("#}")[-1], "смужка повернулась у розмітку"
 
 
-def test_side_panel_and_strip_show_the_same_numbers(monkeypatch, tmp_path):
-    """Два ПОГЛЯДИ на один стан — нормально, два ДЖЕРЕЛА — ні: у цьому проєкті
-    два місця для одного значення вже одного разу розійшлись (furnace_hosts).
-
-    Порівнюємо ЧИСЛА в обох відрендерених фрагментах, а не імена локальних
-    змінних у джерелі роутів: попередня версія падала від перейменування
-    змінної й проходила, якщо контекст повертав не ті поля.
-    """
-    import re
-
-    from app.routers.deps import templates
-
-    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
-    monkeypatch.setattr(service, "capture", lambda host, *a, **k: _frame("run"))
-
-    with Session(_database()) as db:
-        _add_furnace(db, name="Бочка", host="192.168.1.76")
-        service.poll_target(db, service.FurnaceTarget(name="Бочка", host="192.168.1.76"), None)
-        cards = service.strip_cards(db)
-        ctx = {
-            "request": None,
-            "furnace_cards": cards,
-            "furnace_summary": service.strip_summary(cards),
-            "furnaces_configured": 1,
-            "furnaces_all_idle": service.all_idle(cards),
-        }
-        strip = templates.env.get_template("_furnace_strip.html").render(**ctx)
-        side = templates.env.get_template("_furnace_side.html").render(**ctx)
-
-    # Назва печі й температура мусять бути в обох, і однакові.
-    assert "Бочка" in strip and "Бочка" in side
-    temps = lambda html: set(re.findall(r"(\d+)°", html))
-    assert temps(strip) == temps(side), "температура розійшлась між смугою і плиткою"
-
-
 def test_empty_side_section_does_not_claim_furnaces_are_unconfigured(monkeypatch, tmp_path):
     """Порожній стан не має брехати. `strip_cards` свідомо не пускає ще не
     опитану піч, тому одразу після рестарту список порожній — і секція писала
@@ -817,20 +722,6 @@ def test_all_idle_refuses_to_say_everyone_is_free_when_one_is_silent(monkeypatch
 
         # А коли мовчазної немає — можна казати чесно.
         assert service.all_idle([c for c in cards if not c.has_problem]) is True
-
-
-def test_strip_and_tile_read_numbers_in_the_same_order():
-    """Порядок чисел заданий власником: температура → залишок → час відкриття.
-    Плитка в панелі колись міняла останні два місцями, і на одному екрані два
-    моноширинні числа, обидва схожі на час, читались у двох порядках."""
-    from pathlib import Path
-
-    strip = (Path("app/templates") / "_furnace_strip.html").read_text(encoding="utf-8")
-    # У чіпі смуги залишок несе .fu-chip-left, момент відкриття — .fu-chip-open.
-    assert strip.index("fu-chip-left") < strip.index("fu-chip-open")
-
-    side = (Path("app/templates") / "_furnace_side.html").read_text(encoding="utf-8")
-    assert side.index("ще <b") < side.index("відкриється <b")
 
 
 def test_unknown_glyph_is_never_guessed_as_another_digit():

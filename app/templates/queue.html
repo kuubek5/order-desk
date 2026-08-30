@@ -6,7 +6,10 @@
 {% block extra_head %}
 {# Стилі картки передачі зміни (.sh-card) — той самий файл, що й на /shift. #}
 <link rel="stylesheet" href="/static/css/shift.css?v={{ static_ver('css/shift.css') }}">
-{# Смуга печей над чергою (.fu-strip) — той самий файл, що й екран /furnaces. #}
+{# Стилі печей — для секції «Пічки» в бічній панелі (_furnace_side.html).
+   Смугу над чергою прибрано на прохання власника 30.08.26: стан печей
+   показувався у двох місцях одного екрана, і панель праворуч виявилась
+   зручнішою — вона згортається й не займає смугу над таблицею. #}
 <link rel="stylesheet" href="/static/css/furnaces.css?v={{ static_ver('css/furnaces.css') }}">
 {% endblock %}
 
@@ -102,9 +105,6 @@
        `#queue-rows`, який свапає 15-секундний полл. Пересунути всередину
        — і картка зникатиме на кожному тіку. #}
     {% include "_shift_card.html" %}
-    {# Печі. Тут же, вище `.worklayout` і поза `#queue-rows` — з тієї самої
-       причини, що й картка зміни вище. #}
-    {% include "_furnace_strip.html" %}
     {% include "_queue_sidebar.html" %}
 
     <div class="worklayout">
