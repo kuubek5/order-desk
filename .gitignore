@@ -44,3 +44,6 @@ refs_catalog/
 order_desk.db.bak_*
 .devlogin
 .devcookies
+
+# Залишки від перейменування бази й тимчасові копії
+*.db.stray-*

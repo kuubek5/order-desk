@@ -178,31 +178,59 @@ def matched_folders(matches: dict) -> dict[str, str]:
     }
 
 
-def handout_day_totals(db: Session, day) -> dict:
-    """Скільки робіт і одиниць у дні ВСЬОГО, разом із уже виданими.
+def handout_day_totals(db: Session, day, groups: list[dict]) -> dict:
+    """Скільки клієнтів, робіт і одиниць у дні ВСЬОГО, разом із уже виданими.
 
-    Лічильник у шапці рахувався по `client_groups`, а вони будуються з
-    `handout_eligible_orders`, який відкидає видане. Тобто знаменник ЗМЕНШУВАВСЯ
-    протягом дня: щойно клієнта видано, «1 / 34 кл.» ставало «0 / 33 кл.» —
-    лічильник їхав назад після успішної роботи, а «X од.» виглядало як обсяг
-    дня, хоча означало залишок. Саме те число, яке диктують керівництву.
+    Навіщо: лічильник у шапці рахувався по видимих групах, а вони будуються з
+    `handout_eligible_orders`, який відкидає видане. Тобто знаменник
+    ЗМЕНШУВАВСЯ протягом дня: щойно клієнта видано, «1 / 34 кл.» ставало
+    «0 / 33 кл.» — лічильник їхав назад після успішної роботи, а «X од.»
+    виглядало як обсяг дня, хоча означало залишок.
 
-    Тут рахуємо цілий день як він є: знаменник фіксований, чисельник росте.
+    Чисельник і знаменник МУСЯТЬ рахуватись з однієї множини. Тому:
+    - беремо ті самі роботи, що вже показані на екрані (`groups`), і додаємо до
+      них видані за цей день — а не читаємо таблицю заново з іншими фільтрами.
+      Інакше «3 / 11» могло б не зійтись у «11 / 11» ніколи: групи звужені за
+      джерелом і за retention-вікном, а окремий запит про це не знав;
+    - клієнта рахуємо за тим самим ключем, за яким зібрані картки
+      (`group["client_name"]`), а не за сирим `Order.client_name`;
+    - архівне не рахуємо взагалі: воно не з'явиться на екрані ніколи, а
+      знаменник із ним лишався б недосяжним.
     """
     if day is None:
         return {}
-    rows = db.scalars(
-        select(Order).where(Order.client_name.is_not(None))
-    ).all()
-    same_day = [o for o in rows if parse_sheet_tab(o.sheet_tab) == day]
-    issued = {"видано", "знайдено при видачі"}
+
+    shown_orders = [order for group in groups for order in group["orders"]]
+    shown_ids = {order.id for order in shown_orders}
+    shown_clients = {group["client_name"] for group in groups}
+
+    issued_statuses = ("видано", "знайдено при видачі")
+    issued = [
+        order
+        for order in db.scalars(
+            select(Order).where(
+                Order.client_name.is_not(None),
+                Order.status.in_(issued_statuses),
+                Order.archived_at.is_(None),
+            )
+        )
+        if order.id not in shown_ids and parse_sheet_tab(order.sheet_tab) == day
+    ]
+    if not groups and not issued:
+        return {}
+
+    # Клієнт «зроблений», коли на екрані його картка зібрана або його роботи
+    # цього дня всі вже видані.
+    done_clients = {g["client_name"] for g in groups if g["all_found"]}
+    issued_clients = {(o.client_name or "").strip() for o in issued} - shown_clients
+
     return {
-        "clients": len({o.client_name for o in same_day}),
-        "clients_done": len(
-            {o.client_name for o in same_day}
-            - {o.client_name for o in same_day if o.status not in issued}
-        ),
-        "works": len(same_day),
-        "works_done": sum(1 for o in same_day if o.status in issued),
-        "units": sum(quantity_units(o.quantity) for o in same_day),
+        "clients": len(shown_clients | issued_clients),
+        "clients_done": len(done_clients | issued_clients),
+        "works": len(shown_orders) + len(issued),
+        "works_done": sum(
+            1 for o in shown_orders if o.status in issued_statuses
+        ) + len(issued),
+        "units": sum(quantity_units(o.quantity) for o in shown_orders)
+        + sum(quantity_units(o.quantity) for o in issued),
     }

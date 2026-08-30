@@ -724,45 +724,93 @@ def test_progress_needs_both_halves_of_the_program():
     assert state.progress is None, "без «лишилось» тривалість невідома"
 
 
-def test_side_panel_and_strip_share_one_source(monkeypatch, tmp_path):
+def test_side_panel_and_strip_show_the_same_numbers(monkeypatch, tmp_path):
     """Два ПОГЛЯДИ на один стан — нормально, два ДЖЕРЕЛА — ні: у цьому проєкті
     два місця для одного значення вже одного разу розійшлись (furnace_hosts).
-    Секція в бічній панелі й смуга над чергою мусять годуватись з тих самих
-    функцій."""
-    import inspect
 
-    from app.routers import furnace as furnace_router
+    Порівнюємо ЧИСЛА в обох відрендерених фрагментах, а не імена локальних
+    змінних у джерелі роутів: попередня версія падала від перейменування
+    змінної й проходила, якщо контекст повертав не ті поля.
+    """
+    import re
 
-    side = inspect.getsource(furnace_router.furnaces_side)
-    strip = inspect.getsource(furnace_router.furnaces_strip)
-    for source in (side, strip):
-        assert "strip_cards(db)" in source
-        # Контекст будує спільний хелпер — саме він і є тим одним джерелом.
-        assert "_side_context(db, cards)" in source
-    shared = inspect.getsource(furnace_router._side_context)
-    assert "strip_summary(cards)" in shared
+    from app.routers.deps import templates
+
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    monkeypatch.setattr(service, "capture", lambda host, *a, **k: _frame("run"))
+
+    with Session(_database()) as db:
+        _add_furnace(db, name="Бочка", host="192.168.1.76")
+        service.poll_target(db, service.FurnaceTarget(name="Бочка", host="192.168.1.76"), None)
+        cards = service.strip_cards(db)
+        ctx = {
+            "request": None,
+            "furnace_cards": cards,
+            "furnace_summary": service.strip_summary(cards),
+            "furnaces_configured": 1,
+            "furnaces_all_idle": service.all_idle(cards),
+        }
+        strip = templates.env.get_template("_furnace_strip.html").render(**ctx)
+        side = templates.env.get_template("_furnace_side.html").render(**ctx)
+
+    # Назва печі й температура мусять бути в обох, і однакові.
+    assert "Бочка" in strip and "Бочка" in side
+    temps = lambda html: set(re.findall(r"(\d+)°", html))
+    assert temps(strip) == temps(side), "температура розійшлась між смугою і плиткою"
 
 
-def test_empty_side_section_does_not_claim_furnaces_are_unconfigured():
-    """Сторож на брехню порожнього стану: `strip_cards` свідомо не пускає ще
-    не опитану піч, тому одразу після рестарту список порожній. Секція писала
-    «Печей не налаштовано», хоча вони налаштовані — оператор ішов шукати
+def test_empty_side_section_does_not_claim_furnaces_are_unconfigured(monkeypatch, tmp_path):
+    """Порожній стан не має брехати. `strip_cards` свідомо не пускає ще не
+    опитану піч, тому одразу після рестарту список порожній — і секція писала
+    «Печей не налаштовано», хоча вони налаштовані: оператор ішов шукати
     проблему, якої немає, або додавав дубль печі.
 
-    Перевіряємо ОБИДВІ точки вставки: роут /furnaces/side і сторінку черги,
-    яка вкладає той самий партіал СВОЇМ контекстом (саме там поля й забули —
-    спіймано живою перевіркою, не тестом)."""
-    import inspect
+    Перевіряємо РЕНДЕР, а не наявність слова у джерелі роута. Попередня версія
+    цього тесту робила `inspect.getsource(get_queue)` і шукала підрядок — вона
+    б пройшла при перейменуванні ключа в шаблоні (тобто пропустила б саме ту
+    ваду) і впала б при звичайному винесенні контексту в хелпер.
+    """
+    from app.routers.deps import templates
 
-    from app.routers import furnace as furnace_router
-    from app.routers import queue as queue_router
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    tpl = templates.env.get_template("_furnace_side.html")
 
-    shared = inspect.getsource(furnace_router._side_context)
-    assert "furnaces_configured" in shared and "furnaces_all_idle" in shared
+    configured = tpl.render(
+        request=None, furnace_cards=[], furnace_summary=service.strip_summary([]),
+        furnaces_configured=1, furnaces_all_idle=False,
+    )
+    assert "Чекаємо перший кадр" in configured
+    assert "не налаштовано" not in configured
 
-    page = inspect.getsource(queue_router.get_queue)
-    assert "furnaces_configured" in page, "сторінка черги вкладає партіал своїм контекстом"
-    assert "furnaces_all_idle" in page
+    none_at_all = tpl.render(
+        request=None, furnace_cards=[], furnace_summary=service.strip_summary([]),
+        furnaces_configured=0, furnaces_all_idle=False,
+    )
+    assert "не налаштовано" in none_at_all
+
+
+def test_all_idle_refuses_to_say_everyone_is_free_when_one_is_silent(monkeypatch, tmp_path):
+    """«усі вільні» не має стояти поруч із «1 без зв'язку» — раніше згорнута
+    смуга писала обидва твердження в одному рядку, бо `running` рахує лише RUN
+    і мовчазна піч потрапляла у «вільні»."""
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+
+    with Session(_database()) as db:
+        _add_furnace(db, name="Жива", host="192.168.1.76")
+        _add_furnace(db, name="Мовчить", host="192.168.1.61")
+        live = service.FurnaceTarget(name="Жива", host="192.168.1.76")
+        dead = service.FurnaceTarget(name="Мовчить", host="192.168.1.61")
+
+        monkeypatch.setattr(service, "capture", lambda host, *a, **k: _frame("wait"))
+        service.poll_target(db, live, None)
+        service.poll_target(db, dead, None, error="Піч 192.168.1.61 не відповіла за 20 с")
+
+        cards = service.strip_cards(db)
+        assert service.all_idle(cards) is False, "одна піч мовчить — «усі вільні» брехня"
+        assert service.strip_summary(cards).broken == 1
+
+        # А коли мовчазної немає — можна казати чесно.
+        assert service.all_idle([c for c in cards if not c.has_problem]) is True
 
 
 def test_strip_and_tile_read_numbers_in_the_same_order():

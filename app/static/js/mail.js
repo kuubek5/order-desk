@@ -185,10 +185,27 @@ document.body.addEventListener("mailFilesChanged", (event) => {
   if (!row) return;
   const att = row.querySelector(".att");
   if (!att) return;
+
+  // Перемальовуємо ВЕСЬ сигнал: текст, тривожний клас і підказку разом.
+  // Раніше писалось лише число рядків бази — і «3 з 5 файл.» перетворювалось
+  // на «5 файл.», а червоний клас із підказкою лишались від старого стану.
+  // Рядок казав одночасно «все є» і «чогось немає», причому число брехало
+  // саме в бік «файл є» — тобто поверталась рівно та вада, від якої рядок
+  // лікували.
+  const rows = d.count;
+  const onDisk = typeof d.on_disk === "number" ? d.on_disk : rows;
+  const gone = onDisk < rows;
+  att.classList.toggle("att-gone", gone);
+  if (gone) {
+    att.title = rows - onDisk + " файл(ів) немає на диску — відкрий лист і скачай наново";
+  } else {
+    att.removeAttribute("title");
+  }
   // Іконка-скріпка лишається; міняється лише текстовий вузол після неї.
+  const text = gone ? " " + onDisk + " з " + rows + " файл." : " " + rows + " файл.";
   for (const node of att.childNodes) {
     if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
-      node.textContent = " " + d.count + " файл.";
+      node.textContent = text;
       return;
     }
   }

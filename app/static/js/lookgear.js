@@ -143,6 +143,7 @@
       // два десятки запитів.
       window.clearTimeout(saveTimer);
       saveTimer = window.setTimeout(function () {
+        saveTimer = null;
         var body = new URLSearchParams({
           scope: scope,
           row_pad: String(state.pad),
@@ -158,11 +159,33 @@
           credentials: "same-origin",
         })
           .then(function (response) {
+            if (response.status === 401) { window.location.href = "/login"; return; }
             if (!response.ok) failed();
           })
           .catch(failed);
       }, 400);
     }
+
+    // Перехід по посиланню протягом 400 мс убивав незбережену зміну разом зі
+    // сторінкою: на екрані вигляд змінився, у профілі — ні, і після наступного
+    // завантаження все поверталось без жодного слова. Дострокова відправка на
+    // приховування сторінки закриває це вікно.
+    window.addEventListener("pagehide", function () {
+      if (saveTimer === null) return;
+      window.clearTimeout(saveTimer);
+      saveTimer = null;
+      var body = new URLSearchParams({
+        scope: scope,
+        row_pad: String(state.pad),
+        list_width: String(state.width),
+        density: state.density,
+        mat_style: state.matStyle,
+        step: String(state.step),
+      });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon("/account/look", body);
+      }
+    });
 
     function failed() {
       if (window.showToast) window.showToast("Не вдалось зберегти вигляд", "error");
@@ -200,6 +223,10 @@
     }
 
     root.addEventListener("pointerdown", function (event) {
+      // Лише ліва кнопка. Права теж запускала утримання, а pointerup при
+      // відкритому контекстному меню браузер не віддає — лічильник крутився до
+      // упору й зберігав 28px у профіль після випадкового правого кліку.
+      if (event.button !== 0) return;
       var dec = event.target.closest("[data-look-dec]");
       var inc = dec ? null : event.target.closest("[data-look-inc]");
       var btn = dec || inc;

@@ -251,7 +251,10 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     #
     # Один день = один знаменник, чисельник росте. Коли день не обрано (режим
     # «усі дні»), фіксувати нема чого — рахуємо показане, як раніше.
-    day_totals = handout_day_totals(db, selected_day) if selected_day else {}
+    # Передаємо ВЖЕ ВІДФІЛЬТРОВАНІ групи: знаменник мусить рахуватись із тієї
+    # самої множини, що й чисельник, інакше при фільтрі «Пошта» шапка описувала
+    # б обидва джерела, а коментар обіцяє протилежне.
+    day_totals = handout_day_totals(db, selected_day, client_groups) if selected_day else {}
     if day_totals:
         total_groups_all = day_totals["clients"]
         done_groups = day_totals["clients_done"]
@@ -327,9 +330,11 @@ def handout_cards_response(request: Request, user, source: str, day: str, db: Se
     редіректом, і після кожної екран смикався на початок — на видачі, де
     йдуть списком згори вниз і клацають підряд, це збивало саме те, заради
     чого екран і робився."""
-    return templates.TemplateResponse(
-        request, "_handout_cards.html", handout_context(request, user, source, day, db)
-    )
+    # oob_kpi лише тут: у повній сторінці той самий партіал уже стоїть у шапці,
+    # і друга копія дала б дубльований id (див. коментар у _handout_cards.html).
+    context = handout_context(request, user, source, day, db)
+    context["oob_kpi"] = True
+    return templates.TemplateResponse(request, "_handout_cards.html", context)
 
 
 HANDOUT_DAY_WINDOW = 3

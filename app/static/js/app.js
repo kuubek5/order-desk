@@ -371,8 +371,18 @@ document.body.addEventListener("mailFilesChanged", () => {
 // мовчазна помилка гірша за гучну, бо робота лишається «можна брати» для всіх
 // інших і піде в повторне фрезерування.
 document.body.addEventListener("htmx:responseError", (event) => {
-  const status = (event.detail && event.detail.xhr && event.detail.xhr.status) || 0;
-  // 401 — окремий випадок: сесія скінчилась, і тост тут нічого не дає.
+  const detail = event.detail || {};
+  const status = (detail.xhr && detail.xhr.status) || 0;
+  // Фонові полли (черга кожні 15 с, смуга й секція печей — 30 с) НЕ мають
+  // права нікуди вести й нічого показувати. Інакше одна протухла сесія
+  // викидала б оператора зі сторінки посеред видачі — сам, без жодної його
+  // дії, і з утраченим місцем у списку. Дію від полла відрізняємо за тим, що
+  // полл ходить по таймеру: у htmx це `every …s` у hx-trigger.
+  const elt = detail.elt;
+  const trigger = (elt && elt.getAttribute && elt.getAttribute("hx-trigger")) || "";
+  if (/every\s/.test(trigger)) return;
+
+  // 401 — сесія скінчилась; тост тут нічого не дає, треба на вхід.
   if (status === 401) { window.location.href = "/login"; return; }
   const what = status ? " (код " + status + ")" : "";
   showToast("Дію не виконано" + what + " — спробуйте ще раз", "error");
@@ -380,7 +390,13 @@ document.body.addEventListener("htmx:responseError", (event) => {
 
 // Мережа обірвалась посеред дії — окремо від 5xx: тут винен не застосунок, і
 // порада інша.
-document.body.addEventListener("htmx:sendError", () => {
+document.body.addEventListener("htmx:sendError", (event) => {
+  // Та сама межа: обрив зв'язку на фоновому поллі вже має свій сигнал —
+  // тост «Втрачено зв'язок» від перевірки пульсу. Другий тост кожні 15 секунд
+  // перетворив би екран на стрічку однакових повідомлень.
+  const elt = event.detail && event.detail.elt;
+  const trigger = (elt && elt.getAttribute && elt.getAttribute("hx-trigger")) || "";
+  if (/every\s/.test(trigger)) return;
   showToast("Немає зв'язку із застосунком — дію не виконано", "error");
 });
 

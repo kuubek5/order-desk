@@ -695,9 +695,9 @@ document.addEventListener("click", (event) => {
     btn.setAttribute("aria-pressed", String(document.body.classList.contains("layout-edit")));
     btn.addEventListener("click", () => setMode(!document.body.classList.contains("layout-edit")));
   });
-  document.querySelectorAll("[data-layout-reset]").forEach((btn) => {
-    btn.addEventListener("click", resetLayout);
-  });
+  // Кнопки [data-layout-reset] у розмітці більше немає — скидання живе в
+  // шестерні, яка шле цю подію. Обробник на неіснуючий селектор лишав би
+  // враження, що кнопка ще десь є.
   document.addEventListener("queue-look-reset", resetLayout);
   // Delegated on document (not the table element) so column-resize keeps
   // working after the 15s poll swaps the table.
@@ -871,7 +871,15 @@ document.addEventListener("htmx:afterSettle", (event) => {
       row.style.transform = "translateY(0)";
     });
   });
-  const done = () => {
+  // Слухаємо САМЕ transform САМЕ цього рядка. Без перевірки підйом обривався
+  // майже завжди: рядок має власний `transition: background .14s`, а
+  // .row-rising знімає з нього :hover — тобто фон одразу починає переходити і
+  // через ~140 мс кидає transitionend, який обнуляв transform посеред
+  // 420-мілісекундного руху. Плюс сюди спливали переходи дочірніх кнопок.
+  let guard = null;
+  const done = (event) => {
+    if (event && (event.target !== row || event.propertyName !== "transform")) return;
+    window.clearTimeout(guard);
     row.style.transition = "";
     row.style.transform = "";
     row.classList.remove("row-rising");
@@ -879,7 +887,7 @@ document.addEventListener("htmx:afterSettle", (event) => {
   };
   row.addEventListener("transitionend", done);
   // Страховка: transitionend не прийде, якщо рядок замінить полл на півдорозі.
-  window.setTimeout(done, 700);
+  guard = window.setTimeout(done, 700);
 });
 
 

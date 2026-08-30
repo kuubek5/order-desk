@@ -124,46 +124,109 @@ def test_js_limits_match_the_server():
 
 
 def test_markup_only_offers_values_the_server_accepts():
-    macro = Path("app/templates/_lookgear.html").read_text(encoding="utf-8")
-    steps = {int(m) for m in re.findall(r'data-look-step="(\d+)"', macro)}
-    assert steps <= set(look_prefs.UI_STEPS) or steps == {1, 2, 4, 8}, steps
+    """Розмітка не має пропонувати крок, якого сервер не прийме — інакше клік
+    по кроку дає 422 і вигляд тихо не зберігається.
+
+    Читаємо ВІДРЕНДЕРЕНИЙ макрос, а не файл шаблону. Попередня версія цього
+    тесту шукала `data-look-step="<цифра>"` у сирому файлі, де стоїть
+    `data-look-step="{{ s }}"` — регекс не міг влучити НІКОЛИ, і сторож був
+    порожній від народження.
+    """
+    import re
+
+    from app.routers.deps import templates
+
+    macro = templates.env.get_template("_lookgear.html").module.lookgear
+    html = str(macro("queue", "body", 0, 2))
+    steps = {int(m) for m in re.findall(r'data-look-step="(\d+)"', html)}
+    assert steps, "у відрендереній панелі мають бути кнопки кроку"
+    assert steps <= set(look_prefs.UI_STEPS), f"розмітка пропонує {steps - set(look_prefs.UI_STEPS)}"
 
     queue = Path("app/templates/queue.html").read_text(encoding="utf-8")
     presets = set(re.findall(r"\('([a-z]*)', \d+, '", queue))
     assert presets <= set(look_prefs.QUEUE_DENSITIES), presets
 
 
-def test_handout_layout_saves_and_comes_back():
-    """Розкладка видачі — теж на акаунті, а не в localStorage: власник просив
-    саме «запам'ятовування останнього вибору», а вибір, який гине при зміні
-    браузера, це не запам'ятовування."""
+def test_handout_day_totals_counts_the_same_set_the_screen_shows():
+    """Лічильник дня — цифри, які диктують керівництву, і в них уже одного разу
+    був баг: знаменник ЗМЕНШУВАВСЯ протягом дня, бо рахувався по видимих
+    групах, а видане з них випадає.
+
+    Тут перевіряємо головне: чисельник і знаменник беруться з ОДНІЄЇ множини.
+    Видали клієнта — «зроблених» більшає, загальне число не рухається.
+    """
+    import datetime as dt
+
+    from sqlalchemy.orm import Session as _S
+
+    from app.models import Order
+    from app.services.handout import handout_day_totals
+
     engine = _database()
-    with Session(engine, expire_on_commit=False) as db:
-        user = _user(db)
-        _save(_request(user.id), db, scope="handout", layout="nav")
-        db.refresh(user)
-        assert user.handout_layout == "nav"
+    day = dt.date(2026, 8, 28)
+    tab = day.strftime("%d.%m.%y")
 
-        # Невідома розкладка не зберігається: значення приходить із розмітки,
-        # тож несподіване тут означає помилку, яку краще побачити.
-        assert _save(_request(user.id), db, scope="handout", layout="хех").status_code == 422
-        db.refresh(user)
-        assert user.handout_layout == "nav"
+    with _S(engine, expire_on_commit=False) as db:
+        def _order(client, status, qty="2"):
+            row = Order(source="lab", sheet_tab=tab, row_number=7, client_name=client,
+                        quantity=qty, status=status)
+            db.add(row)
+            return row
 
-        # Повернення до звичайного списку — порожній рядок, а не окреме слово.
-        _save(_request(user.id), db, scope="handout", layout="")
-        db.refresh(user)
-        assert user.handout_layout == ""
+        shown_a = _order("Vision", "нове")
+        shown_b = _order("Vision", "нове")
+        shown_c = _order("Неда", "нове")
+        issued = _order("Полищук", "видано")
+        # Архівне не має рахуватись узагалі: на екран воно не потрапить ніколи,
+        # тож знаменник із ним лишався б недосяжним.
+        archived = _order("Привид", "видано")
+        archived.archived_at = dt.datetime(2026, 8, 29)
+        db.commit()
+
+        groups = [
+            {"client_name": "Vision", "orders": [shown_a, shown_b], "all_found": False},
+            {"client_name": "Неда", "orders": [shown_c], "all_found": False},
+        ]
+        totals = handout_day_totals(db, day, groups)
+        assert totals["clients"] == 3, "два на екрані + один уже виданий"
+        assert totals["clients_done"] == 1
+        assert totals["works"] == 4
+        assert totals["works_done"] == 1
+        assert totals["units"] == 8
+        assert "Привид" not in str(totals), "архівне не рахується"
+
+        # Клієнта зібрано — «зроблених» більшає, ЗНАМЕННИК СТОЇТЬ.
+        groups[1]["all_found"] = True
+        shown_c.status = "знайдено при видачі"
+        db.commit()
+        after = handout_day_totals(db, day, groups)
+        assert after["clients"] == totals["clients"], "знаменник не має рухатись"
+        assert after["works"] == totals["works"]
+        assert after["clients_done"] == 2 and after["works_done"] == 2
 
 
-def test_navigator_lives_inside_the_swapped_fragment():
-    """Галочка «знайдено» підмінює #handout-list. Якби покажчик дня лежав
-    ЗОВНІ цього фрагмента, його смужки прогресу застигли б на стані початку
-    дня — а він існує рівно для того, щоб показувати, скільки лишилось."""
-    from pathlib import Path
+def test_letter_without_files_on_disk_is_never_ready():
+    """Готовність без файлів неможлива за означенням. Бейдж «ГОТОВО» на листі,
+    чиї файли видалили з диска, вів до прийняття роботи без жодного STL —
+    оператор веде очима саме по списку."""
+    from types import SimpleNamespace
 
-    fragment = Path("app/templates/_handout_cards.html").read_text(encoding="utf-8")
-    page = Path("app/templates/handout.html").read_text(encoding="utf-8")
-    assert 'id="handout-list"' in fragment
-    assert "daynav" in fragment, "покажчик мусить бути у фрагменті, який свапається"
-    assert "daynav" not in page, "у сторінці його бути не повинно — застигне"
+    from app.triage_status import files_on_disk, triage_readiness
+
+    gone = SimpleNamespace(saved_path="/definitely/not/here.stl", order_id=None)
+    staged = SimpleNamespace(saved_path="/moved/to/export.stl", order_id=42)
+
+    email = SimpleNamespace(
+        service_type_guess=None, material_color_guess="Zr mono a3", attachments=[gone]
+    )
+    assert triage_readiness(email)["state"] == "no_files"
+    assert files_on_disk(email) == 0
+
+    # Прийняте в чергу вкладення рахується наявним: його файл переїхав у export.
+    email.attachments = [staged]
+    assert triage_readiness(email)["state"] == "ready"
+    assert files_on_disk(email) == 1
+
+    # Листа без вкладень взагалі цей стан не стосується.
+    email.attachments = []
+    assert triage_readiness(email)["state"] == "ready"

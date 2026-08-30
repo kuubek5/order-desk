@@ -114,27 +114,13 @@ main.q2{
 
 /* Кнопка-перемикач режиму вигляду + панель контролів (задача 1). Активний стан
    перемикача підсвічений бірюзовим, як інші is-active елементи v2a. */
-.q2 .layout-edit-toggle[aria-pressed="true"]{
-  background:rgba(var(--accent-base-rgb), .16);border-color:rgba(var(--accent-rgb), .42);color:var(--accent-c);
-}
 .q2 .layout-controls{
   display:none;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;
   padding:9px 12px;border:1px solid rgba(var(--accent-rgb), .3);border-radius:var(--r-card);
   background:rgba(var(--accent-base-rgb), .06);
 }
 body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--enter-duration,.32s) ease both}
-.q2 .layout-controls .lc-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .q2 .layout-controls .lc-hint{font-size:11.5px;color:var(--ink-3)}
-.q2 .layout-controls .seg button{
-  appearance:none;border:0;background:none;cursor:pointer;
-  padding:5px 11px;border-radius:999px;color:var(--ink-2);font:500 12px var(--font-body);
-  transition:color var(--ui-speed) ease,background var(--ui-speed) ease;
-}
-.q2 .layout-controls .seg button:hover{color:var(--ink);background:var(--raise)}
-.q2 .layout-controls .seg button.is-active{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .34)}
-.q2 .layout-controls .seg button:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
-.q2 .layout-controls .lc-reset{margin-left:auto;cursor:pointer}
-.q2 .layout-controls .lc-reset:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 
 .q2 .statusline{
   display:flex;align-items:center;gap:14px;flex-wrap:wrap;
@@ -815,7 +801,7 @@ body.layout-edit .q2 table.qtable{user-select:none}
    сусідами, щоб рамка й заливка не пірнали під наступний рядок посеред руху,
    і вимикаємо перехоплення кліків: поки рядок летить, він проходить під
    курсором, і випадкове влучання по кошику коштувало б роботи. */
-.q2 table.qtable tbody tr.row-rising{position:relative;z-index:3;pointer-events:none;will-change:transform}
+.q2 table.qtable tbody tr.row-rising{position:relative;z-index:1;pointer-events:none;will-change:transform}
 @media (prefers-reduced-motion:reduce){
   .q2 table.qtable tbody tr.row-rising{transition:none !important;transform:none !important}
 }

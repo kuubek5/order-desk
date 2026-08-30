@@ -476,17 +476,29 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
     return context
 
 
-def _attachment_count(db: Session | None, email: EmailMessage) -> int:
+def _attachment_counts(db: Session | None, email: EmailMessage) -> tuple[int, int]:
+    """(рядків у базі, файлів реально на диску) — обидва числа СВІЖІ.
+
+    Читаємо запитом, а не з email.attachments: сесія створена з
+    expire_on_commit=False, тож після коміту колекція лишається старою (це вже
+    коштувало розбіжності 4 проти 3 на одному екрані).
+
+    Два числа, а не одне, бо рядок списку показує саме «N з M»: якщо слати
+    лише кількість рядків, клієнт перепише «3 з 5 файл.» на «5 файл.» і
+    поверне ту саму брехню «файл є», від якої рядок і лікували.
+    """
     if db is None:
-        return len(email.attachments)
-    return int(
-        db.scalar(
-            select(func.count())
-            .select_from(Attachment)
-            .where(Attachment.email_message_id == email.id)
+        rows = list(email.attachments)
+    else:
+        rows = list(
+            db.scalars(
+                select(Attachment).where(Attachment.email_message_id == email.id)
+            )
         )
-        or 0
+    on_disk = sum(
+        1 for a in rows if a.order_id is not None or Path(a.saved_path).exists()
     )
+    return len(rows), on_disk
 
 
 def _files_changed_response(
@@ -502,6 +514,7 @@ def _files_changed_response(
     губиться. Тому число їде окремим тригером, а клієнт вписує його в рядок.
     """
     triggers = dict(extra or {})
+    _rows_count, _on_disk_count = _attachment_counts(db, email)
     triggers["mailFilesChanged"] = {
         "id": email.id,
         # Рахуємо ЗАПИТОМ, а не по email.attachments: сесія створена з
@@ -509,7 +522,8 @@ def _files_changed_response(
         # склад вкладень) колекція лишається старою. Список писав 4 файли там,
         # де панель уже показувала 3 — два числа про одне на одному екрані.
         # Спіймано живим прогоном повного циклу, не тестом.
-        "count": _attachment_count(db, email),
+        "count": _rows_count,
+        "on_disk": _on_disk_count,
     }
     # ensure_ascii ОБОВ'ЯЗКОВО за замовчуванням (True): значення HTTP-заголовка
     # мусить бути latin-1, а тости тут українською — з ensure_ascii=False роут
@@ -859,6 +873,15 @@ def redownload_email_attachments(
             db, email, Path(MAIL_ATTACHMENTS_PATH)
         )
         db.commit()
+        # БЕЗУМОВНО, одразу після коміту. Видалення йде через session.delete(),
+        # а нові вкладення додаються через session.add() — тобто в
+        # email.attachments видалені лишаються, а нові не з'являються. Сесія
+        # створена з expire_on_commit=False, тож колекція не оновиться сама.
+        # Наслідків два, обидва тихі: перевірка «чи є архів» нижче дивилась би
+        # на СТАРІ імена (лист, що приїхав ZIP-ом, не розпакувався б, і
+        # оператор отримав би архів замість STL), а панель відрендерилась би з
+        # id уже видалених рядків — прев'ю й посилання давали б 404.
+        db.refresh(email)
     except Exception as exc:  # noqa: BLE001 — показати причину, а не 500
         db.rollback()
         logger.exception("Повторне скачування не вдалось для листа %s", email.id)

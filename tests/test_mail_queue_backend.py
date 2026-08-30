@@ -1764,14 +1764,27 @@ def test_files_changed_trigger_header_is_latin1_safe():
     """HX-Trigger — це значення HTTP-заголовка, тобто latin-1. Тости в цьому
     застосунку українською, і json.dumps(ensure_ascii=False) валить роут у 500
     на кодуванні відповіді. Спіймано живою перевіркою: «Розпакувати архіви»
-    почало віддавати 500 рівно через це."""
+    почало віддавати 500 рівно через це.
+
+    Заразом сторожимо ДВА числа в тригері. Раніше летіло лише «скільки рядків
+    у базі», і клієнт переписував «3 з 5 файл.» на «5 файл.» — тобто рядок
+    списку знову казав «файл є» там, де його немає. Тепер тригер несе і
+    кількість рядків, і скільки з них реально на диску.
+    """
     from starlette.responses import Response as _Resp
 
     from app.routers.mail import _files_changed_response
 
+    class _Att:
+        def __init__(self, path, order_id=None):
+            self.saved_path = path
+            self.order_id = order_id
+
     class _Email:
         id = 7
-        attachments = [object(), object()]
+        # Два вкладення, жодного файлу на диску — саме той стан, заради якого
+        # друге число й додали.
+        attachments = [_Att("/nope/one.stl"), _Att("/nope/two.stl")]
 
     response = _files_changed_response(
         _Resp("ok"), _Email(), {"toast": {"message": "Розпаковано 3 файли", "kind": "success"}}
@@ -1781,5 +1794,7 @@ def test_files_changed_trigger_header_is_latin1_safe():
     import json as _json
 
     payload = _json.loads(header)
-    assert payload["mailFilesChanged"] == {"id": 7, "count": 2}
+    assert payload["mailFilesChanged"]["id"] == 7
+    assert payload["mailFilesChanged"]["count"] == 2, "рядків у базі"
+    assert payload["mailFilesChanged"]["on_disk"] == 0, "файлів на диску немає"
     assert payload["toast"]["message"] == "Розпаковано 3 файли"
