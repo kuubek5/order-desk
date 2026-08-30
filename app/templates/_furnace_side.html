@@ -10,17 +10,19 @@
    DOM разом зі своїм поллом — і після налаштування печей секція більше
    ніколи б тут не проступила. Той самий урок, що на смузі й на картці зміни.
 
-   Секція розгорнута за замовчуванням (data-open="true"): піч показують не
-   «за потреби» — її відкриття планують, і закритий блок означав би, що по
-   цю цифру треба лізти. Оператор може згорнути сам. #}
-<section class="side-sec side-sec-furnace" data-open="true" data-sec="furnace"
+   Секція згорнута за замовчуванням, як і решта панелі: вісім розгорнутих
+   блоків з даними — це стіна, у якій не видно нічого. Тривога при цьому не
+   ховається: «N без зв'язку» стоїть у самій шапці, тобто читається згорнутою.
+   Розгортає оператор сам; стан не переживає перезавантаження — так само, як
+   у решти секцій панелі. #}
+<section class="side-sec side-sec-furnace" data-open="false" data-sec="furnace"
          id="furnace-side"
          hx-get="/furnaces/side"
          hx-trigger="every 30s"
          hx-target="this"
          hx-swap="outerHTML"
          hx-disinherit="*">
-    <button class="side-head" type="button" data-side-toggle aria-expanded="true">
+    <button class="side-head" type="button" data-side-toggle aria-expanded="false">
         Пічки
         {% if furnace_summary.broken %}
         {# Тривога в самій шапці: секцію можна згорнути, і збій, видимий лише

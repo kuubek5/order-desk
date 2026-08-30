@@ -729,10 +729,22 @@ body.layout-edit .q2 table.qtable{user-select:none}
    рядку — той зсував би комірки на 1px, і таблиця «дихала» б на кожен клік
    (саме через це від нього відмовились із самого початку). */
 .q2 table.qtable tbody tr.queue-row-focus{position:relative}
+/* bottom:-1px — рамка мусить накрити нижню межу комірок (1px border-bottom на
+   кожній td), інакше між нею і краєм рядка лишається темний просвіт. Саме він
+   і читався як «пробіл»: пришпилені стоять підряд, і кожна пара сусідів давала
+   дві лінії з щілиною між ними. */
 .q2 table.qtable tbody tr.queue-row-focus::after{
-  content:"";position:absolute;inset:0;pointer-events:none;z-index:1;
-  border:1px solid rgba(var(--accent-rgb), .55);border-radius:4px;
+  content:"";position:absolute;left:0;right:0;top:0;bottom:-1px;
+  pointer-events:none;z-index:1;
+  border:1px solid rgba(var(--accent-rgb), .55);
 }
+/* Сусідні пришпилені зливаються в ОДИН блок: у сусіда згори межа вже
+   намальована, і друга поверх неї дає подвійну лінію. Набір «мої зараз» — це
+   одна купка робіт, а не сім окремих обведених рядків. Кутів не заокруглюємо
+   свідомо: у групи змінної довжини заокруглювати можна лише перший і
+   останній, а це ще два `:has`-правила, які ламатимуться від кожної нової
+   умови сортування. Прямий кут не ламається ніколи. */
+.q2 table.qtable tbody tr.queue-row-focus + tr.queue-row-focus::after{border-top:0}
 /* Смуга матеріалу лишається на своєму місці — це окремий канал, і рамка його
    не з'їдає (вона тепер узагалі не торкається комірок). */
 .q2 table.qtable tbody tr.queue-row-focus > td{
