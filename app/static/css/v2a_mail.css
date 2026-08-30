@@ -13,7 +13,9 @@
    тож права панель на /mail показує спокійний empty-triage-плейсхолдер, а
    /mail/{id} рендериться як повна картка тріажу. Скоуплено під `.mailv2`.
    ========================================================================== */
-main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
+/* Ширина росте з екраном. 1400px обмежував так, що на моніторі 1920+ права
+   третина лишалась мертвою, хоча списку бракувало місця на теми листів. */
+main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 .mailv2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}
 .mailv2 .m-topbar{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
 .mailv2 .m-topbar h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 4px}
@@ -93,7 +95,11 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 /* Depth split: the list stays flat and slightly recessed (darker ground, no
    glow) while the detail card lifts — lighter surface + a real drop shadow — so
    «де шукаю» vs «де працюю» read as two planes, not one flat strip. */
-.mailv2 .list-panel{flex:0 0 440px;width:440px;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-rail);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:none;max-height:calc(100vh - 190px)}
+/* Список РОСТЕ з вікном, а не стоїть на 440px. Було flex:0 0 440px — на
+   1920px список лишався тісним (тема листа обрізалась), а панель деталей
+   забирала ~950px, які при порожньому виборі виглядали як велика порожня
+   коробка. clamp тримає розумні межі: не вужче 380 і не ширше 620. */
+.mailv2 .list-panel{flex:0 1 clamp(380px, 32%, 620px);width:auto;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-rail);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:none;max-height:calc(100vh - 190px)}
 .mailv2 .card-head{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line)}
 .mailv2 .card-head h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0}
 .mailv2 .card-head .meta{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
@@ -384,6 +390,10 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .detail-back{display:inline-flex;gap:14px;margin-bottom:12px;font-size:13px}
 .mailv2 .detail-back a{color:var(--ink-2);text-decoration:none}
 .mailv2 .detail-back a:hover{color:var(--accent-c);opacity:1}
+/* Порожній стан не має вдавати картку з вмістом: рамка стає пунктирною,
+   фон і тінь знімаються, тож велика площа читається як «місце для листа»,
+   а не як зламаний блок. */
+.mailv2 .detail-panel:has(.empty-triage){background:transparent;border-style:dashed;box-shadow:none}
 .mailv2 .empty-triage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:40px 20px;text-align:center}
 .mailv2 .empty-triage .icon{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:rgba(var(--accent-base-rgb), .1);border:1px solid rgba(var(--accent-rgb), .28);color:var(--accent-c)}
 .mailv2 .empty-triage .icon svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
@@ -421,3 +431,23 @@ main.mailv2{max-width:1400px;margin:0 auto;padding:18px 20px}
 .mailv2 .wiz-anyway{display:flex;align-items:center;gap:8px;margin-top:8px;
   font-size:var(--size-meta, 12px);color:var(--warn-ink);cursor:pointer}
 .mailv2 .wiz-anyway input{accent-color:var(--warn);width:14px;height:14px;cursor:pointer}
+
+/* ── Рядок листа на широкому списку (30.08.26) ────────────────────────────
+   Двоповерховий рядок вигадали, коли список був прибитий до 440px — там
+   відправник і тема справді не вміщались поруч. Тепер панель росте з
+   екраном, і на 1920px ті самі два поверхи лишали половину ширини порожньою,
+   а рядок усе одно займав ~52px.
+
+   Контейнерний запит, а не медіа: вирішує ширина САМОГО списку, а не вікна.
+   Список ділить простір із панеллю деталей, тож ширина вікна тут нічого не
+   каже — на 1920px з відкритим листом список може бути вузьким. */
+.mailv2 .list-panel{container-type:inline-size;container-name:maillist}
+
+@container maillist (min-width: 460px){
+  /* Один поверх: відправник · тема · файли · час. Рядок худне до ~36px,
+     тобто в екран влазить помітно більше листів. */
+  .mailv2 .mailrow .rowmain{flex-direction:row;align-items:baseline;gap:10px}
+  .mailv2 .mailrow .r1{flex:0 1 auto;max-width:44%}
+  .mailv2 .mailrow .r2{flex:1 1 auto}
+  .mailv2 .mailrow{padding:6px 14px}
+}
