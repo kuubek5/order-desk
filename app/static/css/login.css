@@ -380,4 +380,20 @@ body:has(.login-page) .app-backdrop .radar-hud { display: none; }
 .err-log { margin: calc(-1 * var(--space-3)) 0 var(--space-5); word-break: break-all; }
 .err-actions { display: flex; flex-direction: column; gap: var(--space-2); }
 .err-primary { display: block; text-align: center; text-decoration: none; }
-.err-retry { width: 100%; justify-content: center; }
+/* Власний вигляд, а не .btn: той стилізований лише всередині екранних
+   скоупів (.q2, .mailv2 …), а сторінка помилки живе поза ними — гола
+   кнопка браузера на ній виглядала як другий баг. */
+.err-retry {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid var(--control-edge);
+  border-radius: var(--radius-input);
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--ui-speed) ease, border-color var(--ui-speed) ease;
+}
+.err-retry:hover { color: var(--accent-c); border-color: var(--accent-b); }
+.err-retry:focus-visible { outline: 2px solid var(--accent-b); outline-offset: 2px; }
