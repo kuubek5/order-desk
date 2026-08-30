@@ -569,18 +569,14 @@ document.addEventListener("click", (event) => {
 })();
 
 // ---------------------------------------------------------------------------
-// Режим вигляду (layout-edit) — задача 1. Оператор вмикає режим і налаштовує
-// чергу під себе: ширини стовпців (drag), щільність рядків і карток. Усе
-// локально в localStorage, без запитів на сервер і без змін маршрутів. Anti-flash
-// (застосування збереженого стану до першого рендеру) — інлайн у base.html.
+// Режим вигляду (layout-edit) — ширини стовпців. Щільність і вигляд колонки
+// «Матеріал / Колір» ПЕРЕЇХАЛИ звідси в шестерню над таблицею (lookgear.js) і
+// живуть на акаунті оператора: вони мають їхати за людиною, а не за браузером.
+// Ширини лишились тут свідомо — вони прив'язані до конкретного монітора.
 (function () {
   const LS_MODE = "layoutEditMode";
-  const LS_DENSITY = "queueDensity";
   const LS_WIDTHS = "queueColWidths";
   const MIN_COL = 60;
-  const DENSITIES = ["compact", "normal", "spacious"];
-  const LS_MATSTYLE = "queueMatStyle";
-  const MATSTYLES = ["pair", "code"];
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
@@ -589,47 +585,6 @@ document.addEventListener("click", (event) => {
   // Live lookup — the queue table is re-rendered by the 15s #queue-rows poll,
   // so a reference captured once would go stale. Every helper re-queries.
   function getTable() { return document.querySelector(".q2 table.qtable"); }
-
-  // ---- Щільність -----------------------------------------------------------
-  function currentDensity() {
-    const d = lsGet(LS_DENSITY);
-    return DENSITIES.indexOf(d) >= 0 ? d : "normal";
-  }
-  function applyDensity(d) {
-    if (DENSITIES.indexOf(d) < 0) d = "normal";
-    // "normal" — дефолт токенів, атрибут не потрібен (тримає розмітку чистою).
-    if (d === "normal") document.body.removeAttribute("data-density");
-    else document.body.setAttribute("data-density", d);
-    lsSet(LS_DENSITY, d);
-    document.querySelectorAll("[data-density-set]").forEach((b) => {
-      const on = b.getAttribute("data-density-set") === d;
-      b.classList.toggle("is-active", on);
-      // Стан групи має бути доступним не лише кольором — інакше для
-      // клавіатури й скрінрідера перемикач мовчить.
-      b.setAttribute("aria-pressed", String(on));
-    });
-  }
-
-  // ---- Вигляд колонки «Матеріал / Колір» -----------------------------------
-  // Та сама механіка, що й щільність: атрибут на <body>, значення в
-  // localStorage, розмітка рядка НЕ змінюється. Тому перемикання не робить
-  // запиту на сервер і переживає 15-секундний полл, який підмінює таблицю.
-  function currentMatStyle() {
-    const v = lsGet(LS_MATSTYLE);
-    return MATSTYLES.indexOf(v) >= 0 ? v : "pair";
-  }
-  function applyMatStyle(v) {
-    if (MATSTYLES.indexOf(v) < 0) v = "pair";
-    // "pair" — дефолт CSS, атрибут не потрібен (тримає розмітку чистою).
-    if (v === "pair") document.body.removeAttribute("data-matstyle");
-    else document.body.setAttribute("data-matstyle", v);
-    lsSet(LS_MATSTYLE, v);
-    document.querySelectorAll("[data-matstyle-set]").forEach((b) => {
-      const on = b.getAttribute("data-matstyle-set") === v;
-      b.classList.toggle("is-active", on);
-      b.setAttribute("aria-pressed", String(on));
-    });
-  }
 
   // ---- Ширини стовпців -----------------------------------------------------
   function headCells() {
@@ -723,36 +678,27 @@ document.addEventListener("click", (event) => {
       btn.setAttribute("aria-pressed", String(on));
     });
   }
+  // Ширини стовпців чистить лише цей код — решту вигляду скидає шестерня,
+  // і саме вона надсилає подію, тому «Скинути» лишається одним рухом.
   function resetLayout() {
     lsDel(LS_WIDTHS);
-    lsDel(LS_DENSITY);
-    lsDel(LS_MATSTYLE);
     const table = getTable();
     if (table) {
       table.style.tableLayout = "";
       headCells().forEach((th) => { th.style.width = ""; });
     }
-    applyDensity("normal");
-    applyMatStyle("pair");
   }
 
   // Wire-up (no-op на сторінках без черги/кнопки).
   applySavedWidths();
-  applyDensity(currentDensity());
-  applyMatStyle(currentMatStyle());
   document.querySelectorAll("[data-layout-edit-toggle]").forEach((btn) => {
     btn.setAttribute("aria-pressed", String(document.body.classList.contains("layout-edit")));
     btn.addEventListener("click", () => setMode(!document.body.classList.contains("layout-edit")));
   });
-  document.querySelectorAll("[data-density-set]").forEach((btn) => {
-    btn.addEventListener("click", () => applyDensity(btn.getAttribute("data-density-set")));
-  });
-  document.querySelectorAll("[data-matstyle-set]").forEach((btn) => {
-    btn.addEventListener("click", () => applyMatStyle(btn.getAttribute("data-matstyle-set")));
-  });
   document.querySelectorAll("[data-layout-reset]").forEach((btn) => {
     btn.addEventListener("click", resetLayout);
   });
+  document.addEventListener("queue-look-reset", resetLayout);
   // Delegated on document (not the table element) so column-resize keeps
   // working after the 15s poll swaps the table.
   document.addEventListener("pointerdown", onPointerDown);

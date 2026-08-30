@@ -11,6 +11,8 @@
 {% endblock %}
 
 {% block content %}
+{% from "_lookgear.html" import lookgear %}
+{% set _up = ui_prefs(request) %}
 {% set topbar_active = 'queue' %}
 {% include "_topbar_nav.html" %}
 
@@ -61,29 +63,28 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H8a4 4 0 0 0 0 8h4"/></svg>
                 </button>
             </div>
-            <button type="button" class="btn layout-edit-toggle" data-layout-edit-toggle aria-pressed="false" title="Режим вигляду — налаштувати чергу під себе">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="16" cy="8" r="2.2" class="duo"/><circle cx="8" cy="16" r="2.2" class="duo"/><path d="M4 8h10M18 8h2M4 16h4M12 16h8"/><circle cx="16" cy="8" r="2.2"/><circle cx="8" cy="16" r="2.2"/></svg>
-                <span>Вигляд</span>
-            </button>
+            {# Пресети — ті самі три щільності, що були смугою; тепер вони
+                ставлять набір одним рухом, а «Відступ рядків» доводить його
+                руками. Ширини стовпців лишаються перетягуванням межі, тому
+                «Скинути» в панелі шле подію, яку ловить queue.js. #}
+            {{ lookgear('queue', 'body', _up.queue_row_pad, _up.queue_step,
+                        presets=[('compact', 0, 'Компактний'), ('', 0, 'Звичайний'),
+                                 ('spacious', 0, 'Просторий')],
+                        density=_up.queue_density,
+                        mat_styles=[('', 'Маркування', 'Матеріал і колір одним маркуванням'),
+                                    ('code', 'Технічний код', 'Без коробки, моноширинний — 800 / 500 / A3.5 читаються як коди виробника')],
+                        mat_style=_up.queue_mat_style,
+                        pad_default=8, reset_event='queue-look-reset',
+                        col_edit=true, title='Вигляд черги') }}
         </div>
     </div>
 
-    {# Панель режиму вигляду (задача 1). Видима лише коли body.layout-edit;
-       усе локально (localStorage), без запитів на сервер. #}
-    <div class="layout-controls" role="group" aria-label="Режим вигляду">
-        <span class="lc-label">Щільність</span>
-        <div class="seg density-seg" role="group" aria-label="Щільність черги">
-            <button type="button" data-density-set="compact">Компактний</button>
-            <button type="button" data-density-set="normal">Звичайний</button>
-            <button type="button" data-density-set="spacious">Просторий</button>
-        </div>
-        <span class="lc-label">Колір роботи</span>
-        <div class="seg matstyle-seg" role="group" aria-label="Вигляд колонки «Матеріал / Колір»">
-            <button type="button" data-matstyle-set="pair" title="Матеріал і колір одним маркуванням">Маркування</button>
-            <button type="button" data-matstyle-set="code" title="Без коробки, моноширинний — 800 / 500 / A3.5 читаються як коди виробника">Технічний код</button>
-        </div>
+    {# Смуга режиму вигляду цілком переїхала в шестерню (див. _lookgear.html):
+       кнопка «Вигляд» і шестерня поруч називали одне й те саме поняття двічі.
+       Лишилась тільки підказка — і лише поки режим увімкнено, бо перетягування
+       межі неочевидне саме тоді, коли його щойно ввімкнули. #}
+    <div class="layout-controls" role="status">
         <span class="lc-hint">Перетягніть межу заголовка стовпця, щоб змінити його ширину</span>
-        <button type="button" class="pill lc-reset" data-layout-reset title="Скинути ширини стовпців, щільність і вигляд колонки «Матеріал / Колір» до типових">Скинути</button>
     </div>
 
     {% if sync_flash %}

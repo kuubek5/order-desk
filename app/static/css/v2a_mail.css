@@ -104,10 +104,10 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
    1920px список лишався тісним (тема листа обрізалась), а панель деталей
    забирала ~950px, які при порожньому виборі виглядали як велика порожня
    коробка. clamp тримає розумні межі: не вужче 380 і не ширше 620. */
-/* --mail-list-w — ширина з акаунта оператора (шестерня). Не задана — та сама
+/* --look-list-w — ширина з акаунта оператора (шестерня). Не задана — та сама
    clamp, що й раніше, тобто оператор, який нічого не крутив, нічого й не
    помітить. */
-.mailv2 .list-panel{flex:0 1 var(--mail-list-w, clamp(380px, 32%, 620px));width:auto;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-rail);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:none;max-height:calc(100vh - 190px)}
+.mailv2 .list-panel{flex:0 1 var(--look-list-w, clamp(380px, 32%, 620px));width:auto;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-rail);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:none;max-height:calc(100vh - 190px)}
 .mailv2 .card-head{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line)}
 .mailv2 .card-head h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0}
 .mailv2 .card-head .meta{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
@@ -125,10 +125,10 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 /* 4px so the first row is not jammed against the panel's rounded top edge —
    the visible list header that used to provide that separation is gone. */
 .mailv2 .listwrap{overflow-y:auto;flex:1;min-height:0;scrollbar-width:thin;padding:4px 0 0}
-/* --mail-row-pad — відступ рядка з акаунта оператора (шестерня над списком).
+/* --look-row-pad — відступ рядка з акаунта оператора (шестерня над списком).
    Одна змінна на обидва режими: оператор крутить її, дивлячись на той режим,
    у якому працює, і два окремих числа він би не пов'язав між собою. */
-.mailv2 .mailrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px;padding:var(--mail-row-pad, 8px) 14px;border-bottom:1px solid var(--line);text-decoration:none;cursor:pointer;transition:background var(--ui-speed) ease}
+.mailv2 .mailrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px;padding:var(--look-row-pad, 8px) 14px;border-bottom:1px solid var(--line);text-decoration:none;cursor:pointer;transition:background var(--ui-speed) ease}
 .mailv2 .mailrow:last-child{border-bottom:0}
 .mailv2 .mailrow:hover{background:var(--card-2);opacity:1}
 .mailv2 .mailrow:focus-visible{outline:2px solid var(--accent-b);outline-offset:-2px}
@@ -479,7 +479,7 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
      на .from це вже вміє), а не розсовує сусідів. */
   .mailv2 .mailrow .rowmain{display:grid;grid-template-columns:var(--mail-from-col, 210px) minmax(0,1fr);align-items:baseline;gap:10px}
   .mailv2 .mailrow .r1{max-width:none;min-width:0}
-  .mailv2 .mailrow{padding:var(--mail-row-pad, 6px) 14px}
+  .mailv2 .mailrow{padding:var(--look-row-pad, 6px) 14px}
 }
 
 /* ── Поки лист не обрано: список на всю ширину ────────────────────────────
@@ -497,60 +497,10 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
    читатись як рядок. */
 /* Задана оператором ширина перемагає і тут: якщо він свідомо звузив список,
    показувати йому інше — значить зробити шестерню такою, що «іноді працює». */
-.mailv2 .worklayout:has(.empty-triage) .list-panel{width:100%;max-width:var(--mail-list-w, 1180px);max-height:calc(100vh - 260px)}
+.mailv2 .worklayout:has(.empty-triage) .list-panel{width:100%;max-width:var(--look-list-w, 1180px);max-height:calc(100vh - 260px)}
 .mailv2 .worklayout:has(.empty-triage) .detail-panel{margin:12px 0 0;max-width:1180px;max-height:none}
 .mailv2 .worklayout:has(.empty-triage) .empty-triage{flex-direction:row;align-items:center;justify-content:center;gap:16px;padding:16px 20px;text-align:left}
 .mailv2 .worklayout:has(.empty-triage) .empty-triage .icon{width:38px;height:38px;border-radius:10px;flex:0 0 auto}
 .mailv2 .worklayout:has(.empty-triage) .empty-triage h3{margin:0}
 .mailv2 .worklayout:has(.empty-triage) .empty-triage p{max-width:none}
 
-/* ── Шестерня «вигляд списку» (30.08.26) ──────────────────────────────────
-   Налаштування «поставив і забув»: тримати його розгорнутим означало б
-   віддати сталу смугу тому, до чого повертаються раз на місяць — на екрані,
-   де кожні 50px висоти це ще один видимий лист. Тому кнопка-шестерня, а
-   панель випадає над списком. */
-.mailv2 .lookgear{position:relative;flex:0 0 auto}
-.mailv2 .lookgear-btn{display:inline-flex;align-items:center;justify-content:center;
-  width:30px;height:30px;padding:0;border-radius:8px;cursor:pointer;
-  background:transparent;border:1px solid var(--control-edge);color:var(--ink-3);
-  transition:color var(--ui-speed) ease, border-color var(--ui-speed) ease,
-             background var(--ui-speed) ease}
-.mailv2 .lookgear-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;
-  stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;
-  transition:transform var(--ui-speed) cubic-bezier(.22,1,.36,1)}
-.mailv2 .lookgear-btn:hover{color:var(--ink);border-color:var(--accent-b);background:var(--raise-3)}
-.mailv2 .lookgear-btn:hover svg{transform:rotate(45deg)}
-.mailv2 .lookgear-btn[aria-expanded="true"]{color:var(--accent-c);border-color:var(--accent-b);background:var(--accent-well)}
-.mailv2 .lookgear-btn[aria-expanded="true"] svg{transform:rotate(45deg)}
-
-.mailv2 .lookpanel{position:absolute;top:calc(100% + 8px);right:0;z-index:40;
-  width:250px;padding:12px;border-radius:var(--r-card);
-  background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow-pop, 0 12px 32px rgba(0,0,0,.45));
-  display:flex;flex-direction:column;gap:10px}
-.mailv2 .lookpanel[hidden]{display:none}
-.mailv2 .lookpanel-head{font-family:var(--font-head);font-size:12.5px;font-weight:600;color:var(--ink)}
-.mailv2 .lookrow{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.mailv2 .lookrow-name{font-size:11.5px;color:var(--ink-2)}
-.mailv2 .lookstep{display:inline-flex;align-items:center;gap:2px;
-  border:1px solid var(--control-edge);border-radius:7px;overflow:hidden}
-.mailv2 .lookstep-btn{width:24px;height:24px;padding:0;border:0;cursor:pointer;
-  background:transparent;color:var(--ink-2);font-size:14px;line-height:1;
-  transition:background var(--ui-speed) ease, color var(--ui-speed) ease}
-.mailv2 .lookstep-btn:hover{background:var(--raise-3);color:var(--ink)}
-.mailv2 .lookstep-btn:disabled{opacity:.35;cursor:default;background:transparent}
-/* Ширина фіксована й цифри табличні — інакше значення смикає сусідні кнопки
-   на кожному клацанні, і «+» тікає з-під пальця саме тоді, коли по ній
-   клацають серією. */
-.mailv2 .lookstep-val{min-width:44px;text-align:center;font-size:11px;
-  color:var(--ink);font-variant-numeric:tabular-nums}
-.mailv2 .lookseg{display:inline-flex;align-items:center;gap:2px}
-.mailv2 .lookseg-opt{min-width:22px;height:22px;padding:0 4px;cursor:pointer;
-  border:1px solid var(--line-2);border-radius:5px;background:transparent;
-  color:var(--ink-3);font-family:var(--font-mono);font-size:10.5px;
-  transition:background var(--ui-speed) ease, color var(--ui-speed) ease, border-color var(--ui-speed) ease}
-.mailv2 .lookseg-opt:hover{color:var(--ink);border-color:var(--control-edge)}
-.mailv2 .lookseg-opt[aria-pressed="true"]{background:var(--accent-well);color:var(--accent-c);border-color:var(--accent-b)}
-.mailv2 .lookseg-unit{font-family:var(--font-mono);font-size:10px;color:var(--ink-3);margin-left:2px}
-.mailv2 .lookfoot{display:flex;align-items:center;gap:8px;justify-content:space-between;
-  padding-top:8px;border-top:1px solid var(--line)}
-.mailv2 .looknote{font-size:10px;color:var(--ink-3);text-align:right;line-height:1.3}

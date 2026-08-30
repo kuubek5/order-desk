@@ -37,9 +37,16 @@
     <link rel="stylesheet" href="/static/css/theme-forge.css?v={{ static_ver('css/theme-forge.css') }}">
     <link rel="stylesheet" href="/static/css/icon-styles.css?v={{ static_ver('css/icon-styles.css') }}">
     <link rel="stylesheet" href="/static/css/element-styles.css?v={{ static_ver('css/element-styles.css') }}">
+    {# Шестерня «вигляд списку» (черга + тріаж). Стоїть останньою свідомо:
+       нічого не перевизначає, і жоден інший файл не чіпає `.look*`. #}
+    <link rel="stylesheet" href="/static/css/lookgear.css?v={{ static_ver('css/lookgear.css') }}">
     <script src="/static/js/app.js?v={{ static_ver('js/app.js') }}" defer></script>
     <script src="/static/js/queue.js?v={{ static_ver('js/queue.js') }}" defer></script>
     <script src="/static/js/mail.js?v={{ static_ver('js/mail.js') }}" defer></script>
+    {# Шестерня «вигляд списку» — спільна для черги і тріажу. Після queue.js:
+       скидання вигляду шле подію, яку queue.js слухає, щоб забути ще й
+       перетягнуті ширини стовпців. #}
+    <script src="/static/js/lookgear.js?v={{ static_ver('js/lookgear.js') }}" defer></script>
     <script src="/static/js/handout.js?v={{ static_ver('js/handout.js') }}" defer></script>
     <script src="/static/js/clients.js?v={{ static_ver('js/clients.js') }}" defer></script>
     <script src="/static/js/settings.js?v={{ static_ver('js/settings.js') }}" defer></script>
@@ -51,8 +58,12 @@
     {% block extra_head %}{% endblock %}
     <script src="/static/js/htmx-1.9.10.min.js"></script>
 </head>
-<body>
-    <script>try{if(localStorage.getItem('railCollapsed')==='1')document.body.classList.add('rail-collapsed');var _d=localStorage.getItem('queueDensity');if(_d==='compact'||_d==='spacious'||_d==='normal')document.body.setAttribute('data-density',_d);var _m=localStorage.getItem('queueMatStyle');if(_m==='code')document.body.setAttribute('data-matstyle',_m);if(localStorage.getItem('layoutEditMode')==='1')document.body.classList.add('layout-edit');if(localStorage.getItem('furnaceStripCollapsed')==='1')document.body.classList.add('furnace-collapsed');}catch(e){}</script>
+{# Вигляд черги — з акаунта оператора, СЕРВЕР-САЙД. Раніше жив у
+   localStorage і застосовувався інлайн-скриптом «до першого
+   малювання»; тепер значення вже в розмітці, тому мигтіти нема чому,
+   і набір їде за оператором, а не за браузером. #}
+<body{% if _up.queue_density %} data-density="{{ _up.queue_density }}"{% endif %}{% if _up.queue_mat_style %} data-matstyle="{{ _up.queue_mat_style }}"{% endif %}{% if _up.queue_row_pad %} style="--look-row-pad:{{ _up.queue_row_pad }}px"{% endif %}>
+    <script>try{if(localStorage.getItem('railCollapsed')==='1')document.body.classList.add('rail-collapsed');if(localStorage.getItem('layoutEditMode')==='1')document.body.classList.add('layout-edit');if(localStorage.getItem('furnaceStripCollapsed')==='1')document.body.classList.add('furnace-collapsed');}catch(e){}</script>
     {% include "_backdrop.html" %}
     {# SVG-фільтр «рідкого скла» для перемикача скачування (див. .dl-seg у
        base.css). Визначається раз на сторінку, бо тогл є і в /settings, і в

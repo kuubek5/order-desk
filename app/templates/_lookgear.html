@@ -1,0 +1,133 @@
+{# Шестерня «вигляд списку» — один макрос на два екрани (черга і тріаж пошти).
+
+   Чому за шестернею, а не сталою смугою контролів: це налаштування «поставив
+   і забув». Розгорнутий ряд віддавав би постійну горизонтальну смугу тому, до
+   чого повертаються раз на місяць — на екранах, де кожні 50px висоти це ще
+   один видимий рядок роботи.
+
+   Значення підставляє СЕРВЕР (з акаунта оператора), тому список не мигає
+   канонним виглядом до першого скрипта, а панель відкривається з тим, що
+   реально застосовано. Поведінка — в app/static/js/lookgear.js.
+
+   scope        — 'mail' | 'queue', летить у /account/look
+   host         — селектор елемента, на який лягають --look-* і data-density
+   pad/step     — поточні значення з акаунта (0 = канон)
+   width        — None, якщо на цьому екрані ширина не регулюється
+   width_target — селектор, з якого брати стартову ширину при першому «−»
+   presets      — [(щільність, відступ, підпис)]: пресет ставить обидва
+                  разом, бо «Компактний» із чужими 20px виглядав би зламаним
+   mat_styles   — [(значення, підпис, підказка)] для колонки «Матеріал / Колір»
+   reset_event  — подія на document після «Скинути» (черга чистить ще й ширини)
+   col_edit     — показати рядок «Ширини стовпців» (лише черга): вмикає режим
+                  перетягування межі заголовка
+#}
+{% macro lookgear(scope, host, pad, step, width=None, width_target='', presets=[],
+                  density='', mat_styles=[], mat_style='', pad_default=6,
+                  reset_event='', col_edit=false, title='Вигляд списку') %}
+<div class="lookgear" data-look-gear data-look-scope="{{ scope }}"
+     data-look-host="{{ host }}"
+     data-pad="{{ pad }}" data-width="{{ width or 0 }}" data-step="{{ step or 2 }}"
+     data-density="{{ density }}" data-mat-style="{{ mat_style }}"
+     data-look-pad-default="{{ pad_default }}"
+     {% if width_target %}data-look-width-target="{{ width_target }}"{% endif %}
+     {% if reset_event %}data-look-reset-event="{{ reset_event }}"{% endif %}>
+    <button type="button" class="lookgear-btn" data-look-toggle
+            aria-expanded="false" aria-controls="look-panel-{{ scope }}"
+            title="{{ title }}" aria-label="{{ title }}">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+    </button>
+
+    <div class="lookpanel" id="look-panel-{{ scope }}" data-look-panel hidden>
+        <div class="lookpanel-head">{{ title }}</div>
+
+        {% if presets %}
+        {# Пресети першими: «постав і йди» — найчастіший рух у панелі. Ручне
+           доведення нижче, за розділювачем: це вже інший рівень. #}
+        <div class="lookrow lookrow-full">
+            <span class="lookrow-name">Готові набори</span>
+            <div class="lookpresets" role="group" aria-label="Готові набори щільності">
+                {% for value, preset_pad, label in presets %}
+                <button type="button" class="lookpreset" data-look-preset="{{ value }}"
+                        data-look-preset-pad="{{ preset_pad }}"
+                        aria-pressed="{{ 'true' if density == value and pad == preset_pad else 'false' }}">{{ label }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="looksplit" aria-hidden="true"></div>
+        {% endif %}
+
+        <div class="lookrow">
+            <span class="lookrow-name">Відступ рядків</span>
+            {# Кнопки тримають повтор при утриманні (lookgear.js): довести
+               6px до 24px по одному клацанню — це дев'ять клацань. #}
+            <div class="lookstep" role="group" aria-label="Відступ рядків">
+                <button type="button" class="lookstep-btn" data-look-dec="pad"
+                        title="Менший відступ — можна затиснути" aria-label="Менший відступ">−</button>
+                <output class="lookstep-val mono" data-look-out="pad"></output>
+                <button type="button" class="lookstep-btn" data-look-inc="pad"
+                        title="Більший відступ — можна затиснути" aria-label="Більший відступ">+</button>
+            </div>
+        </div>
+
+        {% if width is not none %}
+        <div class="lookrow">
+            <span class="lookrow-name">Ширина списку</span>
+            <div class="lookstep" role="group" aria-label="Ширина панелі списку">
+                <button type="button" class="lookstep-btn" data-look-dec="width"
+                        title="Вужчий список — можна затиснути" aria-label="Вужчий список">−</button>
+                <output class="lookstep-val mono" data-look-out="width"></output>
+                <button type="button" class="lookstep-btn" data-look-inc="width"
+                        title="Ширший список — можна затиснути" aria-label="Ширший список">+</button>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if mat_styles %}
+        <div class="lookrow lookrow-full">
+            <span class="lookrow-name">Колір роботи</span>
+            <div class="lookpresets" role="group" aria-label="Вигляд колонки «Матеріал / Колір»">
+                {% for value, label, hint in mat_styles %}
+                <button type="button" class="lookpreset" data-look-mat="{{ value }}" title="{{ hint }}"
+                        aria-pressed="{{ 'true' if mat_style == value else 'false' }}">{{ label }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {# Крок задається окремо, бо «на скільки» — це смак так само, як і
+           «скільки»: комусь треба довести до ідеалу по пікселю, комусь —
+           одним рухом перескочити. #}
+        <div class="lookrow">
+            <span class="lookrow-name">Крок</span>
+            <div class="lookseg" role="group" aria-label="Крок зміни">
+                {% for s in (1, 2, 4, 8) %}
+                <button type="button" class="lookseg-opt" data-look-step="{{ s }}"
+                        aria-pressed="{{ 'true' if (step or 2) == s else 'false' }}">{{ s }}</button>
+                {% endfor %}
+                <span class="lookseg-unit">px</span>
+            </div>
+        </div>
+
+        {% if col_edit %}
+        {# Ширини стовпців — єдине, що лишається в localStorage: вони прив'язані
+           до конкретного монітора, а не до людини, тому їхати за акаунтом на
+           інший екран їм нема сенсу. Кнопка вмикає перетягування межі
+           заголовка — без режиму межі не хапаються, щоб випадковий рух під час
+           сортування не з'їжджав стовпці. #}
+        <div class="lookrow lookrow-full">
+            <span class="lookrow-name">Ширини стовпців</span>
+            <button type="button" class="lookpreset" data-layout-edit-toggle aria-pressed="false"
+                    title="Увімкнути перетягування межі заголовка стовпця">Перетягувати межі</button>
+        </div>
+        {% endif %}
+
+        <div class="lookfoot">
+            <button type="button" class="btn sm" data-look-reset>Скинути</button>
+            <span class="looknote">Зберігається у вашому обліковому записі</span>
+        </div>
+    </div>
+</div>
+{% endmacro %}

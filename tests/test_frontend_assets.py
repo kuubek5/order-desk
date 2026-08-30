@@ -42,6 +42,7 @@ BASE_HTML_SCRIPTS = [
     "/static/js/app.js",
     "/static/js/queue.js",
     "/static/js/mail.js",
+    "/static/js/lookgear.js",
     "/static/js/handout.js",
     "/static/js/clients.js",
     "/static/js/settings.js",
@@ -203,6 +204,7 @@ BASE_HTML_STYLESHEETS = [
     "/static/css/theme-forge.css",
     "/static/css/icon-styles.css",
     "/static/css/element-styles.css",
+    "/static/css/lookgear.css",
 ]
 
 

@@ -167,11 +167,16 @@
   --enter-duration: .32s;
   --flash-duration: .9s;
 
-  /* Щільність черги (режим вигляду, задача 1) — керується data-density на
-     <body>. Тут дефолт = «звичайний»; компактний/просторий нижче. Єдине
-     джерело значень щільності, споживається у base.css (.q2 таблиця, side-panel,
-     statusline). */
-  --queue-density-pad: 8px;
+  /* Щільність черги — керується data-density на <body> (пресет із шестерні).
+     Тут дефолт = «звичайний»; компактний/просторий нижче. Єдине джерело
+     значень щільності, споживається у base.css (.q2 таблиця, side-panel,
+     statusline).
+
+     --look-row-pad — ручне доведення тією ж шестернею. Стоїть ПЕРШИМ
+     аргументом у кожному з трьох блоків: інакше пресет затирав би ручне
+     число, і «+» після «Компактного» мовчки нічого не робив би. Пресет при
+     цьому не втрачається — він лишається запасним значенням. */
+  --queue-density-pad: var(--look-row-pad, 8px);
   --queue-density-font: 13px;
   --queue-density-side-gap: 10px;
   --queue-density-kv-pad: 6px;
@@ -180,7 +185,7 @@
 }
 
 body[data-density="compact"] {
-  --queue-density-pad: 4px;
+  --queue-density-pad: var(--look-row-pad, 4px);
   --queue-density-font: 12px;
   --queue-density-side-gap: 6px;
   --queue-density-kv-pad: 4px;
@@ -189,7 +194,7 @@ body[data-density="compact"] {
 }
 
 body[data-density="spacious"] {
-  --queue-density-pad: 12px;
+  --queue-density-pad: var(--look-row-pad, 12px);
   --queue-density-font: 14px;
   --queue-density-side-gap: 15px;
   --queue-density-kv-pad: 9px;

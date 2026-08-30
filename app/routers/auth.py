@@ -5,6 +5,7 @@
 middleware, решта ні.
 """
 
+import logging
 from threading import Lock
 
 from fastapi import APIRouter, Depends, Form
@@ -17,7 +18,8 @@ from starlette.requests import Request
 from app.auth import hash_password, verify_password
 from app.license import get_license_status, get_machine_id, verify_license_key
 from app.models import User
-from app.routers.deps import get_current_user, get_db, templates
+from app.routers.deps import UI_SESSION_KEY, get_current_user, get_db, templates
+from app.services.look_prefs import LookError, apply_mail_look, apply_queue_look
 from app.services.operators import (
     normalize_initial,
     user_count,
@@ -25,6 +27,8 @@ from app.services.operators import (
     validate_initial,
 )
 from app.settings_store import set_setting
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -204,6 +208,49 @@ async def post_account_appearance(
     user.ui_loader_style = loader
     user.ui_chip_style = chips
     db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/account/look", status_code=204)
+async def post_account_look(
+    request: Request,
+    scope: str = Form(...),
+    row_pad: int = Form(0),
+    list_width: int = Form(0),
+    density: str = Form(""),
+    mat_style: str = Form(""),
+    step: int = Form(0),
+    db: Session = Depends(get_db),
+):
+    """Зберегти вигляд списку (шестерня) — один роут на обидва екрани.
+
+    Викликається fetch'ем ПІСЛЯ того, як зміну вже застосовано на клієнті:
+    тому 204 і жодного перерендеру — затиснута «+» не має чекати на мережу.
+    Числа підтягуються до меж, бо приходять від кнопок самого оператора;
+    пресети й крок — з фіксованих переліків, бо приходять з розмітки, і
+    несподіване значення там означає помилку, яку краще побачити.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return Response(status_code=401)
+    try:
+        if scope == "mail":
+            apply_mail_look(user, row_pad=row_pad, list_width=list_width, step=step)
+        elif scope == "queue":
+            apply_queue_look(
+                user, density=density, row_pad=row_pad, mat_style=mat_style, step=step
+            )
+        else:
+            return Response(status_code=422)
+    except LookError:
+        return Response(status_code=422)
+    db.commit()
+    # Дзеркало в сесії мусить оновитись разом із БД, інакше сторінка помилки
+    # показала б попередній вигляд (див. ui_prefs).
+    try:
+        request.session.pop(UI_SESSION_KEY, None)
+    except Exception:  # noqa: BLE001 — налаштування не варте зламаного запиту
+        logger.debug("не вдалось скинути дзеркало ui в сесії", exc_info=True)
     return Response(status_code=204)
 
 

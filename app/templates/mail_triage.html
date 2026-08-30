@@ -3,6 +3,7 @@
 {% block title %}{{ page_title }} — KuubMill{% endblock %}
 
 {% block content %}
+{% from "_lookgear.html" import lookgear %}
 {% set topbar_active = 'mail' %}
 {% include "_topbar_nav.html" %}
 
@@ -15,7 +16,7 @@
    власну область видимості, і top-level `set` батьківського шаблону сюди не
    дотягується. Другий виклик безкоштовний — він кешований у request.state. #}
 {% set _up = ui_prefs(request) %}
-<main class="mailv2"{% if _up.mail_row_pad or _up.mail_list_w %} style="{% if _up.mail_row_pad %}--mail-row-pad:{{ _up.mail_row_pad }}px;{% endif %}{% if _up.mail_list_w %}--mail-list-w:{{ _up.mail_list_w }}px{% endif %}"{% endif %}>
+<main class="mailv2"{% if _up.mail_row_pad or _up.mail_list_w %} style="{% if _up.mail_row_pad %}--look-row-pad:{{ _up.mail_row_pad }}px;{% endif %}{% if _up.mail_list_w %}--look-list-w:{{ _up.mail_list_w }}px{% endif %}"{% endif %}>
     <div class="m-topbar">
         <div>
             <h1>{{ page_title }}</h1>
@@ -86,71 +87,13 @@
         </div>
         {% endif %}
 
-        {# Вигляд списку — за шестернею, а не окремим рядком контролів. Це
-           налаштування «поставив і забув»: тримати його розгорнутим означало б
-           віддати сталу смугу тому, до чого повертаються раз на місяць, на
-           екрані, де кожні 50px висоти — це ще один видимий лист.
-
-           Числа пишуться на <main> одразу (JS), а на сервер летять фоном:
-           клацання «+» не має чекати на мережу. Початкові значення підставлені
-           сервером — панель відкривається з тим, що реально застосовано. #}
-        <div class="lookgear" data-mail-look
-             data-pad="{{ _up.mail_row_pad }}" data-width="{{ _up.mail_list_w }}"
-             data-step="{{ _up.mail_step or 2 }}">
-            <button type="button" class="lookgear-btn" data-look-toggle
-                    aria-expanded="false" aria-controls="look-panel"
-                    title="Вигляд списку — відступ рядків і ширина панелі"
-                    aria-label="Вигляд списку">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
-            </button>
-
-            <div class="lookpanel" id="look-panel" hidden>
-                <div class="lookpanel-head">Вигляд списку</div>
-
-                <div class="lookrow">
-                    <span class="lookrow-name">Відступ рядків</span>
-                    <div class="lookstep" role="group" aria-label="Відступ рядків">
-                        <button type="button" class="lookstep-btn" data-look-dec="pad"
-                                aria-label="Менший відступ">−</button>
-                        <output class="lookstep-val mono" data-look-out="pad"></output>
-                        <button type="button" class="lookstep-btn" data-look-inc="pad"
-                                aria-label="Більший відступ">+</button>
-                    </div>
-                </div>
-
-                <div class="lookrow">
-                    <span class="lookrow-name">Ширина списку</span>
-                    <div class="lookstep" role="group" aria-label="Ширина панелі списку">
-                        <button type="button" class="lookstep-btn" data-look-dec="width"
-                                aria-label="Вужчий список">−</button>
-                        <output class="lookstep-val mono" data-look-out="width"></output>
-                        <button type="button" class="lookstep-btn" data-look-inc="width"
-                                aria-label="Ширший список">+</button>
-                    </div>
-                </div>
-
-                {# Крок задається окремо, бо «на скільки» — це смак так само, як
-                   і «скільки»: комусь треба довести до ідеалу по пікселю,
-                   комусь — одним клацанням перескочити. #}
-                <div class="lookrow">
-                    <span class="lookrow-name">Крок</span>
-                    <div class="lookseg" role="group" aria-label="Крок зміни">
-                        {% for s in (1, 2, 4, 8) %}
-                        <button type="button" class="lookseg-opt" data-look-step="{{ s }}"
-                                aria-pressed="{{ 'true' if (_up.mail_step or 2) == s else 'false' }}">{{ s }}</button>
-                        {% endfor %}
-                        <span class="lookseg-unit">px</span>
-                    </div>
-                </div>
-
-                <div class="lookfoot">
-                    <button type="button" class="btn sm" data-look-reset>Скинути</button>
-                    <span class="looknote">Зберігається у вашому обліковому записі</span>
-                </div>
-            </div>
+        {# Пресети підібрані під реальні висоти рядка на цьому екрані:
+           3px — рядок ~30px (максимум листів в екрані), 6px — канон,
+           12px — на дотик пальцем біля верстата. #}
+        {{ lookgear('mail', 'main.mailv2', _up.mail_row_pad, _up.mail_step,
+                    width=_up.mail_list_w, width_target='.mailv2 .list-panel',
+                    presets=[('', 3, 'Щільно'), ('', 0, 'Звичайно'), ('', 12, 'Просторо')],
+                    pad_default=6) }}
         </div>
     </div>
 

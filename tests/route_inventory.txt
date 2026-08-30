@@ -38,6 +38,7 @@ GET /stl-preview/{token}/{filename}
 MOUNT /static
 POST /account/appearance
 POST /account/initial
+POST /account/look
 POST /account/password
 POST /actions/redo-last
 POST /actions/undo-last
@@ -61,7 +62,6 @@ POST /mail/filters/{rule_id}/edit
 POST /mail/filters/{rule_id}/toggle
 POST /mail/senders/add
 POST /mail/senders/{memory_id}/auto
-POST /mail/prefs
 POST /mail/sync
 POST /mail/{email_id}/accept
 POST /mail/{email_id}/download-attachments

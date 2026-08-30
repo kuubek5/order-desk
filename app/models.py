@@ -52,6 +52,15 @@ class User(Base):
     mail_row_pad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     mail_list_width: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     mail_ui_step: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Те саме для черги. Щільність і вигляд колонки «Матеріал / Колір» жили в
+    # localStorage — тобто гинули при зміні браузера й не їхали за оператором.
+    # Переїхали сюди ЄДИНИМ джерелом: два місця для одного значення рано чи
+    # пізно розійшлись би. Ширини стовпців свідомо лишились локальними — вони
+    # прив'язані до конкретного монітора, а не до людини.
+    queue_density: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    queue_row_pad: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    queue_mat_style: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    queue_ui_step: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()

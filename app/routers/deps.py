@@ -254,6 +254,10 @@ def ui_prefs(request: Request) -> dict:
         "mail_row_pad": 0,
         "mail_list_w": 0,
         "mail_step": 0,
+        "queue_density": "",
+        "queue_row_pad": 0,
+        "queue_mat_style": "",
+        "queue_step": 0,
     }
     mirrored = False
     try:
@@ -272,6 +276,10 @@ def ui_prefs(request: Request) -> dict:
                         "mail_row_pad": user.mail_row_pad or 0,
                         "mail_list_w": user.mail_list_width or 0,
                         "mail_step": user.mail_ui_step or 0,
+                        "queue_density": user.queue_density or "",
+                        "queue_row_pad": user.queue_row_pad or 0,
+                        "queue_mat_style": user.queue_mat_style or "",
+                        "queue_step": user.queue_ui_step or 0,
                     }
                     mirrored = True
             finally:

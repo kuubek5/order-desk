@@ -83,7 +83,6 @@ from app.queue_filters import (
 )
 from app.routers.deps import (
     SYNC_PAUSED_MSG,
-    UI_SESSION_KEY,
     get_current_user,
     get_db,
     is_loopback_request,
@@ -348,58 +347,6 @@ def get_mail(
             "held_back_count": held_back_count,
         },
     )
-
-
-# Межі вигляду списку. Нуль скрізь = канон (те, що бачить оператор, який
-# нічого не крутив), тому нуль проходить повз межі й не підтягується до
-# мінімуму. Ширина: нижня межа — та, під яку розрахований двоповерховий рядок;
-# верхня — стеля, за якою рядок перестає читатись як рядок (те саме число, що
-# обмежує список у режимі «лист не обрано»).
-MAIL_ROW_PAD_MIN, MAIL_ROW_PAD_MAX = 2, 28
-MAIL_LIST_WIDTH_MIN, MAIL_LIST_WIDTH_MAX = 340, 1180
-MAIL_UI_STEPS = (0, 1, 2, 4, 8)
-
-
-def _clamp_or_zero(value: int, low: int, high: int) -> int:
-    return max(low, min(high, value)) if value else 0
-
-
-@router.post("/mail/prefs", status_code=204)
-def post_mail_prefs(
-    request: Request,
-    row_pad: int = Form(0),
-    list_width: int = Form(0),
-    step: int = Form(0),
-    db: Session = Depends(get_db),
-):
-    """Зберегти вигляд списку листів для цього оператора.
-
-    Викликається fetch'ем з екрана тріажу ПІСЛЯ того, як зміну вже застосовано
-    на клієнті — тому 204 і жодного перерендеру: натиснута «+» не має чекати на
-    мережу. Числа підтягуються до меж, а не відкидаються з помилкою: єдине
-    джерело — кнопки самого оператора, і показувати йому 422 за те, що він
-    доклацав до краю, безглуздо. Крок — навпаки, з фіксованого переліку: він
-    приходить не з клацання, а з розмітки, і несподіване значення тут означає
-    помилку, яку краще побачити.
-    """
-    user = get_current_user(request, db)
-    if user is None:
-        return Response(status_code=401)
-    if step not in MAIL_UI_STEPS:
-        return Response(status_code=422)
-    user.mail_row_pad = _clamp_or_zero(row_pad, MAIL_ROW_PAD_MIN, MAIL_ROW_PAD_MAX)
-    user.mail_list_width = _clamp_or_zero(
-        list_width, MAIL_LIST_WIDTH_MIN, MAIL_LIST_WIDTH_MAX
-    )
-    user.mail_ui_step = step
-    db.commit()
-    # Дзеркало в сесії мусить оновитись разом із БД, інакше сторінка помилки
-    # показала б попередній вигляд (див. ui_prefs).
-    try:
-        request.session.pop(UI_SESSION_KEY, None)
-    except Exception:  # noqa: BLE001 — налаштування не варте зламаного запиту
-        logger.debug("не вдалось скинути дзеркало ui в сесії", exc_info=True)
-    return Response(status_code=204)
 
 
 @router.post("/mail/sync")
