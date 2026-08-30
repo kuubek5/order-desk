@@ -167,15 +167,49 @@ main.furnaces{position:relative;min-height:100vh}
    в одному місці, і колір «гарячої» печі не розповзається по трьох файлах.
    Скоуплено під .q2 (черга), як і решта бічної панелі. */
 .q2 .fu-tiles{display:flex;flex-direction:column;gap:8px}
-.q2 .fu-tile{display:block;padding:10px 11px;border-radius:9px;text-decoration:none;
-  border:1px solid var(--line);background:var(--card-2);color:var(--ink);
-  transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
+/* Графічна плитка «Жар коронок» (обрано власником 30.08.26 з чотирьох
+   згенерованих варіантів; арт design/kuubmill_furnwidget-b-crowns-pro…).
+   Фон — фото розжарених коронок на лотку; числа живуть ПОВЕРХ, під шаром
+   градієнта-затемнення (::before), інакше на світлих ділянках арту вони
+   тонуть. Затемнення густішає праворуч — арт скомпоновано так, що коронки
+   в лівому нижньому куті. Кольори затемнення прив'язані до самого арту
+   (теплий майже чорний), а не до токенів теми: фото однакове в обох темах. */
+.q2 .fu-tile{position:relative;display:block;padding:11px 12px;border-radius:10px;
+  overflow:hidden;isolation:isolate;text-decoration:none;min-height:76px;
+  border:1px solid var(--line-2);color:var(--ink);
+  background-color:#14100a;
+  background-image:url("../img/furnace-crowns.jpg");
+  background-size:cover;background-position:center 60%;
+  transition:border-color var(--ui-speed) ease,filter var(--ui-speed) ease}
+.q2 .fu-tile::before{content:"";position:absolute;inset:0;z-index:0;
+  background:linear-gradient(100deg,rgba(20,16,10,.22) 0%,rgba(20,16,10,.82) 58%,rgba(20,16,10,.94) 100%)}
+.q2 .fu-tile>*{position:relative;z-index:1}
 .q2 .fu-tile:hover{border-color:var(--control-edge);opacity:1}
-/* Працює — акцентом; збій — тривогою і БЕЗ приглушення: приглушити означає
-   сказати «менш важливо», а тут рівно навпаки. */
-.q2 .fu-tile.run{border-color:rgba(var(--accent-rgb), .35);background:var(--accent-well)}
-.q2 .fu-tile.bad{border-color:rgba(var(--alarm-rgb), .45);background:rgba(var(--alarm-rgb), .08)}
+/* Стани: працює — повний жар і акцентна межа; вільна — арт притишений
+   (жару немає — картинка холоне разом з піччю); збій — тривожний шар і БЕЗ
+   приглушення: приглушити означає сказати «менш важливо», а тут навпаки. */
+.q2 .fu-tile.run{border-color:rgba(var(--accent-rgb), .45)}
+.q2 .fu-tile:not(.run):not(.bad){filter:saturate(.35) brightness(.82)}
+.q2 .fu-tile.bad{border-color:rgba(var(--alarm-rgb), .5)}
+.q2 .fu-tile.bad::before{
+  background:linear-gradient(100deg,rgba(46,13,8,.6) 0%,rgba(24,12,10,.9) 58%,rgba(20,10,8,.96) 100%)}
 .q2 .fu-tile.bad:hover{border-color:var(--alarm)}
+/* Іскри над жаром — тільки на .run (шаблон і не рендерить їх інакше).
+   Негативні затримки, щоб політ уже йшов у момент появи плитки, а не
+   стартував хором після кожного 30-секундного свапу секції. */
+.q2 .fu-sparks{position:absolute;inset:0;z-index:1;pointer-events:none}
+.q2 .fu-sparks i{position:absolute;bottom:12px;width:3px;height:3px;border-radius:50%;
+  background:rgba(var(--accent-rgb), .95);filter:blur(.4px);opacity:0;
+  animation:fu-spark-fly 3.8s linear infinite}
+.q2 .fu-sparks i:nth-child(1){left:14%;animation-delay:-.6s}
+.q2 .fu-sparks i:nth-child(2){left:26%;animation-delay:-1.9s}
+.q2 .fu-sparks i:nth-child(3){left:38%;animation-delay:-3.1s}
+.q2 .fu-sparks i:nth-child(4){left:52%;animation-delay:-2.5s}
+@keyframes fu-spark-fly{
+  0%{transform:translateY(0);opacity:0}
+  12%{opacity:.9}
+  100%{transform:translateY(-64px) translateX(10px);opacity:0}}
+@media (prefers-reduced-motion:reduce){.q2 .fu-sparks i{animation:none;display:none}}
 .q2 .fu-tile-top{display:flex;align-items:baseline;gap:8px}
 .q2 .fu-tile-name{font-size:12.5px;color:var(--ink-2);min-width:0;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
@@ -185,6 +219,11 @@ main.furnaces{position:relative;min-height:100vh}
    сусідні плитки на кожному кадрі. */
 .q2 .fu-tile-temp{margin-left:auto;font-family:var(--font-mono);font-variant-numeric:tabular-nums;
   font-size:20px;font-weight:500;line-height:1.1;color:var(--accent-c)}
+/* На фото-фоні числу працюючої печі потрібне легке світіння — це і жар, і
+   гарантія читабельності поверх арту. На «вільній» світіння немає: тиха
+   плитка не світиться, це теж сигнал стану. */
+.q2 .fu-tile.run .fu-tile-temp{font-size:22px;font-weight:700;
+  text-shadow:0 0 16px rgba(var(--accent-rgb), .45)}
 .q2 .fu-tile-temp.is-none{color:var(--ink-3);font-size:16px}
 .q2 .fu-tile.bad .fu-tile-temp{color:var(--ink-3)}
 .q2 .fu-tile-bar{display:block;height:4px;border-radius:99px;background:var(--card-3);

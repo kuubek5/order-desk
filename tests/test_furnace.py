@@ -700,6 +700,42 @@ def test_empty_side_section_does_not_claim_furnaces_are_unconfigured(monkeypatch
     assert "не налаштовано" in none_at_all
 
 
+def test_sparks_animation_only_on_running_tile(monkeypatch, tmp_path):
+    """Графічна плитка «Жар коронок»: іскри — сигнал стану, а не прикраса.
+
+    Правило екранів, що висять перед очима цілу зміну (те саме, що в тріажі
+    пошти): жодної нескінченної анімації на неактивних станах. Іскри мають
+    рендеритись ЛИШЕ на працюючій печі; «вільна» і «збій» — без руху.
+    Перевіряємо рендер, а не джерело шаблону.
+    """
+    from app.routers.deps import templates
+
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    tpl = templates.env.get_template("_furnace_side.html")
+
+    with Session(_database()) as db:
+        _add_furnace(db, name="Гаряча", host="192.168.1.76")
+        _add_furnace(db, name="Тиха", host="192.168.1.61")
+        monkeypatch.setattr(service, "capture", lambda host, *a, **k: _frame("run"))
+        service.poll_target(db, service.FurnaceTarget(name="Гаряча", host="192.168.1.76"), None)
+        monkeypatch.setattr(service, "capture", lambda host, *a, **k: _frame("wait"))
+        service.poll_target(db, service.FurnaceTarget(name="Тиха", host="192.168.1.61"), None)
+
+        cards = service.strip_cards(db)
+        html = tpl.render(
+            request=None, furnace_cards=cards,
+            furnace_summary=service.strip_summary(cards),
+            furnaces_configured=2, furnaces_all_idle=False,
+        )
+
+    tiles = [t.split("</a>")[0] for t in html.split('<a class="fu-tile')[1:]]
+    assert len(tiles) == 2
+    running = next(t for t in tiles if "Гаряча" in t)
+    quiet = next(t for t in tiles if "Тиха" in t)
+    assert "fu-sparks" in running, "працююча піч лишилась без іскор"
+    assert "fu-sparks" not in quiet, "іскри на неактивній плитці — вічна анімація"
+
+
 def test_all_idle_refuses_to_say_everyone_is_free_when_one_is_silent(monkeypatch, tmp_path):
     """«усі вільні» не має стояти поруч із «1 без зв'язку» — раніше згорнута
     смуга писала обидва твердження в одному рядку, бо `running` рахує лише RUN

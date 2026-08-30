@@ -46,6 +46,12 @@
             <a class="fu-tile{% if card.has_problem %} bad{% elif card.is_running %} run{% endif %}"
                href="/furnaces"
                {% if card.has_problem %}title="{{ card.target.name }} ({{ card.target.host }}): {{ card.problem_text }}"{% endif %}>
+                {# Іскри — ЛИШЕ на працюючій печі: анімація тут сигнал стану, а
+                   не прикраса. На «вільна»/«збій» жодного руху — екран висить
+                   перед очима цілу зміну. prefers-reduced-motion гасить і це. #}
+                {% if card.is_running and not card.has_problem %}
+                <span class="fu-sparks" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                {% endif %}
                 <span class="fu-tile-top">
                     <span class="fu-tile-name">{{ card.target.name }}</span>
                     {# Слот температури лишається завжди: великому шрифту табло
