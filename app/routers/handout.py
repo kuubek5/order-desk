@@ -234,6 +234,17 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             current_marked = True
 
     done_groups = sum(1 for g in client_groups if g["all_found"])
+    # Рахунок ЗА ОБРАНИЙ ДЕНЬ — прохання власника: яке число видане, за те
+    # число й рахуємо. Так і виходить: `eligible` вище вже звужено до дня, а
+    # `client_groups` — ще й до обраного джерела, тобто цифри описують рівно
+    # те, що зараз на екрані, а не всю чергу.
+    #
+    # Клієнтів мало (десятки), робіт — більше, і саме роботи кажуть, скільки
+    # ще фізично шукати в лотку: «3 / 11 клієнтів» нічого не каже про те, що в
+    # тих восьми може бути і вісім робіт, і сорок.
+    total_works = sum(g["works_count"] for g in client_groups)
+    found_works = sum(g["found_count"] for g in client_groups)
+    total_units = sum(g["units_total"] for g in client_groups)
     # Clients with no bound export folder. Counted so the screen can say it ONCE
     # at the top instead of putting a warning chip on every card — with nothing
     # bound yet that was 34 amber calls-to-action, which reads as noise and
@@ -267,6 +278,9 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             "day_window": handout_day_window(handout_days, selected_day),
             "done_groups": done_groups,
             "total_groups": len(client_groups),
+            "total_works": total_works,
+            "found_works": found_works,
+            "total_units": total_units,
             "unbound_count": unbound_count,
     }
 

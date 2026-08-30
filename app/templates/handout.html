@@ -48,7 +48,17 @@
 
         {% if client_groups %}
         <div class="hspine" aria-hidden="true"><i style="width:{{ (done_groups / total_groups * 100)|round(0) if total_groups else 0 }}%"></i></div>
-        <span class="hkpi mono"><b>{{ done_groups }}</b> / {{ total_groups }} клієнтів</span>
+        {# Рахунок за ОБРАНИЙ ДЕНЬ і за поточним фільтром джерела — тобто описує
+           рівно те, що на екрані. Роботи стоять поруч із клієнтами свідомо:
+           «3 / 11 клієнтів» нічого не каже про те, скільки ще шукати в лотку —
+           у решті восьми може бути і вісім робіт, і сорок. Одиниці третім
+           числом, дрібним: їх рахують не при видачі, а в звітності. #}
+        <span class="hkpi mono">
+            <b>{{ done_groups }}</b> / {{ total_groups }} кл.
+            <span class="hkpi-sep" aria-hidden="true">·</span>
+            <b>{{ found_works }}</b> / {{ total_works }} роб.
+            <span class="hkpi-units">{{ total_units }} од.</span>
+        </span>
         {% endif %}
 
         <nav class="hsrc" aria-label="Джерело робіт">
