@@ -16,7 +16,7 @@
    власну область видимості, і top-level `set` батьківського шаблону сюди не
    дотягується. Другий виклик безкоштовний — він кешований у request.state. #}
 {% set _up = ui_prefs(request) %}
-<main class="mailv2"{% if _up.mail_row_pad or _up.mail_list_w %} style="{% if _up.mail_row_pad %}--look-row-pad:{{ _up.mail_row_pad }}px;{% endif %}{% if _up.mail_list_w %}--look-list-w:{{ _up.mail_list_w }}px{% endif %}"{% endif %}>
+<main class="mailv2">
     <div class="m-topbar">
         <div>
             <h1>{{ page_title }}</h1>

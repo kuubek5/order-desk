@@ -104,10 +104,10 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
    1920px список лишався тісним (тема листа обрізалась), а панель деталей
    забирала ~950px, які при порожньому виборі виглядали як велика порожня
    коробка. clamp тримає розумні межі: не вужче 380 і не ширше 620. */
-/* --look-list-w — ширина з акаунта оператора (шестерня). Не задана — та сама
+/* --mail-list-w — ширина з акаунта оператора (шестерня). Не задана — та сама
    clamp, що й раніше, тобто оператор, який нічого не крутив, нічого й не
    помітить. */
-.mailv2 .list-panel{flex:0 1 var(--look-list-w, clamp(380px, 32%, 620px));width:auto;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-rail);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:none;max-height:calc(100vh - 190px)}
+.mailv2 .list-panel{flex:0 1 var(--mail-list-w, clamp(380px, 32%, 620px));width:auto;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-rail);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:none;max-height:calc(100vh - 190px)}
 .mailv2 .card-head{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line)}
 .mailv2 .card-head h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0}
 .mailv2 .card-head .meta{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
@@ -125,10 +125,10 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 /* 4px so the first row is not jammed against the panel's rounded top edge —
    the visible list header that used to provide that separation is gone. */
 .mailv2 .listwrap{overflow-y:auto;flex:1;min-height:0;scrollbar-width:thin;padding:4px 0 0}
-/* --look-row-pad — відступ рядка з акаунта оператора (шестерня над списком).
+/* --mail-row-pad — відступ рядка з акаунта оператора (шестерня над списком).
    Одна змінна на обидва режими: оператор крутить її, дивлячись на той режим,
    у якому працює, і два окремих числа він би не пов'язав між собою. */
-.mailv2 .mailrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px;padding:var(--look-row-pad, 8px) 14px;border-bottom:1px solid var(--line);text-decoration:none;cursor:pointer;transition:background var(--ui-speed) ease}
+.mailv2 .mailrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px;padding:var(--mail-row-pad, 8px) 14px;border-bottom:1px solid var(--line);text-decoration:none;cursor:pointer;transition:background var(--ui-speed) ease}
 .mailv2 .mailrow:last-child{border-bottom:0}
 .mailv2 .mailrow:hover{background:var(--card-2);opacity:1}
 .mailv2 .mailrow:focus-visible{outline:2px solid var(--accent-b);outline-offset:-2px}
@@ -488,7 +488,7 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
      на .from це вже вміє), а не розсовує сусідів. */
   .mailv2 .mailrow .rowmain{display:grid;grid-template-columns:var(--mail-from-col, 210px) minmax(0,1fr);align-items:baseline;gap:10px}
   .mailv2 .mailrow .r1{max-width:none;min-width:0}
-  .mailv2 .mailrow{padding:var(--look-row-pad, 6px) 14px}
+  .mailv2 .mailrow{padding:var(--mail-row-pad, 6px) 14px}
 }
 
 /* ── Поки лист не обрано: список на всю ширину ────────────────────────────
@@ -506,7 +506,7 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
    читатись як рядок. */
 /* Задана оператором ширина перемагає і тут: якщо він свідомо звузив список,
    показувати йому інше — значить зробити шестерню такою, що «іноді працює». */
-.mailv2 .worklayout:has(.empty-triage) .list-panel{width:100%;max-width:var(--look-list-w, 1180px);max-height:calc(100vh - 260px)}
+.mailv2 .worklayout:has(.empty-triage) .list-panel{width:100%;max-width:var(--mail-list-w, 1180px);max-height:calc(100vh - 260px)}
 .mailv2 .worklayout:has(.empty-triage) .detail-panel{margin:12px 0 0;max-width:1180px;max-height:none}
 .mailv2 .worklayout:has(.empty-triage) .empty-triage{flex-direction:row;align-items:center;justify-content:center;gap:16px;padding:16px 20px;text-align:left}
 .mailv2 .worklayout:has(.empty-triage) .empty-triage .icon{width:38px;height:38px;border-radius:10px;flex:0 0 auto}

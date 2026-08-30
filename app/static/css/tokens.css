@@ -172,11 +172,11 @@
      значень щільності, споживається у base.css (.q2 таблиця, side-panel,
      statusline).
 
-     --look-row-pad — ручне доведення тією ж шестернею. Стоїть ПЕРШИМ
+     --queue-row-pad — ручне доведення тією ж шестернею. Стоїть ПЕРШИМ
      аргументом у кожному з трьох блоків: інакше пресет затирав би ручне
      число, і «+» після «Компактного» мовчки нічого не робив би. Пресет при
      цьому не втрачається — він лишається запасним значенням. */
-  --queue-density-pad: var(--look-row-pad, 8px);
+  --queue-density-pad: var(--queue-row-pad, 8px);
   --queue-density-font: 13px;
   --queue-density-side-gap: 10px;
   --queue-density-kv-pad: 6px;
@@ -184,8 +184,19 @@
   --queue-density-sl-pad: 9px;
 }
 
+/* Той самий похідний токен, оголошений ЩЕ Й НА body.
+   Пастка, яка коштувала мовчазної кнопки: `--queue-density-pad` оголошено в
+   :root, а ручний відступ підставляється інлайном на <body> (сервер) — і :root
+   його не бачить, бо перевизначення на нащадку до предка не дотягується. Під
+   пресетами «Компактний»/«Просторий» усе працювало, бо там токен уже
+   перевизначено на body, — через це вада й ховалась саме на каноні.
+   Це той самий урок, що записаний про атрибут теми на <html>. */
+body {
+  --queue-density-pad: var(--queue-row-pad, 8px);
+}
+
 body[data-density="compact"] {
-  --queue-density-pad: var(--look-row-pad, 4px);
+  --queue-density-pad: var(--queue-row-pad, 4px);
   --queue-density-font: 12px;
   --queue-density-side-gap: 6px;
   --queue-density-kv-pad: 4px;
@@ -194,7 +205,7 @@ body[data-density="compact"] {
 }
 
 body[data-density="spacious"] {
-  --queue-density-pad: var(--look-row-pad, 12px);
+  --queue-density-pad: var(--queue-row-pad, 12px);
   --queue-density-font: 14px;
   --queue-density-side-gap: 15px;
   --queue-density-kv-pad: 9px;

@@ -61,6 +61,13 @@
       step: parseInt(root.dataset.step || "2", 10) || 2,
     };
 
+    // Ім'я змінної — ЗА ЕКРАНОМ. Одна спільна назва на два екрани означала, що
+    // відступ черги протікає в пошту й навпаки: `--look-row-pad` черги
+    // сервер підставляв на <body>, і на екрані пошти він перекривав значення
+    // самої пошти. Дві назви — жодного перетину.
+    var PAD_VAR = "--" + scope + "-row-pad";
+    var WIDTH_VAR = "--" + scope + "-list-w";
+
     var hasWidth = !!root.querySelector('[data-look-out="width"]');
 
     function panelWidthNow() {
@@ -73,11 +80,20 @@
       // запасне число: інлайнові 8px перемагали і пресет «Компактний»
       // (той дає свої 4px запасним значенням), і власний дефолт вузького
       // режиму списку. Пресет мовчки нічого не робив.
-      if (state.pad) host.style.setProperty("--look-row-pad", state.pad + "px");
-      else host.style.removeProperty("--look-row-pad");
+      // ЗМІННІ — НА <html>, атрибути — на host. Це та сама пастка, що вже
+      // записана в проєкті про тему: похідні токени рахуються на :root, і
+      // перевизначення на body до них не дотягується. Тут вона коштувала
+      // мовчазної кнопки — `--queue-density-pad: var(--look-row-pad, 8px)`
+      // оголошено в :root, тож коли змінна лежала на body, канонний пресет її
+      // просто не бачив: число в панелі росло, а рядок не рухався. Під
+      // пресетом «Компактний» усе працювало, бо там токен перевизначено вже
+      // на body — через це вада й ховалась.
+      var vars = document.documentElement.style;
+      if (state.pad) vars.setProperty(PAD_VAR, state.pad + "px");
+      else vars.removeProperty(PAD_VAR);
       if (hasWidth) {
-        if (state.width) host.style.setProperty("--look-list-w", state.width + "px");
-        else host.style.removeProperty("--look-list-w");
+        if (state.width) vars.setProperty(WIDTH_VAR, state.width + "px");
+        else vars.removeProperty(WIDTH_VAR);
       }
       // Пресет щільності і вигляд колонки кольору лишаються АТРИБУТАМИ: вони
       // перемикають цілий набір токенів, а не одне число.
@@ -254,9 +270,16 @@
         // при канонному відступі, і наступний клік стрибав удвічі далі, ніж він
         // очікує від щойно скинутого вигляду.
         state.step = 2;
-        host.style.removeProperty("--look-row-pad");
-        host.style.removeProperty("--look-list-w");
+        // Чистимо і host: сервер міг підставити змінну саме туди інлайном, і
+        // без цього рядка «Скинути» лишало б її на місці.
+        host.style.removeProperty(PAD_VAR);
+        host.style.removeProperty(WIDTH_VAR);
         apply();
+        // Переміряти ПІСЛЯ скидання: інакше відлік лишався від числа, яке було
+        // до нього, і перший «+» стрибав від старого значення, а не від
+        // канонного (спіймано живою перевіркою: 8 → 16 замість 8 → 10).
+        padFallback = padNow();
+        render();
         save();
         if (root.dataset.lookResetEvent) {
           document.dispatchEvent(new CustomEvent(root.dataset.lookResetEvent));

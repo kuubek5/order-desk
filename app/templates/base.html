@@ -2,7 +2,10 @@
 {# Тема/іконки оператора — атрибутами прямо в HTML (без JS і мигтіння).
    Атрибути МУСЯТЬ жити на <html>, не на body — див. theme-forge.css. #}
 {% set _up = ui_prefs(request) %}
-<html lang="uk"{% if _up.theme %} data-theme="{{ _up.theme }}"{% endif %}{% if _up.icons %} data-icons="{{ _up.icons }}"{% endif %}{% if _up.buttons %} data-buttons="{{ _up.buttons }}"{% endif %}{% if _up.loader %} data-loader="{{ _up.loader }}"{% endif %}{% if _up.chips %} data-chips="{{ _up.chips }}"{% endif %}>
+{# Ручні відступи — на <html>, ТУДИ Ж, куди пише lookgear.js. Імена різні на
+   кожен екран: спільна назва означала, що відступ черги, підставлений на
+   <body>, перекриває значення пошти на її власному екрані. #}
+<html lang="uk"{% if _up.queue_row_pad or _up.mail_row_pad or _up.mail_list_w %} style="{% if _up.queue_row_pad %}--queue-row-pad:{{ _up.queue_row_pad }}px;{% endif %}{% if _up.mail_row_pad %}--mail-row-pad:{{ _up.mail_row_pad }}px;{% endif %}{% if _up.mail_list_w %}--mail-list-w:{{ _up.mail_list_w }}px{% endif %}"{% endif %}{% if _up.theme %} data-theme="{{ _up.theme }}"{% endif %}{% if _up.icons %} data-icons="{{ _up.icons }}"{% endif %}{% if _up.buttons %} data-buttons="{{ _up.buttons }}"{% endif %}{% if _up.loader %} data-loader="{{ _up.loader }}"{% endif %}{% if _up.chips %} data-chips="{{ _up.chips }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -62,7 +65,7 @@
    localStorage і застосовувався інлайн-скриптом «до першого
    малювання»; тепер значення вже в розмітці, тому мигтіти нема чому,
    і набір їде за оператором, а не за браузером. #}
-<body{% if _up.queue_density %} data-density="{{ _up.queue_density }}"{% endif %}{% if _up.queue_mat_style %} data-matstyle="{{ _up.queue_mat_style }}"{% endif %}{% if _up.queue_row_pad %} style="--look-row-pad:{{ _up.queue_row_pad }}px"{% endif %}>
+<body{% if _up.queue_density %} data-density="{{ _up.queue_density }}"{% endif %}{% if _up.queue_mat_style %} data-matstyle="{{ _up.queue_mat_style }}"{% endif %}>
     <script>try{if(localStorage.getItem('railCollapsed')==='1')document.body.classList.add('rail-collapsed');if(localStorage.getItem('layoutEditMode')==='1')document.body.classList.add('layout-edit');if(localStorage.getItem('furnaceStripCollapsed')==='1')document.body.classList.add('furnace-collapsed');if(localStorage.getItem('furnaceSideOpen')==='1')document.body.classList.add('furnace-side-open');}catch(e){}</script>
     {% include "_backdrop.html" %}
     {# SVG-фільтр «рідкого скла» для перемикача скачування (див. .dl-seg у
