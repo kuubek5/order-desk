@@ -365,8 +365,28 @@ body:has(.login-page) .app-backdrop .radar-hud { display: none; }
    «застосунок зупинився, ось що робити». Код помилки — великим моношириним,
    як штамп на табло; пояснення людською мовою; вихід завжди видимий. */
 .errcard { max-width: 26rem; text-align: center; }
-.err-mark { width: 34px; height: 34px; margin: 0 auto var(--space-4); color: var(--accent-b); }
-.err-mark svg { width: 100%; height: 100%; }
+/* Ілюстрація: зупинений шпиндель над диском, дві маски одного малюнка.
+   Той самий файл, що на порожній черзі — свій знак оператор бачить у рейці,
+   тут доречніший предмет цеху. Анімації свідомо НЕМАЄ: сторінка помилки не
+   той екран, де щось має рухатись. */
+.err-art { position: relative; width: 96px; height: 96px; margin: 0 auto var(--space-4); }
+.err-art i {
+  position: absolute;
+  inset: 0;
+  background: var(--accent-b);
+  opacity: .55;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center;  mask-position: center;
+  -webkit-mask-size: contain;     mask-size: contain;
+}
+.err-art-base {
+  -webkit-mask-image: url(/static/img/empty-spindle-base.png);
+          mask-image: url(/static/img/empty-spindle-base.png);
+}
+.err-art-burr {
+  -webkit-mask-image: url(/static/img/empty-spindle-burr.png);
+          mask-image: url(/static/img/empty-spindle-burr.png);
+}
 .err-code {
   font-size: 3.2rem;
   line-height: 1;
