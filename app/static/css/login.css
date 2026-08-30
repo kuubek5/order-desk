@@ -262,19 +262,24 @@
   outline-offset: 2px;
 }
 
-/* ── Фон сторінки входу: предмети цеху (30.08.26) ─────────────────────────
-   Чотири об'єкти, перемальовані лінійною графікою з реальних фото цеху:
-   диск у затискачі, фрезерування під кутом, титанові абатменти, пічка
-   спікання з лотками. Кожен — альфа-маска, залита var(--accent), тому фон
-   не треба дублювати під теми: у бірюзовій він бірюзовий, у Amber Forge
-   бурштиновий.
+/* ── Фон сторінки входу: диск і пил (30.08.26) ────────────────────────────
+   ОДИН великий диск у затискачі, перемальований лінійною графікою з
+   реального фото цеху; виходить за правий край і обертається за 4 хвилини.
+   Тут раніше стояли чотири дрібні предмети по кутах — і читались як
+   наліпки: на 8% прозорості штрихування ставало сірим шумом, форму не
+   впізнати, а композиції не було зовсім. Великий масштаб рятує саме
+   штрих: лінія лишається лінією, а не сіркою.
 
-   Радар з app-backdrop на цій сторінці ховається: два атмосферні шари в
-   одному кадрі сперечаються за увагу, а сітка лишається спільною основою.
+   Диск — альфа-маска, залита var(--accent), тому фон живе в обох темах
+   без другого комплекту файлів.
 
-   Рух — тільки дрейф і мікроповорот, різними періодами (47/61/73/89 с,
-   взаємно прості, щоб композиція не «клацала» в повтор). Непрозорість
-   низька навмисно: це тло, а картка входу мусить лишатись головною. */
+   Пил — окремий шар над диском: 22 порошинки, кожна зі своєю траєкторією
+   в inline-змінних, тому один keyframe обслуговує всі. Піднімаються з-під
+   нижнього краю, зносяться вбік і гаснуть — так поводиться цирконієва
+   пилюка в підсвіченій камері.
+
+   Радар з app-backdrop на цій сторінці ховається: дві атмосфери в одному
+   кадрі сперечаються, а сітка лишається спільною основою. */
 body:has(.login-page) .app-backdrop .radar-hud { display: none; }
 
 .login-scene {
@@ -284,58 +289,54 @@ body:has(.login-page) .app-backdrop .radar-hud { display: none; }
   pointer-events: none;
   overflow: hidden;
 }
-.login-scene .ls-obj {
+
+.login-scene .ls-disc {
   position: absolute;
   display: block;
+  /* Свідомо більший за екран і зміщений за правий край: видно дугу кільця
+     й частину поля коронок, а не «іконку диска» цілком. */
+  width: 128vmin;
+  height: 128vmin;
+  right: -44vmin;
+  top: 50%;
+  margin-top: -64vmin;
+  opacity: .06;
   background: var(--accent);
-  opacity: .085;
+  -webkit-mask-image: url(/static/img/login-disc.png);
+          mask-image: url(/static/img/login-disc.png);
   -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
   -webkit-mask-position: center;  mask-position: center;
   -webkit-mask-size: contain;     mask-size: contain;
+  animation: lsDiscSpin 240s linear infinite;
   will-change: transform;
 }
-.login-scene .ls-milling {
-  width: 38vmin; height: 38vmin; left: 4vw; top: 16vh;
-  -webkit-mask-image: url(/static/img/login-milling.png);
-  mask-image: url(/static/img/login-milling.png);
-  animation: lsDriftA 61s ease-in-out infinite alternate;
-}
-.login-scene .ls-disc {
-  width: 30vmin; height: 30vmin; right: 6vw; top: 9vh;
-  opacity: .07;
-  -webkit-mask-image: url(/static/img/login-disc.png);
-  mask-image: url(/static/img/login-disc.png);
-  animation: lsDriftB 73s ease-in-out infinite alternate;
-}
-.login-scene .ls-furnace {
-  width: 26vmin; height: 26vmin; right: 10vw; bottom: 8vh;
-  -webkit-mask-image: url(/static/img/login-furnace.png);
-  mask-image: url(/static/img/login-furnace.png);
-  animation: lsDriftC 89s ease-in-out infinite alternate;
-}
-.login-scene .ls-abutment {
-  width: 20vmin; height: 20vmin; left: 11vw; bottom: 11vh;
-  opacity: .1;
-  -webkit-mask-image: url(/static/img/login-abutment.png);
-  mask-image: url(/static/img/login-abutment.png);
-  animation: lsDriftD 47s ease-in-out infinite alternate;
-}
-@keyframes lsDriftA { from { transform: translate3d(0,0,0)         rotate(-1.5deg) }
-                        to { transform: translate3d(2.5vw,-3vh,0)   rotate(1.5deg)  } }
-@keyframes lsDriftB { from { transform: translate3d(0,0,0)         rotate(2deg)    }
-                        to { transform: translate3d(-3vw,3.5vh,0)   rotate(-1deg)   } }
-@keyframes lsDriftC { from { transform: translate3d(0,0,0)         scale(1)        }
-                        to { transform: translate3d(-2vw,-2.5vh,0)  scale(1.07)     } }
-@keyframes lsDriftD { from { transform: translate3d(0,0,0)         rotate(1deg)    }
-                        to { transform: translate3d(3vw,-2vh,0)     rotate(-2deg)   } }
+@keyframes lsDiscSpin { to { transform: rotate(360deg) } }
 
-/* Вузький екран: лишаються два об'єкти по кутах — решта лізла б під картку. */
+.login-scene .ls-dust { position: absolute; inset: 0; }
+.login-scene .ls-dust i {
+  position: absolute;
+  left: var(--x);
+  bottom: -4vh;
+  width: var(--s);
+  height: var(--s);
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  animation: lsDustRise var(--d) linear var(--dl) infinite;
+  will-change: transform, opacity;
+}
+@keyframes lsDustRise {
+  0%   { opacity: 0;         transform: translate3d(0, 0, 0) }
+  12%  { opacity: var(--o) }
+  78%  { opacity: var(--o) }
+  100% { opacity: 0;         transform: translate3d(var(--sway), calc(var(--rise) * -1), 0) }
+}
+
 @media (max-width: 720px) {
-  .login-scene .ls-disc,
-  .login-scene .ls-abutment { display: none; }
-  .login-scene .ls-milling { width: 46vmin; height: 46vmin; left: -6vw; top: 6vh; }
-  .login-scene .ls-furnace { width: 34vmin; height: 34vmin; right: -4vw; bottom: 4vh; }
+  .login-scene .ls-disc { width: 150vmin; height: 150vmin; right: -70vmin; margin-top: -75vmin; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .login-scene .ls-obj { animation: none; }
+  .login-scene .ls-disc { animation: none; }
+  /* Пил без руху — просто крапки на екрані, тому ховається цілком. */
+  .login-scene .ls-dust { display: none; }
 }
