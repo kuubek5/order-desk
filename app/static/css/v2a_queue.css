@@ -334,11 +334,17 @@ body.layout-edit .q2 table.qtable{user-select:none}
    як у мокапі), тож тут вона має бути inline поруч із номером, а не block на
    власному рядку. */
 .q2 td.order-id .sdot{display:inline-block;vertical-align:middle;margin-right:7px}
-/* Adaptive: cap the naryad/client cell so a long client name can no longer push
-   the whole table wider than the panel (it clipped СТАТУС off-screen on ~1900px
-   monitors). Naryad + client name truncate with ellipsis; the full value stays
-   in the row's title/hover and the work card. */
-.q2 td.order-id{max-width:182px}
+/* Стеля 182px тут БУЛА і саме вона давала «дірку» в підсвітці пришпилених.
+   Комірка `display:flex`, тож її ширина рахується не як у звичайної клітинки
+   таблиці: used = max(min-width, min(max-width, доступне)). Колонка отримувала
+   277px, стеля тримала коробку на 260 — і між першою та другою коміркою
+   лишалось 17px, які не накривала ЖОДНА комірка. Фон рядка там не малювався,
+   і крізь дірку світився фон таблиці: збоку це читалось як вертикальна лінія
+   і як обірваний контур. Виміряно: elementsFromPoint у цій смузі повертав
+   TABLE, а не TD.
+   Стеля більше не потрібна — довге ім'я клієнта тепер тримає трикрапка на
+   .ordbtn, а ширину колонки задає min-width нижче. */
+.q2 td.order-id{max-width:none}
 /* Комірка тримає до чотирьох чіпів (джерело, переробка, «на швидку»,
    «змінено») плюс кнопку видалення. Виміряно 28.08.26: без переносу вміст
    вилазив за праву межу на 82px — кнопка видалення фізично опинялась поза
