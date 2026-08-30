@@ -701,16 +701,38 @@ body.layout-edit .q2 table.qtable{user-select:none}
 /* Контур відміченого рядка — inset-тінь, а не border: межа зсунула б рядок
    на 1px і таблиця «дихала» б на кожен клік. Смуга матеріалу лишається
    першою тінню першої комірки, тому тут вона повторюється. */
+/* Контур мусить бути ЗАМКНУТИЙ. Був відкритий зліва: перша комірка діставала
+   лише верх і низ, а ліву грань малювала смуга матеріалу — якої в цирконію
+   свідомо немає (він 448 рядків із 564, тобто у більшості пришпилених рядків
+   рамка просто не сходилась). Тепер ліва грань є завжди; там, де смуга
+   матеріалу є, вона стоїть поруч із нею, а не замість неї. */
 .q2 table.qtable tbody tr.queue-row-focus > td{
   box-shadow:inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55);
+}
+.q2 table.qtable tbody tr.queue-row-focus > td:first-child{
+  box-shadow:inset 1px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55);
 }
 .q2 table.qtable tbody tr.queue-row-focus > td:last-child{
   box-shadow:inset -1px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55);
 }
-.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-ti"] > td:first-child{box-shadow:inset 3px 0 0 #63c88b,inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55)}
-.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 #d8b46a,inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55)}
-.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 #9aa7b4,inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55)}
-.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #3fb6c9,inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55)}
+/* Смуга матеріалу лишається на своєму місці (3px), контур відсувається на
+   4px — два сигнали, два канали, жоден не з'їдає інший. */
+.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-ti"] > td:first-child{box-shadow:inset 3px 0 0 #63c88b,inset 4px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55)}
+.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 #d8b46a,inset 4px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55)}
+.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 #9aa7b4,inset 4px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55)}
+.q2 table.qtable tbody tr.queue-row-focus[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #3fb6c9,inset 4px 0 0 rgba(var(--accent-rgb), .55),inset 0 1px 0 rgba(var(--accent-rgb), .55),inset 0 -1px 0 rgba(var(--accent-rgb), .55)}
+/* Заливка пришпиленого рядка. Це СЬОМА заливка на екрані, де канал фону вже
+   зайнятий станами (прострочено, пошта, клієнт, переробка, «технік змінив»),
+   тому вона свідомо слабка — 9%: пришпилені й так стоять угорі окремою
+   групою, а колір станів під нею мусить лишатись читабельним. Текст не
+   чіпаємо: контраст ink на цьому тінті вже проходить, і підсилення кольору
+   тут зіпсувало б саме те, заради чого заливка й робилась. */
+.q2 table.qtable tbody tr.queue-row-focus > td{
+  background:linear-gradient(rgba(var(--accent-base-rgb), .09), rgba(var(--accent-base-rgb), .09));
+}
+.q2 table.qtable tbody tr.queue-row-focus:hover > td{
+  background:linear-gradient(rgba(var(--accent-base-rgb), .14), rgba(var(--accent-base-rgb), .14));
+}
 /* «Зняти всі» живе в тому ж сегменті, що й фільтр, але це дія, а не вигляд —
    тому тиха, з попередженням у підтвердженні. */
 .q2 .seg .seg-drop{

@@ -476,6 +476,28 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
     return context
 
 
+def _files_changed_response(response, email: EmailMessage, extra: dict | None = None):
+    """Сказати екрану, що склад файлів листа змінився.
+
+    Рядок у списку тріажу несе `hx-preserve`, тому 15-секундний полл його НЕ
+    перемальовує — і лічильник «N файл.» лишався таким, яким був на момент
+    завантаження сторінки. Після розпакування архіву чи повторного скачування
+    список показував старе число, а панель — нове. Це не косметика: оператор
+    читає список і думає, що файл є, хоча його немає — саме так робота й
+    губиться. Тому число їде окремим тригером, а клієнт вписує його в рядок.
+    """
+    triggers = dict(extra or {})
+    triggers["mailFilesChanged"] = {
+        "id": email.id,
+        "count": len(email.attachments),
+    }
+    # ensure_ascii ОБОВ'ЯЗКОВО за замовчуванням (True): значення HTTP-заголовка
+    # мусить бути latin-1, а тости тут українською — з ensure_ascii=False роут
+    # падає в 500 на кодуванні відповіді.
+    response.headers["HX-Trigger"] = json.dumps(triggers)
+    return response
+
+
 @router.post("/mail/{email_id}/fetch-link", response_class=HTMLResponse)
 def fetch_email_link(
     request: Request,
@@ -565,13 +587,13 @@ def fetch_email_link(
     # A downloaded file changes the attachment list AND the STL gallery, which
     # this row-only swap can't refresh — signal the panel to re-render (app.js
     # debounces so "download all" refreshes once).
-    triggers = {}
-    if toast is not None:
-        triggers["toast"] = toast
     if status in ("done", "skip"):
-        triggers["mailFilesChanged"] = True
-    if triggers:
-        response.headers["HX-Trigger"] = json.dumps(triggers)
+        db.refresh(email)
+        return _files_changed_response(
+            response, email, {"toast": toast} if toast is not None else None
+        )
+    if toast is not None:
+        response.headers["HX-Trigger"] = json.dumps({"toast": toast})
     return response
 
 
@@ -604,8 +626,9 @@ def extract_mail_archives(request: Request, email_id: int, db: Session = Depends
         toast = {"message": "Архів: " + extract_errors[0], "kind": "error"}
     else:
         toast = {"message": "Архівів для розпакування немає", "kind": "info"}
-    response.headers["HX-Trigger"] = json.dumps({"toast": toast})
-    return response
+    # Розпакування міняє склад файлів найпомітніше: архів зникає, на його місці
+    # з'являються кілька STL. Рядок у списку мусить дізнатись нове число.
+    return _files_changed_response(response, email, {"toast": toast})
 
 
 def _lab_material_colors(db: Session) -> list[str]:
@@ -789,7 +812,9 @@ def download_email_attachments(
         context = _mail_panel_context(db, email, user, error=f"Не вдалося скачати файли: {exc}")
         return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
     context = _mail_panel_context(db, email, user)
-    return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
+    return _files_changed_response(
+        templates.TemplateResponse(request, "_mail_detail_panel.html", context), email
+    )
 
 
 @router.post("/mail/{email_id}/redownload", response_class=HTMLResponse)
@@ -843,7 +868,9 @@ def redownload_email_attachments(
         context = _mail_panel_context(db, email, user, error=note)
     else:
         context = _mail_panel_context(db, email, user)
-    return templates.TemplateResponse(request, "_mail_detail_panel.html", context)
+    return _files_changed_response(
+        templates.TemplateResponse(request, "_mail_detail_panel.html", context), email
+    )
 
 
 @router.post("/mail/senders/add")

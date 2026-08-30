@@ -1064,7 +1064,11 @@ def test_fetch_email_link_downloads_one_and_returns_done_row(monkeypatch, tmp_pa
         # a downloaded file must signal the panel to re-render (STL preview /
         # attachment list are stale after a row-only swap)
         import json as _json
-        assert _json.loads(response.headers["HX-Trigger"]).get("mailFilesChanged") is True
+        # Тригер несе id листа і НОВЕ число файлів: рядок списку заморожений
+        # hx-preserve, тому без цього він показував би старий лічильник.
+        changed = _json.loads(response.headers["HX-Trigger"])["mailFilesChanged"]
+        assert changed["id"] == email.id
+        assert changed["count"] == 1
         atts = db.query(Attachment).filter(Attachment.email_message_id == email.id).all()
         assert len(atts) == 1 and atts[0].filename == "model.stl"
         # the link ref is recorded so the "ще N за посиланням" count drops to 0
@@ -1754,3 +1758,28 @@ def test_neutral_view_puts_lab_above_client(monkeypatch, tmp_path):
         last_lab = max(i for i, s in enumerate(sources) if s == "lab")
         first_client = min(i for i, s in enumerate(sources) if s != "lab")
         assert last_lab < first_client, sources
+
+
+def test_files_changed_trigger_header_is_latin1_safe():
+    """HX-Trigger — це значення HTTP-заголовка, тобто latin-1. Тости в цьому
+    застосунку українською, і json.dumps(ensure_ascii=False) валить роут у 500
+    на кодуванні відповіді. Спіймано живою перевіркою: «Розпакувати архіви»
+    почало віддавати 500 рівно через це."""
+    from starlette.responses import Response as _Resp
+
+    from app.routers.mail import _files_changed_response
+
+    class _Email:
+        id = 7
+        attachments = [object(), object()]
+
+    response = _files_changed_response(
+        _Resp("ok"), _Email(), {"toast": {"message": "Розпаковано 3 файли", "kind": "success"}}
+    )
+    header = response.headers["HX-Trigger"]
+    header.encode("latin-1")  # падає, якщо в заголовок протекла кирилиця
+    import json as _json
+
+    payload = _json.loads(header)
+    assert payload["mailFilesChanged"] == {"id": 7, "count": 2}
+    assert payload["toast"]["message"] == "Розпаковано 3 файли"

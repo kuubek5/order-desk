@@ -307,3 +307,29 @@ document.addEventListener("input", (event) => {
 
   render();
 })();
+
+// ── Лічильник файлів у рядку списку ──────────────────────────────────────
+// Рядок тріажу несе hx-preserve, тому 15-секундний полл його НЕ перемальовує:
+// це свідомо (щоб не рестартувати анімацію «непрочитано» і не збивати вибір),
+// але побічно означає, що «N файл.» у рядку заморожене на момент завантаження
+// сторінки. Після розпакування архіву чи повторного скачування список показував
+// старе число, а панель — нове.
+//
+// Це не косметика. Оператор веде очима по СПИСКУ; якщо там написано «5 файл.»,
+// а насправді їх чотири, роботу приймуть з думкою, що файл є. Сервер шле нове
+// число тригером, тут воно вписується в рядок.
+document.body.addEventListener("mailFilesChanged", (event) => {
+  const d = (event && event.detail) || {};
+  if (!d.id || typeof d.count !== "number") return;
+  const row = document.getElementById("mailrow-" + d.id);
+  if (!row) return;
+  const att = row.querySelector(".att");
+  if (!att) return;
+  // Іконка-скріпка лишається; міняється лише текстовий вузол після неї.
+  for (const node of att.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
+      node.textContent = " " + d.count + " файл.";
+      return;
+    }
+  }
+});
