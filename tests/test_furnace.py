@@ -37,6 +37,20 @@ def _frame(name: str) -> Image.Image:
     return Image.open(FIXTURES / f"{name}.png").convert("RGB")
 
 
+def _kyiv(*args) -> datetime:
+    """Момент за київським часом — із поясом, а не наївний.
+
+    Наївний час на UTC-раннері означає інший момент, ніж на робочому ПК, і
+    перевірка «відкриється о 01:17» ловила б пояс машини замість коду. Коли
+    tzdata недоступна (BUSINESS_TIMEZONE is None), застосунок працює на
+    наївному часі — тоді й тест лишається наївним, щоб перевіряти те саме.
+    """
+    from app.services.order_dates import BUSINESS_TIMEZONE
+
+    moment = datetime(*args)
+    return moment if BUSINESS_TIMEZONE is None else moment.replace(tzinfo=BUSINESS_TIMEZONE)
+
+
 def _database():
     engine = create_engine("sqlite://", poolclass=StaticPool)
     Base.metadata.create_all(engine)
@@ -469,14 +483,19 @@ def test_card_reports_when_the_poller_itself_went_quiet():
 
 
 def test_done_at_is_kyiv_time_not_the_machine_clock():
-    """Оператор звіряє «відкриється о 17:54» з годинником на стіні. Якщо ПК
-    колись опиниться в іншому поясі (RDP, збитий годинник), число мусить
-    лишитись київським."""
+    """Оператор звіряє «відкриється о 17:54» з годинником на стіні. Той самий
+    МОМЕНТ мусить давати те саме київське число хоч на київській машині, хоч
+    на UTC-машині (RDP, збитий годинник, CI).
+
+    Момент задано з поясом навмисно. Наївний час означає різні моменти на
+    різних машинах, і тест на ньому перевіряв би пояс агента, а не код: саме
+    так він і падав на UTC-раннері, показуючи 04:17 замість 01:17.
+    """
     from app.services.order_dates import BUSINESS_TIMEZONE
 
     state = service.FurnaceState(target=_target())
     state.reading = read_panel(_frame("run"))
-    state.captured_at = datetime(2026, 8, 29, 17, 27, 0)
+    state.captured_at = _kyiv(2026, 8, 29, 17, 27)
     done = state.done_at
     assert done is not None
     if BUSINESS_TIMEZONE is not None:
@@ -492,11 +511,11 @@ def test_collapsed_strip_still_answers_the_question():
     відкриється найближче. Інакше його просто не згортали б."""
     hot = service.FurnaceState(target=_target())
     hot.reading = read_panel(_frame("run"))
-    hot.captured_at = datetime(2026, 8, 29, 17, 27, 0)
+    hot.captured_at = _kyiv(2026, 8, 29, 17, 27)
 
     cold = service.FurnaceState(target=service.FurnaceTarget(name="Піч 2", host="192.168.1.61"))
     cold.reading = read_panel(_frame("wait"))
-    cold.captured_at = datetime(2026, 8, 29, 17, 27, 0)
+    cold.captured_at = _kyiv(2026, 8, 29, 17, 27)
 
     cards = [
         service.FurnaceCard(target=hot.target, state=hot),
