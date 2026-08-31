@@ -14,7 +14,6 @@ from typing import Callable
 
 from fastapi import (
     FastAPI,
-    HTTPException,
 )
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import RedirectResponse, Response

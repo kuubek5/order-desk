@@ -13,7 +13,6 @@ from sqlalchemy.pool import StaticPool
 import app.web as web
 from app.settings_store import get_imap_login, get_imap_password
 from app.routers import settings as settings_router_mod
-from app.routers import mail as mail_router_mod
 from app.db import Base
 from app.google_oauth import OAuthFlowError
 from app.models import User

@@ -9,7 +9,9 @@
     (нова збірка слухає й старі імена, інакше під час оновлення старий і
     новий процеси не побачать одне одного).
 """
-import pathlib, re, sys
+import pathlib
+import re
+import sys
 
 ROOT = pathlib.Path(r"P:\AI-Projects\CRM_Laba")
 APPLY = "--apply" in sys.argv

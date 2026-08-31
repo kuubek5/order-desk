@@ -14,7 +14,6 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-import app.web as web
 from app.routers import mail as mail_router_mod
 from app.routers import orders as orders_router_mod
 from app.db import Base
@@ -99,7 +98,8 @@ class TestCommentIsInstant:
         with Session(engine, expire_on_commit=False) as db:
             user = _user(db)
             order = Order(source="email", sheet_tab="27.08.26", status="нове")
-            db.add(order); db.commit()
+            db.add(order)
+            db.commit()
             asyncio.run(orders_router_mod.add_order_comment(
                 request=_request(user.id), order_id=order.id, text="привіт", db=db,
             ))

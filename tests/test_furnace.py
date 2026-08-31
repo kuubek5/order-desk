@@ -594,7 +594,6 @@ def test_background_toggle_route_is_not_eaten_by_the_id_route():
 def test_background_shows_the_closed_frame_while_something_is_firing():
     """Фон — не картинка заради картинки: він показує стан цеху. Щось
     гріється → пічка на фоні закрита; усі стоять → відкрита."""
-    from app.routers import furnace as router
 
     hot = service.FurnaceState(target=_target())
     hot.reading = read_panel(_frame("run"))

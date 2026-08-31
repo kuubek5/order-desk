@@ -12,7 +12,9 @@
 оновлень. Тому правило просте: рядок із пробілом («Order Desk») — видимий,
 злите слово («OrderDesk») — технічне.
 """
-import pathlib, re, sys
+import pathlib
+import re
+import sys
 
 ROOT = pathlib.Path(r"P:\AI-Projects\CRM_Laba")
 APPLY = "--apply" in sys.argv

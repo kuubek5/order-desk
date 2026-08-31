@@ -8,14 +8,13 @@
 """
 
 import logging
-import time
 from datetime import date, datetime, timedelta
 from typing import Annotated
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import nullslast, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
@@ -51,13 +50,10 @@ from app.services.furnace import (
 )
 from app.services.shift import open_notes as open_shift_notes
 from app.services.queue import (
-    DATE_STRIP_WINDOW,
     QUEUE_SORT_FIELDS,
     RETENTION_DAYS,
     date_window,
     handout_pending_client_count,
-    known_order_dates,
-    order_is_archived,
     queue_handout_summary,
     queue_sort_key,
     queue_sync_summary,
@@ -68,13 +64,10 @@ from app.sheet_sync_service import SheetSyncError, summary_message, sync_google_
 from app.statuses import STATUSES, is_overdue
 from app.sync_control import (
     SYNC_SPEED_PRESETS,
-    get_speed_preset,
     get_sync_speed,
     record_viewed_day,
-    set_speed_preset,
 )
 from app.sync_heartbeat import sync_status_pair
-from app.triage_status import triage_readiness
 
 logger = logging.getLogger(__name__)
 

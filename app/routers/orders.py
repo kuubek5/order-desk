@@ -8,11 +8,9 @@
 
 import json
 import logging
-import time
 from datetime import date, datetime, timedelta
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query
+from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -25,15 +23,12 @@ from app import sync_control
 from app.models import (
     ActionLog,
     Comment,
-    EmailMessage,
     Order,
-    ReworkRecord,
     StatusEvent,
     SyncLog,
     User,
 )
 from app.order_folder import (
-    attach_email_preview_tokens,
     attach_export_folder_uris,
     attach_job_code_folder_uris,
 )
@@ -47,9 +42,7 @@ from app.routers.deps import (
     templates,
     toast_response,
 )
-from app.services.config_state import mail_preview_roots, sheets_configured
-from app.services.operators import normalize_initial
-from app.services.order_dates import order_date, parse_sheet_tab
+from app.services.order_dates import parse_sheet_tab
 from app.services.queue import RETENTION_DAYS, order_is_archived
 from app.services.sheet_writeback import (
     append_comment_background,
@@ -69,7 +62,6 @@ from app.services.undo import (
     log_action,
     perform_redo,
     perform_undo,
-    snapshot_target,
 )
 from app.material_catalog import (
     ensure_seeded,

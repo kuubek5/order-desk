@@ -1134,7 +1134,7 @@ def test_pending_list_reports_unread_count_of_unopened_letters(monkeypatch):
         web.templates, "TemplateResponse",
         lambda request, template, context: captured.update(ctx=context) or context,
     )
-    monkeypatch.setattr(orders_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
+    monkeypatch.setattr(mail_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add_all([
@@ -1159,7 +1159,7 @@ def test_mail_partial_list_renders_only_the_polled_fragment(monkeypatch):
         web.templates, "TemplateResponse",
         lambda request, template, context: captured.update(template=template, ctx=context) or context,
     )
-    monkeypatch.setattr(orders_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
+    monkeypatch.setattr(mail_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add(EmailMessage(uid="p1", status="нове"))
@@ -1182,7 +1182,7 @@ def test_opening_mail_detail_stamps_seen_at_once(monkeypatch):
         web.templates, "TemplateResponse",
         lambda request, template, context: context,
     )
-    monkeypatch.setattr(orders_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
+    monkeypatch.setattr(mail_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="open1", status="нове")
@@ -1415,7 +1415,7 @@ def test_get_mail_open_prerenders_panel_and_marks_row(monkeypatch):
         web.templates, "TemplateResponse",
         lambda request, template, context: captured.update(ctx=context) or context,
     )
-    monkeypatch.setattr(orders_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
+    monkeypatch.setattr(mail_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
     monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)

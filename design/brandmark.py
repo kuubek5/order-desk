@@ -9,7 +9,9 @@
 товщина зростає для малих іконок (див. stroke_ratio). Це стандартна практика
 іконок, а не милиця.
 """
-import math, pathlib, struct, io
+import pathlib
+import struct
+import io
 from PIL import Image, ImageDraw
 
 ROOT = pathlib.Path(r"P:\AI-Projects\CRM_Laba")

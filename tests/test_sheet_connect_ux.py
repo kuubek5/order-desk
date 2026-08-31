@@ -14,7 +14,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-import app.web as web
 from app.services.config_state import sheets_access_error_message
 from app.db import Base
 from app.settings_store import extract_sheet_id, get_service_account_email, set_setting

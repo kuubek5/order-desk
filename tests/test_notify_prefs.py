@@ -16,7 +16,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-import app.web as web
 from app.routers import settings as settings_router_mod
 from app.routers import deps
 from app.db import Base

@@ -15,18 +15,16 @@
 
 import json
 import logging
-import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import and_ as sa_and, func, select, update as sa_update
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
-from app import sync_control
 from app.archive_extract import is_archive
 from app.config import MAIL_ATTACHMENTS_PATH
 from app.export_scanner import clear_export_cache
@@ -52,7 +50,6 @@ from app.mail_reader import (
 from app.mail_sync_service import (
     MailSyncBusyError,
     MailSyncError,
-    MailSyncTimeoutError,
     run_sync_owned_session,
 )
 from app.material_catalog import (
@@ -61,10 +58,8 @@ from app.material_catalog import (
     material_id_by_name,
     resolve_material_id,
 )
-from app.material_classifier import classify_material
 from app.models import (
     Attachment,
-    ClientNameAlias,
     ClientSenderMemory,
     EmailMessage,
     MailFilterCategory,
@@ -74,7 +69,6 @@ from app.models import (
     SyncLog,
 )
 from app.order_folder import (
-    attach_email_folder_availability,
     attach_email_preview_tokens,
     resolve_email_attachment_folder,
 )
@@ -86,33 +80,23 @@ from app.queue_filters import (
     filter_emails_by_service_type,
 )
 from app.routers.deps import (
-    SYNC_PAUSED_MSG,
     get_current_user,
     get_db,
     is_loopback_request,
     templates,
-    toast_response,
 )
 from app.sender_memory import list_sender_memories, lookup_sender, remember_sender
 from app.services.config_state import (
-    imap_configured,
     mail_preview_roots,
     mail_trusted_roots,
-    sheets_access_error_message,
-    sheets_configured,
 )
-from app.services.formatting import pluralize_uk, relative_time_uk
-from app.services.order_dates import order_date, parse_sheet_tab, sheet_order_key
-from app.services.sheet_writeback import write_sheet_fields, write_sheet_fields_background
 from app.settings_store import (
     get_export_folder_path,
     get_imap_login,
-    get_mail_default_material,
     get_mail_download_all,
 )
 from app.sheet_writer import append_mail_placeholder_row, clear_placeholder_row
 from app.sheets import get_worksheet_by_name, latest_worksheet_on_or_before, open_spreadsheet
-from app.triage_status import triage_readiness
 
 logger = logging.getLogger(__name__)
 

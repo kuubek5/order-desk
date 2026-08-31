@@ -1,4 +1,3 @@
-from app.routers import mail as mail_router_mod
 from datetime import date
 from functools import partial
 from unittest.mock import patch

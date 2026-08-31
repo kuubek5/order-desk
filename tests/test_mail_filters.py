@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -208,7 +209,7 @@ def test_create_rule_requires_admin(monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         operator = _user(db, role="оператор")
-        with pytest.raises(web.HTTPException) as exc:
+        with pytest.raises(HTTPException) as exc:
             mail_router_mod.create_mail_filter(
                 request=_request(operator.id), kind="keyword",
                 pattern="спам", category="спам", db=db,

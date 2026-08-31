@@ -8,7 +8,11 @@
 а все широке (дуги кільця й диска) лишається базі.
 """
 from PIL import Image
-import numpy as np, base64, io, json, pathlib
+import numpy as np
+import base64
+import io
+import json
+import pathlib
 
 SRC = pathlib.Path(r"P:\AI-Projects\CRM_Laba\design\mask_d2-spindle.png")
 OUT = SRC.parent

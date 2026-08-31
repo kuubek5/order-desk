@@ -10,15 +10,12 @@
 
 import json
 import logging
-import os
 import socket
 import ssl
-import subprocess
-import time
 import uuid
 from threading import Thread
 from urllib.parse import quote
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -28,7 +25,6 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
-from app import sync_control
 from app.__version__ import VERSION
 from app.auth import hash_password
 from app.backup import (
@@ -40,12 +36,9 @@ from app.backup import (
 from app.changelog import load_changelog
 from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH
 from app.db import SessionLocal
-from app.export_scanner import clear_export_cache
 from app.google_oauth import OAuthFlowError, parse_client_config, run_authorization_flow
-from app.license import get_license_status, get_machine_id
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
 from app.mail_spool import analyze_spool, prune_spool
-from app.mail_sync_service import MailSyncBusyError, MailSyncError, MailSyncTimeoutError
 from app.material_catalog import (
     MaterialCatalogError,
     add_alias,
@@ -54,23 +47,18 @@ from app.material_catalog import (
     delete_alias,
     ensure_seeded,
     list_materials,
-    load_alias_rows,
-    material_id_by_name,
     unresolved_order_count,
 )
 from app.models import (
     Furnace,
     AppSetting,
-    Attachment,
-    Client,
     EmailMessage,
     MailFilterCategory,
     MailFilterRule,
     Order,
-    SyncLog,
     User,
 )
-from app.monthly_backup import ensure_monthly_snapshot, list_snapshots
+from app.monthly_backup import list_snapshots
 from app.routers.deps import (
     get_current_user,
     get_db,
@@ -85,7 +73,7 @@ from app.services.config_state import (
     sheets_configured,
 )
 from app.services.shift import open_note_count as open_shift_note_count
-from app.services.operators import normalize_initial, user_count, validate_initial
+from app.services.operators import normalize_initial, validate_initial
 from app.settings_store import (
     CLEARABLE_SETTING_KEYS,
     OPERATOR_EDITABLE_KEYS,
@@ -95,11 +83,7 @@ from app.settings_store import (
     extract_sheet_id,
     get_all_settings,
     get_export_folder_path,
-    get_google_auth_mode,
     get_google_oauth_client_json,
-    get_google_oauth_refresh_token,
-    get_google_service_account_json,
-    get_google_sheet_id,
     get_furnace_background,
     get_furnace_vnc_password,
     get_mail_default_material,

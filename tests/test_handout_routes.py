@@ -902,7 +902,6 @@ class TestOneBatchPerRow:
     пізніше за неї, — цим і звужуємо."""
 
     def _entry(self, name, when):
-        from datetime import datetime
         return SimpleNamespace(material_color_folder_name=name, created_at=when)
 
     def test_only_the_nearest_earlier_batch_survives(self):

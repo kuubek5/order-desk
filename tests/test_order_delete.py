@@ -17,7 +17,6 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-import app.web as web
 from app.routers import orders as orders_router_mod
 from app.db import Base
 from app.models import Order, StatusEvent, User

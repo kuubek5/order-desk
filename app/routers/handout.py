@@ -25,7 +25,7 @@ from app import sync_control
 from app.client_matcher import match_client_name
 from app.export_scanner import list_export_client_names_cached
 from app.models import Client, ClientNameAlias, Order, StatusEvent
-from app.order_folder import attach_export_folder_uris, folder_to_file_uri
+from app.order_folder import folder_to_file_uri
 from app.parser import HEADER_ROWS
 from app.queue_filters import (
     HANDOUT_SOURCE_FILTERS,

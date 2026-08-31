@@ -7,7 +7,11 @@
 фарбувати акцентом теми через mask-image.
 """
 from PIL import Image, ImageOps
-import numpy as np, pathlib, base64, io, json
+import numpy as np
+import pathlib
+import base64
+import io
+import json
 
 D = pathlib.Path(r"P:\AI-Projects\CRM_Laba\design")
 IMG = pathlib.Path(r"P:\AI-Projects\CRM_Laba\app\static\img")
@@ -46,7 +50,8 @@ for key, name in SRC.items():
     mask.putalpha(canvas)
     out = IMG / f"login-{key}.png"
     mask.save(out, optimize=True)
-    buf = io.BytesIO(); mask.save(buf, "PNG", optimize=True)
+    buf = io.BytesIO()
+    mask.save(buf, "PNG", optimize=True)
     b64[key] = base64.b64encode(buf.getvalue()).decode()
     print(f"{key}: {'перевернуто, ' if inverted else ''}{out.stat().st_size // 1024} КБ")
 
