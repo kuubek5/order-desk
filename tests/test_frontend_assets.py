@@ -143,6 +143,7 @@ SETTINGS_SECTIONS = [
     "_settings_mail_download.html",
     "_settings_mail_filters.html",
     "_settings_furnace.html",
+    "_settings_machines.html",
     "_settings_about.html",
 ]
 

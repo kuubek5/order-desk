@@ -715,3 +715,34 @@ class Furnace(Base):
     # відомому йому порядку, і сортування за id чи назвою його ламає.
     sort_order: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+
+
+class Machine(Base):
+    """Фрезерний верстат: назва, адреса VNC-екрана його ПК, чи стежимо.
+
+    Той самий підхід, що з пічками (§14): системного доступу до софта
+    верстата немає, але на його ПК стоїть view-only VNC — CRM читає ЕКРАН
+    RemiCORE. Фаза 1 — живий кадр у CRM; Фаза 2 — OCR чисел (відсоток
+    виконання, минулий час, ім'я .iso-програми) тим самим конвеєром
+    еталонів, що читає табло печі.
+
+    Колонки навмисно дзеркалять `Furnace`: обидві таблиці описують «залізо
+    з екраном за VNC», і однакова форма дає переюзати сервісні патерни —
+    власний пароль (порожній = спільний), `enabled` як «на ремонті, а не
+    видалено», порядок від оператора.
+    """
+
+    __tablename__ = "machines"
+    __table_args__ = (
+        UniqueConstraint("host", "port", name="uq_machine_host_port"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    host: Mapped[str] = mapped_column(String(60))
+    port: Mapped[int] = mapped_column(default=5900)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    password_encrypted: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    sort_order: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+

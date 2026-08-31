@@ -18,6 +18,9 @@ GET /health
 GET /journal
 GET /license
 GET /login
+GET /machines
+GET /machines/cards
+GET /machines/{key}/frame.png
 GET /mail
 GET /mail/{email_id}
 GET /openapi.json
@@ -52,6 +55,7 @@ POST /handout/issue-group
 POST /license
 POST /login
 POST /logout
+POST /machines/refresh
 POST /mail/filter-categories
 POST /mail/filter-categories/{category_id}/delete
 POST /mail/filter-categories/{category_id}/rename
@@ -99,6 +103,10 @@ POST /settings/furnaces/{furnace_id}/delete
 POST /settings/google-oauth/disconnect
 POST /settings/google-oauth/start
 POST /settings/imap
+POST /settings/machines
+POST /settings/machines/password
+POST /settings/machines/{machine_id}
+POST /settings/machines/{machine_id}/delete
 POST /settings/mail-download/toggle
 POST /settings/mail-spool/prune
 POST /settings/materials/add

@@ -1,0 +1,51 @@
+{# Плитки верстатів: живий кадр екрана RemiCORE + стан зв'язку.
+
+   Фаза 1 — кадр і чесність про його вік. Числа (відсоток, час, програма)
+   прийдуть у Фазі 2 тим самим конвеєром еталонів, що на пічках.
+
+   Прев'ю показане ЗАВЖДИ (сенс екрана — бачити верстат одним поглядом), а
+   <details class="fu-frame"> розгортає кадр у натуральний розмір: екран
+   RemiCORE 1080p, у плитці дрібні цифри не прочитати. Полл не свапає, поки
+   details відкритий — та сама умова, що на пічках. #}
+{% if cards %}
+<div class="fu-grid">
+    {% for card in cards %}
+    <article class="fu-card{% if card.has_problem %} is-offline{% endif %}">
+        <header class="fu-head">
+            <div class="fu-name">
+                <b>{{ card.target.name }}</b>
+                <span class="mono">{{ card.target.host }}{% if card.target.port != 5900 %}:{{ card.target.port }}{% endif %}</span>
+            </div>
+            {% if card.has_problem %}
+            <span class="fu-pill is-offline">немає зв'язку</span>
+            {% elif card.has_frame and not card.stale %}
+            <span class="fu-pill is-run">живий кадр</span>
+            {% elif card.has_frame %}
+            <span class="fu-pill is-unknown">кадр застарів</span>
+            {% endif %}
+        </header>
+
+        {% if card.has_problem %}
+        <p class="fu-alert">{{ card.problem_text }}</p>
+        {% endif %}
+
+        {% if card.has_frame %}
+        <img class="mc-shot" src="/machines/{{ card.key }}/frame.png?t={{ card.frame_at.timestamp()|int }}"
+             alt="Екран верстата {{ card.target.name }}" loading="lazy">
+        <details class="fu-frame">
+            <summary>Повний розмір (полл не заважатиме, поки відкрито)</summary>
+            <div class="mc-full">
+                <img src="/machines/{{ card.key }}/frame.png?t={{ card.frame_at.timestamp()|int }}"
+                     alt="Екран верстата {{ card.target.name }} — повний розмір">
+            </div>
+        </details>
+        <p class="fu-foot">кадр о {{ card.frame_at.strftime('%H:%M:%S') }}</p>
+        {% elif not card.has_problem %}
+        <p class="fu-note">Чекаємо перший кадр…</p>
+        {% endif %}
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<p class="fu-empty">Верстатів не налаштовано. Додати — <a href="/settings#machines">Налаштування → Верстати</a>.</p>
+{% endif %}

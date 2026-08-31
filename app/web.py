@@ -67,11 +67,17 @@ from app.routers.stats import router as stats_router
 from app.routers.stl import router as stl_router
 from app.routers.shift import router as shift_router
 from app.routers.furnace import router as furnace_router
+from app.routers.machines import router as machines_router
 from app.services.furnace import (
     POLL_INTERVAL_SECONDS as FURNACE_POLL_INTERVAL_SECONDS,
     is_configured as _furnaces_configured,
     poll_all as _poll_furnaces,
     prune_readings as _prune_furnace_readings,
+)
+from app.services.machines import (
+    POLL_INTERVAL_SECONDS as MACHINE_POLL_INTERVAL_SECONDS,
+    is_configured as _machines_configured,
+    poll_all as _poll_machines,
 )
 from app.shift_images import prune_shift_images
 from app.routers.deps import templates
@@ -350,6 +356,25 @@ def _furnace_worker(stop_event: Event) -> None:
         stop_event.wait(FURNACE_POLL_INTERVAL_SECONDS)
 
 
+# Верстати — той самий контракт, що печі: читання і тільки читання екрана
+# по VNC (app/furnace_vnc.py фізично не вміє слати ввід). Кадри рідші за
+# пічні: framebuffer 1080p учетверо більший, а верстатів — до десяти.
+MACHINE_INITIAL_DELAY_SECONDS = 15.0
+
+
+def _machine_worker(stop_event: Event) -> None:
+    if stop_event.wait(MACHINE_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                if _machines_configured(db):
+                    _poll_machines(db)
+        except Exception:
+            logger.exception("Неочікуваний збій опитування верстатів")
+        stop_event.wait(MACHINE_POLL_INTERVAL_SECONDS)
+
+
 EXPORT_WARM_INITIAL_DELAY_SECONDS = 20.0
 EXPORT_WARM_INTERVAL_SECONDS = 120.0
 
@@ -472,6 +497,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("order-desk-export-warm", _export_warm_worker),
         _BackgroundWorker("order-desk-shift-images-prune", _shift_images_prune_worker),
         _BackgroundWorker("order-desk-furnace", _furnace_worker),
+        _BackgroundWorker("order-desk-machines", _machine_worker),
     ]
     for w in workers:
         w.start()
@@ -674,3 +700,5 @@ app.include_router(shift_router)
 
 # Екран печей (тільки перегляд) живе в app/routers/furnace.py.
 app.include_router(furnace_router)
+# Верстати — живі кадри екранів RemiCORE, дзеркало пічного модуля.
+app.include_router(machines_router)

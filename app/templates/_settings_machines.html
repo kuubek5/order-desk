@@ -1,0 +1,89 @@
+        {# ── Верстати ─────────────────────────────────────────────────────
+           Дзеркало розділу пічок: рядок на верстат — назва, адреса ПК, порт,
+           вимикач, власний пароль. Системного доступу до софта верстата
+           немає — на його ПК стоїть UltraVNC у view-only, і CRM читає ЕКРАН
+           RemiCORE. Тут навмисно НЕМАЄ нічого про керування верстатом.
+
+           «Вимкнений» — на ремонті, а не видалений: налаштування чекають
+           повернення, а опитування й показ зупиняються. #}
+        {% if user.role == 'адмін' %}
+        <div class="wizard-step scon-sec" data-sec="machines">
+            <div class="num" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7" class="duo"/><path d="M12 3v7"/><path d="M7 10h10v4a5 5 0 0 1-10 0z"/><path d="M12 19v2"/></svg>
+            </div>
+            <div class="box">
+                <div class="wizard-step-head">
+                    <h2>Верстати</h2>
+                    <span class="connection-state {% if machines %}connection-state-ready{% endif %}">
+                        {% if machines %}{{ machines|length }} у переліку{% else %}Немає{% endif %}
+                    </span>
+                </div>
+                <p class="wizard-sub">
+                    На ПК верстата ставиться UltraVNC Server у режимі «тільки перегляд» —
+                    CRM знімає кадр екрана RemiCORE раз на кілька секунд. Жодного вводу
+                    у верстат застосунок не шле і не вміє слати.
+                </p>
+
+                {% if machines %}
+                <table class="fu-table">
+                    <thead>
+                        <tr><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th>Пароль VNC</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                    {% for machine in machines %}
+                    <tr>
+                        <form method="post" action="/settings/machines/{{ machine.id }}" id="machine-{{ machine.id }}"></form>
+                        <form method="post" action="/settings/machines/{{ machine.id }}/delete" id="machine-del-{{ machine.id }}"
+                              onsubmit="return confirm('Видалити верстат «{{ machine.name }}» з переліку?')"></form>
+                        <td><input form="machine-{{ machine.id }}" class="login-input" name="name" value="{{ machine.name }}" maxlength="80" required></td>
+                        <td><input form="machine-{{ machine.id }}" class="login-input mono" name="host" value="{{ machine.host }}" maxlength="60" required></td>
+                        <td><input form="machine-{{ machine.id }}" class="login-input mono fu-col-port" name="port" value="{{ machine.port }}" inputmode="numeric"></td>
+                        <td class="fu-col-mid">
+                            <input form="machine-{{ machine.id }}" type="checkbox" name="enabled" value="1" {% if machine.enabled %}checked{% endif %}
+                                   aria-label="Стежити за верстатом {{ machine.name }}">
+                        </td>
+                        <td>
+                            <input form="machine-{{ machine.id }}" class="login-input" type="password" name="password"
+                                   autocomplete="new-password"
+                                   placeholder="{% if machine.password_encrypted %}свій, збережено{% else %}спільний{% endif %}">
+                        </td>
+                        <td class="fu-col-act">
+                            <button form="machine-{{ machine.id }}" type="submit" class="settings-secondary-button">Зберегти</button>
+                            <button form="machine-del-{{ machine.id }}" type="submit" class="link-button fu-del"
+                                    title="Видалити верстат">✕</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+
+                <form method="post" action="/settings/machines" class="fu-add">
+                    <div class="settings-field">
+                        <label for="machine_new_name">Додати верстат</label>
+                        <p class="settings-help">Назву видно на екрані верстатів; порт типовий 5900. Пароль лишай порожнім, якщо він спільний.</p>
+                        <div class="fu-add-row">
+                            <input id="machine_new_name" class="login-input" name="name" placeholder="350i №1" maxlength="80" required>
+                            <input class="login-input mono" name="host" placeholder="192.168.1.85" maxlength="60" required>
+                            <input class="login-input mono fu-col-port" name="port" placeholder="5900" inputmode="numeric">
+                            <input class="login-input" type="password" name="password" placeholder="свій пароль (не обов'язково)" autocomplete="new-password">
+                            <button type="submit" class="settings-secondary-button">Додати</button>
+                        </div>
+                    </div>
+                </form>
+
+                <div class="settings-field">
+                    <label for="machine_shared_password">Спільний пароль VNC</label>
+                    <p class="settings-help">View-only пароль UltraVNC, якщо він однаковий на всіх верстатних ПК. Порожнє поле лишає збережений пароль без змін.</p>
+                    <form method="post" action="/settings/machines/password" class="fu-add-row">
+                        <input id="machine_shared_password" class="login-input" type="password" name="password"
+                               autocomplete="new-password"
+                               placeholder="{% if machine_password_set %}збережено{% else %}view-only пароль UltraVNC{% endif %}">
+                        <button type="submit" class="settings-secondary-button">Зберегти пароль</button>
+                    </form>
+                </div>
+
+                <p class="settings-help">Живі кадри — на екрані <a href="/machines">Верстати</a>.</p>
+            </div>
+        </div>
+        {% endif %}

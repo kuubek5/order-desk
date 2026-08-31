@@ -51,6 +51,7 @@ from app.material_catalog import (
 )
 from app.models import (
     Furnace,
+    Machine,
     AppSetting,
     EmailMessage,
     MailFilterCategory,
@@ -67,6 +68,7 @@ from app.routers.deps import (
     toast_response,
 )
 from app.routers.mail import _mail_filter_categories
+from app.services import machines as machines_service
 from app.services.config_state import (
     imap_configured,
     sheets_access_error_message,
@@ -86,6 +88,7 @@ from app.settings_store import (
     get_google_oauth_client_json,
     get_furnace_background,
     get_furnace_vnc_password,
+    get_machine_vnc_password,
     get_mail_default_material,
     get_imap_login,
     get_imap_password,
@@ -330,6 +333,9 @@ def get_settings(
             "furnaces": list_furnaces(db),
             "furnace_password_set": bool(get_furnace_vnc_password(db)),
             "furnace_bg": get_furnace_background(db),
+            # Верстати: той самий контракт — рядки без паролів, лише ознака.
+            "machines": machines_service.list_machines(db),
+            "machine_password_set": bool(get_machine_vnc_password(db)),
             "spool_report": (_spool_report := analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH))),
             # "Стан системи" flow map — honest, cheap counts (one scalar each).
             # No export-folder scan here; that's the heavy walk we keep off page load.
@@ -998,6 +1004,144 @@ def delete_furnace(request: Request, furnace_id: int, db: Session = Depends(get_
         "message": f"Пічку «{name}» прибрано з переліку.",
     }
     return RedirectResponse("/settings#furnaces", status_code=303)
+
+
+# ── Верстати ────────────────────────────────────────────────────────────────
+# Дзеркало роутів пічок вище, включно з ПАСТКОЮ ПОРЯДКУ: літеральний
+# /settings/machines/password мусить стояти ПЕРЕД /settings/machines/{id},
+# інакше FastAPI з'їдає слово «password» як номер верстата (спіймано живою
+# перевіркою на пічках — 422 замість збереження).
+
+
+@router.post("/settings/machines")
+def add_machine(
+    request: Request,
+    name: str = Form(...),
+    host: str = Form(...),
+    port: str = Form(""),
+    password: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Додати верстат. Адреса перевіряється ДО збереження — криву краще
+    відбити тут, ніж показувати порожню плитку «немає зв'язку»."""
+    require_settings_admin(request, db)
+    try:
+        clean_host, clean_port = machines_service.validate_address(host, port)
+    except FurnaceConfigError as exc:
+        request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
+        return RedirectResponse("/settings#machines", status_code=303)
+
+    if db.scalar(
+        select(Machine).where(Machine.host == clean_host, Machine.port == clean_port)
+    ):
+        request.session["settings_flash"] = {
+            "kind": "error",
+            "message": f"Верстат {clean_host}:{clean_port} уже в переліку.",
+        }
+        return RedirectResponse("/settings#machines", status_code=303)
+
+    last = db.scalar(select(func.max(Machine.sort_order)))
+    db.add(
+        Machine(
+            name=name.strip() or clean_host,
+            host=clean_host,
+            port=clean_port,
+            enabled=True,
+            password_encrypted=encrypt_value(password.strip()) if password.strip() else None,
+            sort_order=(last or 0) + 1,
+            created_at=datetime.now(),
+        )
+    )
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": f"Верстат «{name.strip() or clean_host}» додано.",
+    }
+    return RedirectResponse("/settings#machines", status_code=303)
+
+
+@router.post("/settings/machines/password")
+def save_machine_password(
+    request: Request, password: str = Form(""), db: Session = Depends(get_db)
+):
+    """Спільний view-only пароль UltraVNC верстатів. Порожнє = не міняти."""
+    require_settings_admin(request, db)
+    if password.strip():
+        set_setting(db, "machine_vnc_password", password.strip())
+        db.commit()
+        message = "Спільний пароль верстатів збережено."
+    else:
+        message = "Пароль не змінено — поле лишилось порожнім."
+    request.session["settings_flash"] = {"kind": "success", "message": message}
+    return RedirectResponse("/settings#machines", status_code=303)
+
+
+@router.post("/settings/machines/{machine_id}")
+def update_machine(
+    request: Request,
+    machine_id: int,
+    name: str = Form(...),
+    host: str = Form(...),
+    port: str = Form(""),
+    enabled: str = Form(""),
+    password: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Змінити верстат. Порожній пароль = не міняти; `-` = стерти власний
+    і повернутися на спільний (той самий контракт, що в пічки)."""
+    require_settings_admin(request, db)
+    machine = db.get(Machine, machine_id)
+    if machine is None:
+        raise HTTPException(status_code=404, detail="верстат не знайдено")
+
+    try:
+        clean_host, clean_port = machines_service.validate_address(host, port)
+    except FurnaceConfigError as exc:
+        request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
+        return RedirectResponse("/settings#machines", status_code=303)
+
+    clash = db.scalar(
+        select(Machine).where(
+            Machine.host == clean_host, Machine.port == clean_port, Machine.id != machine_id
+        )
+    )
+    if clash is not None:
+        request.session["settings_flash"] = {
+            "kind": "error",
+            "message": f"Верстат {clean_host}:{clean_port} уже в переліку.",
+        }
+        return RedirectResponse("/settings#machines", status_code=303)
+
+    machine.name = name.strip() or clean_host
+    machine.host = clean_host
+    machine.port = clean_port
+    machine.enabled = enabled == "1"
+    if password.strip() == "-":
+        machine.password_encrypted = None
+    elif password.strip():
+        machine.password_encrypted = encrypt_value(password.strip())
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": f"Верстат «{machine.name}» збережено.",
+    }
+    return RedirectResponse("/settings#machines", status_code=303)
+
+
+@router.post("/settings/machines/{machine_id}/delete")
+def delete_machine(request: Request, machine_id: int, db: Session = Depends(get_db)):
+    require_settings_admin(request, db)
+    machine = db.get(Machine, machine_id)
+    if machine is None:
+        raise HTTPException(status_code=404, detail="верстат не знайдено")
+    name = machine.name
+    db.delete(machine)
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": f"Верстат «{name}» прибрано з переліку.",
+    }
+    return RedirectResponse("/settings#machines", status_code=303)
 
 
 # One self-check probe may not wedge the run. Mirrors the reasoning behind

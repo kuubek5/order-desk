@@ -71,6 +71,16 @@ main.furnaces{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex
 
 .furnaces .fu-foot{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
 
+/* ── Верстати (.machines ділить каркас із .furnaces) ─────────────────────
+   Прев'ю кадру RemiCORE — завжди видиме, бо сенс екрана в самому кадрі;
+   повний розмір розгортається у скрол-контейнері: екран верстата 1080p, і
+   без обмеження він виносив би сітку за край. */
+.machines .mc-shot{display:block;width:100%;border:1px solid var(--line);border-radius:6px;
+  background:#0a0c10}
+.machines .mc-full{overflow:auto;max-height:78vh;margin-top:8px;
+  border:1px solid var(--line-2);border-radius:6px}
+.machines .mc-full img{display:block;max-width:none}
+
 @media (max-width:640px){
   .furnaces .fu-nums{grid-template-columns:1fr}
   .furnaces .fu-num-value{font-size:22px}

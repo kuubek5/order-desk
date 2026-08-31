@@ -73,6 +73,9 @@ SHIFT_IMAGES_PATH = os.environ.get(
 FURNACE_FRAMES_PATH = os.environ.get(
     "FURNACE_FRAMES_PATH", str(DATA_DIR / "furnace_frames")
 )
+MACHINE_FRAMES_PATH = os.environ.get(
+    "MACHINE_FRAMES_PATH", str(DATA_DIR / "machine_frames")
+)
 DB_ENCRYPTION_KEY = os.environ["DB_ENCRYPTION_KEY"]
 SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY") or hashlib.sha256(
     ("order-desk-session:" + DB_ENCRYPTION_KEY).encode()

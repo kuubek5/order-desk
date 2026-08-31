@@ -100,6 +100,14 @@ SETTING_FIELDS = [
         secret=True,
         help_text="Пароль екрана пічки Austromat (той самий, що в RealVNC)",
     ),
+    # Спільний view-only пароль VNC верстатів — UltraVNC на ПК верстатів.
+    # Окремий від пічного: різні сервери, різні паролі.
+    SettingField(
+        key="machine_vnc_password",
+        label="Спільний пароль VNC верстатів",
+        secret=True,
+        help_text="View-only пароль UltraVNC на ПК верстатів (не повний!)",
+    ),
 ]
 
 OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operator_editable}
@@ -345,6 +353,12 @@ def set_notify_prefs(
 
 def get_furnace_vnc_password(session: Session) -> Optional[str]:
     return get_setting(session, "furnace_vnc_password")
+
+
+def get_machine_vnc_password(session: Session) -> Optional[str]:
+    """Спільний view-only пароль VNC верстатів (окремий від пічного:
+    сервери різні — UltraVNC на ПК верстатів проти вбудованого в піч)."""
+    return get_setting(session, "machine_vnc_password")
 
 
 def get_furnace_background(session: Session) -> bool:

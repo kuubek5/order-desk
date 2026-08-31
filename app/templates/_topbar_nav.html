@@ -79,6 +79,10 @@
                 <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" class="duo"/><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
                 <span class="rail-label">Пічки</span>
             </a>
+            <a href="/settings#machines" class="rail-nav-item rail-sset" data-sec="machines">
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v6" class="duo"/><path d="M12 3v6"/><path d="M7 9h10v4a5 5 0 0 1-10 0z"/><path d="M12 18v3"/></svg>
+                <span class="rail-label">Верстати</span>
+            </a>
         </nav>
         {% endif %}
 
@@ -179,6 +183,10 @@
         <a href="/furnaces" class="rail-nav-item{% if topbar_active == 'furnaces' %} is-active{% endif %}"{% if topbar_active == 'furnaces' %} aria-current="page"{% endif %}>
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" class="duo"/><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
             <span class="rail-label">Пічки</span>
+        </a>
+        <a href="/machines" class="rail-nav-item{% if topbar_active == 'machines' %} is-active{% endif %}"{% if topbar_active == 'machines' %} aria-current="page"{% endif %}>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v6" class="duo"/><path d="M12 3v6"/><path d="M7 9h10v4a5 5 0 0 1-10 0z"/><path d="M12 18v3"/></svg>
+            <span class="rail-label">Верстати</span>
         </a>
         <a href="/clients" class="rail-nav-item{% if topbar_active == 'clients' %} is-active{% endif %}"{% if topbar_active == 'clients' %} aria-current="page"{% endif %}>
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" class="duo"/><circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5"/><path d="M16 6.2A3.2 3.2 0 0 1 16 14"/><path d="M18 19c-.3-1.7-1-3-2-3.9"/></svg>
