@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 POLL_INTERVAL_SECONDS = 15.0
 # Мовчазний верстат (ПК вимкнено) тримає той самий дедлайн знімка, що й піч.
 CAPTURE_TIMEOUT_SECONDS = 20.0
+# UltraVNC збирає екран полінгом ЛИШЕ поки клієнт підключений — перший кадр
+# після конекту «недофарбований» (частина цифр біла, спіймано на 350i).
+# Прогрів: тримаємо з'єднання, чекаємо і беремо другий кадр.
+CAPTURE_WARMUP_SECONDS = 2.5
 # Після цього мовчання плитка чесно каже «дані застаріли».
 STALE_AFTER_SECONDS = 120.0
 
@@ -166,6 +170,7 @@ def poll_target(
                 port=target.port,
                 password=target.password or password,
                 timeout=CAPTURE_TIMEOUT_SECONDS,
+                warmup=CAPTURE_WARMUP_SECONDS,
             )
         except FurnaceVncError as exc:
             error = str(exc)
@@ -204,6 +209,7 @@ def poll_all(db: Session, now: Optional[datetime] = None) -> list[MachineState]:
                 port=target.port,
                 password=target.password or shared,
                 timeout=CAPTURE_TIMEOUT_SECONDS,
+                warmup=CAPTURE_WARMUP_SECONDS,
             )
             return target, image, None
         except FurnaceVncError as exc:

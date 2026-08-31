@@ -42,11 +42,24 @@ class FurnaceVncError(Exception):
     """Кадр не знято. Повідомлення призначене оператору, не логам."""
 
 
-async def _grab(host: str, port: int, password: Optional[str]) -> Image.Image:
+async def _grab(
+    host: str, port: int, password: Optional[str], warmup: float = 0.0
+) -> Image.Image:
     import asyncvnc  # локальний імпорт: без екрана печей залежність не потрібна
 
     async with asyncvnc.connect(host, port, password=password) as client:
         pixels = await client.screenshot()
+        if warmup > 0:
+            # UltraVNC на ПК верстатів збирає екран полінгом, і робить це
+            # ЛИШЕ поки клієнт підключений. Перший кадр після конекту —
+            # «недофарбований»: сервер віддає, що встиг, і частина цифр
+            # порожня (спіймано наживо на 350i — права колонка задач і
+            # статус-бар приходили білими). Тому даємо серверу прогрітись
+            # і беремо ДРУГИЙ кадр — за цей час полінг проходить екран.
+            # Піч цього не потребує: її вбудований сервер тримає готовий
+            # framebuffer завжди, тож для неї warmup лишається нульовим.
+            await asyncio.sleep(warmup)
+            pixels = await client.screenshot()
     return Image.fromarray(pixels).convert("RGB")
 
 
@@ -55,9 +68,10 @@ async def capture_async(
     port: int = DEFAULT_PORT,
     password: Optional[str] = None,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    warmup: float = 0.0,
 ) -> Image.Image:
     try:
-        return await asyncio.wait_for(_grab(host, port, password), timeout=timeout)
+        return await asyncio.wait_for(_grab(host, port, password, warmup), timeout=timeout)
     except asyncio.TimeoutError as exc:
         raise FurnaceVncError(f"Піч {host} не відповіла за {timeout:.0f} с") from exc
     except PermissionError as exc:
@@ -74,6 +88,7 @@ def capture(
     port: int = DEFAULT_PORT,
     password: Optional[str] = None,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    warmup: float = 0.0,
 ) -> Image.Image:
     """Синхронна обгортка для фонового потоку й ручної кнопки «Оновити зараз».
 
@@ -81,4 +96,4 @@ def capture(
     із синками пошти й таблиці, а не корутина в циклі FastAPI. Так знімок ніколи
     не займає цикл, який обслуговує запити оператора.
     """
-    return asyncio.run(capture_async(host, port, password, timeout))
+    return asyncio.run(capture_async(host, port, password, timeout, warmup))

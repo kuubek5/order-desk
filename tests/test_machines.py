@@ -133,3 +133,26 @@ def test_machines_settings_section_is_wired():
 
     page = Path("app/templates/settings.html").read_text(encoding="utf-8")
     assert "_settings_machines.html" in page
+
+
+def test_warmup_takes_the_second_frame_not_the_first():
+    """UltraVNC віддає перший кадр «недофарбованим» (полінг працює лише поки
+    клієнт підключений — спіймано наживо на 350i: права колонка задач і
+    статус-бар приходили білими). Прогрів мусить чекати НЕ відключаючись і
+    брати другий кадр — тут стенд підміняє кадр після першого знімка, і
+    результатом мусить бути саме другий."""
+    from PIL import Image as PILImage
+
+    from app.furnace_vnc import capture
+    from tests.fake_vnc_server import FakeFurnace, frame_bytes
+
+    first = PILImage.new("RGB", (64, 48), (255, 255, 255))   # «біла» недофарбованість
+    second = PILImage.new("RGB", (64, 48), (0, 128, 255))
+
+    with FakeFurnace(width=64, height=48, frame_rgba=frame_bytes(first)) as bench:
+        # Кадр міняється одразу після старту: перший screenshot ще застане
+        # білий (він знімається до сну), другий — синій.
+        bench.frame_rgba = frame_bytes(second)
+        got = capture("127.0.0.1", bench.port, "DEKEMA", warmup=0.3)
+
+    assert got.getpixel((5, 5)) == (0, 128, 255), "узято перший кадр, а не другий"
