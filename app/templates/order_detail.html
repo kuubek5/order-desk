@@ -41,7 +41,12 @@
 
     <div class="dsec">
         <div class="dlabel">Паспорт роботи</div>
-        <div class="kv"><span>Матеріал · колір</span><b>{% if order.material_color %}<span class="matchip">{{ order.material_color }}</span>{% else %}—{% endif %}</b></div>
+        {# Кадр родини поруч зі значенням: у паспорті оператор дивиться на ОДНУ
+           роботу, і матеріал тут доти був самим текстом. Клас родини бере той
+           самий `material_badge`, що й маркування в черзі, тому фото не може
+           розійтись із символом. Кадру немає — мітка просто не рендериться. #}
+        {%- set _mat = material_badge(order) -%}
+        <div class="kv"><span>Матеріал · колір</span><b>{% if order.material_color %}<span class="matchip {{ _mat.cls if _mat else '' }}">{% if _mat and _mat.cls not in ('mat-unknown', 'mat-other') %}<i class="matchip-thumb" aria-hidden="true"></i>{% endif %}{{ order.material_color }}</span>{% else %}—{% endif %}</b></div>
         <div class="kv"><span>Вид роботи</span><b>{{ order.kind or '—' }}</b></div>
         <div class="kv"><span>Кількість</span><b>{{ order.quantity or '—' }}</b></div>
         <div class="kv"><span>Здати до</span><b>{{ order.due_time or '—' }}</b></div>

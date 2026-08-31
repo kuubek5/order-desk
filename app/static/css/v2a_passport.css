@@ -75,6 +75,13 @@ main.passport2{max-width:760px;margin:0 auto;padding:20px}
 .passport2 .tl-item .who{font-size:12px;color:var(--ink-3);margin-top:1px}
 .passport2 .tl-undone{opacity:.7}
 .passport2 .tl-undone .label{text-decoration:line-through;color:var(--ink-3)}
+/* Кадр родини в чіпі матеріалу. Сам файл приходить змінною --mat-art з
+   класу родини (update_overlay.css, поруч із кольором) — тут лише розмір.
+   Мітка не рендериться для «?» і «інше»: фотографувати невідоме нема чого,
+   а порожній квадрат читався б як «фото не завантажилось». */
+.passport2 .matchip-thumb{width:16px;height:16px;flex:0 0 16px;margin:0 7px 0 -2px;
+  border-radius:4px;background-image:var(--mat-art);background-size:cover;background-position:center;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.10)}
 .passport2 .matchip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:var(--raise);border:1px solid var(--line-2);font-size:12px;color:var(--ink)}
 .passport2 .p2-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);padding:16px 18px;margin-bottom:14px}
 .passport2 .p2-card > h3{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0 0 12px;letter-spacing:-.005em}

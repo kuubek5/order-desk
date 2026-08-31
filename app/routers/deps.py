@@ -19,6 +19,7 @@ from app.__version__ import VERSION
 from app.db import SessionLocal
 from app.material_class import (
     material_badge,
+    material_family_class,
     material_color_css_class,
     split_material_color,
     strip_material_word,
@@ -312,6 +313,7 @@ templates = Jinja2Templates(directory=str(resource_path("app/templates")))
 templates.env.globals["is_overdue"] = is_overdue
 templates.env.globals["material_color_css_class"] = material_color_css_class
 templates.env.globals["material_badge"] = material_badge
+templates.env.globals["material_family_class"] = material_family_class
 templates.env.globals["split_material_color"] = split_material_color
 templates.env.globals["strip_material_word"] = strip_material_word
 templates.env.globals["triage_readiness"] = triage_readiness

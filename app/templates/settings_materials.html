@@ -36,8 +36,16 @@
     </section>
 
     {% for material in materials %}
-    <section class="panel matlib-material">
+    {# Клас родини несе і колір маркування, і кадр матеріалу в шапці картки.
+       Береться з того самого джерела, що й символ у черзі (_MATERIAL_BADGES),
+       тому колір і фото не можуть розійтись із маркуванням. #}
+    <section class="panel matlib-material {{ material_family_class(material.name) }}">
         <div class="card-head">
+            {# Фото-мітка родини. Спершу кадр стояв фоном усієї шапки — назва
+               лягала просто на коронки й ледве читалась, а лічильник правил
+               тулився в кут. Мітка вирішує обидва: фото має власне місце,
+               текст лишається на рівному тлі. #}
+            <span class="matlib-thumb" aria-hidden="true"></span>
             <h2>{{ material.name }}
                 {% if not material.is_production %}<span class="matlib-tag">не рахується</span>{% endif %}
             </h2>
