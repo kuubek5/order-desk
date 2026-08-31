@@ -8,47 +8,27 @@
 
 {% block content %}
 <div class="login-page">
-    {# Фон входу: ОДИН великий диск у затискачі, перемальований з реального
-       фото цеху, виходить за правий край і дуже повільно обертається; поверх —
-       поле пилу. Чотири дрібні предмети по кутах тут були раніше й читались
-       як наліпки: на 8% штрихування ставало сірим шумом, форму не впізнати.
-       Великий масштаб рятує саме штрих — лінія лишається лінією.
+    {# Фон входу: живе відео з НАШОГО цеху — руки оператора тягнуться до
+       щойно відфрезеруваного диска в тримачі. Перший кадр — справжнє фото
+       (design/refs/mill-disc-milled-flower.jpg), рух згенеровано від нього
+       (Kling 3.0; лог у design/kuubmill_vidC2-hands…). Сцену обрано власником
+       з шести чернеток; попередній фон (мальований диск + пил) живе в
+       git-історії цього файлу.
 
-       Диск — маска, залита акцентом, тому фон живе в обох темах без другого
-       комплекту файлів. Радар з app-backdrop на цій сторінці ховається
-       (див. login.css): дві атмосфери в кадрі сперечались би.
-
-       Пилинки задані розміткою, а не скриптом: фон мусить бути на місці ще
-       до виконання JS. Кожна має власну траєкторію у змінних, а `--dl`
-       ВІД'ЄМНА — інакше перші півхвилини екран стояв би порожній, поки пил
-       «долетить». Розкладка згенерована з фіксованим зерном, тож однакова
-       в кожній збірці. #}
+       autoplay працює лише разом із muted; poster — перший кадр, тому
+       завантаження відео непомітне: картинка та сама, просто оживає.
+       prefers-reduced-motion зупиняє відео скриптом нижче — CSS відео не
+       спинить, а лишити петлю людині, що просила менше руху, не можна. #}
     <div class="login-scene" aria-hidden="true">
-        <i class="ls-disc"></i>
-        <div class="ls-dust">
-            <i style="--x:7.3%;--s:1.4px;--rise:39vh;--sway:3.3vw;--d:55s;--dl:-30s;--o:0.19"></i>
-            <i style="--x:77.3%;--s:1.5px;--rise:73vh;--sway:5.2vw;--d:55s;--dl:-11s;--o:0.25"></i>
-            <i style="--x:55.3%;--s:1.9px;--rise:68vh;--sway:0.3vw;--d:57s;--dl:-34s;--o:0.24"></i>
-            <i style="--x:31.7%;--s:2.1px;--rise:41vh;--sway:3.0vw;--d:56s;--dl:-53s;--o:0.25"></i>
-            <i style="--x:25.7%;--s:1.6px;--rise:71vh;--sway:-3.5vw;--d:37s;--dl:-28s;--o:0.11"></i>
-            <i style="--x:19.4%;--s:1.5px;--rise:51vh;--sway:6.1vw;--d:54s;--dl:-14s;--o:0.12"></i>
-            <i style="--x:40.4%;--s:2.0px;--rise:37vh;--sway:-3.6vw;--d:42s;--dl:-20s;--o:0.19"></i>
-            <i style="--x:14.5%;--s:2.2px;--rise:45vh;--sway:-3.7vw;--d:31s;--dl:-18s;--o:0.12"></i>
-            <i style="--x:85.9%;--s:2.0px;--rise:70vh;--sway:-8.3vw;--d:27s;--dl:-23s;--o:0.12"></i>
-            <i style="--x:68.0%;--s:2.4px;--rise:68vh;--sway:-8.8vw;--d:30s;--dl:-17s;--o:0.24"></i>
-            <i style="--x:61.6%;--s:2.2px;--rise:70vh;--sway:-6.4vw;--d:50s;--dl:-35s;--o:0.19"></i>
-            <i style="--x:38.1%;--s:1.2px;--rise:76vh;--sway:-2.9vw;--d:56s;--dl:-12s;--o:0.19"></i>
-            <i style="--x:86.3%;--s:1.1px;--rise:45vh;--sway:-4.1vw;--d:38s;--dl:-8s;--o:0.24"></i>
-            <i style="--x:77.9%;--s:2.0px;--rise:75vh;--sway:-7.6vw;--d:27s;--dl:-11s;--o:0.2"></i>
-            <i style="--x:88.0%;--s:2.2px;--rise:41vh;--sway:-8.2vw;--d:40s;--dl:-17s;--o:0.25"></i>
-            <i style="--x:73.9%;--s:2.3px;--rise:73vh;--sway:-3.0vw;--d:50s;--dl:-46s;--o:0.22"></i>
-            <i style="--x:58.5%;--s:2.4px;--rise:57vh;--sway:-5.9vw;--d:41s;--dl:-38s;--o:0.15"></i>
-            <i style="--x:31.5%;--s:2.4px;--rise:72vh;--sway:-0.2vw;--d:46s;--dl:-2s;--o:0.2"></i>
-            <i style="--x:51.1%;--s:1.9px;--rise:65vh;--sway:-1.5vw;--d:38s;--dl:-35s;--o:0.19"></i>
-            <i style="--x:30.7%;--s:1.6px;--rise:47vh;--sway:6.9vw;--d:51s;--dl:-17s;--o:0.24"></i>
-            <i style="--x:63.1%;--s:2.2px;--rise:43vh;--sway:-3.1vw;--d:47s;--dl:-9s;--o:0.22"></i>
-            <i style="--x:79.0%;--s:1.5px;--rise:52vh;--sway:-2.4vw;--d:31s;--dl:-11s;--o:0.16"></i>
-        </div>
+        <video class="ls-video" autoplay muted loop playsinline
+               poster="/static/video/login-hands-poster.jpg?v={{ static_ver('video/login-hands-poster.jpg') }}"
+               src="/static/video/login-hands.mp4?v={{ static_ver('video/login-hands.mp4') }}"></video>
+        <script>
+            if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                var v = document.querySelector(".ls-video");
+                if (v) { v.removeAttribute("autoplay"); v.pause(); }
+            }
+        </script>
     </div>
 
     <div class="dyn-text" id="login-quotes" aria-label="Цехові репліки"></div>

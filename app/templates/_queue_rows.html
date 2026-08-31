@@ -31,22 +31,28 @@
     </div>
     {% else %}
     <div class="queue-empty">
-        {# Ілюстрація порожньої черги: фреза пірнає до диска й піднімає пил.
-           Два шари ОДНІЄЇ маски (empty-spindle-base / -burr), тому фарбуються
-           акцентом теми й рухаються незалежно. Пилинки — 12 порожніх <i>,
-           напрямок і затримка кожної в inline-змінних, щоб один keyframe
-           обслуговував усі. Рух вимикається за prefers-reduced-motion. #}
-        <span class="empty-mill" aria-hidden="true">
-            <i class="em-lyr em-base"></i>
-            <i class="em-lyr em-burr"></i>
-            <span class="em-dust">
-                <i style="--dx:-13px;--dy:4px;--s:2.4px;--t:0s"></i><i style="--dx:11px;--dy:5px;--s:2.2px;--t:.04s"></i>
-                <i style="--dx:-8px;--dy:9px;--s:1.8px;--t:.09s"></i><i style="--dx:9px;--dy:10px;--s:2px;--t:.14s"></i>
-                <i style="--dx:-16px;--dy:-2px;--s:1.6px;--t:.19s"></i><i style="--dx:14px;--dy:-3px;--s:1.7px;--t:.24s"></i>
-                <i style="--dx:-5px;--dy:12px;--s:1.5px;--t:.29s"></i><i style="--dx:6px;--dy:13px;--s:1.6px;--t:.34s"></i>
-                <i style="--dx:-19px;--dy:6px;--s:1.4px;--t:.39s"></i><i style="--dx:17px;--dy:8px;--s:1.5px;--t:.44s"></i>
-                <i style="--dx:-3px;--dy:-8px;--s:1.3px;--t:.49s"></i><i style="--dx:4px;--dy:-9px;--s:1.4px;--t:.54s"></i>
-            </span>
+        {# Порожня черга: живий кадр НАШОГО верстата — камера повільно
+           наїжджає на диск із відфрезеруваними роботами. Перший кадр —
+           справжнє фото (design/refs/mill-disc-milled-flower.jpg), рух
+           згенеровано від нього (лог у design/kuubmill_vidA2-…). Каже те
+           саме, що казала мальована фреза («верстат працює, роботи будуть»),
+           тільки нашим власним залізом. Попередня ілюстрація (маска
+           шпинделя + пил) — у git-історії цього файлу.
+
+           Постер = перший кадр, тому оживання непомітне. Порожній стан —
+           рідкісний екран, а не цілоденний, тому петля тут не порушує
+           правило «анімація лише як сигнал стану»; prefers-reduced-motion
+           все одно зупиняє відео скриптом (CSS відео не спиняє). #}
+        <span class="empty-video" aria-hidden="true">
+            <video autoplay muted loop playsinline
+                   poster="/static/video/queue-empty-poster.jpg?v={{ static_ver('video/queue-empty-poster.jpg') }}"
+                   src="/static/video/queue-empty.mp4?v={{ static_ver('video/queue-empty.mp4') }}"></video>
+            <script>
+                if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                    var qv = document.querySelector(".empty-video video");
+                    if (qv) { qv.removeAttribute("autoplay"); qv.pause(); }
+                }
+            </script>
         </span>
         {% if show_overdue %}
         <h2>Прострочених робіт немає</h2>
