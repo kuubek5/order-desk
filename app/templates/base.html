@@ -66,7 +66,7 @@
    малювання»; тепер значення вже в розмітці, тому мигтіти нема чому,
    і набір їде за оператором, а не за браузером. #}
 <body{% if _up.queue_density %} data-density="{{ _up.queue_density }}"{% endif %}{% if _up.queue_mat_style %} data-matstyle="{{ _up.queue_mat_style }}"{% endif %}>
-    <script>try{if(localStorage.getItem('railCollapsed')==='1')document.body.classList.add('rail-collapsed');if(localStorage.getItem('layoutEditMode')==='1')document.body.classList.add('layout-edit');if(localStorage.getItem('furnaceSideOpen')==='1')document.body.classList.add('furnace-side-open');}catch(e){}</script>
+    <script>try{if(localStorage.getItem('railCollapsed')==='1')document.body.classList.add('rail-collapsed');if(localStorage.getItem('layoutEditMode')==='1')document.body.classList.add('layout-edit');if(localStorage.getItem('furnaceSideOpen')==='1')document.body.classList.add('furnace-side-open');if(localStorage.getItem('qsideCollapsed')==='1')document.body.classList.add('qside-collapsed');}catch(e){}</script>
     {% include "_backdrop.html" %}
     {# SVG-фільтр «рідкого скла» для перемикача скачування (див. .dl-seg у
        base.css). Визначається раз на сторінку, бо тогл є і в /settings, і в

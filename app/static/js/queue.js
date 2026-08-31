@@ -884,3 +884,42 @@ document.addEventListener("htmx:afterSettle", (event) => {
     btn.setAttribute("aria-expanded", String(open));
   });
 });
+
+// ── Згортання правої side-панелі ──────────────────────────────────────────
+// Звільняє ~296px для таблиці, коли колонки не влазять (вибір власника: без
+// втрати даних). Стан — у localStorage. Якщо користувач ще НЕ вибирав, панель
+// авто-згортається, коли таблиця не влазить у свій контейнер — тоді дефолт
+// «влазить» сам. Клас живе на <body>, тому переживає 15с-свап #queue-rows.
+(function () {
+  const KEY = "qsideCollapsed";
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+  function apply(on) {
+    document.body.classList.toggle("qside-collapsed", on);
+    document.querySelectorAll("[data-qside-toggle]").forEach((btn) => {
+      btn.classList.toggle("is-on", on);
+      btn.setAttribute("aria-pressed", String(on));
+    });
+  }
+
+  function tableOverflows() {
+    const wrap = document.querySelector(".tablewrap");
+    return !!wrap && wrap.scrollWidth - wrap.clientWidth > 4;
+  }
+
+  // Початковий стан: явний вибір користувача переважає; інакше — авто за overflow.
+  // Anti-flash у base.html уже міг поставити клас для збереженого "1", але тут
+  // ми ще й синхронізуємо кнопку та обробляємо авто-випадок.
+  const saved = lsGet(KEY);
+  if (saved === "1") apply(true);
+  else if (saved === "0") apply(false);
+  else apply(tableOverflows());
+
+  document.addEventListener("click", function (event) {
+    if (!event.target.closest("[data-qside-toggle]")) return;
+    const on = !document.body.classList.contains("qside-collapsed");
+    apply(on);
+    lsSet(KEY, on ? "1" : "0");
+  });
+})();

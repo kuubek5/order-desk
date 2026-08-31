@@ -568,6 +568,12 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 table.qtable tbody tr.row-flash{animation:q2status-flash var(--flash-duration,.9s) ease-out}
 
 .q2 .side-panel{flex:0 0 296px;width:296px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;display:flex;flex-direction:column;gap:var(--queue-density-side-gap,10px)}
+/* Згорнута права панель — звільняє 296px таблиці (вибір власника: без втрати
+   даних). Клас на body ставить queue.js (перемикач + авто-згортання при
+   overflow) та anti-flash у base.html. Кнопка-перемикач у стані «увімк». */
+body.qside-collapsed .q2 .side-panel{display:none}
+body.qside-collapsed .q2 .worklayout{gap:0}
+.q2 .qside-toggle.is-on{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .4);background:rgba(var(--accent-base-rgb), .12)}
 .q2 .side-sec{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);overflow:hidden;flex:0 0 auto}
 .q2 .side-head{
   width:100%;display:flex;align-items:center;gap:8px;padding:11px 12px;text-align:left;background:none;cursor:pointer;
