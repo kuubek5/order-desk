@@ -112,17 +112,25 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
    Затемнення нерівномірне і це не декор: помірне ліворуч, щоб коронки було
    видно й заголовок при цьому читався, і щільне від середини, де стоять
    числа дня. Рівний градієнт або топив коронки, або з'їдав контраст чисел. */
-.handoutv2 .hbar{position:relative;isolation:isolate;overflow:hidden;
+/* БЕЗ overflow:hidden і БЕЗ isolation на самому .hbar: усередині живе
+   випадний список днів (.dayall-pop, до 210px униз), і перша версія з
+   overflow різала його рамкою шапки — власник бачив це як «меню заходить
+   під малюнок». Фото і градієнт живуть на псевдоелементах із z-index:-1 і
+   border-radius:inherit: кути фону лишаються заокругленими без обрізання
+   вмісту, а попап вільно виходить за межі шапки. */
+.handoutv2 .hbar{position:relative;
   border:1px solid var(--line-2);border-radius:var(--r-card);
-  padding:15px 18px;min-height:92px;
+  padding:15px 18px;min-height:92px}
+.handoutv2 .hbar::before{content:"";position:absolute;inset:0;z-index:-2;
+  border-radius:inherit;
   background-color:#0d0f12;
   background-image:url("../img/handout-tray.jpg");
   background-size:auto 150%;background-position:left center;background-repeat:no-repeat}
-.handoutv2 .hbar::before{content:"";position:absolute;inset:0;z-index:0;
+.handoutv2 .hbar::after{content:"";position:absolute;inset:0;z-index:-1;
+  border-radius:inherit;
   background:linear-gradient(90deg,
     rgba(13,15,18,.58) 0%, rgba(13,15,18,.52) 24%,
     rgba(13,15,18,.88) 46%, rgba(13,15,18,.93) 100%)}
-.handoutv2 .hbar>*{position:relative;z-index:1}
 .handoutv2 .hbar h1{text-shadow:0 1px 8px rgba(0,0,0,.7)}
 /* Числа дня — головний акцент шапки, як у мокапі. */
 .handoutv2 .hbar .hkpi b{font-size:17px}

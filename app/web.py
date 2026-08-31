@@ -57,6 +57,7 @@ from app.material_catalog import (
 from app.runtime import data_dir, resource_path
 from app.routers.auth import router as auth_router
 from app.routers.clients import router as clients_router
+from app.routers.handout import HANDOUT_DAY_WINDOW
 from app.routers.handout import router as handout_router
 from app.routers.settings import router as settings_router
 from app.routers.mail import router as mail_router
@@ -414,29 +415,51 @@ def export_warm_once(db: Session) -> int:
     folder_names = list_export_client_names_cached(root)
     if not folder_names:
         return 0
-    eligible = _handout_eligible_orders(db, date.today())
-    # Гріємо рівно те, що побачить оператор: екран за замовчуванням показує
-    # останній день, тож прогрів усіх днів дав би ІНШУ межу за датою — інший
-    # ключ кешу — і оператор однаково чекав би.
-    default_day = _handout_select_day(_handout_day_options(eligible), "")
+    all_eligible = _handout_eligible_orders(db, date.today())
+    day_options = _handout_day_options(all_eligible)
+    # Гріємо ВСІ дні видимого вікна чіпів, а не лише дефолтний. Ключ кешу
+    # обходу включає межу за датою (not_before), і вона своя в кожного дня —
+    # тому прогрів одного дефолтного дня лишав сусідні чіпи холодними, і
+    # кожен клік по «вчора» ішов у синхронний SMB-обхід прямо в запиті
+    # (скарга власника 31.08.26: «довго переходить між вкладками»).
+    # «Усі дні» свідомо НЕ гріємо: це повний обхід сотень клієнтів (бойовий
+    # лог: 511 с) кожні дві хвилини — дорожче, ніж рідкий клік по «усі».
+    default_day = _handout_select_day(day_options, "")
     if default_day is not None:
-        eligible = [o for o in eligible if _parse_sheet_tab(o.sheet_tab) == default_day]
-    not_before = _handout_not_before(eligible)
-    client_names = {o.client_name for o in eligible if o.client_name}
-    folders = _matched_folders(_handout_client_matches(db, client_names, folder_names))
+        size = min(HANDOUT_DAY_WINDOW, len(day_options))
+        anchor = day_options.index(default_day)
+        start = max(0, min(anchor - size // 2, len(day_options) - size))
+        warm_days = day_options[start:start + size]
+    else:
+        warm_days = []
+
     started = time.monotonic()
-    scanned = _scan_export_for_clients(root, folders, not_before)
-    # Той самий запасний шлях, що й на екрані — інакше перший, хто відкриє
-    # видачу, платив би за нього сам.
-    empty = {name: folder for name, folder in folders.items() if not scanned.get(name)}
-    scanned.update(_scan_export_latest_for_clients(root, empty))
+    total_folders = 0
+    total_rows = 0
+    for day in warm_days or [None]:
+        eligible = all_eligible
+        if day is not None:
+            eligible = [o for o in eligible if _parse_sheet_tab(o.sheet_tab) == day]
+        if not eligible:
+            continue
+        not_before = _handout_not_before(eligible)
+        client_names = {o.client_name for o in eligible if o.client_name}
+        folders = _matched_folders(_handout_client_matches(db, client_names, folder_names))
+        scanned = _scan_export_for_clients(root, folders, not_before)
+        # Той самий запасний шлях, що й на екрані — інакше перший, хто
+        # відкриє видачу, платив би за нього сам.
+        empty = {name: folder for name, folder in folders.items() if not scanned.get(name)}
+        scanned.update(_scan_export_latest_for_clients(root, empty))
+        total_folders += len(folders)
+        total_rows += sum(len(v) for v in scanned.values())
     logger.info(
-        "Export prewarm: %d тек, %d записів, %.2fс",
-        len(folders),
-        sum(len(v) for v in scanned.values()),
+        "Export prewarm: %d дн., %d тек, %d записів, %.2fс",
+        len(warm_days),
+        total_folders,
+        total_rows,
         time.monotonic() - started,
     )
-    return len(folders)
+    return total_folders
 
 
 @dataclass
