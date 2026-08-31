@@ -1282,3 +1282,43 @@ def test_one_bad_read_cannot_archive_a_quarter_of_the_tab():
     result = sync_tab(session, "27.08.26", normal, deletion_grace_seconds=0)
     session.commit()
     assert result.deleted == 1
+
+
+def test_force_reconcile_archives_a_confirmed_bulk_deletion():
+    """Оператор СВІДОМО видалив пачку тестових рядків і підтвердив «звірити
+    видалення» — обірване читання й справжнє масове видалення з одного читання
+    не розрізнити, тому за явним підтвердженням поріг обходиться й рядки таки
+    архівуються. Без force_reconcile той самий синк поріг тримає (тест вище).
+
+    Бойовий сценарій 31.08.26: 34 клієнтські тестові рядки, видалені з аркуша,
+    зависли в черзі, бо кожен фоновий/ручний тік бачив ті самі 40% «зниклих»."""
+    session = make_session()
+    for i in range(20):
+        session.add(Order(
+            source="sheet_client", sheet_tab="27.08.26", row_number=10 + i,
+            client_name=f"Тест{i}", material_color="mono b1", status="нове",
+        ))
+    session.commit()
+
+    # У таблиці лишилось лише 8 рядків із 20 — решту оператор видалив навмисне.
+    remaining = [make_row(
+        row_number=10 + i, work_order_no="", material_color="mono b1",
+        kind=f"Тест{i}", quantity="1", job_code="", sum3d_id="",
+        calculated="", milled="", technician_name="",
+    ) for i in range(8)]
+
+    # Звичайний синк — поріг тримає, нічого не архівує.
+    guarded = sync_tab(session, "27.08.26", remaining, deletion_grace_seconds=0)
+    session.commit()
+    assert guarded.deleted == 0
+    assert session.query(Order).filter(Order.archived_at.is_(None)).count() == 20
+
+    # Підтверджена звірка — поріг обходиться, 12 видалених архівуються.
+    forced = sync_tab(
+        session, "27.08.26", remaining, deletion_grace_seconds=0, force_reconcile=True
+    )
+    session.commit()
+    assert forced.deleted == 12
+    active = session.query(Order).filter(Order.archived_at.is_(None)).all()
+    assert len(active) == 8
+    assert {o.client_name for o in active} == {f"Тест{i}" for i in range(8)}

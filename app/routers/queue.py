@@ -691,6 +691,35 @@ def import_sheet_history(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse("/", status_code=303)
 
 
+@router.post("/sheets/reconcile-deletions")
+def reconcile_sheet_deletions(request: Request, db: Session = Depends(get_db)):
+    """Підтверджена звірка масового видалення. Звичайний синк має запобіжник:
+    коли за один тік «зникає» >25% рядків вкладки, він вважає це поганим
+    читанням і НЕ архівує (бойовий інцидент: тік помилково зняв 17 живих
+    робіт). Але обірване читання й справжнє масове видалення з одного читання
+    не розрізнити, тож коли оператор СВІДОМО видалив пачку рядків у таблиці,
+    ця дія обходить поріг (force_reconcile) і таки прибирає їх із черги в Архів.
+    Помилка самозагоюється: рядок, що насправді лишився в таблиці, повернеться
+    наступним синком через 10 хв. Admin + loopback, як і решта дій синку."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    try:
+        summary = sync_google_sheets(db, trigger="manual", force_reconcile=True)
+    except SheetSyncError as exc:
+        request.session["sync_flash"] = {"kind": "error", "message": str(exc)}
+    else:
+        request.session["sync_flash"] = {
+            "kind": "success",
+            "message": f"Звірку завершено: прибрано {summary.deleted} видалених рядків у Архів. "
+            + summary_message(summary),
+        }
+    return RedirectResponse("/", status_code=303)
+
+
 @router.get("/sheets/state", response_class=HTMLResponse)
 def sheet_sync_state(request: Request, db: Session = Depends(get_db)):
     """Tiny self-polling fragment (_sync_indicator.html) for the queue's Google

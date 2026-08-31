@@ -328,6 +328,7 @@ def sync_tab(
     row_fills: dict[int, str] | None = None,
     raw_row_count: int | None = None,
     deletion_grace_seconds: float = 120,
+    force_reconcile: bool = False,
 ) -> SyncResult:
     """Import a tab's rows. ``row_fills`` (row_number -> 'blue'/'grey'/''), when
     provided, drives two things:
@@ -629,8 +630,13 @@ def sync_tab(
         # Бойовий випадок 30.08.26: один тік заархівував 17 клієнтських робіт,
         # які стояли в таблиці неторкані. Поріг: більше 5 робіт І більше 25%
         # активних рядків вкладки — тік пропускає реконсиляцію видалень цілком
-        # і голосно пише про це в лог; справжнє масове чищення надолужить
-        # наступний тік, коли читання буде повним.
+        # і голосно пише про це в лог.
+        #
+        # ``force_reconcile`` (свідома дія оператора «я справді видалив пачку —
+        # звір зараз») обходить цей поріг: обірване читання й справжнє масове
+        # видалення з одного читання не розрізнити, тому рішення віддане людині,
+        # яка знає правду. Помилка самозагоюється — рядок, що досі в таблиці,
+        # воскресає наступним синком через 10 хв (гілка вище).
         active = [
             o for o in tab_orders
             if o.source in ("lab", "sheet_client") and o.archived_at is None
@@ -639,11 +645,12 @@ def sync_tab(
             o for o in active
             if not (o.id is not None and o.id in matched_ids)
         ]
-        if len(vanished) > 5 and active and len(vanished) > 0.25 * len(active):
+        mass_vanish = len(vanished) > 5 and active and len(vanished) > 0.25 * len(active)
+        if mass_vanish and not force_reconcile:
             logger.warning(
                 "Синк %s: %d із %d рядків «зникли» за один тік — схоже на "
-                "обірване читання, архівацію пропущено (наступний повний тік "
-                "надолужить справжні видалення)",
+                "обірване читання, архівацію пропущено (оператор може підтвердити "
+                "масове видалення діею «звірити видалення»)",
                 sheet_tab, len(vanished), len(active),
             )
         else:

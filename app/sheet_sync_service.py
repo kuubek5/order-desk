@@ -297,6 +297,7 @@ def sync_google_sheets(
     trigger: str = "manual",
     include_tabs: set[str] | None = None,
     full_history: bool = False,
+    force_reconcile: bool = False,
 ) -> SheetSyncSummary:
     """Import relevant dated tabs tab-by-tab and persist an audit log.
 
@@ -366,6 +367,9 @@ def sync_google_sheets(
                     # immediately — the operator's deliberate click isn't the
                     # background poll the read/write grace guards against.
                     deletion_grace_seconds=0 if trigger == "manual" else 120,
+                    # Оператор підтвердив масове видалення («звірити видалення»)
+                    # — обходить поріг захисту від масової архівації.
+                    force_reconcile=force_reconcile,
                 )
                 # Commit this tab before touching the next, so a later tab's
                 # failure can never undo it.
