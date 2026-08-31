@@ -129,6 +129,40 @@ main.setv2.scon {
   border-color: var(--accent-b);
   background: rgba(var(--accent-base-rgb), 0.08);
 }
+/* «Кування» — тепле світло послідовно ковзає по картках зліва направо, як
+   світло по металу; верхня межа світиться бурштином. Числа набігають з нуля
+   окремо (settings_console.js animateCounters). Стаггер — через --i (index
+   вузла в шаблоні). Одна спокійна нескінченна петля на весь ряд. */
+.scon-node-box {
+  position: relative;
+  overflow: hidden;
+  border-top-color: rgba(var(--accent-base-rgb), 0.4);
+}
+.scon-node-box::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -70%;
+  width: 55%;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(var(--accent-base-rgb), 0.16),
+    transparent
+  );
+  animation: sconSheen 5.5s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 0.35s);
+}
+@keyframes sconSheen {
+  0% { left: -70%; }
+  22% { left: 130%; }
+  100% { left: 130%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scon-node-box::after { animation: none; display: none; }
+}
 .scon-n {
   font-family: var(--font-mono);
   font-size: 18px;

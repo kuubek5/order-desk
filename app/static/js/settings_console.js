@@ -350,9 +350,33 @@
     });
   }
 
+  // ── Стан системи: числа набігають з нуля («Кування») ─────
+  // Разова анімація на завантаженні. Тільки цілі значення — інше (напр.
+  // непорожні нечислові) лишаємо як є. Reduced-motion → без анімації.
+  function animateCounters() {
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var nums = main.querySelectorAll(".scon-n");
+    Array.prototype.forEach.call(nums, function (el) {
+      var raw = (el.textContent || "").trim();
+      if (!/^\d+$/.test(raw)) return;
+      var to = parseInt(raw, 10), dur = 1100, t0 = null;
+      el.textContent = "0";
+      function step(ts) {
+        if (!t0) t0 = ts;
+        var p = Math.min(1, (ts - t0) / dur);
+        var e = 1 - Math.pow(1 - p, 3); // ease-out cubic
+        el.textContent = String(Math.round(to * e));
+        if (p < 1) requestAnimationFrame(step);
+        else el.textContent = String(to);
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
   // ── boot ─────────────────────────────────────────────────
   var start = (location.hash || "").replace("#", "");
   show(sectionKeys().indexOf(start) !== -1 ? start : "state");
+  animateCounters();
   window.addEventListener("hashchange", function () {
     var k = (location.hash || "").replace("#", "");
     if (sectionKeys().indexOf(k) !== -1) show(k);
