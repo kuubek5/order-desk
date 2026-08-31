@@ -23,36 +23,27 @@
   letter-spacing: var(--ls-head);
 }
 
-/* Шапка бренду на картці: знак + назва + підпис, як у рейці. Перша версія
-   була гучніша (знак 44px зі світінням, назва 2.1rem, плюс рядок «Увійдіть
-   під своїм обліковим записом») — власник назвав верх перенасиченим.
-   Прибрано шар світіння і службовий рядок, розміри притишено: ідентичність
-   тримається складом (знак+назва+підпис), а не гучністю. */
+/* Шапка бренду: сама назва по центру, затонована (прохання власника після
+   двох гучніших версій — зі знаком і світінням; ті в git-історії). Назва
+   кольором --ink-2, а не --ink: вона тут підпис кімнати, а не кнопка. */
 .login-brand {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  margin-bottom: 14px;
-}
-.login-brand .lb-mark {
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  color: var(--accent-b);
+  text-align: center;
+  margin-bottom: 16px;
 }
 /* Специфічність підвищено свідомо: нижче в файлі є пізніший `.login-card h1`
    (1.75rem), який інакше переміг би за порядком. */
 .login-card .login-brand h1 {
-  font-size: 1.7rem;
-  font-weight: 650;
-  line-height: 1.05;
+  font-size: 1.55rem;
+  font-weight: 600;
+  line-height: 1.1;
   margin: 0;
+  color: var(--ink-2);
 }
 .login-brand .lb-sub {
   display: block;
-  margin-top: 3px;
-  font-size: 0.62rem;
-  letter-spacing: 0.14em;
+  margin-top: 4px;
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-3);
 }

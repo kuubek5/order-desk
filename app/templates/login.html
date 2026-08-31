@@ -34,22 +34,12 @@
     <div class="dyn-text" id="login-quotes" aria-label="Цехові репліки"></div>
 
     <div class="card login-card">
-        {# Шапка бренду: знак KM + назва, як у рейці — на відео-фоні голий
-           текст h1 губився. Знак інлайн-SVG у currentColor, тому сам стає
-           бурштиновим в Amber Forge (та сама причина, що в _topbar_nav). #}
+        {# Шапка бренду: сама назва, по центру, притишена (прохання
+           власника — без знака і без гучності; знак KM лишається в рейці
+           після входу). #}
         <div class="login-brand">
-            <svg class="lb-mark" viewBox="0 0 32 32" aria-hidden="true"
-                 fill="none" stroke="currentColor" stroke-width="2.4"
-                 stroke-linecap="round" stroke-linejoin="round">
-                <path d="M5 6 L5 26"/>
-                <path d="M14 6 L5 16"/>
-                <path d="M5 16 L14 26"/>
-                <path d="M18 26 L18 6 L23 15.5 L28 6 L28 26"/>
-            </svg>
-            <div class="lb-text">
-                <h1>KuubMill</h1>
-                <span class="lb-sub">фрезерний центр</span>
-            </div>
+            <h1>KuubMill</h1>
+            <span class="lb-sub">фрезерний центр</span>
         </div>
         {# Рядка «Увійдіть під своїм обліковим записом» тут більше немає:
            форма з двох полів і кнопкою «Увійти» каже це сама, а зайвий рядок
