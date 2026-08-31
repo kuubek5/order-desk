@@ -23,6 +23,39 @@
   letter-spacing: var(--ls-head);
 }
 
+/* Шапка бренду на картці: знак + назва + підпис. Назва більша й важча за
+   типовий h1 картки — на живому відео-фоні скромний заголовок читався як
+   службовий текст, а це єдине місце, де застосунок називає себе. */
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.login-brand .lb-mark {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  color: var(--accent-b);
+  filter: drop-shadow(0 0 10px rgba(var(--accent-rgb), 0.45));
+}
+/* Специфічність підвищено свідомо: нижче в файлі є пізніший `.login-card h1`
+   (1.75rem), який інакше переміг би за порядком. */
+.login-card .login-brand h1 {
+  font-size: 2.1rem;
+  font-weight: 700;
+  line-height: 1.05;
+  margin: 0;
+}
+.login-brand .lb-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
 .setup-card {
   max-width: 28rem;
 }
