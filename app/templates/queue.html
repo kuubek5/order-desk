@@ -30,7 +30,7 @@
                 <span class="sep" aria-hidden="true"></span>
                 <span>пошта: <b>{{ sync_status.mail.label }}</b></span>
                 <span class="sep" aria-hidden="true"></span>
-                <span>таблиця: <b>{{ sync_status.sheet.label }}</b></span>
+                {% include "_sync_indicator.html" %}
             </div>
         </div>
         <div class="head-actions">

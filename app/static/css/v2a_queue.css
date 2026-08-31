@@ -152,6 +152,16 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .sl-sync.err:hover{background:rgba(var(--alarm-rgb), .18)}
 .q2 .sl-sync .beacon{width:6px;height:6px;border-radius:50%;background:currentColor}
 .q2 .sl-sync b{font-family:var(--font-mono);font-weight:600}
+/* Живий сегмент «таблиця:» у верхньому рядку черги (див. _sync_indicator.html).
+   Обгортка поллу прозора для layout (display:contents) — у flex-рядку topbar-live
+   лишається сам сегмент .tl-sync, як і до поллу. Пульсує ЛИШЕ поки триває синк
+   (тим самим q2beacon, що й маячок «N у вигляді»); на паузі — тихий сірий. */
+.q2 .topbar-live .tl-sync-live{display:contents}
+.q2 .topbar-live .tl-sync{display:inline-flex;align-items:center;gap:6px}
+.q2 .topbar-live .tl-sync.syncing,.q2 .topbar-live .tl-sync.syncing b{color:var(--accent-b)}
+.q2 .topbar-live .tl-sync.paused{color:var(--ink-3)}
+.q2 .topbar-live .tl-sync .tl-beacon{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 0 0 rgba(var(--accent-rgb), .55);animation:q2beacon var(--beacon-duration) ease-out infinite}
+@media (prefers-reduced-motion: reduce){.q2 .topbar-live .tl-sync .tl-beacon{animation:none}}
 
 .q2 .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
 .q2 .seg{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}

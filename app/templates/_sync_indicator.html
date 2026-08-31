@@ -1,0 +1,18 @@
+{# Живий сегмент «таблиця:» у верхньому рядку черги (topbar-live).
+   Оновлює САМ СЕБЕ кожні 3с через GET /sheets/state — інакше topbar
+   оновлюється лише при повному завантаженні сторінки, і «синхронізує…»
+   було б невидиме (а «✓ щойно» лишалося б застарілим, поки синк ще біжить).
+   hx-swap="outerHTML" на обгортці: роут повертає її знову з тим самим поллом.
+   Обгортка display:contents (css) — у flex-рядку лишається сам сегмент.
+
+   Стани (пріоритет): running (пульсує «синхронізує…») → paused («на паузі»)
+   → звичайний ярлик стану (sync_status.sheet.label, напр. «✓ щойно»). #}
+<span class="tl-sync-live"
+      hx-get="/sheets/state" hx-trigger="every 3s" hx-target="this" hx-swap="outerHTML">
+{%- set s = sync_status.sheet -%}
+<span class="tl-sync{% if s.running %} syncing{% elif s.paused %} paused{% endif %}">
+{%- if s.running %}<span class="tl-beacon" aria-hidden="true"></span>таблиця: <b>синхронізує…</b>
+{%- elif s.paused %}таблиця: <b>на паузі</b>
+{%- else %}таблиця: <b>{{ s.label }}</b>{% endif %}
+</span>
+</span>

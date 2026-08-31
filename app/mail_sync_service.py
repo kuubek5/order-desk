@@ -28,6 +28,14 @@ class MailSyncTimeoutError(MailSyncError):
 
 _sync_lock = Lock()
 
+
+def is_mail_sync_running() -> bool:
+    """True while a mail (IMAP) sync currently holds the lock — the live
+    «syncing now» signal for the queue's mail status dot. Reads the existing
+    lock, adds no new state."""
+    return _sync_lock.locked()
+
+
 # Watchdog deadline for one whole sync run. imap_tools' per-operation socket
 # timeout (IMAP_TIMEOUT_SECONDS=20) does NOT cover a half-open socket or a
 # server that keeps trickling bytes — either can hang a fetch indefinitely.

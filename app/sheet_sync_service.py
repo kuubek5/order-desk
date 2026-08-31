@@ -6,11 +6,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 import json
 import re
-from threading import Lock
+from threading import Lock, Thread
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.db import SessionLocal
 from app.models import Order, SyncLog
 from app.parser import parse_rows
 from app.sheet_colors import fetch_row_fills
@@ -50,6 +51,85 @@ _sync_lock = Lock()
 # outlast one hot-tab tick (~3s warm), short enough that a click during a real
 # full sync still errors out promptly instead of hanging the request.
 _MANUAL_LOCK_WAIT_SECONDS = 10.0
+
+
+def is_sheet_sync_running() -> bool:
+    """True while ANY sheet sync (periodic tick, manual button, or the
+    full-history import) currently holds the lock — the live «syncing now»
+    signal the queue's status dot pulses on. Reads the existing lock so it
+    adds no new state that could drift out of step with reality."""
+    return _sync_lock.locked()
+
+
+# --- Background full-history import -------------------------------------------
+# «Імпортувати всю історію» is a minutes-long proxy read (one call per dated
+# tab). Running it inline blocked the request thread with zero feedback — the
+# tab just hung «loading» and the operator couldn't tell if it was alive. It
+# now runs in a daemon thread with its own session; the request returns at
+# once and the queue's status dot pulses «синхронізує…» until it finishes,
+# then a one-shot flash surfaces the result as a toast on the next poll.
+_import_state_lock = Lock()
+_import_running = False
+_import_flash: dict | None = None
+
+
+def import_running() -> bool:
+    with _import_state_lock:
+        return _import_running
+
+
+def pop_import_flash() -> dict | None:
+    """Return and clear the one-shot completion notice for a background import.
+
+    Popped by the queue's status poll, which turns it into a toast exactly
+    once. Returns None when there is nothing new to announce."""
+    global _import_flash
+    with _import_state_lock:
+        flash, _import_flash = _import_flash, None
+        return flash
+
+
+def start_background_import() -> bool:
+    """Kick off a whole-sheet import in a daemon thread; return immediately.
+
+    False when an import is already in flight (button pressed twice) so the
+    caller can say «вже виконується» instead of starting a second run."""
+    global _import_running
+    with _import_state_lock:
+        if _import_running:
+            return False
+        _import_running = True
+    Thread(
+        target=_run_background_import, name="sheet-import-history", daemon=True
+    ).start()
+    return True
+
+
+def _run_background_import() -> None:
+    global _import_running, _import_flash
+    try:
+        with SessionLocal() as session:
+            summary = sync_google_sheets(
+                session, trigger="manual", full_history=True
+            )
+        flash = {
+            "kind": "success",
+            "message": "Історію таблиці імпортовано. " + summary_message(summary),
+        }
+    except SheetSyncError as exc:
+        flash = {"kind": "error", "message": str(exc)}
+    except Exception:
+        # Never let a background thread die with an unsurfaced traceback — the
+        # operator is watching the dot, not the log. A generic, safe message
+        # is better than a pulse that never settles.
+        flash = {
+            "kind": "error",
+            "message": "Не вдалося імпортувати історію таблиці.",
+        }
+    finally:
+        with _import_state_lock:
+            _import_running = False
+            _import_flash = flash
 
 
 @dataclass

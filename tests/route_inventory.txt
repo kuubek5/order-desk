@@ -32,6 +32,7 @@ GET /settings
 GET /settings/materials
 GET /settings/recognition
 GET /setup
+GET /sheets/state
 GET /shift
 GET /shift/card
 GET /shift/images/{image_id}

@@ -7,6 +7,7 @@
 імпорт усієї історії таблиці.
 """
 
+import json
 import logging
 from datetime import date, datetime, timedelta
 from typing import Annotated
@@ -60,7 +61,15 @@ from app.services.queue import (
     queue_week_summary,
     sort_orders_by_column,
 )
-from app.sheet_sync_service import SheetSyncError, summary_message, sync_google_sheets
+from app.mail_sync_service import is_mail_sync_running
+from app.sheet_sync_service import (
+    SheetSyncError,
+    is_sheet_sync_running,
+    pop_import_flash,
+    start_background_import,
+    summary_message,
+    sync_google_sheets,
+)
 from app.statuses import STATUSES, is_overdue
 from app.sync_control import (
     SYNC_SPEED_PRESETS,
@@ -72,6 +81,22 @@ from app.sync_heartbeat import sync_status_pair
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def live_sync_status(db: Session) -> dict:
+    """sync_status_pair overlaid with the LIVE «running now» / «paused» flags.
+
+    sync_status_pair reports the last completed tick's outcome; the queue's
+    status dot also needs to know a sync is happening *right now* (to pulse)
+    and whether reading/writing the sheet is paused. Both are cheap in-memory
+    reads (the sync lock, the pause flag), so they layer on here rather than
+    inside the pure formatter."""
+    pair = sync_status_pair(db, datetime.now())
+    paused = sync_control.is_paused()
+    pair["sheet"]["running"] = is_sheet_sync_running()
+    pair["sheet"]["paused"] = paused
+    pair["mail"]["running"] = is_mail_sync_running()
+    return pair
 
 
 def sum_units(orders) -> int:
@@ -342,7 +367,7 @@ def get_queue(
         "stats": queue_week_summary(db, all_orders, today),
         "sync": queue_sync_summary(db),
     }
-    sync_status = sync_status_pair(db, datetime.now())
+    sync_status = live_sync_status(db)
 
     # Day-strip: 7 known dates at a time out of every distinct day that has
     # order data (see `known_order_dates` / `date_window` docstrings above
@@ -640,20 +665,58 @@ def import_sheet_history(request: Request, db: Session = Depends(get_db)):
     day the sheet holds (arrows then page through them). Deliberately manual —
     it's a heavier run (one proxy read per tab) that the operator asks for once;
     the background sync stays fast. Admin + loopback, same gate as the queue's
-    plain sync button."""
+    plain sync button.
+
+    Runs in a background thread (start_background_import) so the request returns
+    at once — the multi-minute proxy read used to hang the tab with no feedback.
+    The operator keeps working while the queue's status dot pulses «синхронізує…»
+    (the 3s /sheets/state poll), and the result lands as a toast when done."""
     user = get_current_user(request, db)
     if user is None:
         return RedirectResponse("/login", status_code=303)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
-    try:
-        summary = sync_google_sheets(db, trigger="manual", full_history=True)
-    except SheetSyncError as exc:
-        request.session["sync_flash"] = {"kind": "error", "message": str(exc)}
-    else:
+    if start_background_import():
         request.session["sync_flash"] = {
             "kind": "success",
-            "message": "Історію таблиці імпортовано. " + summary_message(summary),
+            "message": "Імпорт історії почато. Стежте за індикатором синхронізації "
+            "— результат зʼявиться, коли завершиться.",
+        }
+    else:
+        request.session["sync_flash"] = {
+            "kind": "info",
+            "message": "Імпорт історії вже виконується.",
         }
     return RedirectResponse("/", status_code=303)
+
+
+@router.get("/sheets/state", response_class=HTMLResponse)
+def sheet_sync_state(request: Request, db: Session = Depends(get_db)):
+    """Tiny self-polling fragment (_sync_indicator.html) for the queue's Google
+    Sheets status dot — refreshed every few seconds so «syncing now» is visible
+    live without the heavy full get_queue body running on that cadence.
+
+    When a background import has just finished, its one-shot result is popped
+    here and attached as an HX-Trigger toast, so the operator learns the outcome
+    even though the work ran off-request."""
+    user = get_current_user(request, db)
+    if user is None:
+        # A logged-out poll shouldn't redirect the fragment into a login page;
+        # return an empty body and let the next full navigation handle auth.
+        return HTMLResponse("", status_code=204)
+
+    context = {
+        "user": user,
+        "sync_status": live_sync_status(db),
+        "sheets_configured": sheets_configured(db),
+        "peeks": {"sync": queue_sync_summary(db)},
+    }
+    response = templates.TemplateResponse(request, "_sync_indicator.html", context)
+    flash = pop_import_flash()
+    if flash:
+        response.headers["HX-Trigger"] = json.dumps(
+            {"toast": {"message": flash["message"], "kind": flash["kind"]},
+             "refresh-queue": True}
+        )
+    return response
