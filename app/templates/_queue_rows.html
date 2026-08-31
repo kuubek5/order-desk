@@ -30,26 +30,26 @@
         <span>Клік по шляху-ID копіює його для Sum3D · клік по наряду відкриває паспорт роботи</span>
     </div>
     {% else %}
-    <div class="queue-empty">
-        {# Порожня черга: живий кадр НАШОГО верстата — камера повільно
-           наїжджає на диск із відфрезеруваними роботами. Перший кадр —
+    <div class="queue-empty queue-empty-live">
+        {# Порожня черга: живий кадр НАШОГО верстата НА ВСЮ картку (прохання
+           власника; перша версія була рамкою 440px і виглядала недолуго).
+           Відео лежить фоном, текст поверх, під текстом — градієнт-затемнення,
+           що густішає донизу, де стоять заголовок і кнопки. Перший кадр —
            справжнє фото (design/refs/mill-disc-milled-flower.jpg), рух
-           згенеровано від нього (лог у design/kuubmill_vidA2-…). Каже те
-           саме, що казала мальована фреза («верстат працює, роботи будуть»),
-           тільки нашим власним залізом. Попередня ілюстрація (маска
-           шпинделя + пил) — у git-історії цього файлу.
+           згенеровано від нього (лог у design/kuubmill_vidA2-…).
 
-           Постер = перший кадр, тому оживання непомітне. Порожній стан —
-           рідкісний екран, а не цілоденний, тому петля тут не порушує
-           правило «анімація лише як сигнал стану»; prefers-reduced-motion
-           все одно зупиняє відео скриптом (CSS відео не спиняє). #}
-        <span class="empty-video" aria-hidden="true">
+           Порожній стан — рідкісний екран, а не цілоденний, тому петля не
+           порушує правило «анімація лише як сигнал стану»;
+           prefers-reduced-motion усе одно зупиняє відео скриптом (CSS відео
+           не спиняє). Попередня ілюстрація (маска шпинделя + пил) — у
+           git-історії цього файлу. #}
+        <span class="empty-video-bg" aria-hidden="true">
             <video autoplay muted loop playsinline
                    poster="/static/video/queue-empty-poster.jpg?v={{ static_ver('video/queue-empty-poster.jpg') }}"
                    src="/static/video/queue-empty.mp4?v={{ static_ver('video/queue-empty.mp4') }}"></video>
             <script>
                 if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-                    var qv = document.querySelector(".empty-video video");
+                    var qv = document.querySelector(".empty-video-bg video");
                     if (qv) { qv.removeAttribute("autoplay"); qv.pause(); }
                 }
             </script>

@@ -548,24 +548,52 @@
    разом із ним, наче з фрези стирчать вуса. Шпинделю віддаються лише
    вузькі (≤8px) горизонтальні пробіги біля осі фрези; решта лишається
    базі. Скрипт поділу — scratchpad/split_layers.py, вихід у design/. */
-/* Живе відео порожньої черги: рамка-кадр із реального верстата. Розмір
-   стриманий — це ілюстрація стану, а не кінотеатр; яскравість трохи знята,
-   щоб кадр не сперечався з заголовком під ним. */
-.empty-video {
-  display: block;
-  width: min(440px, 78vw);
-  margin: 0 auto 18px;
-  border-radius: 12px;
+/* Живе відео порожньої черги — НА ВСЮ картку (прохання власника; перша
+   версія була рамкою 440px по центру й виглядала недолуго). Відео лежить
+   абсолютним фоном, контент поверх; затемнення густішає донизу, де стоять
+   заголовок, текст і кнопки — верх лишає кадру повітря. Кольори затемнення
+   від самого кадру (холодний майже чорний), не з токенів: відео однакове в
+   обох темах. min-height дає кадру простір навіть за коротким текстом. */
+.queue-empty-live {
+  position: relative;
+  isolation: isolate;
   overflow: hidden;
-  border: 1px solid var(--line-2);
-  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.55);
+  min-height: 380px;
+  align-content: end;
+  flex: 1;
 }
-.empty-video video {
-  display: block;
+/* Панель черги — flex-колонка на всю висоту екрана, а #queue-rows сам по
+   собі не ріс — під відео лишалась порожня смуга картки. Розтягуємо ланцюг
+   ЛИШЕ коли всередині порожній стан (:has), щоб не чіпати геометрію
+   таблиці з роботами — там скролом керує .tablewrap. */
+#queue-rows:has(.queue-empty-live) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.empty-video-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+.empty-video-bg video {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  height: 100%;
   object-fit: cover;
-  filter: brightness(0.9);
+  object-position: center 42%;
+}
+.empty-video-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg,
+    rgba(10, 12, 16, 0.18) 0%,
+    rgba(10, 12, 16, 0.42) 52%,
+    rgba(10, 12, 16, 0.88) 100%);
+}
+.queue-empty-live h2,
+.queue-empty-live p {
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.75);
 }
 
 .empty-mill {
