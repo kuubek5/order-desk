@@ -559,7 +559,9 @@
   isolation: isolate;
   overflow: hidden;
   min-height: 380px;
-  align-content: end;
+  /* Текст по центру вертикалі, не при нижньому краї (зауваження власника —
+     «надпис підняти»). */
+  align-content: center;
   flex: 1;
 }
 /* Панель черги — flex-колонка на всю висоту екрана, а #queue-rows сам по
@@ -586,10 +588,12 @@
   content: "";
   position: absolute;
   inset: 0;
+  /* Затемнення посилено на друге прохання власника: кадр тут атмосфера,
+     а не предмет розгляду — текст мусить панувати. */
   background: linear-gradient(180deg,
-    rgba(10, 12, 16, 0.18) 0%,
-    rgba(10, 12, 16, 0.42) 52%,
-    rgba(10, 12, 16, 0.88) 100%);
+    rgba(10, 12, 16, 0.55) 0%,
+    rgba(10, 12, 16, 0.72) 50%,
+    rgba(10, 12, 16, 0.92) 100%);
 }
 .queue-empty-live h2,
 .queue-empty-live p {
