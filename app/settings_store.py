@@ -145,6 +145,9 @@ CLEARABLE_SETTING_KEYS = {
 # notifications (see app/static/js/app.js showToast + .toast-zone in base.css).
 # notify_events: comma-separated list of system triggers that are allowed to pop
 # a toast — an empty value means "none", an absent value means "the defaults".
+# last_full_sync_date: iso-дата останнього успішного повного синку таблиці.
+# Не секрет і не поле форми — внутрішній штамп, з якого рахується «скільки
+# днів простою надолужити» після ввімкнення (app/sheet_sync_service.py).
 PREFERENCE_KEYS = {
     "furnace_background",
     "mail_default_material",
@@ -152,6 +155,7 @@ PREFERENCE_KEYS = {
     "notify_style",
     "notify_position",
     "notify_events",
+    "last_full_sync_date",
 }
 
 SETTING_KEYS = {field.key for field in SETTING_FIELDS} | PREFERENCE_KEYS

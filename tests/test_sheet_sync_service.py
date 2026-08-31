@@ -531,3 +531,114 @@ def test_background_failure_is_not_persisted(monkeypatch):
             sync_sheets_background(session)
 
         assert session.scalar(select(SyncLog)) is None
+
+
+def test_catches_up_missed_days_after_being_offline(monkeypatch):
+    """Головний сценарій прохання власника (31.08.26): CRM вимкнули на кілька
+    днів, у таблиці за цей час з'явились нові дні — після ввімкнення вони
+    мусять підтягнутись, а не лишитись поза чергою.
+
+    Звичайне вікно — вчора±сьогодні±завтра. Тут останній успішний синк був
+    4 дні тому, тому вікно мусить розсунутись назад до нього і забрати всі
+    пропущені дні.
+    """
+    from app.sheet_sync_service import _mark_full_sync
+
+    configured(monkeypatch)
+    today = date.today()
+    spreadsheet = Mock()
+    # У таблиці — 4 дні, що накопичились за простій, плюс сьогодні.
+    days = [worksheet(today - timedelta(days=n), f"d{n}") for n in (4, 3, 2, 1, 0)]
+    spreadsheet.worksheets.return_value = days
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+
+    with make_session() as session:
+        # Є лаб-роботи (тобто це НЕ перший синк) і штамп «синхронізовано 4 дні
+        # тому» — саме те, що лишається після кількаденного простою.
+        session.add(Order(source="lab", sheet_tab="seed", row_number=99, status="нове"))
+        session.commit()
+        _mark_full_sync(session, today - timedelta(days=4))
+        session.commit()
+
+        result = sync_google_sheets(session)
+
+        # Усі пропущені дні (4,3,2 тому) + вчора + сьогодні — усі в роботі.
+        assert result.tabs_processed == 5, result.tab_names
+        titles = {d.title for d in days}
+        assert set(result.tab_names) == titles
+
+
+def test_normal_run_still_reads_only_three_days_when_sync_is_fresh(monkeypatch):
+    """Догоняючий механізм не має розширювати вікно, коли простою НЕ було:
+    свіжий штамп (учора) лишає звичайне вузьке вікно, інакше кожен тік читав
+    би зайві старі вкладки через повільний проксі."""
+    from app.sheet_sync_service import _mark_full_sync
+
+    configured(monkeypatch)
+    today = date.today()
+    spreadsheet = Mock()
+    old = worksheet(today - timedelta(days=3), "old")
+    yesterday = worksheet(today - timedelta(days=1), "yesterday")
+    spreadsheet.worksheets.return_value = [old, yesterday]
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+
+    with make_session() as session:
+        session.add(Order(source="lab", sheet_tab="seed", row_number=1, status="нове"))
+        session.commit()
+        _mark_full_sync(session, today - timedelta(days=1))  # синхронізовано вчора
+        session.commit()
+
+        result = sync_google_sheets(session)
+
+        assert result.tab_names == [yesterday.title]
+        old.get_all_values.assert_not_called()
+
+
+def test_ancient_stamp_is_clamped_to_initial_window(monkeypatch):
+    """Дуже старий штамп (місяці простою) не тягне пів року вкладок: вікно
+    обмежене тим самим initial-lookback, що й перший синк."""
+    from app.sheet_sync_service import _INITIAL_LOOKBACK_DAYS, _mark_full_sync
+
+    configured(monkeypatch)
+    today = date.today()
+    spreadsheet = Mock()
+    inside = worksheet(today - timedelta(days=_INITIAL_LOOKBACK_DAYS - 2), "inside")
+    ancient = worksheet(today - timedelta(days=_INITIAL_LOOKBACK_DAYS + 40), "ancient")
+    spreadsheet.worksheets.return_value = [ancient, inside]
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+
+    with make_session() as session:
+        session.add(Order(source="lab", sheet_tab="seed", row_number=1, status="нове"))
+        session.commit()
+        _mark_full_sync(session, today - timedelta(days=_INITIAL_LOOKBACK_DAYS + 40))
+        session.commit()
+
+        result = sync_google_sheets(session)
+
+        assert inside.title in result.tab_names
+        assert ancient.title not in result.tab_names
+        ancient.get_all_values.assert_not_called()
+
+
+def test_successful_sync_records_todays_date_as_last_full(monkeypatch):
+    """Після успішного синку штамп = сьогодні: наступний догоняючий розрахунок
+    відштовхується від правильного дня."""
+    from app.sheet_sync_service import _last_full_sync_date
+
+    configured(monkeypatch)
+    today = date.today()
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [worksheet(today, "200")]
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+
+    with make_session() as session:
+        sync_google_sheets(session)
+        assert _last_full_sync_date(session) == today

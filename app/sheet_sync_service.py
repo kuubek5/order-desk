@@ -14,7 +14,12 @@ from sqlalchemy.orm import Session
 from app.models import Order, SyncLog
 from app.parser import parse_rows
 from app.sheet_colors import fetch_row_fills
-from app.settings_store import get_google_service_account_json, get_google_sheet_id
+from app.settings_store import (
+    get_google_service_account_json,
+    get_google_sheet_id,
+    get_setting,
+    set_setting,
+)
 from app.sheets import (
     call_with_retry,
     get_worksheet_by_name,
@@ -67,6 +72,28 @@ def _parse_tab_date(title: str) -> date | None:
         return None
 
 
+_LAST_FULL_SYNC_KEY = "last_full_sync_date"
+
+
+def _last_full_sync_date(session: Session) -> date | None:
+    """Дата останнього успішного повного синку, або None.
+
+    Зберігається як AppSetting, тому переживає рестарт і вимкнення застосунку
+    — саме той стан, заради якого існує: вимкнули CRM, у таблиці накопичились
+    дні, увімкнули — і ця дата каже, наскільки назад читати."""
+    raw = get_setting(session, _LAST_FULL_SYNC_KEY)
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw.strip())
+    except ValueError:
+        return None
+
+
+def _mark_full_sync(session: Session, today: date) -> None:
+    set_setting(session, _LAST_FULL_SYNC_KEY, today.isoformat())
+
+
 def _worksheets_to_sync(
     session: Session,
     spreadsheet,
@@ -96,7 +123,20 @@ def _worksheets_to_sync(
     has_sheet_orders = session.scalar(
         select(func.count(Order.id)).where(Order.source == "lab")
     ) > 0
-    first_day = today - timedelta(days=1 if has_sheet_orders else _INITIAL_LOOKBACK_DAYS)
+    if has_sheet_orders:
+        # Звичайна поведінка — сьогодні±1. Але якщо CRM була вимкнена кілька
+        # днів, поки лабораторія працювала в таблиці, вікно «вчора» лишило б
+        # роботи з пропущених днів поза чергою (фоновий синк старі вкладки не
+        # перечитує заради швидкості проксі). Тому початок вікна відсувається
+        # НАЗАД до дня останнього успішного повного синку — рівно на дні
+        # простою, не глибше initial-вікна (щоб застарілий штамп не тягнув
+        # пів року). Так «увімкнув після кількох днів» саме підтягує пропущене.
+        first_day = today - timedelta(days=1)
+        last_full = _last_full_sync_date(session)
+        if last_full is not None and last_full < first_day:
+            first_day = max(last_full, today - timedelta(days=_INITIAL_LOOKBACK_DAYS))
+    else:
+        first_day = today - timedelta(days=_INITIAL_LOOKBACK_DAYS)
     last_day = today + timedelta(days=1)
 
     dated = []
@@ -322,6 +362,10 @@ def sync_google_sheets(
                     ),
                 )
             )
+        # Позначаємо цей день як синхронізований УСПІШНО — доходимо сюди лише
+        # коли всі вкладки вікна імпортовано без фатальної помилки. Звідси
+        # рахується «скільки днів простою» при наступному ввімкненні.
+        _mark_full_sync(session, date.today())
         session.commit()
         return summary
     finally:
