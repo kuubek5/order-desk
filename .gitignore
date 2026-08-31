@@ -47,3 +47,4 @@ order_desk.db.bak_*
 
 # Залишки від перейменування бази й тимчасові копії
 *.db.stray-*
+machine_frames/
