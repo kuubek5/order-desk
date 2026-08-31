@@ -69,7 +69,14 @@ def entries_for_material(material_color: str | None, entries: list, work_day=Non
 
 
 def handout_eligible_orders(db: Session, today: date) -> list[Order]:
-    """Невидані клієнтські роботи за минулі дні — те, що показує видача.
+    """Невидані клієнтські роботи — те, що показує видача.
+
+    СЬОГОДНІШНІЙ ДЕНЬ ТЕЖ ТУТ. Довго було `< today`, за логікою «цирконій
+    закладають увечері, видають наступного ранку». Але не все йде через піч:
+    ПММА, титан і воски готові одразу після фрезерування, і їх видають того
+    самого дня — а видача мовчки їх ховала (скарга власника 31.08.26).
+    Сьогоднішній день не стає замовчуванням екрана (див. handout_select_day),
+    тому ранковий сценарій не змінився: відкрилась видача — там учора.
 
     selectinload(Order.material) обов'язковий: `_matpair.html` викликає
     material_badge(order) на КОЖНІЙ роботі, а без фільтра дня їх ~1800.
@@ -82,7 +89,7 @@ def handout_eligible_orders(db: Session, today: date) -> list[Order]:
     return [
         order
         for order in candidates
-        if (order_day := parse_sheet_tab(order.sheet_tab)) is None or order_day < today
+        if (order_day := parse_sheet_tab(order.sheet_tab)) is None or order_day <= today
     ]
 
 
@@ -108,7 +115,16 @@ def handout_select_day(days: list, day: str):
     parsed = parse_sheet_tab(day) if day else None
     if parsed is not None and parsed in days:
         return parsed
-    return days[-1] if days else None
+    if not days:
+        return None
+    # Замовчування — найновіший МИНУЛИЙ день, а не сьогоднішній: зранку
+    # видають те, що вчора відфрезерували й уночі спекли. Сьогоднішній день
+    # доступний чіпом (його роботи без спікання видають того ж дня), але
+    # відкривати екран одразу на ньому означало б показувати лоток, якого
+    # ще немає.
+    today = date.today()
+    past = [d for d in days if d < today]
+    return past[-1] if past else days[-1]
 
 
 def handout_not_before(eligible: list[Order]) -> datetime | None:

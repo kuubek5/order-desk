@@ -1185,3 +1185,47 @@ class TestBoundClientWithoutFreshBatches:
 
         matched = ctx["client_groups"][0]["orders"][0].export_matches
         assert [e.batch_folder_name for e in matched] == ["01.07.26"]
+
+
+def test_today_is_available_but_not_the_default_day():
+    """Сьогоднішній день мусить бути на видачі.
+
+    Довго діяло правило `< today` («цирконій закладають увечері, видають
+    уранці»), і сьогоднішні роботи екран ховав мовчки. Але не все йде через
+    піч: ПММА, титан і воски готові одразу після фрезерування (скарга
+    власника 31.08.26 — «чому на видачі немає сьогоднішнього числа»).
+
+    При цьому замовчування лишається ВЧОРАШНІМ: зранку оператор відкриває
+    видачу і має бачити лоток, який уже existує, а не сьогоднішнє, що ще
+    фрезерується.
+    """
+    from datetime import date, timedelta
+
+    from app.services.handout import handout_eligible_orders, handout_select_day
+
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+
+    with Session(_database()) as db:
+        for day, client in ((today, "Сьогоднішній"), (yesterday, "Вчорашній")):
+            db.add(Order(
+                source="client", sheet_tab=day.strftime("%d.%m.%y"), row_number=7,
+                client_name=client, quantity="1", material_color="пмма A2",
+                status="відфрезеровано",
+            ))
+        db.commit()
+
+        eligible = handout_eligible_orders(db, today)
+        clients = {o.client_name for o in eligible}
+        assert clients == {"Сьогоднішній", "Вчорашній"}, "сьогоднішній день зник з видачі"
+
+        days = sorted({_parse(o.sheet_tab) for o in eligible})
+        assert handout_select_day(days, "") == yesterday, "екран відкрився на сьогодні"
+        assert handout_select_day(days, today.strftime("%d.%m.%y")) == today, \
+            "сьогоднішній день має відкриватись чіпом"
+
+
+def _parse(tab):
+    from app.services.order_dates import parse_sheet_tab
+
+    return parse_sheet_tab(tab)
