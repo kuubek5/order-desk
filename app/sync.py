@@ -254,9 +254,20 @@ def _row_identity(row: OrderRow) -> tuple | None:
         return ("client", client, (row.material_color or "").strip().casefold(),
                 (row.quantity or "").strip())
     naryad = (row.work_order_no or "").strip()
-    if not naryad:
+    if naryad:
+        return ("lab", naryad.casefold())
+    # наряд-less lab row (pending-lab: технік вніс роботу, доки наряд ще не
+    # присвоїли). Без identity такий рядок міг зіставитись ЛИШЕ позиційно, тож
+    # видалення рядка над ним зсувало сусіда на його місце й архівувало не ту
+    # роботу (виявлено сценарним прогоном). Ідентифікуємо тим, що вписав технік
+    # — технік + матеріал + вид + к-сть — у тому ж дусі, що й клієнтський ключ.
+    # Неоднозначні дублікати (той самий технік/матеріал/вид/к-сть) падають на
+    # позицію, як і раніше.
+    tech = (row.technician_name or "").strip().casefold()
+    if not tech:
         return None
-    return ("lab", naryad.casefold())
+    return ("labpending", tech, (row.material_color or "").strip().casefold(),
+            (row.kind or "").strip().casefold(), (row.quantity or "").strip())
 
 
 def _order_identity(order: Order) -> tuple | None:
@@ -270,9 +281,13 @@ def _order_identity(order: Order) -> tuple | None:
     if order.source != "lab":
         return None
     naryad = (order.work_order_no or "").strip()
-    if not naryad:
+    if naryad:
+        return ("lab", naryad.casefold())
+    tech = (order.technician_name or "").strip().casefold()
+    if not tech:
         return None
-    return ("lab", naryad.casefold())
+    return ("labpending", tech, (order.material_color or "").strip().casefold(),
+            (order.kind or "").strip().casefold(), (order.quantity or "").strip())
 
 
 def _relink_moved_rows(existing_by_row: dict[int, Order], rows: list[OrderRow]) -> int:

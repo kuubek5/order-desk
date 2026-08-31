@@ -656,6 +656,37 @@ def test_client_row_survives_a_shift_by_client_and_material():
     assert by_client["Ковальчук"].row_number == 5
 
 
+def test_naryadless_lab_row_survives_a_shift_by_technician_and_material():
+    """Наряд-less lab-рядок (технік вніс роботу, доки наряд не присвоєно) не має
+    наряду для relink. Раніше видалення рядка НАД ним зсувало сусіда на його
+    позицію, а він архівувався не тим (виявлено сценарним прогоном 01.09.26).
+    Тепер identity = технік+матеріал+вид+к-сть тримає його на місці."""
+    session = make_session()
+    sync_tab(session, "25.08.26", [
+        make_row(row_number=5, work_order_no="50001", material_color="mono a3", kind="анатомія"),
+        make_row(row_number=6, work_order_no="", material_color="pmma a2",
+                 kind="каркас", quantity="3", technician_name="Іван"),
+    ])
+    session.commit()
+    age_orders(session)
+    pending = session.scalar(select(Order).where(Order.technician_name == "Іван"))
+    pending_id = pending.id
+
+    # Видаляємо перший рядок → pending-lab зсувається з позиції 6 на 5.
+    sync_tab(session, "25.08.26", [
+        make_row(row_number=5, work_order_no="", material_color="pmma a2",
+                 kind="каркас", quantity="3", technician_name="Іван"),
+    ], deletion_grace_seconds=0)
+    session.commit()
+
+    p = session.get(Order, pending_id)
+    assert p.archived_at is None, "наряд-less lab-робота не має піти в архів при зсуві"
+    assert p.material_color == "pmma a2" and p.kind == "каркас"
+    assert p.row_number == 5
+    gone = session.scalar(select(Order).where(Order.work_order_no == "50001"))
+    assert gone.archived_at is not None
+
+
 def test_repeat_works_sharing_a_naryad_fall_back_to_position():
     """Повторні роботи законно мають однаковий наряд — вгадувати між ними
     гірше, ніж лишитись на позиції. Неоднозначна ознака не бере участі."""
