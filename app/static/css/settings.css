@@ -487,7 +487,18 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 
 /* кнопки */
 .setv2 .settings-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:2px}
-.setv2 .settings-secondary-button,.setv2 .login-submit,.setv2 .settings-submit{height:40px;padding:0 18px;border-radius:var(--r-ctl);font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink);transition:background .15s ease,border-color .15s ease,color .15s ease,transform .12s ease,box-shadow .15s ease}
+.setv2 .settings-secondary-button,.setv2 .login-submit,.setv2 .settings-submit{display:inline-flex;align-items:center;justify-content:center;height:40px;min-height:0;box-sizing:border-box;line-height:1;padding:0 18px;border-radius:var(--r-ctl);font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink);transition:background .15s ease,border-color .15s ease,color .15s ease,transform .12s ease,box-shadow .15s ease}
+/* display:inline-flex вище перебиває [hidden]{display:none} браузера — тому
+   поверни його: кнопки з атрибутом hidden (напр. «Скопіювати звіт» до запуску
+   самоперевірки) мусять лишатись прихованими. */
+.setv2 .settings-secondary-button[hidden],.setv2 .login-submit[hidden],.setv2 .settings-submit[hidden]{display:none}
+/* Базове .settings-submit несе align-self:flex-start + margin-top (для форм,
+   де кнопка стоїть під полями). У рядах-кнопках це зсувало бурштинову кнопку
+   на ~4px вище за сусідню темну — однакова висота, але не на одній лінії.
+   Скидаємо саме в рядах-контейнерах, форми не чіпаємо. */
+.setv2 .settings-check-row .settings-submit,
+.setv2 .scon-actionbar .settings-submit,
+.setv2 .settings-actions .settings-submit{margin-top:0;align-self:center}
 .setv2 .settings-secondary-button:hover{background:var(--card-3);border-color:var(--line-2);transform:translateY(-1px)}
 .setv2 .settings-secondary-button:active{transform:translateY(0)}
 .setv2 .login-submit,.setv2 .settings-submit{background:rgba(var(--accent-base-rgb), .16);border-color:rgba(var(--accent-rgb), .42);color:var(--accent-c)}
