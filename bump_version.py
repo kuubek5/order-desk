@@ -34,6 +34,23 @@ def _read(p: Path) -> str:
     return p.read_text(encoding="utf-8")
 
 
+class EmptyChangelogError(Exception):
+    """Секцію «Незалежно від версії» нема чим штампувати."""
+
+
+def _pending_is_empty(text: str, body_start: int) -> bool:
+    """Чи порожня секція, що зараз стане релізною.
+
+    Порожня = між її заголовком і наступним `## ` немає жодного непорожнього
+    рядка. Саме так виглядав розділ 0.4.3, коли бамп проштампував порожнечу.
+    """
+    body = text[body_start:]
+    next_heading = re.search(r"^## ", body, re.MULTILINE)
+    if next_heading:
+        body = body[: next_heading.start()]
+    return not body.strip()
+
+
 def _roll_changelog(new: str, check: bool) -> None:
     """Stamp the pending «Незалежно від версії» section with the new version +
     today's date, and open a fresh empty pending section above it.
@@ -43,6 +60,11 @@ def _roll_changelog(new: str, check: bool) -> None:
     `## [X.Y.Z] — YYYY-MM-DD` in one step, so the shipped build's «Про
     застосунок» shows exactly what changed. Absent/already-rolled section is a
     warning, not a failure — a release with nothing new to note is legitimate.
+
+    Порожня ж секція — це failure, і саме її ловить `_pending_is_empty`. На
+    0.4.3 бамп мовчки проштампував порожнечу: реліз вийшов, а екран «Що
+    нового» в ньому порожній, і побачилось це лише коли впав тест журналу
+    (`load_changelog` порожні секції не віддає). Дешевше спинити тут.
     """
     path = ROOT / "CHANGELOG.md"
     if not path.exists():
@@ -54,9 +76,18 @@ def _roll_changelog(new: str, check: bool) -> None:
     # substring replace hit THAT first, corrupting the intro. Anchor to line
     # start (MULTILINE) so only the actual heading is rolled.
     heading_re = re.compile("^" + re.escape(CHANGELOG_UNRELEASED) + r"\s*$", re.MULTILINE)
-    if not heading_re.search(text):
+    match = heading_re.search(text)
+    if not match:
         print("  ! CHANGELOG.md: секції «Незалежно від версії» немає — пропускаю")
         return
+
+    if _pending_is_empty(text, match.end()):
+        print(
+            "  ! CHANGELOG.md: секція «Незалежно від версії» порожня.\n"
+            "    Спершу опиши, що змінилось для оператора, інакше в релізі\n"
+            "    буде порожній екран «Що нового» (так вийшло з 0.4.3)."
+        )
+        raise EmptyChangelogError
 
     today = datetime.date.today().isoformat()
     stamped = f"{CHANGELOG_UNRELEASED}\n\n## [{new}] — {today}"
@@ -108,7 +139,12 @@ def bump(new: str, check: bool) -> int:
             wtext.replace(f"KuubMill-Setup-{old}", f"KuubMill-Setup-{new}"), encoding="utf-8"
         )
 
-    _roll_changelog(new, check)
+    try:
+        _roll_changelog(new, check)
+    except EmptyChangelogError:
+        # Версію у файлах уже змінено — але без запису журналу реліз усе одно
+        # неповноцінний, тому виходимо з помилкою, а не «майже готово».
+        return 1
 
     if check:
         print("\n(--check: нічого не записано)")
