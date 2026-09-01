@@ -17,6 +17,7 @@ from requests.adapters import HTTPAdapter
 from sqlalchemy.orm import Session
 
 from app.config import GOOGLE_SERVICE_ACCOUNT_JSON, GOOGLE_SHEET_ID
+from app.parser import HEADER_ROWS
 from app.settings_store import (
     get_google_auth_mode,
     get_google_oauth_client_json,
@@ -253,6 +254,15 @@ def _build_client(creds: BaseCredentials) -> gspread.Client:
 
     session = AuthorizedSession(creds, auth_request=auth_request)
     session.mount("https://", _LegacyRenegotiationAdapter())
+    # The lab's TLS proxy appears to serve a STALE cached copy of the Sheets
+    # values response — a read comes back short (missing the tail added since)
+    # yet valid and error-free, so every re-read (including «Імпортувати всю
+    # історію») sees the same old rows and reports success. Ask any intermediary
+    # not to serve or store a cached response. Harmless off-proxy.
+    session.headers.update({
+        "Cache-Control": "no-cache, no-store, max-age=0",
+        "Pragma": "no-cache",
+    })
 
     return gspread.Client(auth=creds, session=session, http_client=_LeanHTTPClient)
 
@@ -360,6 +370,68 @@ def open_spreadsheet(db: Optional[Session] = None) -> gspread.Spreadsheet:
     _local.spreadsheet_cache = ((key, sheet_id), spreadsheet)
     _local.worksheet_cache = {}
     return spreadsheet
+
+
+# The lab's TLS proxy TRUNCATES a large Google Sheets values response: a single
+# worksheet.get_all_values() on a ~120-row tab came back cut at ~100 rows on the
+# lab PC (проксі), while the identical call off-proxy returned all 120. The tail
+# silently never imported and «Імпортувати всю історію» kept seeing the same
+# short read. Reading in SMALL row-chunks keeps every response under the proxy's
+# cut point, so the whole tab arrives. Chunk size is intentionally conservative
+# and configurable (a smaller value survives a stricter proxy).
+DEFAULT_READ_CHUNK_ROWS = 50
+# Widest column the parser touches is index 24 (redo_milled) → column Y (25).
+# Read a little past it (AB=28) so any trailing operator column is included.
+_READ_LAST_COL = "AB"
+
+
+def read_all_values(worksheet: gspread.Worksheet, chunk_rows: int = DEFAULT_READ_CHUNK_ROWS) -> list[list[str]]:
+    """get_all_values, but fetched in bounded row-chunks so a truncating proxy
+    can't silently cut off the tail of a big tab.
+
+    Rows are padded back to their absolute grid positions (gspread trims trailing
+    empty rows/cells per range), so the returned matrix aligns 1:1 with the sheet
+    — parse_rows relies on absolute row_number. Stops after two consecutive
+    all-empty chunks past the header so a 1000-row grid holding 120 rows of data
+    isn't read to the end."""
+    if chunk_rows < 1:
+        chunk_rows = DEFAULT_READ_CHUNK_ROWS
+    try:
+        total = int(getattr(worksheet, "row_count", 0) or 0)
+    except (TypeError, ValueError):
+        total = 0
+    if total <= 0:
+        # Unknown grid size (or a test double) — fall back to the plain read.
+        return call_with_retry(worksheet.get_all_values)
+
+    def _has_work(batch: list[list[str]]) -> bool:
+        # A real work row carries a наряд (col 1) or a вид/client name (col 4).
+        # Stray cells further down a tab (a «Всього» formula, leftover notes)
+        # must NOT keep us reading to the bottom of a 600-row grid — that
+        # multiplies requests and burns the read-quota (429). Bounding to work
+        # columns stops a few chunks past the last real row.
+        for row in batch:
+            if (len(row) > 1 and row[1].strip()) or (len(row) > 4 and row[4].strip()):
+                return True
+        return False
+
+    out: list[list[str]] = []
+    empty_streak = 0
+    start = 1
+    while start <= total:
+        end = min(start + chunk_rows - 1, total)
+        rng = f"A{start}:{_READ_LAST_COL}{end}"
+        batch = call_with_retry(lambda r=rng: worksheet.get(r)) or []
+        for i in range(end - start + 1):
+            out.append(list(batch[i]) if i < len(batch) else [])
+        if _has_work(batch):
+            empty_streak = 0
+        elif end > HEADER_ROWS:
+            empty_streak += 1
+            if empty_streak >= 2:
+                break
+        start = end + 1
+    return out
 
 
 def get_worksheet_by_date(spreadsheet: gspread.Spreadsheet, d: date) -> gspread.Worksheet | None:
