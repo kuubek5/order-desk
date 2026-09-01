@@ -1,14 +1,15 @@
 name: Build machine agent
 
 # Збирає kmill-agent.exe для Windows (7/8/10/11) з Go 1.20 — остання версія Go
-# з підтримкою Win7/8. Крос-компіляція без cgo, тому будуємо на ubuntu. Артефакт
-# качається зі сторінки Actions цього запуску.
+# з підтримкою Win7/8. Крос-компіляція без cgo на ubuntu, далі окремий windows-
+# джоб пакує інсталятор Inno Setup (KMillAgent-Setup-*.exe). Артефакти качаються
+# зі сторінки Actions цього запуску.
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Версія для штампу (main.Version)"
+        description: "Версія для штампу (main.Version / інсталятор)"
         required: false
         default: "0.1.0"
   push:
@@ -44,12 +45,51 @@ jobs:
             -o kmill-agent.exe .
           ls -la kmill-agent.exe
 
-      - name: Package
+      - name: Package (portable zip)
         run: zip -j kmill-agent.zip kmill-agent.exe config.example.json install.ps1 README.md
 
-      - name: Upload artifact
+      - name: Upload portable zip
         uses: actions/upload-artifact@v4
         with:
           name: kmill-agent
           path: agent/kmill-agent.zip
+          if-no-files-found: error
+
+      - name: Upload exe (for the installer job)
+        uses: actions/upload-artifact@v4
+        with:
+          name: kmill-agent-exe
+          path: agent/kmill-agent.exe
+          if-no-files-found: error
+
+  installer:
+    needs: build
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built exe
+        uses: actions/download-artifact@v4
+        with:
+          name: kmill-agent-exe
+          path: agent
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $ver = "${{ github.event.inputs.version || '0.1.0' }}"
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" installer.iss
+          Get-ChildItem Output
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: KMillAgent-Setup
+          path: agent/Output/*.exe
           if-no-files-found: error

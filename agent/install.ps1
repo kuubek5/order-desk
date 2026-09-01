@@ -25,7 +25,8 @@ schtasks /query /tn $task 2>$null | Out-Null
 if ($LASTEXITCODE -eq 0) { schtasks /delete /tn $task /f | Out-Null }
 
 # Автозапуск при вході користувача (верстатний ПК працює під одним акаунтом).
-schtasks /create /tn $task /tr "`"$exe`"" /sc onlogon /rl highest /f | Out-Null
+# ВАЖЛИВО: `-serve` — без нього exe відкриває меню налаштувань, а не сервер.
+schtasks /create /tn $task /tr "`"$exe`" -serve" /sc onlogon /rl highest /f | Out-Null
 Write-Host "Завдання '$task' зареєстровано (автозапуск при вході)."
 
 # Стартувати зараз (не чекати наступного входу).
