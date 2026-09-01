@@ -42,6 +42,14 @@ class LicenseStatus:
     reason: str | None = None
     customer: str | None = None
     expires_at: datetime | None = None
+    # True, коли ключ у базі Є, але поточним ключем шифрування не читається
+    # (master.key змінився). Екран активації показує тоді окрему підказку.
+    key_error: bool = False
+
+
+# Ідентифікатор стану «ключ узагалі не вводили» — щоб екран активації не
+# показував його червоним, на відміну від справжніх проблем (сплив/збій ключа).
+REASON_NOT_ACTIVATED = "Ліцензійний ключ не активовано"
 
 
 def _raw_machine_identifier() -> str:
@@ -151,10 +159,27 @@ def verify_license_key(key: str, machine_id: str) -> LicenseStatus:
 
 
 def get_license_status(db) -> LicenseStatus:
-    """Read the stored key (if any) and verify it for this machine."""
-    from app.settings_store import get_license_key  # local import avoids a module cycle
+    """Read the stored key (if any) and verify it for this machine.
+
+    Never raises: якщо збережений ключ не розшифровується (master.key
+    змінився), get_license_key повертає None, і ми відрізняємо це від
+    «ключ не вводили», щоб гейт показав екран активації з правильною
+    підказкою, а не поклав застосунок у 500.
+    """
+    # local imports avoid a module cycle
+    from app.settings_store import get_license_key, setting_unreadable
 
     key = get_license_key(db)
     if not key:
-        return LicenseStatus(valid=False, reason="Ліцензійний ключ не активовано")
+        if setting_unreadable(db, "license_key"):
+            return LicenseStatus(
+                valid=False,
+                reason=(
+                    "Ключ шифрування на цьому комп'ютері змінився, тому "
+                    "збережену ліцензію більше не вдається прочитати. "
+                    "Введіть ліцензійний ключ заново."
+                ),
+                key_error=True,
+            )
+        return LicenseStatus(valid=False, reason=REASON_NOT_ACTIVATED)
     return verify_license_key(key, get_machine_id())

@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy import create_engine
@@ -15,7 +16,8 @@ import app.web as web
 from app.routers import auth as auth_router_mod
 from app.db import Base
 from app.license import LicenseStatus, encode_license_key, get_license_status, verify_license_key
-from app.settings_store import set_setting
+from app.models import AppSetting
+from app.settings_store import get_setting, set_setting, setting_unreadable
 
 MACHINE_ID = "abc123def456"
 
@@ -120,6 +122,66 @@ def test_get_license_status_reads_stored_key(keypair):
         status = get_license_status(db)
         assert status.valid is True
         assert status.customer == "Test Lab"
+
+
+# --- Encryption-key drift (master.key changed) --------------------------
+
+
+def _store_under_foreign_key(db, key: str, value: str) -> None:
+    """Insert a setting encrypted with a DIFFERENT Fernet key than the app's.
+
+    Simulates a database carried over to a machine whose master.key differs
+    (folder migration / fresh install): the ciphertext is intact but the
+    current key can no longer decrypt it.
+    """
+    token = Fernet(Fernet.generate_key()).encrypt(value.encode()).decode()
+    db.add(AppSetting(key=key, value_encrypted=token))
+    db.commit()
+
+
+def test_get_setting_returns_none_on_key_mismatch():
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        _store_under_foreign_key(db, "imap_password", "hunter2")
+        # Must degrade to None, not raise InvalidToken.
+        assert get_setting(db, "imap_password") is None
+
+
+def test_setting_unreadable_distinguishes_missing_from_corrupt():
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        assert setting_unreadable(db, "license_key") is False  # nothing stored
+        set_setting(db, "imap_password", "ok-with-current-key")
+        db.commit()
+        assert setting_unreadable(db, "imap_password") is False  # readable
+        _store_under_foreign_key(db, "license_key", "some-old-key")
+        assert setting_unreadable(db, "license_key") is True  # present, unreadable
+
+
+def test_get_license_status_flags_key_error_not_missing():
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        _store_under_foreign_key(db, "license_key", "unreadable-old-key")
+        status = get_license_status(db)
+        assert status.valid is False
+        assert status.key_error is True
+        assert status.reason and status.reason != license_module.REASON_NOT_ACTIVATED
+
+
+def test_gate_redirects_not_500_on_key_error(monkeypatch):
+    """The whole point: a key mismatch must reach /license, never crash."""
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        _store_under_foreign_key(db, "license_key", "unreadable-old-key")
+    monkeypatch.setattr(web, "SessionLocal", lambda: Session(engine))
+
+    response = asyncio.run(web.license_gate(_request("/"), _call_next_marker))
+    assert response.status_code == 303
+    assert response.headers["location"] == "/license"
 
 
 # --- Gate behaviour -----------------------------------------------------

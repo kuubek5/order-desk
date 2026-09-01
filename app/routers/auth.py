@@ -16,7 +16,12 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.auth import hash_password, verify_password
-from app.license import get_license_status, get_machine_id, verify_license_key
+from app.license import (
+    REASON_NOT_ACTIVATED,
+    get_license_status,
+    get_machine_id,
+    verify_license_key,
+)
 from app.models import User
 from app.routers.deps import UI_SESSION_KEY, get_current_user, get_db, templates
 from app.services.look_prefs import (
@@ -45,8 +50,18 @@ FIRST_ADMIN_LOCK = Lock()
 @router.get("/license", response_class=HTMLResponse)
 def license_form(request: Request, db: Session = Depends(get_db)):
     status = get_license_status(db)
+    # Справжню проблему (сплив терміну, ключ видано іншій машині, збій ключа
+    # шифрування) показуємо червоним, щоб оператор одразу зрозумів причину.
+    # Чисте «ще не активовано» лишаємо нейтральним підзаголовком.
+    error = (
+        status.reason
+        if not status.valid and status.reason != REASON_NOT_ACTIVATED
+        else None
+    )
     return templates.TemplateResponse(
-        request, "license.html", {"status": status, "machine_id": get_machine_id()}
+        request,
+        "license.html",
+        {"status": status, "machine_id": get_machine_id(), "error": error},
     )
 
 

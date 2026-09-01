@@ -6,15 +6,19 @@ be changed from the Налаштування screen without editing files on dis
 """
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Optional
 
+from cryptography.fernet import InvalidToken
 from sqlalchemy.orm import Session
 
 from app.config import EXPORT_FOLDER_PATH, GOOGLE_SHEET_ID
 from app.crypto import decrypt_value, encrypt_value
 from app.models import AppSetting
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -165,7 +169,36 @@ def get_setting(session: Session, key: str) -> Optional[str]:
     row = session.get(AppSetting, key)
     if row is None or row.value_encrypted is None:
         return None
-    return decrypt_value(row.value_encrypted)
+    try:
+        return decrypt_value(row.value_encrypted)
+    except InvalidToken:
+        # Значення збережене іншим ключем шифрування (master.key змінився —
+        # напр. переїзд теки даних або нова інсталяція). Розшифрувати
+        # неможливо, тож поводимось як «не задано»: застосунок працює далі,
+        # а не падає в 500 на кожному роуті. Секрет доведеться ввести заново.
+        logger.warning(
+            "Не вдалося розшифрувати налаштування «%s» — ключ шифрування "
+            "змінився; вважаю значення незаданим",
+            key,
+        )
+        return None
+
+
+def setting_unreadable(session: Session, key: str) -> bool:
+    """Значення в базі Є, але поточним ключем не розшифровується.
+
+    Відрізняє «секрет не заданий» від «заданий, але ключ шифрування змінився» —
+    щоб екран активації показав правильне повідомлення (ввести ключ заново), а
+    не «не активовано».
+    """
+    row = session.get(AppSetting, key)
+    if row is None or row.value_encrypted is None:
+        return False
+    try:
+        decrypt_value(row.value_encrypted)
+        return False
+    except InvalidToken:
+        return True
 
 
 def get_all_settings(session: Session) -> dict[str, Optional[str]]:
