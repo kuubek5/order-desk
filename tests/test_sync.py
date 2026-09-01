@@ -153,13 +153,31 @@ def test_slm_row_matching_is_case_and_space_insensitive():
         assert session.scalar(select(Order)) is None
 
 
-def test_grey_fill_row_is_not_imported_even_without_slm_text():
-    """The fill is the second marker — a row that's grey but whose material
-    text isn't one of the known words is still skipped."""
+def test_grey_fill_alone_no_longer_excludes_only_slm_text_does():
+    """Сірий колір БІЛЬШЕ не виключає рядок із черги. Бойовий випадок 01.09.26:
+    лаба фарбувала сірим і реальні клієнтські роботи (клямарчук, Kovtun…) без
+    жодного тексту «слм» — і колірне виключення мовчки знімало їх. Тепер
+    виключає ЛИШЕ текст (`NON_QUEUE_KINDS`), а сіра робота імпортується як
+    «нове» (не «видано» — сірий ≠ видано)."""
     with make_session() as session:
         result = sync_tab(
             session, "22.06.26",
-            [make_row(row_number=1, material_color="щось інше")],
+            [make_client_row(row_number=1, kind="Kovtun", material_color="", quantity="20")],
+            row_fills={1: "grey"},
+        )
+        session.commit()
+        assert result.created == 1
+        order = session.scalar(select(Order))
+        assert order.archived_at is None
+        assert order.status == "нове"  # grey is NOT "issued"
+
+
+def test_slm_grey_row_with_text_marker_is_still_excluded():
+    """Справжній СЛМ несе текст «слм» — він і далі поза чергою, навіть сірий."""
+    with make_session() as session:
+        result = sync_tab(
+            session, "22.06.26",
+            [make_row(row_number=1, work_order_no="29203", material_color="слм", kind="каркас")],
             row_fills={1: "grey"},
         )
         session.commit()

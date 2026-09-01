@@ -28,10 +28,20 @@ logger = logging.getLogger(__name__)
 
 
 def _is_non_queue_row(row: OrderRow, row_fills: dict[int, str] | None) -> bool:
+    """Чи це НЕ фрезерна робота (СЛМ / моделі / елайнери / сканування).
+
+    Виключаємо за ТЕКСТОМ (`NON_QUEUE_KINDS` у матеріалі або виді), а НЕ за
+    сірим кольором. Бойовий випадок 01.09.26: лаба фарбує сірим непослідовно —
+    цілий блок реальних клієнтських робіт (клямарчук q26, Kovtun q20…) був
+    сірим без жодної ознаки «слм», і колірне виключення мовчки знімало їх із
+    черги. Справжні СЛМ-рядки несуть текст «слм» (перевірено на прод-таблиці:
+    наряд 29203, матеріал «слм»), тож текст — надійний сигнал, а колір ні.
+
+    ``row_fills`` лишається в підписі (сумісність викликів) — колір тепер
+    керує лише «видано» для клієнтських рядків, не виключенням."""
     material = (row.material_color or "").strip().lower()
-    if material in NON_QUEUE_KINDS:
-        return True
-    return bool(row_fills) and row_fills.get(row.row_number) == "grey"
+    kind = (row.kind or "").strip().lower()
+    return material in NON_QUEUE_KINDS or kind in NON_QUEUE_KINDS
 
 
 def _infer_status(row: OrderRow) -> str:
@@ -453,9 +463,14 @@ def sync_tab(
             fields = _client_fields(row)
             source = "sheet_client"
             rework = None
-            # Blue fill = pending, blue removed = issued. Only when colour info
-            # is available this run; default (no info / still blue) = pending.
-            issued = row_fills is not None and row_fills.get(row.row_number, "blue") != "blue"
+            # Blue fill = pending; blue CLEARED (white/no fill) = issued. A GREY
+            # fill is the lab's own marker (не «видано»), so grey and blue both
+            # stay pending — інакше сіра клієнтська робота імпортувалася б як
+            # «видано» й не потрапляла в активну чергу (бойовий випадок 01.09.26,
+            # коли реальні роботи були помилково сірі). Тільки явно очищена
+            # заливка ('') = видано.
+            fill = row_fills.get(row.row_number, "blue") if row_fills is not None else "blue"
+            issued = row_fills is not None and fill not in ("blue", "grey")
             status = "видано" if issued else "нове"
         else:
             fields = _fields(row)
