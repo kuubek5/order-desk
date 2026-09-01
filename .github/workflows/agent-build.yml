@@ -1,0 +1,57 @@
+name: Build machine agent
+
+# Збирає kmill-agent.exe для Windows (7/8/10/11) з Go 1.20 — остання версія Go
+# з підтримкою Win7/8. Крос-компіляція без cgo, тому будуємо на ubuntu. Артефакт
+# качається зі сторінки Actions цього запуску.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версія для штампу (main.Version)"
+        required: false
+        default: "0.1.0"
+  push:
+    paths:
+      - "agent/**"
+      - ".github/workflows/agent-build.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.20"
+
+      - name: Resolve dependencies
+        run: go mod tidy
+
+      - name: Build (windows/amd64, Win7-11)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          VER="${{ github.event.inputs.version || '0.1.0' }}"
+          go build -trimpath \
+            -ldflags "-s -w -H=windowsgui -X main.Version=$VER" \
+            -o kmill-agent.exe .
+          ls -la kmill-agent.exe
+
+      - name: Package
+        run: |
+          cp config.example.json install.ps1 README.md .
+          zip -j kmill-agent.zip kmill-agent.exe config.example.json install.ps1 README.md
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kmill-agent
+          path: agent/kmill-agent.zip
+          if-no-files-found: error
