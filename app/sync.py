@@ -371,15 +371,16 @@ def sync_tab(
     deletion_grace_seconds: float = 120,
     force_reconcile: bool = False,
 ) -> SyncResult:
-    """Import a tab's rows. ``row_fills`` (row_number -> 'blue'/'grey'/''), when
-    provided, drives two things:
+    """Import a tab's rows. ``row_fills`` (row_number -> 'blue'/'grey'/'')
+    drives ONLY client-row "видано": the lab clears the blue fill once a client's
+    work is issued, so a client row whose fill is explicitly CLEARED (white/'')
+    is treated as issued. Blue = pending, and GREY is IGNORED for status (a grey
+    client row stays "нове") — grey is applied inconsistently in the sheet.
 
-      * client-row "видано": the lab clears the blue fill once an email
-        client's work is issued, so a client row whose fill is known and NOT
-        blue is treated as issued;
-      * grey rows are SLM/stats-only records and are skipped entirely (see
-        NON_QUEUE_KINDS for the text-based marker that works even without
-        colour info).
+    СЛМ / non-milling rows are decided by TEXT only (NON_QUEUE_KINDS in material
+    or kind), NOT by colour — see _is_non_queue_row. Owner's rule (01.09.26):
+    «сірий колір не враховуємо взагалі; СЛМ — це матеріал slm». A whole block of
+    real client works had been greyed and vanished when grey excluded them.
 
     None means "no colour info this run" — client rows then just stay
     pending, and only the text marker filters SLM rows.
