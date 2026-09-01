@@ -293,47 +293,59 @@ def _order_identity(order: Order) -> tuple | None:
 def _relink_moved_rows(existing_by_row: dict[int, Order], rows: list[OrderRow]) -> int:
     """Repoint orders whose row shifted, rewriting `existing_by_row` in place.
 
-    Only unambiguous identities take part: a key that appears more than once on
-    either side is dropped, because guessing between two repeat works would be
-    worse than falling back to position. Returns how many orders were moved.
+    Orders pair to sheet rows by IDENTITY (наряд / client+material+qty /
+    technician+material+kind+qty). Within one identity group — usually a single
+    row, but sometimes a legitimate repeat work (той самий наряд двічі) or two
+    look-alike client/pending-lab rows — pairing is by RELATIVE ORDER: both
+    sides sorted by current position, then zipped 1st-with-1st, 2nd-with-2nd.
+
+    Relative order (not absolute row number) is what survives blank rows being
+    inserted above or between works: every member of a group shifts down by the
+    same amount, so their order holds and each order still pairs with its own
+    row instead of two duplicates colliding on an absolute position. Earlier
+    this dropped ambiguous groups entirely and let them fall back to absolute
+    position — which mixed duplicates up on exactly such an insert. Extra orders
+    in a group (a duplicate deleted from the sheet) stay unpaired and are
+    archived by the reconciliation; extra sheet rows (a new duplicate) are
+    created there. Returns how many orders were repositioned.
     """
-    row_by_identity: dict[tuple, OrderRow] = {}
-    ambiguous: set[tuple] = set()
+    rows_by_key: dict[tuple, list[OrderRow]] = {}
     for row in rows:
         key = _row_identity(row)
-        if key is None:
-            continue
-        if key in row_by_identity:
-            ambiguous.add(key)
-        row_by_identity[key] = row
+        if key is not None:
+            rows_by_key.setdefault(key, []).append(row)
 
-    order_by_identity: dict[tuple, Order] = {}
+    orders_by_key: dict[tuple, list[Order]] = {}
     for order in existing_by_row.values():
         key = _order_identity(order)
-        if key is None:
-            continue
-        if key in order_by_identity:
-            ambiguous.add(key)
-        order_by_identity[key] = order
+        if key is not None:
+            orders_by_key.setdefault(key, []).append(order)
 
-    moved = 0
-    for key, row in row_by_identity.items():
-        if key in ambiguous:
+    # Pair within each identity group by relative order; collect the orders that
+    # actually need to move to a different row.
+    movers: list[tuple[Order, int]] = []
+    for key, krows in rows_by_key.items():
+        korders = orders_by_key.get(key)
+        if not korders:
             continue
-        order = order_by_identity.get(key)
-        if order is None or order.row_number == row.row_number:
-            continue
-        # Don't steal a slot another order legitimately occupies by identity;
-        # that pairing is resolved on its own iteration.
-        occupant = existing_by_row.get(row.row_number)
-        if occupant is not None and _order_identity(occupant) not in (None, key):
-            if _order_identity(occupant) in row_by_identity and _order_identity(occupant) not in ambiguous:
-                continue
-        existing_by_row.pop(order.row_number, None)
-        order.row_number = row.row_number
-        existing_by_row[row.row_number] = order
-        moved += 1
-    return moved
+        krows_sorted = sorted(krows, key=lambda r: r.row_number)
+        korders_sorted = sorted(korders, key=lambda o: o.row_number)
+        for order, row in zip(korders_sorted, krows_sorted):
+            if order.row_number != row.row_number:
+                movers.append((order, row.row_number))
+
+    # Two phases so movers that swap slots don't clobber each other: free every
+    # mover's old slot first, then place each at its paired row. A non-mover
+    # sitting at a target slot must have a different identity (same-identity
+    # peers got distinct targets), so its sheet row is gone — evicting it here
+    # just lets the reconciliation archive it, which is correct.
+    for order, _ in movers:
+        if existing_by_row.get(order.row_number) is order:
+            existing_by_row.pop(order.row_number, None)
+    for order, new_row in movers:
+        order.row_number = new_row
+        existing_by_row[new_row] = order
+    return len(movers)
 
 
 def sync_tab(

@@ -707,6 +707,38 @@ def test_repeat_works_sharing_a_naryad_fall_back_to_position():
     assert session.query(Order).count() == 2
 
 
+def test_ambiguous_duplicates_stay_paired_when_blank_inserted_between():
+    """Дві роботи з ОДНАКОВОЮ identity (той самий наряд двічі) при вставці
+    порожнього рядка між ними не плутаються: зіставлення в межах групи йде за
+    ВІДНОСНИМ порядком (1-й з 1-м, 2-й з 2-м), а не за абсолютною позицією.
+    Раніше неоднозначна група падала на абсолютну позицію й переплутувалась."""
+    session = make_session()
+    sync_tab(session, "25.08.26", [
+        make_row(row_number=7, work_order_no="DUP", sum3d_id="S-1", material_color="моно A2"),
+        make_row(row_number=8, work_order_no="DUP", sum3d_id="S-2", material_color="моно A2"),
+    ])
+    session.commit()
+    age_orders(session)
+    first_id = session.scalar(select(Order).where(Order.row_number == 7)).id
+    second_id = session.scalar(select(Order).where(Order.row_number == 8)).id
+
+    # Порожній рядок вставлено між ними → друга робота зсувається 8 → 10.
+    result = sync_tab(session, "25.08.26", [
+        make_row(row_number=7, work_order_no="DUP", sum3d_id="S-1", material_color="моно A2"),
+        make_row(row_number=10, work_order_no="DUP", sum3d_id="S-2", material_color="моно A2"),
+    ], deletion_grace_seconds=0)
+    session.commit()
+
+    assert result.deleted == 0, "нічого не має заархівуватись при вставці"
+    assert session.query(Order).count() == 2, "жодного фантомного дубля"
+    f = session.get(Order, first_id)
+    s = session.get(Order, second_id)
+    assert f.archived_at is None and s.archived_at is None
+    # Спаровано за відносним порядком — кожна лишилась зі своїм Sum3D.
+    assert f.row_number == 7 and f.sum3d_id == "S-1"
+    assert s.row_number == 10 and s.sum3d_id == "S-2"
+
+
 def test_unchanged_tab_moves_nothing():
     session = make_session()
     sync_tab(session, "25.08.26", [
