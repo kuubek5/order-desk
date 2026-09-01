@@ -53,6 +53,10 @@ class SyncResult:
     # Orders whose sheet row shifted (a row above them was deleted) and were
     # re-linked to their new position instead of being overwritten.
     moved: int = 0
+    # >0 when the mass-archive guard HELD this tab's deletions this sync (looks
+    # like a bad read OR a real bulk delete — indistinguishable). Surfaced to
+    # the operator as a banner offering «Звірити видалення» (force_reconcile).
+    held_mass_vanish: int = 0
 
 
 def _fields(row: OrderRow) -> dict:
@@ -674,6 +678,7 @@ def sync_tab(
         ]
         mass_vanish = len(vanished) > 5 and active and len(vanished) > 0.25 * len(active)
         if mass_vanish and not force_reconcile:
+            result.held_mass_vanish = len(vanished)
             logger.warning(
                 "Синк %s: %d із %d рядків «зникли» за один тік — схоже на "
                 "обірване читання, архівацію пропущено (оператор може підтвердити "

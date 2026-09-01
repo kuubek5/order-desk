@@ -282,6 +282,22 @@
   color: #f1b2b2;
 }
 
+/* Проактивний банер масового видалення: попередження + кнопка «Звірити
+   видалення». Текст ліворуч, дія праворуч. Бурштиновий (увага, не помилка). */
+.sync-notice-warn {
+  background: rgba(240, 163, 94, 0.1);
+  border-color: rgba(240, 163, 94, 0.4);
+}
+.mass-vanish-banner {
+  gap: var(--space-4);
+  justify-content: space-between;
+  align-items: center;
+}
+.mass-vanish-banner form {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
 .search-container {
   margin-top: var(--space-4);
   margin-bottom: var(--space-4);

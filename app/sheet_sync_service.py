@@ -61,6 +61,30 @@ def is_sheet_sync_running() -> bool:
     return _sync_lock.locked()
 
 
+# --- Held mass-deletion state (proactive banner) -----------------------------
+# Tabs whose bulk deletions the guard is currently HOLDING (looks like a bad
+# read OR a real bulk delete — indistinguishable). Surfaced to the operator as
+# a queue banner offering «Звірити видалення». In-memory process state (like the
+# heartbeat); updated every tick per tab — set when held, cleared when the tab
+# syncs clean or is force-reconciled. A restart re-derives it on the next tick.
+_mass_vanish_lock = Lock()
+_mass_vanish_pending: dict[str, int] = {}
+
+
+def mass_vanish_pending() -> dict[str, int]:
+    """Tabs → count of deletions currently held by the guard (for the banner)."""
+    with _mass_vanish_lock:
+        return dict(_mass_vanish_pending)
+
+
+def _record_mass_vanish(tab: str, held: int) -> None:
+    with _mass_vanish_lock:
+        if held > 0:
+            _mass_vanish_pending[tab] = held
+        else:
+            _mass_vanish_pending.pop(tab, None)
+
+
 # --- Background full-history import -------------------------------------------
 # «Імпортувати всю історію» is a minutes-long proxy read (one call per dated
 # tab). Running it inline blocked the request thread with zero feedback — the
@@ -374,6 +398,9 @@ def sync_google_sheets(
                 # Commit this tab before touching the next, so a later tab's
                 # failure can never undo it.
                 session.commit()
+                # Update the proactive banner state for this tab (set when the
+                # guard held a bulk deletion, cleared when it synced clean).
+                _record_mass_vanish(current_tab, result.held_mass_vanish)
             except Exception as exc:
                 safe_error = _safe_failure(exc)
                 _record_failure(session, current_tab, safe_error, persist=trigger == "manual")

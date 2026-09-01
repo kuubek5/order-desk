@@ -1347,6 +1347,31 @@ def test_one_bad_read_cannot_archive_a_quarter_of_the_tab():
     assert result.deleted == 1
 
 
+def test_held_mass_vanish_is_reported_on_the_result():
+    """Коли запобіжник тримає масове видалення, sync_tab повідомляє про це в
+    result.held_mass_vanish — це живить проактивний банер. Після force_reconcile
+    нічого не тримається (held=0), рядки архівуються."""
+    session = make_session()
+    for i in range(20):
+        session.add(Order(
+            source="lab", sheet_tab="27.08.26", row_number=10 + i,
+            work_order_no=str(29000 + i), material_color="mono a3", status="нове",
+        ))
+    session.commit()
+    remaining = [make_row(
+        row_number=10 + i, work_order_no=str(29000 + i), material_color="mono a3",
+        kind="анатомія", quantity="1",
+    ) for i in range(8)]
+
+    guarded = sync_tab(session, "27.08.26", remaining, deletion_grace_seconds=0)
+    session.commit()
+    assert guarded.held_mass_vanish == 12 and guarded.deleted == 0
+
+    forced = sync_tab(session, "27.08.26", remaining, deletion_grace_seconds=0, force_reconcile=True)
+    session.commit()
+    assert forced.held_mass_vanish == 0 and forced.deleted == 12
+
+
 def test_force_reconcile_archives_a_confirmed_bulk_deletion():
     """Оператор СВІДОМО видалив пачку тестових рядків і підтвердив «звірити
     видалення» — обірване читання й справжнє масове видалення з одного читання

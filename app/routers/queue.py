@@ -65,6 +65,7 @@ from app.mail_sync_service import is_mail_sync_running
 from app.sheet_sync_service import (
     SheetSyncError,
     is_sheet_sync_running,
+    mass_vanish_pending,
     pop_import_flash,
     start_background_import,
     summary_message,
@@ -437,6 +438,9 @@ def get_queue(
             "kpis": kpis,
             "peeks": peeks,
             "sync_status": sync_status,
+            # Банер масового видалення: вкладки, чиї видалення тримає запобіжник
+            # (schema-guard), з кнопкою «Звірити видалення». Порожньо = банера нема.
+            "mass_vanish": mass_vanish_pending(),
             "has_any_orders": bool(all_orders),
             "sheets_configured": sheets_configured(db),
             "sync_flash": sync_flash,

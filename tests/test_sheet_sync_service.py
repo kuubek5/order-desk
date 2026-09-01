@@ -642,3 +642,18 @@ def test_successful_sync_records_todays_date_as_last_full(monkeypatch):
     with make_session() as session:
         sync_google_sheets(session)
         assert _last_full_sync_date(session) == today
+
+
+def test_mass_vanish_pending_records_and_clears():
+    """Модульний стан банера: _record_mass_vanish виставляє лічильник для
+    вкладки, а нульове значення прибирає її (вкладка синхронізувалась чисто /
+    підтверджено). Живить mass_vanish_pending() → банер на черзі."""
+    from app.sheet_sync_service import _record_mass_vanish, mass_vanish_pending
+
+    _record_mass_vanish("01.01.30", 12)
+    assert mass_vanish_pending().get("01.01.30") == 12
+    # returned dict is a copy — мутація ззовні не псує внутрішній стан
+    mass_vanish_pending()["01.01.30"] = 999
+    assert mass_vanish_pending().get("01.01.30") == 12
+    _record_mass_vanish("01.01.30", 0)
+    assert "01.01.30" not in mass_vanish_pending()
