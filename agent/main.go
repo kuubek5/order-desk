@@ -158,7 +158,9 @@ func exePath() string {
 func main() {
 	cfgPath := flag.String("config", filepath.Join(exeDir(), "agent.json"), "path to agent.json")
 	serve := flag.Bool("serve", false, "run the background capture server (used by the scheduled task)")
-	setup := flag.Bool("setup", false, "open the settings page in the browser")
+	// -setup is accepted for clarity but no-args already opens the settings page,
+	// so the flag is registered only to be a valid argument.
+	_ = flag.Bool("setup", false, "open the settings page in the browser")
 	elevated := flag.Bool("elevated", false, "internal: set after relaunching with admin rights")
 	flag.Parse()
 
