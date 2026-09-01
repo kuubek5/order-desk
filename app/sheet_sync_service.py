@@ -26,7 +26,6 @@ from app.sheets import (
     call_with_retry,
     get_worksheet_by_name,
     open_spreadsheet,
-    read_all_values,
     tab_name_for,
 )
 from app.sync import sync_tab
@@ -201,22 +200,6 @@ def _parse_tab_date(title: str) -> date | None:
 
 
 _LAST_FULL_SYNC_KEY = "last_full_sync_date"
-_READ_CHUNK_KEY = "sheet_read_chunk_rows"
-
-
-def _read_chunk_rows(session: Session) -> int:
-    """Row-chunk size for reading a tab (app/sheets.read_all_values). Tunable via
-    AppSetting so a stricter lab proxy can be given a smaller chunk WITHOUT a
-    release — the whole point is keeping each response under the proxy's cut."""
-    raw = get_setting(session, _READ_CHUNK_KEY)
-    if raw:
-        try:
-            return max(10, min(500, int(raw.strip())))
-        except ValueError:
-            pass
-    return 50
-
-
 def _last_full_sync_date(session: Session) -> date | None:
     """Дата останнього успішного повного синку, або None.
 
@@ -425,7 +408,7 @@ def sync_google_sheets(
         for worksheet in worksheets:
             current_tab = worksheet.title
             try:
-                raw = read_all_values(worksheet, _read_chunk_rows(session))
+                raw = call_with_retry(worksheet.get_all_values)
                 rows = parse_rows(raw)
                 # Read fill colours (best-effort) so client rows whose blue was
                 # cleared flip to "видано" and grey SLM rows are filtered out.
@@ -576,7 +559,7 @@ def sync_hot_tab(
             worksheet = get_worksheet_by_name(spreadsheet, tab_title)
             if worksheet is None:
                 continue  # tab not created yet (early morning) — skip
-            raw = read_all_values(worksheet, _read_chunk_rows(session))
+            raw = call_with_retry(worksheet.get_all_values)
             rows = parse_rows(raw)
             # Colours are cheap now (the CF-bloat cleanup took the metadata
             # fetch from ~7s to ~0.3s), so the hot lane reads them too: blue
