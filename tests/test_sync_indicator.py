@@ -205,7 +205,34 @@ def test_sheet_state_route_no_flash_no_trigger(monkeypatch):
     assert "HX-Trigger" not in resp.headers
 
 
-def test_sheet_state_route_logged_out_is_quiet():
+def test_sheet_state_route_logged_out_stops_polling():
+    """Розлогінений полл має ЗУПИНИТИ себе: повертаємо 200 з обгорткою БЕЗ
+    hx-* (не 204, на який HTMX лишає старий елемент і б'є роут вічно)."""
     db = _db()
     resp = queue_router.sheet_sync_state(_request(None), db)
-    assert resp.status_code == 204
+    assert resp.status_code == 200
+    body = resp.body.decode() if isinstance(resp.body, bytes) else resp.body
+    assert "hx-get" not in body  # поллу більше нема — обгортка статична
+    assert "tl-sync-live" in body
+
+
+def test_mass_vanish_banner_route_renders_and_gates():
+    """Роут /sheets/mass-vanish віддає банер, коли синк тримає видалення, з
+    кнопкою для адміна; розлогіненому — порожньо (полл не спамить)."""
+    import app.sheet_sync_service as ss
+    db = _db()
+    admin = _admin(db)
+    with ss._mass_vanish_lock:
+        ss._mass_vanish_pending.clear()
+        ss._mass_vanish_pending["30.08.26"] = 9
+    try:
+        resp = queue_router.sheet_mass_vanish_banner(_request(admin.id), db)
+        body = resp.body.decode() if isinstance(resp.body, bytes) else resp.body
+        assert "reconcile-deletions" in body and "9" in body
+
+        out = queue_router.sheet_mass_vanish_banner(_request(None), db)
+        obody = out.body.decode() if isinstance(out.body, bytes) else out.body
+        assert obody.strip() == ""
+    finally:
+        with ss._mass_vanish_lock:
+            ss._mass_vanish_pending.clear()

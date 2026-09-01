@@ -735,9 +735,10 @@ def sheet_sync_state(request: Request, db: Session = Depends(get_db)):
     even though the work ran off-request."""
     user = get_current_user(request, db)
     if user is None:
-        # A logged-out poll shouldn't redirect the fragment into a login page;
-        # return an empty body and let the next full navigation handle auth.
-        return HTMLResponse("", status_code=204)
+        # Logged-out poll: swap in a NON-polling wrapper so the 3s poll STOPS
+        # (a 204 makes HTMX keep the old element and keep hammering this route
+        # forever). The next full navigation re-adds the live indicator.
+        return HTMLResponse('<span class="tl-sync-live"></span>')
 
     context = {
         "user": user,
@@ -753,3 +754,19 @@ def sheet_sync_state(request: Request, db: Session = Depends(get_db)):
              "refresh-queue": True}
         )
     return response
+
+
+@router.get("/sheets/mass-vanish", response_class=HTMLResponse)
+def sheet_mass_vanish_banner(request: Request, db: Session = Depends(get_db)):
+    """Self-polling banner fragment (_mass_vanish_banner.html) — makes the
+    «schema masove vydalennya» warning appear/disappear LIVE (every 15s) instead
+    of only on a full page reload. Reads in-memory state only (mass_vanish_pending
+    + the user), no DB beyond auth, so the extra poll is cheap."""
+    user = get_current_user(request, db)
+    if user is None:
+        return HTMLResponse("")
+    return templates.TemplateResponse(
+        request,
+        "_mass_vanish_banner.html",
+        {"user": user, "mass_vanish": mass_vanish_pending()},
+    )

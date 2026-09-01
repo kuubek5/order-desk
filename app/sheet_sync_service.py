@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 import json
 import re
+import time
 from threading import Lock, Thread
 
 from sqlalchemy import func, select
@@ -129,16 +130,38 @@ def start_background_import() -> bool:
     return True
 
 
+_IMPORT_BUSY_RETRIES = 6
+_IMPORT_BUSY_WAIT_SECONDS = 5.0
+
+
 def _run_background_import() -> None:
     global _import_running, _import_flash
     try:
-        with SessionLocal() as session:
-            summary = sync_google_sheets(
-                session, trigger="manual", full_history=True
-            )
+        # A manual sync waits only _MANUAL_LOCK_WAIT_SECONDS (10s) for the lock;
+        # a periodic tick over a slow proxy can hold it longer, and this daemon
+        # thread is not time-critical — so retry on «busy» instead of surfacing
+        # a scary error right after telling the operator «почато».
+        summary = None
+        for attempt in range(_IMPORT_BUSY_RETRIES):
+            try:
+                with SessionLocal() as session:
+                    summary = sync_google_sheets(
+                        session, trigger="manual", full_history=True
+                    )
+                break
+            except SheetSyncBusyError:
+                if attempt == _IMPORT_BUSY_RETRIES - 1:
+                    raise
+                time.sleep(_IMPORT_BUSY_WAIT_SECONDS)
         flash = {
             "kind": "success",
             "message": "Історію таблиці імпортовано. " + summary_message(summary),
+        }
+    except SheetSyncBusyError:
+        flash = {
+            "kind": "info",
+            "message": "Синхронізація зараз зайнята — імпорт історії не почався. "
+            "Спробуйте ще раз за хвилину.",
         }
     except SheetSyncError as exc:
         flash = {"kind": "error", "message": str(exc)}
@@ -366,8 +389,16 @@ def sync_google_sheets(
         try:
             _configuration(session)
             spreadsheet = open_spreadsheet(db=session)  # retries internally
+            # Always re-read tabs whose deletions the guard is currently HOLDING
+            # (banner pending): a transient bad read then self-clears on the next
+            # clean tick even if the tab has aged out of the normal window, and
+            # «Звірити видалення» targets exactly these tabs. Without this a held
+            # tab that leaves today±1 would keep its banner forever, and the
+            # button (today±1) could never reach it.
+            effective_include = set(include_tabs or ()) | set(mass_vanish_pending().keys())
             worksheets, all_dated_titles = _worksheets_to_sync(
-                session, spreadsheet, date.today(), include_tabs, full_history=full_history
+                session, spreadsheet, date.today(),
+                effective_include or None, full_history=full_history,
             )
         except Exception as exc:
             # Setup failure: nothing has been imported, so there is no partial

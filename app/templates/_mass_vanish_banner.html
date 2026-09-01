@@ -1,0 +1,21 @@
+{# Вміст банера масового видалення. Живе у самополл-обгортці #mass-vanish-slot
+   (queue.html), яка оновлює його кожні 15с через /sheets/mass-vanish — тому банер
+   з'являється/зникає наживо, не чекаючи повного перезавантаження сторінки.
+   Порожньо, коли синк нічого не тримає. #}
+{% if mass_vanish %}
+{% set mv_total = mass_vanish.values() | sum %}
+<div class="sync-notice sync-notice-warn mass-vanish-banner" role="alert">
+    <span>⚠ З таблиці схоже видалено багато рядків — <b>{{ mv_total }}</b>
+        (вкладк{{ 'и' if mass_vanish | length > 1 else 'а' }}
+        <span class="mono">{{ mass_vanish.keys() | join(', ') }}</span>).
+        Синк тримає їх у черзі, бо велике зникнення буває й через збій читання.
+        Якщо ви справді їх видалили — підтвердьте, і вони підуть в Архів
+        (помилкове повернеться наступним синком).</span>
+    {% if user.role == 'адмін' %}
+    <form method="post" action="/sheets/reconcile-deletions"
+          onsubmit="return confirm('Прибрати {{ mv_total }} видалених рядків у Архів?\n\nПідтверджуйте лише якщо справді видаляли — інакше живі роботи можуть тимчасово піти в Архів і повернуться наступним синком через ~10 хв.');">
+        <button type="submit" class="btn">Звірити видалення</button>
+    </form>
+    {% endif %}
+</div>
+{% endif %}
