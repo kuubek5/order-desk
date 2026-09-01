@@ -153,16 +153,14 @@ def test_slm_row_matching_is_case_and_space_insensitive():
         assert session.scalar(select(Order)) is None
 
 
-def test_grey_fill_alone_no_longer_excludes_only_slm_text_does():
-    """Сірий колір БІЛЬШЕ не виключає рядок із черги. Бойовий випадок 01.09.26:
-    лаба фарбувала сірим і реальні клієнтські роботи (клямарчук, Kovtun…) без
-    жодного тексту «слм» — і колірне виключення мовчки знімало їх. Тепер
-    виключає ЛИШЕ текст (`NON_QUEUE_KINDS`), а сіра робота імпортується як
-    «нове» (не «видано» — сірий ≠ видано)."""
+def test_grey_fill_alone_does_not_decide_material_does():
+    """Колір НЕ вирішує (правило власника: «сірий не враховуємо взагалі»).
+    Сіра робота З МАТЕРІАЛОМ — звичайна фрезерна, імпортується як «нове»
+    (сірий ≠ «видано»)."""
     with make_session() as session:
         result = sync_tab(
             session, "22.06.26",
-            [make_client_row(row_number=1, kind="Kovtun", material_color="", quantity="20")],
+            [make_client_row(row_number=1, kind="Kovtun", material_color="mono a3", quantity="20")],
             row_fills={1: "grey"},
         )
         session.commit()
@@ -170,6 +168,24 @@ def test_grey_fill_alone_no_longer_excludes_only_slm_text_does():
         order = session.scalar(select(Order))
         assert order.archived_at is None
         assert order.status == "нове"  # grey is NOT "issued"
+
+
+def test_client_row_without_material_is_slm_and_excluded():
+    """СЛМ-рядок: лише ім'я + кількість, колонка матеріалу ПОРОЖНЯ (прод-блок
+    683-701 на 31.08). Фрезерна робота завжди має матеріал, тому порожній
+    матеріал у клієнтському рядку = не наша черга — незалежно від кольору."""
+    with make_session() as session:
+        result = sync_tab(
+            session, "22.06.26",
+            [
+                make_client_row(row_number=1, kind="клямарчук", material_color="", quantity="26"),
+                make_client_row(row_number=2, kind="Kovtun", material_color="", quantity="20"),
+            ],
+            row_fills={1: "grey", 2: ""},   # колір різний — не має значення
+        )
+        session.commit()
+        assert result.created == 0
+        assert session.query(Order).count() == 0
 
 
 def test_slm_grey_row_with_text_marker_is_still_excluded():
