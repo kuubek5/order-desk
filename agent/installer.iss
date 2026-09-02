@@ -30,6 +30,20 @@ WizardStyle=modern
 [Languages]
 Name: "ukr"; MessagesFile: "compiler:Default.isl"
 
+[Code]
+{ Прибити стару копію агента ПЕРЕД копіюванням файлів: інакше запущений
+  kmill-agent.exe (-serve або старе -setup меню) тримає і сам файл, і порт
+  8766, тож перевстановлення лишало б завислий старий процес зі старою
+  сторінкою. Best-effort — ігноруємо код повернення. }
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/im kmill-agent.exe /f',
+    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Result := '';
+end;
+
 [Files]
 Source: "kmill-agent.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "config.example.json"; DestDir: "{app}"; Flags: ignoreversion

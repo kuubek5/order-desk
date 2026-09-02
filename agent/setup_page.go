@@ -123,68 +123,87 @@ const setupHTML = `<!doctype html>
 </div>
 
 <script>
-function el(id){return document.getElementById(id)}
-function gen(){
-  var a=new Uint8Array(16);crypto.getRandomValues(a);
-  el('token').value=Array.from(a).map(function(b){return b.toString(16).padStart(2,'0')}).join('');
+function el(id){return document.getElementById(id);}
+
+function genToken(){
+  var hex="0123456789abcdef",out="",i,r,arr=null;
+  try{ if(window.crypto&&crypto.getRandomValues){arr=new Uint8Array(16);crypto.getRandomValues(arr);} }catch(e){arr=null;}
+  for(i=0;i<16;i++){ r=arr?arr[i]:Math.floor(Math.random()*256); out+=hex.charAt((r>>4)&15)+hex.charAt(r&15); }
+  return out;
 }
-function copy(text){
-  if(navigator.clipboard){navigator.clipboard.writeText(text)}
+function gen(){ el("token").value=genToken(); }
+
+function copyText(text){
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text);return;} }catch(e){}
+  var ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";
+  document.body.appendChild(ta);ta.focus();ta.select();
+  try{ document.execCommand("copy"); }catch(e){}
+  document.body.removeChild(ta);
 }
-function copyEl(id){copy(el(id).value)}
+function copyEl(id){ copyText(el(id).value); }
+
+function xhr(method,url,body,onok){
+  var r=new XMLHttpRequest();
+  r.open(method,url,true);
+  if(body!==null&&body!==undefined){ r.setRequestHeader("Content-Type","application/json"); }
+  r.onreadystatechange=function(){
+    if(r.readyState!==4) return;
+    var data=null; try{ data=JSON.parse(r.responseText); }catch(e){ data=null; }
+    onok((r.status>=200&&r.status<300)?data:null);
+  };
+  r.send((body!==undefined&&body!==null)?body:null);
+}
 
 function load(){
-  fetch('/info').then(function(r){return r.json()}).then(function(d){
-    el('name').value=d.name||'';
-    el('token').value=d.token||'';
-    el('port').value=d.port||'8765';
-    var sel=el('display');sel.innerHTML='';
-    var n=d.displays||1;
-    for(var i=0;i<n;i++){
-      var o=document.createElement('option');o.value=i;
-      o.text='Монітор '+i+(i===0?' (головний)':'');
-      if(i===d.display)o.selected=true;sel.appendChild(o);
+  xhr("GET","/info",null,function(d){
+    if(!d) return;
+    el("name").value=d.name||"";
+    el("token").value=d.token||"";
+    el("port").value=d.port||"8765";
+    var sel=el("display");sel.innerHTML="";
+    var n=d.displays||1,i;
+    for(i=0;i<n;i++){
+      var o=document.createElement("option");
+      o.value=i;o.text="Монітор "+i+(i===0?" (головний)":"");
+      if(i===d.display) o.selected=true;
+      sel.appendChild(o);
     }
-    el('host').textContent=d.hostname||'—';
-    el('admin').innerHTML=d.admin
-      ? '<span class="pill ok">так</span>'
-      : '<span class="pill bad">ні — запусти від адміністратора</span>';
-    var t=d.taskInstalled
-      ? (d.taskRunning?'<span class="pill ok">працює</span>':'<span class="pill bad">зупинено</span>')
-      : '<span class="pill bad">не встановлено</span>';
-    el('task').innerHTML=t;
-    el('ver').textContent=d.version||'—';
-    var ips=d.ips||[];var box=el('crmlist');box.innerHTML='';
-    if(!ips.length){box.innerHTML='<div class="hint">IP не знайдено — перевір мережу.</div>'}
-    ips.forEach(function(ip){
-      var url='http://'+ip+':'+(d.port||'8765');
-      var div=document.createElement('div');div.className='crm';
-      var code=document.createElement('code');code.textContent=url;
-      var b=document.createElement('button');b.className='ghost';b.textContent='Копіювати';
-      b.onclick=function(){copy(url)};
-      div.appendChild(code);div.appendChild(b);box.appendChild(div);
-    });
+    el("host").textContent=d.hostname||"—";
+    el("admin").innerHTML=d.admin?'<span class="pill ok">так</span>':'<span class="pill bad">ні — запусти від адміністратора</span>';
+    el("task").innerHTML=d.taskInstalled?(d.taskRunning?'<span class="pill ok">працює</span>':'<span class="pill bad">зупинено</span>'):'<span class="pill bad">не встановлено</span>';
+    el("ver").textContent=d.version||"—";
+    var ips=d.ips||[],box=el("crmlist");box.innerHTML="";
+    if(!ips.length){ box.innerHTML='<div class="hint">IP не знайдено — перевір мережу.</div>'; }
+    for(i=0;i<ips.length;i++){
+      (function(ip){
+        var url="http://"+ip+":"+(d.port||"8765");
+        var div=document.createElement("div");div.className="crm";
+        var code=document.createElement("code");code.textContent=url;
+        var b=document.createElement("button");b.className="ghost";b.textContent="Копіювати";
+        b.onclick=function(){ copyText(url); };
+        div.appendChild(code);div.appendChild(b);box.appendChild(div);
+      })(ips[i]);
+    }
   });
 }
-function prev(){el('prev').src='/preview?display='+el('display').value+'&t='+Date.now()}
+function prev(){ el("prev").src="/preview?display="+el("display").value+"&t="+(new Date().getTime()); }
 function quit(){
-  fetch('/quit',{method:'POST'}).then(function(){
-    document.body.innerHTML='<div class="wrap"><p class="sub" style="margin-top:40px">'+
-      'Налаштування закрито. Можна закрити вкладку.</p></div>';
-  }).catch(function(){});
+  xhr("POST","/quit",null,function(){
+    document.body.innerHTML='<div class="wrap"><p class="sub" style="margin-top:40px">Налаштування закрито. Можна закрити вкладку.</p></div>';
+  });
 }
 function save(){
-  var msg=el('msg');msg.className='';msg.textContent='Зберігаю…';el('warns').textContent='';
-  fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({token:el('token').value,name:el('name').value,
-      display:parseInt(el('display').value,10),port:el('port').value})})
-  .then(function(r){return r.json()}).then(function(d){
-    if(d.ok){
-      msg.className='ok';msg.textContent='Збережено й запущено ✓';
-      if(d.warnings&&d.warnings.length){el('warns').textContent='Увага:\n'+d.warnings.join('\n')}
+  var msg=el("msg");msg.className="";msg.textContent="Зберігаю…";el("warns").textContent="";
+  var body=JSON.stringify({token:el("token").value,name:el("name").value,display:(parseInt(el("display").value,10)||0),port:el("port").value});
+  xhr("POST","/save",body,function(d){
+    if(d&&d.ok){
+      msg.className="ok";msg.textContent="Збережено й запущено ✓";
+      if(d.warnings&&d.warnings.length){ el("warns").textContent="Увага: "+d.warnings.join("; "); }
       setTimeout(load,600);
-    }else{msg.className='bad';msg.textContent=d.error||'Помилка'}
-  }).catch(function(){msg.className='bad';msg.textContent='Немає зв\'язку з агентом'});
+    }else{
+      msg.className="bad";msg.textContent=(d&&d.error)?d.error:"Помилка";
+    }
+  });
 }
 load();
 </script>
