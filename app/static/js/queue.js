@@ -568,7 +568,11 @@ document.addEventListener("click", (event) => {
 
   // Live lookup — the queue table is re-rendered by the 15s #queue-rows poll,
   // so a reference captured once would go stale. Every helper re-queries.
-  function getTable() { return document.querySelector(".q2 table.qtable"); }
+  // ОБОВ'ЯЗКОВО скоупити на .tablewrap: легенда кольорів («Кольори» в шапці)
+  // має власну <table class="qtable"> у .qlegend-rows, і вона стоїть у DOM
+  // ВИЩЕ черги — без скоупу querySelector хапав саме її, і весь код ширин
+  // колонок мовчки працював на легенді, а не на черзі.
+  function getTable() { return document.querySelector(".q2 .tablewrap table.qtable"); }
 
   // ---- Ширини стовпців -----------------------------------------------------
   function headCells() {
@@ -583,9 +587,25 @@ document.addEventListener("click", (event) => {
     const table = getTable();
     const map = loadWidths();
     if (!map || !table) return;
+    const cells = headCells();
+    if (!cells.length) return;
+    // Стара мапа могла зберегтись для іншої таблиці (див. getTable — легенда
+    // раніше перехоплювала getTable, а її .qtable має лише одну колонку).
+    // У такій мапі стовпців помітно менше, ніж у черзі — це не наші ширини:
+    // чистимо й виходимо, щоб не спотворити чергу застарілими значеннями.
+    if (Object.keys(map).length < cells.length - 1) { lsDel(LS_WIDTHS); return; }
+    // Ширини збережені під конкретний монітор. Той самий браузер на вужчому
+    // екрані (спільний localStorage 24"/27") діставав суму, більшу за доступне,
+    // і виштовхував останню колонку (Оператор) за край. Масштабуємо пропорційно
+    // до реальної ширини скрол-контейнера, щоб набір завжди влазив.
+    const wrap = table.closest(".tablewrap");
+    const avail = wrap ? wrap.clientWidth : 0;
+    let sum = 0;
+    cells.forEach((th, i) => { if (map[i]) sum += map[i]; });
+    const factor = (avail && sum > avail) ? avail / sum : 1;
     table.style.tableLayout = "fixed";
-    headCells().forEach((th, i) => {
-      if (map[i]) th.style.width = map[i] + "px";
+    cells.forEach((th, i) => {
+      if (map[i]) th.style.width = Math.max(MIN_COL, Math.round(map[i] * factor)) + "px";
     });
   }
   // Перед першим перетягуванням фіксуємо поточні (auto) ширини всіх стовпців,
