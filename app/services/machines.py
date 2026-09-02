@@ -29,8 +29,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
-from app.machine_ocr import read_progress_percent
-from app.models import Machine
+from app.machine_ocr import pick_milling_program, read_progress_percent
+from app.models import Machine, Order
 from app.services.furnace import _HOST_RE, validate_address  # ті самі правила адреси
 from app.config import MACHINE_FRAMES_PATH
 from app.settings_store import get_machine_vnc_password
@@ -92,6 +92,11 @@ class MachineState:
     # нічого, ніж хибне число — той самий принцип, що на пічках.
     percent: Optional[int] = None
     percent_at: Optional[datetime] = None
+    # Що саме фрезерується: ім'я .iso із заголовка вікна RemiCORE і витягнутий
+    # з нього Sum3D ID (хвіст HH-MM-SS) — ключ до рядка черги.
+    iso_name: Optional[str] = None
+    sum3d_id: Optional[str] = None
+    program_at: Optional[datetime] = None
 
 
 _states: dict[str, MachineState] = {}
@@ -195,6 +200,27 @@ def _capture_http(host: str, port: int, token: str) -> Image.Image:
     return Image.open(io.BytesIO(resp.content)).convert("RGB")
 
 
+def _fetch_titles(host: str, port: int, token: str) -> list[str]:
+    """Заголовки вікон з агента (GET /titles). Порожньо — якщо агент старий
+    (ендпоінта ще немає) або мережа підвела: це не привід валити опитування,
+    просто програму цього тіку не дізнаємось."""
+    import requests
+
+    try:
+        resp = requests.get(
+            f"http://{host}:{port}/titles",
+            headers={"X-Agent-Token": token},
+            timeout=CAPTURE_TIMEOUT_SECONDS,
+        )
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        titles = data.get("titles") or []
+        return [str(t) for t in titles]
+    except Exception:  # noqa: BLE001 — мережа/старий агент/битий JSON
+        return []
+
+
 def poll_target(
     db: Session,
     target: MachineTarget,
@@ -249,6 +275,17 @@ def poll_target(
     if percent is not None:
         state.percent = percent
         state.percent_at = now
+
+    # Що фрезерується — лише через агента (заголовок вікна). У VNC такого
+    # каналу немає, і вигадувати його з картинки ми не будемо.
+    if target.is_agent:
+        program = pick_milling_program(
+            _fetch_titles(target.host, target.port, target.agent_token)
+        )
+        if program is not None:
+            state.iso_name = program.iso_name
+            state.sum3d_id = program.sum3d_id
+            state.program_at = now
     return state
 
 
@@ -301,6 +338,10 @@ class MachineCard:
     target: MachineTarget
     state: Optional[MachineState]
     now: datetime = field(default_factory=datetime.now)
+    # Робота з черги, знайдена за sum3d_id програми. Заповнює snapshot() ОДНИМ
+    # запитом на всі картки: запит усередині property дав би N+1 у циклі
+    # рендера (той самий урок, що з focused_ids).
+    order: Optional[Order] = None
 
     @property
     def key(self) -> str:
@@ -348,6 +389,20 @@ class MachineCard:
         pct = self.percent
         return pct is not None and pct < 100
 
+    @property
+    def sum3d_id(self) -> Optional[str]:
+        """Sum3D ID програми на верстаті — зі свіжого читання."""
+        if not (self.state and self.state.sum3d_id):
+            return None
+        return None if (self.stale or self.has_problem) else self.state.sum3d_id
+
+    @property
+    def iso_name(self) -> Optional[str]:
+        if not (self.state and self.state.iso_name):
+            return None
+        return None if (self.stale or self.has_problem) else self.state.iso_name
+
+
 
 def machine_side_context(db: Session) -> dict:
     """Контекст віджета верстатів у бічній панелі черги.
@@ -382,6 +437,23 @@ def snapshot(db: Session) -> list[MachineCard]:
         states = dict(_states)
     for target in configured_targets(db):
         cards.append(MachineCard(target=target, state=states.get(target.key), now=now))
+
+    # Зв'язка «верстат ↔ наряд»: ОДИН запит на всі картки (не N+1). Шукаємо
+    # серед НЕархівних робіт — програма на верстаті завжди з робочого вікна.
+    wanted = {c.sum3d_id for c in cards if c.sum3d_id}
+    if wanted:
+        rows = db.scalars(
+            select(Order).where(
+                Order.sum3d_id.in_(wanted), Order.archived_at.is_(None)
+            )
+        ).all()
+        by_id: dict[str, Order] = {}
+        for row in rows:
+            # Той самий ID у двох роботах — не вгадуємо, лишаємо без зв'язки.
+            by_id[row.sum3d_id] = None if row.sum3d_id in by_id else row
+        for card in cards:
+            if card.sum3d_id:
+                card.order = by_id.get(card.sum3d_id)
     return cards
 
 

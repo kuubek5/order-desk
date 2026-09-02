@@ -26,6 +26,7 @@ RemiCORE малює внизу горизонтальну СМУГУ прогр�
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -151,3 +152,58 @@ def read_progress_percent(image: Image.Image) -> Optional[int]:
     """Відсоток виконання програми або None. Тонка обгортка для сервісу."""
     bar = find_progress_bar(image)
     return bar.percent if bar else None
+
+
+# ── Ім'я .iso-програми із заголовка вікна RemiCORE ──────────────────────────
+# Реальний заголовок (кадр 02.09.26):
+#   `Remote - zr18_18-Monolith-A3-x62_2026-09-02_23-04-33.iso`
+# У ньому дата+час — той самий ідентифікатор, що оператор вписує як Sum3D ID
+# (хвіст `HH-MM-SS`). Це і є ключ, який зв'язує верстат із рядком черги.
+#
+# Читаємо з ТЕКСТУ заголовка (агент бере його з Windows), а не з картинки:
+# здогадки тут неприпустимі — або точне ім'я, або нічого.
+# Ім'я файлу — без пробілів і роздільників шляху, тож префікс вікна
+# («Remote - ») у нього не залипає.
+_ISO_RE = re.compile(
+    r"(?P<program>[^\s\\/]*(?P<date>\d{4}-\d{2}-\d{2})[_-](?P<time>\d{2}-\d{2}-\d{2})[^\s\\/]*\.iso)",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class MillingProgram:
+    iso_name: str      # повне ім'я файлу програми
+    sum3d_id: str      # хвіст HH-MM-SS — ключ до рядка черги
+    date: str          # YYYY-MM-DD з імені
+
+
+def parse_iso_title(title: str) -> Optional[MillingProgram]:
+    """Заголовок вікна → програма, що фрезерується. None, якщо це не воно."""
+    if not title:
+        return None
+    m = _ISO_RE.search(title)
+    if not m:
+        return None
+    return MillingProgram(
+        iso_name=m.group("program").strip(),
+        sum3d_id=m.group("time"),
+        date=m.group("date"),
+    )
+
+
+def pick_milling_program(titles) -> Optional[MillingProgram]:
+    """Обрати програму серед УСІХ заголовків вікон верстата.
+
+    Агент віддає всі видимі вікна, бо вгадувати «те саме» вікно на його боці —
+    зайва здогадка. Тут беремо перший заголовок, що виглядає як `.iso`-програма;
+    якщо таких кілька (відкрито два вікна RemiCORE), беремо перший — але лише
+    коли всі вони кажуть про ОДНУ програму, інакше нічого: два різні кандидати
+    означають, що ми не знаємо, який фрезерується (принцип «краще нічого»).
+    """
+    found = [p for p in (parse_iso_title(t) for t in (titles or [])) if p]
+    if not found:
+        return None
+    first = found[0]
+    if any(p.sum3d_id != first.sum3d_id or p.date != first.date for p in found):
+        return None
+    return first

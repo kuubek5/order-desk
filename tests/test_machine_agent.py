@@ -69,6 +69,10 @@ def test_poll_all_uses_http_for_agent_targets(monkeypatch):
     calls = {"http": 0}
 
     def fake_get(url, headers=None, timeout=None):
+        # Агент опитується двома викликами: /capture (кадр) і /titles (яка
+        # програма фрезерується). Рахуємо саме кадри.
+        if url.endswith("/titles"):
+            return _Resp(b'{"titles": []}')
         calls["http"] += 1
         return _Resp(_png_bytes())
 
@@ -81,7 +85,7 @@ def test_poll_all_uses_http_for_agent_targets(monkeypatch):
     monkeypatch.setattr(ms, "configured_targets", lambda db: [target])
 
     states = ms.poll_all(None)
-    assert calls["http"] == 1
+    assert calls["http"] == 1  # рівно один /capture
     assert states and states[0].error is None
 
 
@@ -91,6 +95,10 @@ def test_poll_target_uses_http_when_token(monkeypatch):
     calls = {"http": 0, "vnc": 0}
 
     def fake_get(url, headers=None, timeout=None):
+        # Агент опитується двома викликами: /capture (кадр) і /titles (яка
+        # програма фрезерується). Рахуємо саме кадри.
+        if url.endswith("/titles"):
+            return _Resp(b'{"titles": []}')
         calls["http"] += 1
         return _Resp(_png_bytes())
 
@@ -100,5 +108,44 @@ def test_poll_target_uses_http_when_token(monkeypatch):
 
     target = ms.MachineTarget(name="350i", host="192.168.1.85", port=8765, agent_token="tok")
     state = ms.poll_target(None, target, password=None)
-    assert calls["http"] == 1
+    assert calls["http"] == 1  # рівно один /capture
     assert state.error is None
+
+
+def test_snapshot_links_running_program_to_order(monkeypatch):
+    """Зв'язка верстат ↔ наряд: Sum3D ID із заголовка знаходить роботу в черзі.
+
+    Власна in-memory БД (як у test_order_focus) — спільну чіпати не можна.
+    """
+    from datetime import datetime
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+
+    from app.db import Base
+    from app.models import Order
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as db:
+        order = Order(source="lab", sheet_tab="02.09.26", work_order_no="24122",
+                      client_name="Дент-Арт", sum3d_id="23-04-33", status="прораховано")
+        db.add(order)
+        db.commit()
+        oid = order.id
+
+        target = ms.MachineTarget(name="350i", host="10.0.0.9", port=8765, agent_token="t")
+        now = datetime.now()
+        with ms._states_lock:
+            ms._states[target.key] = ms.MachineState(
+                target=target, frame_at=now, percent=9,
+                sum3d_id="23-04-33", iso_name="x_2026-09-02_23-04-33.iso",
+            )
+        monkeypatch.setattr(ms, "configured_targets", lambda _db: [target])
+        cards = ms.snapshot(db)
+
+    assert cards[0].sum3d_id == "23-04-33"
+    assert cards[0].order is not None and cards[0].order.id == oid
+    assert cards[0].percent == 9

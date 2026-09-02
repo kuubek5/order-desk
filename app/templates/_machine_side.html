@@ -44,6 +44,13 @@
                 <span class="ms-note">немає зв'язку</span>
                 {% elif card.percent is not none %}
                 <span class="ms-pct">{{ card.percent }}<i>%</i></span>
+                {% if card.order %}
+                {# Що фрезерується — наряд/клієнт із черги (зв'язка за Sum3D ID
+                   із заголовка вікна RemiCORE). #}
+                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}</span>
+                {% elif card.sum3d_id %}
+                <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
+                {% endif %}
                 <span class="ms-bar" aria-hidden="true"><i style="width:{{ card.percent }}%"></i></span>
                 {% elif card.has_frame %}
                 <span class="ms-pct dim">—</span>

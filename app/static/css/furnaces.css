@@ -312,3 +312,16 @@ body.furnace-side-open .q2 .side-sec-furnace .chev{transform:rotate(180deg)}
 .q2 .side-sec-machine .side-body{display:none}
 body.machine-side-open .q2 .side-sec-machine .side-body{display:block;padding-top:11px}
 body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
+
+/* Що саме фрезерується — під відсотком (зв'язка за Sum3D ID із заголовка). */
+.ms-tile{grid-template-areas:"name pct" "what what" "bar bar"}
+.ms-what{grid-area:what;font-size:var(--fs-0);color:var(--ink-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ms-what.dim{color:var(--ink-3)}
+.mc-prog{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:0 0 8px;
+  font-size:var(--fs-1)}
+.mc-sid{color:var(--ink-3)}
+.mc-order{color:var(--accent);font-weight:600;text-decoration:none}
+.mc-order:hover{text-decoration:underline}
+.mc-client{color:var(--ink-2)}
+.mc-nomatch{color:var(--ink-3)}

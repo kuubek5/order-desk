@@ -97,3 +97,48 @@ def test_works_on_scaled_frame():
 
 def test_tiny_image_is_refused():
     assert read_progress_percent(Image.new("RGB", (40, 20), GREY_BG)) is None
+
+
+# ── Ім'я .iso із заголовка вікна: зв'язка верстат ↔ наряд ──────────────────
+
+from app.machine_ocr import parse_iso_title, pick_milling_program  # noqa: E402
+
+# Точний заголовок з кадру 02.09.26 — сторож проти регресій.
+REAL_TITLE = "Remote - zr18_18-Monolith-A3-x62_2026-09-02_23-04-33.iso"
+
+
+def test_parses_real_remicore_title():
+    prog = parse_iso_title(REAL_TITLE)
+    assert prog is not None
+    assert prog.sum3d_id == "23-04-33"       # ключ до рядка черги
+    assert prog.date == "2026-09-02"
+    assert prog.iso_name == "zr18_18-Monolith-A3-x62_2026-09-02_23-04-33.iso"
+
+
+def test_parse_is_case_insensitive_about_extension():
+    assert parse_iso_title("x_2026-01-02_03-04-05.ISO").sum3d_id == "03-04-05"
+
+
+def test_parse_rejects_unrelated_titles():
+    for t in ["Проводник", "", "Remote - untitled.iso", "Notepad — 23-04-33"]:
+        assert parse_iso_title(t) is None
+
+
+def test_pick_ignores_other_windows():
+    titles = ["Проводник", "Telegram", REAL_TITLE, "crm-setup.txt — Блокнот"]
+    assert pick_milling_program(titles).sum3d_id == "23-04-33"
+
+
+def test_pick_refuses_when_two_different_programs_open():
+    # Два різні кандидати = не знаємо, який фрезерується → краще нічого.
+    titles = [REAL_TITLE, "Remote - other_2026-09-02_11-11-11.iso"]
+    assert pick_milling_program(titles) is None
+
+
+def test_pick_allows_duplicate_windows_of_same_program():
+    assert pick_milling_program([REAL_TITLE, REAL_TITLE]).sum3d_id == "23-04-33"
+
+
+def test_pick_on_empty_input():
+    assert pick_milling_program([]) is None
+    assert pick_milling_program(None) is None

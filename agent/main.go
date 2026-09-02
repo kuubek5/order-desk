@@ -227,6 +227,11 @@ func runServe(cfgPath string) {
 	mux.HandleFunc("/capture", authed(func(w http.ResponseWriter, r *http.Request) {
 		captureToResponse(w, r, cfg.Display)
 	}))
+	// Заголовки вікон: у заголовку RemiCORE лежить повне ім'я .iso-програми,
+	// а в ньому дата+час = Sum3D ID. Читаємо ТЕКСТОМ, не OCR — точно й дешево.
+	mux.HandleFunc("/titles", authed(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]interface{}{"titles": visibleWindowTitles()})
+	}))
 
 	// Also serve the settings menu on loopback 8766 so 127.0.0.1:8766 ALWAYS
 	// works while the agent runs — no separate shortcut needed, and Save runs

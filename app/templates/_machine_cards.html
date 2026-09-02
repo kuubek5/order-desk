@@ -40,6 +40,24 @@
         </div>
         {% endif %}
 
+        {% if card.sum3d_id %}
+        {# ЩО САМЕ фрезерується: Sum3D ID із заголовка вікна RemiCORE. Якщо
+           робота знайшлась у черзі — показуємо наряд/клієнта й ведемо в неї. #}
+        <p class="mc-prog">
+            <span class="mono mc-sid">{{ card.sum3d_id }}</span>
+            {% if card.order %}
+            <a class="mc-order" href="/orders/{{ card.order.id }}">
+                {{ card.order.work_order_no or card.order.client_name or 'робота' }}
+            </a>
+            {% if card.order.client_name and card.order.work_order_no %}
+            <span class="mc-client">{{ card.order.client_name }}</span>
+            {% endif %}
+            {% else %}
+            <span class="mc-nomatch" title="{{ card.iso_name }}">немає в черзі</span>
+            {% endif %}
+        </p>
+        {% endif %}
+
         {% if card.has_frame %}
         <img class="mc-shot" src="/machines/{{ card.key }}/frame.png?t={{ card.frame_at.timestamp()|int }}"
              alt="Екран верстата {{ card.target.name }}" loading="lazy">
