@@ -6,18 +6,9 @@
    ВАЖЛИВО (регрес-гард tests/test_order_row_template.py): зберігаються токени
    `comment-cell`, `cam-comment-text`, `folder-link` (як <a>), `data-folder-uri`,
    `data-copy`, `data-stl-preview-token`. #}
-{% set _dot = {
-  'нове': ('#b6c6da', true),
-  'прийнято': ('var(--accent-d)', false),
-  'прораховано': ('var(--accent)', false),
-  'у фрезеруванні': ('var(--accent-b)', false),
-  'відфрезеровано': ('var(--accent-c)', false),
-  'знайдено при видачі': ('var(--accent-e)', false),
-  'видано': ('#5c6b80', false),
-  'проблема': ('var(--alarm)', false),
-  'переробка': ('var(--warn)', false)
-} %}
-{% set _dc = _dot.get(order.status, ('#8fa3bb', false)) %}
+{# Колір статус-крапки — глобал status_dot (app/statuses.py). Спільне джерело
+   з легендою кольорів (_status_legend.html), щоб вони не розійшлись. #}
+{% set _dc = status_dot(order.status) %}
 {% set _rework = order.active_rework %}
 {# A technician corrected this row in the sheet after we imported it. Louder
    when the work is already TAKEN (Sum3D filled): milling a corrected work from

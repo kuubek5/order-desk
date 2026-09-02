@@ -19,6 +19,7 @@ from app.__version__ import VERSION
 from app.db import SessionLocal
 from app.material_class import (
     material_badge,
+    material_families,
     material_family_class,
     material_color_css_class,
     split_material_color,
@@ -36,7 +37,7 @@ from app.settings_store import (
 )
 from app.services.queue import is_rush_comment
 from app.services.shift import night_label, open_note_count
-from app.statuses import is_overdue
+from app.statuses import STATUSES, is_overdue, status_dot
 from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed
 from app.triage_status import files_on_disk, triage_readiness
 from app.update_check import get_known_update
@@ -314,6 +315,11 @@ templates.env.globals["is_overdue"] = is_overdue
 templates.env.globals["material_color_css_class"] = material_color_css_class
 templates.env.globals["material_badge"] = material_badge
 templates.env.globals["material_family_class"] = material_family_class
+templates.env.globals["material_families"] = material_families
+# Статус-крапка й перелік статусів — для рядка черги і легенди кольорів
+# (_status_legend.html), з одного джерела app/statuses.py.
+templates.env.globals["status_dot"] = status_dot
+templates.env.globals["all_statuses"] = STATUSES
 templates.env.globals["split_material_color"] = split_material_color
 templates.env.globals["strip_material_word"] = strip_material_word
 templates.env.globals["triage_readiness"] = triage_readiness

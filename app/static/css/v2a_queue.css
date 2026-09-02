@@ -827,3 +827,45 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 @media (prefers-reduced-motion:reduce){
   .q2 table.qtable tbody tr.row-rising{transition:none !important;transform:none !important}
 }
+
+/* ── Легенда кольорів (_status_legend.html) ─────────────────────────────────
+   Нативний <details> у шапці черги. Кольори всередині беруться живими класами
+   (.sdot зі status_dot, .matpair, .queue-row-*), тут — лише каркас попапа. */
+.q2 .qlegend{position:relative}
+.q2 .qlegend > summary{
+  display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;
+  border-radius:var(--r-ctl);border:1px solid var(--line-2);background:var(--card);
+  color:var(--ink-2);cursor:pointer;font-size:var(--fs-1);font-weight:500;white-space:nowrap;
+  transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease;
+  list-style:none;
+}
+.q2 .qlegend > summary::-webkit-details-marker{display:none}
+.q2 .qlegend > summary svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.q2 .qlegend > summary:hover{background:var(--card-2);color:var(--ink)}
+.q2 .qlegend[open] > summary{color:var(--ink);border-color:var(--accent-b)}
+.q2 .qlegend > summary:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+
+.q2 .qlegend-pop{
+  position:absolute;right:0;top:calc(100% + 7px);z-index:40;width:min(340px,86vw);
+  background:var(--card-2);border:1px solid var(--raise);border-radius:12px;
+  box-shadow:var(--sh-pop);padding:14px 15px;display:flex;flex-direction:column;gap:15px;
+}
+.q2 .qlegend-grp{display:flex;flex-direction:column;gap:9px}
+.q2 .qlegend-grp h4{
+  margin:0;font-size:var(--fs-0);letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;font-family:var(--font-mono,inherit);
+}
+.q2 .qlegend-note{text-transform:none;letter-spacing:0;color:var(--ink-3);font-weight:400}
+.q2 .qlegend-items{display:flex;flex-direction:column;gap:7px}
+.q2 .qlegend-item{display:flex;align-items:center;gap:9px;font-size:var(--fs-2);color:var(--ink-2)}
+.q2 .qlegend-item .sdot{flex:0 0 auto}
+.q2 .qlegend-item .matpair{flex:0 0 auto;min-width:0}
+/* Живі рядки-зразки станів — той самий фон, що й черга; без зайвого хрому. */
+.q2 .qlegend-rows{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.q2 .qlegend-rows table.qtable{width:100%;border-collapse:collapse}
+.q2 .qlegend-rows td{padding:7px 10px;font-size:var(--fs-1);color:var(--ink-2);border-bottom:1px solid var(--line)}
+.q2 .qlegend-rows tr:last-child td{border-bottom:0}
+@media (prefers-reduced-motion:no-preference){
+  .q2 .qlegend[open] .qlegend-pop{animation:qlegPop .16s ease}
+}
+@keyframes qlegPop{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}

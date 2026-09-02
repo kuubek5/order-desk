@@ -38,6 +38,7 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" class="duo"/><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
                 <input type="search" name="q" placeholder="Наряд, технік, шлях-ID…" aria-label="Пошук">
             </form>
+            {% include "_status_legend.html" %}
             {# Крок назад / вперед — дві статичні іконки-кнопки (undo/redo).
                undo скасовує ОСТАННЮ дію оператора (Sum3D/статус), redo повертає її;
                повторний клік крокує глибше в обидва боки. Тултип (title) при

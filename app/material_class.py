@@ -72,6 +72,16 @@ _MATERIAL_BADGES = {
 }
 
 
+def material_families() -> list[tuple[str, str, str]]:
+    """(символ, css-клас, назва) для кожної родини — для легенди кольорів.
+
+    Те саме джерело `_MATERIAL_BADGES`, що й маркування рядка, тож край рядка
+    й легенда фарбуються з одного місця. Цирконій свідомо БЕЗ смуги на краю
+    рядка (він більшість), але в легенді присутній як родина.
+    """
+    return [(sym, cls, name) for name, (sym, cls) in _MATERIAL_BADGES.items()]
+
+
 def material_family_class(name: str | None) -> str:
     """Клас родини за НАЗВОЮ матеріалу (а не за роботою).
 

@@ -1,0 +1,52 @@
+{# Легенда кольорів черги. Три канали значення рядка (§ project_queue_row_channels):
+   статус (крапка), матеріал (край/чіп), стан рядка (фон). Усе малюється ЖИВИМИ
+   класами й глобалами — status_dot, material_families, .matpair, .queue-row-*, —
+   тому легенда фізично не може розійтись із самим рядком. Нативний <details>:
+   без JS, з клавіатури відкривається, prefers-reduced-motion не чіпає. #}
+<details class="qlegend">
+  <summary title="Що означають кольори в черзі" aria-label="Легенда кольорів">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    <span>Кольори</span>
+  </summary>
+  <div class="qlegend-pop" role="group" aria-label="Легенда кольорів черги">
+
+    <div class="qlegend-grp">
+      <h4>Статус</h4>
+      <div class="qlegend-items">
+        {% for s in all_statuses %}
+        {% set d = status_dot(s) %}
+        <span class="qlegend-item">
+          <span class="sdot" aria-hidden="true" style="{% if d[1] %}background:transparent;box-shadow:inset 0 0 0 1.6px {{ d[0] }}{% else %}background:{{ d[0] }}{% endif %}"></span>{{ s }}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="qlegend-grp">
+      <h4>Матеріал <span class="qlegend-note">— смуга на краю рядка</span></h4>
+      <div class="qlegend-items">
+        {% for sym, cls, name in material_families() %}
+        <span class="qlegend-item">
+          <span class="matpair {{ cls }}"><span class="mp-k">{{ sym }}</span></span>{{ name }}{% if cls == 'mat-zr' %} <span class="qlegend-note">(без смуги — більшість)</span>{% endif %}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="qlegend-grp">
+      <h4>Стан рядка <span class="qlegend-note">— фон</span></h4>
+      {# Живі рядки: фон бере ті самі правила .queue-row-*, що й черга. #}
+      <div class="q2 qlegend-rows">
+        <table class="qtable"><tbody>
+          <tr class="queue-row-overdue"><td>прострочено — день минув, робота не готова</td></tr>
+          <tr class="queue-row-changed"><td>технік змінив рядок у таблиці</td></tr>
+          <tr class="queue-row-changed-taken"><td>змінив уже взяту роботу — ризик браку</td></tr>
+          <tr class="queue-row-email"><td>з пошти</td></tr>
+          <tr class="queue-row-client"><td>клієнт без наряду</td></tr>
+          <tr class="queue-row-rework"><td>переробка</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+
+  </div>
+</details>
