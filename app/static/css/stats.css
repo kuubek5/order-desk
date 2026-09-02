@@ -9,7 +9,7 @@ main.statsv2{max-width:1080px;margin:0 auto;padding:18px 20px}
 .statsv2 h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 12px}
 
 .statsv2 .tab-nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
-.statsv2 .tab-link{height:30px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;text-decoration:none}
+.statsv2 .tab-link{height:30px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);font-size:var(--fs-2);font-weight:500;display:inline-flex;align-items:center;text-decoration:none}
 .statsv2 .tab-link:hover{color:var(--ink);opacity:1}
 .statsv2 .tab-link.active{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .34)}
 
@@ -17,28 +17,28 @@ main.statsv2{max-width:1080px;margin:0 auto;padding:18px 20px}
 .statsv2 .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow)}
 .statsv2 .stat-card{flex:1;min-width:200px}
 .statsv2 .panel-body{padding:13px 15px}
-.statsv2 .dlabel{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:9px}
+.statsv2 .dlabel{font-size:var(--fs-0);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:9px}
 .statsv2 .stat-chips{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px}
-.statsv2 .stat-chip{display:inline-flex;align-items:baseline;gap:6px;font-size:12.5px;color:var(--ink-2)}
+.statsv2 .stat-chip{display:inline-flex;align-items:baseline;gap:6px;font-size:var(--fs-2);color:var(--ink-2)}
 .statsv2 .stat-chip b{font-family:var(--font-mono);font-weight:600;font-size:24px;color:var(--ink);letter-spacing:-.01em}
 .statsv2 .stat-chip.is-warn b{color:var(--warn)}
-.statsv2 .stat-chip .unit{font-size:13px;color:var(--ink-3)}
+.statsv2 .stat-chip .unit{font-size:var(--fs-2);color:var(--ink-3)}
 .statsv2 .stat-sep{width:1px;height:16px;background:var(--line-2)}
-.statsv2 .muted{color:var(--ink-3);font-size:13px}
+.statsv2 .muted{color:var(--ink-3);font-size:var(--fs-2)}
 
 .statsv2 .card-head{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line)}
-.statsv2 .card-head h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0;letter-spacing:-.005em}
-.statsv2 .card-head .meta{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);margin-left:auto}
+.statsv2 .card-head h2{font-family:var(--font-head);font-size:var(--fs-3);font-weight:600;margin:0;letter-spacing:-.005em}
+.statsv2 .card-head .meta{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3);margin-left:auto}
 .statsv2 .panel + .panel{margin-top:12px}
 
 .statsv2 .stage-list{padding:14px 16px;display:flex;flex-direction:column;gap:4px}
 .statsv2 .stage-row{display:flex;align-items:center;gap:10px;padding:7px 2px}
-.statsv2 .stage-row .lb{flex:0 0 160px;font-size:12.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.statsv2 .stage-row .lb{flex:0 0 160px;font-size:var(--fs-2);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .statsv2 .stage-row .bar{flex:1;height:9px;border-radius:4px;background:var(--field);border:1px solid var(--raise-2);overflow:hidden}
 .statsv2 .stage-row .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-d),var(--warn))}
-.statsv2 .stage-row .n{flex:0 0 88px;text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--ink)}
-.statsv2 .stage-row .n .pct{color:var(--ink-3);font-size:11px}
-.statsv2 .empty-note{padding:22px 16px;font-size:13px;color:var(--ink-3)}
+.statsv2 .stage-row .n{flex:0 0 88px;text-align:right;font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink)}
+.statsv2 .stage-row .n .pct{color:var(--ink-3);font-size:var(--fs-0)}
+.statsv2 .empty-note{padding:22px 16px;font-size:var(--fs-2);color:var(--ink-3)}
 @media (max-width:560px){ .statsv2 .stage-row .lb{flex-basis:100px} }
 
 /* Плитка «за весь час» серед періодних: рамка й підпис теплим кольором

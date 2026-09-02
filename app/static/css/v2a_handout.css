@@ -18,15 +18,15 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}
 .handoutv2 h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 12px}
 .handoutv2 .tab-nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
-.handoutv2 .tab-link{height:30px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.handoutv2 .tab-link{height:30px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);font-size:var(--fs-2);font-weight:500;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
 .handoutv2 .tab-link:hover{color:var(--ink);opacity:1}
 .handoutv2 .tab-link.active{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .34)}
 .handoutv2 .tab-link svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6}
-.handoutv2 .tab-badge{font-family:var(--font-mono);font-size:11px;opacity:.75}
+.handoutv2 .tab-badge{font-family:var(--font-mono);font-size:var(--fs-0);opacity:.75}
 
 .handoutv2 .statusline{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 14px;margin-bottom:14px;border:1px solid var(--line);border-radius:var(--r-card);background:var(--card);box-shadow:var(--glow)}
-.handoutv2 .sl-item{display:inline-flex;align-items:baseline;gap:5px;font-size:12.5px;color:var(--ink-2)}
-.handoutv2 .sl-item b{font-family:var(--font-mono);font-weight:600;font-size:14px;color:var(--ink)}
+.handoutv2 .sl-item{display:inline-flex;align-items:baseline;gap:5px;font-size:var(--fs-2);color:var(--ink-2)}
+.handoutv2 .sl-item b{font-family:var(--font-mono);font-weight:600;font-size:var(--fs-3);color:var(--ink)}
 .handoutv2 .sl-item.is-ok b{color:var(--accent-c)}
 .handoutv2 .sl-item.is-warn b{color:var(--warn)}
 .handoutv2 .sl-sep{width:1px;height:14px;background:var(--line-2)}
@@ -40,7 +40,7 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
   display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px;
   padding:9px 13px;border-radius:var(--r-card);
   border:1px solid rgba(var(--warn-rgb), .32);background:rgba(var(--warn-rgb), .08);
-  font-size:12.5px;color:var(--ink-2);
+  font-size:var(--fs-2);color:var(--ink-2);
 }
 .handoutv2 .bindbar svg{width:15px;height:15px;flex:0 0 15px;stroke:var(--warn);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .handoutv2 .bindbar b{color:var(--warn);font-weight:600}
@@ -54,22 +54,22 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 /* День видачі — chips 14.08 / 15.08 … по днях з невиданими роботами. */
 .handoutv2 .handout-days{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
 .handoutv2 .day-chip{height:30px;padding:0 14px;border-radius:999px;display:inline-flex;align-items:center;
-  font-family:var(--font-mono);font-size:12.5px;color:var(--ink-2);text-decoration:none;
+  font-family:var(--font-mono);font-size:var(--fs-2);color:var(--ink-2);text-decoration:none;
   /* Межа тут Є афордансом (це <a>, ним обирають день): на --line
      виходило 1.20:1 і чіп не читався як клікабельний. */
   background:var(--card);border:1px solid var(--control-edge);transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .handoutv2 .day-chip:hover{color:var(--ink);border-color:var(--line-2)}
 .handoutv2 .day-chip.active{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .42)}
 /* Кількість і день у рядку роботи. */
-.handoutv2 .wqty{font-size:11.5px;color:var(--ink-2);white-space:nowrap}
-.handoutv2 .wday{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);
+.handoutv2 .wqty{font-size:var(--fs-1);color:var(--ink-2);white-space:nowrap}
+.handoutv2 .wday{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3);
   padding:1px 7px;border-radius:5px;border:1px solid var(--line);background:var(--field);white-space:nowrap}
 
 /* "Видати" stays fully legible on an otherwise dimmed done-card — it's the
    one still-actionable control there. */
 .handoutv2 .ccard.done .issue-form{opacity:1}
 .handoutv2 .issue-btn{height:34px;padding:0 16px;border-radius:var(--r-ctl);border:1px solid rgba(var(--accent-rgb), .42);
-  background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;
+  background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);font:inherit;font-size:var(--fs-2);font-weight:600;cursor:pointer;white-space:nowrap;
   transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,transform .12s ease}
 .handoutv2 .issue-btn:hover{background:rgba(var(--accent-base-rgb), .28);border-color:var(--accent);transform:translateY(-1px)}
 .handoutv2 .issue-btn:active{transform:translateY(0)}
@@ -83,7 +83,7 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .ccard.is-collapsed .card-collapse svg{transform:rotate(-90deg)}
 .handoutv2 .ccard.is-collapsed .card-head{border-bottom:none}
 .handoutv2 .ccard.is-collapsed .cbody{display:none}
-.handoutv2 .card-head h2{font-family:var(--font-head);font-size:15.5px;font-weight:600;margin:0;letter-spacing:-.005em;display:flex;align-items:center;gap:8px}
+.handoutv2 .card-head h2{font-family:var(--font-head);font-size:var(--fs-4);font-weight:600;margin:0;letter-spacing:-.005em;display:flex;align-items:center;gap:8px}
 .handoutv2 .card-head .doneicon{width:18px;height:18px;flex:0 0 18px;border-radius:50%;background:rgba(var(--accent-base-rgb), .18);border:1px solid rgba(var(--accent-rgb), .5);display:inline-flex;align-items:center;justify-content:center}
 .handoutv2 .card-head .doneicon svg{width:11px;height:11px;stroke:var(--accent-c);fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 /* ── Видача, варіант «Черга» ──────────────────────────────────────────────
@@ -133,7 +133,7 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
     rgba(13,15,18,.88) 46%, rgba(13,15,18,.93) 100%)}
 .handoutv2 .hbar h1{text-shadow:0 1px 8px rgba(0,0,0,.7)}
 /* Числа дня — головний акцент шапки, як у мокапі. */
-.handoutv2 .hbar .hkpi b{font-size:17px}
+.handoutv2 .hbar .hkpi b{font-size:var(--fs-4)}
 /* Контроли стоять уже не на рівній картці, а на фото: без власної підкладки
    пігулка днів і перемикачі втрачали межу саме там, де під ними світла
    коронка. Підкладка тонована під арт, тому не читається як чужа плашка. */
@@ -146,19 +146,19 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .hbar .hspine{background:rgba(13,15,18,.72);box-shadow:0 0 0 1px rgba(255,255,255,.07)}
 /* Заголовок на цьому екрані менший за типовий h1: у стрічці сім елементів, і
    при 1280px вона переносилась на три рядки — 88px хрому перед першою карткою. */
-.handoutv2 .hbar h1{font-size:19px;margin-right:2px}
+.handoutv2 .hbar h1{font-size:var(--fs-5);margin-right:2px}
 .handoutv2 .hbar .hspine{flex:1 1 60px;min-width:50px}
 
 .handoutv2 .hbar h1{margin:0;font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head)}
 .handoutv2 .daypick{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-2);border-radius:999px;padding:3px 4px}
 .handoutv2 .daypick .arw{
-  width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:700;
+  width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:var(--fs-2);font-weight:700;
   color:var(--accent-c);background:rgba(var(--accent-base-rgb), .12);text-decoration:none;line-height:1;
 }
 .handoutv2 .daypick .arw:hover{background:var(--accent-b);color:var(--bg);opacity:1}
 .handoutv2 .daypick .arw.off{color:var(--ink-3);opacity:.3;background:none}
 .handoutv2 .daypick .dchip{
-  height:24px;min-width:46px;padding:0 9px;border-radius:999px;font-size:11.5px;color:var(--ink-2);
+  height:24px;min-width:46px;padding:0 9px;border-radius:999px;font-size:var(--fs-1);color:var(--ink-2);
   display:inline-flex;align-items:center;justify-content:center;text-decoration:none;
   transition:background var(--ui-speed) ease,color var(--ui-speed) ease;
 }
@@ -166,10 +166,10 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .daypick .dchip.active{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .34)}
 .handoutv2 .daypick .dchip.dall{font-family:var(--font-body)}
 .handoutv2 .fbtn.is-opening{opacity:.55;pointer-events:none}
-.handoutv2 .dayrest{font-size:12px;color:var(--ink-3);text-decoration:none;padding:4px 9px;border:1px dashed var(--line-2);border-radius:999px}
+.handoutv2 .dayrest{font-size:var(--fs-1);color:var(--ink-3);text-decoration:none;padding:4px 9px;border:1px dashed var(--line-2);border-radius:999px}
 .handoutv2 .dayrest:hover{color:var(--ink);border-color:var(--control-edge)}
 .handoutv2 .dayall{position:relative}
-.handoutv2 .dayall summary{list-style:none;cursor:pointer;font-size:12px;color:var(--ink-3);padding:4px 9px;border:1px solid var(--line);border-radius:999px}
+.handoutv2 .dayall summary{list-style:none;cursor:pointer;font-size:var(--fs-1);color:var(--ink-3);padding:4px 9px;border:1px solid var(--line);border-radius:999px}
 .handoutv2 .dayall summary::-webkit-details-marker{display:none}
 .handoutv2 .dayall summary:hover{color:var(--ink);border-color:var(--line-2)}
 .handoutv2 .dayall[open] summary{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .4)}
@@ -180,30 +180,30 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 }
 .handoutv2 .hspine{flex:1;min-width:90px;max-width:220px;height:4px;background:var(--field);border:1px solid var(--line);border-radius:2px;overflow:hidden}
 .handoutv2 .hspine i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-d),var(--accent-b))}
-.handoutv2 .hkpi{font-size:12px;color:var(--ink-2)}
+.handoutv2 .hkpi{font-size:var(--fs-1);color:var(--ink-2)}
 .handoutv2 .hkpi b{color:var(--ink);font-weight:500}
 .handoutv2 .hkpi-sep{margin:0 5px;color:var(--line-2)}
 /* Одиниці — третє число, тому тихіші за перші два: при видачі рахують клієнтів
    і роботи, а одиниці потрібні звітності. */
-.handoutv2 .hkpi-units{margin-left:7px;color:var(--ink-3);font-size:11px}
+.handoutv2 .hkpi-units{margin-left:7px;color:var(--ink-3);font-size:var(--fs-0)}
 .handoutv2 .hsrc{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
 .handoutv2 .hsrc a{
   display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 12px;border-radius:999px;
-  font-size:12.5px;color:var(--ink-2);text-decoration:none;
+  font-size:var(--fs-2);color:var(--ink-2);text-decoration:none;
 }
-.handoutv2 .hsrc a span{font-size:11px;opacity:.75}
+.handoutv2 .hsrc a span{font-size:var(--fs-0);opacity:.75}
 .handoutv2 .hsrc a:hover{color:var(--ink);background:var(--raise);opacity:1}
 .handoutv2 .hsrc a.on{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .34)}
 
 /* Поточний клієнт — той, з якого оператор працює зараз. Після того як номери
    прибрали, ця смуга лишилась єдиним «ти тут», тож вона й тримає порядок. */
 .handoutv2 .ccard.current{border-color:rgba(var(--accent-rgb), .34);box-shadow:inset 3px 0 0 var(--accent-b),var(--glow)}
-.handoutv2 .card-head .cstat{font-size:11.5px;color:var(--ink-3);white-space:nowrap}
+.handoutv2 .card-head .cstat{font-size:var(--fs-1);color:var(--ink-3);white-space:nowrap}
 /* Папка клієнта — головна дія. Заливка лише в поточного клієнта. */
 .handoutv2 .fbtn{
   display:inline-flex;align-items:center;gap:7px;white-space:nowrap;text-decoration:none;
   border:1px solid var(--line-2);background:var(--raise-3);color:var(--ink-2);
-  border-radius:var(--r-ctl);padding:6px 12px;font-size:12.5px;
+  border-radius:var(--r-ctl);padding:6px 12px;font-size:var(--fs-2);
   transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease;
 }
 .handoutv2 .fbtn svg{width:14px;height:14px;flex:0 0 14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -212,14 +212,14 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .fbtn.lead:hover{background:rgba(var(--accent-base-rgb), .22);border-color:var(--accent-b);color:var(--accent-c)}
 /* Sum3D ID у рядку роботи — інструмент перевірки, не заголовок */
 .handoutv2 .wsum{
-  font-size:11px;color:var(--ink-3);text-decoration:none;white-space:nowrap;
+  font-size:var(--fs-0);color:var(--ink-3);text-decoration:none;white-space:nowrap;
   padding:3px 7px;border-radius:6px;border:1px solid transparent;
   transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease;
 }
 .handoutv2 .wsum:hover{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .3);opacity:1}
-.handoutv2 .wqty em{font-style:normal;color:var(--ink-3);font-size:11px}
+.handoutv2 .wqty em{font-style:normal;color:var(--ink-3);font-size:var(--fs-0)}
 
-.handoutv2 .card-head .meta{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-3)}
+.handoutv2 .card-head .meta{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-3)}
 /* Ім'я клієнта як вхід у його папку. Читається як заголовок доти, доки на нього
    не навели — іконка теки стоїть завжди, підкреслення й акцент на hover.
    «Прив'язати папку» — не сіра примітка, а дія, що веде в картку клієнта, де
@@ -230,14 +230,14 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .card-head .client-open:hover svg{stroke:var(--accent-c)}
 .handoutv2 .card-head .bind-folder{
   font-family:var(--font-body);color:var(--ink-3);text-decoration:none;
-  border:1px solid var(--line-2);border-radius:6px;padding:4px 10px;font-size:11.5px;white-space:nowrap;
+  border:1px solid var(--line-2);border-radius:6px;padding:4px 10px;font-size:var(--fs-1);white-space:nowrap;
   transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease,background var(--ui-speed) ease;
 }
 .handoutv2 .card-head .bind-folder:hover{opacity:1;color:var(--warn);border-color:rgba(var(--warn-rgb), .45);background:rgba(var(--warn-rgb), .1)}
 .handoutv2 .card-head .bind-folder.lead{color:var(--warn);border-color:rgba(var(--warn-rgb), .45);background:rgba(var(--warn-rgb), .1)}
 .handoutv2 .card-head .right{margin-left:auto;display:flex;align-items:center;gap:12px}
 .handoutv2 .card-head .progress-wrap{display:flex;flex-direction:column;gap:5px;width:150px}
-.handoutv2 .card-head .progress-num{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);white-space:nowrap;text-align:right}
+.handoutv2 .card-head .progress-num{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-2);white-space:nowrap;text-align:right}
 .handoutv2 .card-head .progress-num b{color:var(--ink);font-weight:600}
 .handoutv2 .track{height:6px;border-radius:3px;background:var(--field);overflow:hidden;border:1px solid var(--raise-2)}
 .handoutv2 .track i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-d),var(--accent-b))}
@@ -245,17 +245,17 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .cbody{padding:4px 16px 12px}
 
 .handoutv2 .ambig{display:flex;flex-direction:column;gap:9px;padding:11px 12px;border-radius:9px;margin:9px 0 13px;background:rgba(var(--warn-rgb), .08);border:1px solid rgba(var(--warn-rgb), .3)}
-.handoutv2 .ambig .ahead{display:flex;align-items:flex-start;gap:9px;font-size:12.5px;color:var(--warn)}
+.handoutv2 .ambig .ahead{display:flex;align-items:flex-start;gap:9px;font-size:var(--fs-2);color:var(--warn)}
 .handoutv2 .ambig .ahead svg{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
 .handoutv2 .ambig .ahead b{display:block;color:var(--ink);font-weight:600}
-.handoutv2 .ambig .ahead p{margin:2px 0 0;color:var(--ink-2);font-size:12px;line-height:1.4}
+.handoutv2 .ambig .ahead p{margin:2px 0 0;color:var(--ink-2);font-size:var(--fs-1);line-height:1.4}
 .handoutv2 .cands{display:flex;flex-direction:column;gap:6px}
 .handoutv2 .cand{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--field);border:1px solid var(--line-2);cursor:pointer}
 .handoutv2 .cand:hover{background:var(--card-2);border-color:var(--line-2)}
 .handoutv2 .cand input{accent-color:var(--accent-b)}
-.handoutv2 .cand .p{font-family:var(--font-mono);font-size:11.5px;color:var(--ink);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.handoutv2 .cand .t{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
-.handoutv2 .ambig .abtn{align-self:flex-start;height:30px;padding:0 14px;border-radius:999px;border:1px solid rgba(var(--accent-rgb), .4);background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);font-size:12.5px;font-weight:500;cursor:pointer}
+.handoutv2 .cand .p{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.handoutv2 .cand .t{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3)}
+.handoutv2 .ambig .abtn{align-self:flex-start;height:30px;padding:0 14px;border-radius:999px;border:1px solid rgba(var(--accent-rgb), .4);background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);font-size:var(--fs-2);font-weight:500;cursor:pointer}
 .handoutv2 .ambig .abtn:hover{background:rgba(var(--accent-base-rgb), .24)}
 
 /* Compact one-line work rows (like the queue): check + ID + material + qty +
@@ -280,7 +280,7 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .wcheck.done:hover svg{stroke:var(--danger,#e5658b)}
 .handoutv2 .wmain{flex:1;min-width:0;display:flex;flex-direction:row;align-items:center;gap:9px}
 .handoutv2 .wmain .top{flex:1;min-width:0;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-.handoutv2 .matchip{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:6px;background:var(--raise);border:1px solid var(--line-2);font-size:11px;color:var(--ink-2)}
+.handoutv2 .matchip{display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:6px;background:var(--raise);border:1px solid var(--line-2);font-size:var(--fs-0);color:var(--ink-2)}
 /* Per-row folder shortcuts: one chip per matching export folder, time-labelled
    so same-material candidates are distinguishable. Clicking opens STL preview. */
 .handoutv2 .wopen{flex:0 0 auto;display:flex;align-items:center;gap:6px}
@@ -289,7 +289,7 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
   transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .handoutv2 .wfolder:hover{background:rgba(var(--accent-base-rgb), .22);border-color:var(--accent);opacity:1}
 .handoutv2 .wfolder svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.handoutv2 .wfolder-t{font-size:10.5px;color:var(--accent-c)}
+.handoutv2 .wfolder-t{font-size:var(--fs-0);color:var(--accent-c)}
 
 /* View switch: Рядки (compact list) ⇄ Плитки (preview tiles). */
 /* Перемикач вигляду — той самий сегментований контрол, що й .hsrc поруч:
@@ -299,7 +299,7 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .view-toggle{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;margin:0}
 .handoutv2 .view-btn{
   display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 12px;border-radius:999px;
-  border:0;background:none;color:var(--ink-2);font:inherit;font-size:12.5px;cursor:pointer;
+  border:0;background:none;color:var(--ink-2);font:inherit;font-size:var(--fs-2);cursor:pointer;
   transition:color var(--ui-speed) ease,background var(--ui-speed) ease;
 }
 .handoutv2 .view-btn:hover{color:var(--ink);background:var(--raise)}
@@ -314,20 +314,20 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .clients.as-tiles .wmain{flex-direction:column;align-items:flex-start;gap:5px}
 .handoutv2 .clients.as-tiles .wmain .top{flex:none}
 .handoutv2 .clients.as-tiles .wopen{width:100%}
-.handoutv2 .clients.as-tiles .wfolder{flex:1;justify-content:center;height:34px;font-size:12px}
+.handoutv2 .clients.as-tiles .wfolder{flex:1;justify-content:center;height:34px;font-size:var(--fs-1)}
 .handoutv2 .export-batches{display:flex;flex-direction:column;gap:8px}
 .handoutv2 .export-batch{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.handoutv2 .batch-time{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
+.handoutv2 .batch-time{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3)}
 .handoutv2 .export-batch .matchip{font-family:var(--font-mono)}
 .handoutv2 .folder-link{color:var(--ink-3);display:inline-flex}
 .handoutv2 .folder-link svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6}
 .handoutv2 .folder-link:hover{color:var(--accent-c);opacity:1}
-.handoutv2 .not-found{font-size:12px;color:var(--ink-3)}
+.handoutv2 .not-found{font-size:var(--fs-1);color:var(--ink-3)}
 
 .handoutv2 .queue-empty{padding:46px 22px;text-align:center;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card)}
 .handoutv2 .queue-empty-icon{width:26px;height:26px;stroke:var(--ink-3);fill:none;stroke-width:1.4;margin-bottom:10px}
-.handoutv2 .queue-empty h2{font-family:var(--font-head);font-size:16px;margin:0 0 6px}
-.handoutv2 .queue-empty p{font-size:13px;color:var(--ink-3);margin:0}
+.handoutv2 .queue-empty h2{font-family:var(--font-head);font-size:var(--fs-4);margin:0 0 6px}
+.handoutv2 .queue-empty p{font-size:var(--fs-2);color:var(--ink-3);margin:0}
 
 
 /* ── Розкладка «Список + покажчик дня» (варіант C, обрано власником) ─────
@@ -341,24 +341,24 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 #handout-list.with-nav > .clients{order:1;min-width:0}
 .handoutv2 .daynav{position:sticky;top:12px;background:var(--card);border:1px solid var(--line);
   border-radius:var(--r-card);padding:9px;max-height:calc(100vh - 120px);display:flex;flex-direction:column}
-.handoutv2 .daynav-h{margin:0 0 7px;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
+.handoutv2 .daynav-h{margin:0 0 7px;font-size:var(--fs-0);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3)}
 .handoutv2 .daynav-list{overflow-y:auto;scrollbar-width:thin;display:flex;flex-direction:column;gap:1px;min-height:0}
 .handoutv2 .dni{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:6px;
-  text-decoration:none;color:var(--ink-2);font-size:12px;transition:background var(--ui-speed) ease}
+  text-decoration:none;color:var(--ink-2);font-size:var(--fs-1);transition:background var(--ui-speed) ease}
 .handoutv2 .dni:hover{background:var(--card-2);color:var(--ink);opacity:1}
 .handoutv2 .dni.cur{background:var(--accent-well);color:var(--accent-c)}
 .handoutv2 .dni.done{color:var(--ink-3)}
 /* Номер був --ink-3 на 10.5px — той самий колір, який у цьому проєкті вже
    одного разу піднімали через провал контрасту. Тут він ще й єдина опора
    для ока в стовпчику схожих імен. */
-.handoutv2 .dni-n{font-size:10.5px;color:var(--ink-2);min-width:16px;text-align:right}
+.handoutv2 .dni-n{font-size:var(--fs-0);color:var(--ink-2);min-width:16px;text-align:right}
 .handoutv2 .dni:focus-visible{outline:2px solid var(--accent-c);outline-offset:-2px}
 .handoutv2 .dni-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Смужка прогресу вузька свідомо: покажчик відповідає на «де я і скільки
    лишилось», а не заміняє картку. */
 /* Число поруч зі смужкою: смужка сама по собі є лише для ока під мишкою, а
    «3/7» читається і з клавіатури, і читалкою екрана. */
-.handoutv2 .dni-count{margin-left:auto;font-size:10.5px;color:var(--ink-3);flex:none;font-variant-numeric:tabular-nums}
+.handoutv2 .dni-count{margin-left:auto;font-size:var(--fs-0);color:var(--ink-3);flex:none;font-variant-numeric:tabular-nums}
 .handoutv2 .dni.cur .dni-count{color:var(--accent-c)}
 .handoutv2 .dni-bar{margin-left:6px;width:32px;height:3px;border-radius:99px;background:var(--card-3);overflow:hidden;flex:none}
 .handoutv2 .dni-bar i{display:block;height:100%;background:var(--accent);border-radius:99px}

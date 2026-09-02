@@ -61,7 +61,7 @@ main.setv2.scon {
 .scon-title p {
   margin: 0;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size:var(--fs-2);
 }
 .scon-search {
   margin-left: auto;
@@ -73,7 +73,7 @@ main.setv2.scon {
   background: var(--field);
   border: 1px solid var(--line-2);
   color: var(--ink-3);
-  font-size: 13px;
+  font-size:var(--fs-2);
   cursor: pointer;
   transition: border-color var(--ui-speed) ease, color var(--ui-speed) ease;
 }
@@ -94,7 +94,7 @@ main.setv2.scon {
 }
 .scon kbd {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size:var(--fs-0);
   background: var(--card-3);
   border: 1px solid var(--line-2);
   border-bottom-width: 2px;
@@ -165,17 +165,17 @@ main.setv2.scon {
 }
 .scon-n {
   font-family: var(--font-mono);
-  font-size: 18px;
+  font-size:var(--fs-5);
   font-weight: 500;
   line-height: 1.05;
 }
 .scon-l {
-  font-size: 11.5px;
+  font-size:var(--fs-1);
   color: var(--ink-2);
   margin-top: 4px;
 }
 .scon-u {
-  font-size: 10px;
+  font-size:var(--fs-0);
   color: var(--ink-3);
 }
 .scon-link {
@@ -256,7 +256,7 @@ main.setv2.scon {
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 12.5px;
+  font-size:var(--fs-2);
   font-weight: 600;
   color: var(--ink-2);
 }
@@ -297,7 +297,7 @@ main.setv2.scon {
   background: var(--well);
   border: 1px solid var(--line-2);
   color: var(--accent-c);
-  font-size: 12.5px;
+  font-size:var(--fs-2);
   /* довга адреса не має розпирати панель */
   overflow-x: auto;
   white-space: nowrap;
@@ -320,7 +320,7 @@ main.setv2.scon {
   gap: 10px;
   padding: 10px 13px;
   background: var(--well);
-  font-size: 12.5px;
+  font-size:var(--fs-2);
 }
 .scon-beat-row .d {
   width: 7px;
@@ -339,7 +339,7 @@ main.setv2.scon {
   min-width: 0;
 }
 .scon-beat-row .i {
-  font-size: 11px;
+  font-size:var(--fs-0);
   color: var(--ink-3);
   flex: none;
 }
@@ -352,7 +352,7 @@ main.setv2.scon {
 
 /* "змінено 12.08.26" — коли востаннє чіпали секрет, без розкриття значення */
 .scon-changed {
-  font-size: 11px;
+  font-size:var(--fs-0);
   color: var(--ink-3);
   white-space: nowrap;
 }
@@ -374,11 +374,11 @@ main.setv2.scon {
 }
 .scon-diag-head .t {
   font-weight: 600;
-  font-size: 13px;
+  font-size:var(--fs-2);
 }
 .scon-diag-head .sum {
   margin-left: auto;
-  font-size: 11.5px;
+  font-size:var(--fs-1);
   color: var(--ink-3);
 }
 .scon-diag-list {
@@ -392,7 +392,7 @@ main.setv2.scon {
   gap: 10px;
   padding: 9px 14px;
   border-bottom: 1px solid rgba(34, 44, 58, 0.6);
-  font-size: 12.5px;
+  font-size:var(--fs-2);
   color: var(--ink-3);
   opacity: 0.45;
   transition: opacity 0.2s ease, color 0.2s ease;
@@ -426,11 +426,11 @@ main.setv2.scon {
 }
 .scon-diag-list li .dt {
   color: var(--ink-3);
-  font-size: 11.5px;
+  font-size:var(--fs-1);
 }
 .scon-diag-list li .ms {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size:var(--fs-0);
   color: var(--ink-3);
   flex: none;
 }
@@ -517,7 +517,7 @@ main.setv2.scon {
   min-width: 190px;
   padding: 9px 11px;
   border-radius: 9px;
-  font-size: 12.5px;
+  font-size:var(--fs-2);
 }
 .np-demo i { width: 3px; align-self: stretch; border-radius: 2px; background: var(--accent-b); }
 .np-glass {
@@ -526,7 +526,7 @@ main.setv2.scon {
   -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
 }
 .np-card { background: var(--card-2); border: 1px solid var(--line-2); }
-.np-hint { font-size: 11.5px; color: var(--ink-3); }
+.np-hint { font-size:var(--fs-1); color: var(--ink-3); }
 
 /* мініатюра позиції: рамка «екрана» з крапкою в куті */
 .notify-pos { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -546,7 +546,7 @@ main.setv2.scon {
 .np-screen[data-pos="tr"] i { top: 5px; right: 5px; }
 .np-screen[data-pos="br"] i { bottom: 5px; right: 5px; }
 .np-screen[data-pos="bl"] i { bottom: 5px; left: 5px; }
-.np-name { font-size: 11.5px; color: var(--ink-2); }
+.np-name { font-size:var(--fs-1); color: var(--ink-2); }
 
 /* перелік подій */
 .notify-events { display: flex; flex-direction: column; gap: 1px; border: 1px solid var(--line); border-radius: var(--r-ctl); overflow: hidden; background: var(--line); }
@@ -557,7 +557,7 @@ main.setv2.scon {
   padding: 10px 13px;
   background: var(--well);
   cursor: pointer;
-  font-size: 12.5px;
+  font-size:var(--fs-2);
   transition: background-color var(--ui-speed) ease;
 }
 .notify-ev:hover { background: var(--card-2); }
@@ -568,7 +568,7 @@ main.setv2.scon {
 .notify-ev.lvl-info .ne-dot { background: var(--accent-b); }
 .notify-ev.lvl-ok .ne-dot { background: var(--accent-c); }
 .ne-label { flex: 1; }
-.ne-lvl { font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+.ne-lvl { font-size:var(--fs-0); color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
 
 /* ── журнал змін ──────────────────────────────────────────── */
 .scon-changelog {
@@ -577,7 +577,7 @@ main.setv2.scon {
   border-top: 1px solid var(--line);
 }
 .scon-changelog-title {
-  font-size: 13px;
+  font-size:var(--fs-2);
   font-weight: 700;
   letter-spacing: -0.005em;
   margin: 0 0 10px;
@@ -598,12 +598,12 @@ main.setv2.scon {
 }
 .scon-rel > summary::-webkit-details-marker { display: none; }
 .scon-rel-ver {
-  font-size: 12.5px;
+  font-size:var(--fs-2);
   font-weight: 600;
   color: var(--ink);
 }
 .scon-rel-now {
-  font-size: 10.5px;
+  font-size:var(--fs-0);
   font-weight: 600;
   color: var(--accent-c);
   background: rgba(var(--accent-base-rgb), 0.12);
@@ -613,7 +613,7 @@ main.setv2.scon {
 }
 .scon-rel-date {
   margin-left: auto;
-  font-size: 11px;
+  font-size:var(--fs-0);
   color: var(--ink-3);
 }
 .scon-rel[open] .scon-more-caret { transform: rotate(90deg); }
@@ -625,7 +625,7 @@ main.setv2.scon {
 }
 .scon-rel-label {
   display: inline-block;
-  font-size: 10.5px;
+  font-size:var(--fs-0);
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -643,7 +643,7 @@ main.setv2.scon {
   gap: 4px;
 }
 .scon-rel-body li {
-  font-size: 12.5px;
+  font-size:var(--fs-2);
   color: var(--ink-2);
   line-height: 1.45;
 }
@@ -706,7 +706,7 @@ main.setv2.scon {
   border: 0;
   outline: none;
   color: var(--ink);
-  font-size: 15px;
+  font-size:var(--fs-4);
   font-family: var(--font-body);
 }
 .scon-pal-list {
@@ -726,13 +726,13 @@ main.setv2.scon {
   background: none;
   border-radius: 8px;
   text-align: left;
-  font-size: 13px;
+  font-size:var(--fs-2);
   color: var(--ink-2);
   cursor: pointer;
 }
 .scon-pal-list li button .g {
   margin-left: auto;
-  font-size: 11px;
+  font-size:var(--fs-0);
   color: var(--ink-3);
 }
 .scon-pal-list li[aria-selected="true"] button {
@@ -743,14 +743,14 @@ main.setv2.scon {
   padding: 22px;
   text-align: center;
   color: var(--ink-3);
-  font-size: 13px;
+  font-size:var(--fs-2);
 }
 .scon-pal-foot {
   display: flex;
   gap: 14px;
   padding: 9px 15px;
   border-top: 1px solid var(--line);
-  font-size: 11px;
+  font-size:var(--fs-0);
   color: var(--ink-3);
 }
 

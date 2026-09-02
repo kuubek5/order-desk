@@ -26,7 +26,7 @@
 }
 
 .setup-intro h2 {
-  font-size: 1.35rem;
+  font-size:var(--fs-6);
   margin-bottom: var(--space-2);
 }
 
@@ -43,7 +43,7 @@
   border-radius: var(--radius-chip);
   padding: var(--space-1) var(--space-3);
   color: var(--color-text-muted);
-  font-size: 0.8rem;
+  font-size:var(--fs-2);
   font-weight: 600;
 }
 
@@ -112,7 +112,7 @@
 
 .settings-group h2 {
   margin-bottom: var(--space-2);
-  font-size: 1.25rem;
+  font-size:var(--fs-5);
 }
 
 .settings-field {
@@ -128,13 +128,13 @@
    партіал не успадковував ваду й не породжував третій локальний фікс. */
 .settings-field label {
   display: block;
-  font-size: 0.85rem;
+  font-size:var(--fs-3);
   color: var(--color-text-muted);
   font-weight: 600;
 }
 
 .settings-help {
-  font-size: 0.8rem;
+  font-size:var(--fs-2);
   color: var(--color-text-muted);
   margin: 0;
   font-weight: 400;
@@ -146,7 +146,7 @@
   min-height: 8rem;
   resize: vertical;
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size:var(--fs-3);
   line-height: 1.4;
   padding: var(--space-3) var(--space-4);
   white-space: pre;
@@ -172,7 +172,7 @@
   border-radius: var(--radius-card);
   padding: var(--space-3) var(--space-5);
   color: var(--color-accent);
-  font-size: 0.95rem;
+  font-size:var(--fs-4);
   font-weight: 600;
   animation: fadeInSettings 0.3s ease forwards;
   z-index: 100;
@@ -232,7 +232,7 @@
 .users-reset-input {
   width: 10rem;
   padding: var(--space-1) var(--space-2);
-  font-size: 0.85rem;
+  font-size:var(--fs-3);
 }
 
 .users-add-form {
@@ -259,7 +259,7 @@
   border: 1px solid var(--color-card-border);
   border-radius: var(--radius-chip);
   padding: var(--space-1) var(--space-3);
-  font-size: 0.8rem;
+  font-size:var(--fs-2);
   font-weight: 600;
   line-height: 1.3;
   animation: checkPillIn 0.22s ease-out both;
@@ -374,7 +374,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: 0.85rem;
+  font-size:var(--fs-3);
   color: var(--color-text-muted);
   cursor: pointer;
 }
@@ -427,7 +427,7 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 
 /* Кабінет оператора: вужча колонка карток, монолітерна літера, вихід-зі-зміни */
 .setv2 .setv2-stack{display:flex;flex-direction:column;gap:14px;max-width:26rem}
-.setv2 .acc-who{font-size:12.5px;color:var(--ink-2);line-height:1.5;margin:0 0 2px}
+.setv2 .acc-who{font-size:var(--fs-2);color:var(--ink-2);line-height:1.5;margin:0 0 2px}
 .setv2 .acc-who strong{color:var(--ink);font-weight:600}
 .setv2 .acc-letter{font-family:var(--font-mono);font-weight:600;color:var(--accent-c)}
 .setv2 .acc-letter-input{width:4.5rem;text-align:center;text-transform:uppercase;font-family:var(--font-mono);letter-spacing:.04em}
@@ -441,10 +441,10 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .journal-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;background:var(--card)}
 .setv2 .journal-row{display:grid;grid-template-columns:84px 9rem 1fr auto;gap:12px;align-items:baseline;padding:8px 14px}
 .setv2 .journal-row+.journal-row{border-top:1px solid var(--line-2)}
-.setv2 .jr-time{color:var(--ink-3);font-size:11.5px}
-.setv2 .jr-op{color:var(--ink-2);font-size:12.5px;font-weight:500}
-.setv2 .jr-note{color:var(--ink);font-size:13px;min-width:0}
-.setv2 .jr-work{color:var(--ink-3);font-size:12px;white-space:nowrap}
+.setv2 .jr-time{color:var(--ink-3);font-size:var(--fs-1)}
+.setv2 .jr-op{color:var(--ink-2);font-size:var(--fs-2);font-weight:500}
+.setv2 .jr-note{color:var(--ink);font-size:var(--fs-2);min-width:0}
+.setv2 .jr-work{color:var(--ink-3);font-size:var(--fs-1);white-space:nowrap}
 .setv2 .journal-row.is-undone{opacity:.6}
 .setv2 .journal-row.is-undone .jr-note{text-decoration:line-through}
 @media (max-width:640px){.setv2 .journal-row{grid-template-columns:70px 1fr;row-gap:2px}.setv2 .jr-work{grid-column:2}}
@@ -452,10 +452,10 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 /* картки-групи */
 .setv2 .settings-group,.setv2 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);padding:15px 16px;margin:0}
 .setv2 .settings-group:hover,.setv2 .card:hover{border-color:var(--line)}
-.setv2 .settings-group > h2,.setv2 .settings-group-heading h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0 0 4px;letter-spacing:-.005em}
+.setv2 .settings-group > h2,.setv2 .settings-group-heading h2{font-family:var(--font-head);font-size:var(--fs-3);font-weight:600;margin:0 0 4px;letter-spacing:-.005em}
 .setv2 .settings-group-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
-.setv2 .settings-help{font-size:11.5px;color:var(--ink-3);line-height:1.4;margin:0 0 2px}
-.setv2 .connection-state{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--raise);color:var(--ink-2);white-space:nowrap;flex:0 0 auto}
+.setv2 .settings-help{font-size:var(--fs-1);color:var(--ink-3);line-height:1.4;margin:0 0 2px}
+.setv2 .connection-state{font-size:var(--fs-0);padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--raise);color:var(--ink-2);white-space:nowrap;flex:0 0 auto}
 .setv2 .connection-state-ready{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .3)}
 
 /* поля */
@@ -465,14 +465,14 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
    акаунт» is selected, and vice versa) stayed on screen. Honour `hidden`. */
 .setv2 .settings-field[hidden]{display:none}
 .setv2 .settings-field:last-child{margin-bottom:0}
-.setv2 .settings-field > label{font-size:12px;font-weight:500;color:var(--ink-2)}
+.setv2 .settings-field > label{font-size:var(--fs-1);font-weight:500;color:var(--ink-2)}
 .setv2 .login-glow{background:none;border:0;padding:0;box-shadow:none}
 .setv2 .login-input-wrap{position:relative;display:flex;align-items:center;gap:8px}
-.setv2 .login-input{width:100%;height:40px;padding:0 13px;border-radius:var(--r-ctl);background:var(--field);border:1px solid var(--line);color:var(--ink);font-family:var(--font-body);font-size:13.5px;outline:none;transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease}
+.setv2 .login-input{width:100%;height:40px;padding:0 13px;border-radius:var(--r-ctl);background:var(--field);border:1px solid var(--line);color:var(--ink);font-family:var(--font-body);font-size:var(--fs-3);outline:none;transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease}
 .setv2 .login-input:hover{border-color:var(--line-2)}
 .setv2 .login-input:focus{border-color:var(--focus-border);background:var(--well);box-shadow:var(--focus-glow)}
 .setv2 .login-input::placeholder{color:var(--ink-3)}
-.setv2 .settings-textarea{height:auto;min-height:118px;padding:9px 11px;line-height:1.5;resize:vertical;font-family:var(--font-mono);font-size:12.5px}
+.setv2 .settings-textarea{height:auto;min-height:118px;padding:9px 11px;line-height:1.5;resize:vertical;font-family:var(--font-mono);font-size:var(--fs-2)}
 .setv2 .login-toggle-password{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-3);border:0;background:none;cursor:pointer}
 .setv2 .login-toggle-password:hover{color:var(--accent-c)}
 .setv2 .login-toggle-password svg{width:16px;height:16px}
@@ -480,14 +480,14 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 /* сегментований перемикач (напр. Сервісний акаунт / Google-акаунт) */
 .setv2 .addwork-seg{display:inline-flex;align-self:flex-start;background:var(--card-2);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
 .setv2 .addwork-seg button{appearance:none;border:0;background:transparent;height:32px;padding:0 16px;border-radius:999px;
-  font:inherit;font-size:12.5px;font-weight:500;color:var(--ink-2);cursor:pointer;
+  font:inherit;font-size:var(--fs-2);font-weight:500;color:var(--ink-2);cursor:pointer;
   transition:background .15s ease,color .15s ease}
 .setv2 .addwork-seg button:hover{color:var(--ink);background:var(--card-3)}
 .setv2 .addwork-seg button.is-active{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .34)}
 
 /* кнопки */
 .setv2 .settings-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:2px}
-.setv2 .settings-secondary-button,.setv2 .login-submit,.setv2 .settings-submit{display:inline-flex;align-items:center;justify-content:center;height:40px;min-height:0;box-sizing:border-box;line-height:1;padding:0 18px;border-radius:var(--r-ctl);font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink);transition:background .15s ease,border-color .15s ease,color .15s ease,transform .12s ease,box-shadow .15s ease}
+.setv2 .settings-secondary-button,.setv2 .login-submit,.setv2 .settings-submit{display:inline-flex;align-items:center;justify-content:center;height:40px;min-height:0;box-sizing:border-box;line-height:1;padding:0 18px;border-radius:var(--r-ctl);font-size:var(--fs-2);font-weight:500;cursor:pointer;border:1px solid var(--line-2);background:var(--card-2);color:var(--ink);transition:background .15s ease,border-color .15s ease,color .15s ease,transform .12s ease,box-shadow .15s ease}
 /* display:inline-flex вище перебиває [hidden]{display:none} браузера — тому
    поверни його: кнопки з атрибутом hidden (напр. «Скопіювати звіт» до запуску
    самоперевірки) мусять лишатись прихованими. */
@@ -506,21 +506,21 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .login-submit:active,.setv2 .settings-submit:active{transform:translateY(0);box-shadow:none}
 .setv2 .settings-backup-danger{border-color:rgba(var(--alarm-rgb), .4);color:var(--alarm-ink);background:rgba(var(--alarm-rgb), .06)}
 .setv2 .settings-backup-danger:hover{background:rgba(var(--alarm-rgb), .12)}
-.setv2 .link-button{border:0;background:none;color:var(--accent-c);font-size:12.5px;cursor:pointer;padding:0}
+.setv2 .link-button{border:0;background:none;color:var(--accent-c);font-size:var(--fs-2);cursor:pointer;padding:0}
 .setv2 .link-button:hover{text-decoration:underline}
 
 /* компактний рядок статусу секрету (JSON-ключі) з кнопкою "Змінити" —
    ховає textarea за замовчуванням, щоб крок не розтягувався. */
 .setv2 .cred-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.setv2 .cred-row-label{font-size:12px;font-weight:500;color:var(--ink-2)}
-.setv2 .cred-status{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--raise);color:var(--ink-3)}
+.setv2 .cred-row-label{font-size:var(--fs-1);font-weight:500;color:var(--ink-2)}
+.setv2 .cred-status{font-size:var(--fs-0);padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--raise);color:var(--ink-3)}
 .setv2 .cred-status-ready{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .3)}
 .setv2 [data-cred-field]{margin-top:8px}
 
 /* перевірка з'єднання / шляхів */
 .setv2 .settings-check-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
 .setv2 .settings-check-button{height:32px;padding:0 13px}
-.setv2 .settings-check-result{font-size:11.5px}
+.setv2 .settings-check-result{font-size:var(--fs-1)}
 .setv2 .settings-check-result .ok,.setv2 .settings-check-result-ok{color:var(--accent-c)}
 .setv2 .settings-check-result .err,.setv2 .settings-check-result-error{color:var(--alarm)}
 .setv2 .check-spinner{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.22);border-top-color:var(--accent-c);animation:setv2spin .7s linear infinite;display:none}
@@ -538,37 +538,37 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .wizard-step.wizard-step-about .num{background:rgba(var(--accent-base-rgb), .16);border-color:var(--accent);color:var(--accent-c)}
 .setv2 .update-check-found{flex-wrap:wrap;gap:8px 10px}
 .setv2 .update-check-install{display:inline-flex;margin:0}
-.setv2 .update-check-found .settings-secondary-button{height:28px;padding:0 11px;font-size:12px;font-weight:500}
-.setv2 .update-check-found a{color:var(--accent-c);font-size:12px}
+.setv2 .update-check-found .settings-secondary-button{height:28px;padding:0 11px;font-size:var(--fs-1);font-weight:500}
+.setv2 .update-check-found a{color:var(--accent-c);font-size:var(--fs-1)}
 
 /* сповіщення */
-.setv2 .settings-success{border-radius:9px;padding:10px 13px;font-size:13px;border:1px solid rgba(var(--accent-rgb), .3);background:rgba(var(--accent-base-rgb), .1);color:var(--accent-c);margin-bottom:12px}
+.setv2 .settings-success{border-radius:9px;padding:10px 13px;font-size:var(--fs-2);border:1px solid rgba(var(--accent-rgb), .3);background:rgba(var(--accent-base-rgb), .1);color:var(--accent-c);margin-bottom:12px}
 .setv2 .settings-success p{margin:0}
 .setv2 .settings-error{border-color:rgba(var(--alarm-rgb), .4);background:rgba(var(--alarm-rgb), .08);color:var(--alarm-ink)}
-.setv2 .settings-alert{border-radius:9px;padding:10px 13px;margin-bottom:12px;border:1px solid var(--line-2);background:var(--card-2);font-size:13px}
+.setv2 .settings-alert{border-radius:9px;padding:10px 13px;margin-bottom:12px;border:1px solid var(--line-2);background:var(--card-2);font-size:var(--fs-2)}
 .setv2 .settings-alert-error{border-color:rgba(var(--alarm-rgb), .4);background:rgba(var(--alarm-rgb), .08);color:var(--alarm-ink)}
 .setv2 .setup-intro{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 16px;border:1px solid rgba(var(--accent-rgb), .28);background:rgba(var(--accent-base-rgb), .07);border-radius:var(--r-card);margin-bottom:14px}
-.setv2 .setup-intro h2{font-family:var(--font-head);font-size:15px;margin:0 0 3px}
-.setv2 .setup-intro p{margin:0;font-size:12.5px;color:var(--ink-2)}
-.setv2 .setup-progress{font-family:var(--font-mono);font-size:11.5px;color:var(--accent-c);flex:0 0 auto}
+.setv2 .setup-intro h2{font-family:var(--font-head);font-size:var(--fs-4);margin:0 0 3px}
+.setv2 .setup-intro p{margin:0;font-size:var(--fs-2);color:var(--ink-2)}
+.setv2 .setup-progress{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--accent-c);flex:0 0 auto}
 
 /* таблиця операторів */
 .setv2 .users-table{border-collapse:separate;border-spacing:0;width:100%}
-.setv2 .users-table thead th{text-align:left;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line-2);white-space:nowrap}
-.setv2 .users-table tbody td{padding:9px 10px;border-bottom:1px solid var(--raise-2);font-size:12.5px;color:var(--ink-2);vertical-align:middle}
+.setv2 .users-table thead th{text-align:left;font-size:var(--fs-0);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line-2);white-space:nowrap}
+.setv2 .users-table tbody td{padding:9px 10px;border-bottom:1px solid var(--raise-2);font-size:var(--fs-2);color:var(--ink-2);vertical-align:middle}
 .setv2 .users-table .order-id{font-family:var(--font-mono);color:var(--ink)}
-.setv2 .status-badge{font-size:11px;padding:2px 8px;border-radius:5px;border:1px solid var(--line-2);background:var(--raise);color:var(--ink-2)}
+.setv2 .status-badge{font-size:var(--fs-0);padding:2px 8px;border-radius:5px;border:1px solid var(--line-2);background:var(--raise);color:var(--ink-2)}
 .setv2 .user-badge-active{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .3)}
 .setv2 .user-badge-inactive{background:rgba(var(--alarm-rgb), .1);color:var(--alarm-ink);border-color:rgba(var(--alarm-rgb), .3)}
 .setv2 .users-reset-form{display:flex;gap:6px;align-items:center}
-.setv2 .users-reset-input{height:30px;width:130px;font-size:12px}
+.setv2 .users-reset-input{height:30px;width:130px;font-size:var(--fs-1)}
 .setv2 .users-add-form{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 .setv2 .users-add-form .settings-submit{grid-column:1/-1;justify-self:start}
 
 /* бекап */
 .setv2 .settings-backup-form{display:flex;flex-direction:column;gap:12px}
 .setv2 .settings-backup-divider{height:1px;background:var(--line);margin:16px 0}
-.setv2 .settings-backup-confirm{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:var(--ink-2);cursor:pointer}
+.setv2 .settings-backup-confirm{display:flex;align-items:flex-start;gap:9px;font-size:var(--fs-1);color:var(--ink-2);cursor:pointer}
 /* Fully custom checkbox: the native one renders a pale box that ignores the
    dark theme (accent-color only paints the checked fill). appearance:none +
    a drawn checkmark themes both states. */
@@ -593,24 +593,24 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .dropzone-icon{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--card-2);border:1px solid var(--line-2);color:var(--ink-2);transition:color .15s ease,border-color .15s ease}
 .setv2 .dropzone:hover .dropzone-icon,.setv2 .dropzone.is-dragover .dropzone-icon,.setv2 .dropzone.has-file .dropzone-icon{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .4)}
 .setv2 .dropzone-icon svg{width:21px;height:21px}
-.setv2 .dropzone-title{font-size:13px;font-weight:500;color:var(--ink)}
-.setv2 .dropzone-hint{font-size:11.5px;color:var(--ink-3)}
+.setv2 .dropzone-title{font-size:var(--fs-2);font-weight:500;color:var(--ink)}
+.setv2 .dropzone-hint{font-size:var(--fs-1);color:var(--ink-3)}
 .setv2 .dropzone-hint b{color:var(--ink-2);font-weight:600}
-.setv2 .dropzone-file{font-family:var(--font-mono);font-size:12px;color:var(--accent-c);word-break:break-all}
+.setv2 .dropzone-file{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--accent-c);word-break:break-all}
 .setv2 .table-scroll{overflow-x:auto}
 
 /* Автоматичні місячні копії — read-only список знімків БД */
-.setv2 .monthly-backups-title{font-size:13px;font-weight:600;color:var(--ink);margin:0 0 4px}
-.setv2 .monthly-backups-hint{font-size:11.5px;color:var(--ink-3);margin:0 0 12px;line-height:1.5}
+.setv2 .monthly-backups-title{font-size:var(--fs-2);font-weight:600;color:var(--ink);margin:0 0 4px}
+.setv2 .monthly-backups-hint{font-size:var(--fs-1);color:var(--ink-3);margin:0 0 12px;line-height:1.5}
 .setv2 .monthly-backups-hint .mono{font-family:var(--font-mono);color:var(--ink-2)}
 .setv2 .monthly-backups-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .setv2 .monthly-backups-list li{display:flex;align-items:center;gap:10px;padding:8px 12px;
   background:var(--card-2);border:1px solid var(--line);border-radius:8px}
 .setv2 .monthly-backups-list svg{width:16px;height:16px;flex:0 0 16px;fill:none;stroke:var(--accent-c);
   stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.setv2 .monthly-backups-list .name{font-size:12.5px;color:var(--ink)}
-.setv2 .monthly-backups-list .size{margin-left:auto;font-size:11.5px;color:var(--ink-3)}
-.setv2 .monthly-backups-empty{font-size:12px;color:var(--ink-3);margin:0}
+.setv2 .monthly-backups-list .name{font-size:var(--fs-2);color:var(--ink)}
+.setv2 .monthly-backups-list .size{margin-left:auto;font-size:var(--fs-1);color:var(--ink-3)}
+.setv2 .monthly-backups-empty{font-size:var(--fs-1);color:var(--ink-3);margin:0}
 
 @media (max-width:640px){ .setv2 .users-add-form{grid-template-columns:1fr} }
 
@@ -621,7 +621,7 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
    keep their existing .settings-field / .login-input / .users-table styling.
    ========================================================================== */
 .setv2 .setup-wizard-progress{display:flex;align-items:center;gap:12px;margin:0 0 18px;padding:12px 16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow)}
-.setv2 .setup-wizard-progress .lbl{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);white-space:nowrap}
+.setv2 .setup-wizard-progress .lbl{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-2);white-space:nowrap}
 .setv2 .setup-wizard-progress .lbl-pct{color:var(--accent-c)}
 .setv2 .setup-wizard-progress .bar{flex:1;height:8px;border-radius:4px;background:var(--field);border:1px solid var(--line);overflow:hidden}
 .setv2 .setup-wizard-progress .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent-d),var(--accent-b))}
@@ -630,15 +630,15 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .wizard-flow::before{content:"";position:absolute;left:17px;top:16px;bottom:22px;width:2px;background:var(--line-2)}
 .setv2 .wizard-step{position:relative;margin-bottom:14px}
 .setv2 .wizard-step:last-child{margin-bottom:0}
-.setv2 .wizard-step .num{position:absolute;left:-44px;top:0;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-weight:600;font-size:14px;background:var(--card-2);border:2px solid var(--line-2);color:var(--ink-3);z-index:2}
+.setv2 .wizard-step .num{position:absolute;left:-44px;top:0;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-mono);font-weight:600;font-size:var(--fs-3);background:var(--card-2);border:2px solid var(--line-2);color:var(--ink-3);z-index:2}
 .setv2 .wizard-step.done .num{background:rgba(var(--accent-base-rgb), .16);border-color:var(--accent);color:var(--accent-c)}
 .setv2 .wizard-step.active .num{border-color:var(--accent-b);color:var(--accent-c);box-shadow:0 0 0 4px rgba(var(--accent-rgb), .12)}
 .setv2 .wizard-step .box{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);padding:16px}
 .setv2 .wizard-step.active .box{border-color:rgba(var(--accent-rgb), .3)}
 .setv2 .wizard-step-head{display:flex;align-items:center;gap:12px;margin-bottom:4px}
-.setv2 .wizard-step-head h2{font-family:var(--font-head);font-size:15px;font-weight:600;margin:0;letter-spacing:-.005em}
+.setv2 .wizard-step-head h2{font-family:var(--font-head);font-size:var(--fs-4);font-weight:600;margin:0;letter-spacing:-.005em}
 .setv2 .wizard-step-head .connection-state{margin-left:auto}
-.setv2 .wizard-sub{color:var(--ink-2);font-size:12.5px;line-height:1.45;margin:0 0 14px}
+.setv2 .wizard-sub{color:var(--ink-2);font-size:var(--fs-2);line-height:1.45;margin:0 0 14px}
 .setv2 .wizard-step .users-add-form{margin-top:14px}
 
 @media (prefers-reduced-motion: reduce){
@@ -655,16 +655,16 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
    Керування каталогом матеріалів: категорії + правила-аліаси. Скоуплено під
    .matlib, використовує ті ж токени, що й решта setv2. */
 .matlib-head{margin-bottom:14px}
-.matlib-back{display:inline-block;margin-bottom:10px;color:var(--ink-3);font-size:12.5px;text-decoration:none}
+.matlib-back{display:inline-block;margin-bottom:10px;color:var(--ink-3);font-size:var(--fs-2);text-decoration:none}
 .matlib-back:hover{color:var(--accent)}
-.matlib-flash{padding:10px 13px;border-radius:var(--r-ctl);margin-bottom:14px;font-size:13px;border:1px solid var(--line)}
+.matlib-flash{padding:10px 13px;border-radius:var(--r-ctl);margin-bottom:14px;font-size:var(--fs-2);border:1px solid var(--line)}
 .matlib-flash.is-ok{background:rgba(var(--accent-rgb), .10);border-color:rgba(var(--accent-rgb), .35);color:var(--ink)}
 .matlib-flash.is-error{background:rgba(244,114,110,.10);border-color:rgba(244,114,110,.4);color:var(--alarm)}
 .matlib-summary .panel-body{display:flex;align-items:center;justify-content:space-between;gap:16px}
-.matlib-summary .dlabel{color:var(--ink-3);font-size:12px;margin-right:8px}
-.matlib-summary .tnum{font-family:var(--font-mono);font-size:22px;font-weight:700;color:var(--ink)}
+.matlib-summary .dlabel{color:var(--ink-3);font-size:var(--fs-1);margin-right:8px}
+.matlib-summary .tnum{font-family:var(--font-mono);font-size:var(--fs-6);font-weight:700;color:var(--ink)}
 .matlib-summary .tnum.is-warn{color:#f0a24b}
-.matlib-summary .unit{color:var(--ink-3);font-size:12.5px;margin-left:6px}
+.matlib-summary .unit{color:var(--ink-3);font-size:var(--fs-2);margin-left:6px}
 .matlib-material{margin-bottom:12px}
 /* ── Кадр матеріалу в шапці картки ───────────────────────────────────────
    Матеріал доти був лише буквами (Zr, PMMA, Ti), і бібліотека читалась як
@@ -705,12 +705,12 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .matlib-material.mat-wax  { --matline:#3fb6c9 }
 /* Сам кадр приходить змінною --mat-art з класу родини (update_overlay.css,
    поруч із кольором родини) — тут лише розмір і форма мітки. */
-.matlib-tag{margin-left:8px;font-size:11px;padding:2px 7px;border-radius:6px;background:var(--line);color:var(--ink-3);vertical-align:middle}
+.matlib-tag{margin-left:8px;font-size:var(--fs-0);padding:2px 7px;border-radius:6px;background:var(--line);color:var(--ink-3);vertical-align:middle}
 .matlib-aliases{display:flex;flex-wrap:wrap;gap:7px;padding:2px 0 12px}
-.matlib-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:999px;border:1px solid var(--line-2);background:var(--field);font-size:12.5px;color:var(--ink)}
+.matlib-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 10px;border-radius:999px;border:1px solid var(--line-2);background:var(--field);font-size:var(--fs-2);color:var(--ink)}
 .matlib-chip.is-token{border-color:rgba(var(--accent-rgb), .4)}
 .matlib-chip .mono{font-family:var(--font-mono)}
-.matlib-mt{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3);width:14px;text-align:center}
+.matlib-mt{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3);width:14px;text-align:center}
 .matlib-x-form{display:inline-flex;margin:0}
 /* Ціль кліку 24px без зміни малюнка (від'ємні поля тримають щільність
    ряду): 18px на дію, що стирає правило класифікації, — це промах. */
@@ -720,10 +720,10 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .matlib-add-alias,.matlib-add-material{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .matlib-add-alias .login-input{flex:1;min-width:160px}
 .matlib-select{flex:0 0 auto;min-width:150px}
-.matlib-check{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2);font-size:12.5px}
+.matlib-check{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2);font-size:var(--fs-2)}
 .matlib-newmat{margin-top:16px}
 .matlib-add-material .login-input{flex:1;min-width:180px}
-.matlib-link{display:inline-flex;align-items:center;gap:6px;margin-bottom:14px;padding:8px 13px;border-radius:var(--r-ctl);border:1px solid var(--line-2);background:var(--field);color:var(--ink);font-size:13px;text-decoration:none;transition:border-color .15s ease,color .15s ease}
+.matlib-link{display:inline-flex;align-items:center;gap:6px;margin-bottom:14px;padding:8px 13px;border-radius:var(--r-ctl);border:1px solid var(--line-2);background:var(--field);color:var(--ink);font-size:var(--fs-2);text-decoration:none;transition:border-color .15s ease,color .15s ease}
 .matlib-link:hover{border-color:rgba(var(--accent-rgb), .45);color:var(--accent)}
 
 /* Кабінет: вибір теми (30.08.26). Активна тема — залита акцентом,
@@ -746,7 +746,7 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
    першого запуску й журнал — їм широка сітка потрібна. */
 main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .setv2-narrow h1{margin:0 0 var(--space-1)}
-.setv2-narrow .acc-sub{margin:0 0 var(--space-5);font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.setv2-narrow .acc-sub{margin:0 0 var(--space-5);font-size:var(--fs-2);color:var(--ink-2);line-height:1.5}
 .setv2-narrow .acc-sub strong{color:var(--ink);font-weight:600}
 .setv2-narrow .setv2-stack{max-width:none;gap:var(--space-3)}
 
@@ -782,7 +782,7 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .setv2 .acc-icons-row{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-2)}
 .setv2 .acc-swatch{display:flex;flex-direction:column;gap:var(--space-2);padding:var(--space-2);
   border:1px solid var(--line-2);border-radius:var(--r-card);background:var(--card-2);
-  color:var(--ink);font:inherit;font-size:12.5px;cursor:pointer;text-align:left;
+  color:var(--ink);font:inherit;font-size:var(--fs-2);cursor:pointer;text-align:left;
   transition:border-color .15s ease,box-shadow .15s ease}
 .setv2 .acc-swatch:hover{border-color:var(--control-edge)}
 .setv2 .acc-swatch:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
@@ -801,7 +801,7 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .thsw-head{height:4px;width:46%;border-radius:2px;background:var(--ink-3);opacity:.6}
 .thsw-row{display:flex;align-items:center;gap:5px;padding:3px 5px;border-radius:3px;
   background:var(--card);border:1px solid var(--line)}
-.thsw-row b{font-family:var(--font-mono);font-size:8.5px;font-weight:500;color:var(--ink)}
+.thsw-row b{font-family:var(--font-mono);font-size:var(--fs-0);font-weight:500;color:var(--ink)}
 .thsw-mat{width:2px;align-self:stretch;border-radius:1px;background:var(--accent-b);opacity:.75}
 .thsw-chip{margin-left:auto;width:16px;height:5px;border-radius:999px;
   background:rgba(var(--accent-rgb), .22);border:1px solid rgba(var(--accent-rgb), .4)}
@@ -842,8 +842,8 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 /* Плитки прев'ю кнопок / лоадера / чіпів у кабінеті. Той самий каркас, що в
    іконок (.icsw), але вміст різний за розміром, тому власні висоти. */
 .btnsw,.ldsw,.chsw{display:grid;place-items:center;min-height:34px;width:100%;color:var(--ink)}
-.btnsw .btn{pointer-events:none;font-size:11.5px;padding:5px 10px;min-height:0;height:auto}
-.chsw .status-badge{pointer-events:none;font-size:10.5px}
+.btnsw .btn{pointer-events:none;font-size:var(--fs-1);padding:5px 10px;min-height:0;height:auto}
+.chsw .status-badge{pointer-events:none;font-size:var(--fs-0)}
 
 /* ── Жива міні-сторінка прев'ю в кабінеті (30.08.26) ──────────────────────
    Симуляція реального екрана: рейка, шапка з кнопками, три рядки черги з
@@ -872,12 +872,12 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 
 .acc-live .al-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;padding:10px}
 .acc-live .al-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px}
-.acc-live .al-title{font-family:var(--font-head);font-size:13px;font-weight:600;letter-spacing:var(--ls-head)}
+.acc-live .al-title{font-family:var(--font-head);font-size:var(--fs-2);font-weight:600;letter-spacing:var(--ls-head)}
 .acc-live .al-acts{display:flex;gap:6px}
 /* Кнопки в прев'ю не натискаються: це рендер стану, а не робочий елемент. */
 .acc-live .btn{
   pointer-events:none;display:inline-flex;align-items:center;justify-content:center;
-  height:24px;padding:0 10px;border-radius:var(--r-ctl);font-size:11px;font-weight:500;
+  height:24px;padding:0 10px;border-radius:var(--r-ctl);font-size:var(--fs-0);font-weight:500;
   border:1px solid var(--line-2);background:var(--card);color:var(--ink);
 }
 .acc-live .btn.apex{background:var(--accent-b);border-color:var(--accent-b);color:var(--accent-well);font-weight:600}
@@ -887,16 +887,16 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
   border:1px solid var(--line);border-radius:5px;background:var(--card);
   box-shadow:inset 3px 0 0 var(--m,transparent);
 }
-.acc-live .al-row > b{font-family:var(--font-mono);font-size:10.5px;font-weight:500;color:var(--ink)}
+.acc-live .al-row > b{font-family:var(--font-mono);font-size:var(--fs-0);font-weight:500;color:var(--ink)}
 .acc-live .al-mat{display:none}
 .acc-live .al-row:nth-child(2){box-shadow:inset 3px 0 0 var(--accent-c)}
 .acc-live .al-row:nth-child(3){box-shadow:inset 3px 0 0 var(--warn)}
 .acc-live .al-row.is-busy{box-shadow:inset 3px 0 0 var(--alarm)}
 .acc-live .status-badge{
-  margin-left:auto;font-size:9.5px;padding:2px 8px;border-radius:999px;
+  margin-left:auto;font-size:var(--fs-0);padding:2px 8px;border-radius:999px;
   border:1px solid rgba(var(--accent-rgb), .4);background:rgba(var(--accent-rgb), .1);color:var(--accent-c);
 }
-.acc-live .al-load{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--ink-3)}
+.acc-live .al-load{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-0);color:var(--ink-3)}
 /* Індикатор у прев'ю видимий постійно — у роботі він з'являється лише на
    .is-loading, а тут його треба показати, щоб було що порівнювати. */
 .acc-live .mill-spin{display:inline-block;animation:mill-spin .75s linear infinite}

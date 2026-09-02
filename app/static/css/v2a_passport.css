@@ -15,42 +15,42 @@
    ========================================================================== */
 main.passport2{max-width:760px;margin:0 auto;padding:20px}
 .passport2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}
-.passport2 .p2-back{display:inline-flex;gap:14px;margin-bottom:14px;font-size:13px}
+.passport2 .p2-back{display:inline-flex;gap:14px;margin-bottom:14px;font-size:var(--fs-2)}
 .passport2 .p2-back a{color:var(--ink-2);text-decoration:none}
 .passport2 .p2-back a:hover{color:var(--accent-c);opacity:1}
 .passport2 .p2-head{display:flex;align-items:flex-start;gap:10px;padding-bottom:14px;margin-bottom:6px;border-bottom:1px solid var(--line)}
-.passport2 .p2-head .ord{font-family:var(--font-mono);font-size:22px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.passport2 .p2-head .ord{font-family:var(--font-mono);font-size:var(--fs-6);font-weight:600;letter-spacing:-.01em;color:var(--ink)}
 .passport2 .p2-head .src{
-  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;margin-left:8px;
+  font-family:var(--font-mono);font-size:var(--fs-0);letter-spacing:.06em;padding:1px 5px;border-radius:4px;margin-left:8px;
   border:1px solid rgba(var(--accent-rgb), .32);color:var(--accent-c);background:rgba(var(--accent-base-rgb), .1);vertical-align:middle;
 }
-.passport2 .p2-head .client{font-size:13px;color:var(--ink-2);margin-top:3px}
+.passport2 .p2-head .client{font-size:var(--fs-2);color:var(--ink-2);margin-top:3px}
 .passport2 .p2-head .status-now{margin-left:auto}
 
 .passport2 .dsec{margin:18px 0}
-.passport2 .dsec .dlabel{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:8px}
-.passport2 .kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;font-size:12.5px;color:var(--ink-2)}
+.passport2 .dsec .dlabel{font-size:var(--fs-0);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:8px}
+.passport2 .kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;font-size:var(--fs-2);color:var(--ink-2)}
 .passport2 .kv+.kv{border-top:1px solid var(--card-2)}
-.passport2 .kv b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:12px}
-.passport2 .camtext{font-size:13px;color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:8px;padding:10px 11px;line-height:1.45}
+.passport2 .kv b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:var(--fs-1)}
+.passport2 .camtext{font-size:var(--fs-2);color:var(--ink);background:var(--field);border:1px solid var(--line);border-radius:8px;padding:10px 11px;line-height:1.45}
 .passport2 .camtext.rush{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .35)}
 .passport2 .camtext.attn{color:var(--ink);font-weight:600}
 .passport2 .camtext.empty-cam{color:var(--ink-3)}
 .passport2 .pathrow{display:flex;align-items:center;gap:8px;background:var(--field);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
-.passport2 .pathrow .p{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.passport2 .pathrow .p{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .passport2 .iconbtn{width:30px;height:30px;flex:0 0 30px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-2);border:1px solid var(--line-2);background:none;cursor:pointer;transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease;text-decoration:none}
 .passport2 .iconbtn:hover{background:rgba(var(--accent-base-rgb), .12);border-color:rgba(var(--accent-rgb), .35);color:var(--accent-c);opacity:1}
 .passport2 .iconbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .passport2 .sumrow{display:flex;gap:8px}
 .passport2 .suminput{
   flex:1;min-width:0;height:36px;padding:0 10px;border-radius:var(--r-ctl);background:var(--field);border:1px solid var(--line);
-  color:var(--ink);font-family:var(--font-mono);font-size:13px;outline:none;
+  color:var(--ink);font-family:var(--font-mono);font-size:var(--fs-2);outline:none;
 }
 .passport2 .suminput::placeholder{color:var(--ink-3);font-family:var(--font-body)}
 .passport2 .suminput:focus{border-color:rgba(var(--accent-rgb), .45);box-shadow:inset 0 0 18px -12px rgba(var(--accent-rgb), .9)}
 .passport2 .btn{
   display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 14px;border-radius:var(--r-ctl);
-  border:1px solid var(--line-2);background:var(--card);color:var(--ink);font-size:13px;font-weight:500;cursor:pointer;
+  border:1px solid var(--line-2);background:var(--card);color:var(--ink);font-size:var(--fs-2);font-weight:500;cursor:pointer;
   transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease;
 }
 .passport2 .btn.primary{background:rgba(var(--accent-base-rgb), .15);border-color:rgba(var(--accent-rgb), .42);color:var(--accent-c)}
@@ -58,7 +58,7 @@ main.passport2{max-width:760px;margin:0 auto;padding:20px}
 .passport2 .status-opts{display:flex;flex-wrap:wrap;gap:6px}
 .passport2 .sbtn{
   height:30px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--field);
-  color:var(--ink-2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  color:var(--ink-2);font-size:var(--fs-2);font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer;
   transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease;
 }
 .passport2 .sbtn:hover{color:var(--ink);border-color:var(--line-2)}
@@ -69,10 +69,10 @@ main.passport2{max-width:760px;margin:0 auto;padding:20px}
 .passport2 .timeline{display:flex;flex-direction:column}
 .passport2 .tl-item{display:flex;gap:12px;padding:9px 0}
 .passport2 .tl-item+.tl-item{border-top:1px solid var(--card-2)}
-.passport2 .tl-item .t{font-family:var(--font-mono);font-size:11px;color:var(--ink-3);flex:0 0 84px;padding-top:1px}
+.passport2 .tl-item .t{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3);flex:0 0 84px;padding-top:1px}
 .passport2 .tl-item .body{flex:1;min-width:0}
-.passport2 .tl-item .label{font-size:13px;color:var(--ink);font-weight:500}
-.passport2 .tl-item .who{font-size:12px;color:var(--ink-3);margin-top:1px}
+.passport2 .tl-item .label{font-size:var(--fs-2);color:var(--ink);font-weight:500}
+.passport2 .tl-item .who{font-size:var(--fs-1);color:var(--ink-3);margin-top:1px}
 .passport2 .tl-undone{opacity:.7}
 .passport2 .tl-undone .label{text-decoration:line-through;color:var(--ink-3)}
 /* Кадр родини в чіпі матеріалу. Сам файл приходить змінною --mat-art з
@@ -82,27 +82,27 @@ main.passport2{max-width:760px;margin:0 auto;padding:20px}
 .passport2 .matchip-thumb{width:16px;height:16px;flex:0 0 16px;margin:0 7px 0 -2px;
   border-radius:4px;background-image:var(--mat-art);background-size:cover;background-position:center;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.10)}
-.passport2 .matchip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:var(--raise);border:1px solid var(--line-2);font-size:12px;color:var(--ink)}
+.passport2 .matchip{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;background:var(--raise);border:1px solid var(--line-2);font-size:var(--fs-1);color:var(--ink)}
 .passport2 .p2-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);padding:16px 18px;margin-bottom:14px}
-.passport2 .p2-card > h3{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0 0 12px;letter-spacing:-.005em}
+.passport2 .p2-card > h3{font-family:var(--font-head);font-size:var(--fs-3);font-weight:600;margin:0 0 12px;letter-spacing:-.005em}
 .passport2 .comment-input{
   width:100%;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--ink);
   font:400 13px var(--font-body);padding:10px 11px;outline:none;resize:vertical;
 }
 .passport2 .comment-input:focus{border-color:rgba(var(--accent-rgb), .45)}
 .passport2 .comment-form-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;flex-wrap:wrap}
-.passport2 .comment-form-actions .text-muted{font-size:11.5px;color:var(--ink-3)}
-.passport2 .form-submit{height:34px;padding:0 14px;border-radius:var(--r-ctl);border:1px solid rgba(var(--accent-rgb), .42);background:rgba(var(--accent-base-rgb), .15);color:var(--accent-c);font-size:13px;font-weight:500;cursor:pointer}
+.passport2 .comment-form-actions .text-muted{font-size:var(--fs-1);color:var(--ink-3)}
+.passport2 .form-submit{height:34px;padding:0 14px;border-radius:var(--r-ctl);border:1px solid rgba(var(--accent-rgb), .42);background:rgba(var(--accent-base-rgb), .15);color:var(--accent-c);font-size:var(--fs-2);font-weight:500;cursor:pointer}
 .passport2 .form-submit:hover{background:rgba(var(--accent-base-rgb), .24)}
 .passport2 .detail-comment,.passport2 .detail-rework{padding:10px 0;border-top:1px solid var(--card-2)}
 .passport2 .detail-list{list-style:none;margin:10px 0 0;padding:0}
-.passport2 .comment-header,.passport2 .rework-header{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--ink-3);margin-bottom:4px}
+.passport2 .comment-header,.passport2 .rework-header{display:flex;justify-content:space-between;gap:10px;font-size:var(--fs-1);color:var(--ink-3);margin-bottom:4px}
 .passport2 .comment-author,.passport2 .rework-blame{color:var(--accent-c);font-weight:500}
-.passport2 .comment-text,.passport2 .rework-comment{font-size:13px;color:var(--ink)}
-.passport2 .rework-detail-item{font-family:var(--font-mono);font-size:12px;color:var(--ink-2);margin-right:10px}
-.passport2 .text-muted{color:var(--ink-3);font-size:12.5px}
-.passport2 .status-badge{font-size:12px;padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--field);color:var(--ink)}
-.passport2 .p2-toast{font-family:var(--font-mono);font-size:11px;color:var(--accent-c);opacity:0;transition:opacity .2s ease}
+.passport2 .comment-text,.passport2 .rework-comment{font-size:var(--fs-2);color:var(--ink)}
+.passport2 .rework-detail-item{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-2);margin-right:10px}
+.passport2 .text-muted{color:var(--ink-3);font-size:var(--fs-2)}
+.passport2 .status-badge{font-size:var(--fs-1);padding:2px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--field);color:var(--ink)}
+.passport2 .p2-toast{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--accent-c);opacity:0;transition:opacity .2s ease}
 .passport2 .p2-toast.on{opacity:1}
 @media (max-width:560px){ main.passport2{padding:14px} .passport2 .tl-item .t{flex-basis:64px} }
 

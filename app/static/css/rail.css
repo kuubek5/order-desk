@@ -21,7 +21,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  font-size: 0.9rem;
+  font-size:var(--fs-3);
 }
 
 /* Left rail (desktop only — ≥721px, the complement of the existing
@@ -51,7 +51,7 @@
     background-color: var(--color-card-bg);
     border-right: 1px solid var(--color-card-border);
     overflow-y: auto;
-    font-size: 0.85rem;
+    font-size:var(--fs-3);
   }
 
   .rail-top {
@@ -90,12 +90,12 @@
   .rail-brand-text b {
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size:var(--fs-4);
     white-space: nowrap;
   }
 
   .rail-brand-text span {
-    font-size: 0.68rem;
+    font-size:var(--fs-0);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--color-text-muted);
@@ -236,7 +236,7 @@
      call to action); the canonical spot with the update button is Settings. */
   .rail-version {
     flex: 0 0 100%;
-    font-size: 11px;
+    font-size:var(--fs-0);
     letter-spacing: 0.02em;
     text-decoration: none;
     opacity: 0.6;
@@ -322,13 +322,13 @@
   }
 
   .rail-settings-head b {
-    font-size: 15px;
+    font-size:var(--fs-4);
     letter-spacing: -0.01em;
   }
 
   .rail-settings-prog {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size:var(--fs-0);
     color: var(--accent-c);
     background: rgba(var(--accent-base-rgb), 0.12);
     border: 1px solid rgba(var(--accent-rgb), 0.3);
@@ -337,7 +337,7 @@
   }
 
   .rail-settings-group {
-    font-size: 10px;
+    font-size:var(--fs-0);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -392,7 +392,7 @@
     min-width: 0.9rem;
     height: 0.9rem;
     padding: 0 0.2rem;
-    font-size: 0.6rem;
+    font-size:var(--fs-0);
   }
 
   body.rail-collapsed .rail-update-notice {
@@ -410,7 +410,7 @@
 
   body.rail-collapsed .rail-version {
     text-align: center;
-    font-size: 10px;
+    font-size:var(--fs-0);
     /* Column foot centres its children on content width; without nowrap the
        version wraps ("v0.3." / "5") and reads as a cut-off "v0.3". Keep it one
        line — it fits the 64px rail. flex:0 0 auto drops the inherited
@@ -438,7 +438,7 @@
 
   .rail-update-notice p {
     margin: 0;
-    font-size: 0.84rem;
+    font-size:var(--fs-2);
     color: var(--color-text);
   }
 
@@ -450,7 +450,7 @@
     background: var(--color-accent);
     color: var(--color-bg, #14100e);
     font-weight: 700;
-    font-size: 0.84rem;
+    font-size:var(--fs-2);
     cursor: pointer;
   }
 
@@ -460,7 +460,7 @@
   }
 
   .rail-update-notice > a {
-    font-size: 0.78rem;
+    font-size:var(--fs-1);
     color: var(--color-text-muted);
     text-align: center;
   }
@@ -481,7 +481,7 @@
   border-radius: var(--radius-input);
   background: var(--color-input-bg);
   color: var(--color-text);
-  font-size: 0.9rem;
+  font-size:var(--fs-3);
 }
 
 .topbar-search-input::placeholder {
@@ -527,7 +527,7 @@
   border: none;
   color: var(--color-accent);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-size:var(--fs-3);
   padding: 0;
 }
 
@@ -554,7 +554,7 @@
   border: 1px solid rgba(var(--accent-rgb), 0.4);
   color: var(--color-success, var(--accent-c));
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size:var(--fs-0);
   font-weight: 600;
   letter-spacing: -0.02em;
   /* Статичне кільце замість пульсації. Клас висить і на бейджі «Зміна»
@@ -594,7 +594,7 @@
 .mail-pending-notice p {
   margin: 0;
   color: var(--accent-ink);
-  font-size: 0.84rem;
+  font-size:var(--fs-2);
 }
 
 .mail-pending-notice > a {

@@ -12,7 +12,7 @@
 
 .detail-back {
   color: var(--color-text-muted);
-  font-size: 0.95rem;
+  font-size:var(--fs-4);
   transition: color 0.2s ease;
 }
 
@@ -42,7 +42,7 @@
 }
 
 .passport-label {
-  font-size: 0.8rem;
+  font-size:var(--fs-2);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -50,7 +50,7 @@
 }
 
 .passport-value {
-  font-size: 1rem;
+  font-size:var(--fs-4);
   color: var(--color-text);
 }
 
@@ -63,7 +63,7 @@
 }
 
 .detail-section-title {
-  font-size: 1.25rem;
+  font-size:var(--fs-5);
   margin-bottom: var(--space-4);
   margin-top: 0;
 }
@@ -92,7 +92,7 @@
 .timeline-meta {
   display: flex;
   gap: var(--space-4);
-  font-size: 0.9rem;
+  font-size:var(--fs-3);
   color: var(--color-text-muted);
 }
 
@@ -129,18 +129,18 @@
   flex-wrap: wrap;
 }
 .rework-prev-calc .rpc-label {
-  font-size: 0.8rem;
+  font-size:var(--fs-2);
   font-weight: 600;
   color: var(--warn);
   letter-spacing: 0.01em;
 }
 .rework-prev-calc .rpc-id {
-  font-size: 0.95rem;
+  font-size:var(--fs-4);
   font-weight: 600;
 }
 .rework-prev-calc .rpc-hint {
   margin: var(--space-2) 0 0;
-  font-size: 0.8rem;
+  font-size:var(--fs-2);
   color: var(--color-text-muted);
   line-height: 1.4;
 }
@@ -161,7 +161,7 @@
   justify-content: space-between;
   gap: var(--space-3);
   margin-bottom: var(--space-2);
-  font-size: 0.95rem;
+  font-size:var(--fs-4);
 }
 
 .comment-author,
@@ -173,7 +173,7 @@
 .comment-time,
 .rework-date {
   color: var(--color-text-muted);
-  font-size: 0.85rem;
+  font-size:var(--fs-3);
 }
 
 .comment-text {
@@ -237,7 +237,7 @@
 
 .rework-detail-item {
   display: inline-block;
-  font-size: 0.9rem;
+  font-size:var(--fs-3);
   color: var(--color-text-muted);
   padding: var(--space-1) var(--space-2);
   background-color: var(--color-bg);
@@ -245,7 +245,7 @@
 }
 
 .rework-comment {
-  font-size: 0.9rem;
+  font-size:var(--fs-3);
   color: var(--color-text);
   padding: var(--space-2);
   background-color: var(--color-bg);

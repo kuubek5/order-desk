@@ -10,7 +10,7 @@
   display: inline-block;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-chip);
-  font-size: 0.85rem;
+  font-size:var(--fs-3);
   font-weight: 600;
   white-space: nowrap;
   /* No text-transform: statuses are multi-word Ukrainian phrases with
@@ -73,7 +73,7 @@
   border: none;
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.85rem;
+  font-size:var(--fs-3);
   font-weight: 600;
 }
 
@@ -119,7 +119,7 @@
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-chip);
-  font-size: 0.85rem;
+  font-size:var(--fs-3);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -190,7 +190,7 @@
   margin-left: 8px;
   padding: 1px 8px 1px 6px;
   border-radius: var(--radius-chip, 999px);
-  font-size: 10.5px;
+  font-size:var(--fs-0);
   font-weight: 600;
   line-height: 1.5;
   color: var(--accent-c);
@@ -214,7 +214,7 @@
   margin-left: 8px;
   padding: 1px 8px 1px 6px;
   border-radius: var(--radius-chip, 999px);
-  font-size: 10.5px;
+  font-size:var(--fs-0);
   font-weight: 600;
   line-height: 1.5;
   color: var(--warn);
@@ -295,14 +295,14 @@
 }
 
 .pending-mail-heading h2 {
-  font-size: 1.05rem;
+  font-size:var(--fs-4);
   letter-spacing: -0.01em;
 }
 
 .pending-mail-heading p {
   margin-top: var(--space-1);
   color: var(--accent-ink);
-  font-size: 0.8rem;
+  font-size:var(--fs-2);
 }
 
 .pending-mail-icon {
@@ -345,7 +345,7 @@
   padding: 0 var(--space-2);
   background: var(--color-email);
   color: var(--on-accent);
-  font-size: 0.75rem;
+  font-size:var(--fs-1);
 }
 
 .pending-mail-review-all {
@@ -401,7 +401,7 @@
   border: 1px solid rgba(134, 212, 206, 0.32);
   background: rgba(134, 212, 206, 0.1);
   color: var(--color-email);
-  font-size: 0.68rem;
+  font-size:var(--fs-0);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -424,7 +424,7 @@
 
 .pending-mail-received {
   color: var(--accent-ink-2);
-  font-size: 0.76rem;
+  font-size:var(--fs-1);
 }
 
 .pending-mail-message {
@@ -456,7 +456,7 @@
   border-radius: var(--radius-chip);
   background: rgba(134, 212, 206, 0.08);
   color: var(--accent-ink);
-  font-size: 0.72rem;
+  font-size:var(--fs-1);
 }
 
 .pending-mail-guesses .pending-mail-guess-empty {
@@ -471,7 +471,7 @@
   align-items: center;
   gap: var(--space-1);
   color: var(--accent-ink);
-  font-size: 0.78rem;
+  font-size:var(--fs-1);
   white-space: nowrap;
 }
 
@@ -503,7 +503,7 @@
   padding: 0 var(--space-3);
   border-radius: var(--radius-chip);
   font: inherit;
-  font-size: 0.82rem;
+  font-size:var(--fs-2);
   font-weight: 700;
 }
 
@@ -592,7 +592,7 @@
   justify-content: center;
   min-height: 1.45rem;
   border-radius: var(--radius-chip);
-  font-size: 0.72rem;
+  font-size:var(--fs-1);
   font-weight: 700;
   line-height: 1;
   margin-right: var(--space-2);
@@ -626,7 +626,7 @@
 
 .tab-nav-source .tab-link {
   padding: var(--space-1) var(--space-3);
-  font-size: 0.84rem;
+  font-size:var(--fs-2);
 }
 
 .tab-link-email {
@@ -748,7 +748,7 @@
 }
 
 .dash-kpi-label {
-  font-size: 0.78rem;
+  font-size:var(--fs-1);
   color: var(--color-text-muted);
 }
 
@@ -785,13 +785,13 @@
 }
 
 .dash-peek-title {
-  font-size: 0.76rem;
+  font-size:var(--fs-1);
   color: var(--color-text-muted);
 }
 
 .dash-peek-value {
   font-family: var(--font-display);
-  font-size: 1rem;
+  font-size:var(--fs-4);
   font-weight: 700;
 }
 
@@ -917,7 +917,7 @@
 }
 
 .rail-group-label {
-  font-size: 0.7rem;
+  font-size:var(--fs-0);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--color-text-muted);
@@ -933,7 +933,7 @@
   padding: var(--space-2) var(--space-3);
   border-radius: 8px;
   color: var(--color-text-muted);
-  font-size: 0.88rem;
+  font-size:var(--fs-3);
   text-decoration: none;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
@@ -943,7 +943,7 @@
 }
 
 .rail-badge {
-  font-size: 0.78rem;
+  font-size:var(--fs-1);
   color: inherit;
   opacity: 0.75;
 }
@@ -995,7 +995,7 @@
   justify-content: space-between;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-3);
-  font-size: 0.78rem;
+  font-size:var(--fs-1);
   color: var(--color-text-muted);
 }
 
@@ -1005,7 +1005,7 @@
 
 .rail-status-value {
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size:var(--fs-1);
   text-align: right;
 }
 
@@ -1053,7 +1053,7 @@
   border-radius: 6px;
   color: var(--color-text-muted);
   text-decoration: none;
-  font-size: 0.9rem;
+  font-size:var(--fs-3);
   line-height: 1;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
@@ -1090,7 +1090,7 @@
   border: 1px solid transparent;
   color: var(--color-text-muted);
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size:var(--fs-1);
   text-decoration: none;
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
@@ -1232,7 +1232,7 @@
   border-radius: var(--radius-chip);
   background: rgba(134, 212, 206, 0.1);
   color: var(--accent-ink);
-  font-size: 0.72rem;
+  font-size:var(--fs-1);
 }
 
 .pending-mail-preview-more {
@@ -1280,7 +1280,7 @@
 }
 
 .queue-group-heading h2 {
-  font-size: 1.1rem;
+  font-size:var(--fs-5);
   margin: 0;
 }
 
@@ -1295,7 +1295,7 @@
   background: var(--color-card-bg);
   border: 1px solid var(--color-card-border);
   color: var(--color-text-muted);
-  font-size: 0.8rem;
+  font-size:var(--fs-2);
   font-weight: 600;
 }
 

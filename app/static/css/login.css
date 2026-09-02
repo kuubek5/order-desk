@@ -42,7 +42,7 @@
 .login-brand .lb-sub {
   display: block;
   margin-top: 4px;
-  font-size: 0.6rem;
+  font-size:var(--fs-0);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-3);
@@ -59,7 +59,7 @@
 
 .login-subtitle {
   color: var(--color-text-muted);
-  font-size: 0.9rem;
+  font-size:var(--fs-3);
   margin-bottom: var(--space-5);
 }
 
@@ -138,7 +138,7 @@
 
 .login-field label {
   display: block;
-  font-size: 0.85rem;
+  font-size:var(--fs-3);
   color: var(--color-text-muted);
   margin-bottom: var(--space-2);
 }
@@ -191,7 +191,7 @@
   border: none;
   color: var(--color-text);
   padding: var(--space-3) var(--space-4);
-  font-size: 0.95rem;
+  font-size:var(--fs-4);
   border-radius: inherit;
 }
 
@@ -230,7 +230,7 @@
 
 .login-hint {
   color: var(--color-text-muted);
-  font-size: 0.8rem;
+  font-size:var(--fs-2);
   margin-top: var(--space-2);
 }
 
@@ -241,13 +241,13 @@
   border: none;
   color: var(--color-text);
   padding: var(--space-3) var(--space-4);
-  font-size: 0.95rem;
+  font-size:var(--fs-4);
   cursor: pointer;
 }
 
 .login-error {
   color: var(--alarm);
-  font-size: 0.85rem;
+  font-size:var(--fs-3);
   margin-bottom: var(--space-4);
 }
 
@@ -259,7 +259,7 @@
   border: none;
   border-radius: var(--radius-input);
   padding: var(--space-3) var(--space-4);
-  font-size: 0.95rem;
+  font-size:var(--fs-4);
   font-weight: 600;
   cursor: pointer;
   overflow: hidden;
@@ -442,7 +442,7 @@ body:has(.login-page) .app-backdrop .radar-hud { display: none; }
   color: var(--alarm);
   margin-bottom: var(--space-3);
 }
-.errcard h1 { font-size: 1.35rem; margin-bottom: var(--space-2); }
+.errcard h1 { font-size:var(--fs-6); margin-bottom: var(--space-2); }
 .errcard .login-subtitle { margin-bottom: var(--space-5); }
 .err-log { margin: calc(-1 * var(--space-3)) 0 var(--space-5); word-break: break-all; }
 .err-actions { display: flex; flex-direction: column; gap: var(--space-2); }
