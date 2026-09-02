@@ -69,6 +69,7 @@ from app.routers.stl import router as stl_router
 from app.routers.shift import router as shift_router
 from app.routers.furnace import router as furnace_router
 from app.routers.machines import router as machines_router
+from app.routers.feedback import router as feedback_router
 from app.services.furnace import (
     POLL_INTERVAL_SECONDS as FURNACE_POLL_INTERVAL_SECONDS,
     is_configured as _furnaces_configured,
@@ -313,6 +314,32 @@ def _shift_images_prune_worker(stop_event: Event) -> None:
         stop_event.wait(SHIFT_IMAGES_PRUNE_INTERVAL_SECONDS)
 
 
+# ── Ретрай Telegram-пуша зворотного зв'язку ─────────────────────────────────
+# Звернення завжди в базі; пуш — окремий крок. Якщо мережа лягла на момент
+# створення (у цеху TLS-проксі рве зовнішні з'єднання), тут дошлемо. Дешевий
+# COUNT + вихід, коли слати нема чого або пуш вимкнено.
+FEEDBACK_RETRY_INITIAL_DELAY_SECONDS = 45.0
+FEEDBACK_RETRY_INTERVAL_SECONDS = 120.0
+
+
+def _feedback_retry_tick() -> None:
+    from app.services.feedback import flush_pending_pushes
+
+    with SessionLocal() as db:
+        try:
+            flush_pending_pushes(db)
+        except Exception:
+            logger.exception("feedback push retry tick failed")
+
+
+def _feedback_push_retry_worker(stop_event: Event) -> None:
+    if stop_event.wait(FEEDBACK_RETRY_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        _feedback_retry_tick()
+        stop_event.wait(FEEDBACK_RETRY_INTERVAL_SECONDS)
+
+
 # ── Печі спікання ───────────────────────────────────────────────────────────
 # Кадр табло раз на кілька секунд. Це ЧИТАННЯ і тільки читання: у застосунку
 # немає коду, який шле печі байт вводу (див. app/furnace_vnc.py). Керування
@@ -521,6 +548,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("order-desk-shift-images-prune", _shift_images_prune_worker),
         _BackgroundWorker("order-desk-furnace", _furnace_worker),
         _BackgroundWorker("order-desk-machines", _machine_worker),
+        _BackgroundWorker("kuubmill-feedback-retry", _feedback_push_retry_worker),
     ]
     for w in workers:
         w.start()
@@ -725,3 +753,5 @@ app.include_router(shift_router)
 app.include_router(furnace_router)
 # Верстати — живі кадри екранів RemiCORE, дзеркало пічного модуля.
 app.include_router(machines_router)
+# Форма зворотного зв'язку — приймання звернень + адмін-стрічка «Вхідні».
+app.include_router(feedback_router)

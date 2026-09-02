@@ -8,6 +8,8 @@ GET /clients/{client_id}
 GET /clients/{client_id}/pane
 GET /docs
 GET /docs/oauth2-redirect
+GET /feedback/images/{image_id}
+GET /feedback/inbox
 GET /furnaces
 GET /furnaces/cards
 GET /furnaces/side
@@ -29,6 +31,7 @@ GET /orders/{order_id}
 GET /redoc
 GET /search
 GET /settings
+GET /settings/feedback
 GET /settings/materials
 GET /settings/recognition
 GET /setup
@@ -51,6 +54,10 @@ POST /actions/{action_id}/undo
 POST /clients
 POST /clients/{client_id}
 POST /clients/{client_id}/folder
+POST /feedback
+POST /feedback/{feedback_id}/reopen
+POST /feedback/{feedback_id}/resolve
+POST /feedback/{feedback_id}/seen
 POST /furnaces/refresh
 POST /handout/confirm-alias
 POST /handout/issue-group
@@ -97,6 +104,9 @@ POST /settings
 POST /settings/backup/export
 POST /settings/backup/import
 POST /settings/check-path
+POST /settings/feedback
+POST /settings/feedback/bind
+POST /settings/feedback/test
 POST /settings/furnaces
 POST /settings/furnaces/background
 POST /settings/furnaces/password

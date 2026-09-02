@@ -644,6 +644,87 @@ class OrderFocus(Base):
     user: Mapped["User"] = relationship("User")
 
 
+class Feedback(Base):
+    """Звернення оператора: баг, ідея або питання (форма зворотного зв'язку).
+
+    Джерело правди — тут, у базі: запис лягає ЗАВЖДИ, навіть коли Telegram
+    недосяжний (у цеху TLS-проксі рве зовнішні з'єднання, див. app/sheets.py
+    new_legacy_session). Пуш у Telegram — окремий, необов'язковий крок:
+    telegram_sent_at лишається порожнім, доки бот не дошле, а фоновий ретрай
+    добиває чергу. Тобто провал пошти НІКОЛИ не забирає з собою саме звернення.
+
+    Час локальний, без server_default=func.now(): на SQLite func.now() пише
+    UTC (той самий урок, що в ShiftNote/OrderFocus). Мітки ставить сервісний
+    шар через datetime.now().
+    """
+
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # "bug" / "idea" / "question" — колір і бейдж у стрічці «Вхідні».
+    kind: Mapped[str] = mapped_column(String(20), index=True)
+    # "minor" / "annoying" / "blocking" — заповнюється лише в розгорнутій панелі;
+    # у швидкій нотатці лишається порожнім (не питаємо).
+    severity: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    text: Mapped[str] = mapped_column(Text)
+    # Автоконтекст: з якого екрана й на якій версії надіслано, і хто.
+    screen: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    app_version: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    author_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    # "new" / "seen" / "resolved" — стан у стрічці «Вхідні». Перший, хто
+    # прочитав/закрив, міняє для всіх (як ShiftNote): це спільна скринька, а не
+    # персональна.
+    status: Mapped[str] = mapped_column(String(20), default="new", index=True)
+    seen_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    # Коли пуш реально долетів у Telegram. Порожнє = ще в черзі на відправку
+    # (мережа лягла) або пуш вимкнено. За telegram_error видно, ЧОМУ не долетів.
+    telegram_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    telegram_error: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    telegram_attempts: Mapped[int] = mapped_column(default=0)
+
+    author: Mapped[Optional["User"]] = relationship("User", foreign_keys=[author_id])
+    images: Mapped[list["FeedbackImage"]] = relationship(
+        "FeedbackImage",
+        back_populates="feedback",
+        cascade="all, delete-orphan",
+        order_by="FeedbackImage.id",
+    )
+
+
+class FeedbackImage(Base):
+    """Скріншот до звернення. Дзеркалить ShiftNoteImage: байти під
+    FEEDBACK_IMAGES_PATH за розкладкою <YYYY-MM>/<feedback_id>/<NN><ext>, ім'я
+    на диску наше, оригінал санітизується лише для показу. Окремий модуль-межа
+    (app/feedback_images.py), а не спільний із shift — так само, як shift не
+    ділиться зі stl_preview: кожна межа безпеки читається самостійно.
+    """
+
+    __tablename__ = "feedback_images"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    feedback_id: Mapped[int] = mapped_column(
+        ForeignKey("feedback.id", ondelete="CASCADE"), index=True
+    )
+    filename: Mapped[str] = mapped_column(String(300))
+    saved_path: Mapped[str] = mapped_column(String(500))
+    size_bytes: Mapped[Optional[int]] = mapped_column(nullable=True)
+    width: Mapped[Optional[int]] = mapped_column(nullable=True)
+    height: Mapped[Optional[int]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+
+    feedback: Mapped["Feedback"] = relationship("Feedback", back_populates="images")
+
+
 class FurnaceReading(Base):
     """Один знімок табло печі: що показував екран у цю секунду.
 

@@ -125,6 +125,9 @@ SECRET_SETTING_KEYS = {
     "google_service_account_json",
     "google_oauth_client_json",
     "google_oauth_refresh_token",
+    # Токен бота VARTAAIR: ним хто завгодно шле від імені бота. У контекст
+    # Jinja не потрапляє — екран показує лише ознаку «збережено».
+    "telegram_bot_token",
 }
 
 # Ключі, які МОЖНА очистити порожнім значенням. Для секретів порожнє поле
@@ -160,6 +163,14 @@ PREFERENCE_KEYS = {
     "notify_position",
     "notify_events",
     "last_full_sync_date",
+    # Telegram-пуш форми зворотного зв'язку (розділ /settings/feedback).
+    # telegram_bot_token — секрет (маскується вище), telegram_chat_id — куди
+    # бот шле (приватний чат Роми, ловиться кнопкою «Прив'язати чат» через
+    # getUpdates). feedback_telegram_enabled: "1"/"" — вимикач пуша; запис у
+    # БД працює завжди незалежно від нього.
+    "telegram_bot_token",
+    "telegram_chat_id",
+    "feedback_telegram_enabled",
 }
 
 SETTING_KEYS = {field.key for field in SETTING_FIELDS} | PREFERENCE_KEYS

@@ -1,0 +1,95 @@
+{# Форма зворотного зв'язку: маячок у кутку → бульбашка → панель.
+   Один об'єкт, дві глибини (гібрид, обраний власником). Стилі — feedback.css
+   на токенах, тому їде за темою. Логіка — feedback.js. Сабміт — HTMX multipart;
+   toast_response показує тост, feedback.js закриває віджет і малює «Надіслано». #}
+<div id="fb-root" class="fb-root" data-open="0">
+  <button type="button" class="fb-beacon" id="fb-beacon" aria-label="Написати нам — баг, ідея, питання" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  </button>
+
+  <div class="fb-float fb-bubble" id="fb-float" role="dialog" aria-label="Зворотний зв'язок" hidden>
+    <form id="fb-form"
+          hx-post="/feedback"
+          hx-encoding="multipart/form-data"
+          hx-swap="none">
+      <div class="fb-head">
+        <span class="fb-av" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </span>
+        <div class="fb-head-txt">
+          <h3 id="fb-title">Швидка нотатка</h3>
+          <p id="fb-sub">Помітив щось? Кинь сюди.</p>
+        </div>
+        <button type="button" class="fb-x" id="fb-close" aria-label="Закрити">✕</button>
+      </div>
+
+      <div class="fb-body">
+        <input type="hidden" name="kind" id="fb-kind" value="bug">
+        <input type="hidden" name="severity" id="fb-severity" value="">
+        <input type="hidden" name="screen" id="fb-screen" value="">
+
+        <div class="fb-row">
+          <span class="fb-lbl">Тип</span>
+          <div class="fb-seg" role="group" aria-label="Тип звернення" data-target="fb-kind">
+            <button type="button" class="fb-seg-b fb-bug" data-val="bug" aria-pressed="true"><span class="fb-d"></span>Баг</button>
+            <button type="button" class="fb-seg-b fb-idea" data-val="idea" aria-pressed="false"><span class="fb-d"></span>Ідея</button>
+            <button type="button" class="fb-seg-b fb-q" data-val="question" aria-pressed="false"><span class="fb-d"></span><span class="fb-q-short">?</span><span class="fb-q-long">Питання</span></button>
+          </div>
+        </div>
+
+        <div class="fb-row fb-drawer-only">
+          <span class="fb-lbl">Наскільки заважає</span>
+          <div class="fb-sev" role="group" aria-label="Важливість" data-target="fb-severity">
+            <button type="button" class="fb-sev-b" data-val="minor" aria-pressed="false">Дрібниця</button>
+            <button type="button" class="fb-sev-b" data-val="annoying" aria-pressed="true">Заважає</button>
+            <button type="button" class="fb-sev-b fb-s3" data-val="blocking" aria-pressed="false">Блокує</button>
+          </div>
+        </div>
+
+        <div class="fb-row">
+          <span class="fb-lbl"><span class="fb-bubble-only">Одним реченням</span><span class="fb-drawer-only">Опис</span></span>
+          <textarea class="fb-field" name="text" id="fb-text" rows="3" maxlength="4000" placeholder="Що сталося або що пропонуєш…" required></textarea>
+        </div>
+
+        <div class="fb-row">
+          <span class="fb-lbl">Скріншот</span>
+          <label class="fb-drop" id="fb-drop">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-3z"/><circle cx="12" cy="13" r="3.2"/></svg>
+            <span class="fb-drop-txt"><b>Перетягни або встав</b> (Ctrl+V), чи вибери файл</span>
+            <input type="file" name="images" id="fb-file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+          </label>
+          <div class="fb-shots" id="fb-shots" aria-live="polite"></div>
+        </div>
+
+        <div class="fb-row fb-drawer-only fb-meta">
+          <span class="fb-lbl">Додається автоматично</span>
+          <div class="fb-meta-box">
+            <span class="fb-meta-item"><b>екран:</b> <span id="fb-screen-label">—</span></span>
+            <span class="fb-meta-item"><b>версія:</b> {{ app_version }}</span>
+            <span class="fb-meta-item"><b>оператор:</b> {{ (user.full_name or user.username) if user else '—' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="fb-foot">
+        <button type="button" class="fb-expand fb-bubble-only" id="fb-expand">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6M14 10l7-7M9 21H3v-6M10 14l-7 7"/></svg>
+          Розгорнути в панель
+        </button>
+        <span class="fb-foot-meta fb-drawer-only" aria-hidden="true">v{{ app_version }}</span>
+        <button type="submit" class="fb-send" id="fb-send">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>
+          Надіслати
+        </button>
+      </div>
+    </form>
+
+    <div class="fb-done" id="fb-done" hidden>
+      <div class="fb-check" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </div>
+      <h3>Дякуємо — надіслано</h3>
+      <p>Сигнал уже в розробника разом зі скріншотом і контекстом.</p>
+    </div>
+  </div>
+</div>

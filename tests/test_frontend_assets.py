@@ -47,6 +47,7 @@ BASE_HTML_SCRIPTS = [
     "/static/js/clients.js",
     "/static/js/settings.js",
     "/static/js/shift.js",
+    "/static/js/feedback.js",
     "/static/js/three-0.128.0.min.js",
     "/static/js/STLLoader-0.128.0.js",
     "/static/js/stl-preview.js",
@@ -206,6 +207,7 @@ BASE_HTML_STYLESHEETS = [
     "/static/css/icon-styles.css",
     "/static/css/element-styles.css",
     "/static/css/lookgear.css",
+    "/static/css/feedback.css",
 ]
 
 

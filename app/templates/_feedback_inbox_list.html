@@ -1,0 +1,57 @@
+{# Стрічка звернень. Партіал: /feedback/inbox?partial=list свапає лише цей блок
+   (кнопки дій шлють HX-Trigger, сторінка не перезавантажується). #}
+{% set kind_meta = {'bug': ('Баг', 'fbx-k-bug'), 'idea': ('Ідея', 'fbx-k-idea'), 'question': ('Питання', 'fbx-k-q')} %}
+{% set sev_meta = {'minor': 'дрібниця', 'annoying': 'заважає', 'blocking': 'блокує'} %}
+{% if not items %}
+<div class="fbx-empty">
+  <p>Поки порожньо.</p>
+  <span>Звернення операторів з'являтимуться тут.</span>
+</div>
+{% else %}
+<ul class="fbx-cards">
+  {% for item in items %}
+  {% set km = kind_meta.get(item.kind, (item.kind, 'fbx-k-bug')) %}
+  <li class="fbx-card{% if item.status == 'new' %} is-new{% elif item.status == 'resolved' %} is-resolved{% endif %}">
+    <div class="fbx-card-head">
+      <span class="fbx-badge {{ km[1] }}">{{ km[0] }}</span>
+      {% if item.severity %}<span class="fbx-sev fbx-sev-{{ item.severity }}">{{ sev_meta.get(item.severity, item.severity) }}</span>{% endif %}
+      {% if item.status == 'new' %}<span class="fbx-dot" title="Нове"></span>{% endif %}
+      <span class="fbx-id mono">#KM-{{ item.id }}</span>
+      <span class="fbx-time mono">{{ item.created_at.strftime('%d.%m %H:%M') }}</span>
+    </div>
+
+    <p class="fbx-text">{{ item.text }}</p>
+
+    {% if item.images %}
+    <div class="fbx-shots">
+      {% for img in item.images %}
+      <a class="fbx-shot" href="/feedback/images/{{ img.id }}" target="_blank" rel="noopener" title="{{ img.filename }}">
+        <img src="/feedback/images/{{ img.id }}" alt="{{ img.filename }}" loading="lazy">
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="fbx-card-foot">
+      <div class="fbx-meta mono">
+        <span>{{ (item.author.full_name or item.author.username) if item.author else 'невідомо' }}</span>
+        {% if item.screen %}<span>· {{ item.screen }}</span>{% endif %}
+        {% if item.app_version %}<span>· v{{ item.app_version }}</span>{% endif %}
+        {% if item.telegram_sent_at %}<span class="fbx-tg fbx-tg-ok" title="Доставлено в Telegram">✓ TG</span>
+        {% elif item.telegram_error %}<span class="fbx-tg fbx-tg-err" title="{{ item.telegram_error }}">TG ⚠</span>{% endif %}
+      </div>
+      <div class="fbx-actions">
+        {% if item.status != 'resolved' %}
+        {% if item.status == 'new' %}
+        <button class="fbx-act" hx-post="/feedback/{{ item.id }}/seen" hx-swap="none">Прочитано</button>
+        {% endif %}
+        <button class="fbx-act fbx-act-primary" hx-post="/feedback/{{ item.id }}/resolve" hx-swap="none">Закрити</button>
+        {% else %}
+        <button class="fbx-act" hx-post="/feedback/{{ item.id }}/reopen" hx-swap="none">Відкрити знову</button>
+        {% endif %}
+      </div>
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}

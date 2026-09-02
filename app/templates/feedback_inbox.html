@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Вхідні — KuubMill{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'feedback' %}
+{% include "_topbar_nav.html" %}
+
+<main class="fbx">
+  <div class="fbx-bar">
+    <div>
+      <h1>Вхідні</h1>
+      <p class="fbx-sub">Звернення операторів — баги, ідеї, питання</p>
+    </div>
+    <nav class="fbx-tabs" aria-label="Фільтр">
+      {% set tabs = [('all','Усі'), ('new','Нові'), ('seen','Прочитані'), ('resolved','Закриті')] %}
+      {% for key, title in tabs %}
+      <a href="/feedback/inbox{% if key != 'all' %}?status={{ key }}{% endif %}"
+         class="fbx-tab{% if status_filter == key %} is-active{% endif %}">
+        {{ title }}{% if key == 'new' and open_count %} <span class="fbx-tab-count tnum">{{ open_count }}</span>{% endif %}
+      </a>
+      {% endfor %}
+    </nav>
+  </div>
+
+  {# Стрічка сама перечитується на подію refresh-feedback-inbox (кнопки дій
+     шлють її через HX-Trigger), тому дії не перезавантажують сторінку. #}
+  <div id="fbx-list"
+       hx-get="/feedback/inbox?partial=list{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}"
+       hx-trigger="refresh-feedback-inbox from:body"
+       hx-swap="innerHTML">
+    {% include "_feedback_inbox_list.html" %}
+  </div>
+</main>
+{% endblock %}

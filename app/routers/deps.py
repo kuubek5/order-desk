@@ -221,6 +221,25 @@ def shift_pending() -> int:
         return 0
 
 
+def feedback_open_count() -> int:
+    """Скільки нових звернень зворотного зв'язку — для бейдра «Вхідні» в рейці.
+
+    Той самий патерн, що shift_pending: власна сесія, широкий except, бейдж не
+    сміє завалити рендер. Показується лише адмінам (шаблон гейтить), але сам
+    підрахунок дешевий COUNT."""
+    try:
+        from app.services.feedback import open_count
+
+        db = SessionLocal()
+        try:
+            return open_count(db)
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        logger.debug("feedback_open_count fell back to 0", exc_info=True)
+        return 0
+
+
 #: Ключ дзеркала візуального набору в сесії — див. коментар усередині ui_prefs.
 UI_SESSION_KEY = "ui"
 
@@ -343,5 +362,6 @@ templates.env.globals["get_known_update"] = get_known_update
 templates.env.globals["app_version"] = VERSION
 templates.env.globals["notify_prefs"] = notify_prefs
 templates.env.globals["shift_pending"] = shift_pending
+templates.env.globals["feedback_open_count"] = feedback_open_count
 templates.env.globals["ui_prefs"] = ui_prefs
 templates.env.filters["night_label"] = night_label

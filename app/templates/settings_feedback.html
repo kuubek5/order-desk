@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Зворотний зв'язок — KuubMill{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
+<link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'settings' %}
+{% include "_topbar_nav.html" %}
+
+<main class="setv2 matlib">
+    <div class="matlib-head">
+        <a href="/settings" class="matlib-back">← Налаштування</a>
+        <h1>Зворотний зв'язок</h1>
+        <p class="wizard-sub">Форма «баг / ідея / питання» доступна операторам на кожному екрані (маячок у кутку). Звернення завжди зберігаються в базі й видно на екрані <a href="/feedback/inbox" class="matlib-link" style="display:inline">«Вхідні»</a>. Тут — необов'язковий Telegram-пуш через бота VARTAAIR: миттєве сповіщення зі скріншотом.</p>
+    </div>
+
+    {% if flash %}
+    <div class="matlib-flash {{ 'is-error' if flash.kind == 'error' else 'is-ok' }}">{{ flash.message }}</div>
+    {% endif %}
+
+    <form method="post" action="/settings/feedback">
+        <section class="panel matlib-material">
+            <div class="card-head">
+                <h2>Telegram-пуш</h2>
+            </div>
+            <p class="wizard-sub">Запис у базу працює завжди — цей вимикач лише про сповіщення в Telegram.</p>
+
+            <label class="settings-check" style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
+                <input type="checkbox" name="feedback_telegram_enabled" value="1" {{ 'checked' if push_enabled else '' }}>
+                <span>Слати звернення в Telegram</span>
+            </label>
+
+            <div class="wizard-field">
+                <label for="tg-token">Токен бота VARTAAIR{% if token_saved %} <span class="text-muted">— збережено</span>{% endif %}</label>
+                <input class="login-input" type="password" id="tg-token" name="telegram_bot_token"
+                       placeholder="{{ '••••••••  (залиш порожнім — не міняти)' if token_saved else '123456:AA...' }}"
+                       autocomplete="off">
+                <p class="wizard-sub">Видає власник бота через @BotFather. Зберігається зашифровано, у контекст сторінки не потрапляє.</p>
+            </div>
+
+            <div class="wizard-field">
+                <label for="tg-chat">Chat ID</label>
+                <input class="login-input" type="text" id="tg-chat" name="telegram_chat_id"
+                       value="{{ chat_id }}" placeholder="напр. 123456789" autocomplete="off">
+                <p class="wizard-sub">Куди бот шле. Найпростіше — кнопкою нижче: напиши боту <strong>/start</strong> у Telegram, потім натисни «Прив'язати чат».</p>
+            </div>
+
+            <div class="matlib-add-alias" style="gap:10px">
+                <button type="submit" class="settings-secondary-button">Зберегти</button>
+            </div>
+        </section>
+    </form>
+
+    <section class="panel matlib-material">
+        <div class="card-head">
+            <h2>Прив'язати чат</h2>
+        </div>
+        <p class="wizard-sub">Бот не може написати першим, поки ти не почав із ним діалог. Порядок: 1) збережи токен вище; 2) відкрий бота <strong>VARTAAIR</strong> у Telegram і натисни <strong>Start</strong> (або надішли /start); 3) натисни тут — і chat_id підставиться сам.</p>
+        <form method="post" action="/settings/feedback/bind" class="matlib-add-alias" style="gap:10px">
+            <button type="submit" class="settings-secondary-button">Прив'язати чат</button>
+        </form>
+    </section>
+
+    <section class="panel matlib-material">
+        <div class="card-head">
+            <h2>Перевірка</h2>
+        </div>
+        <p class="wizard-sub">Надіслати тестове повідомлення в Telegram — переконатись, що токен і chat_id робочі.</p>
+        <form method="post" action="/settings/feedback/test" class="matlib-add-alias" style="gap:10px">
+            <button type="submit" class="settings-secondary-button">Надіслати тест</button>
+        </form>
+    </section>
+</main>
+{% endblock %}

@@ -113,6 +113,10 @@
                 <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                 <span class="rail-label">Розпізнавання</span>
             </a>
+            <a href="/settings/feedback" class="rail-nav-item{% if spath == '/settings/feedback' %} is-active{% endif %}">
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-9 8.3 9 9 0 0 1-4-.9L3 20l1.1-4a8.38 8.38 0 0 1-.9-4 8.5 8.5 0 0 1 17 .5z" class="duo"/><path d="M21 11.5a8.38 8.38 0 0 1-9 8.3 9 9 0 0 1-4-.9L3 20l1.1-4a8.38 8.38 0 0 1-.9-4 8.5 8.5 0 0 1 17 .5z"/></svg>
+                <span class="rail-label">Зворотний зв'язок</span>
+            </a>
         </nav>
 
         {% endif %}
@@ -207,6 +211,17 @@
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V5M16 20v-7M22 20H2"/></svg>
             <span class="rail-label">Статистика</span>
         </a>
+        {# Вхідні — стрічка звернень зворотного зв'язку. Лише адмін. Лічильник —
+           Jinja-глобал (deps.feedback_open_count), живий на кожному екрані, як
+           shift_pending. #}
+        {% if user.role == 'адмін' %}
+        {% set fb_open = feedback_open_count() %}
+        <a href="/feedback/inbox" class="rail-nav-item{% if topbar_active == 'feedback' %} is-active{% endif %}"{% if topbar_active == 'feedback' %} aria-current="page"{% endif %}>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-9 8.3 9 9 0 0 1-4-.9L3 20l1.1-4a8.38 8.38 0 0 1-.9-4 8.5 8.5 0 0 1 17 .5z" class="duo"/><path d="M21 11.5a8.38 8.38 0 0 1-9 8.3 9 9 0 0 1-4-.9L3 20l1.1-4a8.38 8.38 0 0 1-.9-4 8.5 8.5 0 0 1 17 .5z"/></svg>
+            <span class="rail-label">Вхідні</span>
+            {% if fb_open %}<span class="mail-nav-count tnum">{{ fb_open }}</span>{% endif %}
+        </a>
+        {% endif %}
         <a href="/settings" class="rail-nav-item{% if topbar_active == 'settings' %} is-active{% endif %}"{% if topbar_active == 'settings' %} aria-current="page"{% endif %}>
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="16" cy="7" r="2.2" class="duo"/><circle cx="10" cy="17" r="2.2" class="duo"/><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2.2"/><circle cx="10" cy="17" r="2.2"/></svg>
             <span class="rail-label">Налаштування</span>

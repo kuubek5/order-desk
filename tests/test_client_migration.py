@@ -93,13 +93,15 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
         # filter rules; 0021 adds the operator action log; 0023 adds the shift
         # handover notes and their screenshots; 0024 adds the operator's
         # working set; 0025 adds the sintering furnace readings and 0026 the
-        # furnaces themselves; 0032 adds the milling machines. All purely additive — nothing that existed at 0003 is
-        # dropped.
+        # furnaces themselves; 0032 adds the milling machines; 0034 adds the
+        # feedback reports and their screenshots. All purely additive — nothing
+        # that existed at 0003 is dropped.
         assert tables_after - tables_before == {
             "clients", "materials", "material_aliases",
             "mail_filter_rules", "mail_filter_categories", "client_sender_memory",
             "action_log", "shift_notes", "shift_note_images", "order_focus",
             "furnace_readings", "furnaces", "machines",
+            "feedback", "feedback_images",
         }
         assert tables_before - tables_after == set()
     finally:

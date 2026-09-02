@@ -67,6 +67,12 @@ MAIL_ATTACHMENTS_PATH = os.environ.get(
 SHIFT_IMAGES_PATH = os.environ.get(
     "SHIFT_IMAGES_PATH", str(DATA_DIR / "shift_images")
 )
+# Скріншоти до звернень зворотного зв'язку. Та сама логіка, що й у скріншотів
+# зміни: НЕ в /static (та тека без сесії й затирається оновленням), окрема
+# тека даних під ліцензійним гейтом.
+FEEDBACK_IMAGES_PATH = os.environ.get(
+    "FEEDBACK_IMAGES_PATH", str(DATA_DIR / "feedback_images")
+)
 # Останній кадр табло кожної печі. Тримаємо ОДИН файл на піч і перезаписуємо:
 # історія картинок нікому не потрібна (у базі лежать числа), а тека, що росте
 # по кадру кожні кілька секунд, з'їла б диск за тиждень.
