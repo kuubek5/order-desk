@@ -826,6 +826,10 @@ class Machine(Base):
     port: Mapped[int] = mapped_column(default=5900)
     enabled: Mapped[bool] = mapped_column(default=True)
     password_encrypted: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Токен HTTP-агента (Go kmill-agent). Непорожній → CRM читає кадр по HTTP
+    # (GET /capture з токеном), а не через VNC. HTTP-агент бачить смугу % —
+    # VNC ні (див. project_machine_agent). Порт для агента типово 8765.
+    agent_token_encrypted: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     sort_order: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
 

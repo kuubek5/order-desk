@@ -65,11 +65,17 @@ class MachineTarget:
     host: str
     port: int = DEFAULT_PORT
     password: Optional[str] = None
+    # Непорожній → читаємо кадр через HTTP-агент (Go), а не VNC.
+    agent_token: Optional[str] = None
 
     @property
     def key(self) -> str:
         # Та сама логіка, що в печі: адреса як стабільний ідентифікатор.
         return f"{self.host}-{self.port}" if self.port != DEFAULT_PORT else self.host
+
+    @property
+    def is_agent(self) -> bool:
+        return bool(self.agent_token)
 
 
 @dataclass
@@ -94,17 +100,26 @@ def list_machines(db: Session, *, only_enabled: bool = False) -> list[Machine]:
     return list(db.scalars(query))
 
 
-def target_of(machine: Machine) -> MachineTarget:
-    password = None
-    if machine.password_encrypted:
-        try:
-            from app.crypto import decrypt_value
+def _safe_decrypt(value: Optional[str], name: str, what: str) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        from app.crypto import decrypt_value
 
-            password = decrypt_value(machine.password_encrypted) or None
-        except Exception:  # noqa: BLE001 — зіпсований шифр не має валити опитування
-            logger.warning("Не вдалося розшифрувати пароль верстата %s", machine.name)
+        return decrypt_value(value) or None
+    except Exception:  # noqa: BLE001 — зіпсований шифр не має валити опитування
+        logger.warning("Не вдалося розшифрувати %s верстата %s", what, name)
+        return None
+
+
+def target_of(machine: Machine) -> MachineTarget:
+    password = _safe_decrypt(machine.password_encrypted, machine.name, "пароль")
+    agent_token = _safe_decrypt(
+        getattr(machine, "agent_token_encrypted", None), machine.name, "токен агента"
+    )
     return MachineTarget(
-        name=machine.name, host=machine.host, port=machine.port, password=password
+        name=machine.name, host=machine.host, port=machine.port,
+        password=password, agent_token=agent_token,
     )
 
 
@@ -154,6 +169,26 @@ def resolve_frame(key: str) -> Optional[Path]:
 # ── Опитування ──────────────────────────────────────────────────────────────
 
 
+def _capture_http(host: str, port: int, token: str) -> Image.Image:
+    """Кадр екрана через HTTP-агент (Go kmill-agent): GET /capture з токеном.
+
+    На відміну від VNC, агент бачить синю смугу % RemiCORE. Помилки (мережа,
+    невірний токен, не PNG) піднімаються як виняток — їх ловить poll_target і
+    показує причину на екрані «Верстати», а не тихе порожнє поле."""
+    import io
+
+    import requests
+
+    url = f"http://{host}:{port}/capture"
+    resp = requests.get(
+        url, headers={"X-Agent-Token": token}, timeout=CAPTURE_TIMEOUT_SECONDS
+    )
+    if resp.status_code == 403:
+        raise RuntimeError("агент відхилив токен (403) — звір токен у налаштуваннях")
+    resp.raise_for_status()
+    return Image.open(io.BytesIO(resp.content)).convert("RGB")
+
+
 def poll_target(
     db: Session,
     target: MachineTarget,
@@ -170,13 +205,16 @@ def poll_target(
 
     if frame is None and error is None:
         try:
-            frame = capture(
-                target.host,
-                port=target.port,
-                password=target.password or password,
-                timeout=CAPTURE_TIMEOUT_SECONDS,
-                warmup=CAPTURE_WARMUP_SECONDS,
-            )
+            if target.is_agent:
+                frame = _capture_http(target.host, target.port, target.agent_token)
+            else:
+                frame = capture(
+                    target.host,
+                    port=target.port,
+                    password=target.password or password,
+                    timeout=CAPTURE_TIMEOUT_SECONDS,
+                    warmup=CAPTURE_WARMUP_SECONDS,
+                )
         except FurnaceVncError as exc:
             error = str(exc)
         except Exception as exc:  # noqa: BLE001 — мережа цеху вміє дивувати

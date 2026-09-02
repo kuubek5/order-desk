@@ -27,7 +27,7 @@
                 {% if machines %}
                 <table class="fu-table">
                     <thead>
-                        <tr><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th>Пароль VNC</th><th></th></tr>
+                        <tr><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
                     </thead>
                     <tbody>
                     {% for machine in machines %}
@@ -41,6 +41,11 @@
                         <td class="fu-col-mid">
                             <input form="machine-{{ machine.id }}" type="checkbox" name="enabled" value="1" {% if machine.enabled %}checked{% endif %}
                                    aria-label="Стежити за верстатом {{ machine.name }}">
+                        </td>
+                        <td>
+                            <input form="machine-{{ machine.id }}" class="login-input mono" type="password" name="agent_token"
+                                   autocomplete="new-password"
+                                   placeholder="{% if machine.agent_token_encrypted %}збережено{% else %}HTTP-агент (8765){% endif %}">
                         </td>
                         <td>
                             <input form="machine-{{ machine.id }}" class="login-input" type="password" name="password"
@@ -61,12 +66,13 @@
                 <form method="post" action="/settings/machines" class="fu-add">
                     <div class="settings-field">
                         <label for="machine_new_name">Додати верстат</label>
-                        <p class="settings-help">Назву видно на екрані верстатів; порт типовий 5900. Пароль лишай порожнім, якщо він спільний.</p>
+                        <p class="settings-help">Два способи читати екран, заповни ОДИН: <b>Токен агента</b> — наш HTTP-агент (порт <b>8765</b>), бачить синю смугу %; <b>Пароль VNC</b> — класичний UltraVNC (порт <b>5900</b>), смуги % не бачить. Назву видно на екрані верстатів.</p>
                         <div class="fu-add-row">
                             <input id="machine_new_name" class="login-input" name="name" placeholder="350i №1" maxlength="80" required>
                             <input class="login-input mono" name="host" placeholder="192.168.1.85" maxlength="60" required>
-                            <input class="login-input mono fu-col-port" name="port" placeholder="5900" inputmode="numeric">
-                            <input class="login-input" type="password" name="password" placeholder="свій пароль (не обов'язково)" autocomplete="new-password">
+                            <input class="login-input mono fu-col-port" name="port" placeholder="8765" inputmode="numeric">
+                            <input class="login-input mono" name="agent_token" placeholder="токен агента (HTTP)" autocomplete="new-password">
+                            <input class="login-input" type="password" name="password" placeholder="або пароль VNC" autocomplete="new-password">
                             <button type="submit" class="settings-secondary-button">Додати</button>
                         </div>
                     </div>

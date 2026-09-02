@@ -1027,11 +1027,16 @@ def add_machine(
     host: str = Form(...),
     port: str = Form(""),
     password: str = Form(""),
+    agent_token: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Додати верстат. Адреса перевіряється ДО збереження — криву краще
     відбити тут, ніж показувати порожню плитку «немає зв'язку»."""
     require_settings_admin(request, db)
+    # HTTP-агент типово на 8765; VNC — на 5900. Якщо порт не вказано, беремо
+    # за замовчуванням той, що відповідає обраному способу.
+    if not port.strip():
+        port = "8765" if agent_token.strip() else ""
     try:
         clean_host, clean_port = machines_service.validate_address(host, port)
     except FurnaceConfigError as exc:
@@ -1055,6 +1060,7 @@ def add_machine(
             port=clean_port,
             enabled=True,
             password_encrypted=encrypt_value(password.strip()) if password.strip() else None,
+            agent_token_encrypted=encrypt_value(agent_token.strip()) if agent_token.strip() else None,
             sort_order=(last or 0) + 1,
             created_at=datetime.now(),
         )
@@ -1092,10 +1098,11 @@ def update_machine(
     port: str = Form(""),
     enabled: str = Form(""),
     password: str = Form(""),
+    agent_token: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    """Змінити верстат. Порожній пароль = не міняти; `-` = стерти власний
-    і повернутися на спільний (той самий контракт, що в пічки)."""
+    """Змінити верстат. Порожній пароль/токен = не міняти; `-` = стерти
+    (той самий контракт, що в пічки)."""
     require_settings_admin(request, db)
     machine = db.get(Machine, machine_id)
     if machine is None:
@@ -1127,6 +1134,10 @@ def update_machine(
         machine.password_encrypted = None
     elif password.strip():
         machine.password_encrypted = encrypt_value(password.strip())
+    if agent_token.strip() == "-":
+        machine.agent_token_encrypted = None
+    elif agent_token.strip():
+        machine.agent_token_encrypted = encrypt_value(agent_token.strip())
     db.commit()
     request.session["settings_flash"] = {
         "kind": "success",
