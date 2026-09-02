@@ -43,4 +43,9 @@ def is_overdue(sheet_tab: str | None, status: str) -> bool:
         order_date = datetime.strptime(sheet_tab, "%d.%m.%y").date()
     except ValueError:
         return False
-    return order_date < date.today()
+    # РОБОЧА дата, не календарна: о 00:30 нічна зміна ще на вчорашньому дні, і
+    # календарна північ помічала б усі вчорашні роботи простроченими просто
+    # тому, що годинник цокнув (див. app/business_day.py).
+    from app.business_day import business_today
+
+    return order_date < business_today()

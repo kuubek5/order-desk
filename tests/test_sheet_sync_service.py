@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from app.business_day import business_today
 from app.db import Base
 from app.models import Order, SyncLog
 from app.sheet_sync_service import (
@@ -49,7 +50,7 @@ def test_full_history_imports_all_dated_tabs_including_old(monkeypatch):
     default 30-day window (the «Імпортувати всю історію» action), while still
     skipping non-dated tabs."""
     configured(monkeypatch)
-    today = date.today()
+    today = business_today()
     current = worksheet(today, "200")
     too_old = worksheet(today - timedelta(days=200), "400")
     invalid = Mock(title="Підсумок")
@@ -69,7 +70,7 @@ def test_full_history_imports_all_dated_tabs_including_old(monkeypatch):
 
 def test_first_sync_imports_recent_date_tabs_and_returns_summary(monkeypatch):
     configured(monkeypatch)
-    today = date.today()
+    today = business_today()
     recent = worksheet(today - timedelta(days=5), "100")
     current = worksheet(today, "200")
     future = worksheet(today + timedelta(days=1), "300")
@@ -99,7 +100,7 @@ def test_first_sync_imports_recent_date_tabs_and_returns_summary(monkeypatch):
 
 def test_later_sync_uses_yesterday_today_tomorrow_only(monkeypatch):
     configured(monkeypatch)
-    today = date.today()
+    today = business_today()
     spreadsheet = Mock()
     old = worksheet(today - timedelta(days=2), "old")
     yesterday = worksheet(today - timedelta(days=1), "yesterday")
@@ -124,7 +125,7 @@ def test_manual_sync_archives_a_just_created_row_deleted_from_the_sheet(monkeypa
     imported order was inside the 120s deletion grace, and every manual sync in
     that window skipped it. A manual sync now reconciles immediately."""
     configured(monkeypatch)
-    today = date.today()
+    today = business_today()
     empty = worksheet(today)
     empty.get_all_values.return_value = [[]] * 6  # row cleared, headers remain
     spreadsheet = Mock()
@@ -160,7 +161,7 @@ def test_orders_from_deleted_tabs_are_archived(monkeypatch):
     space). Email orders and orders with a non-dated sheet_tab are never
     touched. Re-running is idempotent (already-archived rows aren't re-stamped)."""
     configured(monkeypatch)
-    today = date.today()
+    today = business_today()
     current = worksheet(today, "200")
     spreadsheet = Mock()
     spreadsheet.worksheets.return_value = [current]
@@ -206,7 +207,7 @@ def test_include_tabs_forces_an_out_of_window_tab(monkeypatch):
     # even though it's well outside the yesterday/today/tomorrow window, so a
     # deletion there can be reconciled.
     configured(monkeypatch)
-    today = date.today()
+    today = business_today()
     old = worksheet(today - timedelta(days=10), "old")
     yesterday = worksheet(today - timedelta(days=1), "y")
     spreadsheet = Mock()
@@ -252,8 +253,8 @@ def test_failing_tab_rolls_back_but_earlier_tabs_persist_and_error_is_sanitized(
     # private key here) must never reach the persisted error log.
     configured(monkeypatch)
     secret = "SUPER-SECRET-PRIVATE-KEY"
-    good = worksheet(date.today(), "100")
-    broken = worksheet(date.today() + timedelta(days=1), "200")
+    good = worksheet(business_today(), "100")
+    broken = worksheet(business_today() + timedelta(days=1), "200")
     broken.get_all_values.side_effect = RuntimeError(secret)
     spreadsheet = Mock()
     spreadsheet.worksheets.return_value = [good, broken]
@@ -362,7 +363,7 @@ def test_background_trigger_skips_log_when_nothing_changed(monkeypatch):
 
 def test_background_trigger_logs_when_rows_created(monkeypatch):
     configured(monkeypatch)
-    fresh = worksheet(date.today(), "500")
+    fresh = worksheet(business_today(), "500")
     spreadsheet = Mock()
     spreadsheet.worksheets.return_value = [fresh]
     monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
@@ -382,7 +383,7 @@ def test_sync_hot_tab_reads_today_and_yesterday_by_name(monkeypatch):
     # the full sync pays for.
     configured(monkeypatch)
     reset_sheets_cache()
-    today = date.today()
+    today = business_today()
     today_ws = worksheet(today, "700")
     yesterday_ws = worksheet(today - timedelta(days=1), "701")
     by_name = {today_ws.title: today_ws, yesterday_ws.title: yesterday_ws}
@@ -441,7 +442,7 @@ def test_sync_hot_tab_picks_up_edit_and_deletion(monkeypatch):
     # tick converges the CRM (the "typo fixed within ~15s" contract).
     configured(monkeypatch)
     reset_sheets_cache()
-    today = date.today()
+    today = business_today()
     two_rows = Mock()
     two_rows.title = today.strftime("%d.%m.%y")
     two_rows.get_all_values.return_value = ([[]] * 6) + [
@@ -493,7 +494,7 @@ def test_sync_hot_tab_includes_extra_viewed_days(monkeypatch):
     # too — "the open tab in the CRM" must be among the fast-synced ones.
     configured(monkeypatch)
     reset_sheets_cache()
-    today = date.today()
+    today = business_today()
     old_day = today - timedelta(days=9)
     old_ws = worksheet(old_day, "900")
     by_name = {old_ws.title: old_ws}
@@ -520,7 +521,7 @@ def test_sync_hot_tab_includes_extra_viewed_days(monkeypatch):
 
 def test_background_failure_is_not_persisted(monkeypatch):
     configured(monkeypatch)
-    broken = worksheet(date.today(), "600")
+    broken = worksheet(business_today(), "600")
     broken.get_all_values.side_effect = RuntimeError("boom")
     spreadsheet = Mock()
     spreadsheet.worksheets.return_value = [broken]
@@ -545,7 +546,7 @@ def test_catches_up_missed_days_after_being_offline(monkeypatch):
     from app.sheet_sync_service import _mark_full_sync
 
     configured(monkeypatch)
-    today = date.today()
+    today = business_today()
     spreadsheet = Mock()
     # У таблиці — 4 дні, що накопичились за простій, плюс сьогодні.
     days = [worksheet(today - timedelta(days=n), f"d{n}") for n in (4, 3, 2, 1, 0)]
@@ -577,7 +578,7 @@ def test_normal_run_still_reads_only_three_days_when_sync_is_fresh(monkeypatch):
     from app.sheet_sync_service import _mark_full_sync
 
     configured(monkeypatch)
-    today = date.today()
+    today = business_today()
     spreadsheet = Mock()
     old = worksheet(today - timedelta(days=3), "old")
     yesterday = worksheet(today - timedelta(days=1), "yesterday")
@@ -604,7 +605,7 @@ def test_ancient_stamp_is_clamped_to_initial_window(monkeypatch):
     from app.sheet_sync_service import _INITIAL_LOOKBACK_DAYS, _mark_full_sync
 
     configured(monkeypatch)
-    today = date.today()
+    today = business_today()
     spreadsheet = Mock()
     inside = worksheet(today - timedelta(days=_INITIAL_LOOKBACK_DAYS - 2), "inside")
     ancient = worksheet(today - timedelta(days=_INITIAL_LOOKBACK_DAYS + 40), "ancient")
@@ -632,7 +633,7 @@ def test_successful_sync_records_todays_date_as_last_full(monkeypatch):
     from app.sheet_sync_service import _last_full_sync_date
 
     configured(monkeypatch)
-    today = date.today()
+    today = business_today()
     spreadsheet = Mock()
     spreadsheet.worksheets.return_value = [worksheet(today, "200")]
     monkeypatch.setattr(

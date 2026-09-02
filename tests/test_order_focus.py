@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app.business_day import business_today
 import app.web as web
 from app.db import Base
 from app.routers import orders as orders_router
@@ -38,7 +39,7 @@ def _user(db, username="op"):
 
 
 def _order(db, no="24122"):
-    order = Order(source="lab", sheet_tab=_dt.date.today().strftime("%d.%m.%y"), row_number=7, work_order_no=no, status="нове")
+    order = Order(source="lab", sheet_tab=business_today().strftime("%d.%m.%y"), row_number=7, work_order_no=no, status="нове")
     db.add(order)
     db.commit()
     return order

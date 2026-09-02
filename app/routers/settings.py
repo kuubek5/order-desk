@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
+from app.business_day import set_rollover
 from app.__version__ import VERSION
 from app.auth import hash_password
 from app.backup import (
@@ -84,6 +85,7 @@ from app.settings_store import (
     NOTIFY_EVENTS,
     extract_sheet_id,
     get_all_settings,
+    get_day_rollover_time,
     get_export_folder_path,
     get_google_oauth_client_json,
     get_furnace_background,
@@ -411,6 +413,11 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
         if value or field.key in CLEARABLE_SETTING_KEYS:
             set_setting(db, field.key, value)
     db.commit()
+
+    # Межа робочого дня живе в памʼяті процесу (business_today() кличеться на
+    # кожен рядок черги, у БД по неї ходити не можна) — оновлюємо одразу після
+    # збереження, інакше нове значення підхопилось би лише після рестарту.
+    set_rollover(get_day_rollover_time(db))
 
     if action == "save_and_sync" and not is_admin:
         action = "save"

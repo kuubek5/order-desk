@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
 from app import sync_control
+from app.business_day import business_today
 from app.models import EmailMessage, Order
 from app.order_folder import (
     attach_email_folder_availability,
@@ -199,7 +200,7 @@ def get_queue(
     ).all()
 
     # Define date boundaries
-    today = date.today()
+    today = business_today()
     yesterday = today - timedelta(days=1)
     tomorrow = today + timedelta(days=1)
 

@@ -8,14 +8,12 @@ so the queue, handout, archive and stats all agree on what "day" a work is on.
 
 import calendar
 from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+# BUSINESS_TIMEZONE живе в app.business_day (нижчий рівень); тут лише
+# ре-експорт, щоб наявні імпорти `from app.services.order_dates import
+# BUSINESS_TIMEZONE` не ламались.
+from app.business_day import BUSINESS_TIMEZONE, business_date_of
 from app.models import Order
-
-try:
-    BUSINESS_TIMEZONE = ZoneInfo("Europe/Kyiv")
-except ZoneInfoNotFoundError:  # Windows Python may not bundle the IANA tz database.
-    BUSINESS_TIMEZONE = None
 
 
 def parse_sheet_tab(sheet_tab: str | None) -> date | None:
@@ -35,7 +33,9 @@ def order_date(order: Order) -> date:
     if order.created_at is not None:
         created_utc = order.created_at.replace(tzinfo=timezone.utc)
         if BUSINESS_TIMEZONE is not None:
-            return created_utc.astimezone(BUSINESS_TIMEZONE).date()
+            # РОБОЧА дата, не календарна: лист, прийнятий о 00:30 нічною
+            # зміною, належить її дню, інакше він падав би у «Завтра».
+            return business_date_of(created_utc.astimezone(BUSINESS_TIMEZONE))
         # Europe/Kyiv follows the EU transition rule. This fallback keeps the
         # app usable before `tzdata` is installed in a Windows development venv.
         year = created_utc.year
@@ -44,8 +44,10 @@ def order_date(order: Order) -> date:
         dst_start = datetime(year, 3, march_last_sunday, 1, tzinfo=timezone.utc)
         dst_end = datetime(year, 10, october_last_sunday, 1, tzinfo=timezone.utc)
         offset = timedelta(hours=3 if dst_start <= created_utc < dst_end else 2)
-        return (created_utc + offset).date()
-    return date.today()
+        return business_date_of((created_utc + offset).replace(tzinfo=None))
+    from app.business_day import business_today
+
+    return business_today()
 
 
 def sheet_order_key(order: Order) -> tuple:

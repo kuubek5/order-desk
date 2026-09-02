@@ -133,6 +133,18 @@
                         </div>
                     </div>
 
+                    <div class="settings-field">
+                        <label for="day_rollover_time">Коли починається робочий день</label>
+                        <p class="settings-help">Нічна зміна після півночі ще опрацьовує вчорашній день, тож черга не має перескакувати опівночі. До цього часу застосунок показує вчорашню дату. Типово <b>07:30</b> — між відходом нічного (05:00) і приходом ранкового (08:00).</p>
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <input type="time" id="day_rollover_time" name="day_rollover_time"
+                                       class="login-input mono"
+                                       value="{{ values['day_rollover_time'] or '07:30' }}">
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="settings-actions">
                         <button type="submit" name="action" value="save" class="login-submit settings-submit"
                                 hx-post="/settings" hx-include="closest form"

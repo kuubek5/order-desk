@@ -14,6 +14,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app.business_day import business_today
 import app.web as web
 from app.platform_windows import _raise_explorer_window
 from app.services.handout import entries_for_material
@@ -49,7 +50,7 @@ def _request(user_id: int | None, headers: dict | None = None):
     )
 
 
-YESTERDAY = (date.today() - timedelta(days=1)).strftime("%d.%m.%y")
+YESTERDAY = (business_today() - timedelta(days=1)).strftime("%d.%m.%y")
 
 
 def _client_order(client_name="Basarab", status="знайдено при видачі", row_number=60, sheet_tab=YESTERDAY):
@@ -299,7 +300,7 @@ def test_handout_cards_follow_sheet_order_by_earliest_work(monkeypatch):
 
 def test_handout_orders_older_day_sorts_before_newer_day(monkeypatch):
     engine = _database()
-    two_days_ago = (date.today() - timedelta(days=2)).strftime("%d.%m.%y")
+    two_days_ago = (business_today() - timedelta(days=2)).strftime("%d.%m.%y")
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add(_client_order(client_name="Basarab", status="нове", row_number=5, sheet_tab=YESTERDAY))
@@ -313,7 +314,7 @@ def test_handout_orders_older_day_sorts_before_newer_day(monkeypatch):
 
 def test_handout_day_chips_list_days_with_unissued_works(monkeypatch):
     engine = _database()
-    two_days_ago = (date.today() - timedelta(days=2)).strftime("%d.%m.%y")
+    two_days_ago = (business_today() - timedelta(days=2)).strftime("%d.%m.%y")
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add(_client_order(client_name="A", status="нове", sheet_tab=YESTERDAY))
@@ -329,7 +330,7 @@ def test_handout_day_filter_narrows_to_that_day(monkeypatch):
     """?day=14.08.26 shows only that day's works — a client whose works span
     days shows a day-sized card, and a client with nothing that day drops."""
     engine = _database()
-    two_days_ago = (date.today() - timedelta(days=2)).strftime("%d.%m.%y")
+    two_days_ago = (business_today() - timedelta(days=2)).strftime("%d.%m.%y")
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add(_client_order(client_name="Both", status="нове", row_number=60, sheet_tab=YESTERDAY))
@@ -356,7 +357,7 @@ def test_issue_group_with_day_only_closes_that_day(monkeypatch):
     client's other-day works stay open even if they're also found."""
     engine = _database()
     captured = _stub_sheet(monkeypatch)
-    two_days_ago = (date.today() - timedelta(days=2)).strftime("%d.%m.%y")
+    two_days_ago = (business_today() - timedelta(days=2)).strftime("%d.%m.%y")
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         o_new = _client_order(status="знайдено при видачі", row_number=60, sheet_tab=YESTERDAY)
@@ -738,7 +739,7 @@ class TestHandoutDefaultDay:
     днів можна одним кліком."""
 
     def _two_days(self, db):
-        two_days_ago = (date.today() - timedelta(days=2)).strftime("%d.%m.%y")
+        two_days_ago = (business_today() - timedelta(days=2)).strftime("%d.%m.%y")
         db.add(_client_order(client_name="A", status="нове", sheet_tab=YESTERDAY))
         db.add(_client_order(client_name="B", status="нове", row_number=61, sheet_tab=two_days_ago))
         db.add(_client_order(client_name="C", status="нове", row_number=62, sheet_tab=two_days_ago))
@@ -1203,7 +1204,7 @@ def test_today_is_available_but_not_the_default_day():
 
     from app.services.handout import handout_eligible_orders, handout_select_day
 
-    today = date.today()
+    today = business_today()
     yesterday = today - timedelta(days=1)
 
     with Session(_database()) as db:

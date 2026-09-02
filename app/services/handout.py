@@ -14,6 +14,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.business_day import business_today
 from app.client_matcher import match_client_name
 from app.export_scanner import scan_export_client_cached, scan_export_client_latest_cached
 from app.material_match import materials_match
@@ -122,7 +123,7 @@ def handout_select_day(days: list, day: str):
     # доступний чіпом (його роботи без спікання видають того ж дня), але
     # відкривати екран одразу на ньому означало б показувати лоток, якого
     # ще немає.
-    today = date.today()
+    today = business_today()
     past = [d for d in days if d < today]
     return past[-1] if past else days[-1]
 

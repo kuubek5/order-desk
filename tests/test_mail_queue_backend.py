@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app.business_day import business_today
 import app.web as web
 from app.link_attachments import LinkDownloadError
 from app.services.queue import known_order_dates
@@ -63,7 +64,7 @@ def test_queue_eagerly_exposes_pending_mail_newest_first_independent_of_filters(
         older = EmailMessage(uid="older", status="нове", received_at=now - timedelta(hours=1))
         accepted = EmailMessage(uid="accepted", status="прийнято", received_at=now - timedelta(days=1))
         db.add_all([newer, older, accepted])
-        db.add(Order(source="lab", sheet_tab=date.today().strftime("%d.%m.%y")))
+        db.add(Order(source="lab", sheet_tab=business_today().strftime("%d.%m.%y")))
         db.commit()
 
         context = queue_router_mod.get_queue(
@@ -119,7 +120,7 @@ def test_partial_rows_renders_fragment_not_full_page(tmp_path, monkeypatch):
 
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        db.add(Order(source="lab", sheet_tab=date.today().strftime("%d.%m.%y")))
+        db.add(Order(source="lab", sheet_tab=business_today().strftime("%d.%m.%y")))
         db.commit()
 
         queue_router_mod.get_queue(request=_request(user.id), db=db, partial="rows")
@@ -234,7 +235,7 @@ def test_open_preview_folder_bad_token_is_404(tmp_path, monkeypatch):
 def _stub_sheet_write(monkeypatch, note_rows=None, tab=None):
     """Patch the batch sheet writer. Captures the works list / placement /
     paint_blue and returns sheet rows (defaults to a contiguous block from 60)."""
-    tab = tab or date.today().strftime("%d.%m.%y")
+    tab = tab or business_today().strftime("%d.%m.%y")
     fake_ws = SimpleNamespace(title=tab)
     cap = {}
     # Fresh double-submit dedup state per test so module-level state can't leak
@@ -287,7 +288,7 @@ def test_create_manual_order_writes_client_row_and_creates_order(monkeypatch):
         assert order.client_name == "Басараб"
         assert order.material_color == "mono a3"
         assert order.quantity == "2"
-        assert order.sheet_tab == date.today().strftime("%d.%m.%y")
+        assert order.sheet_tab == business_today().strftime("%d.%m.%y")
         assert order.row_number == 65 - HEADER_ROWS  # linked to the written row
 
 
@@ -569,7 +570,7 @@ def test_date_filter_bypasses_period_bucket_entirely(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        past_day = date.today() - timedelta(days=10)
+        past_day = business_today() - timedelta(days=10)
         tab = past_day.strftime("%d.%m.%y")
         recent_past = Order(source="lab", sheet_tab=tab, client_name="Далеко")
         db.add(recent_past)
@@ -611,7 +612,7 @@ def test_invalid_date_param_falls_back_to_period_bucketing(tmp_path, monkeypatch
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        today_order = Order(source="lab", sheet_tab=date.today().strftime("%d.%m.%y"))
+        today_order = Order(source="lab", sheet_tab=business_today().strftime("%d.%m.%y"))
         db.add(today_order)
         db.commit()
 
@@ -629,7 +630,7 @@ def test_omitting_sort_preserves_default_urgency_ordering(tmp_path, monkeypatch)
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        today_tab = date.today().strftime("%d.%m.%y")
+        today_tab = business_today().strftime("%d.%m.%y")
         later = Order(source="lab", sheet_tab=today_tab, due_time="16:00", material_color="я останній")
         earlier = Order(source="lab", sheet_tab=today_tab, due_time="09:00", material_color="а перший")
         db.add_all([later, earlier])
@@ -646,7 +647,7 @@ def test_sort_by_material_ascending_is_case_insensitive(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        today_tab = date.today().strftime("%d.%m.%y")
+        today_tab = business_today().strftime("%d.%m.%y")
         titan = Order(source="lab", sheet_tab=today_tab, material_color="Титан")
         mono = Order(source="lab", sheet_tab=today_tab, material_color="моно")
         pmma = Order(source="lab", sheet_tab=today_tab, material_color="ПММА")
@@ -663,7 +664,7 @@ def test_sort_by_kind_case_insensitive(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        today_tab = date.today().strftime("%d.%m.%y")
+        today_tab = business_today().strftime("%d.%m.%y")
         vklad = Order(source="lab", sheet_tab=today_tab, kind="вкладка")
         anatomia = Order(source="lab", sheet_tab=today_tab, kind="Анатомія")
         db.add_all([vklad, anatomia])
@@ -680,7 +681,7 @@ def test_sort_by_material_blank_values_sort_last_both_directions(tmp_path, monke
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        today_tab = date.today().strftime("%d.%m.%y")
+        today_tab = business_today().strftime("%d.%m.%y")
         blank = Order(source="lab", sheet_tab=today_tab, material_color=None)
         pmma = Order(source="lab", sheet_tab=today_tab, material_color="пмма")
         db.add_all([blank, pmma])
@@ -697,7 +698,7 @@ def test_sort_by_quantity_is_numeric_not_lexicographic(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        today_tab = date.today().strftime("%d.%m.%y")
+        today_tab = business_today().strftime("%d.%m.%y")
         ten = Order(source="lab", sheet_tab=today_tab, quantity="10")
         three = Order(source="lab", sheet_tab=today_tab, quantity="3")
         db.add_all([ten, three])
@@ -713,7 +714,7 @@ def test_sort_by_quantity_non_numeric_sorts_last(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        today_tab = date.today().strftime("%d.%m.%y")
+        today_tab = business_today().strftime("%d.%m.%y")
         numeric = Order(source="lab", sheet_tab=today_tab, quantity="5")
         junk = Order(source="lab", sheet_tab=today_tab, quantity="кілька")
         db.add_all([junk, numeric])
@@ -728,7 +729,7 @@ def test_sort_direction_toggles_order(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        today_tab = date.today().strftime("%d.%m.%y")
+        today_tab = business_today().strftime("%d.%m.%y")
         low = Order(source="lab", sheet_tab=today_tab, quantity="1")
         high = Order(source="lab", sheet_tab=today_tab, quantity="9")
         db.add_all([low, high])
@@ -746,7 +747,7 @@ def test_invalid_sort_field_is_ignored(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        today_tab = date.today().strftime("%d.%m.%y")
+        today_tab = business_today().strftime("%d.%m.%y")
         db.add(Order(source="lab", sheet_tab=today_tab, due_time="09:00"))
         db.commit()
 
@@ -846,7 +847,7 @@ def test_queue_splits_orders_into_lab_and_email_groups(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        today_tab = date.today().strftime("%d.%m.%y")
+        today_tab = business_today().strftime("%d.%m.%y")
         lab_order = Order(source="lab", sheet_tab=today_tab, client_name="Іванов")
         email_order = Order(source="email", sheet_tab=today_tab, client_name="Петренко")
         db.add_all([lab_order, email_order])
@@ -865,7 +866,7 @@ def test_queue_split_preserves_column_sort_within_each_group(tmp_path, monkeypat
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        today_tab = date.today().strftime("%d.%m.%y")
+        today_tab = business_today().strftime("%d.%m.%y")
         lab_b = Order(source="lab", sheet_tab=today_tab, material_color="я останній")
         lab_a = Order(source="lab", sheet_tab=today_tab, material_color="а перший")
         email_b = Order(source="email", sheet_tab=today_tab, material_color="я останній")
@@ -886,7 +887,7 @@ def test_queue_split_respects_existing_source_filter(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        today_tab = date.today().strftime("%d.%m.%y")
+        today_tab = business_today().strftime("%d.%m.%y")
         lab_order = Order(source="lab", sheet_tab=today_tab)
         email_order = Order(source="email", sheet_tab=today_tab)
         db.add_all([lab_order, email_order])
@@ -1685,7 +1686,7 @@ def test_queue_hands_the_add_form_the_day_the_period_tab_shows(period, offset_da
         request = _request(user.id)
         html = queue_router_mod.get_queue(request=request, db=db, period=period).body.decode()
 
-    expected = (date.today() + timedelta(days=offset_days)).strftime("%d.%m.%y")
+    expected = (business_today() + timedelta(days=offset_days)).strftime("%d.%m.%y")
     assert f'name="target_tab" value="{expected}"' in html
 
 

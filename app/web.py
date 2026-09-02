@@ -23,6 +23,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
+from app.business_day import set_rollover
 from app.__version__ import VERSION
 from app.config import (
     DB_PATH,
@@ -98,7 +99,7 @@ from app.services.sheet_writeback import (
     sheet_writeback_pool as _sheet_writeback_pool,
     warm_sheet_writeback as _warm_sheet_writeback,
 )
-from app.settings_store import get_export_folder_path
+from app.settings_store import get_day_rollover_time, get_export_folder_path
 from app.sheet_sync_service import (
     SheetSyncBusyError,
     SheetSyncError,
@@ -521,6 +522,12 @@ class _BackgroundWorker:
 async def lifespan(_: FastAPI):
     if os.environ.get("KUUBMILL_SCHEMA_MANAGED") != "1":
         Base.metadata.create_all(engine)
+    # Межа робочого дня (нічні зміни) — у памʼять процесу на старті.
+    try:
+        with SessionLocal() as _db:
+            set_rollover(get_day_rollover_time(_db))
+    except Exception:  # noqa: BLE001 — налаштування не мають блокувати старт
+        logger.debug("Межу робочого дня не прочитано, лишається типова", exc_info=True)
     # Seed the material catalog and classify any still-unresolved orders once at
     # boot. Idempotent and cheap; covers both the create_all path (no migration
     # seed) and the first boot after the 0005 upgrade backfills existing rows.

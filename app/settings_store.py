@@ -112,10 +112,20 @@ SETTING_FIELDS = [
         secret=True,
         help_text="View-only пароль UltraVNC на ПК верстатів (не повний!)",
     ),
+    # Коли починається робочий день цеху («HH:MM», типово 07:30). Межа НЕ
+    # опівночі: нічна зміна після 00:00 ще опрацьовує вчорашній день, і
+    # календарна північ перекидала чергу на новий день посеред зміни
+    # (див. app/business_day.py).
+    SettingField(
+        key="day_rollover_time",
+        label="Коли починається робочий день",
+        help_text="Нічна зміна після півночі ще на вчорашньому дні (типово 07:30)",
+        operator_editable=True,
+    ),
     # Тека проєктів Sum3D (у цеху зветься «Cam-work»). Звідти CRM ловить нові
     # проєкти й показує їх Sum3D ID у шапці черги (хід 1 ROADMAP_IDEAS.md).
-    # Назва теки проєкту = ДАТА_ЧАС (YYYY-MM-DD_HH-MM-SS); беремо хвіст HH-MM-SS
-    # — той самий ідентифікатор, який оператори вписують вручну. Читання-лише:
+    # Назва проєкту = ДАТА_ЧАС (YYYY-MM-DD_HH-MM-SS); беремо хвіст HH-MM-SS —
+    # той самий ідентифікатор, який оператори вписують вручну. Читання-лише:
     # CRM у цю теку нічого не пише. operator_editable — це шлях, не секрет.
     SettingField(
         key="sum3d_projects_path",
@@ -150,6 +160,7 @@ CLEARABLE_SETTING_KEYS = {
     "export_folder_path",
     "technician_files_path",
     "sum3d_projects_path",
+    "day_rollover_time",
 }
 
 # Non-secret preference keys stored in the same AppSetting table but NOT part of
@@ -290,6 +301,11 @@ def get_export_folder_path(session: Session) -> str:
 
 def get_technician_files_path(session: Session) -> Optional[str]:
     return get_setting(session, "technician_files_path")
+
+
+def get_day_rollover_time(session: Session) -> Optional[str]:
+    """Межа робочого дня («HH:MM»). Порожньо = типова 07:30."""
+    return get_setting(session, "day_rollover_time")
 
 
 def get_sum3d_projects_path(session: Session) -> Optional[str]:

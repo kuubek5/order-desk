@@ -12,6 +12,7 @@ from threading import Lock, Thread
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.business_day import business_today
 from app.db import SessionLocal
 from app.models import Order, SyncLog
 from app.parser import parse_rows
@@ -395,7 +396,7 @@ def sync_google_sheets(
             # button (today±1) could never reach it.
             effective_include = set(include_tabs or ()) | set(mass_vanish_pending().keys())
             worksheets, all_dated_titles = _worksheets_to_sync(
-                session, spreadsheet, date.today(),
+                session, spreadsheet, business_today(),
                 effective_include or None, full_history=full_history,
             )
         except Exception as exc:
@@ -505,7 +506,9 @@ def sync_google_sheets(
         # Позначаємо цей день як синхронізований УСПІШНО — доходимо сюди лише
         # коли всі вкладки вікна імпортовано без фатальної помилки. Звідси
         # рахується «скільки днів простою» при наступному ввімкненні.
-        _mark_full_sync(session, date.today())
+        # Робоча дата, як і решта «сьогодні»: інакше о 00:30 штамп стрибав би
+        # на наступний день і догін простою рахувався б від чужої дати.
+        _mark_full_sync(session, business_today())
         session.commit()
         return summary
     finally:
@@ -548,7 +551,7 @@ def sync_hot_tab(
     try:
         _configuration(session)
         spreadsheet = open_spreadsheet(db=session)
-        base_day = today or date.today()
+        base_day = today or business_today()
         hot_days = [base_day, base_day - timedelta(days=1)]
         for extra in sorted(extra_days or ()):
             if extra not in hot_days:

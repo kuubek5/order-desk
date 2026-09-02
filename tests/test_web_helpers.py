@@ -42,7 +42,17 @@ def test_email_order_uses_created_date():
 
 
 def test_email_order_uses_kyiv_business_date_at_utc_boundary():
+    """22:10 UTC = 01:10 за Києвом наступної доби — але це ще НІЧНА ЗМІНА
+    28-го, а не робочий день 29-го. Робочий день починається о 07:30
+    (app/business_day.py): лист, прийнятий уночі, лишається на дні зміни,
+    інакше він падав би у вкладку «Завтра» повз оператора."""
     order = SimpleNamespace(sheet_tab=None, created_at=datetime(2026, 7, 28, 22, 10))
+    assert _order_date(order) == date(2026, 7, 28)
+
+
+def test_email_order_after_rollover_is_the_new_day():
+    # 06:10 UTC = 09:10 за Києвом — межу 07:30 вже пройдено.
+    order = SimpleNamespace(sheet_tab=None, created_at=datetime(2026, 7, 29, 6, 10))
     assert _order_date(order) == date(2026, 7, 29)
 
 

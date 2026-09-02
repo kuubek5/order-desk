@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app import sync_control
+from app.business_day import business_today
 from app.client_matcher import match_client_name
 from app.export_scanner import list_export_client_names_cached
 from app.models import Client, ClientNameAlias, Order, StatusEvent
@@ -74,7 +75,7 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     if source not in HANDOUT_SOURCE_FILTERS:
         source = "all"
 
-    today = date.today()
+    today = business_today()
     eligible = handout_eligible_orders(db, today)
 
     # Day chips (14.08, 15.08, …): every past day that still has unissued
@@ -512,7 +513,7 @@ async def issue_handout_group(
         request.session["toast_flash"] = {"message": SYNC_PAUSED_MSG, "kind": "info"}
         return RedirectResponse(handout_back_url(source, day), status_code=303)
 
-    today = date.today()
+    today = business_today()
     candidates = db.scalars(
         select(Order).where(Order.client_name == client_name, Order.status != "видано")
     ).all()
