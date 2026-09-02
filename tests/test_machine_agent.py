@@ -149,3 +149,50 @@ def test_snapshot_links_running_program_to_order(monkeypatch):
     assert cards[0].sum3d_id == "23-04-33"
     assert cards[0].order is not None and cards[0].order.id == oid
     assert cards[0].percent == 9
+
+
+def test_milling_now_maps_sum3d_to_machine_and_percent():
+    """Підсвітка рядка черги: Sum3D ID → верстат+відсоток, лише зі свіжого
+    кадру. Протухлий кадр і збій не потрапляють — показати «фрезерується» для
+    роботи, зняту пів години тому, гірше, ніж не показати нічого."""
+    from datetime import datetime, timedelta
+
+    t1 = ms.MachineTarget(name="350i", host="10.0.0.1", port=8765, agent_token="t")
+    t2 = ms.MachineTarget(name="250i", host="10.0.0.2", port=8765, agent_token="t")
+    t3 = ms.MachineTarget(name="стара", host="10.0.0.3", port=8765, agent_token="t")
+    now = datetime.now()
+    stale = now - timedelta(seconds=ms.STALE_AFTER_SECONDS + 60)
+
+    with ms._states_lock:
+        ms._states.clear()
+        ms._states[t1.key] = ms.MachineState(target=t1, frame_at=now, percent=9,
+                                             sum3d_id="23-04-33")
+        ms._states[t2.key] = ms.MachineState(target=t2, frame_at=now, percent=50,
+                                             sum3d_id="11-22-33", error="немає звʼязку")
+        ms._states[t3.key] = ms.MachineState(target=t3, frame_at=stale, percent=70,
+                                             sum3d_id="44-55-66")
+    try:
+        got = ms.milling_now()
+    finally:
+        with ms._states_lock:
+            ms._states.clear()
+
+    assert got == {"23-04-33": {"machine": "350i", "percent": 9}}
+
+
+def test_milling_now_drops_the_same_id_on_two_machines():
+    """Той самий Sum3D ID на двох верстатах — не вгадуємо, який саме."""
+    from datetime import datetime
+
+    now = datetime.now()
+    a = ms.MachineTarget(name="A", host="10.0.0.1", port=8765, agent_token="t")
+    b = ms.MachineTarget(name="B", host="10.0.0.2", port=8765, agent_token="t")
+    with ms._states_lock:
+        ms._states.clear()
+        ms._states[a.key] = ms.MachineState(target=a, frame_at=now, percent=10, sum3d_id="dup")
+        ms._states[b.key] = ms.MachineState(target=b, frame_at=now, percent=90, sum3d_id="dup")
+    try:
+        assert ms.milling_now() == {}
+    finally:
+        with ms._states_lock:
+            ms._states.clear()

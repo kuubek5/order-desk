@@ -404,6 +404,37 @@ class MachineCard:
 
 
 
+def milling_now() -> dict[str, dict]:
+    """Sum3D ID → {machine, percent} для робіт, що ЗАРАЗ фрезеруються.
+
+    Годує підсвітку рядка черги. Читає лише памʼять процесу (жодного запиту й
+    жодного походу до верстата): черга рендерить сотні рядків, і будь-який
+    запит на рядок був би N+1 — той самий урок, що з `focused_ids`.
+
+    Протухлий кадр і верстат без звʼязку не потрапляють сюди взагалі: показати
+    «фрезерується» для роботи, яку зняли пів години тому, гірше, ніж не
+    показати нічого.
+    """
+    now = datetime.now()
+    out: dict[str, dict] = {}
+    with _states_lock:
+        states = list(_states.values())
+    for state in states:
+        if not (state.sum3d_id and state.frame_at) or state.error:
+            continue
+        if (now - state.frame_at).total_seconds() > STALE_AFTER_SECONDS:
+            continue
+        # Той самий ID на двох верстатах — не вгадуємо, прибираємо обидва.
+        if state.sum3d_id in out:
+            out[state.sum3d_id] = None
+            continue
+        out[state.sum3d_id] = {
+            "machine": state.target.name,
+            "percent": state.percent,
+        }
+    return {k: v for k, v in out.items() if v}
+
+
 def machine_side_context(db: Session) -> dict:
     """Контекст віджета верстатів у бічній панелі черги.
 

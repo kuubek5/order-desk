@@ -43,7 +43,7 @@ from app.services.config_state import (
     sheets_configured,
 )
 from app.services.order_dates import order_date, parse_sheet_tab
-from app.services.machines import machine_side_context
+from app.services.machines import machine_side_context, milling_now
 from app.services.sum3d_capture import scan_projects as scan_sum3d_projects
 from app.settings_store import get_sum3d_projects_path
 from app.services.focus import count as focus_count, focused_ids, ranks as focus_ranks
@@ -476,6 +476,10 @@ def get_queue(
             # ОБИДВІ гілки (сторінка й partial=rows) читають цей самий
             # словник: якби полл рахував інакше, мітки зникали б кожні 15с.
             "focused_ids": my_focus,
+            # Що ЗАРАЗ фрезерується (Sum3D ID → верстат+відсоток). Мусить бути
+            # в ОБОХ гілках — сторінці й partial=rows, — інакше підсвітка
+            # зникала б на першому тіку полла (той самий урок, що focused_ids).
+            "milling": milling_now(),
             "focus_count": focus_count(db, user),
             "focus_mine": focus_mine,
             "selected_date": selected_date,

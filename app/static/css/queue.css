@@ -966,3 +966,33 @@
     transform: none;
   }
 }
+
+/* «Зараз фрезерується» — зв'язка рядка з верстатом за Sum3D ID (ім'я .iso із
+   заголовка RemiCORE). Свідомо ЧІП у комірці наряду, а не сьома заливка
+   рядка: фон уже несе стани, край — матеріал, контур — «мої зараз»
+   (project_queue_row_channels). Кожен новий сигнал шукає СВІЙ канал.
+   Геометрія та сама, що в .rush-badge; колір — прохолодний акцент, щоб не
+   сплутати з терміновістю. Без анімації: на екрані вже є один живий пульс. */
+.milling-badge, .badge.milling {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 1px 8px 1px 6px;
+  border-radius: var(--radius-chip, 999px);
+  font-size: var(--fs-0);
+  font-weight: 600;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-b);
+  background: rgba(var(--accent-rgb), 0.13);
+  border: 1px solid rgba(var(--accent-rgb), 0.38);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.badge.milling svg {
+  width: 12px; height: 12px; flex: 0 0 auto;
+  stroke: currentColor; fill: none; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.badge.milling svg .duo { fill: currentColor; opacity: .22; stroke: none; }

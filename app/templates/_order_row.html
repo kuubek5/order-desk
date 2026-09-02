@@ -80,6 +80,17 @@
             </button>
         </form>
         {% endif %}
+        {# ЗАРАЗ ФРЕЗЕРУЄТЬСЯ: зв'язка з верстатом за Sum3D ID (ім'я .iso із
+           заголовка RemiCORE). `milling is defined` — бо рядок рендериться і
+           з місць, які цього набору не знають (пошук, картка): там він просто
+           не малюється, а не падає. #}
+        {% set _mill = (milling.get(order.sum3d_id) if (milling is defined and milling and order.sum3d_id) else None) %}
+        {% if _mill %}
+        <span class="badge milling" title="Фрезерується на верстаті {{ _mill.machine }}{% if _mill.percent is not none %} · виконано {{ _mill.percent }}%{% endif %}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v6"/><path d="M9 8h6l-1.5 9h-3z" class="duo"/><path d="M9 8h6l-1.5 9h-3z"/><path d="M12 17v5"/></svg>
+            {{ _mill.machine }}{% if _mill.percent is not none %} · {{ _mill.percent }}%{% endif %}
+        </span>
+        {% endif %}
         {% if is_rush_comment(order.cam_comment) %}
         {# «На швидку» — єдиний писаний сигнал терміновості для лабораторної
            роботи (CLAUDE.md §2). Стоїть чіпом біля ідентичності рядка, а не
