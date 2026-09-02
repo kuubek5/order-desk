@@ -128,6 +128,29 @@ def test_label_over_the_EMPTY_part_does_not_shrink_the_bar():
         assert got is not None and abs(got - want) <= 2, (want, got)
 
 
+def test_full_bar_on_white_panel_reads_100_not_85():
+    """Бойовий випадок 03.09.26: смуга залита ПОВНІСТЮ, а панель RemiCORE
+    навколо теж біла. Пропуск «дірок завширшки з літеру» (потрібний для
+    підпису) перестрибував ще й РАМКУ смуги — і сканування їхало далі по білому
+    тлу, роздуваючи контейнер: 100% читались як 85%.
+
+    Рамка відрізняється від літери тим, що темна на ВСЮ висоту смуги."""
+    for bg in ((255, 255, 255), (240, 240, 240)):
+        for want in (9, 50, 85, 100):
+            img = _screen(bg=bg)
+            d = ImageDraw.Draw(img)
+            left, top, right, bottom = 458, 770, 586, 790
+            d.rectangle([left - 1, top - 1, right, bottom], outline=(64, 64, 64))
+            d.rectangle([left, top, right - 1, bottom - 1], fill=LIGHT)
+            fw = round((right - left) * want / 100)
+            if fw:
+                d.rectangle([left, top, left + fw - 1, bottom - 1], fill=BLUE)
+            for x in range(left + 50, left + 72, 3):  # підпис поверх
+                d.rectangle([x, 776, x + 1, 783], fill=(0, 0, 0))
+            got = read_progress_percent(img)
+            assert got is not None and abs(got - want) <= 2, (bg, want, got)
+
+
 def test_grey_panel_background_is_not_counted_as_empty_bar():
     """Друга причина: фон панелі сірий (240), а порожня частина смуги біла
     (255). З м'яким порогом «світлого» контейнер розповзався по всій панелі й

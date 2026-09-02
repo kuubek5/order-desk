@@ -47,6 +47,9 @@ MAX_BAR_HEIGHT = 60
 # Найширша «дірка» в порожній частині, яку вважаємо підписом поверх смуги, а не
 # її кінцем. Літера підпису — кілька пікселів; фон панелі тягнеться сотнями.
 MAX_LABEL_GAP = 14
+# Яка частка рядків смуги має бути темною, щоб вважати колонку РАМКОЮ, а не
+# літерою підпису. Рамка йде на всю висоту, літера — на частину.
+BORDER_DARK_SHARE = 0.7
 
 
 def _is_blue(px: tuple[int, int, int]) -> bool:
@@ -70,6 +73,24 @@ class ProgressBar:
     fill_width: int
     container_width: int
     box: tuple[int, int, int, int]  # left, top, right, bottom заливки — для доказу
+
+
+def _is_dark(px: tuple[int, int, int]) -> bool:
+    """Піксель рамки: помітно темніший за будь-яке тло панелі."""
+    return max(px[0], px[1], px[2]) <= 180
+
+
+def _is_border_column(px, x: int, band: list[int]) -> bool:
+    """Чи колонка `x` — вертикальна РАМКА смуги (а не літера підпису).
+
+    Рамка йде на всю висоту смуги, літера — лише на частину. Тому дивимось не
+    на один піксель, а на частку темних рядків у смузі: рамка дає майже всі,
+    підпис — меншість.
+    """
+    if len(band) < 3:
+        return False
+    dark = sum(1 for y in band if _is_dark(px[x, y]))
+    return dark >= len(band) * BORDER_DARK_SHARE
 
 
 def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
@@ -133,6 +154,12 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
     gap = 0
     x = fill_right + 1
     while x < width:
+        # РАМКА смуги — темна лінія на ВСЮ її висоту; літера підпису темна лише
+        # на частину. Саме це їх і розрізняє. Без цієї перевірки сканування
+        # перестрибувало рамку (вона тонка, як літера) і їхало далі по білому
+        # тлу панелі — повна смуга читалась як 85% (бойовий випадок 03.09.26).
+        if _is_border_column(px, x, band):
+            break
         p = px[x, y_mid]
         if _is_unfilled(p) or _is_blue(p):
             last_white = x
