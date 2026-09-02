@@ -114,8 +114,14 @@ def _safe_decrypt(value: Optional[str], name: str, what: str) -> Optional[str]:
 
 def target_of(machine: Machine) -> MachineTarget:
     password = _safe_decrypt(machine.password_encrypted, machine.name, "пароль")
-    agent_token = _safe_decrypt(
-        getattr(machine, "agent_token_encrypted", None), machine.name, "токен агента"
+    raw_token = getattr(machine, "agent_token_encrypted", None)
+    agent_token = _safe_decrypt(raw_token, machine.name, "токен агента")
+    # Діагностика (тимчасова): чому верстат іде по VNC замість HTTP. Показує, чи
+    # колонка токена заповнена в БД і чи він розшифрувався — тобто транспорт.
+    logger.info(
+        "machine %s: token_col=%s decrypted=%s → transport=%s",
+        machine.name, bool(raw_token), bool(agent_token),
+        "http" if agent_token else "vnc",
     )
     return MachineTarget(
         name=machine.name, host=machine.host, port=machine.port,
