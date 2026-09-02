@@ -227,3 +227,28 @@ def test_pick_allows_duplicate_windows_of_same_program():
 def test_pick_on_empty_input():
     assert pick_milling_program([]) is None
     assert pick_milling_program(None) is None
+
+
+# ── Сторож на РЕАЛЬНОМУ кадрі верстата ────────────────────────────────────
+
+def test_real_remicore_frame_reads_100_percent():
+    """Кадр із бойового 350i (03.09.26), програма завершена — на екрані 100%.
+
+    Цей файл ловить те, чого синтетика не ловила ЖОДНОГО разу:
+    * найдовший синій пробіг у кадрі — це панель задач Windows (заввишки 2px),
+      а не смуга: детектор мусить перебрати кандидатів, а не здатись на першому;
+    * ліворуч від смуги стоїть окремий СИНІЙ напис «100%», тож міряти «розмах
+      синього в рядку» не можна — лише суцільний пробіг;
+    * у таблиці інструментів повно синіх цифр та іконок.
+
+    Через ці три пастки детектор колись показував 741px «смугу» через пів
+    екрана і видавав 85%/99% замість 100%.
+    """
+    from pathlib import Path
+
+    path = Path(__file__).parent / "fixtures" / "remicore_bar_100.png"
+    bar = find_progress_bar(Image.open(path))
+    assert bar is not None, "смугу на реальному кадрі не знайдено"
+    assert bar.percent == 100, (bar.percent, bar)
+    # Смуга, а не пів екрана: реальна ширина ~122px.
+    assert 100 <= bar.container_width <= 200, bar
