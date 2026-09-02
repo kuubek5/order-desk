@@ -15,47 +15,48 @@ const setupHTML = `<!doctype html>
     --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
+  body{margin:0;background:#12100e;color:#f3ede4;
     font:15px/1.5 "Segoe UI",system-ui,sans-serif;padding:28px 18px}
   .wrap{max-width:620px;margin:0 auto}
   h1{font-size:22px;margin:0 0 4px;font-weight:800}
-  h1 span{color:var(--amber)}
-  .sub{color:var(--ink2);margin:0 0 22px;font-size:13px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+  h1 span{color:#f0a24b}
+  .sub{color:#b9ad9c;margin:0 0 22px;font-size:13px}
+  .card{background:#1c1915;border:1px solid #332c24;border-radius:14px;
     padding:18px 18px 20px;margin-bottom:16px}
   .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;
-    color:var(--amber2);margin:0 0 14px;font-weight:700}
-  label{display:block;font-size:12px;color:var(--ink2);margin:0 0 5px}
+    color:#f6c07a;margin:0 0 14px;font-weight:700}
+  label{display:block;font-size:12px;color:#b9ad9c;margin:0 0 5px}
   .row{margin-bottom:14px}
-  input,select{width:100%;background:#0d0b09;border:1px solid var(--line);
-    color:var(--ink);border-radius:9px;padding:10px 12px;font-size:14px}
-  input.mono{font-family:var(--mono);letter-spacing:.02em}
+  input,select,option{width:100%;background:#241c11;border:1px solid #6b5836;
+    color:#f3ede4;border-radius:9px;padding:10px 12px;font-size:14px}
+  option{background:#241c11;color:#f3ede4}
+  input.mono{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;letter-spacing:.02em}
   .inline{display:flex;gap:8px}
   .inline input{flex:1}
   button{font:inherit;font-weight:600;border:0;border-radius:9px;padding:10px 16px;
-    cursor:pointer;background:#2a231b;color:var(--ink)}
+    cursor:pointer;background:#2a231b;color:#f3ede4}
   button:hover{background:#332a20}
-  button.primary{background:var(--amber);color:#1a1206}
-  button.primary:hover{background:var(--amber2)}
-  button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink2)}
+  button.primary{background:#f0a24b;color:#1a1206}
+  button.primary:hover{background:#f6c07a}
+  button.ghost{background:transparent;border:1px solid #332c24;color:#b9ad9c}
   .kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;
-    border-bottom:1px dashed var(--line);font-size:13px}
+    border-bottom:1px dashed #332c24;font-size:13px}
   .kv:last-child{border-bottom:0}
-  .kv b{font-family:var(--mono);color:var(--ink);font-weight:600;text-align:right;
+  .kv b{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;color:#f3ede4;font-weight:600;text-align:right;
     word-break:break-all}
   .crm{display:flex;gap:8px;align-items:center;margin:6px 0}
-  .crm code{flex:1;font-family:var(--mono);font-size:13px;background:#0d0b09;
-    border:1px solid var(--line);border-radius:8px;padding:9px 11px;word-break:break-all}
+  .crm code{flex:1;font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:13px;background:#0d0b09;
+    border:1px solid #332c24;border-radius:8px;padding:9px 11px;word-break:break-all}
   .pill{display:inline-block;font-size:12px;padding:2px 9px;border-radius:999px;font-weight:600}
-  .pill.ok{background:rgba(84,201,138,.15);color:var(--ok)}
-  .pill.bad{background:rgba(232,105,95,.15);color:var(--bad)}
-  .hint{font-size:12px;color:var(--ink2);margin-top:6px}
-  img#prev{width:100%;border:1px solid var(--line);border-radius:10px;margin-top:10px;
+  .pill.ok{background:rgba(84,201,138,.15);color:#54c98a}
+  .pill.bad{background:rgba(232,105,95,.15);color:#e8695f}
+  .hint{font-size:12px;color:#b9ad9c;margin-top:6px}
+  img#prev{width:100%;border:1px solid #332c24;border-radius:10px;margin-top:10px;
     background:#0d0b09;min-height:80px}
   .save{display:flex;gap:10px;align-items:center;margin-top:6px}
   #msg{font-size:13px}
-  #msg.ok{color:var(--ok)} #msg.bad{color:var(--bad)}
-  .warns{color:var(--amber2);font-size:12px;margin-top:8px;white-space:pre-line}
+  #msg.ok{color:#54c98a} #msg.bad{color:#e8695f}
+  .warns{color:#f6c07a;font-size:12px;margin-top:8px;white-space:pre-line}
 </style>
 </head>
 <body>
