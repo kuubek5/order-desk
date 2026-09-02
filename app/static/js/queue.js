@@ -293,26 +293,10 @@ document.addEventListener("dblclick", (event) => {
   window.location.href = uri;
 });
 
-// Collapsible "Нові з пошти" block on the queue dashboard (CLAUDE.md section
-// 8): starts collapsed to a single summary row, expands on click. No-op on
-// every other page — the toggle button only exists on the queue screen.
-document.addEventListener("click", (event) => {
-  const toggle = event.target.closest("[data-pending-mail-toggle]");
-  if (!toggle) return;
-
-  const section = toggle.closest(".pending-mail");
-  if (!section) return;
-
-  const collapsed = section.classList.toggle("is-collapsed");
-  toggle.setAttribute("aria-expanded", String(!collapsed));
-});
-
-// Same collapse mechanism as "Нові з пошти" above (is-collapsed class +
-// aria-expanded + CSS grid-template-rows transition, see .queue-group-*
-// rules in base.css), reused for the queue table's "Лабораторні роботи" /
-// "Роботи з пошти" section headers (queue.html) — both start expanded, so
-// unlike the pending-mail toggle this one only ever removes is-collapsed
-// on first click, never starts with it already applied server-side.
+// Collapsible section headers ("Лабораторні роботи" / "Роботи з пошти",
+// queue.html): is-collapsed class + aria-expanded + CSS grid-template-rows
+// transition (see .queue-group-* rules). Both start expanded, so first click
+// only ever removes is-collapsed.
 document.addEventListener("click", (event) => {
   const toggle = event.target.closest("[data-queue-group-toggle]");
   if (!toggle) return;
