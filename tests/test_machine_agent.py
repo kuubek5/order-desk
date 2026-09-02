@@ -17,6 +17,10 @@ class _Resp:
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
 
+    def json(self):
+        import json as _json
+        return _json.loads(self.content.decode())
+
 
 def _png_bytes(color=(10, 20, 30)) -> bytes:
     buf = io.BytesIO()
@@ -196,3 +200,35 @@ def test_milling_now_drops_the_same_id_on_two_machines():
     finally:
         with ms._states_lock:
             ms._states.clear()
+
+
+def test_finished_program_clears_stale_percent_and_link(monkeypatch):
+    """Бойовий випадок 03.09.26: програма завершилась (85%→готово), смуга
+    зникла з екрана — а чіп показував «85%» і стару прив'язку назавжди. Свіжий
+    кадр БЕЗ смуги / вікно без .iso мусять СКИНУТИ і відсоток, і прив'язку."""
+    import requests
+
+    target = ms.MachineTarget(name="350i", host="10.9.9.9", port=8765, agent_token="t")
+    # Попередній тік: фрезерувалось 85%, робота Кривовид (23-04-33).
+    with ms._states_lock:
+        ms._states[target.key] = ms.MachineState(
+            target=target, percent=85, sum3d_id="23-04-33",
+            iso_name="x_2026-09-02_23-04-33.iso",
+        )
+
+    # Тепер: кадр БЕЗ смуги (сірий екран), вікна .iso вже немає.
+    from PIL import Image
+    blank = Image.new("RGB", (300, 200), (240, 240, 240))
+
+    def fake_get(url, headers=None, timeout=None):
+        return _Resp(b'{"titles": ["RemiCORE", "Notepad"]}')  # без .iso
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(ms, "save_frame", lambda *a, **k: None)
+
+    state = ms.poll_target(None, target, password=None, frame=blank)
+    with ms._states_lock:
+        ms._states.clear()
+
+    assert state.percent is None, "старий відсоток залип після завершення"
+    assert state.sum3d_id is None, "стара прив'язка залипла після завершення"

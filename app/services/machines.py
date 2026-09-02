@@ -200,10 +200,14 @@ def _capture_http(host: str, port: int, token: str) -> Image.Image:
     return Image.open(io.BytesIO(resp.content)).convert("RGB")
 
 
-def _fetch_titles(host: str, port: int, token: str) -> list[str]:
-    """Заголовки вікон з агента (GET /titles). Порожньо — якщо агент старий
-    (ендпоінта ще немає) або мережа підвела: це не привід валити опитування,
-    просто програму цього тіку не дізнаємось."""
+def _fetch_titles(host: str, port: int, token: str) -> list[str] | None:
+    """Заголовки вікон з агента (GET /titles).
+
+    Розрізняє ДВА випадки, і це важливо для очищення:
+    * `[]` — агент відповів, але потрібного вікна немає (програма завершилась,
+      RemiCORE закрито) → знімаємо стару прив'язку;
+    * `None` — агент не відповів / старий агент без ендпоінта / битий JSON →
+      НЕ чіпаємо: ми просто не знаємо, а не «нічого не фрезерується»."""
     import requests
 
     try:
@@ -213,12 +217,14 @@ def _fetch_titles(host: str, port: int, token: str) -> list[str]:
             timeout=CAPTURE_TIMEOUT_SECONDS,
         )
         if resp.status_code != 200:
-            return []
+            return None
         data = resp.json()
-        titles = data.get("titles") or []
+        titles = data.get("titles")
+        if titles is None:
+            return None
         return [str(t) for t in titles]
     except Exception:  # noqa: BLE001 — мережа/старий агент/битий JSON
-        return []
+        return None
 
 
 def poll_target(
@@ -272,19 +278,23 @@ def poll_target(
     except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
         logger.exception("Відсоток верстата %s не прочитано", target.host)
         percent = None
-    if percent is not None:
-        state.percent = percent
-        state.percent_at = now
+    # ЗАВЖДИ пишемо результат СВІЖОГО кадру, навіть None. Інакше, коли програма
+    # завершилась і смуга зникла з екрана, старий відсоток залипав назавжди —
+    # робота показувала «85%», хоч давно готова (бойовий випадок 03.09.26).
+    # Новий кадр без смуги = «зараз не фрезерується», а не «лишилось 85%».
+    state.percent = percent
+    state.percent_at = now
 
     # Що фрезерується — лише через агента (заголовок вікна). У VNC такого
     # каналу немає, і вигадувати його з картинки ми не будемо.
     if target.is_agent:
-        program = pick_milling_program(
-            _fetch_titles(target.host, target.port, target.agent_token)
-        )
-        if program is not None:
-            state.iso_name = program.iso_name
-            state.sum3d_id = program.sum3d_id
+        titles = _fetch_titles(target.host, target.port, target.agent_token)
+        if titles is not None:  # агент відповів — довіряємо результату
+            program = pick_milling_program(titles)
+            # Порожньо/немає програми = вікно закрилось → знімаємо прив'язку,
+            # інакше «фрезерується Кривовид» висіло б після завершення.
+            state.iso_name = program.iso_name if program else None
+            state.sum3d_id = program.sum3d_id if program else None
             state.program_at = now
     return state
 
