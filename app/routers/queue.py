@@ -42,6 +42,7 @@ from app.services.config_state import (
     sheets_configured,
 )
 from app.services.order_dates import order_date, parse_sheet_tab
+from app.services.machines import machine_side_context
 from app.services.sum3d_capture import scan_projects as scan_sum3d_projects
 from app.settings_store import get_sum3d_projects_path
 from app.services.focus import count as focus_count, focused_ids, ranks as focus_ranks
@@ -465,6 +466,11 @@ def get_queue(
             # хоча вони налаштовані — просто ще не опитані.
             "furnaces_configured": len(furnace_targets(db)),
             "furnaces_all_idle": furnaces_all_idle(_furnace_cards),
+            # Верстати для віджета в бічній панелі (_machine_side.html) —
+            # перший рендер; далі секція оновлює себе через /machines/side.
+            # Контекст будує ТОЙ САМИЙ machine_side_context, що й роут, щоб
+            # два входи не розійшлись (урок віджета пічок).
+            **machine_side_context(db),
             # Мітки «мої зараз» — персональні, тому контекст, а не глобал.
             # ОБИДВІ гілки (сторінка й partial=rows) читають цей самий
             # словник: якби полл рахував інакше, мітки зникали б кожні 15с.

@@ -17,6 +17,7 @@ from starlette.requests import Request
 from app.routers.deps import get_current_user, get_db, templates
 from app.services.machines import (
     POLL_INTERVAL_SECONDS,
+    machine_side_context,
     poll_all,
     resolve_frame,
     snapshot,
@@ -41,6 +42,21 @@ def machines_page(request: Request, db: Session = Depends(get_db)):
     if user is None:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse(request, "machines.html", _context(request, db, user))
+
+
+@router.get("/machines/side", response_class=HTMLResponse)
+def machines_side(request: Request, db: Session = Depends(get_db)):
+    """Секція «Верстати» в бічній панелі черги — власний 30-секундний годинник.
+
+    Читає ЛИШЕ стан у пам'яті процесу: до верстата з потоку запиту не ходимо,
+    бо мовчазний ПК тримав би чергу двадцять секунд. Обгортку віддаємо ЗАВЖДИ
+    (навіть без верстатів), інакше елемент зник би з DOM разом зі своїм поллом.
+    """
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    return templates.TemplateResponse(
+        request, "_machine_side.html", machine_side_context(db)
+    )
 
 
 @router.get("/machines/cards", response_class=HTMLResponse)

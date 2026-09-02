@@ -889,6 +889,28 @@ document.addEventListener("htmx:afterSettle", (event) => {
   });
 });
 
+// Верстати — та сама механіка, що в пічок (клас на body переживає 30-секундний
+// свап секції; атрибут на ній помирав би разом зі старою розміткою).
+const MACHINE_SIDE_KEY = "machineSideOpen";
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("[data-machine-side-toggle]")) return;
+  const open = document.body.classList.toggle("machine-side-open");
+  try { localStorage.setItem(MACHINE_SIDE_KEY, open ? "1" : "0"); } catch (e) { /* приватний режим */ }
+  document.querySelectorAll("[data-machine-side-toggle]").forEach((btn) => {
+    btn.setAttribute("aria-expanded", String(open));
+  });
+});
+
+document.addEventListener("htmx:afterSettle", (event) => {
+  const swapped = event.target && event.target.id === "machine-side";
+  if (!swapped) return;
+  const open = document.body.classList.contains("machine-side-open");
+  document.querySelectorAll("[data-machine-side-toggle]").forEach((btn) => {
+    btn.setAttribute("aria-expanded", String(open));
+  });
+});
+
 // ── Згортання правої side-панелі ──────────────────────────────────────────
 // Звільняє ~296px для таблиці, коли колонки не влазять (вибір власника: без
 // втрати даних). Стан — у localStorage. Якщо користувач ще НЕ вибирав, панель

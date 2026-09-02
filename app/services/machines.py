@@ -29,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
+from app.machine_ocr import read_progress_percent
 from app.models import Machine
 from app.services.furnace import _HOST_RE, validate_address  # ті самі правила адреси
 from app.config import MACHINE_FRAMES_PATH
@@ -86,6 +87,11 @@ class MachineState:
     frame_at: Optional[datetime] = None
     error: Optional[str] = None
     error_at: Optional[datetime] = None
+    # Відсоток виконання програми зі смуги RemiCORE (Фаза 2). None — смуги на
+    # кадрі не видно (верстат стоїть, інший екран, кадр не читається): краще
+    # нічого, ніж хибне число — той самий принцип, що на пічках.
+    percent: Optional[int] = None
+    percent_at: Optional[datetime] = None
 
 
 _states: dict[str, MachineState] = {}
@@ -231,6 +237,18 @@ def poll_target(
         state.error = None
     except OSError:
         logger.exception("Кадр верстата %s не збережено", target.host)
+
+    # Відсоток — з ТОГО САМОГО кадру. Стоїть тут (а не в grab), бо poll_target —
+    # спільна лійка обох шляхів опитування: фонового (poll_all) і разового.
+    # Саме розходження цих шляхів дало баг 0.6.13, повторювати його не будемо.
+    try:
+        percent = read_progress_percent(frame)
+    except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
+        logger.exception("Відсоток верстата %s не прочитано", target.host)
+        percent = None
+    if percent is not None:
+        state.percent = percent
+        state.percent_at = now
     return state
 
 
@@ -313,6 +331,44 @@ class MachineCard:
         if not (self.state and self.state.frame_at):
             return False
         return (self.now - self.state.frame_at).total_seconds() > STALE_AFTER_SECONDS
+
+    @property
+    def percent(self) -> Optional[int]:
+        """Відсоток зі СВІЖОГО кадру. Протухлий кадр числа не дає: показувати
+        старий відсоток як поточний — це і є «хибне число»."""
+        if not (self.state and self.state.percent is not None):
+            return None
+        if self.stale or self.has_problem:
+            return None
+        return self.state.percent
+
+    @property
+    def is_running(self) -> bool:
+        """Програма йде: є відсоток і він ще не 100."""
+        pct = self.percent
+        return pct is not None and pct < 100
+
+
+def machine_side_context(db: Session) -> dict:
+    """Контекст віджета верстатів у бічній панелі черги.
+
+    Спільний для роута полла (/machines/side) і для першого рендера черги —
+    щоб два входи не розійшлись (урок віджета пічок). Читає лише памʼять
+    процесу, до верстатів не ходить."""
+    return {"machine_cards": snapshot(db), "machine_summary": strip_summary(db)}
+
+
+def strip_summary(db: Session) -> dict:
+    """Підсумок для шапки віджета: скільки фрезерує / без зв'язку.
+
+    Годується з тих самих карток, що й сам віджет — два ПОГЛЯДИ на одне
+    значення це нормально, два ДЖЕРЕЛА ні (правило зі смуги пічок)."""
+    cards = snapshot(db)
+    return {
+        "total": len(cards),
+        "running": sum(1 for c in cards if c.is_running),
+        "broken": sum(1 for c in cards if c.has_problem),
+    }
 
 
 def snapshot(db: Session) -> list[MachineCard]:

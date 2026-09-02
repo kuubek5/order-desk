@@ -18,6 +18,9 @@
             </div>
             {% if card.has_problem %}
             <span class="fu-pill is-offline">немає зв'язку</span>
+            {% elif card.percent is not none %}
+            {# Відсоток зі смуги RemiCORE — головне число, тому в шапці. #}
+            <span class="fu-pill is-run mc-pct">{{ card.percent }}%</span>
             {% elif card.has_frame and not card.stale %}
             <span class="fu-pill is-run">живий кадр</span>
             {% elif card.has_frame %}
@@ -27,6 +30,14 @@
 
         {% if card.has_problem %}
         <p class="fu-alert">{{ card.problem_text }}</p>
+        {% endif %}
+
+        {% if card.percent is not none %}
+        {# Смуга — та сама величина формою: число читається впритул, смуга —
+           краєм ока через цех. #}
+        <div class="mc-bar" role="img" aria-label="Виконано {{ card.percent }} відсотків">
+            <i style="width:{{ card.percent }}%"></i>
+        </div>
         {% endif %}
 
         {% if card.has_frame %}

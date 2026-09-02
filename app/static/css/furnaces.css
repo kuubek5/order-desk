@@ -275,3 +275,40 @@ main.furnaces{position:relative;min-height:100vh}
 .q2 .side-sec-furnace .side-body{display:none}
 body.furnace-side-open .q2 .side-sec-furnace .side-body{display:block;padding-top:11px}
 body.furnace-side-open .q2 .side-sec-furnace .chev{transform:rotate(180deg)}
+
+/* ── Відсоток виконання верстата (Фаза 2) ──────────────────────────────────
+   Число — головне (на нього дивляться, щоб зрозуміти «чи скоро звільниться»),
+   смуга — та сама величина формою, для погляду краєм ока через цех. */
+.mc-pct{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-weight:700}
+.mc-bar{height:6px;border-radius:999px;background:var(--raise-2);overflow:hidden;margin:2px 0 10px}
+.mc-bar > i{display:block;height:100%;border-radius:999px;background:var(--accent);
+  transition:width .5s cubic-bezier(.4,0,.2,1)}
+@media (prefers-reduced-motion:reduce){.mc-bar > i{transition:none}}
+
+/* Плитки верстатів у бічній панелі черги (_machine_side.html) */
+.ms-tiles{display:flex;flex-direction:column;gap:6px}
+.ms-tile{display:grid;grid-template-columns:1fr auto;grid-template-areas:"name pct" "bar bar";
+  gap:2px 8px;align-items:baseline;padding:8px 10px;border:1px solid var(--line);
+  border-radius:9px;background:var(--card);text-decoration:none;color:inherit;
+  transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
+.ms-tile:hover{border-color:var(--line-2);background:var(--card-2)}
+.ms-tile.is-offline{border-color:rgba(var(--alarm-rgb),.4)}
+.ms-name{grid-area:name;font-size:var(--fs-1);color:var(--ink);font-weight:600;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ms-pct{grid-area:pct;font-family:var(--font-mono);font-variant-numeric:tabular-nums;
+  font-size:var(--fs-3);font-weight:700;color:var(--accent);line-height:1.1}
+.ms-pct > i{font-style:normal;font-size:var(--fs-0);color:var(--ink-3);margin-left:1px}
+.ms-pct.dim{color:var(--ink-3)}
+.ms-pct.err{color:var(--alarm)}
+.ms-note{grid-area:bar;font-size:var(--fs-0);color:var(--ink-3)}
+.ms-bar{grid-area:bar;height:4px;border-radius:999px;background:var(--raise-2);
+  overflow:hidden;margin-top:4px}
+.ms-bar > i{display:block;height:100%;border-radius:999px;background:var(--accent);
+  transition:width .5s cubic-bezier(.4,0,.2,1)}
+@media (prefers-reduced-motion:reduce){.ms-bar > i{transition:none}}
+
+/* Відкритість секції верстатів — тим самим класом на body, з тієї ж причини,
+   що й у печей (секція свапається кожні 30 с). */
+.q2 .side-sec-machine .side-body{display:none}
+body.machine-side-open .q2 .side-sec-machine .side-body{display:block;padding-top:11px}
+body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}

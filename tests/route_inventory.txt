@@ -22,6 +22,7 @@ GET /license
 GET /login
 GET /machines
 GET /machines/cards
+GET /machines/side
 GET /machines/{key}/frame.png
 GET /mail
 GET /mail/{email_id}
