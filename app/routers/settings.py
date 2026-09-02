@@ -448,6 +448,7 @@ def check_settings_path(
     kind: str = Form(""),
     export_folder_path: str | None = Form(None),
     technician_files_path: str | None = Form(None),
+    sum3d_projects_path: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     """Live, per-machine reachability/writability check for A3 (CLAUDE.md
@@ -465,7 +466,12 @@ def check_settings_path(
     if not is_loopback_request(request):
         raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
-    raw_path = export_folder_path if kind == "export" else technician_files_path
+    if kind == "sum3d":
+        raw_path = sum3d_projects_path
+    elif kind == "export":
+        raw_path = export_folder_path
+    else:
+        raw_path = technician_files_path
     result = check_path_status(raw_path or "")
 
     return templates.TemplateResponse(

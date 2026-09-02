@@ -42,6 +42,8 @@ from app.services.config_state import (
     sheets_configured,
 )
 from app.services.order_dates import order_date, parse_sheet_tab
+from app.services.sum3d_capture import scan_projects as scan_sum3d_projects
+from app.settings_store import get_sum3d_projects_path
 from app.services.focus import count as focus_count, focused_ids, ranks as focus_ranks
 from app.services.furnace import (
     all_idle as furnaces_all_idle,
@@ -491,6 +493,9 @@ def get_queue(
     if partial == "rows":
         return templates.TemplateResponse(request, "_queue_rows.html", context)
 
+    # Моно-лоток Sum3D — лише для повного рендера (у шапці, поза #queue-rows).
+    # Скан теки Cam-work раз на завантаження; далі фрагмент самополлиться.
+    context["sum3d_projects"] = scan_sum3d_projects(get_sum3d_projects_path(db))
     return templates.TemplateResponse(request, "queue.html", context)
 
 
@@ -754,6 +759,24 @@ def sheet_sync_state(request: Request, db: Session = Depends(get_db)):
              "refresh-queue": True}
         )
     return response
+
+
+@router.get("/sum3d/tray", response_class=HTMLResponse)
+def sum3d_tray(request: Request, db: Session = Depends(get_db)):
+    """Self-polling мono-лоток захоплених Sum3D ID для шапки черги (хід 1).
+
+    Сканує теку проєктів Sum3D (Cam-work, налаштування sum3d_projects_path) і
+    показує найновіші ID, щоб оператор не переписував їх вручну. Читання-лише.
+    Порожній шлях/тека → порожня обгортка (полл лишається, з'явиться щойно
+    вкажуть шлях і виникнуть проєкти)."""
+    user = get_current_user(request, db)
+    if user is None:
+        # Розлогінений полл — зупинити (непорожня НЕ-полльна відповідь).
+        return HTMLResponse('<span class="sum3d-tray-off"></span>')
+    projects = scan_sum3d_projects(get_sum3d_projects_path(db))
+    return templates.TemplateResponse(
+        request, "_sum3d_tray.html", {"user": user, "sum3d_projects": projects}
+    )
 
 
 @router.get("/sheets/mass-vanish", response_class=HTMLResponse)

@@ -1,0 +1,25 @@
+{# Моно-лоток захоплених Sum3D ID у шапці черги (хід 1, слайс 1).
+   Самополлиться щохвилини: сканує теку Cam-work і показує НАЙНОВІШИЙ ID у
+   моно-полі + кнопка копії (глобальний обробник [data-copy] в app.js). Якщо
+   проєктів кілька — «+N» тихою підказкою (повна розкривна панель із «прибрати»
+   — наступний слайс, там потрібен стан, який переживе полл).
+
+   Обгортка віддається ЗАВЖДИ (навіть без проєктів), інакше елемент зник би з
+   DOM разом зі своїм поллом. Колір сигналу — токен --sig (адаптивний до теми).
+   Читання-лише: сюди CRM нічого не пише. #}
+<span class="sum3d-tray" hx-get="/sum3d/tray" hx-trigger="every 60s" hx-swap="outerHTML"
+      {% if not sum3d_projects %}data-empty="1"{% endif %}>
+  {% if sum3d_projects %}
+  {% set _top = sum3d_projects[0] %}
+  {% set _more = sum3d_projects|length - 1 %}
+  <span class="s3t-lab" title="Нові проєкти Sum3D (Cam-work)">Sum3D</span>
+  <input class="s3t-id mono" value="{{ _top.sum3d_id }}" readonly
+         onclick="this.select()" title="Проєкт {{ _top.folder }} — клік виділяє, кнопка копіює">
+  <button type="button" class="s3t-copy" data-copy="{{ _top.sum3d_id }}"
+          title="Копіювати {{ _top.sum3d_id }}" aria-label="Копіювати Sum3D ID">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+    <span>копія</span>
+  </button>
+  {% if _more > 0 %}<span class="s3t-more" title="Ще {{ _more }} захоплених ID">+{{ _more }}</span>{% endif %}
+  {% endif %}
+</span>

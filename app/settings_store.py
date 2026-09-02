@@ -112,6 +112,17 @@ SETTING_FIELDS = [
         secret=True,
         help_text="View-only пароль UltraVNC на ПК верстатів (не повний!)",
     ),
+    # Тека проєктів Sum3D (у цеху зветься «Cam-work»). Звідти CRM ловить нові
+    # проєкти й показує їх Sum3D ID у шапці черги (хід 1 ROADMAP_IDEAS.md).
+    # Назва теки проєкту = ДАТА_ЧАС (YYYY-MM-DD_HH-MM-SS); беремо хвіст HH-MM-SS
+    # — той самий ідентифікатор, який оператори вписують вручну. Читання-лише:
+    # CRM у цю теку нічого не пише. operator_editable — це шлях, не секрет.
+    SettingField(
+        key="sum3d_projects_path",
+        label="Шлях до папки проєктів Sum3D (Cam-work)",
+        help_text="Звідки CRM ловить нові проєкти й підказує Sum3D ID",
+        operator_editable=True,
+    ),
 ]
 
 OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operator_editable}
@@ -138,6 +149,7 @@ CLEARABLE_SETTING_KEYS = {
     "google_sheet_id",
     "export_folder_path",
     "technician_files_path",
+    "sum3d_projects_path",
 }
 
 # Non-secret preference keys stored in the same AppSetting table but NOT part of
@@ -278,6 +290,11 @@ def get_export_folder_path(session: Session) -> str:
 
 def get_technician_files_path(session: Session) -> Optional[str]:
     return get_setting(session, "technician_files_path")
+
+
+def get_sum3d_projects_path(session: Session) -> Optional[str]:
+    """Тека проєктів Sum3D (Cam-work). None/порожньо = функція вимкнена."""
+    return get_setting(session, "sum3d_projects_path")
 
 
 def get_imap_login(session: Session) -> Optional[str]:

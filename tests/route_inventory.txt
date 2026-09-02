@@ -43,6 +43,7 @@ GET /shift/images/{image_id}
 GET /stats
 GET /stl-preview/{token}
 GET /stl-preview/{token}/{filename}
+GET /sum3d/tray
 MOUNT /static
 POST /account/appearance
 POST /account/initial
