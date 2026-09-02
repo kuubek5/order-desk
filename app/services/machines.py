@@ -114,14 +114,8 @@ def _safe_decrypt(value: Optional[str], name: str, what: str) -> Optional[str]:
 
 def target_of(machine: Machine) -> MachineTarget:
     password = _safe_decrypt(machine.password_encrypted, machine.name, "пароль")
-    raw_token = getattr(machine, "agent_token_encrypted", None)
-    agent_token = _safe_decrypt(raw_token, machine.name, "токен агента")
-    # Діагностика (тимчасова): чому верстат іде по VNC замість HTTP. Показує, чи
-    # колонка токена заповнена в БД і чи він розшифрувався — тобто транспорт.
-    logger.info(
-        "machine %s: token_col=%s decrypted=%s → transport=%s",
-        machine.name, bool(raw_token), bool(agent_token),
-        "http" if agent_token else "vnc",
+    agent_token = _safe_decrypt(
+        getattr(machine, "agent_token_encrypted", None), machine.name, "токен агента"
     )
     return MachineTarget(
         name=machine.name, host=machine.host, port=machine.port,
@@ -252,14 +246,20 @@ def poll_all(db: Session, now: Optional[datetime] = None) -> list[MachineState]:
     shared = get_machine_vnc_password(db)
 
     def grab(target: MachineTarget):
+        # ТА САМА розвилка транспорту, що в poll_target: воркер ходить саме
+        # сюди, тож без неї верстат з HTTP-агентом опитувався б по VNC і давав
+        # «not a VNC server» (бойовий випадок 02.09.26).
         try:
-            image = capture(
-                target.host,
-                port=target.port,
-                password=target.password or shared,
-                timeout=CAPTURE_TIMEOUT_SECONDS,
-                warmup=CAPTURE_WARMUP_SECONDS,
-            )
+            if target.is_agent:
+                image = _capture_http(target.host, target.port, target.agent_token)
+            else:
+                image = capture(
+                    target.host,
+                    port=target.port,
+                    password=target.password or shared,
+                    timeout=CAPTURE_TIMEOUT_SECONDS,
+                    warmup=CAPTURE_WARMUP_SECONDS,
+                )
             return target, image, None
         except FurnaceVncError as exc:
             return target, None, str(exc)

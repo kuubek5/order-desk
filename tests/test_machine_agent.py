@@ -59,6 +59,32 @@ def test_target_is_agent_flag():
     assert agent.is_agent
 
 
+def test_poll_all_uses_http_for_agent_targets(monkeypatch):
+    """Сторож бойового багу 02.09.26: poll_all має ВЛАСНУ grab(), і в ній
+    бракувало розвилки транспорту — воркер (він ходить саме через poll_all)
+    опитував агентний верстат по VNC і давав «not a VNC server», попри
+    правильний токен. Обидві гілки мусять дивитись на target.is_agent."""
+    import requests
+
+    calls = {"http": 0}
+
+    def fake_get(url, headers=None, timeout=None):
+        calls["http"] += 1
+        return _Resp(_png_bytes())
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(ms, "capture", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("poll_all пішов у VNC замість HTTP-агента")))
+    monkeypatch.setattr(ms, "save_frame", lambda *a, **k: None)
+    monkeypatch.setattr(ms, "get_machine_vnc_password", lambda db: None)
+    target = ms.MachineTarget(name="350i", host="192.168.1.85", port=8765, agent_token="tok")
+    monkeypatch.setattr(ms, "configured_targets", lambda db: [target])
+
+    states = ms.poll_all(None)
+    assert calls["http"] == 1
+    assert states and states[0].error is None
+
+
 def test_poll_target_uses_http_when_token(monkeypatch):
     import requests
 
