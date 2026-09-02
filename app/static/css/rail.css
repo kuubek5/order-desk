@@ -278,11 +278,27 @@
      group labels and the progress pill are new. Lives here (not in
      settings_console.css) because materials/recognition/account render the
      same sub-rail without loading that page-only stylesheet. */
+  /* Drill-in меню налаштувань довше за головне (≈18 пунктів + заголовки груп
+     + прогрес). На нижчому за ~1060px екрані (24" 1080 мінус хром браузера)
+     воно не влазило, і оскільки .rail-foot притиснутий `margin-top:auto`,
+     нижні пункти лізли ПОВЕРХ підвалу (Оператор/Вийти/версія). Тому саме ця
+     обгортка (а не вся рейка) стає власною скрол-зоною: rail-top лишається
+     вгорі, rail-foot — унизу видимим завжди, а перелік розділів прокручується
+     всередині між ними. Головне меню коротше й такої обгортки не має —
+     .topbar-user скролиться цілком, як і було. */
   .rail-settings {
     display: flex;
     flex-direction: column;
     gap: 3px;
+    flex: 1 1 auto;
     min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  /* Коли активний drill-in — зовнішня рейка НЕ скролиться (інакше подвійний
+     скрол і той самий налазний підвал); скрол живе всередині .rail-settings. */
+  .topbar-user:has(.rail-settings) {
+    overflow: hidden;
   }
 
   .rail-settings-back {
