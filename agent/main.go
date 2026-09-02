@@ -161,6 +161,7 @@ func main() {
 	// -setup is accepted for clarity but no-args already opens the settings page,
 	// so the flag is registered only to be a valid argument.
 	_ = flag.Bool("setup", false, "open the settings page in the browser")
+	install := flag.Bool("install", false, "one elevated pass: config+token, autostart, firewall, start (installer runs this)")
 	elevated := flag.Bool("elevated", false, "internal: set after relaunching with admin rights")
 	flag.Parse()
 
@@ -170,6 +171,10 @@ func main() {
 		log.SetOutput(io.MultiWriter(os.Stderr, f))
 	}
 
+	if *install {
+		runInstall(*cfgPath)
+		return
+	}
 	if *serve {
 		runServe(*cfgPath)
 		return
@@ -222,6 +227,15 @@ func runServe(cfgPath string) {
 	mux.HandleFunc("/capture", authed(func(w http.ResponseWriter, r *http.Request) {
 		captureToResponse(w, r, cfg.Display)
 	}))
+
+	// Also serve the settings menu on loopback 8766 so 127.0.0.1:8766 ALWAYS
+	// works while the agent runs — no separate shortcut needed, and Save runs
+	// inside this (elevated) process so it can register autostart/firewall.
+	go func() {
+		if err := http.ListenAndServe(setupAddr, newSetupMux(cfgPath, false)); err != nil {
+			log.Printf("settings menu not served on %s: %v", setupAddr, err)
+		}
+	}()
 
 	log.Printf("kmill-agent %s serving on %s (display %d)", Version, cfg.Bind, cfg.Display)
 	srv := &http.Server{
@@ -276,27 +290,10 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 // Settings menu (`-setup`) — a small local web page.
 // ---------------------------------------------------------------------------
 
-func runSetup(cfgPath string, elevated bool) {
-	// Registering the scheduled task and adding a firewall rule need admin
-	// rights. If we are not elevated, relaunch ourselves elevated once.
-	if !elevated && !isAdmin() {
-		log.Printf("not elevated — relaunching with admin rights…")
-		if err := relaunchElevated("-setup", "-elevated"); err != nil {
-			log.Printf("could not elevate (%v); continuing without admin — "+
-				"Save may fail to register autostart", err)
-		} else {
-			return // the elevated copy takes over
-		}
-	}
-
-	cfg, err := loadConfig(cfgPath)
-	if err != nil {
-		cfg = defaultConfig()
-	}
-	if cfg.Token == "" {
-		cfg.Token = randomToken() // pre-fill a fresh token on first run
-	}
-
+// newSetupMux builds the settings-menu handlers. `allowQuit` is true only for
+// the standalone -setup process (its /quit may exit); when the background
+// -serve hosts the menu, quit must NOT kill the agent, so it is a no-op there.
+func newSetupMux(cfgPath string, allowQuit bool) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -307,7 +304,7 @@ func runSetup(cfgPath string, elevated bool) {
 	mux.HandleFunc("/info", func(w http.ResponseWriter, r *http.Request) {
 		cur, _ := loadConfig(cfgPath)
 		if cur.Token == "" {
-			cur.Token = cfg.Token
+			cur.Token = randomToken()
 		}
 		host, _ := os.Hostname()
 		installed, running := taskState()
@@ -326,9 +323,9 @@ func runSetup(cfgPath string, elevated bool) {
 		})
 	})
 
-	// Live preview of what the CRM will see (loopback-only, so no token here).
 	mux.HandleFunc("/preview", func(w http.ResponseWriter, r *http.Request) {
-		captureToResponse(w, r, cfg.Display)
+		cur, _ := loadConfig(cfgPath)
+		captureToResponse(w, r, cur.Display)
 	})
 
 	mux.HandleFunc("/save", func(w http.ResponseWriter, r *http.Request) {
@@ -369,7 +366,6 @@ func runSetup(cfgPath string, elevated bool) {
 			writeJSON(w, map[string]interface{}{"ok": false, "error": "не вдалось зберегти agent.json: " + err.Error()})
 			return
 		}
-		cfg = newCfg
 		var warns []string
 		if err := registerTask(); err != nil {
 			warns = append(warns, "автозапуск не зареєстровано: "+err.Error())
@@ -383,23 +379,86 @@ func runSetup(cfgPath string, elevated bool) {
 		writeJSON(w, map[string]interface{}{"ok": true, "warnings": warns})
 	})
 
-	// Close the settings menu (the background -serve task keeps running).
 	mux.HandleFunc("/quit", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]interface{}{"ok": true})
-		go func() { time.Sleep(300 * time.Millisecond); os.Exit(0) }()
+		if allowQuit {
+			go func() { time.Sleep(300 * time.Millisecond); os.Exit(0) }()
+		}
 	})
 
+	return mux
+}
+
+// runSetup opens the settings menu in a browser. Since the background -serve
+// now also serves the menu on 8766, this usually finds the port busy and just
+// points the browser at the already-running page — no elevation dance needed.
+func runSetup(cfgPath string, elevated bool) {
+	url := "http://" + setupAddr + "/"
 	ln, err := net.Listen("tcp", setupAddr)
 	if err != nil {
-		// A settings page is probably already open — just point the browser there.
-		log.Printf("settings port busy (%v); opening existing page", err)
-		openBrowser("http://" + setupAddr + "/")
+		// The background agent already serves the menu — just open it.
+		log.Printf("menu already served (%v); opening browser", err)
+		openBrowser(url)
 		return
 	}
-	url := "http://" + setupAddr + "/"
+	// No background agent holding the port: this standalone process serves the
+	// menu itself. Elevate so Save can register autostart / firewall.
+	if !elevated && !isAdmin() {
+		if err := relaunchElevated("-setup", "-elevated"); err == nil {
+			_ = ln.Close()
+			return // the elevated copy takes over
+		}
+		log.Printf("could not elevate; Save may fail to register autostart")
+	}
 	log.Printf("kmill-agent %s settings on %s", Version, url)
 	openBrowser(url)
-	log.Fatal(http.Serve(ln, mux))
+	log.Fatal(http.Serve(ln, newSetupMux(cfgPath, true)))
+}
+
+// runInstall does the whole first-time setup in ONE elevated pass (the
+// installer runs it): create config with a token if missing, register the
+// autostart task, open the firewall, and start the agent now. No manual
+// «Зберегти», no per-click UAC. Writes the token + CRM address to a file the
+// installer shows, so the operator only has to paste them into KMill.
+func runInstall(cfgPath string) {
+	cfg, err := loadConfig(cfgPath)
+	if err != nil {
+		cfg = defaultConfig()
+	}
+	if cfg.Token == "" {
+		cfg.Token = randomToken()
+	}
+	if strings.TrimSpace(cfg.Name) == "" {
+		if host, e := os.Hostname(); e == nil {
+			cfg.Name = host
+		}
+	}
+	if cfg.Bind == "" {
+		cfg.Bind = "0.0.0.0:8765"
+	}
+	if err := saveConfig(cfgPath, cfg); err != nil {
+		log.Printf("install: could not write config: %v", err)
+	}
+	if err := registerTask(); err != nil {
+		log.Printf("install: register task failed: %v", err)
+	}
+	if err := openFirewall(portOf(cfg.Bind)); err != nil {
+		log.Printf("install: firewall rule failed: %v", err)
+	}
+	if err := restartTask(); err != nil {
+		log.Printf("install: start agent failed: %v", err)
+	}
+	// A copy-paste cheat-sheet for the operator, shown by the installer.
+	var b strings.Builder
+	b.WriteString("KMill Agent — дані для CRM (Налаштування → Верстати)\r\n\r\n")
+	b.WriteString("Токен агента:\r\n  " + cfg.Token + "\r\n\r\n")
+	b.WriteString("Порт: " + portOf(cfg.Bind) + "\r\n\r\nАдреса (IP цього ПК):\r\n")
+	for _, ip := range localIPv4s() {
+		b.WriteString("  " + ip + ":" + portOf(cfg.Bind) + "\r\n")
+	}
+	b.WriteString("\r\nМеню налаштувань (будь-коли): http://127.0.0.1:8766\r\n")
+	_ = os.WriteFile(filepath.Join(exeDir(), "crm-setup.txt"), []byte(b.String()), 0644)
+	log.Printf("install done: token set, task+firewall+serve up")
 }
 
 // ---------------------------------------------------------------------------

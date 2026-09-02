@@ -54,9 +54,15 @@ Name: "{group}\KMill Agent — налаштування"; Filename: "{app}\kmill
 Name: "{group}\Видалити KMill Agent"; Filename: "{uninstallexe}"
 
 [Run]
-; Одразу відкрити меню налаштувань після встановлення (інсталятор уже з правами
-; адміна, тому агент зареєструє автозапуск і брандмауер без повторного UAC).
-Filename: "{app}\kmill-agent.exe"; Parameters: "-setup"; Description: "Відкрити налаштування агента"; Flags: nowait postinstall skipifsilent
+; ОДИН елевований прохід (інсталятор уже адмін): створює конфіг+токен, реєструє
+; автозапуск, відкриває брандмауер і стартує агента. Без ручного «Зберегти», без
+; окремого UAC. Записує crm-setup.txt із токеном і адресою для CRM.
+Filename: "{app}\kmill-agent.exe"; Parameters: "-install"; StatusMsg: "Налаштування агента верстата…"; Flags: runhidden waituntilterminated
+; Показати оператору токен і адресу, які треба вписати в KMill → Верстати.
+Filename: "notepad.exe"; Parameters: """{app}\crm-setup.txt"""; Description: "Показати токен і адресу для CRM"; Flags: postinstall skipifsilent nowait
+; За бажанням — відкрити меню налаштувань (назва/монітор). Меню тепер завжди
+; доступне за http://127.0.0.1:8766, бо його віддає сам агент.
+Filename: "{app}\kmill-agent.exe"; Parameters: "-setup"; Description: "Відкрити меню налаштувань агента"; Flags: nowait postinstall skipifsilent unchecked
 
 [UninstallRun]
 ; Прибрати автозапуск і правило брандмауера, які створив агент.
