@@ -44,17 +44,24 @@ MIN_BAR_HEIGHT = 4
 # Правдоподібна геометрія контейнера: смуга прогресу широка й невисока.
 MIN_CONTAINER_WIDTH = 40
 MAX_BAR_HEIGHT = 60
+# Найширша «дірка» в порожній частині, яку вважаємо підписом поверх смуги, а не
+# її кінцем. Літера підпису — кілька пікселів; фон панелі тягнеться сотнями.
+MAX_LABEL_GAP = 14
 
 
 def _is_blue(px: tuple[int, int, int]) -> bool:
+    """Заливка смуги. Виміряно на реальному кадрі 02.09.26: чиста темна синь
+    `(0, 0, 128)`, тобто r == g і синій різко переважає. Поріг узятий із запасом
+    на згладжування країв і на світліші пікселі тексту поверх смуги."""
     r, g, b = px[0], px[1], px[2]
-    return b > 90 and b - r > 40 and b - g > 25
+    return b >= 90 and b - r >= 40 and b - g >= 40
 
 
-def _is_light(px: tuple[int, int, int]) -> bool:
-    """Порожня частина смуги — світла (біла/сіра), але НЕ синя."""
-    r, g, b = px[0], px[1], px[2]
-    return r > 150 and g > 150 and b > 150
+def _is_unfilled(px: tuple[int, int, int]) -> bool:
+    """Порожня частина смуги — ЧИСТО БІЛА (255), а фон панелі RemiCORE сірий
+    (240). Тому поріг саме 250, а не «світле взагалі»: з м'яким порогом
+    контейнер розповзався по всій сірій панелі й відсоток виходив мізерним."""
+    return px[0] >= 250 and px[1] >= 250 and px[2] >= 250
 
 
 @dataclass(frozen=True)
@@ -65,24 +72,14 @@ class ProgressBar:
     box: tuple[int, int, int, int]  # left, top, right, bottom заливки — для доказу
 
 
-def _runs_of_blue(row: list[tuple[int, int, int]]) -> list[tuple[int, int]]:
-    """Горизонтальні пробіги синього в рядку → список (start, end_exclusive)."""
-    runs: list[tuple[int, int]] = []
-    start: Optional[int] = None
-    for x, px in enumerate(row):
-        if _is_blue(px):
-            if start is None:
-                start = x
-        elif start is not None:
-            runs.append((start, x))
-            start = None
-    if start is not None:
-        runs.append((start, len(row)))
-    return runs
-
-
 def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
-    """Знайти смугу прогресу й порахувати відсоток. None — якщо не впевнені."""
+    """Знайти смугу прогресу й порахувати відсоток. None — якщо не впевнені.
+
+    Ключова деталь із реального кадру: RemiCORE малює ПІДПИС («9 %») ПОВЕРХ
+    смуги, тобто суцільного синього пробігу не існує — він розірваний текстом.
+    Тому міряємо не пробіг, а РОЗМАХ синього в рядку (від найлівішого до
+    найправішого), а дірки від літер просто ігноруємо.
+    """
     rgb = image.convert("RGB")
     width, height = rgb.size
     if width < 80 or height < 60:
@@ -91,52 +88,63 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
     top = int(height * BOTTOM_BAND)
     px = rgb.load()
 
-    # 1) Найдовший пробіг синього в нижній смузі кадру.
-    best: Optional[tuple[int, int, int]] = None  # (довжина, y, x0), x1 окремо
-    best_span: tuple[int, int] = (0, 0)
+    # 1) Рядки з достатньою кількістю синього + розмах синього в кожному.
+    rows: dict[int, tuple[int, int]] = {}
     for y in range(top, height):
-        row = [px[x, y] for x in range(width)]
-        for x0, x1 in _runs_of_blue(row):
-            if x1 - x0 < MIN_FILL_WIDTH:
-                continue
-            if best is None or (x1 - x0) > best[0]:
-                best = (x1 - x0, y, x0)
-                best_span = (x0, x1)
-    if best is None:
+        first = last = None
+        count = 0
+        for x in range(width):
+            if _is_blue(px[x, y]):
+                if first is None:
+                    first = x
+                last = x
+                count += 1
+        if first is not None and count >= MIN_FILL_WIDTH:
+            rows[y] = (first, last)
+    if not rows:
         return None
 
-    _, y_seed, _ = best
-    x0, x1 = best_span
-
-    # 2) Висота смуги: скільки сусідніх рядків мають ту саму заливку.
-    def row_matches(y: int) -> bool:
-        if y < 0 or y >= height:
-            return False
-        return _is_blue(px[x0, y]) and _is_blue(px[max(x0, x1 - 1), y])
-
-    y_top = y_seed
-    while row_matches(y_top - 1):
-        y_top -= 1
-    y_bot = y_seed
-    while row_matches(y_bot + 1):
-        y_bot += 1
-    bar_height = y_bot - y_top + 1
-    if bar_height < MIN_BAR_HEIGHT or bar_height > MAX_BAR_HEIGHT:
+    # 2) Смуга — найтовща група СУСІДНІХ таких рядків (одиночна лінія чи
+    #    текстовий рядок так відсіюються).
+    bands: list[list[int]] = []
+    for y in sorted(rows):
+        if bands and y == bands[-1][-1] + 1:
+            bands[-1].append(y)
+        else:
+            bands.append([y])
+    band = max(bands, key=len)
+    if not (MIN_BAR_HEIGHT <= len(band) <= MAX_BAR_HEIGHT):
         return None
 
-    # 3) Контейнер: від заливки вправо по СВІТЛОМУ (порожня частина), вліво —
-    #    доки заливка/світле. Міряємо по середньому рядку смуги.
-    y_mid = (y_top + y_bot) // 2
-    left = x0
-    while left - 1 >= 0 and (_is_blue(px[left - 1, y_mid]) or _is_light(px[left - 1, y_mid])):
-        left -= 1
-    right = x1
-    while right < width and (_is_blue(px[right, y_mid]) or _is_light(px[right, y_mid])):
-        right += 1
+    left = min(rows[y][0] for y in band)
+    fill_right = max(rows[y][1] for y in band)
+    fill = fill_right - left + 1
+    if fill < MIN_FILL_WIDTH:
+        return None
 
-    container = right - left
-    fill = x1 - left
-    if container < MIN_CONTAINER_WIDTH or fill <= 0 or fill > container:
+    # 3) Порожня частина — чисто біла, праворуч від заливки. ПАСТКА (спіймана
+    #    на реальному кадрі): підпис «9 %» стоїть на БІЛІЙ частині, коли
+    #    заливка мала, — і сканування, що спиняється на першому ж не-білому
+    #    пікселі, обривалось на літері й давало 29% замість 9%. Тому дірки
+    #    завширшки з літеру перестрибуємо, а зупиняємось лише на суцільному
+    #    фоні панелі; правою межею беремо ОСТАННІЙ білий піксель.
+    y_mid = band[len(band) // 2]
+    last_white = fill_right
+    gap = 0
+    x = fill_right + 1
+    while x < width:
+        p = px[x, y_mid]
+        if _is_unfilled(p) or _is_blue(p):
+            last_white = x
+            gap = 0
+        else:
+            gap += 1
+            if gap > MAX_LABEL_GAP:
+                break
+        x += 1
+
+    container = last_white - left + 1
+    if container < MIN_CONTAINER_WIDTH:
         return None
 
     percent = round(fill * 100 / container)
@@ -144,7 +152,7 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
         return None
     return ProgressBar(
         percent=percent, fill_width=fill, container_width=container,
-        box=(left, y_top, right, y_bot + 1),
+        box=(left, band[0], last_white + 1, band[-1] + 1),
     )
 
 

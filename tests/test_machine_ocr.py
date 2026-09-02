@@ -10,10 +10,10 @@ from PIL import Image, ImageDraw
 
 from app.machine_ocr import find_progress_bar, read_progress_percent
 
-BLUE = (59, 111, 212)
-LIGHT = (245, 245, 245)
+BLUE = (0, 0, 128)      # виміряно на реальному кадрі 02.09.26
+LIGHT = (255, 255, 255)  # порожня частина смуги — ЧИСТО біла
 DARK = (40, 40, 40)
-GREY_BG = (200, 200, 200)
+GREY_BG = (240, 240, 240)  # фон панелі RemiCORE (НЕ біла!)
 
 
 def _screen(w=1152, h=864, bg=GREY_BG) -> Image.Image:
@@ -97,6 +97,45 @@ def test_works_on_scaled_frame():
 
 def test_tiny_image_is_refused():
     assert read_progress_percent(Image.new("RGB", (40, 20), GREY_BG)) is None
+
+
+def test_label_drawn_over_the_bar_does_not_break_reading():
+    """ПРИЧИНА бойового промаху 02.09.26: RemiCORE малює підпис («9 %») ПОВЕРХ
+    смуги, тож суцільного синього пробігу не існує — він розірваний літерами.
+    Детектор мусить міряти РОЗМАХ синього, а не найдовший пробіг."""
+    img = _screen()
+    _draw_bar(img, box=(400, 780, 700, 800), percent=80)
+    # «текст» — світлі прямокутники поверх заливки, як літери підпису
+    d = ImageDraw.Draw(img)
+    for x in (520, 536, 552):
+        d.rectangle([x, 785, x + 7, 795], fill=(255, 255, 255))
+    got = read_progress_percent(img)
+    assert got is not None and abs(got - 80) <= 2, got
+
+
+def test_label_over_the_EMPTY_part_does_not_shrink_the_bar():
+    """Найпідступніший випадок (спіймано на реальному кадрі): коли заливка
+    мала, підпис «9 %» стоїть на БІЛІЙ частині смуги. Сканування, що спиняється
+    на першому не-білому пікселі, обривалось на літері — і 9% читались як 29%.
+    Дірку завширшки з літеру треба перестрибувати."""
+    for want in (9, 25, 50):
+        img = _screen()
+        _draw_bar(img, box=(458, 770, 586, 790), percent=want)
+        d = ImageDraw.Draw(img)
+        for x in range(512, 532, 3):  # «підпис» посеред смуги
+            d.rectangle([x, 776, x + 1, 783], fill=(0, 0, 0))
+        got = read_progress_percent(img)
+        assert got is not None and abs(got - want) <= 2, (want, got)
+
+
+def test_grey_panel_background_is_not_counted_as_empty_bar():
+    """Друга причина: фон панелі сірий (240), а порожня частина смуги біла
+    (255). З м'яким порогом «світлого» контейнер розповзався по всій панелі й
+    відсоток виходив мізерним."""
+    img = _screen()  # фон 240 на весь екран
+    _draw_bar(img, box=(400, 780, 700, 800), percent=90)
+    got = read_progress_percent(img)
+    assert got is not None and abs(got - 90) <= 2, got
 
 
 # ── Ім'я .iso із заголовка вікна: зв'язка верстат ↔ наряд ──────────────────
