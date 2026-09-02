@@ -151,6 +151,29 @@ def test_full_bar_on_white_panel_reads_100_not_85():
             assert got is not None and abs(got - want) <= 2, (bg, want, got)
 
 
+def test_edge_sliver_does_not_steal_the_last_percent():
+    """Завершена програма показувала 99% замість 100%: між заливкою й рамкою
+    лишався згладжений край в 1-2px. На смузі ~128px це <2%, тобто нижче
+    роздільності самої смуги — рахуємо як повну. Але справжні неповні
+    (85/90/95%) НЕ мають від цього стати сотнею."""
+    def bar(percent, edge_px=0):
+        img = _screen(bg=LIGHT)
+        d = ImageDraw.Draw(img)
+        left, top, right, bottom = 458, 770, 586, 790
+        d.rectangle([left - 1, top - 1, right, bottom], outline=(64, 64, 64))
+        d.rectangle([left, top, right - 1, bottom - 1], fill=LIGHT)
+        fw = round((right - left) * percent / 100) - edge_px
+        if fw > 0:
+            d.rectangle([left, top, left + fw - 1, bottom - 1], fill=BLUE)
+        return read_progress_percent(img)
+
+    for edge in (0, 1, 2):
+        assert bar(100, edge) == 100, edge
+    for want in (85, 90, 95):
+        got = bar(want)
+        assert got is not None and abs(got - want) <= 2, (want, got)
+
+
 def test_grey_panel_background_is_not_counted_as_empty_bar():
     """Друга причина: фон панелі сірий (240), а порожня частина смуги біла
     (255). З м'яким порогом «світлого» контейнер розповзався по всій панелі й
