@@ -69,7 +69,9 @@ def test_appearance_rejects_unknown_values():
         ))
         assert resp.status_code == 422
         db.refresh(user)
-        assert user.ui_theme == ""
+        # Дефолт теми тепер "forge" (Amber Forge) — відхилене значення його
+        # не чіпає.
+        assert user.ui_theme == "forge"
 
         resp = asyncio.run(auth_router_mod.post_account_appearance(
             request=_request(user.id), theme="", icons="comic-sans", db=db,
@@ -99,6 +101,7 @@ def test_ui_prefs_reads_logged_in_user_and_caches(monkeypatch):
         forge_op.ui_loader_style = "ring"
         forge_op.ui_chip_style = "marker"
         teal_op = _user(db, username="teal_op")
+        teal_op.ui_theme = "teal"  # явний вибір бірюзового канону
         db.commit()
 
     monkeypatch.setattr(deps_mod, "SessionLocal", lambda: Session(engine))
@@ -114,12 +117,13 @@ def test_ui_prefs_reads_logged_in_user_and_caches(monkeypatch):
     assert deps_mod.ui_prefs(req) is prefs
 
     monkeypatch.setattr(deps_mod, "SessionLocal", lambda: Session(engine))
-    canon = {"theme": "", "icons": "", "buttons": "", "loader": "", "chips": "",
+    # Явно вибраний бірюзовий канон → "teal"; решта набору порожня.
+    teal_prefs = {"theme": "teal", "icons": "", "buttons": "", "loader": "", "chips": "",
              "mail_row_pad": 0, "mail_list_w": 0, "mail_step": 0, "queue_density": "", "queue_row_pad": 0,
                      "queue_mat_style": "", "queue_step": 0, "handout_layout": ""}
-    assert deps_mod.ui_prefs(_request(teal_op.id)) == canon
-    # без сесії — канон, без падіння
-    assert deps_mod.ui_prefs(_request(None)) == canon
+    assert deps_mod.ui_prefs(_request(teal_op.id)) == teal_prefs
+    # без сесії — дефолт (Amber Forge), без падіння
+    assert deps_mod.ui_prefs(_request(None)) == dict(teal_prefs, theme="forge")
 
 
 def test_base_html_renders_theme_attrs_on_html_tag():
@@ -175,5 +179,5 @@ def test_theme_survives_a_dead_database(monkeypatch):
     assert prefs["theme"] == "forge", "тема мусить пережити мертву БД"
     assert prefs["icons"] == "thin"
 
-    # Анонім із мертвою БД лишається на каноні — дзеркала в нього немає.
-    assert deps_mod.ui_prefs(_request(None))["theme"] == ""
+    # Анонім із мертвою БД — дефолт (Amber Forge); дзеркала в нього немає.
+    assert deps_mod.ui_prefs(_request(None))["theme"] == "forge"

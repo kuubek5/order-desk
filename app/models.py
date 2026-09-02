@@ -30,11 +30,13 @@ class User(Base):
     # operators (enforced in the settings route); NULL until an admin assigns it.
     sheet_initial: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
     # Візуальні налаштування оператора (кабінет /account): тема інтерфейсу
-    # ("" = бірюзовий канон, "forge" = Amber Forge) і стиль іконок
+    # ("forge" = Amber Forge, ДЕФОЛТ; "teal" = бірюзовий канон) і стиль іконок
     # ("" = канон, "thin"/"duo"/"bold"/"neon"). Рендеряться сервер-сайд
     # атрибутами на <html> у base.html — тому підуть за оператором на будь-який
     # браузер цього ПК, а не житимуть у localStorage конкретного профілю.
-    ui_theme: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    # Порожній рядок (стара БД, до зміни дефолту) резолвиться як "forge" у
+    # ui_prefs — тому бурштинова стає стандартом і для наявних акаунтів.
+    ui_theme: Mapped[str] = mapped_column(String(20), default="forge", server_default="forge")
     ui_icon_style: Mapped[str] = mapped_column(String(20), default="", server_default="")
     # Решта візуального набору з галереї «графічний фонд»: трактування кнопок,
     # індикатор очікування і форма чіпів. Порожній рядок скрізь = канон, тобто

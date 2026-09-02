@@ -248,7 +248,12 @@ def ui_prefs(request: Request) -> dict:
     if cached is not None:
         return cached
     prefs = {
-        "theme": "",
+        # Дефолт теми — "forge" (Amber Forge): бурштиновий вигляд тепер
+        # стандартний і для анонімних сторінок (вхід), і для акаунтів, які
+        # теми не чіпали. Бірюзовий канон лишається вибором, але має власне
+        # значення "teal" (див. account.html) — порожнє більше не «канон за
+        # замовчуванням», а «нічого не збережено» → теж forge.
+        "theme": "forge",
         "icons": "",
         "buttons": "",
         "loader": "",
@@ -271,7 +276,7 @@ def ui_prefs(request: Request) -> dict:
                 user = db.get(User, user_id)
                 if user is not None and user.is_active:
                     prefs = {
-                        "theme": user.ui_theme or "",
+                        "theme": user.ui_theme or "forge",
                         "icons": user.ui_icon_style or "",
                         "buttons": user.ui_button_style or "",
                         "loader": user.ui_loader_style or "",
