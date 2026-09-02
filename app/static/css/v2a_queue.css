@@ -613,7 +613,26 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 .q2 .mailrow .subj{font-size:var(--fs-1);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .q2 .mailrow .t{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3)}
 .q2 .mailrow .att{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--accent-c);justify-self:end}
-.q2 .side-actions{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
+/* Кнопки бічних віджетів — ЄДИНИЙ стиль (02.09.26). Усі «Відкрити X» тепер
+   однакові: акцентний контур, напівпрозорий тон, на всю ширину футера віджета,
+   стос згори вниз. На арт-секції печей (варіант A) той самий клас дає скляну
+   кнопку — backdrop-blur працює над фото; на плоских картках блюр нейтральний,
+   вигляд той самий. Суцільна заливка лишається за .primary (дія-коміт
+   «Синхронізувати зараз»), щоб навігація не зрівнялась із записом у таблицю. */
+.q2 .side-actions{display:flex;flex-direction:column;gap:8px;margin-top:11px}
+.q2 .side-actions>*{width:100%}
+.q2 .side-actions form{display:flex}
+.q2 .side-actions .btn{width:100%;justify-content:center;
+  border-color:rgba(var(--accent-rgb), .32);
+  background:rgba(var(--accent-base-rgb), .10);color:var(--accent-c);
+  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.q2 .side-actions .btn:hover{border-color:rgba(var(--accent-rgb), .58);
+  background:rgba(var(--accent-base-rgb), .20);color:var(--accent-c)}
+.q2 .side-actions .btn.primary{border-color:rgba(var(--accent-rgb), .5);
+  background:rgba(var(--accent-base-rgb), .22)}
+.q2 .side-actions .btn.primary:hover{background:rgba(var(--accent-base-rgb), .32);border-color:var(--accent)}
+.q2 .side-actions .btn[disabled]{opacity:.5;cursor:not-allowed;
+  -webkit-backdrop-filter:none;backdrop-filter:none}
 .q2 .side-empty{font-size:var(--fs-1);color:var(--ink-3);padding:4px 0}
 
 .detail-pane{

@@ -180,34 +180,56 @@ main.furnaces{position:relative;min-height:100vh}
    виходять за внутрішні поля картки (негативні поля рівно на card-pad) і
    притискаються до країв секції — краї ріже overflow:hidden самої .side-sec,
    тож бокові межі й радіуси плитці не потрібні. */
-.q2 .fu-tiles{display:flex;flex-direction:column;gap:6px;
-  margin:-11px calc(-1*var(--queue-density-card-pad,13px)) 0}
-/* Графічна плитка «Жар коронок» (обрано власником 30.08.26 з чотирьох
-   згенерованих варіантів; арт design/kuubmill_furnwidget-b-crowns-pro…).
-   Фон — фото розжарених коронок на лотку; числа живуть ПОВЕРХ, під шаром
-   градієнта-затемнення (::before), інакше на світлих ділянках арту вони
-   тонуть. Затемнення густішає праворуч — арт скомпоновано так, що коронки
-   в лівому нижньому куті. Кольори затемнення прив'язані до самого арту
-   (теплий майже чорний), а не до токенів теми: фото однакове в обох темах. */
-.q2 .fu-tile{position:relative;display:flex;flex-direction:column;padding:13px 15px;border-radius:0;
-  overflow:hidden;isolation:isolate;text-decoration:none;min-height:112px;
-  border:0;border-top:1px solid var(--line-2);border-bottom:1px solid var(--line-2);color:var(--ink);
-  background-color:#14100a;
+/* «Жар коронок» — арт РОЗТЯГНУТО НА ВЕСЬ ВІДЖЕТ (варіант A, обрано власником
+   02.09.26). Фото розжарених коронок тепер фон усієї секції печей, а не
+   окремої плитки: хедер, плитки й футер плавають на одному суцільному кадрі,
+   без «полиць» голого card-фону згори й знизу. Читабельність тримає скрим
+   ::after на всю секцію (густіший угорі під хедером і внизу під кнопкою, де
+   лежить текст), а число праворуч — легкий локальний градієнт ::before плитки.
+   Кольори скриму прив'язані до самого арту (теплий майже чорний), а не до
+   токенів теми: фото однакове в обох темах. (Арт: design/kuubmill_furnwidget-
+   b-crowns-pro…, обрано 30.08.26 з чотирьох згенерованих.) */
+.q2 .side-sec-furnace{background-color:#14100a;
   background-image:url("../img/furnace-crowns.jpg");
-  background-size:cover;background-position:center 60%;
-  transition:border-color var(--ui-speed) ease,filter var(--ui-speed) ease}
+  background-size:cover;background-position:center 52%;border-color:#3a2c1d}
+.q2 .side-sec-furnace::after{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+  border-radius:inherit;
+  background:linear-gradient(178deg,
+    rgba(11,8,4,.80) 0%,rgba(11,8,4,.30) 24%,
+    rgba(11,8,4,.30) 54%,rgba(9,6,3,.95) 100%)}
+.q2 .side-sec-furnace>*{position:relative;z-index:1}
+.q2 .side-sec-furnace .side-head{text-shadow:0 1px 6px rgba(0,0,0,.75)}
+/* Хедер більше не відбиває голий card — прибираємо його межу від тіла, арт
+   має читатись суцільним. */
+.q2 .side-sec-furnace .side-body{border-top:0}
+
+.q2 .fu-tiles{display:flex;flex-direction:column;gap:0;
+  margin:-11px calc(-1*var(--queue-density-card-pad,13px)) 0}
+/* Плитки — прозорі «вікна» на спільний арт секції. Стан несуть межа-хайрлайн
+   і локальний шар ::before, а не власне фото (одне фото на весь віджет).
+   Кілька печей стають рядами на одному кадрі, розділені тонкою лінією. */
+.q2 .fu-tile{position:relative;display:flex;flex-direction:column;padding:13px 15px;border-radius:0;
+  overflow:hidden;isolation:isolate;text-decoration:none;min-height:104px;
+  border:0;border-top:1px solid rgba(255,255,255,.07);color:var(--ink);
+  background:transparent;
+  transition:border-color var(--ui-speed) ease}
+.q2 .fu-tiles>.fu-tile:first-child{border-top:0}
+/* Легке затемнення саме під числом праворуч — скрим секції головну роботу вже
+   зробив, тут лише страховка контрасту температури над світлим жаром. */
 .q2 .fu-tile::before{content:"";position:absolute;inset:0;z-index:0;
-  background:linear-gradient(100deg,rgba(20,16,10,.22) 0%,rgba(20,16,10,.82) 58%,rgba(20,16,10,.94) 100%)}
+  background:linear-gradient(100deg,rgba(20,16,10,0) 0%,rgba(20,16,10,.14) 60%,rgba(20,16,10,.42) 100%)}
 .q2 .fu-tile>*{position:relative;z-index:1}
-.q2 .fu-tile:hover{border-color:var(--control-edge);opacity:1}
-/* Стани: працює — повний жар і акцентна межа; вільна — арт притишений
-   (жару немає — картинка холоне разом з піччю); збій — тривожний шар і БЕЗ
-   приглушення: приглушити означає сказати «менш важливо», а тут навпаки. */
-.q2 .fu-tile.run{border-color:rgba(var(--accent-rgb), .45)}
-.q2 .fu-tile:not(.run):not(.bad){filter:saturate(.35) brightness(.82)}
+.q2 .fu-tile:hover::before{background:linear-gradient(100deg,rgba(246,160,74,.05) 0%,rgba(20,16,10,.18) 60%,rgba(20,16,10,.42) 100%)}
+/* Стани: працює — повний жар і акцентна межа; вільна — свій шматок арту
+   притишений (жару немає — картинка холоне разом з піччю); збій — тривожний
+   шар і БЕЗ приглушення: приглушити означає «менш важливо», а тут навпаки. */
+.q2 .fu-tile.run{border-color:rgba(var(--accent-rgb), .42)}
+.q2 .fu-tile:not(.run):not(.bad)::before{
+  background:linear-gradient(100deg,rgba(12,9,5,.5) 0%,rgba(12,9,5,.66) 100%);
+  backdrop-filter:saturate(.35) brightness(.86)}
 .q2 .fu-tile.bad{border-color:rgba(var(--alarm-rgb), .5)}
 .q2 .fu-tile.bad::before{
-  background:linear-gradient(100deg,rgba(46,13,8,.6) 0%,rgba(24,12,10,.9) 58%,rgba(20,10,8,.96) 100%)}
+  background:linear-gradient(100deg,rgba(46,13,8,.5) 0%,rgba(24,12,10,.8) 60%,rgba(20,10,8,.9) 100%)}
 .q2 .fu-tile.bad:hover{border-color:var(--alarm)}
 /* Іскри над жаром — тільки на .run (шаблон і не рендерить їх інакше).
    Негативні затримки, щоб політ уже йшов у момент появи плитки, а не
@@ -241,10 +263,6 @@ main.furnaces{position:relative;min-height:100vh}
   text-shadow:0 0 16px rgba(var(--accent-rgb), .45)}
 .q2 .fu-tile-temp.is-none{color:var(--ink-3);font-size:var(--fs-4)}
 .q2 .fu-tile.bad .fu-tile-temp{color:var(--ink-3)}
-.q2 .fu-tile-bar{display:block;height:4px;border-radius:99px;background:var(--card-3);
-  margin:9px 0 7px;overflow:hidden}
-.q2 .fu-tile-bar i{display:block;height:100%;background:var(--accent);border-radius:99px;
-  transition:width .4s cubic-bezier(.22,1,.36,1)}
 .q2 .fu-tile-foot{display:block;margin-top:auto;padding-top:7px;font-size:var(--fs-1);color:var(--ink-2)}
 .q2 .fu-tile-foot b{font-family:var(--font-mono);font-weight:500;color:var(--ink)}
 .q2 .fu-tile-sep{margin:0 5px;color:var(--line-2)}
