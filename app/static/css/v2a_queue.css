@@ -23,8 +23,8 @@ main.q2{
 
 .q2 .q2-topbar{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:12px}
 .q2 .q2-topbar h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 4px}
-.q2 .topbar-live{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:12px;color:var(--ink-2)}
-.q2 .topbar-live b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:11.5px}
+.q2 .topbar-live{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:var(--fs-1);color:var(--ink-2)}
+.q2 .topbar-live b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:var(--fs-1)}
 .q2 .topbar-live .sep{width:1px;height:10px;background:var(--line-2)}
 .q2 .topbar-live .tl-unit{color:var(--ink-3)}
 .q2 .live{display:inline-flex;align-items:center;gap:7px}
@@ -38,14 +38,14 @@ main.q2{
 
 .q2 .btn{
   display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:var(--r-ctl);
-  border:1px solid var(--line-2);background:var(--card);color:var(--ink);font-size:13px;font-weight:500;
+  border:1px solid var(--line-2);background:var(--card);color:var(--ink);font-size:var(--fs-2);font-weight:500;
   transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease;cursor:pointer;text-decoration:none;
 }
 .q2 .btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .q2 .btn:hover{background:var(--card-2);border-color:var(--line-2);opacity:1}
 .q2 .btn.primary{background:rgba(var(--accent-base-rgb), .15);border-color:rgba(var(--accent-rgb), .42);color:var(--accent-c)}
 .q2 .btn.primary:hover{background:rgba(var(--accent-base-rgb), .24);border-color:var(--accent)}
-.q2 .btn.sm{height:30px;padding:0 11px;font-size:12.5px}
+.q2 .btn.sm{height:30px;padding:0 11px;font-size:var(--fs-2)}
 .q2 .btn:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 
 /* Крок назад / вперед — дві іконки-кнопки поруч (undo/redo). Той самий вигляд, що
@@ -72,7 +72,7 @@ main.q2{
   box-shadow:0 18px 40px -18px rgba(0,0,0,.8),var(--glow);overflow:hidden;
   animation:q2fade-slide var(--enter-duration,.32s) ease both;
 }
-.q2 .acthist-head{padding:9px 12px;border-bottom:1px solid var(--line);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.q2 .acthist-head{padding:9px 12px;border-bottom:1px solid var(--line);font-size:var(--fs-0);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 /* Щільні хайрлайн-рядки, не картки — той самий крок, що на тріажі пошти. */
 .q2 .acthist-list{max-height:min(52vh,340px);overflow-y:auto;scrollbar-width:thin}
 .q2 .acthist-row{
@@ -85,16 +85,16 @@ main.q2{
 .q2 .acthist-row:focus-visible{outline:2px solid var(--control-edge);outline-offset:-2px}
 .q2 .acthist-row:disabled{cursor:default;opacity:.45}
 .q2 .ah-line{display:flex;align-items:baseline;gap:8px}
-.q2 .ah-time{font-size:11px;color:var(--ink-3);flex:0 0 auto}
-.q2 .ah-note{font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.q2 .ah-tag{margin-left:auto;flex:0 0 auto;font-size:10px;color:var(--ink-3);border:1px solid var(--line-2);border-radius:4px;padding:1px 5px}
+.q2 .ah-time{font-size:var(--fs-0);color:var(--ink-3);flex:0 0 auto}
+.q2 .ah-note{font-size:var(--fs-2);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q2 .ah-tag{margin-left:auto;flex:0 0 auto;font-size:var(--fs-0);color:var(--ink-3);border:1px solid var(--line-2);border-radius:4px;padding:1px 5px}
 .q2 .ah-tag.warn{color:var(--warn);border-color:rgba(var(--warn-rgb), .4)}
-.q2 .ah-sub{display:block;margin-top:2px;font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q2 .ah-sub{display:block;margin-top:2px;font-size:var(--fs-1);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .q2 .ah-sub b{font-weight:500;color:var(--ink-2)}
 .q2 .acthist-row.is-undone{opacity:.55}
 .q2 .acthist-row.is-undone .ah-note{text-decoration:line-through;color:var(--ink-3)}
-.q2 .acthist-empty{margin:0;padding:16px 12px;font-size:12px;color:var(--ink-3);line-height:1.45}
-.q2 .acthist-foot{display:flex;justify-content:space-between;gap:10px;padding:7px 12px;border-top:1px solid var(--line);font-size:11px;color:var(--ink-3)}
+.q2 .acthist-empty{margin:0;padding:16px 12px;font-size:var(--fs-1);color:var(--ink-3);line-height:1.45}
+.q2 .acthist-foot{display:flex;justify-content:space-between;gap:10px;padding:7px 12px;border-top:1px solid var(--line);font-size:var(--fs-0);color:var(--ink-3)}
 .q2 .acthist-foot a{color:var(--accent-c);text-decoration:none}
 .q2 .acthist-foot a:hover{opacity:1;text-decoration:underline}
 
@@ -120,7 +120,7 @@ main.q2{
   background:rgba(var(--accent-base-rgb), .06);
 }
 body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--enter-duration,.32s) ease both}
-.q2 .layout-controls .lc-hint{font-size:11.5px;color:var(--ink-3)}
+.q2 .layout-controls .lc-hint{font-size:var(--fs-1);color:var(--ink-3)}
 
 .q2 .statusline{
   display:flex;align-items:center;gap:14px;flex-wrap:wrap;
@@ -129,13 +129,13 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 }
 .q2 .sl-counters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;flex:1;min-width:0}
 .q2 .sl-item{
-  display:inline-flex;align-items:baseline;gap:5px;font-size:12.5px;color:var(--ink-2);
+  display:inline-flex;align-items:baseline;gap:5px;font-size:var(--fs-2);color:var(--ink-2);
   padding:3px 8px 3px 6px;border-radius:999px;border:1px solid transparent;text-decoration:none;
   transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease;
 }
 .q2 .sl-item:hover{background:var(--card-2);color:var(--ink);opacity:1}
-.q2 .sl-item b{font-family:var(--font-mono);font-weight:600;font-size:14px;color:var(--ink);letter-spacing:-.01em}
-.q2 .sl-item .sl-sub{color:var(--ink-3);font-size:11px}
+.q2 .sl-item b{font-family:var(--font-mono);font-weight:600;font-size:var(--fs-3);color:var(--ink);letter-spacing:-.01em}
+.q2 .sl-item .sl-sub{color:var(--ink-3);font-size:var(--fs-0)}
 .q2 .sl-item.is-alarm b{color:var(--alarm)}
 .q2 .sl-item.is-warn b{color:var(--warn)}
 .q2 .sl-item.is-active{background:rgba(var(--accent-base-rgb), .15);border-color:rgba(var(--accent-rgb), .4);color:var(--accent-c)}
@@ -144,7 +144,7 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .sl-sep{width:1px;height:14px;background:var(--line-2);flex:0 0 auto}
 .q2 .sl-sync{
   flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 12px;border-radius:999px;
-  border:1px solid rgba(var(--accent-rgb), .35);background:rgba(var(--accent-base-rgb), .1);color:var(--accent-c);font-size:12px;font-weight:500;
+  border:1px solid rgba(var(--accent-rgb), .35);background:rgba(var(--accent-base-rgb), .1);color:var(--accent-c);font-size:var(--fs-1);font-weight:500;
   text-decoration:none;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease;cursor:pointer;
 }
 .q2 .sl-sync:hover{background:rgba(var(--accent-base-rgb), .18);opacity:1}
@@ -166,23 +166,23 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
 .q2 .seg{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
 .q2 .seg a{
-  height:26px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:500;color:var(--ink-2);text-decoration:none;
+  height:26px;padding:0 12px;border-radius:999px;font-size:var(--fs-2);font-weight:500;color:var(--ink-2);text-decoration:none;
   display:inline-flex;align-items:center;gap:6px;transition:background var(--ui-speed) ease,color var(--ui-speed) ease;cursor:pointer;
 }
 .q2 .seg a:hover{color:var(--ink);background:var(--raise);opacity:1}
 .q2 .seg a.is-active{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .34)}
-.q2 .seg .n{font-family:var(--font-mono);font-size:11px;opacity:.75}
+.q2 .seg .n{font-family:var(--font-mono);font-size:var(--fs-0);opacity:.75}
 
 /* Перемикач швидкості оновлення (бічна панель «Google Таблиця»). Стек
    лейбл-над-сегментом: панель вузька (260-280px), три кнопки в ряд з
    лейблом збоку не влазять. Кнопки — той самий вигляд, що .seg a /
    density-seg button. */
 .q2 .ss-row{display:flex;flex-direction:column;gap:6px;margin-top:12px}
-.q2 .ss-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.q2 .ss-label{font-size:var(--fs-0);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .q2 .ss-seg{display:flex;width:100%}
 .q2 .ss-seg button{
   appearance:none;border:0;background:transparent;flex:1;height:26px;padding:0 8px;border-radius:999px;
-  font:inherit;font-size:12px;font-weight:500;color:var(--ink-2);display:inline-flex;align-items:center;
+  font:inherit;font-size:var(--fs-1);font-weight:500;color:var(--ink-2);display:inline-flex;align-items:center;
   justify-content:center;gap:5px;transition:background var(--ui-speed) ease,color var(--ui-speed) ease;cursor:pointer;
 }
 .q2 .ss-seg button:hover{color:var(--ink);background:var(--raise)}
@@ -190,7 +190,7 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .ss-seg button:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 .q2 .pill{
   height:32px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);
-  color:var(--ink-2);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:7px;text-decoration:none;
+  color:var(--ink-2);font-size:var(--fs-2);font-weight:500;display:inline-flex;align-items:center;gap:7px;text-decoration:none;
   transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease;cursor:pointer;
 }
 .q2 .pill:hover{color:var(--ink);border-color:var(--line-2);opacity:1}
@@ -199,13 +199,13 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
    набирає ваги; обидві лишаються в одному сімействі. */
 .q2 .pill.alarm{border-color:rgba(var(--alarm-rgb), .28);color:var(--alarm)}
 .q2 .pill.alarm:hover{border-color:rgba(var(--alarm-rgb), .5);background:rgba(var(--alarm-rgb), .08);color:var(--alarm)}
-.q2 .pill.alarm .n{font-family:var(--font-mono);font-size:11px;opacity:.9}
+.q2 .pill.alarm .n{font-family:var(--font-mono);font-size:var(--fs-0);opacity:.9}
 .q2 .pill.alarm.is-active{background:rgba(var(--alarm-rgb), .14);border-color:rgba(var(--alarm-rgb), .42);color:var(--alarm)}
 .q2 .pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.85}
-.q2 .filters .flabel{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-right:-2px}
+.q2 .filters .flabel{font-size:var(--fs-0);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-right:-2px}
 .q2 .fchip{
   height:28px;padding:0 6px 0 11px;border-radius:999px;border:1px dashed var(--line-2);background:transparent;
-  color:var(--ink-2);font-size:12px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+  color:var(--ink-2);font-size:var(--fs-1);display:inline-flex;align-items:center;gap:6px;text-decoration:none;
 }
 .q2 .fchip:hover{opacity:1}
 .q2 .fchip .x{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:var(--ink-3)}
@@ -227,7 +227,7 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .date-strip::-webkit-scrollbar{display:none}
 .q2 .date-strip a,.q2 .date-strip span{flex:0 0 auto}
 .q2 .date-strip a,.q2 .date-strip span{
-  height:26px;min-width:26px;padding:0 8px;border-radius:999px;font-size:11.5px;color:var(--ink-2);
+  height:26px;min-width:26px;padding:0 8px;border-radius:999px;font-size:var(--fs-1);color:var(--ink-2);
   display:inline-flex;align-items:center;justify-content:center;text-decoration:none;font-family:var(--font-mono);
 }
 .q2 .date-strip a:hover{color:var(--ink);background:var(--raise);opacity:1}
@@ -235,13 +235,13 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 /* Nav arrows ‹ › — small but clearly the "pager", tinted in the accent so they
    read as controls, not dates. Bolder glyph + accent fill on hover. */
 .q2 .date-strip a.nav-arrow{
-  color:var(--accent-c);font-size:15px;font-weight:700;line-height:1;
+  color:var(--accent-c);font-size:var(--fs-4);font-weight:700;line-height:1;
   background:rgba(var(--accent-base-rgb), .12);border:1px solid rgba(var(--accent-rgb), .30);
 }
 .q2 .date-strip a.nav-arrow:hover{
   color:var(--bg);background:var(--accent-b);border-color:var(--accent-b);opacity:1;
 }
-.q2 .date-strip .nav-off{color:var(--ink-3);opacity:.3;font-size:15px;background:none;border:none}
+.q2 .date-strip .nav-off{color:var(--ink-3);opacity:.3;font-size:var(--fs-4);background:none;border:none}
 
 .q2 .worklayout{flex:1;min-height:0;display:flex;gap:12px;align-items:stretch}
 .q2 .queue-panel{
@@ -250,8 +250,8 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
   animation:q2fade-slide var(--enter-duration,.32s) ease both;
 }
 .q2 .card-head{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-.q2 .card-head h2{font-family:var(--font-head);font-size:14.5px;font-weight:600;margin:0;letter-spacing:-.005em}
-.q2 .card-head .meta{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
+.q2 .card-head h2{font-family:var(--font-head);font-size:var(--fs-3);font-weight:600;margin:0;letter-spacing:-.005em}
+.q2 .card-head .meta{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3)}
 .q2 .card-head .right{margin-left:auto;display:flex;align-items:center;gap:8px}
 .q2 .search{
   display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:var(--r-ctl);
@@ -266,7 +266,7 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 table.qtable{border-collapse:separate;border-spacing:0;width:100%;min-width:1120px}
 .q2 table.qtable thead th{
   position:sticky;top:0;z-index:2;background:var(--mid);border-bottom:1px solid var(--line-2);
-  text-align:left;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);
+  text-align:left;font-size:var(--fs-0);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);
   font-weight:600;padding:9px 8px;white-space:normal;line-height:1.15;
 }
 .q2 table.qtable thead th a.th-sort{color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
@@ -310,7 +310,7 @@ body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
      забоксувала б таблицю; одна лінія коштує піксель. */
   width:34px;height:21px;padding:0 4px;border-radius:5px;background:transparent;
   border:1px solid transparent;border-bottom-color:var(--control-edge);
-  color:var(--ink);font-family:var(--font-mono);font-size:11px;outline:none;
+  color:var(--ink);font-family:var(--font-mono);font-size:var(--fs-0);outline:none;
   transition:border-color .12s ease,background .12s ease;
 }
 .q2 .queue-row:hover .operator-input{border-color:var(--line);background:var(--field)}
@@ -318,7 +318,7 @@ body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
 .q2 .operator-input::placeholder{color:var(--ink-3)}
 /* Кеш: колишній моно-бейдж (замінено на інпут, лишаю на випадок ре-юзу деінде). */
 .q2 .op-badge{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;
-  background:var(--raise);border:1px solid var(--line-2);font-size:11.5px;color:var(--ink);letter-spacing:.01em}
+  background:var(--raise);border:1px solid var(--line-2);font-size:var(--fs-1);color:var(--ink);letter-spacing:.01em}
 body.layout-edit .q2 table.qtable{user-select:none}
 .q2 table.qtable tbody tr{transition:background var(--ui-speed) ease}
 .q2 table.qtable tbody tr:hover{background:var(--card-2)}
@@ -393,20 +393,20 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 table.qtable td.order-id{min-width:260px}
 .q2 .ordbtn{display:inline-block;max-width:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .q2 tr.queue-row-overdue .sdot{box-shadow:0 0 0 3px rgba(var(--alarm-rgb), .22)}
-.q2 .ordbtn{font-family:var(--font-mono);font-size:12.5px;font-weight:500;color:var(--ink);letter-spacing:-.01em;text-decoration:none}
+.q2 .ordbtn{font-family:var(--font-mono);font-size:var(--fs-2);font-weight:500;color:var(--ink);letter-spacing:-.01em;text-decoration:none}
 .q2 .ordbtn:hover{color:var(--accent-c);opacity:1}
 .q2 .src{
-  font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;padding:1px 5px;border-radius:4px;
+  font-family:var(--font-mono);font-size:var(--fs-0);letter-spacing:.06em;padding:1px 5px;border-radius:4px;
   border:1px solid rgba(var(--accent-rgb), .32);color:var(--accent-c);background:rgba(var(--accent-base-rgb), .1);margin-left:7px;
 }
-.q2 .rowclient{font-size:11.5px;color:var(--ink-2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.q2 .rowclient{font-size:var(--fs-1);color:var(--ink-2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 /* Client rows entered in the sheet without a наряд (blue-filled by the lab) —
    a soft blue that echoes that sheet convention, distinct from the teal email
    badge and the material chips. */
 .q2 .source-badge-client.src{border-color:rgba(96,165,250,.42);color:#93c5fd;background:rgba(96,165,250,.13)}
 .q2 tr.queue-row-client{background:rgba(96,165,250,.06)}
 .q2 tr.queue-row-client:hover{background:rgba(96,165,250,.1)}
-.q2 .cam{max-width:220px;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2);font-size:12.5px;white-space:nowrap}
+.q2 .cam{max-width:220px;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2);font-size:var(--fs-2);white-space:nowrap}
 /* «!!» у коментарі — це «увага/блокер» («Чекаємо Скани!!!!»), а НЕ
    терміновість: терміновість тепер несе окремий чіп .rush-badge за словом
    «на швидку». Тому сигнал тихіший за колишній shout — він більше не
@@ -414,7 +414,7 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .cam.attn{color:var(--ink);font-weight:600}
 .q2 .matchip{
   display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:6px;
-  background:var(--raise);border:1px solid var(--line-2);font-size:12px;color:var(--ink);
+  background:var(--raise);border:1px solid var(--line-2);font-size:var(--fs-1);color:var(--ink);
 }
 /* Header word and number centred together in the column: left-aligning the
    number put it under the header's first letter while the wide "Кількість"
@@ -422,9 +422,9 @@ body.layout-edit .q2 table.qtable{user-select:none}
    both lines the number up under the middle of the label. */
 .q2 th.col-qty{text-align:center}
 .q2 th.col-qty .th-sort{justify-content:center}
-.q2 td.quantity{font-family:var(--font-mono);font-size:12.5px;text-align:center;color:var(--ink)}
+.q2 td.quantity{font-family:var(--font-mono);font-size:var(--fs-2);text-align:center;color:var(--ink)}
 .q2 td.src-tab{white-space:nowrap}
-.q2 .src-tab-link{font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);text-decoration:none;
+.q2 .src-tab-link{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-2);text-decoration:none;
   padding:2px 7px;border-radius:6px;border:1px solid var(--line);background:var(--mid);
   transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .q2 .src-tab-link:hover{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .35)}
@@ -435,7 +435,7 @@ body.layout-edit .q2 table.qtable{user-select:none}
    this slack, so widening here does not push the table wider. */
 .q2 .job-code-link{max-width:100%;overflow:hidden;text-overflow:ellipsis;text-align:left}
 .q2 .job-code-link{
-  font-family:var(--font-mono);font-size:11.5px;color:var(--ink-2);padding:3px 7px;border-radius:6px;
+  font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-2);padding:3px 7px;border-radius:6px;
   border:1px solid transparent;background:none;cursor:pointer;
   display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   vertical-align:middle;
@@ -463,9 +463,9 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .job-code-preview svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .q2 .job-code-preview:hover{color:var(--accent-c);background:rgba(var(--accent-base-rgb), .14)}
 .q2 .job-code-preview:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
-.q2 td.technician{font-size:12.5px;color:var(--ink-2)}
+.q2 td.technician{font-size:var(--fs-2);color:var(--ink-2)}
 .q2 td.kind-cell{max-width:160px}
-.q2 .kindbtn{color:var(--ink-2);font-size:12.5px;text-decoration:none;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.q2 .kindbtn{color:var(--ink-2);font-size:var(--fs-2);text-decoration:none;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .q2 .kindbtn:hover{color:var(--accent-c);opacity:1}
 .q2 .sum3d-form{display:inline-flex;gap:4px;align-items:center}
 .q2 .sum3d-input{
@@ -473,13 +473,13 @@ body.layout-edit .q2 table.qtable{user-select:none}
   /* Межа тут Є афордансом (сюди пишуть Sum3D ID), тож --control-edge:
      на --line виходило 1.12:1 — поле не читалось як поле. */
   border:1px solid var(--control-edge);
-  color:var(--ink);font-family:var(--font-mono);font-size:11.5px;outline:none;
+  color:var(--ink);font-family:var(--font-mono);font-size:var(--fs-1);outline:none;
 }
 /* Плейсхолдер лишався сірим кольором браузера rgb(117,117,117) = 3.87:1. */
 .q2 .sum3d-input::placeholder{color:var(--ink-3);opacity:1}
 .q2 .sum3d-input:focus{border-color:rgba(var(--accent-rgb), .45)}
 .q2 .sum3d-clear{width:22px;height:26px;flex:0 0 22px;border:0;background:none;cursor:pointer;
-  color:var(--ink-3);font-size:12px;line-height:1;border-radius:6px;padding:0;opacity:0;
+  color:var(--ink-3);font-size:var(--fs-1);line-height:1;border-radius:6px;padding:0;opacity:0;
   display:inline-flex;align-items:center;justify-content:center;transition:opacity .12s ease,color .12s,background .12s}
 /* Тихий за замовчуванням — проявляється лише коли курсор над рядком (або кнопка
    у фокусі з клавіатури), як і кошик видалення рядка. На тач-екрані завжди трохи
@@ -499,7 +499,7 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .folder-link:hover{color:var(--accent-c);opacity:1}
 .q2 .status-select{
   height:26px;border-radius:999px;background:var(--field);border:1px solid var(--line);color:var(--ink);
-  font-size:12px;padding:0 8px;font-family:var(--font-body);cursor:pointer;
+  font-size:var(--fs-1);padding:0 8px;font-family:var(--font-body);cursor:pointer;
   /* Adaptive: pin the width instead of letting the widest <option> ("знайдено
      при видачі") set the column's min-width — that longest option alone made the
      Статус column ~160px wider than needed and pushed the table off ~1900px
@@ -507,14 +507,14 @@ body.layout-edit .q2 table.qtable{user-select:none}
      clips by a couple chars and stays readable in the open dropdown. */
   width:140px;max-width:140px;
 }
-.q2 .badge{font-size:11px;padding:1px 7px;border-radius:5px;font-weight:500}
+.q2 .badge{font-size:var(--fs-0);padding:1px 7px;border-radius:5px;font-weight:500}
 .q2 .badge.problem{background:rgba(var(--alarm-rgb), .14);color:var(--alarm);border:1px solid rgba(var(--alarm-rgb), .3)}
 .q2 .badge.redo{background:rgba(var(--warn-rgb), .13);color:var(--warn);border:1px solid rgba(var(--warn-rgb), .3)}
 .q2 .sync-warning{color:var(--warn);margin-left:5px;display:inline-flex;vertical-align:middle}
 .q2 .sync-warning svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7}
 
 /* Paused-sync note in the sidebar: amber, calm — a standing state, not an alarm. */
-.q2 .sync-paused-note{margin:8px 0;padding:8px 10px;border:1px solid rgba(var(--warn-rgb), .4);border-radius:8px;background:rgba(var(--warn-rgb), .12);color:var(--warn);font-size:12px;line-height:1.4}
+.q2 .sync-paused-note{margin:8px 0;padding:8px 10px;border:1px solid rgba(var(--warn-rgb), .4);border-radius:8px;background:rgba(var(--warn-rgb), .12);color:var(--warn);font-size:var(--fs-1);line-height:1.4}
 
 /* "Technician corrected this row" — a warm tint on the row plus a badge naming
    what moved. Two levels: a plain change is amber; a change to a work already
@@ -524,7 +524,7 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .queue-row-changed > td{background:rgba(var(--warn-rgb), .10)}
 .q2 .queue-row-changed-taken > td{background:rgba(var(--alarm-rgb), .12)}
 .q2 .chg-form{display:inline-flex;margin:0 0 4px}
-.q2 .badge.chg{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:3px 8px;border:1px solid rgba(var(--warn-rgb), .42);border-radius:7px;background:rgba(var(--warn-rgb), .14);color:var(--warn);font-size:11px;line-height:1.25;text-align:left;cursor:pointer}
+.q2 .badge.chg{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:3px 8px;border:1px solid rgba(var(--warn-rgb), .42);border-radius:7px;background:rgba(var(--warn-rgb), .14);color:var(--warn);font-size:var(--fs-0);line-height:1.25;text-align:left;cursor:pointer}
 .q2 .badge.chg svg{flex:0 0 auto;width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .q2 .badge.chg span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .q2 .badge.chg:hover{background:rgba(var(--warn-rgb), .24)}
@@ -545,7 +545,7 @@ body.layout-edit .q2 table.qtable{user-select:none}
 .q2 .row-delete:hover{color:var(--alarm);background:rgba(var(--alarm-rgb), .14)}
 @media (hover:none){.q2 .row-delete{opacity:.55}}
 
-.q2 .qfoot{display:flex;align-items:center;gap:10px;padding:9px 15px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3);flex-wrap:wrap}
+.q2 .qfoot{display:flex;align-items:center;gap:10px;padding:9px 15px;border-top:1px solid var(--line);font-size:var(--fs-1);color:var(--ink-3);flex-wrap:wrap}
 .q2 .queue-empty{padding:46px 22px;text-align:center;background:none;border:0}
 .q2 .queue-empty-icon{width:26px;height:26px;stroke:var(--ink-3);fill:none;stroke-width:1.4;margin-bottom:10px}
 
@@ -577,11 +577,11 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 .q2 .side-sec{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);overflow:hidden;flex:0 0 auto}
 .q2 .side-head{
   width:100%;display:flex;align-items:center;gap:8px;padding:11px 12px;text-align:left;background:none;cursor:pointer;
-  font-family:var(--font-head);font-size:13px;font-weight:600;color:var(--ink);
+  font-family:var(--font-head);font-size:var(--fs-2);font-weight:600;color:var(--ink);
 }
 .q2 .side-head:hover{background:var(--card-2)}
 .q2 .side-head .side-count{
-  font-family:var(--font-mono);font-size:11px;font-weight:500;padding:1px 6px;border-radius:5px;
+  font-family:var(--font-mono);font-size:var(--fs-0);font-weight:500;padding:1px 6px;border-radius:5px;
   background:rgba(var(--accent-rgb), .14);color:var(--accent-c);border:1px solid rgba(var(--accent-rgb), .26);
 }
 .q2 .side-head .side-count.err{background:rgba(var(--alarm-rgb), .14);color:var(--alarm-ink);border-color:rgba(var(--alarm-rgb), .3)}
@@ -610,24 +610,24 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 }
 .q2 .state{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;margin-bottom:11px}
 .q2 .state svg{width:17px;height:17px;flex:0 0 17px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.q2 .state strong{display:block;font-size:12.5px;font-weight:600}
-.q2 .state p{margin:2px 0 0;font-size:11.5px;line-height:1.4}
+.q2 .state strong{display:block;font-size:var(--fs-2);font-weight:600}
+.q2 .state p{margin:2px 0 0;font-size:var(--fs-1);line-height:1.4}
 .q2 .state.err{background:rgba(var(--alarm-rgb), .09);border:1px solid rgba(var(--alarm-rgb), .28);color:var(--alarm)}
 .q2 .state.err p{color:var(--alarm-ink)}
 .q2 .state.ok{background:rgba(var(--accent-base-rgb), .1);border:1px solid rgba(var(--accent-rgb), .3);color:var(--accent-c)}
 .q2 .state.ok p{color:var(--accent-ink)}
-.q2 .kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:var(--queue-density-kv-pad,6px) 0;font-size:12px;color:var(--ink-2)}
+.q2 .kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:var(--queue-density-kv-pad,6px) 0;font-size:var(--fs-1);color:var(--ink-2)}
 .q2 .kv+.kv{border-top:1px solid var(--card-2)}
-.q2 .kv b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:11.5px}
+.q2 .kv b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:var(--fs-1)}
 .q2 .maillist{display:flex;flex-direction:column;gap:2px}
 .q2 .mailrow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 9px;border-radius:9px;text-align:left;width:100%;text-decoration:none;transition:background var(--ui-speed) ease}
 .q2 .mailrow:hover{background:var(--card-2);opacity:1}
-.q2 .mailrow .from{font-size:12.5px;font-weight:500;color:var(--ink)}
-.q2 .mailrow .subj{font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.q2 .mailrow .t{font-family:var(--font-mono);font-size:10.5px;color:var(--ink-3)}
-.q2 .mailrow .att{font-family:var(--font-mono);font-size:10.5px;color:var(--accent-c);justify-self:end}
+.q2 .mailrow .from{font-size:var(--fs-2);font-weight:500;color:var(--ink)}
+.q2 .mailrow .subj{font-size:var(--fs-1);color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q2 .mailrow .t{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3)}
+.q2 .mailrow .att{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--accent-c);justify-self:end}
 .q2 .side-actions{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
-.q2 .side-empty{font-size:12px;color:var(--ink-3);padding:4px 0}
+.q2 .side-empty{font-size:var(--fs-1);color:var(--ink-3);padding:4px 0}
 
 .detail-pane{
   position:fixed;top:0;right:0;bottom:0;width:420px;max-width:92vw;
@@ -642,7 +642,7 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 .detail-close{margin-left:auto;width:28px;height:28px;flex:0 0 28px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-2);border:1px solid var(--line-2);background:none;cursor:pointer}
 .detail-close:hover{color:var(--ink);background:var(--card-2)}
 .detail-close svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
-.detail-head .ord{font-family:var(--font-mono);font-size:19px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.detail-head .ord{font-family:var(--font-mono);font-size:var(--fs-5);font-weight:600;letter-spacing:-.01em;color:var(--ink)}
 .detail-backdrop{position:fixed;inset:0;background:rgba(5,8,12,.6);opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:70}
 .detail-backdrop.open{opacity:1;pointer-events:auto}
 
@@ -780,7 +780,7 @@ body.qside-collapsed .q2 .worklayout{gap:0}
    тому тиха, з попередженням у підтвердженні. */
 .q2 .seg .seg-drop{
   display:inline-flex;align-items:center;height:26px;padding:0 11px;border:0;border-radius:999px;
-  background:none;color:var(--ink-3);font:inherit;font-size:12.5px;cursor:pointer;
+  background:none;color:var(--ink-3);font:inherit;font-size:var(--fs-2);cursor:pointer;
 }
 .q2 .seg .seg-drop:hover{color:var(--color-overdue)}
 
