@@ -9,6 +9,7 @@
 
 import json
 import logging
+import time
 from datetime import date, datetime, timedelta
 from typing import Annotated
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -200,12 +201,14 @@ def get_queue(
     # памʼять УСЮ історію, щоб одразу її ж і відкинути. Відсів за вікном
     # retention лишається в Python — бізнес-дата виводиться з `sheet_tab`
     # (рядок «дд.мм.рр»), а не зі стовпця, тож у SQL її не порівняти.
+    _t_sql = time.monotonic()
     all_orders = db.scalars(
         select(Order)
         .options(selectinload(Order.material))
         .where(Order.archived_at.is_(None))
         .order_by(Order.id.desc())
     ).all()
+    _sql_seconds = time.monotonic() - _t_sql
 
     # Define date boundaries
     today = business_today()
@@ -428,6 +431,14 @@ def get_queue(
     else:
         viewed_day = None  # "earlier"/overdue span many days — no single tab
 
+    # Скан теки проєктів Sum3D — ЄДИНЕ місце в рендері черги, що ходить на
+    # диск (а на бойовому ПК тека може бути мережевою). Виміряний окремо, бо
+    # інакше його час невідрізнимий від часу SQL: обидва просто «черга
+    # відкривається довго». Кеш усередині scan_projects лишається як був.
+    _t_s3 = time.monotonic()
+    _s3 = scan_sum3d_projects(get_sum3d_projects_path(db))
+    _s3_seconds = time.monotonic() - _t_s3
+
     context = {
             "page_title": "Черга робіт",
             "orders": orders,
@@ -491,8 +502,7 @@ def get_queue(
             # Найновіший захоплений Sum3D ID — для «привида» в пришпиленому
             # рядку. В ОБОХ гілках (сторінка й partial=rows), інакше підказка
             # зникала б на першому тіку полла.
-            "sum3d_latest": (_s3 := scan_sum3d_projects(get_sum3d_projects_path(db)))
-                and _s3[0].sum3d_id or None,
+            "sum3d_latest": _s3[0].sum3d_id if _s3 else None,
             # Підказка показується РІВНО В ОДНОМУ рядку — тому, що пришпилений
             # ОСТАННІМ: це та робота, яку оператор щойно взяв і саме для неї
             # створив проєкт. У всіх пришпилених одразу вона була б шумом і,
@@ -519,14 +529,28 @@ def get_queue(
 
     record_viewed_day(viewed_day)
 
+    # Розбивка часу, коли рендер справді довгий. Поріг у секунду, щоб рядок не
+    # з'являвся на кожному тіку полла (черга оновлюється кожні 15 с). Без цієї
+    # розбивки в логу лишалось тільки «Slow request: GET / took 4.17s», і
+    # причину доводилось вгадувати з іншого ПК (скарга власника 03.09.26:
+    # «перемикання між вкладками ~5 секунд»).
+    _measured = _sql_seconds + _s3_seconds
+    if _measured >= 1.0:
+        logger.info(
+            "Queue render: %d робіт, SQL %.2fс, скан Sum3D %.2fс",
+            len(all_orders), _sql_seconds, _s3_seconds,
+        )
+
     # The screen poll asks for just the rows block; everything else (sidebar
     # counts, KPIs) refreshes on a full navigation or a manual sync.
     if partial == "rows":
         return templates.TemplateResponse(request, "_queue_rows.html", context)
 
     # Моно-лоток Sum3D — лише для повного рендера (у шапці, поза #queue-rows).
-    # Скан теки Cam-work раз на завантаження; далі фрагмент самополлиться.
-    context["sum3d_projects"] = scan_sum3d_projects(get_sum3d_projects_path(db))
+    # Той самий скан, що вже зроблено вище: результат перевикористовуємо, а не
+    # ходимо на диск удруге (раніше тут був другий виклик — кеш його зазвичай
+    # ловив, але на холодному TTL це був повторний обхід мережевої теки).
+    context["sum3d_projects"] = _s3
     return templates.TemplateResponse(request, "queue.html", context)
 
 

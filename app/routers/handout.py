@@ -24,7 +24,10 @@ from starlette.requests import Request
 from app import sync_control
 from app.business_day import business_today
 from app.client_matcher import match_client_name
-from app.export_scanner import list_export_client_names_cached
+from app.export_scanner import (
+    cache_counters as export_cache_counters,
+    list_export_client_names_cached,
+)
 from app.models import Client, ClientNameAlias, Order, StatusEvent
 from app.order_folder import folder_to_file_uri
 from app.parser import HEADER_ROWS
@@ -113,6 +116,7 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     # сховища (сотні тек).
     _export_root = Path(get_export_folder_path(db))
     _scan_started = time.monotonic()
+    _cache_before = export_cache_counters()
     folder_names = list_export_client_names_cached(_export_root)
     _not_before = handout_not_before(eligible)
     entries: list = []          # наповнюється нижче, після обходу
@@ -275,11 +279,18 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
 
     # Таймінг обходу сховища в лог: без нього причину «сторінка не
     # відкривається» доводиться вгадувати (так і сталось 27.08.26).
+    # Кеш: влучань / протухлих / промахів САМЕ за цей рендер. Без цієї трійки
+    # рядок казав лише «3.86с», і причину доводилось вгадувати — а лікування в
+    # трьох випадків різне: промах = ключ ніколи не грівся (винен прогрів),
+    # протухле = прогрів відстає від TTL, влучання = час іде не сюди взагалі.
+    _cache_after = export_cache_counters()
+    _cache_delta = {k: v - _cache_before.get(k, 0) for k, v in _cache_after.items()}
     logger.info(
         "Handout export scan: %d клієнтів на екрані, %d тек у сховищі, "
-        "%d записів, партії від %s, %.2fс",
+        "%d записів, партії від %s, кеш %d влуч./%d протух./%d промах., %.2fс",
         len(groups), len(folder_names), len(entries),
         _not_before.date() if _not_before else "усі",
+        _cache_delta["hit"], _cache_delta["stale"], _cache_delta["miss"],
         time.monotonic() - _scan_started,
     )
     return {

@@ -3,6 +3,7 @@ every found order flips to "видано" and sheet_client rows get their blue
 fill cleared in the sheet. Mocks the sheet layer (open_spreadsheet,
 get_worksheet_by_name, clear_row_fills) so no real network is touched."""
 
+import datetime as _dt
 from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -719,6 +720,63 @@ class TestExportPrewarm:
 
         assert from_screen, "екран мусить звертатися до сховища — інакше тест ні про що"
         assert from_warm == from_screen
+
+    def test_prewarm_uses_the_business_day_like_the_screen(self, monkeypatch):
+        """Нічна зміна: до 07:30 календарний день уже новий, а робочий ще ні.
+
+        Регресія 0.7.3 (перехід на робочий день): екран видачі перевели на
+        business_today(), а прогрів лишився на date.today(). Між 00:00 і 07:30
+        це РІЗНІ дні, тож у список днів прогріву потрапляв зайвий день,
+        вікно з трьох днів зсувалось на один — і день, що стоїть чіпом на
+        екрані, лишався непрогрітим. Клік по ньому йшов у синхронний обхід
+        SMB прямо в запиті (скарга власника 03.09.26: «по числах ходжу 3-5
+        секунд»), а третина роботи прогріву гріла день, якого на екрані немає.
+
+        Сусідній тест цього не ловив: у ньому всі роботи одного дня, тож
+        обидва «сьогодні» давали однаковий набір. Тут дні РІЗНІ — зокрема
+        календарно сьогоднішній, той самий, через який набори й розходились.
+        """
+        import app.business_day as business_day_mod
+
+        # 04:30 — нічна зміна ще на вчорашньому робочому дні.
+        night = _dt.datetime(2026, 9, 3, 4, 30)
+        monkeypatch.setattr(business_day_mod, "business_now", lambda: night)
+        assert business_day_mod.business_today() != night.date(), (
+            "тест ні про що, якщо робочий і календарний день збіглись"
+        )
+
+        engine = _database()
+        with Session(engine) as db:
+            _user(db)
+            user_id = db.scalar(select(User.id))
+            # Імена — ті самі, що у списку тек у _record_scans: інакше нечітке
+            # зіставлення нікого не знайде і жодного обходу не буде.
+            days = ("31.08.26", "01.09.26", "02.09.26", "03.09.26")
+            for i, tab in enumerate(days):
+                for j, who in enumerate(("Basarab", "Кривовид")):
+                    db.add(_client_order(
+                        client_name=who, status="прийнято",
+                        sheet_tab=tab, row_number=70 + i * 2 + j,
+                    ))
+            db.commit()
+
+            screen_calls = self._record_scans(monkeypatch)
+            monkeypatch.setattr(
+                web.templates, "TemplateResponse",
+                lambda request, template, context: context,
+            )
+            handout_router_mod.get_handout(request=_request(user_id), db=db)
+            from_screen = set(screen_calls)
+
+            warm_calls = self._record_scans(monkeypatch)
+            web.export_warm_once(db)
+            from_warm = set(warm_calls)
+
+        assert from_screen, "екран мусить звертатися до сховища — інакше тест ні про що"
+        assert from_screen <= from_warm, (
+            "прогрів не покрив те, що читає екран — оператор платитиме за обхід сам: "
+            f"непрогріте {from_screen - from_warm}"
+        )
 
     def test_prewarm_skips_an_unreachable_export_root(self, monkeypatch):
         engine = _database()

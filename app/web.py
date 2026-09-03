@@ -23,7 +23,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
-from app.business_day import set_rollover
+from app.business_day import business_today, set_rollover
 from app.__version__ import VERSION
 from app.config import (
     DB_PATH,
@@ -443,7 +443,16 @@ def export_warm_once(db: Session) -> int:
     folder_names = list_export_client_names_cached(root)
     if not folder_names:
         return 0
-    all_eligible = _handout_eligible_orders(db, date.today())
+    # business_today(), а НЕ date.today() — той самий день, що бачить екран
+    # видачі. Розбіжність тут коштує дорого: між 00:00 і межею робочого дня
+    # (07:30) прогрів рахував на день уперед, тож у його список днів потрапляв
+    # ЗАЙВИЙ день, вікно з трьох днів зсувалось на один — і день, що стоїть
+    # чіпом на екрані, лишався непрогрітим. Клік по ньому йшов у синхронний
+    # обхід SMB прямо в запиті (скарга власника 03.09.26: «по числах ходжу
+    # 3-5 секунд»), а третина роботи прогріву гріла день, якого на екрані
+    # взагалі немає. Регресія переходу на робочий день (0.7.3): екран
+    # перевели, прогрів проґавили.
+    all_eligible = _handout_eligible_orders(db, business_today())
     day_options = _handout_day_options(all_eligible)
     # Гріємо ВСІ дні видимого вікна чіпів, а не лише дефолтний. Ключ кешу
     # обходу включає межу за датою (not_before), і вона своя в кожного дня —
