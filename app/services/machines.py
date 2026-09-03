@@ -105,6 +105,10 @@ class MachineState:
     # нічого, ніж хибне число — той самий принцип, що на пічках.
     percent: Optional[int] = None
     percent_at: Optional[datetime] = None
+    # Коли відсоток востаннє ЗМІНИВСЯ — див. poll_target. Замороженого числа
+    # достатньо, щоб відрізнити верстат у роботі від зупиненого, не читаючи з
+    # кадру ні подачу, ні оберти шпинделя.
+    percent_changed_at: Optional[datetime] = None
     # Коли кадр востаннє лягав на диск (аналізуємо частіше, ніж пишемо).
     frame_saved_at: Optional[datetime] = None
     # Що саме фрезерується: ім'я .iso із заголовка вікна RemiCORE і витягнутий
@@ -303,6 +307,15 @@ def poll_target(
     # завершилась і смуга зникла з екрана, старий відсоток залипав назавжди —
     # робота показувала «85%», хоч давно готова (бойовий випадок 03.09.26).
     # Новий кадр без смуги = «зараз не фрезерується», а не «лишилось 85%».
+    # Коли число ЗМІНИЛОСЬ (а не коли ми його востаннє прочитали). Бойові
+    # кадри 03.09.26: верстат показував 81% шість хвилин поспіль — і це була
+    # правда, машина стояла (vl 0.0 mm/min, шпиндель 0 U/min, інструмент 17 у
+    # помилці). Оператор же прочитав це як «CRM залипла». Різниця між
+    # «фрезерує» і «стоїть на 81%» видима лише в ЧАСІ, тому запамʼятовуємо
+    # момент зміни: percent_at каже, наскільки свіже читання, а
+    # percent_changed_at — наскільки живий верстат.
+    if percent != state.percent or state.percent_changed_at is None:
+        state.percent_changed_at = now
     state.percent = percent
     state.percent_at = now
 
@@ -464,8 +477,28 @@ def milling_now() -> dict[str, dict]:
         out[state.sum3d_id] = {
             "machine": state.target.name,
             "percent": state.percent,
+            "stalled": _percent_is_stalled(state, now),
         }
     return {k: v for k, v in out.items() if v}
+
+
+STALLED_AFTER_SECONDS = 300.0
+"""Скільки відсоток має простояти без змін, щоб назвати верстат зупиненим.
+
+П'ять хвилин, бо повільні фінішні проходи на цирконії справді дають хвилини
+без зміни цілого відсотка (смуга ~128px, тобто крок ≈ 0.8%). Менший поріг
+чіпляв би живий верстат, а це рівно та брехня, якої тут не можна: краще
+сказати «стоїть» на п'ять хвилин пізніше, ніж сказати це помилково."""
+
+
+def _percent_is_stalled(state: "MachineState", now: datetime) -> bool:
+    """Число завмерло? Лише для НЕПОРОЖНЬОГО відсотка: без смуги немає що
+    заморожувати, а «зупинився на невідомо чому» — не повідомлення."""
+    if state.percent is None or state.percent_changed_at is None:
+        return False
+    if state.percent >= 100:
+        return False  # завершено — це не зупинка
+    return (now - state.percent_changed_at).total_seconds() >= STALLED_AFTER_SECONDS
 
 
 def machine_side_context(db: Session) -> dict:

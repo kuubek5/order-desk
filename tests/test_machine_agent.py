@@ -181,7 +181,7 @@ def test_milling_now_maps_sum3d_to_machine_and_percent():
         with ms._states_lock:
             ms._states.clear()
 
-    assert got == {"23-04-33": {"machine": "350i", "percent": 9}}
+    assert got == {"23-04-33": {"machine": "350i", "percent": 9, "stalled": False}}
 
 
 def test_milling_now_drops_the_same_id_on_two_machines():
@@ -264,6 +264,88 @@ def test_frame_is_written_to_disk_less_often_than_it_is_analysed(monkeypatch):
         with ms._states_lock:
             state = ms._states[target.key]
         assert state.frame_at == t0 + timedelta(seconds=16)
+    finally:
+        with ms._states_lock:
+            ms._states.pop(target.key, None)
+
+
+def test_frozen_percent_is_reported_as_stalled_not_as_milling():
+    """Бойові кадри 03.09.26: верстат чесно показував 81% шість хвилин поспіль,
+    бо СТОЯВ — подача 0.0 mm/min, шпиндель 0 U/min, інструмент 17 у помилці.
+    Число правдиве, але оператор прочитав його як «CRM залипла» і пішов шукати
+    баг у нас. Різниця між «фрезерує» і «стоїть на 81%» видима лише в ЧАСІ."""
+    from datetime import datetime, timedelta
+
+    now = datetime.now()
+    live = ms.MachineTarget(name="2wax18", host="10.0.0.1", port=8765, agent_token="t")
+    dead = ms.MachineTarget(name="1dd18", host="10.0.0.2", port=8765, agent_token="t")
+    with ms._states_lock:
+        ms._states.clear()
+        ms._states[live.key] = ms.MachineState(
+            target=live, frame_at=now, percent=57, sum3d_id="02-45-49",
+            percent_changed_at=now - timedelta(seconds=30),
+        )
+        ms._states[dead.key] = ms.MachineState(
+            target=dead, frame_at=now, percent=81, sum3d_id="00-00-19",
+            percent_changed_at=now - timedelta(minutes=6),
+        )
+    try:
+        got = ms.milling_now()
+    finally:
+        with ms._states_lock:
+            ms._states.clear()
+
+    assert got["02-45-49"]["stalled"] is False
+    assert got["00-00-19"]["stalled"] is True
+    # Число ЛИШАЄТЬСЯ — воно правдиве, змінюється лише трактування.
+    assert got["00-00-19"]["percent"] == 81
+
+
+def test_hundred_percent_is_finished_not_stalled():
+    """100% стоїть на місці за визначенням — це завершення, не зупинка."""
+    from datetime import datetime, timedelta
+
+    now = datetime.now()
+    t = ms.MachineTarget(name="350i", host="10.0.0.3", port=8765, agent_token="t")
+    with ms._states_lock:
+        ms._states.clear()
+        ms._states[t.key] = ms.MachineState(
+            target=t, frame_at=now, percent=100, sum3d_id="11-11-11",
+            percent_changed_at=now - timedelta(minutes=30),
+        )
+    try:
+        assert ms.milling_now()["11-11-11"]["stalled"] is False
+    finally:
+        with ms._states_lock:
+            ms._states.clear()
+
+
+def test_poll_target_stamps_percent_change_only_when_number_moves():
+    """percent_at — коли читали, percent_changed_at — коли ЗМІНИЛОСЬ. Плутати
+    їх не можна: перше свіже щотіку, і на ньому зупинку не побачиш."""
+    from datetime import datetime, timedelta
+
+    from PIL import Image
+
+    target = ms.MachineTarget(name="350i", host="10.6.6.6", port=8765, agent_token="t")
+    frame = Image.new("RGB", (300, 200), (240, 240, 240))  # без смуги → None
+    with ms._states_lock:
+        ms._states.pop(target.key, None)
+
+    try:
+        t0 = datetime(2026, 9, 3, 10, 0, 0)
+        ms.poll_target(None, target, None, now=t0, frame=frame)
+        with ms._states_lock:
+            first = ms._states[target.key].percent_changed_at
+        assert first == t0
+
+        # Той самий результат через 5 хв — момент ЗМІНИ не рухається.
+        later = t0 + timedelta(minutes=5)
+        ms.poll_target(None, target, None, now=later, frame=frame)
+        with ms._states_lock:
+            state = ms._states[target.key]
+        assert state.percent_changed_at == t0, "момент зміни поїхав без зміни числа"
+        assert state.percent_at == later, "момент читання мусить бути свіжим"
     finally:
         with ms._states_lock:
             ms._states.pop(target.key, None)

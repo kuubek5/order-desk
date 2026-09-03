@@ -86,8 +86,19 @@
            не малюється, а не падає. #}
         {% set _mill = (milling.get(order.sum3d_id) if (milling is defined and milling and order.sum3d_id) else None) %}
         {% if _mill %}
-        <span class="badge milling" title="Фрезерується на верстаті {{ _mill.machine }}{% if _mill.percent is not none %} · виконано {{ _mill.percent }}%{% endif %}">
+        {# `stalled` — відсоток не змінюється понад 5 хв. Бойові кадри
+           03.09.26: верстат чесно показував 81% шість хвилин, бо СТОЯВ
+           (подача 0, шпиндель 0, інструмент у помилці) — а оператор прочитав
+           це як «CRM залипла» і пішов шукати баг. Число лишається на місці,
+           поруч зʼявляється пауза: те саме читання, але видно, що воно не
+           рухається. #}
+        <span class="badge milling{% if _mill.stalled %} stalled{% endif %}"
+              title="{% if _mill.stalled %}Верстат {{ _mill.machine }}: відсоток не змінюється понад 5 хв — програму зупинено або призупинено{% else %}Фрезерується на верстаті {{ _mill.machine }}{% endif %}{% if _mill.percent is not none %} · виконано {{ _mill.percent }}%{% endif %}">
+            {% if _mill.stalled %}
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12"/><path d="M15 6v12"/></svg>
+            {% else %}
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v6"/><path d="M9 8h6l-1.5 9h-3z" class="duo"/><path d="M9 8h6l-1.5 9h-3z"/><path d="M12 17v5"/></svg>
+            {% endif %}
             {{ _mill.machine }}{% if _mill.percent is not none %} · {{ _mill.percent }}%{% endif %}
         </span>
         {% endif %}

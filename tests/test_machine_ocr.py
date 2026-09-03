@@ -281,3 +281,34 @@ def test_tall_label_inside_the_bar_is_not_mistaken_for_the_border():
             d.rectangle([x, top + 4, x + 1, bottom - 4], fill=(0, 0, 0))
         got = read_progress_percent(img)
         assert got is not None and abs(got - want) <= 3, (want, got)
+
+
+def test_gcode_selection_block_never_wins_over_the_real_bar():
+    """Бойові кадри 03.09.26: у RemiCORE поверх екрана відкрите вікно G-коду, і
+    поточний блок рядків у ньому виділений СУЦІЛЬНИМ СИНІМ — прямокутник
+    ~215px завширшки й сотні пікселів заввишки. За довжиною пробігу він
+    перемагає справжню заливку (60-80px) із запасом, тож єдине, що його
+    відсіює, — форма: смуга прогресу невисока (~23px).
+
+    Раніше межа стояла на 60px, і виділення пролазило рівно тоді, коли вікно
+    G-коду опускалось нижче. Найкращий кандидат на скаргу «пише 59%, хоча
+    насправді 23%»."""
+    img = _screen()
+    d = ImageDraw.Draw(img)
+    # Вікно G-коду з виділеним блоком — ліворуч, дотягується до низу кадру.
+    d.rectangle([14, 300, 229, 850], fill=BLUE)
+    # Справжня смуга — праворуч унизу, як на всіх бойових кадрах.
+    _draw_bar(img, box=(458, 775, 586, 795), percent=23)
+
+    got = read_progress_percent(img)
+    assert got is not None and abs(got - 23) <= 2, (
+        f"детектор прочитав {got} замість 23 — схоже, взяв виділення G-коду"
+    )
+
+
+def test_tall_solid_blue_alone_reads_nothing():
+    """Той самий блок БЕЗ смуги поруч мусить дати порожньо, а не число:
+    хибний відсоток гірший за жоден (те саме правило, що на пічках)."""
+    img = _screen()
+    ImageDraw.Draw(img).rectangle([14, 300, 229, 850], fill=BLUE)
+    assert read_progress_percent(img) is None
