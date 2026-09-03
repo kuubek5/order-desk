@@ -76,3 +76,36 @@ def test_month_and_year_boundaries():
     set_rollover("07:30")
     assert business_today(datetime(2026, 9, 1, 2, 0)) == date(2026, 8, 31)
     assert business_today(datetime(2027, 1, 1, 3, 0)) == date(2026, 12, 31)
+
+
+def test_retention_cutoff_is_the_same_day_source_everywhere():
+    """Вікно ретеншену скрізь рахується від РОБОЧОЇ доби, а не календарної.
+
+    Черга, архів і паспорт роботи мусять різати одну й ту саму межу: доки
+    паспорт брав `date.today()`, а черга `business_today()`, вони щоночі
+    розходились на добу — робота, яку черга показує живою, відкривалась
+    замороженою «тільки для читання», і нічний оператор не міг вписати Sum3D.
+    Правило «фільтр черги і _order_is_archived правити разом» (CLAUDE.md)
+    тепер має сторожа, а не лише коментар.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    screens = (
+        "app/routers/queue.py",
+        "app/routers/archive.py",
+        "app/routers/orders.py",
+        "app/routers/handout.py",
+    )
+    offenders: list[str] = []
+    for rel in screens:
+        for number, line in enumerate(
+            (root / rel).read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            code = line.split("#", 1)[0]
+            if "date.today()" in code:
+                offenders.append(f"{rel}:{number}")
+    assert not offenders, (
+        "на цих екранах дата береться календарна, а не робоча "
+        "(business_today): " + ", ".join(offenders)
+    )

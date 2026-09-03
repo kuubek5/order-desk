@@ -95,10 +95,16 @@ def _resolve_row(worksheet: gspread.Worksheet, order: Order) -> int | None:
     if col is None or not expected:
         return row  # nothing to verify against — trust the stored position
 
+    # Через `call_with_retry`, як і сам запис нижче: у лабораторії між нами й
+    # Google стоїть TLS-проксі, який регулярно рве з'єднання й віддає 429.
+    # Голий `except` тут означав «не перевірили — пишемо в збережений рядок»,
+    # тобто одне чхання мережі перетворювало звірку позиції на її пропуск, і
+    # запис міг лягти сусідові (рівно те, від чого ця функція й захищає).
+    # Повтори вичерпані — ТОДІ довіряємо збереженій позиції, як і раніше.
     try:
-        current = worksheet.cell(row, col).value
+        current = call_with_retry(lambda: worksheet.cell(row, col).value)
     except Exception:
-        return row  # read failed — don't block the write on a transient hiccup
+        return row  # мережа не відповідає навіть з повторами — не блокуємо запис
     if not isinstance(current, str):
         return row  # no real value to compare (e.g. a mock) — trust stored row
     if current.strip().casefold() == expected.casefold():
@@ -108,9 +114,9 @@ def _resolve_row(worksheet: gspread.Worksheet, order: Order) -> int | None:
     # the match is UNIQUE: repeat works legitimately share a наряд and two clients
     # can order the same material, so an ambiguous key must skip, not guess.
     try:
-        values = worksheet.col_values(col)
+        values = call_with_retry(lambda: worksheet.col_values(col))
     except Exception:
-        return None
+        return None  # перерахувати позицію не вдалося — пропускаємо запис
     matches = [
         idx for idx, value in enumerate(values, start=1)
         if isinstance(value, str) and value.strip().casefold() == expected.casefold()

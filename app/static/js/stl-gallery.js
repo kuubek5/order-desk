@@ -45,6 +45,11 @@
   }
   const MODEL_COLOR = stlModelColor();
 
+  // Живі галереї цієї сторінки. HTMX не повідомляє про смерть вузла, тож
+  // єдиний надійний момент прибрати — наступний свап: те, чого вже немає в
+  // документі, більше ніколи не оживе.
+  const live = [];
+
   function setupGallery(root) {
     if (root.dataset.galleryInit) return; // already wired (e.g. re-scanned after an HTMX swap)
     root.dataset.galleryInit = "1";
@@ -282,15 +287,46 @@
     });
 
     // Keep the render crisp when the layout width changes.
+    let resizeObserver = null;
     if (typeof ResizeObserver !== "undefined") {
-      const ro = new ResizeObserver(() => resizeRenderer());
-      ro.observe(canvas);
+      resizeObserver = new ResizeObserver(() => resizeRenderer());
+      resizeObserver.observe(canvas);
     } else {
       window.addEventListener("resize", resizeRenderer);
     }
 
     // Kick off: fetch the STL file list for this token.
     const listController = new AbortController();
+
+    // Прибирання за собою, коли панель зникла з DOM (див. `sweep` нижче).
+    // Без цього кожен клік по листу в тріажі лишав ЖИВИЙ WebGLRenderer на
+    // викинутому <canvas>: браузер тримає лише ~16 контекстів одночасно, тож
+    // після пари десятків переглянутих листів прев'ю мовчки переставало
+    // малюватись — оператор бачив «глючить», а не помилку.
+    live.push({
+      root,
+      dispose() {
+        stopRenderLoop();
+        if (state.controller) state.controller.abort();
+        listController.abort();
+        if (resizeObserver) resizeObserver.disconnect();
+        else window.removeEventListener("resize", resizeRenderer);
+        clearMesh();
+        state.geometryCache.forEach((geometry) => {
+          geometry.dispose && geometry.dispose();
+        });
+        state.geometryCache.clear();
+        if (state.renderer) {
+          // forceContextLoss звільняє контекст ОДРАЗУ, не чекаючи збирача
+          // сміття — саме ліміт контекстів тут і впирається.
+          state.renderer.dispose();
+          state.renderer.forceContextLoss && state.renderer.forceContextLoss();
+          state.renderer = null;
+        }
+        state.scene = null;
+        state.camera = null;
+      },
+    });
     setStatus("Завантаження прев'ю…");
     fetch(`/stl-preview/${encodeURIComponent(token)}`, { signal: listController.signal })
       .then((response) => {
@@ -314,7 +350,21 @@
       });
   }
 
+  function sweep() {
+    for (let i = live.length - 1; i >= 0; i -= 1) {
+      if (!document.contains(live[i].root)) {
+        try {
+          live[i].dispose();
+        } catch (err) {
+          /* прибирання не має ламати свап */
+        }
+        live.splice(i, 1);
+      }
+    }
+  }
+
   function init() {
+    sweep();
     const roots = document.querySelectorAll("[data-stl-gallery-token]");
     roots.forEach(setupGallery);
   }

@@ -499,32 +499,57 @@ document.addEventListener("click", (event) => {
 // Spotlight cards (queue right-rail .side-sec). Writes the cursor position into
 // --mx/--my (for the radial glow) and a small tilt into --rx/--ry, per card.
 // Adds .spotlight so no-JS cards stay flat. Skips tilt under reduced-motion.
+// Слухачі ДЕЛЕГОВАНІ, а не навішані на самі плитки. Плитки печей і верстатів
+// (_furnace_side.html, _machine_side.html) — теж .side-sec, і свапаються
+// цілком (hx-swap="outerHTML") кожні 30 с / 10 с. Навішані напряму слухачі
+// помирали разом зі старою розміткою вже на першому тіку, тож підсвітка на
+// цих двох плитках працювала рівно до першого оновлення. Та сама пастка, що
+// зі смугою печей і карткою зміни — усе, що живе в зоні свапу, мусить
+// триматись за батька, який не свапається.
 (function () {
-  const cards = document.querySelectorAll(".q2 .side-sec");
-  if (!cards.length) return;
+  const SEL = ".q2 .side-sec";
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const MAX_TILT = 4; // degrees — restrained, this is a work tool
 
-  cards.forEach((card) => {
-    card.classList.add("spotlight");
-    card.addEventListener("mousemove", (e) => {
-      const r = card.getBoundingClientRect();
-      const x = e.clientX - r.left;
-      const y = e.clientY - r.top;
-      card.style.setProperty("--mx", x + "px");
-      card.style.setProperty("--my", y + "px");
-      if (!reduce) {
-        const px = x / r.width - 0.5; // -0.5 … 0.5
-        const py = y / r.height - 0.5;
-        card.style.setProperty("--ry", (px * MAX_TILT).toFixed(2) + "deg");
-        card.style.setProperty("--rx", (-py * MAX_TILT).toFixed(2) + "deg");
-      }
-    });
-    card.addEventListener("mouseleave", () => {
-      card.style.setProperty("--rx", "0deg");
-      card.style.setProperty("--ry", "0deg");
-    });
+  // .spotlight ставиться розмітці, а не слухачу: без JS плитка лишається
+  // пласкою. Після кожного свапу нові плитки треба позначити наново.
+  function decorate() {
+    document.querySelectorAll(SEL).forEach((card) => card.classList.add("spotlight"));
+  }
+
+  document.addEventListener("mousemove", (e) => {
+    const card = e.target.closest && e.target.closest(SEL);
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    // Схлопнута плитка (пічка без показань, верстат поза мережею) має розмір
+    // 0×0, і нахил перетворився б на ділення на нуль — у стиль летіло б
+    // «NaNdeg». Делегування ловить і такі плитки, тож перевірка тут потрібна.
+    if (!r.width || !r.height) return;
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    card.style.setProperty("--mx", x + "px");
+    card.style.setProperty("--my", y + "px");
+    if (!reduce) {
+      const px = x / r.width - 0.5; // -0.5 … 0.5
+      const py = y / r.height - 0.5;
+      card.style.setProperty("--ry", (px * MAX_TILT).toFixed(2) + "deg");
+      card.style.setProperty("--rx", (-py * MAX_TILT).toFixed(2) + "deg");
+    }
   });
+
+  // mouseleave не спливає, тому вихід ловимо через mouseout: курсор пішов з
+  // плитки лише тоді, коли новий елемент уже поза нею (або взагалі поза вікном).
+  document.addEventListener("mouseout", (e) => {
+    const card = e.target.closest && e.target.closest(SEL);
+    if (!card) return;
+    const to = e.relatedTarget;
+    if (to && card.contains(to)) return;
+    card.style.setProperty("--rx", "0deg");
+    card.style.setProperty("--ry", "0deg");
+  });
+
+  decorate();
+  document.body.addEventListener("htmx:afterSettle", decorate);
 })();
 
 // ---------------------------------------------------------------------------

@@ -1,12 +1,10 @@
 """Entry point for the packaged standalone Windows application."""
 
 import argparse
-from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
-import shutil
 import socket
 import threading
 import time
@@ -153,43 +151,31 @@ def _open_browser_when_ready() -> None:
 
 
 def _backup_database(db_file: Path) -> Path | None:
-    if not db_file.is_file() or db_file.stat().st_size == 0:
-        return None
-    backup_dir = DATA_DIR / "backups"
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    destination = backup_dir / f"kuubmill_{datetime.now():%Y%m%d_%H%M%S}.db"
-    shutil.copy2(db_file, destination)
-    # Ротація бачить і копії зі старим префіксом — інакше вони лишились би на
-    # диску назавжди, поза лічильником «тримаємо останні п'ять».
-    # Сортування за ЧАСОМ, не за іменем: два різні префікси роблять порядок
-    # імен безглуздим, і свіжа копія «kuubmill_» опинялась би після старих
-    # «order_desk_» — тобто видалялася б першою.
-    backups = sorted(
-        [*backup_dir.glob("kuubmill_*.db"), *backup_dir.glob("order_desk_*.db")],
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    for old_backup in backups[5:]:
-        old_backup.unlink(missing_ok=True)
-    return destination
+    # Тонка обгортка навколо app.schema: тека копій читається з модульного
+    # DATA_DIR у МОМЕНТ виклику, тому підміна `launcher.DATA_DIR` у тестах
+    # і далі влучає (перенос реалізації без цього мовчки зробив би її no-op —
+    # та сама пастка, що описана в CLAUDE.md §15 про monkeypatch після переносу).
+    from app.schema import backup_database
+
+    return backup_database(db_file, DATA_DIR / "backups")
 
 
 def _alembic_config():
-    from alembic.config import Config
+    from app.schema import alembic_config
 
-    config = Config(str(resource_path("alembic.ini")))
-    config.set_main_option(
-        "script_location", str(resource_path("migrations")).replace("%", "%%")
-    )
-    return config
+    return alembic_config()
 
 
 def _run_migrations() -> None:
-    from alembic import command
-    from alembic.migration import MigrationContext
-    from alembic.script import ScriptDirectory
-    from sqlalchemy import create_engine, URL
+    """Довести базу до голови міграцій ДО імпорту застосунку.
 
+    Класифікація legacy-схем лишається тут (гард знає базову схему 0001), а
+    сама послідовність «бекап → штамп/upgrade» живе в app.schema — тим самим
+    кодом користується `app.web.lifespan` для решти шляхів запуску.
+    """
+    from alembic import command
+
+    from app.schema import ensure_schema
     from scripts.migration_guard import main as migration_guard
 
     db_file = Path(DB_PATH).expanduser().resolve()
@@ -201,25 +187,12 @@ def _run_migrations() -> None:
             "Запуск зупинено, дані не змінені."
         )
 
-    config = _alembic_config()
     if guard_status == 3:
         backup = _backup_database(db_file)
         logging.info("Legacy database backup created: %s", backup)
-        command.stamp(config, "0001_initial")
+        command.stamp(_alembic_config(), "0001_initial")
 
-    current_revision = None
-    if db_file.exists() and db_file.stat().st_size:
-        engine = create_engine(URL.create("sqlite", database=str(db_file)))
-        with engine.connect() as connection:
-            current_revision = MigrationContext.configure(connection).get_current_revision()
-        engine.dispose()
-
-    head_revision = ScriptDirectory.from_config(config).get_current_head()
-    if current_revision != head_revision:
-        backup = _backup_database(db_file)
-        if backup:
-            logging.info("Pre-migration backup created: %s", backup)
-        command.upgrade(config, "head")
+    ensure_schema(db_file, DATA_DIR / "backups")
 
 
 def _load_tray_image():

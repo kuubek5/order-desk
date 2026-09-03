@@ -8,7 +8,7 @@
 
 import json
 import logging
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -20,6 +20,7 @@ from time import monotonic
 from urllib.parse import urlencode
 
 from app import sync_control
+from app.business_day import business_today
 from app.models import (
     ActionLog,
     Comment,
@@ -323,7 +324,9 @@ def new_order_form(
         "new_order.html",
         {
             "user": user,
-            "today": date.today().strftime("%d.%m.%y"),
+            # Робоча доба: о 02:00 нічний оператор веде ще вчорашній день, і
+            # форма мусить пропонувати ЙОГО вкладку, а не нову календарну.
+            "today": business_today().strftime("%d.%m.%y"),
             "error": error or None,
             # Carried through a failed validation so the retry still writes to
             # the day tab the operator started from and lands back there. This
@@ -480,7 +483,7 @@ def create_manual_order(
     # which tab it actually wrote to, so the orders land on the same day.
     try:
         result = sheet_writeback_pool.submit(
-            append_manual_rows_warm, date.today(), works,
+            append_manual_rows_warm, business_today(), works,
             paint_blue=(not is_lab),
             placement=("lab" if is_lab else "client"),
             target_tab=wanted_tab,
@@ -983,7 +986,13 @@ def get_order_detail(
     # Archived work (out of the retention window or removed from Google) is a
     # historical record — the passport opens read-only so the operator reviews
     # it (Sum3D, timeline) without editing frozen history.
-    read_only = order_is_archived(order, date.today() - timedelta(days=RETENTION_DAYS))
+    # Межа — від РОБОЧОЇ доби, як у черзі (queue.py) і в архіві: з `date.today()`
+    # вікно паспорта на добу відставало від вікна черги щоночі, і робота, яку
+    # черга показує живою, відкривалась замороженою «тільки для читання» —
+    # оператор нічної зміни не міг вписати в неї Sum3D.
+    read_only = order_is_archived(
+        order, business_today() - timedelta(days=RETENTION_DAYS)
+    )
 
     # Laconic action journal for THIS work (Sum3D/status/undo), newest first —
     # one line per operator action, the "хто що зробив" record.

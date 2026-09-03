@@ -26,10 +26,12 @@ from starlette.requests import Request
 from app.business_day import business_today, set_rollover
 from app.__version__ import VERSION
 from app.config import (
+    DATA_DIR,
     DB_PATH,
     SESSION_SECRET_KEY,
 )
-from app.db import Base, SessionLocal, engine
+from app.db import SessionLocal, db_file, engine
+from app.schema import ensure_schema
 from app.monthly_backup import ensure_monthly_snapshot
 from app.export_scanner import list_export_client_names_cached
 from app import sync_control
@@ -529,8 +531,15 @@ class _BackgroundWorker:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Схему доводить до голови міграцій `app.schema.ensure_schema` — той самий
+    # код, що й у Windows-лаунчері. Раніше тут стояв голий `create_all`, який
+    # створює відсутні таблиці, але НЕ додає колонку в наявну: база тихо
+    # відставала від моделей до першої нової колонки, а тоді падав кожен запит
+    # до тієї таблиці (03.09.26, `machines.agent_token_encrypted` — 500 на всьому
+    # застосунку при зелених тестах). KUUBMILL_SCHEMA_MANAGED=1 означає, що
+    # міграції вже прогнав лаунчер ДО імпорту застосунку.
     if os.environ.get("KUUBMILL_SCHEMA_MANAGED") != "1":
-        Base.metadata.create_all(engine)
+        ensure_schema(db_file, DATA_DIR / "backups")
     # Межа робочого дня (нічні зміни) — у памʼять процесу на старті.
     try:
         with SessionLocal() as _db:

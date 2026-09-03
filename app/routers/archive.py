@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
+from app.business_day import business_today
 from app.models import Order
 from app.routers.deps import get_current_user, get_db, templates
 from app.services.formatting import uk_month_label
@@ -54,7 +55,11 @@ def get_archive(
     if user is None:
         return RedirectResponse("/login", status_code=303)
 
-    today = date.today()
+    # Робоча доба, не календарна: черга рахує своє вікно від `business_today()`
+    # (queue.py), і межа архіву мусить бути ТА САМА. З `date.today()` вони
+    # розходились на добу щоночі з 00:00 до межі зміни — рівно в години, коли
+    # нічний оператор і працює.
+    today = business_today()
     cutoff = today - timedelta(days=RETENTION_DAYS)
     all_orders = db.scalars(select(Order).options(selectinload(Order.material))).all()
     archived = [o for o in all_orders if order_is_archived(o, cutoff)]
