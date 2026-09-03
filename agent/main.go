@@ -43,6 +43,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/kbinani/screenshot"
@@ -50,6 +51,20 @@ import (
 
 // Version is stamped at build time via -ldflags "-X main.Version=...".
 var Version = "dev"
+
+// Пауза спостереження — перемикається з трею. Поки ввімкнена, агент НЕ віддає
+// кадр і не називає програму: людина за верстатом має мати змогу тимчасово
+// закрити свій екран, не викликаючи адміна й не вбиваючи процес. CRM при цьому
+// чесно показує «немає зв'язку», а не застиглий старий кадр.
+var paused atomic.Bool
+
+func isPaused() bool { return paused.Load() }
+
+func togglePaused() {
+	paused.Store(!paused.Load())
+	log.Printf("спостереження: %s", map[bool]string{true: "призупинено", false: "активне"}[paused.Load()])
+	updateTrayIcon()
+}
 
 // taskName is the Task Scheduler entry that starts the agent at logon.
 const taskName = "KMillAgent"
@@ -225,11 +240,19 @@ func runServe(cfgPath string) {
 		})
 	}))
 	mux.HandleFunc("/capture", authed(func(w http.ResponseWriter, r *http.Request) {
+		if isPaused() {
+			http.Error(w, "спостереження призупинено на верстаті", http.StatusServiceUnavailable)
+			return
+		}
 		captureToResponse(w, r, cfg.Display)
 	}))
 	// Заголовки вікон: у заголовку RemiCORE лежить повне ім'я .iso-програми,
 	// а в ньому дата+час = Sum3D ID. Читаємо ТЕКСТОМ, не OCR — точно й дешево.
 	mux.HandleFunc("/titles", authed(func(w http.ResponseWriter, r *http.Request) {
+		if isPaused() {
+			http.Error(w, "спостереження призупинено на верстаті", http.StatusServiceUnavailable)
+			return
+		}
 		writeJSON(w, map[string]interface{}{"titles": visibleWindowTitles()})
 	}))
 
@@ -250,7 +273,17 @@ func runServe(cfgPath string) {
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
-	log.Fatal(srv.ListenAndServe())
+	// HTTP — у горутині, трей тримає ГОЛОВНИЙ потік: цикл повідомлень Windows
+	// мусить жити саме там. «Вийти» в треї зупиняє процес цілком.
+	go func() {
+		if err := srv.ListenAndServe(); err != nil {
+			log.Fatalf("сервер зупинився: %v", err)
+		}
+	}()
+	runTray(func() { log.Printf("вихід із трею") })
+	// Трей недоступний (немає сесії робочого столу) — не залишати процес без
+	// роботи: тримаємо HTTP далі, як і до появи іконки.
+	select {}
 }
 
 // captureToResponse grabs the frame for the requested (or default) display and

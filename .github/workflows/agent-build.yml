@@ -93,3 +93,25 @@ jobs:
           name: KMillAgent-Setup
           path: agent/Output/*.exe
           if-no-files-found: error
+
+      # Публікуємо в публічний репозиторій релізів під СТАЛИМ тегом
+      # `agent-latest`: екран «Налаштування → Верстати» посилається саме на
+      # нього, тож посилання не треба міняти з кожною збіркою. Артефакти
+      # Actions для цього не годяться — вони вимагають входу в GitHub.
+      - name: Publish to releases repo (stable link)
+        if: github.ref == 'refs/heads/master'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+        run: |
+          $exe = (Get-ChildItem Output\*.exe | Select-Object -First 1).FullName
+          # Ім'я без версії — стале посилання для сторінки налаштувань.
+          $stable = Join-Path (Split-Path $exe) 'KMillAgent-Setup.exe'
+          Copy-Item $exe $stable -Force
+          $repo = 'kuubek5/order-desk-releases'
+          gh release view agent-latest --repo $repo 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create agent-latest --repo $repo --title "Агент верстата" `
+              --notes "Інсталятор агента для ПК верстата. Посилання стале — оновлюється автоматично."
+          }
+          gh release upload agent-latest $stable --repo $repo --clobber
