@@ -158,7 +158,9 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     # розшифруванням) і build_preview_token (~9 звернень до мережевої шари) —
     # на КОЖЕН запис, а їх тут сотні. Виміряно 03.09.26 на черзі: та сама
     # конструкція давала 18 звернень на рядок.
-    _preview_roots = {"export": get_export_folder_path(db)}
+    # _export_root вище вже прочитав це налаштування (а читання означає
+    # розшифрування) — беремо його, а не питаємо базу вдруге.
+    _preview_roots = {"export": str(_export_root)}
     _validated_roots = validate_preview_roots(_preview_roots)
 
     client_groups = []

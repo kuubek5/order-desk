@@ -56,11 +56,12 @@ _tech_listing: dict[str, tuple[float, Path, frozenset[str]]] = {}
 _tech_listing_lock = threading.Lock()
 
 
-def _tech_root_children(technician_files_path: str) -> tuple[Path, frozenset[str]] | None:
-    """(розвʼязаний корінь, назви тек у ньому) або None, якщо корінь недоступний.
+def _tech_root_children(technician_files_path: str) -> tuple[Path, frozenset[str]]:
+    """(корінь, назви тек у ньому). Недосяжна шара дає ПОРОЖНЮ множину імен.
 
     Помилка обходу — це не виняток: шара може бути тимчасово недосяжна, і
-    черга мусить намалюватись без посилань на теки, а не впасти."""
+    черга мусить намалюватись без посилань на теки, а не впасти. Порожня
+    множина каже це саме, і каже однаково на будь-якому виклику."""
     now = time.monotonic()
     with _tech_listing_lock:
         hit = _tech_listing.get(technician_files_path)
@@ -79,9 +80,16 @@ def _tech_root_children(technician_files_path: str) -> tuple[Path, frozenset[str
         logger.warning("Тека техніків недоступна: %s", technician_files_path)
         with _tech_listing_lock:
             # Порожній перелік теж кешуємо: інакше кожен рядок кожного полла
-            # знову стукав би в мертву шару й чекав на її таймаут.
-            _tech_listing[technician_files_path] = (now, Path(technician_files_path), frozenset())
-        return None
+            # знову стукав би в мертву шару й чекав на її таймаут. Корінь тут
+            # НЕ розвʼязаний (resolve і впав) — але з порожньою множиною імен
+            # ним ніхто не скористається: жоден job_code не пройде перевірку
+            # `name in names`. Кладемо саме кортеж, а не None, щоб стан «шара
+            # мовчить» виглядав однаково і на першому виклику, і на наступних
+            # 30 секундах — інакше та сама ситуація давала б різні типи.
+            _tech_listing[technician_files_path] = (
+                now, Path(technician_files_path), frozenset()
+            )
+        return Path(technician_files_path), frozenset()
 
     with _tech_listing_lock:
         _tech_listing[technician_files_path] = (now, root, names)
@@ -372,10 +380,9 @@ def attach_job_code_folder_uris(db: Session, orders: list[Order]) -> None:
     # рядок (див. коментар до _tech_root_children). Раніше тут стояв виклик
     # resolve_job_code_folder на кожну роботу, тобто три round-trip'и на SMB
     # помножені на кількість рядків, ще й у поллі кожні 15 с.
-    listing = _tech_root_children(technician_files_path)
-    if listing is None:
-        return
-    root, names = listing
+    root, names = _tech_root_children(technician_files_path)
+    if not names:
+        return          # шара мовчить або тека порожня — посилань просто немає
 
     for order in orders:
         name = _job_code_segment(order.job_code)
