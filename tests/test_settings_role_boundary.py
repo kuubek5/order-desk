@@ -170,6 +170,89 @@ def test_admin_can_still_set_everything():
     assert get_setting(db, "export_folder_path") == r"D:\export"
 
 
+def test_saving_one_section_does_not_wipe_the_others():
+    """Сторож бойової втрати налаштувань 03.09.26.
+
+    Екран налаштувань має ТРИ окремі <form>, і всі три шлють POST на
+    /settings: Google, IMAP, шляхи. Обробник іде по ВСІХ SETTING_FIELDS, і
+    поки він читав form.get(key, ""), «поля не було в цій формі» ставало
+    «поле порожнє» — а порожнє для CLEARABLE_SETTING_KEYS означає «стерти».
+
+    Наслідок у бою: оператор зберіг шлях до проєктів Sum3D і тієї ж миті
+    втратив Google Sheet ID (застосунок написав «таблиця не може
+    синхронізуватися») і шлях до export (видача показала «0 тек у сховищі»).
+    Один клік — три стерті налаштування, жодного попередження.
+    """
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+
+        # Секція «Google» — заповнюємо все, як при першому налаштуванні.
+        asyncio.run(settings_router_mod.post_settings(
+            request=_form_request(admin.id, {
+                "action": "save",
+                "google_sheet_id": "real-sheet-id",
+                "export_folder_path": r"\\Systems\Export",
+                "technician_files_path": r"\\Systems\Tech",
+            }),
+            db=db,
+        ))
+
+        # Секція «Шляхи» — окрема форма, у ній НЕМАЄ google_sheet_id.
+        asyncio.run(settings_router_mod.post_settings(
+            request=_form_request(admin.id, {
+                "action": "save",
+                "export_folder_path": r"\\Systems\Export",
+                "technician_files_path": r"\\Systems\Tech",
+                "sum3d_projects_path": r"D:\CAM-WORK",
+            }),
+            db=db,
+        ))
+
+    assert get_setting(db, "sum3d_projects_path") == r"D:\CAM-WORK"
+    assert get_setting(db, "google_sheet_id") == "real-sheet-id", (
+        "збереження секції шляхів стерло Google Sheet ID"
+    )
+
+    # І навпаки: збереження самої лише секції Google не має зносити шляхи.
+    with Session(engine, expire_on_commit=False) as db2:
+        admin2 = db2.query(User).filter_by(username="admin").one()
+        asyncio.run(settings_router_mod.post_settings(
+            request=_form_request(admin2.id, {
+                "action": "save",
+                "google_sheet_id": "real-sheet-id",
+            }),
+            db=db2,
+        ))
+    assert get_setting(db2, "export_folder_path") == r"\\Systems\Export", (
+        "збереження секції Google стерло шлях до export"
+    )
+    assert get_setting(db2, "sum3d_projects_path") == r"D:\CAM-WORK"
+
+
+def test_empty_field_that_is_present_still_clears():
+    """Зворотний бік: очищення руками мусить лишитись робочим. Помилковий
+    мережевий шлях вішає видачу, і зняти його треба саме порожнім полем —
+    поле в формі Є, його просто стерли."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        asyncio.run(settings_router_mod.post_settings(
+            request=_form_request(admin.id, {
+                "action": "save", "export_folder_path": r"\\dead\share",
+            }),
+            db=db,
+        ))
+        assert get_setting(db, "export_folder_path") == r"\\dead\share"
+        asyncio.run(settings_router_mod.post_settings(
+            request=_form_request(admin.id, {
+                "action": "save", "export_folder_path": "",
+            }),
+            db=db,
+        ))
+    assert get_setting(db, "export_folder_path") == ""
+
+
 def test_post_settings_still_requires_login():
     engine = _database()
     with Session(engine) as db:

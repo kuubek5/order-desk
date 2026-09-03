@@ -401,7 +401,19 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
     for field in SETTING_FIELDS:
         if not is_admin and field.key not in OPERATOR_EDITABLE_KEYS:
             continue
-        value = form.get(field.key, "").strip()
+        raw = form.get(field.key)
+        if raw is None:
+            # ПОЛЯ НЕ БУЛО В ЦІЙ ФОРМІ — не чіпаємо його. Екран налаштувань
+            # має ТРИ окремі <form>, і всі три шлють POST сюди: Google, IMAP,
+            # шляхи. Раніше тут стояло form.get(key, ""), тобто «відсутнє»
+            # ставало «порожнє», а порожнє для CLEARABLE означає «стерти» —
+            # тож збереження однієї секції мовчки витирало поля двох інших.
+            # Бойовий випадок 03.09.26: оператор зберіг шлях до проєктів
+            # Sum3D → у ту саму мить зник Google Sheet ID («таблиця не може
+            # синхронізуватися») і шлях до export («0 тек у сховищі» на
+            # видачі). Один клік — три втрачені налаштування.
+            continue
+        value = raw.strip()
         if field.key == "google_sheet_id":
             # Operators paste the whole address-bar URL; store the bare id.
             value = extract_sheet_id(value)
@@ -409,7 +421,8 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
         # порожнім навмисно (placeholder «збережено»), тож повторний сабміт
         # не має їх стерти. Для шляхів і Sheet ID порожнє = «прибрати»,
         # інакше помилковий мережевий шлях, що вішає видачу, неможливо було
-        # зняти — а тост при цьому рапортував «Збережено».
+        # зняти — а тост при цьому рапортував «Збережено». Очищення лишається
+        # можливим саме тому, що поле в формі Є — просто його стерли руками.
         if value or field.key in CLEARABLE_SETTING_KEYS:
             set_setting(db, field.key, value)
     db.commit()

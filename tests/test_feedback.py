@@ -5,7 +5,6 @@
 лічильник «нових» рахує рівно те, що показує рейка, і ретрай добиває чергу.
 """
 
-from datetime import datetime
 
 import pytest
 from sqlalchemy import create_engine
@@ -13,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.db import Base
-from app.models import Feedback, User
+from app.models import User
 from app.services import feedback as fb
 from app.services import telegram as tg
 
