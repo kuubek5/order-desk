@@ -101,7 +101,35 @@ def _walk_without_links(lexical_root: Path, segments: list[str]) -> Path | None:
     return current
 
 
-def build_preview_token(folder: Path, roots: dict[str, str | None]) -> str | None:
+def validate_preview_roots(roots: dict[str, str | None]) -> dict[str, tuple[Path, Path]]:
+    """Перевірити корені ОДИН раз на пакет — {ключ: (лексичний, розвʼязаний)}.
+
+    Перевірка одного кореня коштує ~4 звернення до диска (is_symlink,
+    is_junction, resolve(strict=True), is_dir), а корені для всіх рядків
+    ОДНАКОВІ — вони беруться з налаштувань, не з рядка. Раніше
+    build_preview_token перевіряв їх заново на КОЖНУ роботу: виміряно
+    03.09.26 — 18 звернень на одну поштову роботу, тобто 900 на 50 рядків,
+    і все це на мережевій шарі, ще й у поллі кожні 15 с.
+
+    Перевірка не ослаблена — просто зроблена один раз замість N. Належність
+    самої теки кореню (прохід сегментами без переходу за лінками, resolve,
+    is_dir) лишається ПОРЯДКОВОЮ, бо тека в кожного рядка своя."""
+    validated: dict[str, tuple[Path, Path]] = {}
+    for root_key, root_value in roots.items():
+        if root_key not in _ROOT_RESOLVERS:
+            continue
+        pair = _lexical_and_resolved_root(root_value)
+        if pair is not None:
+            validated[root_key] = pair
+    return validated
+
+
+def build_preview_token(
+    folder: Path,
+    roots: dict[str, str | None],
+    *,
+    validated_roots: dict[str, tuple[Path, Path]] | None = None,
+) -> str | None:
     """Return an opaque preview token for `folder` if it sits under one of `roots`.
 
     `roots` maps root_key -> current absolute root path (as configured), e.g.
@@ -110,16 +138,21 @@ def build_preview_token(folder: Path, roots: dict[str, str | None]) -> str | Non
     folder does not resolve safely under any of them (silent degradation,
     matching the rest of this codebase's folder-link helpers — no preview
     offered rather than raising).
+
+    `validated_roots` — результат validate_preview_roots() для тих самих
+    коренів. Передавай його, коли токенів у циклі багато: перевірка коренів
+    тоді робиться раз на пакет, а не раз на рядок (див. коментар там).
     """
     try:
         lexical_folder = Path(folder).absolute()
     except (OSError, RuntimeError):
         return None
 
-    for root_key, root_value in roots.items():
-        if root_key not in _ROOT_RESOLVERS:
-            continue
-        validated_root = _lexical_and_resolved_root(root_value)
+    if validated_roots is None:
+        validated_roots = validate_preview_roots(roots)
+
+    for root_key in roots:
+        validated_root = validated_roots.get(root_key)
         if validated_root is None:
             continue
         lexical_root, resolved_root = validated_root
@@ -150,6 +183,86 @@ def build_preview_token(folder: Path, roots: dict[str, str | None]) -> str | Non
         return token
 
     return None
+
+
+def build_preview_token_lexical(
+    folder: Path,
+    roots: dict[str, str | None],
+    validated_roots: dict[str, tuple[Path, Path]],
+) -> str | None:
+    """Токен БЕЗ звернень до диска — лише лексична перевірка належності кореню.
+
+    Навіщо: build_preview_token нижче ще й ходить на диск — проходить кожен
+    сегмент шляху, перевіряючи, чи не лінк, потім resolve(strict=True) і
+    is_dir(). На теці `клієнт/дата/матеріал` це ~9 звернень, і виконується
+    воно в ЦИКЛІ по рядках черги й по партіях видачі, на мережевій шарі, ще й
+    у поллі кожні 15 с. Виміряно 03.09.26: 18 звернень на одну поштову
+    роботу, 900 на 50 рядків.
+
+    Чому це не послаблює захист. Токен НЕ Є ПЕРЕПУСТКОЮ: усі три роути, що
+    віддають байти (app/routers/stl.py), ідуть через resolve_preview_folder,
+    а той бере корінь заново з налаштувань (_ROOT_RESOLVERS, не з токена),
+    перевіряє сегменти, проходить шлях без переходу за лінками, робить
+    resolve(strict=True) і вимагає, щоб результат лишався під розвʼязаним
+    коренем. Тобто перевірка на диску нікуди не поділась — вона там, де
+    вирішується доступ, а не там, де малюється підказка.
+
+    Найгірше, що може дати необережний токен: оператор наведе мишу й не
+    побачить прев'ю, бо роут відмовить. Це дешевше за секунди очікування на
+    кожному відкритті черги.
+    """
+    try:
+        lexical_folder = Path(folder).absolute()
+    except (OSError, RuntimeError):
+        return None
+
+    for root_key in roots:
+        validated_root = validated_roots.get(root_key)
+        if validated_root is None:
+            continue
+        lexical_root, _resolved_root = validated_root
+        try:
+            relative = lexical_folder.relative_to(lexical_root)
+        except ValueError:
+            continue
+        segments = _valid_relative_segments(relative)
+        if segments is None:
+            continue
+        payload = f"{root_key}:{relative.as_posix()}"
+        return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
+    return None
+
+
+def build_preview_token_for_known_child(root_key: str, name: str) -> str | None:
+    """Токен для теки, про яку ВЖЕ відомо, що вона прямий нащадок кореня.
+
+    Навіщо окремий вхід: build_preview_token вище перевіряє належність теки
+    кореню сам, і ця перевірка коштує ~9 звернень до диска (валідація кореня,
+    прохід сегментами без переходу за лінками, resolve, is_dir). На екрані
+    черги вона виконувалась на КОЖЕН рядок — а тека техніків лежить на
+    мережевій шарі, де кожне звернення це round-trip. Виміряно 03.09.26:
+    саме це й було головною причиною «вкладка відкривається 5 секунд».
+
+    Коли назва теки прийшла з обходу самого кореня (див.
+    order_folder._tech_root_children), належність уже доведена — доводити її
+    ще раз означає платити мережею за відоме.
+
+    Це БЕЗПЕЧНО, бо токен не є перепусткою: resolve_preview_folder нижче
+    заново бере корінь із налаштувань (_ROOT_RESOLVERS, не з токена),
+    перевіряє сегменти, проходить без переходу за лінками й вимагає, щоб
+    розвʼязаний шлях лишався під розвʼязаним коренем. Тобто дешевий токен не
+    дає доступу нікуди, куди не дав би дорогий — просто не платить за
+    перевірку двічі.
+
+    `name` усе одно перевіряється як ОДИН безпечний сегмент: якщо колись
+    зʼявиться інший постачальник назв, помилка не проскочить мовчки.
+    """
+    if root_key not in _ROOT_RESOLVERS:
+        return None
+    if _valid_relative_segments(Path(name)) != [name]:
+        return None
+    payload = f"{root_key}:{name}"
+    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
 
 
 def resolve_preview_folder(db: Session, token: str) -> Path | None:

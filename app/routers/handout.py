@@ -61,7 +61,7 @@ from app.services.sheet_writeback import set_client_row_fill_background, write_s
 from app.settings_store import get_export_folder_path
 from app.sheet_writer import apply_status_markers, clear_row_fills
 from app.sheets import get_worksheet_by_name, open_spreadsheet
-from app.stl_preview import build_preview_token
+from app.stl_preview import build_preview_token_lexical, validate_preview_roots
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +153,14 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
         for name, entries_ in scan_export_latest_for_clients(_export_root, _empty).items():
             scanned[name] = entries_
 
+    # Корінь і його перевірка — ОДИН раз на весь екран, не на кожну партію.
+    # Раніше в цьому циклі стояли get_export_folder_path(db) (запит до бази з
+    # розшифруванням) і build_preview_token (~9 звернень до мережевої шари) —
+    # на КОЖЕН запис, а їх тут сотні. Виміряно 03.09.26 на черзі: та сама
+    # конструкція давала 18 звернень на рядок.
+    _preview_roots = {"export": get_export_folder_path(db)}
+    _validated_roots = validate_preview_roots(_preview_roots)
+
     client_groups = []
     for client_name, group_orders in groups.items():
         match = matches[client_name]
@@ -160,8 +168,8 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
         entries.extend(export_entries)
         for entry in export_entries:
             entry.folder_uri = folder_to_file_uri(entry.folder_path)
-            entry.preview_token = build_preview_token(
-                entry.folder_path, {"export": get_export_folder_path(db)}
+            entry.preview_token = build_preview_token_lexical(
+                entry.folder_path, _preview_roots, _validated_roots
             )
         # Per-row candidates: narrow the client's export folders to the ones
         # whose material matches THIS work's material_color, oldest-first. The
@@ -197,8 +205,8 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             # на file:// зі сторінки на http, тому кнопка «Відкрити папку» досі
             # не робила нічого (бойовий випадок 28.08.26). Провідник відкриває
             # сервер через /open-folder, як це вже роблять прев'ю і черга.
-            client_folder_token = build_preview_token(
-                client_folder, {"export": get_export_folder_path(db)}
+            client_folder_token = build_preview_token_lexical(
+                client_folder, _preview_roots, _validated_roots
             )
         client_groups.append(
             {

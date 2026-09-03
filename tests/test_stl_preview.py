@@ -261,3 +261,69 @@ def test_resolve_stl_file_rejects_symlinked_file(tmp_path):
         pytest.skip("symlinks not supported without elevated privileges here")
 
     assert resolve_stl_file(folder, "case.stl") is None
+
+
+class TestLexicalTokenStaysSafe:
+    """Дешевий токен не дає доступу нікуди, куди не дав би дорогий.
+
+    build_preview_token_lexical не ходить на диск — саме тому екран черги
+    перестав коштувати 18 звернень до мережевої шари на рядок (вимір
+    03.09.26). Оптимізація тримається на одному: токен НЕ Є ПЕРЕПУСТКОЮ,
+    resolve_preview_folder перевіряє все заново від кореня з налаштувань.
+    Тут перевіряється саме ця опора — якщо вона колись зникне, дешевий токен
+    миттєво стане дірою.
+    """
+
+    def test_folder_outside_the_root_gets_no_token(self, tmp_path):
+        from app.stl_preview import build_preview_token_lexical, validate_preview_roots
+
+        root = tmp_path / "export"
+        root.mkdir()
+        outside = tmp_path / "секрет"
+        outside.mkdir()
+
+        roots = {"export": str(root)}
+        validated = validate_preview_roots(roots)
+        assert build_preview_token_lexical(outside, roots, validated) is None
+
+    def test_traversal_segments_get_no_token(self, tmp_path):
+        from app.stl_preview import build_preview_token_lexical, validate_preview_roots
+
+        root = tmp_path / "export"
+        (root / "клієнт").mkdir(parents=True)
+        roots = {"export": str(root)}
+        validated = validate_preview_roots(roots)
+        assert build_preview_token_lexical(root / "клієнт" / ".." / "..", roots, validated) is None
+
+    def test_serve_side_refuses_a_token_whose_folder_is_gone(self, tmp_path, monkeypatch):
+        """Опора всієї оптимізації: перевірка диском живе на видачі байтів.
+
+        Токен збирається лексично, тека потім зникає — роут мусить відмовити,
+        а не віддати вміст."""
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+        from sqlalchemy.pool import StaticPool
+
+        import app.stl_preview as sp
+        from app.db import Base
+        from app.settings_store import set_setting
+
+        root = tmp_path / "export"
+        folder = root / "клієнт" / "03.09.26"
+        folder.mkdir(parents=True)
+
+        roots = {"export": str(root)}
+        token = sp.build_preview_token_lexical(folder, roots, sp.validate_preview_roots(roots))
+        assert token, "лексичний токен мав зібратись для теки під коренем"
+
+        engine = create_engine("sqlite://", poolclass=StaticPool)
+        Base.metadata.create_all(engine)
+        with Session(engine) as db:
+            set_setting(db, "export_folder_path", str(root))
+            db.commit()
+            assert sp.resolve_preview_folder(db, token) == folder.resolve()
+
+            folder.rmdir()
+            assert sp.resolve_preview_folder(db, token) is None, (
+                "роут віддав теку, якої вже немає — перевірка диском на видачі зникла"
+            )

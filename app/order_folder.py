@@ -13,6 +13,10 @@ Order <- EmailMessage.order_id, EmailMessage.attachments -> Attachment.saved_pat
 (app/mail_export.py writes saved_path when the email is accepted).
 """
 
+import logging
+import os
+import threading
+import time
 from pathlib import Path, PureWindowsPath
 
 from sqlalchemy import select
@@ -21,7 +25,67 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import MAIL_ATTACHMENTS_PATH
 from app.models import Attachment, EmailMessage, Order
 from app.settings_store import get_export_folder_path, get_technician_files_path
-from app.stl_preview import build_preview_token
+from app.stl_preview import (
+    build_preview_token,
+    build_preview_token_for_known_child,
+    build_preview_token_lexical,
+    validate_preview_roots,
+)
+
+
+logger = logging.getLogger(__name__)
+
+# ── Перелік тек техніків: ОДИН обхід замість stat на кожен рядок ────────────
+# Виміряно 03.09.26 (лічильник викликів, scratchpad/count_fs.py): рендер черги
+# на 200 рядків робив **600 звернень до диска** — по 3 на рядок (два resolve()
+# і один is_dir() у resolve_job_code_folder). Тека техніків лежить на
+# МЕРЕЖЕВІЙ шарі, де кожне звернення — окремий round-trip: при 3 мс це 1.8 с,
+# при 10 мс (Synology під навантаженням) — 6 с. І це ще не все: той самий
+# код виконується не лише на відкритті сторінки, а й у поллі КОЖНІ 15 СЕКУНД,
+# тобто застосунок забивав шару сам собі (звідси й розкид прогріву 2.1-7.1 с
+# на однаковій роботі).
+#
+# Лікування не в мікрооптимізації, а в зміні порядку: назви тек у корені
+# читаються ОДНИМ обходом і лежать у памʼяті, а перевірка «чи є тека для цього
+# job_code» стає пошуком у множині — нуль звернень до мережі на рядок.
+#
+# TTL коротка: технік кладе теку посеред зміни, і рядок мусить стати «можна
+# брати» без перезавантаження застосунку. 30 с — це два тіки полла черги.
+_TECH_LISTING_TTL_SECONDS = 30.0
+_tech_listing: dict[str, tuple[float, Path, frozenset[str]]] = {}
+_tech_listing_lock = threading.Lock()
+
+
+def _tech_root_children(technician_files_path: str) -> tuple[Path, frozenset[str]] | None:
+    """(розвʼязаний корінь, назви тек у ньому) або None, якщо корінь недоступний.
+
+    Помилка обходу — це не виняток: шара може бути тимчасово недосяжна, і
+    черга мусить намалюватись без посилань на теки, а не впасти."""
+    now = time.monotonic()
+    with _tech_listing_lock:
+        hit = _tech_listing.get(technician_files_path)
+        if hit is not None and now - hit[0] < _TECH_LISTING_TTL_SECONDS:
+            return hit[1], hit[2]
+
+    try:
+        root = Path(technician_files_path).resolve()
+        # os.scandir, а НЕ Path.iterdir(): scandir віддає ознаку «це тека»
+        # прямо із запису каталогу, тоді як iterdir()+is_dir() робить окремий
+        # stat на КОЖЕН запис — на шарі з сотнями тек техніків це сотні зайвих
+        # round-trip'ів (виміряно: 80 тек = 80 stat'ів проти нуля).
+        with os.scandir(root) as it:
+            names = frozenset(entry.name for entry in it if entry.is_dir())
+    except (OSError, RuntimeError):
+        logger.warning("Тека техніків недоступна: %s", technician_files_path)
+        with _tech_listing_lock:
+            # Порожній перелік теж кешуємо: інакше кожен рядок кожного полла
+            # знову стукав би в мертву шару й чекав на її таймаут.
+            _tech_listing[technician_files_path] = (now, Path(technician_files_path), frozenset())
+        return None
+
+    with _tech_listing_lock:
+        _tech_listing[technician_files_path] = (now, root, names)
+    return root, names
 
 
 def _is_link(path: Path) -> bool:
@@ -202,6 +266,11 @@ def attach_export_folder_uris(db: Session, orders: list[Order]) -> None:
         "mail": str(MAIL_ATTACHMENTS_PATH),
     }
 
+    # Корені перевіряються ОДИН раз на пакет, а не на кожну роботу: це та сама
+    # перевірка, просто не помножена на кількість рядків. Виміряно 03.09.26 —
+    # без цього одна поштова робота коштувала 18 звернень до мережевої шари.
+    validated_roots = validate_preview_roots(preview_roots)
+
     uri_by_order_id: dict[int, str] = {}
     token_by_order_id: dict[int, str] = {}
     for email in emails:
@@ -212,7 +281,9 @@ def attach_export_folder_uris(db: Session, orders: list[Order]) -> None:
         if uri is not None:
             uri_by_order_id[email.order_id] = uri
         if folder is not None:
-            token = build_preview_token(folder, preview_roots)
+            token = build_preview_token_lexical(
+                folder, preview_roots, validated_roots
+            )
             if token is not None:
                 token_by_order_id[email.order_id] = token
 
@@ -221,6 +292,32 @@ def attach_export_folder_uris(db: Session, orders: list[Order]) -> None:
             order.export_folder_uri = uri_by_order_id[order.id]
         if order.id in token_by_order_id:
             order.export_folder_preview_token = token_by_order_id[order.id]
+
+
+def _job_code_segment(job_code: str | None) -> str | None:
+    """`job_code` як ОДНА назва теки — або None, якщо назвою бути не може.
+
+    `job_code` приходить зі спільної Google-таблиці, тобто ззовні. Трактуємо
+    його виключно як ім'я однієї теки, ніколи як шлях. PureWindowsPath
+    потрібен навіть на Linux-розгортанні, щоб зловити диск/UNC.
+
+    Спільне для обох входів — пакетного (attach_job_code_folder_uris) і
+    поодинокого (resolve_job_code_folder). Роздвоїти ці правила означало б
+    мати два різні уявлення про те, що безпечно, і одне з них рано чи пізно
+    відстало б."""
+    if not job_code:
+        return None
+    clean = job_code.strip()
+    if (
+        not clean
+        or clean in {".", ".."}
+        or "/" in clean
+        or "\\" in clean
+        or Path(clean).is_absolute()
+        or PureWindowsPath(clean).is_absolute()
+    ):
+        return None
+    return clean
 
 
 def resolve_job_code_folder(technician_files_path: str | None, job_code: str | None) -> Path | None:
@@ -239,21 +336,11 @@ def resolve_job_code_folder(technician_files_path: str | None, job_code: str | N
     the setting isn't configured yet, or the technician hasn't dropped files
     for this job yet.
     """
-    if not technician_files_path or not job_code:
+    if not technician_files_path:
         return None
 
-    clean_job_code = job_code.strip()
-    # `job_code` comes from a shared Sheet. Treat it as one directory name,
-    # never as a path supplied by that external source. PureWindowsPath is
-    # needed even on a Linux deployment to catch drive/UNC paths.
-    if (
-        not clean_job_code
-        or clean_job_code in {".", ".."}
-        or "/" in clean_job_code
-        or "\\" in clean_job_code
-        or Path(clean_job_code).is_absolute()
-        or PureWindowsPath(clean_job_code).is_absolute()
-    ):
+    clean_job_code = _job_code_segment(job_code)
+    if clean_job_code is None:
         return None
 
     root = Path(technician_files_path).resolve()
@@ -281,14 +368,25 @@ def attach_job_code_folder_uris(db: Session, orders: list[Order]) -> None:
     if not technician_files_path:
         return
 
-    preview_roots = {"tech": technician_files_path}
+    # ОДИН обхід кореня на весь пакет — далі жодного звернення до мережі на
+    # рядок (див. коментар до _tech_root_children). Раніше тут стояв виклик
+    # resolve_job_code_folder на кожну роботу, тобто три round-trip'и на SMB
+    # помножені на кількість рядків, ще й у поллі кожні 15 с.
+    listing = _tech_root_children(technician_files_path)
+    if listing is None:
+        return
+    root, names = listing
 
     for order in orders:
-        folder = resolve_job_code_folder(technician_files_path, order.job_code)
-        uri = folder_to_file_uri(folder)
-        if uri is not None:
-            order.job_code_folder_uri = uri
-        if folder is not None:
-            token = build_preview_token(folder, preview_roots)
-            if token is not None:
-                order.job_code_folder_preview_token = token
+        name = _job_code_segment(order.job_code)
+        if name is None or name not in names:
+            continue
+        # root уже розвʼязаний, а name — простий сегмент із самого переліку,
+        # тож шлях коректний без повторного resolve() (це була б ще одна
+        # ходка на мережу на кожен рядок).
+        order.job_code_folder_uri = (root / name).as_uri()
+        # Належність кореню вже доведена обходом — токен збирається без
+        # повторної перевірки диском (див. build_preview_token_for_known_child).
+        token = build_preview_token_for_known_child("tech", name)
+        if token is not None:
+            order.job_code_folder_preview_token = token

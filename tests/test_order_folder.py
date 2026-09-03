@@ -230,3 +230,166 @@ def test_attach_email_folder_availability_exposes_only_boolean(tmp_path):
     attach_email_folder_availability([email], [root])
 
     assert email.folder_available is True
+
+
+class TestTechnicianFolderIsNotPerRow:
+    """Тека техніків лежить на МЕРЕЖЕВІЙ шарі — рахуємо звернення до диска.
+
+    Бойовий випадок 03.09.26: «перемикання між вкладками ~5 секунд». Вимір
+    лічильником викликів показав, що рендер черги на 200 рядків робив **600
+    звернень до диска** — по три на рядок (два resolve() і один is_dir() у
+    resolve_job_code_folder), і ще стільки ж у поллі КОЖНІ 15 СЕКУНД. На SMB
+    кожне звернення це окремий round-trip: при 3 мс — 1.8 с на рендер, при
+    10 мс — 6 с. Застосунок забивав шару сам собі.
+
+    Тому тут перевіряється не швидкість (мережі в тесті немає), а САМА
+    ВЛАСТИВІСТЬ: вартість не залежить від кількості рядків. Виміряти час на
+    машині розробки неможливо — порахувати виклики можна завжди.
+    """
+
+    def _count_disk_calls(self, monkeypatch, db, orders):
+        import os as _os
+        from pathlib import Path as _Path
+
+        calls = {"n": 0}
+        for owner, name in ((_Path, "resolve"), (_Path, "is_dir"),
+                            (_Path, "exists"), (_Path, "iterdir"),
+                            (_os, "scandir"), (_os, "stat")):
+            orig = getattr(owner, name)
+
+            def wrapper(*a, _orig=orig, **k):
+                calls["n"] += 1
+                return _orig(*a, **k)
+
+            monkeypatch.setattr(owner, name, wrapper)
+
+        from app.order_folder import attach_job_code_folder_uris
+
+        attach_job_code_folder_uris(db, orders)
+        return calls["n"]
+
+    def test_cost_does_not_grow_with_the_number_of_rows(self, monkeypatch, tmp_path):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+        from sqlalchemy.pool import StaticPool
+
+        import app.order_folder as of
+        from app.db import Base
+        from app.models import Order
+        from app.settings_store import set_setting
+
+        root = tmp_path / "tech"
+        root.mkdir()
+        for i in range(20):
+            (root / f"2026-09-02_{i:05d}-007").mkdir()
+
+        engine = create_engine("sqlite://", poolclass=StaticPool)
+        Base.metadata.create_all(engine)
+
+        def _orders(db, count):
+            made = []
+            for i in range(count):
+                o = Order(
+                    source="lab", sheet_tab="02.09.26", row_number=i + 7,
+                    work_order_no=str(24000 + i),
+                    job_code=f"2026-09-02_{i % 20:05d}-007", status="прийнято",
+                )
+                db.add(o)
+                made.append(o)
+            db.commit()
+            return made
+
+        with Session(engine) as db:
+            set_setting(db, "technician_files_path", str(root))
+            db.commit()
+
+            few = _orders(db, 5)
+            with of._tech_listing_lock:
+                of._tech_listing.clear()
+            cost_few = self._count_disk_calls(monkeypatch, db, few)
+
+            many = _orders(db, 200)
+            with of._tech_listing_lock:
+                of._tech_listing.clear()
+            cost_many = self._count_disk_calls(monkeypatch, db, many)
+
+        # Сорок разів більше рядків — вартість та сама. Допуск на два
+        # звернення: сам обхід кореня плюс його resolve().
+        assert cost_many <= cost_few + 2, (
+            f"вартість росте з рядками: 5 рядків = {cost_few} звернень, "
+            f"200 рядків = {cost_many}. Повернувся stat на кожен рядок?"
+        )
+        # І посилання при цьому мусять реально проставитись — інакше тест
+        # хвалив би код, що просто нічого не робить.
+        assert sum(1 for o in many if o.job_code_folder_uri) == 200
+
+    def test_missing_folder_gives_no_link(self, monkeypatch, tmp_path):
+        """Технік ще не здав роботу — посилання немає, і це не помилка."""
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+        from sqlalchemy.pool import StaticPool
+
+        import app.order_folder as of
+        from app.db import Base
+        from app.models import Order
+        from app.settings_store import set_setting
+
+        root = tmp_path / "tech"
+        root.mkdir()
+        engine = create_engine("sqlite://", poolclass=StaticPool)
+        Base.metadata.create_all(engine)
+
+        with Session(engine) as db:
+            set_setting(db, "technician_files_path", str(root))
+            order = Order(source="lab", sheet_tab="02.09.26", row_number=7,
+                          work_order_no="24122", job_code="немає-такої",
+                          status="прийнято")
+            db.add(order)
+            db.commit()
+            with of._tech_listing_lock:
+                of._tech_listing.clear()
+            of.attach_job_code_folder_uris(db, [order])
+
+        assert order.job_code_folder_uri is None
+        assert order.job_code_folder_preview_token is None
+
+    def test_traversal_in_job_code_is_still_refused(self, monkeypatch, tmp_path):
+        """job_code приходить зі спільної таблиці, тобто ззовні. Пакетний шлях
+        мусить різати шлях так само суворо, як поодинокий — інакше швидкий
+        варіант тихо став би дірою."""
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+        from sqlalchemy.pool import StaticPool
+
+        import app.order_folder as of
+        from app.db import Base
+        from app.models import Order
+        from app.settings_store import set_setting
+
+        root = tmp_path / "tech"
+        (root / "справжня").mkdir(parents=True)
+        (tmp_path / "секрет").mkdir()
+
+        engine = create_engine("sqlite://", poolclass=StaticPool)
+        Base.metadata.create_all(engine)
+
+        with Session(engine) as db:
+            set_setting(db, "technician_files_path", str(root))
+            bad = [
+                Order(source="lab", sheet_tab="02.09.26", row_number=i + 7,
+                      work_order_no=str(i), job_code=code, status="прийнято")
+                for i, code in enumerate((
+                    "..", "../секрет", r"..\секрет", "/etc", r"C:\Windows",
+                    r"\host\share", ".",
+                ))
+            ]
+            for o in bad:
+                db.add(o)
+            db.commit()
+            with of._tech_listing_lock:
+                of._tech_listing.clear()
+            of.attach_job_code_folder_uris(db, bad)
+
+        assert all(o.job_code_folder_uri is None for o in bad), (
+            "пакетний шлях пропустив traversal у job_code"
+        )
