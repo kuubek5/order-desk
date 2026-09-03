@@ -66,6 +66,8 @@ EDGE_SLACK = 2
 # Скільки найдовших пробігів перевіряти на «форму смуги». Найдовший у кадрі —
 # панель задач Windows (заввишки 2px), тож одним кандидатом не обійтись.
 MAX_BAR_CANDIDATES = 40
+# Крок пошуку смуги по рядках. Безпечний, доки він менший за MIN_BAR_HEIGHT.
+SEED_ROW_STEP = 2
 
 
 def _is_blue(px: tuple[int, int, int]) -> bool:
@@ -134,8 +136,11 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
     #    захоплював ще й синій напис «100%» ЛІВОРУЧ від смуги та розкидані сині
     #    цифри таблиці інструментів, і детектор міряв зовсім не ту область
     #    (бойовий випадок 03.09.26 — «смуга» шириною 741px через пів екрана).
+    # Шукаємо ЧЕРЕЗ РЯДОК: смуга щонайменше MIN_BAR_HEIGHT (4px) заввишки, тож
+    # крок 2 не може її проґавити, а розбір кадру коштує вдвічі менше — це
+    # дозволяє опитувати верстати частіше без зростання навантаження.
     runs: list[tuple[int, int, int, int]] = []  # (довжина, y, x0, x1)
-    for y in range(top, height):
+    for y in range(top, height, SEED_ROW_STEP):
         run_start: Optional[int] = None
         for x in range(width + 1):
             blue = x < width and _is_blue(px[x, y])
