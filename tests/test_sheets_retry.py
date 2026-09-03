@@ -122,3 +122,42 @@ def test_429_quota_waits_out_the_minute_not_seconds():
         call_with_retry(always_over_quota, attempts=4, base_delay=1.0, sleep=sleeps.append)
     assert sleeps == [20.0, 40.0, 60.0], "сума пауз мусить перевищувати хвилину"
     assert sum(sleeps) > 60
+
+
+def test_api_call_rate_counter_measures_a_rolling_minute():
+    """Лічильник запитів до Sheets — інструмент вимірювання, не оптимізація.
+
+    Бойовий лог 03.09.26 показав «429 Quota exceeded ... Read requests per
+    minute per user», але скільки саме запитів робить CRM, дізнатись було
+    нізвідки. Правило власника: спершу поміряти, потім правити. Тут — що
+    лічильник рахує рухоме вікно в 60 с, а не від запуску процесу."""
+    import app.sheets as sheets_mod
+
+    with sheets_mod._rate_lock:
+        sheets_mod._rate_calls.clear()
+    sheets_mod._rate_reported_at = 0.0
+
+    for i in range(5):
+        count = sheets_mod._record_api_call(now=1000.0 + i)
+    assert count == 5
+
+    # Мітки лежать на 1000..1004; за 70 с усі вони випадають з вікна.
+    assert sheets_mod._record_api_call(now=1000.0 + 70.0) == 1
+
+
+def test_every_retry_attempt_counts_against_the_quota():
+    """Повтор їсть квоту так само, як перший виклик — інакше вимірювання
+    брехало б саме тоді, коли воно найпотрібніше (під час 429-штурму)."""
+    import app.sheets as sheets_mod
+
+    with sheets_mod._rate_lock:
+        sheets_mod._rate_calls.clear()
+
+    def always_over_quota():
+        raise _api_error(429)
+
+    with pytest.raises(gspread.exceptions.APIError):
+        call_with_retry(always_over_quota, attempts=3, sleep=lambda _s: None)
+
+    with sheets_mod._rate_lock:
+        assert len(sheets_mod._rate_calls) == 3

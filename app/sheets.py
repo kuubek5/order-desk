@@ -4,8 +4,9 @@ import logging
 import ssl
 import threading
 import time
+from collections import deque
 from datetime import date, datetime
-from typing import Callable, Optional, TypeVar
+from typing import Callable, Deque, Optional, TypeVar
 
 import gspread
 import requests
@@ -70,6 +71,58 @@ def _is_quota_error(exc: Exception) -> bool:
     return "429" in str(exc) and "Quota exceeded" in str(exc)
 
 
+GOOGLE_READ_QUOTA_PER_MINUTE = 60
+"""Ліміт Google: 60 запитів читання за хвилину на користувача (для нас
+«користувач» = сервісний акаунт). Не наш параметр — довідкове число, з яким
+порівнюється лічильник нижче."""
+
+_RATE_WINDOW_SECONDS = 60.0
+_rate_lock = threading.Lock()
+_rate_calls: Deque[float] = deque()
+_rate_reported_at = 0.0
+
+
+def _record_api_call(now: float | None = None) -> int:
+    """Порахувати ОДИН запит до Sheets API і, не частіше ніж раз на хвилину,
+    написати в лог, скільки їх було за останні 60 с.
+
+    Навіщо: бойовий лог 03.09.26 показав «429 Quota exceeded ... Read requests
+    per minute per user», але жодного способу дізнатись, скільки саме запитів
+    ми робимо, не було — лишалось гадати (2 вкладки × 4 тіки × N викликів?).
+    Правило власника: спершу поміряти, потім правити. Усе спілкування з
+    Google іде через call_with_retry, тож лічильник тут бачить УСЕ: і синк, і
+    запис Sum3D, і читання заливок, і діагностику ваги таблиці.
+
+    Ціна — один deque на процес; вікно тримає щонайбільше кілька десятків
+    міток. Лог не флудить: рядок виходить раз на хвилину, і лише коли запити
+    справді були."""
+    global _rate_reported_at
+    moment = time.monotonic() if now is None else now
+    with _rate_lock:
+        _rate_calls.append(moment)
+        cutoff = moment - _RATE_WINDOW_SECONDS
+        while _rate_calls and _rate_calls[0] < cutoff:
+            _rate_calls.popleft()
+        count = len(_rate_calls)
+        due = moment - _rate_reported_at >= _RATE_WINDOW_SECONDS
+        if due:
+            _rate_reported_at = moment
+    if due:
+        # WARNING від 3/4 квоти: саме там 429 стає питанням часу, а не удачі.
+        level = (
+            logging.WARNING
+            if count >= GOOGLE_READ_QUOTA_PER_MINUTE * 0.75
+            else logging.INFO
+        )
+        logger.log(
+            level,
+            "Sheets API: %d запитів за останні 60 с (ліміт Google — %d/хв)",
+            count,
+            GOOGLE_READ_QUOTA_PER_MINUTE,
+        )
+    return count
+
+
 def call_with_retry(
     fn: Callable[[], _T],
     *,
@@ -81,9 +134,13 @@ def call_with_retry(
     exponential backoff (base_delay * 2**i: 1s, 2s, 4s by default). A
     non-transient error is re-raised immediately; the last transient error is
     re-raised after the final attempt. `sleep` is injectable so tests don't
-    actually wait."""
+    actually wait.
+
+    Кожна СПРОБА рахується в _record_api_call — повтор так само їсть квоту,
+    як і перший виклик, тож рахувати треба саме спроби."""
     for attempt in range(attempts):
         try:
+            _record_api_call()
             return fn()
         except Exception as exc:  # noqa: BLE001 - re-raised unless transient
             if not is_transient_sheet_error(exc) or attempt == attempts - 1:
