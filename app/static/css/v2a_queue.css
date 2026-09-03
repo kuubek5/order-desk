@@ -211,18 +211,15 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .fchip .x{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;color:var(--ink-3)}
 .q2 .fchip:hover .x{background:rgba(var(--alarm-rgb), .16);color:var(--alarm)}
 .q2 .fchip svg{width:10px;height:10px;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;fill:none}
-/* By default (bar fits one row on wide monitors) the date pager stays inline.
-   app.js measures the real layout and adds .filters-wrapped only when the bar
-   actually wraps — then the pager drops onto its own clean line, left-aligned
-   directly under the Період pills. .filters-break is a full-width zero-height
-   flex break; .flabel-ghost is an invisible "Період"-width spacer that reserves
-   the same lead width so the dates line up under Сьогодні/Вчора/…. Measuring in
-   JS (not a fixed breakpoint) keeps "one row on the big monitor" exact whatever
-   its width. */
-.q2 .filters .filters-break{display:none}
-.q2 .filters .flabel-ghost{display:none}
-.q2 .filters.filters-wrapped .filters-break{display:block;flex-basis:100%;height:0;margin:0;padding:0}
-.q2 .filters.filters-wrapped .flabel-ghost{display:inline;visibility:hidden}
+/* Кожна пара «лейбл + seg» — нерозривний .fgroup: при переносі group іде на
+   новий рядок цілою, лейбл ніколи не лишається без своїх кнопок. Смуга дат —
+   такий самий цілісний елемент серед children .filters: коли влазить у рядок
+   фільтрів (широкий монітор) — стоїть інлайн; коли ні — природним переносом
+   flex падає на чистий новий рядок ліворуч. Ніякого JS-міряння: рано стояв
+   toggle .filters-wrapped, який на порозі різко перекидав пейджер інлайн↔окремий
+   рядок з відступом — саме той «стрибок», на який скаржився власник. Тепер
+   перенос суто CSS-flex — детермінований на кожній ширині, без осциляції. */
+.q2 .filters .fgroup{display:inline-flex;align-items:center;gap:6px}
 .q2 .date-strip{display:inline-flex;gap:2px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;max-width:100%;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
 .q2 .date-strip::-webkit-scrollbar{display:none}
 .q2 .date-strip a,.q2 .date-strip span{flex:0 0 auto}

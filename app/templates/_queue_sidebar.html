@@ -24,12 +24,18 @@
   {%- set ctx_qs = 'period=' ~ period -%}
 {%- endif -%}
 <div class="filters" role="group" aria-label="Фільтри черги">
+    {# Кожна пара «лейбл + seg» — один нерозривний .fgroup: flex-wrap не може
+       відірвати лейбл від його кнопок (раніше «Готовність» лишалась сама на
+       рядку, коли її seg переносився). Групи переносяться цілими, як і має
+       бути на вужчому екрані. #}
+    <div class="fgroup">
     <span class="flabel">Період</span>
     <div class="seg">
         <a href="/?period=today&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and period == 'today' and not selected_date %}is-active{% endif %}">Сьогодні <span class="n">{{ counts.today }}</span></a>
         <a href="/?period=yesterday&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and period == 'yesterday' and not selected_date %}is-active{% endif %}">Вчора <span class="n">{{ counts.yesterday }}</span></a>
         <a href="/?period=tomorrow&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and period == 'tomorrow' and not selected_date %}is-active{% endif %}">Завтра <span class="n">{{ counts.tomorrow }}</span></a>
         <a href="/?period=earlier&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and period == 'earlier' and not selected_date %}is-active{% endif %}">Раніше <span class="n">{{ counts.earlier }}</span></a>
+    </div>
     </div>
 
     {# «Прострочено» — перший пункт головної задачі в PRODUCT.md, а входу в
@@ -51,6 +57,7 @@
        фільтр — те саме місце, тому набір не можна зібрати й забути про нього.
        Порядок рядків фільтр НЕ міняє: він лише ховає чуже. #}
     {% if SHOW_MINE_FILTER and (focus_count or focus_mine) %}
+    <div class="fgroup">
     <span class="flabel">Мої зараз</span>
     <div class="seg">
         <a href="/?{{ ctx_qs }}&ready={{ ready }}&source={{ source }}" class="{% if not focus_mine %}is-active{% endif %}">Уся черга</a>
@@ -66,15 +73,19 @@
                 title="Зняти всі мої позначки">Зняти всі</button>
         {% endif %}
     </div>
+    </div>
     {% endif %}
 
+    <div class="fgroup">
     <span class="flabel">Джерело</span>
     <div class="seg">
         <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=all" class="{% if source == 'all' %}is-active{% endif %}">Усі <span class="n">{{ source_counts.all }}</span></a>
         <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=lab" class="{% if source == 'lab' %}is-active{% endif %}" title="Внутрішні лабораторні роботи">Лабораторія <span class="n">{{ source_counts.lab }}</span></a>
         <a href="/?{{ ctx_qs }}&ready={{ ready }}&source=client" class="{% if source == 'client' %}is-active{% endif %}" title="Роботи клієнтів з пошти — авто (IMAP) і вписані в таблицю">Клієнти <span class="n">{{ source_counts.client }}</span></a>
     </div>
+    </div>
 
+    <div class="fgroup">
     <span class="flabel">Готовність</span>
     <div class="seg">
         <a href="/?{{ ctx_qs }}&source={{ source }}&ready=all" class="{% if ready == 'all' %}is-active{% endif %}">Усі <span class="n">{{ ready_counts.all }}</span></a>
@@ -82,12 +93,11 @@
         <a href="/?{{ ctx_qs }}&source={{ source }}&ready=in_work" class="{% if ready == 'in_work' %}is-active{% endif %}" title="Шлях заповнено і стоїть Sum3D ID — оператор уже взяв у роботу">В роботі <span class="n">{{ ready_counts.in_work }}</span></a>
         <a href="/?{{ ctx_qs }}&source={{ source }}&ready=not_ready" class="{% if ready == 'not_ready' %}is-active{% endif %}" title="Техніки ще не здали (шлях роботи порожній)">Не готово <span class="n">{{ ready_counts.not_ready }}</span></a>
     </div>
+    </div>
 
 
     {% if date_tabs %}
     {% set selected_value = selected_date.strftime('%d.%m.%y') if selected_date else '' %}
-    <div class="filters-break" aria-hidden="true"></div>
-    <span class="flabel flabel-ghost" aria-hidden="true">Період</span>
     <div class="date-strip" aria-label="Дні з роботами">
         {# Pages tile from the newest window (page 0); higher page = older, so ‹
            older = date_page + 1, › newer = date_page - 1 (see _date_window). #}

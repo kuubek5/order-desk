@@ -490,36 +490,11 @@ document.addEventListener("click", (event) => {
   head.setAttribute("aria-expanded", String(!open));
 });
 
-// Date pager placement: when the queue filter bar fits one row, the date pager
-// stays inline; when it wraps (narrower screens), drop it onto its own clean
-// line aligned under the Період pills. Measured in JS — not a fixed CSS
-// breakpoint — so "one row on the big monitor" stays exact whatever its width.
-// The measurement is taken with .filters-wrapped removed (natural layout) to
-// avoid the class feeding back into its own trigger.
-(function () {
-  const filters = document.querySelector(".q2 .filters");
-  if (!filters) return;
-
-  function update() {
-    filters.classList.remove("filters-wrapped");
-    // Reflow, then compare the date pager's row against the first filter group.
-    void filters.offsetHeight;
-    const seg = filters.querySelector(".seg");
-    const strip = filters.querySelector(".date-strip");
-    if (!seg || !strip) return;
-    const wrapped =
-      strip.getBoundingClientRect().top - seg.getBoundingClientRect().top > 5;
-    filters.classList.toggle("filters-wrapped", wrapped);
-  }
-
-  let raf = 0;
-  function schedule() {
-    cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(update);
-  }
-  update();
-  window.addEventListener("resize", schedule);
-})();
+// Розкладка смуги дат тепер суто CSS: .fgroup тримає кожну пару «лейбл + seg»
+// разом, а сама смуга переноситься природним flex-wrap. Колишній JS-toggle
+// .filters-wrapped міряв layout і на порозі різко перекидав пейджер між інлайн
+// і окремим рядком — це давало «стрибок», тож його прибрано (див. коментар у
+// v2a_queue.css над .fgroup).
 
 // Spotlight cards (queue right-rail .side-sec). Writes the cursor position into
 // --mx/--my (for the radial glow) and a small tilt into --rx/--ry, per card.
