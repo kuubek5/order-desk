@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
+from app import perf
 from app.__version__ import VERSION
 from app.db import SessionLocal
 from app.material_class import (
@@ -334,7 +335,52 @@ def ui_prefs(request: Request) -> dict:
     return prefs
 
 
-templates = Jinja2Templates(directory=str(resource_path("app/templates")))
+class _TimedTemplates(Jinja2Templates):
+    """Jinja2Templates, що рахує час рендера в розкладку запиту.
+
+    Рендер — найбільш недооцінений доданок затримки: у Starlette шаблон
+    малюється ЖАДІБНО в `_TemplateResponse.__init__`, тобто всередині роута,
+    і на таблиці в кілька сотень рядків це реальні секунди. У логу його не
+    було видно взагалі — «Slow request … 4.17s» однаково виглядав і для
+    повільного SQL, і для повільного шаблону.
+
+    Ім'я шаблону йде в окрему фазу (`render:queue.html`), бо на одному екрані
+    їх кілька, і цікаво, який саме дорогий.
+    """
+
+    def TemplateResponse(self, *args, **kwargs):  # noqa: N802 — ім'я з базового класу
+        name = ""
+        for candidate in args:
+            if isinstance(candidate, str) and candidate.endswith(".html"):
+                name = candidate
+                break
+        if not name:
+            name = str(kwargs.get("name", ""))
+        with perf.span(f"render:{name}" if name else "render"):
+            return super().TemplateResponse(*args, **kwargs)
+
+
+templates = _TimedTemplates(directory=str(resource_path("app/templates")))
+def _timed_global(name: str, fn):
+    """Обгортка для Jinja-глобала, що ходить у базу.
+
+    Ці чотири глобали викликаються на КОЖНОМУ рендері й кожен відкриває власну
+    сесію (свідомо — див. їхні докстрінги). Разом це кілька запитів і кілька
+    розшифрувань Fernet на сторінку, і в розкладці вони раніше не з'являлись
+    узагалі: час осідав у «total» як нічий. Тепер видно, скільки коштує сама
+    обгортка сторінки, окремо від корисної роботи роута.
+    """
+    from functools import wraps
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        with perf.span(f"globals:{name}"):
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
+templates.env.globals["perf_id"] = perf.current_request_id
 templates.env.globals["is_overdue"] = is_overdue
 templates.env.globals["material_color_css_class"] = material_color_css_class
 templates.env.globals["material_badge"] = material_badge
@@ -360,8 +406,8 @@ templates.env.globals["get_known_update"] = get_known_update
 # without threading it through each route's context — same rationale as the
 # globals above. Single source of truth is app/__version__.py.
 templates.env.globals["app_version"] = VERSION
-templates.env.globals["notify_prefs"] = notify_prefs
-templates.env.globals["shift_pending"] = shift_pending
-templates.env.globals["feedback_open_count"] = feedback_open_count
-templates.env.globals["ui_prefs"] = ui_prefs
+templates.env.globals["notify_prefs"] = _timed_global("notify_prefs", notify_prefs)
+templates.env.globals["shift_pending"] = _timed_global("shift_pending", shift_pending)
+templates.env.globals["feedback_open_count"] = _timed_global("feedback_open_count", feedback_open_count)
+templates.env.globals["ui_prefs"] = _timed_global("ui_prefs", ui_prefs)
 templates.env.filters["night_label"] = night_label

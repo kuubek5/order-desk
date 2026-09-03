@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app import sync_control
+from app import perf
 from app.business_day import business_today
 from app.client_matcher import match_client_name
 from app.export_scanner import (
@@ -140,9 +141,11 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
         hit = match_client_name(folded, client_names, {}).matched_folder_name
         return clients_by_name.get(hit) if hit else None
 
-    matches = handout_client_matches(db, list(groups), folder_names)
+    with perf.span("match:clients"):
+        matches = handout_client_matches(db, list(groups), folder_names)
     _folders = matched_folders(matches)
-    scanned = scan_export_for_clients(_export_root, _folders, _not_before)
+    with perf.span("scan:export"):
+        scanned = scan_export_for_clients(_export_root, _folders, _not_before)
     # Тека прив'язана, а в вікні порожньо — значить файли скачали задовго до
     # фрезерування. Тоді дивимось найновіші партії клієнта без межі за датою:
     # це один scandir теки плюс захід у три найсвіжіші партії, а не повний
@@ -150,7 +153,9 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     # вона є» (Светлана Криничко, робота 27.08, файли значно старіші).
     _empty = {name: folder for name, folder in _folders.items() if not scanned.get(name)}
     if _empty:
-        for name, entries_ in scan_export_latest_for_clients(_export_root, _empty).items():
+        with perf.span("scan:export-latest"):
+            latest = scan_export_latest_for_clients(_export_root, _empty)
+        for name, entries_ in latest.items():
             scanned[name] = entries_
 
     # Корінь і його перевірка — ОДИН раз на весь екран, не на кожну партію.

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
 from app import sync_control
+from app import perf
 from app.business_day import business_today
 from app.models import EmailMessage, Order
 from app.order_folder import (
@@ -209,6 +210,7 @@ def get_queue(
         .order_by(Order.id.desc())
     ).all()
     _sql_seconds = time.monotonic() - _t_sql
+    perf.add("sql", _sql_seconds)
 
     # Define date boundaries
     today = business_today()
@@ -276,8 +278,11 @@ def get_queue(
     # Count for all buckets
     counts = {k: len(v) for k, v in buckets.items()}
 
-    attach_export_folder_uris(db, orders)
-    attach_job_code_folder_uris(db, orders)
+    with perf.span("share:export"):
+        attach_export_folder_uris(db, orders)
+    with perf.span("share:tech"):
+        attach_job_code_folder_uris(db, orders)
+    perf.note_rows(len(orders))
 
     # Second, independent filter: readiness (has the technician dropped files yet?)
     ready_counts = count_by_readiness(orders)
@@ -438,6 +443,7 @@ def get_queue(
     _t_s3 = time.monotonic()
     _s3 = scan_sum3d_projects(get_sum3d_projects_path(db))
     _s3_seconds = time.monotonic() - _t_s3
+    perf.add("scan:sum3d", _s3_seconds)
 
     context = {
             "page_title": "Черга робіт",

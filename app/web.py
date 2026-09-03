@@ -4,6 +4,7 @@ from datetime import date
 import logging
 import os
 import time
+from uuid import uuid4
 from pathlib import Path
 from threading import (
     Event,
@@ -13,6 +14,7 @@ from time import monotonic
 from typing import Callable
 
 from fastapi import (
+    Depends,
     FastAPI,
 )
 from fastapi.exception_handlers import http_exception_handler
@@ -32,6 +34,7 @@ from app.config import (
 )
 from app.db import SessionLocal, db_file, engine
 from app.schema import ensure_schema
+from app import perf
 from app.monthly_backup import ensure_monthly_snapshot
 from app.export_scanner import list_export_client_names_cached
 from app import sync_control
@@ -73,6 +76,7 @@ from app.routers.shift import router as shift_router
 from app.routers.furnace import router as furnace_router
 from app.routers.machines import router as machines_router
 from app.routers.feedback import router as feedback_router
+from app.routers.diag import router as diag_router
 from app.services.furnace import (
     POLL_INTERVAL_SECONDS as FURNACE_POLL_INTERVAL_SECONDS,
     is_configured as _furnaces_configured,
@@ -584,7 +588,25 @@ async def lifespan(_: FastAPI):
             w.stop()
 
 
-app = FastAPI(title="KuubMill", lifespan=lifespan)
+def _mark_route_entry() -> None:
+    """Скільки минуло від входу в застосунок до початку самого обробника.
+
+    Це залежність на ВСІ роути, і вона відповідає на питання, якого раніше не
+    можна було поставити: скільки з'їдає каркас до нашого коду. Сюди падає
+    ланцюг middleware (сесія, ліцензія, no-store) і — головне — очікування
+    вільного потоку в пулі: синхронні GET-сторінки виконуються не в event
+    loop, а в threadpool, і поки фонові воркери (синк таблиці, опитування
+    печей і верстатів) тримають потоки, запит оператора просто СТОЇТЬ. Без
+    цього числа така затримка виглядала б як «повільна сторінка».
+    """
+    perf.mark_route_entry()
+
+
+app = FastAPI(
+    title="KuubMill",
+    lifespan=lifespan,
+    dependencies=[Depends(_mark_route_entry)],
+)
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET_KEY,
@@ -648,23 +670,6 @@ async def unhandled_error_handler(request: Request, exc: Exception):
     raise exc
 
 
-@app.middleware("http")
-async def log_slow_requests(request: Request, call_next):
-    """Log only user-visible stalls, without adding noise for normal requests."""
-    started_at = monotonic()
-    try:
-        return await call_next(request)
-    finally:
-        duration = monotonic() - started_at
-        if duration >= 1.0:
-            logger.warning(
-                "Slow request: %s %s took %.3fs",
-                request.method,
-                request.url.path,
-                duration,
-            )
-
-
 # Paths that must work with zero license, zero session, zero DB assumptions:
 # /health is polled by the release-workflow smoke test (.github/workflows/release.yml)
 # before any activation happens, and /static serves the CSS/JS the /license
@@ -703,17 +708,75 @@ async def license_gate(request: Request, call_next):
     if path in _LICENSE_EXEMPT_PATHS or path.startswith(_LICENSE_EXEMPT_PATH_PREFIXES):
         return await call_next(request)
 
-    db = SessionLocal()
-    try:
-        status = get_license_status(db)
-    finally:
-        db.close()
+    # У розкладку окремою фазою: цей гейт стоїть на КОЖНОМУ запиті, відкриває
+    # власну сесію й читає зашифроване значення — тобто коштує і бази, і
+    # розшифрування. Раніше його час осідав у «total» як нічий.
+    with perf.span("license"):
+        db = SessionLocal()
+        try:
+            status = get_license_status(db)
+        finally:
+            db.close()
 
     if not status.valid:
         return RedirectResponse("/license", status_code=303)
     return await call_next(request)
 
 
+@app.middleware("http")
+async def log_slow_requests(request: Request, call_next):
+    """Заміряти КОЖЕН запит і лишити слід, який можна прочитати з екрана.
+
+    Раніше тут була лише попереджувальна лінія для запитів довших за секунду —
+    сума без розкладки. Скаргу «перемикання між вкладками ~5 секунд» вона
+    підтверджувала, але не пояснювала. Тепер той самий прохід збирає фази
+    (`app.perf`), віддає їх заголовком `Server-Timing` і кладе пробу в
+    кільцевий буфер для `/diag/perf`. Гучний рядок у логу лишається — але вже
+    з розкладкою.
+    """
+    request_id = uuid4().hex[:12]
+    recorder = perf.start(request_id)
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        # Той самий годинник, що й у фазах (perf_counter), інакше сума фаз і
+        # загальний час міряються різними лінійками.
+        duration = time.perf_counter() - recorder.started
+        phases = dict(recorder.phases)
+        perf.finish()
+        # Статику й самий діагностичний екран не пишемо: перший — шум, другий
+        # міряв би сам себе й витісняв корисні проби з буфера.
+        path = request.url.path
+        if not path.startswith("/static/") and not path.startswith("/diag/"):
+            perf.record(
+                method=request.method, path=path, query=request.url.query,
+                status=getattr(response, "status_code", 0),
+                server_seconds=duration, phases=phases, request_id=request_id,
+            )
+            headers = getattr(response, "headers", None)
+            if headers is not None:
+                headers["Server-Timing"] = perf.server_timing_header(phases, duration)
+                headers["X-Perf-Id"] = request_id
+        if duration >= 1.0:
+            breakdown = ", ".join(
+                f"{name} {value:.2f}с" for name, value in sorted(
+                    phases.items(), key=lambda kv: -kv[1]
+                ) if name != "rows"
+            )
+            logger.warning(
+                "Slow request: %s %s took %.3fs%s",
+                request.method, path, duration,
+                f" [{breakdown}]" if breakdown else "",
+            )
+
+
+# Вимірювання стоїть ОСТАННІМ навмисно. Starlette розкручує middleware у
+# зворотному порядку: доданий останнім — найзовнішній. Поки цей блок стояв
+# вище, він опинявся ВСЕРЕДИНІ гейту ліцензії, і час самого гейту (власна
+# сесія + розшифрування) не потрапляв ані у фази, ані в загальну суму —
+# тобто інструмент мовчки не бачив частину шляху, який чекає оператор.
 app.mount("/static", StaticFiles(directory=str(resource_path("app/static"))), name="static")
 
 
@@ -780,3 +843,6 @@ app.include_router(furnace_router)
 app.include_router(machines_router)
 # Форма зворотного зв'язку — приймання звернень + адмін-стрічка «Вхідні».
 app.include_router(feedback_router)
+# Діагностика швидкодії. Middleware вимірювання пропускає /diag/, щоб екран
+# не міряв сам себе й не витісняв корисні проби з буфера.
+app.include_router(diag_router)

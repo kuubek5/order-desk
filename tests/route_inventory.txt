@@ -6,6 +6,8 @@ GET /archive
 GET /clients
 GET /clients/{client_id}
 GET /clients/{client_id}/pane
+GET /diag/perf
+GET /diag/perf.txt
 GET /docs
 GET /docs/oauth2-redirect
 GET /feedback/images/{image_id}
@@ -56,6 +58,8 @@ POST /actions/{action_id}/undo
 POST /clients
 POST /clients/{client_id}
 POST /clients/{client_id}/folder
+POST /diag/perf/clear
+POST /diag/perf/client
 POST /feedback
 POST /feedback/{feedback_id}/reopen
 POST /feedback/{feedback_id}/resolve

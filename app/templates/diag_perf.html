@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Швидкодія — KuubMill{% endblock %}
+
+{% block content %}
+{# Рейка приходить саме звідси, як на решті екранів: без неї з діагностики не
+   було куди повернутись — лише кнопкою «назад» у браузері. #}
+{% include "_topbar_nav.html" %}
+
+{# Діагностичний екран. Свідомо без власного CSS-файла: він потрібен рівно на
+   час розбору «чому перемикання повільне», а не в щоденній роботі, і зайвий
+   файл у каскаді base.html — це ризик задарма (порядок <link> там і Є
+   каскадом). Стилі локальні й вузько названі. #}
+<style>
+  .diagperf { padding: 18px 22px 60px; max-width: 1180px; }
+  .diagperf h1 { font-size: 22px; margin: 0 0 4px; }
+  .diagperf .lead { color: var(--ink-3); font-size: 13px; margin: 0 0 18px; max-width: 70ch; }
+  .diagperf .dp-actions { display: flex; gap: 10px; align-items: center; margin-bottom: 18px; flex-wrap: wrap; }
+  .diagperf table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .diagperf th { text-align: left; font-weight: 600; color: var(--ink-3); font-size: 11px;
+                 text-transform: uppercase; letter-spacing: .04em; padding: 6px 8px;
+                 border-bottom: 1px solid var(--line-2); }
+  .diagperf td { padding: 7px 8px; border-bottom: 1px solid var(--line-2); vertical-align: top; }
+  .diagperf .num { font-family: var(--mono, monospace); text-align: right; white-space: nowrap; }
+  .diagperf .path { font-family: var(--mono, monospace); word-break: break-all; }
+  .diagperf .phases { color: var(--ink-3); font-size: 12px; }
+  .diagperf .phases b { font-weight: 600; color: var(--ink-2); }
+  .diagperf tr.slow td { background: color-mix(in srgb, var(--danger, #ff5552) 8%, transparent); }
+  .diagperf .empty { color: var(--ink-3); padding: 40px 0; }
+  .diagperf .dp-wrap { overflow-x: auto; }
+  .diagperf .tag { display: inline-block; padding: 1px 6px; border-radius: 999px;
+                   border: 1px solid var(--line-2); font-size: 11px; color: var(--ink-3); }
+</style>
+
+<main class="diagperf">
+  <h1>Швидкодія</h1>
+  <p class="lead">
+    Кожна взаємодія міряється двічі: <b>сервер</b> — час усередині застосунку з
+    розкладкою по фазах; <b>відчутно</b> — від кліка до намальованого, разом зі
+    свапом і перемальовкою в браузері. Різниця між ними і є та частина
+    затримки, якої не видно в логах. Проб у буфері: {{ total }}.
+  </p>
+
+  <div class="dp-actions">
+    <button type="button" class="btn" id="dp-copy">Скопіювати як текст</button>
+    <a class="btn" href="/diag/perf.txt" target="_blank" rel="noopener">Відкрити текстом</a>
+    <form method="post" action="/diag/perf/clear" style="display:inline">
+      <button type="submit" class="btn">Очистити</button>
+    </form>
+    <span class="tag">повільніших за 1 с: {{ slow|length }}</span>
+  </div>
+
+  {% if not rows %}
+    <p class="empty">
+      Ще нічого не заміряно. Попрацюйте кілька хвилин — поперемикайте вкладки,
+      відкрийте видачу й пошту — і поверніться сюди.
+    </p>
+  {% else %}
+  <div class="dp-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Час</th>
+          <th class="num">Відчутно</th>
+          <th class="num">Сервер</th>
+          <th class="num">Після сервера</th>
+          <th>Екран</th>
+          <th>Розкладка</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr{% if r.felt >= 1.0 %} class="slow"{% endif %}>
+          <td class="num">{{ r.at }}</td>
+          <td class="num">{{ '%.2f'|format(r.felt) }}с</td>
+          <td class="num">{{ '%.2f'|format(r.server) }}с</td>
+          <td class="num">
+            {%- if r.after_server is not none -%}
+              {{ '%.2f'|format(r.after_server) }}с
+            {%- else -%}
+              —
+            {%- endif -%}
+          </td>
+          <td class="path">
+            {{ r.method }} {{ r.path }}{% if r.query %}?{{ r.query }}{% endif %}
+            {% if r.rows %}<br><span class="tag">{{ r.rows }} рядків</span>{% endif %}
+          </td>
+          <td class="phases">
+            {% for name, value in r.phases %}<b>{{ name }}</b> {{ '%.2f'|format(value) }}с{% if not loop.last %} · {% endif %}{% endfor %}
+            {% if r.client %}
+              <br>
+              {% for name, value in r.client.items() %}{% if name != 'total' %}<b>{{ name }}</b> {{ '%.2f'|format(value) }}с{% if not loop.last %} · {% endif %}{% endif %}{% endfor %}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</main>
+
+<script>
+  // Копіюємо ТЕКСТОВУ версію з сервера, а не розмітку таблиці: її потім
+  // вставляють у переписку, і HTML там перетворився б на кашу.
+  document.getElementById("dp-copy")?.addEventListener("click", async function () {
+    const btn = this;
+    try {
+      const text = await fetch("/diag/perf.txt").then((r) => r.text());
+      await navigator.clipboard.writeText(text);
+      btn.textContent = "Скопійовано";
+    } catch (e) {
+      btn.textContent = "Не вдалось — відкрийте текстом";
+    }
+    setTimeout(() => { btn.textContent = "Скопіювати як текст"; }, 2500);
+  });
+</script>
+{% endblock %}
