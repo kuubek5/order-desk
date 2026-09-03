@@ -232,3 +232,38 @@ def test_finished_program_clears_stale_percent_and_link(monkeypatch):
 
     assert state.percent is None, "старий відсоток залип після завершення"
     assert state.sum3d_id is None, "стара прив'язка залипла після завершення"
+
+
+def test_frame_is_written_to_disk_less_often_than_it_is_analysed(monkeypatch):
+    """При десяти верстатах запис кадру щотіку давав би ~35 ГБ/добу — місце не
+    росте (файл один), але ресурс SSD витрачається дарма. Відсоток має бути
+    свіжим (він у памʼяті), а картинку дивляться оком, тож диск чіпаємо рідше."""
+    from datetime import datetime, timedelta
+
+    from PIL import Image
+
+    saves = []
+    monkeypatch.setattr(ms, "save_frame", lambda key, img: saves.append(key))
+    target = ms.MachineTarget(name="350i", host="10.7.7.7", port=8765, agent_token="t")
+    frame = Image.new("RGB", (300, 200), (240, 240, 240))
+    with ms._states_lock:
+        ms._states.pop(target.key, None)
+
+    try:
+        t0 = datetime(2026, 9, 3, 10, 0, 0)
+        ms.poll_target(None, target, None, now=t0, frame=frame)          # перший — пишемо
+        ms.poll_target(None, target, None, now=t0 + timedelta(seconds=5), frame=frame)
+        ms.poll_target(None, target, None, now=t0 + timedelta(seconds=10), frame=frame)
+        assert len(saves) == 1, "кадр пишеться на кожному тіку"
+
+        # За інтервалом — знову пишемо.
+        ms.poll_target(None, target, None, now=t0 + timedelta(seconds=16), frame=frame)
+        assert len(saves) == 2
+
+        # А от відсоток/свіжість кадру оновлюються ЩОРАЗУ, не раз на 15 с.
+        with ms._states_lock:
+            state = ms._states[target.key]
+        assert state.frame_at == t0 + timedelta(seconds=16)
+    finally:
+        with ms._states_lock:
+            ms._states.pop(target.key, None)

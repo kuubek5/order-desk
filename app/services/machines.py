@@ -45,6 +45,15 @@ logger = logging.getLogger(__name__)
 POLL_INTERVAL_SECONDS = 5.0
 # Мовчазний верстат (ПК вимкнено) тримає той самий дедлайн знімка, що й піч.
 CAPTURE_TIMEOUT_SECONDS = 20.0
+# HTTP-агент відповідає за частки секунди — 20 с це спадок від VNC. При десяти
+# верстатах кожен мовчазний ПК тримав би потік 20 с і старив живі сусіди.
+# (з'єднатись, дочекатись кадру)
+AGENT_TIMEOUT = (3.0, 8.0)
+# Кадр на диск пишемо РІДШЕ, ніж аналізуємо: відсоток має бути свіжим (5 с), а
+# картинка потрібна лише щоб глянути оком. Без цього 10 верстатів давали б
+# ~35 ГБ запису на добу — місце не росте (файл один), але ресурс SSD витрачався
+# б дарма.
+FRAME_SAVE_INTERVAL_SECONDS = 15.0
 # UltraVNC збирає екран полінгом ЛИШЕ поки клієнт підключений — перший кадр
 # після конекту «недофарбований» (частина цифр біла, спіймано на 350i).
 # Прогрів: тримаємо з'єднання, чекаємо і беремо другий кадр.
@@ -96,6 +105,8 @@ class MachineState:
     # нічого, ніж хибне число — той самий принцип, що на пічках.
     percent: Optional[int] = None
     percent_at: Optional[datetime] = None
+    # Коли кадр востаннє лягав на диск (аналізуємо частіше, ніж пишемо).
+    frame_saved_at: Optional[datetime] = None
     # Що саме фрезерується: ім'я .iso із заголовка вікна RemiCORE і витягнутий
     # з нього Sum3D ID (хвіст HH-MM-SS) — ключ до рядка черги.
     iso_name: Optional[str] = None
@@ -195,9 +206,7 @@ def _capture_http(host: str, port: int, token: str) -> Image.Image:
     import requests
 
     url = f"http://{host}:{port}/capture"
-    resp = requests.get(
-        url, headers={"X-Agent-Token": token}, timeout=CAPTURE_TIMEOUT_SECONDS
-    )
+    resp = requests.get(url, headers={"X-Agent-Token": token}, timeout=AGENT_TIMEOUT)
     if resp.status_code == 403:
         raise RuntimeError("агент відхилив токен (403) — звір токен у налаштуваннях")
     resp.raise_for_status()
@@ -218,7 +227,7 @@ def _fetch_titles(host: str, port: int, token: str) -> list[str] | None:
         resp = requests.get(
             f"http://{host}:{port}/titles",
             headers={"X-Agent-Token": token},
-            timeout=CAPTURE_TIMEOUT_SECONDS,
+            timeout=AGENT_TIMEOUT,
         )
         if resp.status_code != 200:
             return None
@@ -267,12 +276,20 @@ def poll_target(
         state.error_at = now
         return state
 
-    try:
-        save_frame(target.key, frame)
-        state.frame_at = now
-        state.error = None
-    except OSError:
-        logger.exception("Кадр верстата %s не збережено", target.host)
+    state.frame_at = now
+    state.error = None
+    # Диск чіпаємо не частіше ніж раз на FRAME_SAVE_INTERVAL_SECONDS: свіжість
+    # потрібна ВІДСОТКУ (він у пам'яті), а картинку дивляться оком.
+    due = (
+        state.frame_saved_at is None
+        or (now - state.frame_saved_at).total_seconds() >= FRAME_SAVE_INTERVAL_SECONDS
+    )
+    if due:
+        try:
+            save_frame(target.key, frame)
+            state.frame_saved_at = now
+        except OSError:
+            logger.exception("Кадр верстата %s не збережено", target.host)
 
     # Відсоток — з ТОГО САМОГО кадру. Стоїть тут (а не в grab), бо poll_target —
     # спільна лійка обох шляхів опитування: фонового (poll_all) і разового.
@@ -336,7 +353,9 @@ def poll_all(db: Session, now: Optional[datetime] = None) -> list[MachineState]:
             return target, None, f"Знімок не вдався: {exc}"
 
     results = []
-    with ThreadPoolExecutor(max_workers=min(8, len(targets))) as pool:
+    # Усі верстати ПАРАЛЕЛЬНО: при десяти й пулі на вісім виходило два заходи,
+    # і мовчазний ПК у першому старив живі з другого.
+    with ThreadPoolExecutor(max_workers=min(16, len(targets))) as pool:
         for target, image, error in pool.map(grab, targets):
             results.append(
                 poll_target(db, target, shared, now=now, frame=image, error=error)
