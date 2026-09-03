@@ -1,0 +1,56 @@
+{# Стрічка верстатів над чергою: коротка назва + відсоток програми.
+
+   Дані ТІ САМІ, що в секції бічної панелі (_machine_side.html) —
+   machine_side_context(); два погляди на одне значення це нормально, два
+   джерела — ні. Власний полл (10 с), бо стрічка лежить ВИЩЕ `.worklayout`,
+   тобто поза `#queue-rows`, який свапає полл черги. Обгортка віддається
+   ЗАВЖДИ (навіть без верстатів чи з вимкненою стрічкою): якби роут повертав
+   порожнечу, елемент зник би з DOM разом зі своїм поллом.
+
+   Вигляд обирає оператор у кабінеті (ui_prefs → machine_strip). Дефолт —
+   «Сегменти» (власник, 03.09.26): груба шкала по 10 % свідомо, бо відсоток
+   читається з кадру RemiCORE з похибкою, і сегменти не обіцяють точності,
+   якої немає. Хибне число гірше за жодне: без свіжого відсотка — «—». #}
+{% set _mstrip = ui_prefs(request).machine_strip or 'segments' %}
+{% set _shown = machine_cards and _mstrip != 'off' %}
+<div id="machine-strip"
+     class="mstrip{% if not _shown %} is-empty{% endif %}"
+     data-variant="{{ _mstrip }}"
+     hx-get="/machines/strip"
+     hx-trigger="every 10s"
+     hx-target="this"
+     hx-swap="outerHTML"
+     hx-disinherit="*"
+     {% if not _shown %}hidden{% endif %}
+     aria-label="Верстати">
+{% if _shown %}
+    <a class="mstrip-label" href="/machines">Верстати</a>
+    {% if _mstrip == 'ticker' %}
+    <span class="mstrip-ticker">
+        {%- for card in machine_cards -%}
+        {%- set st = 'off' if card.has_problem else ('run' if card.percent is not none else ('idle' if card.has_frame else 'wait')) -%}
+        {%- if not loop.first %}<span class="tksep" aria-hidden="true">·</span>{% endif -%}
+        <a class="tk {{ st }}" href="/machines" title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% endif %}"><b>{{ card.target.name }}</b> <i>{% if card.percent is not none %}{{ card.percent }}{% else %}—{% endif %}</i></a>
+        {%- endfor -%}
+    </span>
+    {% else %}
+    {% for card in machine_cards %}
+    {% set st = 'off' if card.has_problem else ('run' if card.percent is not none else ('idle' if card.has_frame else 'wait')) %}
+    <a class="mch {{ st }}" href="/machines" style="--w:{{ card.percent or 0 }}%"
+       title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% elif card.order %} — {{ card.order.work_order_no or card.order.client_name }}{% elif card.sum3d_id %} — {{ card.sum3d_id }}{% elif st == 'idle' %} — програма не йде{% elif st == 'wait' %} — чекаємо кадр{% endif %}">
+        {% if _mstrip == 'ring' %}
+        {# r=6.5 → довжина кола 40.84; зсув = невиконана частка #}
+        <svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="bg" cx="8" cy="8" r="6.5"/><circle class="fg" cx="8" cy="8" r="6.5" stroke-dasharray="40.84" stroke-dashoffset="{{ '%.2f'|format(40.84 * (1 - (card.percent or 0) / 100)) }}"/></svg>
+        {% endif %}
+        <b>{{ card.target.name }}</b>
+        <i class="mono">{% if card.percent is not none %}{{ card.percent }}<u>%</u>{% else %}—{% endif %}</i>
+        {% if _mstrip == 'edge' %}<em class="mch-edge" aria-hidden="true"></em>{% endif %}
+        {% if _mstrip == 'segments' %}
+        {% set lit = ((card.percent or 0) / 10)|round|int %}
+        <span class="segs" aria-hidden="true">{% for k in range(10) %}<s{% if card.percent is not none and k < lit %} class="on"{% endif %}></s>{% endfor %}</span>
+        {% endif %}
+    </a>
+    {% endfor %}
+    {% endif %}
+{% endif %}
+</div>

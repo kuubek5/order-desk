@@ -285,26 +285,65 @@ body.furnace-side-open .q2 .side-sec-furnace .chev{transform:rotate(180deg)}
   transition:width .5s cubic-bezier(.4,0,.2,1)}
 @media (prefers-reduced-motion:reduce){.mc-bar > i{transition:none}}
 
-/* Плитки верстатів у бічній панелі черги (_machine_side.html) */
-.ms-tiles{display:flex;flex-direction:column;gap:6px}
-.ms-tile{display:grid;grid-template-columns:1fr auto;grid-template-areas:"name pct" "bar bar";
-  gap:2px 8px;align-items:baseline;padding:8px 10px;border:1px solid var(--line);
-  border-radius:9px;background:var(--card);text-decoration:none;color:inherit;
-  transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
-.ms-tile:hover{border-color:var(--line-2);background:var(--card-2)}
-.ms-tile.is-offline{border-color:rgba(var(--alarm-rgb),.4)}
-.ms-name{grid-area:name;font-size:var(--fs-1);color:var(--ink);font-weight:600;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ms-pct{grid-area:pct;font-family:var(--font-mono);font-variant-numeric:tabular-nums;
-  font-size:var(--fs-3);font-weight:700;color:var(--accent);line-height:1.1}
-.ms-pct > i{font-style:normal;font-size:var(--fs-0);color:var(--ink-3);margin-left:1px}
-.ms-pct.dim{color:var(--ink-3)}
-.ms-pct.err{color:var(--alarm)}
-.ms-note{grid-area:bar;font-size:var(--fs-0);color:var(--ink-3)}
-.ms-bar{grid-area:bar;height:4px;border-radius:999px;background:var(--raise-2);
-  overflow:hidden;margin-top:4px}
+/* ── Верстати в бічній панелі черги: плитки на фоновому арті (03.09.26) ──
+   Той самий прийом, що в печей: арт на всю секцію, скрим ::after, плитки —
+   прозорі «вікна» з хайрлайнами, у дві колонки (верстатів ~10, у стовпчик
+   це була б стіна). Арт обирає оператор у кабінеті (html[data-machine-art]);
+   дефолт — «Пил на сталі», обрано власником 03.09.26 з п'яти згенерованих
+   (design/kuubmill_machwidget-*). Скрим прив'язаний до АРТУ, не до теми: фото
+   однакове в обох темах; «Титан» — єдиний теплий кадр, тому й завіса тепла.
+   "none" — без арту: секція лишається звичайною карткою. */
+.q2 .side-sec-machine{background-color:#0c1015;border-color:#26303d;
+  background-image:url("../img/machine-dust.jpg");background-size:cover;background-position:center 58%}
+html[data-machine-art="burr"] .q2 .side-sec-machine{background-image:url("../img/machine-burr.jpg");background-position:center 62%}
+html[data-machine-art="flower"] .q2 .side-sec-machine{background-image:url("../img/machine-flower.jpg");background-position:center 55%}
+html[data-machine-art="toolpath"] .q2 .side-sec-machine{background-image:url("../img/machine-toolpath.jpg");background-position:center 50%}
+html[data-machine-art="titanium"] .q2 .side-sec-machine{background-image:url("../img/machine-titanium.jpg");background-position:center 60%;
+  background-color:#100d0a;border-color:#3a2c1d}
+html[data-machine-art="none"] .q2 .side-sec-machine{background-image:none;background-color:var(--card);border-color:var(--line)}
+.q2 .side-sec-machine::after{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:inherit;
+  background:linear-gradient(178deg,rgba(8,11,15,.82) 0%,rgba(8,11,15,.34) 22%,rgba(8,11,15,.34) 60%,rgba(6,8,11,.94) 100%)}
+html[data-machine-art="titanium"] .q2 .side-sec-machine::after{
+  background:linear-gradient(178deg,rgba(11,8,4,.82) 0%,rgba(11,8,4,.34) 22%,rgba(11,8,4,.34) 60%,rgba(9,6,3,.94) 100%)}
+html[data-machine-art="none"] .q2 .side-sec-machine::after{display:none}
+.q2 .side-sec-machine>*{position:relative;z-index:1}
+.q2 .side-sec-machine .side-head{text-shadow:0 1px 6px rgba(0,0,0,.75)}
+.q2 .side-sec-machine .side-body{border-top:0}
+html[data-machine-art="none"] .q2 .side-sec-machine .side-head,
+html[data-machine-art="none"] .ms-tile>*{text-shadow:none}
+
+.ms-tiles{display:grid;grid-template-columns:1fr 1fr;gap:0}
+/* Плитки виходять за внутрішні поля картки, як у печей — арт суцільний. */
+.q2 .ms-tiles{margin:-11px calc(-1*var(--queue-density-card-pad,13px)) 0;border-top:1px solid rgba(255,255,255,.07)}
+.ms-tile{position:relative;display:grid;grid-template-columns:1fr auto;grid-template-areas:"name pct" "what pct" "bar bar";
+  gap:0 6px;align-content:start;padding:9px 11px 8px;min-height:60px;border:0;border-radius:0;
+  border-bottom:1px solid rgba(255,255,255,.07);background:transparent;text-decoration:none;color:var(--ink);
+  isolation:isolate;transition:border-color var(--ui-speed) ease}
+.ms-tile:nth-child(odd){border-right:1px solid rgba(255,255,255,.07)}
+/* Стан несе локальний шар ::before, а не власне фото: працює — легка завіса;
+   стоїть / чекаємо кадр — притишено (арт «холоне» разом із верстатом);
+   без зв'язку — тривожний шар БЕЗ приглушення (приглушити = «менш важливо»). */
+.ms-tile::before{content:"";position:absolute;inset:0;z-index:0;background:rgba(8,11,15,.18)}
+.ms-tile.is-idle::before,.ms-tile.is-wait::before{background:rgba(8,11,15,.5);backdrop-filter:saturate(.3) brightness(.8)}
+.ms-tile.is-offline::before{background:linear-gradient(100deg,rgba(46,13,8,.5),rgba(24,12,10,.8))}
+.ms-tile:hover::before{background:rgba(var(--accent-rgb), .08)}
+.ms-tile>*{position:relative;z-index:1}
+.ms-name{grid-area:name;font-size:var(--fs-0);font-weight:500;color:var(--ink-2);letter-spacing:.02em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 4px rgba(0,0,0,.7)}
+/* Головне число — відсоток; на нього дивляться, щоб зрозуміти «чи скоро
+   звільниться». Світіння лише на числі, що є: «—» не світиться — це сигнал. */
+.ms-pct{grid-area:pct;align-self:center;font-family:var(--font-mono);font-variant-numeric:tabular-nums;
+  font-size:24px;font-weight:700;line-height:1;color:var(--accent-c);text-shadow:0 0 14px rgba(var(--accent-rgb), .45)}
+.ms-pct > i{font-style:normal;font-size:var(--fs-0);font-weight:400;color:var(--ink-3);margin-left:1px}
+.ms-pct.dim{color:var(--ink-3);text-shadow:none;font-size:var(--fs-5);font-weight:500}
+.ms-pct.err{color:var(--alarm);text-shadow:none;font-size:var(--fs-5);font-weight:500}
+.ms-what,.ms-note{grid-area:what;font-size:var(--fs-0);color:var(--ink-3);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,.7)}
+.ms-what.dim{color:var(--ink-3)}
+.ms-tile.is-offline .ms-note,.ms-tile.is-offline .ms-name{color:var(--alarm-ink)}
+.ms-bar{grid-area:bar;height:3px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:6px}
 .ms-bar > i{display:block;height:100%;border-radius:999px;background:var(--accent);
-  transition:width .5s cubic-bezier(.4,0,.2,1)}
+  box-shadow:0 0 6px rgba(var(--accent-rgb), .6);transition:width .5s cubic-bezier(.4,0,.2,1)}
 @media (prefers-reduced-motion:reduce){.ms-bar > i{transition:none}}
 
 /* Відкритість секції верстатів — тим самим класом на body, з тієї ж причини,
@@ -313,11 +352,6 @@ body.furnace-side-open .q2 .side-sec-furnace .chev{transform:rotate(180deg)}
 body.machine-side-open .q2 .side-sec-machine .side-body{display:block;padding-top:11px}
 body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 
-/* Що саме фрезерується — під відсотком (зв'язка за Sum3D ID із заголовка). */
-.ms-tile{grid-template-areas:"name pct" "what what" "bar bar"}
-.ms-what{grid-area:what;font-size:var(--fs-0);color:var(--ink-2);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ms-what.dim{color:var(--ink-3)}
 .mc-prog{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:0 0 8px;
   font-size:var(--fs-1)}
 .mc-sid{color:var(--ink-3)}
@@ -325,3 +359,62 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 .mc-order:hover{text-decoration:underline}
 .mc-client{color:var(--ink-2)}
 .mc-nomatch{color:var(--ink-3)}
+
+/* ── Стрічка верстатів над чергою (_machine_strip.html, 03.09.26) ─────────
+   Варіант обирає оператор у кабінеті; він рендериться атрибутом data-variant
+   на самій стрічці (а не лише на <html>), тому зразки в кабінеті малюються
+   тими самими правилами. Дефолт «Сегменти» — власник. Лежить ВИЩЕ .worklayout,
+   поза #queue-rows — полл черги її не чіпає. Жодної анімації: шапка висить
+   перед очима цілу зміну. */
+.q2 .mstrip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px;padding:6px 10px;
+  border:1px solid var(--line);border-radius:var(--r-card);background:var(--card)}
+.q2 .mstrip[hidden]{display:none}
+.q2 .mstrip-label{font-size:var(--fs-0);color:var(--ink-3);text-decoration:none;margin-right:4px;
+  letter-spacing:.06em;text-transform:uppercase}
+.q2 .mstrip-label:hover{color:var(--ink-2)}
+.mch{position:relative;display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:7px;
+  font-size:var(--fs-1);border:1px solid var(--line-2);background:var(--card-2);color:var(--ink-2);
+  text-decoration:none;overflow:hidden;isolation:isolate;white-space:nowrap}
+.mch b{font-weight:500;color:var(--ink)}
+.mch i{font-style:normal;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--accent-c);font-weight:600}
+.mch i u{text-decoration:none;font-size:var(--fs-0);color:var(--ink-3);font-weight:400;margin-left:1px}
+.mch.idle i,.mch.wait i{color:var(--ink-3);font-weight:400}
+.mch.run{border-color:rgba(var(--accent-rgb), .35)}
+.mch.off{border-color:rgba(var(--alarm-rgb), .5)}
+.mch.off i{color:var(--alarm)}
+.mch.off b{color:var(--alarm-ink)}
+.mch:hover{border-color:var(--control-edge)}
+/* Сегменти (дефолт): десять по 10 %. */
+.mstrip[data-variant="segments"] .mch{flex-direction:column;align-items:flex-start;gap:2px;padding:4px 9px 5px}
+.mstrip[data-variant="segments"] .mch>b{font-size:var(--fs-0);padding-right:30px}
+.mstrip[data-variant="segments"] .mch>i{position:absolute;right:8px;top:4px;font-size:var(--fs-0)}
+.segs{display:flex;gap:2px}
+.segs s{width:5px;height:4px;border-radius:1px;background:rgba(255,255,255,.1);text-decoration:none}
+.segs s.on{background:var(--accent);box-shadow:0 0 4px rgba(var(--accent-rgb), .5)}
+.mch.off .segs s{background:rgba(var(--alarm-rgb), .25)}
+/* Край-смуга: прогрес тонкою лінією по нижньому краю чіпа. */
+.mch-edge{position:absolute;left:0;right:0;bottom:0;height:2px;background:rgba(255,255,255,.06)}
+.mch-edge::after{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--w,0%);background:var(--accent);
+  box-shadow:0 0 6px rgba(var(--accent-rgb), .6)}
+/* Заливка: сам чіп і є смугою. */
+.mstrip[data-variant="fill"] .mch{border-radius:999px;
+  background:linear-gradient(90deg,rgba(var(--accent-rgb), .28) var(--w,0%),var(--card-2) var(--w,0%))}
+.mstrip[data-variant="fill"] .mch.run{border-color:rgba(var(--accent-rgb), .45)}
+.mstrip[data-variant="fill"] .mch i{color:var(--ink)}
+/* Кільце. */
+.mch .ring{width:15px;height:15px;transform:rotate(-90deg);flex:none}
+.mch .ring circle{fill:none;stroke-width:2.4}
+.mch .ring .bg{stroke:rgba(255,255,255,.1)}
+.mch .ring .fg{stroke:var(--accent-b);stroke-linecap:round}
+.mch.off .ring .fg{stroke:var(--alarm);stroke-dasharray:3 2;stroke-dashoffset:0}
+.mch.idle .ring .fg,.mch.wait .ring .fg{stroke:transparent}
+/* Тікер: один моноширинний рядок, без чіпів. */
+.mstrip-ticker{font-family:var(--font-mono);font-size:var(--fs-1);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tk{color:var(--ink-2);text-decoration:none}
+.tk b{font-weight:500;color:var(--ink-2)}
+.tk i{font-style:normal;color:var(--accent-c);font-weight:700}
+.tk.idle i,.tk.wait i{color:var(--ink-3);font-weight:400}
+.tk.off i{color:var(--alarm)}
+.tk.off b{color:var(--alarm-ink)}
+.tk:hover b{color:var(--ink)}
+.tksep{color:var(--line-2);margin:0 8px}

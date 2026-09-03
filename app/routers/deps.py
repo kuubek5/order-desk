@@ -286,6 +286,9 @@ def ui_prefs(request: Request) -> dict:
         "queue_mat_style": "",
         "queue_step": 0,
         "handout_layout": "",
+        # Віджет верстатів: "" = «Пил на сталі» / «Сегменти» (дефолт власника).
+        "machine_art": "",
+        "machine_strip": "",
     }
     mirrored = False
     try:
@@ -309,6 +312,8 @@ def ui_prefs(request: Request) -> dict:
                         "queue_mat_style": user.queue_mat_style or "",
                         "queue_step": user.queue_ui_step or 0,
                         "handout_layout": user.handout_layout or "",
+                        "machine_art": user.ui_machine_art or "",
+                        "machine_strip": user.ui_machine_strip or "",
                     }
                     mirrored = True
             finally:

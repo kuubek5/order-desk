@@ -59,6 +59,20 @@ def machines_side(request: Request, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/machines/strip", response_class=HTMLResponse)
+def machines_strip(request: Request, db: Session = Depends(get_db)):
+    """Стрічка «назва + %» над чергою — власний 10-секундний годинник.
+
+    Той самий контракт, що в /machines/side: лише пам'ять процесу, обгортка
+    завжди, контекст з machine_side_context — два входи не розійдуться.
+    """
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    return templates.TemplateResponse(
+        request, "_machine_strip.html", machine_side_context(db)
+    )
+
+
 @router.get("/machines/cards", response_class=HTMLResponse)
 def machines_cards(request: Request, db: Session = Depends(get_db)):
     """Фрагмент для полла HTMX — повний свап безпечний: на екрані немає ні

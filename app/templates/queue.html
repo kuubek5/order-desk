@@ -123,6 +123,9 @@
        повернути, розкоментувавши цей include; сам _queue_kpi_row.html цілий. #}
     {# {% include "_queue_kpi_row.html" %} #}
     {% include "_queue_peek_row.html" %}
+    {# Стрічка верстатів «назва + %». Теж ВИЩЕ `.worklayout` — поза
+       `#queue-rows`, свій полл; обгортка завжди (див. _machine_strip.html). #}
+    {% include "_machine_strip.html" %}
     {# Передача зміни. Стоїть тут СВІДОМО — вище `.worklayout`, тобто поза
        `#queue-rows`, який свапає 15-секундний полл. Пересунути всередину
        — і картка зникатиме на кожному тіку. #}

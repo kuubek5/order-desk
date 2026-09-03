@@ -36,7 +36,7 @@
         {% if machine_cards %}
         <div class="ms-tiles">
             {% for card in machine_cards %}
-            <a class="ms-tile{% if card.has_problem %} is-offline{% endif %}{% if card.is_running %} is-run{% endif %}"
+            <a class="ms-tile{% if card.has_problem %} is-offline{% elif card.percent is none %}{% if card.has_frame %} is-idle{% else %} is-wait{% endif %}{% endif %}{% if card.is_running %} is-run{% endif %}"
                href="/machines" title="{{ card.target.name }} — {{ card.target.host }}">
                 <span class="ms-name">{{ card.target.name }}</span>
                 {% if card.has_problem %}

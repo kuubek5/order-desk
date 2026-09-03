@@ -25,6 +25,7 @@ GET /login
 GET /machines
 GET /machines/cards
 GET /machines/side
+GET /machines/strip
 GET /machines/{key}/frame.png
 GET /mail
 GET /mail/{email_id}

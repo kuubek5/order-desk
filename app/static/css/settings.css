@@ -814,6 +814,29 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .icsw svg{width:24px;height:24px}
 .setv2 .acc-swatch.is-icon[aria-pressed="true"] .icsw{color:var(--accent-c)}
 
+/* Прев'ю віджета верстатів: арт як фон мініатюри — ТОЙ САМИЙ файл, що й у
+   секції на черзі (furnaces.css), інший лише масштаб. */
+.masw{position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:6px;height:64px;
+  padding:7px 9px;border-radius:calc(var(--r-card) - 3px);border:1px solid var(--line);overflow:hidden;
+  background:#0c1015 center 55%/cover no-repeat}
+.masw::before{content:"";position:absolute;inset:0;
+  background:linear-gradient(178deg,rgba(8,11,15,.7),rgba(8,11,15,.25) 40%,rgba(6,8,11,.9))}
+.masw[data-mart="dust"]{background-image:url("../img/machine-dust.jpg")}
+.masw[data-mart="burr"]{background-image:url("../img/machine-burr.jpg")}
+.masw[data-mart="flower"]{background-image:url("../img/machine-flower.jpg")}
+.masw[data-mart="titanium"]{background-image:url("../img/machine-titanium.jpg");background-color:#100d0a}
+.masw[data-mart="toolpath"]{background-image:url("../img/machine-toolpath.jpg")}
+.masw[data-mart="none"]{background:var(--card)}
+.masw[data-mart="none"]::before{display:none}
+.masw b{position:relative;font-size:var(--fs-0);font-weight:500;color:var(--ink-2)}
+.masw i{position:relative;font-style:normal;font-family:var(--font-mono);font-size:var(--fs-5);font-weight:700;
+  color:var(--accent-c);text-shadow:0 0 12px rgba(var(--accent-rgb), .45)}
+.masw i u{text-decoration:none;font-size:var(--fs-0);font-weight:400;color:var(--ink-3)}
+/* Зразок стрічки: два чіпи на тлі сторінки; правила варіантів — у furnaces.css. */
+.mstrip-sample{display:flex;width:100%;min-width:0;gap:5px;align-items:center;justify-content:center;height:64px;padding:8px 6px;
+  border-radius:calc(var(--r-card) - 3px);border:1px solid var(--line);background:var(--bg);overflow:hidden}
+.mstrip-off{color:var(--ink-3);font-size:var(--fs-4)}
+
 /* ── Консоль налаштувань: банер у потоці та єдиний ритм (30.08.26) ─────────
    Банер підтвердження був position:fixed у куті екрана — на панелі 1080px це
    ~800px від рядка, який щойно зберегли, без автозакриття й без кнопки

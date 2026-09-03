@@ -197,6 +197,10 @@ UI_ICON_STYLES = {"", "thin", "duo", "fill", "bold", "neon"}
 UI_BUTTON_STYLES = {"", "outline", "glass", "dashed", "solid"}
 UI_LOADER_STYLES = {"", "beacon", "sweep", "orbit", "ring"}
 UI_CHIP_STYLES = {"", "solid", "dashed", "marker", "gradient"}
+# Віджет верстатів: "" = «Пил на сталі» / «Сегменти» — дефолт, обраний
+# власником 03.09.26; решта з тієї ж галереї; none/off — вимкнути.
+UI_MACHINE_ARTS = {"", "burr", "flower", "titanium", "toolpath", "none"}
+UI_MACHINE_STRIPS = {"", "edge", "fill", "ring", "ticker", "off"}
 
 
 @router.post("/account/appearance")
@@ -207,6 +211,8 @@ async def post_account_appearance(
     buttons: str = Form(""),
     loader: str = Form(""),
     chips: str = Form(""),
+    machine_art: str = Form(""),
+    machine_strip: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Зберегти візуальний набір оператора. Викликається fetch'ем з кабінету
@@ -222,6 +228,8 @@ async def post_account_appearance(
         or buttons not in UI_BUTTON_STYLES
         or loader not in UI_LOADER_STYLES
         or chips not in UI_CHIP_STYLES
+        or machine_art not in UI_MACHINE_ARTS
+        or machine_strip not in UI_MACHINE_STRIPS
     ):
         return Response(status_code=422)
     user.ui_theme = theme
@@ -229,6 +237,8 @@ async def post_account_appearance(
     user.ui_button_style = buttons
     user.ui_loader_style = loader
     user.ui_chip_style = chips
+    user.ui_machine_art = machine_art
+    user.ui_machine_strip = machine_strip
     db.commit()
     return Response(status_code=204)
 

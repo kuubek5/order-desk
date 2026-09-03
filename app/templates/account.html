@@ -5,6 +5,9 @@
 {% block extra_head %}
 <link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
 <link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
+{# Стрічка верстатів: зразки в кабінеті малюються тими самими правилами, що
+   й справжня стрічка над чергою (furnaces.css, .mstrip[data-variant]). #}
+<link rel="stylesheet" href="/static/css/furnaces.css?v={{ static_ver('css/furnaces.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -239,6 +242,49 @@
                 {% endfor %}
             </div>
         </div>
+
+        {# Віджет верстатів у бічній панелі черги: фоновий арт. Дефолт «Пил на
+           сталі» — обрано власником 03.09.26 з п'яти згенерованих; решта з тієї
+           ж галереї; «Без арту» — звичайна картка. Мініатюра — той самий файл,
+           що й у секції (settings.css, .masw[data-mart]). #}
+        <div class="settings-field">
+            <label>Фон верстатів</label>
+            <div class="acc-icons-row" role="group" aria-label="Фон віджета верстатів">
+                {% for value, title in [('', 'Пил на сталі'), ('burr', 'Фреза над диском'), ('flower', 'Квітка диска'), ('titanium', 'Титан'), ('toolpath', 'Траєкторії CAM'), ('none', 'Без арту')] %}
+                <button type="button" class="acc-swatch acc-mart-btn" data-set-machine-art="{{ value }}">
+                    <span class="masw" data-mart="{{ value or 'dust' }}" aria-hidden="true"><b>350i</b><i>43<u>%</u></i></span>
+                    <span class="acc-swatch-name">{{ title }}</span>
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+
+        {# Стрічка «назва + %» над чергою. Дефолт «Сегменти» (власник): груба
+           шкала по 10 %, бо відсоток з кадру RemiCORE читається з похибкою. #}
+        <div class="settings-field">
+            <label>Стрічка верстатів</label>
+            <div class="acc-icons-row" role="group" aria-label="Стрічка верстатів над чергою">
+                {% for value, title in [('', 'Сегменти'), ('edge', 'Край-смуга'), ('fill', 'Заливка'), ('ring', 'Кільце'), ('ticker', 'Тікер'), ('off', 'Без стрічки')] %}
+                <button type="button" class="acc-swatch acc-mstrip-btn" data-set-machine-strip="{{ value }}">
+                    <span class="mstrip mstrip-sample" data-variant="{{ value or 'segments' }}" aria-hidden="true">
+                        {% if value == 'off' %}
+                        <span class="mstrip-off">—</span>
+                        {% elif value == 'ticker' %}
+                        <span class="mstrip-ticker"><span class="tk run"><b>350i</b> <i>43</i></span><span class="tksep">·</span><span class="tk idle"><i>—</i></span></span>
+                        {% else %}
+                        <span class="mch run" style="--w:43%">
+                            {% if value == 'ring' %}<svg class="ring" viewBox="0 0 16 16"><circle class="bg" cx="8" cy="8" r="6.5"/><circle class="fg" cx="8" cy="8" r="6.5" stroke-dasharray="40.84" stroke-dashoffset="23.28"/></svg>{% endif %}
+                            <b>350i</b><i class="mono">43<u>%</u></i>
+                            {% if value == 'edge' %}<em class="mch-edge"></em>{% endif %}
+                            {% if value == '' %}<span class="segs"><s class="on"></s><s class="on"></s><s class="on"></s><s class="on"></s><s></s><s></s><s></s><s></s><s></s><s></s></span>{% endif %}
+                        </span>
+                        {% endif %}
+                    </span>
+                    <span class="acc-swatch-name">{{ title }}</span>
+                </button>
+                {% endfor %}
+            </div>
+        </div>
     </div>
 
     </div>
@@ -271,7 +317,11 @@
       { attr: 'data-icons',   btn: '.acc-icons-btn',   key: 'setIcons',   field: 'icons',   live: 'data-icons-sample'   },
       { attr: 'data-buttons', btn: '.acc-buttons-btn', key: 'setButtons', field: 'buttons', live: 'data-buttons-sample' },
       { attr: 'data-loader',  btn: '.acc-loader-btn',  key: 'setLoader',  field: 'loader',  live: 'data-loader-sample'  },
-      { attr: 'data-chips',   btn: '.acc-chips-btn',   key: 'setChips',   field: 'chips',   live: 'data-chips-sample'   }
+      { attr: 'data-chips',   btn: '.acc-chips-btn',   key: 'setChips',   field: 'chips',   live: 'data-chips-sample'   },
+      // Віджет верстатів: на міні-сторінці його немає, тому без live-прев'ю —
+      // зразок кожна кнопка несе сама (settings.css / furnaces.css).
+      { attr: 'data-machine-art',   btn: '.acc-mart-btn',   key: 'setMachineArt',   field: 'machine_art' },
+      { attr: 'data-machine-strip', btn: '.acc-mstrip-btn', key: 'setMachineStrip', field: 'machine_strip' }
     ];
     var live = document.getElementById('acc-live');
 
@@ -281,12 +331,13 @@
     function liveReset(){
       if (!live) return;
       GROUPS.forEach(function(g){
+        if (!g.live) return;
         live.setAttribute(g.live, liveValue(g, rootEl.getAttribute(g.attr) || ''));
       });
     }
     // …і тимчасово показує наведений варіант, не застосовуючи його.
     function livePeek(g, raw){
-      if (live) live.setAttribute(g.live, liveValue(g, raw));
+      if (live && g.live) live.setAttribute(g.live, liveValue(g, raw));
     }
     function paint(){
       GROUPS.forEach(function(g){
