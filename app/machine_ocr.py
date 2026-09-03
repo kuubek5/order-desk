@@ -33,11 +33,25 @@ RemiCORE малює внизу горизонтальну СМУГУ прогр�
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 from PIL import Image
+
+# Розрізання на символи, зняття бітмапи й звірка з еталоном — та сама механіка,
+# що на табло печей, і саме тому імпортується, а не переписується. Дві копії
+# одного алгоритму розійшлись би при першій же правці (урок міграції 0026 про
+# два переліки печей). Специфічне для верстата тут одне: підпис двоколірний,
+# тому крамп попередньо нормалізується в маску.
+from app.furnace_ocr import _bitmap, _match_digit, _segments
+from app.runtime import resource_path
+
+logger = logging.getLogger(__name__)
 
 # Смуга живе в нижній частині екрана RemiCORE (панель керування). Верх кадру не
 # скануємо взагалі: там сині елементи інтерфейсу (кнопки, підсвітка рядка
@@ -272,9 +286,32 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
 
 
 def read_progress_percent(image: Image.Image) -> Optional[int]:
-    """Відсоток виконання програми або None. Тонка обгортка для сервісу."""
+    """Відсоток виконання програми або None.
+
+    Два незалежні сигнали, і головніший — ПІДПИС: «43%» усередині смуги це те,
+    що верстат сам про себе пише, а геометрія (частка заливки) лише оцінка.
+    Геометрія промахується на згладженому краї заливки й на невдало знайдених
+    межах контейнера — саме на цьому вона ламалась сім разів; підпис від цього
+    не залежить узагалі.
+
+    Підпис читається шаблонами піксель-у-піксель, тож він або точний, або його
+    немає: доки еталони не донавчені (`scripts/machine_glyphs.py learn`),
+    повертається геометрія — рівно та поведінка, що була дотепер. Тобто новий
+    сигнал може лише виправити число, але не зіпсувати.
+    """
     bar = find_progress_bar(image)
-    return bar.percent if bar else None
+    if bar is None:
+        return None
+    caption = read_caption_percent(image, bar)
+    if caption is not None and caption != bar.percent:
+        # Розбіжність — не привід мовчати (число все одно є), але привід
+        # лишити слід: якщо вона систематична, значить межі смуги знаходяться
+        # неправильно, і це видно лише тут.
+        logger.info(
+            "Верстат: підпис %d%% розійшовся з геометрією %d%% — беремо підпис",
+            caption, bar.percent,
+        )
+    return caption if caption is not None else bar.percent
 
 
 # ── Ім'я .iso-програми із заголовка вікна RemiCORE ──────────────────────────
@@ -330,3 +367,116 @@ def pick_milling_program(titles) -> Optional[MillingProgram]:
     if any(p.sum3d_id != first.sum3d_id or p.date != first.date for p in found):
         return None
     return first
+
+
+# ── Другий сигнал: ПІДПИС усередині смуги ──────────────────────────────────
+# Геометрія смуги — оцінка (частка заливки), а підпис «43%» — це те, що
+# верстат САМ про себе пише. Тому підпис, прочитаний точно, головніший за
+# геометрію: він не залежить ні від згладженого краю заливки, ні від того, чи
+# правильно ми знайшли межі контейнера. Але прочитаний саме ТОЧНО — правило
+# модуля незмінне: хибне число гірше за жодне, тож при найменшому сумніві
+# лишається геометрія, як і раніше.
+#
+# Складність рівно одна, і вона видна на будь-якому кадрі з частковим
+# прогресом: підпис стоїть по центру КОНТЕЙНЕРА, тому на межі заливки він
+# розрізаний навпіл — ліва половина біла на темно-синьому, права темна на
+# світлому тлі. Тому крамп нормалізується у чорно-білу маску ДО розрізання на
+# символи, і вже маска віддається спільним помічникам печей.
+
+MACHINE_GLYPHS_PATH = "app/data/machine_glyphs.json"
+
+# Підпис на заливці: майже чистий білий (виміряно на кадрі — (255, 255, 255)).
+_CAPTION_LIGHT_MIN = 200
+# Підпис на порожній частині: темний текст на світлому тлі панелі (240,240,240).
+_CAPTION_DARK_MAX = 120
+# Скільки пікселів відступити від рамки всередину. Рамка темна на всю висоту
+# і без відступу потрапила б у маску як «символ».
+_CAPTION_INSET = 3
+
+
+@lru_cache(maxsize=1)
+def load_machine_glyphs() -> dict[int, dict[str, list[list[str]]]]:
+    """Еталони цифр підпису: висота → символ → варіанти бітмап.
+
+    Порожньо — нормальний стан до першого калібрування: підпис просто не
+    читається, а відсоток і далі береться з геометрії. Гучно не скаржимось,
+    бо це не поломка, а «ще не навчено» (на відміну від печей, де без еталонів
+    зникають УСІ числа).
+    """
+    path = Path(resource_path(MACHINE_GLYPHS_PATH))
+    if not path.exists():
+        return {}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {int(h): chars for h, chars in raw.get("fonts", {}).items()}
+
+
+def caption_mask(image: Image.Image, bar: "ProgressBar") -> Optional[Image.Image]:
+    """Чорно-біла маска підпису всередині смуги (чорне — символ).
+
+    Нормалізація потрібна саме тому, що підпис двоколірний: на заливці він
+    світлий, поза нею — темний. Після маски обидві половини одного й того ж
+    «43%» виглядають однаково, і далі працюють ті самі помічники, що на печах.
+    """
+    left, top, right, bottom = bar.box
+    container_right = left + bar.container_width
+    x0, y0 = left + _CAPTION_INSET, top + _CAPTION_INSET
+    x1, y1 = container_right - _CAPTION_INSET, bottom - _CAPTION_INSET
+    if x1 - x0 < 8 or y1 - y0 < 5:
+        return None
+
+    source = image.convert("RGB")
+    px = source.load()
+    mask = Image.new("RGB", (x1 - x0, y1 - y0), (255, 255, 255))
+    mpx = mask.load()
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            r, g, b = px[x, y][:3]
+            if x < right:
+                # На заливці символ світлий. Саму синь відсікає нижня межа.
+                is_ink = min(r, g, b) >= _CAPTION_LIGHT_MIN
+            else:
+                # Поза заливкою символ темний на світлому тлі панелі.
+                is_ink = max(r, g, b) <= _CAPTION_DARK_MAX
+            if is_ink:
+                mpx[x - x0, y - y0] = (0, 0, 0)
+    return mask
+
+
+def _caption_ink(color) -> bool:
+    return color[0] < 128
+
+
+def read_caption_percent(image: Image.Image, bar: "ProgressBar") -> Optional[int]:
+    """Відсоток, ПРОЧИТАНИЙ з підпису смуги. None — якщо не впевнені.
+
+    None повертається щедро й свідомо: немає еталонів, символ не збігся
+    піксель-у-піксель, прочиталось не число, число поза 0..100 — усе це
+    привід мовчати, а не вгадувати.
+    """
+    glyphs = load_machine_glyphs()
+    if not glyphs:
+        return None
+    mask = caption_mask(image, bar)
+    if mask is None:
+        return None
+
+    boxes = _segments(mask, _caption_ink)
+    if not boxes or len(boxes) > 5:
+        return None
+
+    digits = ""
+    for box in boxes:
+        bitmap = _bitmap(mask, box, _caption_ink)
+        char = _match_digit(bitmap, glyphs)
+        if char is None:
+            return None
+        if char == "%":
+            continue
+        if not char.isdigit():
+            return None
+        digits += char
+
+    if not digits or len(digits) > 3:
+        return None
+    value = int(digits)
+    return value if 0 <= value <= 100 else None

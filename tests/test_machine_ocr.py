@@ -312,3 +312,101 @@ def test_tall_solid_blue_alone_reads_nothing():
     img = _screen()
     ImageDraw.Draw(img).rectangle([14, 300, 229, 850], fill=BLUE)
     assert read_progress_percent(img) is None
+
+
+# ── Підпис усередині смуги («43%») як головніший сигнал ─────────────────────
+
+
+def _fixture_frame():
+    from pathlib import Path
+
+    return Image.open(Path(__file__).parent / "fixtures" / "remicore_bar_100.png").convert("RGB")
+
+
+def test_caption_is_read_from_the_real_frame():
+    """Реальний кадр верстата: підпис читається й збігається з геометрією.
+
+    Це і є сенс другого сигналу — незалежна перевірка того самого числа.
+    Еталони цифр «1», «0» і знака «%» зняті саме з цього кадру.
+    """
+    from app.machine_ocr import find_progress_bar, read_caption_percent
+
+    image = _fixture_frame()
+    bar = find_progress_bar(image)
+    assert bar is not None
+    assert read_caption_percent(image, bar) == 100
+    assert read_progress_percent(image) == 100
+
+
+def test_caption_stays_silent_without_templates(monkeypatch):
+    """Без еталонів підпис мовчить, а відсоток лишається геометричним.
+
+    Це і є обіцянка сумісності: новий сигнал може лише виправити число, але
+    ніколи не зробити гірше, ніж було до навчання.
+    """
+    from app import machine_ocr
+
+    monkeypatch.setattr(machine_ocr, "load_machine_glyphs", lambda: {})
+    image = _fixture_frame()
+    bar = machine_ocr.find_progress_bar(image)
+    assert machine_ocr.read_caption_percent(image, bar) is None
+    assert machine_ocr.read_progress_percent(image) == bar.percent
+
+
+def test_caption_refuses_unknown_glyph(monkeypatch):
+    """Незнайоме накреслення — мовчання, а не здогадка.
+
+    Правило модуля: хибне число гірше за жодне. Якщо хоч один символ підпису
+    не збігся піксель-у-піксель, число з підпису не береться взагалі — а не
+    складається з тих цифр, які впізнались (так «43» перетворилось би на «4»).
+    """
+    from app import machine_ocr
+
+    # Еталони є, але від ІНШОГО шрифту: жоден символ не збіжиться.
+    monkeypatch.setattr(
+        machine_ocr, "load_machine_glyphs", lambda: {10: {"7": [["1" * 6] * 10]}}
+    )
+    image = _fixture_frame()
+    bar = machine_ocr.find_progress_bar(image)
+    assert machine_ocr.read_caption_percent(image, bar) is None
+
+
+def test_caption_wins_over_geometry(monkeypatch):
+    """Коли сигнали розходяться, береться підпис — верстат про себе знає краще."""
+    from app import machine_ocr
+
+    image = _fixture_frame()
+    bar = machine_ocr.find_progress_bar(image)
+    assert bar.percent == 100
+    monkeypatch.setattr(machine_ocr, "read_caption_percent", lambda *_: 43)
+    assert machine_ocr.read_progress_percent(image) == 43
+
+
+def test_caption_mask_normalises_both_halves():
+    """Маска зводить двоколірний підпис до одного вигляду.
+
+    Підпис стоїть по центру КОНТЕЙНЕРА, тож на частковому прогресі він
+    розрізаний межею заливки: ліворуч білий на синьому, праворуч темний на
+    світлому. Без нормалізації одна з половин просто зникла б із маски.
+    """
+    from app.machine_ocr import caption_mask, find_progress_bar
+
+    screen = _screen()
+    box = (400, 700, 700, 723)
+    _draw_bar(screen, box=box, percent=50)
+    # Підпис поверх межі: ліва половина на заливці, права — поза нею.
+    draw = ImageDraw.Draw(screen)
+    draw.rectangle((535, 706, 545, 716), fill=LIGHT)   # білий шматок на синьому
+    draw.rectangle((556, 706, 566, 716), fill=DARK)    # темний шматок на світлому
+
+    bar = find_progress_bar(screen)
+    assert bar is not None
+    mask = caption_mask(screen, bar)
+    assert mask is not None
+    # Обидва шматки видно як чорне: ширина чорного більша за один із них.
+    black_columns = {
+        x for x in range(mask.width) for y in range(mask.height)
+        if mask.getpixel((x, y)) == (0, 0, 0)
+    }
+    assert black_columns, "жоден шматок підпису не потрапив у маску"
+    assert len(black_columns) >= 20, "у маску потрапила лише одна половина підпису"
