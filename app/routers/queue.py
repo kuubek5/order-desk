@@ -194,9 +194,17 @@ def get_queue(
     # rather than erroring, same spirit as the period/ready/source fallbacks.
     selected_date = parse_sheet_tab(date_param)
 
-    # Fetch all orders (eager-load material for the queue's material badge)
+    # Fetch active orders (eager-load material for the queue's material badge).
+    # `archived_at IS NULL` стоїть у SQL, а не лише в Python нижче: архів росте
+    # з кожним місяцем, і без цієї умови кожне відкриття черги піднімало в
+    # памʼять УСЮ історію, щоб одразу її ж і відкинути. Відсів за вікном
+    # retention лишається в Python — бізнес-дата виводиться з `sheet_tab`
+    # (рядок «дд.мм.рр»), а не зі стовпця, тож у SQL її не порівняти.
     all_orders = db.scalars(
-        select(Order).options(selectinload(Order.material)).order_by(Order.id.desc())
+        select(Order)
+        .options(selectinload(Order.material))
+        .where(Order.archived_at.is_(None))
+        .order_by(Order.id.desc())
     ).all()
 
     # Define date boundaries

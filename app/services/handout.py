@@ -85,7 +85,15 @@ def handout_eligible_orders(db: Session, today: date) -> list[Order]:
     candidates = db.scalars(
         select(Order)
         .options(selectinload(Order.material))
-        .where(Order.client_name.is_not(None), Order.status != "видано")
+        .where(
+            Order.client_name.is_not(None),
+            Order.status != "видано",
+            # Архів росте з кожним місяцем, а видати його однаково не можна:
+            # без цієї умови кожне відкриття видачі піднімало в памʼять усю
+            # історію. Умова та сама, що в черзі (`archived_at IS NULL`), і
+            # колонка проіндексована.
+            Order.archived_at.is_(None),
+        )
     ).all()
     return [
         order
