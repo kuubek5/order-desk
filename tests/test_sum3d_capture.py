@@ -164,3 +164,60 @@ def test_scan_real_screenshot_names(tmp_path):
     # Усі 9 імен унікальні за (date, time) → 9 записів, жоден не загублено.
     assert len(got) == 9
     assert got[0].sum3d_id == "15-05-15"  # останній за mtime
+
+
+# ── Привид у пришпиленому рядку (слайс 2) ─────────────────────────────────
+
+def _row_html(**ctx):
+    from types import SimpleNamespace
+    import app.web as web
+    order = SimpleNamespace(
+        id=1, source="lab", sheet_tab="03.09.26", status="прийнято",
+        material_color="цирконій", kind="анатомія", quantity="4", job_code="x",
+        job_code_folder_uri=None, job_code_folder_preview_token=None,
+        sum3d_id=ctx.pop("sum3d_id", ""), export_folder_uri=None,
+        export_folder_preview_token=None, technician_name="Іван", cam_comment=None,
+        client_name="Кривовид", work_order_no="24122", active_rework=None,
+        sheet_changed_at=None, sheet_changed_fields=None, calculated_raw="",
+    )
+    return web.templates.get_template("_order_row.html").render(
+        order=order, statuses=["нове"], sync_error=None, **ctx
+    )
+
+
+def test_ghost_appears_only_in_a_pinned_row_with_empty_field():
+    """Підказка захопленого ID — рівно там, де є НАМІР (рядок у «мої зараз»)
+    і куди її ще можна вписати. Без піна ми не знаємо, до якого рядка належить
+    проєкт (§2 — ніяких авто-зіставлень)."""
+    pinned = _row_html(focused_ids={1}, sum3d_latest="02-52-10")
+    assert 'data-ghost="02-52-10"' in pinned and "sum3d-ghost" in pinned
+
+    # не пришпилений — підказки немає
+    assert "sum3d-ghost" not in _row_html(focused_ids=set(), sum3d_latest="02-52-10")
+    # поле вже заповнене — не перебиваємо
+    assert "sum3d-ghost" not in _row_html(
+        focused_ids={1}, sum3d_latest="02-52-10", sum3d_id="11-11-11"
+    )
+    # нічого не захоплено — підказки немає
+    assert "sum3d-ghost" not in _row_html(focused_ids={1}, sum3d_latest=None)
+
+
+def test_row_renders_without_the_sum3d_context_at_all():
+    """Рядок малюється і з місць, які про лоток не знають (пошук, картка) —
+    там він мусить просто не показувати підказку, а не падати."""
+    assert "sum3d-ghost" not in _row_html()
+
+
+def test_scan_uses_a_short_cache_so_two_callers_do_not_hit_disk_twice(tmp_path):
+    """Теку питають лоток і полл черги — обидва раз на 15с. Кеш (5с) не дає
+    подвоїти обхід диска; свіжість не страждає, бо TTL менший за інтервал."""
+    (tmp_path / "2026-09-03_02-52-10.cam").write_bytes(b"cam")
+    first = scan_projects(str(tmp_path))
+    assert [p.sum3d_id for p in first] == ["02-52-10"]
+
+    # Новий файл З'ЯВИВСЯ, але в межах TTL кеш віддає попередній результат…
+    (tmp_path / "2026-09-03_03-00-00.cam").write_bytes(b"cam")
+    assert [p.sum3d_id for p in scan_projects(str(tmp_path))] == ["02-52-10"]
+    # …а обхід у обхід кешу бачить обидва.
+    fresh = scan_projects(str(tmp_path), use_cache=False)
+    assert {p.sum3d_id for p in fresh} == {"02-52-10", "03-00-00"}

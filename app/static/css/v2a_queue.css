@@ -896,3 +896,41 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 .q2 .s3t-copy.copy-success{color:var(--ok);background:rgba(var(--sig-rgb),.28)}
 .q2 .s3t-more{display:flex;align-items:center;padding:0 9px;border-left:1px solid var(--line-2);
   background:var(--card-2);color:var(--ink-3);font-family:var(--font-mono);font-size:var(--fs-1);font-weight:600}
+
+/* Панель «ще N» захоплених Sum3D + привид у рядку (хід 1, слайс 2). */
+.q2 .sum3d-tray{position:relative}
+.q2 .s3t-more{border:0;border-left:1px solid var(--line-2);background:var(--card-2);
+  color:var(--ink-2);padding:0 9px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;
+  font:inherit;font-size:var(--fs-1);font-weight:600}
+.q2 .s3t-more:hover{color:var(--ink)}
+.q2 .s3t-more svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round;transition:transform var(--ui-speed) ease}
+body.sum3d-panel-open .q2 .s3t-more svg{transform:rotate(180deg)}
+.q2 .s3t-panel{display:none;position:absolute;right:0;top:calc(100% + 7px);z-index:40;
+  min-width:250px;background:var(--card-2);border:1px solid var(--line-2);border-radius:11px;
+  box-shadow:var(--sh-pop);padding:8px;flex-direction:column;gap:3px}
+body.sum3d-panel-open .q2 .s3t-panel{display:flex}
+.q2 .s3t-head{font-size:var(--fs-0);letter-spacing:.06em;text-transform:uppercase;
+  color:var(--ink-3);font-family:var(--font-mono);padding:3px 4px 6px}
+.q2 .s3t-row{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:8px;
+  overflow:hidden;background:var(--card)}
+.q2 .s3t-when{display:flex;align-items:center;padding:0 8px;font-size:var(--fs-0);
+  color:var(--ink-3);border-right:1px solid var(--line)}
+.q2 .s3t-rid{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);
+  font-family:var(--font-mono);font-size:var(--fs-2);font-weight:600;padding:6px 8px;outline:none}
+.q2 .s3t-rcopy{border:0;border-left:1px solid var(--line);background:rgba(var(--sig-rgb),.13);
+  color:var(--sig);padding:0 10px;cursor:pointer;display:flex;align-items:center}
+.q2 .s3t-rcopy svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round}
+.q2 .s3t-rcopy:hover{background:rgba(var(--sig-rgb),.24)}
+.q2 .s3t-rcopy.copy-success{color:var(--ok)}
+
+/* Привид: підказка захопленого ID у ПРИШПИЛЕНОМУ рядку з порожнім полем. */
+.q2 .sum3d-form{position:relative}
+.q2 .sum3d-input.has-ghost{border-color:rgba(var(--sig-rgb),.55);border-style:dashed}
+.q2 .sum3d-ghost{position:absolute;left:8px;top:50%;transform:translateY(-50%);
+  font-family:var(--font-mono);font-size:var(--fs-1);color:var(--sig);opacity:.8;
+  cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.q2 .sum3d-ghost b{font-size:var(--fs-0);background:var(--sig);color:var(--sig-ink);
+  border-radius:3px;padding:0 4px;font-weight:700}
+.q2 .sum3d-ghost:hover{opacity:1}

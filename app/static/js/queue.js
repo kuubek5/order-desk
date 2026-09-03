@@ -949,3 +949,67 @@ document.addEventListener("htmx:afterSettle", (event) => {
     lsSet(KEY, on ? "1" : "0");
   });
 })();
+
+// ── Привид Sum3D: підказка захопленого проєкту в пришпиленому рядку ────────
+// Сервер малює її лише там, де рядок у «мої зараз», поле порожнє і з теки
+// Cam-work щойно захоплено проєкт (див. _order_row.html). Тут — прийняття:
+// клік по привиду або Enter у порожньому полі підставляє значення й шле форму
+// тим самим шляхом, що й ручний ввід (лог + «Крок назад» працюють як завжди).
+function acceptSum3dGhost(input, value) {
+  if (!input || !value) return;
+  input.value = value;
+  input.classList.remove("has-ghost");
+  const ghost = input.parentElement && input.parentElement.querySelector(".sum3d-ghost");
+  if (ghost) ghost.remove();
+  // change — той самий тригер, який слухає hx-post форми рядка.
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+document.addEventListener("click", (event) => {
+  const ghost = event.target.closest("[data-ghost-accept]");
+  if (!ghost) return;
+  event.preventDefault();
+  const form = ghost.closest(".sum3d-form");
+  const input = form && form.querySelector(".sum3d-input");
+  acceptSum3dGhost(input, ghost.dataset.ghostAccept);
+});
+
+// Enter у ПОРОЖНЬОМУ полі з привидом = прийняти підказку. Порожнє поле інакше
+// не має що зберігати, тож ми нічого не перехоплюємо в оператора: якщо він
+// почав друкувати своє — привида вже немає (клас знято на першому ж вводі).
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  const input = event.target.closest(".sum3d-input.has-ghost");
+  if (!input || input.value.trim()) return;
+  event.preventDefault();
+  acceptSum3dGhost(input, input.dataset.ghost);
+});
+
+// Почав друкувати своє — підказка більше не потрібна й не має заважати.
+document.addEventListener("input", (event) => {
+  const input = event.target.closest(".sum3d-input.has-ghost");
+  if (!input) return;
+  input.classList.remove("has-ghost");
+  const ghost = input.parentElement && input.parentElement.querySelector(".sum3d-ghost");
+  if (ghost) ghost.remove();
+});
+
+// Панель «ще N захоплених Sum3D». Стан — клас на body: сам лоток свапається
+// поллом кожні 15с, і атрибут на ньому помирав би разом зі старою розміткою
+// (той самий урок, що зі смугою пічок).
+document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-sum3d-more]")) {
+    const open = document.body.classList.toggle("sum3d-panel-open");
+    document.querySelectorAll("[data-sum3d-more]").forEach((b) =>
+      b.setAttribute("aria-expanded", String(open))
+    );
+    return;
+  }
+  // Клік повз панель — закрити (копія всередині панелі не закриває).
+  if (
+    document.body.classList.contains("sum3d-panel-open") &&
+    !event.target.closest(".sum3d-tray")
+  ) {
+    document.body.classList.remove("sum3d-panel-open");
+  }
+});

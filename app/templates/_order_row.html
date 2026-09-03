@@ -196,11 +196,24 @@
               hx-post="/orders/{{ order.id }}/sum3d-id"
               hx-trigger="change from:find input, keyup[key=='Enter'] from:find input"
               hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
-            <input type="text" name="sum3d_id" value="{{ (_rework.sum3d_id if _rework else order.sum3d_id) or '' }}" class="mono sum3d-input{% if _rework %} sum3d-input-rework{% endif %}" placeholder="{% if _rework %}ID перер.{% else %}ID{% endif %}" title="{% if _rework %}ID Sum3D ПЕРЕРОБКИ — запишеться в колонку W таблиці.{% if order.sum3d_id %} Перше фрезерування: {{ order.sum3d_id }} (колонка L — на місці, видно в паспорті роботи).{% endif %}{% else %}Введіть ID Sum3D і натисніть Enter або перейдіть далі — збережеться автоматично{% endif %}">
+            {# ПРИВИД: рядок ПРИШПИЛЕНИЙ («мої зараз»), поля Sum3D ще порожнє, а
+               з теки Cam-work щойно захоплено проєкт — підказуємо його прямо
+               тут. Enter або клік записує; проігнорував — нічого не сталось.
+               Лише для пришпилених: це і є заявка наміру «я беру цю в Sum3D»,
+               без неї ми не знаємо, до якого рядка проєкт належить (§2 — ніяких
+               авто-зіставлень). #}
+            {% set _ghost = (sum3d_latest if (sum3d_latest is defined and sum3d_latest and _focused and not _rework and not order.sum3d_id) else None) %}
+            <input type="text" name="sum3d_id" value="{{ (_rework.sum3d_id if _rework else order.sum3d_id) or '' }}" class="mono sum3d-input{% if _rework %} sum3d-input-rework{% endif %}{% if _ghost %} has-ghost{% endif %}"{% if _ghost %} data-ghost="{{ _ghost }}"{% endif %} placeholder="{% if _rework %}ID перер.{% else %}ID{% endif %}" title="{% if _rework %}ID Sum3D ПЕРЕРОБКИ — запишеться в колонку W таблиці.{% if order.sum3d_id %} Перше фрезерування: {{ order.sum3d_id }} (колонка L — на місці, видно в паспорті роботи).{% endif %}{% else %}Введіть ID Sum3D і натисніть Enter або перейдіть далі — збережеться автоматично{% endif %}">
             {# Явне «видалити Sum3D»: помилково взяту роботу оператор повертає в
                «можна брати» одним кліком (job_code лишається → чергова готова до
                взяття). Іде через той самий /sum3d-id з порожнім значенням, тож
                логується і дає тост «Скасувати». #}
+            {% if _ghost %}
+            {# Сам напис привида: бліде значення поверх порожнього поля + ↵.
+               Клік по ньому = прийняти (обробник у queue.js). #}
+            <span class="sum3d-ghost" data-ghost-accept="{{ _ghost }}"
+                  title="Щойно створений проєкт Sum3D — Enter або клік, щоб записати">{{ _ghost }}<b>↵</b></span>
+            {% endif %}
             {% if (_rework.sum3d_id if _rework else order.sum3d_id) %}
             <button type="button" class="sum3d-clear" title="Видалити Sum3D — робота повернеться в «можна брати»" aria-label="Видалити Sum3D">✕</button>
             {% endif %}

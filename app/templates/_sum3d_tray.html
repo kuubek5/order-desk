@@ -1,13 +1,17 @@
-{# Моно-лоток захоплених Sum3D ID у шапці черги (хід 1, слайс 1).
-   Самополлиться щохвилини: сканує теку Cam-work і показує НАЙНОВІШИЙ ID у
-   моно-полі + кнопка копії (глобальний обробник [data-copy] в app.js). Якщо
-   проєктів кілька — «+N» тихою підказкою (повна розкривна панель із «прибрати»
-   — наступний слайс, там потрібен стан, який переживе полл).
+{# Моно-лоток захоплених Sum3D ID у шапці черги (хід 1).
 
-   Обгортка віддається ЗАВЖДИ (навіть без проєктів), інакше елемент зник би з
-   DOM разом зі своїм поллом. Колір сигналу — токен --sig (адаптивний до теми).
-   Читання-лише: сюди CRM нічого не пише. #}
-<span class="sum3d-tray" hx-get="/sum3d/tray" hx-trigger="every 60s" hx-swap="outerHTML"
+   Самополлиться раз на 15 с — як і сама черга: оператор щойно створив проєкт у
+   Sum3D і чекає його тут, тож хвилина очікування (перша версія) була завелика.
+   Скан теки кешується на 5 с у сервісі, тож частіший полл диск не смикає.
+
+   Найновіший ID сидить у полі, решта — за «▾ N» (панель із часом, копією й
+   «прибрати» на кожен). Обгортка віддається ЗАВЖДИ, навіть без проєктів:
+   інакше елемент зник би з DOM разом зі своїм поллом і більше не проступив.
+
+   Стан розкриття — клас на body (як у смуги пічок): секція свапається цілком
+   кожні 15 с, і атрибут на ній помирав би разом зі старою розміткою.
+   Читання-лише: CRM у цю теку нічого не пише. #}
+<span class="sum3d-tray" hx-get="/sum3d/tray" hx-trigger="every 15s" hx-swap="outerHTML"
       {% if not sum3d_projects %}data-empty="1"{% endif %}>
   {% if sum3d_projects %}
   {% set _top = sum3d_projects[0] %}
@@ -20,6 +24,26 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
     <span>копія</span>
   </button>
-  {% if _more > 0 %}<span class="s3t-more" title="Ще {{ _more }} захоплених ID">+{{ _more }}</span>{% endif %}
+  {% if _more > 0 %}
+  <button type="button" class="s3t-more" data-sum3d-more
+          title="Ще {{ _more }} захоплених ID" aria-expanded="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    <span class="mono">{{ _more }}</span>
+  </button>
+  <span class="s3t-panel" role="group" aria-label="Захоплені Sum3D ID">
+    <span class="s3t-head">Захоплені проєкти Sum3D</span>
+    {% for p in sum3d_projects %}
+    <span class="s3t-row">
+      <span class="s3t-when mono">{{ p.folder.split('_')[0][5:] if '_' in p.folder else '' }}</span>
+      <input class="s3t-rid mono" value="{{ p.sum3d_id }}" readonly onclick="this.select()"
+             title="{{ p.folder }}">
+      <button type="button" class="s3t-rcopy" data-copy="{{ p.sum3d_id }}"
+              title="Копіювати {{ p.sum3d_id }}" aria-label="Копіювати {{ p.sum3d_id }}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+      </button>
+    </span>
+    {% endfor %}
+  </span>
+  {% endif %}
   {% endif %}
 </span>

@@ -480,6 +480,11 @@ def get_queue(
             # в ОБОХ гілках — сторінці й partial=rows, — інакше підсвітка
             # зникала б на першому тіку полла (той самий урок, що focused_ids).
             "milling": milling_now(),
+            # Найновіший захоплений Sum3D ID — для «привида» в пришпиленому
+            # рядку. В ОБОХ гілках (сторінка й partial=rows), інакше підказка
+            # зникала б на першому тіку полла.
+            "sum3d_latest": (_s3 := scan_sum3d_projects(get_sum3d_projects_path(db)))
+                and _s3[0].sum3d_id or None,
             "focus_count": focus_count(db, user),
             "focus_mine": focus_mine,
             "selected_date": selected_date,

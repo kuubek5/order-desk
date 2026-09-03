@@ -20,6 +20,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
+from time import monotonic
 
 # `2026-09-02_17-55-28` (можливий суфікс на кшталт ` (2)`, ` — копия` чи `_repeat`
 # ігнорується — беремо саме дату+час на початку назви). Хвіст HH-MM-SS = Sum3D ID.
@@ -66,7 +68,17 @@ def _project_label(entry: Path) -> str | None:
     return None
 
 
-def scan_projects(path: str | None, *, limit: int = 12) -> list[CapturedProject]:
+# Короткий кеш: теку питають ДВА місця — лоток у шапці й полл черги (для
+# «привида»), обидва раз на 15с. Без кешу це два обходи диска на кожен тік на
+# кожного оператора. TTL менший за інтервал полла, тож свіжість не страждає.
+_CACHE_TTL_SECONDS = 5.0
+_cache: dict[str, tuple[float, list["CapturedProject"]]] = {}
+_cache_lock = Lock()
+
+
+def scan_projects(
+    path: str | None, *, limit: int = 12, use_cache: bool = True
+) -> list[CapturedProject]:
     """Найновіші проєкти Sum3D у теці, впорядковані від найновішого.
 
     Порожній/невказаний шлях або недоступна тека → порожній список (функція
@@ -81,6 +93,11 @@ def scan_projects(path: str | None, *, limit: int = 12) -> list[CapturedProject]
     value = (path or "").strip()
     if not value:
         return []
+    if use_cache:
+        with _cache_lock:
+            hit = _cache.get(value)
+        if hit and (monotonic() - hit[0]) < _CACHE_TTL_SECONDS:
+            return hit[1][:limit]
     root = Path(value)
     try:
         entries = list(root.iterdir())
@@ -111,4 +128,7 @@ def scan_projects(path: str | None, *, limit: int = 12) -> list[CapturedProject]
     found = list(best.values())
     # Найновіші першими. При однаковому mtime — за назвою (стабільно).
     found.sort(key=lambda p: (p.mtime, p.folder), reverse=True)
+    if use_cache:
+        with _cache_lock:
+            _cache[value] = (monotonic(), found)
     return found[:limit]
