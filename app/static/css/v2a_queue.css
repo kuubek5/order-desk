@@ -882,7 +882,11 @@ body.qside-collapsed .q2 .worklayout{gap:0}
    Найновіший захоплений ID + копія. Колір сигналу — токен --sig (адаптивний
    до теми). Порожній лоток (data-empty) не займає місця. */
 .q2 .sum3d-tray[data-empty]{display:none}
-.q2 .sum3d-tray{display:inline-flex;align-items:stretch;border:1px solid var(--line-2);
+/* Обгортка НЕ обрізає й не має рамки — інакше розкривна панель «▾ N»
+   лежала б усередині overflow:hidden і була б невидима (спіймано 03.09.26).
+   Рамка й обрізання переїхали на .s3t-bar. */
+.q2 .sum3d-tray{display:inline-block;position:relative;vertical-align:middle}
+.q2 .s3t-bar{display:inline-flex;align-items:stretch;border:1px solid var(--line-2);
   border-radius:var(--r-ctl);overflow:hidden;height:32px}
 .q2 .s3t-lab{display:flex;align-items:center;padding:0 8px;background:rgba(var(--sig-rgb),.13);
   color:var(--sig);font-family:var(--font-mono);font-size:var(--fs-0);letter-spacing:.05em;text-transform:uppercase}
@@ -898,7 +902,6 @@ body.qside-collapsed .q2 .worklayout{gap:0}
   background:var(--card-2);color:var(--ink-3);font-family:var(--font-mono);font-size:var(--fs-1);font-weight:600}
 
 /* Панель «ще N» захоплених Sum3D + привид у рядку (хід 1, слайс 2). */
-.q2 .sum3d-tray{position:relative}
 .q2 .s3t-more{border:0;border-left:1px solid var(--line-2);background:var(--card-2);
   color:var(--ink-2);padding:0 9px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;
   font:inherit;font-size:var(--fs-1);font-weight:600}

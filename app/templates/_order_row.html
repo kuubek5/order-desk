@@ -202,7 +202,8 @@
                Лише для пришпилених: це і є заявка наміру «я беру цю в Sum3D»,
                без неї ми не знаємо, до якого рядка проєкт належить (§2 — ніяких
                авто-зіставлень). #}
-            {% set _ghost = (sum3d_latest if (sum3d_latest is defined and sum3d_latest and _focused and not _rework and not order.sum3d_id) else None) %}
+            {% set _ghost_here = sum3d_ghost_order_id is defined and sum3d_ghost_order_id == order.id %}
+            {% set _ghost = (sum3d_latest if (sum3d_latest is defined and sum3d_latest and _ghost_here and not _rework and not order.sum3d_id) else None) %}
             <input type="text" name="sum3d_id" value="{{ (_rework.sum3d_id if _rework else order.sum3d_id) or '' }}" class="mono sum3d-input{% if _rework %} sum3d-input-rework{% endif %}{% if _ghost %} has-ghost{% endif %}"{% if _ghost %} data-ghost="{{ _ghost }}"{% endif %} placeholder="{% if _rework %}ID перер.{% else %}ID{% endif %}" title="{% if _rework %}ID Sum3D ПЕРЕРОБКИ — запишеться в колонку W таблиці.{% if order.sum3d_id %} Перше фрезерування: {{ order.sum3d_id }} (колонка L — на місці, видно в паспорті роботи).{% endif %}{% else %}Введіть ID Sum3D і натисніть Enter або перейдіть далі — збережеться автоматично{% endif %}">
             {# Явне «видалити Sum3D»: помилково взяту роботу оператор повертає в
                «можна брати» одним кліком (job_code лишається → чергова готова до

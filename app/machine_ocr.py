@@ -44,8 +44,11 @@ from PIL import Image
 # рядка інструмента), і вони давали б хибні збіги.
 BOTTOM_BAND = 0.60
 
-# Мінімальна ширина заливки в пікселях: коротші сині плями — це іконки й текст.
-MIN_FILL_WIDTH = 12
+# Мінімальна ширина заливки. Смуга ~122px, тобто 1% ≈ 1.2px — з порогом 12
+# усе нижче 10% не читалось узагалі, і щойно запущена програма показувала
+# «не йде» (спіймано наживо 03.09.26). Дрібні сині плями (іконки, текст)
+# відсіюються не цим порогом, а вимогою впертись у РАМКУ смуги нижче.
+MIN_FILL_WIDTH = 4
 # Смуга мусить мати висоту (кілька однакових рядків поспіль), інакше це лінія.
 MIN_BAR_HEIGHT = 4
 # Правдоподібна геометрія контейнера: смуга прогресу широка й невисока.
@@ -93,7 +96,7 @@ def _is_dark(px: tuple[int, int, int]) -> bool:
     return max(px[0], px[1], px[2]) <= 180
 
 
-def _is_border_column(px, x: int, band: list[int]) -> bool:
+def _is_border_column(px, x: int, band: list[int], height: int = 10**9) -> bool:
     """Чи колонка `x` — вертикальна РАМКА смуги (а не літера підпису).
 
     Рамка йде на всю висоту смуги, літера — лише на частину. Тому дивимось не
@@ -102,8 +105,14 @@ def _is_border_column(px, x: int, band: list[int]) -> bool:
     """
     if len(band) < 3:
         return False
-    dark = sum(1 for y in band if _is_dark(px[x, y]))
-    return dark >= len(band) * BORDER_DARK_SHARE
+    # Беремо ще по рядку ЗА межами заливки: справжня рамка — це прямокутник,
+    # тож вона темна і там; підпис усередині смуги — ні. Без цього високий
+    # підпис («23 %») на короткій смузі проходив за рамку, скан спинявся на
+    # ньому й контейнер виходив коротким — 23% читались як 59%
+    # (спіймано наживо 03.09.26).
+    rows = [y for y in (band[0] - 1, *band, band[-1] + 1) if 0 <= y < height]
+    dark = sum(1 for y in rows if _is_dark(px[x, y]))
+    return dark >= len(rows) * BORDER_DARK_SHARE
 
 
 def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
@@ -175,8 +184,10 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
     last_blue = fill_right
     last_white = fill_right
     gap = 0
+    hit_border = False
     for x in range(fill_right + 1, width):
-        if _is_border_column(px, x, band):
+        if _is_border_column(px, x, band, height):
+            hit_border = True
             break
         p = px[x, y_mid]
         if _is_blue(p):
@@ -198,6 +209,11 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
         right_edge = last_blue
     container = right_edge - left + 1
     if container < MIN_CONTAINER_WIDTH:
+        return None
+    # Справжня смуга ЗАВЖДИ закінчується рамкою. Саме ця вимога (а не грубий
+    # поріг ширини заливки) відсіює сині іконки й текст — і водночас дозволяє
+    # читати зовсім малий відсоток на щойно запущеній програмі.
+    if not hit_border:
         return None
 
     percent = round(fill * 100 / container)

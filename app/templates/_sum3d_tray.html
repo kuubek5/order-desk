@@ -16,6 +16,10 @@
   {% if sum3d_projects %}
   {% set _top = sum3d_projects[0] %}
   {% set _more = sum3d_projects|length - 1 %}
+  {# Рамка й обрізання — на ВНУТРІШНЬОМУ елементі. Панель «▾ N» лежить поруч
+     із ним, а не всередині: у контейнері з overflow:hidden вона відкривалась,
+     але була невидима — обрізалась (спіймано наживо 03.09.26). #}
+  <span class="s3t-bar">
   <span class="s3t-lab" title="Нові проєкти Sum3D (Cam-work)">Sum3D</span>
   <input class="s3t-id mono" value="{{ _top.sum3d_id }}" readonly
          onclick="this.select()" title="Проєкт {{ _top.folder }} — клік виділяє, кнопка копіює">
@@ -30,6 +34,7 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
     <span class="mono">{{ _more }}</span>
   </button>
+  </span>
   <span class="s3t-panel" role="group" aria-label="Захоплені Sum3D ID">
     <span class="s3t-head">Захоплені проєкти Sum3D</span>
     {% for p in sum3d_projects %}
@@ -43,6 +48,8 @@
       </button>
     </span>
     {% endfor %}
+  </span>
+  {% else %}
   </span>
   {% endif %}
   {% endif %}

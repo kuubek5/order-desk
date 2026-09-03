@@ -485,6 +485,13 @@ def get_queue(
             # зникала б на першому тіку полла.
             "sum3d_latest": (_s3 := scan_sum3d_projects(get_sum3d_projects_path(db)))
                 and _s3[0].sum3d_id or None,
+            # Підказка показується РІВНО В ОДНОМУ рядку — тому, що пришпилений
+            # ОСТАННІМ: це та робота, яку оператор щойно взяв і саме для неї
+            # створив проєкт. У всіх пришпилених одразу вона була б шумом і,
+            # гірше, запрошенням вписати один ID у кілька робіт.
+            "sum3d_ghost_order_id": (
+                max(_fr, key=_fr.get) if (_fr := focus_ranks(db, user)) else None
+            ),
             "focus_count": focus_count(db, user),
             "focus_mine": focus_mine,
             "selected_date": selected_date,

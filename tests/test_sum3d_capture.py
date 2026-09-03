@@ -185,21 +185,27 @@ def _row_html(**ctx):
     )
 
 
-def test_ghost_appears_only_in_a_pinned_row_with_empty_field():
-    """Підказка захопленого ID — рівно там, де є НАМІР (рядок у «мої зараз»)
-    і куди її ще можна вписати. Без піна ми не знаємо, до якого рядка належить
-    проєкт (§2 — ніяких авто-зіставлень)."""
-    pinned = _row_html(focused_ids={1}, sum3d_latest="02-52-10")
-    assert 'data-ghost="02-52-10"' in pinned and "sum3d-ghost" in pinned
+def test_ghost_appears_in_exactly_one_row():
+    """Підказка захопленого ID — рівно в ОДНОМУ рядку: тому, що пришпилений
+    ОСТАННІМ (його оператор щойно взяв і саме для нього створив проєкт).
+    У всіх пришпилених одразу вона була б шумом і, гірше, запрошенням вписати
+    один ID у кілька робіт (на прохання власника 03.09.26)."""
+    ghost = _row_html(focused_ids={1}, sum3d_latest="02-52-10", sum3d_ghost_order_id=1)
+    assert 'data-ghost="02-52-10"' in ghost and "sum3d-ghost" in ghost
 
-    # не пришпилений — підказки немає
-    assert "sum3d-ghost" not in _row_html(focused_ids=set(), sum3d_latest="02-52-10")
-    # поле вже заповнене — не перебиваємо
+    # Пришпилений, але НЕ останній — підказки немає.
     assert "sum3d-ghost" not in _row_html(
-        focused_ids={1}, sum3d_latest="02-52-10", sum3d_id="11-11-11"
+        focused_ids={1}, sum3d_latest="02-52-10", sum3d_ghost_order_id=999
     )
-    # нічого не захоплено — підказки немає
-    assert "sum3d-ghost" not in _row_html(focused_ids={1}, sum3d_latest=None)
+    # Поле вже заповнене — не перебиваємо.
+    assert "sum3d-ghost" not in _row_html(
+        focused_ids={1}, sum3d_latest="02-52-10", sum3d_ghost_order_id=1,
+        sum3d_id="11-11-11",
+    )
+    # Нічого не захоплено — підказки немає.
+    assert "sum3d-ghost" not in _row_html(
+        focused_ids={1}, sum3d_latest=None, sum3d_ghost_order_id=1
+    )
 
 
 def test_row_renders_without_the_sum3d_context_at_all():

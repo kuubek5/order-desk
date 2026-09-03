@@ -252,3 +252,32 @@ def test_real_remicore_frame_reads_100_percent():
     assert bar.percent == 100, (bar.percent, bar)
     # Смуга, а не пів екрана: реальна ширина ~122px.
     assert 100 <= bar.container_width <= 200, bar
+
+
+def test_small_percent_is_read_not_dropped():
+    """Бойовий випадок 03.09.26: щойно запущена програма показувала «не йде».
+    Смуга ~122px, тобто 1% ≈ 1.2px — старий поріг ширини заливки (12px)
+    відкидав УСЕ нижче 10%. Дрібні сині плями відсіює не поріг, а вимога
+    впертись у рамку смуги."""
+    for want in (3, 5, 9, 15):
+        img = _screen()
+        _draw_bar(img, box=(461, 776, 583, 795), percent=want)
+        got = read_progress_percent(img)
+        assert got is not None and abs(got - want) <= 2, (want, got)
+
+
+def test_tall_label_inside_the_bar_is_not_mistaken_for_the_border():
+    """Бойовий випадок 03.09.26: 23% читались як 59%. Підпис («23 %») на
+    короткій смузі закривав більшість її висоти й проходив за рамку — скан
+    спинявся на ньому, контейнер виходив коротким. Справжня рамка темна ще й
+    ЗА межами заливки (це прямокутник), підпис — ні."""
+    for want in (23, 40, 60):
+        img = _screen()
+        left, top, right, bottom = 461, 776, 583, 795
+        _draw_bar(img, box=(left, top, right, bottom), percent=want)
+        d = ImageDraw.Draw(img)
+        cx = (left + right) // 2 - 12
+        for x in range(cx, cx + 24, 3):       # високий підпис посеред смуги
+            d.rectangle([x, top + 4, x + 1, bottom - 4], fill=(0, 0, 0))
+        got = read_progress_percent(img)
+        assert got is not None and abs(got - want) <= 3, (want, got)
