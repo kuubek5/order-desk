@@ -27,7 +27,7 @@
                 {% if machines %}
                 <table class="fu-table">
                     <thead>
-                        <tr><th title="Фото верстата для картки на екрані «Верстати»">Фото</th><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th title="Збирати кадри для калібрування читача відсотка">Калібр.</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
+                        <tr><th title="Портрет для картки на екрані «Верстати»: модель або своє фото">Портрет</th><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th title="Збирати кадри для калібрування читача відсотка">Калібр.</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
                     </thead>
                     <tbody>
                     {% for machine in machines %}
@@ -47,7 +47,7 @@
                                     {% if pv %}
                                     <img src="/machines/portrait/{{ machine.id }}.jpg?v={{ pv }}" alt="Фото верстата {{ machine.name }}">
                                     {% else %}
-                                    <span class="fu-photo-model" data-model="{{ machine_model_key(machine.name) }}" aria-hidden="true"></span>
+                                    <span class="fu-photo-model" data-model="{{ machine_model_key(machine.name, machine.portrait_model) }}" aria-hidden="true"></span>
                                     {% endif %}
                                     <input type="file" name="photo" accept="image/*" onchange="this.form.submit()"
                                            aria-label="Фото верстата {{ machine.name }}">
@@ -58,6 +58,19 @@
                                 <button type="submit" class="link-button fu-photo-del" title="Прибрати фото, повернути портрет моделі">✕</button>
                             </form>
                             {% endif %}
+                            {# Який із чотирьох портретів показує картка (саме це просив
+                               власник: обрати картинку станка). Іде в ту саму форму
+                               «Зберегти», що й решта рядка; onchange лише перемальовує
+                               мініатюру — зберігає кнопка. #}
+                            <select form="machine-{{ machine.id }}" name="portrait_model" class="login-input fu-model-select"
+                                    aria-label="Портрет верстата {{ machine.name }}"
+                                    data-auto="{{ machine_model_key(machine.name) }}"
+                                    onchange="var t=this.closest('td').querySelector('.fu-photo-model'); if(t) t.setAttribute('data-model', this.value || this.dataset.auto)">
+                                <option value=""{% if not machine.portrait_model %} selected{% endif %}>авто · {{ machine_model_key(machine.name) }}</option>
+                                {% for key, title in machine_models %}
+                                <option value="{{ key }}"{% if machine.portrait_model == key %} selected{% endif %}>{{ title }}</option>
+                                {% endfor %}
+                            </select>
                         </td>
                         <td><input form="machine-{{ machine.id }}" class="login-input" name="name" value="{{ machine.name }}" maxlength="80" required></td>
                         <td><input form="machine-{{ machine.id }}" class="login-input mono" name="host" value="{{ machine.host }}" maxlength="60" required></td>
@@ -104,6 +117,10 @@
                             <input class="login-input mono fu-col-port" name="port" placeholder="8765" inputmode="numeric">
                             <input class="login-input mono" name="agent_token" placeholder="токен агента (HTTP)" autocomplete="new-password">
                             <input class="login-input" type="password" name="password" placeholder="або пароль VNC" autocomplete="new-password">
+                            <select class="login-input fu-model-select" name="portrait_model" aria-label="Портрет нового верстата">
+                                <option value="">портрет: авто</option>
+                                {% for key, title in machine_models %}<option value="{{ key }}">{{ title }}</option>{% endfor %}
+                            </select>
                             <button type="submit" class="settings-secondary-button">Додати</button>
                         </div>
                     </div>

@@ -404,6 +404,8 @@ templates.env.globals["triage_readiness"] = triage_readiness
 templates.env.globals["files_on_disk"] = files_on_disk
 from app.services.machines import machine_model_key  # noqa: E402 — після створення templates
 templates.env.globals["machine_model_key"] = machine_model_key
+from app.services.machines import MACHINE_MODELS  # noqa: E402
+templates.env.globals["machine_models"] = MACHINE_MODELS
 templates.env.globals["is_rush_comment"] = is_rush_comment
 templates.env.globals["static_ver"] = static_ver
 templates.env.filters["changelog_md"] = changelog_md

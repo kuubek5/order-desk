@@ -845,6 +845,10 @@ class Machine(Base):
     # інша розкладка RemiCORE). Оператор вмикає на час калібрування, качає
     # кадри й вимикає. Авто-збір по відсотку (RemiCORE) працює й без цього.
     collect_calibration: Mapped[bool] = mapped_column(default=False)
+    # Портрет для картки на екрані «Верстати» (04.09.26): ключ моделі
+    # (350i / 350i-loader / 250i / 250i-dry), "" = вгадати за назвою.
+    # Обирається в Налаштуваннях; має старшинство над здогадом.
+    portrait_model: Mapped[str] = mapped_column(String(20), default="", server_default="")
     sort_order: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
 

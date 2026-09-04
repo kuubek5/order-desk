@@ -90,6 +90,8 @@ class MachineTarget:
     # id рядка `machines` — для фото верстата (`/machines/portrait/{id}.jpg`).
     # None у тестах і для цілей без рядка: тоді картка бере дефолт моделі.
     machine_id: Optional[int] = None
+    # Обраний портрет (ключ з MACHINE_MODELS); "" = вгадати за назвою.
+    portrait_model: str = ""
     # Ручний режим калібрування: відкладати кадри за часом (див. Machine).
     collect_calibration: bool = False
 
@@ -163,6 +165,7 @@ def target_of(machine: Machine) -> MachineTarget:
         password=password, agent_token=agent_token,
         collect_calibration=bool(getattr(machine, "collect_calibration", False)),
         machine_id=machine.id,
+        portrait_model=getattr(machine, "portrait_model", "") or "",
     )
 
 
@@ -533,10 +536,23 @@ def poll_all(db: Session, now: Optional[datetime] = None) -> list[MachineState]:
 # ── Картки для екранів ──────────────────────────────────────────────────────
 
 
-def machine_model_key(name: str) -> str:
-    """Дефолтний портрет за моделлю в назві. Чотири моделі цеху (фото від
-    власника 04.09.26): 350i, 350i loader, 250i, 250i dry. Невпізнана назва —
-    350i, їх найбільше."""
+# Чотири портрети цеху (з реальних фото власника, 04.09.26): ключ → підпис у
+# селекторі Налаштувань. Ключ = суфікс файлу app/static/img/machine-portrait-*.jpg.
+MACHINE_MODELS: tuple[tuple[str, str], ...] = (
+    ("350i", "350i"),
+    ("350i-loader", "350i loader"),
+    ("250i", "250i"),
+    ("250i-dry", "250i dry"),
+)
+MACHINE_MODEL_KEYS = frozenset(key for key, _ in MACHINE_MODELS)
+
+
+def machine_model_key(name: str, chosen: str = "") -> str:
+    """Портрет картки: ОБРАНИЙ у Налаштуваннях, а без вибору — здогад за
+    моделлю в назві (loader / dry / 250 / решта 350i). Невідомий ключ у
+    `chosen` (стара БД, чужа форма) не ламає нічого — просто здогад."""
+    if chosen in MACHINE_MODEL_KEYS:
+        return chosen
     lowered = (name or "").lower()
     if "loader" in lowered or "лоадер" in lowered:
         return "350i-loader"
@@ -636,7 +652,7 @@ class MachineCard:
 
     @property
     def model_key(self) -> str:
-        return machine_model_key(self.target.name)
+        return machine_model_key(self.target.name, self.target.portrait_model)
 
 
 def milling_now() -> dict[str, dict]:

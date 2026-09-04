@@ -1054,6 +1054,7 @@ def add_machine(
     port: str = Form(""),
     password: str = Form(""),
     agent_token: str = Form(""),
+    portrait_model: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Додати верстат. Адреса перевіряється ДО збереження — криву краще
@@ -1088,6 +1089,7 @@ def add_machine(
             password_encrypted=encrypt_value(password.strip()) if password.strip() else None,
             agent_token_encrypted=encrypt_value(agent_token.strip()) if agent_token.strip() else None,
             sort_order=(last or 0) + 1,
+            portrait_model=portrait_model if portrait_model in machines_service.MACHINE_MODEL_KEYS else "",
             created_at=datetime.now(),
         )
     )
@@ -1126,6 +1128,7 @@ def update_machine(
     password: str = Form(""),
     agent_token: str = Form(""),
     collect_calibration: str = Form(""),
+    portrait_model: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Змінити верстат. Порожній пароль/токен = не міняти; `-` = стерти
@@ -1166,6 +1169,9 @@ def update_machine(
     elif agent_token.strip():
         machine.agent_token_encrypted = encrypt_value(agent_token.strip())
     machine.collect_calibration = collect_calibration == "1"
+    # Невідомий ключ = «авто» (здогад за назвою), а не помилка: форма шле лише
+    # свої чотири варіанти, чужий може прийти хіба зі старої вкладки.
+    machine.portrait_model = portrait_model if portrait_model in machines_service.MACHINE_MODEL_KEYS else ""
     db.commit()
     request.session["settings_flash"] = {
         "kind": "success",

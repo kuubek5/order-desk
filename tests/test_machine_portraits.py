@@ -82,6 +82,59 @@ def test_card_prefers_own_photo_over_model_default(portraits_dir):
     assert MachineCard(target=MachineTarget(name="x", host="h"), state=None).portrait_url is None
 
 
+def test_chosen_model_beats_name_guess():
+    assert machine_model_key("350i Loader", "250i-dry") == "250i-dry"
+    assert machine_model_key("Верстат 1", "350i-loader") == "350i-loader"
+    assert machine_model_key("250i dry", "") == "250i-dry"           # авто
+    assert machine_model_key("250i dry", "polaroid") == "250i-dry"   # сміття = авто
+    t = MachineTarget(name="Верстат 1", host="h", portrait_model="250i")
+    assert MachineCard(target=t, state=None).model_key == "250i"
+
+
+def test_settings_row_has_model_select_with_chosen_option():
+    from app.routers.deps import templates
+    from starlette.datastructures import Headers
+
+    req = SimpleNamespace(session={}, client=SimpleNamespace(host="127.0.0.1"), headers=Headers({}),
+                          state=SimpleNamespace(ui_prefs_cache={"machine_card": ""}))
+    m = SimpleNamespace(id=1, name="Верстат 1", host="h", port=8765, enabled=True, collect_calibration=False,
+                        agent_token_encrypted="x", password_encrypted=None, portrait_model="250i-dry")
+    html = templates.env.get_template("_settings_machines.html").render(
+        request=req, user=SimpleNamespace(role="адмін"), machines=[m],
+        machine_portrait_version={1: None}, machine_password_set=False)
+    assert 'form="machine-1" name="portrait_model"' in html
+    assert '<option value="250i-dry" selected>250i dry</option>' in html
+    assert 'data-model="250i-dry"' in html                 # мініатюра показує обране
+    assert html.count('<option value="') == 5 + 5          # рядок + форма «Додати»
+
+
+def test_update_route_persists_chosen_model_and_ignores_junk():
+    from datetime import datetime
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+    from app.db import Base
+    from app.models import Machine, User
+    from app.routers import settings as settings_router
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        admin = User(username="a", password_hash="x", full_name="А", role="адмін")
+        machine = Machine(name="Верстат 1", host="10.0.0.1", port=8765, created_at=datetime.now())
+        db.add_all([admin, machine])
+        db.commit()
+        req = SimpleNamespace(session={"user_id": admin.id}, client=SimpleNamespace(host="127.0.0.1"))
+        base = dict(name="Верстат 1", host="10.0.0.1", port="8765", enabled="1", password="", agent_token="", collect_calibration="")
+        r = settings_router.update_machine(request=req, machine_id=machine.id, db=db, portrait_model="350i-loader", **base)
+        assert r.status_code == 303
+        db.refresh(machine)
+        assert machine.portrait_model == "350i-loader"
+        settings_router.update_machine(request=req, machine_id=machine.id, db=db, portrait_model="polaroid", **base)
+        db.refresh(machine)
+        assert machine.portrait_model == ""
+
+
 @pytest.mark.parametrize("name,expected", [
     ("350i Loader", "350i-loader"), ("350i №2", "350i"), ("CORiTEC 350i", "350i"),
     ("250i", "250i"), ("250i dry", "250i-dry"), ("250i DRY №1", "250i-dry"),

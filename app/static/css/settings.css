@@ -1000,3 +1000,8 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .setv2 .fu-photo:focus-within{outline:2px solid var(--accent-b);outline-offset:2px}
 .setv2 .fu-photo-del{color:var(--ink-3);font-size:var(--fs-1);padding:6px;margin-left:2px;border-radius:var(--r-ctl);vertical-align:middle}
 .setv2 .fu-photo-del:hover{color:var(--alarm);background:var(--card-2)}
+/* Селектор портрета-моделі під мініатюрою: вузький, моно-кегль. */
+.setv2 .fu-model-select{display:block;width:118px;height:28px;margin-top:4px;padding:0 6px;font-size:var(--fs-0);
+  font-family:var(--font-mono);color:var(--ink-2)}
+.setv2 .fu-add-row .fu-model-select{display:inline-block;width:auto;height:34px;margin-top:0;font-size:var(--fs-1)}
+.setv2 .fu-add-row{grid-template-columns:1.2fr 1.2fr 84px 1.3fr 1.1fr auto auto}
