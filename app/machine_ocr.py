@@ -323,7 +323,11 @@ def read_progress_percent(image: Image.Image) -> Optional[int]:
     """
     bar = find_progress_bar(image)
     if bar is None:
-        return None
+        # RemiCORE-смуги немає — можливо, це верстат нового покоління
+        # (плаский UI CORiTEC). Його смуга читається геометрією напряму:
+        # число стоїть ЗОВНІ смуги, тож плутанини «підпис = заливка» немає.
+        newgen = find_newgen_progress(image)
+        return newgen.percent if newgen else None
     caption = read_caption_percent(image, bar)
     if caption is not None and caption != bar.percent:
         # Розбіжність — не привід мовчати (число все одно є), але привід
@@ -539,3 +543,114 @@ def read_caption_percent(image: Image.Image, bar: "ProgressBar") -> Optional[int
         return None
     value = int(digits)
     return value if 0 <= value <= 100 else None
+
+
+# ── Нове покоління (CORiTEC 250i PRO+ / плаский UI) ─────────────────────────
+# Інший софт, інший екран: рядок «PROGRESS [смуга] NN%» унизу картки GENERAL.
+# Читається ПРОСТІШЕ за RemiCORE, і саме тому окремою функцією:
+#   • смуга — рівний прямокутник БЕЗ напису всередині (число стоїть праворуч
+#     ЗОВНІ), тож немає плутанини «літери підпису = заливка», через яку
+#     RemiCORE вимагав стільки запобіжників;
+#   • заливка й порожній трек — два різні рівні сірого/синього, обидва помітно
+#     відрізняються від фону картки.
+# Виміряно на бойових кадрах .81 (1920×1200, 04.09.26): заливка (0,104,178),
+# трек (89,89,89), фон (66,66,66); смуга ~561px завширшки, ~20px заввишки.
+# Координати НЕ зашиті — шукаємо за кольором і формою, як і на RemiCORE.
+
+# Заливка: виразно синій, синього помітно більше за червоний.
+def _ng_is_fill(px) -> bool:
+    r, g, b = px[0], px[1], px[2]
+    return b >= 140 and b - r >= 80 and b > g
+
+
+# Порожній трек: нейтральний сірий, СВІТЛІШИЙ за фон картки (66) і темніший
+# за текст. Вузький діапазон навмисно — інакше трек «розповзається» по фону.
+def _ng_is_track(px) -> bool:
+    r, g, b = px[0], px[1], px[2]
+    return abs(r - g) <= 10 and abs(g - b) <= 10 and 76 <= r <= 110
+
+
+def _ng_is_bg(px) -> bool:
+    """Фон картки плаского UI — темний нейтральний сірий (виміряно 66,66,66)."""
+    r, g, b = px[0], px[1], px[2]
+    return max(r, g, b) <= 80 and abs(r - g) <= 12 and abs(g - b) <= 12
+
+
+# Смуга нового покоління: широка й невисока. Кнопки PAUSE/STOP теж сині, але
+# у них висота в рази більша — саме нею вони й відсіюються.
+NG_MIN_WIDTH = 200
+NG_MIN_HEIGHT = 6
+# 60, а не 40: навколо смуги є проміжні відтінки сірого, і вимір товщини
+# захоплює їх (на бойовому кадрі вийшло 46 замість візуальних ~20). Кнопки
+# PAUSE/STOP заввишки ~180px, тож 60 їх однаково відсікає.
+NG_MAX_HEIGHT = 60
+NG_ROW_STEP = 3
+
+
+def find_newgen_progress(image: Image.Image) -> Optional[ProgressBar]:
+    """Смуга прогресу плаского UI нового покоління. None — якщо не впевнені."""
+    source = image.convert("RGB")
+    px = source.load()
+    width, height = source.size
+
+    def belongs(x: int, y: int) -> bool:
+        p = px[x, y]
+        return _ng_is_fill(p) or _ng_is_track(p)
+
+    best: Optional[tuple[int, int, int, int]] = None  # (довжина, x0, x1, y)
+    for y in range(height // 3, height, NG_ROW_STEP):
+        run = 0
+        start = 0
+        for x in range(width):
+            if belongs(x, y):
+                if run == 0:
+                    start = x
+                run += 1
+            else:
+                if run >= NG_MIN_WIDTH and (best is None or run > best[0]):
+                    best = (run, start, x - 1, y)
+                run = 0
+        if run >= NG_MIN_WIDTH and (best is None or run > best[0]):
+            best = (run, start, width - 1, y)
+    if best is None:
+        return None
+
+    length, x0, x1, y = best
+    # Висота смуги — саме те, що відрізняє її від великих синіх кнопок.
+    x_probe = (x0 + x1) // 2
+    top = y
+    while top > 0 and belongs(x_probe, top - 1):
+        top -= 1
+    bottom = y
+    while bottom + 1 < height and belongs(x_probe, bottom + 1):
+        bottom += 1
+    thickness = bottom - top + 1
+    if not (NG_MIN_HEIGHT <= thickness <= NG_MAX_HEIGHT):
+        return None
+
+    # Смуга плаского UI лежить на ТЕМНІЙ картці (фон 66,66,66) — і саме цим
+    # вона відрізняється від світло-сірого Windows-інтерфейсу RemiCORE, де
+    # довгі сірі смуги трапляються скрізь (портретний .64 давав 12 хибних
+    # спрацювань, 04.09.26). Вимагаємо темний фон ОБАБІЧ смуги.
+    y_probe = (top + bottom) // 2
+    if x0 <= 0 or x1 + 1 >= width:
+        return None
+    if not (_ng_is_bg(px[x0 - 1, y_probe]) and _ng_is_bg(px[x1 + 1, y_probe])):
+        return None
+
+    # Заливка — суцільний ПРЕФІКС зліва. Якщо синє починається не з початку
+    # смуги, це не наша смуга, а щось інше — мовчимо.
+    y_mid = (top + bottom) // 2
+    fill = 0
+    while x0 + fill <= x1 and _ng_is_fill(px[x0 + fill, y_mid]):
+        fill += 1
+    if fill and not _ng_is_fill(px[x0, y_mid]):
+        return None
+
+    percent = round(fill * 100 / length)
+    if percent < 0 or percent > 100:
+        return None
+    return ProgressBar(
+        percent=percent, fill_width=fill, container_width=length,
+        box=(x0, top, x1 + 1, bottom + 1),
+    )

@@ -483,3 +483,52 @@ def test_low_percent_is_not_inflated_by_blue_caption():
     assert bar.percent <= 20, f"геометрія роздула низький відсоток: {bar.percent}"
     assert read_caption_percent(image, bar) == 18
     assert read_progress_percent(image) == 18
+
+
+# ── Нове покоління (плаский UI CORiTEC) ─────────────────────────────────────
+
+
+def _newgen(name: str):
+    from pathlib import Path
+
+    return Image.open(Path(__file__).parent / "fixtures" / name).convert("RGB")
+
+
+def test_newgen_progress_is_read_by_geometry():
+    """Плаский UI: смуга без напису всередині, число стоїть ЗОВНІ праворуч.
+
+    Тому тут геометрія чиста — жодної плутанини «літери підпису = заливка»,
+    через яку RemiCORE потребував стількох запобіжників. Реальний кадр .81
+    (04.09.26): смуга залита на 30%, на екрані поруч написано «30%».
+    """
+    from app.machine_ocr import find_newgen_progress, read_progress_percent
+
+    image = _newgen("newgen_progress_30.png")
+    bar = find_newgen_progress(image)
+    assert bar is not None
+    assert bar.percent == 30
+    # Загальний читач має підхопити нове покоління, коли RemiCORE-смуги нема.
+    assert read_progress_percent(image) == 30
+
+
+def test_newgen_zero_percent_is_zero_not_missing():
+    """0% — валідне число, а не «немає смуги»: щойно запущена програма."""
+    from app.machine_ocr import find_newgen_progress
+
+    bar = find_newgen_progress(_newgen("newgen_progress_0.png"))
+    assert bar is not None
+    assert bar.percent == 0
+
+
+def test_newgen_detector_ignores_remicore_frames():
+    """Детектор нового покоління НЕ сміє спрацьовувати на RemiCORE.
+
+    Портретний RemiCORE (світло-сірий Windows-інтерфейс) давав 12 хибних
+    спрацювань, доки не додали вимогу ТЕМНОГО фону картки обабіч смуги.
+    Хибне число гірше за жодне — тому тут саме нуль.
+    """
+    from app.machine_ocr import find_newgen_progress
+
+    for name in ("remicore_bar_100.png", "remicore_caption_72.png",
+                 "remicore_caption_57.png", "remicore_low_18.png"):
+        assert find_newgen_progress(_newgen(name)) is None, name
