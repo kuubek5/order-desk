@@ -70,8 +70,11 @@ def _project_label(entry: Path) -> str | None:
 
 # Короткий кеш: теку питають ДВА місця — лоток у шапці й полл черги (для
 # «привида»), обидва раз на 15с. Без кешу це два обходи диска на кожен тік на
-# кожного оператора. TTL менший за інтервал полла, тож свіжість не страждає.
-_CACHE_TTL_SECONDS = 5.0
+# TTL більший за інтервал полла лотка (15с), щоб КОЖЕН тік не платив 2-3с
+# холодного скану мережевої теки (заміряно /diag/perf 04.09.26). Свіжість
+# тримає фоновий грійник (warm_projects), який оновлює кеш раз на ~20с; лоток
+# читає готове. Було 5с — тобто коротше за полл, і кожен тік бив у шару.
+_CACHE_TTL_SECONDS = 45.0
 _cache: dict[str, tuple[float, list["CapturedProject"]]] = {}
 _cache_lock = Lock()
 
@@ -132,3 +135,23 @@ def scan_projects(
         with _cache_lock:
             _cache[value] = (monotonic(), found)
     return found[:limit]
+
+
+def warm_projects(path: str | None) -> int:
+    """ПРИМУСОВО оновити кеш проєктів Sum3D — для фонового грійника.
+
+    `scan_projects(use_cache=False)` не годиться: воно й не читає, й не пише
+    кеш, тобто нічого б не прогріло. Тут читаємо свіже (обходимо кеш на вході)
+    і ПИШЕМО результат у кеш, щоб лоток у шапці читав готове замість платити
+    2-3с холодного скану щотіку. Повертає кількість проєктів. Ніколи не кидає —
+    прогрів не сміє валити фон."""
+    value = (path or "").strip()
+    if not value:
+        return 0
+    try:
+        found = scan_projects(value, use_cache=False)
+    except Exception:  # noqa: BLE001 — прогрів не валить застосунок
+        return 0
+    with _cache_lock:
+        _cache[value] = (monotonic(), found)
+    return len(found)

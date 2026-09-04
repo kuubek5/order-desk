@@ -227,3 +227,23 @@ def test_scan_uses_a_short_cache_so_two_callers_do_not_hit_disk_twice(tmp_path):
     # …а обхід у обхід кешу бачить обидва.
     fresh = scan_projects(str(tmp_path), use_cache=False)
     assert {p.sum3d_id for p in fresh} == {"02-52-10", "03-00-00"}
+
+
+def test_warm_projects_forces_scan_and_fills_cache(tmp_path):
+    """Грійник лотка Sum3D наповнює кеш свіжим, щоб полл лотка (кожні 15с) не
+    платив 2-3с холодного скану мережевої теки (заміряно /diag/perf 04.09.26)."""
+    from app.services import sum3d_capture as s3
+
+    _touch(tmp_path / "2026-01-05_09-00-00.cam")
+    s3._cache.clear()
+
+    assert s3.warm_projects(str(tmp_path)) == 1
+    # Кеш наповнено — читання з кешем не чіпає диск.
+    assert s3.scan_projects(str(tmp_path))[0].sum3d_id == "09-00-00"
+
+
+def test_warm_projects_empty_path_is_noop():
+    from app.services import sum3d_capture as s3
+
+    assert s3.warm_projects("") == 0
+    assert s3.warm_projects(None) == 0

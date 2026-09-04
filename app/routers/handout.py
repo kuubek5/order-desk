@@ -168,7 +168,11 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     _preview_roots = {"export": str(_export_root)}
     _validated_roots = validate_preview_roots(_preview_roots)
 
+    # Побудова карток клієнтів: токени прев'ю на кожну теку + зіставлення
+    # матеріалу на кожен рядок. Заміряно окремо, бо саме цей блок був
+    # «незаміряним» ~2.4с на /diag/perf 04.09.26 — тепер видно, він це чи ні.
     client_groups = []
+    _t_build = time.monotonic()
     for client_name, group_orders in groups.items():
         match = matches[client_name]
         export_entries = scanned.get(client_name, [])
@@ -227,6 +231,7 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
                 "client_id": _client_id_for(client_name),
             }
         )
+    perf.add("handout:build", time.monotonic() - _t_build)
 
     # Cards themselves follow the same top-to-bottom principle, keyed off
     # each client's earliest (already-sorted) work.

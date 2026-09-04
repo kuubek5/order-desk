@@ -105,7 +105,14 @@ from app.services.sheet_writeback import (
     sheet_writeback_pool as _sheet_writeback_pool,
     warm_sheet_writeback as _warm_sheet_writeback,
 )
-from app.settings_store import get_day_rollover_time, get_export_folder_path
+from app.settings_store import (
+    get_day_rollover_time,
+    get_export_folder_path,
+    get_sum3d_projects_path,
+    get_technician_files_path,
+)
+from app.order_folder import warm_tech_listing
+from app.services.sum3d_capture import warm_projects as warm_sum3d_projects
 from app.sheet_sync_service import (
     SheetSyncBusyError,
     SheetSyncError,
@@ -414,6 +421,44 @@ EXPORT_WARM_INITIAL_DELAY_SECONDS = 20.0
 EXPORT_WARM_INTERVAL_SECONDS = 120.0
 
 
+# Тека техніків і лоток Sum3D: TTL їхніх кешів короткі (готовність рядка мусить
+# зʼявитись посеред зміни), а сам скан Synology коштує 4-5с холодного звернення
+# (заміряно /diag/perf 04.09.26). Грійник тримає обидва кеші свіжими САМ, раз на
+# ~20с, тож оператор завжди читає готове. Інтервал < TTL кешів (30с/45с) —
+# запас, щоб кеш не встигав протухнути між тіками грійника.
+FOLDER_WARM_INITIAL_DELAY_SECONDS = 8.0
+FOLDER_WARM_INTERVAL_SECONDS = 20.0
+
+
+def _folder_warm_tick(db: Session) -> None:
+    """Один прохід прогріву теки техніків і лотка Sum3D. Кожен бік — окремо й
+    беззвучно: недоступна одна шара не має заважати гріти другу."""
+    try:
+        warm_tech_listing(get_technician_files_path(db) or "")
+    except Exception:  # noqa: BLE001 — прогрів не валить застосунок
+        logger.debug("Прогрів теки техніків не вдався", exc_info=True)
+    try:
+        warm_sum3d_projects(get_sum3d_projects_path(db) or "")
+    except Exception:  # noqa: BLE001
+        logger.debug("Прогрів лотка Sum3D не вдався", exc_info=True)
+
+
+def _folder_warm_worker(stop_event: Event) -> None:
+    """Тримати кеші теки техніків і Sum3D теплими — щоб черга не платила за
+    холодний скан мережевої шари під час кліку оператора. Той самий підхід, що
+    в _export_warm_worker: платить фон, оператор отримує готове."""
+    if stop_event.wait(FOLDER_WARM_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                _folder_warm_tick(db)
+        except Exception:  # noqa: BLE001 — фоновий прогрів не валить застосунок
+            logger.exception("Фоновий прогрів тек не вдався")
+        if stop_event.wait(FOLDER_WARM_INTERVAL_SECONDS):
+            return
+
+
 def _export_warm_worker(stop_event: Event) -> None:
     """Тримати кеш обходу export теплим, щоб екран видачі відкривався одразу.
 
@@ -574,6 +619,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("order-desk-update-check", _update_check_worker),
         _BackgroundWorker("order-desk-monthly-backup", _monthly_backup_worker),
         _BackgroundWorker("order-desk-export-warm", _export_warm_worker),
+        _BackgroundWorker("kuubmill-folder-warm", _folder_warm_worker),
         _BackgroundWorker("order-desk-shift-images-prune", _shift_images_prune_worker),
         _BackgroundWorker("order-desk-furnace", _furnace_worker),
         _BackgroundWorker("order-desk-machines", _machine_worker),

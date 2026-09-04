@@ -54,6 +54,21 @@ logger = logging.getLogger(__name__)
 _TECH_LISTING_TTL_SECONDS = 30.0
 _tech_listing: dict[str, tuple[float, Path, frozenset[str]]] = {}
 _tech_listing_lock = threading.Lock()
+# Один скан на всіх (single-flight). Обхід шари коштує 4-5 с (виміряно
+# /diag/perf 04.09.26), і без цього три вкладки, відкриті поспіль, давали ТРИ
+# паралельні скани по 5 с — «стадо». Тепер перший потік сканує, решта чекає на
+# ЙОГО результат під цим локом і читає вже теплий кеш, а не стукає в шару знову.
+_tech_scan_locks: dict[str, threading.Lock] = {}
+_tech_scan_locks_guard = threading.Lock()
+
+
+def _scan_lock_for(path: str) -> threading.Lock:
+    with _tech_scan_locks_guard:
+        lock = _tech_scan_locks.get(path)
+        if lock is None:
+            lock = threading.Lock()
+            _tech_scan_locks[path] = lock
+        return lock
 
 
 def _tech_root_children(technician_files_path: str) -> tuple[Path, frozenset[str]]:
@@ -68,6 +83,18 @@ def _tech_root_children(technician_files_path: str) -> tuple[Path, frozenset[str
         if hit is not None and now - hit[0] < _TECH_LISTING_TTL_SECONDS:
             return hit[1], hit[2]
 
+    # Кеш протух або порожній — сканує ЛИШЕ один потік на шлях. Решта чекає тут
+    # і за мить нижче знайде свіжий кеш (подвійна перевірка), а не скане вдруге.
+    with _scan_lock_for(technician_files_path):
+        now = time.monotonic()
+        with _tech_listing_lock:
+            hit = _tech_listing.get(technician_files_path)
+            if hit is not None and now - hit[0] < _TECH_LISTING_TTL_SECONDS:
+                return hit[1], hit[2]
+        return _scan_tech_root(technician_files_path, now)
+
+
+def _scan_tech_root(technician_files_path: str, now: float) -> tuple[Path, frozenset[str]]:
     try:
         root = Path(technician_files_path).resolve()
         # os.scandir, а НЕ Path.iterdir(): scandir віддає ознаку «це тека»
@@ -102,6 +129,22 @@ def _is_link(path: Path) -> bool:
         return True
     is_junction = getattr(path, "is_junction", None)
     return bool(is_junction and is_junction())
+
+
+def warm_tech_listing(technician_files_path: str) -> int:
+    """ПРИМУСОВО оновити кеш переліку тек техніків — для фонового грійника.
+
+    Саме примусово, а не через `_tech_root_children`: той на 20-секундному
+    інтервалі грійника знайшов би кеш іще теплим (TTL 30с) і не оновив би
+    нічого. Грійник має тримати кеш свіжим САМ, щоб оператор завжди читав
+    готове (~0с) замість 4-5с холодного скану Synology (заміряно /diag/perf
+    04.09.26). Один скан на всіх (той самий лок) — грійник не б'ється з
+    запитом оператора. Порожній шлях — нічого не робимо."""
+    if not technician_files_path:
+        return 0
+    with _scan_lock_for(technician_files_path):
+        _, names = _scan_tech_root(technician_files_path, time.monotonic())
+    return len(names)
 
 
 def resolve_email_attachment_folder(

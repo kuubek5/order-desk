@@ -393,3 +393,68 @@ class TestTechnicianFolderIsNotPerRow:
         assert all(o.job_code_folder_uri is None for o in bad), (
             "пакетний шлях пропустив traversal у job_code"
         )
+
+
+def test_warm_tech_listing_forces_refresh_and_fills_cache(tmp_path):
+    """Грійник ПРИМУСОВО оновлює кеш, а не проходить крізь TTL.
+
+    Через `_tech_root_children` на 20-секундному інтервалі кеш (TTL 30с) був би
+    ще теплим і не оновився б. warm_tech_listing мусить сканувати завжди."""
+    import time as _time
+    from app import order_folder as of
+
+    (tmp_path / "Іванов").mkdir()
+    with of._tech_listing_lock:
+        of._tech_listing.clear()
+
+    assert of.warm_tech_listing(str(tmp_path)) == 1
+    # У кеші лежить свіже — наступне читання не сканує диск.
+    _root, names = of._tech_root_children(str(tmp_path))
+    assert names == frozenset({"Іванов"})
+
+    # Додаємо теку й ФОРСУЄМО — warm бачить її попри теплий кеш.
+    (tmp_path / "Петров").mkdir()
+    assert of.warm_tech_listing(str(tmp_path)) == 2
+
+
+def test_warm_tech_listing_empty_path_is_noop():
+    from app import order_folder as of
+
+    assert of.warm_tech_listing("") == 0
+
+
+def test_tech_listing_single_flight(tmp_path):
+    """5 одночасних запитів на ХОЛОДНОМУ кеші дають ОДИН скан, не п'ять.
+
+    Скан Synology коштує 4-5с; без single-flight кожна відкрита вкладка
+    запускала свій (спіймано /diag/perf 04.09.26 — три скани по 5с водночас)."""
+    import threading
+    import time as _time
+    from app import order_folder as of
+
+    (tmp_path / "Іванов").mkdir()
+    with of._tech_listing_lock:
+        of._tech_listing.clear()
+
+    scans = {"n": 0}
+    original = of._scan_tech_root
+
+    def counting(path, now):
+        scans["n"] += 1
+        _time.sleep(0.2)  # імітуємо повільну шару
+        return original(path, now)
+
+    of._scan_tech_root = counting
+    try:
+        threads = [
+            threading.Thread(target=of._tech_root_children, args=(str(tmp_path),))
+            for _ in range(5)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        of._scan_tech_root = original
+
+    assert scans["n"] == 1, f"мало бути 1 скан на всіх, а було {scans['n']}"
