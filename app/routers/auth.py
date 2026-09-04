@@ -201,7 +201,7 @@ UI_CHIP_STYLES = {"", "solid", "dashed", "marker", "gradient"}
 # власником 03.09.26; решта з тієї ж галереї; none/off — вимкнути.
 UI_MACHINE_ARTS = {"", "burr", "flower", "titanium", "toolpath", "none"}
 UI_MACHINE_STRIPS = {"", "edge", "fill", "ring", "ticker", "off"}
-# Картки верстатів у Налаштуваннях: "" = «Портрет» (дефолт), "frame" = живий кадр.
+# Картки на екрані «Верстати»: "" = «Портрет» (дефолт), "frame" = живий кадр у плитці.
 UI_MACHINE_CARDS = {"", "frame"}
 
 

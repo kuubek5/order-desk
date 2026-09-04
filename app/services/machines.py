@@ -334,7 +334,21 @@ def _capture_http(host: str, port: int, token: str) -> Image.Image:
     import requests
 
     url = f"http://{host}:{port}/capture"
-    resp = requests.get(url, headers={"X-Agent-Token": token}, timeout=AGENT_TIMEOUT)
+    # Мережеві збої — людською: сирий текст requests («HTTPConnectionPool…
+    # Max retries exceeded… NewConnectionError…») лягав у плитку на екрані
+    # «Верстати» шістьма рядками. Оператору треба лише «хто» і «що робити».
+    try:
+        resp = requests.get(url, headers={"X-Agent-Token": token}, timeout=AGENT_TIMEOUT)
+    except requests.exceptions.ConnectTimeout as exc:
+        raise RuntimeError(
+            f"агент {host}:{port} не відповідає — ПК вимкнено або порт закрито брандмауером"
+        ) from exc
+    except requests.exceptions.ReadTimeout as exc:
+        raise RuntimeError(f"агент {host}:{port} не віддав кадр за {AGENT_TIMEOUT[1]:.0f} с") from exc
+    except requests.exceptions.ConnectionError as exc:
+        raise RuntimeError(
+            f"агент {host}:{port} недоступний — ПК вимкнено або агент не запущено"
+        ) from exc
     if resp.status_code == 403:
         raise RuntimeError("агент відхилив токен (403) — звір токен у налаштуваннях")
     resp.raise_for_status()

@@ -286,11 +286,11 @@
             </div>
         </div>
 
-        {# Картки верстатів у Налаштуваннях: «Портрет» — дефолт (власник,
-           04.09.26), «Живий кадр» — шапка картки зі справжнім кадром RemiCORE. #}
+        {# Картки на екрані «Верстати»: «Портрет» — дефолт (власник, 04.09.26),
+           «Живий кадр» — кадр RemiCORE просто в плитці, як було раніше. #}
         <div class="settings-field">
-            <label>Картки верстатів у налаштуваннях</label>
-            <div class="acc-icons-row" role="group" aria-label="Вигляд карток верстатів у налаштуваннях">
+            <label>Картки на екрані «Верстати»</label>
+            <div class="acc-icons-row" role="group" aria-label="Вигляд карток на екрані верстатів">
                 {% for value, title in [('', 'Портрет верстата'), ('frame', 'Живий кадр')] %}
                 <button type="button" class="acc-swatch acc-mcard-btn" data-set-machine-card="{{ value }}">
                     <span class="mcsw" data-mcard="{{ value }}" aria-hidden="true"><i></i><b>350i Loader</b></span>

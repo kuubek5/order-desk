@@ -443,3 +443,48 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 .calib-banner strong { display: block; margin-bottom: 2px; }
 .calib-banner p { margin: 0; color: var(--ink-2); font-size: var(--fs-2); line-height: 1.5; }
 .calib-banner .btn { white-space: nowrap; }
+
+/* ── Екран «Верстати»: портретні картки у три стовпці (04.09.26) ──────────
+   Галерея «Картки верстатів»: власник обрав «Портрет верстата» дефолтом,
+   «Живий кадр» — вибір на акаунті (ui_prefs → machine_card = "frame" віддає
+   стару розмітку з кадром RemiCORE у плитці). Тут: продакт-шот моделі
+   (350i / 250i за назвою; згенеровано з фото цеху) як шапка картки, поверх —
+   назва, адреса й ГОЛОВНЕ число (відсоток); кадр екрана — за <details>, і
+   полл, як і раніше, не свапає, поки він розгорнутий. */
+.machines .mc-grid{display:grid;gap:14px;grid-template-columns:repeat(3,minmax(0,1fr))}
+@media (max-width:1100px){.machines .mc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:680px){.machines .mc-grid{grid-template-columns:1fr}}
+.machines .mc-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;
+  display:flex;flex-direction:column;transition:border-color var(--ui-speed) ease}
+.machines .mc-card.is-run{border-color:var(--accent-d)}
+.machines .mc-card.is-offline{border-color:rgba(var(--alarm-rgb), .35)}
+.machines .mc-port{position:relative;aspect-ratio:3/2;background:#0c1015 center/cover no-repeat;isolation:isolate}
+.machines .mc-port[data-model="350i"]{background-image:url("../img/machine-portrait-350i.jpg")}
+.machines .mc-port[data-model="250i"]{background-image:url("../img/machine-portrait-250i.jpg")}
+.machines .mc-card.is-offline .mc-port{filter:saturate(.2) brightness(.6)}
+.machines .mc-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,11,15,.25) 0%,rgba(8,11,15,.05) 40%,rgba(8,11,15,.9) 100%)}
+.machines .mc-cap{position:absolute;left:14px;right:14px;bottom:11px;display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.machines .mc-cap-l{display:flex;flex-direction:column;gap:2px;min-width:0}
+.machines .mc-cap-l b{font-size:var(--fs-4);font-weight:600;color:var(--ink);text-shadow:0 1px 6px rgba(0,0,0,.8);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.machines .mc-cap-l span{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-2);text-shadow:0 1px 4px rgba(0,0,0,.8)}
+/* Головне число — з іншого кінця цеху. Світиться лише коли є. */
+.machines .mc-bigpct{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:34px;font-weight:700;line-height:1;
+  color:var(--accent-c);text-shadow:0 0 18px rgba(var(--accent-rgb), .5);flex:none}
+.machines .mc-bigpct u{text-decoration:none;font-size:var(--fs-2);color:var(--ink-3);font-weight:400;margin-left:1px}
+.machines .mc-cap .fu-pill{flex:none;text-shadow:none;backdrop-filter:blur(3px)}
+.machines .fu-pill.is-wait{color:var(--ink-3);border-color:var(--line-2);background:rgba(0,0,0,.35)}
+.machines .mc-body{padding:12px 14px 12px;display:flex;flex-direction:column;gap:8px}
+.machines .mc-body .mc-bar{margin:0 0 2px}
+.machines .mc-body .mc-prog{margin:0}
+.machines .mc-body .fu-frame summary{display:flex;align-items:center;gap:6px}
+.machines .mc-body .fu-frame summary::before{content:"▸";color:var(--accent);font-size:var(--fs-0)}
+.machines .mc-body .fu-frame[open] summary::before{content:"▾"}
+.machines .mc-body .fu-frame .mc-full{margin-top:8px}
+/* Зразок для кабінету — той самий портрет і кадр-заглушка в мініатюрі. */
+.mcsw{position:relative;display:flex;height:64px;border-radius:calc(var(--r-card) - 3px);border:1px solid var(--line);overflow:hidden;background:var(--card-2)}
+.mcsw i{flex:0 0 46%;background:#0c1015 center/cover no-repeat}
+.mcsw[data-mcard=""] i{background-image:url("../img/machine-portrait-350i.jpg")}
+.mcsw[data-mcard="frame"]{flex-direction:column}
+.mcsw[data-mcard="frame"] i{flex:0 0 58%;background-image:url("../img/machine-dust.jpg");filter:saturate(.4) brightness(.8)}
+.mcsw b{align-self:center;padding:0 8px;font-size:var(--fs-0);font-weight:500;color:var(--ink-2)}

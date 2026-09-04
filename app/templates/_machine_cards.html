@@ -7,7 +7,77 @@
    <details class="fu-frame"> розгортає кадр у натуральний розмір: екран
    RemiCORE 1080p, у плитці дрібні цифри не прочитати. Полл не свапає, поки
    details відкритий — та сама умова, що на пічках. #}
-{% if cards %}
+{# Два трактування (04.09.26, галерея «Картки верстатів», вибір власника):
+   «Портрет верстата» — дефолт: продакт-шот моделі як шапка, поверх нього
+   назва, адреса й відсоток; кадр екрана — за <details>. «Живий кадр» —
+   вибір на акаунті (ui_prefs → machine_card = "frame"): стара розмітка з
+   кадром RemiCORE просто в плитці. Умова полла та сама (.fu-frame[open]). #}
+{% set _mode = ui_prefs(request).machine_card %}
+{% if cards and _mode != 'frame' %}
+<div class="mc-grid">
+    {% for card in cards %}
+    {% set portrait = '250i' if '250' in card.target.name else '350i' %}
+    <article class="mc-card{% if card.has_problem %} is-offline{% elif card.percent is not none %} is-run{% endif %}">
+        <div class="mc-port" data-model="{{ portrait }}">
+            <div class="mc-scrim" aria-hidden="true"></div>
+            <div class="mc-cap">
+                <div class="mc-cap-l">
+                    <b>{{ card.target.name }}</b>
+                    <span>{{ card.target.host }}{% if card.target.port != 5900 %}:{{ card.target.port }}{% endif %}</span>
+                </div>
+                {% if card.has_problem %}
+                <span class="fu-pill is-offline">немає зв'язку</span>
+                {% elif card.percent is not none %}
+                <span class="mc-bigpct mc-pct" aria-label="Виконано {{ card.percent }} відсотків">{{ card.percent }}<u>%</u></span>
+                {% elif card.has_frame and not card.stale %}
+                <span class="fu-pill is-run">на зв'язку</span>
+                {% elif card.has_frame %}
+                <span class="fu-pill is-unknown">кадр застарів</span>
+                {% else %}
+                <span class="fu-pill is-wait">чекаємо кадр</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="mc-body">
+            {% if card.has_problem %}
+            <p class="fu-alert">{{ card.problem_text }}</p>
+            {% endif %}
+            {% if card.percent is not none %}
+            <div class="mc-bar" role="img" aria-label="Виконано {{ card.percent }} відсотків">
+                <i style="width:{{ card.percent }}%"></i>
+            </div>
+            {% endif %}
+            {% if card.sum3d_id %}
+            <p class="mc-prog">
+                <span class="mono mc-sid">{{ card.sum3d_id }}</span>
+                {% if card.order %}
+                <a class="mc-order" href="/orders/{{ card.order.id }}">
+                    {{ card.order.work_order_no or card.order.client_name or 'робота' }}
+                </a>
+                {% if card.order.client_name and card.order.work_order_no %}
+                <span class="mc-client">{{ card.order.client_name }}</span>
+                {% endif %}
+                {% else %}
+                <span class="mc-nomatch" title="{{ card.iso_name }}">немає в черзі</span>
+                {% endif %}
+            </p>
+            {% endif %}
+            {% if card.has_frame %}
+            <details class="fu-frame">
+                <summary>Кадр екрана · {{ card.frame_at.strftime('%H:%M:%S') }}</summary>
+                <div class="mc-full">
+                    <img src="/machines/{{ card.key }}/frame.png?t={{ card.frame_at.timestamp()|int }}"
+                         alt="Екран верстата {{ card.target.name }} — повний розмір" loading="lazy">
+                </div>
+            </details>
+            {% elif not card.has_problem %}
+            <p class="fu-note">Чекаємо перший кадр…</p>
+            {% endif %}
+        </div>
+    </article>
+    {% endfor %}
+</div>
+{% elif cards %}
 <div class="fu-grid">
     {% for card in cards %}
     <article class="fu-card{% if card.has_problem %} is-offline{% endif %}">

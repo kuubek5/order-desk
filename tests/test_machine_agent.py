@@ -56,6 +56,28 @@ def test_capture_http_403_explains(monkeypatch):
         assert "токен" in str(exc).lower()
 
 
+def test_capture_http_network_errors_are_human(monkeypatch):
+    """Сирий текст requests (HTTPConnectionPool… Max retries…) не має лягати в
+    плитку: оператору треба «хто не відповідає» і «що зробити»."""
+    import requests
+
+    for exc_type, expect in (
+        (requests.exceptions.ConnectTimeout, "брандмауер"),
+        (requests.exceptions.ReadTimeout, "не віддав кадр"),
+        (requests.exceptions.ConnectionError, "не запущено"),
+    ):
+        def _boom(*a, _e=exc_type, **k):
+            raise _e("HTTPConnectionPool(host='192.0.2.10', port=8765): Max retries exceeded")
+        monkeypatch.setattr(requests, "get", _boom)
+        try:
+            ms._capture_http("192.0.2.10", 8765, "tok")
+            assert False, "мало кинути виняток"
+        except RuntimeError as exc:
+            text = str(exc)
+            assert "192.0.2.10:8765" in text and expect in text
+            assert "HTTPConnectionPool" not in text and "Max retries" not in text
+
+
 def test_target_is_agent_flag():
     vnc = ms.MachineTarget(name="a", host="h", port=5900)
     agent = ms.MachineTarget(name="b", host="h", port=8765, agent_token="t")
