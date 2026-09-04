@@ -455,3 +455,31 @@ def test_caption_tolerates_percent_glyph_height_variant():
     bar = find_progress_bar(image)
     assert bar is not None
     assert read_caption_percent(image, bar) == 57
+
+
+def test_low_percent_is_not_inflated_by_blue_caption():
+    """Низький відсоток: підпис СИНІЙ на порожній частині — і його не можна
+    рахувати як заливку.
+
+    Бойовий кадр .76 (04.09.26): смуга справді на 18%, а віджет показував 57%.
+    RemiCORE малює підпис білим на залитій частині й ТИМ САМИМ темно-синім на
+    порожній; скан ішов по середньому рядку й хапав сині літери «18%» як
+    продовження заливки. Тепер заливка — це колонка, синя на ВСЮ висоту смуги
+    (літера займає лише середину), а підпис на порожній частині читається
+    (поріг чорнила по `min`, а не `max`: у синього max=128).
+    """
+    from pathlib import Path
+
+    from app.machine_ocr import (
+        find_progress_bar,
+        read_caption_percent,
+        read_progress_percent,
+    )
+
+    path = Path(__file__).parent / "fixtures" / "remicore_low_18.png"
+    image = Image.open(path).convert("RGB")
+    bar = find_progress_bar(image)
+    assert bar is not None
+    assert bar.percent <= 20, f"геометрія роздула низький відсоток: {bar.percent}"
+    assert read_caption_percent(image, bar) == 18
+    assert read_progress_percent(image) == 18

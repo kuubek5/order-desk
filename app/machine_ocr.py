@@ -133,6 +133,19 @@ def _is_dark(px: tuple[int, int, int]) -> bool:
     return max(px[0], px[1], px[2]) <= 180
 
 
+def _is_fill_column(px, x: int, band: list[int]) -> bool:
+    """Чи колонка `x` — ЗАЛИВКА смуги (а не літера підпису на порожній частині).
+
+    Заливка синя на ВСЮ висоту смуги, тож синя і вгорі, і внизу band. Літера
+    підпису стоїть у середині: над нею й під нею — тло. Ця відмінність і
+    рятує від того, щоб синій підпис на порожній частині зарахувався в
+    заливку (див. коментар у скані).
+    """
+    if not band:
+        return False
+    return _is_blue(px[x, band[0]]) and _is_blue(px[x, band[-1]])
+
+
 def _is_border_column(px, x: int, band: list[int], height: int = 10**9) -> bool:
     """Чи колонка `x` — вертикальна РАМКА смуги (а не літера підпису).
 
@@ -250,11 +263,20 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
             hit_border = True
             break
         p = px[x, y_mid]
-        if _is_blue(p):
+        if _is_fill_column(px, x, band):
+            # Заливка — це колонка, синя ВГОРІ І ВНИЗУ смуги. Літери підпису
+            # займають лише середину, тож так вони не подовжують заливку.
             last_blue = x
             gap = 0
         elif _is_unfilled(p):
             last_white = x
+            gap = 0
+        elif _is_blue(p):
+            # Синє лише в середині — це ПІДПИС на порожній частині. RemiCORE
+            # малює його тим самим темно-синім, що й заливку, і на низькому
+            # відсотку скан по середньому рядку хапав його як заливку: «18%»
+            # читалось як 57% (бойовий кадр .76, 04.09.26). Рахуємо як літеру:
+            # заливку не подовжує, скан не спиняє.
             gap = 0
         else:
             gap += 1
@@ -456,7 +478,13 @@ def caption_mask(image: Image.Image, bar: "ProgressBar") -> Optional[Image.Image
                 is_ink = min(r, g, b) >= _CAPTION_LIGHT_MIN
             else:
                 # Поза заливкою символ темний на світлому тлі панелі.
-                is_ink = max(r, g, b) <= _CAPTION_DARK_MAX
+                # `min`, а НЕ `max`: поза заливкою RemiCORE малює підпис тим
+                # самим темно-синім, що й заливка (0,0,128). Його max = 128,
+                # тобто поріг по max його пропускав, і на низькому відсотку
+                # підпис не читався взагалі (бойовий кадр .76 «18%»,
+                # 04.09.26). `min` ловить і синє (min=0), і темно-сіре, але
+                # відкидає світле тло смуги (min≈240).
+                is_ink = min(r, g, b) <= _CAPTION_DARK_MAX
             if is_ink:
                 mpx[x - x0, y - y0] = (0, 0, 0)
     return mask
