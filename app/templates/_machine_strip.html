@@ -31,7 +31,7 @@
         {%- for card in machine_cards -%}
         {%- set st = 'off' if card.has_problem else ('run' if card.percent is not none else ('done' if card.is_completed else (('idle' if not card.has_program else 'busy') if card.has_frame else 'wait'))) -%}
         {%- if not loop.first %}<span class="tksep" aria-hidden="true">·</span>{% endif -%}
-        <a class="tk {{ st }}" data-mid="{{ card.target.machine_id or '' }}" href="/machines" title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% endif %}"><b>{{ card.target.name }}</b> <i>{% if card.percent is not none %}{{ card.percent }}{% elif card.is_completed %}готово{% else %}—{% endif %}</i></a>
+        <a class="tk {{ st }}" data-mid="{{ card.target.machine_id or '' }}" href="/machines" title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% endif %}"><b>{{ card.target.name }}</b> <i>{% if card.percent is not none %}{{ card.percent }}{% elif card.is_completed %}✓{% else %}—{% endif %}</i></a>
         {%- endfor -%}
     </span>
     {% else %}
@@ -44,7 +44,11 @@
         <svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="bg" cx="8" cy="8" r="6.5"/><circle class="fg" cx="8" cy="8" r="6.5" stroke-dasharray="40.84" stroke-dashoffset="{{ '%.2f'|format(40.84 * (1 - (card.percent or 0) / 100)) }}"/></svg>
         {% endif %}
         <b>{{ card.target.name }}</b>
-        <i class="mono">{% if card.percent is not none %}{{ card.percent }}<u>%</u>{% elif card.is_completed %}<b class="mch-done">готово</b>{% else %}—{% endif %}</i>
+        {# «Готово» тут — ГАЛОЧКА, а не слово. Чіп розрахований під двоцифрове число,
+   і слово в цій комірці налазило на назву верстата: «250i-Toli готово»
+   (скарга 04.09.26). Галочка займає місце цифри, читається миттєво й здалеку,
+   а повне пояснення лишається в підказці чіпа й у бічній панелі, де є місце. #}
+<i class="mono">{% if card.percent is not none %}{{ card.percent }}<u>%</u>{% elif card.is_completed %}<b class="mch-done" aria-label="програма завершена">✓</b>{% else %}—{% endif %}</i>
         {% if _mstrip == 'edge' %}<em class="mch-edge" aria-hidden="true"></em>{% endif %}
         {% if _mstrip == 'segments' %}
         {% set lit = ((card.percent or 0) / 10)|round|int %}

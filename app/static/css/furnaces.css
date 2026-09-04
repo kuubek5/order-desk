@@ -362,7 +362,7 @@ html[data-machine-art="none"] .ms-tile>*{text-shadow:none}
   color:var(--ok);text-shadow:none}
 .mch.done i{color:var(--ok);font-weight:600}
 .mch.done{border-color:rgba(var(--ok-rgb), .35)}
-.mch-done{font-weight:600;font-family:inherit;font-size:var(--fs-0);letter-spacing:.05em}
+.mch-done{font-weight:700;font-family:inherit;font-size:var(--fs-2);line-height:1}
 .ms-what,.ms-note{grid-area:what;font-size:var(--fs-0);color:var(--ink-3);white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,.7)}
 .ms-what.dim{color:var(--ink-3)}
