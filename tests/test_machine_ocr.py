@@ -623,3 +623,39 @@ def test_narrow_container_without_caption_stays_silent():
         )
         silent = bar.container_width < MIN_TRUSTED_CONTAINER and 0 < bar.percent < 100
         assert silent is expect_silent, f"{percent}% на {narrow}px"
+
+
+def test_blue_text_field_is_not_a_progress_bar():
+    """Синє поле «B 0.00» — НЕ смуга, хоч і дає довгий синій пробіг.
+
+    Бойовий випадок 04.09.26 (350i_Titan, 192.168.1.60): щойно справжня
+    заливка ставала завузькою, детектор чіплявся за чужі сині елементи й
+    видавав правдоподібні 23% / 26% / 48% — усі три з полів координат і
+    повзунка. На портретному .64 те саме поле давало ЗАМОРОЖЕНЕ «41%» у 29
+    кадрах поспіль, доки верстат насправді йшов 0→7%.
+
+    Відрізняє їх суцільність: заливка синя на ВСЮ висоту смуги, а літера — ні.
+    """
+    from app.machine_ocr import _is_fill_column, _is_solid_fill
+
+    band = [0, 1, 2, 3, 4, 5]
+    solid = {(x, y): (0, 0, 128) for x in range(20) for y in band}
+    # «літера»: синє лише в середніх рядках
+    letter = {(x, y): ((0, 0, 128) if 1 <= y <= 3 else (255, 255, 255))
+              for x in range(20) for y in band}
+
+    class Px:
+        def __init__(self, d): self.d = d
+        def __getitem__(self, k): return self.d[k]
+
+    assert _is_solid_fill(Px(solid), 0, 19, band)
+    assert not _is_solid_fill(Px(letter), 0, 19, band)
+    assert _is_fill_column(Px(solid), 5, band)
+    assert not _is_fill_column(Px(letter), 5, band)
+
+
+def test_titan_frame_reads_fourteen_percent():
+    """Реальний кадр 350i_Titan (.60, 1152×864) — на екрані «14%»."""
+    from app.machine_ocr import read_progress_percent
+
+    assert read_progress_percent(_newgen("remicore_titan_14.png")) == 14

@@ -156,6 +156,26 @@ def _is_fill_column(px, x: int, band: list[int]) -> bool:
     return _is_blue(px[x, band[0]]) and _is_blue(px[x, band[-1]])
 
 
+def _is_solid_fill(px, x0: int, x1: int, band: list[int]) -> bool:
+    """Чи пробіг `x0..x1` — СУЦІЛЬНА заливка, а не синій текст.
+
+    Головна ознака смуги: заливка синя на ВСЮ висоту, тобто і в найверхньому,
+    і в найнижчому рядку band. Синій напис («B 0.00» у полі координати,
+    «100%» біля повзунка) дає довгий пробіг у тому рядку, де його перетнула
+    горизонтальна частина літери, але вгорі й унизу там тло.
+
+    Саме на цьому детектор ловився, коли справжня заливка була ще завузькою,
+    щоб бути зачіпкою: на кадрі .60 при 1% він віддавав то 23%, то 26%, то 48%
+    — три різні чужі елементи, і всі три виглядали правдоподібно (04.09.26).
+
+    Кілька відсотків неспівпадіння лишаємо на згладжені краї пробігу.
+    """
+    if not band or x1 < x0:
+        return False
+    solid = sum(1 for x in range(x0, x1 + 1) if _is_fill_column(px, x, band))
+    return solid >= (x1 - x0 + 1) * 0.9
+
+
 def _is_edge_column(px, x: int, band: list[int]) -> bool:
     """Кінець КОНТЕЙНЕРА смуги: колонка, де на всю висоту немає ні заливки,
     ні білого треку.
@@ -267,7 +287,9 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
             break
         tried += 1
         candidate = band_of(x0, y_seed)
-        if MIN_BAR_HEIGHT <= len(candidate) <= MAX_BAR_HEIGHT:
+        if MIN_BAR_HEIGHT <= len(candidate) <= MAX_BAR_HEIGHT and _is_solid_fill(
+            px, x0, x1, candidate
+        ):
             band, left, fill_right = candidate, x0, x1
             break
         rejected.append((x0, x1, candidate[0], candidate[-1]) if candidate
