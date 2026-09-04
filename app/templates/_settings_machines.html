@@ -27,7 +27,7 @@
                 {% if machines %}
                 <table class="fu-table">
                     <thead>
-                        <tr><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th title="Збирати кадри для калібрування читача відсотка">Калібр.</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
+                        <tr><th title="Фото верстата для картки на екрані «Верстати»">Фото</th><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th title="Збирати кадри для калібрування читача відсотка">Калібр.</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
                     </thead>
                     <tbody>
                     {% for machine in machines %}
@@ -35,6 +35,30 @@
                         <form method="post" action="/settings/machines/{{ machine.id }}" id="machine-{{ machine.id }}"></form>
                         <form method="post" action="/settings/machines/{{ machine.id }}/delete" id="machine-del-{{ machine.id }}"
                               onsubmit="return confirm('Видалити верстат «{{ machine.name }}» з переліку?')"></form>
+                        {# Фото на конкретний верстат (04.09.26): натиснув мініатюру →
+                           вибрав файл → форма сама відправилась. Окрема multipart-форма,
+                           бо решта рядка — звичайна urlencoded «machine-{id}». Без
+                           фото мініатюра показує дефолт моделі, щоб було видно, ЩО
+                           саме зараз стоїть на картці. #}
+                        {% set pv = machine_portrait_version.get(machine.id) if machine_portrait_version else none %}
+                        <td class="fu-col-photo">
+                            <form method="post" action="/settings/machines/{{ machine.id }}/portrait" enctype="multipart/form-data" class="fu-photo-form">
+                                <label class="fu-photo{% if not pv %} is-default{% endif %}" title="{% if pv %}Своє фото — натисни, щоб замінити{% else %}Портрет моделі — натисни, щоб завантажити своє фото{% endif %}">
+                                    {% if pv %}
+                                    <img src="/machines/portrait/{{ machine.id }}.jpg?v={{ pv }}" alt="Фото верстата {{ machine.name }}">
+                                    {% else %}
+                                    <span class="fu-photo-model" data-model="{{ machine_model_key(machine.name) }}" aria-hidden="true"></span>
+                                    {% endif %}
+                                    <input type="file" name="photo" accept="image/*" onchange="this.form.submit()"
+                                           aria-label="Фото верстата {{ machine.name }}">
+                                </label>
+                            </form>
+                            {% if pv %}
+                            <form method="post" action="/settings/machines/{{ machine.id }}/portrait/delete" class="fu-photo-form">
+                                <button type="submit" class="link-button fu-photo-del" title="Прибрати фото, повернути портрет моделі">✕</button>
+                            </form>
+                            {% endif %}
+                        </td>
                         <td><input form="machine-{{ machine.id }}" class="login-input" name="name" value="{{ machine.name }}" maxlength="80" required></td>
                         <td><input form="machine-{{ machine.id }}" class="login-input mono" name="host" value="{{ machine.host }}" maxlength="60" required></td>
                         <td><input form="machine-{{ machine.id }}" class="login-input mono fu-col-port" name="port" value="{{ machine.port }}" inputmode="numeric"></td>

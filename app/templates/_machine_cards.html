@@ -16,9 +16,10 @@
 {% if cards and _mode != 'frame' %}
 <div class="mc-grid">
     {% for card in cards %}
-    {% set portrait = '250i' if '250' in card.target.name else '350i' %}
     <article class="mc-card{% if card.has_problem %} is-offline{% elif card.percent is not none %} is-run{% endif %}">
-        <div class="mc-port" data-model="{{ portrait }}">
+        {# Фото САМОГО верстата з Налаштувань має старшинство; без нього — дефолт
+           моделі (350i / 350i loader / 250i / 250i dry за назвою). #}
+        <div class="mc-port" data-model="{{ card.model_key }}"{% if card.portrait_url %} style="background-image:url('{{ card.portrait_url }}')"{% endif %}>
             <div class="mc-scrim" aria-hidden="true"></div>
             <div class="mc-cap">
                 <div class="mc-cap-l">

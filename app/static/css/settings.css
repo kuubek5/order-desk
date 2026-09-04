@@ -980,3 +980,23 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
   .setv2 .fu-add-row{grid-template-columns:1fr 1fr 84px}
   .setv2 .fu-add-row .settings-secondary-button{grid-column:1/-1;justify-self:start}
 }
+
+/* Фото верстата в таблиці налаштувань (04.09.26): мініатюра = кнопка вибору
+   файлу. Дефолт моделі показано притишеним із пунктиром — видно, що фото
+   свого ще немає. Файли ті самі, що й на екрані «Верстати». */
+.setv2 .fu-col-photo{width:1%;white-space:nowrap;padding-right:6px}
+.setv2 .fu-photo-form{display:inline-block;vertical-align:middle;margin:0}
+.setv2 .fu-photo{position:relative;display:block;width:72px;height:48px;border-radius:7px;overflow:hidden;
+  border:1px solid var(--line-2);background:#0c1015;cursor:pointer}
+.setv2 .fu-photo:hover{border-color:var(--accent)}
+.setv2 .fu-photo img{display:block;width:100%;height:100%;object-fit:cover}
+.setv2 .fu-photo.is-default{border-style:dashed}
+.setv2 .fu-photo-model{display:block;width:100%;height:100%;background:center/cover no-repeat;opacity:.7}
+.setv2 .fu-photo-model[data-model="350i"]{background-image:url("../img/machine-portrait-350i.jpg")}
+.setv2 .fu-photo-model[data-model="350i-loader"]{background-image:url("../img/machine-portrait-350i-loader.jpg")}
+.setv2 .fu-photo-model[data-model="250i"]{background-image:url("../img/machine-portrait-250i.jpg")}
+.setv2 .fu-photo-model[data-model="250i-dry"]{background-image:url("../img/machine-portrait-250i-dry.jpg")}
+.setv2 .fu-photo input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.setv2 .fu-photo:focus-within{outline:2px solid var(--accent-b);outline-offset:2px}
+.setv2 .fu-photo-del{color:var(--ink-3);font-size:var(--fs-1);padding:6px;margin-left:2px;border-radius:var(--r-ctl);vertical-align:middle}
+.setv2 .fu-photo-del:hover{color:var(--alarm);background:var(--card-2)}

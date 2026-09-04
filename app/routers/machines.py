@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
+from app.machine_portraits import portrait_path
 from app.routers.deps import get_current_user, get_db, is_loopback_request, templates
 from app.services.machines import (
     POLL_INTERVAL_SECONDS,
@@ -120,6 +121,19 @@ def machines_calibration_zip(request: Request, db: Session = Depends(get_db)):
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="calibration_frames.zip"'},
     )
+
+
+@router.get("/machines/portrait/{machine_id}.jpg")
+def machine_portrait(request: Request, machine_id: int, db: Session = Depends(get_db)):
+    """Фото верстата, завантажене в Налаштуваннях. Шлях будується з числа,
+    а не з рядка запиту; немає файлу — 404, картка тоді бере дефолт моделі."""
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    path = portrait_path(machine_id)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="фото немає")
+    # У URL є mtime (?v=), тому кешувати можна довго: нове фото = новий URL.
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @router.get("/machines/{key}/frame.png")

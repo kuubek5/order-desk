@@ -53,7 +53,9 @@ def _render_screen(card_mode=""):
 def test_screen_default_is_portrait_grid_by_model():
     html = _render_screen()
     assert 'class="mc-grid"' in html and "fu-grid" not in html
-    assert html.count('data-model="350i"') == 2 and html.count('data-model="250i"') == 1
+    assert html.count('data-model="350i-loader"') == 1      # «350i Loader»
+    assert html.count('data-model="350i"') == 1             # «350i №2»
+    assert html.count('data-model="250i-dry"') == 1         # «250i dry»
     assert '>43<u>%</u>' in html                       # головне число в шапці
     assert "чекаємо кадр" in html and "немає зв'язку" in html
     # кадр лишається доступним — за details, з тією ж умовою для полла
@@ -121,20 +123,23 @@ def test_appearance_accepts_card_pref_and_rejects_junk():
     Base.metadata.create_all(engine)
     with Session(engine, expire_on_commit=False) as db:
         u = User(username="op", password_hash="x", full_name="Оп", role="оператор")
-        db.add(u); db.commit()
+        db.add(u)
+        db.commit()
         req = SimpleNamespace(session={"user_id": u.id}, client=SimpleNamespace(host="127.0.0.1"),
                               headers=Headers({}), state=SimpleNamespace())
         base = dict(theme="", icons="", buttons="", loader="", chips="", machine_art="", machine_strip="")
         r = asyncio.run(auth_router_mod.post_account_appearance(request=req, db=db, machine_card="frame", **base))
         assert r.status_code == 204
-        db.refresh(u); assert u.ui_machine_card == "frame"
+        db.refresh(u)
+        assert u.ui_machine_card == "frame"
         r = asyncio.run(auth_router_mod.post_account_appearance(request=req, db=db, machine_card="polaroid", **base))
         assert r.status_code == 422
 
 
 def test_portrait_files_referenced_by_css_exist():
     css = (ROOT / "app/static/css/furnaces.css").read_text(encoding="utf-8")
-    names = set(re.findall(r'img/(machine-portrait-[a-z0-9]+\.jpg)', css))
-    assert names == {"machine-portrait-350i.jpg", "machine-portrait-250i.jpg"}
+    names = set(re.findall(r'img/(machine-portrait-[a-z0-9-]+\.jpg)', css))
+    assert names == {"machine-portrait-350i.jpg", "machine-portrait-350i-loader.jpg",
+                     "machine-portrait-250i.jpg", "machine-portrait-250i-dry.jpg"}
     for n in names:
         assert (ROOT / "app/static/img" / n).is_file(), n

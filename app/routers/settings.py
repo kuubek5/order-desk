@@ -69,6 +69,7 @@ from app.routers.deps import (
     toast_response,
 )
 from app.routers.mail import _mail_filter_categories
+from app.machine_portraits import PortraitError, delete_portrait, portrait_version, save_portrait
 from app.services import machines as machines_service
 from app.services.config_state import (
     imap_configured,
@@ -340,8 +341,10 @@ def get_settings(
             "furnace_password_set": bool(get_furnace_vnc_password(db)),
             "furnace_bg": get_furnace_background(db),
             # Верстати: той самий контракт — рядки без паролів, лише ознака.
-            "machines": machines_service.list_machines(db),
+            "machines": (_machines := machines_service.list_machines(db)),
             "machine_password_set": bool(get_machine_vnc_password(db)),
+            # Версія (mtime) фото на верстат — для мініатюри в таблиці; None = нема.
+            "machine_portrait_version": {m.id: portrait_version(m.id) for m in _machines},
             "spool_report": (_spool_report := analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH))),
             # "Стан системи" flow map — honest, cheap counts (one scalar each).
             # No export-folder scan here; that's the heavy walk we keep off page load.
@@ -1171,6 +1174,42 @@ def update_machine(
     return RedirectResponse("/settings#machines", status_code=303)
 
 
+@router.post("/settings/machines/{machine_id}/portrait")
+async def upload_machine_portrait(
+    request: Request, machine_id: int, photo: UploadFile = File(...), db: Session = Depends(get_db)
+):
+    """Фото верстата для картки на екрані «Верстати». Формат і розмір
+    перевіряє machine_portraits (не розширення від браузера)."""
+    require_settings_admin(request, db)
+    machine = db.get(Machine, machine_id)
+    if machine is None:
+        raise HTTPException(status_code=404, detail="верстат не знайдено")
+    try:
+        save_portrait(machine.id, photo.file)
+    except PortraitError as exc:
+        request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
+        return RedirectResponse("/settings#machines", status_code=303)
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": f"Фото верстата «{machine.name}» збережено.",
+    }
+    return RedirectResponse("/settings#machines", status_code=303)
+
+
+@router.post("/settings/machines/{machine_id}/portrait/delete")
+def delete_machine_portrait(request: Request, machine_id: int, db: Session = Depends(get_db)):
+    require_settings_admin(request, db)
+    machine = db.get(Machine, machine_id)
+    if machine is None:
+        raise HTTPException(status_code=404, detail="верстат не знайдено")
+    delete_portrait(machine.id)
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": f"Фото верстата «{machine.name}» прибрано — картка знову з портретом моделі.",
+    }
+    return RedirectResponse("/settings#machines", status_code=303)
+
+
 @router.post("/settings/machines/{machine_id}/delete")
 def delete_machine(request: Request, machine_id: int, db: Session = Depends(get_db)):
     require_settings_admin(request, db)
@@ -1178,6 +1217,7 @@ def delete_machine(request: Request, machine_id: int, db: Session = Depends(get_
     if machine is None:
         raise HTTPException(status_code=404, detail="верстат не знайдено")
     name = machine.name
+    delete_portrait(machine.id)
     db.delete(machine)
     db.commit()
     request.session["settings_flash"] = {

@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
+from app.machine_portraits import portrait_version
 from app.machine_ocr import (
     missing_caption_digits,
     pick_milling_program,
@@ -86,6 +87,9 @@ class MachineTarget:
     password: Optional[str] = None
     # Непорожній → читаємо кадр через HTTP-агент (Go), а не VNC.
     agent_token: Optional[str] = None
+    # id рядка `machines` — для фото верстата (`/machines/portrait/{id}.jpg`).
+    # None у тестах і для цілей без рядка: тоді картка бере дефолт моделі.
+    machine_id: Optional[int] = None
     # Ручний режим калібрування: відкладати кадри за часом (див. Machine).
     collect_calibration: bool = False
 
@@ -158,6 +162,7 @@ def target_of(machine: Machine) -> MachineTarget:
         name=machine.name, host=machine.host, port=machine.port,
         password=password, agent_token=agent_token,
         collect_calibration=bool(getattr(machine, "collect_calibration", False)),
+        machine_id=machine.id,
     )
 
 
@@ -528,6 +533,18 @@ def poll_all(db: Session, now: Optional[datetime] = None) -> list[MachineState]:
 # ── Картки для екранів ──────────────────────────────────────────────────────
 
 
+def machine_model_key(name: str) -> str:
+    """Дефолтний портрет за моделлю в назві. Чотири моделі цеху (фото від
+    власника 04.09.26): 350i, 350i loader, 250i, 250i dry. Невпізнана назва —
+    350i, їх найбільше."""
+    lowered = (name or "").lower()
+    if "loader" in lowered or "лоадер" in lowered:
+        return "350i-loader"
+    if "250" in lowered:
+        return "250i-dry" if "dry" in lowered else "250i"
+    return "350i"
+
+
 @dataclass
 class MachineCard:
     target: MachineTarget
@@ -607,6 +624,19 @@ class MachineCard:
         власник 04.09.26 (верстат .76 на іншій вкладці)."""
         return bool(self.iso_name or self.sum3d_id)
 
+    @property
+    def portrait_url(self) -> Optional[str]:
+        """Фото САМЕ ЦЬОГО верстата (Налаштування → Фото), або None → дефолт
+        моделі. mtime у URL — щоб нове фото не перекрив кеш браузера."""
+        mid = self.target.machine_id
+        if mid is None:
+            return None
+        version = portrait_version(mid)
+        return None if version is None else f"/machines/portrait/{mid}.jpg?v={version}"
+
+    @property
+    def model_key(self) -> str:
+        return machine_model_key(self.target.name)
 
 
 def milling_now() -> dict[str, dict]:

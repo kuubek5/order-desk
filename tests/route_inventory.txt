@@ -25,6 +25,7 @@ GET /login
 GET /machines
 GET /machines/calibration.zip
 GET /machines/cards
+GET /machines/portrait/{machine_id}.jpg
 GET /machines/side
 GET /machines/strip
 GET /machines/{key}/frame.png
@@ -127,6 +128,8 @@ POST /settings/machines
 POST /settings/machines/password
 POST /settings/machines/{machine_id}
 POST /settings/machines/{machine_id}/delete
+POST /settings/machines/{machine_id}/portrait
+POST /settings/machines/{machine_id}/portrait/delete
 POST /settings/mail-download/toggle
 POST /settings/mail-spool/prune
 POST /settings/materials/add

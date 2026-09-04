@@ -459,8 +459,12 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 .machines .mc-card.is-run{border-color:var(--accent-d)}
 .machines .mc-card.is-offline{border-color:rgba(var(--alarm-rgb), .35)}
 .machines .mc-port{position:relative;aspect-ratio:3/2;background:#0c1015 center/cover no-repeat;isolation:isolate}
+/* Дефолти за моделлю — з реальних фото цеху (04.09.26). Інлайновий
+   background-image з фото самого верстата перебиває їх, бо стоїть у style. */
 .machines .mc-port[data-model="350i"]{background-image:url("../img/machine-portrait-350i.jpg")}
+.machines .mc-port[data-model="350i-loader"]{background-image:url("../img/machine-portrait-350i-loader.jpg")}
 .machines .mc-port[data-model="250i"]{background-image:url("../img/machine-portrait-250i.jpg")}
+.machines .mc-port[data-model="250i-dry"]{background-image:url("../img/machine-portrait-250i-dry.jpg")}
 .machines .mc-card.is-offline .mc-port{filter:saturate(.2) brightness(.6)}
 .machines .mc-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,11,15,.25) 0%,rgba(8,11,15,.05) 40%,rgba(8,11,15,.9) 100%)}
 .machines .mc-cap{position:absolute;left:14px;right:14px;bottom:11px;display:flex;align-items:flex-end;justify-content:space-between;gap:10px}

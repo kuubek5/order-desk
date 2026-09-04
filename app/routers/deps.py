@@ -402,6 +402,8 @@ templates.env.globals["split_material_color"] = split_material_color
 templates.env.globals["strip_material_word"] = strip_material_word
 templates.env.globals["triage_readiness"] = triage_readiness
 templates.env.globals["files_on_disk"] = files_on_disk
+from app.services.machines import machine_model_key  # noqa: E402 — після створення templates
+templates.env.globals["machine_model_key"] = machine_model_key
 templates.env.globals["is_rush_comment"] = is_rush_comment
 templates.env.globals["static_ver"] = static_ver
 templates.env.filters["changelog_md"] = changelog_md
