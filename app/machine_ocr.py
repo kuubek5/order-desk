@@ -706,6 +706,11 @@ NG_MIN_HEIGHT = 6
 # PAUSE/STOP заввишки ~180px, тож 60 їх однаково відсікає.
 NG_MAX_HEIGHT = 60
 NG_ROW_STEP = 3
+# Скільки згладжених пікселів терпимо ВСЕРЕДИНІ смуги і за її краєм. На 150i
+# PRO (M3.1) між заливкою й треком стоїть перехідний (44,97,134) — не заливка й
+# не трек, — а зліва від смуги такий самий перехід до фону. Без цього допуску
+# детектор бачив лише трекову половину смуги й мовчав (04.09.26).
+NG_EDGE_SLACK = 3
 
 
 def find_newgen_progress(image: Image.Image) -> Optional[ProgressBar]:
@@ -718,60 +723,84 @@ def find_newgen_progress(image: Image.Image) -> Optional[ProgressBar]:
         p = px[x, y]
         return _ng_is_fill(p) or _ng_is_track(p)
 
-    best: Optional[tuple[int, int, int, int]] = None  # (довжина, x0, x1, y)
+    # Пробіги збираємо ВСІ, а не найдовший. Три уроки з бойових кадрів 150i
+    # (04.09.26), кожен коштував ітерації:
+    #  • між заливкою й треком стоїть ЗГЛАДЖЕНИЙ піксель (44,97,134) — не
+    #    заливка й не трек. Він розривав пробіг, і детектор бачив лише праву,
+    #    трекову половину смуги. Тому допуск NG_EDGE_SLACK усередині пробігу;
+    #  • найдовший пробіг — НЕ наш: роздільник списку 819px (товщина 4) проти
+    #    справжніх 555px. Перебираємо кандидатів, а не беремо перший;
+    #  • один елемент дає пробіг на КОЖНОМУ своєму рядку, тож роздільник
+    #    займав усі 40 слотів. Рахуємо РІЗНІ області (той самий урок, що з
+    #    вікном G-коду на RemiCORE).
+    runs: list[tuple[int, int, int, int]] = []
     for y in range(height // 3, height, NG_ROW_STEP):
         run = 0
         start = 0
+        gap = 0
+        last = 0
         for x in range(width):
             if belongs(x, y):
                 if run == 0:
                     start = x
-                run += 1
-            else:
-                if run >= NG_MIN_WIDTH and (best is None or run > best[0]):
-                    best = (run, start, x - 1, y)
-                run = 0
-        if run >= NG_MIN_WIDTH and (best is None or run > best[0]):
-            best = (run, start, width - 1, y)
-    if best is None:
-        return None
+                run += gap + 1
+                gap = 0
+                last = x
+            elif run:
+                gap += 1
+                if gap > NG_EDGE_SLACK:
+                    if run >= NG_MIN_WIDTH:
+                        runs.append((run, start, last, y))
+                    run = 0
+                    gap = 0
+        if run >= NG_MIN_WIDTH:
+            runs.append((run, start, last, y))
+    runs.sort(key=lambda r: -r[0])
 
-    length, x0, x1, y = best
-    # Висота смуги — саме те, що відрізняє її від великих синіх кнопок.
-    x_probe = (x0 + x1) // 2
-    top = y
-    while top > 0 and belongs(x_probe, top - 1):
-        top -= 1
-    bottom = y
-    while bottom + 1 < height and belongs(x_probe, bottom + 1):
-        bottom += 1
-    thickness = bottom - top + 1
-    if not (NG_MIN_HEIGHT <= thickness <= NG_MAX_HEIGHT):
-        return None
+    seen: set[tuple[int, int]] = set()
+    for length, x0, x1, y in runs:
+        key = (x0 // 8, x1 // 8)
+        if key in seen:
+            continue
+        seen.add(key)
+        if len(seen) > MAX_BAR_CANDIDATES:
+            break
 
-    # Смуга плаского UI лежить на ТЕМНІЙ картці (фон 66,66,66) — і саме цим
-    # вона відрізняється від світло-сірого Windows-інтерфейсу RemiCORE, де
-    # довгі сірі смуги трапляються скрізь (портретний .64 давав 12 хибних
-    # спрацювань, 04.09.26). Вимагаємо темний фон ОБАБІЧ смуги.
-    y_probe = (top + bottom) // 2
-    if x0 <= 0 or x1 + 1 >= width:
-        return None
-    if not (_ng_is_bg(px[x0 - 1, y_probe]) and _ng_is_bg(px[x1 + 1, y_probe])):
-        return None
+        # Висота смуги — саме те, що відрізняє її від великих синіх кнопок.
+        x_probe = (x0 + x1) // 2
+        top = y
+        while top > 0 and belongs(x_probe, top - 1):
+            top -= 1
+        bottom = y
+        while bottom + 1 < height and belongs(x_probe, bottom + 1):
+            bottom += 1
+        if not (NG_MIN_HEIGHT <= bottom - top + 1 <= NG_MAX_HEIGHT):
+            continue
 
-    # Заливка — суцільний ПРЕФІКС зліва. Якщо синє починається не з початку
-    # смуги, це не наша смуга, а щось інше — мовчимо.
-    y_mid = (top + bottom) // 2
-    fill = 0
-    while x0 + fill <= x1 and _ng_is_fill(px[x0 + fill, y_mid]):
-        fill += 1
-    if fill and not _ng_is_fill(px[x0, y_mid]):
-        return None
+        # Смуга плаского UI лежить на ТЕМНІЙ картці (фон 66,66,66) — і саме цим
+        # вона відрізняється від світло-сірого Windows-інтерфейсу RemiCORE, де
+        # довгі сірі смуги трапляються скрізь (портретний .64 давав 12 хибних
+        # спрацювань). Фон шукаємо в межах згладженого краю, а не рівно за
+        # піксель: зліва від заливки 150i стоїть перехідний (44,97,134).
+        y_probe = (top + bottom) // 2
+        if x0 <= NG_EDGE_SLACK or x1 + NG_EDGE_SLACK + 1 >= width:
+            continue
+        left_bg = any(_ng_is_bg(px[x0 - 1 - k, y_probe]) for k in range(NG_EDGE_SLACK + 1))
+        right_bg = any(_ng_is_bg(px[x1 + 1 + k, y_probe]) for k in range(NG_EDGE_SLACK + 1))
+        if not (left_bg and right_bg):
+            continue
 
-    percent = round(fill * 100 / length)
-    if percent < 0 or percent > 100:
-        return None
-    return ProgressBar(
-        percent=percent, fill_width=fill, container_width=length,
-        box=(x0, top, x1 + 1, bottom + 1),
-    )
+        # Заливка — суцільний ПРЕФІКС зліва.
+        fill = 0
+        while x0 + fill <= x1 and _ng_is_fill(px[x0 + fill, y_probe]):
+            fill += 1
+        percent = round(fill * 100 / length)
+        if percent < 0 or percent > 100:
+            continue
+        return ProgressBar(
+            percent=percent, fill_width=fill, container_width=length,
+            box=(x0, top, x1 + 1, bottom + 1),
+        )
+    return None
+
+

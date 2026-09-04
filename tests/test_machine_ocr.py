@@ -522,6 +522,27 @@ def test_newgen_zero_percent_is_zero_not_missing():
     assert bar.percent == 0
 
 
+def test_newgen_150i_pro_variant_is_read():
+    """CORiTEC 150i PRO (M3.1) — той самий плаский UI, але інша смуга.
+
+    Реальний кадр .82 (04.09.26, на екрані 38%). Три речі, яких не було на
+    250i й на яких детектор мовчав:
+      • між заливкою й треком стоїть ЗГЛАДЖЕНИЙ піксель (44,97,134) — не
+        заливка й не трек. Він розривав пробіг, і бачили лише правий, трековий
+        шматок;
+      • найдовший пробіг у кадрі — роздільник списку (819px), а не смуга
+        (555px). Здатись на першому кандидаті = не знайти нічого;
+      • фон картки починається за ДВА пікселі від смуги, не за один.
+    """
+    from app.machine_ocr import find_newgen_progress, read_progress_percent
+
+    image = _newgen("newgen_150i_38.png")
+    bar = find_newgen_progress(image)
+    assert bar is not None
+    assert bar.percent == 38
+    assert read_progress_percent(image) == 38
+
+
 def test_newgen_detector_ignores_remicore_frames():
     """Детектор нового покоління НЕ сміє спрацьовувати на RemiCORE.
 
