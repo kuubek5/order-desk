@@ -67,7 +67,11 @@ def test_dead_machine_stays_on_screen_with_its_reason(monkeypatch, tmp_path):
     with Session(_database()) as db:
         _add_machine(db)
         target = service.MachineTarget(name="350i №1", host="192.168.1.85")
-        service.poll_target(db, target, None, error="ПК верстата не відповів за 20 с")
+        # Тричі: «немає зв'язку» показується лише після PROBLEM_AFTER_FAILURES
+        # невдач поспіль — одна невдача це ще не обрив, а загублений пакет
+        # (пом'якшення миготіння, 04.09.26).
+        for _ in range(service.PROBLEM_AFTER_FAILURES):
+            service.poll_target(db, target, None, error="ПК верстата не відповів за 20 с")
 
         cards = service.snapshot(db)
         assert [c.target.name for c in cards] == ["350i №1"]
@@ -325,3 +329,26 @@ def test_timed_calibration_zip_includes_timed_frames(monkeypatch, tmp_path):
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         assert any(n.startswith("m/t-") for n in z.namelist())
     assert service.calibration_status()["frames"] >= 1
+
+
+def test_single_failed_poll_does_not_paint_the_tile_red(monkeypatch, tmp_path):
+    """Одна невдача — ще не обрив.
+
+    У цеховій мережі губиться пакет, а ПК верстата під фрезеруванням не завжди
+    відповідає за 3 с. Раніше вистачало ОДНОГО невдалого опитування, щоб
+    плитка почервоніла до наступного тіку — оператор читав це як «зв'язок
+    постійно обривається» (скарга 04.09.26). Справжній обрив видно за ~15 с.
+    """
+    from app.services import machines as service
+
+    service.reset_state_for_tests()
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    target = service.MachineTarget(name="350i", host="10.0.0.9", port=8765, agent_token="t")
+
+    for attempt in range(1, service.PROBLEM_AFTER_FAILURES + 1):
+        state = service.poll_target(None, target, None, error="ПК не відповів")
+        card = service.MachineCard(target=target, state=state, now=datetime.now())
+        expected = attempt >= service.PROBLEM_AFTER_FAILURES
+        assert card.has_problem is expected, f"спроба {attempt}"
+        # Причина записана з ПЕРШОЇ невдачі — просто ще не показується.
+        assert state.error == "ПК не відповів"

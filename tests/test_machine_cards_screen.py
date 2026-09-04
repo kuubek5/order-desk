@@ -35,7 +35,8 @@ def _request(card_mode=""):
 def _card(name, host, percent=None, frame=True, error=None, port=8765):
     t = MachineTarget(name=name, host=host, port=port)
     return MachineCard(target=t, state=MachineState(target=t, frame_at=NOW if frame else None,
-                                                    percent=percent, percent_at=NOW, error=error), now=NOW)
+                                                    percent=percent, percent_at=NOW, error=error,
+                                                    fail_streak=99 if error else 0), now=NOW)
 
 
 CARDS = [

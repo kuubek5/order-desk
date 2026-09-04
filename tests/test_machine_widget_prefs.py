@@ -45,7 +45,8 @@ def _cards():
     def card(name, host, percent=None, error=None, frame=True):
         target = MachineTarget(name=name, host=host)
         state = MachineState(target=target, frame_at=now if frame else None,
-                             percent=percent, percent_at=now, error=error)
+                             percent=percent, percent_at=now, error=error,
+                             fail_streak=99 if error else 0)
         return MachineCard(target=target, state=state, now=now)
 
     return [

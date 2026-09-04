@@ -84,6 +84,15 @@ FRAME_SAVE_INTERVAL_SECONDS = 15.0
 CAPTURE_WARMUP_SECONDS = 8.0
 # Після цього мовчання плитка чесно каже «дані застаріли».
 STALE_AFTER_SECONDS = 120.0
+# Скільки НЕВДАЛИХ опитувань поспіль треба, щоб сказати «немає зв'язку».
+# Раніше вистачало одного: загублений SYN у цеховій мережі або зайнятий
+# фрезеруванням Windows 7, який не встиг відповісти за 3 с, — і плитка
+# червоніла до наступного тіку. Оператор читав це як «зв'язок постійно
+# обривається» (скарга 04.09.26). Три поспіль при інтервалі 5 с = справжній
+# обрив видно за ~15 с, а поодиноке миготіння не показується взагалі.
+# Числа при цьому НЕ підмінюються: за їхню свіжість і далі відповідає
+# STALE_AFTER_SECONDS.
+PROBLEM_AFTER_FAILURES = 3
 
 
 class MachineConfigError(Exception):
@@ -140,6 +149,10 @@ class MachineState:
     # без цього прапорця завершений верстат виглядав так само, як зупинений
     # («—»), — а для цеху це різні речі: завершений треба розвантажити.
     completed: bool = False
+    # Скільки опитувань поспіль не вдалось. Нуль = останнє було успішним.
+    fail_streak: int = 0
+    # Коли верстат востаннє ВІДПОВІВ — для тривалості обриву в логу.
+    last_ok_at: Optional[datetime] = None
     # Коли кадр востаннє лягав на диск (аналізуємо частіше, ніж пишемо).
     frame_saved_at: Optional[datetime] = None
     # Що саме фрезерується: ім'я .iso із заголовка вікна RemiCORE і витягнутий
@@ -481,6 +494,19 @@ def poll_target(
         with _states_lock:
             state.error = error
             state.error_at = now
+            state.fail_streak += 1
+            streak = state.fail_streak
+            since = state.last_ok_at
+        # Пишемо в лог САМЕ ПЕРЕХІД, а не кожен невдалий тік: інакше мертвий
+        # верстат за ніч насипле 17 тисяч рядків. Один рядок на обрив дає
+        # відповідь на «як часто рветься» цифрами, а не відчуттям.
+        if streak == PROBLEM_AFTER_FAILURES:
+            logger.warning(
+                "Верстат %s: обрив зв'язку (остання відповідь %s) — %s",
+                target.name,
+                since.strftime("%H:%M:%S") if since else "невідомо",
+                error,
+            )
         return state
 
     # Диск чіпаємо не частіше ніж раз на FRAME_SAVE_INTERVAL_SECONDS: свіжість
@@ -532,6 +558,15 @@ def poll_target(
     # роботи. Плюс фоновий тік і ручне «Оновити» — це два потоки на один
     # об'єкт стану (знайдено рев'ю 04.09.26).
     with _states_lock:
+        if state.fail_streak >= PROBLEM_AFTER_FAILURES:
+            gap = (now - state.last_ok_at).total_seconds() if state.last_ok_at else None
+            logger.warning(
+                "Верстат %s: зв'язок відновлено%s",
+                target.name,
+                f" після {gap / 60:.0f} хв" if gap else "",
+            )
+        state.fail_streak = 0
+        state.last_ok_at = now
         if percent != state.percent or state.percent_changed_at is None:
             state.percent_changed_at = now
         state.percent = percent
@@ -677,7 +712,17 @@ class MachineCard:
 
     @property
     def has_problem(self) -> bool:
-        return bool(self.state and self.state.error)
+        """«Немає зв'язку» — лише після PROBLEM_AFTER_FAILURES невдач поспіль.
+
+        Одна невдача — це ще не обрив: у цеховій мережі губиться пакет, а ПК
+        верстата під фрезеруванням не завжди відповідає за 3 с. Показувати за
+        нею червону плитку означало миготіти на очах в оператора кожні кілька
+        хвилин (скарга 04.09.26)."""
+        return bool(
+            self.state
+            and self.state.error
+            and self.state.fail_streak >= PROBLEM_AFTER_FAILURES
+        )
 
     @property
     def problem_text(self) -> str:
