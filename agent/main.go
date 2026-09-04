@@ -512,9 +512,15 @@ func runInstall(cfgPath string) {
 	if err := openFirewall(portOf(cfg.Bind)); err != nil {
 		log.Printf("install: firewall rule failed: %v", err)
 	}
-	if err := restartTask(); err != nil {
-		log.Printf("install: start agent failed: %v", err)
-	}
+	// Старт ЗАРАЗ — прямим спавном процесу, а не `schtasks /run`. На Win10
+	// з-під елевейтед-інсталятора `schtasks /run` часто не піднімає сервер у
+	// сесії (бойовий випадок 04.09.26 — після інсталятора localhost:8765 усе
+	// одно refused, доводилось запускати `-serve` руками). Прямий запуск — те
+	// саме, що оператор робив руками, і воно працює завжди. Задача+ярлик
+	// лишаються для АВТОЗАПУСКУ ПІСЛЯ РЕБУТУ (onlogon), а не для «зараз», тож
+	// конфлікту за порт немає: цей процес живе до перезавантаження, після
+	// нього стартує задача.
+	startDetachedServe()
 	// A copy-paste cheat-sheet for the operator, shown by the installer.
 	var b strings.Builder
 	b.WriteString("KMill Agent — дані для CRM (Налаштування → Верстати)\r\n\r\n")
@@ -626,6 +632,22 @@ func psQuote(s string) string {
 func restartTask() error {
 	_ = runCmd("schtasks", "/end", "/tn", taskName) // ignore "not running"
 	return runCmd("schtasks", "/run", "/tn", taskName)
+}
+
+// startDetachedServe запускає `kmill-agent.exe -serve` окремим процесом, що
+// ПЕРЕЖИВАЄ вихід інсталятора. Не чекаємо на нього (Wait) — інакше -install не
+// завершився б. exe зібрано з -H=windowsgui, тож консоль не спливає. Якщо порт
+// уже зайнятий (агент якось уже працює), новий процес просто впаде на bind і
+// тихо вийде — шкоди нема.
+func startDetachedServe() {
+	cmd := exec.Command(exePath(), "-serve")
+	cmd.Dir = exeDir()
+	if err := cmd.Start(); err != nil {
+		log.Printf("install: detached serve start failed: %v", err)
+		return
+	}
+	// Не тримаємо дескриптор процесу — хай живе самостійно.
+	_ = cmd.Process.Release()
 }
 
 // taskState reports whether the scheduled task exists and is currently running.
