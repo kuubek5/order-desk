@@ -165,6 +165,18 @@ func runTray(onQuit func()) {
 	className := utf16("KMillAgentTray")
 
 	wndProc := syscall.NewCallback(func(hwnd syscall.Handle, message uint32, wparam, lparam uintptr) uintptr {
+		// Паніка ТУТ убиває весь процес — і разом з ним HTTP-сервер знімків,
+		// бо трей і сервер живуть в одному процесі, а цикл повідомлень крутиться
+		// на головній горутині. Симптом у цеху: у треї лишається «привид»
+		// іконки, який зникає при наведенні мишкою (Explorer пінгує мертвого
+		// власника), а CRM пише «агент не запущено» при живому ПК (спіймано
+		// власником 04.09.26). Recover мусить стояти ВСЕРЕДИНІ колбека:
+		// розкрутитись за межу syscall-колбека паніка не може взагалі.
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("паніка в обробнику вікна трею (%d): %v", message, rec)
+			}
+		}()
 		switch message {
 		case wmTrayCallback:
 			// Правий клік або лівий — обидва відкривають меню: на дрібній
