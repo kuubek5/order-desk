@@ -93,6 +93,10 @@ STALE_AFTER_SECONDS = 120.0
 # Числа при цьому НЕ підмінюються: за їхню свіжість і далі відповідає
 # STALE_AFTER_SECONDS.
 PROBLEM_AFTER_FAILURES = 3
+# Скільки останніх обривів памʼятаємо на верстат. Десяти вистачає, щоб побачити
+# закономірність («рветься щогодини» / «один раз уночі»), і вони нічого не
+# важать для памʼяті.
+MAX_OUTAGES = 10
 
 
 class MachineConfigError(Exception):
@@ -153,6 +157,13 @@ class MachineState:
     fail_streak: int = 0
     # Коли верстат востаннє ВІДПОВІВ — для тривалості обриву в логу.
     last_ok_at: Optional[datetime] = None
+    # Історія обривів: (початок, кінець або None якщо триває, причина).
+    # У памʼяті процесу, останні MAX_OUTAGES. Потрібна, щоб на питання «як
+    # часто рветься» відповідати цифрами, а не відчуттям, — і щоб оператор
+    # бачив це в картці, а не шукав у лог-файлі (скарга 04.09.26).
+    outages: list = field(default_factory=list)
+    polls_ok: int = 0
+    polls_failed: int = 0
     # Коли кадр востаннє лягав на диск (аналізуємо частіше, ніж пишемо).
     frame_saved_at: Optional[datetime] = None
     # Що саме фрезерується: ім'я .iso із заголовка вікна RemiCORE і витягнутий
@@ -500,12 +511,16 @@ def poll_target(
             state.error = error
             state.error_at = now
             state.fail_streak += 1
+            state.polls_failed += 1
             streak = state.fail_streak
             since = state.last_ok_at
         # Пишемо в лог САМЕ ПЕРЕХІД, а не кожен невдалий тік: інакше мертвий
         # верстат за ніч насипле 17 тисяч рядків. Один рядок на обрив дає
         # відповідь на «як часто рветься» цифрами, а не відчуттям.
         if streak == PROBLEM_AFTER_FAILURES:
+            with _states_lock:
+                state.outages.append([since or now, None, error])
+                del state.outages[:-MAX_OUTAGES]
             logger.warning(
                 "Верстат %s: обрив зв'язку (остання відповідь %s) — %s",
                 target.name,
@@ -570,8 +585,11 @@ def poll_target(
                 target.name,
                 f" після {gap / 60:.0f} хв" if gap else "",
             )
+        if state.outages and state.outages[-1][1] is None:
+            state.outages[-1][1] = now
         state.fail_streak = 0
         state.last_ok_at = now
+        state.polls_ok += 1
         if percent != state.percent or state.percent_changed_at is None:
             state.percent_changed_at = now
         state.percent = percent
@@ -780,6 +798,38 @@ class MachineCard:
         if not (self.state and self.state.iso_name):
             return None
         return None if (self.stale or self.has_problem) else self.state.iso_name
+
+    @property
+    def link_report(self) -> Optional[str]:
+        """Підсумок звʼязку: скільки обривів і скільки часу верстат мовчав.
+
+        Показуємо, лише якщо обриви БУЛИ — на здоровому верстаті це зайвий шум.
+        Рахуємо від старту застосунку: історія в памʼяті процесу, і це чесно
+        видно з формулювання."""
+        if not (self.state and self.state.outages):
+            return None
+        done = [o for o in self.state.outages if o[1] is not None]
+        total = sum((o[1] - o[0]).total_seconds() for o in done)
+        parts = [f"обривів: {len(self.state.outages)}"]
+        if done:
+            longest = max((o[1] - o[0]).total_seconds() for o in done)
+            parts.append(f"найдовший {longest / 60:.0f} хв")
+            parts.append(f"разом {total / 60:.0f} хв")
+        if self.state.outages[-1][1] is None:
+            parts.append("зараз триває")
+        return " · ".join(parts)
+
+    @property
+    def link_outages(self) -> list[str]:
+        """Обриви рядками, найновіші зверху."""
+        out = []
+        for start, end, reason in reversed(self.state.outages if self.state else []):
+            when = start.strftime("%H:%M")
+            if end is None:
+                out.append(f"{when} — триває · {reason}")
+            else:
+                out.append(f"{when}–{end.strftime('%H:%M')} ({(end - start).total_seconds() / 60:.0f} хв)")
+        return out
 
     @property
     def titles_report(self) -> Optional[str]:

@@ -63,6 +63,17 @@
                 {% endif %}
             </p>
             {% endif %}
+            {% if card.link_report %}
+            {# Історія звʼязку. Показується лише коли обриви БУЛИ — на здоровому
+               верстаті це зайвий шум. Відповідає на «як часто рветься» цифрами
+               замість відчуття (скарга 04.09.26). #}
+            <details class="mc-diag mc-link">
+                <summary>{{ card.link_report }}</summary>
+                <ul class="mc-titles">
+                    {% for line in card.link_outages %}<li class="mono">{{ line }}</li>{% endfor %}
+                </ul>
+            </details>
+            {% endif %}
             {% if user and user.role == "адмін" and card.titles_report %}
             {# Чому верстат не показує роботу. Дві різні причини — старий агент
                без /titles і заголовки без імені .iso — виглядали однаково

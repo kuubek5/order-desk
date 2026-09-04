@@ -433,3 +433,33 @@ def test_no_match_says_which_of_the_three_reasons(monkeypatch, tmp_path):
     assert "кількох" in notes["10.0.0.1"]      # дубль ID
     assert "архів" in notes["10.0.0.2"]        # робота архівна
     assert "жодна" in notes["10.0.0.3"]        # такого ID немає ніде
+
+
+def test_outage_history_counts_drops_and_durations(monkeypatch, tmp_path):
+    """Історія обривів: скільки разів рвалось і на скільки.
+
+    На питання «зв'язок періодично обривається» дотепер не було чим
+    відповісти, крім відчуття. Обрив записується РАЗ (на третій невдачі, коли
+    його визнано), закривається на відновленні — тож мовчазний верстат не
+    множить записи щотіку.
+    """
+    from app.services import machines as service
+
+    service.reset_state_for_tests()
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    monkeypatch.setattr(service, "capture", lambda *a, **k: _frame())
+    target = service.MachineTarget(name="350i", host="10.0.0.7")
+
+    service.poll_target(None, target, "x")                       # живий
+    for _ in range(service.PROBLEM_AFTER_FAILURES + 4):          # обрив
+        service.poll_target(None, target, "x", error="ПК не відповів")
+    state = service.poll_target(None, target, "x")               # відновився
+
+    assert len(state.outages) == 1, "обрив записується раз, а не щотіку"
+    start, end, reason = state.outages[0]
+    assert end is not None and end >= start
+    assert reason == "ПК не відповів"
+
+    card = service.MachineCard(target=target, state=state, now=datetime.now())
+    assert "обривів: 1" in card.link_report
+    assert card.link_outages and "–" in card.link_outages[0]
