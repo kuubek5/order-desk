@@ -329,6 +329,91 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
     )
 
 
+# ── Дуже низький відсоток: зачіпка за БІЛИЙ трек, а не за заливку ───────────
+# При 2% заливка ~2px — вона не проходить ані MIN_FILL_WIDTH, ані відбір
+# кандидатів за довжиною (дрібніша за будь-який синій напис на екрані). А от
+# білий трек довгий ЗАВЖДИ, тому на малих відсотках зачіпляємось за нього й
+# міряємо заливку ліворуч. Бойовий випадок .85 на 2% (04.09.26): віджет не
+# показував нічого, хоч програма щойно стартувала — саме той момент, коли
+# оператор і хоче побачити, що вона пішла.
+LOW_MIN_TRACK_WIDTH = 40
+# Власний, СУВОРІШИЙ мінімум контейнера для цього шляху. Справжня смуга
+# RemiCORE — 115..166px; дрібні білі поля інтерфейсу (49px на пласких
+# екранах нового покоління) давали хибні «0%». Хибне гірше за жодне.
+LOW_MIN_CONTAINER = 80
+
+
+def _find_bar_by_track(image: Image.Image) -> Optional[ProgressBar]:
+    source = image.convert("RGB")
+    px = source.load()
+    width, height = source.size
+    start_y = int(height * BOTTOM_BAND)
+
+    # Кандидатів БАГАТО, і найдовший — не наш: на портретному RemiCORE
+    # найдовший білий пробіг у нижній смузі це панель списку (538px, висота 1),
+    # а справжній трек ~150px. Тому перебираємо за довжиною, доки якийсь не
+    # пройде перевірки форми й рамок — так само, як головний детектор.
+    runs: list[tuple[int, int, int, int]] = []
+    for y in range(start_y, height, SEED_ROW_STEP):
+        run = 0
+        start = 0
+        for x in range(width):
+            if _is_unfilled(px[x, y]):
+                if run == 0:
+                    start = x
+                run += 1
+            else:
+                if run >= LOW_MIN_TRACK_WIDTH:
+                    runs.append((run, start, x - 1, y))
+                run = 0
+        if run >= LOW_MIN_TRACK_WIDTH:
+            runs.append((run, start, width - 1, y))
+    runs.sort(key=lambda r: -r[0])
+
+    for _, w0, w1, y in runs[:MAX_BAR_CANDIDATES]:
+        # Пробна колонка — біля ПРАВОГО краю треку, а не в середині: підпис
+        # стоїть по центру, і колонка крізь літеру дає обрізану висоту смуги
+        # (9 замість 24), через що підпис потім не читається взагалі.
+        xm = max(w0, w1 - 2)
+        top = y
+        while top > 0 and _is_unfilled(px[xm, top - 1]):
+            top -= 1
+        bottom = y
+        while bottom + 1 < height and _is_unfilled(px[xm, bottom + 1]):
+            bottom += 1
+        band = list(range(top, bottom + 1))
+        if not (MIN_BAR_HEIGHT <= len(band) <= MAX_BAR_HEIGHT):
+            continue
+
+        # Ліворуч від треку — заливка (нульової ширини на 0%).
+        fill = 0
+        x = w0 - 1
+        while x > 0 and _is_fill_column(px, x, band):
+            fill += 1
+            x -= 1
+        left = w0 - fill
+        if left - 1 <= 0 or w1 + 1 >= width:
+            continue
+        left_ok = (_is_border_column(px, left - 1, band, height)
+                   or _is_edge_column(px, left - 1, band))
+        right_ok = (_is_border_column(px, w1 + 1, band, height)
+                    or _is_edge_column(px, w1 + 1, band))
+        if not (left_ok and right_ok):
+            continue
+
+        container = w1 - left + 1
+        if container < LOW_MIN_CONTAINER:
+            continue
+        percent = round(fill * 100 / container)
+        if percent < 0 or percent > 100:
+            continue
+        return ProgressBar(
+            percent=percent, fill_width=fill, container_width=container,
+            box=(left, band[0], w1 + 1, band[-1] + 1),
+        )
+    return None
+
+
 def read_progress_percent(image: Image.Image) -> Optional[int]:
     """Відсоток виконання програми або None.
 
@@ -345,11 +430,25 @@ def read_progress_percent(image: Image.Image) -> Optional[int]:
     """
     bar = find_progress_bar(image)
     if bar is None:
-        # RemiCORE-смуги немає — можливо, це верстат нового покоління
-        # (плаский UI CORiTEC). Його смуга читається геометрією напряму:
-        # число стоїть ЗОВНІ смуги, тож плутанини «підпис = заливка» немає.
+        # ПОРЯДОК ВАЖЛИВИЙ. Спершу нове покоління (окремий, добре захищений
+        # детектор), і лише потім зачіпка за білий трек: інакше fallback
+        # перехоплював плаский UI й віддавав 0% замість справжніх 0..30
+        # (спіймано на бойових кадрах .81, 04.09.26).
         newgen = find_newgen_progress(image)
-        return newgen.percent if newgen else None
+        if newgen is not None:
+            return newgen.percent
+        # Дуже низький відсоток на RemiCORE: заливка завузька, щоб бути
+        # зачіпкою. Пробуємо зачепитись за білий трек (він довгий завжди).
+        # Цей шлях довіряємо ЛИШЕ з підтвердженням підпису: зачіпка за біле
+        # знаходить і чужі світлі панелі інтерфейсу (на .85 така дала «0%»),
+        # а справжня смуга ЗАВЖДИ має написане число. Немає числа — мовчимо.
+        low = _find_bar_by_track(image)
+        if low is None:
+            return None
+        low_caption = read_caption_percent(image, low)
+        return low_caption
+    if bar is None:
+        return None
     caption = read_caption_percent(image, bar)
     if caption is not None and caption != bar.percent:
         # Розбіжність — не привід мовчати (число все одно є), але привід

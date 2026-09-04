@@ -560,3 +560,22 @@ def test_portrait_remicore_low_percent():
     assert bar.percent == 8
     assert read_caption_percent(image, bar) == 8
     assert read_progress_percent(image) == 8
+
+
+def test_low_percent_fallback_needs_caption_confirmation():
+    """Зачіпка за БІЛИЙ трек (для дуже низьких відсотків) довіряється лише з
+    підтвердженням підпису.
+
+    При 2% заливка ~2px — вона не проходить ані мінімум ширини, ані відбір
+    кандидатів за довжиною, тому смуга не знаходилась узагалі (.85 на 2%,
+    04.09.26). Зачіпка за трек це лікує, але вона знаходить і чужі світлі
+    панелі інтерфейсу (на .85 така дала «0%»). Тому число з цього шляху
+    береться ТІЛЬКИ з підпису: справжня смуга завжди має написане число.
+    """
+    from app.machine_ocr import _find_bar_by_track, read_caption_percent
+
+    image = _newgen("remicore_portrait_8.png")
+    low = _find_bar_by_track(image)
+    assert low is not None, "зачіпка за трек не знайшла смугу"
+    assert low.percent == 8
+    assert read_caption_percent(image, low) == 8
