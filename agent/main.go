@@ -369,6 +369,7 @@ func newSetupMux(cfgPath string, allowQuit bool) *http.ServeMux {
 		}
 		host, _ := os.Hostname()
 		installed, running := taskState()
+		owner, anyUser, shortcut, runKey := autostartHealth()
 		writeJSON(w, map[string]interface{}{
 			"token":         cur.Token,
 			"name":          cur.Name,
@@ -381,6 +382,10 @@ func newSetupMux(cfgPath string, allowQuit bool) *http.ServeMux {
 			"admin":         isAdmin(),
 			"taskInstalled": installed,
 			"taskRunning":   running,
+			"taskOwner":     owner,
+			"taskAnyUser":   anyUser,
+			"startupLnk":    shortcut,
+			"runKey":        runKey,
 		})
 	})
 
@@ -509,6 +514,15 @@ func runInstall(cfgPath string) {
 	if err := addStartupShortcut(); err != nil {
 		log.Printf("install: startup shortcut failed: %v", err)
 	}
+	// ТРЕТІЙ шлях. Не надмірність: перші два мають різні точки відмови —
+	// планувальник (принципал, політики) і PowerShell (ExecutionPolicy,
+	// AppLocker — на цехових ПК цілком реальні). Ключ HKLM\...\Run ставиться
+	// через reg.exe, спрацьовує при вході будь-якого користувача і не залежить
+	// ні від того, ні від того. Зайвий екземпляр не страшний: порт уже
+	// зайнятий, процес тихо вийде на bind.
+	if err := addRunKey(); err != nil {
+		log.Printf("install: HKLM Run key failed: %v", err)
+	}
 	if err := openFirewall(portOf(cfg.Bind)); err != nil {
 		log.Printf("install: firewall rule failed: %v", err)
 	}
@@ -544,7 +558,13 @@ func runInstall(cfgPath string) {
 // restart-on-failure, ні StartWhenAvailable, а елевейтед-onlogon на Win10
 // крихкий — після ребуту агент часто не піднімався (бойовий випадок 04.09.26,
 // довелось стартувати руками). XML дає:
-//   • onlogon БУДЬ-ЯКОГО користувача (без прив'язки до імені — не розсинхрону);
+//   • onlogon БУДЬ-ЯКОГО користувача — через <GroupId>, а не через відсутність
+//     <UserId>. Це виміряно, а не припущено (04.09.26): якщо принципал не
+//     названо, Windows МОВЧКИ вписує UserId того, хто створював задачу, і
+//     тригер входу спрацьовує лише для нього. Інсталятор іде елевейтед, тож
+//     власником ставав адмін — а оператор входить під собою, і агент не
+//     піднімався ніколи. S-1-5-32-545 = BUILTIN\Users (SID, а не назва: на
+//     україномовній Windows група зветься «Користувачі»);
 //   • LeastPrivilege: серверу адмін не потрібен (порт 8765 і знімок екрана
 //     працюють без прав), а неелевейтед-задача при вході надійніша;
 //   • RestartOnFailure — упав, перезапуститься сам за хвилину;
@@ -563,8 +583,10 @@ func registerTask() error {
 }
 
 func taskXML(exe string) string {
-	// Без <UserId> у тригері: задача спрацьовує на вхід будь-якого користувача,
-	// тож не ламається, якщо машина логіниться під іншим акаунтом.
+	// <GroupId> замість <UserId>: задача належить групі «Користувачі», тому
+	// LogonTrigger спрацьовує на вхід БУДЬ-КОГО і виконується під тим, хто
+	// увійшов. Порожній принципал тут не працює — Windows дописує UserId сама
+	// (перевірено schtasks /query /xml).
 	return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers>
@@ -572,7 +594,7 @@ func taskXML(exe string) string {
   </Triggers>
   <Principals>
     <Principal id="Author">
-      <LogonType>InteractiveToken</LogonType>
+      <GroupId>S-1-5-32-545</GroupId>
       <RunLevel>LeastPrivilege</RunLevel>
     </Principal>
   </Principals>
@@ -609,19 +631,53 @@ func utf16WithBOM(s string) []byte {
 	return out
 }
 
-// addStartupShortcut кладе ярлик у теку автозавантаження користувача —
-// ДРУГИЙ, незалежний шлях підняти агента при вході. Якщо задача планувальника
-// з якоїсь причини не спрацює, ярлик усе одно стартує сервер у сесії
-// користувача (де тільки й можливий знімок екрана). Робиться через WScript.Shell
-// (створює справжній .lnk), вікно приховане — на верстаті нічого не блимає.
+// addStartupShortcut кладе ярлик в автозавантаження — ДРУГИЙ, незалежний шлях
+// підняти агента при вході. Якщо задача планувальника не спрацює, ярлик усе
+// одно стартує сервер у сесії користувача (де тільки й можливий знімок екрана).
+//
+// Теку беремо СПІЛЬНУ (`AllUsersStartup`, C:\ProgramData\...), а не особисту.
+// Та сама пастка, що з принципалом задачі: інсталятор іде елевейтед, і
+// `SpecialFolders('Startup')` вертало теку АДМІНА, під яким підтвердили UAC.
+// Оператор входить під собою — ярлика в його автозавантаженні немає, і другий
+// шлях мовчки не існував. Спільна тека спрацьовує для всіх, хто входить.
+//
+// Якщо запису в ProgramData немає (агент запущено без прав — «Зберегти» з
+// меню налаштувань), відкочуємось на особисту теку: гірше, ніж спільна, але
+// краще, ніж нічого.
 func addStartupShortcut() error {
+	err := writeStartupShortcut("AllUsersStartup")
+	if err == nil {
+		return nil
+	}
+	log.Printf("startup shortcut: спільна тека недоступна (%v) — кладу в особисту", err)
+	return writeStartupShortcut("Startup")
+}
+
+func writeStartupShortcut(folder string) error {
 	lnk := `$s=(New-Object -ComObject WScript.Shell);` +
-		`$k=$s.CreateShortcut([System.IO.Path]::Combine($s.SpecialFolders('Startup'),'KMillAgent.lnk'));` +
+		`$k=$s.CreateShortcut([System.IO.Path]::Combine($s.SpecialFolders('` + folder + `'),'KMillAgent.lnk'));` +
 		`$k.TargetPath=` + psQuote(exePath()) + `;` +
 		`$k.Arguments='-serve';` +
 		`$k.WorkingDirectory=` + psQuote(exeDir()) + `;` +
 		`$k.WindowStyle=7;$k.Save()`
 	return runCmd("powershell", "-NoProfile", "-NonInteractive", "-Command", lnk)
+}
+
+// addRunKey кладе агента в HKLM\Software\Microsoft\Windows\CurrentVersion\Run.
+// Найпростіший і найстійкіший автозапуск Windows: спрацьовує при вході будь-
+// кого, під тим, хто увійшов (тобто знімок екрана можливий), і ставиться одним
+// reg.exe без PowerShell і планувальника.
+func addRunKey() error {
+	return runCmd("reg", "add",
+		`HKLM\Software\Microsoft\Windows\CurrentVersion\Run`,
+		"/v", taskName, "/t", "REG_SZ",
+		"/d", `"`+exePath()+`" -serve`, "/f")
+}
+
+func runKeyPresent() bool {
+	out, err := exec.Command("reg", "query",
+		`HKLM\Software\Microsoft\Windows\CurrentVersion\Run`, "/v", taskName).CombinedOutput()
+	return err == nil && strings.Contains(string(out), taskName)
 }
 
 func psQuote(s string) string {
@@ -659,6 +715,43 @@ func taskState() (installed, running bool) {
 	installed = true
 	s := strings.ToLower(string(out))
 	running = strings.Contains(s, "running") || strings.Contains(s, "виконується")
+	return
+}
+
+// autostartHealth каже, чи автозапуск справді підніметься після ребуту — а не
+// лише «задача існує». Питання не риторичне: задача з <UserId> існує й виглядає
+// здоровою, але спрацьовує тільки для одного акаунта, і саме так агент мовчки
+// не стартував після перезавантаження (04.09.26). Тому дивимось у ПРИНЦИПАЛ.
+//
+// Друге поле — ярлик у спільному автозавантаженні: другий, незалежний шлях.
+// Обидва порожні = після ребуту агент не підніметься, хоч зараз і працює.
+func autostartHealth() (owner string, anyUser bool, shortcut bool, runKey bool) {
+	runKey = runKeyPresent()
+	out, err := exec.Command("schtasks", "/query", "/tn", taskName, "/xml").CombinedOutput()
+	if err == nil {
+		// /xml віддає UTF-16; шукаємо по байтах, відкинувши нулі.
+		s := strings.Map(func(r rune) rune {
+			if r == 0 {
+				return -1
+			}
+			return r
+		}, string(out))
+		if i := strings.Index(s, "<GroupId>"); i >= 0 {
+			if j := strings.Index(s[i:], "</GroupId>"); j > 0 {
+				owner, anyUser = strings.TrimSpace(s[i+9:i+j]), true
+			}
+		} else if i := strings.Index(s, "<UserId>"); i >= 0 {
+			if j := strings.Index(s[i:], "</UserId>"); j > 0 {
+				owner = strings.TrimSpace(s[i+8 : i+j])
+			}
+		}
+	}
+	if dir := os.Getenv("ProgramData"); dir != "" {
+		p := filepath.Join(dir, `Microsoft\Windows\Start Menu\Programs\Startup\KMillAgent.lnk`)
+		if _, e := os.Stat(p); e == nil {
+			shortcut = true
+		}
+	}
 	return
 }
 

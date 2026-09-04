@@ -107,6 +107,7 @@ const setupHTML = `<!doctype html>
     <h2>Стан</h2>
     <div class="kv"><span>Ім'я ПК</span><b id="host">—</b></div>
     <div class="kv"><span>Автозапуск</span><b id="task">—</b></div>
+    <div class="kv"><span>Підніметься після ребуту</span><b id="boot">—</b></div>
     <div class="kv"><span>Права адміністратора</span><b id="admin">—</b></div>
     <div class="kv"><span>Версія агента</span><b id="ver">—</b></div>
   </div>
@@ -171,6 +172,16 @@ function load(){
     el("host").textContent=d.hostname||"—";
     el("admin").innerHTML=d.admin?'<span class="pill ok">так</span>':'<span class="pill bad">ні — запусти від адміністратора</span>';
     el("task").innerHTML=d.taskInstalled?(d.taskRunning?'<span class="pill ok">працює</span>':'<span class="pill bad">зупинено</span>'):'<span class="pill bad">не встановлено</span>';
+    // «Задача є» — ще НЕ «підніметься». Задача, привʼязана до одного акаунта,
+    // виглядає здоровою, але після ребуту не спрацьовує для оператора. Тому
+    // окремий рядок: зелений лише коли є групова задача АБО спільний ярлик.
+    var ok=d.taskAnyUser||d.startupLnk||d.runKey, why=[];
+    if(d.taskAnyUser) why.push("задача для всіх користувачів");
+    else if(d.taskOwner) why.push("задача лише для "+d.taskOwner);
+    if(d.startupLnk) why.push("ярлик автозавантаження");
+    if(d.runKey) why.push("ключ реєстру");
+    el("boot").innerHTML=(ok?'<span class="pill ok">так</span>':'<span class="pill bad">НІ — перевстанови агента</span>')
+      +(why.length?' <small>'+why.join(", ")+'</small>':'');
     el("ver").textContent=d.version||"—";
     var ips=d.ips||[],box=el("crmlist");box.innerHTML="";
     if(!ips.length){ box.innerHTML='<div class="hint">IP не знайдено — перевір мережу.</div>'; }
