@@ -410,3 +410,29 @@ def test_caption_mask_normalises_both_halves():
     }
     assert black_columns, "жоден шматок підпису не потрапив у маску"
     assert len(black_columns) >= 20, "у маску потрапила лише одна половина підпису"
+
+
+def test_caption_reads_partial_fill_correctly():
+    """Реальний кадр із ЧАСТКОВОЮ заливкою: підпис «72%» читається точно.
+
+    Тут ловився баг caption_mask (04.09.26): маска ділила світле/темне по краю
+    КОНТЕЙНЕРА замість краю ЗАЛИВКИ, тож порожня біла частина смуги йшла в маску
+    як текст. На 100% (fill==container) це збігалось, тому баг не було видно —
+    аж до калібрування реальними частковими кадрами. Геометрія тут дає 70,
+    підпис — правдиве 72; саме заради цієї різниці підпис і головніший.
+    """
+    from pathlib import Path
+
+    from app.machine_ocr import (
+        find_progress_bar,
+        read_caption_percent,
+        read_progress_percent,
+    )
+
+    path = Path(__file__).parent / "fixtures" / "remicore_caption_72.png"
+    image = Image.open(path).convert("RGB")
+    bar = find_progress_bar(image)
+    assert bar is not None
+    assert bar.percent == 70, "геометрія на цьому кадрі занижує (для того й підпис)"
+    assert read_caption_percent(image, bar) == 72
+    assert read_progress_percent(image) == 72, "віддаємо ПІДПИС, не геометрію"

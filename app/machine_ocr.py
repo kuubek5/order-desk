@@ -431,8 +431,14 @@ def caption_mask(image: Image.Image, bar: "ProgressBar") -> Optional[Image.Image
     світлий, поза нею — темний. Після маски обидві половини одного й того ж
     «43%» виглядають однаково, і далі працюють ті самі помічники, що на печах.
     """
-    left, top, right, bottom = bar.box
+    left, top, _right, bottom = bar.box
     container_right = left + bar.container_width
+    # Межа світле/темне — це край ЗАЛИВКИ, а не контейнера. bar.box[2] — правий
+    # край КОНТЕЙНЕРА (== left + container_width), тож поділ по ньому означав
+    # «уся смуга залита» і порожню білу частину маска брала за текст (чорний
+    # блок справа). На 100% заливка == контейнер, і це збігалось — тому баг не
+    # спливав до калібрування реальними частковими кадрами (04.09.26).
+    fill_edge = left + bar.fill_width
     x0, y0 = left + _CAPTION_INSET, top + _CAPTION_INSET
     x1, y1 = container_right - _CAPTION_INSET, bottom - _CAPTION_INSET
     if x1 - x0 < 8 or y1 - y0 < 5:
@@ -445,7 +451,7 @@ def caption_mask(image: Image.Image, bar: "ProgressBar") -> Optional[Image.Image
     for y in range(y0, y1):
         for x in range(x0, x1):
             r, g, b = px[x, y][:3]
-            if x < right:
+            if x < fill_edge:
                 # На заливці символ світлий. Саму синь відсікає нижня межа.
                 is_ink = min(r, g, b) >= _CAPTION_LIGHT_MIN
             else:
