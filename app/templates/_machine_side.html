@@ -52,6 +52,17 @@
                 <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
                 {% endif %}
                 <span class="ms-bar" aria-hidden="true"><i style="width:{{ card.percent }}%"></i></span>
+                {% elif card.has_frame and card.has_program %}
+                {# Програма завантажена (є .iso у заголовку), але смугу відсотка
+                   на поточній вкладці RemiCORE не видно — чесно «%?», а не
+                   брехливе «не йде». #}
+                <span class="ms-pct dim">%?</span>
+                {% if card.order %}
+                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}</span>
+                {% elif card.sum3d_id %}
+                <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
+                {% endif %}
+                <span class="ms-note">йде · відсоток не видно</span>
                 {% elif card.has_frame %}
                 <span class="ms-pct dim">—</span>
                 <span class="ms-note">програма не йде</span>

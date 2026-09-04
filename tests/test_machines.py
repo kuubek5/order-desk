@@ -254,3 +254,27 @@ def test_calibration_zip_route_is_not_eaten_by_the_frame_route():
     assert paths.index("/machines/calibration.zip") < paths.index(
         "/machines/{key}/frame.png"
     )
+
+
+def test_has_program_avoids_false_not_running(monkeypatch, tmp_path):
+    """Коли програма завантажена (є .iso у заголовку), а смугу відсотка на
+    поточній вкладці RemiCORE не видно — картка мусить казати «йде · %?», а не
+    брехати «програма не йде». Сигнал — заголовок вікна, який агент читає
+    незалежно від того, який екран показує RemiCORE (бойовий випадок 04.09.26,
+    верстат .76 на вкладці сітки інструментів)."""
+    now = datetime(2026, 9, 4, 12, 0, 0)
+    with Session(_database()) as db:
+        _add_machine(db)
+        target = service.MachineTarget(name="350i №1", host="192.168.1.85")
+        state = service.MachineState(target=target)
+        # Свіжий кадр, програма в заголовку є, але відсоток НЕ прочитався.
+        state.frame_at = now
+        state.percent = None
+        state.iso_name = "3_16-Emotions_2026-09-04_11-25-27.iso"
+        state.sum3d_id = "11-25-27"
+        card = service.MachineCard(target=target, state=state, now=now)
+
+        assert card.percent is None
+        assert card.is_running is False   # без % не рахуємо як «фрезерує»
+        assert card.has_program is True   # але програма завантажена
+        assert card.has_frame is True

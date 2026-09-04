@@ -418,6 +418,12 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 .tk.off b{color:var(--alarm-ink)}
 .tk:hover b{color:var(--ink)}
 .tksep{color:var(--line-2);margin:0 8px}
+/* busy = програма завантажена (є .iso у заголовку), але відсотка на
+   поточній вкладці RemiCORE не видно. Нейтрально-акцентний, НЕ тривожний:
+   верстат працює, просто % не читається. */
+.mch.busy i,.tk.busy i{color:var(--accent);font-weight:400}
+.mch.busy{border-color:rgba(var(--accent-rgb), .22)}
+
 
 /* Банер калібрування верстатів (machines.html). Показується сам, доки шрифт
    підпису неповний; спокійний, не тривожний — це робочий процес, не помилка. */

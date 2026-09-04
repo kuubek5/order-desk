@@ -533,6 +533,16 @@ class MachineCard:
             return None
         return None if (self.stale or self.has_problem) else self.state.iso_name
 
+    @property
+    def has_program(self) -> bool:
+        """Чи завантажена програма на верстаті — за заголовком вікна RemiCORE
+        (`...ім'я.iso`), який агент читає НЕЗАЛЕЖНО від того, яку вкладку
+        показує RemiCORE. Потрібно, щоб не брехати «програма не йде», коли
+        відсотка на поточному екрані просто не видно (сітка інструментів
+        замість смуги «NN%»), а програма насправді йде — саме на це скаржився
+        власник 04.09.26 (верстат .76 на іншій вкладці)."""
+        return bool(self.iso_name or self.sum3d_id)
+
 
 
 def milling_now() -> dict[str, dict]:

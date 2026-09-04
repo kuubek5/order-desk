@@ -28,16 +28,16 @@
     {% if _mstrip == 'ticker' %}
     <span class="mstrip-ticker">
         {%- for card in machine_cards -%}
-        {%- set st = 'off' if card.has_problem else ('run' if card.percent is not none else ('idle' if card.has_frame else 'wait')) -%}
+        {%- set st = 'off' if card.has_problem else ('run' if card.percent is not none else (('idle' if not card.has_program else 'busy') if card.has_frame else 'wait')) -%}
         {%- if not loop.first %}<span class="tksep" aria-hidden="true">·</span>{% endif -%}
         <a class="tk {{ st }}" href="/machines" title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% endif %}"><b>{{ card.target.name }}</b> <i>{% if card.percent is not none %}{{ card.percent }}{% else %}—{% endif %}</i></a>
         {%- endfor -%}
     </span>
     {% else %}
     {% for card in machine_cards %}
-    {% set st = 'off' if card.has_problem else ('run' if card.percent is not none else ('idle' if card.has_frame else 'wait')) %}
+    {% set st = 'off' if card.has_problem else ('run' if card.percent is not none else (('idle' if not card.has_program else 'busy') if card.has_frame else 'wait')) %}
     <a class="mch {{ st }}" href="/machines" style="--w:{{ card.percent or 0 }}%"
-       title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% elif card.order %} — {{ card.order.work_order_no or card.order.client_name }}{% elif card.sum3d_id %} — {{ card.sum3d_id }}{% elif st == 'idle' %} — програма не йде{% elif st == 'wait' %} — чекаємо кадр{% endif %}">
+       title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% elif card.order %} — {{ card.order.work_order_no or card.order.client_name }}{% elif card.sum3d_id %} — {{ card.sum3d_id }}{% elif st == 'busy' %} — йде · відсоток не видно{% elif st == 'idle' %} — програма не йде{% elif st == 'wait' %} — чекаємо кадр{% endif %}">
         {% if _mstrip == 'ring' %}
         {# r=6.5 → довжина кола 40.84; зсув = невиконана частка #}
         <svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="bg" cx="8" cy="8" r="6.5"/><circle class="fg" cx="8" cy="8" r="6.5" stroke-dasharray="40.84" stroke-dashoffset="{{ '%.2f'|format(40.84 * (1 - (card.percent or 0) / 100)) }}"/></svg>
