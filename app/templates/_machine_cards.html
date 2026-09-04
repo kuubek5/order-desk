@@ -59,7 +59,7 @@
                 <span class="mc-client">{{ card.order.client_name }}</span>
                 {% endif %}
                 {% else %}
-                <span class="mc-nomatch" title="{{ card.iso_name }}">немає в черзі</span>
+                <span class="mc-nomatch" title="{{ card.match_note or card.iso_name }}">{{ card.match_note or "немає в черзі" }}</span>
                 {% endif %}
             </p>
             {% endif %}
@@ -137,7 +137,7 @@
             <span class="mc-client">{{ card.order.client_name }}</span>
             {% endif %}
             {% else %}
-            <span class="mc-nomatch" title="{{ card.iso_name }}">немає в черзі</span>
+            <span class="mc-nomatch" title="{{ card.match_note or card.iso_name }}">{{ card.match_note or "немає в черзі" }}</span>
             {% endif %}
         </p>
         {% endif %}

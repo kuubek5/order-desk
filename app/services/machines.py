@@ -29,7 +29,7 @@ from typing import Optional
 
 from PIL import Image
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
 from app.machine_portraits import portrait_version
@@ -39,7 +39,7 @@ from app.machine_ocr import (
     read_progress_percent,
     screen_is_completed,
 )
-from app.models import Machine, Order
+from app.models import Machine, Order, ReworkRecord
 from app.services.furnace import _HOST_RE, validate_address  # ті самі правила адреси
 from app.config import MACHINE_CALIBRATION_PATH, MACHINE_FRAMES_PATH
 from app.settings_store import get_machine_vnc_password
@@ -706,6 +706,11 @@ class MachineCard:
     # запитом на всі картки: запит усередині property дав би N+1 у циклі
     # рендера (той самий урок, що з focused_ids).
     order: Optional[Order] = None
+    # ЧОМУ пари немає. «немає в черзі» одним написом покривало три різні
+    # причини — не знайдено взагалі, знайдено в кількох роботах (не вгадуємо),
+    # знайдено лише серед архівних. Оператор бачив однакове й не міг зрозуміти,
+    # що робити (скарга 04.09.26). Порожньо = пара є або ID не читається.
+    match_note: str = ""
 
     @property
     def key(self) -> str:
@@ -925,18 +930,71 @@ def snapshot(db: Session) -> list[MachineCard]:
     # серед НЕархівних робіт — програма на верстаті завжди з робочого вікна.
     wanted = {c.sum3d_id for c in cards if c.sum3d_id}
     if wanted:
-        rows = db.scalars(
+        by_id: dict[str, Optional[Order]] = {}
+
+        ambiguous: set[str] = set()
+
+        def offer(key: Optional[str], order: Order) -> None:
+            # Той самий ID у двох роботах — не вгадуємо, лишаємо без зв'язки.
+            if not key:
+                return
+            if key in by_id:
+                by_id[key] = None
+                ambiguous.add(key)
+            else:
+                by_id[key] = order
+
+        for row in db.scalars(
             select(Order).where(
                 Order.sum3d_id.in_(wanted), Order.archived_at.is_(None)
             )
-        ).all()
-        by_id: dict[str, Order] = {}
-        for row in rows:
-            # Той самий ID у двох роботах — не вгадуємо, лишаємо без зв'язки.
-            by_id[row.sum3d_id] = None if row.sum3d_id in by_id else row
+        ).all():
+            offer(row.sum3d_id, row)
+
+        # ПЕРЕРОБКИ. Для переробленої роботи живий ID лежить не в Order, а в
+        # її ReworkRecord (колонка W таблиці) — саме туди пише оператор, і саме
+        # його показує рядок черги. Пошук лише по Order означав, що верстат,
+        # який фрезерує переробку, чесно читав ID з екрана і так само чесно
+        # казав «немає в черзі», хоч робота лежала поруч (бойовий випадок
+        # 250-New, 04.09.26). Фільтр черги цю різницю враховує давно
+        # (queue_filters._has_sum3d) — тут вона загубилась.
+        for rec in db.scalars(
+            select(ReworkRecord)
+            .join(Order, Order.id == ReworkRecord.order_id)
+            .where(ReworkRecord.sum3d_id.in_(wanted), Order.archived_at.is_(None))
+            .options(selectinload(ReworkRecord.order))
+        ).all():
+            if rec.order is not None:
+                offer(rec.sum3d_id, rec.order)
+
+        # Чи існує така робота взагалі — включно з архівними. Окремий, дешевий
+        # запит лише для тих ID, що не знайшлись: без нього «робота є, але вона
+        # в архіві» і «такої роботи немає» виглядають однаково.
+        missing = {c.sum3d_id for c in cards if c.sum3d_id and not by_id.get(c.sum3d_id)}
+        archived: set[str] = set()
+        if missing:
+            archived = {
+                sid
+                for (sid,) in db.execute(
+                    select(Order.sum3d_id).where(
+                        Order.sum3d_id.in_(missing), Order.archived_at.is_not(None)
+                    )
+                ).all()
+                if sid
+            }
+
         for card in cards:
-            if card.sum3d_id:
-                card.order = by_id.get(card.sum3d_id)
+            if not card.sum3d_id:
+                continue
+            card.order = by_id.get(card.sum3d_id)
+            if card.order is not None:
+                continue
+            if card.sum3d_id in ambiguous:
+                card.match_note = "цей ID стоїть у кількох роботах — не вгадуємо"
+            elif card.sum3d_id in archived:
+                card.match_note = "робота з цим ID уже в архіві"
+            else:
+                card.match_note = "жодна робота в черзі не має цього ID"
     return cards
 
 

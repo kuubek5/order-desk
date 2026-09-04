@@ -352,3 +352,84 @@ def test_single_failed_poll_does_not_paint_the_tile_red(monkeypatch, tmp_path):
         assert card.has_problem is expected, f"спроба {attempt}"
         # Причина записана з ПЕРШОЇ невдачі — просто ще не показується.
         assert state.error == "ПК не відповів"
+
+
+def test_machine_matches_a_reworked_order_by_its_redo_id(monkeypatch, tmp_path):
+    """Верстат, що фрезерує ПЕРЕРОБКУ, мусить знайти свою роботу.
+
+    Для переробленої роботи живий Sum3D ID лежить не в Order, а в її
+    ReworkRecord (колонка W таблиці) — саме туди пише оператор і саме його
+    показує рядок черги. Пошук лише по Order давав «немає в черзі» при тому,
+    що робота лежала поруч, а ID на екрані верстата був правильний (бойовий
+    випадок 250-New, 04.09.26).
+    """
+    from app.models import Order, ReworkRecord
+    from app.services import machines as service
+
+    service.reset_state_for_tests()
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+
+    with Session(_database()) as db:
+        order = Order(
+            source="lab", sheet_tab="04.09.26", row_number=7,
+            work_order_no="29702", status="прораховано",
+            sum3d_id="11-29-59",           # перше фрезерування, колонка L
+        )
+        db.add(order)
+        db.flush()
+        db.add(ReworkRecord(order_id=order.id, blame="обладнання",
+                            sum3d_id="18-44-57"))   # переробка, колонка W
+        _add_machine(db, name="250-New", host="10.0.0.64", port=8765)
+        db.commit()
+
+        target = service.configured_targets(db)[0]
+        state = service._states.setdefault(
+            target.key, service.MachineState(target=target)
+        )
+        state.frame_at = datetime.now()
+        state.sum3d_id = "18-44-57"        # саме це читається з екрана верстата
+
+        card = service.snapshot(db)[0]
+        assert card.sum3d_id == "18-44-57"
+        assert card.order is not None, "переробка мусить знайтись"
+        assert card.order.work_order_no == "29702"
+
+
+def test_no_match_says_which_of_the_three_reasons(monkeypatch, tmp_path):
+    """«Немає в черзі» покривало три різні причини — тепер вони розділені.
+
+    Оператор бачив один і той самий напис і не міг зрозуміти, що робити:
+    вписати ID, прибрати дубль чи дістати роботу з архіву (скарга 04.09.26).
+    """
+    from app.models import Order
+    from app.services import machines as service
+
+    service.reset_state_for_tests()
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+
+    with Session(_database()) as db:
+        db.add(Order(source="lab", sheet_tab="04.09.26", row_number=1,
+                     work_order_no="A", status="нове", sum3d_id="11-11-11"))
+        db.add(Order(source="lab", sheet_tab="04.09.26", row_number=2,
+                     work_order_no="B", status="нове", sum3d_id="11-11-11"))
+        db.add(Order(source="lab", sheet_tab="01.08.26", row_number=3,
+                     work_order_no="C", status="видано", sum3d_id="22-22-22",
+                     archived_at=datetime(2026, 8, 20, 9, 0)))
+        for i, host in enumerate(("10.0.0.1", "10.0.0.2", "10.0.0.3")):
+            _add_machine(db, name=f"м{i}", host=host, port=8765)
+        db.commit()
+
+        want = {"10.0.0.1-8765": "11-11-11", "10.0.0.2-8765": "22-22-22",
+                "10.0.0.3-8765": "33-33-33"}
+        for target in service.configured_targets(db):
+            st = service._states.setdefault(
+                target.key, service.MachineState(target=target)
+            )
+            st.frame_at = datetime.now()
+            st.sum3d_id = want[target.key]
+
+        notes = {c.target.host: c.match_note for c in service.snapshot(db)}
+
+    assert "кількох" in notes["10.0.0.1"]      # дубль ID
+    assert "архів" in notes["10.0.0.2"]        # робота архівна
+    assert "жодна" in notes["10.0.0.3"]        # такого ID немає ніде
