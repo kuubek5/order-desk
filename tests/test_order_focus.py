@@ -4,7 +4,6 @@
 таблицею, а не колонкою: вона належить операторові, а не роботі.
 """
 
-import datetime as _dt
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace

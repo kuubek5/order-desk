@@ -585,7 +585,6 @@ class TestHandoutDayWindow:
 
     @staticmethod
     def _days(*day_numbers):
-        from datetime import date
         return [date(2026, 8, d) for d in day_numbers]
 
     def _labels(self, days, selected):
@@ -964,7 +963,7 @@ class TestOneBatchPerRow:
         return SimpleNamespace(material_color_folder_name=name, created_at=when)
 
     def test_only_the_nearest_earlier_batch_survives(self):
-        from datetime import date, datetime
+        from datetime import datetime
         
 
         entries = [
@@ -978,7 +977,7 @@ class TestOneBatchPerRow:
     def test_several_folders_of_the_SAME_day_all_stay(self):
         """Дві теки одного дня — це справді неоднозначність, яку вирішує око
         оператора; ховати одну з них не можна."""
-        from datetime import date, datetime
+        from datetime import datetime
         
 
         entries = [
@@ -992,7 +991,7 @@ class TestOneBatchPerRow:
     def test_files_uploaded_the_next_day_are_not_lost(self):
         """Партії раніше за роботу немає — беремо найранішу пізнішу, інакше
         рядок лишився б зовсім без теки."""
-        from datetime import date, datetime
+        from datetime import datetime
         
 
         entries = [
@@ -1258,7 +1257,7 @@ def test_today_is_available_but_not_the_default_day():
     видачу і має бачити лоток, який уже existує, а не сьогоднішнє, що ще
     фрезерується.
     """
-    from datetime import date, timedelta
+    from datetime import timedelta
 
     from app.services.handout import handout_eligible_orders, handout_select_day
 

@@ -12,7 +12,7 @@
 
 import logging
 import time
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException

@@ -319,7 +319,8 @@ def test_timed_calibration_zip_includes_timed_frames(monkeypatch, tmp_path):
         service._calib_last_timed.clear()
     service.collect_calibration_frame_timed("m", _calib_frame(40))
 
-    import io, zipfile
+    import io
+    import zipfile
     data = service.calibration_zip_bytes()
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         assert any(n.startswith("m/t-") for n in z.namelist())

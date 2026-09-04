@@ -104,13 +104,15 @@ def test_appearance_accepts_card_pref_and_rejects_junk():
     Base.metadata.create_all(engine)
     with Session(engine, expire_on_commit=False) as db:
         u = User(username="op", password_hash="x", full_name="Оп", role="оператор")
-        db.add(u); db.commit()
+        db.add(u)
+        db.commit()
         req = SimpleNamespace(session={"user_id": u.id}, client=SimpleNamespace(host="127.0.0.1"),
                               headers=Headers({}), state=SimpleNamespace())
         base = dict(theme="", icons="", buttons="", loader="", chips="", machine_art="", machine_strip="")
         r = asyncio.run(auth_router_mod.post_account_appearance(request=req, db=db, machine_card="frame", **base))
         assert r.status_code == 204
-        db.refresh(u); assert u.ui_machine_card == "frame"
+        db.refresh(u)
+        assert u.ui_machine_card == "frame"
         r = asyncio.run(auth_router_mod.post_account_appearance(request=req, db=db, machine_card="polaroid", **base))
         assert r.status_code == 422
 

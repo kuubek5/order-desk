@@ -400,7 +400,6 @@ def test_warm_tech_listing_forces_refresh_and_fills_cache(tmp_path):
 
     Через `_tech_root_children` на 20-секундному інтервалі кеш (TTL 30с) був би
     ще теплим і не оновився б. warm_tech_listing мусить сканувати завжди."""
-    import time as _time
     from app import order_folder as of
 
     (tmp_path / "Іванов").mkdir()
