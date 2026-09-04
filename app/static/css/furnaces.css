@@ -75,6 +75,13 @@ main.furnaces{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex
    Прев'ю кадру RemiCORE — завжди видиме, бо сенс екрана в самому кадрі;
    повний розмір розгортається у скрол-контейнері: екран верстата 1080p, і
    без обмеження він виносив би сітку за край. */
+/* Діагностика «чому не видно роботу» — тихий рядок для адміна, не тривога:
+   верстат при цьому працює, просто CRM не може звʼязати його з нарядом. */
+.machines .mc-diag{margin:4px 0 0;font-size:var(--fs-0);color:var(--ink-3)}
+.machines .mc-diag summary{cursor:pointer}
+.machines .mc-titles{margin:6px 0 0;padding-left:16px;display:flex;flex-direction:column;gap:2px}
+.machines .mc-titles li{font-size:var(--fs-0);color:var(--ink-2);word-break:break-all}
+
 .machines .mc-shot{display:block;width:100%;border:1px solid var(--line);border-radius:6px;
   background:#0a0c10}
 .machines .mc-full{overflow:auto;max-height:78vh;margin-top:8px;

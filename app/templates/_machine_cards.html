@@ -63,6 +63,19 @@
                 {% endif %}
             </p>
             {% endif %}
+            {% if user and user.role == "адмін" and card.titles_report %}
+            {# Чому верстат не показує роботу. Дві різні причини — старий агент
+               без /titles і заголовки без імені .iso — виглядали однаково
+               (порожньо), і розібратись можна було лише руками через URL. #}
+            <details class="mc-diag">
+                <summary>{{ card.titles_report }}</summary>
+                {% if card.titles_list %}
+                <ul class="mc-titles">
+                    {% for tt in card.titles_list %}<li class="mono">{{ tt }}</li>{% endfor %}
+                </ul>
+                {% endif %}
+            </details>
+            {% endif %}
             {% if card.has_frame %}
             <details class="fu-frame">
                 <summary>Кадр екрана · {{ card.frame_at.strftime('%H:%M:%S') }}</summary>

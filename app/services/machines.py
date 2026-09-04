@@ -160,6 +160,11 @@ class MachineState:
     iso_name: Optional[str] = None
     sum3d_id: Optional[str] = None
     program_at: Optional[datetime] = None
+    # ЩО САМЕ віддав агент у /titles. Потрібне для діагностики «верстат не
+    # показує роботу»: без цього не відрізнити «агент не має /titles» від
+    # «заголовки є, але .iso серед них немає» — а це різні причини й різні
+    # виправлення. Тримаємо кілька останніх, обрізаних: показуємо адміну.
+    titles_seen: Optional[list[str]] = None
 
 
 _states: dict[str, MachineState] = {}
@@ -601,6 +606,10 @@ def poll_target(
                 state.iso_name = program.iso_name if program else None
                 state.sum3d_id = program.sum3d_id if program else None
                 state.program_at = now
+                state.titles_seen = [str(x)[:120] for x in titles[:12]]
+        else:
+            with _states_lock:
+                state.titles_seen = None
     return state
 
 
@@ -766,6 +775,30 @@ class MachineCard:
         if not (self.state and self.state.iso_name):
             return None
         return None if (self.stale or self.has_problem) else self.state.iso_name
+
+    @property
+    def titles_report(self) -> Optional[str]:
+        """Що агент бачить у заголовках вікон — рядком для адміна.
+
+        Відповідає на «верстат не показує, яка робота фрезерується»: причин дві
+        і вони різні. Або агент старий і /titles у нього немає взагалі, або
+        заголовки є, але імені `.iso` серед них немає — так буває на пласких
+        CORiTEC, де назва програми стоїть НА ЕКРАНІ, а не в заголовку вікна
+        (бойовий випадок 150i, 04.09.26). Без цього рядка їх не розрізнити."""
+        if not (self.state and self.target.is_agent):
+            return None
+        if self.sum3d_id:
+            return None  # усе працює, діагностика зайва
+        seen = self.state.titles_seen
+        if seen is None:
+            return "агент не віддає заголовки вікон (старий агент або немає звʼязку)"
+        if not seen:
+            return "агент віддав порожній список вікон"
+        return f"вікон: {len(seen)} · імені .iso серед них немає"
+
+    @property
+    def titles_list(self) -> list[str]:
+        return list(self.state.titles_seen or []) if self.state else []
 
     @property
     def is_completed(self) -> bool:
