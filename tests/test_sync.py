@@ -1444,3 +1444,30 @@ def test_force_reconcile_archives_a_confirmed_bulk_deletion():
     active = session.query(Order).filter(Order.archived_at.is_(None)).all()
     assert len(active) == 8
     assert {o.client_name for o in active} == {f"Тест{i}" for i in range(8)}
+
+
+def test_rework_cleared_in_sheet_is_removed_from_crm():
+    """Технік прибрав брак у таблиці — переробка мусить зникнути і в CRM.
+
+    Бойовий випадок 04.09.26 (наряд 29702, два рядки): брак прибрали з одного
+    рядка й вписали на інший. CRM показала ДВІ переробки замість однієї,
+    причому на старій висіла вже неправдива причина — «технік» замість
+    «обладнання». Раніше тут стояло «ніколи не видаляємо».
+
+    Це не косметика. Поки `active_rework` не None:
+      * Sum3D ID, який вводить оператор, іде в переробкову колонку W замість L;
+      * готовність («можна брати» / «в роботі») читається теж із W;
+      * статистика браку рахує переробку, якої в таблиці вже немає, а брак —
+        це гроші й звітність.
+    """
+    with make_session() as session:
+        sync_tab(session, "01.08.26", [make_row(rework_blame={"технік": "3"}, mill_count="2")])
+        session.commit()
+        assert session.scalar(select(ReworkRecord)) is not None
+
+        sync_tab(session, "01.08.26", [make_row()])   # колонки браку очищені
+        session.commit()
+
+        assert session.scalar(select(ReworkRecord)) is None
+        order = session.scalar(select(Order))
+        assert order.active_rework is None

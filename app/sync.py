@@ -213,18 +213,37 @@ def _rework_from_row(row: OrderRow) -> dict | None:
     }
 
 
-def _sync_rework(session: Session, order_id: int, rework: dict | None) -> bool:
+def _sync_rework(
+    session: Session, order_id: int, rework: dict | None, *, mirror: bool = False
+) -> bool:
     """Upsert the single sheet-sourced ReworkRecord for an order. Reworks come
     only from the sheet today, so at most one record per order is kept and
-    matched by order_id — idempotent across repeated syncs. Never deletes: a
-    cleared sheet leaves the last recorded rework intact. Returns True if it
-    created or changed anything."""
-    if rework is None:
-        return False
+    matched by order_id — idempotent across repeated syncs. Returns True if it
+    created, changed or removed anything.
 
+    `mirror=True` означає: рядок таблиці ПРОЧИТАНО, і його стан брака —
+    остаточний, тож порожні колонки мусять прибрати запис. Раніше тут стояло
+    «ніколи не видаляємо», і це виявилось хибним рішенням (04.09.26, бойовий
+    випадок): технік прибрав брак у таблиці й вписав новий на сусідній рядок —
+    CRM показала ДВІ переробки замість однієї, причому на старій висіла вже
+    неправдива причина («технік» замість «обладнання»). Гірше за косметику:
+    поки `active_rework` не None, Sum3D ID, який вводить оператор, іде в
+    колонку W (переробкову) замість L, а готовність читається теж із W.
+
+    Прапорець потрібен, бо `rework is None` означає дві різні речі: «колонки
+    прочитані й порожні» (рядок лабораторії) і «колонок брака тут узагалі
+    немає» (клієнтський рядок). Видаляти можна лише в першому випадку.
+    Транзієнтне порожнє читання таблиці сюди не доходить — воно не дає рядків
+    зовсім, і від нього стереже `had_raw_rows` на видаленні замовлень."""
     existing = session.execute(
         select(ReworkRecord).where(ReworkRecord.order_id == order_id)
     ).scalars().first()
+
+    if rework is None:
+        if mirror and existing is not None:
+            session.delete(existing)
+            return True
+        return False
 
     if existing is None:
         session.add(ReworkRecord(order_id=order_id, **rework))
@@ -504,7 +523,7 @@ def sync_tab(
             session.add(StatusEvent(order_id=order.id, status=status, actor="sync"))
             if row.cam_comment:
                 session.add(Comment(order_id=order.id, source="sheet", text=row.cam_comment))
-            _sync_rework(session, order.id, rework)
+            _sync_rework(session, order.id, rework, mirror=not is_client)
             result.created += 1
             continue
 
@@ -646,7 +665,7 @@ def sync_tab(
             session.add(StatusEvent(order_id=existing.id, status=status, actor="sync"))
             changed = True
 
-        if _sync_rework(session, existing.id, rework):
+        if _sync_rework(session, existing.id, rework, mirror=not is_client):
             changed = True
 
         if changed:
