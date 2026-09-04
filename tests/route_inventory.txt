@@ -53,6 +53,7 @@ GET /sum3d/tray
 MOUNT /static
 POST /account/appearance
 POST /account/initial
+POST /account/layout
 POST /account/look
 POST /account/password
 POST /actions/redo-last

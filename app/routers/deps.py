@@ -291,6 +291,9 @@ def ui_prefs(request: Request) -> dict:
         "machine_strip": "",
         # Картки на екрані «Верстати»: "" = портрет, "frame" = живий кадр у плитці.
         "machine_card": "",
+        # Порядок віджетів черги (режим редагування в шестерні вигляду).
+        "side_order": "",
+        "strip_order": "",
     }
     mirrored = False
     try:
@@ -317,6 +320,8 @@ def ui_prefs(request: Request) -> dict:
                         "machine_art": user.ui_machine_art or "",
                         "machine_strip": user.ui_machine_strip or "",
                         "machine_card": user.ui_machine_card or "",
+                        "side_order": user.queue_side_order or "",
+                        "strip_order": user.queue_strip_order or "",
                     }
                     mirrored = True
             finally:
@@ -406,6 +411,21 @@ from app.services.machines import machine_model_key  # noqa: E402 — після
 templates.env.globals["machine_model_key"] = machine_model_key
 from app.services.machines import MACHINE_MODELS  # noqa: E402
 templates.env.globals["machine_models"] = MACHINE_MODELS
+from app.services.widget_order import side_index, sort_machine_cards  # noqa: E402
+
+
+def side_order_index(request, section: str) -> int:
+    """CSS `order` секції правої панелі для цього оператора."""
+    return side_index(ui_prefs(request).get("side_order"), section)
+
+
+def ordered_machine_cards(request, cards):
+    """Картки верстатів у порядку, який оператор виставив перетягуванням."""
+    return sort_machine_cards(ui_prefs(request).get("strip_order"), list(cards or []))
+
+
+templates.env.globals["side_order_index"] = side_order_index
+templates.env.globals["ordered_machine_cards"] = ordered_machine_cards
 templates.env.globals["is_rush_comment"] = is_rush_comment
 templates.env.globals["static_ver"] = static_ver
 templates.env.filters["changelog_md"] = changelog_md

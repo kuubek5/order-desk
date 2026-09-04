@@ -46,6 +46,7 @@ BASE_HTML_SCRIPTS = [
     "/static/js/queue.js",
     "/static/js/mail.js",
     "/static/js/lookgear.js",
+    "/static/js/widgetedit.js",
     "/static/js/handout.js",
     "/static/js/clients.js",
     "/static/js/settings.js",

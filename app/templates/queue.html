@@ -207,7 +207,7 @@
         </section>
 
         <aside class="side-panel" aria-label="Довідкові панелі">
-            <section class="side-sec" data-open="false" data-sec="mail">
+            <section class="side-sec" data-open="false" data-sec="mail" style="order:{{ side_order_index(request, 'mail') }}">
                 <button class="side-head" type="button" data-side-toggle aria-expanded="false">
                     Пошта на тріаж
                     <span class="side-count">{{ pending_mail_count }}</span>
@@ -241,7 +241,7 @@
                пічок — власний полл, обгортка завжди, дані з одного джерела. #}
             {% include "_machine_side.html" %}
 
-            <section class="side-sec" data-open="false" data-sec="sync">
+            <section class="side-sec" data-open="false" data-sec="sync" style="order:{{ side_order_index(request, 'sync') }}">
                 <button class="side-head" type="button" data-side-toggle aria-expanded="false">
                     Google Таблиця
                     <span class="side-count {% if sync_status.sheet.state == 'error' %}err{% endif %}">{{ peeks.sync }}</span>
@@ -282,7 +282,7 @@
                 </div>
             </section>
 
-            <section class="side-sec" data-open="false" data-sec="handout">
+            <section class="side-sec" data-open="false" data-sec="handout" style="order:{{ side_order_index(request, 'handout') }}">
                 <button class="side-head" type="button" data-side-toggle aria-expanded="false">
                     Ранкова видача
                     <span class="side-count {% if kpis.clients_without_handout %}warn{% endif %}">{{ kpis.clients_without_handout }}</span>

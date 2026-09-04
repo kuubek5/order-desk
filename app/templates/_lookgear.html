@@ -125,6 +125,14 @@
             <button type="button" class="lookpreset" data-layout-edit-toggle aria-pressed="false"
                     title="Увімкнути перетягування межі заголовка стовпця">Перетягувати межі</button>
         </div>
+        {# Порядок віджетів — окремий режим від ширин стовпців: там тягнуть
+           межу заголовка, тут самі віджети. Разом вони б заважали один одному
+           (у режимі порядку клік по віджету гаситься). #}
+        <div class="lookrow lookrow-full">
+            <span class="lookrow-name">Порядок віджетів</span>
+            <button type="button" class="lookpreset" data-widget-edit-toggle aria-pressed="false"
+                    title="Перетягувати смугу верстатів угорі та секції правої панелі">Перетягувати віджети</button>
+        </div>
         {% endif %}
 
         <div class="lookfoot">

@@ -16,6 +16,7 @@
    не старе число: показувати протухлий відсоток як поточний і є те «хибне
    число», якого ми уникаємо (принцип пічок). #}
 <section class="side-sec side-sec-machine" data-sec="machine"
+         style="order:{{ side_order_index(request, 'machine') }}"
          id="machine-side"
          hx-get="/machines/side"
          hx-trigger="every 10s"
@@ -33,6 +34,7 @@
     </button>
 
     <div class="side-body">
+        {% set machine_cards = ordered_machine_cards(request, machine_cards) %}
         {% if machine_cards %}
         <div class="ms-tiles">
             {% for card in machine_cards %}

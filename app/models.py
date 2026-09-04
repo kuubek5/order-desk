@@ -76,6 +76,13 @@ class User(Base):
     # покажчик дня збоку. Теж на акаунті, а не в localStorage: вибір їде за
     # оператором і повертається при наступному вході.
     handout_layout: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    # Порядок віджетів черги (режим редагування в шестерні вигляду,
+    # 04.09.26): секції правої панелі за ключами data-sec і смуга
+    # верстатів за id рядків. Порожньо = порядок за замовчуванням.
+    # Тут, а не в localStorage, бо порядок мусить пережити полл: сервер
+    # малює `style="order:N"`, клієнт лише зберігає новий порядок.
+    queue_side_order: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    queue_strip_order: Mapped[str] = mapped_column(String(300), default="", server_default="")
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()

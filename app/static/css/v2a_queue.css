@@ -314,6 +314,20 @@ body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
 .q2 .operator-input:focus{border-color:rgba(var(--accent-rgb), .45);background:var(--field)}
 .q2 .operator-input::placeholder{color:var(--ink-3)}
 body.layout-edit .q2 table.qtable{user-select:none}
+
+/* ── Режим редагування віджетів (04.09.26) ────────────────────────────────
+   Пунктир і «рука» лише в режимі: поза ним віджети — звичайні посилання, і
+   будь-яка постійна прикраса тут читалась би як стан верстата. Порядок несе
+   CSS `order` від сервера (див. services/widget_order.py), тому перетягування
+   переживає полл. */
+body.widget-edit .q2 .side-panel > .side-sec,
+body.widget-edit .q2 .mstrip [data-mid]{cursor:grab;outline:1px dashed var(--line-2);outline-offset:2px}
+body.widget-edit .q2 .side-panel > .side-sec:hover,
+body.widget-edit .q2 .mstrip [data-mid]:hover{outline-color:var(--accent)}
+body.widget-edit .q2 .side-panel > .side-sec.is-dragging,
+body.widget-edit .q2 .mstrip [data-mid].is-dragging{opacity:.45;cursor:grabbing;outline-color:var(--accent)}
+body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: перетягніть";
+  font-size:var(--fs-0);color:var(--accent-c);letter-spacing:.04em;margin-right:4px}
 .q2 table.qtable tbody tr{transition:background var(--ui-speed) ease}
 .q2 table.qtable tbody tr:hover{background:var(--card-2)}
 .q2 table.qtable tbody tr.queue-row-overdue{background:rgba(var(--alarm-rgb), .055)}

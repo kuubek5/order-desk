@@ -12,6 +12,7 @@
    читається з кадру RemiCORE з похибкою, і сегменти не обіцяють точності,
    якої немає. Хибне число гірше за жодне: без свіжого відсотка — «—». #}
 {% set _mstrip = ui_prefs(request).machine_strip or 'segments' %}
+{% set machine_cards = ordered_machine_cards(request, machine_cards) %}
 {% set _shown = machine_cards and _mstrip != 'off' %}
 <div id="machine-strip"
      class="mstrip{% if not _shown %} is-empty{% endif %}"
@@ -30,13 +31,13 @@
         {%- for card in machine_cards -%}
         {%- set st = 'off' if card.has_problem else ('run' if card.percent is not none else (('idle' if not card.has_program else 'busy') if card.has_frame else 'wait')) -%}
         {%- if not loop.first %}<span class="tksep" aria-hidden="true">·</span>{% endif -%}
-        <a class="tk {{ st }}" href="/machines" title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% endif %}"><b>{{ card.target.name }}</b> <i>{% if card.percent is not none %}{{ card.percent }}{% else %}—{% endif %}</i></a>
+        <a class="tk {{ st }}" data-mid="{{ card.target.machine_id or '' }}" href="/machines" title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% endif %}"><b>{{ card.target.name }}</b> <i>{% if card.percent is not none %}{{ card.percent }}{% else %}—{% endif %}</i></a>
         {%- endfor -%}
     </span>
     {% else %}
     {% for card in machine_cards %}
     {% set st = 'off' if card.has_problem else ('run' if card.percent is not none else (('idle' if not card.has_program else 'busy') if card.has_frame else 'wait')) %}
-    <a class="mch {{ st }}" href="/machines" style="--w:{{ card.percent or 0 }}%"
+    <a class="mch {{ st }}" data-mid="{{ card.target.machine_id or '' }}" href="/machines" style="--w:{{ card.percent or 0 }}%"
        title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% elif card.order %} — {{ card.order.work_order_no or card.order.client_name }}{% elif card.sum3d_id %} — {{ card.sum3d_id }}{% elif st == 'busy' %} — запуск · відсотка ще не видно{% elif st == 'idle' %} — програма не йде{% elif st == 'wait' %} — чекаємо кадр{% endif %}">
         {% if _mstrip == 'ring' %}
         {# r=6.5 → довжина кола 40.84; зсув = невиконана частка #}

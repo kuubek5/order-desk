@@ -21,6 +21,7 @@
    (`furnace-side-open`), як і в смуги над чергою; queue.js його перемикає, а
    анти-мигтючий скрипт у base.html ставить до першого малювання. #}
 <section class="side-sec side-sec-furnace" data-sec="furnace"
+         style="order:{{ side_order_index(request, 'furnace') }}"
          id="furnace-side"
          hx-get="/furnaces/side"
          hx-trigger="every 30s"

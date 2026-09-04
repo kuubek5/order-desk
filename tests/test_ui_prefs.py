@@ -113,7 +113,8 @@ def test_ui_prefs_reads_logged_in_user_and_caches(monkeypatch):
                      "loader": "ring", "chips": "marker",
                      "mail_row_pad": 0, "mail_list_w": 0, "mail_step": 0, "queue_density": "", "queue_row_pad": 0,
                      "queue_mat_style": "", "queue_step": 0, "handout_layout": "",
-                     "machine_art": "", "machine_strip": "", "machine_card": ""}
+                     "machine_art": "", "machine_strip": "", "machine_card": "",
+                     "side_order": "", "strip_order": ""}
     # кеш на request.state: другий виклик не ходить у БД
     monkeypatch.setattr(deps_mod, "SessionLocal", lambda: (_ for _ in ()).throw(AssertionError("no cache")))
     assert deps_mod.ui_prefs(req) is prefs
@@ -123,7 +124,8 @@ def test_ui_prefs_reads_logged_in_user_and_caches(monkeypatch):
     teal_prefs = {"theme": "teal", "icons": "", "buttons": "", "loader": "", "chips": "",
              "mail_row_pad": 0, "mail_list_w": 0, "mail_step": 0, "queue_density": "", "queue_row_pad": 0,
                      "queue_mat_style": "", "queue_step": 0, "handout_layout": "",
-                     "machine_art": "", "machine_strip": "", "machine_card": ""}
+                     "machine_art": "", "machine_strip": "", "machine_card": "",
+                     "side_order": "", "strip_order": ""}
     assert deps_mod.ui_prefs(_request(teal_op.id)) == teal_prefs
     # без сесії — дефолт (Amber Forge), без падіння
     assert deps_mod.ui_prefs(_request(None)) == dict(teal_prefs, theme="forge")

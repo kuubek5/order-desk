@@ -23,6 +23,7 @@ from app.license import (
     verify_license_key,
 )
 from app.models import User
+from app.services.widget_order import clean_side_order, clean_strip_order
 from app.routers.deps import UI_SESSION_KEY, get_current_user, get_db, templates
 from app.services.look_prefs import (
     LookError,
@@ -244,6 +245,31 @@ async def post_account_appearance(
     user.ui_machine_art = machine_art
     user.ui_machine_strip = machine_strip
     user.ui_machine_card = machine_card
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/account/layout", status_code=204)
+async def post_account_layout(
+    request: Request,
+    scope: str = Form(...),
+    order: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Порядок віджетів черги після перетягування (режим редагування в
+    шестерні вигляду). `scope`: "side" — секції правої панелі, "strip" —
+    смуга верстатів. Чуже в списку відсіюється, а не відхиляється: секція
+    могла зникнути з розмітки, верстат — з переліку, і 422 на це означало б,
+    що оператор більше нічого не може перетягнути."""
+    user = get_current_user(request, db)
+    if user is None:
+        return Response(status_code=401)
+    if scope == "side":
+        user.queue_side_order = clean_side_order(order)
+    elif scope == "strip":
+        user.queue_strip_order = clean_strip_order(order)
+    else:
+        return Response(status_code=422)
     db.commit()
     return Response(status_code=204)
 
