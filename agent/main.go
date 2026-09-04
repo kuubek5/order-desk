@@ -356,8 +356,16 @@ func runServe(cfgPath string) {
 			if err == http.ErrServerClosed {
 				return // штатна зупинка (не трапляється тут, але коректно)
 			}
+			// Порт зайнятий ЖИВИМ агентом — значить нас підняли зайвий раз
+			// (сторожова задача, ярлик і ключ реєстру можуть спрацювати разом).
+			// Тихо виходимо: без цього дубль крутився б у циклі вічно, дописуючи
+			// лог і плутаючи діагностику.
+			if healthyAgentOn(cfg.Bind) {
+				log.Printf("порт %s уже обслуговує живий агент — виходжу", cfg.Bind)
+				os.Exit(0)
+			}
 			log.Printf("сервер зупинився (%v) — перезапуск слухача за 5 с", err)
-			time.Sleep(5 * time.Second)
+			time.Sleep(listenRetryInterval)
 			// Той самий srv після Serve вважається завершеним; новий екземпляр
 			// на ту саму адресу переслуховує порт, щойно мережа дозволить.
 			srv = &http.Server{
@@ -384,6 +392,24 @@ func runServe(cfgPath string) {
 	// Трей недоступний (немає сесії робочого столу) або впав — не залишати
 	// процес без роботи: тримаємо HTTP далі, як і до появи іконки.
 	select {}
+}
+
+// healthyAgentOn каже, чи на цьому порту вже відповідає СПРАВНИЙ агент.
+//
+// Потрібне сторожу: підняти агента можуть чотири різні шляхи (задача при
+// вході, сторожова задача за розкладом, ярлик автозавантаження, ключ реєстру),
+// і всі вони спрацьовують незалежно. Дубль мусить вміти тихо піти, інакше він
+// вічно крутиться на невдалому bind. Перевіряємо саме /healthz, а не сам факт
+// зайнятого порту: порт міг зайняти будь-що інше, і тоді відступати не можна.
+func healthyAgentOn(bind string) bool {
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + portOf(bind) + "/healthz")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64))
+	return resp.StatusCode == http.StatusOK && strings.TrimSpace(string(body)) == "ok"
 }
 
 // grabSlots обмежує ОДНОЧАСНІ знімки. Знімок — це BitBlt повного екрана плюс
@@ -687,6 +713,23 @@ func taskXML(exe string) string {
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers>
     <LogonTrigger><Enabled>true</Enabled></LogonTrigger>
+    <!-- СТОРОЖ. Вхід у систему буває раз на добу, а агент може вмерти вдень —
+         і тоді верстат лежить до наступного логіну. Реальний випадок 04.09.26:
+         агент помер о 20:54, піднявся лише о 21:24 руками, у логу самі старти
+         без жодної помилки.
+         Чому не RestartOnFailure: він воскрешає ЛИШЕ той процес, який запустив
+         сам планувальник. Агента ж могли підняти ярлик, ключ реєстру або
+         інсталятор — тоді задача про нього не знає взагалі.
+         Повторний запуск нешкідливий: дубль бачить живий /healthz на порту й
+         одразу тихо виходить (healthyAgentOn). -->
+    <TimeTrigger>
+      <Enabled>true</Enabled>
+      <StartBoundary>2026-01-01T00:00:00</StartBoundary>
+      <Repetition>
+        <Interval>PT5M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </TimeTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">

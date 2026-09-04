@@ -39,7 +39,13 @@ jobs:
           GOARCH: amd64
           CGO_ENABLED: "0"
         run: |
-          VER="${{ github.event.inputs.version || '0.1.0' }}"
+          # Версія за замовчуванням — дата + короткий SHA, а не сталий «0.1.0».
+          # Досі КОЖЕН агент у цеху рапортував 0.1.0, тож відрізнити оновлений
+          # від старого було неможливо навіть у власному лозі (бойовий випадок
+          # 04.09.26: у лозі мертвого агента стояло 0.1.0, і це нічого не
+          # говорило про те, який саме білд там стоїть).
+          VER="${{ github.event.inputs.version }}"
+          if [ -z "$VER" ]; then VER="$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"; fi
           go build -trimpath \
             -ldflags "-s -w -H=windowsgui -X main.Version=$VER" \
             -o kmill-agent.exe .
@@ -83,7 +89,11 @@ jobs:
       - name: Compile installer
         shell: pwsh
         run: |
-          $ver = "${{ github.event.inputs.version || '0.1.0' }}"
+          # Той самий штамп, що й у exe (див. джоб build): дата + короткий SHA.
+          # Inno вимагає числову версію, тож у нього йде дата, а повний штамп
+          # лишається всередині exe.
+          $ver = "${{ github.event.inputs.version }}"
+          if (-not $ver) { $ver = (Get-Date -Format "yyyy.MM.dd") }
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" installer.iss
           Get-ChildItem Output
 
