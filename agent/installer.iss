@@ -69,3 +69,7 @@ Filename: "{app}\kmill-agent.exe"; Parameters: "-setup"; Description: "Відк�
 Filename: "schtasks"; Parameters: "/delete /tn KMillAgent /f"; Flags: runhidden; RunOnceId: "DelTask"
 Filename: "netsh"; Parameters: "advfirewall firewall delete rule name=KMillAgent"; Flags: runhidden; RunOnceId: "DelFw"
 Filename: "taskkill"; Parameters: "/im kmill-agent.exe /f"; Flags: runhidden; RunOnceId: "KillAgent"
+
+[UninstallDelete]
+; Другий автозапуск — ярлик в автозавантаженні (addStartupShortcut).
+Type: files; Name: "{userstartup}\KMillAgent.lnk"

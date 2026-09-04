@@ -45,6 +45,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf16"
 
 	"github.com/kbinani/screenshot"
 )
@@ -502,6 +503,12 @@ func runInstall(cfgPath string) {
 	if err := registerTask(); err != nil {
 		log.Printf("install: register task failed: %v", err)
 	}
+	// Другий, незалежний автозапуск — ярлик в автозавантаженні. Якщо задача
+	// планувальника не спрацює (а таке буває), агент однаково підніметься при
+	// вході користувача. Помилка тут не фатальна: задача лишається основною.
+	if err := addStartupShortcut(); err != nil {
+		log.Printf("install: startup shortcut failed: %v", err)
+	}
 	if err := openFirewall(portOf(cfg.Bind)); err != nil {
 		log.Printf("install: firewall rule failed: %v", err)
 	}
@@ -526,11 +533,94 @@ func runInstall(cfgPath string) {
 // package still builds on the Linux CI host during `go mod tidy`.
 // ---------------------------------------------------------------------------
 
+// registerTask реєструє автозапуск при вході через XML, а не рядок команди.
+// Причина: рядковий `schtasks /sc onlogon /rl highest` не вміє ні
+// restart-on-failure, ні StartWhenAvailable, а елевейтед-onlogon на Win10
+// крихкий — після ребуту агент часто не піднімався (бойовий випадок 04.09.26,
+// довелось стартувати руками). XML дає:
+//   • onlogon БУДЬ-ЯКОГО користувача (без прив'язки до імені — не розсинхрону);
+//   • LeastPrivilege: серверу адмін не потрібен (порт 8765 і знімок екрана
+//     працюють без прав), а неелевейтед-задача при вході надійніша;
+//   • RestartOnFailure — упав, перезапуститься сам за хвилину;
+//   • StartWhenAvailable — надолужить, якщо момент входу пропущено;
+//   • ExecutionTimeLimit PT0S — сервер живе безкінечно, планувальник його не
+//     вбиває за таймером.
 func registerTask() error {
-	tr := fmt.Sprintf(`"%s" -serve`, exePath())
-	// Idempotent: /f overwrites any existing task with the same name.
-	return runCmd("schtasks", "/create", "/tn", taskName, "/tr", tr,
-		"/sc", "onlogon", "/rl", "highest", "/f")
+	xml := taskXML(exePath())
+	tmp := filepath.Join(os.TempDir(), "kmill_agent_task.xml")
+	// Task Scheduler чекає UTF-16; кладемо BOM + перекодовуємо.
+	if err := os.WriteFile(tmp, utf16WithBOM(xml), 0644); err != nil {
+		return fmt.Errorf("write task xml: %w", err)
+	}
+	defer os.Remove(tmp)
+	return runCmd("schtasks", "/create", "/tn", taskName, "/xml", tmp, "/f")
+}
+
+func taskXML(exe string) string {
+	// Без <UserId> у тригері: задача спрацьовує на вхід будь-якого користувача,
+	// тож не ламається, якщо машина логіниться під іншим акаунтом.
+	return `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>
+    <LogonTrigger><Enabled>true</Enabled></LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>` + xmlEscape(exe) + `</Command>
+      <Arguments>-serve</Arguments>
+      <WorkingDirectory>` + xmlEscape(filepath.Dir(exe)) + `</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>`
+}
+
+func xmlEscape(s string) string {
+	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
+	return r.Replace(s)
+}
+
+// utf16WithBOM кодує рядок у little-endian UTF-16 з BOM — саме цього чекає
+// schtasks /xml (інакше «invalid XML»).
+func utf16WithBOM(s string) []byte {
+	out := []byte{0xFF, 0xFE} // BOM LE
+	for _, r := range utf16.Encode([]rune(s)) {
+		out = append(out, byte(r), byte(r>>8))
+	}
+	return out
+}
+
+// addStartupShortcut кладе ярлик у теку автозавантаження користувача —
+// ДРУГИЙ, незалежний шлях підняти агента при вході. Якщо задача планувальника
+// з якоїсь причини не спрацює, ярлик усе одно стартує сервер у сесії
+// користувача (де тільки й можливий знімок екрана). Робиться через WScript.Shell
+// (створює справжній .lnk), вікно приховане — на верстаті нічого не блимає.
+func addStartupShortcut() error {
+	lnk := `$s=(New-Object -ComObject WScript.Shell);` +
+		`$k=$s.CreateShortcut([System.IO.Path]::Combine($s.SpecialFolders('Startup'),'KMillAgent.lnk'));` +
+		`$k.TargetPath=` + psQuote(exePath()) + `;` +
+		`$k.Arguments='-serve';` +
+		`$k.WorkingDirectory=` + psQuote(exeDir()) + `;` +
+		`$k.WindowStyle=7;$k.Save()`
+	return runCmd("powershell", "-NoProfile", "-NonInteractive", "-Command", lnk)
+}
+
+func psQuote(s string) string {
+	// Одинарні лапки PowerShell: подвоїти внутрішні одинарні.
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
 
 func restartTask() error {
@@ -552,8 +642,12 @@ func taskState() (installed, running bool) {
 
 func openFirewall(port string) error {
 	_ = runCmd("netsh", "advfirewall", "firewall", "delete", "rule", "name="+taskName)
+	// profile=any явно: на Win10 мережа часто в профілі «Загальна» (Public), і
+	// без цього правило могло не діяти саме там, де верстат (бойовий випадок
+	// 04.09.26 — порт довелось відкривати руками).
 	return runCmd("netsh", "advfirewall", "firewall", "add", "rule",
-		"name="+taskName, "dir=in", "action=allow", "protocol=TCP", "localport="+port)
+		"name="+taskName, "dir=in", "action=allow", "protocol=TCP",
+		"localport="+port, "profile=any")
 }
 
 func runCmd(name string, args ...string) error {
