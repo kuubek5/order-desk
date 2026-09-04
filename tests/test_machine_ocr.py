@@ -436,3 +436,22 @@ def test_caption_reads_partial_fill_correctly():
     assert bar.percent == 70, "геометрія на цьому кадрі занижує (для того й підпис)"
     assert read_caption_percent(image, bar) == 72
     assert read_progress_percent(image) == 72, "віддаємо ПІДПИС, не геометрію"
+
+
+def test_caption_tolerates_percent_glyph_height_variant():
+    """Підпис «57%», де знак «%» ВИЩИЙ за цифри (висота 13 проти 12).
+
+    Реальний кадр .76 (04.09.26): «%» рендериться варіативно, і вимога точного
+    збігу «%» відкидала цілий вірний підпис — читання давало None, а віджет
+    падав на геометрію. Тепер цифри читаються зліва, а «%» (будь-якої висоти,
+    у скількох завгодно сегментах) ігнорується. Тут геометрія й підпис збіглись
+    на 57 — саме те, що показує сам верстат."""
+    from pathlib import Path
+
+    from app.machine_ocr import find_progress_bar, read_caption_percent
+
+    path = Path(__file__).parent / "fixtures" / "remicore_caption_57.png"
+    image = Image.open(path).convert("RGB")
+    bar = find_progress_bar(image)
+    assert bar is not None
+    assert read_caption_percent(image, bar) == 57

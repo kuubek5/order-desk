@@ -481,20 +481,31 @@ def read_caption_percent(image: Image.Image, bar: "ProgressBar") -> Optional[int
         return None
 
     boxes = _segments(mask, _caption_ink)
-    if not boxes or len(boxes) > 5:
+    if not boxes or len(boxes) > 6:
         return None
 
+    # Цифри йдуть ЗЛІВА; усе після них — знак «%» (у якому завгодно числі
+    # сегментів і якої завгодно висоти) і ігнорується. Причина: «%» рендериться
+    # варіативно — то один сегмент висотою 13, то два по 10 (розсипається на
+    # два кружечки + риску), залежно від шрифту й краю заливки. Вимагати точний
+    # збіг «%» означало відкидати цілий вірний підпис через декоративний знак
+    # (бойовий випадок 04.09.26: «57%» не читалось, бо «%» був висотою 13).
+    # Захист «хибне гірше за жодне» лишається: щойно почалась зона «%», ЖОДНА
+    # наступна цифра не дозволена — зламана цифра посеред числа дасть None, а
+    # не коротше число.
     digits = ""
+    seen_pct = False
     for box in boxes:
         bitmap = _bitmap(mask, box, _caption_ink)
         char = _match_digit(bitmap, glyphs)
-        if char is None:
-            return None
-        if char == "%":
-            continue
-        if not char.isdigit():
-            return None
-        digits += char
+        if char is not None and char.isdigit():
+            if seen_pct:
+                return None  # цифра після «%» — підпис розібрано неправильно
+            digits += char
+        else:
+            # Матчений «%», або несходимий сегмент — це початок зони «%».
+            # Далі мають бути тільки такі; поява цифри вище дасть None.
+            seen_pct = True
 
     if not digits or len(digits) > 3:
         return None
