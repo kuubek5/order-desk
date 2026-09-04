@@ -697,7 +697,15 @@ document.addEventListener("click", (event) => {
   applySavedWidths();
   document.querySelectorAll("[data-layout-edit-toggle]").forEach((btn) => {
     btn.setAttribute("aria-pressed", String(document.body.classList.contains("layout-edit")));
-    btn.addEventListener("click", () => setMode(!document.body.classList.contains("layout-edit")));
+  });
+  // Обробник ДЕЛЕГОВАНИЙ на document, а не навішений на кнопку. Пряме
+  // навішування переживає лише ту розмітку, що була при завантаженні: варто
+  // шестерні перемалюватись — і кнопка лишається без обробника, режим уже не
+  // вимикається, а підказка в шапці висить вічно (скарга 04.09.26). Сусідній
+  // режим порядку віджетів (widgetedit.js) робить саме так, і не ламався.
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-layout-edit-toggle]")) return;
+    setMode(!document.body.classList.contains("layout-edit"));
   });
   // Кнопки [data-layout-reset] у розмітці більше немає — скидання живе в
   // шестерні, яка шле цю подію. Обробник на неіснуючий селектор лишав би
