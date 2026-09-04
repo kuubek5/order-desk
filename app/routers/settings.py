@@ -337,8 +337,15 @@ def get_settings(
             "furnace_password_set": bool(get_furnace_vnc_password(db)),
             "furnace_bg": get_furnace_background(db),
             # Верстати: той самий контракт — рядки без паролів, лише ознака.
-            "machines": machines_service.list_machines(db),
+            "machines": (_machines := machines_service.list_machines(db)),
             "machine_password_set": bool(get_machine_vnc_password(db)),
+            # Стан кожного верстата для картки (пілюля «фрезерує · 43%», живий
+            # кадр у режимі «Живий кадр»). Лише пам'ять процесу — до верстата
+            # з потоку запиту не ходимо (та сама причина, що в /machines/side).
+            # Ключ — id рядка, бо шаблон знає рядок, а не MachineTarget.
+            "machine_state_by_id": (
+                lambda cards: {m.id: cards.get(machines_service.target_of(m).key) for m in _machines}
+            )({c.key: c for c in machines_service.snapshot(db)}),
             "spool_report": (_spool_report := analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH))),
             # "Стан системи" flow map — honest, cheap counts (one scalar each).
             # No export-folder scan here; that's the heavy walk we keep off page load.

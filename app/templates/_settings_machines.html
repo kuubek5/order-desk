@@ -24,77 +24,142 @@
                     у верстат застосунок не шле і не вміє слати.
                 </p>
 
+                {# Картки замість таблиці (04.09.26, галерея «Картки верстатів»,
+                   власник обрав «Портрет верстата»; «Живий кадр» — вибір на
+                   акаунті, ui_prefs → machine_card). Форми лишились ті самі:
+                   інпути прив'язані через form="machine-{id}", окрема форма на
+                   видалення — роути /settings/machines* не змінювались.
+                   Портрет обирається за моделлю в назві: «250» → 250i, решта —
+                   350i (два продакт-шоти, згенеровані з фото цеху). #}
+                {% set _card_mode = ui_prefs(request).machine_card %}
+                {% set _states = machine_state_by_id or {} %}
                 {% if machines %}
-                <table class="fu-table">
-                    <thead>
-                        <tr><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th title="Збирати кадри для калібрування читача відсотка">Калібр.</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
-                    </thead>
-                    <tbody>
+                <div class="mset{% if _card_mode == 'frame' %} mode-frame{% endif %}">
                     {% for machine in machines %}
-                    <tr>
+                    {% set st = _states.get(machine.id) %}
+                    {% set portrait = '250i' if '250' in machine.name else '350i' %}
+                    <article class="mset-card{% if not machine.enabled %} is-off{% endif %}">
                         <form method="post" action="/settings/machines/{{ machine.id }}" id="machine-{{ machine.id }}"></form>
                         <form method="post" action="/settings/machines/{{ machine.id }}/delete" id="machine-del-{{ machine.id }}"
                               onsubmit="return confirm('Видалити верстат «{{ machine.name }}» з переліку?')"></form>
-                        <td><input form="machine-{{ machine.id }}" class="login-input" name="name" value="{{ machine.name }}" maxlength="80" required></td>
-                        <td><input form="machine-{{ machine.id }}" class="login-input mono" name="host" value="{{ machine.host }}" maxlength="60" required></td>
-                        <td><input form="machine-{{ machine.id }}" class="login-input mono fu-col-port" name="port" value="{{ machine.port }}" inputmode="numeric"></td>
-                        <td class="fu-col-mid">
-                            <input form="machine-{{ machine.id }}" type="checkbox" name="enabled" value="1" {% if machine.enabled %}checked{% endif %}
-                                   aria-label="Стежити за верстатом {{ machine.name }}">
-                        </td>
-                        <td class="fu-col-mid">
-                            {# Ручний збір калібрувальних кадрів: увімкни на час калібрування
-                               верстата, де відсоток ще не читається, дай пофрезерувати,
-                               скачай кадри (кнопка на екрані «Верстати») і вимкни. #}
-                            <input form="machine-{{ machine.id }}" type="checkbox" name="collect_calibration" value="1" {% if machine.collect_calibration %}checked{% endif %}
-                                   aria-label="Збирати калібрувальні кадри верстата {{ machine.name }}">
-                        </td>
-                        <td>
-                            <input form="machine-{{ machine.id }}" class="login-input mono" type="password" name="agent_token"
-                                   autocomplete="new-password"
-                                   placeholder="{% if machine.agent_token_encrypted %}збережено{% else %}HTTP-агент (8765){% endif %}">
-                        </td>
-                        <td>
-                            <input form="machine-{{ machine.id }}" class="login-input" type="password" name="password"
-                                   autocomplete="new-password"
-                                   placeholder="{% if machine.password_encrypted %}свій, збережено{% else %}спільний{% endif %}">
-                        </td>
-                        <td class="fu-col-act">
-                            <button form="machine-{{ machine.id }}" type="submit" class="settings-secondary-button">Зберегти</button>
-                            <button form="machine-del-{{ machine.id }}" type="submit" class="link-button fu-del"
-                                    title="Видалити верстат">✕</button>
-                        </td>
-                    </tr>
+
+                        {% if _card_mode == 'frame' %}
+                        {# Шапка — останній кадр RemiCORE (той самий файл, що на екрані
+                           «Верстати»). Без кадру — темна камера й чесне «чекаємо». #}
+                        <div class="mset-shot{% if not (st and st.has_frame) %} no-frame{% endif %}"
+                             {% if st and st.has_frame %}style="background-image:url('/machines/{{ st.key }}/frame.png?t={{ st.frame_at.timestamp()|int }}')"{% endif %}>
+                            <div class="mset-scrim" aria-hidden="true"></div>
+                            <div class="mset-shot-cap">
+                                {% if machine.enabled and st and st.percent is not none %}
+                                <span class="mset-pct mono">{{ st.percent }}<u>%</u></span>
+                                {% endif %}
+                                <span class="mset-note">
+                                    {%- if not machine.enabled %}на ремонті · опитування зупинено
+                                    {%- elif st and st.has_problem %}{{ st.problem_text }}
+                                    {%- elif st and st.has_frame %}кадр {{ st.frame_at.strftime('%H:%M:%S') }}
+                                    {%- else %}чекаємо перший кадр{% endif -%}
+                                </span>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="mset-port" data-model="{{ portrait }}" aria-hidden="true"></div>
+                        {% endif %}
+
+                        <div class="mset-body">
+                            <header class="mset-head">
+                                <h3>{{ machine.name }}</h3>
+                                {% if not machine.enabled %}
+                                <span class="mset-pill mute">на ремонті</span>
+                                {% elif st and st.has_problem %}
+                                <span class="mset-pill bad" title="{{ st.problem_text }}">немає зв'язку</span>
+                                {% elif st and st.is_running %}
+                                <span class="mset-pill ok"><i></i>фрезерує · {{ st.percent }}%</span>
+                                {% elif st and st.has_frame %}
+                                <span class="mset-pill ok"><i></i>на зв'язку</span>
+                                {% else %}
+                                <span class="mset-pill dim">чекаємо кадр</span>
+                                {% endif %}
+                                <span class="mset-host mono">{{ machine.host }}:{{ machine.port }}</span>
+                                {% if machine.agent_token_encrypted %}
+                                <span class="mset-mode agent">HTTP-агент · {{ machine.port }}</span>
+                                {% else %}
+                                <span class="mset-mode">VNC · {{ machine.port }}</span>
+                                {% endif %}
+                            </header>
+                            {% if st and st.order %}
+                            <p class="mset-what">Зараз: <b>{{ st.order.work_order_no or st.order.client_name }}</b></p>
+                            {% elif st and st.sum3d_id %}
+                            <p class="mset-what">Зараз: <b class="mono">{{ st.sum3d_id }}</b></p>
+                            {% endif %}
+
+                            <div class="mset-grid">
+                                <label><span>Назва</span>
+                                    <input form="machine-{{ machine.id }}" class="login-input" name="name" value="{{ machine.name }}" maxlength="80" required></label>
+                                <label><span>IP-адреса</span>
+                                    <input form="machine-{{ machine.id }}" class="login-input mono" name="host" value="{{ machine.host }}" maxlength="60" required></label>
+                                <label class="narrow"><span>Порт</span>
+                                    <input form="machine-{{ machine.id }}" class="login-input mono" name="port" value="{{ machine.port }}" inputmode="numeric"></label>
+                                <label><span>Токен агента</span>
+                                    <input form="machine-{{ machine.id }}" class="login-input mono" type="password" name="agent_token"
+                                           autocomplete="new-password"
+                                           placeholder="{% if machine.agent_token_encrypted %}збережено{% else %}HTTP-агент (8765){% endif %}"></label>
+                                <label><span>Пароль VNC</span>
+                                    <input form="machine-{{ machine.id }}" class="login-input" type="password" name="password"
+                                           autocomplete="new-password"
+                                           placeholder="{% if machine.password_encrypted %}свій, збережено{% else %}спільний{% endif %}"></label>
+                            </div>
+
+                            <div class="mset-toggles">
+                                <label class="mset-sw">
+                                    <input form="machine-{{ machine.id }}" type="checkbox" name="enabled" value="1" {% if machine.enabled %}checked{% endif %}
+                                           aria-label="Стежити за верстатом {{ machine.name }}"><i aria-hidden="true"></i><span>Стежити</span>
+                                </label>
+                                {# Ручний збір калібрувальних кадрів: увімкни на час калібрування
+                                   верстата, де відсоток ще не читається, дай пофрезерувати,
+                                   скачай кадри (кнопка на екрані «Верстати») і вимкни. #}
+                                <label class="mset-sw" title="Збирати кадри для калібрування читача відсотка">
+                                    <input form="machine-{{ machine.id }}" type="checkbox" name="collect_calibration" value="1" {% if machine.collect_calibration %}checked{% endif %}
+                                           aria-label="Збирати калібрувальні кадри верстата {{ machine.name }}"><i aria-hidden="true"></i><span>Збирати калібрувальні кадри</span>
+                                </label>
+                            </div>
+
+                            <div class="mset-foot">
+                                <button form="machine-{{ machine.id }}" type="submit" class="settings-secondary-button">Зберегти</button>
+                                <button form="machine-del-{{ machine.id }}" type="submit" class="link-button mset-del"
+                                        title="Видалити верстат">Видалити</button>
+                            </div>
+                        </div>
+                    </article>
                     {% endfor %}
-                    </tbody>
-                </table>
+                </div>
                 {% endif %}
 
-                <form method="post" action="/settings/machines" class="fu-add">
-                    <div class="settings-field">
-                        <label for="machine_new_name">Додати верстат</label>
+                <form method="post" action="/settings/machines" class="mset-card add">
+                    <div class="mset-port add" aria-hidden="true"><span>+</span></div>
+                    <div class="mset-body">
+                        <header class="mset-head"><h3><label for="machine_new_name">Додати верстат</label></h3></header>
                         <p class="settings-help">Два способи читати екран, заповни ОДИН: <b>Токен агента</b> — наш HTTP-агент (порт <b>8765</b>), бачить синю смугу %; <b>Пароль VNC</b> — класичний UltraVNC (порт <b>5900</b>), смуги % не бачить. Назву видно на екрані верстатів.</p>
-                        <div class="fu-add-row">
-                            <input id="machine_new_name" class="login-input" name="name" placeholder="350i №1" maxlength="80" required>
-                            <input class="login-input mono" name="host" placeholder="192.168.1.85" maxlength="60" required>
-                            <input class="login-input mono fu-col-port" name="port" placeholder="8765" inputmode="numeric">
-                            <input class="login-input mono" name="agent_token" placeholder="токен агента (HTTP)" autocomplete="new-password">
-                            <input class="login-input" type="password" name="password" placeholder="або пароль VNC" autocomplete="new-password">
-                            <button type="submit" class="settings-secondary-button">Додати</button>
+                        <div class="mset-grid">
+                            <label><span>Назва</span><input id="machine_new_name" class="login-input" name="name" placeholder="350i №1" maxlength="80" required></label>
+                            <label><span>IP-адреса</span><input class="login-input mono" name="host" placeholder="192.168.1.85" maxlength="60" required></label>
+                            <label class="narrow"><span>Порт</span><input class="login-input mono" name="port" placeholder="8765" inputmode="numeric"></label>
+                            <label><span>Токен агента</span><input class="login-input mono" name="agent_token" placeholder="токен агента (HTTP)" autocomplete="new-password"></label>
+                            <label><span>Пароль VNC</span><input class="login-input" type="password" name="password" placeholder="або пароль VNC" autocomplete="new-password"></label>
                         </div>
+                        <div class="mset-foot"><button type="submit" class="settings-secondary-button">Додати</button></div>
                     </div>
                 </form>
 
-                <div class="settings-field">
-                    <label for="machine_shared_password">Спільний пароль VNC</label>
-                    <p class="settings-help">View-only пароль UltraVNC, якщо він однаковий на всіх верстатних ПК. Порожнє поле лишає збережений пароль без змін.</p>
-                    <form method="post" action="/settings/machines/password" class="fu-add-row">
-                        <input id="machine_shared_password" class="login-input" type="password" name="password"
-                               autocomplete="new-password"
-                               placeholder="{% if machine_password_set %}збережено{% else %}view-only пароль UltraVNC{% endif %}">
-                        <button type="submit" class="settings-secondary-button">Зберегти пароль</button>
-                    </form>
-                </div>
+                <form method="post" action="/settings/machines/password" class="mset-shared">
+                    <div class="mset-shared-txt">
+                        <label for="machine_shared_password">Спільний пароль VNC</label>
+                        <span class="settings-help">View-only пароль UltraVNC, якщо він однаковий на всіх верстатних ПК. Порожнє поле лишає збережений без змін.</span>
+                    </div>
+                    <input id="machine_shared_password" class="login-input" type="password" name="password"
+                           autocomplete="new-password"
+                           placeholder="{% if machine_password_set %}збережено{% else %}view-only пароль UltraVNC{% endif %}">
+                    <button type="submit" class="settings-secondary-button">Зберегти пароль</button>
+                </form>
 
                 {# Довідка про агента: згорнута, бо потрібна раз на верстат —
                    але саме тоді потрібна ЦІЛКОМ, разом із посиланням, кроками

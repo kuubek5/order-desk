@@ -285,6 +285,20 @@
                 {% endfor %}
             </div>
         </div>
+
+        {# Картки верстатів у Налаштуваннях: «Портрет» — дефолт (власник,
+           04.09.26), «Живий кадр» — шапка картки зі справжнім кадром RemiCORE. #}
+        <div class="settings-field">
+            <label>Картки верстатів у налаштуваннях</label>
+            <div class="acc-icons-row" role="group" aria-label="Вигляд карток верстатів у налаштуваннях">
+                {% for value, title in [('', 'Портрет верстата'), ('frame', 'Живий кадр')] %}
+                <button type="button" class="acc-swatch acc-mcard-btn" data-set-machine-card="{{ value }}">
+                    <span class="mcsw" data-mcard="{{ value }}" aria-hidden="true"><i></i><b>350i Loader</b></span>
+                    <span class="acc-swatch-name">{{ title }}</span>
+                </button>
+                {% endfor %}
+            </div>
+        </div>
     </div>
 
     </div>
@@ -321,7 +335,8 @@
       // Віджет верстатів: на міні-сторінці його немає, тому без live-прев'ю —
       // зразок кожна кнопка несе сама (settings.css / furnaces.css).
       { attr: 'data-machine-art',   btn: '.acc-mart-btn',   key: 'setMachineArt',   field: 'machine_art' },
-      { attr: 'data-machine-strip', btn: '.acc-mstrip-btn', key: 'setMachineStrip', field: 'machine_strip' }
+      { attr: 'data-machine-strip', btn: '.acc-mstrip-btn', key: 'setMachineStrip', field: 'machine_strip' },
+      { attr: 'data-machine-card',  btn: '.acc-mcard-btn',  key: 'setMachineCard',  field: 'machine_card' }
     ];
     var live = document.getElementById('acc-live');
 

@@ -289,6 +289,8 @@ def ui_prefs(request: Request) -> dict:
         # Віджет верстатів: "" = «Пил на сталі» / «Сегменти» (дефолт власника).
         "machine_art": "",
         "machine_strip": "",
+        # Картки верстатів у Налаштуваннях: "" = портрет, "frame" = живий кадр.
+        "machine_card": "",
     }
     mirrored = False
     try:
@@ -314,6 +316,7 @@ def ui_prefs(request: Request) -> dict:
                         "handout_layout": user.handout_layout or "",
                         "machine_art": user.ui_machine_art or "",
                         "machine_strip": user.ui_machine_strip or "",
+                        "machine_card": user.ui_machine_card or "",
                     }
                     mirrored = True
             finally:

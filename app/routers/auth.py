@@ -201,6 +201,8 @@ UI_CHIP_STYLES = {"", "solid", "dashed", "marker", "gradient"}
 # власником 03.09.26; решта з тієї ж галереї; none/off — вимкнути.
 UI_MACHINE_ARTS = {"", "burr", "flower", "titanium", "toolpath", "none"}
 UI_MACHINE_STRIPS = {"", "edge", "fill", "ring", "ticker", "off"}
+# Картки верстатів у Налаштуваннях: "" = «Портрет» (дефолт), "frame" = живий кадр.
+UI_MACHINE_CARDS = {"", "frame"}
 
 
 @router.post("/account/appearance")
@@ -213,6 +215,7 @@ async def post_account_appearance(
     chips: str = Form(""),
     machine_art: str = Form(""),
     machine_strip: str = Form(""),
+    machine_card: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Зберегти візуальний набір оператора. Викликається fetch'ем з кабінету
@@ -230,6 +233,7 @@ async def post_account_appearance(
         or chips not in UI_CHIP_STYLES
         or machine_art not in UI_MACHINE_ARTS
         or machine_strip not in UI_MACHINE_STRIPS
+        or machine_card not in UI_MACHINE_CARDS
     ):
         return Response(status_code=422)
     user.ui_theme = theme
@@ -239,6 +243,7 @@ async def post_account_appearance(
     user.ui_chip_style = chips
     user.ui_machine_art = machine_art
     user.ui_machine_strip = machine_strip
+    user.ui_machine_card = machine_card
     db.commit()
     return Response(status_code=204)
 

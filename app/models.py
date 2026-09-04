@@ -50,6 +50,9 @@ class User(Base):
     # оператора в кабінеті; "none" / "off" — без арту / без стрічки.
     ui_machine_art: Mapped[str] = mapped_column(String(20), default="", server_default="")
     ui_machine_strip: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    # Картки верстатів у Налаштуваннях (04.09.26): "" = «Портрет верстата»
+    # (дефолт власника), "frame" = шапка картки з живим кадром RemiCORE.
+    ui_machine_card: Mapped[str] = mapped_column(String(20), default="", server_default="")
     # Вигляд списку листів на екрані тріажу (шестерня над списком). Усе в
     # пікселях, 0 = «як було»: вертикальний відступ рядка, ширина панелі
     # списку і крок, яким оператор ці два значення підкручує. Тримається тут,

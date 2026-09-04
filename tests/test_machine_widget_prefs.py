@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def _request(prefs: dict | None = None):
     state = SimpleNamespace()
     if prefs is not None:
-        base = {"machine_art": "", "machine_strip": ""}
+        base = {"machine_art": "", "machine_strip": "", "machine_card": ""}
         base.update(prefs)
         state.ui_prefs_cache = base
     return SimpleNamespace(session={}, client=SimpleNamespace(host="127.0.0.1"),
@@ -109,7 +109,7 @@ def _user(db):
 
 def _post(user_id, db, **over):
     kwargs = {"theme": "", "icons": "", "buttons": "", "loader": "", "chips": "",
-              "machine_art": "", "machine_strip": ""}
+              "machine_art": "", "machine_strip": "", "machine_card": ""}
     kwargs.update(over)
     req = SimpleNamespace(session={"user_id": user_id}, client=SimpleNamespace(host="127.0.0.1"),
                           headers=Headers({}), state=SimpleNamespace())

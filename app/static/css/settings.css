@@ -942,3 +942,95 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .mc-agent-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;
   font-size:var(--fs-2);color:var(--ink-2)}
 .mc-agent-steps b{color:var(--ink)}
+
+/* ── Налаштування → Верстати: картки-модулі (04.09.26) ─────────────────────
+   Галерея «Картки верстатів»: власник обрав «Портрет верстата»; «Живий кадр» —
+   вибір на акаунті (html[data-machine-card="frame"], розмітка інша, стилі тут).
+   Стара .fu-table жила у furnaces.css, який на цьому екрані не підключений —
+   тому й була голою. Усе для карток — тут, у файлі екрана. */
+.setv2 .mset{display:flex;flex-direction:column;gap:var(--space-3)}
+.setv2 .mset-card{display:flex;background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;
+  transition:border-color var(--ui-speed) ease}
+.setv2 .mset-card:hover{border-color:var(--line-2)}
+.setv2 .mset-card.is-off{opacity:.78}
+.setv2 .mset-card.add{border-style:dashed;margin-top:var(--space-1)}
+/* Портрет: продакт-шот моделі, згенерований з фото цеху; праворуч розчиняється
+   у фон картки, щоб не було «рамки в рамці». */
+.setv2 .mset-port{position:relative;flex:0 0 232px;background:#0c1015 center/cover no-repeat;isolation:isolate}
+.setv2 .mset-port::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,0) 60%,var(--card-2) 100%)}
+.setv2 .mset-port[data-model="350i"]{background-image:url("../img/machine-portrait-350i.jpg")}
+.setv2 .mset-port[data-model="250i"]{background-image:url("../img/machine-portrait-250i.jpg")}
+.setv2 .mset-card.is-off .mset-port{filter:saturate(.2) brightness(.7)}
+.setv2 .mset-port.add{display:grid;place-items:center;background:var(--field);border-right:1px dashed var(--line-2)}
+.setv2 .mset-port.add::after{display:none}
+.setv2 .mset-port.add span{font-size:34px;font-weight:300;color:var(--ink-3)}
+/* Живий кадр: справжній останній кадр RemiCORE як шапка. */
+.setv2 .mset.mode-frame .mset-card{flex-direction:column}
+.setv2 .mset.mode-frame{display:grid;grid-template-columns:1fr 1fr}
+.setv2 .mset-shot{position:relative;aspect-ratio:16/7.5;background:#0c1015 center 30%/cover no-repeat;isolation:isolate}
+.setv2 .mset-shot.no-frame{background-image:url("../img/machine-dust.jpg");filter:saturate(.4) brightness(.7)}
+.setv2 .mset-card.is-off .mset-shot{filter:saturate(.15) brightness(.55)}
+.setv2 .mset-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,11,15,.3) 0%,rgba(8,11,15,.1) 35%,rgba(8,11,15,.9) 100%)}
+.setv2 .mset-shot-cap{position:absolute;left:14px;right:14px;bottom:10px;display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.setv2 .mset-pct{font-size:30px;font-weight:700;line-height:1;color:var(--accent-c);text-shadow:0 0 16px rgba(var(--accent-rgb), .5)}
+.setv2 .mset-pct u{text-decoration:none;font-size:var(--fs-1);color:var(--ink-3);font-weight:400}
+.setv2 .mset-note{font-size:var(--fs-1);color:var(--ink-2);text-shadow:0 1px 4px rgba(0,0,0,.8)}
+.setv2 .mset-body{flex:1;min-width:0;padding:14px 16px 12px;display:flex;flex-direction:column;gap:var(--space-3)}
+.setv2 .mset-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.setv2 .mset-head h3{margin:0;font-family:var(--font-head);font-size:var(--fs-4);font-weight:600;letter-spacing:-.005em}
+.setv2 .mset-head h3 label{cursor:text}
+.setv2 .mset-host{font-size:var(--fs-1);color:var(--ink-3)}
+.setv2 .mset-what{margin:-6px 0 0;font-size:var(--fs-1);color:var(--ink-2)}
+.setv2 .mset-what b{color:var(--ink);font-weight:500}
+.setv2 .mset-pill{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-0);padding:2px 9px;border-radius:999px;
+  border:1px solid var(--line-2);background:var(--raise);color:var(--ink-2);white-space:nowrap}
+.setv2 .mset-pill i{width:6px;height:6px;border-radius:50%;background:var(--accent-b);box-shadow:0 0 6px rgba(var(--accent-rgb), .8)}
+.setv2 .mset-pill.ok{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .3)}
+.setv2 .mset-pill.bad{background:rgba(var(--alarm-rgb), .14);color:var(--alarm-ink);border-color:rgba(var(--alarm-rgb), .3)}
+.setv2 .mset-pill.dim{color:var(--ink-3)}
+.setv2 .mset-pill.mute{color:var(--ink-3);border-style:dashed}
+.setv2 .mset-mode{margin-left:auto;font-family:var(--font-mono);font-size:var(--fs-0);letter-spacing:.03em;padding:2px 7px;border-radius:5px;
+  border:1px solid var(--line-2);color:var(--ink-2);background:var(--field);white-space:nowrap}
+.setv2 .mset-mode.agent{border-color:rgba(var(--accent-rgb), .35);color:var(--accent-c)}
+.setv2 .mset-grid{display:grid;grid-template-columns:1.2fr 1.2fr .6fr 1.3fr 1.1fr;gap:10px}
+.setv2 .mset.mode-frame .mset-grid{grid-template-columns:1fr 1fr .55fr}
+.setv2 .mset.mode-frame .mset-grid label:nth-child(4){grid-column:1/3}
+.setv2 .mset-grid label{display:flex;flex-direction:column;gap:4px;min-width:0}
+.setv2 .mset-grid label span{font-size:var(--fs-0);color:var(--ink-3)}
+.setv2 .mset-grid .login-input{height:34px;padding:0 10px;font-size:var(--fs-2)}
+.setv2 .mset-grid .login-input.mono{font-family:var(--font-mono)}
+.setv2 .mset-toggles{display:flex;gap:18px;flex-wrap:wrap}
+.setv2 .mset-sw{position:relative;display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-1);color:var(--ink-2);cursor:pointer}
+.setv2 .mset-sw input{position:absolute;opacity:0;width:0;height:0}
+.setv2 .mset-sw i{width:30px;height:17px;border-radius:999px;background:var(--raise);border:1px solid var(--line-2);position:relative;
+  transition:background var(--ui-speed) ease}
+.setv2 .mset-sw i::after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:var(--ink-3);
+  transition:transform var(--ui-speed) ease,background var(--ui-speed) ease}
+.setv2 .mset-sw input:checked+i{background:rgba(var(--accent-rgb), .35);border-color:rgba(var(--accent-rgb), .6)}
+.setv2 .mset-sw input:checked+i::after{transform:translateX(13px);background:var(--accent-b)}
+.setv2 .mset-sw input:focus-visible+i{outline:2px solid var(--accent-b);outline-offset:2px}
+.setv2 .mset-foot{display:flex;gap:8px;align-items:center;padding-top:8px;border-top:1px solid var(--line)}
+.setv2 .mset-del{margin-left:auto;color:var(--ink-3);font-size:var(--fs-1);padding:6px 8px;border-radius:var(--r-ctl)}
+.setv2 .mset-del:hover{color:var(--alarm);background:var(--card)}
+.setv2 .mset-shared{display:grid;grid-template-columns:1fr 260px auto;gap:12px;align-items:center;padding:12px 14px;
+  border:1px solid var(--line);border-radius:var(--r-card);background:var(--card-2)}
+.setv2 .mset-shared-txt{display:flex;flex-direction:column;gap:2px}
+.setv2 .mset-shared-txt label{font-size:var(--fs-2);font-weight:600;color:var(--ink)}
+.setv2 .mset-shared .login-input{height:34px;padding:0 10px;font-size:var(--fs-2)}
+@media (max-width:820px){
+  .setv2 .mset-card{flex-direction:column}
+  .setv2 .mset-port{flex-basis:150px;min-height:150px}
+  .setv2 .mset-port::after{background:linear-gradient(180deg,rgba(0,0,0,0) 55%,var(--card-2) 100%)}
+  .setv2 .mset.mode-frame{grid-template-columns:1fr}
+  .setv2 .mset-grid,.setv2 .mset.mode-frame .mset-grid{grid-template-columns:1fr 1fr}
+  .setv2 .mset.mode-frame .mset-grid label:nth-child(4){grid-column:auto}
+  .setv2 .mset-shared{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){.setv2 .mset-sw i,.setv2 .mset-sw i::after,.setv2 .mset-card{transition:none}}
+/* Зразок для кабінету: та сама мініатюра двома режимами. */
+.mcsw{position:relative;display:flex;height:64px;border-radius:calc(var(--r-card) - 3px);border:1px solid var(--line);overflow:hidden;background:var(--card-2)}
+.mcsw i{flex:0 0 46%;background:#0c1015 center/cover no-repeat}
+.mcsw[data-mcard=""] i{background-image:url("../img/machine-portrait-350i.jpg")}
+.mcsw[data-mcard="frame"]{flex-direction:column}
+.mcsw[data-mcard="frame"] i{flex:0 0 58%;background-image:url("../img/machine-dust.jpg");filter:saturate(.4) brightness(.8)}
+.mcsw b{align-self:center;padding:0 8px;font-size:var(--fs-0);font-weight:500;color:var(--ink-2)}
