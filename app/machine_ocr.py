@@ -33,6 +33,7 @@ RemiCORE малює внизу горизонтальну СМУГУ прогр�
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
@@ -847,3 +848,89 @@ def find_newgen_progress(image: Image.Image) -> Optional[ProgressBar]:
     return None
 
 
+
+
+# ── Екран SUMMARY нового покоління: програма ЗАВЕРШЕНА ──────────────────────
+# Коли CORiTEC доганяє програму, він показує підсумок: «SUMMARY», плитки
+# Duration/Blanks/Jobs і рядок PROTOCOL зі станом «Completed». Смуги прогресу
+# на цьому екрані НЕМАЄ ЗОВСІМ, тож усі три детектори вище чесно мовчать — і
+# верстат виглядає так само, як зупинений («—»). Для цеху це різні речі:
+# завершений верстат треба розвантажити.
+#
+# Розпізнаємо за ЗАГОЛОВКОМ, а не за зеленим кружком «Completed»: кружок малий
+# і зелені елементи в цьому інтерфейсі є й на інших екранах (кнопка старту),
+# а слово «SUMMARY» не трапляється більше ніде. Заголовок відцентрований —
+# шукаємо його у вікні ±200px від середини кадру, у смузі 5-11% висоти (нижче
+# статусного рядка з назвою моделі й годинником, вище плиток).
+#
+# Порівняння — маска світлих пікселів проти еталона, знятого з бойового кадру
+# .81 (04.09.26, 1920×1200). Допуск 3%: на відміну від цифри, де хибний збіг
+# дає ХИБНЕ ЧИСЛО і тому діє правило «піксель-у-піксель», тут ціна помилки
+# менша (стан, а не число), а згладжування шрифту між машинами може дати
+# кілька різних пікселів. 3% від 735 чорнильних пікселів — це ~22 пікселі,
+# тобто менше за одну літеру: випадкове слово так не збігається.
+SUMMARY_BAND = (0.05, 0.11)
+SUMMARY_HALF_WIDTH = 200
+SUMMARY_INK = 150
+SUMMARY_MAX_MISMATCH = 0.03
+
+
+@lru_cache(maxsize=1)
+def load_screen_templates() -> dict:
+    """Еталони екранів (`app/data/machine_screens.json`). Немає файлу — порожньо
+    (детектор просто вимкнений, а не помилка — як із еталонами цифр)."""
+    try:
+        raw = Path(resource_path("app/data/machine_screens.json")).read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("machine_screens.json пошкоджений — розпізнавання екранів вимкнено")
+        return {}
+
+
+def _title_mask(image: Image.Image) -> Optional[tuple[int, int, list[int]]]:
+    """Маска відцентрованого заголовка: (ширина, висота, біти рядками)."""
+    width, height = image.size
+    if width < 400 or height < 200:
+        return None
+    px = image.convert("RGB").load()
+    cx = width // 2
+    y0, y1 = int(height * SUMMARY_BAND[0]), int(height * SUMMARY_BAND[1])
+    x0, x1 = max(0, cx - SUMMARY_HALF_WIDTH), min(width, cx + SUMMARY_HALF_WIDTH)
+    xs: list[int] = []
+    ys: list[int] = []
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            p = px[x, y]
+            if min(p[0], p[1], p[2]) >= SUMMARY_INK:
+                xs.append(x)
+                ys.append(y)
+    if not xs:
+        return None
+    bx0, bx1, by0, by1 = min(xs), max(xs), min(ys), max(ys)
+    bits = [
+        1 if min(px[x, y][0], px[x, y][1], px[x, y][2]) >= SUMMARY_INK else 0
+        for y in range(by0, by1 + 1)
+        for x in range(bx0, bx1 + 1)
+    ]
+    return bx1 - bx0 + 1, by1 - by0 + 1, bits
+
+
+def screen_is_completed(image: Image.Image) -> bool:
+    """Чи це екран SUMMARY — тобто програма щойно завершилась."""
+    tpl = load_screen_templates().get("summary")
+    if not tpl:
+        return False
+    got = _title_mask(image)
+    if got is None:
+        return False
+    w, h, bits = got
+    if w != tpl["w"] or h != tpl["h"]:
+        return False
+    raw = base64.b64decode(tpl["bits"])
+    want = [(raw[i // 8] >> (7 - i % 8)) & 1 for i in range(w * h)]
+    mismatch = sum(1 for a, b in zip(bits, want) if a != b)
+    ink = max(1, sum(want))
+    return mismatch <= ink * SUMMARY_MAX_MISMATCH

@@ -659,3 +659,37 @@ def test_titan_frame_reads_fourteen_percent():
     from app.machine_ocr import read_progress_percent
 
     assert read_progress_percent(_newgen("remicore_titan_14.png")) == 14
+
+
+def test_summary_screen_is_recognized_as_completed():
+    """Екран підсумку нового покоління = програма завершена.
+
+    Реальний кадр .81 (04.09.26): «SUMMARY», Duration/Blanks/Jobs, рядок
+    PROTOCOL зі станом «Completed». Смуги прогресу на ньому НЕМАЄ, тож без
+    цього розпізнавання завершений верстат виглядав так само, як зупинений
+    («—») — а для цеху це різні речі: завершений треба розвантажити.
+    """
+    from app.machine_ocr import read_progress_percent, screen_is_completed
+
+    image = _newgen("newgen_summary_done.png")
+    assert screen_is_completed(image) is True
+    # Взаємно виключні: на екрані підсумку числа немає й бути не може.
+    assert read_progress_percent(image) is None
+
+
+def test_summary_detector_is_silent_on_every_other_screen():
+    """Жоден інший бойовий кадр не має читатись як «завершено».
+
+    Сюди входять обидва покоління: RemiCORE (де слова SUMMARY немає взагалі)
+    і робочий екран нового покоління зі смугою. На 285 зібраних кадрах
+    чотирьох верстатів поділ вийшов чистим — 216 дали число й жодного
+    SUMMARY, 67 дали SUMMARY й жодного числа, перетину нуль.
+    """
+    from app.machine_ocr import screen_is_completed
+
+    for name in (
+        "remicore_bar_100.png", "remicore_caption_72.png", "remicore_caption_57.png",
+        "remicore_low_18.png", "remicore_portrait_8.png", "remicore_titan_14.png",
+        "newgen_progress_0.png", "newgen_progress_30.png", "newgen_150i_38.png",
+    ):
+        assert screen_is_completed(_newgen(name)) is False, name

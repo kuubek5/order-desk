@@ -36,6 +36,7 @@ from app.machine_ocr import (
     missing_caption_digits,
     pick_milling_program,
     read_progress_percent,
+    screen_is_completed,
 )
 from app.models import Machine, Order
 from app.services.furnace import _HOST_RE, validate_address  # ті самі правила адреси
@@ -122,6 +123,11 @@ class MachineState:
     # достатньо, щоб відрізнити верстат у роботі від зупиненого, не читаючи з
     # кадру ні подачу, ні оберти шпинделя.
     percent_changed_at: Optional[datetime] = None
+    # Програма ЗАВЕРШЕНА: на екрані нового покоління стоїть підсумок SUMMARY
+    # («Completed», Duration/Blanks/Jobs). Смуги прогресу там немає зовсім, тож
+    # без цього прапорця завершений верстат виглядав так само, як зупинений
+    # («—»), — а для цеху це різні речі: завершений треба розвантажити.
+    completed: bool = False
     # Коли кадр востаннє лягав на диск (аналізуємо частіше, ніж пишемо).
     frame_saved_at: Optional[datetime] = None
     # Що саме фрезерується: ім'я .iso із заголовка вікна RemiCORE і витягнутий
@@ -464,6 +470,14 @@ def poll_target(
         state.percent_changed_at = now
     state.percent = percent
     state.percent_at = now
+    # Екран підсумку — з того самого кадру й тією ж лійкою, що й відсоток.
+    # Взаємно виключні за побудовою: на 285 бойових кадрах чотирьох верстатів
+    # жоден не дав одночасно число і SUMMARY (перевірено 04.09.26).
+    try:
+        state.completed = screen_is_completed(frame)
+    except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
+        logger.exception("Екран верстата %s не розпізнано", target.host)
+        state.completed = False
 
     # Поки шрифт підпису неповний, відкладаємо кадр із новим відсотком для
     # навчання. `percent` тут — геометрія (підпис ще не читається, бо саме його
@@ -629,6 +643,17 @@ class MachineCard:
         if not (self.state and self.state.iso_name):
             return None
         return None if (self.stale or self.has_problem) else self.state.iso_name
+
+    @property
+    def is_completed(self) -> bool:
+        """Програма завершена — на екрані підсумок SUMMARY («Completed»).
+
+        Читається зі СВІЖОГО кадру, як і відсоток: показувати «завершено» з
+        протухлого кадру означало б те саме «хибне число», якого ми уникаємо.
+        Взаємно виключне з `percent` за побудовою детектора."""
+        if not (self.state and self.state.completed):
+            return False
+        return not (self.stale or self.has_problem)
 
     @property
     def has_program(self) -> bool:

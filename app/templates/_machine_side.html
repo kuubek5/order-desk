@@ -38,8 +38,8 @@
         {% if machine_cards %}
         <div class="ms-tiles">
             {% for card in machine_cards %}
-            <a class="ms-tile{% if card.has_problem %} is-offline{% elif card.percent is none %}{% if card.has_frame %} is-idle{% else %} is-wait{% endif %}{% endif %}{% if card.is_running %} is-run{% endif %}"
-               href="/machines" title="{{ card.target.name }} — {{ card.target.host }}">
+            <a class="ms-tile{% if card.has_problem %} is-offline{% elif card.is_completed %} is-done{% elif card.percent is none %}{% if card.has_frame %} is-idle{% else %} is-wait{% endif %}{% endif %}{% if card.is_running %} is-run{% endif %}"
+               href="/machines" title="{{ card.target.name }} — {{ card.target.host }}{% if card.is_completed %} — програма завершена{% endif %}">
                 <span class="ms-name">{{ card.target.name }}</span>
                 {% if card.has_problem %}
                 <span class="ms-pct err">—</span>
@@ -54,6 +54,19 @@
                 <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
                 {% endif %}
                 <span class="ms-bar" aria-hidden="true"><i style="width:{{ card.percent }}%"></i></span>
+                {% elif card.is_completed %}
+                {# Екран підсумку нового покоління: програма ДОФРЕЗЕРУВАЛАСЬ і
+                   чекає, поки її знімуть. Смуги прогресу там немає зовсім,
+                   тому без цієї гілки завершений верстат виглядав так само,
+                   як зупинений («—»), — а це різні речі для того, хто вирішує,
+                   що розвантажувати. #}
+                <span class="ms-pct is-done">готово</span>
+                {% if card.order %}
+                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}</span>
+                {% elif card.sum3d_id %}
+                <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
+                {% endif %}
+                <span class="ms-note">програма завершена · зняти</span>
                 {% elif card.has_frame and card.has_program %}
                 {# Програма завантажена (є .iso у заголовку), але смугу відсотка
                    не видно — чесно «запуск», а не брехливе «не йде».
