@@ -9,9 +9,27 @@ from app.services import machines as ms
 
 
 class _Resp:
+    """Дублер відповіді requests.
+
+    Підтримує `with` і `iter_content` — саме так `_capture_http` читає кадр
+    після рев'ю 04.09.26: потоково, з лічильником байтів і сумарним дедлайном
+    (таймаут читання в requests рахується МІЖ байтами, тож краплинна віддача
+    його обходила). Дублер мусить повторювати справжній контракт, інакше тест
+    зеленітиме на API, якого в проді немає."""
+
     def __init__(self, content: bytes, status: int = 200):
         self.content = content
         self.status_code = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def iter_content(self, chunk_size=8192):
+        for i in range(0, len(self.content), chunk_size):
+            yield self.content[i:i + chunk_size]
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -31,7 +49,7 @@ def _png_bytes(color=(10, 20, 30)) -> bytes:
 def test_capture_http_returns_image(monkeypatch):
     captured = {}
 
-    def fake_get(url, headers=None, timeout=None):
+    def fake_get(url, headers=None, timeout=None, stream=False):
         captured["url"] = url
         captured["headers"] = headers
         return _Resp(_png_bytes())
@@ -94,7 +112,7 @@ def test_poll_all_uses_http_for_agent_targets(monkeypatch):
 
     calls = {"http": 0}
 
-    def fake_get(url, headers=None, timeout=None):
+    def fake_get(url, headers=None, timeout=None, stream=False):
         # Агент опитується двома викликами: /capture (кадр) і /titles (яка
         # програма фрезерується). Рахуємо саме кадри.
         if url.endswith("/titles"):
@@ -120,7 +138,7 @@ def test_poll_target_uses_http_when_token(monkeypatch):
 
     calls = {"http": 0, "vnc": 0}
 
-    def fake_get(url, headers=None, timeout=None):
+    def fake_get(url, headers=None, timeout=None, stream=False):
         # Агент опитується двома викликами: /capture (кадр) і /titles (яка
         # програма фрезерується). Рахуємо саме кадри.
         if url.endswith("/titles"):
@@ -242,7 +260,7 @@ def test_finished_program_clears_stale_percent_and_link(monkeypatch):
     from PIL import Image
     blank = Image.new("RGB", (300, 200), (240, 240, 240))
 
-    def fake_get(url, headers=None, timeout=None):
+    def fake_get(url, headers=None, timeout=None, stream=False):
         return _Resp(b'{"titles": ["RemiCORE", "Notepad"]}')  # без .iso
 
     monkeypatch.setattr(requests, "get", fake_get)

@@ -693,3 +693,59 @@ def test_summary_detector_is_silent_on_every_other_screen():
         "newgen_progress_0.png", "newgen_progress_30.png", "newgen_150i_38.png",
     ):
         assert screen_is_completed(_newgen(name)) is False, name
+
+
+def test_blue_blob_on_non_white_track_is_not_a_full_bar():
+    """Синя пляма поруч із НЕ-білим тлом не сміє читатись як 100%.
+
+    Найдорожча хибна відповідь: оператор іде знімати недофрезеровану роботу.
+    Скан управо спиняється на першій колонці, що не синя й не БІЛА, тож при
+    світло-сірому треку він спинявся одразу за заливкою і будь-яка синя пляма
+    ставала «100%». На бойовому кадрі .64 таким «верстатом» був шматок шпалер
+    Windows (знайдено рев'ю 04.09.26).
+
+    Розрізняє їх білий підпис усередині: справжня повна смуга має власне
+    «100%» білим по синьому — 27 кадрів із 27 на бойовому наборі.
+    """
+    from app.machine_ocr import read_progress_percent
+
+    for track in ((89, 89, 89), (200, 200, 200), (240, 240, 240)):
+        img = _screen()
+        d = ImageDraw.Draw(img)
+        left, top, right, bottom = 400, 780, 700, 800
+        d.rectangle([left, top, right - 1, bottom - 1], fill=track)
+        d.rectangle([left, top, left + 90, bottom - 1], fill=BLUE)
+        assert read_progress_percent(img) is None, track
+
+    # А справжня повна смуга з білим підписом усередині читається як 100%.
+    img = _screen()
+    d = ImageDraw.Draw(img)
+    left, top, right, bottom = 400, 780, 700, 800
+    d.rectangle([left - 1, top - 1, right, bottom], outline=DARK)
+    d.rectangle([left, top, right - 1, bottom - 1], fill=BLUE)
+    for x in range(left + 40, left + 60, 3):  # «100%» білим по синьому
+        d.rectangle([x, top + 5, x + 1, bottom - 6], fill=LIGHT)
+    assert read_progress_percent(img) == 100
+
+
+def test_wallpaper_blob_is_not_a_finished_machine():
+    """Шматок шпалер Windows не сміє читатись як «100%».
+
+    Реальний кадр .64: синя фігура з обоїв має форму смуги (потрібну висоту,
+    52px завширшки) і стоїть у нижній смузі кадру. Скан управо спиняється на
+    першій колонці, що не синя й не БІЛА, — а тло обоїв сіре, тож заливка
+    дорівнювала контейнеру й виходило рівно 100%.
+
+    Це найдорожче хибне число: після нього оператор іде знімати роботу, яку
+    верстат ще фрезерує. Раніше 100% було свідомо виведене з-під правила про
+    вузький контейнер — і саме цей кадр був «доказом», що так можна. Рев'ю
+    04.09.26 показало, що доказ був цією ж помилкою.
+    """
+    from app.machine_ocr import find_progress_bar, read_progress_percent
+
+    image = _newgen("remicore_wallpaper_blob.png")
+    # Геометрія його ЗНАХОДИТЬ — і це нормально, вона лише міряє пікселі.
+    bar = find_progress_bar(image)
+    assert bar is not None and bar.container_width < 100
+    # А ось назовні число не виходить: підпису немає, контейнер вузький.
+    assert read_progress_percent(image) is None

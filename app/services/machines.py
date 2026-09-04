@@ -18,6 +18,7 @@
 """
 
 import logging
+import os
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -52,10 +53,21 @@ logger = logging.getLogger(__name__)
 POLL_INTERVAL_SECONDS = 5.0
 # Мовчазний верстат (ПК вимкнено) тримає той самий дедлайн знімка, що й піч.
 CAPTURE_TIMEOUT_SECONDS = 20.0
+# «Заголовки ще ніхто не читав» — саме як окреме значення, а не None: None уже
+# зайнято під «читали, агент не відповів», і плутати їх не можна.
+_NOT_FETCHED = object()
 # HTTP-агент відповідає за частки секунди — 20 с це спадок від VNC. При десяти
 # верстатах кожен мовчазний ПК тримав би потік 20 с і старив живі сусіди.
 # (з'єднатись, дочекатись кадру)
 AGENT_TIMEOUT = (3.0, 8.0)
+# Стеля на кадр і СУМАРНИЙ дедлайн. Таймаут читання в requests рахується МІЖ
+# байтами, не на весь запит: агент, який віддає по байту раз на 7 с, тримав би
+# потік нескінченно й ніколи не спрацював би на таймауті. Тому читаємо
+# потоково, рахуємо байти й час самі. 24 МБ — з десятикратним запасом до
+# реального PNG 1920×1200 (~0.2 МБ), тобто це запобіжник від збою, а не ліміт
+# якості.
+MAX_FRAME_BYTES = 24 * 1024 * 1024
+AGENT_TOTAL_DEADLINE_SECONDS = 15.0
 # Кадр на диск пишемо РІДШЕ, ніж аналізуємо: відсоток має бути свіжим (5 с), а
 # картинка потрібна лише щоб глянути оком. Без цього 10 верстатів давали б
 # ~35 ГБ запису на добу — місце не росте (файл один), але ресурс SSD витрачався
@@ -315,10 +327,22 @@ def frame_path(key: str) -> Path:
 
 
 def save_frame(key: str, image: Image.Image) -> Path:
+    """Кадр на диск атомарно: tmp у ТІЙ САМІЙ теці + replace.
+
+    Імʼя tmp УНІКАЛЬНЕ на виклик. Детерміноване (`key.tmp`) ламалось на двох
+    одночасних писачах — фоновий тік і ручне «Оновити» цілком можуть збігтись,
+    бо екран «Верстати» тримають відкритим цілий день: обидва писали в один
+    файл, і на диск міг лягти напівзаписаний кадр. Сусідні функції збору
+    калібрувальних кадрів роблять tmp унікальним — тут цього бракувало
+    (знайдено рев'ю 04.09.26). Свій tmp прибираємо за собою, якщо запис упав."""
     path = frame_path(key)
-    tmp = path.with_suffix(".tmp")
-    image.save(tmp, format="PNG")
-    tmp.replace(path)
+    tmp = path.with_suffix(f".{os.getpid()}.{threading.get_ident():x}.tmp")
+    try:
+        image.save(tmp, format="PNG")
+        tmp.replace(path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     return path
 
 
@@ -351,8 +375,11 @@ def _capture_http(host: str, port: int, token: str) -> Image.Image:
     # Мережеві збої — людською: сирий текст requests («HTTPConnectionPool…
     # Max retries exceeded… NewConnectionError…») лягав у плитку на екрані
     # «Верстати» шістьма рядками. Оператору треба лише «хто» і «що робити».
+    started = time.monotonic()
     try:
-        resp = requests.get(url, headers={"X-Agent-Token": token}, timeout=AGENT_TIMEOUT)
+        resp = requests.get(
+            url, headers={"X-Agent-Token": token}, timeout=AGENT_TIMEOUT, stream=True
+        )
     except requests.exceptions.ConnectTimeout as exc:
         raise RuntimeError(
             f"агент {host}:{port} не відповідає — ПК вимкнено або порт закрито брандмауером"
@@ -363,10 +390,23 @@ def _capture_http(host: str, port: int, token: str) -> Image.Image:
         raise RuntimeError(
             f"агент {host}:{port} недоступний — ПК вимкнено або агент не запущено"
         ) from exc
-    if resp.status_code == 403:
-        raise RuntimeError("агент відхилив токен (403) — звір токен у налаштуваннях")
-    resp.raise_for_status()
-    return Image.open(io.BytesIO(resp.content)).convert("RGB")
+    with resp:
+        if resp.status_code == 403:
+            raise RuntimeError("агент відхилив токен (403) — звір токен у налаштуваннях")
+        resp.raise_for_status()
+        buf = io.BytesIO()
+        for chunk in resp.iter_content(64 * 1024):
+            buf.write(chunk)
+            if buf.tell() > MAX_FRAME_BYTES:
+                raise RuntimeError(
+                    f"агент {host}:{port} віддає завеликий кадр (>{MAX_FRAME_BYTES // 1024 // 1024} МБ)"
+                )
+            if time.monotonic() - started > AGENT_TOTAL_DEADLINE_SECONDS:
+                raise RuntimeError(
+                    f"агент {host}:{port} віддає кадр надто повільно — обрив за {AGENT_TOTAL_DEADLINE_SECONDS:.0f} с"
+                )
+    buf.seek(0)
+    return Image.open(buf).convert("RGB")
 
 
 def _fetch_titles(host: str, port: int, token: str) -> list[str] | None:
@@ -403,8 +443,18 @@ def poll_target(
     now: Optional[datetime] = None,
     frame: Optional[Image.Image] = None,
     error: Optional[str] = None,
+    titles: object = _NOT_FETCHED,
 ) -> MachineState:
-    """Один знімок одного верстата: кадр → диск → стан у пам'яті."""
+    """Один знімок одного верстата: кадр → диск → стан у пам'яті.
+
+    `titles` — заголовки вікон, ЯКЩО їх уже прочитав хтось інший. Це не
+    оптимізація, а виправлення відмови: читання заголовків — ДРУГИЙ мережевий
+    виклик, і поки він жив тут, він виконувався послідовно в потоці-виклику.
+    Паралелізм `poll_all` рятував лише кадр, а мовчазний ПК усе одно тримав
+    обхід на заголовках (3 с на підключення × кількість мертвих верстатів при
+    інтервалі полінгу 5 с). `_NOT_FETCHED` відрізняє «ніхто не читав» від
+    «читали, агент не відповів»: у другому випадку прив'язку програми чіпати
+    не можна — ми не знаємо, а не «нічого не фрезерується»."""
     now = now or datetime.now()
     with _states_lock:
         state = _states.setdefault(target.key, MachineState(target=target))
@@ -428,22 +478,22 @@ def poll_target(
             error = f"Знімок не вдався: {exc}"
 
     if error is not None:
-        state.error = error
-        state.error_at = now
+        with _states_lock:
+            state.error = error
+            state.error_at = now
         return state
 
-    state.frame_at = now
-    state.error = None
     # Диск чіпаємо не частіше ніж раз на FRAME_SAVE_INTERVAL_SECONDS: свіжість
     # потрібна ВІДСОТКУ (він у пам'яті), а картинку дивляться оком.
     due = (
         state.frame_saved_at is None
         or (now - state.frame_saved_at).total_seconds() >= FRAME_SAVE_INTERVAL_SECONDS
     )
+    saved_at = state.frame_saved_at
     if due:
         try:
             save_frame(target.key, frame)
-            state.frame_saved_at = now
+            saved_at = now
         except OSError:
             logger.exception("Кадр верстата %s не збережено", target.host)
 
@@ -466,18 +516,30 @@ def poll_target(
     # «фрезерує» і «стоїть на 81%» видима лише в ЧАСІ, тому запамʼятовуємо
     # момент зміни: percent_at каже, наскільки свіже читання, а
     # percent_changed_at — наскільки живий верстат.
-    if percent != state.percent or state.percent_changed_at is None:
-        state.percent_changed_at = now
-    state.percent = percent
-    state.percent_at = now
     # Екран підсумку — з того самого кадру й тією ж лійкою, що й відсоток.
     # Взаємно виключні за побудовою: на 285 бойових кадрах чотирьох верстатів
     # жоден не дав одночасно число і SUMMARY (перевірено 04.09.26).
     try:
-        state.completed = screen_is_completed(frame)
+        completed = screen_is_completed(frame)
     except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
         logger.exception("Екран верстата %s не розпізнано", target.host)
-        state.completed = False
+        completed = False
+
+    # Усе, що прочитали з ОДНОГО кадру, лягає в стан ОДНИМ кроком під локом.
+    # Раніше поля писались по черзі, а між ними стояли дискове I/O і мережевий
+    # виклик — і читач (віджет, /machines, milling_now) міг зловити свіжий
+    # відсоток у парі зі старим Sum3D ID, тобто показати прогрес не тієї
+    # роботи. Плюс фоновий тік і ручне «Оновити» — це два потоки на один
+    # об'єкт стану (знайдено рев'ю 04.09.26).
+    with _states_lock:
+        if percent != state.percent or state.percent_changed_at is None:
+            state.percent_changed_at = now
+        state.percent = percent
+        state.percent_at = now
+        state.completed = completed
+        state.frame_at = now
+        state.error = None
+        state.frame_saved_at = saved_at
 
     # Поки шрифт підпису неповний, відкладаємо кадр із новим відсотком для
     # навчання. `percent` тут — геометрія (підпис ще не читається, бо саме його
@@ -493,14 +555,17 @@ def poll_target(
     # Що фрезерується — лише через агента (заголовок вікна). У VNC такого
     # каналу немає, і вигадувати його з картинки ми не будемо.
     if target.is_agent:
-        titles = _fetch_titles(target.host, target.port, target.agent_token)
+        if titles is _NOT_FETCHED:
+            # Одиничний виклик (ручне «Оновити» одного верстата) — читаємо самі.
+            titles = _fetch_titles(target.host, target.port, target.agent_token)
         if titles is not None:  # агент відповів — довіряємо результату
             program = pick_milling_program(titles)
             # Порожньо/немає програми = вікно закрилось → знімаємо прив'язку,
             # інакше «фрезерується Кривовид» висіло б після завершення.
-            state.iso_name = program.iso_name if program else None
-            state.sum3d_id = program.sum3d_id if program else None
-            state.program_at = now
+            with _states_lock:
+                state.iso_name = program.iso_name if program else None
+                state.sum3d_id = program.sum3d_id if program else None
+                state.program_at = now
     return state
 
 
@@ -519,6 +584,13 @@ def poll_all(db: Session, now: Optional[datetime] = None) -> list[MachineState]:
         # ТА САМА розвилка транспорту, що в poll_target: воркер ходить саме
         # сюди, тож без неї верстат з HTTP-агентом опитувався б по VNC і давав
         # «not a VNC server» (бойовий випадок 02.09.26).
+        #
+        # ОБИДВА мережеві виклики — тут, у потоці. Заголовки колись читались у
+        # poll_target, тобто вже послідовно, і мовчазний ПК тримав обхід на
+        # них: 3 с на підключення × кількість мертвих при інтервалі 5 с.
+        # Паралелізм рятував лише кадр — рівно та відмова, від якої він мав
+        # захищати (знайдено рев'ю 04.09.26).
+        titles: object = _NOT_FETCHED
         try:
             if target.is_agent:
                 image = _capture_http(target.host, target.port, target.agent_token)
@@ -530,19 +602,25 @@ def poll_all(db: Session, now: Optional[datetime] = None) -> list[MachineState]:
                     timeout=CAPTURE_TIMEOUT_SECONDS,
                     warmup=CAPTURE_WARMUP_SECONDS,
                 )
-            return target, image, None
         except FurnaceVncError as exc:
-            return target, None, str(exc)
+            return target, None, str(exc), titles
         except Exception as exc:  # noqa: BLE001
-            return target, None, f"Знімок не вдався: {exc}"
+            return target, None, f"Знімок не вдався: {exc}", titles
+        # Заголовки лише для агентних верстатів і лише коли кадр уже є: до
+        # мертвого ПК другий раз не ходимо — він щойно відмовив.
+        if target.is_agent:
+            titles = _fetch_titles(target.host, target.port, target.agent_token)
+        return target, image, None, titles
 
     results = []
     # Усі верстати ПАРАЛЕЛЬНО: при десяти й пулі на вісім виходило два заходи,
     # і мовчазний ПК у першому старив живі з другого.
     with ThreadPoolExecutor(max_workers=min(16, len(targets))) as pool:
-        for target, image, error in pool.map(grab, targets):
+        for target, image, error, titles in pool.map(grab, targets):
             results.append(
-                poll_target(db, target, shared, now=now, frame=image, error=error)
+                poll_target(
+                    db, target, shared, now=now, frame=image, error=error, titles=titles
+                )
             )
     return results
 

@@ -38,7 +38,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import wraps
 from pathlib import Path
 from typing import Optional
 
@@ -109,6 +109,32 @@ EDGE_SLACK = 2
 MAX_BAR_CANDIDATES = 40
 # Крок пошуку смуги по рядках. Безпечний, доки він менший за MIN_BAR_HEIGHT.
 SEED_ROW_STEP = 2
+
+
+def _cache_only_success(load):
+    """Кеш, який запамʼятовує лише НЕПОРОЖНІЙ результат.
+
+    Замість `lru_cache`. Різниця принципова: обидва завантажувачі еталонів
+    свідомо гасять помилку читання й повертають `{}` — а `lru_cache` закріпив
+    би цю порожнечу до кінця життя процесу. Один транзієнтний збій диска чи
+    мережевої теки тихо й НАЗАВЖДИ вимикав би читання підпису й розпізнавання
+    екрана, і причину довелось би шукати як «раптом перестало» (рев'ю
+    04.09.26). Тепер невдача просто не кешується — наступний виклик спробує
+    ще раз.
+    """
+    box: dict[str, object] = {}
+
+    @wraps(load)
+    def wrapper():
+        if "value" in box:
+            return box["value"]
+        value = load()
+        if value:
+            box["value"] = value
+        return value
+
+    wrapper.cache_clear = box.clear  # type: ignore[attr-defined]
+    return wrapper
 
 
 def _is_blue(px: tuple[int, int, int]) -> bool:
@@ -492,11 +518,18 @@ def read_progress_percent(image: Image.Image) -> Optional[int]:
     # вузький контейнер із ЧАСТКОВОЮ заливкою: у смузі на 40px один піксель
     # коштує 2.5%, тож будь-який сторонній синій елемент інтерфейсу дає
     # правдоподібне середнє число з повітря. Справжні смуги в цеху — 120..165px
-    # (зміряно на 283 бойових кадрах чотирьох верстатів; єдиний вужчий випадок,
-    # 53px, це портретний верстат на 100%, де заливка = весь контейнер і
-    # двозначності немає). Тому вузький контейнер приймаємо лише порожнім,
-    # повним або з підтвердженням підпису — інакше мовчимо.
-    if bar.container_width < MIN_TRUSTED_CONTAINER and 0 < bar.percent < 100:
+    # на всіх чотирьох верстатах (зміряно на 285 бойових кадрах).
+    #
+    # Раніше тут стояв виняток для 100%: мовляв, повна вузька смуга однозначна.
+    # Виняток був помилкою і тримався на єдиному «прикладі» — кадрі .64 з
+    # контейнером 53px. Рев'ю 04.09.26 змусило подивитись на нього оком: це
+    # виявився шматок ШПАЛЕР Windows, а не смуга. Тобто виняток захищав
+    # неіснуючий випадок і водночас пропускав найдорожче хибне число — 100%,
+    # після якого оператор іде знімати недофрезеровану роботу.
+    #
+    # Тепер правило без винятків: вузький контейнер приймаємо лише з
+    # підтвердженням підпису.
+    if bar.container_width < MIN_TRUSTED_CONTAINER:
         logger.info(
             "Верстат: контейнер %dpx завузький для %d%% без підпису — мовчимо",
             bar.container_width, bar.percent,
@@ -585,7 +618,7 @@ _CAPTION_DARK_MAX = 120
 _CAPTION_INSET = 3
 
 
-@lru_cache(maxsize=1)
+@_cache_only_success
 def load_machine_glyphs() -> dict[int, dict[str, list[list[str]]]]:
     """Еталони цифр підпису: висота → символ → варіанти бітмап.
 
@@ -597,8 +630,19 @@ def load_machine_glyphs() -> dict[int, dict[str, list[list[str]]]]:
     path = Path(resource_path(MACHINE_GLYPHS_PATH))
     if not path.exists():
         return {}
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    return {int(h): chars for h, chars in raw.get("fonts", {}).items()}
+    # Читання ЗАХИЩЕНЕ: файл пишеться скриптом навчання звичайним write_text
+    # (без tmp+replace), тож конкурентне читання може впіймати обрізаний JSON.
+    # Виняток звідси не просто гасив би відсоток — він валив би ВЕСЬ екран
+    # «Верстати» 500-ю, бо ця функція викликається ще й із calibration_status()
+    # у контексті сторінки, поза межами будь-якого try (рев'ю 04.09.26).
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        logger.warning("machine_glyphs.json не прочитано — підпис поки не читаємо")
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {int(h): chars for h, chars in (raw.get("fonts") or {}).items()}
 
 
 def missing_caption_digits() -> set[str]:
@@ -875,7 +919,7 @@ SUMMARY_INK = 150
 SUMMARY_MAX_MISMATCH = 0.03
 
 
-@lru_cache(maxsize=1)
+@_cache_only_success
 def load_screen_templates() -> dict:
     """Еталони екранів (`app/data/machine_screens.json`). Немає файлу — порожньо
     (детектор просто вимкнений, а не помилка — як із еталонами цифр)."""
