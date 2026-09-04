@@ -45,7 +45,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-	"unicode/utf16"
+	stdutf16 "unicode/utf16"
 
 	"github.com/kbinani/screenshot"
 )
@@ -597,7 +597,7 @@ func xmlEscape(s string) string {
 // schtasks /xml (інакше «invalid XML»).
 func utf16WithBOM(s string) []byte {
 	out := []byte{0xFF, 0xFE} // BOM LE
-	for _, r := range utf16.Encode([]rune(s)) {
+	for _, r := range stdutf16.Encode([]rune(s)) {
 		out = append(out, byte(r), byte(r>>8))
 	}
 	return out
