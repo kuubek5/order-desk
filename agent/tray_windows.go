@@ -116,7 +116,27 @@ func utf16(s string) *uint16 {
 
 // appIcon бере іконку з САМОГО exe (її кладе туди інсталятор/лінкер). Якщо не
 // вийшло — стандартна системна, аби трей усе одно з'явився.
+// Іконка КЕШУЄТЬСЯ на весь час життя процесу. ExtractIconEx повертає handle,
+// який належить нам і мусить звільнятись через DestroyIcon — а updateTrayIcon
+// кличе appIcon на КОЖНЕ перемикання паузи в треї. Без кешу кожен клік
+// оператора витікав один GDI-handle; за місяці роботи це підповзає до ліміту
+// на процес (типово 10 000), після чого починає збоїти й сам знімок екрана —
+// він теж на GDI (рев'ю 04.09.26). Іконка незмінна, тож кеш і є звільненням.
+var (
+	cachedIcon     syscall.Handle
+	cachedIconOnce bool
+)
+
 func appIcon(hInst syscall.Handle) syscall.Handle {
+	if cachedIconOnce {
+		return cachedIcon
+	}
+	cachedIconOnce = true
+	cachedIcon = loadAppIcon()
+	return cachedIcon
+}
+
+func loadAppIcon() syscall.Handle {
 	exe, err := syscall.UTF16PtrFromString(exePath())
 	if err == nil {
 		var large, small syscall.Handle

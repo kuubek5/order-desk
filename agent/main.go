@@ -70,6 +70,15 @@ func togglePaused() {
 // taskName is the Task Scheduler entry that starts the agent at logon.
 const taskName = "KMillAgent"
 
+// Скільки чекати між спробами, коли щось іще не готове. Агент живе на ПК у
+// цеху без нагляду, тож будь-яка «остаточна» помилка мусить бути тимчасовою.
+const (
+	configWaitInterval  = 10 * time.Second // конфіг ще не написали / він битий
+	listenRetryInterval = 5 * time.Second  // порт зайнятий / мережа не піднялась
+	maxConcurrentGrabs  = 2                // одночасних знімків екрана
+	maxLogBytes         = 8 << 20          // 8 МБ на лог, далі ротація
+)
+
 // setupAddr is the loopback-only address the settings page listens on. It is
 // deliberately different from the capture port so the settings page can run
 // while the background task already holds the capture port.
@@ -181,8 +190,17 @@ func main() {
 	elevated := flag.Bool("elevated", false, "internal: set after relaunching with admin rights")
 	flag.Parse()
 
-	// Log to a file next to the exe (the release build hides the console).
-	if f, err := os.OpenFile(filepath.Join(exeDir(), "kmill-agent.log"),
+	// Лог поруч з exe (реліз ховає консоль). З ПРОСТОЮ ротацією: агент живе
+	// місяцями без нагляду, а затяжна проблема (мережа рветься, сесія
+	// заблокована) сипле рядки безперервно. Без обмеження це поступово
+	// заповнює диск ПК верстата — того самого, на якому фрезерують.
+	// Одна попередня копія лишається: саме в ній буде початок проблеми.
+	logPath := filepath.Join(exeDir(), "kmill-agent.log")
+	if st, err := os.Stat(logPath); err == nil && st.Size() > maxLogBytes {
+		_ = os.Remove(logPath + ".1")
+		_ = os.Rename(logPath, logPath+".1")
+	}
+	if f, err := os.OpenFile(logPath,
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
 		log.SetOutput(io.MultiWriter(os.Stderr, f))
 	}
@@ -204,16 +222,45 @@ func main() {
 // ---------------------------------------------------------------------------
 
 func runServe(cfgPath string) {
-	cfg, err := loadConfig(cfgPath)
-	if err != nil {
-		log.Fatalf("config error: %v (run `kmill-agent.exe -setup` first)", err)
+	// Битий/зниклий конфіг НЕ вбиває агента. Раніше тут стояв log.Fatalf, і
+	// це означало: антивірус поклав agent.json у карантин — агент помирає при
+	// кожному вході, планувальник перезапускає його раз на хвилину 999 разів,
+	// і верстат зникає з CRM назавжди без жодного сліду на екрані. Агент живе
+	// на ПК у цеху, куди ніхто не ходить, тож самозцілення тут важливіше за
+	// «чесно впасти»: чекаємо, поки конфіг зʼявиться (його пише -setup або
+	// -install), і піднімаємось самі.
+	var cfg Config
+	for {
+		loaded, err := loadConfig(cfgPath)
+		if err == nil && loaded.Token != "" {
+			cfg = loaded
+			break
+		}
+		if err != nil {
+			log.Printf("config error: %v — чекаю на %s", err, cfgPath)
+		} else {
+			log.Printf("config error: 'token' not set in %s — чекаю", cfgPath)
+		}
+		time.Sleep(configWaitInterval)
 	}
-	if cfg.Token == "" {
-		log.Fatalf("config error: 'token' not set in %s (run -setup)", cfgPath)
+
+	// Паніка в ОДНОМУ запиті не сміє вбивати процес: HTTP-сервер знімків і
+	// трей живуть в одному процесі, тож дивна поведінка GDI на конкретній
+	// збірці Windows 7 забирала б із собою весь моніторинг верстата.
+	guard := func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if rec := recover(); rec != nil {
+					log.Printf("паніка в %s: %v", r.URL.Path, rec)
+					http.Error(w, "internal", http.StatusInternalServerError)
+				}
+			}()
+			next(w, r)
+		}
 	}
 
 	authed := func(next http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
+		return guard(func(w http.ResponseWriter, r *http.Request) {
 			t := r.Header.Get("X-Agent-Token")
 			if t == "" {
 				t = r.URL.Query().Get("token")
@@ -223,7 +270,7 @@ func runServe(cfgPath string) {
 				return
 			}
 			next(w, r)
-		}
+		})
 	}
 
 	mux := http.NewServeMux()
@@ -261,8 +308,23 @@ func runServe(cfgPath string) {
 	// works while the agent runs — no separate shortcut needed, and Save runs
 	// inside this (elevated) process so it can register autostart/firewall.
 	go func() {
-		if err := http.ListenAndServe(setupAddr, newSetupMux(cfgPath, false)); err != nil {
-			log.Printf("settings menu not served on %s: %v", setupAddr, err)
+		// Таймаути й ретрай — ті самі, що на основному сервері. Без таймаутів
+		// повільний локальний клієнт вішав горутину назавжди, а без ретраю
+		// одна транзієнтна помилка bind робила 127.0.0.1:8766 недоступним до
+		// перезапуску процесу (асиметрія з capture-сервером, рев'ю 04.09.26).
+		for {
+			setup := &http.Server{
+				Addr:              setupAddr,
+				Handler:           newSetupMux(cfgPath, false),
+				ReadHeaderTimeout: 5 * time.Second,
+				ReadTimeout:       10 * time.Second,
+				WriteTimeout:      30 * time.Second,
+				IdleTimeout:       60 * time.Second,
+			}
+			if err := setup.ListenAndServe(); err != nil {
+				log.Printf("settings menu not served on %s: %v — retry", setupAddr, err)
+			}
+			time.Sleep(listenRetryInterval)
 		}
 	}()
 
@@ -309,9 +371,28 @@ func runServe(cfgPath string) {
 	select {}
 }
 
+// grabSlots обмежує ОДНОЧАСНІ знімки. Знімок — це BitBlt повного екрана плюс
+// png.Encode, тобто дорога GDI+CPU операція, і робиться вона на ПК, який у цей
+// самий момент фрезерує. Без обмеження CRM, відкрита сторінка налаштувань з
+// прев'ю і повторний запит після таймауту складались у кілька паралельних
+// знімків (рев'ю 04.09.26). Двох достатньо: більше однаково не пришвидшить —
+// вузьке місце в GDI.
+var grabSlots = make(chan struct{}, maxConcurrentGrabs)
+
 // captureToResponse grabs the frame for the requested (or default) display and
 // writes it as PNG.
 func captureToResponse(w http.ResponseWriter, r *http.Request, def int) {
+	// Не чекаємо в черзі нескінченно: краще чесно відмовити, ніж накопичувати
+	// запити. CRM сприйме це як звичайну мережеву відмову й спробує на
+	// наступному тіку — через 5 секунд.
+	select {
+	case grabSlots <- struct{}{}:
+		defer func() { <-grabSlots }()
+	case <-time.After(3 * time.Second):
+		http.Error(w, "верстат зайнятий знімком — спробуйте ще раз", http.StatusServiceUnavailable)
+		return
+	}
+
 	n := screenshot.NumActiveDisplays()
 	if n <= 0 {
 		http.Error(w, "no active displays", http.StatusServiceUnavailable)
