@@ -110,7 +110,12 @@ def _is_blue(px: tuple[int, int, int]) -> bool:
     `(0, 0, 128)`, тобто r == g і синій різко переважає. Поріг узятий із запасом
     на згладжування країв і на світліші пікселі тексту поверх смуги."""
     r, g, b = px[0], px[1], px[2]
-    return b >= 90 and b - r >= 40 and b - g >= 40
+    # `g <= 140` відсікає СВІТЛІ сині елементи інтерфейсу: на портретному
+    # RemiCORE (.64) є синя іконка-пігулка з градієнтом (~100,170,230), і без
+    # цієї умови вона перемагала справжню смугу за довжиною пробігу — 8%
+    # читалось як 47% (04.09.26). Справжня заливка — рівна темна навісь
+    # (0,0,128), у неї g=0.
+    return b >= 90 and b - r >= 40 and b - g >= 40 and g <= 140
 
 
 def _is_unfilled(px: tuple[int, int, int]) -> bool:
@@ -144,6 +149,23 @@ def _is_fill_column(px, x: int, band: list[int]) -> bool:
     if not band:
         return False
     return _is_blue(px[x, band[0]]) and _is_blue(px[x, band[-1]])
+
+
+def _is_edge_column(px, x: int, band: list[int]) -> bool:
+    """Кінець КОНТЕЙНЕРА смуги: колонка, де на всю висоту немає ні заливки,
+    ні білого треку.
+
+    Узагальнення `_is_border_column`, яка вимагала ТЕМНОЇ рамки (max<=180). На
+    портретному RemiCORE (.64) рамка контейнера світло-сіра (227), тож скан не
+    спинявся й тікав до краю кадру — смуга не читалась узагалі (04.09.26).
+    Літера підпису такою колонкою не буде: над нею й під нею лишається білий
+    трек, тобто не «на всю висоту».
+    """
+    if len(band) < 3:
+        return False
+    return all(
+        not _is_blue(px[x, y]) and not _is_unfilled(px[x, y]) for y in band
+    )
 
 
 def _is_border_column(px, x: int, band: list[int], height: int = 10**9) -> bool:
@@ -259,7 +281,7 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
     gap = 0
     hit_border = False
     for x in range(fill_right + 1, width):
-        if _is_border_column(px, x, band, height):
+        if _is_border_column(px, x, band, height) or _is_edge_column(px, x, band):
             hit_border = True
             break
         p = px[x, y_mid]

@@ -433,7 +433,9 @@ def test_caption_reads_partial_fill_correctly():
     image = Image.open(path).convert("RGB")
     bar = find_progress_bar(image)
     assert bar is not None
-    assert bar.percent == 70, "геометрія на цьому кадрі занижує (для того й підпис)"
+    # Геометрія тут ЗАНИЖУЄ (точне значення не фіксуємо: це оцінка, і вона
+    # уточнюється з кожним виправленням скану — була 70, стала 71).
+    assert bar.percent < 72, f"геометрія мала занижувати, а дала {bar.percent}"
     assert read_caption_percent(image, bar) == 72
     assert read_progress_percent(image) == 72, "віддаємо ПІДПИС, не геометрію"
 
@@ -532,3 +534,29 @@ def test_newgen_detector_ignores_remicore_frames():
     for name in ("remicore_bar_100.png", "remicore_caption_72.png",
                  "remicore_caption_57.png", "remicore_low_18.png"):
         assert find_newgen_progress(_newgen(name)) is None, name
+
+
+def test_portrait_remicore_low_percent():
+    """Портретний RemiCORE (900×1440): смуга внизу, реально 8%.
+
+    Два виправлення, обидва з бойових кадрів .64 (04.09.26):
+    - рамка контейнера тут СВІТЛО-сіра (227), а не темна, тож скан не спинявся
+      й тікав до краю кадру — смуга не читалась узагалі. Кінець контейнера
+      тепер визначається як колонка без заливки й без білого треку на всю
+      висоту (`_is_edge_column`);
+    - у RemiCORE на цьому екрані є синя іконка-пігулка з градієнтом, довша за
+      справжню заливку 8%. Вона перемагала за довжиною й давала 47%. Поріг
+      синього звужено до ТЕМНОЇ навісі (g <= 140).
+    """
+    from app.machine_ocr import (
+        find_progress_bar,
+        read_caption_percent,
+        read_progress_percent,
+    )
+
+    image = _newgen("remicore_portrait_8.png")
+    bar = find_progress_bar(image)
+    assert bar is not None, "смугу портретного RemiCORE не знайдено"
+    assert bar.percent == 8
+    assert read_caption_percent(image, bar) == 8
+    assert read_progress_percent(image) == 8
