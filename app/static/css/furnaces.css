@@ -337,6 +337,12 @@ html[data-machine-art="none"] .ms-tile>*{text-shadow:none}
 .ms-pct > i{font-style:normal;font-size:var(--fs-0);font-weight:400;color:var(--ink-3);margin-left:1px}
 .ms-pct.dim{color:var(--ink-3);text-shadow:none;font-size:var(--fs-5);font-weight:500}
 .ms-pct.err{color:var(--alarm);text-shadow:none;font-size:var(--fs-5);font-weight:500}
+/* «запуск» — слово, а не число: моноширинний кегль числа його б розпирав, і
+   комірка pct розсунула б плитку. Дрібніше, звичайним шрифтом, у розбивку —
+   читається як стан, а не як зіпсоване значення (попереднє «%?» оператор
+   приймав за збій). */
+.ms-pct.is-start{font-family:inherit;font-size:var(--fs-0);font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
 .ms-what,.ms-note{grid-area:what;font-size:var(--fs-0);color:var(--ink-3);white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,.7)}
 .ms-what.dim{color:var(--ink-3)}

@@ -54,15 +54,18 @@
                 <span class="ms-bar" aria-hidden="true"><i style="width:{{ card.percent }}%"></i></span>
                 {% elif card.has_frame and card.has_program %}
                 {# Програма завантажена (є .iso у заголовку), але смугу відсотка
-                   на поточній вкладці RemiCORE не видно — чесно «%?», а не
-                   брехливе «не йде». #}
-                <span class="ms-pct dim">%?</span>
+                   не видно — чесно «запуск», а не брехливе «не йде».
+                   Найчастіше це перші відсотки: заливка ще вужча за 4px, тож
+                   геометрія її не бачить (і, після правки 04.09.26, більше не
+                   хапає замість неї чуже синє поле). Було «%?» — оператор читав
+                   його як збій, а не як стан; слово зрозуміліше за псевдочисло. #}
+                <span class="ms-pct dim is-start">запуск</span>
                 {% if card.order %}
                 <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}</span>
                 {% elif card.sum3d_id %}
                 <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
                 {% endif %}
-                <span class="ms-note">йде · відсоток не видно</span>
+                <span class="ms-note">програма пішла · відсотка ще не видно</span>
                 {% elif card.has_frame %}
                 <span class="ms-pct dim">—</span>
                 <span class="ms-note">програма не йде</span>
