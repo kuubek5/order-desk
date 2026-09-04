@@ -278,3 +278,49 @@ def test_has_program_avoids_false_not_running(monkeypatch, tmp_path):
         assert card.is_running is False   # без % не рахуємо як «фрезерує»
         assert card.has_program is True   # але програма завантажена
         assert card.has_frame is True
+
+
+def test_timed_calibration_collects_and_dedups_by_time(monkeypatch, tmp_path):
+    """Ручний збір (collect_calibration) відкладає кадр за ЧАСОМ, не за
+    відсотком — для верстата, де відсоток ще не читається (нове покоління).
+    Дедуп за інтервалом: два поспіль дають ОДИН файл."""
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    with service._calib_lock:
+        service._calib_last_timed.clear()
+
+    service.collect_calibration_frame_timed("192.168.1.81-8765", _calib_frame(50))
+    service.collect_calibration_frame_timed("192.168.1.81-8765", _calib_frame(51))  # одразу — дедуп
+
+    folder = tmp_path / "calib" / "192.168.1.81-8765"
+    assert len(list(folder.glob("t-*.png"))) == 1, "два поспіль мали дати один кадр"
+
+    # Мине інтервал — новий кадр дозволено.
+    with service._calib_lock:
+        service._calib_last_timed["192.168.1.81-8765"] = 0.0
+    service.collect_calibration_frame_timed("192.168.1.81-8765", _calib_frame(60))
+    assert len(list(folder.glob("t-*.png"))) == 2
+
+
+def test_timed_calibration_never_raises(monkeypatch, tmp_path):
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    with service._calib_lock:
+        service._calib_last_timed.clear()
+
+    class Boom:
+        def save(self, *a, **k):
+            raise OSError("диск повний")
+
+    service.collect_calibration_frame_timed("m", Boom())  # не кидає
+
+
+def test_timed_calibration_zip_includes_timed_frames(monkeypatch, tmp_path):
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    with service._calib_lock:
+        service._calib_last_timed.clear()
+    service.collect_calibration_frame_timed("m", _calib_frame(40))
+
+    import io, zipfile
+    data = service.calibration_zip_bytes()
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        assert any(n.startswith("m/t-") for n in z.namelist())
+    assert service.calibration_status()["frames"] >= 1

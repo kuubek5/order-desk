@@ -18,6 +18,7 @@
 """
 
 import logging
+import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -85,6 +86,8 @@ class MachineTarget:
     password: Optional[str] = None
     # Непорожній → читаємо кадр через HTTP-агент (Go), а не VNC.
     agent_token: Optional[str] = None
+    # Ручний режим калібрування: відкладати кадри за часом (див. Machine).
+    collect_calibration: bool = False
 
     @property
     def key(self) -> str:
@@ -154,6 +157,7 @@ def target_of(machine: Machine) -> MachineTarget:
     return MachineTarget(
         name=machine.name, host=machine.host, port=machine.port,
         password=password, agent_token=agent_token,
+        collect_calibration=bool(getattr(machine, "collect_calibration", False)),
     )
 
 
@@ -180,6 +184,11 @@ def frames_root() -> Path:
 # буде ~101 (по одному на відсоток), але це запобіжник від патологічного
 # накопичення, якщо геометрія почне стрибати. Диск локальний, кадр ~50КБ.
 CALIBRATION_MAX_FRAMES = 130
+# Ручний (за часом) збір: не частіше ніж раз на стільки секунд, щоб за програму
+# набрати РІЗНІ кадри, а не сотні однакових.
+CALIBRATION_TIMED_INTERVAL_SECONDS = 15.0
+_calib_last_timed: dict[str, float] = {}
+_calib_lock = threading.Lock()
 
 
 def _sanitize_key(key: str) -> str:
@@ -199,8 +208,12 @@ def calibration_status() -> dict:
     root = Path(MACHINE_CALIBRATION_PATH)
     frames = 0
     if root.exists():
-        frames = sum(1 for _ in root.glob("*/pct-*.png"))
-    return {"active": bool(missing), "missing": missing, "frames": frames}
+        # І кадри по відсотку (pct-*), і зібрані за часом (t-*).
+        frames = sum(1 for _ in root.glob("*/*.png"))
+    # Банер показуємо, доки RemiCORE-цифри неповні АБО вже є зібрані кадри
+    # (у т.ч. з ручного режиму для нового покоління) — щоб кнопка «Скачати»
+    # була доступна навіть коли RemiCORE-шрифт уже повний.
+    return {"active": bool(missing) or frames > 0, "missing": missing, "frames": frames}
 
 
 def calibration_zip_bytes() -> bytes:
@@ -213,10 +226,43 @@ def calibration_zip_bytes() -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         if root.exists():
-            for png in sorted(root.glob("*/pct-*.png")):
+            for png in sorted(root.glob("*/*.png")):
                 # Ім'я в архіві: <верстат>/<файл>, шлях на диску не розкриваємо.
                 archive.write(png, arcname=f"{png.parent.name}/{png.name}")
     return buffer.getvalue()
+
+
+def collect_calibration_frame_timed(key: str, frame: "Image.Image") -> None:
+    """Відкласти кадр за ЧАСОМ (ручний режим калібрування, `collect_calibration`).
+
+    Для верстата, де відсоток ще не читається (нове покоління, інша розкладка),
+    дедуп за відсотком неможливий — тож беремо кадр не частіше ніж раз на
+    CALIBRATION_TIMED_INTERVAL_SECONDS. За програму набереться спред кадрів на
+    різних відсотках, оператор їх качає кнопкою «Скачати кадри», як і раніше.
+    Кап той самий. Ніколи не кидає — збір це зручність, не робота.
+    """
+    try:
+        now = time.monotonic()
+        with _calib_lock:
+            last = _calib_last_timed.get(key)
+            if last is not None and now - last < CALIBRATION_TIMED_INTERVAL_SECONDS:
+                return
+            _calib_last_timed[key] = now
+        folder = Path(MACHINE_CALIBRATION_PATH) / _sanitize_key(key)
+        folder.mkdir(parents=True, exist_ok=True)
+        if sum(1 for _ in folder.glob("*.png")) >= CALIBRATION_MAX_FRAMES:
+            return
+        # Мілісекунди в імені — унікальність навіть за кількох збережень в одну
+        # секунду (у проді інтервал 15 с, але хай ім'я не колізить ніколи).
+        stamp = datetime.now().strftime("%H%M%S%f")[:-3]
+        target = folder / f"t-{stamp}.png"
+        if target.exists():
+            return
+        tmp = folder / f".t-{stamp}.tmp.png"
+        frame.save(tmp, format="PNG")
+        tmp.replace(target)
+    except Exception:  # noqa: BLE001 — збір не має валити опитування
+        logger.debug("Калібрувальний кадр (час) верстата %s не збережено", key, exc_info=True)
 
 
 def collect_calibration_frame(key: str, frame: "Image.Image", geometry_percent: int) -> None:
@@ -403,6 +449,10 @@ def poll_target(
     # collect_calibration_frame сам нічого не робить.
     if percent is not None:
         collect_calibration_frame(target.key, frame, percent)
+    # Ручний режим: збираємо кадри за часом навіть коли відсоток НЕ читається —
+    # саме для верстатів, де читача ще нема (нове покоління, інша розкладка).
+    if target.collect_calibration:
+        collect_calibration_frame_timed(target.key, frame)
 
     # Що фрезерується — лише через агента (заголовок вікна). У VNC такого
     # каналу немає, і вигадувати його з картинки ми не будемо.

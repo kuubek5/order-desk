@@ -836,6 +836,12 @@ class Machine(Base):
     # (GET /capture з токеном), а не через VNC. HTTP-агент бачить смугу % —
     # VNC ні (див. project_machine_agent). Порт для агента типово 8765.
     agent_token_encrypted: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Ручний режим збору калібрувальних кадрів. Коли True, опитування відкладає
+    # кадр цього верстата за ЧАСОМ (не за відсотком), щоб зібрати матеріал для
+    # навчання читача на верстаті, де відсоток ще не читається (нове покоління,
+    # інша розкладка RemiCORE). Оператор вмикає на час калібрування, качає
+    # кадри й вимикає. Авто-збір по відсотку (RemiCORE) працює й без цього.
+    collect_calibration: Mapped[bool] = mapped_column(default=False)
     sort_order: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
 

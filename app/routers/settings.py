@@ -1119,6 +1119,7 @@ def update_machine(
     enabled: str = Form(""),
     password: str = Form(""),
     agent_token: str = Form(""),
+    collect_calibration: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Змінити верстат. Порожній пароль/токен = не міняти; `-` = стерти
@@ -1158,6 +1159,7 @@ def update_machine(
         machine.agent_token_encrypted = None
     elif agent_token.strip():
         machine.agent_token_encrypted = encrypt_value(agent_token.strip())
+    machine.collect_calibration = collect_calibration == "1"
     db.commit()
     request.session["settings_flash"] = {
         "kind": "success",

@@ -34,11 +34,11 @@
         <div class="calib-text">
             <strong>Калібрування верстатів</strong>
             <p>
-                Програма сама збирає кадри для навчання читання відсотка.
-                Зібрано: <b>{{ calibration.frames }}</b> ·
-                лишилось навчити цифри: <b class="mono">{{ calibration.missing|join(' ') }}</b>.
-                Хай верстат пофрезерує — кадри з різними відсотками наберуться самі,
-                тоді скачайте архів і надішліть розробнику.
+                Зібрано кадрів: <b>{{ calibration.frames }}</b>{% if calibration.missing %} ·
+                лишилось навчити цифри RemiCORE: <b class="mono">{{ calibration.missing|join(' ') }}</b>{% endif %}.
+                Для верстата, де відсоток ще не читається, увімкни «Калібр.» у
+                Налаштуваннях → Верстати, дай пофрезерувати — кадри наберуться самі,
+                тоді скачай архів і надішли розробнику.
             </p>
         </div>
         <a class="btn" href="/machines/calibration.zip" download>Скачати кадри ({{ calibration.frames }})</a>

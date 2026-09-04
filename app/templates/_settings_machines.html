@@ -27,7 +27,7 @@
                 {% if machines %}
                 <table class="fu-table">
                     <thead>
-                        <tr><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
+                        <tr><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th title="Збирати кадри для калібрування читача відсотка">Калібр.</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
                     </thead>
                     <tbody>
                     {% for machine in machines %}
@@ -41,6 +41,13 @@
                         <td class="fu-col-mid">
                             <input form="machine-{{ machine.id }}" type="checkbox" name="enabled" value="1" {% if machine.enabled %}checked{% endif %}
                                    aria-label="Стежити за верстатом {{ machine.name }}">
+                        </td>
+                        <td class="fu-col-mid">
+                            {# Ручний збір калібрувальних кадрів: увімкни на час калібрування
+                               верстата, де відсоток ще не читається, дай пофрезерувати,
+                               скачай кадри (кнопка на екрані «Верстати») і вимкни. #}
+                            <input form="machine-{{ machine.id }}" type="checkbox" name="collect_calibration" value="1" {% if machine.collect_calibration %}checked{% endif %}
+                                   aria-label="Збирати калібрувальні кадри верстата {{ machine.name }}">
                         </td>
                         <td>
                             <input form="machine-{{ machine.id }}" class="login-input mono" type="password" name="agent_token"
