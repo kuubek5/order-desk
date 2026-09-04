@@ -395,11 +395,13 @@ def test_machine_matches_a_reworked_order_by_its_redo_id(monkeypatch, tmp_path):
         assert card.order.work_order_no == "29702"
 
 
-def test_no_match_says_which_of_the_three_reasons(monkeypatch, tmp_path):
-    """«Немає в черзі» покривало три різні причини — тепер вони розділені.
+def test_no_match_says_why_and_duplicates_show_all_orders(monkeypatch, tmp_path):
+    """Дубль ID — це НЕ помилка: показуємо всі роботи.
 
-    Оператор бачив один і той самий напис і не міг зрозуміти, що робити:
-    вписати ID, прибрати дубль чи дістати роботу з архіву (скарга 04.09.26).
+    Один проєкт Sum3D може містити кілька робіт з однієї заготовки (підтвердив
+    власник 04.09.26), тож правильна відповідь — показати обидві, а не мовчати.
+    А там, де пари справді немає, картка називає причину: такого ID немає
+    ніде чи робота вже в архіві.
     """
     from app.models import Order
     from app.services import machines as service
@@ -428,11 +430,13 @@ def test_no_match_says_which_of_the_three_reasons(monkeypatch, tmp_path):
             st.frame_at = datetime.now()
             st.sum3d_id = want[target.key]
 
-        notes = {c.target.host: c.match_note for c in service.snapshot(db)}
+        cards = {c.target.host: c for c in service.snapshot(db)}
+        notes = {h: c.match_note for h, c in cards.items()}
 
-    assert "кількох" in notes["10.0.0.1"]      # дубль ID
+    assert notes["10.0.0.1"] == "", "дубль ID — не причина мовчати"
     assert "архів" in notes["10.0.0.2"]        # робота архівна
     assert "жодна" in notes["10.0.0.3"]        # такого ID немає ніде
+    assert [o.work_order_no for o in cards["10.0.0.1"].orders] == ["A", "B"]
 
 
 def test_outage_history_counts_drops_and_durations(monkeypatch, tmp_path):

@@ -46,10 +46,12 @@
                 <span class="ms-note">немає зв'язку</span>
                 {% elif card.percent is not none %}
                 <span class="ms-pct">{{ card.percent }}<i>%</i></span>
-                {% if card.order %}
+                {% if card.orders %}
                 {# Що фрезерується — наряд/клієнт із черги (зв'язка за Sum3D ID
-                   із заголовка вікна RemiCORE). #}
-                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}</span>
+                   із заголовка вікна RemiCORE). Плитка вузька, тож при кількох
+                   роботах показуємо першу й «+N»: повний перелік — на екрані
+                   «Верстати», де є місце. #}
+                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}{% if card.orders|length > 1 %} <b class="ms-more">+{{ card.orders|length - 1 }}</b>{% endif %}</span>
                 {% elif card.sum3d_id %}
                 <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
                 {% endif %}
@@ -61,12 +63,17 @@
                    як зупинений («—»), — а це різні речі для того, хто вирішує,
                    що розвантажувати. #}
                 <span class="ms-pct is-done">готово</span>
-                {% if card.order %}
-                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}</span>
+                {% if card.orders %}
+                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}{% if card.orders|length > 1 %} <b class="ms-more">+{{ card.orders|length - 1 }}</b>{% endif %}</span>
                 {% elif card.sum3d_id %}
                 <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
-                {% endif %}
+                {% else %}
+                {# Пояснення стану — ЛИШЕ коли нема чого сказати про роботу:
+                   обидва рядки живуть в одній комірці сітки й накладались би
+                   один на одного (спіймано на пробі 04.09.26). Саме слово
+                   «готово» у комірці числа стан уже й називає. #}
                 <span class="ms-note">програма завершена · зняти</span>
+                {% endif %}
                 {% elif card.has_frame and card.has_program %}
                 {# Програма завантажена (є .iso у заголовку), але смугу відсотка
                    не видно — чесно «запуск», а не брехливе «не йде».
@@ -75,12 +82,13 @@
                    хапає замість неї чуже синє поле). Було «%?» — оператор читав
                    його як збій, а не як стан; слово зрозуміліше за псевдочисло. #}
                 <span class="ms-pct dim is-start">запуск</span>
-                {% if card.order %}
-                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}</span>
+                {% if card.orders %}
+                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}{% if card.orders|length > 1 %} <b class="ms-more">+{{ card.orders|length - 1 }}</b>{% endif %}</span>
                 {% elif card.sum3d_id %}
                 <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
-                {% endif %}
+                {% else %}
                 <span class="ms-note">програма пішла · відсотка ще не видно</span>
+                {% endif %}
                 {% elif card.has_frame %}
                 <span class="ms-pct dim">—</span>
                 <span class="ms-note">програма не йде</span>

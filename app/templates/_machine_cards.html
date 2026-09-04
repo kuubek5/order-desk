@@ -51,13 +51,17 @@
             {% if card.sum3d_id %}
             <p class="mc-prog">
                 <span class="mono mc-sid">{{ card.sum3d_id }}</span>
-                {% if card.order %}
-                <a class="mc-order" href="/orders/{{ card.order.id }}">
-                    {{ card.order.work_order_no or card.order.client_name or 'робота' }}
-                </a>
-                {% if card.order.client_name and card.order.work_order_no %}
-                <span class="mc-client">{{ card.order.client_name }}</span>
-                {% endif %}
+                {% if card.orders %}
+                {# Робіт може бути КІЛЬКА: один проєкт Sum3D фрезерує кілька робіт
+                   з однієї заготовки (підтвердив власник 04.09.26). Кожна окремим
+                   чіпом, щоб не зливались в один рядок; клієнт дрібним усередині. #}
+                <span class="mc-orders">
+                    {%- for o in card.orders %}
+                    <a class="mc-order" href="/orders/{{ o.id }}">{{ o.work_order_no or o.client_name or 'робота' }}
+                        {%- if o.client_name and o.work_order_no %}<i class="mc-client">{{ o.client_name }}</i>{%- endif %}
+                    </a>
+                    {%- endfor %}
+                </span>
                 {% else %}
                 <span class="mc-nomatch" title="{{ card.match_note or card.iso_name }}">{{ card.match_note or "немає в черзі" }}</span>
                 {% endif %}
@@ -140,13 +144,17 @@
            робота знайшлась у черзі — показуємо наряд/клієнта й ведемо в неї. #}
         <p class="mc-prog">
             <span class="mono mc-sid">{{ card.sum3d_id }}</span>
-            {% if card.order %}
-            <a class="mc-order" href="/orders/{{ card.order.id }}">
-                {{ card.order.work_order_no or card.order.client_name or 'робота' }}
-            </a>
-            {% if card.order.client_name and card.order.work_order_no %}
-            <span class="mc-client">{{ card.order.client_name }}</span>
-            {% endif %}
+            {% if card.orders %}
+            {# Робіт може бути КІЛЬКА: один проєкт Sum3D фрезерує кілька робіт
+               з однієї заготовки (підтвердив власник 04.09.26). Кожна окремим
+               чіпом, щоб не зливались в один рядок; клієнт дрібним усередині. #}
+            <span class="mc-orders">
+                {%- for o in card.orders %}
+                <a class="mc-order" href="/orders/{{ o.id }}">{{ o.work_order_no or o.client_name or 'робота' }}
+                    {%- if o.client_name and o.work_order_no %}<i class="mc-client">{{ o.client_name }}</i>{%- endif %}
+                </a>
+                {%- endfor %}
+            </span>
             {% else %}
             <span class="mc-nomatch" title="{{ card.match_note or card.iso_name }}">{{ card.match_note or "немає в черзі" }}</span>
             {% endif %}

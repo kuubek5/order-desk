@@ -363,6 +363,9 @@ html[data-machine-art="none"] .ms-tile>*{text-shadow:none}
 .mch.done i{color:var(--ok);font-weight:600}
 .mch.done{border-color:rgba(var(--ok-rgb), .35)}
 .mch-done{font-weight:700;font-family:inherit;font-size:var(--fs-2);line-height:1}
+/* «+2» — скільки ще робіт у тому самому проєкті Sum3D. Тихо, дрібно: це
+   уточнення до назви, а не самостійне число. */
+.ms-more{font-weight:600;color:var(--accent-c);font-size:var(--fs-0)}
 .ms-what,.ms-note{grid-area:what;font-size:var(--fs-0);color:var(--ink-3);white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,.7)}
 .ms-what.dim{color:var(--ink-3)}
@@ -381,9 +384,20 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 .mc-prog{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:0 0 8px;
   font-size:var(--fs-1)}
 .mc-sid{color:var(--ink-3)}
-.mc-order{color:var(--accent);font-weight:600;text-decoration:none}
-.mc-order:hover{text-decoration:underline}
-.mc-client{color:var(--ink-2)}
+/* Роботи на верстаті — чіпи, а не суцільний рядок. Одна робота виглядає як
+   і раніше; кілька (один проєкт Sum3D на кілька робіт із заготовки) стають
+   акуратним рядом, який переноситься, замість «29702 Іванов 29913 Петров»
+   однією смугою. Наряд помітний, клієнт тихий — саме в такому порядку на них
+   і дивляться. */
+.mc-orders{display:inline-flex;flex-wrap:wrap;gap:5px;vertical-align:middle}
+.mc-order{display:inline-flex;align-items:baseline;gap:5px;
+  padding:1px 8px;border-radius:var(--radius-chip);
+  border:1px solid rgba(var(--accent-rgb), .28);background:rgba(var(--accent-rgb), .08);
+  color:var(--accent);font-weight:600;text-decoration:none;line-height:1.5;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.mc-order:hover{text-decoration:none;background:rgba(var(--accent-rgb), .16);
+  border-color:rgba(var(--accent-rgb), .5)}
+.mc-client{font-style:normal;font-weight:400;font-size:var(--fs-0);color:var(--ink-2)}
 .mc-nomatch{color:var(--ink-3)}
 
 /* ── Стрічка верстатів над чергою (_machine_strip.html, 03.09.26) ─────────

@@ -723,7 +723,11 @@ class MachineCard:
     # Робота з черги, знайдена за sum3d_id програми. Заповнює snapshot() ОДНИМ
     # запитом на всі картки: запит усередині property дав би N+1 у циклі
     # рендера (той самий урок, що з focused_ids).
-    order: Optional[Order] = None
+    # УСІ роботи з цим Sum3D ID, не одна. Один проєкт Sum3D цілком може містити
+    # кілька робіт, що фрезеруються з однієї заготовки — власник підтвердив
+    # 04.09.26. Раніше код у цьому випадку свідомо не вгадував і не показував
+    # НІЧОГО, хоч правильна відповідь — показати всі.
+    orders: list = field(default_factory=list)
     # ЧОМУ пари немає. «немає в черзі» одним написом покривало три різні
     # причини — не знайдено взагалі, знайдено в кількох роботах (не вгадуємо),
     # знайдено лише серед архівних. Оператор бачив однакове й не міг зрозуміти,
@@ -798,6 +802,11 @@ class MachineCard:
         if not (self.state and self.state.iso_name):
             return None
         return None if (self.stale or self.has_problem) else self.state.iso_name
+
+    @property
+    def order(self) -> Optional[Order]:
+        """Перша зі знайдених робіт — для місць, де вміщується лише одна."""
+        return self.orders[0] if self.orders else None
 
     @property
     def link_report(self) -> Optional[str]:
@@ -980,19 +989,14 @@ def snapshot(db: Session) -> list[MachineCard]:
     # серед НЕархівних робіт — програма на верстаті завжди з робочого вікна.
     wanted = {c.sum3d_id for c in cards if c.sum3d_id}
     if wanted:
-        by_id: dict[str, Optional[Order]] = {}
-
-        ambiguous: set[str] = set()
+        by_id: dict[str, list[Order]] = {}
 
         def offer(key: Optional[str], order: Order) -> None:
-            # Той самий ID у двох роботах — не вгадуємо, лишаємо без зв'язки.
             if not key:
                 return
-            if key in by_id:
-                by_id[key] = None
-                ambiguous.add(key)
-            else:
-                by_id[key] = order
+            bucket = by_id.setdefault(key, [])
+            if all(o.id != order.id for o in bucket):
+                bucket.append(order)
 
         for row in db.scalars(
             select(Order).where(
@@ -1036,12 +1040,10 @@ def snapshot(db: Session) -> list[MachineCard]:
         for card in cards:
             if not card.sum3d_id:
                 continue
-            card.order = by_id.get(card.sum3d_id)
-            if card.order is not None:
+            card.orders = by_id.get(card.sum3d_id, [])
+            if card.orders:
                 continue
-            if card.sum3d_id in ambiguous:
-                card.match_note = "цей ID стоїть у кількох роботах — не вгадуємо"
-            elif card.sum3d_id in archived:
+            if card.sum3d_id in archived:
                 card.match_note = "робота з цим ID уже в архіві"
             else:
                 card.match_note = "жодна робота в черзі не має цього ID"
