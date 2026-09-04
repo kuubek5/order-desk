@@ -37,5 +37,8 @@
     <div class="update-status mono" id="update-status">Підготовка…</div>
     <div class="update-track" aria-hidden="true"><i></i></div>
     <p class="update-note">Застосунок перезапуститься автоматично. Не закривайте вікно.</p>
+    {# З'являється лише при збої (JS ставить .is-failed): без неї оверлей після
+       невдалого скачування висів би вічно. #}
+    <button type="button" class="update-close" id="update-close" hidden>Закрити</button>
   </div>
 </div>

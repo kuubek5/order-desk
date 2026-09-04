@@ -22,7 +22,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from threading import Event
+from threading import Event, Lock
 
 import requests
 
@@ -76,6 +76,47 @@ UPDATE_CHECK_INTERVAL_SECONDS = 86400  # once a day after a check that reached G
 # transient network blip on the one daily tick hid an available update until the
 # next day — the exact "оновлення не приходить" symptom seen in the field.
 UPDATE_CHECK_RETRY_SECONDS = 3600  # one hour
+
+
+# ── Стан встановлення — для оверлею (04.09.26) ──────────────────────────
+# Оверлей у браузері раніше крутив ВИГАДАНІ стадії по таймеру («Завантаження…
+# → Перевірка… → Перезапуск…» за 9 с) і чекав лише на перезапуск сервера.
+# Через проксі лабораторії 45 МБ качаються хвилинами, і оператор бачив
+# «Перезапуск… за мить» без жодного руху (власник: «зависло»). А якби
+# скачування впало, оверлей висів би вічно. Тепер потік встановлення пише
+# сюди справжню стадію й байти, а /settings/update/status їх віддає.
+_install_state: dict = {"stage": "idle"}
+_install_lock = Lock()
+
+
+def set_install_state(**fields) -> None:
+    global _install_state
+    with _install_lock:
+        _install_state = dict(fields)
+
+
+def install_state() -> dict:
+    with _install_lock:
+        return dict(_install_state)
+
+
+def reset_install_state_for_tests() -> None:
+    set_install_state(stage="idle")
+
+
+def human_update_error(exc: BaseException) -> str:
+    """Причина збою оновлення словами оператора, без стеку requests."""
+    if isinstance(exc, UpdateVerificationError):
+        return str(exc)
+    if isinstance(exc, requests.exceptions.ConnectTimeout):
+        return "не вдалося з'єднатися з GitHub — перевір інтернет або проксі"
+    if isinstance(exc, requests.exceptions.ReadTimeout):
+        return "скачування обірвалось — проксі не віддав файл вчасно, спробуй ще раз"
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        return "з'єднання з GitHub розірвано — спробуй ще раз"
+    if isinstance(exc, requests.exceptions.HTTPError):
+        return f"GitHub відповів помилкою ({exc.response.status_code if exc.response is not None else '?'})"
+    return "внутрішня помилка встановлення — деталі в logs\\kuubmill.log"
 
 
 class UpdateVerificationError(Exception):
@@ -249,7 +290,9 @@ def _sha256_of_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def download_and_verify(release: ReleaseInfo, dest_dir: Path | None = None) -> Path:
+def download_and_verify(
+    release: ReleaseInfo, dest_dir: Path | None = None, progress=None
+) -> Path:
     """Download `release.installer_url` into `dest_dir` (default: the
     per-machine `updates` folder under the app data directory) and verify
     its SHA-256 against `release.checksum_url`.
@@ -264,10 +307,20 @@ def download_and_verify(release: ReleaseInfo, dest_dir: Path | None = None) -> P
 
     response = _http_get(release.installer_url, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS)
     response.raise_for_status()
+    # `progress(done, total)` — для оверлею; total = 0, коли сервер не сказав
+    # довжину (тоді показуємо лише скачані мегабайти).
+    try:
+        total = int(response.headers.get("Content-Length") or 0)
+    except (TypeError, ValueError, AttributeError):
+        total = 0
+    done = 0
     with installer_path.open("wb") as handle:
         for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
             if chunk:
                 handle.write(chunk)
+                done += len(chunk)
+                if progress is not None:
+                    progress(done, total)
 
     if not release.checksum_url:
         installer_path.unlink(missing_ok=True)

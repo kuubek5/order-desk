@@ -172,6 +172,47 @@ def test_download_and_verify_succeeds_with_matching_checksum(tmp_path):
     assert result_path.parent == tmp_path
 
 
+def test_download_and_verify_reports_progress_with_total(tmp_path):
+    """Оверлей показує «X з Y МБ» — total береться з Content-Length, done росте
+    з кожним шматком. Без цього оператор дивився на нерухомий напис хвилинами."""
+    chunks = [b"a" * 10, b"b" * 10, b"c" * 5]
+    content = b"".join(chunks)
+    installer_response = _installer_response(content)
+    installer_response.iter_content.return_value = chunks
+    installer_response.headers = {"Content-Length": str(len(content))}
+    checksum_response = _checksum_response(hashlib.sha256(content).hexdigest())
+    seen = []
+    with patch("app.update_check._http_get", side_effect=[installer_response, checksum_response]):
+        download_and_verify(_release(), dest_dir=tmp_path, progress=lambda d, t: seen.append((d, t)))
+    assert seen == [(10, 25), (20, 25), (25, 25)]
+
+
+def test_download_and_verify_progress_survives_missing_content_length(tmp_path):
+    content = b"fake installer bytes"
+    installer_response = _installer_response(content)
+    installer_response.headers = {}
+    checksum_response = _checksum_response(hashlib.sha256(content).hexdigest())
+    seen = []
+    with patch("app.update_check._http_get", side_effect=[installer_response, checksum_response]):
+        download_and_verify(_release(), dest_dir=tmp_path, progress=lambda d, t: seen.append((d, t)))
+    assert seen == [(len(content), 0)]
+
+
+def test_human_update_error_hides_requests_internals():
+    import requests as rq
+    from app.update_check import human_update_error
+
+    for exc, expect in (
+        (rq.exceptions.ConnectTimeout("HTTPSConnectionPool(...)"), "проксі"),
+        (rq.exceptions.ReadTimeout("Read timed out"), "обірвалось"),
+        (rq.exceptions.ConnectionError("Max retries exceeded"), "розірвано"),
+        (UpdateVerificationError("Контрольна сума не збігається"), "Контрольна сума"),
+        (RuntimeError("boom"), "kuubmill.log"),
+    ):
+        text = human_update_error(exc)
+        assert expect in text and "HTTPSConnectionPool" not in text and "Max retries" not in text
+
+
 def test_download_and_verify_raises_and_deletes_file_on_mismatch(tmp_path):
     content = b"fake installer bytes"
     wrong_hash = "0" * 64

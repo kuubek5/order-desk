@@ -161,7 +161,11 @@ document.addEventListener("click", (event) => {
     void overlay.offsetWidth;
     overlay.classList.add("is-shown");
 
-    // Cycle the mono status lines; hold on the final "Перезапуск…" stage.
+    // Вигадані стадії по таймеру — лише ПОКИ сервер не віддав справжній стан.
+    // Через проксі лабораторії 45 МБ качаються хвилинами; таймер добігав до
+    // «Перезапуск… за мить» за 9 с, і далі оператор дивився на нерухомий
+    // напис («зависло»). Щойно /settings/update/status відповів — таймер
+    // зупиняється, і напис каже, що відбувається насправді.
     let i = 0;
     if (statusEl) {
       statusEl.textContent = STAGES[0];
@@ -181,7 +185,97 @@ document.addEventListener("click", (event) => {
     }
 
     startHealthReloadPoll();
+    startInstallStatusPoll(overlay, statusEl);
   }
+
+  function stopStageCycling() {
+    if (stageTimer) {
+      window.clearInterval(stageTimer);
+      stageTimer = null;
+    }
+  }
+
+  function megabytes(bytes) {
+    return (bytes / 1048576).toFixed(bytes < 10485760 ? 1 : 0);
+  }
+
+  function describeInstallState(state) {
+    switch (state.stage) {
+      case "downloading":
+        if (state.total > 0) {
+          return "Завантаження… " + megabytes(state.done) + " з " + megabytes(state.total) + " МБ";
+        }
+        return "Завантаження… " + megabytes(state.done || 0) + " МБ";
+      case "launching":
+        return "Перевірено, запуск інсталятора…";
+      case "launched":
+        return "Перезапуск… за мить сторінка оновиться";
+      case "failed":
+        return "Не вдалося: " + (state.message || "невідома причина");
+      default:
+        return null;
+    }
+  }
+
+  // Справжній стан з сервера раз на секунду. Коли сервер падає на перезапуск,
+  // запити ламаються — це нормально, далі веде health-полл.
+  let statusTimer = null;
+  function startInstallStatusPoll(overlay, statusEl) {
+    const track = overlay.querySelector(".update-track");
+    const bar = track ? track.querySelector("i") : null;
+    const closeBtn = document.getElementById("update-close");
+    statusTimer = window.setInterval(() => {
+      fetch("/settings/update/status", { cache: "no-store", credentials: "same-origin" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((state) => {
+          if (!state || state.stage === "idle") return;
+          const text = describeInstallState(state);
+          if (!text) return;
+          stopStageCycling();
+          if (statusEl) statusEl.textContent = text;
+          if (track && bar && state.stage === "downloading" && state.total > 0) {
+            track.classList.add("is-real");
+            bar.style.setProperty("--w", Math.round((state.done / state.total) * 100) + "%");
+          }
+          if (state.stage === "failed") {
+            window.clearInterval(statusTimer);
+            statusTimer = null;
+            if (healthTimer) {
+              window.clearInterval(healthTimer);
+              healthTimer = null;
+            }
+            overlay.classList.add("is-failed");
+            if (closeBtn) closeBtn.hidden = false;
+          }
+        })
+        .catch(() => {});
+    }, 1000);
+  }
+
+  function hideUpdateOverlay() {
+    const overlay = document.getElementById("update-overlay");
+    if (!overlay) return;
+    if (statusTimer) {
+      window.clearInterval(statusTimer);
+      statusTimer = null;
+    }
+    stopStageCycling();
+    overlay.classList.remove("is-shown", "is-failed");
+    overlay.hidden = true;
+    overlay.setAttribute("aria-hidden", "true");
+    const closeBtn = document.getElementById("update-close");
+    if (closeBtn) closeBtn.hidden = true;
+    document
+      .querySelectorAll('form[action="/settings/update/install"] button[type="submit"]')
+      .forEach((b) => {
+        b.disabled = false;
+      });
+    shown = false;
+  }
+
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("#update-close")) hideUpdateOverlay();
+  });
 
   // Poll /health. The app is about to restart, so /health will first start
   // failing (connection dropped) and then, once the new process is up, answer

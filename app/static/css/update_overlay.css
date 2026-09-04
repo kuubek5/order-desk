@@ -103,6 +103,22 @@
 
 .update-note{margin-top:14px;font-size:var(--fs-1);color:var(--ink-3);max-width:280px}
 
+/* Реальний прогрес (04.09.26): щойно сервер віддав байти, смужка перестає
+   бігати й показує частку скачаного. Збій — червоний статус, шпиндель стає,
+   з'являється «Закрити». */
+.update-track.is-real i{animation:none;transform:none;left:0;width:var(--w,0%);
+  background:var(--accent-b);transition:width .4s ease}
+.update-overlay.is-failed .update-status{color:var(--alarm)}
+.update-overlay.is-failed .mill-spindle,.update-overlay.is-failed .mill-path,
+.update-overlay.is-failed .mill-progress{animation-play-state:paused}
+.update-overlay.is-failed .update-track{opacity:.35}
+.update-overlay.is-failed .update-note{visibility:hidden}
+.update-close{margin-top:16px;height:32px;padding:0 16px;border-radius:var(--r-ctl);
+  border:1px solid var(--control-edge);background:var(--card);color:var(--ink);
+  font:500 var(--fs-2) var(--font-body);cursor:pointer}
+.update-close:hover{background:var(--raise)}
+.update-close:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+
 @media (prefers-reduced-motion: reduce){
   .update-overlay,.update-overlay.is-shown{transition:none}
   .update-overlay-grid,.mill-path,.mill-progress,.mill-spindle,.update-track i{animation:none}

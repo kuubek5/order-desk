@@ -141,6 +141,7 @@ POST /settings/test-imap
 POST /settings/test-sheets
 POST /settings/update/check
 POST /settings/update/install
+GET /settings/update/status
 POST /settings/users
 POST /settings/users/{user_id}/initial
 POST /settings/users/{user_id}/reset-password

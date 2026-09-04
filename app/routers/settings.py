@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from imap_tools import MailBox
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -117,7 +117,10 @@ from app.update_check import (
     _update_check_tick,
     download_and_verify,
     get_known_update,
+    human_update_error,
+    install_state,
     launch_silent_install,
+    set_install_state,
 )
 
 logger = logging.getLogger(__name__)
@@ -1603,11 +1606,24 @@ def _install_update_in_background(release) -> None:
     """Runs on its own daemon thread — download+verify+silent-install can
     take a while (network download, then Inno Setup itself), and the HTTP
     response to the admin's click must not block on any of that."""
+    version = release.version
+    set_install_state(stage="downloading", version=version, done=0, total=0)
     try:
-        installer_path = download_and_verify(release)
+        installer_path = download_and_verify(
+            release,
+            progress=lambda done, total: set_install_state(
+                stage="downloading", version=version, done=done, total=total
+            ),
+        )
+        set_install_state(stage="launching", version=version)
         launch_silent_install(installer_path)
-    except Exception:
-        logger.exception("Background update install failed for release %s", release.version)
+        # Далі — watchdog: інсталятор, перезапуск, /health. Оверлей чекає на
+        # падіння й повернення сервера, як і раніше.
+        set_install_state(stage="launched", version=version)
+    except Exception as exc:
+        logger.exception("Background update install failed for release %s", version)
+        # Оверлей мусить побачити збій, інакше висить вічно.
+        set_install_state(stage="failed", version=version, message=human_update_error(exc))
 
 
 @router.post("/settings/update/check", response_class=HTMLResponse)
@@ -1635,6 +1651,23 @@ def check_update(request: Request, db: Session = Depends(get_db)):
         "_update_check_result.html",
         {"release": get_known_update(), "current_version": VERSION},
     )
+
+
+@router.get("/settings/update/status")
+def update_install_status(request: Request, db: Session = Depends(get_db)):
+    """Стан встановлення для оверлею: стадія, байти, причина збою.
+
+    Читає лише пам'ять процесу. Ті самі ворота, що й у /update/install: це
+    той самий адмін на тому самому ПК, і чужому оку тут нічого робити.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    return JSONResponse(install_state(), headers={"Cache-Control": "no-store"})
 
 
 @router.post("/settings/update/install")
