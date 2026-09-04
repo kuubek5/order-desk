@@ -600,3 +600,26 @@ def test_low_percent_fallback_needs_caption_confirmation():
     assert low is not None, "зачіпка за трек не знайшла смугу"
     assert low.percent == 8
     assert read_caption_percent(image, low) == 8
+
+
+def test_narrow_container_without_caption_stays_silent():
+    """Вузька смуга з ЧАСТКОВОЮ заливкою і без підпису — мовчимо.
+
+    У смузі на 40px один піксель заливки коштує 2.5%, тож будь-який сторонній
+    синій елемент дає правдоподібне середнє число з повітря (бойова скарга
+    04.09.26: «1% читає як 10»). Справжні смуги в цеху 120..165px — зміряно на
+    283 кадрах чотирьох верстатів. Порожню й повну вузьку смугу лишаємо: там
+    двозначності немає, і саме так виглядають 100% на портретному верстаті.
+    """
+    from app.machine_ocr import MIN_TRUSTED_CONTAINER, ProgressBar
+
+    narrow = MIN_TRUSTED_CONTAINER - 20
+    for percent, expect_silent in ((1, True), (10, True), (99, True), (0, False), (100, False)):
+        bar = ProgressBar(
+            percent=percent,
+            fill_width=round(narrow * percent / 100),
+            container_width=narrow,
+            box=(0, 0, narrow, 10),
+        )
+        silent = bar.container_width < MIN_TRUSTED_CONTAINER and 0 < bar.percent < 100
+        assert silent is expect_silent, f"{percent}% на {narrow}px"
