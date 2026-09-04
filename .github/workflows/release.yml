@@ -29,7 +29,7 @@ jobs:
       - name: Verify installer exists
         shell: powershell
         run: |
-          $installerPath = "dist-installer\KuubMill-Setup-0.8.17.exe"
+          $installerPath = "dist-installer\KuubMill-Setup-0.8.18.exe"
           if (-not (Test-Path $installerPath)) {
             Write-Error "Installer not found at $installerPath"
             exit 1
@@ -40,8 +40,8 @@ jobs:
       - name: Compute installer checksum
         shell: powershell
         run: |
-          $installerPath = "dist-installer\KuubMill-Setup-0.8.17.exe"
-          $checksumPath = "dist-installer\KuubMill-Setup-0.8.17.exe.sha256"
+          $installerPath = "dist-installer\KuubMill-Setup-0.8.18.exe"
+          $checksumPath = "dist-installer\KuubMill-Setup-0.8.18.exe.sha256"
           $hash = (Get-FileHash -Algorithm SHA256 -Path $installerPath).Hash.ToLower()
           Set-Content -Path $checksumPath -Value $hash -NoNewline
           Write-Host "SHA256: $hash"
@@ -50,7 +50,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $installerPath = "dist-installer\KuubMill-Setup-0.8.17.exe"
+          $installerPath = "dist-installer\KuubMill-Setup-0.8.18.exe"
           $installDir = "$env:LOCALAPPDATA\Programs\KuubMill"
           $exePath = "$installDir\KuubMill.exe"
 
@@ -179,6 +179,6 @@ jobs:
           token: ${{ secrets.RELEASES_REPO_TOKEN }}
           tag_name: ${{ github.ref_name }}
           files: |
-            dist-installer/KuubMill-Setup-0.8.17.exe
-            dist-installer/KuubMill-Setup-0.8.17.exe.sha256
+            dist-installer/KuubMill-Setup-0.8.18.exe
+            dist-installer/KuubMill-Setup-0.8.18.exe.sha256
           fail_on_unmatched_files: true
