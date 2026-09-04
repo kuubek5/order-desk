@@ -24,10 +24,57 @@ if (-not $conf.token -or $conf.token -like "*ЗАМІНИ*") {
 schtasks /query /tn $task 2>$null | Out-Null
 if ($LASTEXITCODE -eq 0) { schtasks /delete /tn $task /f | Out-Null }
 
-# Автозапуск при вході користувача (верстатний ПК працює під одним акаунтом).
-# ВАЖЛИВО: `-serve` — без нього exe відкриває меню налаштувань, а не сервер.
-schtasks /create /tn $task /tr "`"$exe`" -serve" /sc onlogon /rl highest /f | Out-Null
-Write-Host "Завдання '$task' зареєстровано (автозапуск при вході)."
+# Автозапуск при вході + РЕСТАРТ ПРИ ЗБОЇ. Через XML, бо `schtasks` з рядка
+# командного не вміє restart-on-failure, а він тут головний: якщо агент упаде
+# (паніка, kill, збій, якого не спіймав внутрішній цикл перепідключення),
+# планувальник підійме його сам за хвилину — верстат не лишиться «offline» до
+# наступного логіну. Плюс StartWhenAvailable: якщо ПК був вимкнений у мить
+# тригера, завдання надолужить старт. Схема 1.2 — Task Scheduler 2.0, є на
+# Windows 7 і новіших.
+$user = "$env:USERDOMAIN\$env:USERNAME"
+$xml = @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>$user</UserId>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>$user</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>999</Count>
+    </RestartOnFailure>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>$exe</Command>
+      <Arguments>-serve</Arguments>
+      <WorkingDirectory>$here</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+"@
+# Task Scheduler чекає саме UTF-16 (як оголошено в XML). Тимчасовий файл — бо
+# schtasks /xml читає з диска.
+$xmlPath = Join-Path $env:TEMP "kmill_agent_task.xml"
+$xml | Out-File -FilePath $xmlPath -Encoding Unicode
+schtasks /create /tn $task /xml $xmlPath /f | Out-Null
+Remove-Item $xmlPath -ErrorAction SilentlyContinue
+Write-Host "Завдання '$task' зареєстровано (автозапуск при вході + рестарт при збої)."
 
 # Стартувати зараз (не чекати наступного входу).
 schtasks /run /tn $task | Out-Null

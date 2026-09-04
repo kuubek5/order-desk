@@ -275,9 +275,31 @@ func runServe(cfgPath string) {
 	}
 	// HTTP — у горутині, трей тримає ГОЛОВНИЙ потік: цикл повідомлень Windows
 	// мусить жити саме там. «Вийти» в треї зупиняє процес цілком.
+	//
+	// НЕ Fatalf на помилці Serve. На верстатному ПК мережа зникає й вертається
+	// (кабель, світч, засинання NIC), і на Windows слухаючий сокет від цього
+	// ламається — ListenAndServe повертає помилку. Раніше тут процес умирав, а
+	// автозапуск (schtasks /sc onlogon) підіймав його лише при НАСТУПНОМУ вході,
+	// тож верстат лишався «offline» до логіну. Тепер сервер сам перепідключається:
+	// коли мережа вертається, re-listen вдається, і CRM знову його бачить —
+	// без жодного ручного втручання.
 	go func() {
-		if err := srv.ListenAndServe(); err != nil {
-			log.Fatalf("сервер зупинився: %v", err)
+		for {
+			err := srv.ListenAndServe()
+			if err == http.ErrServerClosed {
+				return // штатна зупинка (не трапляється тут, але коректно)
+			}
+			log.Printf("сервер зупинився (%v) — перезапуск слухача за 5 с", err)
+			time.Sleep(5 * time.Second)
+			// Той самий srv після Serve вважається завершеним; новий екземпляр
+			// на ту саму адресу переслуховує порт, щойно мережа дозволить.
+			srv = &http.Server{
+				Addr:         cfg.Bind,
+				Handler:      mux,
+				ReadTimeout:  10 * time.Second,
+				WriteTimeout: 30 * time.Second,
+				IdleTimeout:  60 * time.Second,
+			}
 		}
 	}()
 	runTray(func() { log.Printf("вихід із трею") })
