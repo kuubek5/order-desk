@@ -82,6 +82,14 @@ FURNACE_FRAMES_PATH = os.environ.get(
 MACHINE_FRAMES_PATH = os.environ.get(
     "MACHINE_FRAMES_PATH", str(DATA_DIR / "machine_frames")
 )
+# Калібрувальні кадри верстата: програма збирає їх САМА, поки шрифт підпису
+# смуги ще не вивчено (бракує цифр у machine_glyphs.json), і зупиняється, коли
+# всі цифри є. Оператор лише скачує їх одним zip і надсилає — навчання
+# (scripts/machine_glyphs.py learn) робиться на машині розробки, а результат
+# їде з релізом. Робочий ПК має лише встановлену програму, без Python.
+MACHINE_CALIBRATION_PATH = os.environ.get(
+    "MACHINE_CALIBRATION_PATH", str(DATA_DIR / "calibration_frames")
+)
 DB_ENCRYPTION_KEY = os.environ["DB_ENCRYPTION_KEY"]
 SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY") or hashlib.sha256(
     ("order-desk-session:" + DB_ENCRYPTION_KEY).encode()

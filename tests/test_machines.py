@@ -156,3 +156,101 @@ def test_warmup_takes_the_second_frame_not_the_first():
         got = capture("127.0.0.1", bench.port, "DEKEMA", warmup=0.3)
 
     assert got.getpixel((5, 5)) == (0, 128, 255), "узято перший кадр, а не другий"
+
+
+# ── Авто-збір калібрувальних кадрів ─────────────────────────────────────────
+# Робочий ПК має лише встановлену програму (без Python), тому кадри для
+# навчання шрифта підпису вона мусить готувати сама. Ці тести стережуть, щоб
+# збір робив рівно те, що обіцяно: збирав, доки цифри неповні, і мовчав, коли
+# всі вивчено.
+
+
+def _calib_frame(percent: int) -> Image.Image:
+    """Синтетичний кадр зі смугою на заданий відсоток (як у test_machine_ocr)."""
+    from PIL import ImageDraw
+
+    img = Image.new("RGB", (1152, 864), (240, 240, 240))
+    draw = ImageDraw.Draw(img)
+    left, top, right, bottom = 400, 700, 700, 723
+    draw.rectangle((left, top, right, bottom), outline=(40, 40, 40), fill=(255, 255, 255))
+    fill_w = int((right - left) * percent / 100)
+    if fill_w > 0:
+        draw.rectangle((left, top, left + fill_w, bottom), fill=(0, 0, 128))
+    return img
+
+
+def test_calibration_collects_frames_while_digits_missing(monkeypatch, tmp_path):
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    # Бракує цифр — збираємо.
+    monkeypatch.setattr(service, "missing_caption_digits", lambda: {"7"})
+
+    service.collect_calibration_frame("192.168.1.85", _calib_frame(40), 40)
+    service.collect_calibration_frame("192.168.1.85", _calib_frame(60), 60)
+
+    folder = tmp_path / "calib" / "192.168.1.85"
+    assert (folder / "pct-040.png").exists()
+    assert (folder / "pct-060.png").exists()
+
+
+def test_calibration_skips_existing_percent(monkeypatch, tmp_path):
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    monkeypatch.setattr(service, "missing_caption_digits", lambda: {"7"})
+
+    service.collect_calibration_frame("m", _calib_frame(40), 40)
+    first = (tmp_path / "calib" / "m" / "pct-040.png").stat().st_mtime_ns
+    service.collect_calibration_frame("m", _calib_frame(40), 40)  # той самий %
+    second = (tmp_path / "calib" / "m" / "pct-040.png").stat().st_mtime_ns
+    assert first == second, "той самий відсоток перезаписався — має пропускатись"
+
+
+def test_calibration_stops_when_font_complete(monkeypatch, tmp_path):
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    # Усі цифри вивчено — не збираємо нічого.
+    monkeypatch.setattr(service, "missing_caption_digits", lambda: set())
+
+    service.collect_calibration_frame("m", _calib_frame(40), 40)
+    assert not (tmp_path / "calib").exists()
+
+
+def test_calibration_never_raises(monkeypatch, tmp_path):
+    """Збір — зручність, не робота: жодна його помилка не сміє впасти в
+    опитування верстата."""
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    monkeypatch.setattr(service, "missing_caption_digits", lambda: {"7"})
+
+    class Boom:
+        def save(self, *a, **k):
+            raise OSError("диск повний")
+
+    # Не кидає, попри збійне збереження.
+    service.collect_calibration_frame("m", Boom(), 40)
+
+
+def test_calibration_status_and_zip(monkeypatch, tmp_path):
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    monkeypatch.setattr(service, "missing_caption_digits", lambda: {"7", "8"})
+
+    service.collect_calibration_frame("m", _calib_frame(40), 40)
+    status = service.calibration_status()
+    assert status["active"] is True
+    assert status["frames"] == 1
+    assert status["missing"] == ["7", "8"]
+
+    import io
+    import zipfile
+
+    data = service.calibration_zip_bytes()
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        assert "m/pct-040.png" in archive.namelist()
+
+
+def test_calibration_zip_route_is_not_eaten_by_the_frame_route():
+    """Та сама пастка, що з паролем печі: /machines/calibration.zip мусить
+    бути оголошений ВИЩЕ /machines/{key}/frame.png, інакше параметричний
+    з'їв би «calibration» як ключ верстата."""
+    from app.routers.machines import router
+
+    paths = [route.path for route in router.routes]
+    assert paths.index("/machines/calibration.zip") < paths.index(
+        "/machines/{key}/frame.png"
+    )

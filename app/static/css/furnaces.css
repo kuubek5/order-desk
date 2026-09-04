@@ -418,3 +418,22 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 .tk.off b{color:var(--alarm-ink)}
 .tk:hover b{color:var(--ink)}
 .tksep{color:var(--line-2);margin:0 8px}
+
+/* Банер калібрування верстатів (machines.html). Показується сам, доки шрифт
+   підпису неповний; спокійний, не тривожний — це робочий процес, не помилка. */
+.calib-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin: 0 0 18px;
+  padding: 14px 18px;
+  border: 1px solid var(--control-edge, #5f7490);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent, #f0b99a) 8%, transparent);
+}
+.calib-banner .calib-text { min-width: 260px; flex: 1; }
+.calib-banner strong { display: block; margin-bottom: 2px; }
+.calib-banner p { margin: 0; color: var(--ink-2); font-size: var(--fs-2); line-height: 1.5; }
+.calib-banner .btn { white-space: nowrap; }

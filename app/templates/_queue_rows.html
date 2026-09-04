@@ -9,9 +9,16 @@
    comment forms inside from inheriting the poll trigger/target. Edit-protection
    (app.js htmx:beforeRequest on #queue-rows) skips a refresh while an operator
    is typing in a row, so an in-progress comment/Sum3D is never wiped. #}
+{# `load` у тригері — одразу після першого малюнку сторінки дотягує те, що
+   повний рендер СВІДОМО пропустив: іконки папок (export + файли техніків), бо
+   їхнє сканування мережевої шари коштувало 2-3с холодного звернення до
+   Synology й тримало відкриття черги (заміряно /diag/perf 04.09.26). Сторінка
+   малюється миттєво з рядків БД, іконки проступають за мить, а далі той самий
+   полл тримає кеш теплим. Готовність рядків від сканів не залежить (job_code —
+   колонка БД), тож перший, «голий» рендер уже правильний. #}
 <div id="queue-rows"
      hx-get="/?{{ rows_qs }}{% if rows_qs %}&{% endif %}partial=rows"
-     hx-trigger="every {{ sync_screen_seconds|default(15) }}s, refresh-queue from:body"
+     hx-trigger="load, every {{ sync_screen_seconds|default(15) }}s, refresh-queue from:body"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*">

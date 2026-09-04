@@ -10,7 +10,7 @@
 import json
 import logging
 import time
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Annotated
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -278,10 +278,23 @@ def get_queue(
     # Count for all buckets
     counts = {k: len(v) for k, v in buckets.items()}
 
-    with perf.span("share:export"):
-        attach_export_folder_uris(db, orders)
-    with perf.span("share:tech"):
-        attach_job_code_folder_uris(db, orders)
+    # Іконки папок (export + файли техніків) годуються скануванням МЕРЕЖЕВОЇ
+    # шари — на бойовому ПК це 2-3с холодного звернення до Synology, і саме
+    # воно робило відкриття черги повільним (заміряно /diag/perf 04.09.26:
+    # share:tech ~2.9с, разом зі скан:sum3d ~5с на повний рендер). Сторінка ж
+    # їх не потребує, щоб намалюватись: рядки, статуси й ГОТОВНІСТЬ читаються
+    # з БД (job_code — колонка, не скан). Тому:
+    #   • повний рендер сторінки їх НЕ робить (швидкий перший малюнок);
+    #   • полл рядків (partial=rows) — робить, і саме він, стрельнувши одразу
+    #     після завантаження (hx-trigger="load" у queue.html), домальовує
+    #     іконки за мить і далі тримає кеш теплим кожні 15с.
+    # Готовність (_has_path) від сканів не залежить, тож фільтр і лічильники
+    # лишаються точними навіть на першому, «голому» рендері.
+    if partial == "rows":
+        with perf.span("share:export"):
+            attach_export_folder_uris(db, orders)
+        with perf.span("share:tech"):
+            attach_job_code_folder_uris(db, orders)
     perf.note_rows(len(orders))
 
     # Second, independent filter: readiness (has the technician dropped files yet?)
@@ -436,14 +449,13 @@ def get_queue(
     else:
         viewed_day = None  # "earlier"/overdue span many days — no single tab
 
-    # Скан теки проєктів Sum3D — ЄДИНЕ місце в рендері черги, що ходить на
-    # диск (а на бойовому ПК тека може бути мережевою). Виміряний окремо, бо
-    # інакше його час невідрізнимий від часу SQL: обидва просто «черга
-    # відкривається довго». Кеш усередині scan_projects лишається як був.
-    _t_s3 = time.monotonic()
-    _s3 = scan_sum3d_projects(get_sum3d_projects_path(db))
-    _s3_seconds = time.monotonic() - _t_s3
-    perf.add("scan:sum3d", _s3_seconds)
+    # Лоток Sum3D у шапці самополлиться через /sum3d/tray (див. _sum3d_tray.html)
+    # і сам сканує теку — тут його НЕ скануємо. Раніше повний рендер робив цей
+    # скан лише щоб засіяти перший малюнок лотка, і платив за нього 2-3с на
+    # мережевій теці (заміряно /diag/perf 04.09.26). Лоток тепер починає
+    # порожнім і підтягує себе одразу після завантаження (hx-trigger="load").
+    # Порожній список — валідний перший стан, а не «немає проєктів».
+    _s3 = None
 
     context = {
             "page_title": "Черга робіт",
@@ -540,11 +552,12 @@ def get_queue(
     # розбивки в логу лишалось тільки «Slow request: GET / took 4.17s», і
     # причину доводилось вгадувати з іншого ПК (скарга власника 03.09.26:
     # «перемикання між вкладками ~5 секунд»).
-    _measured = _sql_seconds + _s3_seconds
-    if _measured >= 1.0:
+    # Скан Sum3D і мережеві скани іконок пішли з повного рендера (лоток і рядки
+    # довантажуються самі), тож тут лишається SQL — єдине, що повний рендер
+    # ще робить синхронно. Повна розкладка будь-якого запиту — на /diag/perf.
+    if _sql_seconds >= 1.0:
         logger.info(
-            "Queue render: %d робіт, SQL %.2fс, скан Sum3D %.2fс",
-            len(all_orders), _sql_seconds, _s3_seconds,
+            "Queue render: %d робіт, SQL %.2fс", len(all_orders), _sql_seconds,
         )
 
     # The screen poll asks for just the rows block; everything else (sidebar

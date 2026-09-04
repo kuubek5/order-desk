@@ -30,10 +30,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
-from app.machine_ocr import pick_milling_program, read_progress_percent
+from app.machine_ocr import (
+    missing_caption_digits,
+    pick_milling_program,
+    read_progress_percent,
+)
 from app.models import Machine, Order
 from app.services.furnace import _HOST_RE, validate_address  # ті самі правила адреси
-from app.config import MACHINE_FRAMES_PATH
+from app.config import MACHINE_CALIBRATION_PATH, MACHINE_FRAMES_PATH
 from app.settings_store import get_machine_vnc_password
 
 logger = logging.getLogger(__name__)
@@ -170,6 +174,80 @@ def frames_root() -> Path:
     root = Path(MACHINE_FRAMES_PATH)
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+# Скільки калібрувальних кадрів щонайбільше тримаємо на верстат. За змістом їх
+# буде ~101 (по одному на відсоток), але це запобіжник від патологічного
+# накопичення, якщо геометрія почне стрибати. Диск локальний, кадр ~50КБ.
+CALIBRATION_MAX_FRAMES = 130
+
+
+def _sanitize_key(key: str) -> str:
+    """Ключ верстата у безпечний сегмент шляху (адреса вже валідна, це пасок
+    безпеки: у назву теки не має потрапити ані роздільник, ані «..»)."""
+    return "".join(ch if (ch.isalnum() or ch in ".-") else "_" for ch in key)
+
+
+def calibration_status() -> dict:
+    """Стан збору калібрувальних кадрів — для банера на екрані «Верстати».
+
+    Каже операторові рівно те, що йому треба знати: скільки кадрів уже
+    відкладено й чи ще збираємо. Коли шрифт повний — `active=False`, банер
+    ховається, і збирати більше нема потреби.
+    """
+    missing = sorted(missing_caption_digits())
+    root = Path(MACHINE_CALIBRATION_PATH)
+    frames = 0
+    if root.exists():
+        frames = sum(1 for _ in root.glob("*/pct-*.png"))
+    return {"active": bool(missing), "missing": missing, "frames": frames}
+
+
+def calibration_zip_bytes() -> bytes:
+    """Усі калібрувальні кадри одним zip — щоб оператор забрав їх із робочого
+    ПК одним файлом і надіслав. Порожньо, якщо нічого не зібрано."""
+    import io
+    import zipfile
+
+    root = Path(MACHINE_CALIBRATION_PATH)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        if root.exists():
+            for png in sorted(root.glob("*/pct-*.png")):
+                # Ім'я в архіві: <верстат>/<файл>, шлях на диску не розкриваємо.
+                archive.write(png, arcname=f"{png.parent.name}/{png.name}")
+    return buffer.getvalue()
+
+
+def collect_calibration_frame(key: str, frame: "Image.Image", geometry_percent: int) -> None:
+    """Відкласти кадр для навчання шрифту — САМЕ доти, доки шрифт неповний.
+
+    Викликається з опитування щоразу, коли з кадру знялась геометрія. Пише
+    лише НОВИЙ відсоток (один файл на число), тож за програму-дві набирається
+    весь набір цифр, а коли всі десять вивчено — не пише більше нічого. Робочий
+    ПК так сам готує матеріал; оператор його лише скачує (zip), навчання
+    робиться на машині розробки.
+
+    Ніколи не кидає: збір кадрів — зручність, а не робота, і не має права
+    завалити опитування верстата.
+    """
+    try:
+        if not missing_caption_digits():
+            return  # шрифт уже повний — збирати нема потреби
+        if not (0 <= geometry_percent <= 100):
+            return
+        folder = Path(MACHINE_CALIBRATION_PATH) / _sanitize_key(key)
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / f"pct-{geometry_percent:03d}.png"
+        if target.exists():
+            return  # цей відсоток уже є
+        if sum(1 for _ in folder.glob("pct-*.png")) >= CALIBRATION_MAX_FRAMES:
+            return  # запобіжник переповнення
+        tmp = folder / f".{geometry_percent:03d}.tmp.png"
+        frame.save(tmp, format="PNG")
+        tmp.replace(target)
+    except Exception:  # noqa: BLE001 — збір не має валити опитування
+        logger.debug("Калібрувальний кадр верстата %s не збережено", key, exc_info=True)
 
 
 def frame_path(key: str) -> Path:
@@ -318,6 +396,13 @@ def poll_target(
         state.percent_changed_at = now
     state.percent = percent
     state.percent_at = now
+
+    # Поки шрифт підпису неповний, відкладаємо кадр із новим відсотком для
+    # навчання. `percent` тут — геометрія (підпис ще не читається, бо саме його
+    # й калібруємо), тобто правильна мітка. Коли всі цифри вивчено —
+    # collect_calibration_frame сам нічого не робить.
+    if percent is not None:
+        collect_calibration_frame(target.key, frame, percent)
 
     # Що фрезерується — лише через агента (заголовок вікна). У VNC такого
     # каналу немає, і вигадувати його з картинки ми не будемо.

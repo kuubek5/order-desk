@@ -10,13 +10,15 @@ app/furnace_vnc.py, який фізично не вміє слати ввід (�
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
-from app.routers.deps import get_current_user, get_db, templates
+from app.routers.deps import get_current_user, get_db, is_loopback_request, templates
 from app.services.machines import (
     POLL_INTERVAL_SECONDS,
+    calibration_status,
+    calibration_zip_bytes,
     machine_side_context,
     poll_all,
     resolve_frame,
@@ -33,6 +35,8 @@ def _context(request: Request, db: Session, user) -> dict:
         "topbar_active": "machines",
         "cards": snapshot(db),
         "poll_seconds": int(POLL_INTERVAL_SECONDS),
+        # Банер калібрування: показується, лише доки шрифт підпису неповний.
+        "calibration": calibration_status(),
     }
 
 
@@ -91,6 +95,31 @@ def machines_refresh(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="увійдіть в систему")
     poll_all(db)
     return templates.TemplateResponse(request, "_machine_cards.html", _context(request, db, user))
+
+
+@router.get("/machines/calibration.zip")
+def machines_calibration_zip(request: Request, db: Session = Depends(get_db)):
+    """Скачати всі зібрані калібрувальні кадри одним zip.
+
+    Оголошено ВИЩЕ за `/machines/{key}/frame.png`: FastAPI приміряє роути в
+    порядку оголошення, і параметричний з'їв би «calibration» як ключ (та сама
+    пастка, що з паролем печі — є тест-сторож).
+
+    Адмін + лише з цього ПК: це обслуговуюча дія над локальним диском, як і
+    решта дій рівня машини (відкрити теку, оновлення)."""
+    user = get_current_user(request, db)
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    data = calibration_zip_bytes()
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="calibration_frames.zip"'},
+    )
 
 
 @router.get("/machines/{key}/frame.png")

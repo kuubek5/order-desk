@@ -23,6 +23,7 @@ GET /journal
 GET /license
 GET /login
 GET /machines
+GET /machines/calibration.zip
 GET /machines/cards
 GET /machines/side
 GET /machines/strip

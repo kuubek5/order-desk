@@ -410,6 +410,20 @@ def load_machine_glyphs() -> dict[int, dict[str, list[list[str]]]]:
     return {int(h): chars for h, chars in raw.get("fonts", {}).items()}
 
 
+def missing_caption_digits() -> set[str]:
+    """Які цифри 0-9 ще НЕ вивчено для підпису смуги.
+
+    На цьому тримається авто-збір калібрувальних кадрів: доки набір неповний,
+    програма сама відкладає кадри з новими відсотками; щойно всі десять цифр
+    є — збір зупиняється. Так робочий ПК (де лише встановлена програма, без
+    Python) сам готує матеріал для навчання, а оператор його лише скачує.
+    """
+    seen: set[str] = set()
+    for chars in load_machine_glyphs().values():
+        seen.update(c for c in chars if c.isdigit())
+    return set("0123456789") - seen
+
+
 def caption_mask(image: Image.Image, bar: "ProgressBar") -> Optional[Image.Image]:
     """Чорно-біла маска підпису всередині смуги (чорне — символ).
 

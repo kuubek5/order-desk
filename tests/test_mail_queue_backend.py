@@ -1799,3 +1799,72 @@ def test_files_changed_trigger_header_is_latin1_safe():
     assert payload["mailFilesChanged"]["count"] == 2, "рядків у базі"
     assert payload["mailFilesChanged"]["on_disk"] == 0, "файлів на диску немає"
     assert payload["toast"]["message"] == "Розпаковано 3 файли"
+
+
+def test_full_render_skips_network_scans_partial_does_them(tmp_path, monkeypatch):
+    """Скани мережевої шари (іконки папок) — НЕ в повному рендері, А в поллі.
+
+    На бойовому ПК ці скани коштували 2-3с холодного звернення до Synology й
+    тримали відкриття черги (заміряно /diag/perf 04.09.26). Повний рендер має
+    малюватись без них (рядки й готовність — з БД), а полл (partial=rows)
+    домальовує іконки. Розходження тут = або повільна черга знову, або зниклі
+    іконки — тому сторож.
+    """
+    engine = _database()
+    mail_root = tmp_path / "mail"
+    mail_root.mkdir()
+    for _mod in (mail_router_mod, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+
+    calls = {"export": 0, "tech": 0}
+    monkeypatch.setattr(
+        queue_router_mod, "attach_export_folder_uris",
+        lambda db, orders: calls.__setitem__("export", calls["export"] + 1),
+    )
+    monkeypatch.setattr(
+        queue_router_mod, "attach_job_code_folder_uris",
+        lambda db, orders: calls.__setitem__("tech", calls["tech"] + 1),
+    )
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(Order(source="lab", sheet_tab=business_today().strftime("%d.%m.%y")))
+        db.commit()
+
+        queue_router_mod.get_queue(request=_request(user.id), db=db)
+        assert calls == {"export": 0, "tech": 0}, "повний рендер не має чіпати мережеву шару"
+
+        queue_router_mod.get_queue(request=_request(user.id), db=db, partial="rows")
+        assert calls == {"export": 1, "tech": 1}, "полл рядків має домалювати іконки"
+
+
+def test_full_render_does_not_scan_sum3d(tmp_path, monkeypatch):
+    """Лоток Sum3D самополлиться через /sum3d/tray — повний рендер його НЕ
+    сканує (це коштувало ~2.7с на мережевій теці)."""
+    engine = _database()
+    mail_root = tmp_path / "mail"
+    mail_root.mkdir()
+    for _mod in (mail_router_mod, config_state):
+        monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
+    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+    scanned = {"n": 0}
+    monkeypatch.setattr(
+        queue_router_mod, "scan_sum3d_projects",
+        lambda path: scanned.__setitem__("n", scanned["n"] + 1) or [],
+    )
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(Order(source="lab", sheet_tab=business_today().strftime("%d.%m.%y")))
+        db.commit()
+
+        ctx = queue_router_mod.get_queue(request=_request(user.id), db=db)
+        assert scanned["n"] == 0, "повний рендер не має сканувати Sum3D"
+        assert ctx["sum3d_projects"] is None
