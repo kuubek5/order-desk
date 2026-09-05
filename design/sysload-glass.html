@@ -1,0 +1,196 @@
+<meta charset="utf-8">
+<title>Прозорі віджети навантаження</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root,[data-pal="teal"]{--bg:#0d1117;--card:#161d27;--card2:#1b2431;--raise:#1d2734;--line:#222c3a;--line2:#3a4a5f;--edge:#5f7490;
+  --ink:#e8eff7;--ink2:#8fa3bb;--ink3:#8698ad;--acc:#14b8a6;--accB:#2dd4bf;--accC:#5eead4;--acc-rgb:20,184,166;
+  --warn:#f0a35e;--alarm:#f87171;--alarm-rgb:248,113,113;--grid:rgba(45,212,191,.045)}
+[data-pal="forge"]{--bg:#14100a;--card:#1d1710;--card2:#241c12;--raise:#2a2014;--line:#2c2214;--line2:#45361d;--edge:#6b5535;
+  --ink:#f2e8d8;--ink2:#a89578;--ink3:#a08c68;--acc:#ffb454;--accB:#ffc670;--accC:#ffd894;--acc-rgb:255,180,84;
+  --warn:#f0a35e;--alarm:#ff6b52;--alarm-rgb:255,107,82;--grid:rgba(255,180,84,.04)}
+*{box-sizing:border-box}
+body{margin:0;padding:30px 26px 70px;background:var(--bg);color:var(--ink);font-family:'Golos Text',system-ui,sans-serif;font-size:14px;line-height:1.5;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:64px 64px}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:1100px;margin:0 auto}
+h1{font-size:29px;font-weight:700;letter-spacing:-.015em;margin:0 0 6px}
+.lede{color:var(--ink2);margin:0 0 14px;max-width:78ch}.lede b{color:var(--ink)}
+.tools{display:flex;gap:8px;align-items:center;margin:0 0 8px}.tools span{color:var(--ink3);font-size:12.5px;margin-right:4px}
+.tb{font:inherit;font-size:12.5px;padding:5px 12px;border-radius:999px;border:1px solid var(--line2);background:var(--card);color:var(--ink2);cursor:pointer}
+.tb[aria-pressed="true"]{color:var(--ink);border-color:var(--acc);box-shadow:inset 0 0 0 1px rgba(var(--acc-rgb),.35)}
+.var{margin:22px 0 0;padding:18px 0 0;border-top:1px solid var(--line)}
+.vh{display:flex;align-items:baseline;gap:10px;margin:0 0 3px}.vk{font-size:12px;color:var(--acc);letter-spacing:.06em}.vn{font-size:17px;font-weight:600}
+.vw{color:var(--ink2);font-size:13.5px;margin:0 0 14px;max-width:84ch}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card);overflow-x:auto}
+.tl{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;min-width:0}
+.tl h2{font-size:19px;font-weight:700;margin:0;letter-spacing:-.01em;white-space:nowrap}
+.tl .live{display:flex;align-items:center;gap:8px;color:var(--ink2);font-size:12.5px;white-space:nowrap}
+.beacon{width:7px;height:7px;border-radius:50%;background:var(--accB);box-shadow:0 0 8px rgba(var(--acc-rgb),.8)}
+.acts{display:flex;align-items:center;gap:12px;flex:none}
+.ibtn{width:34px;height:34px;border-radius:9px;border:1px solid var(--edge);background:var(--card);display:grid;place-items:center;color:var(--ink3);flex:none}
+.ibtn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2}
+.hint{display:block;font-size:12px;color:var(--ink3);margin-top:8px}.hint b{color:var(--ink2);font-weight:500}
+.ok{--fill:var(--acc)} .mid{--fill:var(--warn)} .hot{--fill:var(--alarm)}
+
+/* усі прозорі: жодного фону/плашки, лише текст + тонкі лінії */
+
+/* ── T1 · Голий текст ────────────────────────────────────────────────────
+   Просто моно-рядок у шапці, акцент лише на числах. Максимально тихо. */
+.t1{display:flex;align-items:center;gap:14px;font-family:'JetBrains Mono',monospace;font-size:12.5px}
+.t1 .grp{display:flex;align-items:baseline;gap:6px}
+.t1 .who{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+.t1 .who.crm{color:var(--accC)}
+.t1 .v{font-weight:700;color:var(--ink)}
+.t1 .u{color:var(--ink3);font-weight:400;font-size:10.5px}
+.t1 .mid-v{color:var(--warn)} .t1 .hot-v{color:var(--alarm)}
+.t1 .dv{color:var(--line2)}
+
+/* ── T2 · Підкреслення-бар ──────────────────────────────────────────────
+   Текст, а % — тонка кольорова смужка під самим числом. Легкий «дашборд». */
+.t2{display:flex;align-items:flex-end;gap:16px;font-family:'JetBrains Mono',monospace}
+.t2 .col{display:flex;flex-direction:column;gap:3px}
+.t2 .lab{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+.t2 .lab.crm{color:var(--accC)}
+.t2 .nums{display:flex;align-items:baseline;gap:8px}
+.t2 .n{font-size:13px;font-weight:700;color:var(--ink);position:relative;padding-bottom:4px}
+.t2 .n .u{color:var(--ink3);font-weight:400;font-size:10px}
+.t2 .n::after{content:"";position:absolute;left:0;bottom:0;height:2px;width:var(--w,0%);background:var(--fill,var(--acc));border-radius:2px}
+.t2 .n .rest{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--line2);border-radius:2px;z-index:-1}
+
+/* ── T3 · Мікро-бари ────────────────────────────────────────────────────
+   Підпис + число + короткий бар, без контейнера — «плаває» в шапці. */
+.t3{display:flex;align-items:center;gap:16px}
+.t3 .cell{display:flex;align-items:center;gap:7px}
+.t3 .lab{font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+.t3 .lab.crm{color:var(--accC)}
+.t3 .n{font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;color:var(--ink)}
+.t3 .n .u{color:var(--ink3);font-weight:400;font-size:10px}
+.t3 .bar{width:38px;height:4px;border-radius:999px;background:var(--raise);overflow:hidden}
+.t3 .bar i{display:block;height:100%;background:var(--fill,var(--acc))}
+.t3 .dv{width:1px;height:20px;background:var(--line2)}
+
+/* ── T4 · Тонкі кільця без плитки ───────────────────────────────────────
+   Два дрібні кільця прямо в шапці, підпис під ними; тло прозоре. */
+.t4{display:flex;align-items:center;gap:16px}
+.t4 .g{display:flex;align-items:center;gap:7px}
+.t4 svg.ring{width:30px;height:30px;transform:rotate(-90deg)}
+.t4 .ring circle{fill:none;stroke-width:3}
+.t4 .ring .bg{stroke:var(--line2)}.t4 .ring .fg{stroke:var(--fill,var(--acc));stroke-linecap:round}
+.t4 .txt{display:flex;flex-direction:column;line-height:1.15}
+.t4 .lab{font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+.t4 .lab.crm{color:var(--accC)}
+.t4 .n{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--ink)}
+.t4 .n .u{color:var(--ink3);font-weight:400;font-size:9px}
+
+/* ── T5 · Крапка-стан + число ───────────────────────────────────────────
+   Найтихіше: кольорова крапка стану + число CPU, ОЗП дрібним хвостом. */
+.t5{display:flex;align-items:center;gap:16px;font-family:'JetBrains Mono',monospace}
+.t5 .cell{display:flex;align-items:center;gap:7px}
+.t5 .dot{width:8px;height:8px;border-radius:50%;background:var(--fill,var(--acc));box-shadow:0 0 8px var(--fill,var(--acc));flex:none}
+.t5 .who{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+.t5 .who.crm{color:var(--accC)}
+.t5 .n{font-size:13.5px;font-weight:700;color:var(--ink)}
+.t5 .ram{font-size:10.5px;color:var(--ink3)}
+</style>
+<div class="wrap">
+<h1>Прозорі віджети навантаження</h1>
+<p class="lede">Ще 5 варіантів — <b>прозорі</b>, без плашки: сидять прямо в шапці, тло видно наскрізь. Ті самі дані — <b>CPU</b> і <b>ОЗП</b>
+для <b>ПК</b> і <b>CRM</b>. Числа умовні. Перемикач тем угорі.</p>
+<div class="tools"><span>Тема</span><button class="tb" data-pal="teal" aria-pressed="true">Бірюзова</button><button class="tb" data-pal="forge" aria-pressed="false">Amber Forge</button></div>
+
+<!-- T1 -->
+<section class="var"><div class="vh"><span class="vk mono">T1</span><span class="vn">Голий текст</span></div>
+<p class="vw">Один моноширинний рядок, акцент лише на числах. Найтихіший — майже як решта статуслайну шапки.</p>
+<div class="topbar">
+  <div class="tl"><h2>Черга робіт</h2><span class="live"><span class="beacon"></span>0 у вигляді</span></div>
+  <div class="acts">
+    <div class="t1">
+      <span class="grp"><span class="who">ПК</span><span class="v">34<span class="u">%</span></span><span class="u">·</span><span class="v">11.2<span class="u">/16ГБ</span></span></span>
+      <span class="dv">|</span>
+      <span class="grp"><span class="who crm">CRM</span><span class="v">6<span class="u">%</span></span><span class="u">·</span><span class="v">240<span class="u">МБ</span></span></span>
+    </div>
+    <span class="ibtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></span>
+  </div>
+</div></section>
+
+<!-- T2 -->
+<section class="var"><div class="vh"><span class="vk mono">T2</span><span class="vn">Підкреслення-бар</span></div>
+<p class="vw">Число, а під ним тонка кольорова риска = %. Без жодної рамки, але навантаження читається кольором і довжиною.</p>
+<div class="topbar">
+  <div class="tl"><h2>Черга робіт</h2><span class="live"><span class="beacon"></span>0 у вигляді</span></div>
+  <div class="acts">
+    <div class="t2">
+      <span class="col"><span class="lab">ПК</span><span class="nums">
+        <span class="n ok" style="--w:34%">34<span class="u">%</span><span class="rest"></span></span>
+        <span class="n ok" style="--w:70%">11.2<span class="u">ГБ</span><span class="rest"></span></span></span></span>
+      <span class="col"><span class="lab crm">CRM</span><span class="nums">
+        <span class="n ok" style="--w:6%">6<span class="u">%</span><span class="rest"></span></span>
+        <span class="n" style="--w:0%">240<span class="u">МБ</span></span></span></span>
+    </div>
+    <span class="ibtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></span>
+  </div>
+</div></section>
+
+<!-- T3 -->
+<section class="var"><div class="vh"><span class="vk mono">T3</span><span class="vn">Мікро-бари</span></div>
+<p class="vw">Підпис + число + короткий бар, кожне окремо «плаває» в шапці без контейнера. Проміжний між текстом і плиткою.</p>
+<div class="topbar">
+  <div class="tl"><h2>Черга робіт</h2><span class="live"><span class="beacon"></span>0 у вигляді</span></div>
+  <div class="acts">
+    <div class="t3">
+      <span class="cell"><span class="lab">ПК CPU</span><span class="n mono">34<span class="u">%</span></span><span class="bar ok"><i style="width:34%"></i></span></span>
+      <span class="cell"><span class="lab">ОЗП</span><span class="n mono">11<span class="u">ГБ</span></span><span class="bar ok"><i style="width:70%"></i></span></span>
+      <span class="dv"></span>
+      <span class="cell"><span class="lab crm">CRM</span><span class="n mono">6<span class="u">%</span></span><span class="bar ok"><i style="width:6%"></i></span><span class="n mono" style="color:var(--ink3)">240<span class="u">М</span></span></span>
+    </div>
+    <span class="ibtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></span>
+  </div>
+</div></section>
+
+<!-- T4 -->
+<section class="var"><div class="vh"><span class="vk mono">T4</span><span class="vn">Тонкі кільця без плитки</span></div>
+<p class="vw">Два дрібні кільця CPU прямо в шапці, поруч підпис і ОЗП. Технологічно, але без фону — легше за плиткові кільця.</p>
+<div class="topbar">
+  <div class="tl"><h2>Черга робіт</h2><span class="live"><span class="beacon"></span>0 у вигляді</span></div>
+  <div class="acts">
+    <div class="t4">
+      <span class="g ok"><svg class="ring" viewBox="0 0 40 40"><circle class="bg" cx="20" cy="20" r="16"/><circle class="fg" cx="20" cy="20" r="16" stroke-dasharray="100.5" stroke-dashoffset="66.3"/></svg><span class="txt"><span class="lab">ПК</span><span class="n mono">34<span class="u">% ·11ГБ</span></span></span></span>
+      <span class="g ok"><svg class="ring" viewBox="0 0 40 40"><circle class="bg" cx="20" cy="20" r="16"/><circle class="fg" cx="20" cy="20" r="16" stroke-dasharray="100.5" stroke-dashoffset="94.5"/></svg><span class="txt"><span class="lab crm">CRM</span><span class="n mono">6<span class="u">% ·240М</span></span></span></span>
+    </div>
+    <span class="ibtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></span>
+  </div>
+</div></section>
+
+<!-- T5 -->
+<section class="var"><div class="vh"><span class="vk mono">T5</span><span class="vn">Крапка-стан + число</span></div>
+<p class="vw">Найтихіше з усіх: кольорова крапка стану (зелена/бурштин/червона) + число CPU, ОЗП дрібним хвостом. Ідеально, коли шапка вже щільна.</p>
+<div class="topbar">
+  <div class="tl"><h2>Черга робіт</h2><span class="live"><span class="beacon"></span>0 у вигляді</span></div>
+  <div class="acts">
+    <div class="t5">
+      <span class="cell ok"><span class="dot"></span><span class="who">ПК</span><span class="n">34%</span><span class="ram">11ГБ</span></span>
+      <span class="cell ok"><span class="dot"></span><span class="who crm">CRM</span><span class="n">6%</span><span class="ram">240МБ</span></span>
+    </div>
+    <span class="ibtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></span>
+  </div>
+</div></section>
+
+<!-- стани -->
+<section class="var"><div class="vh"><span class="vk mono">±</span><span class="vn">Стани (на прикладі T5)</span></div>
+<p class="vw">Колір — за навантаженням: спокій, зайнято (&gt;70%), перегруз (&gt;90%), і «—» коли лічильник недоступний.</p>
+<div class="topbar" style="justify-content:flex-start;gap:26px">
+  <div class="t5"><span class="cell ok"><span class="dot"></span><span class="who">ПК</span><span class="n">28%</span><span class="ram">9ГБ</span></span></div>
+  <div class="t5"><span class="cell mid"><span class="dot"></span><span class="who">ПК</span><span class="n">78%</span><span class="ram">13ГБ</span></span></div>
+  <div class="t5"><span class="cell hot"><span class="dot"></span><span class="who">ПК</span><span class="n">96%</span><span class="ram">15ГБ</span></span></div>
+  <div class="t5"><span class="cell"><span class="dot" style="background:var(--ink3);box-shadow:none"></span><span class="who">ПК</span><span class="n" style="color:var(--ink3)">—</span></span></div>
+</div></section>
+
+<p class="note"><b>Спільне.</b> Усі прозорі — без власного фону, лягають на шапку. CPU і ОЗП точні (psutil), фоновий семплер, чіп лише показує. Обраний варіант вбудую тими самими токенами теми. Разом із попередніми 5 (плашкові) — усього 10 на вибір.</p>
+</div>
+<script>
+document.querySelectorAll('.tb').forEach(function(b){b.addEventListener('click',function(){
+  document.documentElement.setAttribute('data-pal',b.dataset.pal);
+  document.querySelectorAll('.tb').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false')});
+})});
+</script>

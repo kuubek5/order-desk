@@ -1,0 +1,201 @@
+<meta charset="utf-8">
+<title>Віджет навантаження</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root,[data-pal="teal"]{--bg:#0d1117;--card:#161d27;--card2:#1b2431;--field:#111823;--raise:#1d2734;--line:#222c3a;--line2:#3a4a5f;--edge:#5f7490;
+  --ink:#e8eff7;--ink2:#8fa3bb;--ink3:#8698ad;--acc:#14b8a6;--accB:#2dd4bf;--accC:#5eead4;--acc-rgb:20,184,166;
+  --warn:#f0a35e;--warn-rgb:240,163,94;--alarm:#f87171;--alarm-rgb:248,113,113;--grid:rgba(45,212,191,.045)}
+[data-pal="forge"]{--bg:#14100a;--card:#1d1710;--card2:#241c12;--field:#15100a;--raise:#2a2014;--line:#2c2214;--line2:#45361d;--edge:#6b5535;
+  --ink:#f2e8d8;--ink2:#a89578;--ink3:#a08c68;--acc:#ffb454;--accB:#ffc670;--accC:#ffd894;--acc-rgb:255,180,84;
+  --warn:#f0a35e;--warn-rgb:240,163,94;--alarm:#ff6b52;--alarm-rgb:255,107,82;--grid:rgba(255,180,84,.04)}
+*{box-sizing:border-box}
+body{margin:0;padding:30px 26px 70px;background:var(--bg);color:var(--ink);font-family:'Golos Text',system-ui,sans-serif;font-size:14px;line-height:1.5;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:64px 64px}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:1100px;margin:0 auto}
+h1{font-size:29px;font-weight:700;letter-spacing:-.015em;margin:0 0 6px}
+.lede{color:var(--ink2);margin:0 0 14px;max-width:76ch}.lede b{color:var(--ink)}
+.tools{display:flex;gap:8px;align-items:center;margin:0 0 8px}.tools span{color:var(--ink3);font-size:12.5px;margin-right:4px}
+.tb{font:inherit;font-size:12.5px;padding:5px 12px;border-radius:999px;border:1px solid var(--line2);background:var(--card);color:var(--ink2);cursor:pointer}
+.tb[aria-pressed="true"]{color:var(--ink);border-color:var(--acc);box-shadow:inset 0 0 0 1px rgba(var(--acc-rgb),.35)}
+.var{margin:22px 0 0;padding:18px 0 0;border-top:1px solid var(--line)}
+.vh{display:flex;align-items:baseline;gap:10px;margin:0 0 3px}.vk{font-size:12px;color:var(--acc);letter-spacing:.06em}.vn{font-size:17px;font-weight:600}
+.vw{color:var(--ink2);font-size:13.5px;margin:0 0 14px;max-width:84ch}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card);overflow-x:auto}
+.tl{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;min-width:0}
+.tl h2{font-size:19px;font-weight:700;margin:0;letter-spacing:-.01em;white-space:nowrap}
+.tl .live{display:flex;align-items:center;gap:8px;color:var(--ink2);font-size:12.5px;white-space:nowrap}
+.beacon{width:7px;height:7px;border-radius:50%;background:var(--accB);box-shadow:0 0 8px rgba(var(--acc-rgb),.8)}
+.acts{display:flex;align-items:center;gap:10px;flex:none}
+.ibtn{width:34px;height:34px;border-radius:9px;border:1px solid var(--edge);background:var(--card);display:grid;place-items:center;color:var(--ink3);flex:none}
+.ibtn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2}
+.hint{display:block;font-size:12px;color:var(--ink3);margin-top:8px}.hint b{color:var(--ink2);font-weight:500}
+.ok{--fill:var(--acc)} .mid{--fill:var(--warn)} .hot{--fill:var(--alarm)}
+
+/* ── V1 · пігулки: ПК (CPU·RAM) і CRM (CPU·RAM) ───────────────────────── */
+.s1{display:flex;gap:8px;align-items:stretch}
+.s1 .pod{display:flex;align-items:center;gap:9px;padding:5px 11px;border-radius:12px;border:1px solid var(--line2);background:var(--card2)}
+.s1 .cap{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+.s1 .metrics{display:flex;align-items:center;gap:10px}
+.s1 .m{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+.s1 .ml{font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink2);font-weight:600}
+.s1 .mv{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;color:var(--ink);line-height:1}
+.s1 .mv .u{color:var(--ink3);font-weight:400;font-size:9.5px}
+.s1 .bar{width:32px;height:3px;border-radius:999px;background:var(--raise);overflow:hidden;margin-top:1px}
+.s1 .bar i{display:block;height:100%;background:var(--fill,var(--acc))}
+.s1 .pod.crm .cap{color:var(--accC)}
+
+/* ── V2 · кільця CPU + дрібно RAM ─────────────────────────────────────── */
+.s2{display:flex;gap:14px;align-items:center}
+.s2 .g{display:flex;flex-direction:column;align-items:center;gap:1px}
+.s2 svg.ring{width:38px;height:38px;transform:rotate(-90deg)}
+.s2 .ring circle{fill:none;stroke-width:3.4}
+.s2 .ring .bg{stroke:var(--raise)}.s2 .ring .fg{stroke:var(--fill,var(--acc));stroke-linecap:round}
+.s2 .gv{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--ink);margin-top:-1px}
+.s2 .gl{font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3)}
+.s2 .gl b{color:var(--ink2);font-weight:600}
+
+/* ── V3 · лінія: два рядки CPU+RAM ────────────────────────────────────── */
+.s3{display:flex;flex-direction:column;gap:6px;padding:8px 12px;border:1px solid var(--line2);border-radius:10px;background:var(--card2);min-width:210px}
+.s3 .row{display:flex;align-items:center;gap:8px}
+.s3 .k{font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);width:34px}
+.s3 .track{flex:1;height:5px;border-radius:999px;background:var(--raise);overflow:hidden}
+.s3 .track i{display:block;height:100%;background:var(--fill,var(--acc))}
+.s3 .n{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:11.5px;font-weight:700;color:var(--ink);width:70px;text-align:right}
+.s3 .n .u{color:var(--ink3);font-weight:400;font-size:9.5px;margin-left:1px}
+
+/* ── V4 · злитий чіп: ПК / CRM ────────────────────────────────────────── */
+.s4{display:inline-flex;align-items:stretch;border:1px solid var(--line2);border-radius:999px;overflow:hidden;background:var(--card2);font-family:'JetBrains Mono',monospace}
+.s4 .seg{display:flex;align-items:center;gap:6px;padding:5px 12px}
+.s4 .seg+.seg{border-left:1px solid var(--line2)}
+.s4 .dot{width:6px;height:6px;border-radius:50%;background:var(--fill,var(--acc));flex:none}
+.s4 .t{font-size:9.5px;letter-spacing:.04em;color:var(--ink3);text-transform:uppercase}
+.s4 .v{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
+.s4 .v .u{color:var(--ink3);font-weight:400;font-size:9.5px;margin-left:1px}
+
+/* ── V5 · пульс: смуга + RAM ──────────────────────────────────────────── */
+.s5{display:flex;align-items:center;gap:12px;padding:6px 13px;border:1px solid var(--line2);border-radius:10px;background:var(--card2)}
+.s5 .core{display:flex;flex-direction:column;gap:3px;min-width:150px}
+.s5 .mtr{position:relative;height:8px;border-radius:999px;background:var(--raise);overflow:hidden}
+.s5 .pc{position:absolute;inset:0;width:var(--pc,0%);background:rgba(var(--acc-rgb),.28)}
+.s5 .crm{position:absolute;inset:0;width:var(--crm,0%);background:var(--acc);box-shadow:0 0 8px rgba(var(--acc-rgb),.6)}
+.s5 .cap{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--ink3)}
+.s5 .cap b{color:var(--ink);font-weight:700}.s5 .cap .crm-n{color:var(--accC)}
+.s5 .side{display:flex;gap:12px;padding-left:12px;border-left:1px solid var(--line2)}
+.s5 .sm{display:flex;flex-direction:column;gap:1px}
+.s5 .sm .l{font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3)}
+.s5 .sm .n{font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;color:var(--ink)}
+.s5 .sm .n .u{color:var(--ink3);font-weight:400;font-size:9.5px}
+
+.note{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);color:var(--ink3);font-size:13px;max-width:82ch}.note b{color:var(--ink2)}
+.states{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
+</style>
+<div class="wrap">
+<h1>Віджет навантаження</h1>
+<p class="lede">Тільки навантаження системи: <b>CPU</b> і <b>ОЗП (оперативна пам’ять)</b> — для всього <b>ПК</b> і окремо для <b>CRM</b>. Температуру
+відклали. Дані з ОС (psutil), не здогад. Числа умовні. Перемикач тем угорі.</p>
+<div class="tools"><span>Тема</span><button class="tb" data-pal="teal" aria-pressed="true">Бірюзова</button><button class="tb" data-pal="forge" aria-pressed="false">Amber Forge</button></div>
+
+<!-- V1 -->
+<section class="var"><div class="vh"><span class="vk mono">V1</span><span class="vn">Пігулки</span></div>
+<p class="vw">Дві пігулки: ПК і CRM, у кожній CPU і ОЗП із коротким баром. Найпряміше читається, кожне число підписане.</p>
+<div class="topbar">
+  <div class="tl"><h2>Черга робіт</h2><span class="live"><span class="beacon"></span>0 у вигляді</span></div>
+  <div class="acts">
+    <div class="s1">
+      <span class="pod ok"><span class="cap">ПК</span><span class="metrics">
+        <span class="m"><span class="ml">CPU</span><span class="mv">34<span class="u">%</span></span><span class="bar"><i style="width:34%"></i></span></span>
+        <span class="m"><span class="ml">ОЗП</span><span class="mv">11.2<span class="u">/16 ГБ</span></span><span class="bar"><i style="width:70%"></i></span></span>
+      </span></span>
+      <span class="pod crm ok"><span class="cap">CRM</span><span class="metrics">
+        <span class="m"><span class="ml">CPU</span><span class="mv">6<span class="u">%</span></span><span class="bar"><i style="width:6%"></i></span></span>
+        <span class="m"><span class="ml">ОЗП</span><span class="mv">240<span class="u"> МБ</span></span></span>
+      </span></span>
+    </div>
+    <span class="ibtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></span>
+  </div>
+</div></section>
+
+<!-- V2 -->
+<section class="var"><div class="vh"><span class="vk mono">V2</span><span class="vn">Кільця</span></div>
+<p class="vw">Кільце CPU для ПК і для CRM, під кожним дрібно ОЗП. Найтехнологічніший вигляд, дуга читається краєм ока.</p>
+<div class="topbar">
+  <div class="tl"><h2>Черга робіт</h2><span class="live"><span class="beacon"></span>0 у вигляді</span></div>
+  <div class="acts">
+    <div class="s2">
+      <span class="g ok"><svg class="ring" viewBox="0 0 40 40"><circle class="bg" cx="20" cy="20" r="16"/><circle class="fg" cx="20" cy="20" r="16" stroke-dasharray="100.5" stroke-dashoffset="66.3"/></svg><span class="gv mono">34%</span><span class="gl"><b>ПК</b> · ОЗП 11ГБ</span></span>
+      <span class="g ok"><svg class="ring" viewBox="0 0 40 40"><circle class="bg" cx="20" cy="20" r="16"/><circle class="fg" cx="20" cy="20" r="16" stroke-dasharray="100.5" stroke-dashoffset="94.5"/></svg><span class="gv mono">6%</span><span class="gl"><b>CRM</b> · ОЗП 240МБ</span></span>
+    </div>
+    <span class="ibtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></span>
+  </div>
+</div>
+<span class="hint">Дуга міняє колір: зелена → бурштин &gt;70% → червона &gt;90%</span></section>
+
+<!-- V3 -->
+<section class="var"><div class="vh"><span class="vk mono">V3</span><span class="vn">Лінія</span></div>
+<p class="vw">Приладовий блок: два рядки-треки, ПК і CRM, кожен із CPU і ОЗП. Найспокійніший, добре лягає, коли в шапці й так тісно.</p>
+<div class="topbar">
+  <div class="tl"><h2>Черга робіт</h2><span class="live"><span class="beacon"></span>0 у вигляді</span></div>
+  <div class="acts">
+    <div class="s3">
+      <span class="row ok"><span class="k">ПК</span><span class="track"><i style="width:34%"></i></span><span class="n mono">34%<span class="u"> ·11ГБ</span></span></span>
+      <span class="row ok"><span class="k">CRM</span><span class="track"><i style="width:6%"></i></span><span class="n mono">6%<span class="u"> ·240М</span></span></span>
+    </div>
+  </div>
+</div></section>
+
+<!-- V4 -->
+<section class="var"><div class="vh"><span class="vk mono">V4</span><span class="vn">Злитий чіп</span></div>
+<p class="vw">Найдрібніше: моно-чіп «ПК · CRM» з крапками-станами. ОЗП при наведенні, щоб чіп лишався коротким.</p>
+<div class="topbar">
+  <div class="tl"><h2>Черга робіт</h2><span class="live"><span class="beacon"></span>0 у вигляді</span></div>
+  <div class="acts">
+    <div class="s4">
+      <span class="seg ok"><span class="dot"></span><span class="t">ПК</span><span class="v">34<span class="u">%</span></span></span>
+      <span class="seg ok"><span class="dot"></span><span class="t">CRM</span><span class="v">6<span class="u">%</span></span></span>
+    </div>
+    <span class="ibtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></span>
+  </div>
+</div>
+<span class="hint">Наведення: ОЗП ПК 11.2/16 ГБ · ОЗП CRM 240 МБ</span></section>
+
+<!-- V5 -->
+<section class="var"><div class="vh"><span class="vk mono">V5</span><span class="vn">Пульс</span></div>
+<p class="vw">Смуга: бліде тло — весь ПК, яскрава заливка — частка CRM усередині. Праворуч ОЗП ПК. Одразу видно, чи саме CRM вантажить машину.</p>
+<div class="topbar">
+  <div class="tl"><h2>Черга робіт</h2><span class="live"><span class="beacon"></span>0 у вигляді</span></div>
+  <div class="acts">
+    <div class="s5 ok">
+      <span class="core" style="--pc:34%;--crm:6%">
+        <span class="mtr"><span class="pc"></span><span class="crm"></span></span>
+        <span class="cap"><span class="crm-n">CRM 6%</span><span><b>ПК 34%</b></span></span>
+      </span>
+      <span class="side">
+        <span class="sm"><span class="l">ОЗП ПК</span><span class="n">11.2<span class="u"> ГБ</span></span></span>
+      </span>
+    </div>
+    <span class="ibtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg></span>
+  </div>
+</div>
+<span class="hint">ОЗП CRM — при наведенні на смугу</span></section>
+
+<!-- стани -->
+<section class="var"><div class="vh"><span class="vk mono">±</span><span class="vn">Стани й «—» (на прикладі V4)</span></div>
+<p class="vw">Колір за навантаженням — однаково всюди: спокій, зайнято (&gt;70%), перегруз (&gt;90%). Лічильник недоступний → «—», не нуль.</p>
+<div class="states">
+  <div class="s4"><span class="seg ok"><span class="dot"></span><span class="t">ПК</span><span class="v">28<span class="u">%</span></span></span><span class="seg ok"><span class="dot"></span><span class="t">CRM</span><span class="v">5<span class="u">%</span></span></span></div>
+  <div class="s4"><span class="seg mid"><span class="dot"></span><span class="t">ПК</span><span class="v">78<span class="u">%</span></span></span><span class="seg mid"><span class="dot"></span><span class="t">CRM</span><span class="v">22<span class="u">%</span></span></span></div>
+  <div class="s4"><span class="seg hot"><span class="dot"></span><span class="t">ПК</span><span class="v">96<span class="u">%</span></span></span><span class="seg hot"><span class="dot"></span><span class="t">CRM</span><span class="v">14<span class="u">%</span></span></span></div>
+  <div class="s4"><span class="seg"><span class="dot" style="background:var(--ink3)"></span><span class="t">ПК</span><span class="v" style="color:var(--ink3)">—</span></span><span class="seg"><span class="dot" style="background:var(--ink3)"></span><span class="t">CRM</span><span class="v" style="color:var(--ink3)">—</span></span></div>
+</div>
+<span class="hint">Останній — коли лічильник недоступний</span></section>
+
+<p class="note"><b>Спільне.</b> CPU і ОЗП — точні, з ОС (psutil). Фоновий семплер раз на кілька секунд, чіп лише показує (не блокує запит). CPU процесу CRM нормалізований 0–100%. Температуру відклали — залежить від материнки. Обраний варіант вбудую тими самими токенами теми.</p>
+</div>
+<script>
+document.querySelectorAll('.tb').forEach(function(b){b.addEventListener('click',function(){
+  document.documentElement.setAttribute('data-pal',b.dataset.pal);
+  document.querySelectorAll('.tb').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false')});
+})});
+</script>

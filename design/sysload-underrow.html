@@ -1,0 +1,111 @@
+<meta charset="utf-8">
+<title>Стрічка під кнопками</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root,[data-pal="teal"]{--bg:#0d1117;--card:#161d27;--card2:#1b2431;--raise:#1d2734;--line:#222c3a;--line2:#3a4a5f;--edge:#5f7490;
+  --ink:#e8eff7;--ink2:#8fa3bb;--ink3:#8698ad;--acc:#14b8a6;--accB:#2dd4bf;--accC:#5eead4;--acc-rgb:20,184,166;
+  --warn:#f0a35e;--warn-rgb:240,163,94;--alarm:#f87171;--alarm-rgb:248,113,113;--grid:rgba(45,212,191,.05)}
+[data-pal="forge"]{--bg:#14100a;--card:#1d1710;--card2:#241c12;--raise:#2a2014;--line:#2c2214;--line2:#45361d;--edge:#6b5535;
+  --ink:#f2e8d8;--ink2:#a89578;--ink3:#a08c68;--acc:#ffb454;--accB:#ffc670;--accC:#ffd894;--acc-rgb:255,180,84;
+  --warn:#f0a35e;--warn-rgb:240,163,94;--alarm:#ff6b52;--alarm-rgb:255,107,82;--grid:rgba(255,180,84,.045)}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 24px 60px;background:var(--bg);color:var(--ink);font-family:'Golos Text',system-ui,sans-serif;font-size:14px;line-height:1.5;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:64px 64px}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:980px;margin:0 auto}
+h1{font-size:27px;font-weight:700;letter-spacing:-.015em;margin:0 0 6px}
+.lede{color:var(--ink2);margin:0 0 16px;max-width:80ch}.lede b{color:var(--ink)}
+.tools{display:flex;gap:8px;align-items:center;margin:0 0 6px}.tools span{color:var(--ink3);font-size:12.5px;margin-right:4px}
+.tb{font:inherit;font-size:12.5px;padding:5px 12px;border-radius:999px;border:1px solid var(--line2);background:var(--card);color:var(--ink2);cursor:pointer}
+.tb[aria-pressed="true"]{color:var(--ink);border-color:var(--acc);box-shadow:inset 0 0 0 1px rgba(var(--acc-rgb),.35)}
+.var{margin:24px 0 0;padding:18px 0 0;border-top:1px solid var(--line)}
+.vh{display:flex;align-items:baseline;gap:10px;margin:0 0 3px}.vk{font-size:12px;color:var(--acc);letter-spacing:.06em}.vn{font-size:17px;font-weight:600}
+.vw{color:var(--ink2);font-size:13.5px;margin:0 0 14px;max-width:86ch}.pro{color:var(--accC)}.con{color:var(--warn)}
+
+/* шапка як у застосунку */
+.head{display:flex;flex-direction:column;gap:9px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.headtop{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.tl h2{font-size:18px;font-weight:700;margin:0}
+.statusline{display:flex;align-items:center;gap:7px;color:var(--ink2);font-size:11px;margin-top:3px}
+.statusline .sp{width:1px;height:10px;background:var(--line2)}
+.beacon{width:6px;height:6px;border-radius:50%;background:var(--accB);box-shadow:0 0 7px rgba(var(--acc-rgb),.8)}
+.controls{display:flex;align-items:center;gap:8px;flex:none}
+.search{display:flex;align-items:center;gap:7px;padding:7px 12px;border:1px solid var(--edge);border-radius:9px;color:var(--ink3);font-size:12px;background:var(--card2);min-width:190px}
+.search svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2}
+.btn{display:flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--edge);border-radius:9px;background:var(--card2);color:var(--ink);font-size:12.5px;white-space:nowrap}
+.btn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2}
+.ibtn{width:34px;height:34px;border-radius:9px;border:1px solid var(--edge);background:var(--card2);display:grid;place-items:center;color:var(--ink2);flex:none}
+.ibtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2}
+
+/* нижній ряд під кнопками */
+.underrow{display:flex;align-items:center;padding-top:9px;border-top:1px solid var(--line);margin-top:1px}
+.underrow.right{justify-content:flex-end}
+.underrow.between{justify-content:space-between}
+.underrow .cap{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+
+/* жива стрічка */
+.sysload{--live:var(--acc);--live-rgb:var(--acc-rgb);display:flex;align-items:center;gap:16px}
+.sysload .cell{display:flex;align-items:center;gap:6px}
+.sysload .lab{font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+.sysload .lab.crm{color:var(--accC)}
+.sysload .n{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:12px;font-weight:700;color:var(--ink)}
+.sysload .n .u{color:var(--ink3);font-weight:400;font-size:9.5px}
+.sysload .bar{position:relative;width:40px;height:4px;border-radius:999px;background:var(--raise);overflow:hidden}
+.sysload .bar i{position:absolute;left:0;top:0;bottom:0;width:var(--w,0%);border-radius:999px;
+  background:linear-gradient(90deg,rgba(var(--live-rgb),.55),var(--live));box-shadow:0 0 7px rgba(var(--live-rgb),.5)}
+.sysload.lvl-hot{--live:var(--alarm);--live-rgb:var(--alarm-rgb)}.sysload.lvl-hot .n{color:var(--alarm)}
+.sysload .bar i::after{content:"";position:absolute;inset:0;border-radius:inherit;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);background-size:60% 100%;
+  background-repeat:no-repeat;background-position:-60% 0;opacity:0}
+.sysload.flow .bar i::after{opacity:.9;animation:flow 1.1s linear infinite}
+@keyframes flow{from{background-position:-60% 0}to{background-position:160% 0}}
+@media (prefers-reduced-motion:reduce){.sysload.flow .bar i::after{animation:none;opacity:.4}}
+.note{margin-top:28px;padding-top:16px;border-top:1px solid var(--line);color:var(--ink3);font-size:13px;max-width:84ch}.note b{color:var(--ink2)}
+</style>
+<script>
+function strip(cls){cls=cls||'';return '<div class="sysload '+cls+'">'
+ +'<span class="cell"><span class="lab crm">CRM</span><span class="n mono">6<span class="u">%</span></span><span class="bar"><i style="--w:6%"></i></span></span>'
+ +'<span class="cell"><span class="lab">ПК CPU</span><span class="n mono">34<span class="u">%</span></span><span class="bar"><i style="--w:34%"></i></span></span>'
+ +'<span class="cell"><span class="lab">ОЗП</span><span class="n mono">11<span class="u">/16ГБ</span></span><span class="bar"><i style="--w:70%"></i></span></span>'
+ +'</div>';}
+function controls(){return ''
+ +'<span class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>Наряд, технік, шлях-ID…</span>'
+ +'<span class="btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>Кольори</span>'
+ +'<span class="ibtn"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h12a4 4 0 0 1 0 8h-4"/></svg></span>'
+ +'<span class="ibtn"><svg viewBox="0 0 24 24"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg></span>'
+ +'<span class="ibtn"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H8a4 4 0 0 0 0 8h4"/></svg></span>'
+ +'<span class="ibtn"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></svg></span>'
+ +'<span class="ibtn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg></span>';}
+</script>
+<div class="wrap">
+<h1>Стрічка під кнопками</h1>
+<p class="lede">Другим рядком під ряд керування (пошук, Кольори, undo/redo, вигляд, шестерня) — акуратно, окремою лінією. Два підваріанти вирівнювання. Тема перемикається.</p>
+<div class="tools"><span>Тема</span><button class="tb" data-pal="teal" aria-pressed="true">Бірюзова</button><button class="tb" data-pal="forge" aria-pressed="false">Amber Forge</button></div>
+
+<!-- D1 -->
+<section class="var"><div class="vh"><span class="vk mono">D1</span><span class="vn">Під кнопками, вирівняно праворуч</span></div>
+<p class="vw">Стрічка стоїть точно під кнопками, притиснута до правого краю. <span class="pro">Акуратно й тихо</span> — рівняється по тій самій осі, що й керування.</p>
+<div class="head" id="d1"></div></section>
+
+<!-- D2 -->
+<section class="var"><div class="vh"><span class="vk mono">D2</span><span class="vn">Під усім рядком: підпис ліворуч, стрічка праворуч</span></div>
+<p class="vw">Нижній рядок на всю ширину: ліворуч тихий підпис «Система», праворуч стрічка під кнопками. <span class="pro">Читається як окрема зона</span>, не зливається з фільтрами.</p>
+<div class="head" id="d2"></div></section>
+
+<p class="note"><b>Обидва — той самий елемент, різне вирівнювання.</b> Рядок відділений тонкою лінією зверху, тому стрічка не тисне на кнопки й не плутається з ними. На піку так само тече й червоніє. Скажи, D1 чи D2 — і це стане фінальним місцем.</p>
+</div>
+<script>
+document.getElementById('d1').innerHTML =
+ '<div class="headtop"><div class="tl"><h2>Черга робіт</h2><div class="statusline"><span class="beacon"></span>0 у вигляді<span class="sp"></span>пошта ✓<span class="sp"></span>синк ✓</div></div>'
+ +'<div class="controls">'+controls()+'</div></div>'
+ +'<div class="underrow right">'+strip('')+'</div>';
+document.getElementById('d2').innerHTML =
+ '<div class="headtop"><div class="tl"><h2>Черга робіт</h2><div class="statusline"><span class="beacon"></span>0 у вигляді<span class="sp"></span>пошта ✓<span class="sp"></span>синк ✓</div></div>'
+ +'<div class="controls">'+controls()+'</div></div>'
+ +'<div class="underrow between"><span class="cap">Навантаження системи</span>'+strip('')+'</div>';
+document.querySelectorAll('.tb').forEach(function(b){b.addEventListener('click',function(){
+  document.documentElement.setAttribute('data-pal',b.dataset.pal);
+  document.querySelectorAll('.tb').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false')});
+})});
+</script>
