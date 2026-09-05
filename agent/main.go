@@ -77,6 +77,7 @@ const (
 	listenRetryInterval = 5 * time.Second  // порт зайнятий / мережа не піднялась
 	maxConcurrentGrabs  = 2                // одночасних знімків екрана
 	maxLogBytes         = 8 << 20          // 8 МБ на лог, далі ротація
+	heartbeatInterval   = 30 * time.Minute // рядок «живий» у лозі
 )
 
 // setupAddr is the loopback-only address the settings page listens on. It is
@@ -333,6 +334,23 @@ func runServe(cfgPath string) {
 	}()
 
 	log.Printf("kmill-agent %s serving on %s (display %d)", Version, cfg.Bind, cfg.Display)
+	// ПУЛЬС. Досі лог мав самі рядки старту, тож на питання «а чи був агент
+	// живий о 02:45, коли CRM його втратила» відповіді не було — доводилось
+	// іти до ПК верстата (бойовий випадок 04.09.26: ping проходив, порт мовчав
+	// таймаутом, і без пульсу «мертвий агент» і «блокує брандмауер» ззовні
+	// виглядають однаково). Раз на 30 хв рядок із лічильником запитів: якщо
+	// пульс є, а CRM кадрів не отримує — винна мережа, а не агент.
+	go func() {
+		for {
+			time.Sleep(heartbeatInterval)
+			last := "ще не було"
+			if v := lastCaptureAt.Load(); v != nil {
+				last = v.(time.Time).Format("15:04:05")
+			}
+			log.Printf("живий · кадрів віддано: %d · останній: %s",
+				capturesServed.Load(), last)
+		}
+	}()
 	srv := &http.Server{
 		Addr:         cfg.Bind,
 		Handler:      mux,
@@ -420,6 +438,12 @@ func healthyAgentOn(bind string) bool {
 // вузьке місце в GDI.
 var grabSlots = make(chan struct{}, maxConcurrentGrabs)
 
+// Лічильники для пульсу: скільки кадрів віддано й коли востаннє.
+var (
+	capturesServed atomic.Int64
+	lastCaptureAt  atomic.Value // time.Time
+)
+
 // captureToResponse grabs the frame for the requested (or default) display and
 // writes it as PNG.
 func captureToResponse(w http.ResponseWriter, r *http.Request, def int) {
@@ -459,6 +483,8 @@ func captureToResponse(w http.ResponseWriter, r *http.Request, def int) {
 		http.Error(w, "encode failed", http.StatusInternalServerError)
 		return
 	}
+	capturesServed.Add(1)
+	lastCaptureAt.Store(time.Now())
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(buf.Bytes())
