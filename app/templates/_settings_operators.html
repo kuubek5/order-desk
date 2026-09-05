@@ -111,5 +111,29 @@
                     </div>
                     <button type="submit" class="login-submit settings-submit">Додати оператора</button>
                 </form>
+
+                {# ПІН розділу «Виробіток»: один код на розділ, тримається до
+                   кінця зміни. Порожнє поле = зняти захист. Самого коду не
+                   показуємо (як пароль) — лише ознаку «задано». #}
+                <form method="post" action="/settings/vyrobitok-pin" class="users-add-form" style="margin-top:18px;">
+                    <div class="wizard-step-head">
+                        <h2 style="font-size:var(--fs-4);">ПІН «Виробітку»</h2>
+                        <span class="connection-state {% if vyrobitok_pin_set %}connection-state-ready{% endif %}">
+                            {% if vyrobitok_pin_set %}Задано{% else %}Відкрито{% endif %}
+                        </span>
+                    </div>
+                    <p class="wizard-sub">Розділ місячного табеля під кодом до кінця сесії. Порожнє поле знімає захист.</p>
+                    <div class="settings-field">
+                        <label for="vyrobitok_pin">Код доступу</label>
+                        <div class="login-glow">
+                            <div class="login-input-wrap">
+                                <input type="password" id="vyrobitok_pin" name="vyrobitok_pin" class="login-input"
+                                       inputmode="numeric" autocomplete="off"
+                                       placeholder="{% if vyrobitok_pin_set %}•••• (задано, введіть новий або лишіть порожнім щоб зняти){% else %}напр. 2468{% endif %}">
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="login-submit settings-submit">Зберегти ПІН</button>
+                </form>
             </div>
         </div>

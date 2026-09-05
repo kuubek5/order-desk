@@ -303,6 +303,9 @@ def get_settings(
             "notify_all": NOTIFY_EVENTS,
             "paths_set": paths_set,
             "operators_exist": operators_exist,
+            # Чи заданий ПІН розділу «Виробіток» (значення не показуємо — лише
+            # ознаку, як пароль). Порожньо = розділ відкритий.
+            "vyrobitok_pin_set": bool(get_setting(db, "vyrobitok_pin")),
             "backup_available": backup_available,
             "monthly_snapshots": [
                 {
@@ -1991,6 +1994,23 @@ async def save_feedback_settings(request: Request, db: Session = Depends(get_db)
         "message": "Збережено.",
     }
     return RedirectResponse("/settings/feedback", status_code=303)
+
+
+@router.post("/settings/vyrobitok-pin")
+async def save_vyrobitok_pin(request: Request, db: Session = Depends(get_db)):
+    """ПІН розділу «Виробіток». Порожнє значення = зняти захист (розділ
+    відкритий). Значення шифрується, як решта налаштувань; на екрані показуємо
+    лише ознаку «задано», не сам код."""
+    require_settings_admin(request, db)
+    form = await request.form()
+    pin = (form.get("vyrobitok_pin") or "").strip()
+    set_setting(db, "vyrobitok_pin", pin)
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": "ПІН «Виробітку» знято." if not pin else "ПІН «Виробітку» збережено.",
+    }
+    return RedirectResponse("/settings?saved=1#operators", status_code=303)
 
 
 @router.post("/settings/feedback/bind")

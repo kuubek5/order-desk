@@ -194,6 +194,9 @@ PREFERENCE_KEYS = {
     "telegram_bot_token",
     "telegram_chat_id",
     "feedback_telegram_enabled",
+    # ПІН розділу «Виробіток»: один код на розділ, тримається до кінця сесії.
+    # Порожньо/не задано = розділ відкритий будь-якому оператору, що ввійшов.
+    "vyrobitok_pin",
 }
 
 SETTING_KEYS = {field.key for field in SETTING_FIELDS} | PREFERENCE_KEYS

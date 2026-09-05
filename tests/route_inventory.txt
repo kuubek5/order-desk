@@ -157,6 +157,7 @@ POST /settings/users
 POST /settings/users/{user_id}/initial
 POST /settings/users/{user_id}/reset-password
 POST /settings/users/{user_id}/toggle-active
+POST /settings/vyrobitok-pin
 POST /setup
 POST /sheets/import-history
 POST /sheets/reconcile-deletions
