@@ -209,6 +209,10 @@ main.furnaces{position:relative;min-height:100vh}
     rgba(11,8,4,.30) 54%,rgba(9,6,3,.95) 100%)}
 .q2 .side-sec-furnace>*{position:relative;z-index:1}
 .q2 .side-sec-furnace .side-head{text-shadow:0 1px 6px rgba(0,0,0,.75)}
+/* Іконка героя (варіант B): бурштин теми + drop-shadow, бо на фото svg не бере
+   text-shadow шапки. Так усі 5 віджетів мають іконку — одна родина. */
+.q2 .side-sec-furnace .side-ico,
+.q2 .side-sec-machine .side-ico{stroke:var(--accent-c);filter:drop-shadow(0 1px 3px rgba(0,0,0,.7))}
 /* Хедер більше не відбиває голий card — прибираємо його межу від тіла, арт
    має читатись суцільним. */
 .q2 .side-sec-furnace .side-body{border-top:0}
