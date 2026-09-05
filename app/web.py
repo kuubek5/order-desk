@@ -70,6 +70,7 @@ from app.routers.orders import router as orders_router
 from app.routers.queue import router as queue_router
 from app.routers.archive import router as archive_router
 from app.routers.stats import router as stats_router
+from app.routers.vyrobitok import router as vyrobitok_router
 from app.routers.stl import router as stl_router
 from app.routers.shift import router as shift_router
 from app.routers.furnace import router as furnace_router
@@ -885,6 +886,10 @@ app.include_router(stl_router)
 
 # Статистика живе в app/routers/stats.py.
 app.include_router(stats_router)
+
+
+# Виробіток — місячний облік одиниць для ЗП — живе в app/routers/vyrobitok.py.
+app.include_router(vyrobitok_router)
 
 
 # Екран «Клієнти» живе в app/routers/clients.py.

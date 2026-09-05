@@ -1,0 +1,188 @@
+{# Тіло табеля «Виробіток»: таблиця + легенда + звіт по опаках + підсумок.
+   Один партіал і на сторінці, і у відповіді на правку клітинки/налаштувань —
+   тому підсумки й гроші завжди перераховані з тих самих даних, що й таблиця.
+   Свап цілим #vyrobitok-body: change спрацьовує на blur, фокусу в клітинці
+   вже немає, тож перемал нічого не рве. #}
+<div id="vyrobitok-body">
+{% set g = grid %}
+{% set m = g.money %}
+
+<div class="vt-holder">
+  <table class="vt">
+    <thead>
+      <tr>
+        <th></th>
+        <th class="grp" colspan="{{ material_cols|length }}">Лабораторія</th>
+        <th class="gap"></th>
+        <th class="grp g-mail" colspan="{{ material_cols|length }}">Пошта · файли</th>
+        <th class="gap"></th>
+        <th class="grp g-pid">Підкови</th>
+        <th class="gap"></th>
+        <th class="grp g-dsk">Диски</th>
+        <th class="gap"></th>
+        <th class="grp g-op" colspan="{{ opak_people|length }}">Опаки</th>
+      </tr>
+      <tr>
+        <th>День</th>
+        {% for key, label in material_cols %}
+        <th><span class="cap" style="--h:{{ hue[key] }}"></span>{{ label }}</th>
+        {% endfor %}
+        <th class="gap"></th>
+        {% for key, label in material_cols %}
+        <th class="g-mail"><span class="cap" style="--h:{{ hue[key] }}"></span>{{ label }}</th>
+        {% endfor %}
+        <th class="gap"></th>
+        <th class="g-pid"><span class="cap" style="--h:{{ hue.pidkovy }}"></span>з них, од.</th>
+        <th class="gap"></th>
+        <th class="g-dsk"><span class="cap" style="--h:{{ hue.disks }}"></span>витрачено</th>
+        <th class="gap"></th>
+        {% for name in opak_people %}
+        <th class="g-op"><span class="cap" style="--h:{{ hue.op }}"></span>{{ name }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {# Одна клітинка-поле. cls — клас групи (заливка-поверхня). #}
+      {% macro cell(row, col_key, cls) %}
+      {% set c = row.cells[col_key] %}
+      <td class="{{ cls }}">
+        <input class="cellin{% if not c.num %} zero{% endif %}{% if c.edited %} edited{% endif %}"
+               inputmode="numeric"
+               value="{{ c.num if c.num else '' }}"
+               {% if c.edited %}data-auto="{{ c.auto }}" title="система порахувала {{ c.auto }}"{% endif %}
+               hx-post="/vyrobitok/cell" hx-trigger="change" hx-target="#vyrobitok-body"
+               hx-swap="outerHTML" name="value"
+               hx-vals='{"day": "{{ row.date }}", "col_key": "{{ col_key }}"}'>
+      </td>
+      {% endmacro %}
+
+      {% for row in g.rows %}
+      {% if row.is_off %}
+      <tr class="off">
+        <td class="day">{{ row.dayn }} {{ row.weekend_short }}</td>
+        <td colspan="21" style="text-align:left;padding-left:14px">вихідний</td>
+      </tr>
+      {% else %}
+      <tr class="{% if row.is_today %}today{% endif %}">
+        <td class="day">{{ row.dayn }}{% if row.weekend_short %} {{ row.weekend_short }}{% endif %}{% if row.is_today %}<i class="todaymark">сьогодні</i>{% endif %}</td>
+        {% for key, label in material_cols %}{{ cell(row, 'lab_' ~ key, '') }}{% endfor %}
+        <td class="gap"></td>
+        {% for key, label in material_cols %}{{ cell(row, 'mail_' ~ key, 'g-mail') }}{% endfor %}
+        <td class="gap"></td>
+        {{ cell(row, 'pidkovy', 'g-pid') }}
+        <td class="gap"></td>
+        {{ cell(row, 'disks', 'g-dsk') }}
+        <td class="gap"></td>
+        {% for i in range(opak_people|length) %}{{ cell(row, 'opak' ~ i, 'g-op') }}{% endfor %}
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td class="day">Σ</td>
+        {% for key, label in material_cols %}<td>{{ g.totals['lab_' ~ key] }}</td>{% endfor %}
+        <td class="gap"></td>
+        {% for key, label in material_cols %}<td class="g-mail">{{ g.totals['mail_' ~ key] }}</td>{% endfor %}
+        <td class="gap"></td>
+        <td class="g-pid">{{ g.totals.pidkovy }}</td>
+        <td class="gap"></td>
+        <td class="g-dsk">{{ g.totals.disks }}</td>
+        <td class="gap"></td>
+        {% for i in range(opak_people|length) %}<td class="g-op">{{ g.totals['opak' ~ i] }}</td>{% endfor %}
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<div class="vt-legend">
+  <span><i class="td"></i>сьогодні — рядок, у який вводять</span>
+  <span><i></i>порахувала CRM</span>
+  <span><i class="ed"></i>виправив оператор — наведіть, щоб побачити авто-значення</span>
+</div>
+
+<details class="vt-opreport"><summary>Звіт по опаках за місяць</summary>
+  <div class="vt-opcard">
+    <div class="opc-head"><b>Опаки</b><span>{{ g.opaks.month_label }}</span></div>
+    <table class="opc-tab">
+      {% for p in g.opaks.people %}
+      <tr><td>{{ p.name }}</td><td class="mono">{{ p.units }}</td></tr>
+      {% endfor %}
+      <tr class="opc-sum"><td>Разом</td><td class="mono">{{ g.opaks.total }}</td></tr>
+    </table>
+    <p class="opc-foot">Сформовано з табелю · KuubMill</p>
+  </div>
+</details>
+
+{# Курс і склад зміни — ПОЛЯ (в ODS вони вбиті у формулу ×52/4). Усі .vset
+   ідуть разом при зміні будь-якого (hx-include=".vset"), тому year/month —
+   приховані .vset поля. rate_override рендериться в РІВНО одному місці:
+   у warnbox коли коефіцієнт поза довідником, інакше прихованим полем зі
+   збереженим значенням — щоб зміна курсу його не стерла. #}
+<div class="vt-foot">
+  <input type="hidden" class="vset" name="year" value="{{ g.year }}">
+  <input type="hidden" class="vset" name="month" value="{{ g.month }}">
+  {% if not g.warn %}
+  <input type="hidden" class="vset" name="rate_override" value="{{ m.rate_override }}">
+  {% endif %}
+
+  <div class="chain">
+    <div class="ch">
+      <span class="k">Коефіцієнт цирконію</span>
+      <b class="mono">{{ m.zr_total }} од. Zr ÷ {{ m.disks_total }} дисків = <u>{{ m.coefficient_str }}</u></b>
+      <span class="k">лабораторний + файловий, поділений на диски</span>
+    </div>
+    <div class="ch arrow">→</div>
+    <div class="ch">
+      <span class="k">Ставка з довідника</span>
+      <b class="mono rate">{{ m.rate_str }}</b>
+      <span class="k">підкови (мости 11+ од.) — вдвічі, <b class="mono">{{ m.rate_pid_str }}</b></span>
+    </div>
+  </div>
+
+  <table class="calc">
+    {% for t in m.types %}
+    <tr>
+      <td>{{ t.name }}</td>
+      <td class="mono">{{ t.units_str }}</td>
+      <td class="k mono">× {{ t.rate_str }}</td>
+      <td class="mono r">{{ t.sum_str }}</td>
+    </tr>
+    {% endfor %}
+    <tr class="tot">
+      <td>Разом одиниць</td>
+      <td class="mono">{{ m.total_units_str }}</td>
+      <td class="k">÷ {{ m.people_count }} людей</td>
+      <td class="mono r">{{ m.share_str }}</td>
+    </tr>
+  </table>
+
+  <div class="pay">
+    <span style="display:flex;gap:8px;align-items:center">
+      <span class="k">курс</span>
+      <input class="mono vset" name="kurs" value="{{ m.kurs }}" inputmode="decimal"
+             hx-post="/vyrobitok/settings" hx-trigger="change" hx-target="#vyrobitok-body"
+             hx-swap="outerHTML" hx-include=".vset">
+      <span class="k">÷ людей</span>
+      <input class="mono vset" name="people_count" type="number" min="1" value="{{ m.people_count }}"
+             hx-post="/vyrobitok/settings" hx-trigger="change" hx-target="#vyrobitok-body"
+             hx-swap="outerHTML" hx-include=".vset">
+    </span>
+    <span style="text-align:right">
+      <b class="big">{{ m.grn_share_str }}</b>
+      <span class="k">грн частка одного</span>
+    </span>
+  </div>
+</div>
+
+{% if g.warn %}
+<div class="vt-warn">
+  <b>⚠ Коефіцієнт поза довідником.</b>
+  <span>Вийшло <b class="mono">{{ g.warn.coefficient }}</b> — довідник закінчується на <b class="mono">26,7</b>. Ставку не вгадуємо:</span>
+  <input class="mono vset" name="rate_override" value="{{ m.rate_override }}" placeholder="0,00" inputmode="decimal"
+         hx-post="/vyrobitok/settings" hx-trigger="change" hx-target="#vyrobitok-body"
+         hx-swap="outerHTML" hx-include=".vset">
+  <span>у.о. за одиницю Zr</span>
+</div>
+{% endif %}
+</div>

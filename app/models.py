@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import (
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -877,4 +878,77 @@ class Machine(Base):
     portrait_model: Mapped[str] = mapped_column(String(20), default="", server_default="")
     sort_order: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+
+
+class VyrobitokMonth(Base):
+    """Місячні налаштування табеля «Виробіток»: курс валюти й склад зміни.
+
+    В ODS-таблиці, яку цей екран замінює, курс і дільник були ВБИТІ у формулу
+    (`×52/4`) і їх перебивали руками щомісяця. Тут це поля рядка на місяць, а
+    не константи в коді (CLAUDE.md: гроші рахуються з полів, не з магічних
+    чисел). Один рядок на (рік, місяць); відсутній рядок = дефолти.
+
+    `rate_override` — ставка Zn (у.о. за одиницю цирконію), коли коефіцієнт
+    місяця виходить ПОЗА довідником коефіцієнтів. CRM тоді не вгадує ставку, а
+    показує попередження й бере її звідси (рішення власника 05.09.26).
+    Зберігаємо рядком, а не числом, щоб зберегти кому-роздільник, як його ввів
+    оператор, і не тягнути float у гроші.
+    """
+
+    __tablename__ = "vyrobitok_months"
+    __table_args__ = (
+        UniqueConstraint("year", "month", name="uq_vyrobitok_month"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, index=True)
+    month: Mapped[int] = mapped_column(Integer)  # 1..12
+    # Курс валюти в гривні. Рядок (див. rate_override) — «52» або «51,5».
+    kurs: Mapped[str] = mapped_column(String(20), default="52", server_default="52")
+    # Скільки операторів у зміні ділять одиниці. Опаки НЕ діляться — додаються
+    # персонально після ділення, тому вони тут ні до чого.
+    people_count: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    rate_override: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class VyrobitokCell(Base):
+    """Одна клітинка табеля «Виробіток»: (день, колонка) → число.
+
+    Дві причини, чому власне сховище, а не рахунок наживо з `orders`:
+
+    1. **Правки оператора.** CRM рахує сама, але оператор має право виправити
+       будь-що. `override_value` — його число; NULL = показуємо авто. Правлена
+       клітинка мусить відрізнятись від порахованої на екрані, інакше наступний
+       перерахунок тихо затер би правку (CLAUDE.md, макет).
+    2. **Виживання минулих місяців.** Лаба чистить старі вкладки заради місця →
+       синк архівує роботи того дня → рахунок із живої таблиці дав би 0 за
+       минулий місяць. Тому авто-значення знімається в `auto_value` щоразу, коли
+       день ще «живий» (є роботи в базі), і читається звідти, коли роботи вже
+       зникли. Гроші за виданий місяць мають лишатись правдою й через рік.
+
+    Ручні колонки (підкови, диски, опаки) ніколи не мають авто — там живе лише
+    `override_value`. Число до показу = override, якщо він є, інакше auto.
+    """
+
+    __tablename__ = "vyrobitok_cells"
+    __table_args__ = (
+        UniqueConstraint("day", "col_key", name="uq_vyrobitok_cell"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Робоча дата (app.services.order_dates.order_date), не календарна.
+    day: Mapped[date] = mapped_column(Date, index=True)
+    # Ключ колонки: lab_zr / mail_pmma / pidkovy / disks / opak0 … (див.
+    # app/services/vyrobitok.py — там єдиний перелік).
+    col_key: Mapped[str] = mapped_column(String(20))
+    # Знімок порахованого CRM (лише авто-колонки). NULL — ще не знімали.
+    auto_value: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Правка оператора. NULL — показуємо auto.
+    override_value: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now(), onupdate=func.now()
+    )
 

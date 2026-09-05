@@ -211,6 +211,12 @@
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V5M16 20v-7M22 20H2"/></svg>
             <span class="rail-label">Статистика</span>
         </a>
+        {# Виробіток — місячний табель одиниць для нарахування ЗП. Окремо від
+           статистики: інша ціль (гроші/облік), інший ритм (раз на місяць). #}
+        <a href="/vyrobitok" class="rail-nav-item{% if topbar_active == 'vyrobitok' %} is-active{% endif %}"{% if topbar_active == 'vyrobitok' %} aria-current="page"{% endif %}>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" class="duo"/><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></svg>
+            <span class="rail-label">Виробіток</span>
+        </a>
         {# Вхідні — стрічка звернень зворотного зв'язку. Лише адмін. Лічильник —
            Jinja-глобал (deps.feedback_open_count), живий на кожному екрані, як
            shift_pending. #}

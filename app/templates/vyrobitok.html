@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Виробіток — KuubMill{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/vyrobitok.css?v={{ static_ver('css/vyrobitok.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'vyrobitok' %}
+{% include "_topbar_nav.html" %}
+
+<main class="vyrobitok">
+  <h1>Виробіток</h1>
+  <p class="vt-sub">Одиниці за день: лабораторія, пошта, опаки. Підсумок і нарахування рахуються самі.</p>
+
+  {% if pin_required %}
+  {# ПІН-гейт розділу: один код на розділ, тримається до кінця зміни. #}
+  <form class="vt-pin" method="post" action="/vyrobitok/pin">
+    <div class="vt-pin-card">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      <p>Розділ під кодом. Введіть ПІН, щоб відкрити його до кінця зміни.</p>
+      <input class="mono" name="pin" type="password" inputmode="numeric" autocomplete="off" autofocus
+             {% if pin_error %}aria-invalid="true"{% endif %}>
+      {% if pin_error %}<span class="vt-pin-err">{{ pin_error }}</span>{% endif %}
+      <button type="submit" class="btn apex">Відкрити</button>
+    </div>
+  </form>
+  {% else %}
+  {% set g = grid %}
+  <div class="vt-navbar">
+    <div class="year">
+      <a class="yr-btn" href="/vyrobitok?year={{ g.year - 1 }}&month={{ g.month }}" aria-label="Попередній рік">‹</a>
+      <b class="mono">{{ g.year }}</b>
+      <a class="yr-btn" href="/vyrobitok?year={{ g.year + 1 }}&month={{ g.month }}" aria-label="Наступний рік">›</a>
+    </div>
+    <div class="months">
+      {% for mo in g.months_nav %}
+      <a href="/vyrobitok?year={{ g.year }}&month={{ mo.num }}"
+         class="{% if mo.on %}on{% endif %}{% if not mo.has_data %} none{% endif %}">{{ mo.label }}</a>
+      {% endfor %}
+    </div>
+    <div class="spacer">
+      <span class="lock">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        {{ g.month_label }}
+      </span>
+    </div>
+  </div>
+
+  {% include "_vyrobitok_body.html" %}
+  {% endif %}
+</main>
+{% endblock %}

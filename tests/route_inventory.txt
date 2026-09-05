@@ -18,6 +18,8 @@ GET /furnaces/side
 GET /furnaces/{key}/crop/{name}.png
 GET /furnaces/{key}/frame.png
 GET /handout
+GET /handout/cards
+GET /handout/pulse
 GET /health
 GET /journal
 GET /license
@@ -36,12 +38,12 @@ GET /orders/new
 GET /orders/{order_id}
 GET /redoc
 GET /search
-GET /system/load
 GET /settings
 GET /settings/feedback
 GET /settings/materials
 GET /settings/materials/probe
 GET /settings/recognition
+GET /settings/update/status
 GET /setup
 GET /sheets/mass-vanish
 GET /sheets/state
@@ -52,6 +54,8 @@ GET /stats
 GET /stl-preview/{token}
 GET /stl-preview/{token}/{filename}
 GET /sum3d/tray
+GET /system/load
+GET /vyrobitok
 MOUNT /static
 POST /account/appearance
 POST /account/initial
@@ -149,7 +153,6 @@ POST /settings/test-imap
 POST /settings/test-sheets
 POST /settings/update/check
 POST /settings/update/install
-GET /settings/update/status
 POST /settings/users
 POST /settings/users/{user_id}/initial
 POST /settings/users/{user_id}/reset-password
@@ -167,5 +170,6 @@ POST /shift/notes/{note_id}/images
 POST /shift/notes/{note_id}/resolve
 POST /sync-speed
 POST /sync/pause
-GET /handout/cards
-GET /handout/pulse
+POST /vyrobitok/cell
+POST /vyrobitok/pin
+POST /vyrobitok/settings

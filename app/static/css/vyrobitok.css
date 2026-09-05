@@ -1,0 +1,233 @@
+/* Розділ «Виробіток» — місячний табель одиниць. Трактування «Повітряна»:
+   жодних ліній усередині таблиці, блоки розділені ПОВЕРХНЕЮ (ледь помітна
+   підкладка наскрізь) і тонкими кольоровими шапками над колонками. Кольори,
+   токени й тема приходять з base (tokens.css / theme-forge.css). */
+
+.vyrobitok { max-width: 1400px; padding: 24px 22px 70px; }
+.vyrobitok h1 {
+  font-family: var(--font-head); font-size: var(--fs-7); font-weight: 600;
+  letter-spacing: var(--ls-head); margin: 0 0 4px;
+}
+.vyrobitok .vt-sub { color: var(--ink-3); font-size: var(--fs-1); margin: 0; }
+.vyrobitok .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ── Навігація по місяцях ─────────────────────────────────────────────────
+   Рік стрілками, місяці стрічкою. Місяць без даних притишений, але лишається
+   клікабельним: у старих аркушах бували пропуски, і ховати їх означало б
+   удавати, що історія суцільна. */
+.vt-navbar { display: flex; align-items: center; gap: 14px; margin: 18px 0 14px; flex-wrap: wrap; }
+.vt-navbar .year {
+  display: flex; align-items: center; gap: 2px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 10px; padding: 3px;
+}
+.vt-navbar .yr-btn {
+  color: var(--ink-3); font-size: var(--fs-4); line-height: 1; padding: 6px 11px;
+  border-radius: 8px; cursor: pointer; text-decoration: none;
+}
+.vt-navbar .yr-btn:hover { background: var(--raise-3); color: var(--ink); }
+.vt-navbar .year b {
+  font-family: var(--font-mono); font-size: var(--fs-3); padding: 0 8px;
+  min-width: 56px; text-align: center;
+}
+.vt-navbar .months {
+  display: flex; gap: 3px; padding: 3px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 10px; overflow-x: auto;
+}
+.vt-navbar .months a {
+  font-size: var(--fs-1); font-weight: 600; color: var(--ink-3); padding: 7px 12px;
+  border-radius: 7px; cursor: pointer; white-space: nowrap; text-decoration: none;
+  transition: background .13s ease, color .13s ease;
+}
+.vt-navbar .months a:hover { background: var(--raise-3); color: var(--ink); }
+.vt-navbar .months a.on {
+  background: var(--raise); color: var(--accent-c);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .24);
+}
+.vt-navbar .months a.none { opacity: .35; }
+.vt-navbar .spacer { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.vt-navbar .lock {
+  display: flex; align-items: center; gap: 7px; font-size: var(--fs-1); color: var(--ink-3);
+  border: 1px dashed var(--line-2); padding: 6px 11px; border-radius: 9px;
+}
+.vt-navbar .lock svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+
+/* ── Таблиця: повітряне трактування ──────────────────────────────────────── */
+.vt-holder {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card);
+  padding: 18px 20px 14px; overflow-x: auto;
+}
+.vt { width: 100%; border-collapse: collapse; font-size: var(--fs-2); min-width: 1080px; }
+.vt th, .vt td { text-align: center; white-space: nowrap; border: 0; }
+.vt thead th {
+  font-size: var(--fs-0); font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+  color: var(--ink-3); padding: 5px 5px 11px;
+}
+.vt .grp { color: var(--accent-c); letter-spacing: 1.3px; padding-bottom: 13px; font-size: var(--fs-0); }
+.vt .cap { display: block; height: 3px; border-radius: 2px; margin-bottom: 7px; background: rgb(var(--h, 168, 149, 120)); }
+.vt td { padding: 8px 5px; }
+.vt .day { font-family: var(--font-mono); color: var(--ink-3); text-align: right; padding-right: 10px; }
+.vt tr.off td { color: var(--ink-3); opacity: .5; }
+.vt tfoot td {
+  padding: 16px 9px 4px; border-top: 1px solid var(--line);
+  font-family: var(--font-mono); font-weight: 700; color: var(--accent-c);
+}
+/* Проміжок між блоками робить простір, а не лінія — у цьому й суть трактування. */
+.vt .gap { width: 14px; padding: 0; }
+/* Блоки розділені ПОВЕРХНЕЮ, не лініями: кожна група стоїть на своїй ледь
+   помітній підкладці наскрізь через усю таблицю. Заокруглення лише згори й
+   знизу, тому підкладка читається як цільна плита. */
+.vt .g-mail { background: rgba(255, 255, 255, .028); }
+.vt .g-pid  { background: rgba(143, 191, 224, .055); }
+.vt .g-dsk  { background: rgba(168, 149, 120, .05); }
+.vt .g-op   { background: rgba(255, 180, 84, .045); }
+.vt thead tr:first-child .g-mail,
+.vt thead tr:first-child .g-pid,
+.vt thead tr:first-child .g-dsk,
+.vt thead tr:first-child .g-op { border-radius: 9px 9px 0 0; padding-top: 9px; }
+.vt tfoot .g-mail, .vt tfoot .g-pid, .vt tfoot .g-dsk,
+.vt tfoot .g-op { border-radius: 0 0 9px 9px; padding-bottom: 12px; }
+/* Наведення на рядок не має гасити підкладки — інакше блоки зникали б саме
+   тоді, коли оператор веде по рядку очима. */
+.vt tbody tr:hover td:not(.gap) { background-image: linear-gradient(rgba(255, 255, 255, .03), rgba(255, 255, 255, .03)); }
+
+/* ── Сьогодні ──────────────────────────────────────────────────────────────
+   Рядок, у який вводять, має бути видно з іншого кінця цеху: тепла підкладка
+   на всю ширину, засічки згори й знизу замість рамки (рамка розірвала б
+   проміжки між блоками) і підпис «сьогодні» біля числа дня. */
+.vt tr.today td:not(.gap) {
+  background-image: linear-gradient(rgba(255, 180, 84, .13), rgba(255, 180, 84, .13));
+  box-shadow: inset 0 1px 0 rgba(var(--accent-rgb), .45), inset 0 -1px 0 rgba(var(--accent-rgb), .45);
+}
+.vt tr.today .day { color: var(--accent-c); font-weight: 700; position: relative; }
+.vt .todaymark {
+  display: block; font-style: normal; font-family: var(--font-body); font-size: var(--fs-0);
+  letter-spacing: .7px; text-transform: uppercase; color: var(--accent); opacity: .85; margin-top: 1px;
+}
+
+/* ── Клітинка: авто · виправлено · порожньо ────────────────────────────────
+   Числа рахує CRM, але оператор має право виправити будь-що. Тому клітинка —
+   поле вводу, а не текст. Виправлене МУСИТЬ відрізнятись від порахованого,
+   інакше при перерахунку правка тихо зникне. Авто-значення лишається в
+   data-auto, тож його завжди можна повернути (стерти клітинку). */
+.cellin {
+  width: 100%; min-width: 38px; background: transparent; border: 1px solid transparent;
+  border-radius: 6px; padding: 4px 2px; text-align: center; color: var(--ink);
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-3);
+  outline: none; transition: border-color .13s ease, background .13s ease;
+}
+.cellin.zero { color: var(--ink-3); opacity: .4; }
+.cellin:hover { border-color: var(--line-2); }
+.cellin:focus { border-color: var(--accent); background: var(--field); opacity: 1; }
+.cellin::placeholder { color: var(--ink-3); }
+/* Виправлене людиною: підкреслення кольором акценту. Не заливка — заливка
+   сперечалася б із підкладками блоків. */
+.cellin.edited { box-shadow: inset 0 -2px 0 rgba(var(--accent-rgb), .65); font-weight: 600; }
+
+.vt-legend {
+  display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-top: 10px;
+  font-size: var(--fs-1); color: var(--ink-3);
+}
+.vt-legend span { display: flex; align-items: center; gap: 7px; }
+.vt-legend i {
+  display: inline-block; width: 26px; height: 16px; border-radius: 5px;
+  background: var(--field); border: 1px solid var(--line-2);
+}
+.vt-legend i.ed { box-shadow: inset 0 -2px 0 rgba(var(--accent-rgb), .65); }
+.vt-legend i.td { background: rgba(255, 180, 84, .13); border-color: rgba(var(--accent-rgb), .45); }
+
+/* ── Підсумок і гроші ──────────────────────────────────────────────────────
+   Курс і склад зміни — ПОЛЯ, а не константи у формулі: в ODS вони вбиті в
+   ×52/4 і їх перебивають руками щомісяця. */
+.vt-foot {
+  display: flex; gap: 26px; align-items: center; flex-wrap: wrap; margin-top: 12px;
+  padding: 15px 20px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card);
+}
+.vt-foot .k { color: var(--ink-3); font-size: var(--fs-1); }
+.vt-foot input {
+  width: 56px; background: var(--field); border: 1px solid var(--line-2); color: var(--ink);
+  padding: 6px 8px; border-radius: 7px; font-family: var(--font-mono); text-align: center;
+}
+.vt-foot .big {
+  font-family: var(--font-mono); font-size: var(--fs-7); font-weight: 700; color: var(--accent-c);
+  letter-spacing: -1px; display: block; line-height: 1.1;
+}
+/* Ланцюг «коефіцієнт → ставка». Коефіцієнт рахується ТІЛЬКИ по цирконію
+   (лабораторний + файловий) ділено на диски. */
+.vt-foot .chain { display: flex; align-items: center; gap: 16px; }
+.vt-foot .ch { display: flex; flex-direction: column; gap: 2px; }
+.vt-foot .ch b { font-size: var(--fs-3); }
+.vt-foot .ch b u { text-decoration: none; color: var(--accent-c); font-weight: 700; }
+.vt-foot .ch .rate { font-size: var(--fs-6); color: var(--accent-c); font-weight: 700; line-height: 1.1; }
+.vt-foot .arrow { color: var(--ink-3); font-size: var(--fs-5); }
+.vt-foot table.calc { border-collapse: collapse; font-size: var(--fs-2); }
+.vt-foot table.calc td { padding: 3px 10px 3px 0; }
+.vt-foot table.calc td.r { font-weight: 600; text-align: right; padding-right: 0; }
+.vt-foot table.calc tr.tot td {
+  border-top: 1px solid var(--line-2); padding-top: 6px; color: var(--accent-c); font-weight: 700;
+}
+.vt-foot .pay { margin-left: auto; display: flex; align-items: center; gap: 18px; }
+.vt-foot .pay input[name="people_count"] { width: 46px; }
+
+/* Стан «коефіцієнт поза довідником» — CRM не вгадує ставку, а просить її. */
+.vt-warn {
+  display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 11px 16px;
+  background: rgba(var(--warn-rgb), .09); border: 1px solid rgba(var(--warn-rgb), .3);
+  border-radius: var(--r-card); font-size: var(--fs-2); color: var(--warn-ink); flex-wrap: wrap;
+}
+.vt-warn input {
+  width: 70px; background: var(--field); border: 1px solid rgba(var(--warn-rgb), .4);
+  color: var(--ink); padding: 6px 8px; border-radius: 7px; font-family: var(--font-mono); text-align: center;
+}
+
+/* ── Звіт по опаках ─────────────────────────────────────────────────────────
+   Кнопка розгортає картку під ФОТО на телефон, а не під екран: світла, високий
+   контраст, великий кегль, мінімум у кадрі (темний екран дає відблиски). */
+.vt-opreport { margin-top: 12px; }
+.vt-opreport summary {
+  list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 9px;
+  padding: 11px 17px; border-radius: var(--r-card); font-size: var(--fs-2); font-weight: 500;
+  background: var(--card); border: 1px solid var(--line); color: var(--ink-2);
+  transition: border-color .14s ease, color .14s ease;
+}
+.vt-opreport summary::-webkit-details-marker { display: none; }
+.vt-opreport summary::before { content: "▸"; color: var(--ink-3); }
+.vt-opreport[open] summary::before { content: "▾"; }
+.vt-opreport summary:hover { border-color: var(--control-edge, var(--line-2)); color: var(--ink); }
+.vt-opreport summary::after { content: "для фото адміністратору"; font-size: var(--fs-1); color: var(--ink-3); }
+
+.vt-opcard {
+  margin-top: 12px; width: fit-content; min-width: 330px;
+  background: #f4efe6; color: #1b150c; border-radius: 14px; padding: 24px 30px 18px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .45);
+}
+.vt-opcard .opc-head {
+  display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px;
+  padding-bottom: 12px; border-bottom: 2px solid #1b150c;
+}
+.vt-opcard .opc-head b { font-family: var(--font-head); font-size: 26px; font-weight: 700; letter-spacing: -.5px; }
+.vt-opcard .opc-head span { margin-left: auto; font-size: var(--fs-4); color: #6b5a42; }
+.vt-opcard table.opc-tab { border-collapse: collapse; width: 100%; }
+.vt-opcard table.opc-tab td { padding: 9px 0; font-size: var(--fs-5); border-bottom: 1px solid rgba(27, 21, 12, .12); }
+.vt-opcard table.opc-tab td:last-child {
+  text-align: right; font-weight: 700; font-size: var(--fs-6); font-variant-numeric: tabular-nums; padding-left: 40px;
+}
+.vt-opcard table.opc-tab tr.opc-sum td {
+  border-bottom: 0; border-top: 2px solid #1b150c; padding-top: 12px; font-weight: 700;
+}
+.vt-opcard .opc-foot { margin: 14px 0 0; font-size: var(--fs-1); color: #8a7a60; }
+
+/* ── ПІН-гейт розділу ──────────────────────────────────────────────────────── */
+.vt-pin { display: flex; justify-content: center; margin-top: 40px; }
+.vt-pin-card {
+  display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card);
+  padding: 34px 40px; max-width: 360px;
+}
+.vt-pin-card svg { width: 34px; height: 34px; fill: none; stroke: var(--accent-c); stroke-width: 1.6; }
+.vt-pin-card p { margin: 0; color: var(--ink-2); font-size: var(--fs-2); }
+.vt-pin-card input {
+  width: 160px; text-align: center; letter-spacing: 6px; font-size: var(--fs-5);
+  background: var(--field); border: 1px solid var(--line-2); color: var(--ink);
+  padding: 10px; border-radius: 9px; font-family: var(--font-mono);
+}
+.vt-pin-err { color: var(--warn-ink); font-size: var(--fs-1); }
