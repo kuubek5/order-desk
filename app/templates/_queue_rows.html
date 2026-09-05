@@ -38,28 +38,21 @@
     </div>
     {% else %}
     <div class="queue-empty queue-empty-live">
-        {# Порожня черга: живий кадр НАШОГО верстата НА ВСЮ картку (прохання
+        {# Порожня черга: кадр НАШОГО верстата НА ВСЮ картку (прохання
            власника; перша версія була рамкою 440px і виглядала недолуго).
-           Відео лежить фоном, текст поверх, під текстом — градієнт-затемнення,
-           що густішає донизу, де стоять заголовок і кнопки. Перший кадр —
-           справжнє фото (design/refs/mill-disc-milled-flower.jpg), рух
-           згенеровано від нього (лог у design/kuubmill_vidA2-…).
+           Кадр лежить фоном, текст поверх, під текстом — градієнт-затемнення,
+           що густішає донизу, де стоять заголовок і кнопки. Джерело —
+           справжнє фото (design/refs/mill-disc-milled-flower.jpg).
 
-           Порожній стан — рідкісний екран, а не цілоденний, тому петля не
-           порушує правило «анімація лише як сигнал стану»;
-           prefers-reduced-motion усе одно зупиняє відео скриптом (CSS відео
-           не спиняє). Попередня ілюстрація (маска шпинделя + пил) — у
-           git-історії цього файлу. #}
+           Кадр (poster), не відео: згенерований кліп (queue-empty.mp4)
+           панорамував холдер вліво-вправо, а холдер у станку так не їздить —
+           рух фальшивий (зауваження власника). Пан і зум вшиті в один mp4,
+           CSS їх не розділяє, тож беремо статичний перший кадр
+           (queue-empty-poster.jpg), а приближення, яке власник лишив, даємо
+           CSS-ом — тільки scale, без translateX (див. .empty-video-bg img →
+           @keyframes emptyZoom у queue_table.css). Відео — у git-історії. #}
         <span class="empty-video-bg" aria-hidden="true">
-            <video autoplay muted loop playsinline
-                   poster="/static/video/queue-empty-poster.jpg?v={{ static_ver('video/queue-empty-poster.jpg') }}"
-                   src="/static/video/queue-empty.mp4?v={{ static_ver('video/queue-empty.mp4') }}"></video>
-            <script>
-                if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-                    var qv = document.querySelector(".empty-video-bg video");
-                    if (qv) { qv.removeAttribute("autoplay"); qv.pause(); }
-                }
-            </script>
+            <img src="/static/video/queue-empty-poster.jpg?v={{ static_ver('video/queue-empty-poster.jpg') }}" alt="">
         </span>
         {% if show_overdue %}
         <h2>Прострочених робіт немає</h2>

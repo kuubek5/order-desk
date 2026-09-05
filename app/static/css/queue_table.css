@@ -520,11 +520,29 @@
   inset: 0;
   z-index: -1;
 }
-.empty-video-bg video {
+.empty-video-bg video,
+.empty-video-bg img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   object-position: center 42%;
+}
+/* Приближення БЕЗ руху вбік. Згенерований кліп панорамував холдер
+   вліво-вправо (холдер у станку так не їздить — фальш), тому кадр статичний
+   (poster). Але саме приближення власник лишив: даємо його CSS-ом — тільки
+   scale, жодного translateX. transform-origin по центру кадру (center 42%,
+   як object-position), щоб зум ішов «у деталь», а не з кута. */
+.empty-video-bg img {
+  transform-origin: center 42%;
+  animation: emptyZoom 24s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes emptyZoom {
+  from { transform: scale(1); }
+  to   { transform: scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .empty-video-bg img { animation: none; }
 }
 .empty-video-bg::after {
   content: "";
