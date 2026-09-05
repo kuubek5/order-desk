@@ -149,6 +149,12 @@
                 <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3" class="duo"/><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/></svg>
                 <span class="rail-label">Резервна копія</span>
             </a>
+            {# Сирі знімки вкладок Google (app/sheet_backup.html). data-sec мусить
+               збігатися з id/data-sec секції #sheet-backup у _settings_sheet_backup.html. #}
+            <a href="/settings#sheet-backup" class="rail-nav-item rail-sset" data-sec="sheet-backup">
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 7l1-3h14l1 3M4 7v13h16V7M9 11h6M9 15h6" class="duo"/><path d="M4 7h16v13H4zM9 11h6M9 15h6"/></svg>
+                <span class="rail-label">Копії Google-таблиці</span>
+            </a>
             {% endif %}
             {# Не під адмін-гейтом: секція «Про застосунок» показується і
                оператору (з поясненням, що оновлення ставить адміністратор), тож

@@ -373,6 +373,25 @@
     });
   }
 
+  // ── stepper періоду знімання копій (#sheet-backup) ───────
+  // Кнопки − / + міняють значення поля годин у своїх межах min/max.
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-sbk-step]");
+    if (!btn) return;
+    var wrap = btn.closest(".sbk-stepper");
+    var input = wrap && wrap.querySelector("input");
+    if (!input) return;
+    var step = parseInt(btn.getAttribute("data-sbk-step"), 10) || 0;
+    var min = parseInt(input.min, 10);
+    var max = parseInt(input.max, 10);
+    var val = parseInt(input.value, 10);
+    if (isNaN(val)) val = isNaN(min) ? 0 : min;
+    val += step;
+    if (!isNaN(min)) val = Math.max(min, val);
+    if (!isNaN(max)) val = Math.min(max, val);
+    input.value = String(val);
+  });
+
   // ── boot ─────────────────────────────────────────────────
   var start = (location.hash || "").replace("#", "");
   show(sectionKeys().indexOf(start) !== -1 ? start : "state");

@@ -15,7 +15,7 @@ import ssl
 import uuid
 from threading import Thread
 from urllib.parse import quote
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -116,12 +116,25 @@ from app.settings_store import (
     get_notify_position,
     get_notify_style,
     get_service_account_email,
+    get_sheet_backup_enabled,
+    get_sheet_backup_interval_hours,
     get_technician_files_path,
     set_furnace_background,
     set_mail_default_material,
     set_mail_download_all,
     set_notify_prefs,
     set_setting,
+    set_sheet_backup_enabled,
+    set_sheet_backup_interval_hours,
+    SHEET_BACKUP_INTERVAL_DEFAULT_HOURS,
+    SHEET_BACKUP_INTERVAL_MAX_HOURS,
+    SHEET_BACKUP_INTERVAL_MIN_HOURS,
+)
+from app.sheet_backup import (
+    build_zip as build_sheet_backup_zip,
+    list_snapshots as list_sheet_snapshots,
+    read_snapshot_bytes as read_sheet_snapshot_bytes,
+    snapshot_all_tabs,
 )
 from app.crypto import encrypt_value
 from app.services.furnace import FurnaceConfigError, list_furnaces, validate_address
@@ -209,6 +222,31 @@ def check_path_status(raw_path: str) -> dict[str, str]:
             pass
 
     return {"state": "success", "message": "Папку знайдено, доступна для запису"}
+
+
+def _sheet_snapshots_context() -> dict:
+    """Знімки вкладок для розділу «Копії таблиці»: плаский список днів +
+    зведення по місяцях (для кнопки «скачати місяць»). Читає лише файлову
+    систему, до Google не ходить."""
+    from app.services.formatting import uk_month_label
+
+    snaps = list_sheet_snapshots(DB_PATH)
+    months: dict[str, dict] = {}
+    for s in snaps:
+        y, m = s.month_ym.split("-")
+        bucket = months.setdefault(
+            s.month_ym,
+            {"ym": s.month_ym, "label": uk_month_label(int(y), int(m)), "count": 0, "size_kb": 0.0},
+        )
+        bucket["count"] += 1
+        bucket["size_kb"] += s.size_kb
+    month_list = [months[k] for k in sorted(months, reverse=True)]
+    return {
+        "sheet_snapshots": snaps,
+        "sheet_snapshot_months": month_list,
+        "sheet_snapshot_total": len(snaps),
+        "sheet_snapshot_disappeared": sum(1 for s in snaps if s.disappeared_at),
+    }
 
 
 def require_settings_admin(request: Request, db: Session):
@@ -322,6 +360,12 @@ def get_settings(
                 }
                 for p in list_snapshots(DB_PATH)
             ],
+            # Сирі знімки вкладок Google-таблиці (app/sheet_backup.py).
+            "sheet_backup_enabled": get_sheet_backup_enabled(db),
+            "sheet_backup_interval_hours": get_sheet_backup_interval_hours(db),
+            "sheet_backup_interval_min": SHEET_BACKUP_INTERVAL_MIN_HOURS,
+            "sheet_backup_interval_max": SHEET_BACKUP_INTERVAL_MAX_HOURS,
+            **_sheet_snapshots_context(),
             "setup_steps_done": setup_steps_done,
             "setup_steps_total": setup_steps_total,
             "operators": operators,
@@ -1724,6 +1768,134 @@ async def import_backup(
         f"{counts.get('users', 0)} операторів. Увійдіть повторно, якщо змінилися облікові дані.",
     }
     return RedirectResponse("/settings", status_code=303)
+
+
+# ── Сирі знімки вкладок Google-таблиці (app/sheet_backup.py) ─────────────────
+# Страховка для відновлення самої таблиці: CSV-копія кожної датованої вкладки,
+# яку можна залити назад у Google. Керується адміном з розділу «Копії таблиці».
+
+
+def _iso_to_tab_name(filename: str) -> str:
+    """`2026-07-22.csv` → `22.07.26.csv` — щоб завантажений файл ліг назад у
+    Google під тією ж назвою вкладки, що й раніше."""
+    try:
+        d = date.fromisoformat(filename[:-4])
+        return d.strftime("%d.%m.%y") + ".csv"
+    except (ValueError, TypeError):
+        return filename
+
+
+@router.post("/settings/sheets/config", response_class=HTMLResponse)
+def save_sheet_backup_config(
+    request: Request,
+    enabled: str = Form(""),
+    interval_hours: str = Form(str(SHEET_BACKUP_INTERVAL_DEFAULT_HOURS)),
+    db: Session = Depends(get_db),
+):
+    """Зберегти вимикач і період авто-знімання вкладок."""
+    require_settings_admin(request, db)
+    try:
+        hours = int((interval_hours or "").strip())
+    except (ValueError, TypeError):
+        request.session["settings_flash"] = {
+            "kind": "error",
+            "message": "Період має бути цілим числом годин.",
+        }
+        return RedirectResponse("/settings", status_code=303)
+    if not (SHEET_BACKUP_INTERVAL_MIN_HOURS <= hours <= SHEET_BACKUP_INTERVAL_MAX_HOURS):
+        request.session["settings_flash"] = {
+            "kind": "error",
+            "message": f"Період має бути від {SHEET_BACKUP_INTERVAL_MIN_HOURS} "
+            f"до {SHEET_BACKUP_INTERVAL_MAX_HOURS} годин.",
+        }
+        return RedirectResponse("/settings", status_code=303)
+
+    set_sheet_backup_enabled(db, enabled == "on")
+    set_sheet_backup_interval_hours(db, hours)
+    db.commit()
+    request.session["settings_flash"] = {
+        "kind": "success",
+        "message": (
+            f"Автокопії таблиці {'увімкнено' if enabled == 'on' else 'вимкнено'}, "
+            f"період — кожні {hours} год."
+        ),
+    }
+    return RedirectResponse("/settings", status_code=303)
+
+
+@router.post("/settings/sheets/snapshot", response_class=HTMLResponse)
+def snapshot_sheets_now(request: Request, db: Session = Depends(get_db)):
+    """Зняти копію вкладок просто зараз (ручна кнопка). Читає нові й свіжі
+    вкладки, старі вже зняті дні не перечитує — тож дешево навіть на проксі."""
+    require_settings_admin(request, db)
+    result = snapshot_all_tabs(db, DB_PATH)
+    if result.error:
+        request.session["settings_flash"] = {"kind": "error", "message": result.error}
+    else:
+        parts = [f"оновлено вкладок: {result.written}"]
+        if result.skipped_empty:
+            parts.append(f"порожніх пропущено: {result.skipped_empty}")
+        if result.disappeared:
+            parts.append(f"зникло з Google: {result.disappeared}")
+        if result.held_shrink:
+            parts.append(f"притримано (можливо обрізане читання): {result.held_shrink}")
+        if result.failed:
+            parts.append(f"помилок: {result.failed}")
+        request.session["settings_flash"] = {
+            "kind": "success" if not result.failed else "error",
+            "message": "Знімок вкладок — " + ", ".join(parts) + ".",
+        }
+    return RedirectResponse("/settings", status_code=303)
+
+
+@router.get("/settings/sheets/download/{filename}")
+def download_sheet_snapshot(request: Request, filename: str, db: Session = Depends(get_db)):
+    """Один CSV-знімок дня. Ім'я на віддачу — назва вкладки (`22.07.26.csv`)."""
+    require_settings_admin(request, db)
+    data = read_sheet_snapshot_bytes(DB_PATH, filename)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Знімок не знайдено")
+    return Response(
+        content=data,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{_iso_to_tab_name(filename)}"'},
+    )
+
+
+@router.get("/settings/sheets/download-month/{month}")
+def download_sheet_month(request: Request, month: str, db: Session = Depends(get_db)):
+    """ZIP усіх знімків одного місяця (`YYYY-MM`)."""
+    require_settings_admin(request, db)
+    try:
+        y, m = month.split("-", 1)
+        int(y); mm = int(m)
+        if not (1 <= mm <= 12):
+            raise ValueError
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Невірний місяць")
+    content, count = build_sheet_backup_zip(DB_PATH, month=month)
+    if count == 0:
+        raise HTTPException(status_code=404, detail="За цей місяць знімків немає")
+    return Response(
+        content=content,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="google-tablytsia-{month}.zip"'},
+    )
+
+
+@router.get("/settings/sheets/download-all")
+def download_sheet_all(request: Request, db: Session = Depends(get_db)):
+    """ZIP усіх наявних знімків вкладок — повна страхувальна копія таблиці."""
+    require_settings_admin(request, db)
+    content, count = build_sheet_backup_zip(DB_PATH)
+    if count == 0:
+        raise HTTPException(status_code=404, detail="Знімків ще немає")
+    stamp = datetime.now().strftime("%Y%m%d")
+    return Response(
+        content=content,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="google-tablytsia-vse-{stamp}.zip"'},
+    )
 
 
 def _install_update_in_background(release) -> None:

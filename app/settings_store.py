@@ -203,6 +203,13 @@ PREFERENCE_KEYS = {
     # ПІН розділу «Виробіток»: один код на розділ, тримається до кінця сесії.
     # Порожньо/не задано = розділ відкритий будь-якому оператору, що ввійшов.
     "vyrobitok_pin",
+    # Сирі знімки вкладок Google-таблиці (app/sheet_backup.py). Страховка для
+    # відновлення самої таблиці, коли адмін почистив старі дні з Google.
+    # sheet_backup_enabled: "1"/"" — авто-знімок увімкнено (дефолт увімкнено).
+    # sheet_backup_interval_hours: як часто фоновий прохід перевіряє й знімає
+    # (число годин; дефолт 6).
+    "sheet_backup_enabled",
+    "sheet_backup_interval_hours",
 }
 
 SETTING_KEYS = {field.key for field in SETTING_FIELDS} | PREFERENCE_KEYS
@@ -367,6 +374,45 @@ def get_mail_download_all(session: Session) -> bool:
 
 def set_mail_download_all(session: Session, value: bool) -> None:
     set_setting(session, "mail_download_all", "1" if value else "")
+
+
+# ── Сирі знімки вкладок Google-таблиці (app/sheet_backup.py) ────────────────
+SHEET_BACKUP_INTERVAL_DEFAULT_HOURS = 6
+SHEET_BACKUP_INTERVAL_MIN_HOURS = 1
+SHEET_BACKUP_INTERVAL_MAX_HOURS = 168  # тиждень — далі втрачається сенс «свіжий день»
+
+
+def get_sheet_backup_enabled(session: Session) -> bool:
+    """Чи авто-знімки вкладок увімкнено. Дефолт — увімкнено (страховка має
+    працювати з коробки; вимикач для того, хто свідомо не хоче)."""
+    value = get_setting(session, "sheet_backup_enabled")
+    return value != ""  # None (не задано) і "1" → увімкнено; "" → вимкнено
+
+
+def set_sheet_backup_enabled(session: Session, value: bool) -> None:
+    set_setting(session, "sheet_backup_enabled", "1" if value else "")
+
+
+def get_sheet_backup_interval_hours(session: Session) -> int:
+    """Період фонового проходу знімання, години. Некоректне/незадане → дефолт,
+    поза межами → підрізається у [MIN, MAX]."""
+    raw = get_setting(session, "sheet_backup_interval_hours")
+    try:
+        hours = int((raw or "").strip())
+    except (ValueError, TypeError):
+        return SHEET_BACKUP_INTERVAL_DEFAULT_HOURS
+    return max(
+        SHEET_BACKUP_INTERVAL_MIN_HOURS,
+        min(SHEET_BACKUP_INTERVAL_MAX_HOURS, hours),
+    )
+
+
+def set_sheet_backup_interval_hours(session: Session, hours: int) -> None:
+    clamped = max(
+        SHEET_BACKUP_INTERVAL_MIN_HOURS,
+        min(SHEET_BACKUP_INTERVAL_MAX_HOURS, int(hours)),
+    )
+    set_setting(session, "sheet_backup_interval_hours", str(clamped))
 
 
 # ── Спливаючі сповіщення ────────────────────────────────────────────────

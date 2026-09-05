@@ -144,6 +144,7 @@ SETTINGS_SECTIONS = [
     "_settings_operators.html",
     "_settings_sections.html",
     "_settings_backup.html",
+    "_settings_sheet_backup.html",
     "_settings_imap.html",
     "_settings_paths.html",
     "_settings_mail_download.html",
