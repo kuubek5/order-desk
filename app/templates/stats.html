@@ -4,6 +4,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="/static/css/stats.css?v={{ static_ver('css/stats.css') }}">
+{% if section_banner %}<link rel="stylesheet" href="/static/css/blocked.css?v={{ static_ver('css/blocked.css') }}">{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -11,6 +12,7 @@
 {% include "_topbar_nav.html" %}
 
 <main class="statsv2">
+    {% include "_section_admin_banner.html" %}
     <h1>{{ page_title }}</h1>
 
     <nav class="tab-nav" aria-label="Період статистики">

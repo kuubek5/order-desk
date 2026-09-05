@@ -142,6 +142,7 @@ SETTINGS_SECTIONS = [
     "_settings_notifications.html",
     "_settings_google.html",
     "_settings_operators.html",
+    "_settings_sections.html",
     "_settings_backup.html",
     "_settings_imap.html",
     "_settings_paths.html",

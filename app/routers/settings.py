@@ -50,6 +50,12 @@ from app.material_catalog import (
     list_materials,
     unresolved_order_count,
 )
+from app.services.section_gate import (
+    AUDIENCE_ALL,
+    sections_admin,
+    set_section_audience,
+    set_section_state,
+)
 from app.services.materials_console import (
     load_colour_rows,
     material_views,
@@ -306,6 +312,8 @@ def get_settings(
             # Чи заданий ПІН розділу «Виробіток» (значення не показуємо — лише
             # ознаку, як пароль). Порожньо = розділ відкритий.
             "vyrobitok_pin_set": bool(get_setting(db, "vyrobitok_pin")),
+            # Розділи «в розробці / тестується» — керування станом (адмін).
+            "sections_admin": sections_admin(db),
             "backup_available": backup_available,
             "monthly_snapshots": [
                 {
@@ -2011,6 +2019,35 @@ async def save_vyrobitok_pin(request: Request, db: Session = Depends(get_db)):
         "message": "ПІН «Виробітку» знято." if not pin else "ПІН «Виробітку» збережено.",
     }
     return RedirectResponse("/settings?saved=1#operators", status_code=303)
+
+
+@router.post("/settings/sections/{section}")
+async def save_section_state(section: str, request: Request, db: Session = Depends(get_db)):
+    """Стан розділу для гейта «в розробці / тестується» (банер адміна над
+    розділом): назва арту-блокатора або "open". Повертає туди, звідки
+    натиснули — банер передає свій шлях у `back`."""
+    require_settings_admin(request, db)
+    form = await request.form()
+    # Кнопка «Відкрити для всіх» шле state=open; зміна арту в select — variant.
+    # Кнопка має старшинство: якщо натиснули її, select теж приїде, але не він
+    # є наміром.
+    state = (form.get("state") or form.get("variant") or "").strip()
+    try:
+        set_section_state(db, section, state)
+        # Аудиторія: галочка «усі ролі» має старшинство; інакше — відмічені ролі.
+        # Поле приходить лише з картки Налаштувань; банер його не шле, тому там
+        # аудиторія лишається як була.
+        if form.get("audience_all"):
+            set_section_audience(db, section, AUDIENCE_ALL)
+        elif "role" in form:
+            set_section_audience(db, section, form.getlist("role"))
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=422, detail="невідомий розділ або стан")
+    db.commit()
+    back = (form.get("back") or "/").strip()
+    if not back.startswith("/") or back.startswith("//"):
+        back = "/"
+    return RedirectResponse(back, status_code=303)
 
 
 @router.post("/settings/feedback/bind")

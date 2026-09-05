@@ -1,0 +1,20 @@
+{# Банер адміна над закритим розділом: іншим його не видно, адмін бачить стан і
+   може змінити арт або відкрити для всіх без деплою. Очікує `section_banner`
+   з app/services/section_gate.admin_banner(); без нього не рендериться. #}
+{% if section_banner %}
+<form class="secadm" method="post" action="/settings/sections/{{ section_banner.section }}">
+  <input type="hidden" name="back" value="{{ section_banner.path }}">
+  <span class="blk-chip"><i class="dot"></i>приховано</span>
+  <span class="secadm-txt">Розділ «{{ section_banner.title }}» бачать лише адміністратори. Стан: <b>{{ section_banner.chip }}</b>.</span>
+  <span class="secadm-sp">
+    {# Імена РІЗНІ навмисно: при кліку «Відкрити» браузер шле і select, і
+       кнопку; з однаковим name сервер брав би перше значення — select. #}
+    <select name="variant" aria-label="Стан розділу" onchange="this.form.submit()">
+      {% for key, label in section_banner.variants %}
+      <option value="{{ key }}" {% if key == section_banner.state %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" name="state" value="open" class="on">Відкрити для всіх</button>
+  </span>
+</form>
+{% endif %}

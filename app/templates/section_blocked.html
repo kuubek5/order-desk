@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{# Екран-блокатор розділу «в розробці / тестується» — те, що бачить НЕ-адмін.
+   Арт (app/static/img/blockers/<variant>.jpg) — біле на чорному, накладається
+   CSS-маскою й заливається акцентом теми, тому один файл фарбується і teal, і
+   amber. Тексти — VARIANTS у app/services/section_gate.py. #}
+
+{% block title %}{{ section_title }} — KuubMill{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/blocked.css?v={{ static_ver('css/blocked.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = section %}
+{% include "_topbar_nav.html" %}
+
+<main class="blk blk-{{ variant }}" data-variant="{{ variant }}">
+  <div class="blk-art" style="-webkit-mask-image:url(/static/img/blockers/{{ variant }}.jpg);mask-image:url(/static/img/blockers/{{ variant }}.jpg)"></div>
+
+  {% if variant == 'blueprint' %}
+  <div class="blk-frame"></div>
+  <span class="blk-tick a">KM · ЛИСТ 1/1</span><span class="blk-tick b">РЕВ. A</span><span class="blk-tick c">М 1:1</span>
+  {% endif %}
+  {% if variant == 'shutter' %}
+  <div class="blk-glow"></div>
+  <div class="blk-tape"></div>
+  {% endif %}
+
+  <div class="blk-top">
+    <span class="blk-km"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 6 L5 26"/><path d="M14 6 L5 16"/><path d="M5 16 L14 26"/><path d="M18 26 L18 6 L23 15.5 L28 6 L28 26"/></svg>KuubMill</span>
+    <span class="blk-chip"><i class="dot"></i>{{ copy.chip }}</span>
+  </div>
+
+  <div class="blk-txt">
+    {% if variant == 'blueprint' %}<span class="blk-stamp">ЧЕРНЕТКА</span>{% endif %}
+    <p class="blk-h">{{ copy.title|safe }}{% if variant == 'shutter' %}<span>{{ copy.sub }} · розділ «{{ section_title }}»</span>{% endif %}</p>
+    {% if variant != 'shutter' %}<p class="blk-sub">{{ copy.sub }}</p>{% endif %}
+
+    {% if variant == 'mill' %}
+    <div class="blk-path"><i></i></div>
+    <div class="blk-meta"><span>Розділ <b>{{ section_title }}</b></span><span>Етап <b>верстка · логіка</b></span></div>
+    {% elif variant == 'blueprint' %}
+    <table class="blk-tbl">
+      <tr><td>Розділ</td><td><b>{{ section_title }}</b></td></tr>
+      <tr><td>Стан</td><td>проєктується · перевірка</td></tr>
+      <tr><td>Відповідальний</td><td>адміністратор</td></tr>
+    </table>
+    {% elif variant == 'gauge' %}
+    <ul class="blk-chk">
+      <li class="ok"><i>✓</i>Розділ «{{ section_title }}» зібрано</li>
+      <li class="ok"><i>✓</i>Дані з бази читаються</li>
+      <li class="run"><i></i>Звірка цифр з відомістю</li>
+      <li><i></i>Перевірка на двох операторах</li>
+    </ul>
+    {% endif %}
+  </div>
+
+  {% if variant == 'shutter' %}<div class="blk-foot">РОЗДІЛ ВІДКРИЄ АДМІНІСТРАТОР</div>{% endif %}
+</main>
+{% endblock %}

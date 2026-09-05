@@ -147,6 +147,7 @@ POST /settings/materials/alias/{alias_id}/delete
 POST /settings/materials/reclassify
 POST /settings/notifications
 POST /settings/recognition/default-material
+POST /settings/sections/{section}
 POST /settings/selfcheck
 POST /settings/sheet-weight
 POST /settings/test-imap

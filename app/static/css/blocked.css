@@ -1,0 +1,139 @@
+/* Екран-блокатор розділу «в розробці / тестується» + банер адміна.
+   Усе на токенах: арт — біле-на-чорному через mask-mode:luminance, залитий
+   акцентом теми, тому в базі він teal, у Forge — amber, файл один. */
+
+.blk {
+  position: relative; min-height: calc(100vh - 64px); overflow: hidden;
+  background-image:
+    linear-gradient(rgba(var(--accent-rgb), .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--accent-rgb), .035) 1px, transparent 1px);
+  background-size: 44px 44px; background-position: center;
+}
+.blk-art {
+  position: absolute; inset: 0; pointer-events: none;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-size: contain; mask-size: contain;
+  -webkit-mask-position: center; mask-position: center;
+  -webkit-mask-mode: luminance; mask-mode: luminance;
+}
+.blk-top { position: absolute; left: 6%; top: 7%; display: flex; gap: 16px; align-items: center; }
+.blk-km {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: var(--font-head); font-weight: 700; letter-spacing: -.01em; color: var(--ink);
+}
+.blk-km svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.blk-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 20px;
+  border: 1px solid var(--line-2); color: var(--ink-2); font-size: var(--fs-0); letter-spacing: .6px;
+  text-transform: uppercase; font-family: var(--font-mono);
+}
+.blk-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: blk-blink 1.6s ease-in-out infinite; }
+@keyframes blk-blink { 50% { opacity: .25; } }
+.blk-h { font-family: var(--font-head); font-weight: 800; letter-spacing: -.02em; line-height: 1; margin: 0; color: var(--ink); }
+.blk-h u { text-decoration: none; color: var(--accent-c); }
+.blk-sub { color: var(--ink-2); margin: 14px 0 0; line-height: 1.45; font-size: clamp(13px, 1.2vw, 16px); }
+.blk-foot { position: absolute; left: 6%; bottom: 7%; font-size: var(--fs-1); color: var(--ink-3); }
+
+/* Арт живе у СВОЇЙ половині екрана (left/right), а не поверх усього з
+   позицією у відсотках: відсотки не рятують, коли картинка ширша за область
+   (з рейкою робоча ширина менша за макап), і арт наїжджав на текст. contain у
+   власній колонці гарантує, що текст і арт не перетинаються на будь-якій ширині. */
+.blk-mill .blk-art { left: 46%; -webkit-mask-size: auto 90%; mask-size: auto 90%; }
+/* Циферблат ширший за корпус приладу, тому його ліва кромка (і м'яке сяйво)
+   заходила під підзаголовок і зливалася з ним. Відсуваємо колонку арту
+   правіше й лишаємо текст у чіткій лівій половині. */
+.blk-gauge .blk-art { left: 52%; -webkit-mask-size: auto 86%; mask-size: auto 86%; }
+/* Об'єкт на mill/gauge стоїть у центрі кадру, тож розмір задаємо ВИСОТОЮ і
+   центруємо: порожні чорні краї картинки обрізаються межами колонки, а сам
+   арт лишається великим. Креслення займає весь кадр — йому contain. */
+.blk-blueprint .blk-art { right: 44%; -webkit-mask-size: contain; mask-size: contain; }
+
+/* ── mill ── */
+.blk-mill .blk-art {
+  background: radial-gradient(circle at 60% 40%, var(--accent-c), var(--accent) 45%, var(--accent-d)); opacity: .95;
+}
+.blk-mill .blk-txt { position: absolute; left: 6%; top: 50%; transform: translateY(-50%); max-width: 46%; }
+.blk-mill .blk-h { font-size: clamp(30px, 4.4vw, 58px); }
+.blk-path { margin-top: 26px; height: 3px; background: var(--line-2); border-radius: 2px; position: relative; overflow: visible; max-width: 380px; }
+.blk-path i { position: absolute; inset: 0; width: 64%; background: linear-gradient(90deg, var(--accent-d), var(--accent-c)); border-radius: 2px; }
+.blk-path i::after {
+  content: ""; position: absolute; right: -1px; top: -4px; width: 11px; height: 11px; border-radius: 50%;
+  background: var(--accent-c); box-shadow: 0 0 14px var(--accent); animation: blk-blink 1.1s ease-in-out infinite;
+}
+.blk-meta { display: flex; gap: 16px; margin-top: 12px; font-size: var(--fs-0); color: var(--ink-3); letter-spacing: .5px; text-transform: uppercase; }
+.blk-meta b { color: var(--ink-2); font-weight: 600; }
+
+/* ── blueprint ── */
+.blk-blueprint { background-size: 22px 22px; }
+.blk-blueprint .blk-art { background: var(--accent-b); opacity: .85; }
+.blk-frame { position: absolute; inset: 4.5%; border: 1px solid rgba(var(--accent-rgb), .25); pointer-events: none; }
+.blk-frame::before, .blk-frame::after { content: ""; position: absolute; background: rgba(var(--accent-rgb), .5); }
+.blk-frame::before { left: -1px; top: 30%; width: 1px; height: 40%; }
+.blk-frame::after { top: -1px; left: 30%; height: 1px; width: 40%; }
+.blk-tick { position: absolute; font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); letter-spacing: 1px; }
+.blk-tick.a { left: 5.5%; top: 5.5%; } .blk-tick.b { right: 5.5%; top: 5.5%; } .blk-tick.c { left: 5.5%; bottom: 5.5%; }
+.blk-blueprint .blk-top { left: auto; right: 8%; flex-direction: row-reverse; }
+.blk-blueprint .blk-txt { position: absolute; right: 8%; top: 50%; transform: translateY(-50%); max-width: 40%; text-align: right; }
+.blk-blueprint .blk-sub { margin-left: auto; max-width: 360px; }
+.blk-blueprint .blk-foot { left: auto; right: 8%; }
+.blk-stamp {
+  display: inline-block; border: 2px solid var(--accent); color: var(--accent-c); padding: 7px 14px; border-radius: 6px;
+  font-family: var(--font-mono); font-weight: 700; letter-spacing: 3px; font-size: var(--fs-1); transform: rotate(-4deg); margin-bottom: 18px;
+}
+.blk-blueprint .blk-h { font-size: clamp(28px, 4vw, 52px); }
+.blk-tbl { margin-top: 22px; margin-left: auto; border-collapse: collapse; font-family: var(--font-mono); font-size: var(--fs-1); text-align: left; }
+.blk-tbl td { padding: 4px 0 4px 18px; border-top: 1px solid var(--line-2); color: var(--ink-2); }
+.blk-tbl td:first-child { color: var(--ink-3); letter-spacing: .8px; text-transform: uppercase; padding-left: 0; }
+.blk-tbl b { color: var(--accent-c); font-weight: 600; }
+
+/* ── gauge ── */
+.blk-gauge .blk-art {
+  background: linear-gradient(180deg, var(--accent-c), var(--accent) 60%, var(--accent-d)); opacity: .9;
+}
+.blk-gauge .blk-txt { position: absolute; left: 7%; top: 50%; transform: translateY(-50%); max-width: 40%; }
+.blk-gauge .blk-sub { max-width: 30ch; }
+.blk-gauge .blk-h { font-size: clamp(28px, 4.2vw, 54px); }
+.blk-chk { list-style: none; padding: 0; margin: 24px 0 0; display: flex; flex-direction: column; gap: 9px; font-family: var(--font-mono); font-size: var(--fs-2); }
+.blk-chk li { display: flex; align-items: center; gap: 11px; color: var(--ink-2); }
+.blk-chk i {
+  width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-style: normal;
+}
+.blk-chk li.ok { color: var(--ink); }
+.blk-chk li.ok i { background: var(--ok); border-color: var(--ok); color: var(--on-accent); }
+.blk-chk li.run { color: var(--accent-c); }
+.blk-chk li.run i { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .18); animation: blk-blink 1.2s ease-in-out infinite; }
+
+/* ── shutter ── */
+.blk-shutter .blk-art {
+  -webkit-mask-size: auto 92%; mask-size: auto 92%; -webkit-mask-position: 50% 100%; mask-position: 50% 100%;
+  background: linear-gradient(180deg, var(--ink-2), var(--ink-3) 70%, var(--accent) 88%, var(--accent-c)); opacity: .9;
+}
+.blk-glow {
+  position: absolute; left: 50%; bottom: 17%; width: 36%; height: 6%; transform: translateX(-50%); border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(var(--accent-rgb), .55), transparent 70%); filter: blur(8px);
+  animation: blk-blink 2.4s ease-in-out infinite;
+}
+.blk-tape {
+  position: absolute; left: 0; right: 0; top: 44%; height: 26px; opacity: .75;
+  background: repeating-linear-gradient(-45deg, var(--accent) 0 18px, transparent 18px 36px);
+}
+.blk-tape::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, var(--bg), transparent 18%, transparent 82%, var(--bg)); }
+.blk-shutter .blk-txt { position: absolute; left: 0; right: 0; top: 12%; text-align: center; }
+.blk-shutter .blk-h { font-size: clamp(32px, 5vw, 66px); letter-spacing: .06em; text-transform: uppercase; }
+.blk-shutter .blk-h span { display: block; font-size: .42em; letter-spacing: .3em; color: var(--ink-3); font-weight: 600; margin-top: 10px; }
+.blk-shutter .blk-foot { left: 0; right: 0; text-align: center; font-family: var(--font-mono); letter-spacing: 1px; }
+
+/* ── Банер адміна над закритим розділом ── */
+.secadm {
+  display: flex; align-items: center; gap: 12px; margin: 0 0 14px; padding: 9px 14px; border-radius: 10px;
+  background: rgba(var(--accent-rgb), .09); border: 1px solid rgba(var(--accent-rgb), .35);
+  font-size: var(--fs-2); color: var(--ink); flex-wrap: wrap;
+}
+.secadm .blk-chip { border-color: rgba(var(--accent-rgb), .5); color: var(--accent-c); }
+.secadm-sp { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.secadm select, .secadm button {
+  background: var(--field); border: 1px solid var(--line-2); color: var(--ink-2); border-radius: 8px;
+  padding: 5px 10px; font-size: var(--fs-1); cursor: pointer;
+}
+.secadm button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }

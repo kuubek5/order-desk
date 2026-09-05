@@ -15,6 +15,7 @@ from starlette.requests import Request
 
 from app.models import Order, ReworkRecord
 from app.routers.deps import get_current_user, login_redirect, get_db, templates
+from app.routers.section_gate import admin_banner, blocked_response
 from app.services.order_dates import order_date
 from app.stats import (
     average_new_to_milled_hours,
@@ -31,6 +32,12 @@ def get_stats(request: Request, period: str = "week", db: Session = Depends(get_
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+
+    # Розділ закрито «на калібрування» (стан у налаштуваннях): не-адмін бачить
+    # блокатор, адмін — статистику з банером «Відкрити для всіх».
+    blocked = blocked_response(request, db, user, "stats")
+    if blocked is not None:
+        return blocked
 
     if period not in ("today", "week", "month", "all"):
         period = "week"
@@ -74,6 +81,7 @@ def get_stats(request: Request, period: str = "week", db: Session = Depends(get_
         {
             "page_title": "Статистика",
             "user": user,
+            "section_banner": admin_banner(db, user, "stats"),
             "period": period,
             "order_count": order_count,
             "quantity_sum": quantity_sum,

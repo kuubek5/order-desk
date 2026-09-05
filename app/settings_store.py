@@ -179,6 +179,12 @@ CLEARABLE_SETTING_KEYS = {
 # Не секрет і не поле форми — внутрішній штамп, з якого рахується «скільки
 # днів простою надолужити» після ввімкнення (app/sheet_sync_service.py).
 PREFERENCE_KEYS = {
+    # Стан розділу для гейта «в розробці / тестується» (app/services/section_gate.py):
+    # "open" або назва арту-блокатора. Новий розділ = новий ключ тут + запис у
+    # SECTIONS там; без ключа set_setting відмовить.
+    "section_state:stats",
+    # Аудиторія блокатора: "*" (усі не-адміни) або перелік ролей через кому.
+    "section_audience:stats",
     "furnace_background",
     "mail_default_material",
     "mail_download_all",

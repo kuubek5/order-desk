@@ -1,0 +1,51 @@
+        {# ── Блокування розділів «в розробці / тестується» ────────────────
+           Лише адмін. Закритий розділ бачать тільки адміністратори (з банером
+           над самим розділом), решта — екран-блокатор із артом. Стан і
+           аудиторія тримаються в налаштуваннях, тому відкрити/закрити можна
+           без деплою. Логіка — app/services/section_gate.py. #}
+        {% if user.role == 'адмін' %}
+        <section id="sections" class="wizard-step wizard-step-about scon-sec" data-sec="sections">
+            <div class="num" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7-2.6"/></svg>
+            </div>
+            <div class="box">
+                <div class="wizard-step-head">
+                    <h2>Блокування розділів</h2>
+                    <span class="connection-state {% if sections_admin | selectattr('is_open') | list | length == sections_admin | length %}connection-state-ready{% endif %}">
+                        {% set closed = sections_admin | rejectattr('is_open') | list | length %}
+                        {% if closed %}{{ closed }} закрито{% else %}усі відкриті{% endif %}
+                    </span>
+                </div>
+                <p class="wizard-sub">Закрий розділ, поки він у розробці чи на тестуванні: не-адміни побачать екран-блокатор, адмін — сам розділ із банером. «Відкрито для всіх» знімає блокування.</p>
+
+                {% for sec in sections_admin %}
+                <form method="post" action="/settings/sections/{{ sec.section }}" class="secmgr">
+                    <input type="hidden" name="back" value="/settings#sections">
+                    <div class="secmgr-row">
+                        <div class="secmgr-name">
+                            {{ sec.title }}
+                            <span class="connection-state {% if sec.is_open %}connection-state-ready{% endif %}">
+                                {% if sec.is_open %}Відкрито{% else %}Закрито{% endif %}
+                            </span>
+                        </div>
+                        <select name="state" aria-label="Стан розділу «{{ sec.title }}»">
+                            {% for key, label in sec.variants %}
+                            <option value="{{ key }}" {% if key == sec.state %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="settings-submit">Застосувати</button>
+                    </div>
+                    {# Кому показувати блокатор. «Усі ролі» має старшинство (ловить і
+                       майбутні ролі); зніми його, щоб вибрати ролі поіменно. #}
+                    <div class="secmgr-aud">
+                        <span class="secmgr-aud-lbl">Кому:</span>
+                        <label><input type="checkbox" name="audience_all" value="1" {% if sec.audience_all %}checked{% endif %}> усі ролі</label>
+                        {% for r in sec.roles %}
+                        <label><input type="checkbox" name="role" value="{{ r.role }}" {% if r.on %}checked{% endif %}> {{ r.role }}</label>
+                        {% endfor %}
+                    </div>
+                </form>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
