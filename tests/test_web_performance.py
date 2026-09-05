@@ -76,8 +76,11 @@ def test_stats_eager_loads_status_events_in_constant_query_count(monkeypatch):
 
         event.remove(test_engine, "before_cursor_execute", count_query)
         assert context["avg_hours"] is not None
-        # User, orders, select-in status events, and rework records.
-        assert queries <= 4
+        # User, orders, select-in status events, rework records — плюс два
+        # читання стану розділу (гейт «Блокування розділів»: blocked_response і
+        # admin_banner читають section_state). Усі КОНСТАНТНІ: 20 робіт дають
+        # той самий count, тож захист від N+1 на status_events лишається.
+        assert queries <= 6
 
 
 def test_request_timing_logs_only_slow_requests(monkeypatch, caplog):

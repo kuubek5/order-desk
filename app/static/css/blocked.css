@@ -70,7 +70,7 @@
 .blk-frame::before, .blk-frame::after { content: ""; position: absolute; background: rgba(var(--accent-rgb), .5); }
 .blk-frame::before { left: -1px; top: 30%; width: 1px; height: 40%; }
 .blk-frame::after { top: -1px; left: 30%; height: 1px; width: 40%; }
-.blk-tick { position: absolute; font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); letter-spacing: 1px; }
+.blk-tick { position: absolute; font-family: var(--font-mono); font-size: var(--fs-0); color: var(--ink-3); letter-spacing: 1px; }
 .blk-tick.a { left: 5.5%; top: 5.5%; } .blk-tick.b { right: 5.5%; top: 5.5%; } .blk-tick.c { left: 5.5%; bottom: 5.5%; }
 .blk-blueprint .blk-top { left: auto; right: 8%; flex-direction: row-reverse; }
 .blk-blueprint .blk-txt { position: absolute; right: 8%; top: 50%; transform: translateY(-50%); max-width: 40%; text-align: right; }
@@ -97,7 +97,7 @@
 .blk-chk li { display: flex; align-items: center; gap: 11px; color: var(--ink-2); }
 .blk-chk i {
   width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none;
-  display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-style: normal;
+  display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-0); font-style: normal;
 }
 .blk-chk li.ok { color: var(--ink); }
 .blk-chk li.ok i { background: var(--ok); border-color: var(--ok); color: var(--on-accent); }
