@@ -91,7 +91,7 @@
                                     ('code', 'Технічний код', 'Без коробки, моноширинний — 800 / 500 / A3.5 читаються як коди виробника')],
                         mat_style=_up.queue_mat_style,
                         pad_default=8, reset_event='queue-look-reset',
-                        col_edit=true, title='Вигляд черги') }}
+                        col_edit=true, title='Вигляд черги', load_shown=load_metrics(request)) }}
         </div>
         {# Жива стрічка навантаження — другим рядком під кнопками, праворуч
            (D1). Повна ширина через flex-basis:100%, тому переноситься на свій

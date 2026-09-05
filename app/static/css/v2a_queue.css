@@ -974,6 +974,9 @@ body.sum3d-panel-open .q2 .s3t-panel{display:flex}
    сервер додає .flow (біжить потік) і .pulse (стрічка дихає) + червоний. */
 .q2 .sysload-row{flex-basis:100%;display:flex;justify-content:flex-end;
   padding-top:9px;margin-top:1px;border-top:1px solid var(--line)}
+/* Стрічку вимкнено цілком (жодного показника) — не лишати порожній рядок
+   із межею; обгортка ЛИШАЄТЬСЯ в DOM (свій полл), просто не займає місця. */
+.q2 .sysload-row.is-empty{display:none}
 .q2 .sysload{--live:var(--accent);--live-rgb:var(--accent-rgb);display:flex;align-items:center;gap:18px}
 .q2 .sysload .cell{display:flex;align-items:center;gap:6px}
 .q2 .sysload .lab{font-size:var(--fs-0);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);font-weight:600}

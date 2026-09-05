@@ -55,6 +55,7 @@ MOUNT /static
 POST /account/appearance
 POST /account/initial
 POST /account/layout
+POST /account/load-widget
 POST /account/look
 POST /account/password
 POST /actions/redo-last

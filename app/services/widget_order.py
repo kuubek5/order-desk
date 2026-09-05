@@ -21,6 +21,9 @@ SIDE_SECTIONS: tuple[str, ...] = ("mail", "furnace", "machine", "sync", "handout
 #: Скільки елементів приймаємо в одному списку — пасок від роздутого поля.
 MAX_ITEMS = 40
 
+#: Показники стрічки навантаження, у порядку показу.
+LOAD_METRICS = ("crm", "pc", "ram")
+
 
 def parse_order(raw: str | None) -> list[str]:
     """Рядок з акаунта → список ключів без порожніх і дублів."""
@@ -75,3 +78,21 @@ def sort_machine_cards(saved: str | None, cards: list) -> list:
         return (position.get(str(machine_id), len(position)), 0)
 
     return [card for _, card in sorted(enumerate(cards), key=lambda pair: (rank(pair[1]), pair[0]))]
+
+
+def clean_load_metrics(raw: str | None) -> str:
+    """CSV показників стрічки навантаження → лише відомі, у сталому порядку.
+    Порожній рядок = стрічку вимкнено (жодного показника). None (поле ще не
+    існує в старій сесії) свідомо трактуємо як «усі три» — щоб віджет не зник
+    у тих, хто нічого не міняв."""
+    if raw is None:
+        return ",".join(LOAD_METRICS)
+    chosen = {c.strip() for c in str(raw).split(",") if c.strip()}
+    return ",".join(m for m in LOAD_METRICS if m in chosen)
+
+
+def load_metrics_set(raw: str | None) -> set[str]:
+    """Множина показників для шаблону. None → усі (див. clean_load_metrics)."""
+    if raw is None:
+        return set(LOAD_METRICS)
+    return {c.strip() for c in str(raw).split(",") if c.strip() in LOAD_METRICS}

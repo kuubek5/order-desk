@@ -25,7 +25,7 @@
 #}
 {% macro lookgear(scope, host, pad, step, width=None, width_target='', pad_probe='', presets=[],
                   density='', mat_styles=[], mat_style='', pad_default=6,
-                  reset_event='', col_edit=false, title='Вигляд списку') %}
+                  reset_event='', col_edit=false, title='Вигляд списку', load_shown=none) %}
 <div class="lookgear" data-look-gear data-look-scope="{{ scope }}"
      data-look-host="{{ host }}"
      data-pad="{{ pad }}" data-width="{{ width or 0 }}" data-step="{{ step or 2 }}"
@@ -133,6 +133,20 @@
             <button type="button" class="lookpreset" data-widget-edit-toggle aria-pressed="false"
                     title="Перетягувати смугу верстатів угорі та секції правої панелі">Перетягувати віджети</button>
         </div>
+        {# Стрічка навантаження: увімкнути/вимкнути кожен показник окремо.
+           Клік застосовує одразу (queue.js) і зберігає на акаунті; стрічка
+           оновиться на найближчому своєму поллі. #}
+        {% if load_shown is not none %}
+        <div class="lookrow lookrow-full">
+            <span class="lookrow-name">Навантаження системи</span>
+            <div class="loadtoggles" role="group" aria-label="Показники стрічки навантаження">
+                {% for key, title in [('crm', 'CRM'), ('pc', 'ПК'), ('ram', 'ОЗП')] %}
+                <button type="button" class="loadtoggle" data-load-metric="{{ key }}"
+                        aria-pressed="{{ 'true' if key in load_shown else 'false' }}">{{ title }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
         {% endif %}
 
         <div class="lookfoot">

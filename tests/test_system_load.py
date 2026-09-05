@@ -14,6 +14,7 @@ import pytest
 from starlette.datastructures import Headers
 
 from app.services import system_load as sl
+from app.services.widget_order import clean_load_metrics, load_metrics_set
 
 
 @pytest.mark.parametrize("cpu,level,flow,pulse", [
@@ -141,3 +142,79 @@ def test_route_requires_login_and_returns_wrapper(monkeypatch):
     resp = queue_router.system_load(request=_request(), db=None)
     assert resp.status_code == 200
     assert b'id="system-load"' in resp.body
+
+
+# ── перемикачі показників (шестерня вигляду) ────────────────────────────────
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("crm,pc,ram", "crm,pc,ram"),
+    ("pc", "pc"),
+    ("ram,crm", "crm,ram"),          # сталий порядок
+    ("crm,ghost", "crm"),            # чуже відсіюється
+    ("", ""),                         # вимкнено цілком
+    (None, "crm,pc,ram"),            # стара сесія без поля → усі три
+])
+def test_clean_load_metrics(raw, expected):
+    assert clean_load_metrics(raw) == expected
+
+
+def test_load_metrics_set_none_is_all():
+    assert load_metrics_set(None) == {"crm", "pc", "ram"}
+    assert load_metrics_set("") == set()
+
+
+def _req_metrics(m):
+    state = SimpleNamespace(ui_prefs_cache={
+        "load_metrics": m, "side_order": "", "strip_order": "",
+        "machine_card": "", "machine_art": "", "machine_strip": ""})
+    return SimpleNamespace(session={}, client=SimpleNamespace(host="127.0.0.1"),
+                           headers=Headers({}), state=state)
+
+
+_LOAD_OK = {"ok": True, "level": "ok", "flow": False, "pulse": False,
+            "pc_cpu": 34, "pc_ram_pct": 70, "pc_ram_used_gb": 11.2,
+            "pc_ram_total_gb": 16.0, "crm_cpu": 6, "crm_ram_mb": 240}
+
+
+def test_template_renders_only_chosen_metrics():
+    from app.routers.deps import templates
+    tpl = templates.env.get_template("_system_load.html")
+    only_pc = tpl.render(request=_req_metrics("pc"), load=_LOAD_OK)
+    assert "ПК CPU" in only_pc and ">CRM<" not in only_pc and ">ОЗП<" not in only_pc
+    assert "is-empty" not in only_pc
+
+
+def test_template_hidden_when_all_metrics_off():
+    from app.routers.deps import templates
+    tpl = templates.env.get_template("_system_load.html")
+    off = tpl.render(request=_req_metrics(""), load=_LOAD_OK)
+    assert "is-empty" in off               # обгортка лишається, але прихована
+    assert 'id="system-load"' in off       # полл живий
+
+
+def test_load_widget_route_saves_and_filters(monkeypatch):
+    import asyncio
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+    from app.db import Base
+    from app.models import User
+    from app.routers import auth as auth_router
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        u = User(username="op", password_hash="x", full_name="Оп", role="оператор")
+        db.add(u)
+        db.commit()
+        req = SimpleNamespace(session={"user_id": u.id}, client=SimpleNamespace(host="127.0.0.1"))
+        r = asyncio.run(auth_router.post_account_load_widget(request=req, metrics="pc,ghost", db=db))
+        assert r.status_code == 204
+        db.refresh(u)
+        assert u.queue_load_metrics == "pc"
+        r = asyncio.run(auth_router.post_account_load_widget(request=req, metrics="", db=db))
+        db.refresh(u)
+        assert u.queue_load_metrics == ""      # вимкнено цілком
+        anon = SimpleNamespace(session={}, client=SimpleNamespace(host="127.0.0.1"))
+        assert asyncio.run(auth_router.post_account_load_widget(request=anon, metrics="crm", db=db)).status_code == 401

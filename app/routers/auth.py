@@ -23,7 +23,7 @@ from app.license import (
     verify_license_key,
 )
 from app.models import User
-from app.services.widget_order import clean_side_order, clean_strip_order
+from app.services.widget_order import clean_load_metrics, clean_side_order, clean_strip_order
 from app.routers.deps import UI_SESSION_KEY, get_current_user, login_redirect, get_db, templates
 from app.services.look_prefs import (
     LookError,
@@ -245,6 +245,21 @@ async def post_account_appearance(
     user.ui_machine_art = machine_art
     user.ui_machine_strip = machine_strip
     user.ui_machine_card = machine_card
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/account/load-widget", status_code=204)
+async def post_account_load_widget(
+    request: Request, metrics: str = Form(""), db: Session = Depends(get_db)
+):
+    """Які показники стрічки навантаження показувати (шестерня вигляду).
+    `metrics` — CSV із crm/pc/ram; порожньо = стрічку вимкнено. Чуже
+    відсіюється, а не відхиляється: зникла позначка не має ламати збереження."""
+    user = get_current_user(request, db)
+    if user is None:
+        return Response(status_code=401)
+    user.queue_load_metrics = clean_load_metrics(metrics)
     db.commit()
     return Response(status_code=204)
 

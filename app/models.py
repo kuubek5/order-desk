@@ -83,6 +83,12 @@ class User(Base):
     # малює `style="order:N"`, клієнт лише зберігає новий порядок.
     queue_side_order: Mapped[str] = mapped_column(String(200), default="", server_default="")
     queue_strip_order: Mapped[str] = mapped_column(String(300), default="", server_default="")
+    # Які показники стрічки навантаження показувати (шестерня вигляду,
+    # 05.09.26): CSV із crm/pc/ram. Порожньо = стрічку вимкнено цілком.
+    # server_default — усі три, щоб наявні акаунти нічого не втратили.
+    queue_load_metrics: Mapped[str] = mapped_column(
+        String(20), default="crm,pc,ram", server_default="crm,pc,ram"
+    )
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()

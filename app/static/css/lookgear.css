@@ -72,3 +72,14 @@
 /* Тонкий розділювач між «постав пресет» і «доведи руками» — це два різні
    рівні, і без лінії вони читались як один довгий список. */
 .looksplit{height:1px;background:var(--line);margin:2px 0}
+
+/* Перемикачі показників стрічки навантаження в шестерні. Стиль пресетів:
+   тьмяні поза вибором, акцентні коли увімкнено. */
+.loadtoggles{display:flex;gap:6px}
+.loadtoggle{font:inherit;font-size:var(--fs-1);padding:4px 12px;border-radius:999px;
+  border:1px solid var(--line-2);background:var(--card);color:var(--ink-3);cursor:pointer;
+  transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease,background var(--ui-speed) ease}
+.loadtoggle:hover{border-color:var(--control-edge);color:var(--ink-2)}
+.loadtoggle[aria-pressed="true"]{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .5);
+  background:rgba(var(--accent-rgb), .12)}
+.loadtoggle:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}

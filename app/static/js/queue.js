@@ -1021,3 +1021,34 @@ document.addEventListener("click", (event) => {
     document.body.classList.remove("sum3d-panel-open");
   }
 });
+
+
+// Перемикачі стрічки навантаження (CRM / ПК / ОЗП) у шестерні вигляду.
+// Клік застосовує одразу, зберігає на акаунті й смикає полл стрічки, щоб зміна
+// була видима без чекання 4с. Порядок показу задає сервер, тут лише who-on.
+document.addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-load-metric]");
+  if (!chip) return;
+  chip.setAttribute(
+    "aria-pressed",
+    chip.getAttribute("aria-pressed") === "true" ? "false" : "true"
+  );
+  const on = Array.from(document.querySelectorAll("[data-load-metric]"))
+    .filter((c) => c.getAttribute("aria-pressed") === "true")
+    .map((c) => c.dataset.loadMetric);
+  fetch("/account/load-widget", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ metrics: on.join(",") }).toString(),
+    credentials: "same-origin",
+  })
+    .then((r) => {
+      if (r.status === 401) { window.location.href = "/login"; return; }
+      // Оновити стрічку одразу (сервер рендерить лише обрані показники) —
+      // htmx.ajax, бо hx-trigger="every 4s" не спрацьовує від trigger().
+      if (window.htmx) {
+        window.htmx.ajax("GET", "/system/load", { target: "#system-load", swap: "outerHTML" });
+      }
+    })
+    .catch(() => {});
+});

@@ -318,6 +318,9 @@ def ui_prefs(request: Request) -> dict:
         # Порядок віджетів черги (режим редагування в шестерні вигляду).
         "side_order": "",
         "strip_order": "",
+        # Показники стрічки навантаження (шестерня вигляду). "" тут — це
+        # дефолт «усі три», бо анонім/збій не має ховати віджет.
+        "load_metrics": "crm,pc,ram",
     }
     mirrored = False
     try:
@@ -346,6 +349,7 @@ def ui_prefs(request: Request) -> dict:
                         "machine_card": user.ui_machine_card or "",
                         "side_order": user.queue_side_order or "",
                         "strip_order": user.queue_strip_order or "",
+                        "load_metrics": user.queue_load_metrics if user.queue_load_metrics is not None else "crm,pc,ram",
                     }
                     mirrored = True
             finally:
@@ -450,6 +454,15 @@ def ordered_machine_cards(request, cards):
 
 templates.env.globals["side_order_index"] = side_order_index
 templates.env.globals["ordered_machine_cards"] = ordered_machine_cards
+from app.services.widget_order import load_metrics_set  # noqa: E402
+
+
+def load_metrics(request) -> set:
+    """Множина показників стрічки навантаження для цього оператора."""
+    return load_metrics_set(ui_prefs(request).get("load_metrics"))
+
+
+templates.env.globals["load_metrics"] = load_metrics
 templates.env.globals["is_rush_comment"] = is_rush_comment
 templates.env.globals["static_ver"] = static_ver
 templates.env.filters["changelog_md"] = changelog_md

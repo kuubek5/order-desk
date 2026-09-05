@@ -10,7 +10,7 @@ app/furnace_vnc.py, який фізично не вміє слати ввід (�
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 

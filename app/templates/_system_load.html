@@ -6,32 +6,33 @@
    Заливка бару — transform:scaleX (без layout-thrash). Обгортка віддається
    завжди й має власний полл, бо лежить у шапці поза #queue-rows. #}
 <div id="system-load"
-     class="sysload-row"
+     class="sysload-row{% set _mm = load_metrics(request) %}{% if not _mm %} is-empty{% endif %}"
      hx-get="/system/load"
      hx-trigger="every 4s"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*">
   {% set load = load if load is defined else None %}
-  {% if load and load.ok %}
+  {% set _m = load_metrics(request) %}
+  {% if load and load.ok and _m %}
   {% set frac = {'cpu_crm': load.crm_cpu, 'cpu_pc': load.pc_cpu, 'ram': load.pc_ram_pct} %}
   <div class="sysload lvl-{{ load.level }}{% if load.flow %} flow{% endif %}{% if load.pulse %} pulse{% endif %}"
        title="CRM {{ load.crm_cpu }}% CPU, {{ load.crm_ram_mb }} МБ · ПК {{ load.pc_cpu }}% CPU · ОЗП {{ load.pc_ram_used_gb }}/{{ load.pc_ram_total_gb }} ГБ">
-    <span class="cell">
+    {% if 'crm' in _m %}<span class="cell">
       <span class="lab crm">CRM</span>
       <span class="n mono">{{ load.crm_cpu }}<span class="u">%</span></span>
       <span class="bar"><i style="transform:scaleX({{ '%.2f'|format(load.crm_cpu / 100) }})"></i></span>
-    </span>
-    <span class="cell">
+    </span>{% endif %}
+    {% if 'pc' in _m %}<span class="cell">
       <span class="lab">ПК CPU</span>
       <span class="n mono">{{ load.pc_cpu }}<span class="u">%</span></span>
       <span class="bar"><i style="transform:scaleX({{ '%.2f'|format(load.pc_cpu / 100) }})"></i></span>
-    </span>
-    <span class="cell">
+    </span>{% endif %}
+    {% if 'ram' in _m %}<span class="cell">
       <span class="lab">ОЗП</span>
       <span class="n mono">{{ load.pc_ram_used_gb }}<span class="u">/{{ load.pc_ram_total_gb }}ГБ</span></span>
       <span class="bar"><i style="transform:scaleX({{ '%.2f'|format(load.pc_ram_pct / 100) }})"></i></span>
-    </span>
+    </span>{% endif %}
   </div>
   {% else %}
   {# Немає заміру (щойно старт) або psutil недоступний — чесний прочерк. #}
