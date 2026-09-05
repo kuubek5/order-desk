@@ -10,10 +10,13 @@
   (`archived_at IS NULL`), без переробок (`mill_count` ≥ 2 — колонка «Який раз
   фрезерується»); джерело `lab` → колонка «Лабораторія», `email`/`sheet_client`
   → «Пошта»;
-* **СЛМ поки ручний.** СЛМ не потрапляє в базу взагалі (`_is_non_queue_row`
-  відкидає ці рядки до збереження), тому авто по ньому нуль; оператор вписує
-  число сам. Фаза 2 внесе СЛМ у базу з ознакою `off_queue` й авто-рахунок
-  замінить ручний — тому `slm` навмисно ПОЗА `AUTO_MATERIALS`;
+* **СЛМ рахує синк, не Orders.** СЛМ не потрапляє в базу Orders
+  (`_is_non_queue_row` відкидає ці рядки до збереження), тому `slm` ПОЗА
+  `ORDER_MATERIALS`. Замість цього синк тим самим проходом, що читає рядки,
+  рахує СЛМ з нижнього блоку вкладки й пише його числа прямо в клітинки
+  (`store_slm_totals`); табель читає їх як авто. Правку оператора запис синку
+  не чіпає. Класифікатор `slm_totals_from_rows` калібровано проти реальних
+  вкладок 27/28/31.08.26;
 * **підкови / диски / опаки** — ручні завжди: це не «матеріал у базі», а ознака
   роботи (підкови), витрачений ресурс (диски) або окремий облік по людях
   (опаки);
@@ -81,11 +84,20 @@ HUE = {
 # Опаки — фіксований список людей (рішення власника). Індекс = колонка opakN.
 OPAK_PEOPLE = ["Денис", "Костя", "Стас", "Вадим", "Рома"]
 
-# Матеріали, які рахуються АВТОМАТИЧНО з бази. slm поза списком — його рядки в
-# базу не потрапляють (Фаза 1); Фаза 2 (off_queue) додасть "slm" сюди.
-AUTO_MATERIALS = ("zr", "pmma", "wax", "ti")
-AUTO_COLS = {
-    f"{src}_{key}" for src in ("lab", "mail") for key in AUTO_MATERIALS
+# Матеріали, які рахуються з Orders (черга). СЛМ поза списком — його рядки в
+# базу Orders не потрапляють (`_is_non_queue_row` викидає до збереження). Його
+# ЧИСЛА пише синк прямо у клітинки табеля (auto_value) тим самим проходом, що
+# читає рядки, — див. slm_totals_from_rows/store_slm_totals. Тому СЛМ теж
+# «знімкова» колонка (читається з auto_value), але НЕ рахується тут із Orders.
+ORDER_MATERIALS = ("zr", "pmma", "wax", "ti")
+ORDER_COLS = {
+    f"{src}_{key}" for src in ("lab", "mail") for key in ORDER_MATERIALS
+}
+# Усі колонки-матеріали читають auto_value (знімок) — з Orders (ORDER_COLS) або
+# від синку (СЛМ).
+SNAPSHOT_MATERIALS = ("zr", "pmma", "wax", "ti", "slm")
+SNAPSHOT_COLS = {
+    f"{src}_{key}" for src in ("lab", "mail") for key in SNAPSHOT_MATERIALS
 }
 
 MATERIAL_COL_KEYS = [
@@ -206,7 +218,7 @@ def compute_month(
         live_days.add(d)
         material = order.material
         key = MATERIAL_KEY_BY_NAME.get(material.name) if material else None
-        if key is None or key not in AUTO_MATERIALS:
+        if key is None or key not in ORDER_MATERIALS:
             continue
         col_key = f"{_source_bucket(order.source)}_{key}"
         auto[(d, col_key)] += parse_int_safe(order.quantity) or 0
@@ -241,8 +253,10 @@ def compute_month(
 
     def cell_view(d: date, col_key: str) -> dict:
         cell = by_key.get((d, col_key))
-        if col_key in AUTO_COLS:
-            if d in live_days:
+        if col_key in SNAPSHOT_COLS:
+            # ORDER-колонки на живий день — рахуємо з Orders; СЛМ і мертві дні —
+            # зі знімка auto_value (СЛМ туди пише синк, решту — цей же метод).
+            if col_key in ORDER_COLS and d in live_days:
                 eff_auto = auto.get((d, col_key), 0)
             elif cell is not None and cell.auto_value is not None:
                 eff_auto = cell.auto_value
@@ -382,6 +396,78 @@ def _money(db: Session, year: int, month: int, totals: dict[str, int]) -> dict:
         "grn_share": grn_share,
         "grn_share_str": nf(grn_share, 0),
     }
+
+
+# ── СЛМ: підрахунок із рядків вкладки й запис у клітинки ─────────────────────
+# СЛМ не потрапляє в Orders (`_is_non_queue_row` викидає його до збереження).
+# Тому синк тим самим проходом, що читає рядки, рахує СЛМ і пише його ЧИСЛА
+# прямо в клітинки табеля (auto_value). Це не окремий Google-шлях — та сама
+# реконсиляція, ті самі рядки, — тому й не розійдеться з чергою.
+#
+# Правила калібровані проти реальних вкладок 27/28/31.08.26 (лаб 0/2/4,
+# файловий 150/341/115 — збіглось до одиниці). Пастка: CADCAM Команда (лаб) і
+# CadCam Energy (клієнт) схожі до нерозрізнення, але означають протилежне.
+MODELING_KINDS = {"елайнери", "моделі", "сканування", "моделювання"}
+CADCAM_LAB_KIND = "cadcam команда"
+
+
+def _norm_kind(value: str | None) -> str:
+    return " ".join((value or "").split()).lower()
+
+
+def slm_totals_from_rows(rows) -> tuple[int, int]:
+    """(лаб, пошта) одиниць СЛМ з нижнього блоку вкладки.
+
+    Рахуємо ТІЛЬКИ client-рядки блоку (без наряду й техніка — `is_client_row`).
+    наряд-body СЛМ ігноруємо: наряд могли завести, роботу не зробити. CADCAM
+    Команда — лабораторний, к-сть навмисно в колонці «Колір роботи»
+    (`material_color`), щоб власна сума таблиці її не рахувала. Решта блоку —
+    клієнти (файловий СЛМ), к-сть у колонці кількості. Моделі/сканування/
+    елайнери — не наша робота й не СЛМ, пропускаємо.
+
+    `rows` — OrderRow-подібні (качине типування: work_order_no, is_client_row,
+    kind, material_color, quantity), щоб не тягнути парсер у сервіс.
+    """
+    lab = 0
+    mail = 0
+    for row in rows:
+        if getattr(row, "work_order_no", ""):  # наряд-body — не рахуємо
+            continue
+        if not getattr(row, "is_client_row", False):
+            continue
+        kind = _norm_kind(getattr(row, "kind", ""))
+        if kind in MODELING_KINDS:
+            continue
+        material = (getattr(row, "material_color", "") or "").strip()
+        quantity = (getattr(row, "quantity", "") or "").strip()
+        # Блок СЛМ = client-рядок без матеріалу АБО з к-стю в колонці кольору
+        # (CADCAM). Звичайний клієнт із матеріалом І к-стю — фрезерна робота,
+        # сюди не потрапляє (той самий критерій, що у _is_non_queue_row).
+        if material and quantity:
+            continue
+        if kind == CADCAM_LAB_KIND:
+            lab += parse_int_safe(material) or 0
+        else:
+            mail += parse_int_safe(quantity) or 0
+    return lab, mail
+
+
+def store_slm_totals(session: Session, day: date, lab_units: int, mail_units: int) -> None:
+    """Записати авто-число СЛМ у клітинки табеля (lab_slm / mail_slm) за день.
+
+    Пише лише `auto_value`; правку оператора (`override_value`) не чіпає — тому
+    ручне виправлення переживає синк. Без commit: транзакцією керує викликач
+    (sync_tab комітиться поблочно у своєму синк-циклі)."""
+    for col_key, units in (("lab_slm", lab_units), ("mail_slm", mail_units)):
+        cell = session.scalar(
+            select(VyrobitokCell).where(
+                VyrobitokCell.day == day, VyrobitokCell.col_key == col_key
+            )
+        )
+        if cell is None:
+            session.add(VyrobitokCell(day=day, col_key=col_key, auto_value=units))
+        else:
+            cell.auto_value = units
 
 
 def set_cell(db: Session, day: date, col_key: str, value: int | None) -> None:

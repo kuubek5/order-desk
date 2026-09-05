@@ -13,6 +13,8 @@ from app.material_catalog import (
 )
 from app.models import Comment, Order, ReworkRecord, StatusEvent
 from app.parser import HEADER_ROWS, OrderRow
+from app.services.order_dates import parse_sheet_tab
+from app.services.vyrobitok import slm_totals_from_rows, store_slm_totals
 
 
 # "Вид/колір" values that mark work the lab records for stats only — SLM laser
@@ -460,6 +462,18 @@ def sync_tab(
     had_raw_rows = bool(rows) or (
         raw_row_count is not None and raw_row_count >= HEADER_ROWS
     )
+
+    # СЛМ у чергу не потрапляє (його рядки викидає фільтр нижче), але йде в
+    # облік одиниць «Виробіток». Рахуємо його ДО фільтра з тих самих рядків і
+    # пишемо числа прямо в клітинки табеля — той самий прохід, та сама
+    # реконсиляція, тому з чергою не розійдеться. Лише коли читання не порожнє,
+    # інакше транзієнтний збій проксі затер би реальне число нулем.
+    if had_raw_rows:
+        slm_day = parse_sheet_tab(sheet_tab)
+        if slm_day is not None:
+            lab_slm_units, mail_slm_units = slm_totals_from_rows(rows)
+            store_slm_totals(session, slm_day, lab_slm_units, mail_slm_units)
+
     rows = [row for row in rows if not _is_non_queue_row(row, row_fills)]
 
     # Re-link orders whose row MOVED. Position alone is not a stable key: the

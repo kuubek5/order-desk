@@ -93,13 +93,62 @@ def test_archived_is_excluded():
     assert _totals(db)["lab_zr"] == 20
 
 
-def test_slm_not_auto_counted_in_phase1():
+def test_slm_not_counted_from_orders():
     db = _db()
     mat = _materials(db)
-    # СЛМ у базу зазвичай не потрапляє; навіть якщо є Order — авто його не бере
-    # (Фаза 1). Колонка лишається ручною.
+    # СЛМ у чергу (Orders) не потрапляє; навіть якщо Order з матеріалом СЛМ є,
+    # табель його НЕ рахує з Orders — число СЛМ приходить лише зі синку (клітинки).
     _order(db, source="lab", material_id=mat["СЛМ"], qty=40)
     assert _totals(db)["lab_slm"] == 0
+
+
+def _row(*, naryad="", client=False, kind="", mat="", qty=""):
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        work_order_no=naryad, is_client_row=client, kind=kind,
+        material_color=mat, quantity=qty,
+    )
+
+
+def test_slm_classifier_lab_file_and_ignored():
+    from app.services.vyrobitok import slm_totals_from_rows
+    rows = [
+        # наряд-body СЛМ — ігнорується (наряд могли завести, роботу не зробити).
+        _row(naryad="29203", kind="каркас гвинтова", mat="слм", qty="4"),
+        # CADCAM Команда — лаб, к-сть у колонці кольору.
+        _row(client=True, kind="CADCAM Команда", mat="4", qty=""),
+        # клієнти — файловий СЛМ, к-сть у колонці кількості.
+        _row(client=True, kind="CadCam Energy", mat="", qty="4"),
+        _row(client=True, kind="Zanoviak", mat="", qty="12"),
+        # моделі — не наша робота, не СЛМ.
+        _row(client=True, kind="моделі", mat="", qty="5"),
+        # звичайна клієнтська фрезерна робота (є і матеріал, і к-сть) — не СЛМ.
+        _row(client=True, kind="Basarab", mat="mono a3", qty="2"),
+    ]
+    lab, mail = slm_totals_from_rows(rows)
+    assert lab == 4
+    assert mail == 16  # 4 + 12
+    # Пастка CADCAM Команда (лаб) ≠ CadCam Energy (клієнт) — не переплутано.
+
+
+def test_slm_totals_flow_into_tally_and_override_wins():
+    db = _db()
+    _materials(db)
+    from app.services.vyrobitok import store_slm_totals
+    # Синк записав СЛМ у клітинки за день.
+    store_slm_totals(db, date(2026, 8, 5), lab_units=4, mail_units=115)
+    db.commit()
+    totals = _totals(db)
+    assert totals["lab_slm"] == 4
+    assert totals["mail_slm"] == 115
+
+    # Правка оператора б'є авто; повторний запис синку її не чіпає.
+    set_cell(db, date(2026, 8, 5), "mail_slm", 120)
+    store_slm_totals(db, date(2026, 8, 5), lab_units=4, mail_units=115)
+    db.commit()
+    grid = compute_month(db, 2026, 8)
+    cell = next(r for r in grid.rows if r["dayn"] == 5)["cells"]["mail_slm"]
+    assert cell["num"] == 120 and cell["auto"] == 115 and cell["edited"] is True
 
 
 def test_override_wins_over_auto_and_marks_edited():
