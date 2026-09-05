@@ -43,15 +43,28 @@
         {# Клієнти йдуть у тому порядку, у якому їх фрезерували, і оператор іде
            згори вниз. Номер прибрано — порядок несе сам список; `current`
            підсвічує першого незібраного, тобто де оператор зараз. #}
-        <section class="ccard {% if group.all_found %}done{% endif %} {% if group.is_current %}current{% endif %}"
+        {# Повністю виданий клієнт НЕ зникає — лишається у списку згорнутим
+           (`is-issued` + aria-expanded="false"). До 05.09.26 його ховав фільтр
+           `status != "видано"`, і через це збій зі зсувом заливки був
+           невидимий: двоє клієнтів «видались» самі, а екран мовчав. #}
+        <section class="ccard {% if group.all_found %}done{% endif %} {% if group.all_issued %}is-issued{% endif %} {% if group.issued_from_sheet %}issue-doubt{% endif %} {% if group.is_current %}current{% endif %}"
                  id="handout-client-{{ group.position }}">
             <div class="card-head">
-                <button type="button" class="card-collapse" aria-expanded="true" title="Згорнути / розгорнути">
+                <button type="button" class="card-collapse" aria-expanded="{{ 'false' if group.all_issued else 'true' }}" title="Згорнути / розгорнути">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                 </button>
                 <h2>
                     {% if group.all_found %}<span class="doneicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>{% endif %}
                     {{ group.client_name }}
+                    {# Знак питання, а не галочка: таблиця каже «видано», але в
+                       історії CRM ніхто цього не робив. Найчастіша причина —
+                       видалили рядок вище, і заливка з'їхала. #}
+                    {% if group.issued_from_sheet %}
+                    <span class="issue-doubt-badge"
+                          title="Позначено виданим за заливкою, але в тому ж читанні таблиці з'їхали рядки — колір міг опинитись навпроти чужої роботи. Перевірте й зніміть, якщо не видавали.">
+                        перевірте · {{ group.issued_from_sheet|length }}
+                    </span>
+                    {% endif %}
                 </h2>
                 <span class="cstat mono">{{ group.works_count }} {% if group.works_count == 1 %}робота{% elif group.works_count < 5 %}роботи{% else %}робіт{% endif %}{% if group.units_total %} · {{ group.units_total }} од.{% endif %}</span>
                 <div class="right">
@@ -128,6 +141,41 @@
                             <button type="submit" class="wcheck done" title="Зняти відмітку «знайдено»">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                             </button>
+                        </form>
+                        {% elif order.status == 'видано' and not order.issue_locked %}
+                        {# Галочку «видано» МОЖНА зняти — домовленість власника
+                           05.09.26. Клік повертає роботу в чергу видачі й ставить
+                           замок, щоб наступний синк не позначив її виданою знову
+                           з тієї самої порожньої клітинки.
+                           Вигляд залежить від ДЖЕРЕЛА: звичайна галочка для
+                           штатної видачі (зняте синє або кнопка в CRM), знак
+                           питання — лише коли в тому ж читанні з'їхали рядки. #}
+                        {% set doubtful = order.issued_source == 'shifted' %}
+                        <form method="post" action="/orders/{{ order.id }}/unissue"
+                              hx-post="/orders/{{ order.id }}/unissue"
+                              hx-target="#handout-list" hx-swap="outerHTML">
+                            <input type="hidden" name="source" value="{{ source }}">
+                            <input type="hidden" name="day" value="{{ day_param }}">
+                            {% if doubtful %}
+                            <button type="submit" class="wcheck doubt"
+                                    title="Позначено виданим за заливкою, але в тому ж читанні з'їхали рядки — колір міг опинитись навпроти чужої роботи. Натисніть, якщо роботу не видавали.">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17h.01"/><path d="M9.1 9a3 3 0 1 1 4.2 2.7c-.8.4-1.3 1.1-1.3 2"/></svg>
+                            </button>
+                            {% elif order.issued_source == 'sheet' %}
+                            {# Синя галочка — видано ЗА ТАБЛИЦЕЮ (зняли заливку). Синій
+                               навмисно перегукується з заливкою рядка, щоб джерело
+                               читалось без слів. #}
+                            <button type="submit" class="wcheck done from-sheet"
+                                    title="Видано за таблицею (знято синю заливку). Натисніть, щоб повернути в чергу видачі.">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                            </button>
+                            {% else %}
+                            {# Бурштинова галочка — видано В CRM, і видно ким. #}
+                            <button type="submit" class="wcheck done from-crm"
+                                    title="Видано в CRM{% if group.issued_by.get(order.id) %}: {{ group.issued_by[order.id] }}{% endif %}. Натисніть, щоб повернути в чергу видачі.">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                            </button>
+                            {% endif %}
                         </form>
                         {% else %}
                         <span class="wcheck static" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>

@@ -506,17 +506,51 @@ def sync_tab(
             # «видано» й не потрапляла в активну чергу (бойовий випадок 01.09.26,
             # коли реальні роботи були помилково сірі). Тільки явно очищена
             # заливка ('') = видано.
+            # Заливка читається ЗА НОМЕРОМ РЯДКА, а видалення рядка вище зсуває
+            # все нижче — і чужий колір опиняється навпроти чужої роботи
+            # (01.09.26: два клієнти стали «видано», яких ніхто не видавав).
+            # Відновити зв'язок «колір ↔ робота» неможливо, тому:
+            #   * рішення ОПЕРАТОРА (issue_locked) б'є заливку назавжди;
+            #   * «видано» від заливки помічається issued_source="sheet", і
+            #     видача показує його інакше, ніж власне натиснуте «Видати».
             fill = row_fills.get(row.row_number, "blue") if row_fills is not None else "blue"
             issued = row_fills is not None and fill not in ("blue", "grey")
+            if existing is not None and existing.issue_locked:
+                # Замок — ТИМЧАСОВИЙ, а не довічний. Він потрібен рівно на час
+                # між зняттям галочки в CRM і моментом, коли наше перефарбування
+                # рядка в синій доїде до таблиці (або якщо запис у таблицю не
+                # пройшов — пауза синку, збій мережі): інакше синк побачив би ту
+                # саму порожню клітинку й повернув «видано». Щойно таблиця
+                # показує синє — вона наздогнала CRM, і замок знімається.
+                # Довічний замок ламав НАСТУПНУ дію: зняли галочку в CRM, потім
+                # зняли синє в таблиці — а CRM це вже назавжди ігнорувала
+                # (зауваження власника 05.09.26).
+                if row_fills is not None and fill in ("blue", "grey"):
+                    existing.issue_locked = False
+                    issued = False
+                else:
+                    issued = existing.status == "видано"
             status = "видано" if issued else "нове"
+            # Зняте синє — ШТАТНИЙ спосіб відмітити видачу (§2: «синій = чекає
+            # видачі, знятий = видано»), тому саме по собі воно не підозріле.
+            # Підозрілим його робить ОДНА обставина: у цьому ж проході синк
+            # побачив, що рядки ЗСУНУЛИСЬ. Тоді колір міг опинитись навпроти
+            # чужої роботи — рівно те, що сталося 01.09.26.
+            #
+            # Розрізняти обов'язково: якби знак питання з'являвся на кожному
+            # правильно виданому клієнті, за тиждень його перестали б читати, і
+            # справжня аварія загубилась би серед щоденного шуму.
+            issued_source = ("shifted" if moved else "sheet") if issued else None
         else:
             fields = _fields(row)
             source = "lab"
             status = _infer_status(row)
             rework = _rework_from_row(row)
+            issued_source = None
 
         if existing is None:
-            order = Order(source=source, sheet_tab=sheet_tab, row_number=row.row_number, status=status, **fields)
+            order = Order(source=source, sheet_tab=sheet_tab, row_number=row.row_number,
+                          status=status, issued_source=issued_source, **fields)
             order.material_id = resolve_material_id(order.material_color, alias_rows, name_to_id)
             session.add(order)
             session.flush()
@@ -658,11 +692,43 @@ def sync_tab(
         if sheet_comment:
             session.add(Comment(order_id=existing.id, source="sheet", text=sheet_comment))
 
+        # Заливку ПОВЕРНУЛИ синьою, а «видано» ставила саме вона, не людина —
+        # значить здогад відкликано. Без цієї гілки правило нижче блокувало б
+        # відкат («видано» захищене від затирання таблицею), і помилково знята
+        # заливка лишалась би незворотною навіть після того, як логіст її
+        # повернув: ми бачили б поломку, але не бачили б її виправлення.
+        #
+        # Межа проста й тримає обидва боки: таблиця може забрати те, що сама ж
+        # і стверджувала (issued_source == "sheet"), і НЕ може скасувати
+        # видачу, яку провів оператор через CRM (issued_source == "portal").
+        sheet_guess_withdrawn = (
+            is_client
+            and existing.status == "видано"
+            and existing.issued_source in ("sheet", "shifted")
+            and status != "видано"
+        )
         # The sheet can only represent progress through milling. Portal-only
         # handout states must survive the next read from the sheet.
-        if _should_apply_sheet_status(existing.status, status):
+        # `issue_locked` — рішення оператора про видачу; заливка його не чіпає.
+        if not existing.issue_locked and (
+            sheet_guess_withdrawn or _should_apply_sheet_status(existing.status, status)
+        ):
             existing.status = status
-            session.add(StatusEvent(order_id=existing.id, status=status, actor="sync"))
+            # Позначаємо, що «видано» ПРИЙШЛО З ТАБЛИЦІ, а не з натиснутої
+            # кнопки. Саме ця різниця робить збій зі зсувом рядків видимим:
+            # видача покаже такий стан інакше, ніж власну видачу.
+            existing.issued_source = issued_source
+            if issued_source == "shifted":
+                note = "видано за заливкою, але в цьому ж проході з'їхали рядки"
+            elif issued_source == "sheet":
+                note = "видано за зниклою заливкою в таблиці"
+            elif sheet_guess_withdrawn:
+                note = "заливку повернули — «видано» з таблиці скасовано"
+            else:
+                note = None
+            session.add(StatusEvent(
+                order_id=existing.id, status=status, actor="sync", note=note,
+            ))
             changed = True
 
         if _sync_rework(session, existing.id, rework, mirror=not is_client):

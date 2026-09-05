@@ -273,7 +273,7 @@ def test_client_row_without_colour_info_stays_pending():
         assert order.status == "нове"
 
 
-def test_existing_client_flips_to_issued_when_blue_cleared():
+def test_client_issue_follows_the_fill_in_BOTH_directions():
     with make_session() as session:
         sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_fills={5: "blue"})
         session.commit()
@@ -286,11 +286,22 @@ def test_existing_client_flips_to_issued_when_blue_cleared():
         session.refresh(order)
         assert order.status == "видано"
 
-        # Re-bluing does NOT un-issue (видано is protected from downgrade).
+        # Повернена синя заливка ТЕПЕР скасовує «видано» — але тільки таке,
+        # яке поставила сама заливка (issued_source == "sheet").
+        #
+        # Раніше тут стояло протилежне: «видано» захищене від затирання
+        # таблицею, тож відкат блокувався. Через це помилка була незворотною —
+        # логіст випадково знімав заливку, робота ставала виданою, а повернення
+        # заливки вже нічого не міняло (зауваження власника 05.09.26).
+        # Межу тримає issued_source: таблиця забирає лише те, що сама ж і
+        # стверджувала, а видачу, проведену оператором через CRM, не чіпає
+        # (див. test_sheet_cannot_undo_an_issue_made_by_the_operator).
+        assert order.issued_source == "sheet"
         sync_tab(session, "22.06.26", [make_client_row(row_number=5)], row_fills={5: "blue"})
         session.commit()
         session.refresh(order)
-        assert order.status == "видано"
+        assert order.status == "нове"
+        assert order.issued_source is None
 
 
 def test_new_sheet_comment_is_imported_to_history():

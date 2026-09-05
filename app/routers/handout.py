@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
@@ -88,6 +88,16 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     # operator hands out one day's furnace output at a time.
     handout_days = handout_day_options(eligible)
     selected_day = handout_select_day(handout_days, day)
+    # Сказати синку, ЯКИЙ ДЕНЬ зараз відкритий. Фоновий синк перечитує лише
+    # вікно «сьогодні ±1» — старі вкладки не чіпає заради швидкості проксі.
+    # Видача ж майже завжди дивиться у вчора й глибше, тож зміна заливки на
+    # такій вкладці не доїжджала ДО CRM ВЗАГАЛІ: логіст знімав синє в таблиці,
+    # а екран мовчав (зауваження власника 05.09.26).
+    #
+    # Механізм «гарячих переглянутих днів» уже існував, але його викликала
+    # ЛИШЕ черга (queue.py) — саме той екран, де заливка нічого не вирішує.
+    # Видача, для якої вона й вирішує все, у нього не заглядала.
+    sync_control.record_viewed_day(selected_day)
     if selected_day is not None:
         shown = [o for o in eligible if parse_sheet_tab(o.sheet_tab) == selected_day]
         # Скільки робіт лишилось на інших днях — щоб замовчування «останній
@@ -100,6 +110,20 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     groups: dict[str, list[Order]] = {}
     for order in eligible:
         groups.setdefault(order.client_name, []).append(order)
+
+    # ХТО видав — для галочки «видано в CRM». Один запит на всі роботи екрана
+    # (не по одному на рядок: на видачі їх десятки). Для «видано за таблицею»
+    # автора немає — його поставила заливка, і галочка це показує кольором.
+    issued_ids = [o.id for o in eligible if o.status == "видано"]
+    issued_by: dict[int, str] = {}
+    if issued_ids:
+        for ev in db.scalars(
+            select(StatusEvent)
+            .where(StatusEvent.order_id.in_(issued_ids), StatusEvent.status == "видано")
+            .order_by(StatusEvent.id.asc())
+        ):
+            if ev.actor and ev.actor != "sync":
+                issued_by[ev.order_id] = ev.actor
 
     # Sheet order (day, then row position top-to-bottom), not DB insertion
     # order — the lab reads this as a rough readiness timeline (furnaces close
@@ -200,6 +224,22 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
         # одним кліком (`client_folder_uri`), якщо матеріал таки підписали не
         # так і теку треба відкрити руками.
         all_found = all(o.status in ("знайдено при видачі", "видано") for o in group_orders)
+        # Клієнт, повністю ВИДАНИЙ, лишається у списку — просто згорнутим
+        # (рішення власника 05.09.26). Раніше він зникав, і саме тому збій
+        # 01.09.26 був невидимий.
+        all_issued = all(o.status == "видано" for o in group_orders)
+        # Сумнів ставимо ЛИШЕ тоді, коли синк у тому ж проході побачив зсув
+        # рядків (`issued_source == "shifted"`). Саме зсув робить заливку
+        # ненадійною — колір лишається на старій клітинці, а дані з'їжджають.
+        #
+        # Звичайне зняте синє — ШТАТНИЙ спосіб відмітити видачу (§2), і
+        # позначати його знаком питання було б помилкою: сумнів висів би на
+        # кожному правильно виданому клієнті щодня, і за тиждень його перестали
+        # б читати — саме тоді справжня аварія й загубилась би.
+        issued_from_sheet = [
+            o for o in group_orders
+            if o.status == "видано" and o.issued_source == "shifted" and not o.issue_locked
+        ]
         # Client-level folder (the parent of the material folders) so the client
         # name itself opens the right place on disk, and a link to the client
         # card so an unbound client can be fixed once instead of every morning.
@@ -222,11 +262,14 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             )
         client_groups.append(
             {
+                "issued_by": issued_by,
                 "client_name": client_name,
                 "orders": group_orders,
                 "match": match,
                 "export_entries": export_entries,
                 "all_found": all_found,
+                "all_issued": all_issued,
+                "issued_from_sheet": issued_from_sheet,
                 "client_folder_uri": client_folder_uri,
                 "client_folder_token": client_folder_token,
                 "client_id": _client_id_for(client_name),
@@ -506,6 +549,128 @@ async def unmark_found(
     # HTMX-клік підмінює лише список карток — сторінка не перезавантажується,
     # тож скрол лишається там, де оператор його поставив. Редірект лишається
     # для звичайної форми (без JS) і для прямих переходів.
+    if request.headers.get("HX-Request"):
+        return handout_cards_response(request, user, source, day, db)
+    return RedirectResponse(handout_back_url(source, day), status_code=303)
+
+
+#: Останній відомий «відбиток» стану дня, на клієнта і день. Потрібен, щоб
+#: пульс міг сказати «змінилось» без жодного стану на стороні браузера.
+_handout_pulse: dict[tuple[int, str], str] = {}
+
+
+@router.get("/handout/cards", response_class=HTMLResponse)
+def get_handout_cards(
+    request: Request,
+    source: str = "all",
+    day: str = "",
+    db: Session = Depends(get_db),
+):
+    """Лише список карток — для авто-оновлення після пульсу.
+
+    Окремий GET, бо досі картки віддавались тільки у відповідь на POST-відмітку.
+    Дорогий (обхід export), тому смикається НЕ за розкладом, а лише коли пульс
+    сказав, що стан справді змінився."""
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    return handout_cards_response(request, user, source, day, db)
+
+
+@router.get("/handout/pulse")
+def handout_pulse(
+    request: Request,
+    day: str = "",
+    db: Session = Depends(get_db),
+):
+    """Дешевий пульс екрана видачі. Робить рівно дві речі.
+
+    ПЕРШЕ — тримає відкритий день «гарячим». Фоновий синк перечитує лише
+    сьогодні±1, а видача майже завжди дивиться глибше; ознака «оператор дивиться
+    цей день» живе 2 хвилини. Без пульсу вона згасала, поки оператор фарбував
+    рядки в таблиці, і зміни переставали доїжджати зовсім.
+
+    ДРУГЕ — каже, чи стан справді змінився. Повний перебудов карток коштує
+    дорого (обхід export по SMB, ~2.7с), тому смикати його щоп'ятнадцять секунд
+    не можна. Натомість рахуємо короткий відбиток «id:статус» по дню: він
+    береться з БАЗИ одним запитом і не чіпає ні таблицю, ні диск. Змінився —
+    віддаємо HX-Trigger, і сторінка перемальовує картки САМА, один раз.
+
+    Відповідь завжди 204: тіла немає, працює лише заголовок.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+
+    today = business_today()
+    eligible = handout_eligible_orders(db, today)
+    selected_day = handout_select_day(handout_day_options(eligible), day)
+    sync_control.record_viewed_day(selected_day)
+    if selected_day is not None:
+        eligible = [o for o in eligible if parse_sheet_tab(o.sheet_tab) == selected_day]
+
+    fingerprint = ";".join(
+        f"{o.id}:{o.status}" for o in sorted(eligible, key=lambda x: x.id)
+    )
+    key = (user.id, selected_day.isoformat() if selected_day else "all")
+    changed = _handout_pulse.get(key) is not None and _handout_pulse[key] != fingerprint
+    _handout_pulse[key] = fingerprint
+
+    response = Response(status_code=204)
+    if changed:
+        response.headers["HX-Trigger"] = "refresh-handout"
+    return response
+
+
+@router.post("/orders/{order_id}/unissue")
+async def unissue_order(
+    request: Request,
+    order_id: int,
+    source: str = Form("all"),
+    day: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Зняти «видано», яке поставила не людина, а зникла заливка в таблиці.
+
+    Бойовий випадок 01.09.26: видалили рядки вище, заливка з'їхала відносно
+    даних, і двоє клієнтів стали «видано». Синк такого не відкотить сам —
+    `_should_apply_sheet_status` береже «видано» від затирання таблицею, тому
+    хибний стан лишався б назавжди.
+
+    Тому тут ДВІ дії, і друга важливіша за першу: повернути статус і поставити
+    `issue_locked`. Без замка наступний синк побачив би ту саму порожню заливку
+    й знову позначив роботу виданою — оператор знімав би галочку щодня.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+    if order.status != "видано":
+        return RedirectResponse(handout_back_url(source, day), status_code=303)
+
+    # Той самий принцип, що в unmark_found: повертаємо ПОПЕРЕДНІЙ статус, а не
+    # «нове» — робота на видачі вже відфрезерована, і показати її невиготовленою
+    # означало б збрехати про виробництво.
+    previous = db.scalars(
+        select(StatusEvent)
+        .where(StatusEvent.order_id == order.id, StatusEvent.status != "видано")
+        .order_by(StatusEvent.id.desc())
+    ).first()
+    order.status = previous.status if previous else "відфрезеровано"
+    order.issue_locked = True
+    order.issued_source = None
+    db.add(StatusEvent(
+        order_id=order.id, operator_id=user.id, status=order.status, actor=user.username,
+        note="скасовано хибне «видано» з таблиці",
+    ))
+    db.commit()
+    # Заливку повертаємо синьою: інакше стан у таблиці й у порталі розійдуться,
+    # і людина, яка дивиться в таблицю, вважатиме роботу виданою.
+    if not sync_control.is_paused():
+        set_client_row_fill_background(order.id, blue=True)
     if request.headers.get("HX-Request"):
         return handout_cards_response(request, user, source, day, db)
     return RedirectResponse(handout_back_url(source, day), status_code=303)

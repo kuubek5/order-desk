@@ -230,7 +230,16 @@ def test_sheet_failure_still_marks_issued_and_flashes_error(monkeypatch):
         assert request.session["handout_flash"]["kind"] == "error"
 
 
-def test_group_disappears_from_handout_listing_after_issue(monkeypatch):
+def test_issued_group_STAYS_on_the_handout_listing(monkeypatch):
+    """Раніше цей тест звався «...disappears...» і вимагав ПОРОЖНЬОГО списку.
+
+    Правило змінено власником 05.09.26 після бойового випадку 01.09.26:
+    видалили рядки в таблиці, заливка з'їхала, двоє клієнтів стали «видано» — і
+    просто зникли з екрана. Помилку не було видно, поки не подзвонив клієнт.
+
+    Тепер виданий клієнт ЛИШАЄТЬСЯ у списку (згорнутим, з галочкою), тож будь-яке
+    хибне «видано» видно одразу й знімається одним кліком. Довший список — свідома
+    ціна за те, що екран нічого не ховає."""
     engine = _database()
     _stub_sheet(monkeypatch)
     with Session(engine, expire_on_commit=False) as db:
@@ -250,7 +259,9 @@ def test_group_disappears_from_handout_listing_after_issue(monkeypatch):
                 lambda request, template, context: ctx_holder.update(context) or context,
             )
             handout_router_mod.get_handout(request=_request(user.id), db=db)
-        assert ctx_holder["client_groups"] == []
+        groups = ctx_holder["client_groups"]
+        assert [g["client_name"] for g in groups] == ["Basarab"]
+        assert groups[0]["all_issued"] is True
 
 
 def _get_handout_context(monkeypatch, db, user_id, day="all"):
@@ -1287,3 +1298,30 @@ def _parse(tab):
     from app.services.order_dates import parse_sheet_tab
 
     return parse_sheet_tab(tab)
+
+
+def test_handout_tells_the_sync_which_day_is_open(monkeypatch):
+    """Видача мусить реєструвати відкритий день як «гарячий».
+
+    Фоновий синк перечитує лише вікно «сьогодні ±1» — старі вкладки не чіпає
+    заради швидкості проксі. Але видача майже завжди дивиться у вчора й глибше,
+    тож зміна заливки на такій вкладці не доїжджала до CRM ВЗАГАЛІ: логіст знімав
+    синє в таблиці, а екран мовчав (бойовий випадок 05.09.26).
+
+    Механізм гарячих днів існував, але його викликала лише черга — саме той
+    екран, де заливка нічого не вирішує."""
+    engine = _database()
+    _stub_sheet(monkeypatch)
+    seen = []
+    monkeypatch.setattr(
+        handout_router_mod.sync_control, "record_viewed_day", lambda d: seen.append(d)
+    )
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(_client_order())
+        db.commit()
+        _get_handout_context(monkeypatch, db, user.id, day="")
+
+    # Порожній `day` = «останній день»: саме його синк і має тримати гарячим.
+    assert seen, "видача не повідомила синку, який день відкритий"
+    assert seen[-1] is not None

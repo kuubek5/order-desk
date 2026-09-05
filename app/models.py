@@ -163,6 +163,19 @@ class Order(Base):
     # Auto-accepted (no operator review) — future auto-list feature stamps this
     # so the history/badge can say so. NULL/False = accepted through the wizard.
     auto_accepted: Mapped[bool] = mapped_column(default=False)
+    # ЗВІДКИ взялось «видано». Досі два різні за надійністю факти виглядали
+    # однаково, і саме через це збій 01.09.26 лишався невидимим:
+    #   "portal" — оператор натиснув «Видати», є запис в історії з іменем;
+    #   "sheet"  — виведено зі ЗНИКЛОЇ заливки в таблиці. Здогад: заливка
+    #              читається за номером рядка, а видалення рядка вище зсуває
+    #              все нижче, і чужий колір опиняється навпроти чужої роботи.
+    # Екран видачі показує ці два стани по-різному, тож хибне «видано» тепер
+    # видно одразу, а не через дзвінок клієнта.
+    issued_source: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    # Оператор ухвалив рішення про видачу вручну — синк більше не чіпає її
+    # статус. Без цього зняття галочки не пережило б наступний синк: у таблиці
+    # заливки як не було, так і немає, і «видано» повернулось би само.
+    issue_locked: Mapped[bool] = mapped_column(default=False)
 
     status_events: Mapped[list["StatusEvent"]] = relationship(
         "StatusEvent", back_populates="order", cascade="all, delete-orphan"

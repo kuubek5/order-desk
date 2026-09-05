@@ -21,13 +21,18 @@ import gspread
 from app.parser import HEADER_ROWS
 from app.sheets import call_with_retry
 
-# The whole client row is filled, so one representative column is enough.
-# Col C (Кількість) — NOT col D: the sheet's conditional-format rule paints a
-# green cell over column D when the material is "Ti", and effectiveFormat
-# reports that CF result on top of the static blue, which made every Ti client
-# row read as "not blue → issued" the moment it was imported. Column C has no
-# conditional formatting, so its effective fill is the honest row colour.
-_FILL_COLUMN_LETTER = "C"
+# Читаємо заливку з колонки E — клітинки з ІМ'ЯМ КЛІЄНТА. Три причини:
+#
+# 1. Правило власника (05.09.26): ознака видачі — заливка «саме на імені
+#    клієнта». Логіст знімає синє з імені, а не з усього рядка.
+# 2. Зворотний запис уже й так фарбує САМЕ E (`set_client_row_fill_background`
+#    → sheet_writer, repeatCell по COL_KIND). Досі код писав в одну клітинку, а
+#    читав з іншої (C): оператор знімав галочку в CRM → E ставала синьою → синк
+#    дивився в C, яка й не змінювалась. Асиметрія робила весь ланцюг сліпим.
+# 3. Раніше стояла C, бо на D висіло умовне форматування (зелене для Ti), яке
+#    effectiveFormat накладав поверх синього. На E такого правила немає
+#    (перевірено 05.09.26: на вкладці 01.09.26 умовних форматів 0).
+_FILL_COLUMN_LETTER = "E"
 # How far down to scan for fills. Client rows sit well below the technician
 # block (~row 60+), but read from the first data row so nothing is missed; a
 # few hundred rows is one API response.

@@ -383,3 +383,39 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 /* Нижче 1100px покажчика немає взагалі — отже й кнопки бути не повинно:
    інакше клік давав би перезавантаження без жодної зміни («мовчазна кнопка»). */
 @media (max-width:1100px){ .handoutv2 .layout-icon{display:none} }
+
+/* ── Виданий клієнт лишається у списку ────────────────────────────────
+   Рішення власника 05.09.26. Раніше `status != "видано"` прибирав його з
+   вибірки, і збій зі зсувом заливки (01.09.26) був невидимий: двоє клієнтів
+   «видались» самі, а екран про це мовчав. Тепер клієнт лишається на місці,
+   згорнутим — приглушений, але присутній. Порядок списку не змінюється, бо
+   нічого не додається й не прибирається (правило видачі №1). */
+.handoutv2 .ccard.is-issued{opacity:.62}
+.handoutv2 .ccard.is-issued:hover{opacity:.9}
+.handoutv2 .ccard.is-issued .card-head{background:linear-gradient(90deg,rgba(255,255,255,.03),transparent)}
+
+/* «Видано» ЗІ СКАСОВАНОЇ ЗАЛИВКИ — здогад, а не факт: у CRM цю роботу ніхто
+   не видавав. Тому не галочка, а попередження. Колір тривоги, бо наслідок —
+   робота, яку вважають відданою, лежить у лотку. */
+.handoutv2 .ccard.issue-doubt{opacity:1}
+.handoutv2 .ccard.issue-doubt .card-head{
+  background:linear-gradient(90deg,rgba(var(--warn-rgb), .13),transparent)}
+.handoutv2 .card-head .issue-doubt-badge{
+  margin-left:9px;font-family:var(--font-body);font-size:var(--fs-0);font-weight:600;
+  color:var(--warn-ink);background:rgba(var(--warn-rgb), .13);
+  border:1px solid rgba(var(--warn-rgb), .35);padding:2px 9px;border-radius:999px;
+  white-space:nowrap;vertical-align:middle;cursor:help}
+/* Галочка-сумнів: те саме місце, що й у «знайдено», але знак питання й колір
+   тривоги — щоб оператор не сплутав її зі своєю власною відміткою. */
+.handoutv2 .wcheck.doubt{border-color:rgba(var(--warn-rgb), .5);background:rgba(var(--warn-rgb), .12)}
+.handoutv2 .wcheck.doubt svg{stroke:var(--warn-ink)}
+.handoutv2 .wcheck.doubt:hover{background:rgba(var(--warn-rgb), .2)}
+
+/* Дві галочки «видано» — джерело читається кольором, без слів:
+   бурштин = видано в CRM (є оператор), синій = видано за таблицею (зняли
+   заливку — колір перегукується з самою заливкою рядка). */
+.handoutv2 .wcheck.done.from-crm{border-color:rgba(var(--accent-rgb), .55);background:rgba(var(--accent-base-rgb), .18)}
+.handoutv2 .wcheck.done.from-crm svg{stroke:var(--accent-c)}
+.handoutv2 .wcheck.done.from-sheet{border-color:rgba(90,169,255,.55);background:rgba(90,169,255,.14)}
+.handoutv2 .wcheck.done.from-sheet svg{stroke:#8fc4ff}
+.handoutv2 .wcheck.done.from-sheet:hover{background:rgba(90,169,255,.24)}

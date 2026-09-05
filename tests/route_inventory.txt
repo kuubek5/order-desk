@@ -112,6 +112,7 @@ POST /orders/{order_id}/mark-found
 POST /orders/{order_id}/operator
 POST /orders/{order_id}/status
 POST /orders/{order_id}/sum3d-id
+POST /orders/{order_id}/unissue
 POST /orders/{order_id}/unmark-found
 POST /settings
 POST /settings/backup/export
@@ -166,3 +167,5 @@ POST /shift/notes/{note_id}/images
 POST /shift/notes/{note_id}/resolve
 POST /sync-speed
 POST /sync/pause
+GET /handout/cards
+GET /handout/pulse
