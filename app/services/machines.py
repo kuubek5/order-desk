@@ -411,13 +411,23 @@ def _capture_http(host: str, port: int, token: str) -> Image.Image:
         )
     except requests.exceptions.ConnectTimeout as exc:
         raise RuntimeError(
-            f"агент {host}:{port} не відповідає — ПК вимкнено або порт закрито брандмауером"
+            f"ПК {host} мовчить на порту {port} — вимкнено або порт закрито брандмауером"
         ) from exc
     except requests.exceptions.ReadTimeout as exc:
         raise RuntimeError(f"агент {host}:{port} не віддав кадр за {AGENT_TIMEOUT[1]:.0f} с") from exc
     except requests.exceptions.ConnectionError as exc:
+        # РІЗНИЦЯ ТУТ ВИРІШАЛЬНА для діагностики, тому розділяємо явно.
+        # «Відмовлено у зʼєднанні» = ПК ЖИВИЙ і сам відповів відмовою: слухати
+        # нема кому, тобто агент помер. Це зовсім інша поломка, ніж мовчання
+        # мережі, і лікується інакше (перевстановити агента, а не шукати
+        # кабель). Обидва повідомлення раніше починались з «ПК вимкнено» і
+        # змазували саме цю різницю (04.09.26, нічне випадання одного верстата).
+        if _is_refused(exc):
+            raise RuntimeError(
+                f"ПК {host} працює, але на порту {port} ніхто не слухає — агент не запущено"
+            ) from exc
         raise RuntimeError(
-            f"агент {host}:{port} недоступний — ПК вимкнено або агент не запущено"
+            f"ПК {host} не відповідає в мережі — вимкнено, спить або кабель"
         ) from exc
     with resp:
         if resp.status_code == 403:
@@ -436,6 +446,23 @@ def _capture_http(host: str, port: int, token: str) -> Image.Image:
                 )
     buf.seek(0)
     return Image.open(buf).convert("RGB")
+
+
+def _is_refused(exc: BaseException) -> bool:
+    """Чи це саме «відмовлено у зʼєднанні» (ПК живий, слухача немає).
+
+    requests загортає купу різних бід в один ConnectionError, тож дивимось у
+    ланцюг причин: ConnectionRefusedError означає, що хост ВІДПОВІВ відмовою —
+    отже він у мережі, а помер саме агент."""
+    seen = 0
+    while exc is not None and seen < 8:
+        if isinstance(exc, ConnectionRefusedError):
+            return True
+        if getattr(exc, "errno", None) == 10061:  # WSAECONNREFUSED
+            return True
+        exc = exc.__cause__ or exc.__context__
+        seen += 1
+    return False
 
 
 def _fetch_titles(host: str, port: int, token: str) -> list[str] | None:

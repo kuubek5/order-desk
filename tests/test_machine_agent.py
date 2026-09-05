@@ -79,10 +79,12 @@ def test_capture_http_network_errors_are_human(monkeypatch):
     плитку: оператору треба «хто не відповідає» і «що зробити»."""
     import requests
 
+    # Формулювання РІЗНІ для різних бід — саме з них оператор розуміє, куди
+    # йти: до кабелю, до брандмауера чи перевстановлювати агента.
     for exc_type, expect in (
         (requests.exceptions.ConnectTimeout, "брандмауер"),
         (requests.exceptions.ReadTimeout, "не віддав кадр"),
-        (requests.exceptions.ConnectionError, "не запущено"),
+        (requests.exceptions.ConnectionError, "не відповідає в мережі"),
     ):
         def _boom(*a, _e=exc_type, **k):
             raise _e("HTTPConnectionPool(host='192.0.2.10', port=8765): Max retries exceeded")
@@ -92,7 +94,7 @@ def test_capture_http_network_errors_are_human(monkeypatch):
             assert False, "мало кинути виняток"
         except RuntimeError as exc:
             text = str(exc)
-            assert "192.0.2.10:8765" in text and expect in text
+            assert "192.0.2.10" in text and expect in text
             assert "HTTPConnectionPool" not in text and "Max retries" not in text
 
 
@@ -389,3 +391,48 @@ def test_poll_target_stamps_percent_change_only_when_number_moves():
     finally:
         with ms._states_lock:
             ms._states.pop(target.key, None)
+
+
+def test_refused_connection_says_the_pc_is_alive(monkeypatch):
+    """«Відмовлено у зʼєднанні» ≠ «ПК вимкнено».
+
+    Відмова означає, що хост ВІДПОВІВ — отже він у мережі, а помер саме агент.
+    Це різні поломки й різне лікування: перевстановити агента vs шукати кабель.
+    Обидва повідомлення раніше починались з «ПК вимкнено» і змазували саме цю
+    різницю (нічне випадання верстата, 04.09.26).
+    """
+    import requests
+
+    from app.services import machines as ms
+
+    def refused(*a, **k):
+        raise requests.exceptions.ConnectionError(
+            "refused"
+        ) from ConnectionRefusedError(10061, "target machine actively refused it")
+
+    monkeypatch.setattr(requests, "get", refused)
+    try:
+        ms._capture_http("10.0.0.5", 8765, "tok")
+        raise AssertionError("мало кинути виняток")
+    except RuntimeError as exc:
+        text = str(exc)
+    assert "працює" in text and "не запущено" in text, text
+    assert "вимкнено" not in text, "відмова — це НЕ вимкнений ПК"
+
+
+def test_unreachable_host_still_says_the_pc_is_silent(monkeypatch):
+    """А от коли ніхто не відповів — формулювання лишається про мережу."""
+    import requests
+
+    from app.services import machines as ms
+
+    def dead(*a, **k):
+        raise requests.exceptions.ConnectionError("no route")
+
+    monkeypatch.setattr(requests, "get", dead)
+    try:
+        ms._capture_http("10.0.0.6", 8765, "tok")
+        raise AssertionError("мало кинути виняток")
+    except RuntimeError as exc:
+        text = str(exc)
+    assert "не відповідає в мережі" in text, text
