@@ -633,10 +633,12 @@ document.body.addEventListener("toast", (event) => {
       if ((prev.sheet === "error" && s.sheet !== "error") || (prev.mail === "error" && s.mail !== "error")) {
         fire("sheet_recovered", "Синхронізація відновлена.", "success");
       }
-      if (s.orders > prev.orders) {
-        const n = s.orders - prev.orders;
-        fire("new_orders", n + " " + plural(n, "нова робота", "нові роботи", "нових робіт") + " у черзі.", "info");
-      }
+      // Тост «нові роботи» СВІДОМО вимкнено (05.09.26): s.orders — це РОЗМІР
+      // черги (status != видано), тож повернення «видано»→«нове» (повернули
+      // синю заливку / зняли галочку) роздувало його й показувало неіснуючі
+      // «нові роботи». Повернути можна разом із фіксом підрахунку — коли
+      // orders рахуватиме появу роботи, а не розмір черги. Подію також прибрано
+      // зі списку в settings_store.NOTIFY_EVENTS.
       if (s.mail_pending > prev.mail_pending) {
         const n = s.mail_pending - prev.mail_pending;
         fire("new_mail", n + " " + plural(n, "новий лист", "нові листи", "нових листів") + " у тріажі.", "info");
