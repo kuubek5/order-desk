@@ -1,0 +1,41 @@
+{# Показання проби. Порожній шаблон → порожня відповідь: панель не має блимати
+   службовим текстом, поки поле чисте. #}
+{% if probe.pattern %}
+<div class="ml-probe-card
+            {% if probe.steals_from or probe.overlaps %}is-clash{% elif probe.duplicate or probe.covered_by %}is-moot{% elif probe.orders %}is-hit{% else %}is-void{% endif %}">
+
+    {% if probe.steals_from %}
+    {# Найважливіший стан. Не «перехопить роботи», а САМЕ зникнуть: при двох
+       претендентах classify_material повертає None. Пишемо наслідок, не
+       механіку. #}
+    <p class="ml-probe-line">
+        <strong>Конфлікт із {{ probe.steals_from|join(', ') }}.</strong>
+        Ці роботи не перейдуть сюди — вони стануть нерозпізнаними, бо на них
+        претендуватимуть два матеріали.
+    </p>
+    {% elif probe.overlaps %}
+    {# Колізія ще не настала лише тому, що таких кольорів зараз немає. Кажемо
+       про майбутнє прямо: інакше правило додадуть, а розбиратись доведеться
+       через місяць, коли причину вже ніхто не пов'яже з цим днем. #}
+    <p class="ml-probe-line">
+        <strong>Перетинається з {{ probe.overlaps|map(attribute=0)|unique|join(', ') }}.</strong>
+        Правило <code>{{ probe.overlaps[0][1] }}</code> опише той самий текст —
+        перша ж така робота стане нерозпізнаною замість того, щоб потрапити сюди.
+    </p>
+    {% elif probe.duplicate %}
+    <p class="ml-probe-line">Таке правило вже є в цього матеріалу.</p>
+    {% elif probe.covered_by %}
+    <p class="ml-probe-line">Нічого не змінить: написання вже покрите правилом <code>{{ probe.covered_by }}</code>.</p>
+    {% elif probe.orders %}
+    <p class="ml-probe-line">
+        Піймає <strong>{{ probe.orders }}</strong> {{ 'роботу' if probe.orders == 1 else 'робіт' }}
+    </p>
+    {% else %}
+    <p class="ml-probe-line">Жодної роботи з таким написанням зараз немає. Правило можна додати наперед.</p>
+    {% endif %}
+
+    {% if probe.samples %}
+    <p class="ml-probe-samples">{% for s in probe.samples %}<i>{{ s }}</i>{% endfor %}</p>
+    {% endif %}
+</div>
+{% endif %}

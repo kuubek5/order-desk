@@ -3,97 +3,80 @@
 {% block title %}Бібліотека матеріалів — KuubMill{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
 <link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
+<link rel="stylesheet" href="/static/css/matlib.css?v={{ static_ver('css/matlib.css') }}">
 {% endblock %}
 
 {% block content %}
 {% set topbar_active = 'settings' %}
 {% include "_topbar_nav.html" %}
 
+{# Консоль бібліотеки матеріалів. Раніше екран був вертикальним стосом панелей —
+   по одній на матеріал, і в кожній власна форма додавання: 29 чіпів Цирконію
+   суцільною стіною, десять однакових форм, і жодної відповіді на щоденне
+   питання «куди потрапить оцей текст із таблиці».
+
+   Тепер двопанельна консоль: зліва матеріали з ВИМІРАМИ (скільки робіт реально
+   ловлять їхні правила), справа один матеріал на весь екран, з ОДНІЄЮ формою
+   внизу. Числа рахує services/materials_console.py по справжніх кольорах. #}
 <main class="setv2 matlib">
-    <div class="matlib-head">
-        <a href="/settings" class="matlib-back">← Налаштування</a>
+    <header class="ml-head">
+        <a href="/settings" class="ml-back">Налаштування</a>
         <h1>Бібліотека матеріалів</h1>
-        <p class="wizard-sub">Категорії та правила зіставлення сирого тексту «Колір роботи» з матеріалом. Правила — це дані: додавай/видаляй, і система перекласифікує всі роботи.</p>
-    </div>
+        <p>Правила зіставляють сирий текст колонки «Колір роботи» з матеріалом. Це дані, не код: додав правило — черга перекласифікувалась.</p>
+    </header>
 
     {% if flash %}
-    <div class="matlib-flash {{ 'is-error' if flash.kind == 'error' else 'is-ok' }}">{{ flash.message }}</div>
+    <div class="ml-flash {{ 'is-error' if flash.kind == 'error' else 'is-ok' }}" role="status">{{ flash.message }}</div>
     {% endif %}
 
-    <section class="panel matlib-summary">
-        <div class="panel-body">
-            <div>
-                <span class="dlabel">Не розпізнано</span>
-                <span class="tnum {{ 'is-warn' if unresolved_count else '' }}">{{ unresolved_count }}</span>
-                <span class="unit">робіт без матеріалу</span>
-            </div>
-            <form method="post" action="/settings/materials/reclassify">
-                <button type="submit" class="settings-secondary-button" title="Застосувати всі правила до всіх робіт заново">Перекласифікувати все</button>
-            </form>
-        </div>
-    </section>
+    <div class="ml-console">
+        {# ── Ліва панель: матеріали з вимірами ─────────────────────────── #}
+        <nav class="ml-list" aria-label="Матеріали">
+            {# «Не розпізнано» стоїть НАД переліком і виглядає інакше: це не ще
+               один матеріал, а стан системи. Число клікається — веде у розбір
+               причин, а не лишається мертвою цифрою, як було. #}
+            <a class="ml-item ml-item-alarm {{ 'is-on' if show_unresolved }}"
+               href="/settings/materials?m=-1">
+                <span class="ml-dot" aria-hidden="true"></span>
+                <span class="ml-nm">Не розпізнано</span>
+                <span class="ml-n">{{ unresolved_count }}</span>
+            </a>
 
-    {% for material in materials %}
-    {# Клас родини несе і колір маркування, і кадр матеріалу в шапці картки.
-       Береться з того самого джерела, що й символ у черзі (_MATERIAL_BADGES),
-       тому колір і фото не можуть розійтись із маркуванням. #}
-    <section class="panel matlib-material {{ material_family_class(material.name) }}">
-        <div class="card-head">
-            {# Фото-мітка родини. Спершу кадр стояв фоном усієї шапки — назва
-               лягала просто на коронки й ледве читалась, а лічильник правил
-               тулився в кут. Мітка вирішує обидва: фото має власне місце,
-               текст лишається на рівному тлі. #}
-            <span class="matlib-thumb" aria-hidden="true"></span>
-            <h2>{{ material.name }}
-                {% if not material.is_production %}<span class="matlib-tag">не рахується</span>{% endif %}
-            </h2>
-            <span class="meta">{{ material.aliases|length }} правил</span>
-        </div>
+            <hr class="ml-sep">
 
-        <div class="matlib-aliases">
-            {% for alias in material.aliases|sort(attribute='pattern') %}
-            <span class="matlib-chip {{ 'is-token' if alias.match_type == 'token' else '' }}">
-                <span class="mono">{{ alias.pattern }}</span>
-                <span class="matlib-mt" title="{{ 'точний токен' if alias.match_type == 'token' else 'підрядок' }}">{{ 'T' if alias.match_type == 'token' else '~' }}</span>
-                {# Промах по хрестику тихо стирав правило («моно» → цирконій), і
-                   роботи мовчки їхали в «не розпізнано». Сторінка сама попереджає
-                   про масштаб («система перекласифікує всі роботи»), а клік нічим
-                   не гальмувався — на відміну від видалення пічки поруч. #}
-                <form method="post" action="/settings/materials/alias/{{ alias.id }}/delete" class="matlib-x-form"
-                      onsubmit="return confirm('Видалити правило «{{ alias.pattern }}»? Роботи з цим написанням стануть нерозпізнаними.')">
-                    <button type="submit" class="matlib-x" aria-label="Видалити правило" title="Видалити">
-                        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg>
-                    </button>
-                </form>
-            </span>
-            {% else %}
-            <span class="muted">немає правил</span>
+            {% for mv in material_views %}
+            <a class="ml-item {{ 'is-on' if selected and not show_unresolved and mv.id == selected.id }} {{ material_family_class(mv.name) }}"
+               href="/settings/materials?m={{ mv.id }}">
+                <span class="ml-dot" aria-hidden="true"></span>
+                <span class="ml-nm">{{ mv.name }}{% if not mv.is_production %}<i class="ml-off">не рахується</i>{% endif %}</span>
+                {% if mv.dead_count %}
+                <span class="ml-warn" title="{{ mv.dead_count }} правил недосяжні — їх уже покриває коротше правило">{{ mv.dead_count }}</span>
+                {% endif %}
+                <span class="ml-n">{{ mv.rule_count }}</span>
+            </a>
             {% endfor %}
-        </div>
 
-        <form method="post" action="/settings/materials/alias/add" class="matlib-add-alias">
-            <input type="hidden" name="material_id" value="{{ material.id }}">
-            <input class="login-input" type="text" name="pattern" placeholder="нове написання, напр. моно" required>
-            <select class="login-input matlib-select" name="match_type" title="Тип зіставлення">
-                <option value="contains">підрядок (~)</option>
-                <option value="token">точний токен (T)</option>
-            </select>
-            <button type="submit" class="settings-secondary-button">Додати</button>
-        </form>
-    </section>
-    {% endfor %}
+            <hr class="ml-sep">
 
-    <section class="panel matlib-newmat">
-        <div class="card-head"><h2>Новий матеріал</h2></div>
-        <form method="post" action="/settings/materials/add" class="matlib-add-material">
-            <input class="login-input" type="text" name="name" placeholder="назва категорії, напр. Скло" required>
-            <label class="matlib-check">
-                <input type="checkbox" name="is_production" checked> рахувати у статистиці
-            </label>
-            <button type="submit" class="login-submit settings-submit">Створити</button>
-        </form>
-    </section>
+            <details class="ml-newmat">
+                <summary>Новий матеріал</summary>
+                <form method="post" action="/settings/materials/add">
+                    <input class="ml-inp" type="text" name="name" placeholder="назва, напр. Кераміка" required>
+                    <label class="ml-check">
+                        <input type="checkbox" name="is_production" checked> рахувати у статистиці
+                    </label>
+                    <button type="submit" class="ml-btn ml-btn-apex">Створити</button>
+                </form>
+            </details>
+        </nav>
+
+        {# ── Права панель ──────────────────────────────────────────────── #}
+        {% if show_unresolved %}
+        {% include "_matlib_unresolved.html" %}
+        {% elif selected %}
+        {% include "_matlib_detail.html" %}
+        {% endif %}
+    </div>
 </main>
 {% endblock %}

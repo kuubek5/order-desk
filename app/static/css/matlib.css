@@ -1,0 +1,210 @@
+/* Консоль «Бібліотека матеріалів» — /settings/materials.
+
+   Режим Operate: це робочий інструмент адміна, не вітрина. Тому враження тут
+   будується не декором, а ТОЧНІСТЮ — табличні цифри, вирівняні колонки, одна
+   змістовна анімація. Усе інше нерухоме, бо екран читають, а не переглядають.
+
+   Кольори родин (--matline) і кадр матеріалу (--mat-art) беруться з тих самих
+   класів .mat-*, що фарбують край рядка черги: матеріал упізнається однаково
+   на обох екранах. Нових кольорів файл не вводить.
+
+   Старі стилі .matlib-* у settings.css лишились від вертикального стосу панелей
+   і цим екраном більше не використовуються. */
+
+.matlib{max-width:1160px;margin:0 auto;padding:26px 24px 64px}
+
+/* ── Шапка ────────────────────────────────────────────────────────────── */
+.ml-back{display:inline-block;font-size:var(--fs-1);color:var(--ink-3);text-decoration:none;margin-bottom:10px}
+.ml-back::before{content:"← "}
+.ml-back:hover{color:var(--ink-2)}
+.ml-head h1{font-family:var(--font-head);font-size:var(--fs-7);font-weight:600;
+  letter-spacing:var(--ls-head);margin:0 0 6px}
+.ml-head p{color:var(--ink-3);font-size:var(--fs-3);margin:0 0 20px;max-width:64ch;line-height:1.55}
+
+.ml-flash{padding:11px 15px;border-radius:var(--r-card);margin-bottom:16px;font-size:var(--fs-2)}
+.ml-flash.is-ok{background:rgba(75,208,122,.09);border:1px solid rgba(75,208,122,.28);color:#a9e3bd}
+.ml-flash.is-error{background:rgba(var(--alarm-rgb), .1);border:1px solid rgba(var(--alarm-rgb), .3);color:var(--alarm-ink)}
+
+/* ── Розкладка консолі ────────────────────────────────────────────────── */
+.ml-console{display:grid;grid-template-columns:252px minmax(0,1fr);gap:14px;align-items:start}
+
+/* ── Ліва панель ──────────────────────────────────────────────────────── */
+.ml-list{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
+  padding:7px;position:sticky;top:16px}
+.ml-item{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:8px;
+  text-decoration:none;color:var(--ink);font-size:var(--fs-2);
+  transition:background .14s ease}
+.ml-item:hover{background:var(--raise-3)}
+.ml-item.is-on{background:var(--raise);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .22)}
+.ml-item.is-on .ml-nm{color:var(--accent-c)}
+.ml-nm{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ml-off{display:block;font-style:normal;font-size:var(--fs-0);color:var(--ink-3);font-weight:400}
+/* Крапка родини — той самий колір, що край рядка в черзі. */
+.ml-dot{width:7px;height:7px;border-radius:50%;flex:0 0 7px;background:var(--matline,var(--ink-3))}
+.ml-n{margin-left:auto;font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3);
+  font-variant-numeric:tabular-nums}
+.ml-warn{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--warn);
+  background:rgba(var(--warn-rgb), .12);border:1px solid rgba(var(--warn-rgb), .26);
+  padding:0 5px;border-radius:5px;font-variant-numeric:tabular-nums}
+
+.ml-item-alarm .ml-dot{background:var(--warn)}
+.ml-item-alarm .ml-n{color:var(--warn);font-weight:600}
+.ml-sep{border:0;border-top:1px solid var(--line);margin:7px 4px}
+
+.ml-newmat summary{list-style:none;cursor:pointer;padding:9px 10px;border-radius:8px;
+  font-size:var(--fs-2);color:var(--ink-3);transition:background .14s ease,color .14s ease}
+.ml-newmat summary::-webkit-details-marker{display:none}
+.ml-newmat summary::before{content:"+ "}
+.ml-newmat summary:hover{background:var(--raise-3);color:var(--ink)}
+.ml-newmat form{display:flex;flex-direction:column;gap:8px;padding:8px 10px 4px}
+.ml-check{display:flex;align-items:center;gap:7px;font-size:var(--fs-1);color:var(--ink-3)}
+
+/* ── Права панель ─────────────────────────────────────────────────────── */
+/* Панель деталей — консоль фіксованої висоти, а не стрічка, що росте вниз.
+   Причина конкретна: у Цирконію 29 правил, і при природній висоті форма з
+   пробою опинялась НИЖЧЕ краю екрана — показання приладу було не видно саме в
+   ту мить, коли адмін друкує шаблон. Тепер гортається лише список правил, а
+   шапка й проба лишаються на місці. */
+.ml-detail{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
+  overflow:hidden;display:flex;flex-direction:column;
+  max-height:calc(100vh - 32px);position:sticky;top:16px}
+.ml-dhead,.ml-dead-note,.ml-add{flex:0 0 auto}
+.ml-dhead{display:flex;align-items:center;gap:14px;padding:18px 20px;border-bottom:1px solid var(--line)}
+/* Мітка матеріалу — СПРАВЖНІЙ кадр родини (--mat-art), не намальований
+   прямокутник: та сама фотографія, що знає черга. Обідок кольором родини. */
+.ml-swatch{flex:0 0 44px;width:44px;height:44px;border-radius:10px;
+  background-color:#0d1117;background-image:var(--mat-art);background-size:cover;background-position:center;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.09), 0 0 0 1px var(--matline,var(--line-2))}
+.ml-swatch-alarm{background-image:none;background:rgba(var(--warn-rgb), .14);
+  box-shadow:inset 0 0 0 1px rgba(var(--warn-rgb), .3)}
+.ml-dtitle{min-width:0}
+.ml-dtitle h2{font-family:var(--font-head);font-size:var(--fs-6);font-weight:600;
+  letter-spacing:var(--ls-head);margin:0}
+.ml-dsub{font-size:var(--fs-1);color:var(--ink-3);margin:3px 0 0}
+.ml-mid{margin:0 7px;opacity:.55}
+.ml-dact{margin-left:auto}
+
+.ml-dead-note{margin:0;padding:11px 20px;font-size:var(--fs-1);
+  background:rgba(var(--warn-rgb), .07);border-bottom:1px solid rgba(var(--warn-rgb), .2);
+  color:var(--warn-ink)}
+.ml-dead-note.is-clash{background:rgba(var(--alarm-rgb), .08);
+  border-bottom-color:rgba(var(--alarm-rgb), .24);color:var(--alarm-ink)}
+
+/* ── Список правил ────────────────────────────────────────────────────
+   Колонки фіксовані, цифри табличні: погляд іде вниз по одній вертикалі,
+   і різниця між 312 і 3 читається формою числа, без діаграми. */
+.ml-rules{list-style:none;margin:0;padding:6px 10px 10px;overflow-y:auto;scrollbar-width:thin;
+  flex:1 1 auto;min-height:0}
+.ml-rule{display:grid;grid-template-columns:minmax(96px,auto) auto minmax(0,1fr) auto auto;
+  align-items:center;gap:11px;padding:8px 10px;border-radius:8px;
+  transition:background .13s ease}
+.ml-rule:hover{background:var(--raise-3)}
+.ml-pat{font-family:var(--font-mono);font-size:var(--fs-2);color:var(--ink)}
+.ml-type{font-size:var(--fs-0);color:var(--ink-3);border:1px solid var(--line-2);
+  padding:1px 7px;border-radius:5px;white-space:nowrap}
+.ml-type.is-token{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .3)}
+.ml-type.is-clash{color:var(--alarm-ink);border-color:rgba(var(--alarm-rgb), .32)}
+.ml-note{font-size:var(--fs-1);color:var(--ink-3);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ml-note code{font-family:var(--font-mono);color:var(--ink-2)}
+/* Приклади справжніх написань — доказ, що правило зачіпає саме те, що треба. */
+.ml-samples{display:flex;gap:6px;min-width:0;overflow:hidden}
+.ml-samples i{font-style:normal;font-family:var(--font-mono);font-size:var(--fs-0);
+  color:var(--ink-3);background:var(--field);border:1px solid var(--line);
+  padding:1px 6px;border-radius:5px;white-space:nowrap}
+.ml-hits{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-2);
+  font-variant-numeric:tabular-nums;text-align:right;min-width:44px}
+
+.ml-rule.is-dead{background:rgba(var(--warn-rgb), .05)}
+.ml-rule.is-dead .ml-pat{color:var(--ink-3);text-decoration:line-through;text-decoration-color:rgba(var(--warn-rgb), .5)}
+.ml-rule.is-cold .ml-pat,.ml-rule.is-cold .ml-hits{color:var(--ink-3)}
+.ml-rule.is-clash .ml-pat{color:var(--alarm-ink)}
+
+/* Видалення проявляється на наведенні/фокусі, але лишається доступним із
+   клавіатури завжди — прихована кнопка не має бути недосяжною. */
+.ml-del{margin:0;display:flex}
+.ml-x{background:none;border:0;cursor:pointer;color:var(--ink-3);padding:5px;border-radius:6px;
+  opacity:0;transition:opacity .13s ease,color .13s ease,background .13s ease}
+.ml-x svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;display:block}
+.ml-rule:hover .ml-x,.ml-x:focus-visible{opacity:1}
+.ml-x:hover{color:var(--alarm-ink);background:rgba(var(--alarm-rgb), .13)}
+.ml-empty{padding:26px 12px;text-align:center;color:var(--ink-3);font-size:var(--fs-2)}
+.ml-more{margin:0;padding:11px 20px 16px;font-size:var(--fs-1);color:var(--ink-3)}
+
+/* ── Форма додавання + проба ──────────────────────────────────────────── */
+.ml-add{border-top:1px solid var(--line);background:var(--raise-3);padding:14px 20px 16px}
+.ml-add-row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.ml-inp{font-family:var(--font-body);font-size:var(--fs-3);background:var(--field);
+  border:1px solid var(--control-edge,var(--line-2));color:var(--ink);
+  padding:9px 12px;border-radius:8px;outline:none;
+  transition:border-color .15s ease,box-shadow .15s ease}
+.ml-inp:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb), .14)}
+.ml-inp::placeholder{color:var(--ink-3)}
+.ml-pat-inp{flex:1 1 240px;font-family:var(--font-mono)}
+
+/* Сегментований перемикач на радіо: працює без JS і доступний з клавіатури. */
+.ml-seg{display:flex;background:var(--field);border:1px solid var(--line-2);border-radius:8px;overflow:hidden}
+.ml-seg input{position:absolute;opacity:0;width:0;height:0}
+.ml-seg label{font-size:var(--fs-1);font-weight:500;color:var(--ink-3);padding:9px 13px;cursor:pointer;
+  transition:background .14s ease,color .14s ease;white-space:nowrap}
+.ml-seg input:checked + label{background:var(--raise);color:var(--accent-c)}
+.ml-seg input:focus-visible + label{box-shadow:inset 0 0 0 2px rgba(var(--accent-rgb), .45)}
+
+.ml-btn{font-family:var(--font-body);font-size:var(--fs-2);font-weight:500;
+  background:var(--raise-2);border:1px solid var(--line-2);color:var(--ink);
+  padding:9px 14px;border-radius:8px;cursor:pointer;
+  transition:border-color .14s ease,background .14s ease}
+.ml-btn:hover{background:var(--raise);border-color:var(--control-edge,var(--line-2))}
+.ml-btn-apex{background:var(--accent);border-color:var(--accent);color:#241802;font-weight:600}
+.ml-btn-apex:hover{background:var(--accent-b);border-color:var(--accent-b)}
+
+/* ── Авторський момент ────────────────────────────────────────────────
+   Єдина анімація екрана. Показання проби не «в'їжджають» — вони ПРОЯВЛЯЮТЬСЯ:
+   картка вже на своєму місці, знімається розмиття і розкривається clip-path
+   згори вниз, як проступає значення на табло приладу. Експоненційний ease-out
+   (.16,1,.3,1) — швидкий старт, довгий спокійний хвіст.
+
+   Ефект прив'язаний до появи вмісту, а не до наведення: рухається лише те, що
+   справді змінилось. Решта екрана нерухома — на нього дивляться довго. */
+.ml-probe{min-height:0}
+.ml-probe-card{margin-top:11px;padding:11px 14px;border-radius:8px;font-size:var(--fs-2);
+  border:1px solid var(--line-2);background:var(--field);
+  animation:ml-probe-in .42s cubic-bezier(.16,1,.3,1) both}
+@keyframes ml-probe-in{
+  from{opacity:0;filter:blur(6px);clip-path:inset(0 0 100% 0)}
+  to{opacity:1;filter:blur(0);clip-path:inset(0 0 0 0)}
+}
+@media (prefers-reduced-motion:reduce){
+  .ml-probe-card{animation:none}
+}
+.ml-probe-line{margin:0;color:var(--ink-2);line-height:1.5}
+.ml-probe-line strong{color:var(--ink);font-weight:600}
+.ml-probe-line code{font-family:var(--font-mono);color:var(--ink)}
+.ml-probe-samples{display:flex;gap:6px;flex-wrap:wrap;margin:9px 0 0}
+.ml-probe-samples i{font-style:normal;font-family:var(--font-mono);font-size:var(--fs-0);
+  color:var(--ink-2);background:var(--raise-3);border:1px solid var(--line);
+  padding:2px 7px;border-radius:5px}
+
+/* Чотири стани проби, кожен зі своїм змістом, а не просто кольором. */
+.ml-probe-card.is-hit{border-color:rgba(75,208,122,.3);background:rgba(75,208,122,.07)}
+.ml-probe-card.is-hit .ml-probe-line strong{color:#8fe0ab}
+.ml-probe-card.is-clash{border-color:rgba(var(--alarm-rgb), .34);background:rgba(var(--alarm-rgb), .09)}
+.ml-probe-card.is-clash .ml-probe-line{color:var(--alarm-ink)}
+.ml-probe-card.is-moot{border-color:rgba(var(--warn-rgb), .3);background:rgba(var(--warn-rgb), .07)}
+.ml-probe-card.is-moot .ml-probe-line{color:var(--warn-ink)}
+.ml-probe-card.is-void .ml-probe-line{color:var(--ink-3)}
+
+/* ── Вузький екран ────────────────────────────────────────────────────
+   Панель матеріалів стає горизонтальною стрічкою над деталями: на ПК цеху
+   екран один, але сторінку відкривають і з ноутбука. */
+@media (max-width:900px){
+  .ml-console{grid-template-columns:minmax(0,1fr)}
+  .ml-list{position:static;display:flex;gap:6px;overflow-x:auto;padding:7px;scrollbar-width:thin}
+  .ml-item{flex:0 0 auto}
+  .ml-sep,.ml-newmat{display:none}
+  .ml-rule{grid-template-columns:minmax(88px,auto) auto minmax(0,1fr) auto auto}
+  .ml-samples{display:none}
+  /* Приліплена консоль має сенс лише там, де є вертикальний запас. */
+  .ml-detail{position:static;max-height:none}
+  .ml-rules{max-height:60vh}
+}

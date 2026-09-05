@@ -1,0 +1,53 @@
+{# Розбір нерозпізнаних. Головне тут — ПРИЧИНА, а не число.
+
+   Два діагнози з різним лікуванням:
+   • колізія — на текст претендують два матеріали, класифікатор віддає None,
+     і робота зникає з обох. Це зламані правила, лікується виправленням;
+   • немає правила — просто ще не описане написання, лікується одним правилом.
+
+   Раніше екран показував лише «24 робіт без матеріалу» — одне число, з якого
+   неможливо було зрозуміти, що саме робити. #}
+<section class="ml-detail ml-unres">
+    <header class="ml-dhead">
+        <span class="ml-swatch ml-swatch-alarm" aria-hidden="true"></span>
+        <div class="ml-dtitle">
+            <h2>Не розпізнано</h2>
+            <p class="ml-dsub">
+                {{ unresolved_count }} {{ 'робота' if unresolved_count == 1 else 'робіт' }} без матеріалу
+                <span class="ml-mid" aria-hidden="true">·</span>
+                {{ unresolved_total_items }} {{ 'написання' if unresolved_total_items == 1 else 'написань' }}
+            </p>
+        </div>
+        <form method="post" action="/settings/materials/reclassify" class="ml-dact">
+            <button type="submit" class="ml-btn">Перекласифікувати</button>
+        </form>
+    </header>
+
+    {% if collision_orders %}
+    <p class="ml-dead-note is-clash">
+        {{ collision_orders }} {{ 'робота' if collision_orders == 1 else 'робіт' }} втрачено через конфлікт правил — на їхнє написання претендує більше одного матеріалу, тому не спрацьовує жоден.
+    </p>
+    {% endif %}
+
+    <ol class="ml-rules ml-unres-list">
+        {% for item in unresolved_items %}
+        <li class="ml-rule {{ 'is-clash' if item.rivals }}">
+            <code class="ml-pat">{{ item.raw }}</code>
+            {% if item.rivals %}
+            <span class="ml-type is-clash">конфлікт</span>
+            <span class="ml-note">претендують {{ item.rivals|join(' і ') }}</span>
+            {% else %}
+            <span class="ml-type">немає правила</span>
+            <span class="ml-note">жодне написання не описує цей текст</span>
+            {% endif %}
+            <span class="ml-hits">{{ item.orders }}</span>
+        </li>
+        {% else %}
+        <li class="ml-empty">Усі роботи розпізнані. Нема чого розбирати.</li>
+        {% endfor %}
+    </ol>
+
+    {% if unresolved_total_items > unresolved_items|length %}
+    <p class="ml-more">Показано {{ unresolved_items|length }} із {{ unresolved_total_items }} написань — решта трапляється рідше.</p>
+    {% endif %}
+</section>

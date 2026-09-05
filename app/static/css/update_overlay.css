@@ -190,11 +190,15 @@
    паспорті роботи), і прописані окремо вони рано чи пізно розійшлися б —
    рівно так, як колись розійшлись колір маркування і смуга матеріалу.
    Змінна успадковується, тому всередині родини її бачить будь-який нащадок. */
-.mat-zr  { --mat-art:url("../img/mat-zr.jpg") }
-.mat-pmma{ --mat-art:url("../img/mat-pmma.jpg") }
-.mat-ti  { --mat-art:url("../img/mat-ti.jpg") }
-.mat-slm { --mat-art:url("../img/mat-slm.jpg") }
-.mat-wax { --mat-art:url("../img/mat-wax.jpg") }
+/* Родина матеріалу описується ТУТ повністю: кадр (--mat-art) і колір
+   (--matline). Раніше колір жив окремо в settings.css, прив'язаний до розмітки
+   старої бібліотеки, і консоль матеріалів до нього не дотягувалась. Два місця
+   для однієї родини рано чи пізно розійшлися б. */
+.mat-zr  { --mat-art:url("../img/mat-zr.jpg");   --matline:#8fbfe0 }
+.mat-pmma{ --mat-art:url("../img/mat-pmma.jpg"); --matline:#d8b46a }
+.mat-ti  { --mat-art:url("../img/mat-ti.jpg");   --matline:#63c88b }
+.mat-slm { --mat-art:url("../img/mat-slm.jpg");  --matline:#9aa7b4 }
+.mat-wax { --mat-art:url("../img/mat-wax.jpg");  --matline:#3fb6c9 }
 /* «Не визначено» лишається пунктиром: пунктир і Є повідомленням про
    невизначеність, суцільна межа тут збрехала б. */
 .matpair.mat-unknown .mp-k{

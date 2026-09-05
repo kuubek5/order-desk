@@ -698,11 +698,9 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
   /* Обідок кольором родини — той самий сигнал, що край рядка в черзі, тому
      родина впізнається однаково на обох екранах. */
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.08), 0 0 0 1px var(--matline, transparent)}
-.matlib-material.mat-zr   { --matline:#8fbfe0 }
-.matlib-material.mat-pmma { --matline:#d8b46a }
-.matlib-material.mat-ti   { --matline:#63c88b }
-.matlib-material.mat-slm  { --matline:#9aa7b4 }
-.matlib-material.mat-wax  { --matline:#3fb6c9 }
+/* --matline переїхав до update_overlay.css, до кадру тієї ж родини: колір і
+   фото матеріалу тепер описані в одному місці й доступні будь-якому екрану
+   (консоль /settings/materials теж їх бере). */
 /* Сам кадр приходить змінною --mat-art з класу родини (update_overlay.css,
    поруч із кольором родини) — тут лише розмір і форма мітки. */
 .matlib-tag{margin-left:8px;font-size:var(--fs-0);padding:2px 7px;border-radius:6px;background:var(--line);color:var(--ink-3);vertical-align:middle}

@@ -1,0 +1,97 @@
+{# Права панель консолі: один матеріал на весь екран.
+
+   Правила відсортовані за РЕАЛЬНОЮ вагою (скільки робіт ловлять), а не за
+   абеткою: спершу те, на чому тримається класифікація, внизу — те, що не
+   спрацювало жодного разу. Мертві правила (покриті коротшим) позначені й
+   пояснені текстом, а не значком: «уже покрите правилом mono» — це діагноз,
+   на який видно, що робити. #}
+<section class="ml-detail {{ material_family_class(selected.name) }}">
+    <header class="ml-dhead">
+        <span class="ml-swatch" aria-hidden="true"></span>
+        <div class="ml-dtitle">
+            <h2>{{ selected.name }}</h2>
+            <p class="ml-dsub">
+                {{ rules|length }} {{ 'правило' if rules|length == 1 else 'правил' }}
+                <span class="ml-mid" aria-hidden="true">·</span>
+                {% if selected.is_production %}рахується у статистиці{% else %}не рахується у статистиці{% endif %}
+            </p>
+        </div>
+        <form method="post" action="/settings/materials/reclassify" class="ml-dact">
+            <button type="submit" class="ml-btn" title="Застосувати всі правила до всіх робіт заново">Перекласифікувати</button>
+        </form>
+    </header>
+
+    {% set dead = rules|selectattr('covered_by')|list %}
+    {% if dead %}
+    {# Попередження про мертві правила стоїть НАД списком: воно про набір
+       загалом, і його треба побачити до того, як гортати правила. #}
+    <p class="ml-dead-note">
+        {{ dead|length }} {{ 'правило' if dead|length == 1 else 'правил' }} недосяжні — коротше правило спрацьовує раніше. Їх можна прибрати без наслідків.
+    </p>
+    {% endif %}
+
+    <ol class="ml-rules">
+        {% for rule in rules %}
+        <li class="ml-rule {{ 'is-dead' if rule.covered_by }} {{ 'is-cold' if rule.orders == 0 and not rule.covered_by }}">
+            <code class="ml-pat">{{ rule.pattern }}</code>
+            <span class="ml-type {{ 'is-token' if rule.match_type == 'token' }}">{{ 'точний токен' if rule.match_type == 'token' else 'підрядок' }}</span>
+
+            {% if rule.covered_by %}
+            <span class="ml-note">уже покрите правилом <code>{{ rule.covered_by }}</code></span>
+            {% elif rule.samples %}
+            <span class="ml-samples">{% for s in rule.samples %}<i>{{ s }}</i>{% endfor %}</span>
+            {% else %}
+            <span class="ml-note">жодного збігу в поточних роботах</span>
+            {% endif %}
+
+            <span class="ml-hits" title="робіт, які ловить це правило">{{ rule.orders }}</span>
+
+            {# Текст підтвердження мусить казати ПРАВДУ про наслідок, інакше він
+               гірший за відсутність підтвердження. Для покритого правила ніщо
+               не зміниться — коротше правило ловить ті самі роботи; писати тут
+               «стануть нерозпізнаними» означало б лякати без причини й вчити
+               адміна не читати діалоги. #}
+            <form method="post" action="/settings/materials/alias/{{ rule.id }}/delete" class="ml-del"
+                  onsubmit="return confirm('{% if rule.covered_by %}Прибрати недосяжне правило «{{ rule.pattern }}»? Класифікація не зміниться — ці роботи однаково ловить «{{ rule.covered_by }}».{% elif rule.orders %}Видалити правило «{{ rule.pattern }}»? Робіт стане нерозпізнаними: {{ rule.orders }}.{% else %}Видалити правило «{{ rule.pattern }}»? Зараз воно не ловить жодної роботи.{% endif %}')">
+                <button type="submit" class="ml-x" aria-label="Видалити правило «{{ rule.pattern }}»" title="Видалити правило">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+            </form>
+        </li>
+        {% else %}
+        <li class="ml-empty">Правил ще немає. Додай перше нижче — воно одразу покаже, скільки робіт піймає.</li>
+        {% endfor %}
+    </ol>
+
+    {# ── Авторський момент: поле, яке міряє ────────────────────────────
+       Поки адмін друкує, /settings/materials/probe рахує по справжніх
+       кольорах: скільки робіт піймає це написання, на яких саме, і чи не
+       перетнеться воно з іншим матеріалом. Останнє критичне — при двох
+       претендентах класифікатор віддає None, тобто робота зникає з ОБОХ
+       матеріалів у «не розпізнано». Раніше це можна було дізнатись лише
+       постфактум, по зрослому лічильнику нерозпізнаних. #}
+    <form method="post" action="/settings/materials/alias/add" class="ml-add">
+        <input type="hidden" name="material_id" value="{{ selected.id }}">
+        <div class="ml-add-row">
+            <input class="ml-inp ml-pat-inp" type="text" name="pattern" required
+                   autocomplete="off" spellcheck="false"
+                   placeholder="нове написання, напр. кераміка"
+                   hx-get="/settings/materials/probe"
+                   hx-trigger="input changed delay:220ms"
+                   hx-target="#ml-probe" hx-swap="innerHTML"
+                   hx-include="closest .ml-add">
+            <div class="ml-seg" role="group" aria-label="Тип зіставлення">
+                <input type="radio" id="mt-contains" name="match_type" value="contains" checked
+                       hx-get="/settings/materials/probe" hx-trigger="change"
+                       hx-target="#ml-probe" hx-swap="innerHTML" hx-include="closest .ml-add">
+                <label for="mt-contains" title="Спрацює, якщо написання трапляється будь-де в тексті">підрядок</label>
+                <input type="radio" id="mt-token" name="match_type" value="token"
+                       hx-get="/settings/materials/probe" hx-trigger="change"
+                       hx-target="#ml-probe" hx-swap="innerHTML" hx-include="closest .ml-add">
+                <label for="mt-token" title="Спрацює лише як окреме слово — «500», але не «1500»">точний токен</label>
+            </div>
+            <button type="submit" class="ml-btn ml-btn-apex">Додати правило</button>
+        </div>
+        <div id="ml-probe" class="ml-probe" aria-live="polite"></div>
+    </form>
+</section>

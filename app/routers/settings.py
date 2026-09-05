@@ -50,6 +50,13 @@ from app.material_catalog import (
     list_materials,
     unresolved_order_count,
 )
+from app.services.materials_console import (
+    load_colour_rows,
+    material_views,
+    measure_rules,
+    probe_pattern,
+    unresolved_breakdown,
+)
 from app.models import (
     Furnace,
     Machine,
@@ -57,6 +64,7 @@ from app.models import (
     EmailMessage,
     MailFilterCategory,
     MailFilterRule,
+    MaterialAlias,
     Order,
     User,
 )
@@ -732,9 +740,17 @@ def disconnect_google_oauth(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/settings/materials", response_class=HTMLResponse)
-def get_materials_settings(request: Request, db: Session = Depends(get_db)):
-    """Screen: material library management (admin). Lists categories with their
-    alias rules, plus the count of orders whose colour is still unclassified."""
+def get_materials_settings(
+    request: Request, m: int | None = None, db: Session = Depends(get_db)
+):
+    """Екран: консоль бібліотеки матеріалів (адмін).
+
+    Двопанельна: зліва матеріали з вимірами, справа — один обраний. `m` тримає
+    вибір у URL, тому після додавання/видалення правила адміна повертає туди ж,
+    де він працював, а не на початок довгої сторінки.
+
+    Числа рахує app/services/materials_console.py по СПРАВЖНІХ кольорах робіт.
+    """
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
@@ -743,16 +759,61 @@ def get_materials_settings(request: Request, db: Session = Depends(get_db)):
 
     ensure_seeded(db)
     flash = request.session.pop("materials_flash", None)
+    materials = list_materials(db)
+    colours = load_colour_rows(db)
+    views = material_views(materials, colours)
+    unresolved, no_rule_orders, collision_orders = unresolved_breakdown(db, colours)
+
+    selected = next((x for x in materials if x.id == m), None)
+    if selected is None and materials:
+        selected = materials[0]
+    rules = measure_rules(list(selected.aliases), colours) if selected else []
+
     return templates.TemplateResponse(
         request,
         "settings_materials.html",
         {
             "page_title": "Бібліотека матеріалів",
             "user": user,
-            "materials": list_materials(db),
-            "unresolved_count": unresolved_order_count(db),
+            "materials": materials,
+            "material_views": views,
+            "selected": selected,
+            "rules": rules,
+            # Число В ШАПЦІ й список під ним МУСЯТЬ рахуватись з одного
+            # предиката, інакше екран суперечить сам собі. Перша версія брала
+            # unresolved_order_count() (без фільтра архіву) і показувала
+            # «24 робіт без матеріалу · 0 написань» — бо розбір дивиться лише на
+            # активні роботи. Беремо суму того самого розбору: розійтись нема як.
+            "unresolved_count": no_rule_orders + collision_orders,
+            "unresolved_items": unresolved[:12],
+            "unresolved_total_items": len(unresolved),
+            "no_rule_orders": no_rule_orders,
+            "collision_orders": collision_orders,
+            "show_unresolved": m == -1,
             "flash": flash,
         },
+    )
+
+
+@router.get("/settings/materials/probe", response_class=HTMLResponse)
+def probe_material_alias(
+    request: Request,
+    material_id: int,
+    pattern: str = "",
+    match_type: str = "contains",
+    db: Session = Depends(get_db),
+):
+    """Живі показання для ще НЕ збереженого правила (HTMX, на введення).
+
+    Читання, нічого не змінює. Відповідає на три питання одразу: скільки робіт
+    піймає, на яких написаннях і чи не відбере воно роботи в іншого матеріалу —
+    останнє критичне, бо при двох претендентах класифікатор віддає None, тобто
+    робота зникає з ОБОХ матеріалів у «не розпізнано».
+    """
+    require_settings_admin(request, db)
+    result = probe_pattern(db, material_id, pattern, match_type)
+    return templates.TemplateResponse(
+        request, "_matlib_probe.html", {"probe": result}
     )
 
 
@@ -777,12 +838,16 @@ def add_material_alias(
     except MaterialCatalogError as exc:
         db.rollback()
         request.session["materials_flash"] = {"kind": "error", "message": str(exc)}
-    return RedirectResponse("/settings/materials", status_code=303)
+    # Повертаємо НА ТОЙ САМИЙ матеріал: інакше адмін після кожного правила
+    # опинявся б на першому в списку й шукав своє місце заново.
+    return RedirectResponse(f"/settings/materials?m={material_id}", status_code=303)
 
 
 @router.post("/settings/materials/alias/{alias_id}/delete")
 def remove_material_alias(alias_id: int, request: Request, db: Session = Depends(get_db)):
     require_settings_admin(request, db)
+    alias = db.get(MaterialAlias, alias_id)
+    back_to = alias.material_id if alias is not None else None
     delete_alias(db, alias_id)
     # Re-resolve from scratch so orders that only matched the deleted rule are
     # re-evaluated against the remaining rules (may become unresolved again).
@@ -791,7 +856,8 @@ def remove_material_alias(alias_id: int, request: Request, db: Session = Depends
     backfill_orders(db, only_unresolved=False)
     db.commit()
     request.session["materials_flash"] = {"kind": "success", "message": "Правило видалено."}
-    return RedirectResponse("/settings/materials", status_code=303)
+    target = f"/settings/materials?m={back_to}" if back_to else "/settings/materials"
+    return RedirectResponse(target, status_code=303)
 
 
 @router.post("/settings/materials/add")

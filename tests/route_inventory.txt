@@ -40,6 +40,7 @@ GET /system/load
 GET /settings
 GET /settings/feedback
 GET /settings/materials
+GET /settings/materials/probe
 GET /settings/recognition
 GET /setup
 GET /sheets/mass-vanish
