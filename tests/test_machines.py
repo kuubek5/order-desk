@@ -467,3 +467,25 @@ def test_outage_history_counts_drops_and_durations(monkeypatch, tmp_path):
     card = service.MachineCard(target=target, state=state, now=datetime.now())
     assert "обривів: 1" in card.link_report
     assert card.link_outages and "–" in card.link_outages[0]
+
+
+def test_machines_poll_pauses_for_any_open_details():
+    """Полл не сміє згортати РОЗГОРНУТИЙ блок на картці верстата.
+
+    Умова стоїть на будь-який <details>, а не на окремий клас. Спершу вона
+    ловила лише повний кадр (`.fu-frame[open]`), і коли поруч зʼявились обриви
+    звʼязку та перелік вікон, вони згортались самі через півсекунди — полл
+    приносив розмітку із закритим блоком (скарга 05.09.26). Тест сторожить
+    саме узагальнення: новий розгортний блок мусить працювати без правок тут.
+    """
+    import re
+    from pathlib import Path
+
+    src = Path("app/templates/machines.html").read_text(encoding="utf-8")
+    trigger = re.search(r'hx-trigger="([^"]+)"', src)
+    assert trigger, "у машинного полла зник hx-trigger"
+    condition = trigger.group(1)
+    assert "#machine-cards details[open]" in condition, condition
+    # Саме УМОВА, а не файл: у коментарі поруч старий селектор згадується
+    # навмисно, як пояснення.
+    assert "fu-frame" not in condition, "умова знову звузилась до одного класу"

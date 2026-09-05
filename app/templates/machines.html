@@ -45,11 +45,16 @@
     </div>
     {% endif %}
 
-    {# Той самий виняток, що на пічках: полл не свапає, поки відкритий
-       повний кадр — його розглядають саме тоді. #}
+    {# Той самий виняток, що на пічках: полл не свапає, поки щось РОЗГОРНУТО —
+       його саме зараз і розглядають. Умова навмисно на БУДЬ-ЯКИЙ <details>, а
+       не на окремий клас: спершу тут стояв лише `.fu-frame[open]` (повний
+       кадр), і коли поруч зʼявились обриви звʼязку та перелік вікон, вони
+       згортались самі через півсекунди — полл приносив розмітку з закритим
+       блоком (скарга 05.09.26). Новий розгортний блок під цю умову потрапляє
+       вже без правок. #}
     <div id="machine-cards"
          hx-get="/machines/cards"
-         hx-trigger="every {{ poll_seconds }}s[!document.querySelector('#machine-cards .fu-frame[open]')]"
+         hx-trigger="every {{ poll_seconds }}s[!document.querySelector('#machine-cards details[open]')]"
          hx-swap="innerHTML">
         {% include "_machine_cards.html" %}
     </div>
