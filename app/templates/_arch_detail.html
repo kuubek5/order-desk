@@ -1,0 +1,40 @@
+{# Права панель архіву: заголовок місяця + календар-heatmap + слот дня.
+   Віддається як HTMX-партіал у #arch-detail і включається в archive.html. #}
+{% if month_grid %}
+<div class="arch-dhead">
+    <h2>{{ month_label }}</h2>
+    <span class="cnt"><b class="mono">{{ month_total }}</b> робіт</span>
+</div>
+
+<div class="arch-cal">
+    <div class="cal-head"><b>пн</b><b>вт</b><b>ср</b><b>чт</b><b>пт</b><b>сб</b><b>нд</b></div>
+    {% for week in month_grid %}
+    <div class="cal-week">
+        {% for cell in week %}
+            {% if cell is none %}
+            <span class="cal-cell pad" aria-hidden="true"></span>
+            {% elif cell.count == 0 %}
+            <span class="cal-cell empty"><span class="cc-day mono">{{ cell.day }}</span></span>
+            {% else %}
+                {% set r = cell.count / month_max if month_max else 0 %}
+                <a class="cal-cell {% if r < 0.34 %}h1{% elif r < 0.67 %}h2{% else %}h3{% endif %}"
+                   data-day="{{ cell.day }}" href="/archive?month={{ month_ym }}"
+                   hx-get="/archive/day?date={{ cell.date }}" hx-target="#arch-day" hx-swap="innerHTML"
+                   title="{{ cell.count }} робіт">
+                    <span class="cc-day mono">{{ cell.day }}</span>
+                    <span class="cc-n mono">{{ cell.count }}</span>
+                </a>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% endfor %}
+</div>
+
+<div class="arch-day" id="arch-day">
+    <div class="arch-dayhint">Оберіть день у календарі, щоб побачити роботи.</div>
+</div>
+{% else %}
+<div class="arch-empty">
+    <h3>Немає даних</h3>
+</div>
+{% endif %}

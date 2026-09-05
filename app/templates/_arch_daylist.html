@@ -1,0 +1,42 @@
+{# Роботи одного дня — HTMX-партіал у #arch-day. Вигляд «Аркуш»: таблиця-сітка
+   як Google Таблиця, порядок рядків = порядок таблиці (за row_number). #}
+{% if day_orders %}
+<div class="arch-dl-head">
+    <h3 class="mono">{{ day_label }}</h3>
+    <span class="cnt"><b class="mono">{{ day_orders|length }}</b> робіт · порядок як у таблиці</span>
+</div>
+<div class="arch-sheet-wrap">
+    <table class="arch-sheet">
+        <thead>
+            <tr>
+                <th class="c-num">№</th>
+                <th class="c-nar">Наряд</th>
+                <th class="c-cl">Клієнт</th>
+                <th class="c-qty">К-сть</th>
+                <th class="c-mat">Колір</th>
+                <th class="c-kind">Вид роботи</th>
+                <th class="c-sum">Час</th>
+                <th class="c-tech">Технік</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in day_orders %}
+            <tr data-order-detail="{{ order.id }}" tabindex="0">
+                <td class="c-num mono">{{ loop.index }}</td>
+                <td class="c-nar mono">{{ order.work_order_no or '—' }}</td>
+                <td class="c-cl">{{ order.client_name or '—' }}</td>
+                <td class="c-qty mono">{{ order.quantity or '' }}</td>
+                <td class="c-mat">{{ order.material_color or '' }}</td>
+                <td class="c-kind">{{ order.kind or '' }}</td>
+                <td class="c-sum mono">{{ order.sum3d_id or '—' }}</td>
+                <td class="c-tech">{{ order.technician_name or '' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="arch-empty sm">
+    <h3>Цього дня робіт немає</h3>
+</div>
+{% endif %}

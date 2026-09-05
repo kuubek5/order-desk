@@ -264,33 +264,54 @@ body[data-matstyle="code"] .matpair.mat-unknown{border:0}
 .passport2 .p2-archived{display:flex;align-items:center;gap:9px;font-size:var(--fs-2);color:var(--accent-c);background:var(--accent-bg,rgba(var(--accent-base-rgb), .12));border:1px solid rgba(var(--accent-rgb), .32);border-radius:10px;padding:9px 13px;margin-bottom:14px}
 .passport2 .p2-archived svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
 
-/* ── Архів (Концепт «Хроніка»): місяці → календар → день → паспорт ──────── */
-main.arch{max-width:1120px;margin:0 auto;padding:18px 20px}
+/* ── Архів (Концепт «Хроніка»), розкладка майстер-деталь ─────────────────
+   Ліва рейка місяців завжди на очах; вибір місяця/дня підмінює праву панель
+   через HTMX і НЕ перемикає сторінку (обрано власником 05.09.26) — так
+   контекст «де ти в архіві» не губиться між кліками. */
+main.arch{max-width:1180px;margin:0 auto;padding:18px 20px}
 .arch .mono{font-family:var(--font-mono);font-variant-ligatures:none}
-.arch-top{margin-bottom:16px}
+.arch-top{margin-bottom:14px}
 .arch-top h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 4px}
 .arch-sub{font-size:var(--fs-2);color:var(--ink-2);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .arch-sub b{color:var(--ink);font-weight:500}
-.arch-sub .sep{width:1px;height:11px;background:var(--line-2)}
-.arch-crumb{color:var(--accent-c);text-decoration:none}
-.arch-crumb:hover{color:var(--accent-b)}
 
-/* Level 1 — months */
-.arch-months{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
-.arch-month{display:flex;align-items:center;gap:14px;padding:13px 15px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);text-decoration:none;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
-.arch-month:hover{border-color:rgba(var(--accent-rgb), .4);background:var(--card-2)}
+/* Пошук по всьому архіву */
+.arch-tools{margin-bottom:14px}
+.arch-search{position:relative;max-width:520px}
+.arch-search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;stroke:var(--ink-3);fill:none;stroke-width:1.7;stroke-linecap:round}
+.arch-search input{width:100%;background:var(--card);border:1px solid var(--control-edge);border-radius:9px;color:var(--ink);font:inherit;font-size:var(--fs-2);padding:9px 12px 9px 34px;outline:none;transition:border-color var(--ui-speed) ease,box-shadow var(--ui-speed) ease}
+.arch-search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb), .15)}
+.arch-search input::placeholder{color:var(--ink-3)}
+
+/* Дві колонки: рейка місяців | деталь */
+.arch-grid{display:grid;grid-template-columns:262px 1fr;gap:14px;align-items:start}
+
+/* Ліва рейка — місяці (новіші згори), sticky */
+.arch-months{display:flex;flex-direction:column;gap:6px;position:sticky;top:14px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:6px}
+.arch-month{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;border:1px solid transparent;text-decoration:none;cursor:pointer;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease}
+.arch-month:hover{background:var(--card-2)}
+.arch-month.on{background:var(--card-2);border-color:rgba(var(--accent-rgb), .45)}
+.arch-month.on .am-label{color:var(--accent-c)}
 .am-info{flex:1;min-width:0}
-.am-label{font-size:var(--fs-3);color:var(--ink);font-weight:500}
-.am-count{font-size:var(--fs-5);color:var(--accent-c);line-height:1.2}
-.am-spark{display:flex;align-items:flex-end;gap:2px;height:30px;width:96px;flex:0 0 auto}
-.am-spark i{flex:1;background:var(--accent);border-radius:1px;opacity:.8;display:block;min-height:2px}
+.am-label{font-size:var(--fs-2);color:var(--ink);font-weight:500}
+.am-count{font-size:var(--fs-1);color:var(--ink-3)}
+.am-spark{display:flex;align-items:flex-end;gap:2px;height:24px;width:66px;flex:0 0 auto}
+.am-spark i{flex:1;background:var(--accent);border-radius:1px;opacity:.75;display:block;min-height:2px}
+.arch-month.on .am-spark i{opacity:1}
 
-/* Level 2 — month calendar heatmap */
-.arch-cal{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:14px;max-width:560px}
-.arch-cal .cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+/* Права панель — одна цілісна колонка (календар і таблиця однакової ширини) */
+.arch-detail{min-height:360px;max-width:820px}
+.arch-dhead{display:flex;align-items:baseline;gap:10px;margin:2px 0 12px}
+.arch-dhead h2{font-family:var(--font-head);font-size:var(--fs-5);font-weight:600;margin:0}
+.arch-dhead .cnt{font-size:var(--fs-2);color:var(--ink-3)}
+.arch-dhead .cnt b{color:var(--ink);font-weight:500}
+
+/* Календар місяця heatmap — на всю ширину панелі, компактні клітинки */
+.arch-cal{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:12px}
+.arch-cal .cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:5px}
 .arch-cal .cal-head b{font-family:var(--font-mono);font-size:var(--fs-0);text-align:center;color:var(--ink-3);font-weight:400}
-.arch-cal .cal-week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
-.cal-cell{aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;text-decoration:none;border:1px solid var(--line);background:var(--card-2)}
+.arch-cal .cal-week{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:5px}
+.cal-cell{aspect-ratio:1.35;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;text-decoration:none;border:1px solid var(--line);background:var(--card-2)}
 .cal-cell.pad{border:0;background:none}
 .cal-cell.empty{opacity:.5}
 .cal-cell .cc-day{font-size:var(--fs-0);color:var(--ink-3)}
@@ -303,24 +324,56 @@ main.arch{max-width:1120px;margin:0 auto;padding:18px 20px}
 .cal-cell.h3 .cc-n{color:var(--on-accent)}
 a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
 
-/* Level 3 — day works list */
-.arch-list{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;box-shadow:var(--glow)}
-.arch-row{display:grid;grid-template-columns:70px 1fr 130px 130px auto auto;gap:12px;align-items:center;padding:10px 15px;border-bottom:1px solid var(--line);text-decoration:none;transition:background var(--ui-speed) ease}
-.arch-row:last-child{border-bottom:0}
-.arch-row:hover{background:var(--card-2)}
-.arch-row .ar-id{font-size:var(--fs-2);color:var(--accent-c)}
-.arch-row .ar-client{font-size:var(--fs-2);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.arch-row .ar-mat,.arch-row .ar-kind{font-size:var(--fs-1);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.arch-row .ar-sum{font-size:var(--fs-1);color:var(--ink-3);background:var(--card-2);border:1px solid var(--line-2);border-radius:6px;padding:1px 7px}
-.arch-row .ar-status{justify-self:end}
+/* Роботи дня — нижній слот правої панелі */
+.arch-day{margin-top:14px}
+.arch-dayhint{color:var(--ink-3);font-size:var(--fs-2);text-align:center;padding:22px 4px;border:1px dashed var(--line-2);border-radius:var(--r-card)}
+.arch-dl-head{display:flex;align-items:baseline;gap:10px;margin:0 2px 8px}
+.arch-dl-head h3{font-family:var(--font-mono);font-size:var(--fs-3);color:var(--ink);margin:0;font-weight:500}
+.arch-dl-head .cnt{font-size:var(--fs-1);color:var(--ink-3)}
+.arch-dl-head .cnt b{color:var(--ink);font-weight:500}
+.arch-trunc{font-size:var(--fs-1);color:var(--ink-3);padding:2px 2px 10px}
+
+/* «Аркуш» — таблиця-сітка як Google Таблиця. Порядок рядків = порядок таблиці
+   (за row_number), тому це «зазирнути в історію» зі збереженою першочерговістю. */
+.arch-sheet-wrap{border:1px solid var(--line-2);border-radius:var(--r-card);overflow-x:auto;box-shadow:var(--glow)}
+/* table-layout:fixed — рядок мусить влізти в ширину панелі без горизонтального
+   скролу. Вузькі колонки (№, наряд, к-сть, Sum3D-час, статус) дістають явну
+   ширину; текстові (клієнт/колір/вид/технік) без ширини самі ділять залишок
+   і обрізаються еліпсисом — так довгий Sum3D ID більше не розсуває таблицю. */
+.arch-sheet{width:100%;table-layout:fixed;border-collapse:collapse;background:var(--card)}
+.arch-sheet thead th{position:sticky;top:0;z-index:1;background:var(--card-3);color:var(--accent-c);
+  font-family:var(--font-mono);font-size:var(--fs-0);font-weight:500;text-transform:uppercase;letter-spacing:.03em;
+  text-align:left;padding:8px 8px;border-bottom:1px solid var(--line-2);border-right:1px solid var(--line);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arch-sheet tbody td{padding:7px 8px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);
+  font-size:var(--fs-2);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arch-sheet th:last-child,.arch-sheet td:last-child{border-right:0}
+.arch-sheet tbody tr:last-child td{border-bottom:0}
+.arch-sheet tbody tr{cursor:pointer;transition:background var(--ui-speed) ease}
+.arch-sheet tbody tr:nth-child(even){background:rgba(var(--accent-base-rgb), .035)}
+.arch-sheet tbody tr:hover{background:rgba(var(--accent-base-rgb), .09)}
+.arch-sheet tbody tr:focus{outline:2px solid var(--accent-b);outline-offset:-2px}
+.arch-sheet .c-num,.arch-sheet .c-qty{text-align:right;color:var(--ink-3)}
+.arch-sheet th.c-num,.arch-sheet td.c-num{width:30px}
+.arch-sheet th.c-date,.arch-sheet td.c-date{width:62px}
+.arch-sheet th.c-nar,.arch-sheet td.c-nar{width:58px}
+.arch-sheet th.c-qty,.arch-sheet td.c-qty{width:58px;color:var(--ink)}
+.arch-sheet th.c-sum,.arch-sheet td.c-sum{width:66px}
+.arch-sheet .c-nar{color:var(--accent-c)}
+.arch-sheet .c-date{color:var(--ink-2)}
+.arch-sheet .c-sum{color:var(--sig, var(--accent-c));font-size:var(--fs-1)}
+.arch-sheet .c-tech{color:var(--ink-2)}
 
 .arch-empty{text-align:center;padding:56px 20px;color:var(--ink-2)}
+.arch-empty.sm{padding:32px 20px}
 .arch-empty .icon svg{width:40px;height:40px;stroke:var(--ink-3);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;margin-bottom:10px}
 .arch-empty h3{font-family:var(--font-head);font-size:var(--fs-4);color:var(--ink);margin:0 0 6px}
 .arch-empty p{font-size:var(--fs-2);margin:0;color:var(--ink-3)}
-@media (max-width:720px){
-  .arch-row{grid-template-columns:60px 1fr auto;gap:8px}
-  .arch-row .ar-mat,.arch-row .ar-kind,.arch-row .ar-sum{display:none}
+@media (max-width:760px){
+  .arch-grid{grid-template-columns:1fr}
+  .arch-months{position:static;flex-direction:row;overflow-x:auto;padding:6px}
+  .arch-month{flex:0 0 auto}
+  .arch-detail{max-width:none}
 }
 
 /* ── Спливаючі сповіщення ────────────────────────────────────────────────

@@ -3,6 +3,9 @@ GET /account
 GET /actions/recent
 GET /api/notify-state
 GET /archive
+GET /archive/day
+GET /archive/detail
+GET /archive/search
 GET /clients
 GET /clients/{client_id}
 GET /clients/{client_id}/pane

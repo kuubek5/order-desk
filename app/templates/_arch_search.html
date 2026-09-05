@@ -1,0 +1,44 @@
+{# Наскрізний пошук по архіву — HTMX-партіал у #arch-detail.
+   Той самий «Аркуш», але з колонкою «Дата» — результати з різних днів. #}
+<div class="arch-dhead">
+    <h2>Пошук</h2>
+    <span class="cnt">«{{ query }}» · <b class="mono">{{ result_total }}</b></span>
+</div>
+<div class="arch-day">
+    {% if results %}
+    {% if truncated %}
+    <div class="arch-trunc">Показано перші {{ results|length }} з {{ result_total }} — уточніть запит.</div>
+    {% endif %}
+    <div class="arch-sheet-wrap">
+        <table class="arch-sheet">
+            <thead>
+                <tr>
+                    <th class="c-date">Дата</th>
+                    <th class="c-nar">Наряд</th>
+                    <th class="c-cl">Клієнт</th>
+                    <th class="c-mat">Колір</th>
+                    <th class="c-kind">Вид роботи</th>
+                    <th class="c-sum">Час</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in results %}
+                <tr data-order-detail="{{ r.order.id }}" tabindex="0">
+                    <td class="c-date mono">{{ r.date_label }}</td>
+                    <td class="c-nar mono">{{ r.order.work_order_no or '—' }}</td>
+                    <td class="c-cl">{{ r.order.client_name or '—' }}</td>
+                    <td class="c-mat">{{ r.order.material_color or '' }}</td>
+                    <td class="c-kind">{{ r.order.kind or '' }}</td>
+                    <td class="c-sum mono">{{ r.order.sum3d_id or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="arch-empty sm">
+        <h3>Нічого не знайдено</h3>
+        <p>Спробуйте № наряду, ім'я клієнта, Sum3D ID або матеріал.</p>
+    </div>
+    {% endif %}
+</div>

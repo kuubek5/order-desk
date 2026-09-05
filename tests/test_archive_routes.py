@@ -76,48 +76,78 @@ def _seed(db):
     return old
 
 
-def test_archive_months_level_excludes_active(monkeypatch):
+def test_archive_shell_excludes_active_and_opens_latest_month(monkeypatch):
+    """Оболонка: ліва рейка місяців + уже розкритий найсвіжіший місяць."""
     _capture(monkeypatch)
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         old = _seed(db)
         ctx = archive_router_mod.get_archive(request=_request(user.id), db=db)
-    assert ctx["level"] == "months"
     assert ctx["archive_total"] == 2  # the active order is excluded
     ym = f"{old.year:04d}-{old.month:02d}"
     months = {m["ym"]: m["count"] for m in ctx["months"]}
     assert months.get(ym) == 2
+    # Найсвіжіший місяць уже розкритий у праву панель (не порожній екран).
+    assert ctx["active_ym"] == ym
+    assert ctx["month_total"] == 2
 
 
-def test_archive_month_level_builds_calendar(monkeypatch):
+def test_archive_detail_partial_builds_calendar(monkeypatch):
     _capture(monkeypatch)
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         old = _seed(db)
         ym = f"{old.year:04d}-{old.month:02d}"
-        ctx = archive_router_mod.get_archive(request=_request(user.id), month=ym, db=db)
-    assert ctx["level"] == "month"
+        ctx = archive_router_mod.get_archive_detail(
+            request=_request(user.id), month=ym, db=db
+        )
     assert ctx["month_total"] == 2
     assert ctx["month_max"] == 2
-    # The seeded day cell carries the right count somewhere in the grid.
     counts = [c["count"] for week in ctx["month_grid"] for c in week if c]
     assert 2 in counts
 
 
-def test_archive_day_level_lists_works_with_passport_link(monkeypatch):
+def test_archive_day_partial_lists_works_with_passport_link(monkeypatch):
     _capture(monkeypatch)
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         old = _seed(db)
-        ctx = archive_router_mod.get_archive(
+        ctx = archive_router_mod.get_archive_day(
             request=_request(user.id), date_param=old.strftime("%d.%m.%y"), db=db
         )
-    assert ctx["level"] == "day"
     assert [o.work_order_no for o in ctx["day_orders"]] == ["111", "222"]
     assert ctx["selected_date"] == old
+
+
+def test_archive_search_matches_across_days(monkeypatch):
+    _capture(monkeypatch)
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        _seed(db)
+        ctx = archive_router_mod.get_archive_search(
+            request=_request(user.id), q="111", db=db
+        )
+    assert ctx["result_total"] == 1
+    assert ctx["results"][0]["order"].work_order_no == "111"
+    assert ctx["results"][0]["date_label"]
+
+
+def test_archive_search_empty_returns_latest_month(monkeypatch):
+    """Порожній запит повертає найсвіжіший місяць — очищення поля не лишає діру."""
+    _capture(monkeypatch)
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        old = _seed(db)
+        ctx = archive_router_mod.get_archive_search(
+            request=_request(user.id), q="   ", db=db
+        )
+    assert ctx["month_total"] == 2
+    assert ctx["month_ym"] == f"{old.year:04d}-{old.month:02d}"
 
 
 def test_order_detail_read_only_for_archived_editable_for_active(monkeypatch):
