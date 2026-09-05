@@ -287,7 +287,11 @@ def compute_month(
                 "date": d.isoformat(),
                 "dayn": dayn,
                 "weekend_short": "сб" if weekday == 5 else ("нд" if weekday == 6 else ""),
-                "is_off": weekend and not has_any,
+                # Сьогодні НІКОЛИ не «вихідний»: коли сьогодні випадає на суботу
+                # й даних ще нема, порожній off-рядок перебивав би підсвітку
+                # today (у шаблоні off має пріоритет). У цей рядок вводять —
+                # він мусить лишатись повним і підсвіченим навіть у вихідний.
+                "is_off": weekend and not has_any and d != today,
                 "is_today": d == today,
                 "cells": day_cells,
             }

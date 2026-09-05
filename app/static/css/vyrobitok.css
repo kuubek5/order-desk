@@ -50,21 +50,62 @@
   border: 1px dashed var(--line-2); padding: 6px 11px; border-radius: 9px;
 }
 .vt-navbar .lock svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+/* Кнопка «Замкнути» — поряд із чипом місяця. Тон нейтральний, на hover тягне
+   до акценту: дія неруйнівна (лише замкнути розділ), тому без червоного. */
+.vt-lock-form { margin: 0; }
+.vt-lockbtn {
+  display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: var(--fs-1);
+  color: var(--ink-3); background: var(--card); border: 1px solid var(--line-2);
+  padding: 6px 11px; border-radius: 9px; transition: border-color .13s ease, color .13s ease;
+}
+.vt-lockbtn:hover { border-color: var(--accent); color: var(--accent-c); }
+.vt-lockbtn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 
 /* ── Таблиця: повітряне трактування ──────────────────────────────────────── */
 .vt-holder {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card);
-  padding: 18px 20px 14px; overflow-x: auto;
+  padding: 10px 16px 8px; overflow: auto;
+  /* Власний вертикальний скрол таблиці — щоб шапка липла до її верху, а не
+     їхала за сторінкою. Місяць = до 31 рядка; підсумок/гроші лишаються нижче
+     тримача. Висота адаптивна: тримач бере майже весь екран, решту сторінка
+     доскролює до підсумку. */
+  max-height: calc(100vh - 172px);
 }
-.vt { width: 100%; border-collapse: collapse; font-size: var(--fs-2); min-width: 1080px; }
+/* separate (не collapse): липкі th з collapse ненадійні. Ліній усередині
+   таблиці однаково немає, тому border-spacing:0 дає той самий вигляд. */
+.vt { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-2); min-width: 1080px; }
 .vt th, .vt td { text-align: center; white-space: nowrap; border: 0; }
 .vt thead th {
   font-size: var(--fs-0); font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
-  color: var(--ink-3); padding: 5px 5px 11px;
+  color: var(--ink-3); padding: 4px 5px 7px;
 }
-.vt .grp { color: var(--accent-c); letter-spacing: 1.3px; padding-bottom: 13px; font-size: var(--fs-0); }
+/* Липка шапка: при скролі вниз рядок груп («Лабораторія / Пошта…») і рядок
+   колонок («День / ZrO / PMMA…») лишаються зверху, щоб не губити, де що.
+   Фон непрозорий (var(--card)) — інакше рядки просвічують крізь шапку; це
+   перекриває навіть тонкі підкладки груп на шапці (specificity 2 класи). */
+.vt thead th { position: sticky; z-index: 3; background: var(--card); }
+.vt thead th.g-mail, .vt thead th.g-pid,
+.vt thead th.g-dsk, .vt thead th.g-op { background: var(--card); }
+.vt thead tr:first-child th { top: 0; }
+/* top другого рядка = висота першого (компактна шапка ~34px). */
+.vt thead tr:nth-child(2) th { top: 34px; }
+.vt .grp { color: var(--accent-c); letter-spacing: 1.3px; padding-bottom: 7px; font-size: var(--fs-0); }
 .vt .cap { display: block; height: 3px; border-radius: 2px; margin-bottom: 7px; background: rgb(var(--h, 168, 149, 120)); }
-.vt td { padding: 8px 5px; }
+/* Компактна щільність (обрана власником): рядок ~20px замість ~34px, майже
+   весь місяць в один екран. */
+.vt td { padding: 2px 5px; }
+.vt tr.off td { padding: 1px 5px; }
+/* Ледь помітна сітка — око чіпляється, до якого дня й до якої колонки число.
+   Той самий тихий var(--line), що й межі тримача та підсумок. Вертикалі —
+   лише між колонками, НЕ через проміжки груп (.gap лишається порожнім
+   розривом), тому острови груп читаються далі. Останню клітинку рядка не
+   обводимо — інакше подвійна лінія з межею тримача. */
+.vt tbody td { border-bottom: 1px solid var(--line); }
+.vt th:not(.gap), .vt td:not(.gap) { border-right: 1px solid var(--line); }
+.vt th:last-child, .vt td:last-child { border-right: 0; }
+/* Клітинка перед проміжком групи не потребує правої лінії — її роль виконує
+   сам проміжок. */
+.vt th:has(+ .gap), .vt td:has(+ .gap) { border-right: 0; }
 .vt .day { font-family: var(--font-mono); color: var(--ink-3); text-align: right; padding-right: 10px; }
 .vt tr.off td { color: var(--ink-3); opacity: .5; }
 .vt tfoot td {
@@ -95,8 +136,8 @@
    на всю ширину, засічки згори й знизу замість рамки (рамка розірвала б
    проміжки між блоками) і підпис «сьогодні» біля числа дня. */
 .vt tr.today td:not(.gap) {
-  background-image: linear-gradient(rgba(255, 180, 84, .13), rgba(255, 180, 84, .13));
-  box-shadow: inset 0 1px 0 rgba(var(--accent-rgb), .45), inset 0 -1px 0 rgba(var(--accent-rgb), .45);
+  background-image: linear-gradient(rgba(255, 180, 84, .06), rgba(255, 180, 84, .06));
+  box-shadow: inset 0 1px 0 rgba(var(--accent-rgb), .28), inset 0 -1px 0 rgba(var(--accent-rgb), .28);
 }
 .vt tr.today .day { color: var(--accent-c); font-weight: 700; position: relative; }
 .vt .todaymark {
@@ -111,8 +152,8 @@
    data-auto, тож його завжди можна повернути (стерти клітинку). */
 .cellin {
   width: 100%; min-width: 38px; background: transparent; border: 1px solid transparent;
-  border-radius: 6px; padding: 4px 2px; text-align: center; color: var(--ink);
-  font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-3);
+  border-radius: 6px; padding: 1px 2px; text-align: center; color: var(--ink);
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-2);
   outline: none; transition: border-color .13s ease, background .13s ease;
 }
 .cellin.zero { color: var(--ink-3); opacity: .4; }
@@ -133,7 +174,7 @@
   background: var(--field); border: 1px solid var(--line-2);
 }
 .vt-legend i.ed { box-shadow: inset 0 -2px 0 rgba(var(--accent-rgb), .65); }
-.vt-legend i.td { background: rgba(255, 180, 84, .13); border-color: rgba(var(--accent-rgb), .45); }
+.vt-legend i.td { background: rgba(255, 180, 84, .06); border-color: rgba(var(--accent-rgb), .28); }
 
 /* ── Підсумок і гроші ──────────────────────────────────────────────────────
    Курс і склад зміни — ПОЛЯ, а не константи у формулі: в ODS вони вбиті в
@@ -167,6 +208,11 @@
 }
 .vt-foot .pay { margin-left: auto; display: flex; align-items: center; gap: 18px; }
 .vt-foot .pay input[name="people_count"] { width: 46px; }
+/* Нативний спінер number-інпута випадає з дизайну (сірі системні стрілки).
+   Прибираємо його — поле «÷ людей» читається як сусіднє «курс». */
+.vt-foot input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+.vt-foot input[type="number"]::-webkit-outer-spin-button,
+.vt-foot input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 /* Стан «коефіцієнт поза довідником» — CRM не вгадує ставку, а просить її. */
 .vt-warn {
@@ -216,18 +262,82 @@
 }
 .vt-opcard .opc-foot { margin: 14px 0 0; font-size: var(--fs-1); color: #8a7a60; }
 
-/* ── ПІН-гейт розділу ──────────────────────────────────────────────────────── */
-.vt-pin { display: flex; justify-content: center; margin-top: 40px; }
+/* ── ПІН-гейт розділу: split-flap табло + numeric keypad ─────────────────────
+   Табло «ВВЕДІТЬ ПІН-КОД» механічно перегортає літери (справжній Vestaboard:
+   верхня половина складається донизу, нижня підіймається), потім проявляється
+   клавіатура. Усі кольори з токенів — гейт їде за темою оператора без правок. */
+.vt-pin { display: flex; justify-content: center; margin-top: 36px; }
 .vt-pin-card {
-  display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 26px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--r-card);
-  padding: 34px 40px; max-width: 360px;
+  padding: 34px 40px 30px;
 }
-.vt-pin-card svg { width: 34px; height: 34px; fill: none; stroke: var(--accent-c); stroke-width: 1.6; }
-.vt-pin-card p { margin: 0; color: var(--ink-2); font-size: var(--fs-2); }
-.vt-pin-card input {
-  width: 160px; text-align: center; letter-spacing: 6px; font-size: var(--fs-5);
-  background: var(--field); border: 1px solid var(--line-2); color: var(--ink);
-  padding: 10px; border-radius: 9px; font-family: var(--font-mono);
+
+/* Табло */
+.vt-board { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.vt-brow { display: flex; gap: 6px; }
+.vt-fc {
+  position: relative; width: 40px; height: 56px; border-radius: 7px;
+  font-family: var(--font-mono); font-weight: 700; font-size: 26px; color: var(--ink);
 }
-.vt-pin-err { color: var(--warn-ink); font-size: var(--fs-1); }
+.vt-fc .half {
+  position: absolute; left: 0; right: 0; height: 50%; overflow: hidden;
+  display: flex; justify-content: center; background: var(--field); border: 1px solid var(--line-2);
+}
+.vt-fc .half .ch { height: 56px; line-height: 56px; position: relative; }
+.vt-fc .st.top, .vt-fc .fl.top { top: 0; border-radius: 7px 7px 0 0; border-bottom: 0; }
+.vt-fc .st.bot, .vt-fc .fl.bot { bottom: 0; border-radius: 0 0 7px 7px; border-top: 0; }
+.vt-fc .st.top .ch, .vt-fc .fl.top .ch { top: 0; }
+.vt-fc .st.bot .ch, .vt-fc .fl.bot .ch { top: -28px; }
+.vt-fc .fl { z-index: 4; backface-visibility: hidden; }
+.vt-fc .fl.top { transform-origin: center bottom; }
+.vt-fc .fl.bot { transform-origin: center top; transform: rotateX(90deg); }
+/* Шов посередині — характерна риса split-flap. */
+.vt-fc::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px;
+  background: rgba(0, 0, 0, .55); z-index: 6; transform: translateY(-.5px);
+}
+.vt-fc.blank .half { background: var(--card); border-color: var(--line); }
+.vt-fc.set .half { border-color: rgba(var(--accent-rgb), .5); }
+.vt-fc.set .ch { color: var(--accent-c); }
+
+/* Клавіатура + крапки — проявляються після того, як табло склало напис. */
+.vt-pin-after {
+  display: flex; flex-direction: column; align-items: center; gap: 18px;
+  opacity: 0; transform: translateY(10px); transition: opacity .5s ease, transform .5s ease;
+}
+.vt-pin-after.show { opacity: 1; transform: none; }
+.vt-pin-caption { margin: 0; color: var(--ink-2); font-size: var(--fs-1); }
+.vt-dots { display: flex; gap: 12px; min-height: 11px; align-items: center; }
+.vt-dots i {
+  width: 11px; height: 11px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 10px rgba(var(--accent-rgb), .55);
+}
+.vt-kp { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 240px; }
+.vt-kp button {
+  aspect-ratio: 1; border: 1px solid var(--line-2); background: var(--field); color: var(--ink);
+  border-radius: 14px; font-family: var(--font-mono); font-size: var(--fs-6); font-weight: 600;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: transform .08s, background .13s, border-color .13s, box-shadow .13s;
+}
+.vt-kp button:hover { border-color: var(--accent-d, var(--accent)); color: var(--accent-c); }
+.vt-kp button:active {
+  transform: scale(.93); background: var(--accent); color: var(--on-accent);
+  border-color: var(--accent); box-shadow: 0 0 22px rgba(var(--accent-rgb), .5);
+}
+.vt-kp .util { background: transparent; border-color: transparent; font-size: var(--fs-3); color: var(--ink-3); }
+.vt-kp .util:hover { color: var(--accent-c); background: var(--raise-3); }
+.vt-kp .util:active { background: transparent; box-shadow: none; transform: scale(.93); color: var(--accent-c); }
+.vt-pin-open {
+  width: 240px; padding: 11px; border-radius: 12px; border: 0; background: var(--accent);
+  color: var(--on-accent); font-weight: 700; font-size: var(--fs-2); cursor: pointer;
+  transition: filter .13s, transform .08s;
+}
+.vt-pin-open:hover { filter: brightness(1.07); }
+.vt-pin-open:active { transform: scale(.98); }
+.vt-pin-err { min-height: 16px; color: var(--warn-ink); font-size: var(--fs-1); }
+.vt-pin-card.shake { animation: vtshk .4s; }
+@keyframes vtshk {
+  0%, 100% { transform: translateX(0); } 20% { transform: translateX(-9px); }
+  40% { transform: translateX(8px); } 60% { transform: translateX(-5px); } 80% { transform: translateX(3px); }
+}

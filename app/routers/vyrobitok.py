@@ -5,15 +5,20 @@
 гроші, знімок авто) — в app/services/vyrobitok.py; тут лише HTTP: збір періоду,
 ПІН-гейт розділу й точкові збереження клітинок/налаштувань.
 
-ПІН-гейт: один код на розділ, тримається до кінця сесії (прапорець у
-request.session). Код лежить у налаштуваннях (`vyrobitok_pin`, зашифровано);
-поки не заданий — розділ відкритий будь-якому оператору, що ввійшов.
+ПІН-гейт: один код на розділ. Правильний код відкриває розділ на обмежений час
+(`_PIN_TTL_SECONDS`, зараз година), а не «до кінця сесії»: спільний цеховий ПК
+не має лишатись відчиненим після того, як людина відійшла. Кнопка «Замкнути»
+на сторінці скидає дозвіл негайно — наступний вхід знову просить код. Термін
+дії живе в підписаному session-cookie як мітка часу закінчення (підробити не
+можна). Код лежить у налаштуваннях (`vyrobitok_pin`, зашифровано); поки не
+заданий — розділ відкритий будь-якому оператору, що ввійшов.
 """
 
+import time
 from datetime import date
 
 from fastapi import APIRouter, Depends, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
@@ -31,7 +36,18 @@ from app.settings_store import get_setting
 
 router = APIRouter()
 
-_PIN_SESSION_KEY = "vyrobitok_ok"
+# Мітка часу (epoch-секунди) закінчення дозволу в session. Мітка, а не «True»:
+# дозвіл сам протухає, щоб відкритий на спільному ПК розділ не лишався
+# відчиненим після того, як людина відійшла.
+_PIN_SESSION_KEY = "vyrobitok_pin_until"
+# Скільки триває дозвіл після правильного коду. Година — за проханням власника.
+_PIN_TTL_SECONDS = 3600
+
+
+def _pin_unlocked(request: Request) -> bool:
+    """Чи чинний ще дозвіл на розділ у цій сесії (введений код не протух)."""
+    until = request.session.get(_PIN_SESSION_KEY)
+    return isinstance(until, (int, float)) and time.time() < until
 
 
 def _pin_required(request: Request, db: Session) -> bool:
@@ -39,7 +55,7 @@ def _pin_required(request: Request, db: Session) -> bool:
     pin = get_setting(db, "vyrobitok_pin")
     if not pin:
         return False
-    return not request.session.get(_PIN_SESSION_KEY)
+    return not _pin_unlocked(request)
 
 
 def _clamp_period(year: int | None, month: int | None) -> tuple[int, int]:
@@ -84,6 +100,8 @@ def get_vyrobitok(
     y, m = _clamp_period(year, month)
     context = _grid_context(db, user, y, m)
     context["pin_required"] = False
+    # Кнопку «Замкнути» показуємо лише коли розділ реально під кодом.
+    context["pin_protected"] = bool(get_setting(db, "vyrobitok_pin"))
     return templates.TemplateResponse(request, "vyrobitok.html", context)
 
 
@@ -97,10 +115,11 @@ def post_vyrobitok_pin(
 
     expected = get_setting(db, "vyrobitok_pin")
     if expected and pin.strip() == expected.strip():
-        request.session[_PIN_SESSION_KEY] = True
+        request.session[_PIN_SESSION_KEY] = time.time() + _PIN_TTL_SECONDS
         y, m = _clamp_period(None, None)
         context = _grid_context(db, user, y, m)
         context["pin_required"] = False
+        context["pin_protected"] = True
         return templates.TemplateResponse(request, "vyrobitok.html", context)
 
     return templates.TemplateResponse(
@@ -109,6 +128,17 @@ def post_vyrobitok_pin(
         {"user": user, "pin_required": True, "pin_error": "Невірний код"},
         status_code=400,
     )
+
+
+@router.post("/vyrobitok/lock")
+def post_vyrobitok_lock(request: Request, db: Session = Depends(get_db)):
+    """Замкнути розділ негайно: скинути дозвіл, наступний вхід знову просить код.
+    Для спільного ПК — щоб людина, відходячи, не лишала табель відкритим."""
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    request.session.pop(_PIN_SESSION_KEY, None)
+    return RedirectResponse("/vyrobitok", status_code=303)
 
 
 def _parse_cell_value(raw: str) -> int | None:

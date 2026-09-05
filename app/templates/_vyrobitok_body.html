@@ -34,7 +34,7 @@
         <th class="gap"></th>
         <th class="g-pid"><span class="cap" style="--h:{{ hue.pidkovy }}"></span>з них, од.</th>
         <th class="gap"></th>
-        <th class="g-dsk"><span class="cap" style="--h:{{ hue.disks }}"></span>витрачено</th>
+        <th class="g-dsk"><span class="cap" style="--h:{{ hue.disks }}"></span>взято</th>
         <th class="gap"></th>
         {% for name in opak_people %}
         <th class="g-op"><span class="cap" style="--h:{{ hue.op }}"></span>{{ name }}</th>
@@ -60,11 +60,11 @@
       {% if row.is_off %}
       <tr class="off">
         <td class="day">{{ row.dayn }} {{ row.weekend_short }}</td>
-        <td colspan="21" style="text-align:left;padding-left:14px">вихідний</td>
+        <td colspan="21"></td>
       </tr>
       {% else %}
       <tr class="{% if row.is_today %}today{% endif %}">
-        <td class="day">{{ row.dayn }}{% if row.weekend_short %} {{ row.weekend_short }}{% endif %}{% if row.is_today %}<i class="todaymark">сьогодні</i>{% endif %}</td>
+        <td class="day">{{ row.dayn }}{% if row.weekend_short %} {{ row.weekend_short }}{% endif %}</td>
         {% for key, label in material_cols %}{{ cell(row, 'lab_' ~ key, '') }}{% endfor %}
         <td class="gap"></td>
         {% for key, label in material_cols %}{{ cell(row, 'mail_' ~ key, 'g-mail') }}{% endfor %}

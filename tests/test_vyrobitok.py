@@ -245,6 +245,119 @@ def test_month_settings_divisor_and_kurs():
     assert m["share"] == pytest.approx(100 / 4)
 
 
+def _orow(row_number, *, work_order_no="", quantity="", material_color="", kind="",
+          technician_name="", mill_count=""):
+    from app.parser import OrderRow
+    return OrderRow(
+        row_number=row_number, seq_no=str(row_number), work_order_no=work_order_no,
+        quantity=quantity, material_color=material_color, kind=kind, due_time=None,
+        job_code="", technician_name=technician_name, cam_comment="", sum3d_id="",
+        calculated="", milled="", last_milled_date="", mill_count=mill_count,
+    )
+
+
+def test_offline_gap_then_catchup_fills_all_days():
+    # Сценарій: CRM стояла. Спершу синхронізувались дні 3-4, потім (після
+    # догону) додались 5-7. Табель — сума всіх, без «дірок»: він читає ЩО Є в
+    # базі, а синк-догін підтягує пропущене (див. test_sheet_sync_service:
+    # test_catches_up_missed_days_after_being_offline).
+    db = _db()
+    mat = _materials(db)
+    for d in (3, 4):
+        _order(db, source="lab", material_id=mat["Цирконій"], qty=10, day=d)
+    assert compute_month(db, 2026, 8).totals["lab_zr"] == 20
+    for d in (5, 6, 7):
+        _order(db, source="lab", material_id=mat["Цирконій"], qty=10, day=d)
+    assert compute_month(db, 2026, 8).totals["lab_zr"] == 50
+
+
+def test_catchup_resync_of_same_tab_does_not_double():
+    # Догін часто ПЕРЕЧИТУЄ вже імпортовані дні. Проганяємо sync_tab двічі на тих
+    # самих рядках (фрезерна робота + блок СЛМ) і перевіряємо, що табель не
+    # подвоївся: Orders апсертяться за (вкладка,рядок), СЛМ-клітинка ЗАМІНЮЄ
+    # auto_value, а не додає.
+    from app.sync import sync_tab
+    from app.models import Order
+    db = _db()  # ensure_seeded усередині sync_tab насіює каталог матеріалів
+    rows = [
+        _orow(1, work_order_no="24001", quantity="5", material_color="mono a3", technician_name="Іван"),
+        _orow(50, material_color="4", kind="CADCAM Команда"),   # лаб СЛМ 4
+        _orow(51, quantity="12", kind="CadCam Energy"),          # файловий СЛМ 12
+    ]
+    sync_tab(db, "05.08.26", rows); db.commit()
+    t1 = compute_month(db, 2026, 8).totals
+    sync_tab(db, "05.08.26", rows); db.commit()   # догін тієї самої вкладки
+    t2 = compute_month(db, 2026, 8).totals
+
+    assert t1["lab_zr"] == 5 and t1["lab_slm"] == 4 and t1["mail_slm"] == 12
+    assert t2 == t1                               # без подвоєння
+    assert db.query(Order).count() == 1           # СЛМ у Orders не потрапляє
+
+
+def test_override_survives_catchup_resync():
+    # Оператор виправив СЛМ; наступний синк-догін не має затерти правку
+    # (пише лише auto_value).
+    from app.sync import sync_tab
+    db = _db()
+    rows = [_orow(50, material_color="4", kind="CADCAM Команда"),
+            _orow(51, quantity="12", kind="CadCam Energy")]
+    sync_tab(db, "05.08.26", rows); db.commit()
+    set_cell(db, date(2026, 8, 5), "mail_slm", 99)
+    sync_tab(db, "05.08.26", rows); db.commit()
+    cell = next(r for r in compute_month(db, 2026, 8).rows if r["dayn"] == 5)["cells"]["mail_slm"]
+    assert cell["num"] == 99 and cell["auto"] == 12 and cell["edited"] is True
+
+
+def test_today_row_never_marked_off():
+    # Сьогодні може випасти на вихідний; тоді порожній off-рядок перебивав би
+    # підсвітку today (у шаблоні off має пріоритет). Інваріант: today ≠ off.
+    from app.business_day import business_today
+    db = _db()
+    _materials(db)
+    t = business_today()
+    grid = compute_month(db, t.year, t.month)
+    today_row = next(r for r in grid.rows if r["is_today"])
+    assert today_row["is_off"] is False
+
+
+def _req(session=None):
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        session=session if session is not None else {},
+        headers={}, client=SimpleNamespace(host="127.0.0.1"),
+    )
+
+
+def test_pin_unlocked_respects_expiry():
+    import time
+    from app.routers import vyrobitok as vr
+    assert vr._pin_unlocked(_req({vr._PIN_SESSION_KEY: time.time() + 100})) is True
+    # Протух — знову під кодом.
+    assert vr._pin_unlocked(_req({vr._PIN_SESSION_KEY: time.time() - 1})) is False
+    assert vr._pin_unlocked(_req({})) is False
+
+
+def test_pin_required_only_when_set_and_locked(monkeypatch):
+    import time
+    from app.routers import vyrobitok as vr
+    monkeypatch.setattr(vr, "get_setting", lambda db, k: "2468")
+    assert vr._pin_required(_req({}), None) is True
+    assert vr._pin_required(_req({vr._PIN_SESSION_KEY: time.time() + 100}), None) is False
+    # Код не заданий — розділ відкритий.
+    monkeypatch.setattr(vr, "get_setting", lambda db, k: "")
+    assert vr._pin_required(_req({}), None) is False
+
+
+def test_lock_clears_permission(monkeypatch):
+    import time
+    from app.routers import vyrobitok as vr
+    monkeypatch.setattr(vr, "get_current_user", lambda r, db: object())
+    req = _req({vr._PIN_SESSION_KEY: time.time() + 100})
+    resp = vr.post_vyrobitok_lock(req, None)
+    assert vr._PIN_SESSION_KEY not in req.session
+    assert resp.status_code == 303
+
+
 def test_body_partial_renders():
     """Тіло-партіал рендериться без Jinja-помилок (макрос клітинки, підсумок,
     гроші, опаки) — парсинг шаблону цього не ловить, лише рендер."""

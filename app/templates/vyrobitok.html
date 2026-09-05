@@ -15,15 +15,29 @@
   <p class="vt-sub">Одиниці за день: лабораторія, пошта, опаки. Підсумок і нарахування рахуються самі.</p>
 
   {% if pin_required %}
-  {# ПІН-гейт розділу: один код на розділ, тримається до кінця зміни. #}
-  <form class="vt-pin" method="post" action="/vyrobitok/pin">
+  {# ПІН-гейт розділу: split-flap табло «ВВЕДІТЬ ПІН-КОД» + numeric keypad,
+     тримається до кінця зміни. Анімацію й ввід веде vyrobitok_pin.js; сюди
+     він домальовує плитки табло й крапки. Клавіші — type="button", щоб не
+     сабмітили; форму шле лише «Відкрити» (або Enter). #}
+  <form class="vt-pin" method="post" action="/vyrobitok/pin" data-vtpin
+        {% if pin_error %}data-pin-error="1"{% endif %}>
     <div class="vt-pin-card">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-      <p>Розділ під кодом. Введіть ПІН, щоб відкрити його до кінця зміни.</p>
-      <input class="mono" name="pin" type="password" inputmode="numeric" autocomplete="off" autofocus
-             {% if pin_error %}aria-invalid="true"{% endif %}>
-      {% if pin_error %}<span class="vt-pin-err">{{ pin_error }}</span>{% endif %}
-      <button type="submit" class="btn apex">Відкрити</button>
+      <div class="vt-board" aria-hidden="true"></div>
+      <div class="vt-pin-after">
+        <p class="vt-pin-caption">Розділ під кодом — до кінця зміни</p>
+        <div class="vt-dots" aria-hidden="true"></div>
+        <input type="hidden" name="pin" value="">
+        <div class="vt-kp">
+          <button type="button">1</button><button type="button">2</button><button type="button">3</button>
+          <button type="button">4</button><button type="button">5</button><button type="button">6</button>
+          <button type="button">7</button><button type="button">8</button><button type="button">9</button>
+          <button type="button" class="util" data-act="clear">C</button>
+          <button type="button">0</button>
+          <button type="button" class="util" data-act="del">⌫</button>
+        </div>
+        <button type="submit" class="vt-pin-open">Відкрити</button>
+        <span class="vt-pin-err">{{ pin_error or '' }}</span>
+      </div>
     </div>
   </form>
   {% else %}
@@ -41,6 +55,16 @@
       {% endfor %}
     </div>
     <div class="spacer">
+      {% if pin_protected %}
+      {# Замкнути розділ негайно — наступний вхід знову попросить код. Дозвіл і
+         так протухає за годину; ця кнопка для «відходжу від спільного ПК». #}
+      <form method="post" action="/vyrobitok/lock" class="vt-lock-form">
+        <button type="submit" class="vt-lockbtn" title="Замкнути розділ — наступний вхід знову попросить ПІН">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7-2.6"/></svg>
+          Замкнути
+        </button>
+      </form>
+      {% endif %}
       <span class="lock">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
         {{ g.month_label }}
@@ -51,4 +75,10 @@
   {% include "_vyrobitok_body.html" %}
   {% endif %}
 </main>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if pin_required %}
+<script src="/static/js/vyrobitok_pin.js?v={{ static_ver('js/vyrobitok_pin.js') }}" defer></script>
+{% endif %}
 {% endblock %}
