@@ -40,6 +40,7 @@ from app.queue_filters import (
 from app.routers.deps import (
     SYNC_PAUSED_MSG,
     get_current_user,
+    login_redirect,
     get_db,
     templates,
 )
@@ -348,7 +349,7 @@ def get_handout(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     return templates.TemplateResponse(
         request, "handout.html", handout_context(request, user, source, day, db)
     )

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.machine_portraits import portrait_path
-from app.routers.deps import get_current_user, get_db, is_loopback_request, templates
+from app.routers.deps import get_current_user, login_redirect, get_db, is_loopback_request, templates
 from app.services.machines import (
     POLL_INTERVAL_SECONDS,
     calibration_status,
@@ -45,7 +45,7 @@ def _context(request: Request, db: Session, user) -> dict:
 def machines_page(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     return templates.TemplateResponse(request, "machines.html", _context(request, db, user))
 
 
@@ -110,7 +110,7 @@ def machines_calibration_zip(request: Request, db: Session = Depends(get_db)):
     решта дій рівня машини (відкрити теку, оновлення)."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
     if not is_loopback_request(request):

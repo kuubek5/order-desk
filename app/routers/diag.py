@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app import perf
-from app.routers.deps import get_current_user, get_db, templates
+from app.routers.deps import get_current_user, login_redirect, get_db, templates
 
 router = APIRouter()
 
@@ -35,7 +35,7 @@ router = APIRouter()
 def _require_admin(request: Request, db: Session):
     user = get_current_user(request, db)
     if user is None:
-        return None, RedirectResponse("/login", status_code=303)
+        return None, login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
     return user, None

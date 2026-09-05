@@ -10,7 +10,7 @@ import json
 import logging
 from pathlib import Path
 
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from starlette.requests import Request
@@ -72,6 +72,30 @@ def get_current_user(request: Request, db: Session) -> User | None:
         request.session.clear()
         return None
     return user
+
+
+def login_redirect(request: Request) -> Response:
+    """Відповідь на «немає сесії», що не ламається під HTMX.
+
+    Проста навігація має отримати 303 → /login, як і раніше. Але коли запит
+    прийшов від HTMX (полл рядків черги, свап панелі), браузерний XHR сам
+    ходить по 303 і тягне ПОВНУ сторінку входу з кодом 200 — а htmx свапає
+    її в слот фрагмента, без її <head> і login.css. Оператор бачив голу
+    форму всередині мертвої рейки (лог: GET /?…&partial=rows → 303 → GET
+    /login 200, поряд /furnaces/side і /machines/side віддавали 401).
+
+    Для HTMX віддаємо 204 + HX-Redirect: браузер робить СПРАВЖНЮ навігацію
+    на /login з її власним <head>. Той самий прийом уже стоїть у mail.py
+    (HX-Redirect drives a real navigation) — тут він стає спільним для всіх
+    guard-сайтів «user is None».
+    """
+    # getattr, не request.headers напряму: фейкові request'и в тестах
+    # (types.SimpleNamespace) заголовків не мають — той самий контракт, що в
+    # ui_prefs із request.state. За відсутності заголовків = проста навігація.
+    headers = getattr(request, "headers", None)
+    if headers is not None and headers.get("HX-Request") == "true":
+        return Response(status_code=204, headers={"HX-Redirect": "/login"})
+    return RedirectResponse("/login", status_code=303)
 
 
 def is_loopback_request(request: Request) -> bool:

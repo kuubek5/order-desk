@@ -39,6 +39,7 @@ from app.routers.deps import (
     attach_action_toast,
     attach_sync_error_toast,
     get_current_user,
+    login_redirect,
     get_db,
     templates,
     toast_response,
@@ -318,7 +319,7 @@ def new_order_form(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     return templates.TemplateResponse(
         request,
         "new_order.html",
@@ -387,7 +388,7 @@ def create_manual_order(
     Each row is linked by row_number so the next sync updates it in place."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     work_type = work_type if work_type in ("client", "lab") else "client"
     is_lab = work_type == "lab"
@@ -977,7 +978,7 @@ def get_order_detail(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     order = db.get(Order, order_id)
     if order is None:
@@ -1028,7 +1029,7 @@ def get_journal(
     (хто що зробив); показує останні дії, обмежені вікном, щоб не тягнути все."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     query = (
         select(ActionLog)

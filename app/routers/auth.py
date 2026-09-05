@@ -24,7 +24,7 @@ from app.license import (
 )
 from app.models import User
 from app.services.widget_order import clean_side_order, clean_strip_order
-from app.routers.deps import UI_SESSION_KEY, get_current_user, get_db, templates
+from app.routers.deps import UI_SESSION_KEY, get_current_user, login_redirect, get_db, templates
 from app.services.look_prefs import (
     LookError,
     apply_handout_look,
@@ -186,7 +186,7 @@ async def logout(request: Request):
 async def get_account(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     return templates.TemplateResponse(request, "account.html", {"user": user})
 
@@ -225,7 +225,7 @@ async def post_account_appearance(
     зберігаються»: атрибути з форми летять прямо в <html> кожної сторінки."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if (
         theme not in UI_THEMES
         or icons not in UI_ICON_STYLES
@@ -330,7 +330,7 @@ async def post_account_password(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     error = None
     if not verify_password(current_password, user.password_hash):
@@ -360,7 +360,7 @@ async def post_account_initial(
     /settings/users/{id}/initial — same normalize + uniqueness validation."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     initial = normalize_initial(sheet_initial)
     if initial is not None:

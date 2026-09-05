@@ -81,6 +81,7 @@ from app.queue_filters import (
 )
 from app.routers.deps import (
     get_current_user,
+    login_redirect,
     get_db,
     is_loopback_request,
     templates,
@@ -123,7 +124,7 @@ def get_mail(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     # Validate independently — an unknown/stale value degrades to "all"
     # (show everything) rather than erroring, same pattern as the queue
@@ -341,7 +342,7 @@ def get_mail(
 def sync_mail(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     # Own session, not the request's: on a watchdog timeout the hung fetch
     # thread still owns whatever session it was given (see
@@ -366,7 +367,7 @@ def get_mail_detail(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     email = db.get(EmailMessage, email_id)
     if email is None:
@@ -918,7 +919,7 @@ def add_sender_auto(
     an existing key is just switched on."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     key = (email_address or "").strip().lower()
     if key:
         row = db.scalar(select(ClientSenderMemory).where(ClientSenderMemory.sender_key == key))
@@ -945,7 +946,7 @@ def toggle_sender_auto(
     guardrails pass; existing letters already in triage are untouched."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     row = db.get(ClientSenderMemory, memory_id)
     if row is None:
         raise HTTPException(status_code=404, detail="sender not found")
@@ -1323,7 +1324,7 @@ def filter_email_manually(
     reads "filtered by hand"; «↩» brings it back like any other."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     email = db.get(EmailMessage, email_id)
     if email is None:
@@ -1349,7 +1350,7 @@ def create_mail_filter(
     is usually a letter they're looking at right now."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -1390,7 +1391,7 @@ def edit_mail_filter(
     right away."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -1426,7 +1427,7 @@ def create_filter_category(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -1451,7 +1452,7 @@ def rename_filter_category(
     letters so the badge language stays consistent everywhere."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -1488,7 +1489,7 @@ def delete_filter_category(
     never block."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -1525,7 +1526,7 @@ def dismiss_filter_suggest(
     panel if the operator changes their mind."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     address = address.strip()
     if address:
@@ -1551,7 +1552,7 @@ def toggle_mail_filter(
     keeping the two decisions independent and predictable."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -1575,7 +1576,7 @@ def delete_mail_filter(
     operator returns them."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 

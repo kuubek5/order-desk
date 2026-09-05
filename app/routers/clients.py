@@ -23,7 +23,7 @@ from app.client_profile import (
     summarize_client_orders,
 )
 from app.models import Client, ClientNameAlias, Order
-from app.routers.deps import get_current_user, get_db, templates
+from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.services.clients import (
     CLIENT_STATE_FILTERS,
     client_folder_options,
@@ -75,7 +75,7 @@ def get_client_pane(request: Request, client_id: int, db: Session = Depends(get_
     clients is a sequence of small requests instead of a page load each time."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     client = db.get(Client, client_id)
     if client is None:
@@ -105,7 +105,7 @@ def get_clients(
     """
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     _started = time.monotonic()
     named_orders = db.scalars(select(Order).where(Order.client_name.isnot(None))).all()
@@ -201,7 +201,7 @@ def create_client(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     name = canonical_name.strip()
     if not name:
@@ -223,7 +223,7 @@ def create_client(
 def get_client_detail(request: Request, client_id: int, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     client = db.get(Client, client_id)
     if client is None:
@@ -270,7 +270,7 @@ def bind_client_folder(
     preview has something to show."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     client = db.get(Client, client_id)
     if client is None:
@@ -322,7 +322,7 @@ def update_client(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     client = db.get(Client, client_id)
     if client is None:

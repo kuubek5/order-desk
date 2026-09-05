@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
 from app.models import Order, ReworkRecord
-from app.routers.deps import get_current_user, get_db, templates
+from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.services.order_dates import order_date
 from app.stats import (
     average_new_to_milled_hours,
@@ -30,7 +30,7 @@ router = APIRouter()
 def get_stats(request: Request, period: str = "week", db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     if period not in ("today", "week", "month", "all"):
         period = "week"

@@ -26,7 +26,7 @@ from app.shift_images import (
     resolve_image_file,
     save_image,
 )
-from app.routers.deps import get_current_user, get_db, templates, toast_response
+from app.routers.deps import get_current_user, login_redirect, get_db, templates, toast_response
 from app.services.shift import (
     KIND_INFO,
     ShiftNoteError,
@@ -82,7 +82,7 @@ def get_shift(request: Request, partial: str = "", db: Session = Depends(get_db)
     колеги (та сама пастка, через яку полл черги свапає рівно `#queue-rows`)."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     context = _shift_context(request, db, user)
     # Звіт про місце — лише адміну й лише на повній сторінці: він обходить

@@ -22,7 +22,7 @@ from app.feedback_images import (
     save_image,
 )
 from app.models import Feedback, FeedbackImage, User
-from app.routers.deps import get_current_user, get_db, templates, toast_response
+from app.routers.deps import get_current_user, login_redirect, get_db, templates, toast_response
 from app.services import feedback as feedback_service
 
 logger = logging.getLogger(__name__)
@@ -123,7 +123,7 @@ def feedback_inbox(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 

@@ -63,6 +63,7 @@ from app.models import (
 from app.monthly_backup import list_snapshots
 from app.routers.deps import (
     get_current_user,
+    login_redirect,
     get_db,
     is_loopback_request,
     templates,
@@ -219,7 +220,7 @@ def get_settings(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     # Full page is reachable by any operator now — only the Шляхи папок card
     # (below, gated per-field via operator_editable) and the two path
     # HTMX checks are actually operator-facing; settings.html hides every
@@ -394,7 +395,7 @@ def get_settings(
 async def post_settings(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     is_admin = user.role == "адмін"
 
     form = await request.form()
@@ -736,7 +737,7 @@ def get_materials_settings(request: Request, db: Session = Depends(get_db)):
     alias rules, plus the count of orders whose colour is still unclassified."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -834,7 +835,7 @@ def get_recognition_settings(request: Request, db: Session = Depends(get_db)):
     categories like 3D-друк / моделювання that route a letter out of the queue)."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -1577,7 +1578,7 @@ def export_backup(
     """
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
     if not is_loopback_request(request):
@@ -1617,7 +1618,7 @@ async def import_backup(
     """
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
     if not is_loopback_request(request):
@@ -1726,7 +1727,7 @@ def install_update(request: Request, db: Session = Depends(get_db)):
     """
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
     if not is_loopback_request(request):
@@ -1763,7 +1764,7 @@ def install_update(request: Request, db: Session = Depends(get_db)):
 async def create_operator(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -1806,7 +1807,7 @@ async def set_operator_initial(request: Request, user_id: int, db: Session = Dep
     it (that operator's Sum3D writes then leave "Прорахував" untouched)."""
     admin = get_current_user(request, db)
     if admin is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if admin.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -1832,7 +1833,7 @@ async def toggle_operator_active(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -1856,7 +1857,7 @@ async def reset_operator_password(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -1884,7 +1885,7 @@ async def reset_operator_password(
 def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 

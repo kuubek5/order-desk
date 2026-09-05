@@ -19,7 +19,7 @@ from starlette.requests import Request
 
 from app.business_day import business_today
 from app.models import Order
-from app.routers.deps import get_current_user, get_db, templates
+from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.services.formatting import uk_month_label
 from app.services.order_dates import order_date, parse_sheet_tab
 from app.services.queue import RETENTION_DAYS, order_is_archived
@@ -53,7 +53,7 @@ def get_archive(
     recoverable, not just listed."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     # Робоча доба, не календарна: черга рахує своє вікно від `business_today()`
     # (queue.py), і межа архіву мусить бути ТА САМА. З `date.today()` вони
