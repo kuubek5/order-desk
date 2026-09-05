@@ -11,27 +11,28 @@
         <div>
             <h1>Архів</h1>
             <div class="arch-sub">
-                {% if level == 'months' %}
-                    Роботи поза робочим вікном · <b class="mono">{{ archive_total }}</b> усього
-                {% elif level == 'month' %}
-                    <a href="/archive" class="arch-crumb">← Місяці</a>
-                    <span class="sep" aria-hidden="true"></span>{{ month_label }} · <b class="mono">{{ month_total }}</b>
-                {% else %}
-                    <a href="/archive" class="arch-crumb">← Місяці</a>
-                    <span class="sep" aria-hidden="true"></span>
-                    <a href="/archive?month={{ back_month }}" class="arch-crumb">Місяць</a>
-                    <span class="sep" aria-hidden="true"></span><span class="mono">{{ day_label }}</span> · <b class="mono">{{ day_orders|length }}</b>
-                {% endif %}
+                Роботи поза робочим вікном · <b class="mono">{{ archive_total }}</b> усього
             </div>
         </div>
     </div>
 
-    {# ── Рівень 1: місяці ─────────────────────────────────────────────── #}
-    {% if level == 'months' %}
-        {% if months %}
-        <div class="arch-months">
+    {% if months %}
+    <div class="arch-tools">
+        <div class="arch-search">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            <input type="search" name="q" autocomplete="off" placeholder="Пошук: клієнт, № наряду, Sum3D ID, матеріал…"
+                   hx-get="/archive/search" hx-target="#arch-detail" hx-swap="innerHTML"
+                   hx-trigger="input changed delay:300ms, search">
+        </div>
+    </div>
+
+    <div class="arch-grid">
+        {# ── Ліва рейка місяців (завжди на очах) ───────────────────────── #}
+        <nav class="arch-months" id="arch-months" aria-label="Місяці архіву">
             {% for m in months %}
-            <a class="arch-month" href="/archive?month={{ m.ym }}">
+            <a class="arch-month {% if m.ym == active_ym %}on{% endif %}" data-ym="{{ m.ym }}"
+               href="/archive?month={{ m.ym }}"
+               hx-get="/archive/detail?month={{ m.ym }}" hx-target="#arch-detail" hx-swap="innerHTML">
                 <div class="am-info">
                     <div class="am-label">{{ m.label }}</div>
                     <div class="am-count mono">{{ m.count }}</div>
@@ -43,58 +44,19 @@
                 </div>
             </a>
             {% endfor %}
-        </div>
-        {% else %}
-        <div class="arch-empty">
-            <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1" class="duo"/><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg></span>
-            <h3>Архів порожній</h3>
-            <p>Сюди потрапляють роботи, старші за 30 днів, і все, що прибрали з таблиці.</p>
-        </div>
-        {% endif %}
+        </nav>
 
-    {# ── Рівень 2: календар місяця ────────────────────────────────────── #}
-    {% elif level == 'month' %}
-        <div class="arch-cal">
-            <div class="cal-head"><b>пн</b><b>вт</b><b>ср</b><b>чт</b><b>пт</b><b>сб</b><b>нд</b></div>
-            {% for week in month_grid %}
-            <div class="cal-week">
-                {% for cell in week %}
-                    {% if cell is none %}
-                    <span class="cal-cell pad" aria-hidden="true"></span>
-                    {% elif cell.count == 0 %}
-                    <span class="cal-cell empty"><span class="cc-day mono">{{ cell.day }}</span></span>
-                    {% else %}
-                        {% set r = cell.count / month_max if month_max else 0 %}
-                        <a class="cal-cell {% if r < 0.34 %}h1{% elif r < 0.67 %}h2{% else %}h3{% endif %}" href="/archive?date={{ cell.date }}" title="{{ cell.count }} робіт">
-                            <span class="cc-day mono">{{ cell.day }}</span>
-                            <span class="cc-n mono">{{ cell.count }}</span>
-                        </a>
-                    {% endif %}
-                {% endfor %}
-            </div>
-            {% endfor %}
+        {# ── Права панель: календар місяця + роботи дня (HTMX) ──────────── #}
+        <div class="arch-detail" id="arch-detail">
+            {% include "_arch_detail.html" %}
         </div>
-
-    {# ── Рівень 3: роботи дня ─────────────────────────────────────────── #}
+    </div>
     {% else %}
-        {% if day_orders %}
-        <div class="arch-list">
-            {% for order in day_orders %}
-            <a class="arch-row" href="/orders/{{ order.id }}" data-order-detail="{{ order.id }}">
-                <span class="ar-id mono">{{ order.work_order_no or '—' }}</span>
-                <span class="ar-client">{{ order.client_name or (order.work_order_no and '—') or 'Без імені' }}</span>
-                <span class="ar-mat">{{ order.material_color or '' }}</span>
-                <span class="ar-kind">{{ order.kind or '' }}</span>
-                {% if order.sum3d_id %}<span class="ar-sum mono" title="Sum3D ID">{{ order.sum3d_id }}</span>{% endif %}
-                <span class="ar-status status-badge status-{{ order.status|replace(' ', '-')|lower }}">{{ order.status }}</span>
-            </a>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="arch-empty">
-            <h3>Цього дня робіт немає</h3>
-        </div>
-        {% endif %}
+    <div class="arch-empty">
+        <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1" class="duo"/><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4"/></svg></span>
+        <h3>Архів порожній</h3>
+        <p>Сюди потрапляють роботи, старші за 30 днів, і все, що прибрали з таблиці.</p>
+    </div>
     {% endif %}
 </main>
 
@@ -110,4 +72,26 @@
     <div class="detail-body"><iframe id="order-detail-frame" title="Паспорт роботи"></iframe></div>
 </aside>
 <div class="detail-backdrop" id="order-detail-backdrop"></div>
+
+{# Дрібні взаємодії архіву: активний місяць у рейці + вибраний день у календарі.
+   Контент підмінює HTMX; клас-стан ставиться делеговано, тому переживає свапи. #}
+<script>
+(function(){
+  var main = document.currentScript.closest('body') || document;
+  document.addEventListener('click', function(e){
+    var mo = e.target.closest && e.target.closest('#arch-months .arch-month');
+    if(mo){
+      main.querySelectorAll('#arch-months .arch-month.on').forEach(function(a){a.classList.remove('on');});
+      mo.classList.add('on');
+      return;
+    }
+    var cell = e.target.closest && e.target.closest('#arch-detail .cal-cell[data-day]');
+    if(cell){
+      var cal = cell.closest('.arch-cal');
+      if(cal) cal.querySelectorAll('.cal-cell.sel').forEach(function(c){c.classList.remove('sel');});
+      cell.classList.add('sel');
+    }
+  });
+})();
+</script>
 {% endblock %}

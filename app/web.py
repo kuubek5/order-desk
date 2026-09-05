@@ -108,9 +108,12 @@ from app.services.sheet_writeback import (
 from app.settings_store import (
     get_day_rollover_time,
     get_export_folder_path,
+    get_sheet_backup_enabled,
+    get_sheet_backup_interval_hours,
     get_sum3d_projects_path,
     get_technician_files_path,
 )
+from app.sheet_backup import snapshot_all_tabs
 from app.order_folder import warm_tech_listing
 from app.services.sum3d_capture import warm_projects as warm_sum3d_projects
 from app.sheet_sync_service import (
@@ -327,6 +330,57 @@ def _shift_images_prune_worker(stop_event: Event) -> None:
     while not stop_event.is_set():
         _shift_images_prune_tick()
         stop_event.wait(SHIFT_IMAGES_PRUNE_INTERVAL_SECONDS)
+
+
+# ── Сирі знімки вкладок Google-таблиці (app/sheet_backup.py) ─────────────────
+# Страховка для відновлення самої Google-таблиці: дослівна CSV-копія кожної
+# датованої вкладки, яку можна залити назад у Google. Період керується
+# налаштуванням (sheet_backup_interval_hours, дефолт 6 год) і читається щоциклу,
+# тож зміна на екрані діє з наступного кола. Стартова затримка більша за синкову
+# розігрівку, щоб перший знімок ішов уже теплим клієнтом Sheets.
+SHEET_BACKUP_INITIAL_DELAY_SECONDS = 120
+
+
+def _sheet_backup_tick() -> None:
+    """Одна спроба знімання. Ніколи не кидає — збій не має чіпати застосунок.
+    Поважає паузу синку (пауза = не ходити в таблицю) і вимикач у налаштуваннях."""
+    try:
+        db = SessionLocal()
+        try:
+            if not get_sheet_backup_enabled(db):
+                return
+            if sync_control.is_paused():
+                return  # пауза синку = жодних звернень до таблиці
+            result = snapshot_all_tabs(db, DB_PATH)
+            if result.error:
+                logger.warning("Автознімок вкладок: %s", result.error)
+            elif result.written or result.disappeared:
+                logger.info(
+                    "Автознімок вкладок: записано %d, зникло %d (%s)",
+                    result.written, result.disappeared,
+                    ", ".join(result.tabs) or "—",
+                )
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("Автоматичний знімок вкладок не вдався")
+
+
+def _sheet_backup_worker(stop_event: Event) -> None:
+    if stop_event.wait(SHEET_BACKUP_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        _sheet_backup_tick()
+        hours = 6
+        try:
+            db = SessionLocal()
+            try:
+                hours = get_sheet_backup_interval_hours(db)
+            finally:
+                db.close()
+        except Exception:
+            logger.exception("Не вдалося прочитати період знімання вкладок")
+        stop_event.wait(hours * 3600)
 
 
 # ── Ретрай Telegram-пуша зворотного зв'язку ─────────────────────────────────
@@ -638,6 +692,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("order-desk-sheet-sync", _sheet_sync_worker),
         _BackgroundWorker("order-desk-update-check", _update_check_worker),
         _BackgroundWorker("order-desk-monthly-backup", _monthly_backup_worker),
+        _BackgroundWorker("kuubmill-sheet-backup", _sheet_backup_worker),
         _BackgroundWorker("order-desk-export-warm", _export_warm_worker),
         _BackgroundWorker("kuubmill-folder-warm", _folder_warm_worker),
         _BackgroundWorker("order-desk-shift-images-prune", _shift_images_prune_worker),

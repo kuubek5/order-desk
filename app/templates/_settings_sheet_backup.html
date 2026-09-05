@@ -1,0 +1,123 @@
+        {# ── Копії Google-таблиці · сирі знімки вкладок ───────────────────
+           Страховка для відновлення САМОЇ таблиці, коли адмін почистив старі
+           дні з Google. Дослівна CSV-копія кожної датованої вкладки → можна
+           залити назад. Логіка: app/sheet_backup.py, роути: routers/settings.py.
+           Іконки — намальовані SVG у стилі решти налаштувань (жодних юнікод-
+           стрілок), 1.8 stroke. #}
+        <section id="sheet-backup" class="wizard-step wizard-step-about scon-sec" data-sec="sheet-backup">
+            <div class="num" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1.5" class="duo"/><path d="M4 9h16M9 9v11M4 14h5"/></svg>
+            </div>
+            <div class="box">
+                <div class="wizard-step-head">
+                    <h2>Копії Google-таблиці</h2>
+                    <span class="connection-state {% if sheet_backup_enabled %}connection-state-ready{% endif %}">
+                        {% if sheet_backup_enabled %}Авто увімкнено{% else %}Вимкнено{% endif %}
+                    </span>
+                </div>
+                <p class="wizard-sub">
+                    Дослівна копія кожної денної вкладки у CSV. Почистять старі дні в Google або трапиться біда —
+                    заллєш копію назад і відновиш день чи місяць. Копії — лише текст, місця майже не займають.
+                </p>
+
+                {# ── Налаштування авто-знімання ─────────────────────────── #}
+                <form method="post" action="/settings/sheets/config" class="dsec sbk-config">
+                    <label class="sbk-switch">
+                        <input type="checkbox" name="enabled" {% if sheet_backup_enabled %}checked{% endif %}>
+                        <span class="sbk-switch-track" aria-hidden="true"><span class="sbk-switch-thumb"></span></span>
+                        <span class="sbk-switch-label">Робити копії автоматично</span>
+                    </label>
+                    <div class="sbk-every">
+                        <label for="sheet_backup_interval">Знімати кожні</label>
+                        <div class="sbk-stepper">
+                            <button type="button" class="sbk-step" data-sbk-step="-1" aria-label="Менше годин">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg>
+                            </button>
+                            <input type="number" id="sheet_backup_interval" name="interval_hours"
+                                   class="sbk-hours" value="{{ sheet_backup_interval_hours }}"
+                                   min="{{ sheet_backup_interval_min }}" max="{{ sheet_backup_interval_max }}" step="1"
+                                   aria-label="Період знімання, годин">
+                            <button type="button" class="sbk-step" data-sbk-step="1" aria-label="Більше годин">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg>
+                            </button>
+                        </div>
+                        <span class="sbk-every-unit">год</span>
+                    </div>
+                    <button type="submit" class="settings-secondary-button sbk-save">Зберегти</button>
+                    <p class="sbk-config-hint">Від {{ sheet_backup_interval_min }} до {{ sheet_backup_interval_max }} год, типово 6. Порожні вкладки та обрізані читання не зберігаються.</p>
+                </form>
+
+                {# ── Ручний знімок + скачати все (одна дія-рядок) ────────── #}
+                <div class="dsec sbk-actions">
+                    <div class="sbk-action-main">
+                        <div class="dlabel">Зняти копію зараз</div>
+                        <p class="wizard-sub">Не чекаючи розкладу. Перший запуск підтягне всю наявну історію.</p>
+                        <form method="post" action="/settings/sheets/snapshot">
+                            <button type="submit" class="login-submit settings-submit sbk-snapshot">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 11l4 4 4-4M5 20h14"/></svg>
+                                Зняти копію вкладок
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                {# ── Наявні копії ───────────────────────────────────────── #}
+                <div class="dsec sbk-saved">
+                    <div class="sbk-saved-head">
+                        <div class="dlabel">Збережені копії</div>
+                        {% if sheet_snapshot_total %}
+                        <span class="sbk-count mono">{{ sheet_snapshot_total }} дн.{% if sheet_snapshot_disappeared %} · {{ sheet_snapshot_disappeared }} зникло{% endif %}</span>
+                        <a href="/settings/sheets/download-all" class="settings-secondary-button sbk-dl-all">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 11l4 4 4-4M5 20h14"/></svg>
+                            Уся таблиця (ZIP)
+                        </a>
+                        {% endif %}
+                    </div>
+
+                    {% if sheet_snapshot_total %}
+                    {% if sheet_snapshot_months %}
+                    <div class="sbk-months">
+                        {% for mo in sheet_snapshot_months %}
+                        <a href="/settings/sheets/download-month/{{ mo.ym }}" class="sbk-month">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h16v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 8l1-3h14l1 3M9 12h6"/></svg>
+                            <span class="sbk-month-name">{{ mo.label }}</span>
+                            <span class="sbk-month-count mono">{{ mo.count }}</span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <ul class="sbk-days">
+                        {% for s in sheet_snapshots %}
+                        <li{% if s.disappeared_at %} class="gone"{% endif %}>
+                            <a href="/settings/sheets/download/{{ s.filename }}" class="sbk-day">
+                                <span class="mono sbk-date">{{ s.day_label }}</span>
+                                {% if s.rows is not none %}<span class="sbk-rows">{{ s.rows }}&nbsp;роб.</span>{% endif %}
+                                {% if s.disappeared_at %}<span class="sbk-gone" title="Прибрано з Google {{ s.disappeared_at }}">зникла з Google</span>{% endif %}
+                                <span class="mono sbk-size">{{ s.size_kb }}&nbsp;КБ</span>
+                                <svg class="sbk-day-dl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 11l4 4 4-4M5 20h14"/></svg>
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="sbk-empty">Копій ще немає. Перша зʼявиться після знімання — кнопкою вище або авто-проходом.</p>
+                    {% endif %}
+                </div>
+
+                {# ── Що робити при аварії ────────────────────────────────── #}
+                <details class="dsec sbk-help">
+                    <summary>
+                        <svg class="sbk-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                        Що робити, якщо таблиця постраждала
+                    </summary>
+                    <ol>
+                        <li>Знайди день або натисни «Уся таблиця / місяць» — отримаєш CSV, названі як вкладки (<span class="mono">22.07.26.csv</span>).</li>
+                        <li>У Google Sheets: <strong>Файл → Імпорт → Завантажити</strong>, обери CSV.</li>
+                        <li>Вибери <strong>«Вставити нові аркуші»</strong> — кожен файл стане вкладкою під своєю датою.</li>
+                        <li>Звір із живою таблицею. Дані CRM не чіпаються — це відновлення саме Google-таблиці.</li>
+                    </ol>
+                    <p class="wizard-sub">Копія містить значення клітинок дослівно. Формули й ручні кольори заливок не переносяться.</p>
+                </details>
+            </div>
+        </section>

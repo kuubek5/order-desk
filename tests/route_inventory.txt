@@ -3,6 +3,9 @@ GET /account
 GET /actions/recent
 GET /api/notify-state
 GET /archive
+GET /archive/day
+GET /archive/detail
+GET /archive/search
 GET /clients
 GET /clients/{client_id}
 GET /clients/{client_id}/pane
@@ -43,6 +46,9 @@ GET /settings/feedback
 GET /settings/materials
 GET /settings/materials/probe
 GET /settings/recognition
+GET /settings/sheets/download-all
+GET /settings/sheets/download-month/{month}
+GET /settings/sheets/download/{filename}
 GET /settings/update/status
 GET /setup
 GET /sheets/mass-vanish
@@ -150,6 +156,8 @@ POST /settings/recognition/default-material
 POST /settings/sections/{section}
 POST /settings/selfcheck
 POST /settings/sheet-weight
+POST /settings/sheets/config
+POST /settings/sheets/snapshot
 POST /settings/test-imap
 POST /settings/test-sheets
 POST /settings/update/check

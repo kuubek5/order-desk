@@ -1013,3 +1013,87 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .secmgr-aud { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 8px 0 0 4px; font-size: var(--fs-1); color: var(--ink-2); }
 .secmgr-aud-lbl { color: var(--ink-3); }
 .secmgr-aud label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+
+
+/* ── Копії Google-таблиці (розділ #sheet-backup, app/sheet_backup.py) ──────
+   Operate-режим: чіткий скан, іконки намальовані (1.8 stroke), моно лише для
+   дат/розмірів (вимір), жодних юнікод-стрілок. */
+.setv2 .sbk-config{display:flex;flex-wrap:wrap;align-items:center;gap:14px 18px;margin-top:16px}
+/* Кастомний перемикач — під тон рейки, а не голий чекбокс */
+.setv2 .sbk-switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+.setv2 .sbk-switch input{position:absolute;opacity:0;width:0;height:0}
+.setv2 .sbk-switch-track{position:relative;width:38px;height:22px;border-radius:999px;background:var(--field);
+  border:1px solid var(--control-edge);transition:background .18s ease,border-color .18s ease;flex:none}
+.setv2 .sbk-switch-thumb{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:var(--ink-3);transition:transform .18s cubic-bezier(.2,.7,.2,1),background .18s ease}
+.setv2 .sbk-switch input:checked + .sbk-switch-track{background:color-mix(in srgb,var(--accent) 30%,var(--field));border-color:var(--accent)}
+.setv2 .sbk-switch input:checked + .sbk-switch-track .sbk-switch-thumb{transform:translateX(16px);background:var(--accent)}
+.setv2 .sbk-switch input:focus-visible + .sbk-switch-track{outline:2px solid var(--accent-b);outline-offset:2px}
+.setv2 .sbk-switch-label{font-weight:600;color:var(--ink)}
+.setv2 .sbk-every{display:inline-flex;align-items:center;gap:8px;color:var(--ink-2)}
+/* Степер − [6] + замість нативного number-спінера (той випадав з дизайну) */
+.setv2 .sbk-stepper{display:inline-flex;align-items:center;height:34px;background:var(--field);
+  border:1px solid var(--control-edge);border-radius:var(--r-ctl);overflow:hidden}
+.setv2 .sbk-step{display:inline-flex;align-items:center;justify-content:center;width:32px;height:100%;
+  background:none;border:none;color:var(--ink-2);cursor:pointer;transition:background .13s ease,color .13s ease}
+.setv2 .sbk-step:hover{background:var(--card-2);color:var(--accent)}
+.setv2 .sbk-step:active{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.setv2 .sbk-step svg{width:16px;height:16px}
+.setv2 .sbk-hours{width:46px;height:100%;text-align:center;background:none;color:var(--ink);
+  border:none;border-left:1px solid var(--line-2);border-right:1px solid var(--line-2);
+  font-family:var(--font-mono);font-size:var(--fs-2);font-weight:600;-moz-appearance:textfield;appearance:textfield}
+.setv2 .sbk-hours::-webkit-outer-spin-button,
+.setv2 .sbk-hours::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.setv2 .sbk-hours:focus{outline:none;background:var(--card-2)}
+.setv2 .sbk-every-unit{color:var(--ink-3)}
+.setv2 .sbk-save{margin:0}
+.setv2 .sbk-config-hint{flex-basis:100%;margin:0;color:var(--ink-3);font-size:var(--fs-1)}
+
+/* Головна дія — амбер-кнопка з іконкою */
+.setv2 .sbk-snapshot{display:inline-flex;align-items:center;justify-content:center;gap:9px;width:auto;padding:11px 20px}
+.setv2 .sbk-snapshot svg{width:18px;height:18px;flex:none}
+
+/* Збережені копії */
+.setv2 .sbk-saved-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.setv2 .sbk-saved-head .dlabel{margin:0}
+.setv2 .sbk-count{color:var(--ink-3);font-size:var(--fs-1)}
+.setv2 .sbk-dl-all{margin-left:auto;display:inline-flex;align-items:center;gap:8px}
+.setv2 .sbk-dl-all svg{width:16px;height:16px;flex:none}
+
+.setv2 .sbk-months{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.setv2 .sbk-month{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid var(--line-2);
+  border-radius:var(--r-ctl);color:var(--ink-2);text-decoration:none;transition:border-color .15s ease,color .15s ease,background .15s ease}
+.setv2 .sbk-month:hover{border-color:var(--accent);color:var(--ink);background:var(--card-2)}
+.setv2 .sbk-month svg{width:15px;height:15px;color:var(--ink-3);flex:none}
+.setv2 .sbk-month:hover svg{color:var(--accent)}
+.setv2 .sbk-month-name{font-size:var(--fs-1);font-weight:600}
+.setv2 .sbk-month-count{color:var(--ink-3);font-size:var(--fs-0)}
+
+.setv2 .sbk-days{list-style:none;margin:0;padding:0;max-height:300px;overflow-y:auto;
+  border:1px solid var(--line-2);border-radius:var(--r-ctl);background:var(--field)}
+.setv2 .sbk-days li + li{border-top:1px solid var(--line-2)}
+.setv2 .sbk-day{display:flex;align-items:center;gap:14px;padding:9px 14px;text-decoration:none;color:var(--ink-2);
+  transition:background .13s ease}
+.setv2 .sbk-day:hover{background:var(--card-2)}
+.setv2 .sbk-date{min-width:96px;font-weight:600;color:var(--ink);font-size:var(--fs-2)}
+.setv2 .sbk-rows{color:var(--ink-2);font-size:var(--fs-1)}
+.setv2 .sbk-size{margin-left:auto;color:var(--ink-3);font-size:var(--fs-1)}
+.setv2 .sbk-day-dl{width:16px;height:16px;flex:none;color:var(--ink-3);opacity:0;transition:opacity .13s ease,color .13s ease}
+.setv2 .sbk-day:hover .sbk-day-dl{opacity:1;color:var(--accent)}
+/* Зникла з Google — тонкий сигнал ліворуч + тег, край 1px (не костюм) */
+.setv2 .sbk-days li.gone .sbk-day{box-shadow:inset 2px 0 0 var(--alarm)}
+.setv2 .sbk-days li.gone .sbk-date{color:var(--ink-2)}
+.setv2 .sbk-gone{color:var(--alarm);font-size:var(--fs-0);border:1px solid color-mix(in srgb,var(--alarm) 50%,transparent);
+  border-radius:6px;padding:1px 7px;white-space:nowrap}
+.setv2 .sbk-empty{margin:0;color:var(--ink-3);font-size:var(--fs-1)}
+
+/* Інструкція при аварії */
+.setv2 .sbk-help{margin-top:16px}
+.setv2 .sbk-help summary{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;
+  color:var(--ink-2);list-style:none}
+.setv2 .sbk-help summary::-webkit-details-marker{display:none}
+.setv2 .sbk-help summary:hover{color:var(--ink)}
+.setv2 .sbk-chevron{width:16px;height:16px;flex:none;color:var(--ink-3);transition:transform .18s ease}
+.setv2 .sbk-help[open] .sbk-chevron{transform:rotate(90deg)}
+.setv2 .sbk-help ol{margin:12px 0 8px;padding-left:22px;color:var(--ink-2);font-size:var(--fs-1);line-height:1.75}
+.setv2 .sbk-help ol li{margin-bottom:4px}
