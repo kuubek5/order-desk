@@ -8,308 +8,368 @@
 {# Стрічка верстатів: зразки в кабінеті малюються тими самими правилами, що
    й справжня стрічка над чергою (furnaces.css, .mstrip[data-variant]). #}
 <link rel="stylesheet" href="/static/css/furnaces.css?v={{ static_ver('css/furnaces.css') }}">
+<link rel="stylesheet" href="/static/css/account.css?v={{ static_ver('css/account.css') }}">
 {% endblock %}
 
 {% block content %}
 {% set topbar_active = 'account' %}
 {% include "_topbar_nav.html" %}
 
-{# setv2-narrow: одна вузька колонка, центрована в контентній області.
-   Клас окремий, бо на .setv2 їздять ще налаштування, майстер і журнал —
-   їм широка сітка потрібна. #}
-<main class="setv2 setv2-narrow">
-    <h1>Мій обліковий запис</h1>
-    <p class="acc-sub">Ви увійшли як <strong>{{ user.full_name or user.username }}</strong>{% if user.sheet_initial %} · літера <span class="acc-letter">{{ user.sheet_initial }}</span>{% endif %}.</p>
+{# Кабінет оператора — три розділи + готові набори.
+
+   Було: одна колонка 480px і сувій на 2931px (3,3 екрана), де картка
+   «Оформлення» займала 2066px із 37 плитками, а живе прев'ю лишалось угорі —
+   до нижніх налаштувань («Стрічка верстатів») його вже не було видно, тобто
+   оператор обирав НАОСЛІП. «Закінчити зміну» — часта дія на спільному ПК —
+   лежала аж за трьома екранами прокрутки.
+
+   Стало: «Профіль» / «Вигляд» / «Робочі екрани». Кожен розділ вміщається без
+   прокрутки, прев'ю в «Вигляді» приклеєне й видно завжди, а зверху — готові
+   набори, що ставлять кілька осей одним кліком (тонке налаштування лишилось
+   повністю, нижче).
+
+   Вкладки на радіо-кнопках, а не на JS: перемикання працює без скриптів,
+   доступне з клавіатури й не втрачає стан при помилці JS. #}
+<main class="setv2 accv2">
+    <header class="acc-id">
+        {# `or '?'` обов'язковий: підписка [0] ФОРСУЄ обчислення, і на об'єкті
+           без full_name/username Jinja кидає UndefinedError замість того, щоб
+           тихо надрукувати порожнє. Аватар не має права валити сторінку. #}
+        <span class="acc-avatar" aria-hidden="true">{{ ((user.full_name or user.username or '?')|string)[0]|upper }}</span>
+        <span class="acc-who">
+            <b>{{ user.full_name or user.username }}</b>
+            <span>{{ user.role }}{% if user.sheet_initial %} · літера <b class="mono">{{ user.sheet_initial }}</b>{% endif %}</span>
+        </span>
+    </header>
 
     {% if saved %}
-    <div class="settings-success">
-        <p>{{ saved }}</p>
-    </div>
+    <div class="settings-success"><p>{{ saved }}</p></div>
     {% endif %}
-
     {% if error %}
-    <div class="settings-success settings-error">
-        <p>{{ error }}</p>
-    </div>
+    <div class="settings-success settings-error"><p>{{ error }}</p></div>
     {% endif %}
 
-    <div class="setv2-stack">
-    <div class="card settings-group">
-        <h2>Моя літера</h2>
-        <p class="settings-help">Додається в колонку «Прорахував», коли ви вписуєте Sum3D. 1–2 літери, унікальна.</p>
-        <form method="post" action="/account/initial" class="settings-form">
-            <div class="settings-field">
-                <label for="sheet_initial">Літера</label>
-                <div class="login-glow">
-                    <div class="login-input-wrap">
-                        <input type="text" id="sheet_initial" name="sheet_initial" class="login-input acc-letter-input"
-                               value="{{ user.sheet_initial or '' }}" maxlength="2" placeholder="Р, К, СТ…" autocomplete="off">
-                    </div>
-                </div>
-            </div>
-            <button type="submit" class="login-submit settings-submit">Зберегти літеру</button>
-        </form>
-    </div>
+    <div class="acc-tabs">
+        <input type="radio" name="acc-tab" id="acc-tab-profile" class="acc-tab-input" checked>
+        <input type="radio" name="acc-tab" id="acc-tab-look" class="acc-tab-input">
+        <input type="radio" name="acc-tab" id="acc-tab-screens" class="acc-tab-input">
 
-    <div class="card settings-group">
-        <h2>Змінити пароль</h2>
-        <form method="post" action="/account/password" class="settings-form">
-            <div class="settings-field">
-                <label for="current_password">Поточний пароль</label>
-                <div class="login-glow">
-                    <div class="login-input-wrap">
-                        <input type="password" id="current_password" name="current_password" class="login-input" required>
-                        <button type="button" class="login-toggle-password" aria-label="Показати пароль">
-                            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" class="duo"/><circle cx="12" cy="12" r="3" class="duo"/><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-3.19 4.02M6.1 6.1C3.29 7.9 1 12 1 12s4 7 11 7a9.15 9.15 0 0 0 4.9-1.42"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div class="settings-field">
-                <label for="new_password">Новий пароль</label>
-                <div class="login-glow">
-                    <div class="login-input-wrap">
-                        <input type="password" id="new_password" name="new_password" class="login-input" required minlength="6">
-                        <button type="button" class="login-toggle-password" aria-label="Показати пароль">
-                            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" class="duo"/><circle cx="12" cy="12" r="3" class="duo"/><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-3.19 4.02M6.1 6.1C3.29 7.9 1 12 1 12s4 7 11 7a9.15 9.15 0 0 0 4.9-1.42"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div class="settings-field">
-                <label for="confirm_password">Повторіть новий пароль</label>
-                <div class="login-glow">
-                    <div class="login-input-wrap">
-                        <input type="password" id="confirm_password" name="confirm_password" class="login-input" required minlength="6">
-                        <button type="button" class="login-toggle-password" aria-label="Показати пароль">
-                            <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" class="duo"/><circle cx="12" cy="12" r="3" class="duo"/><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                            <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-3.19 4.02M6.1 6.1C3.29 7.9 1 12 1 12s4 7 11 7a9.15 9.15 0 0 0 4.9-1.42"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <button type="submit" class="login-submit settings-submit">Змінити пароль</button>
-        </form>
-    </div>
+        <nav class="acc-tabbar" aria-label="Розділи кабінету">
+            <label for="acc-tab-profile" tabindex="0">Профіль</label>
+            <label for="acc-tab-look" tabindex="0">Вигляд</label>
+            <label for="acc-tab-screens" tabindex="0">Робочі екрани</label>
+        </nav>
 
-    <div class="card settings-group">
-        <h2>Оформлення</h2>
-        <p class="settings-help">Наведіть на варіант — сторінка вгорі перемалюється так, як буде після застосування. Клік застосовує; зберігається на вашому обліковому записі.</p>
+        {# ── Профіль ───────────────────────────────────────────────────
+           Літера й пароль поруч: обидва — короткі форми про особу, і разом
+           вони вміщаються в один екран. «Закінчити зміну» тут же, а не за
+           трьома екранами оформлення: на спільному ПК це найчастіша дія. #}
+        <section class="acc-pane" id="acc-pane-profile">
+            <div class="acc-cols">
+                <div class="card settings-group">
+                    <h2>Моя літера</h2>
+                    <p class="settings-help">Додається в колонку «Прорахував», коли ви вписуєте Sum3D. 1–2 літери, унікальна.</p>
+                    <form method="post" action="/account/initial" class="settings-form">
+                        <div class="settings-field">
+                            <label for="sheet_initial">Літера</label>
+                            <div class="login-glow">
+                                <div class="login-input-wrap">
+                                    <input type="text" id="sheet_initial" name="sheet_initial" class="login-input acc-letter-input"
+                                           value="{{ user.sheet_initial or '' }}" maxlength="2" placeholder="Р, К, СТ…" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
+                        <button type="submit" class="login-submit settings-submit">Зберегти літеру</button>
+                    </form>
+                </div>
 
-        {# Жива міні-сторінка. Це не картинка: справжні класи застосунку
-           (.btn, .status-badge, .mill-wrap, іконки з шаром .duo) усередині
-           контейнера, який НЕСЕ ВЛАСНІ атрибути вибору. Тому вона малюється
-           тими самими правилами, що й реальні екрани, — просто локально.
-           Механіка: .acc-live[data-pal] оголошує токени теми на собі
-           (tokens.css / theme-forge.css), а .acc-live[data-*-sample] стоїть
-           поряд із плитковими селекторами в element-styles.css та
-           icon-styles.css. Жодної другої копії стилів. #}
-        <div class="acc-live" id="acc-live" aria-hidden="true"
-             data-pal="teal" data-icons-sample="" data-buttons-sample=""
-             data-loader-sample="" data-chips-sample="">
-            <div class="al-rail">
-                <span class="al-mark">
-                    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M5 6 L5 26"/><path d="M14 6 L5 16"/><path d="M5 16 L14 26"/><path d="M18 26 L18 6 L23 15.5 L28 6 L28 26"/>
-                    </svg>
+                <div class="card settings-group">
+                    <h2>Змінити пароль</h2>
+                    <form method="post" action="/account/password" class="settings-form">
+                        {% for fid, flabel, extra in [
+                            ('current_password', 'Поточний пароль', ''),
+                            ('new_password', 'Новий пароль', 'minlength'),
+                            ('confirm_password', 'Повторіть новий пароль', 'minlength')
+                        ] %}
+                        <div class="settings-field">
+                            <label for="{{ fid }}">{{ flabel }}</label>
+                            <div class="login-glow">
+                                <div class="login-input-wrap">
+                                    <input type="password" id="{{ fid }}" name="{{ fid }}" class="login-input" required
+                                           {% if extra == 'minlength' %}minlength="6"{% endif %}>
+                                    <button type="button" class="login-toggle-password" aria-label="Показати пароль">
+                                        <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" class="duo"/><circle cx="12" cy="12" r="3" class="duo"/><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                        <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a13.16 13.16 0 0 1-3.19 4.02M6.1 6.1C3.29 7.9 1 12 1 12s4 7 11 7a9.15 9.15 0 0 0 4.9-1.42"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        <button type="submit" class="login-submit settings-submit">Змінити пароль</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="acc-endzone">
+                <span class="acc-endtext">
+                    Закінчити зміну
+                    <span>Наступний оператор увійде у свій обліковий запис.</span>
                 </span>
-                {% for d in [
-                    '<path d="M4 6h16M4 12h16M4 18h10"/>',
-                    '<rect x="3" y="5" width="18" height="14" rx="2" class="duo"/><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
-                    '<path d="M12 3c-2 3-6 4-6 9a6 6 0 0 0 12 0c0-5-4-6-6-9z" class="duo"/><path d="M12 3c-2 3-6 4-6 9a6 6 0 0 0 12 0c0-5-4-6-6-9z"/>'
-                ] %}
-                <span class="al-nav{% if loop.first %} on{% endif %}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ d|safe }}</svg>
-                </span>
-                {% endfor %}
+                <form method="post" action="/logout">
+                    <button type="submit" class="login-submit settings-submit acc-endshift">Вийти</button>
+                </form>
             </div>
+        </section>
 
-            <div class="al-body">
-                <div class="al-head">
-                    <span class="al-title">Черга робіт</span>
-                    <span class="al-acts">
-                        <span class="btn sm">Файли</span>
-                        <span class="btn sm apex">Взяти</span>
-                    </span>
+        {# ── Вигляд ────────────────────────────────────────────────────
+           Прев'ю праворуч приклеєне (position:sticky) — саме воно було
+           головною вадою старого екрана: лишалось угорі й до нижніх
+           налаштувань не доживало. #}
+        <section class="acc-pane" id="acc-pane-look">
+            <div class="acc-look">
+                <div class="acc-look-main">
+                    {# Готові набори. Один клік ставить ПʼЯТЬ осей разом — це
+                       швидкий шлях для оператора, якому байдужі окремі осі.
+                       Гранулярність нікуди не зникла: вона нижче, у повному
+                       обсязі. Значення тут — ті самі рядки, що й у плитках. #}
+                    <div class="acc-presets-head">
+                        <h2>Готові набори</h2>
+                        <p class="settings-help">Ставить тему, іконки, кнопки, чіпи й індикатор разом. Далі можна донастроїти кожну вісь окремо.</p>
+                    </div>
+                    <div class="acc-presets" role="group" aria-label="Готові набори оформлення">
+                        {% for pal, title, why, theme, icons, buttons, loader, chips in [
+                            ('forge', 'Цех', 'бурштин, максимум контрасту', 'forge', '', '', '', ''),
+                            ('teal',  'Бірюзовий пульт', 'канонічний вигляд', 'teal', '', '', '', ''),
+                            ('forge', 'Тиша', 'тонкі лінії, без заливок і руху', 'forge', 'thin', 'outline', 'ring', '')
+                        ] %}
+                        <button type="button" class="acc-preset"
+                                data-preset-theme="{{ theme }}" data-preset-icons="{{ icons }}"
+                                data-preset-buttons="{{ buttons }}" data-preset-loader="{{ loader }}"
+                                data-preset-chips="{{ chips }}">
+                            <span class="thsw" data-pal="{{ pal }}" aria-hidden="true">
+                                <span class="thsw-rail"><i></i><i></i><i></i></span>
+                                <span class="thsw-body">
+                                    <span class="thsw-head"></span>
+                                    <span class="thsw-row"><i class="thsw-mat"></i><b>17-55-28</b><i class="thsw-chip"></i></span>
+                                    <span class="thsw-row"><i class="thsw-mat"></i><b>12-01-45</b><i class="thsw-chip"></i></span>
+                                    <span class="thsw-row is-sel"><i class="thsw-mat"></i><b>09-14-02</b><i class="thsw-chip"></i></span>
+                                </span>
+                            </span>
+                            <span class="acc-preset-name"><b>{{ title }}</b><span>{{ why }}</span></span>
+                        </button>
+                        {% endfor %}
+                    </div>
+
+                    {# Тонке налаштування — рядками «підпис → вибір». Око йде
+                       однією вертикаллю замість стрибків по стосах плиток. #}
+                    <div class="card acc-fields">
+                        <div class="acc-field">
+                            <span class="acc-field-label">Тема</span>
+                            <div class="acc-theme-row" role="group" aria-label="Тема інтерфейсу">
+                                {% for pal, value, title in [('teal', 'teal', 'Бірюзовий пульт'), ('forge', 'forge', 'Amber Forge')] %}
+                                <button type="button" class="acc-swatch acc-theme-btn" data-set-theme="{{ value }}">
+                                    <span class="thsw" data-pal="{{ pal }}" aria-hidden="true">
+                                        <span class="thsw-rail"><i></i><i></i><i></i></span>
+                                        <span class="thsw-body">
+                                            <span class="thsw-head"></span>
+                                            <span class="thsw-row"><i class="thsw-mat"></i><b>17-55-28</b><i class="thsw-chip"></i></span>
+                                            <span class="thsw-row"><i class="thsw-mat"></i><b>12-01-45</b><i class="thsw-chip"></i></span>
+                                            <span class="thsw-row is-sel"><i class="thsw-mat"></i><b>09-14-02</b><i class="thsw-chip"></i></span>
+                                        </span>
+                                    </span>
+                                    <span class="acc-swatch-name">{{ title }}</span>
+                                </button>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="acc-field">
+                            <span class="acc-field-label">Іконки</span>
+                            <div class="acc-icons-row" role="group" aria-label="Стиль іконок">
+                                {% for value, title in [('', 'Канон'), ('thin', 'Тонкі'), ('duo', 'Дуотон'), ('fill', 'Заливка'), ('bold', 'Жирні'), ('neon', 'Неон')] %}
+                                <button type="button" class="acc-swatch is-icon acc-icons-btn" data-set-icons="{{ value }}">
+                                    <span class="icsw" data-icons-sample="{{ value }}">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <circle cx="3.5" cy="6" r="1.2" class="duo"/><circle cx="3.5" cy="12" r="1.2" class="duo"/><circle cx="3.5" cy="18" r="1.2" class="duo"/>
+                                            <path d="M8 6h13M8 12h13M8 18h13"/>
+                                            <circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/>
+                                        </svg>
+                                    </span>
+                                    <span class="acc-swatch-name">{{ title }}</span>
+                                </button>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="acc-field">
+                            <span class="acc-field-label">Кнопки</span>
+                            <div class="acc-icons-row" role="group" aria-label="Трактування кнопок">
+                                {% for value, title in [('', 'Канон'), ('outline', 'Контур'), ('glass', 'Скло'), ('dashed', 'Пунктир'), ('solid', 'Суцільна')] %}
+                                <button type="button" class="acc-swatch is-icon acc-buttons-btn" data-set-buttons="{{ value }}">
+                                    <span class="btnsw" data-buttons-sample="{{ value }}">
+                                        <span class="btn sm" aria-hidden="true">Взяти</span>
+                                    </span>
+                                    <span class="acc-swatch-name">{{ title }}</span>
+                                </button>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="acc-field">
+                            <span class="acc-field-label">Чіпи</span>
+                            <div class="acc-icons-row" role="group" aria-label="Форма чіпів">
+                                {% for value, title in [('', 'Канон'), ('solid', 'Залита'), ('dashed', 'Пунктир'), ('marker', 'Маркер'), ('gradient', 'Градієнт')] %}
+                                <button type="button" class="acc-swatch is-icon acc-chips-btn" data-set-chips="{{ value }}">
+                                    <span class="chsw" data-chips-sample="{{ value }}">
+                                        <span class="status-badge status-прораховано" aria-hidden="true">в роботі</span>
+                                    </span>
+                                    <span class="acc-swatch-name">{{ title }}</span>
+                                </button>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="acc-field">
+                            <span class="acc-field-label">Індикатор очікування</span>
+                            <div class="acc-icons-row" role="group" aria-label="Індикатор очікування">
+                                {% for value, title in [('', 'Фреза'), ('beacon', 'Маячок'), ('sweep', 'Смуга'), ('orbit', 'Орбіта'), ('ring', 'Кільце')] %}
+                                <button type="button" class="acc-swatch is-icon acc-loader-btn" data-set-loader="{{ value }}">
+                                    <span class="ldsw" data-loader-sample="{{ value }}">
+                                        {% include "_mill_spinner.svg" %}
+                                    </span>
+                                    <span class="acc-swatch-name">{{ title }}</span>
+                                </button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="al-row">
-                    <i class="al-mat" style="--m:var(--accent-c)"></i>
-                    <b class="mono">17-55-28</b>
-                    <span class="status-badge status-прораховано">в роботі</span>
+                {# Жива міні-сторінка. Це не картинка: справжні класи застосунку
+                   (.btn, .status-badge, .mill-wrap, іконки з шаром .duo) усередині
+                   контейнера, який НЕСЕ ВЛАСНІ атрибути вибору. Тому вона малюється
+                   тими самими правилами, що й реальні екрани, — просто локально.
+                   Механіка: .acc-live[data-pal] оголошує токени теми на собі
+                   (tokens.css / theme-forge.css), а .acc-live[data-*-sample] стоїть
+                   поряд із плитковими селекторами в element-styles.css та
+                   icon-styles.css. Жодної другої копії стилів. #}
+                <aside class="acc-look-side">
+                    <div class="acc-live-wrap">
+                        <div class="acc-live" id="acc-live" aria-hidden="true"
+                             data-pal="teal" data-icons-sample="" data-buttons-sample=""
+                             data-loader-sample="" data-chips-sample="">
+                            <div class="al-rail">
+                                <span class="al-mark">
+                                    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M5 6 L5 26"/><path d="M14 6 L5 16"/><path d="M5 16 L14 26"/><path d="M18 26 L18 6 L23 15.5 L28 6 L28 26"/>
+                                    </svg>
+                                </span>
+                                {% for d in [
+                                    '<path d="M4 6h16M4 12h16M4 18h10"/>',
+                                    '<rect x="3" y="5" width="18" height="14" rx="2" class="duo"/><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+                                    '<path d="M12 3c-2 3-6 4-6 9a6 6 0 0 0 12 0c0-5-4-6-6-9z" class="duo"/><path d="M12 3c-2 3-6 4-6 9a6 6 0 0 0 12 0c0-5-4-6-6-9z"/>'
+                                ] %}
+                                <span class="al-nav{% if loop.first %} on{% endif %}">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{{ d|safe }}</svg>
+                                </span>
+                                {% endfor %}
+                            </div>
+
+                            <div class="al-body">
+                                <div class="al-head">
+                                    <span class="al-title">Черга робіт</span>
+                                    <span class="al-acts">
+                                        <span class="btn sm">Файли</span>
+                                        <span class="btn sm apex">Взяти</span>
+                                    </span>
+                                </div>
+
+                                <div class="al-row">
+                                    <i class="al-mat" style="--m:var(--accent-c)"></i>
+                                    <b class="mono">17-55-28</b>
+                                    <span class="status-badge status-прораховано">в роботі</span>
+                                </div>
+                                <div class="al-row">
+                                    <i class="al-mat" style="--m:var(--warn)"></i>
+                                    <b class="mono">12-01-45</b>
+                                    <span class="status-badge status-переробка">переробка</span>
+                                </div>
+                                <div class="al-row is-busy">
+                                    <i class="al-mat" style="--m:var(--alarm)"></i>
+                                    <b class="mono">09-14-02</b>
+                                    <span class="al-load">{% include "_mill_spinner.svg" %}<span>запис у таблицю…</span></span>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="acc-live-note">Наведіть на варіант — зразок покаже його, не застосовуючи. Клік застосовує й зберігає на вашому обліковому записі.</p>
+                    </div>
+                </aside>
+            </div>
+        </section>
+
+        {# ── Робочі екрани ─────────────────────────────────────────────
+           Осі, що змінюють не «шкіру», а самі виробничі екрани. Прев'ю тут
+           не потрібне: кожна плитка вже несе власний зразок, намальований
+           тими самими правилами, що й справжній віджет. #}
+        <section class="acc-pane" id="acc-pane-screens">
+            <div class="card acc-fields">
+                <div class="acc-field">
+                    <span class="acc-field-label">Фон верстатів
+                        <span class="acc-field-hint">віджет у бічній панелі черги</span>
+                    </span>
+                    <div class="acc-icons-row" role="group" aria-label="Фон віджета верстатів">
+                        {% for value, title in [('', 'Пил на сталі'), ('burr', 'Фреза над диском'), ('flower', 'Квітка диска'), ('titanium', 'Титан'), ('toolpath', 'Траєкторії CAM'), ('none', 'Без арту')] %}
+                        <button type="button" class="acc-swatch acc-mart-btn" data-set-machine-art="{{ value }}">
+                            <span class="masw" data-mart="{{ value or 'dust' }}" aria-hidden="true"><b>350i</b><i>43<u>%</u></i></span>
+                            <span class="acc-swatch-name">{{ title }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
                 </div>
-                <div class="al-row">
-                    <i class="al-mat" style="--m:var(--warn)"></i>
-                    <b class="mono">12-01-45</b>
-                    <span class="status-badge status-переробка">переробка</span>
+
+                <div class="acc-field">
+                    <span class="acc-field-label">Стрічка верстатів
+                        <span class="acc-field-hint">смуга «назва + %» над чергою</span>
+                    </span>
+                    <div class="acc-icons-row" role="group" aria-label="Стрічка верстатів над чергою">
+                        {% for value, title in [('', 'Сегменти'), ('edge', 'Край-смуга'), ('fill', 'Заливка'), ('ring', 'Кільце'), ('ticker', 'Тікер'), ('off', 'Без стрічки')] %}
+                        <button type="button" class="acc-swatch acc-mstrip-btn" data-set-machine-strip="{{ value }}">
+                            <span class="mstrip mstrip-sample" data-variant="{{ value or 'segments' }}" aria-hidden="true">
+                                {% if value == 'off' %}
+                                <span class="mstrip-off">—</span>
+                                {% elif value == 'ticker' %}
+                                <span class="mstrip-ticker"><span class="tk run"><b>350i</b> <i>43</i></span><span class="tksep">·</span><span class="tk idle"><i>—</i></span></span>
+                                {% else %}
+                                <span class="mch run" style="--w:43%">
+                                    {% if value == 'ring' %}<svg class="ring" viewBox="0 0 16 16"><circle class="bg" cx="8" cy="8" r="6.5"/><circle class="fg" cx="8" cy="8" r="6.5" stroke-dasharray="40.84" stroke-dashoffset="23.28"/></svg>{% endif %}
+                                    <b>350i</b><i class="mono">43<u>%</u></i>
+                                    {% if value == 'edge' %}<em class="mch-edge"></em>{% endif %}
+                                    {% if value == '' %}<span class="segs"><s class="on"></s><s class="on"></s><s class="on"></s><s class="on"></s><s></s><s></s><s></s><s></s><s></s><s></s></span>{% endif %}
+                                </span>
+                                {% endif %}
+                            </span>
+                            <span class="acc-swatch-name">{{ title }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
                 </div>
-                <div class="al-row is-busy">
-                    <i class="al-mat" style="--m:var(--alarm)"></i>
-                    <b class="mono">09-14-02</b>
-                    <span class="al-load">{% include "_mill_spinner.svg" %}<span>запис у таблицю…</span></span>
+
+                <div class="acc-field">
+                    <span class="acc-field-label">Картки «Верстати»
+                        <span class="acc-field-hint">плитки на окремому екрані</span>
+                    </span>
+                    <div class="acc-icons-row" role="group" aria-label="Вигляд карток на екрані верстатів">
+                        {% for value, title in [('', 'Портрет верстата'), ('frame', 'Живий кадр')] %}
+                        <button type="button" class="acc-swatch acc-mcard-btn" data-set-machine-card="{{ value }}">
+                            <span class="mcsw" data-mcard="{{ value }}" aria-hidden="true"><i></i><b>350i Loader</b></span>
+                            <span class="acc-swatch-name">{{ title }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
-        </div>
-
-        {# Кожна кнопка теми несе мініатюру черги, намальовану СВОЄЮ палітрою:
-           .thsw[data-pal] оголошує токени на самій плитці (див. tokens.css і
-           theme-forge.css), тому бурштиновий зразок видно ще до перемикання. #}
-        <div class="settings-field">
-            <label>Тема</label>
-            <div class="acc-theme-row" role="group" aria-label="Тема інтерфейсу">
-                {% for pal, value, title in [('teal', 'teal', 'Бірюзовий пульт'), ('forge', 'forge', 'Amber Forge')] %}
-                <button type="button" class="acc-swatch acc-theme-btn" data-set-theme="{{ value }}">
-                    <span class="thsw" data-pal="{{ pal }}" aria-hidden="true">
-                        <span class="thsw-rail"><i></i><i></i><i></i></span>
-                        <span class="thsw-body">
-                            <span class="thsw-head"></span>
-                            <span class="thsw-row"><i class="thsw-mat"></i><b>17-55-28</b><i class="thsw-chip"></i></span>
-                            <span class="thsw-row"><i class="thsw-mat"></i><b>12-01-45</b><i class="thsw-chip"></i></span>
-                            <span class="thsw-row is-sel"><i class="thsw-mat"></i><b>09-14-02</b><i class="thsw-chip"></i></span>
-                        </span>
-                    </span>
-                    <span class="acc-swatch-name">{{ title }}</span>
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-
-        {# Та сама іконка в кожному стилі — різницю видно на самій кнопці.
-           Іконка мусить мати шар .duo, інакше «Дуотон» і «Заливка» не
-           відрізнятимуться від канону. #}
-        <div class="settings-field">
-            <label>Іконки</label>
-            <div class="acc-icons-row" role="group" aria-label="Стиль іконок">
-                {% for value, title in [('', 'Канон'), ('thin', 'Тонкі'), ('duo', 'Дуотон'), ('fill', 'Заливка'), ('bold', 'Жирні'), ('neon', 'Неон')] %}
-                <button type="button" class="acc-swatch is-icon acc-icons-btn" data-set-icons="{{ value }}">
-                    <span class="icsw" data-icons-sample="{{ value }}">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <circle cx="3.5" cy="6" r="1.2" class="duo"/><circle cx="3.5" cy="12" r="1.2" class="duo"/><circle cx="3.5" cy="18" r="1.2" class="duo"/>
-                            <path d="M8 6h13M8 12h13M8 18h13"/>
-                            <circle cx="3.5" cy="6" r="1.2"/><circle cx="3.5" cy="12" r="1.2"/><circle cx="3.5" cy="18" r="1.2"/>
-                        </svg>
-                    </span>
-                    <span class="acc-swatch-name">{{ title }}</span>
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-
-        {# Кожна плитка малює СВОЄ трактування незалежно від вибраного — за
-           це відповідає режим *-sample у element-styles.css. Інакше всі
-           п'ять кнопок показували б поточний вибір. #}
-        <div class="settings-field">
-            <label>Кнопки</label>
-            <div class="acc-icons-row" role="group" aria-label="Трактування кнопок">
-                {% for value, title in [('', 'Канон'), ('outline', 'Контур'), ('glass', 'Скло'), ('dashed', 'Пунктир'), ('solid', 'Суцільна')] %}
-                <button type="button" class="acc-swatch is-icon acc-buttons-btn" data-set-buttons="{{ value }}">
-                    <span class="btnsw" data-buttons-sample="{{ value }}">
-                        <span class="btn sm" aria-hidden="true">Взяти</span>
-                    </span>
-                    <span class="acc-swatch-name">{{ title }}</span>
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-
-        <div class="settings-field">
-            <label>Індикатор очікування</label>
-            <div class="acc-icons-row" role="group" aria-label="Індикатор очікування">
-                {% for value, title in [('', 'Фреза'), ('beacon', 'Маячок'), ('sweep', 'Смуга'), ('orbit', 'Орбіта'), ('ring', 'Кільце')] %}
-                <button type="button" class="acc-swatch is-icon acc-loader-btn" data-set-loader="{{ value }}">
-                    <span class="ldsw" data-loader-sample="{{ value }}">
-                        {% include "_mill_spinner.svg" %}
-                    </span>
-                    <span class="acc-swatch-name">{{ title }}</span>
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-
-        <div class="settings-field">
-            <label>Чіпи</label>
-            <div class="acc-icons-row" role="group" aria-label="Форма чіпів">
-                {% for value, title in [('', 'Канон'), ('solid', 'Залита'), ('dashed', 'Пунктир'), ('marker', 'Маркер'), ('gradient', 'Градієнт')] %}
-                <button type="button" class="acc-swatch is-icon acc-chips-btn" data-set-chips="{{ value }}">
-                    <span class="chsw" data-chips-sample="{{ value }}">
-                        <span class="status-badge status-прораховано" aria-hidden="true">в роботі</span>
-                    </span>
-                    <span class="acc-swatch-name">{{ title }}</span>
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-
-        {# Віджет верстатів у бічній панелі черги: фоновий арт. Дефолт «Пил на
-           сталі» — обрано власником 03.09.26 з п'яти згенерованих; решта з тієї
-           ж галереї; «Без арту» — звичайна картка. Мініатюра — той самий файл,
-           що й у секції (settings.css, .masw[data-mart]). #}
-        <div class="settings-field">
-            <label>Фон верстатів</label>
-            <div class="acc-icons-row" role="group" aria-label="Фон віджета верстатів">
-                {% for value, title in [('', 'Пил на сталі'), ('burr', 'Фреза над диском'), ('flower', 'Квітка диска'), ('titanium', 'Титан'), ('toolpath', 'Траєкторії CAM'), ('none', 'Без арту')] %}
-                <button type="button" class="acc-swatch acc-mart-btn" data-set-machine-art="{{ value }}">
-                    <span class="masw" data-mart="{{ value or 'dust' }}" aria-hidden="true"><b>350i</b><i>43<u>%</u></i></span>
-                    <span class="acc-swatch-name">{{ title }}</span>
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-
-        {# Стрічка «назва + %» над чергою. Дефолт «Сегменти» (власник): груба
-           шкала по 10 %, бо відсоток з кадру RemiCORE читається з похибкою. #}
-        <div class="settings-field">
-            <label>Стрічка верстатів</label>
-            <div class="acc-icons-row" role="group" aria-label="Стрічка верстатів над чергою">
-                {% for value, title in [('', 'Сегменти'), ('edge', 'Край-смуга'), ('fill', 'Заливка'), ('ring', 'Кільце'), ('ticker', 'Тікер'), ('off', 'Без стрічки')] %}
-                <button type="button" class="acc-swatch acc-mstrip-btn" data-set-machine-strip="{{ value }}">
-                    <span class="mstrip mstrip-sample" data-variant="{{ value or 'segments' }}" aria-hidden="true">
-                        {% if value == 'off' %}
-                        <span class="mstrip-off">—</span>
-                        {% elif value == 'ticker' %}
-                        <span class="mstrip-ticker"><span class="tk run"><b>350i</b> <i>43</i></span><span class="tksep">·</span><span class="tk idle"><i>—</i></span></span>
-                        {% else %}
-                        <span class="mch run" style="--w:43%">
-                            {% if value == 'ring' %}<svg class="ring" viewBox="0 0 16 16"><circle class="bg" cx="8" cy="8" r="6.5"/><circle class="fg" cx="8" cy="8" r="6.5" stroke-dasharray="40.84" stroke-dashoffset="23.28"/></svg>{% endif %}
-                            <b>350i</b><i class="mono">43<u>%</u></i>
-                            {% if value == 'edge' %}<em class="mch-edge"></em>{% endif %}
-                            {% if value == '' %}<span class="segs"><s class="on"></s><s class="on"></s><s class="on"></s><s class="on"></s><s></s><s></s><s></s><s></s><s></s><s></s></span>{% endif %}
-                        </span>
-                        {% endif %}
-                    </span>
-                    <span class="acc-swatch-name">{{ title }}</span>
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-
-        {# Картки на екрані «Верстати»: «Портрет» — дефолт (власник, 04.09.26),
-           «Живий кадр» — кадр RemiCORE просто в плитці, як було раніше. #}
-        <div class="settings-field">
-            <label>Картки на екрані «Верстати»</label>
-            <div class="acc-icons-row" role="group" aria-label="Вигляд карток на екрані верстатів">
-                {% for value, title in [('', 'Портрет верстата'), ('frame', 'Живий кадр')] %}
-                <button type="button" class="acc-swatch acc-mcard-btn" data-set-machine-card="{{ value }}">
-                    <span class="mcsw" data-mcard="{{ value }}" aria-hidden="true"><i></i><b>350i Loader</b></span>
-                    <span class="acc-swatch-name">{{ title }}</span>
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-
-    </div>
-
-    {# Завершення сеансу — поза стеком карток і за розділювачем: це не ще одне
-       налаштування в списку, а вихід із застосунку. #}
-    <div class="acc-endzone">
-        <p class="settings-help">Завершили роботу — вийдіть, щоб наступний оператор увійшов у свій обліковий запис.</p>
-        <form method="post" action="/logout">
-            <button type="submit" class="login-submit settings-submit acc-endshift">Закінчити зміну</button>
-        </form>
+        </section>
     </div>
 </main>
 {% endblock %}
@@ -327,11 +387,11 @@
     // Тема там зветься data-pal, бо data-theme на вкладеному елементі
     // перехопили б глобальні правила теми.
     var GROUPS = [
-      { attr: 'data-theme',   btn: '.acc-theme-btn',   key: 'setTheme',   field: 'theme',   live: 'data-pal',            liveMap: function(v){ return v === 'forge' ? 'forge' : 'teal'; } },
-      { attr: 'data-icons',   btn: '.acc-icons-btn',   key: 'setIcons',   field: 'icons',   live: 'data-icons-sample'   },
-      { attr: 'data-buttons', btn: '.acc-buttons-btn', key: 'setButtons', field: 'buttons', live: 'data-buttons-sample' },
-      { attr: 'data-loader',  btn: '.acc-loader-btn',  key: 'setLoader',  field: 'loader',  live: 'data-loader-sample'  },
-      { attr: 'data-chips',   btn: '.acc-chips-btn',   key: 'setChips',   field: 'chips',   live: 'data-chips-sample'   },
+      { attr: 'data-theme',   btn: '.acc-theme-btn',   key: 'setTheme',   field: 'theme',   preset: 'presetTheme',   live: 'data-pal',            liveMap: function(v){ return v === 'forge' ? 'forge' : 'teal'; } },
+      { attr: 'data-icons',   btn: '.acc-icons-btn',   key: 'setIcons',   field: 'icons',   preset: 'presetIcons',   live: 'data-icons-sample'   },
+      { attr: 'data-buttons', btn: '.acc-buttons-btn', key: 'setButtons', field: 'buttons', preset: 'presetButtons', live: 'data-buttons-sample' },
+      { attr: 'data-loader',  btn: '.acc-loader-btn',  key: 'setLoader',  field: 'loader',  preset: 'presetLoader',  live: 'data-loader-sample'  },
+      { attr: 'data-chips',   btn: '.acc-chips-btn',   key: 'setChips',   field: 'chips',   preset: 'presetChips',   live: 'data-chips-sample'   },
       // Віджет верстатів: на міні-сторінці його немає, тому без live-прев'ю —
       // зразок кожна кнопка несе сама (settings.css / furnaces.css).
       { attr: 'data-machine-art',   btn: '.acc-mart-btn',   key: 'setMachineArt',   field: 'machine_art' },
@@ -354,12 +414,30 @@
     function livePeek(g, raw){
       if (live && g.live) live.setAttribute(g.live, liveValue(g, raw));
     }
+    // Набір показується цілком: наведення на нього міняє ВСІ його осі разом,
+    // інакше прев'ю брехало б — обіцяло одну зміну замість п'яти.
+    function livePeekPreset(btn){
+      if (!live) return;
+      GROUPS.forEach(function(g){
+        if (!g.live || !g.preset) return;
+        live.setAttribute(g.live, liveValue(g, btn.dataset[g.preset] || ''));
+      });
+    }
     function paint(){
       GROUPS.forEach(function(g){
         var cur = rootEl.getAttribute(g.attr) || '';
         document.querySelectorAll(g.btn).forEach(function(b){
           b.setAttribute('aria-pressed', String(b.dataset[g.key] === cur));
         });
+      });
+      // Набір підсвічується лише коли ВСІ його осі збігаються з поточними —
+      // інакше він казав би «застосовано», підмінивши половину налаштувань.
+      document.querySelectorAll('.acc-preset').forEach(function(p){
+        var match = GROUPS.every(function(g){
+          if (!g.preset) return true;
+          return (rootEl.getAttribute(g.attr) || '') === (p.dataset[g.preset] || '');
+        });
+        p.setAttribute('aria-pressed', String(match));
       });
     }
     function save(){
@@ -373,9 +451,12 @@
         })
         .catch(function(){ if (window.showToast) window.showToast('Не вдалося зберегти оформлення', 'error'); });
     }
-    function setAttr(name, val){
+    function applyAttr(name, val){
       if (val) rootEl.setAttribute(name, val);
       else rootEl.removeAttribute(name);
+    }
+    function setAttr(name, val){
+      applyAttr(name, val);
       paint(); save();
     }
     GROUPS.forEach(function(g){
@@ -390,6 +471,46 @@
         b.addEventListener('blur', liveReset);
       });
     });
+
+    // Набір ставить кілька осей і зберігає ОДИН раз: п'ять окремих save()
+    // означали б п'ять записів у базу й п'ять тостів на один клік.
+    document.querySelectorAll('.acc-preset').forEach(function(p){
+      p.addEventListener('click', function(){
+        GROUPS.forEach(function(g){
+          if (!g.preset) return;
+          applyAttr(g.attr, p.dataset[g.preset] || '');
+        });
+        paint(); save(); liveReset();
+      });
+      p.addEventListener('mouseenter', function(){ livePeekPreset(p); });
+      p.addEventListener('focus', function(){ livePeekPreset(p); });
+      p.addEventListener('mouseleave', liveReset);
+      p.addEventListener('blur', liveReset);
+    });
+
+    // Вкладки перемикаються самими радіо-кнопками (CSS), скрипт лише
+    // ЗАПАМʼЯТОВУЄ останню: оператор, що зайшов донастроїти вигляд, не має
+    // щоразу починати з «Профілю». Клавіатура: Enter/Space на підпису.
+    var tabs = document.querySelectorAll('.acc-tab-input');
+    try {
+      var last = localStorage.getItem('accTab');
+      if (last && document.getElementById(last)) document.getElementById(last).checked = true;
+    } catch (e) {}
+    tabs.forEach(function(t){
+      t.addEventListener('change', function(){
+        try { localStorage.setItem('accTab', t.id); } catch (e) {}
+      });
+    });
+    document.querySelectorAll('.acc-tabbar label').forEach(function(l){
+      l.addEventListener('keydown', function(ev){
+        if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          var target = document.getElementById(l.getAttribute('for'));
+          if (target) { target.checked = true; target.dispatchEvent(new Event('change')); }
+        }
+      });
+    });
+
     liveReset();
     paint();
   })();
