@@ -1,7 +1,8 @@
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 hiddenimports = (
-    collect_submodules("uvicorn")
+    ["psutil"]
+    + collect_submodules("uvicorn")
     + ["passlib.handlers.bcrypt"]
     # System-tray icon: pystray's Windows backend and Pillow are imported
     # lazily inside windows_launcher, so PyInstaller can't see them by static

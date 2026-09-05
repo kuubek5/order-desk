@@ -36,6 +36,7 @@ GET /orders/new
 GET /orders/{order_id}
 GET /redoc
 GET /search
+GET /system/load
 GET /settings
 GET /settings/feedback
 GET /settings/materials

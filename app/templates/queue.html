@@ -93,6 +93,10 @@
                         pad_default=8, reset_event='queue-look-reset',
                         col_edit=true, title='Вигляд черги') }}
         </div>
+        {# Жива стрічка навантаження — другим рядком під кнопками, праворуч
+           (D1). Повна ширина через flex-basis:100%, тому переноситься на свій
+           рядок; власний полл, бо це шапка поза #queue-rows. #}
+        {% include "_system_load.html" %}
     </div>
 
     {# Підказки про перетягування межі тут БІЛЬШЕ НЕМАЄ. Вона висіла окремою
@@ -206,6 +210,7 @@
         <aside class="side-panel" aria-label="Довідкові панелі">
             <section class="side-sec" data-open="false" data-sec="mail" style="order:{{ side_order_index(request, 'mail') }}">
                 <button class="side-head" type="button" data-side-toggle aria-expanded="false">
+                    <svg class="side-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
                     Пошта на тріаж
                     <span class="side-count">{{ pending_mail_count }}</span>
                     <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -240,6 +245,7 @@
 
             <section class="side-sec" data-open="false" data-sec="sync" style="order:{{ side_order_index(request, 'sync') }}">
                 <button class="side-head" type="button" data-side-toggle aria-expanded="false">
+                    <svg class="side-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16M15 4v16"/></svg>
                     Google Таблиця
                     <span class="side-count {% if sync_status.sheet.state == 'error' %}err{% endif %}">{{ peeks.sync }}</span>
                     <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -281,6 +287,7 @@
 
             <section class="side-sec" data-open="false" data-sec="handout" style="order:{{ side_order_index(request, 'handout') }}">
                 <button class="side-head" type="button" data-side-toggle aria-expanded="false">
+                    <svg class="side-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8 12 4l9 4-9 4Z"/><path d="M3 8v8l9 4 9-4V8"/></svg>
                     Ранкова видача
                     <span class="side-count {% if kpis.clients_without_handout %}warn{% endif %}">{{ kpis.clients_without_handout }}</span>
                     <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>

@@ -584,6 +584,22 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 }
 .q2 .side-head .side-count.err{background:rgba(var(--alarm-rgb), .14);color:var(--alarm-ink);border-color:rgba(var(--alarm-rgb), .3)}
 .q2 .side-head .side-count.warn{background:rgba(var(--warn-rgb), .13);color:var(--warn);border-color:rgba(var(--warn-rgb), .28)}
+
+/* ── Тиха родина віджетів (варіант B, обрано власником 05.09.26) ──────────
+   Пошта, Google-таблиця, ранкова видача. Пічки й Верстати лишаються
+   фото-героями (їхній CSS у furnaces.css) — ці три отримують легшу спільну
+   мову, щоб усі 5 читались однією родиною: моно-іконка в шапці своїм кольором
+   + тінт лічильника. БЕЗ фото і БЕЗ товстого краю збоку (край збоку — типовий
+   AI-tell, свідомо не вводимо). --wedge — RGB-трійка акценту секції. */
+.q2 .side-sec[data-sec="mail"]{--wedge:90,169,255}
+.q2 .side-sec[data-sec="sync"]{--wedge:75,208,122}
+.q2 .side-sec[data-sec="handout"]{--wedge:255,180,84}
+.q2 .side-head .side-ico{width:16px;height:16px;flex:0 0 16px;stroke:rgb(var(--wedge,160,149,120));
+  fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.q2 .side-sec[data-sec="mail"] .side-count:not(.err):not(.warn),
+.q2 .side-sec[data-sec="sync"] .side-count:not(.err):not(.warn),
+.q2 .side-sec[data-sec="handout"] .side-count:not(.err):not(.warn){
+  background:rgba(var(--wedge), .13);color:rgb(var(--wedge));border-color:rgba(var(--wedge), .30)}
 .q2 .side-head .chev{margin-left:auto;width:14px;height:14px;flex:0 0 14px;stroke:var(--ink-3);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .16s ease}
 .q2 .side-sec[data-open="true"] .chev{transform:rotate(180deg)}
 .q2 .side-body{padding:0 var(--queue-density-card-pad,13px) var(--queue-density-card-pad,13px);border-top:1px solid var(--line)}
@@ -948,3 +964,41 @@ body.sum3d-panel-open .q2 .s3t-panel{display:flex}
 .q2 .sum3d-ghost b{font-size:var(--fs-0);background:var(--sig);color:var(--sig-ink);
   border-radius:3px;padding:0 4px;font-weight:700}
 .q2 .sum3d-ghost:hover{opacity:1}
+
+
+/* ── Жива стрічка навантаження (D1: другим рядком під кнопками, праворуч) ──
+   Затверджено власником 04.09.26. Порядок CRM → ПК → ОЗП, без роздільників.
+   Рядок займає всю ширину q2-topbar (flex-basis:100%), тож переноситься під
+   кнопки; притиснутий праворуч, відділений тонкою лінією зверху. Заливка бару
+   — transform:scaleX (без layout-thrash, на відміну від width). При перегрузі
+   сервер додає .flow (біжить потік) і .pulse (стрічка дихає) + червоний. */
+.q2 .sysload-row{flex-basis:100%;display:flex;justify-content:flex-end;
+  padding-top:9px;margin-top:1px;border-top:1px solid var(--line)}
+.q2 .sysload{--live:var(--accent);--live-rgb:var(--accent-rgb);display:flex;align-items:center;gap:18px}
+.q2 .sysload .cell{display:flex;align-items:center;gap:6px}
+.q2 .sysload .lab{font-size:var(--fs-0);letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.q2 .sysload .lab.crm{color:var(--accent-c)}
+.q2 .sysload .n{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:var(--fs-1);font-weight:700;color:var(--ink);transition:color .5s ease}
+.q2 .sysload .n .u{color:var(--ink-3);font-weight:400;font-size:var(--fs-0)}
+.q2 .sysload .n.dim{color:var(--ink-3)}
+.q2 .sysload .bar{position:relative;width:42px;height:5px;border-radius:999px;background:var(--raise-2);overflow:hidden}
+.q2 .sysload .bar i{position:absolute;left:0;top:0;bottom:0;width:100%;border-radius:999px;transform-origin:left center;
+  background:linear-gradient(90deg,rgba(var(--live-rgb),.55),var(--live));box-shadow:0 0 8px rgba(var(--live-rgb),.5);
+  transition:transform .6s cubic-bezier(.4,0,.2,1),background .5s ease,box-shadow .5s ease}
+/* рухомий відблиск усередині заливки — лише коли близько піку (.flow) */
+.q2 .sysload .bar i::after{content:"";position:absolute;inset:0;border-radius:inherit;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+  background-size:60% 100%;background-repeat:no-repeat;background-position:-60% 0;opacity:0}
+.q2 .sysload.flow .bar i::after{opacity:.9;animation:sysflow 1.1s linear infinite}
+@keyframes sysflow{from{background-position:-60% 0}to{background-position:160% 0}}
+.q2 .sysload.lvl-mid{--live:var(--warn);--live-rgb:var(--warn-rgb)}
+.q2 .sysload.lvl-mid .n:not(.dim){color:var(--warn)}
+.q2 .sysload.lvl-hot{--live:var(--alarm);--live-rgb:var(--alarm-rgb)}
+.q2 .sysload.lvl-hot .n:not(.dim){color:var(--alarm)}
+.q2 .sysload.pulse{animation:sysbreathe 1s ease-in-out infinite}
+@keyframes sysbreathe{0%,100%{opacity:1}50%{opacity:.72}}
+@media (prefers-reduced-motion:reduce){
+  .q2 .sysload.flow .bar i::after{animation:none;opacity:.4}
+  .q2 .sysload.pulse{animation:none}
+  .q2 .sysload .bar i{transition:none}
+}

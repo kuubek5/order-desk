@@ -39,3 +39,6 @@ pillow>=10
 # locale encoding when there is no BOM, and the CI runner is cp1252 -- one
 # Cyrillic comment here failed the whole 0.3.32 build with a UnicodeDecodeError.
 asyncvnc>=1.3
+# System load (CPU/RAM of the whole PC and our own process) in the queue
+# header. Exact figures from the OS, read by a background sampler; cross-platform.
+psutil>=5.9

@@ -118,6 +118,7 @@ from app.sheet_sync_service import (
     sync_hot_tab,
     sync_sheets_background,
 )
+from app.services.system_load import sample as _sample_system_load
 from app.update_check import _update_check_worker
 
 logger = logging.getLogger(__name__)
@@ -416,6 +417,25 @@ def _machine_worker(stop_event: Event) -> None:
         stop_event.wait(MACHINE_POLL_INTERVAL_SECONDS)
 
 
+SYSTEM_LOAD_INITIAL_DELAY_SECONDS = 3.0
+SYSTEM_LOAD_INTERVAL_SECONDS = 3.0
+
+
+def _system_load_worker(stop_event: Event) -> None:
+    """Раз на кілька секунд міряти навантаження системи в пам'ять процесу.
+    Перший `cpu_percent` віддає 0 (нема попереднього зрізу), тому семплер
+    мусить тікати регулярно — саме тут, а не в момент запиту (там замір
+    заблокував би обробник на інтервал). Дешево: без БД, без мережі."""
+    if stop_event.wait(SYSTEM_LOAD_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        try:
+            _sample_system_load()
+        except Exception:
+            logger.exception("Неочікуваний збій заміру навантаження системи")
+        stop_event.wait(SYSTEM_LOAD_INTERVAL_SECONDS)
+
+
 EXPORT_WARM_INITIAL_DELAY_SECONDS = 20.0
 EXPORT_WARM_INTERVAL_SECONDS = 120.0
 
@@ -623,6 +643,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("order-desk-furnace", _furnace_worker),
         _BackgroundWorker("order-desk-machines", _machine_worker),
         _BackgroundWorker("kuubmill-feedback-retry", _feedback_push_retry_worker),
+        _BackgroundWorker("kuubmill-system-load", _system_load_worker),
     ]
     for w in workers:
         w.start()

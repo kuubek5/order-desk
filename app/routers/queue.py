@@ -38,7 +38,8 @@ from app.queue_filters import (
     filter_by_readiness,
     filter_by_source,
 )
-from app.routers.deps import get_current_user, get_db, templates
+from app.routers.deps import get_current_user, login_redirect, get_db, templates
+from app.services.system_load import snapshot as system_load_snapshot
 from app.services.config_state import (
     mail_preview_roots,
     mail_trusted_roots,
@@ -156,7 +157,7 @@ def get_queue(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     # Validate period parameter
     if period not in ("today", "yesterday", "tomorrow", "earlier"):
@@ -509,6 +510,9 @@ def get_queue(
             # Контекст будує ТОЙ САМИЙ machine_side_context, що й роут, щоб
             # два входи не розійшлись (урок віджета пічок).
             **machine_side_context(db),
+            # Жива стрічка навантаження — перший рендер; далі #system-load
+            # оновлює себе через /system/load. Стан лише з памʼяті.
+            "load": system_load_snapshot(),
             # Мітки «мої зараз» — персональні, тому контекст, а не глобал.
             # ОБИДВІ гілки (сторінка й partial=rows) читають цей самий
             # словник: якби полл рахував інакше, мітки зникали б кожні 15с.
@@ -600,7 +604,7 @@ def get_search(
 ):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
 
     results = []
     query_term = (q or "").strip()
@@ -687,7 +691,7 @@ def toggle_sync_pause(request: Request, db: Session = Depends(get_db)):
     toast; a banner there keeps an active pause visible so it's never forgotten."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -708,7 +712,7 @@ def toggle_sync_pause(request: Request, db: Session = Depends(get_db)):
 def sync_sheets(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -756,7 +760,7 @@ def import_sheet_history(request: Request, db: Session = Depends(get_db)):
     (the 3s /sheets/state poll), and the result lands as a toast when done."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -786,7 +790,7 @@ def reconcile_sheet_deletions(request: Request, db: Session = Depends(get_db)):
     наступним синком через 10 хв. Admin + loopback, як і решта дій синку."""
     user = get_current_user(request, db)
     if user is None:
-        return RedirectResponse("/login", status_code=303)
+        return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
@@ -866,4 +870,19 @@ def sheet_mass_vanish_banner(request: Request, db: Session = Depends(get_db)):
         request,
         "_mass_vanish_banner.html",
         {"user": user, "mass_vanish": mass_vanish_pending()},
+    )
+
+
+@router.get("/system/load", response_class=HTMLResponse)
+def system_load(request: Request, db: Session = Depends(get_db)):
+    """Жива стрічка навантаження в шапці черги — власний полл (4 с).
+
+    Читає ЛИШЕ стан у пам'яті (фоновий семплер web.py його оновлює): у момент
+    запиту нічого не міряємо, бо `cpu_percent(interval=…)` заблокував би
+    обробник. Обгортку віддаємо завжди — навіть коли ще немає першого заміру
+    чи psutil відсутній: інакше елемент зник би з DOM разом зі своїм поллом."""
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    return templates.TemplateResponse(
+        request, "_system_load.html", {"request": request, "load": system_load_snapshot()}
     )
