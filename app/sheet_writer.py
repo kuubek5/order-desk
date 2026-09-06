@@ -232,13 +232,21 @@ def clear_placeholder_row(worksheet: gspread.Worksheet, row: int) -> None:
     call_with_retry(lambda: worksheet.spreadsheet.batch_update({"requests": [request]}))
 
 
-def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[str]) -> None:
+def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[str]) -> bool:
+    """Записати поля роботи в її рядок. `False` — запис ПРОПУЩЕНО.
+
+    Повертає ознаку навмисно: пропуск (рядок не підтверджено) виглядав для
+    викликача точно як успіх, і в журнал ішло `status="ok"` — оператор не бачив,
+    що саме цей запис у таблицю не дійшов (знахідка живого тесту 06.09.26, S.8).
+    Дані при цьому в безпеці — чужий рядок не чіпається, — бракувало лише
+    сигналу.
+    """
     row = _resolve_row(worksheet, order)
     if row is None:
         # The row shifted and can't be re-located unambiguously — skip rather
         # than write sum3d/markers onto a neighbour's row. The DB keeps the value
         # (sum3d_id is fill-only on read); the next sync re-links row_number.
-        return
+        return False
     column_by_field = {
         "cam_comment": COL_CAM_COMMENT,
         "sum3d_id": COL_SUM3D_ID,
@@ -267,26 +275,29 @@ def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[s
     if updates:
         # Idempotent: retrying writes the same fixed values to the same cells.
         call_with_retry(lambda: worksheet.batch_update(updates))
+    return True
 
 
-def write_rework_sum3d(worksheet: gspread.Worksheet, order: Order, value: str) -> None:
+def write_rework_sum3d(worksheet: gspread.Worksheet, order: Order, value: str) -> bool:
     """Write the rework redo Sum3D ID into column W ("Заповнює cam оператор" →
     ID) of the order's row — the second ID column, distinct from the main
     Sum3D ID in column L. Touches only that one cell, never the whole row."""
     row = _resolve_row(worksheet, order)
     if row is None:
-        return  # row shifted, can't re-locate safely — skip (see write_order_fields)
+        return False  # row shifted, can't re-locate safely — skip (see write_order_fields)
     call_with_retry(lambda: worksheet.update_cell(row, COL_REDO_SUM3D_ID, value or ""))
+    return True
 
 
-def write_rework_calculated(worksheet: gspread.Worksheet, order: Order, value: str) -> None:
+def write_rework_calculated(worksheet: gspread.Worksheet, order: Order, value: str) -> bool:
     """Write the operator letter into the rework "Прорахував" cell (column X) —
     who calculated the REDO in Sum3D, the БРАК-block counterpart of column М.
     Single cell, row-verified, same discipline as write_rework_sum3d."""
     row = _resolve_row(worksheet, order)
     if row is None:
-        return
+        return False
     call_with_retry(lambda: worksheet.update_cell(row, COL_REDO_CALCULATED, value or ""))
+    return True
 
 
 class RowOccupiedError(RuntimeError):

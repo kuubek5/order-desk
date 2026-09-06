@@ -77,7 +77,23 @@ def write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | Non
         worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
         if worksheet is None:
             raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
-        write_order_fields(worksheet, order, fields)
+        written = write_order_fields(worksheet, order, fields)
+        if not written:
+            # Пропуск ≠ успіх. Рядок не підтверджено (зсунувся неоднозначно або
+            # перевірочне читання впало), тож ми свідомо НЕ писали — але доти
+            # в журнал ішло `ok`, і оператор не бачив, що саме цей запис у
+            # таблицю не дійшов (знахідка живого тесту 06.09.26, S.8). Дані в
+            # базі правильні й чужий рядок цілий; бракувало сигналу.
+            message = "рядок у таблиці не підтверджено — не записано, спробуйте ще раз"
+            db.add(
+                SyncLog(
+                    direction="db_to_sheet",
+                    sheet_tab=order.sheet_tab,
+                    status="skipped",
+                    message=f"order {order.id}: {', '.join(sorted(fields))}: {message}",
+                )
+            )
+            return message
         db.add(
             SyncLog(
                 direction="db_to_sheet",
@@ -457,9 +473,22 @@ def write_rework_sum3d_fields(
         worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
         if worksheet is None:
             raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
-        write_rework_sum3d(worksheet, order, value)
-        if letter is not None:
-            write_rework_calculated(worksheet, order, letter)
+        written = write_rework_sum3d(worksheet, order, value)
+        if letter is not None and written:
+            written = write_rework_calculated(worksheet, order, letter)
+        if not written:
+            # Той самий контракт, що у write_sheet_fields: пропуск видно
+            # окремо від успіху (S.8).
+            message = "рядок у таблиці не підтверджено — не записано, спробуйте ще раз"
+            db.add(
+                SyncLog(
+                    direction="db_to_sheet",
+                    sheet_tab=order.sheet_tab,
+                    status="skipped",
+                    message=f"order {order.id}: rework sum3d_id: {message}",
+                )
+            )
+            return message
         db.add(
             SyncLog(
                 direction="db_to_sheet",

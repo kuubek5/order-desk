@@ -518,12 +518,32 @@ def test_write_sheet_fields_writes_for_sheet_client_rows():
 
     with patch("app.services.sheet_writeback.open_spreadsheet", return_value=object()), \
          patch("app.services.sheet_writeback.get_worksheet_by_name", return_value=object()), \
-         patch("app.services.sheet_writeback.write_order_fields", side_effect=lambda ws, o, f: wrote.append(f)):
+         patch("app.services.sheet_writeback.write_order_fields",
+               side_effect=lambda ws, o, f: (wrote.append(f), True)[1]):
         result = _write_sheet_fields(db, order, {"sum3d_id"})
 
     assert result is None  # no error
     assert wrote == [{"sum3d_id"}]  # the write actually happened
     assert any(getattr(x, "status", None) == "ok" for x in added)
+
+
+def test_write_sheet_fields_reports_a_skipped_write_instead_of_ok():
+    """Пропуск ≠ успіх: коли рядок не підтверджено, запису НЕ БУЛО, і
+    оператор мусить це бачити. До 06.09.26 у журнал ішло «ok», а роут вважав
+    усе записаним (знахідка живого тесту, S.8)."""
+    order = SimpleNamespace(
+        id=7, source="lab", sheet_tab=date.today().strftime("%d.%m.%y"),
+        row_number=5, sum3d_id="PRJ-9",
+    )
+    added = []
+    db = SimpleNamespace(add=added.append)
+
+    with patch("app.services.sheet_writeback.open_spreadsheet", return_value=object()),          patch("app.services.sheet_writeback.get_worksheet_by_name", return_value=object()),          patch("app.services.sheet_writeback.write_order_fields", return_value=False):
+        result = _write_sheet_fields(db, order, {"sum3d_id"})
+
+    assert result and "не підтверджено" in result
+    assert any(getattr(x, "status", None) == "skipped" for x in added)
+    assert not any(getattr(x, "status", None) == "ok" for x in added)
 
 
 def test_pluralize_uk_picks_the_right_form():
