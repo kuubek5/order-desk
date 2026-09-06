@@ -91,15 +91,15 @@
 }
 .scon .stand-state-ok    { color: var(--ok, #a8e08a); border-color: rgba(168, 224, 138, .32); background: rgba(168, 224, 138, .08); }
 .scon .stand-state-warn  { color: var(--warn); border-color: rgba(255, 138, 61, .32); background: rgba(255, 138, 61, .08); }
-.scon .stand-state-alarm { color: var(--alarm); border-color: rgba(255, 107, 82, .34); background: rgba(255, 107, 82, .09); }
+.scon .stand-state-alarm { color: var(--alarm); border-color: rgba(var(--alarm-rgb), .34); background: rgba(var(--alarm-rgb), .09); }
 .scon .stand-state-none  { color: var(--ink-3); }
 /* Тривога помітна навіть краєм ока — але без нескінченної петлі: одна
    коротка пульсація ловить погляд і зупиняється (правило тріажу — жодних
    анімацій-петель у робочому екрані). */
 .scon .stand-state-alarm { animation: standAlarm .9s ease-out 2; }
 @keyframes standAlarm {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 82, 0); }
-  50%      { box-shadow: 0 0 0 4px rgba(255, 107, 82, .18); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--alarm-rgb), 0); }
+  50%      { box-shadow: 0 0 0 4px rgba(var(--alarm-rgb), .18); }
 }
 @media (prefers-reduced-motion: reduce) {
   .scon .stand-state-alarm { animation: none; }
@@ -215,9 +215,9 @@
 
 /* ── зона руйнівних дій ───────────────────────────────────────────────── */
 .scon .stand-danger {
-  border: 1px solid rgba(255, 107, 82, .24);
+  border: 1px solid rgba(var(--alarm-rgb), .24);
   border-radius: var(--r-card);
-  background: linear-gradient(180deg, rgba(255, 107, 82, .05), transparent 60%);
+  background: linear-gradient(180deg, rgba(var(--alarm-rgb), .05), transparent 60%);
 }
 .scon .stand-danger > h3 {
   display: flex;
@@ -225,7 +225,7 @@
   gap: 9px;
   margin: 0;
   padding: 11px 15px;
-  border-bottom: 1px solid rgba(255, 107, 82, .18);
+  border-bottom: 1px solid rgba(var(--alarm-rgb), .18);
   font-family: var(--font-head);
   font-size: var(--fs-2);
   font-weight: 700;
@@ -257,13 +257,13 @@
 .scon .stand-dtext p { margin: 0; font-size: var(--fs-1); color: var(--ink-3); line-height: 1.4; }
 .scon .stand-danger .settings-secondary-button {
   color: var(--alarm);
-  border-color: rgba(255, 107, 82, .32);
-  background: rgba(255, 107, 82, .06);
+  border-color: rgba(var(--alarm-rgb), .32);
+  background: rgba(var(--alarm-rgb), .06);
   flex: none;
 }
 .scon .stand-danger .settings-secondary-button:hover {
-  border-color: rgba(255, 107, 82, .5);
-  background: rgba(255, 107, 82, .13);
+  border-color: rgba(var(--alarm-rgb), .5);
+  background: rgba(var(--alarm-rgb), .13);
   color: var(--alarm);
 }
 

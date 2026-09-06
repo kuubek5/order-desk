@@ -651,6 +651,31 @@ def test_day_sync_route_unfreezes_then_syncs_only_that_tab(monkeypatch):
     assert row["cells"]["mail_slm"]["num"] == 70
 
 
+def test_day_sync_route_refuses_while_sync_is_paused(monkeypatch):
+    """F6 (аудит 06.09.26): день-синк ходив у Google в обхід паузи «/sync» —
+    той самий перемикач, який зупиняє звичайний ручний синк («Синхронізацію
+    призупинено...» на /sheets/sync, app/routers/queue.py), мовчки не діяв
+    тут. Перевіряємо саме факт: sync_google_sheets НЕ викликається (raise на
+    виклик — не тихий побічний ефект), і оператор бачить те саме
+    повідомлення, що й на звичайному ручному синку."""
+    from app.routers import vyrobitok as vr
+    from app import sync_control
+
+    db = _db()
+    _materials(db)
+
+    def boom(*a, **kw):
+        raise AssertionError("sync_google_sheets не має викликатись на паузі")
+    monkeypatch.setattr(vr, "sync_google_sheets", boom)
+    monkeypatch.setattr(vr, "get_current_user", lambda r, db: object())
+    monkeypatch.setattr(vr, "_pin_required", lambda r, db: False)
+    monkeypatch.setattr(sync_control, "is_paused", lambda: True)
+
+    resp = vr.post_vyrobitok_day_sync(_req({}), day="2026-08-05", db=db)
+    assert resp.status_code == 409
+    assert "призупинено" in resp.context["day_sync_error"]
+
+
 def test_day_sync_route_reports_sync_failure(monkeypatch):
     from app.routers import vyrobitok as vr
     from app.sheet_sync_service import SheetSyncError

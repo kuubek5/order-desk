@@ -10,7 +10,6 @@
 інакше список каже «ГОТОВО» на листі, який прийняти не можна.
 """
 
-import asyncio
 from types import SimpleNamespace
 
 from sqlalchemy import create_engine
@@ -61,12 +60,12 @@ def _letter(db, **kw):
 
 
 def _accept(db, user, email, request):
-    return asyncio.run(mail_router_mod.accept_email(
+    return mail_router_mod.accept_email(
         request=request, email_id=email.id,
         client_name="Люмі-Дент", material_color="моно а3", kind="", quantity="7",
         folder_pick="", folder_new="", material_folder="",
         attachment_ids=[], accept_anyway="", db=db,
-    ))
+    )
 
 
 class TestAcceptErrorStaysInTheWizard:

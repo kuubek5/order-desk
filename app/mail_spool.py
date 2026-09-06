@@ -76,13 +76,19 @@ def analyze_spool(
         return SpoolReport(0, 0, 0, [])
 
     cutoff = (now or datetime.now()) - timedelta(days=older_than_days)
-    # uid -> (status, received_at); the spool folder name IS the letter's uid.
-    letters = {
-        uid: (status, received_at)
-        for uid, status, received_at in session.execute(
-            select(EmailMessage.uid, EmailMessage.status, EmailMessage.received_at)
-        ).all()
-    }
+    # uid -> [(status, received_at), ...]; the spool folder name IS the
+    # letter's uid, but uid ALONE is not unique — the real key is
+    # (uid, uid_validity) (app/models.py EmailMessage, migration 0045). After
+    # a UIDVALIDITY change two DB rows can share one uid, and a naive
+    # "last one wins" dict let a stale «відхилено» row shadow a live «нове»
+    # row with the same uid, wrongly marking a still-needed folder prunable.
+    # Aggregate per uid instead: a folder is prunable by status only if
+    # EVERY row sharing that uid agrees it's safe.
+    letters: dict[str, list[tuple[str, datetime | None]]] = {}
+    for uid, status, received_at in session.execute(
+        select(EmailMessage.uid, EmailMessage.status, EmailMessage.received_at)
+    ).all():
+        letters.setdefault(uid, []).append((status, received_at))
 
     total_bytes = 0
     total_dirs = 0
@@ -95,17 +101,19 @@ def analyze_spool(
         size = _dir_size(child)
         total_bytes += size
 
-        entry = letters.get(child.name)
-        if entry is None:
+        entries = letters.get(child.name)
+        if not entries:
             # No letter row owns this folder any more.
             prunable.append(child)
             prunable_bytes += size
             continue
-        status, received_at = entry
         if size == 0:
             prunable.append(child)
             continue
-        if status == "відхилено" and (received_at is None or received_at < cutoff):
+        if all(
+            status == "відхилено" and (received_at is None or received_at < cutoff)
+            for status, received_at in entries
+        ):
             prunable.append(child)
             prunable_bytes += size
 

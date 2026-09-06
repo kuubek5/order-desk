@@ -150,7 +150,10 @@ def furnaces_refresh(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
-    poll_all(db)
+    # Кнопка «Оновити зараз» — людина чекає, 6 с досить, щоб жива піч
+    # відповіла; фоновий тік лишає дефолтні 20 (мовчазна піч — нормальний
+    # робочий стан, а не привід тримати оператора).
+    poll_all(db, timeout=6.0)
     return templates.TemplateResponse(request, "_furnace_cards.html", _context(request, db, user))
 
 

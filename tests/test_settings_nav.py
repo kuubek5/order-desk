@@ -160,6 +160,48 @@ def test_route_gates_use_registry_keys():
     assert not unknown, f"гейти з ключами поза реєстром: {unknown}"
 
 
+def _mail_filter_route_bodies() -> dict[str, str]:
+    """Джерело кожного `/mail/filter...` роута в `app/routers/mail.py`.
+
+    Дешева сітка проти регресу F3 (аудит 06.09.26): ці роути гейтяться через
+    `can_edit(user, "mail-filters")`, бо оператор редагує «Джерела робіт»
+    нарівні з адміном (рішення власника). Прямий `user.role != "адмін"` —
+    старий, жорсткіший гейт — не має тихо повернутись в жоден з них.
+    """
+    path = ROOT / "app" / "routers" / "mail.py"
+    source = io.open(path, encoding="utf-8").read()
+    tree = ast.parse(source)
+    bodies: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for dec in node.decorator_list:
+            if not (isinstance(dec, ast.Call) and getattr(dec.func, "attr", None) in
+                    ("get", "post", "put", "delete", "patch")):
+                continue
+            route_path = next(
+                (arg.value for arg in dec.args if isinstance(arg, ast.Constant)
+                 and isinstance(arg.value, str)),
+                None,
+            )
+            if route_path and route_path.startswith("/mail/filter"):
+                segment = ast.get_source_segment(source, node)
+                bodies[route_path] = segment or ""
+    return bodies
+
+
+def test_mail_filter_routes_never_hardcode_admin_role():
+    bodies = _mail_filter_route_bodies()
+    assert bodies, "жодного /mail/filter роута не знайдено — перевір шлях/декоратор"
+    offenders = {
+        path: body for path, body in bodies.items()
+        if 'role != "адмін"' in body or "role != 'адмін'" in body
+    }
+    assert not offenders, (
+        f"пряма перевірка ролі замість can_edit(user, \"mail-filters\"): {sorted(offenders)}"
+    )
+
+
 @pytest.mark.parametrize("user", [OPERATOR, LOGIST], ids=["оператор", "логіст"])
 def test_non_admin_sees_only_open_sections(user):
     visible = {item.key for group in visible_nav(user) for item in group.items}
@@ -241,6 +283,7 @@ NAV_SNAPSHOT = {
     "machines": ("equipment", "усі", "усі"),
     "operators": ("people", "адмін", "адмін"),
     "sections": ("people", "адмін", "адмін"),
+    "handout": ("workflow", "адмін", "адмін"),
     "sync-journal": ("service", "адмін", "адмін"),
     "backup": ("service", "адмін", "адмін"),
     "feedback": ("service", "адмін", "адмін"),

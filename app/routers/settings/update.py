@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 from app.__version__ import VERSION
+from app.changelog import load_changelog
 from app.routers.deps import (
     get_current_user,
     login_redirect,
@@ -72,11 +73,28 @@ def check_update(request: Request, db: Session = Depends(get_db)):
     if not is_loopback_request(request):
         raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
-    _update_check_tick()
+    reached = _update_check_tick()
     return templates.TemplateResponse(
         request,
         "_update_check_result.html",
-        {"release": get_known_update(), "current_version": VERSION},
+        {"release": get_known_update(), "current_version": VERSION, "reached": reached},
+    )
+
+
+@router.get("/settings/changelog", response_class=HTMLResponse)
+def changelog_full(request: Request, db: Session = Depends(get_db)):
+    """Увесь журнал змін одним фрагментом — за кліком, не в кожному /settings.
+
+    Розділ «Про застосунок» бачать усі ролі, тож і фрагмент — для будь-кого,
+    хто увійшов. Аудит 06.09.26: повний список (114 релізів, 225 КБ) їхав у
+    кожне відкриття налаштувань і робив сторінку важчою за чергу.
+    """
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    return templates.TemplateResponse(
+        request,
+        "_changelog_list.html",
+        {"changelog": load_changelog(), "changelog_more": False},
     )
 
 

@@ -15,11 +15,16 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 from starlette.datastructures import Headers
 
 import app.sync_control as sync_control
+from app.db import Base
 from app.models import Comment, Order, User
 from app.routers import orders as orders_router_mod
+from app.routers.settings import overview as settings_overview_mod
 from app.services import sheet_writeback as writeback
 
 
@@ -116,3 +121,83 @@ class TestCommentRouteAsksAboutPause:
 
         background.assert_called_once()
         assert db_session.query(Comment).count() == 1
+
+
+def _admin(db):
+    user = User(username="admin", password_hash="x", full_name="Адмін", role="адмін")
+    db.add(user)
+    db.commit()
+    return user
+
+
+def _database():
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    return engine
+
+
+class TestSettingsSaveAndSyncAsksAboutPause:
+    """F6 (аудит 06.09.26): «Зберегти й синхронізувати» на /settings ходило в
+    Google в обхід паузи, тим самим шляхом, що й день-синк у Виробітку —
+    `sync_google_sheets` не має викликатись, поки `sync_control.is_paused()`."""
+
+    def test_paused_sync_is_refused_and_never_called(self):
+        import asyncio
+
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            admin = _admin(db)
+
+            async def _form():
+                return {"action": "save_and_sync"}
+
+            request = SimpleNamespace(
+                session={"user_id": admin.id},
+                client=SimpleNamespace(host="127.0.0.1"),
+                form=_form,
+                headers=Headers({}),
+            )
+            sync_control.pause()
+
+            def boom(*a, **kw):
+                raise AssertionError("sync_google_sheets не має викликатись на паузі")
+
+            with patch.object(settings_overview_mod, "sync_google_sheets", boom):
+                response = asyncio.run(
+                    settings_overview_mod.post_settings(request=request, db=db)
+                )
+
+            assert response.headers["location"] == "/"
+            flash = request.session["sync_flash"]
+            assert flash["kind"] == "error"
+            assert "призупинено" in flash["message"]
+
+    def test_resumed_sync_goes_through(self):
+        import asyncio
+
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            admin = _admin(db)
+
+            async def _form():
+                return {"action": "save_and_sync"}
+
+            request = SimpleNamespace(
+                session={"user_id": admin.id},
+                client=SimpleNamespace(host="127.0.0.1"),
+                form=_form,
+                headers=Headers({}),
+            )
+            sync_control.resume()
+
+            called = []
+            fake_summary = SimpleNamespace(
+                tabs_processed=0, created=0, updated=0, unchanged=0, deleted=0,
+            )
+            with patch.object(
+                settings_overview_mod, "sync_google_sheets",
+                lambda db: called.append(1) or fake_summary,
+            ):
+                asyncio.run(settings_overview_mod.post_settings(request=request, db=db))
+
+            assert called == [1]

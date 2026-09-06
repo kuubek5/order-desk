@@ -468,7 +468,21 @@
     align-items: stretch;
   }
 
-  body.rail-collapsed .rail-label,
+  /* display:none тут ховало б ЄДИНУ доступну назву кожного пункту меню
+     (іконки — aria-hidden): скрін-рідер лишав би саму мовчазну кнопку.
+     Візуально-прихований патерн прибирає підпис з екрана, але лишає в
+     дереві доступності; position:absolute виводить його з flex-потоку,
+     тож gap між іконкою й (тепер невидимим) підписом не з'являється. */
+  body.rail-collapsed .rail-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   body.rail-collapsed .rail-brand-text {
     display: none;
   }

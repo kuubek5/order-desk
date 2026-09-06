@@ -2,8 +2,6 @@
 
 from types import SimpleNamespace
 
-import pytest
-from fastapi import HTTPException
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -205,16 +203,30 @@ def test_manual_filter_moves_single_letter_without_rule(monkeypatch):
         assert email2.filter_category == "інше"
 
 
-def test_create_rule_requires_admin(monkeypatch):
+def test_create_rule_allows_operator():
+    """Рішення власника 06.09.26: «Джерела робіт» (mail-filters, включно з
+    фільтрами) редагує й оператор нарівні з адміном — `edit_roles=None` у
+    реєстрі `app/services/settings_nav.py`. Раніше тут стояв прямий
+    `user.role != "адмін"`, і оператор ловив 403 (F3, аудит 06.09.26)."""
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         operator = _user(db, role="оператор")
-        with pytest.raises(HTTPException) as exc:
-            mail_router_mod.create_mail_filter(
-                request=_request(operator.id), kind="keyword",
-                pattern="спам", category="спам", db=db,
-            )
-        assert exc.value.status_code == 403
+        response = mail_router_mod.create_mail_filter(
+            request=_request(operator.id), kind="keyword",
+            pattern="спам", category="спам", db=db,
+        )
+        assert response.status_code == 303
+        assert db.scalars(select(MailFilterRule)).all()
+
+
+def test_create_rule_requires_login():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        response = mail_router_mod.create_mail_filter(
+            request=_request(None), kind="keyword",
+            pattern="спам", category="спам", db=db,
+        )
+        assert response.status_code in (302, 303)  # login redirect
 
 
 def test_create_rule_applies_retroactively(monkeypatch):

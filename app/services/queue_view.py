@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app import perf
+
 from app import sync_control
 from app.business_day import business_today
 from app.mail_sync_service import is_mail_sync_running
@@ -77,6 +78,29 @@ from app.sheet_sync_service import (
 from app.statuses import STATUSES, is_overdue
 from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed, record_viewed_day
 from app.sync_heartbeat import sync_status_pair
+
+
+# ── Сторінка рядків черги (аудит 06.09.26, F1) ───────────────────────────
+# «Раніше» тримає до 30 днів — 600+ рядків по ~9 КБ = 5,5 МБ HTML, і полл
+# тягнув їх кожні 15 с. Перші QUEUE_ROWS_PAGE рядків ідуть одразу, решта —
+# кнопкою «Показати ще» всередині #queue-rows. Порядок не міняється
+# (CLAUDE.md §2): це зріз того самого списку, а не інше сортування.
+QUEUE_ROWS_PAGE = 200
+QUEUE_ROWS_MAX = 5000
+# Коли на екрані більше рядків, ніж тут, полл сповільнюється до
+# QUEUE_SLOW_POLL_SECONDS: свіжість «Раніше» не варта мегабайтів щочверть хвилини.
+QUEUE_POLL_SLOW_ROWS = 150
+QUEUE_SLOW_POLL_SECONDS = 60
+
+
+def clamp_rows_limit(limit) -> int:
+    """Скільки рядків малювати: типово одна сторінка; «Показати ще» шле більше."""
+    try:
+        value = int(limit) if limit not in (None, "") else QUEUE_ROWS_PAGE
+    except (TypeError, ValueError):
+        return QUEUE_ROWS_PAGE
+    return max(QUEUE_ROWS_PAGE, min(value, QUEUE_ROWS_MAX))
+
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +160,7 @@ def build_queue_view(
     sort_dir: str = "asc",
     partial: str = "",
     focus: str = "",
+    limit: int | None = None,
 ) -> QueueView:
     """Зібрати екран черги для цього оператора й цього набору фільтрів.
 
@@ -333,6 +358,15 @@ def build_queue_view(
         big = len(my_focus_rank)
         orders.sort(key=lambda o: my_focus_rank.get(o.id, big))
 
+    # Лічильники «N у вигляді» та одиниці — по ВСЬОМУ відфільтрованому списку,
+    # зріз нижче стосується лише того, скільки рядків їде в HTML.
+    rows_total = len(orders)
+    total_units = sum_units(orders)
+    rows_limit = clamp_rows_limit(limit)
+    if rows_total > rows_limit:
+        orders = orders[:rows_limit]
+    rows_more = rows_total - len(orders)
+
     orders_lab = [o for o in orders if o.source != "email"]
     orders_email = [o for o in orders if o.source == "email"]
 
@@ -411,6 +445,9 @@ def build_queue_view(
         _qs_items.append(("date_page", str(current_date_page)))
     if sort:
         _qs_items += [("sort", sort), ("dir", sort_dir)]
+    # Розкрита глибина «Показати ще» мусить пережити полл: він читає rows_qs.
+    if rows_limit != QUEUE_ROWS_PAGE:
+        _qs_items.append(("limit", str(rows_limit)))
     rows_qs = urlencode(_qs_items)
 
     # The single day this operator is actually looking at. Two consumers:
@@ -447,7 +484,11 @@ def build_queue_view(
             # ready/date/overdue all already applied to `orders`). Only cleanly
             # numeric quantities count; ranges/blanks are skipped rather than
             # guessed. Shown next to the "N у вигляді" live counter.
-            "total_units": sum_units(orders),
+            "total_units": total_units,
+            "rows_total": rows_total,
+            "rows_limit": rows_limit,
+            "rows_more": rows_more,
+            "rows_page": QUEUE_ROWS_PAGE,
             "user": user,
             "statuses": STATUSES,
             "period": period,
@@ -543,6 +584,13 @@ def build_queue_view(
             "sync_speed": SYNC_SPEED_PRESETS,
             "sync_speed_active": sync_control.get_speed_preset(),
             "sync_screen_seconds": get_sync_speed()["screen"],
+            # Полл рядків: звичайний темп, поки рядків небагато; на розкритому
+            # «Раніше» — не частіше, ніж раз на хвилину.
+            "poll_seconds": (
+                get_sync_speed()["screen"]
+                if len(orders) <= QUEUE_POLL_SLOW_ROWS
+                else max(get_sync_speed()["screen"], QUEUE_SLOW_POLL_SECONDS)
+            ),
             "viewed_tab": viewed_day.strftime("%d.%m.%y") if viewed_day else "",
             "sync_paused": sync_control.is_paused(),
             "focus_order_id": focus.strip() if focus.strip().isdigit() else "",

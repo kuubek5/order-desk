@@ -18,7 +18,7 @@
    колонка БД), тож перший, «голий» рендер уже правильний. #}
 <div id="queue-rows"
      hx-get="/?{{ rows_qs }}{% if rows_qs %}&{% endif %}partial=rows"
-     hx-trigger="load, every {{ sync_screen_seconds|default(15) }}s, refresh-queue from:body"
+     hx-trigger="load, every {{ poll_seconds|default(sync_screen_seconds|default(15)) }}s, refresh-queue from:body"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*">
@@ -35,6 +35,16 @@
     </div>
     <div class="qfoot">
         <span>Клік по шляху-ID копіює його для Sum3D · клік по наряду відкриває паспорт роботи</span>
+        {% if rows_more %}
+        {# Сторінка рядків: кнопка свапає ТОЙ САМИЙ #queue-rows з більшим
+           limit, тож полл (rows_qs) далі тримає розкриту глибину. Порядок
+           рядків від цього не міняється (CLAUDE.md §2). #}
+        <button type="button" class="btn qmore"
+                hx-get="/?{{ rows_qs }}{% if rows_qs %}&{% endif %}limit={{ rows_limit + rows_page }}&partial=rows"
+                hx-target="#queue-rows" hx-swap="outerHTML">
+            Показати ще {{ [rows_more, rows_page] | min }} <span class="text-muted">(ще {{ rows_more }} нижче)</span>
+        </button>
+        {% endif %}
     </div>
     {% else %}
     <div class="queue-empty queue-empty-live">

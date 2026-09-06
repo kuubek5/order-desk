@@ -1,0 +1,24 @@
+200 61750B / | data-sec="furnace" data-sec="handout" data-sec="machine" data-sec="mail" data-sec="sync" 
+200 57211B /mail | 
+200 200169B /handout | 
+200 28961B /shift | 
+200 24913B /furnaces | 
+200 25418B /machines | 
+200 186183B /clients | 
+200 34550B /archive | 
+200 24388B /search | 
+200 46964B /journal | 
+403 57B /journal/sync | 
+200 24182B /stats | 
+200 24418B /vyrobitok | 
+403 57B /feedback/inbox | 
+200 404196B /settings | data-sec="furnaces" data-sec="imap" data-sec="machines" data-sec="mail-download" data-sec="mail-filters" data-sec="notifications" data-sec="paths" dat
+200 66588B /settings/materials | data-sec="furnaces" data-sec="imap" data-sec="machines" data-sec="mail-download" data-sec="mail-filters" data-sec="notifications" data-sec="paths" dat
+403 57B /settings/feedback | 
+200 95462B /account | data-sec="furnaces" data-sec="imap" data-sec="machines" data-sec="mail-download" data-sec="mail-filters" data-sec="notifications" data-sec="paths" dat
+200 18796B /license | 
+403 57B /diag/perf | 
+200 1095B /actions/recent | 
+200 1915B /palette/commands | 
+200 263B /sheets/state | 
+200 231B /machines/sisma | 

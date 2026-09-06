@@ -76,9 +76,20 @@ def _license_pill(status) -> dict:
     return {"tone": "ok", "label": "активна"}
 
 
+def _license_page_requires_login(db: Session, status) -> bool:
+    """/license проходить повз license_gate завжди (без цього нікуди не
+    дійти без ключа) — але коли ліцензія вже валідна і в базі є оператори,
+    сторінка ставала єдиною дірою: чужий ключ будь-хто міг ввести без входу
+    (F4, аудит 06.09.26). Анонімний доступ лишаємо ЛИШЕ поки активація ще
+    триває (ключ невалідний) або на найпершому запуску (операторів нема)."""
+    return status.valid and user_count(db) != 0
+
+
 @router.get("/license", response_class=HTMLResponse)
 def license_form(request: Request, db: Session = Depends(get_db)):
     status = get_license_status(db)
+    if _license_page_requires_login(db, status) and get_current_user(request, db) is None:
+        return login_redirect(request)
     # Справжню проблему (сплив терміну, ключ видано іншій машині, збій ключа
     # шифрування) показуємо червоним, щоб оператор одразу зрозумів причину.
     # Чисте «ще не активовано» лишаємо нейтральним підзаголовком.
@@ -103,6 +114,13 @@ def license_form(request: Request, db: Session = Depends(get_db)):
 async def license_submit(
     request: Request, license_key: str = Form(""), db: Session = Depends(get_db)
 ):
+    current_status = get_license_status(db)
+    if (
+        _license_page_requires_login(db, current_status)
+        and get_current_user(request, db) is None
+    ):
+        return login_redirect(request)
+
     machine_id = get_machine_id()
     status = verify_license_key(license_key, machine_id)
     if not status.valid:

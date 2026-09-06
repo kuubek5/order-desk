@@ -124,7 +124,7 @@
             <div class="listwrap">
                 {% include "_mail_triage_list.html" %}
             </div>
-            <div class="list-foot">{% if view == 'filtered' %}Відфільтровані листи не видаляються — «↩» повертає лист у чергу{% else %}MIME-імена файлів і шляхи export перевірені на traversal перед збереженням{% endif %}</div>
+            <div class="list-foot">{% if view == 'filtered' %}Відфільтровані листи не видаляються — «↩» повертає лист у чергу{% else %}Клік по листу відкриває картку тріажу · «✕» відхиляє лист без видалення{% endif %}</div>
         </section>
 
         <section class="detail-panel" id="mail-detail">

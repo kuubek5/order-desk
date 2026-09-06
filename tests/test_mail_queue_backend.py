@@ -1,4 +1,3 @@
-import asyncio
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
@@ -938,9 +937,7 @@ def test_reject_email_marks_rejected_and_excludes_from_triage_list(tmp_path, mon
         db.add(email)
         db.commit()
 
-        response = asyncio.run(
-            mail_router_mod.reject_email(request=_request(user.id), email_id=email.id, db=db)
-        )
+        response = mail_router_mod.reject_email(request=_request(user.id), email_id=email.id, db=db)
         assert response.status_code == 303
 
         db.refresh(email)
@@ -964,9 +961,7 @@ def test_reject_from_triage_list_returns_empty_200_not_redirect(monkeypatch):
 
         request = _request(user.id)
         request.headers = {"HX-Request": "true"}
-        response = asyncio.run(
-            mail_router_mod.reject_email(request=request, email_id=email.id, db=db)
-        )
+        response = mail_router_mod.reject_email(request=request, email_id=email.id, db=db)
         assert response.status_code == 200
         assert response.body == b""  # empty body → htmx deletes just the target
         db.refresh(email)
@@ -1014,7 +1009,7 @@ def test_restore_rejected_email_returns_to_triage():
         db.add(rejected)
         db.commit()
 
-        asyncio.run(mail_router_mod.restore_email(request=_request(user.id), email_id=rejected.id, db=db))
+        mail_router_mod.restore_email(request=_request(user.id), email_id=rejected.id, db=db)
         db.refresh(rejected)
         assert rejected.status == "нове"
 
@@ -1053,7 +1048,7 @@ def test_restore_accepted_email_unwinds_order_and_files(monkeypatch):
         db.commit()
         order_id = order.id
 
-        asyncio.run(mail_router_mod.restore_email(request=_request(user.id), email_id=email.id, db=db))
+        mail_router_mod.restore_email(request=_request(user.id), email_id=email.id, db=db)
 
         db.refresh(email)
         assert email.status == "нове"
@@ -1264,11 +1259,11 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
         db.commit()
 
         # 1. accept with a typed client name → memory row created, folder recorded
-        asyncio.run(mail_router_mod.accept_email(
+        mail_router_mod.accept_email(
             request=_request(user.id), email_id=first.id,
             client_name="Люмі-Дент", material_color="моно а3", kind="", quantity="",
             folder_pick="", folder_new="", material_folder="", attachment_ids=[], db=db,
-        ))
+        )
         mem = db.scalar(select(ClientSenderMemory))
         assert mem is not None
         assert (mem.sender_key, mem.client_name, mem.export_folder, mem.orders_count) == \
@@ -1346,11 +1341,11 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
         a1_id, a2_id = a1.id, a2.id
 
         # accept only file 1 as "моно а3"
-        asyncio.run(mail_router_mod.accept_email(
+        mail_router_mod.accept_email(
             request=_request(user.id), email_id=email.id, client_name="Клієнт",
             material_color="моно а3", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[a1_id], db=db,
-        ))
+        )
         db.refresh(email)
         db.refresh(a1)
         db.refresh(a2)
@@ -1360,11 +1355,11 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
         first_order = a1.order_id
 
         # accept the rest as "цирконій"
-        asyncio.run(mail_router_mod.accept_email(
+        mail_router_mod.accept_email(
             request=_request(user.id), email_id=email.id, client_name="Клієнт",
             material_color="цирконій", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[a2_id], db=db,
-        ))
+        )
         db.refresh(email)
         db.refresh(a2)
         assert email.status == "прийнято"  # nothing left
@@ -1374,7 +1369,7 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
         assert len(orders) == 2
 
         # restore undoes BOTH orders and returns all files to spool
-        asyncio.run(mail_router_mod.restore_email(request=_request(user.id), email_id=email.id, db=db))
+        mail_router_mod.restore_email(request=_request(user.id), email_id=email.id, db=db)
         db.refresh(email)
         db.refresh(a1)
         db.refresh(a2)
@@ -1407,11 +1402,11 @@ def test_accept_empty_selection_takes_all_unclaimed(monkeypatch, tmp_path):
         f.write_bytes(b"A")
         db.add(Attachment(email_message_id=email.id, filename="one.stl", saved_path=str(f)))
         db.commit()
-        asyncio.run(mail_router_mod.accept_email(
+        mail_router_mod.accept_email(
             request=_request(user.id), email_id=email.id, client_name="C",
             material_color="моно", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[], db=db,
-        ))
+        )
         db.refresh(email)
         assert email.status == "прийнято"
         assert db.scalar(select(func.count()).select_from(Order).where(Order.source_email_id == email.id)) == 1
@@ -1508,11 +1503,11 @@ def test_partial_accept_redirects_to_two_pane_open(monkeypatch, tmp_path):
         db.commit()
         a1_id = a1.id
 
-        resp = asyncio.run(mail_router_mod.accept_email(
+        resp = mail_router_mod.accept_email(
             request=_request(user.id), email_id=email.id, client_name="C",
             material_color="моно", kind="", quantity="", folder_pick="",
             folder_new="", material_folder="", attachment_ids=[a1_id], db=db,
-        ))
+        )
         assert resp.headers["location"] == f"/mail?open={email.id}"
 
 
@@ -1547,21 +1542,21 @@ def test_accept_sets_truthful_outcome_toast(monkeypatch, tmp_path):
 
         req = _request(user.id)
         # partial: one file, one remains
-        asyncio.run(mail_router_mod.accept_email(
+        mail_router_mod.accept_email(
             request=req, email_id=email.id, client_name="C", material_color="моно",
             kind="", quantity="", folder_pick="", folder_new="", material_folder="",
             attachment_ids=[a1_id], db=db,
-        ))
+        )
         flash = req.session["toast_flash"]
         assert flash["kind"] == "success"
         assert "збережено 1" in flash["message"] and "Лишилось 1" in flash["message"]
 
         # finish: last file, full accept
-        asyncio.run(mail_router_mod.accept_email(
+        mail_router_mod.accept_email(
             request=req, email_id=email.id, client_name="C", material_color="цирконій",
             kind="", quantity="", folder_pick="", folder_new="", material_folder="",
             attachment_ids=[a2_id], db=db,
-        ))
+        )
         flash = req.session["toast_flash"]
         assert "прийнято в чергу: збережено 1" in flash["message"]
 
@@ -1575,7 +1570,7 @@ def test_restore_from_archive_sets_toast(monkeypatch):
         db.add(rejected)
         db.commit()
         req = _request(user.id)
-        resp = asyncio.run(mail_router_mod.restore_email(request=req, email_id=rejected.id, db=db))
+        resp = mail_router_mod.restore_email(request=req, email_id=rejected.id, db=db)
         assert resp.status_code == 303 and resp.headers["location"] == "/mail"
         db.refresh(rejected)
         assert rejected.status == "нове"

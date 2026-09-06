@@ -36,7 +36,12 @@ from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
 
-SNAPSHOT_PREFIX = "orderdesk-"
+SNAPSHOT_PREFIX = "kuubmill-"
+# OrderDesk→KuubMill rename (CLAUDE.md §14): snapshots written before the
+# rename keep this prefix forever — they must still be listed and prunable,
+# just never created new. Do not remove until every machine's history is
+# past this window (same rule as the other OrderDesk→KuubMill migrations).
+LEGACY_SNAPSHOT_PREFIX = "orderdesk-"
 # Safety valve, not a policy: two decades of monthly files. Snapshots are a
 # few MB each, so keeping them all is the point — this only guards against a
 # pathological loop ever flooding the folder.
@@ -71,18 +76,41 @@ def backups_dir(db_path: str | Path) -> Path:
     return Path(db_path).expanduser().resolve().parent / "backups" / "monthly"
 
 
+def _is_snapshot(path: Path) -> bool:
+    return (
+        path.is_file()
+        and path.name.startswith((SNAPSHOT_PREFIX, LEGACY_SNAPSHOT_PREFIX))
+        and path.suffix == ".db"
+    )
+
+
+def _month_sort_key(path: Path) -> str:
+    """The `YYYY-MM.db` tail, prefix stripped.
+
+    Two prefixes now share the folder (rename mid-history), and they don't
+    sort the same way lexically ("kuubmill-" > "orderdesk-" alphabetically,
+    even though every kuubmill file is a LATER month than every orderdesk
+    one). Sorting by the date tail alone keeps chronological order regardless
+    of which side of the rename a file is on.
+    """
+    name = path.name
+    for prefix in (SNAPSHOT_PREFIX, LEGACY_SNAPSHOT_PREFIX):
+        if name.startswith(prefix):
+            return name[len(prefix):]
+    return name
+
+
 def list_snapshots(db_path: str | Path) -> list[Path]:
-    """Existing snapshot files, newest month first (name-sorted — the
-    zero-padded ISO name makes lexical order chronological)."""
+    """Existing snapshot files, newest month first.
+
+    Accepts both the current prefix and the pre-rename `orderdesk-` one:
+    old snapshots don't get renamed, they just stay readable forever."""
     folder = backups_dir(db_path)
     try:
-        files = [
-            p for p in folder.iterdir()
-            if p.is_file() and p.name.startswith(SNAPSHOT_PREFIX) and p.suffix == ".db"
-        ]
+        files = [p for p in folder.iterdir() if _is_snapshot(p)]
     except OSError:
         return []
-    return sorted(files, key=lambda p: p.name, reverse=True)
+    return sorted(files, key=_month_sort_key, reverse=True)
 
 
 def ensure_monthly_snapshot(
@@ -121,10 +149,11 @@ def ensure_monthly_snapshot(
 
 
 def _prune(folder: Path) -> None:
+    # Both prefixes count toward the same retention window — a legacy
+    # orderdesk- file is exactly as old as its month says, prefix aside.
     snapshots = sorted(
-        (p for p in folder.iterdir()
-         if p.is_file() and p.name.startswith(SNAPSHOT_PREFIX) and p.suffix == ".db"),
-        key=lambda p: p.name,
+        (p for p in folder.iterdir() if _is_snapshot(p)),
+        key=_month_sort_key,
     )
     excess = len(snapshots) - MAX_SNAPSHOTS
     for path in snapshots[:max(0, excess)]:

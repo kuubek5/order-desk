@@ -262,3 +262,109 @@ def test_full_activation_cycle_unblocks_the_gate(keypair, monkeypatch):
     # After activation: no longer redirected to /license.
     unblocked = asyncio.run(web.license_gate(_request("/"), _call_next_marker))
     assert unblocked.status_code == 200
+
+
+# --- F4 (аудит 06.09.26): /license сам по собі не мав входу ------------------
+#
+# `license_gate` (app/web.py) завжди пропускає шлях "/license" повз себе —
+# інакше нікуди дійти без ключа. Але коли ліцензія вже валідна і в базі є
+# оператори, ця сторінка лишалась ЄДИНОЮ діркою: будь-хто без сесії міг
+# ввести чужий ключ і повністю переактивувати ліцензію. Анонімний доступ
+# лишається лише поки триває активація (ключ невалідний) або на першому
+# запуску (операторів нема).
+
+
+def _fake_request(user_id=None):
+    """Мінімальний starlette-сумісний Request із session/headers — той самий
+    прийом, що й get_current_user/login_redirect використовують у тестах
+    інших роутів (SimpleNamespace замість справжнього ASGI-скоупу)."""
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        session={} if user_id is None else {"user_id": user_id},
+        client=SimpleNamespace(host="127.0.0.1"),
+        headers={},
+    )
+
+
+def test_license_form_redirects_to_login_when_valid_and_licensed(keypair):
+    """Ліцензія активна, оператор уже є — анонімний GET /license йде на вхід."""
+    from app.models import User
+    real_machine_id = license_module.get_machine_id()
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        db.add(User(username="op", password_hash="x", full_name="Op", role="адмін"))
+        key = _issue(keypair, machine_id=real_machine_id)
+        set_setting(db, "license_key", key)
+        db.commit()
+
+        response = auth_router_mod.license_form(request=_fake_request(None), db=db)
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
+
+
+def test_license_form_open_when_not_yet_activated(keypair):
+    """Ключ ще невалідний (активація триває) — сторінка лишається доступна
+    без входу, інакше неможливо ввести перший ключ."""
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        response = auth_router_mod.license_form(request=_fake_request(None), db=db)
+        assert response.status_code == 200
+
+
+def test_license_form_open_on_first_run_even_if_licensed(keypair):
+    """Ліцензія вже валідна, але операторів у базі ще нема (перший запуск) —
+    анонімний доступ лишається, бо саме звідси й починається /setup."""
+    real_machine_id = license_module.get_machine_id()
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        key = _issue(keypair, machine_id=real_machine_id)
+        set_setting(db, "license_key", key)
+        db.commit()
+
+        response = auth_router_mod.license_form(request=_fake_request(None), db=db)
+        assert response.status_code == 200
+
+
+def test_license_form_open_for_a_logged_in_user(keypair):
+    """Валідна ліцензія, оператори є, АЛЕ запит з дійсною сесією — не
+    редіректити залогіненого адміна геть зі сторінки паспорта ліцензії."""
+    from app.models import User
+    real_machine_id = license_module.get_machine_id()
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        admin = User(username="op", password_hash="x", full_name="Op", role="адмін", is_active=True)
+        db.add(admin)
+        key = _issue(keypair, machine_id=real_machine_id)
+        set_setting(db, "license_key", key)
+        db.commit()
+
+        response = auth_router_mod.license_form(request=_fake_request(admin.id), db=db)
+        assert response.status_code == 200
+
+
+def test_license_submit_requires_login_when_valid_and_licensed(keypair):
+    """POST /license з чужим ключем без сесії — редірект на вхід, ключ НЕ
+    переактивовується (жоден запис не змінюється)."""
+    from app.models import User
+    real_machine_id = license_module.get_machine_id()
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        db.add(User(username="op", password_hash="x", full_name="Op", role="адмін"))
+        original_key = _issue(keypair, machine_id=real_machine_id)
+        set_setting(db, "license_key", original_key)
+        db.commit()
+
+        other_key = _issue(keypair, machine_id="someone-elses-machine")
+        response = asyncio.run(
+            auth_router_mod.license_submit(
+                request=_fake_request(None), license_key=other_key, db=db,
+            )
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
+        assert get_setting(db, "license_key") == original_key  # untouched

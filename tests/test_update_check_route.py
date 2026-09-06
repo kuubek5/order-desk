@@ -111,3 +111,59 @@ def test_reports_up_to_date_when_no_release(monkeypatch):
             context = settings_router_mod.check_update(request=_request(admin.id), db=db)
     assert context["release"] is None
     assert context["current_version"] == web.VERSION
+
+
+# --- F7 (аудит 06.09.26): a failed GitHub probe must not read as "up to date" -
+#
+# check_update ignored _update_check_tick's bool return. With no earlier known
+# release (fresh install, first probe ever offline), a transport failure and a
+# genuine "you're current" both rendered the same green pill — a laptop that
+# never reached GitHub looked exactly like one that checked and is current.
+
+
+def test_context_carries_reached_flag_from_the_tick(monkeypatch):
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        with patch(
+            "app.routers.settings.update._update_check_tick", return_value=False
+        ) as tick, patch(
+            "app.routers.settings.update.get_known_update", return_value=None
+        ):
+            context = settings_router_mod.check_update(request=_request(admin.id), db=db)
+    tick.assert_called_once()
+    assert context["reached"] is False
+
+
+def _render_result_fragment(*, release, reached):
+    """Real Jinja render (not the mocked TemplateResponse above) — the whole
+    point of F7 is what ends up in the HTML, not just the context dict."""
+    from app.routers.deps import templates
+
+    return templates.env.get_template("_update_check_result.html").render(
+        release=release, current_version="1.0.0", reached=reached,
+    )
+
+
+def test_fragment_shows_connectivity_warning_when_never_reached_and_nothing_known():
+    html = _render_result_fragment(release=None, reached=False)
+    assert "Не вдалося перевірити" in html
+    assert "звʼязку з GitHub" in html
+    assert "найновіша версія" not in html
+
+
+def test_fragment_still_shows_up_to_date_when_reached_and_no_release():
+    html = _render_result_fragment(release=None, reached=True)
+    assert "найновіша версія" in html
+    assert "Не вдалося перевірити" not in html
+
+
+def test_fragment_prefers_known_release_even_if_this_tick_failed():
+    """A transient failure must not hide an update a PRIOR successful tick
+    already found (_update_check_tick keeps the stale release on purpose)."""
+    html = _render_result_fragment(release=_RELEASE, reached=False)
+    assert "Доступне оновлення" in html
+    assert "Не вдалося перевірити" not in html

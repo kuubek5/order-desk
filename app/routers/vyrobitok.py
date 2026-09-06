@@ -23,6 +23,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
+from app import sync_control
 from app.business_day import business_today
 from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.services.attempt_limit import block_message, pin_limiter
@@ -185,6 +186,19 @@ def post_vyrobitok_day_sync(
         d = date.fromisoformat(day)
     except ValueError:
         return HTMLResponse("невірна дата", status_code=422)
+
+    # Синк призупинений (перемикач у /sync або трей) — той самий гейт, що й
+    # ручний "/sheets/sync" (app/routers/queue.py): пауза зупиняє ЙОГО читання
+    # й запис, точковий день-синк не має бути дірою повз неї (F6, аудит
+    # 06.09.26). Не розморожуємо день і не читаємо таблицю — просто кажемо чому.
+    if sync_control.is_paused():
+        context = _grid_context(db, user, d.year, d.month)
+        context["day_sync_error"] = (
+            "Синхронізацію призупинено. Зніміть паузу, щоб синхронізувати."
+        )
+        return templates.TemplateResponse(
+            request, "_vyrobitok_body.html", context, status_code=409,
+        )
 
     # Розморожуємо ДО синку: інакше запис СЛМ упреться в заморозку й тихо
     # пропустить число, заради якого синк і запускали.

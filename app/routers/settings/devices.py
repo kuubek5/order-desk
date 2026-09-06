@@ -393,7 +393,7 @@ def update_machine(
 
 
 @router.post("/settings/machines/{machine_id}/portrait")
-async def upload_machine_portrait(
+def upload_machine_portrait(
     request: Request, machine_id: int, photo: UploadFile = File(...), db: Session = Depends(get_db)
 ):
     """Фото верстата для картки на екрані «Верстати». Формат і розмір

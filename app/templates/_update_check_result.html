@@ -1,7 +1,12 @@
 {# HTMX fragment for POST /settings/update/check. `release` is the latest known
    ReleaseInfo (None when there is nothing newer or the check couldn't reach
-   GitHub); `current_version` is this build. On a newer version, offers the same
-   install action as the rail banner; otherwise a calm "up to date" pill. #}
+   GitHub); `current_version` is this build; `reached` says whether THIS tick
+   actually talked to GitHub (False on a transport failure — see
+   _update_check_tick). On a newer version, offers the same install action as
+   the rail banner; otherwise a calm "up to date" pill — UNLESS the check
+   itself never reached GitHub and there's no earlier known release to fall
+   back on, in which case silence would read as a false "up to date" (F7,
+   аудит 06.09.26). #}
 {% if release %}
 <span class="check-pill check-pill-warning update-check-found" role="status">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
@@ -10,6 +15,11 @@
         <button type="submit" class="settings-secondary-button">Встановити v{{ release.version }}</button>
     </form>
     {% if release.html_url %}<a href="{{ release.html_url }}" target="_blank" rel="noopener">Деталі релізу</a>{% endif %}
+</span>
+{% elif not reached %}
+<span class="check-pill check-pill-warning" role="status">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+    <span>Не вдалося перевірити — немає звʼязку з GitHub</span>
 </span>
 {% else %}
 <span class="check-pill check-pill-success" role="status">

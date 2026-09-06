@@ -358,14 +358,20 @@ def _store_error(db: Session, target: FurnaceTarget, message: str, now: datetime
     db.commit()
 
 
-def grab(target: FurnaceTarget, password: Optional[str]) -> tuple[Optional[Image.Image], Optional[str]]:
+def grab(
+    target: FurnaceTarget,
+    password: Optional[str],
+    timeout: Optional[float] = None,
+) -> tuple[Optional[Image.Image], Optional[str]]:
     """Знімок без бази — щоб кілька печей можна було знімати одночасно.
 
     Повертає (кадр, None) або (None, пояснення). Виключення не летить далі:
-    недоступна піч — робочий стан, а не збій програми.
+    недоступна піч — робочий стан, а не збій програми. `timeout=None` лишає
+    дефолт `capture` (20 с, для фонового тіку); ручна кнопка передає власний.
     """
     try:
-        return capture(target.host, target.port, password), None
+        kwargs = {} if timeout is None else {"timeout": timeout}
+        return capture(target.host, target.port, password, **kwargs), None
     except FurnaceVncError as exc:
         return None, str(exc)
 
@@ -377,11 +383,13 @@ def poll_target(
     now: Optional[datetime] = None,
     frame: Optional[Image.Image] = None,
     error: Optional[str] = None,
+    timeout: Optional[float] = None,
 ) -> FurnaceState:
     """Один цикл для однієї печі: кадр → читання → диск → база.
 
     `frame`/`error` дають передати вже знятий кадр (див. poll_all, який знімає
-    печі паралельно). Без них кадр знімається тут же.
+    печі паралельно). Без них кадр знімається тут же — тоді `timeout` іде в
+    `grab` (None = дефолт capture, 20 с).
 
     Ніколи не кидає: недоступна піч — це нормальний робочий стан (вимкнена на
     ніч, від'єднали кабель), і фоновий воркер має пережити його мовчки.
@@ -394,7 +402,7 @@ def poll_target(
 
     image = frame
     if image is None and error is None:
-        image, error = grab(target, password)
+        image, error = grab(target, password, timeout)
     if image is None:
         message = error or "Кадр не знято"
         state.error = message
@@ -428,7 +436,11 @@ def poll_target(
     return state
 
 
-def poll_all(db: Session, now: Optional[datetime] = None) -> list[FurnaceState]:
+def poll_all(
+    db: Session,
+    now: Optional[datetime] = None,
+    timeout: Optional[float] = None,
+) -> list[FurnaceState]:
     """Опитати всі печі. Знімки — паралельно, запис у базу — послідовно.
 
     Паралельність тут не про швидкість, а про правду: вимкнена піч мовчить до
@@ -436,6 +448,10 @@ def poll_all(db: Session, now: Optional[datetime] = None) -> list[FurnaceState]:
     хвилину з гаком на тік — тобто екран показував би позаминулий стан живих
     печей через мертві. Сесія БД лишається на одному потоці: SQLAlchemy-сесія
     не для спільного користування.
+
+    `timeout=None` лишає фоновий тік на дефолті `capture` (20 с). Ручна кнопка
+    «Оновити зараз» (app/routers/furnace.py furnaces_refresh) передає власний,
+    коротший — там на відповідь чекає людина, а не тихий воркер.
     """
     targets = configured_targets(db)
     if not targets:
@@ -446,9 +462,13 @@ def poll_all(db: Session, now: Optional[datetime] = None) -> list[FurnaceState]:
         return target.password or shared
 
     if len(targets) == 1:
-        return [poll_target(db, targets[0], password_for(targets[0]), now=now)]
+        return [
+            poll_target(db, targets[0], password_for(targets[0]), now=now, timeout=timeout)
+        ]
     with ThreadPoolExecutor(max_workers=min(len(targets), 6)) as pool:
-        grabbed = list(pool.map(lambda target: grab(target, password_for(target)), targets))
+        grabbed = list(
+            pool.map(lambda target: grab(target, password_for(target), timeout), targets)
+        )
     return [
         poll_target(db, target, password_for(target), now=now, frame=frame, error=error)
         for target, (frame, error) in zip(targets, grabbed)
