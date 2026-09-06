@@ -79,6 +79,28 @@ def mass_vanish_pending() -> dict[str, int]:
         return dict(_mass_vanish_pending)
 
 
+# Запобіжник для гілки «вкладку видалили цілком». Ті самі числа, що й у
+# порядковому синку (app/sync.py): архівувати мовчки можна дрібницю, а масове
+# зникнення — це майже завжди поганий листинг вкладок, а не робота людини.
+_VANISHED_TAB_MIN_ORDERS = 5
+_VANISHED_TAB_MAX_SHARE = 0.25
+
+
+def _listing_is_trustworthy(all_dated_titles: set[str], today: date) -> bool:
+    """Чи схожий список вкладок на справжній, а не на обрізану/кешовану відповідь.
+
+    Проксі лабораторії вже ловили на застарілих відповідях. Якщо в листингу
+    немає ані сьогоднішньої, ані вчорашньої вкладки — це не «лабораторія
+    видалила дні», а недостовірний листинг, і архівувати за ним не можна:
+    вкладка поза вікном today±1 більше ніколи не перечитується, тож день
+    зник би з черги назавжди (аудит 05.09.26, синк H-3).
+    """
+    recent = {
+        (today - timedelta(days=offset)).strftime("%d.%m.%y") for offset in (0, 1)
+    }
+    return bool(all_dated_titles & recent)
+
+
 def _record_mass_vanish(tab: str, held: int) -> None:
     with _mass_vanish_lock:
         if held > 0:
@@ -343,7 +365,7 @@ def sync_google_sheets(
     trigger: str = "manual",
     include_tabs: set[str] | None = None,
     full_history: bool = False,
-    force_reconcile: bool = False,
+    force_reconcile_tabs: set[str] | None = None,
 ) -> SheetSyncSummary:
     """Import relevant dated tabs tab-by-tab and persist an audit log.
 
@@ -366,6 +388,11 @@ def sync_google_sheets(
     nothing new skip the SyncLog write entirely, and background failures are
     not persisted (only logged), so a prolonged outage doesn't fill the audit
     table with a row every couple of minutes.
+
+    ``force_reconcile_tabs`` — вкладки (dd.mm.yy), для яких оператор СВІДОМО
+    підтвердив масове видалення («Звірити видалення»): лише на них знімається
+    поріг захисту від масової архівації. Решта вкладок цього ж прогону лишаються
+    під захистом.
     """
     if trigger not in {"manual", "background"}:
         raise ValueError("unsupported sheet sync trigger")
@@ -383,6 +410,7 @@ def sync_google_sheets(
             "Синхронізація Google Таблиці вже виконується. Спробуйте трохи пізніше."
         )
 
+    forced_tabs = set(force_reconcile_tabs or ())
     summary = SheetSyncSummary()
     try:
         try:
@@ -422,8 +450,12 @@ def sync_google_sheets(
                     # background poll the read/write grace guards against.
                     deletion_grace_seconds=0 if trigger == "manual" else 120,
                     # Оператор підтвердив масове видалення («звірити видалення»)
-                    # — обходить поріг захисту від масової архівації.
-                    force_reconcile=force_reconcile,
+                    # — обходить поріг захисту від масової архівації, але ЛИШЕ
+                    # на тих вкладках, які він підтвердив. Раніше прапорець був
+                    # булевим і знімав запобіжник на ВСІХ вкладках прогону: одна
+                    # підтверджена вкладка залишала без захисту сусідній день,
+                    # прочитаний обрізано (аудит 05.09.26, синк H-4).
+                    force_reconcile=current_tab in forced_tabs,
                 )
                 # Commit this tab before touching the next, so a later tab's
                 # failure can never undo it.
@@ -451,7 +483,7 @@ def sync_google_sheets(
         # means "this day's records are gone" — mirror that here for
         # sheet-sourced orders only; email orders are stamped with a business
         # date, not a real tab, and are never touched.
-        if all_dated_titles:
+        if all_dated_titles and _listing_is_trustworthy(all_dated_titles, business_today()):
             orphans = [
                 o
                 for o in session.scalars(
@@ -469,15 +501,51 @@ def sync_google_sheets(
                 # from the listing proves nothing.
                 if _parse_tab_date(o.sheet_tab) is not None
             ]
-            # Keep, don't delete: a whole tab removed from the sheet (the lab
-            # prunes old days for space) archives its orders instead of wiping
-            # them — they leave the working queue but stay findable in the
-            # Archive. Email orders and non-dated sheet_tab values are untouched.
-            archived_at = datetime.utcnow()
-            for orphan in orphans:
-                orphan.archived_at = archived_at
-                summary.deleted += 1
             if orphans:
+                # Той самий запобіжник, що й у порядкового синку (sync.py:811),
+                # якого ця гілка не мала зовсім: неповний листинг вкладок (проксі
+                # віддав кешовану чи обрізану відповідь) виглядає точно як
+                # «вкладки видалили» — і цілі робочі дні йшли в Архів, звідки
+                # самі не повертаються, бо фонове вікно їх більше не читає
+                # (аудит 05.09.26, синк H-3).
+                active_total = session.scalar(
+                    select(func.count()).select_from(Order).where(
+                        Order.source.in_(("lab", "sheet_client")),
+                        Order.sheet_tab.isnot(None),
+                        Order.archived_at.is_(None),
+                    )
+                ) or 0
+                gone_tabs = sorted({o.sheet_tab for o in orphans})
+                mass = len(orphans) > _VANISHED_TAB_MIN_ORDERS and (
+                    len(orphans) > _VANISHED_TAB_MAX_SHARE * active_total
+                )
+                confirmed = {tab for tab in gone_tabs if tab in forced_tabs}
+                if mass and not confirmed:
+                    # Тримаємо: пишемо слід, піднімаємо банер по кожній вкладці
+                    # і НЕ архівуємо. Наступний чистий тік зніме це сам, а
+                    # «Звірити видалення» дає операторові підтвердити свідомо.
+                    session.add(
+                        SyncLog(
+                            direction="sheet_to_db",
+                            status="error",
+                            message=(
+                                f"притримано архівацію {len(orphans)} робіт зі зниклих "
+                                f"вкладок ({', '.join(gone_tabs)}): це понад "
+                                f"{int(_VANISHED_TAB_MAX_SHARE * 100)}% активних робіт — "
+                                "схоже на неповний листинг вкладок, а не на видалення"
+                            ),
+                        )
+                    )
+                    for tab in gone_tabs:
+                        _record_mass_vanish(tab, sum(1 for o in orphans if o.sheet_tab == tab))
+                    orphans = []
+                elif mass:
+                    # Підтверджено — архівуємо ЛИШЕ підтверджені вкладки.
+                    orphans = [o for o in orphans if o.sheet_tab in confirmed]
+                    gone_tabs = sorted(confirmed)
+            if orphans:
+                # Слід у журналі — ПЕРЕД архівацією: якщо коміт не дійде, у
+                # SyncLog все одно лишиться, які саме дні зникли з листингу.
                 gone_tabs = sorted({o.sheet_tab for o in orphans})
                 session.add(
                     SyncLog(
@@ -489,6 +557,16 @@ def sync_google_sheets(
                         ),
                     )
                 )
+                # Keep, don't delete: a whole tab removed from the sheet (the lab
+                # prunes old days for space) archives its orders instead of wiping
+                # them — they leave the working queue but stay findable in the
+                # Archive. Email orders and non-dated sheet_tab values are untouched.
+                archived_at = datetime.utcnow()
+                for orphan in orphans:
+                    orphan.archived_at = archived_at
+                    summary.deleted += 1
+                for tab in gone_tabs:
+                    _record_mass_vanish(tab, 0)
 
         if trigger == "manual" or summary.created or summary.updated or summary.deleted:
             session.add(

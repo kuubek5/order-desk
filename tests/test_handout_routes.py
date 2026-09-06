@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.business_day import business_today
@@ -24,12 +24,24 @@ from app.routers import handout as handout_router_mod
 from app.services import handout as handout_service
 from app.services import sheet_writeback as writeback_service
 from app.db import Base
+from app.parser import HEADER_ROWS
 from app.models import Order, StatusEvent, User
 
 
+# Останній створений движок: воркер write-back відкриває ВЛАСНУ сесію в іншому
+# потоці (аудит 05.09.26, синк C-2), тож _stub_sheet мусить прив'язати її до
+# тієї самої in-memory бази, що й тест.
+_LAST_ENGINE = None
+
+
 def _database():
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    global _LAST_ENGINE
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+    )
     Base.metadata.create_all(engine)
+    _LAST_ENGINE = engine
     return engine
 
 
@@ -67,17 +79,24 @@ def _stub_sheet(monkeypatch, sheet_id=42):
     fake_ws = SimpleNamespace(id=sheet_id, title=YESTERDAY)
     fake_ws.acell = lambda a1: SimpleNamespace(value="")
     fake_ws.batch_update = MagicMock()
-    # Відкриття таблиці бачать обидва боки: issue_group ще в web.py, а
-    # write_sheet_fields уже в сервісі write-back.
-    for mod in (handout_router_mod, writeback_service):
-        monkeypatch.setattr(mod, "open_spreadsheet", lambda db=None: object())
-        monkeypatch.setattr(mod, "get_worksheet_by_name", lambda ss, name: fake_ws)
+    # Уся робота з таблицею живе в сервісі write-back: роут лише ставить одне
+    # завдання на воркер (аудит 05.09.26, синк C-2).
+    monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(writeback_service, "get_worksheet_by_name", lambda ss, name: fake_ws)
+    # Воркер відкриває власну сесію в іншому потоці — прив'язуємо до тестової БД.
+    monkeypatch.setattr(writeback_service, "SessionLocal", sessionmaker(bind=_LAST_ENGINE))
+    # Звірку позиції рядка перевіряють окремі тести (test_sheet_write_safety);
+    # тут вона завжди підтверджує збережений рядок.
+    monkeypatch.setattr(
+        writeback_service, "resolve_order_row",
+        lambda worksheet, order: order.row_number + HEADER_ROWS,
+    )
     captured = {}
 
     def fake_clear(spreadsheet, rows):
         captured["rows"] = rows
 
-    monkeypatch.setattr(handout_router_mod, "clear_row_fills", fake_clear)
+    monkeypatch.setattr(writeback_service, "clear_row_fills", fake_clear)
     return captured
 
 
@@ -216,7 +235,7 @@ def test_sheet_failure_still_marks_issued_and_flashes_error(monkeypatch):
     def boom(spreadsheet, rows):
         raise RuntimeError("проксі впав")
 
-    monkeypatch.setattr(handout_router_mod, "clear_row_fills", boom)
+    monkeypatch.setattr(writeback_service, "clear_row_fills", boom)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add(_client_order())
@@ -399,6 +418,12 @@ def _stub_fills(monkeypatch, sheet_id=42):
     fake_ws = SimpleNamespace(id=sheet_id, title=YESTERDAY)
     monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
     monkeypatch.setattr(writeback_service, "get_worksheet_by_name", lambda ss, name: fake_ws)
+    # Звірка позиції рядка перед фарбуванням має власні тести
+    # (test_sheet_write_safety); тут вона завжди підтверджує збережений рядок.
+    monkeypatch.setattr(
+        writeback_service, "resolve_order_row",
+        lambda worksheet, order: order.row_number + HEADER_ROWS,
+    )
     captured = {}
     monkeypatch.setattr(
         writeback_service, "clear_row_fills", lambda ss, rows: captured.__setitem__("clear", rows)

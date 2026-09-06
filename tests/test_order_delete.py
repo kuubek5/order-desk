@@ -60,7 +60,9 @@ def test_delete_archives_instead_of_destroying():
         order = _order(db)
         with patch.object(orders_router_mod, "clear_sheet_row_background") as clear:
             asyncio.run(orders_router_mod.delete_order(request=_request(user.id), order_id=order.id, db=db))
-        clear.assert_called_once_with("25.08.26", 7)
+        # Стирання адресується роботою, не парою (вкладка, рядок): позиція
+        # звіряється вже на воркері (аудит 05.09.26, синк H-5).
+        clear.assert_called_once_with(order.id)
 
     with Session(engine, expire_on_commit=False) as db:
         kept = db.get(Order, order.id)

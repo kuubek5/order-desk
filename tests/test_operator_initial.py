@@ -4,7 +4,7 @@ for a rework) when they enter a Sum3D ID, matching the lab's by-hand convention.
 """
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -163,14 +163,17 @@ def test_set_initial_is_admin_only():
 
 
 def _run_sum3d(db, user, order, value):
-    with patch.object(orders_router_mod, "write_sheet_fields", return_value=None) as ws, \
-         patch.object(orders_router_mod, "write_rework_sum3d_fields", return_value=None) as wr, \
+    # Запис у таблицю тепер іде одним чокпоінтом `await_on_writeback(fn, ...)`
+    # на воркері write-back (аудит 05.09.26, синк C-2) — підміняємо саме його.
+    # Аргументи: (функція-воркер, order_id, …), тож поля лишились на індексі 2.
+    with patch.object(orders_router_mod, "await_on_writeback",
+                      new_callable=AsyncMock, return_value=None) as sheet, \
          patch.object(orders_router_mod, "attach_export_folder_uris"), \
          patch.object(orders_router_mod, "attach_job_code_folder_uris"), \
          patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
         asyncio.run(orders_router_mod.set_sum3d_id(
             request=_request(user.id), order_id=order.id, sum3d_id=value, db=db))
-    return ws, wr
+    return sheet, sheet
 
 
 def test_sum3d_entry_stamps_operator_letter_in_column_M():
@@ -227,7 +230,8 @@ def test_rework_sum3d_stamps_letter_in_column_X():
         assert rework.sum3d_id == "22-01-02"
         assert rework.calculated_raw == "В"        # letter into rework "Прорахував" (Х)
         # the write wrapper got the letter
-        assert wr.call_args.kwargs.get("letter") == "В"
+        assert wr.call_args[0][0] is orders_router_mod.write_rework_sum3d_fields_warm
+        assert wr.call_args[0][3] == "В"
 
 
 def test_write_rework_calculated_targets_column_X():

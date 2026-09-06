@@ -49,12 +49,13 @@ from app.services.queue import RETENTION_DAYS, order_is_archived
 from app.services.sheet_writeback import (
     append_comment_background,
     append_manual_rows_warm,
+    await_on_writeback,
     clear_sheet_row_background,
     sheet_writeback_pool,
-    write_calculated_cell,
-    write_rework_sum3d_fields,
-    write_sheet_fields,
+    write_calculated_cell_warm,
+    write_rework_sum3d_fields_warm,
     write_sheet_fields_background,
+    write_sheet_fields_warm,
 )
 from app.services.focus import clear_all as clear_focus, focused_ids, release as release_focus, toggle as toggle_focus
 from app.services.undo import (
@@ -133,6 +134,7 @@ async def set_sum3d_id(
     initial = (user.sheet_initial or "").strip() or None
     stamp = initial if (initial and value) else None
     rework = order.active_rework
+    write_fields: set[str] = set()
     # Full before-snapshot so "Скасувати" reverts EVERYTHING this action touched
     # (Sum3D + the auto-stamped letter + the auto-advanced status), not just the
     # Sum3D cell — a real "крок назад".
@@ -150,7 +152,6 @@ async def set_sum3d_id(
         rework.sum3d_id = value
         if stamp:
             rework.calculated_raw = stamp
-        sync_error = write_rework_sum3d_fields(db, order, value or "", letter=stamp)
         after = {"rework.sum3d_id": rework.sum3d_id, "rework.calculated_raw": rework.calculated_raw}
         note = f"Sum3D переробки → {value}" if value else "Sum3D переробки очищено"
         undo_field = "rework.sum3d_id"
@@ -169,7 +170,6 @@ async def set_sum3d_id(
                     order_id=order.id, operator_id=user.id,
                     status="прораховано", actor=user.username,
                 ))
-        sync_error = write_sheet_fields(db, order, write_fields)
         after = {"sum3d_id": order.sum3d_id, "calculated_raw": order.calculated_raw, "status": order.status}
         note = f"Sum3D → {value}" if value else "Sum3D очищено"
         undo_field = "sum3d_id"
@@ -188,6 +188,16 @@ async def set_sum3d_id(
     if value:
         release_focus(db, order, user)
     db.commit()
+
+    # Таблиця — ПІСЛЯ коміту і НЕ на event loop: воркер write-back читає вже
+    # збережені значення власною сесією, а `await` тримає застосунок живим,
+    # поки Google відповідає (аудит 05.09.26, синк C-2).
+    if rework is not None:
+        sync_error = await await_on_writeback(
+            write_rework_sum3d_fields_warm, order.id, value or "", stamp
+        )
+    else:
+        sync_error = await await_on_writeback(write_sheet_fields_warm, order.id, write_fields)
     db.refresh(order)
 
     attach_export_folder_uris(db, [order])
@@ -238,13 +248,14 @@ async def set_operator(request: Request, order_id: int, operator: str = Form("")
         )
 
     order.calculated_raw = value
-    sync_error = write_calculated_cell(db, order, value)
     note = f"оператор → {value}" if value else "оператора очищено"
     log_entry = log_action(
         db, order=order, operator=user, action_type="operator", field="calculated_raw",
         old=old_value or "", new=value, note=note,
     )
     db.commit()
+    # Запис у таблицю — на воркері write-back, не на event loop (синк C-2).
+    sync_error = await await_on_writeback(write_calculated_cell_warm, order.id, value)
     db.refresh(order)
 
     attach_export_folder_uris(db, [order])
@@ -704,7 +715,7 @@ async def delete_order(
     db.commit()
 
     if order.source in ("lab", "sheet_client") and order.sheet_tab and order.row_number:
-        clear_sheet_row_background(order.sheet_tab, order.row_number)
+        clear_sheet_row_background(order.id)
         message = "Роботу видалено з черги, рядок у таблиці очищено"
     else:
         message = "Роботу видалено з черги"
@@ -760,8 +771,9 @@ async def set_status(
             field="status", old=old_status, new=status,
             note=f"статус: {old_status} → {status}",
         )
-    sync_error = write_sheet_fields(db, order, sheet_fields)
     db.commit()
+    # Запис у таблицю — на воркері write-back, не на event loop (синк C-2).
+    sync_error = await await_on_writeback(write_sheet_fields_warm, order.id, sheet_fields)
     db.refresh(order)
 
     attach_export_folder_uris(db, [order])
@@ -791,9 +803,15 @@ def _perform_undo(db: Session, user: "User", entry: ActionLog) -> Response:
 
 
 @router.post("/actions/{action_id}/undo")
-async def undo_action(request: Request, action_id: int, db: Session = Depends(get_db)):
+def undo_action(request: Request, action_id: int, db: Session = Depends(get_db)):
     """Undo one specific logged action by id (guards: own action, once, within
-    the window, sync not paused), then revert it via _perform_undo."""
+    the window, sync not paused), then revert it via _perform_undo.
+
+    Синхронний `def` НАВМИСНО: скасування пише в таблицю (`perform_undo` →
+    write_sheet_fields / restore_sheet_row), а FastAPI виконує `async def`
+    прямо на event loop — тобто холодне відкриття таблиці заморожувало б увесь
+    застосунок. Звичайний `def` FastAPI віддає в threadpool (аудит 05.09.26,
+    синк C-2)."""
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
@@ -814,8 +832,9 @@ async def undo_action(request: Request, action_id: int, db: Session = Depends(ge
 
 
 @router.post("/actions/undo-last")
-async def undo_last_action(request: Request, db: Session = Depends(get_db)):
-    """«Крок назад» — the static undo button. Finds THIS operator's most recent
+def undo_last_action(request: Request, db: Session = Depends(get_db)):
+    """«Крок назад» — the static undo button. Синхронний `def` з тієї ж причини,
+    що й `undo_action`: запис у таблицю не має жити на event loop. Finds THIS operator's most recent
     still-undoable action (any of UNDOABLE_ACTION_TYPES — Sum3D, status, operator,
     CAM comment, delete — not yet undone, inside the window) and reverts it.
     Pressing it again steps back through earlier actions. Replaces the per-action

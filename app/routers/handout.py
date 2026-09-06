@@ -31,7 +31,6 @@ from app.export_scanner import (
 )
 from app.models import Client, ClientNameAlias, Order, StatusEvent
 from app.order_folder import folder_to_file_uri
-from app.parser import HEADER_ROWS
 from app.queue_filters import (
     HANDOUT_SOURCE_FILTERS,
     count_client_groups_by_source,
@@ -59,10 +58,13 @@ from app.services.handout import (
     scan_export_latest_for_clients,
 )
 from app.services.order_dates import parse_sheet_tab, sheet_order_key
-from app.services.sheet_writeback import set_client_row_fill_background, write_sheet_fields
+from app.services.sheet_writeback import (
+    await_on_writeback,
+    issue_group_warm,
+    set_client_row_fill_background,
+)
 from app.settings_store import get_export_folder_path
-from app.sheet_writer import apply_status_markers, clear_row_fills
-from app.sheets import get_worksheet_by_name, open_spreadsheet
+from app.sheet_writer import apply_status_markers
 from app.stl_preview import build_preview_token_lexical, validate_preview_roots
 
 logger = logging.getLogger(__name__)
@@ -741,33 +743,22 @@ async def issue_handout_group(
         return RedirectResponse(back_url, status_code=303)
 
     actor = user.full_name or user.username
-    sync_error: str | None = None
-    clear_targets: list[tuple[str, int]] = []  # (sheet_tab, row_number)
+    field_map: dict[int, list[str]] = {}
     for order in group_orders:
         order.status = "видано"
         sheet_fields = apply_status_markers(order, "видано", actor=actor)
         db.add(
             StatusEvent(order_id=order.id, operator_id=user.id, status="видано", actor=user.username)
         )
-        err = write_sheet_fields(db, order, sheet_fields)
-        sync_error = sync_error or err
-        if order.source == "sheet_client" and order.sheet_tab and order.row_number is not None:
-            clear_targets.append((order.sheet_tab, order.row_number))
-
-    if clear_targets:
-        try:
-            spreadsheet = open_spreadsheet(db=db)
-            rows_by_sheet_id: list[tuple[int, int]] = []
-            for sheet_tab, row_number in clear_targets:
-                worksheet = get_worksheet_by_name(spreadsheet, sheet_tab)
-                if worksheet is not None:
-                    rows_by_sheet_id.append((worksheet.id, row_number + HEADER_ROWS))
-            clear_row_fills(spreadsheet, rows_by_sheet_id)
-        except Exception as exc:  # noqa: BLE001 — never fail the видано status over this
-            logger.exception("Failed to clear blue fill for handout group %r", client_name)
-            sync_error = sync_error or str(exc)
+        field_map[order.id] = sorted(sheet_fields)
 
     db.commit()
+
+    # Уся таблиця — ОДНИМ завданням на воркері write-back, після коміту.
+    # Раніше цей цикл ходив у Google прямо на event loop: холодне відкриття
+    # таблиці плюс ~4 виклики на кожну роботу — «Видати 8 з 8» заморожувало
+    # застосунок на дві з гаком хвилини (аудит 05.09.26, синк C-2).
+    sync_error = await await_on_writeback(issue_group_warm, field_map)
 
     if sync_error:
         request.session["handout_flash"] = {

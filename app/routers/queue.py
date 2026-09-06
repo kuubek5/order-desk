@@ -794,8 +794,21 @@ def reconcile_sheet_deletions(request: Request, db: Session = Depends(get_db)):
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
 
+    # Знімаємо поріг ЛИШЕ для вкладок, чиї видалення запобіжник зараз тримає —
+    # саме їх показує банер і саме їх підтверджує оператор. Раніше сюди йшов
+    # булевий прапорець, і одна підтверджена вкладка залишала без захисту весь
+    # прогін: сусідній день, прочитаний обрізано, летів в Архів (аудит 05.09.26,
+    # синк H-4).
+    held_tabs = set(mass_vanish_pending().keys())
+    if not held_tabs:
+        request.session["sync_flash"] = {
+            "kind": "info",
+            "message": "Немає притриманих видалень — звіряти нічого.",
+        }
+        return RedirectResponse("/", status_code=303)
+
     try:
-        summary = sync_google_sheets(db, trigger="manual", force_reconcile=True)
+        summary = sync_google_sheets(db, trigger="manual", force_reconcile_tabs=held_tabs)
     except SheetSyncError as exc:
         request.session["sync_flash"] = {"kind": "error", "message": str(exc)}
     else:
