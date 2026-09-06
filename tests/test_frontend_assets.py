@@ -50,6 +50,10 @@ BASE_HTML_SCRIPTS = [
     # ранні свапи.
     "/static/js/perf.js",
     "/static/js/app.js",
+    # Палітра команд (Ctrl+K) оголошує ще й спільну вартову KMKeys.isTyping —
+    # її питає кожна однолітерна гаряча клавіша (J/K у тріажі, mail.js). Тому
+    # стоїть вище за своїх споживачів. Свідома зміна від 06.09.26, крок 3.3.
+    "/static/js/palette.js",
     "/static/js/queue.js",
     "/static/js/mail.js",
     "/static/js/lookgear.js",

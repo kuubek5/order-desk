@@ -401,7 +401,28 @@
     padding: var(--space-2) 0;
   }
 
-  body.rail-collapsed .mail-nav-count {
+  body.rail-collapsed /* Підказка клавіш у пункті «Пошук». Тиха: це не бейдж із числом, який щось
+   повідомляє, а напис, який має один раз навчити й далі не відволікати. Тому
+   без заливки й без акцентного кільця, на відміну від .mail-nav-count. */
+.rail-kbd {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.35rem;
+  height: 1.15rem;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-0);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+/* У згорнутій рейці підпису немає — не буде й підказки: вона пояснює слово
+   «Пошук», а без слова пояснювати нічого. */
+body.rail-collapsed .rail-kbd { display: none; }
+
+.mail-nav-count {
     position: absolute;
     top: 2px;
     right: 6px;

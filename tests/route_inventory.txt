@@ -39,6 +39,8 @@ GET /mail
 GET /mail/{email_id}
 GET /orders/new
 GET /orders/{order_id}
+GET /palette/commands
+GET /palette/search
 GET /search
 GET /settings
 GET /settings/feedback

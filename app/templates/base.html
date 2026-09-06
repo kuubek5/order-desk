@@ -57,6 +57,11 @@
        htmx-події раніше за решту скриптів. #}
     <script src="/static/js/perf.js?v={{ static_ver('js/perf.js') }}" defer></script>
     <script src="/static/js/app.js?v={{ static_ver('js/app.js') }}" defer></script>
+    {# Палітра команд (Ctrl+K) — і разом із нею спільна вартова KMKeys.isTyping,
+       якою користуються всі однолітерні гарячі клавіші (J/K у тріажі). Тому
+       стоїть ВИЩЕ за своїх споживачів: класичні скрипти з defer виконуються в
+       порядку тегів, і файл, який оголошує спільне, має йти першим. #}
+    <script src="/static/js/palette.js?v={{ static_ver('js/palette.js') }}" defer></script>
     <script src="/static/js/queue.js?v={{ static_ver('js/queue.js') }}" defer></script>
     <script src="/static/js/mail.js?v={{ static_ver('js/mail.js') }}" defer></script>
     {# Шестерня «вигляд списку» — спільна для черги і тріажу. Після queue.js:

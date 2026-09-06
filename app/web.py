@@ -78,6 +78,7 @@ from app.routers.machines import router as machines_router
 from app.routers.feedback import router as feedback_router
 from app.routers.diag import router as diag_router
 from app.routers.sync_journal import router as sync_journal_router
+from app.routers.palette import router as palette_router
 from app.services.furnace import (
     POLL_INTERVAL_SECONDS as FURNACE_POLL_INTERVAL_SECONDS,
     is_configured as _furnaces_configured,
@@ -998,3 +999,5 @@ app.include_router(feedback_router)
 app.include_router(diag_router)
 # Журнал синку (адмін): SyncLog стрічкою + кружок здоровʼя в рейці.
 app.include_router(sync_journal_router)
+# Палітра команд (Ctrl+K): перелік екранів під роль + швидкий пошук робіт.
+app.include_router(palette_router)

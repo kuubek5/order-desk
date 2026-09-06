@@ -388,3 +388,134 @@
 .fbx-act:hover { border-color: var(--line-2); background: var(--raise); }
 .fbx-act-primary { background: var(--accent-well); border-color: rgba(var(--accent-base-rgb), .4); color: var(--accent-b); }
 .fbx-act-primary:hover { filter: brightness(1.08); }
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ГЛОБАЛЬНА ПАЛІТРА КОМАНД (Ctrl+K) — app/static/js/palette.js, крок 3.3.
+
+   ЧОМУ ВОНА ТУТ, А НЕ ОКРЕМИМ ФАЙЛОМ. Порядок <link> у base.html і Є каскадом
+   (CLAUDE.md §14), тож кожен новий файл — це ще один рядок у знімку сторожа й
+   ще одна точка, де порядок можна переставити помилково. Цей файл уже
+   останній, уже вантажиться на кожній сторінці й уже зібраний як «ізольований
+   компонент на токенах» — палітра рівно такий самий компонент. Префікс kmpal-
+   тримає її окремо від fb- вище.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.kmpal {
+  position: fixed;
+  inset: 0;
+  z-index: 960; /* вище маячка (880) і панелей, нижче оверлея оновлення */
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 16px 16px;
+  background: rgba(var(--bg-rgb), .72);
+  backdrop-filter: blur(3px);
+}
+.kmpal.is-open { display: flex; }
+
+.kmpal-box {
+  width: min(620px, 100%);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card, 10px);
+  background: var(--card);
+  box-shadow: var(--sh-pop);
+  animation: kmpalIn .14s ease-out;
+}
+@keyframes kmpalIn { from { opacity: 0; transform: translateY(-6px) } }
+@media (prefers-reduced-motion: reduce) { .kmpal-box { animation: none } }
+
+.kmpal-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.kmpal-ico {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  fill: none;
+  stroke: var(--ink-3);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.kmpal-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--fs-4, 16px);
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+.kmpal-input::placeholder { color: var(--ink-3); }
+
+.kmpal-list {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+}
+.kmpal-item > button {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--r-ctl, 9px);
+  background: transparent;
+  color: var(--ink);
+}
+/* Підсвітка йде за КЛАВІАТУРОЮ (aria-selected), а не за :hover: миша, що
+   випадково лежить на списку, інакше показувала б другий «обраний» рядок —
+   і Enter відкривав би не те, що підсвічено. */
+.kmpal-item[aria-selected="true"] > button {
+  background: var(--raise);
+  box-shadow: inset 0 0 0 1px var(--control-edge);
+}
+.kmpal-item > button:hover { background: var(--raise-3); }
+
+.kmpal-lb { flex: none; font-weight: 600; }
+.kmpal-sub {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-1, 12px);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kmpal-g {
+  flex: none;
+  margin-left: auto;
+  font-size: var(--fs-0, 11px);
+  color: var(--ink-3);
+}
+
+.kmpal-empty {
+  padding: 18px 12px;
+  text-align: center;
+  font-size: var(--fs-2, 13px);
+  color: var(--ink-3);
+}
+
+.kmpal-foot {
+  display: flex;
+  gap: 14px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--card-2);
+  font-size: var(--fs-0, 11px);
+  color: var(--ink-3);
+}

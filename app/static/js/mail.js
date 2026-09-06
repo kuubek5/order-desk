@@ -210,3 +210,56 @@ document.body.addEventListener("mailFilesChanged", (event) => {
     }
   }
 });
+
+// ── J / K по списку тріажу (аудит 05.09.26, крок 3.3) ────────────────────
+//
+// Тріаж — це майстер-деталь: зліва список листів, справа розкритий лист. Щоб
+// переглянути десяток листів, оператор досі мусив щоразу знімати руку з
+// клавіатури й цілитись мишею в рядок. J — наступний, K — попередній; далі
+// вже наявні Tab/Enter і кнопки самої панелі.
+//
+// ДВІ РЕЧІ, ЯКІ ТУТ ЛЕГКО ЗЛАМАТИ.
+//
+// 1. Літера в полі вводу. Однолітерна гаряча клавіша без вартової ламає
+//    набір тексту: «j» у коментарі чи в імені клієнта перемикав би лист
+//    замість того, щоб надрукуватись. Умова одна на застосунок —
+//    KMKeys.isTyping (palette.js); дублювати її тут не можна, бо копії
+//    розходяться.
+// 2. Розкладка. Фізична клавіша J в українській розкладці дає «о», K — «л».
+//    Тому дивимось на event.code (позиція клавіші), і лише за його
+//    відсутності — на event.key.
+document.addEventListener("keydown", (event) => {
+  // Модифікатори лишаємо браузеру й іншим гарячим клавішам (Ctrl+K — палітра).
+  if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+
+  const code = event.code || "";
+  const key = (event.key || "").toLowerCase();
+  const forward = code === "KeyJ" || (!code && key === "j");
+  const back = code === "KeyK" || (!code && key === "k");
+  if (!forward && !back) return;
+
+  if (window.KMKeys && window.KMKeys.isTyping(event.target)) return;
+  // Палітра відкрита — вона зараз володіє клавіатурою.
+  if (window.KMPalette && window.KMPalette.isOpen()) return;
+
+  const rows = Array.prototype.slice.call(document.querySelectorAll(".mailrow"));
+  if (!rows.length) return; // не екран тріажу — нічого не перехоплюємо
+
+  const active = document.querySelector(".mailrow.active");
+  const at = active ? rows.indexOf(active) : -1;
+  // Без вибраного рядка J починає згори, K — знизу: це те, що людина мала на
+  // увазі, натиснувши «вниз» чи «вгору» на щойно відкритому екрані.
+  let next;
+  if (at === -1) next = forward ? rows[0] : rows[rows.length - 1];
+  else next = rows[Math.min(Math.max(at + (forward ? 1 : -1), 0), rows.length - 1)];
+  if (!next || next === active) return;
+
+  event.preventDefault(); // інакше пробіл/літера прогортають сторінку під панеллю
+  // preventScroll + scrollIntoView('nearest'): focus() сам би стрибнув так,
+  // щоб рядок став по центру, і список смикався б на кожне натискання.
+  try { next.focus({ preventScroll: true }); } catch (e) { next.focus(); }
+  if (next.scrollIntoView) next.scrollIntoView({ block: "nearest" });
+  // Рядок несе hx-trigger="click" — справжній клік відкриває лист у панелі й
+  // заодно доводить підсвітку через markMailRowActive вище.
+  next.click();
+});
