@@ -622,7 +622,8 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 .sw-time{font-family:var(--font-mono);color:var(--accent);font-size:var(--fs-3);font-weight:600}
 .sw-off{color:var(--ink-3)}
 .sw-off.is-done{color:var(--accent)}
-.sw-chev{margin-left:2px;color:var(--ink-3);font-size:9px;transition:transform .16s ease}
+.sw-chev{margin-left:2px;color:var(--ink-3);font-size:var(--fs-0);line-height:1;
+  transition:transform .16s ease}
 .sw-unit.is-off .sw-chip{border-color:var(--color-overdue-border);background:var(--color-overdue-surface)}
 .sw-dot{width:6px;height:6px;border-radius:50%;background:var(--ink-3);flex:none}
 .sw-unit.is-run .sw-dot{background:var(--accent)}
