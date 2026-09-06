@@ -112,7 +112,7 @@ def test_settings_table_styles_live_on_the_settings_screen():
     settings_html = (ROOT / "app/templates/settings.html").read_text(encoding="utf-8")
     assert "furnaces.css" not in settings_html
     css = (ROOT / "app/static/css/settings.css").read_text(encoding="utf-8")
-    for rule in (".setv2 .fu-table{", ".setv2 .fu-add-row{", ".setv2 .fu-col-act{"):
+    for rule in (".setv2 .fu-table{", ".setv2 .fu-add .fu-add-row{", ".setv2 .fu-col-act{"):
         assert rule in css, rule
 
 

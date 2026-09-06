@@ -279,13 +279,39 @@ def calibration_status(root: Optional[str] = None) -> dict:
     missing = sorted(missing_caption_digits())
     folder = calibration_root(root)
     frames = 0
+    # Час НАЙСВІЖІШОГО кадру — єдиний чесний доказ, що збір живий.
+    # Кількість таким доказом БУТИ НЕ МОЖЕ: кап кільцевий, тека стоїть на
+    # межі, і число завмирає назавжди. Оператор читав це як «зламалось»
+    # (скарга 06.09.26) — і мав рацію, бо сигнал справді нічого не казав.
+    newest: Optional[datetime] = None
+    capped = False
     if folder.exists():
         # І кадри по відсотку (pct-*), і зібрані за часом (t-*).
-        frames = sum(1 for _ in folder.glob("*/*.png"))
+        newest_ts = 0.0
+        for png in folder.glob("*/*.png"):
+            frames += 1
+            try:
+                newest_ts = max(newest_ts, png.stat().st_mtime)
+            except OSError:
+                continue
+        if newest_ts:
+            newest = datetime.fromtimestamp(newest_ts)
+        capped = any(
+            sum(1 for _ in sub.glob("*.png")) >= CALIBRATION_MAX_FRAMES
+            for sub in folder.iterdir()
+            if sub.is_dir()
+        )
     # Банер показуємо, доки RemiCORE-цифри неповні АБО вже є зібрані кадри
     # (у т.ч. з ручного режиму для нового покоління) — щоб кнопка «Скачати»
     # була доступна навіть коли RemiCORE-шрифт уже повний.
-    return {"active": bool(missing) or frames > 0, "missing": missing, "frames": frames}
+    return {
+        "active": bool(missing) or frames > 0,
+        "missing": missing,
+        "frames": frames,
+        "newest": newest,
+        "capped": capped,
+        "cap": CALIBRATION_MAX_FRAMES,
+    }
 
 
 def calibration_zip_bytes(root: Optional[str] = None) -> bytes:

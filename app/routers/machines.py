@@ -101,6 +101,31 @@ def machines_refresh(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "_machine_cards.html", _context(request, db, user))
 
 
+@router.get("/machines/calibration/banner", response_class=HTMLResponse)
+def machines_calibration_banner(request: Request, db: Session = Depends(get_db)):
+    """Свіжий банер калібрування — власний полл, бо він поза `#machine-cards`.
+
+    Оголошено ВИЩЕ `/machines/{key}/frame.png` з тієї ж причини, що й zip:
+    параметричний роут з'їв би «calibration» як ключ верстата.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    if user.role != "адмін":
+        # Не помилка, а порожнє місце: фрагмент службовий, і оператор його
+        # ніде не запитує — але й 403 у полл-фрагменті був би шумом у консолі.
+        return HTMLResponse("")
+    return templates.TemplateResponse(
+        request,
+        "_machine_calibration_banner.html",
+        {
+            "request": request,
+            "user": user,
+            "calibration": calibration_status(get_machine_calibration_path(db)),
+        },
+    )
+
+
 @router.get("/machines/calibration.zip")
 def machines_calibration_zip(request: Request, db: Session = Depends(get_db)):
     """Скачати всі зібрані калібрувальні кадри одним zip.

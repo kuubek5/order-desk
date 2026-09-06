@@ -589,3 +589,38 @@ def test_calibration_path_key_is_writable_and_clearable():
 
     assert "machine_calibration_path" in SETTING_KEYS
     assert "machine_calibration_path" in CLEARABLE_SETTING_KEYS
+
+
+def test_calibration_status_reports_freshness_not_only_a_count(monkeypatch, tmp_path):
+    """Кількість кадрів застигає на капі (кільце витісняє найстаріші), тому
+    сама по собі вона не доводить, що збір живий — скарга 06.09.26 «цифра не
+    змінюється». Чесний доказ — час НАЙСВІЖІШОГО кадру плюс явна ознака, що
+    межа набрана."""
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    monkeypatch.setattr(service, "CALIBRATION_MAX_FRAMES", 2)
+    folder = tmp_path / "calib" / "m"
+    folder.mkdir(parents=True)
+    for i in range(2):
+        png = folder / f"t-00000{i}.png"
+        png.write_bytes(b"x")
+        os.utime(png, (1_700_000_000 + i, 1_700_000_000 + i))
+
+    status = service.calibration_status()
+
+    assert status["frames"] == 2
+    assert status["capped"] is True, "межа набрана — інакше число «не росте» без пояснення"
+    assert status["newest"] == datetime.fromtimestamp(1_700_000_001)
+
+
+def test_calibration_banner_lives_in_settings_not_on_the_machines_screen():
+    """Рішення власника 06.09.26: збір кадрів — обслуговування, його місце в
+    Налаштуваннях біля галки «Калібр.», а не над картками, які цілий день
+    дивиться оператор."""
+    from pathlib import Path as _Path
+
+    root = _Path(__file__).resolve().parents[1] / "app" / "templates"
+    machines = (root / "machines.html").read_text(encoding="utf-8")
+    settings = (root / "_settings_machines.html").read_text(encoding="utf-8")
+
+    assert "_machine_calibration_banner.html" not in machines
+    assert "_machine_calibration_banner.html" in settings

@@ -146,8 +146,7 @@
                     <p class="settings-help">
                         Сюди складаються кадри, поки в таблиці стоїть галка <b>Калібр.</b>
                         Порожнє поле — типова тека застосунку. Зараз:
-                        <span class="mono">{{ machine_calibration_path }}</span>{% if machine_calibration_frames %},
-                        кадрів: <b>{{ machine_calibration_frames }}</b>{% endif %}.
+                        <span class="mono">{{ machine_calibration_path }}</span>.
                     </p>
                     <form method="post" action="/settings/machines/calibration-path" class="fu-add-row">
                         <input id="machine_calib_path" class="login-input mono" name="path"
@@ -161,6 +160,7 @@
                             Відкрити теку
                         </button>
                     </form>
+                    {% include "_machine_calibration_banner.html" %}
                 </div>
 
                 {# Довідка про агента: згорнута, бо потрібна раз на верстат —

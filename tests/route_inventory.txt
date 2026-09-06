@@ -29,6 +29,7 @@ GET /license
 GET /login
 GET /machines
 GET /machines/calibration.zip
+GET /machines/calibration/banner
 GET /machines/cards
 GET /machines/portrait/{machine_id}.jpg
 GET /machines/side
