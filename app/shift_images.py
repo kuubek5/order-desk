@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 # «ось табло печі» плюс «ось що з верстатом» — і досить.
 MAX_IMAGES_PER_NOTE = 4
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
+# Кап на пікселі ДО декодування (див. save_image): 40 Мп ≈ 8000×5000.
+MAX_IMAGE_PIXELS = 40_000_000
 # Довга сторона після зменшення. Скріншот 4K тут ні на що не впливає — його
 # однаково дивляться в картці розміром із долоню.
 MAX_LONG_SIDE = 1920
@@ -135,6 +137,13 @@ def save_image(
         # тому далі потрібен новий open() — так це й задумано в Pillow.
         try:
             with Image.open(part) as probe:
+                # Кап ДО декодування: PNG у кілька МБ може розпакуватись у
+                # сотні МБ (суцільний колір стискається майже в нуль), а
+                # thumbnail() робиться вже після повного декоду. Скріншот
+                # екрана/фото табло у 40 Мп не буває (ревʼю 07.09.26).
+                w, h = probe.size
+                if w * h > MAX_IMAGE_PIXELS:
+                    raise ShiftImageError("Зображення завелике за розміром (понад 40 Мп).")
                 probe.verify()
                 image_format = probe.format
         except (UnidentifiedImageError, OSError, ValueError) as exc:
@@ -146,6 +155,10 @@ def save_image(
 
         final = folder / f"{index:02d}{extension}"
         with Image.open(part) as img:
+            # Фото з телефона несе орієнтацію в EXIF; save() без exif= її
+            # губить, і портретний кадр табло лягає боком. Повертаємо пікселі
+            # самі, поки EXIF ще є.
+            img = ImageOps.exif_transpose(img)
             img = img.convert("RGB") if image_format == "JPEG" else img
             img.thumbnail((MAX_LONG_SIDE, MAX_LONG_SIDE))
             img.save(final, format=image_format)

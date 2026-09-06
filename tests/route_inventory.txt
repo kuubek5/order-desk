@@ -85,7 +85,6 @@ POST /feedback/{feedback_id}/reopen
 POST /feedback/{feedback_id}/resolve
 POST /feedback/{feedback_id}/seen
 POST /furnaces/refresh
-POST /handout/confirm-alias
 POST /handout/issue-group
 POST /handout/mark-found-group
 POST /license

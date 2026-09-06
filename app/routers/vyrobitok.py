@@ -34,6 +34,7 @@ from app.services.vyrobitok import (
     MATERIAL_COLS,
     OPAK_PEOPLE,
     compute_month,
+    resync_guard,
     save_month_settings,
     set_cell,
     unfreeze_day,
@@ -202,12 +203,13 @@ def post_vyrobitok_day_sync(
 
     # Розморожуємо ДО синку: інакше запис СЛМ упреться в заморозку й тихо
     # пропустить число, заради якого синк і запускали.
-    unfreeze_day(db, d)
     error: str | None = None
-    try:
-        sync_google_sheets(db, trigger="manual", include_tabs={tab_name_for(d)})
-    except SheetSyncError as exc:
-        error = str(exc)
+    with resync_guard(d):
+        unfreeze_day(db, d)
+        try:
+            sync_google_sheets(db, trigger="manual", include_tabs={tab_name_for(d)})
+        except SheetSyncError as exc:
+            error = str(exc)
 
     context = _grid_context(db, user, d.year, d.month)
     context["day_sync_error"] = error

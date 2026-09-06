@@ -1,0 +1,102 @@
+<!doctype html><html lang="uk"><head><meta charset="utf-8"><title>SISMA — згорнутий чіп, що розгортається</title><style>
+/* Токени скопійовані з app/static/css/tokens.css + theme-forge.css (тема
+   «Amber Forge», яка стоїть за замовчуванням) — щоб сторінка відкривалась
+   без сервера й виглядала точно так, як у застосунку. */
+:root{
+  --font-body:'Golos Text',-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'JetBrains Mono','Cascadia Mono',ui-monospace,monospace;
+  --bg:#14100a; --card:#1b150c; --card-2:#221a0e; --card-3:#2a2013;
+  --control-edge:#8a7350; --ink:#f2e8d8; --ink-2:#a89578; --ink-3:#a08c68;
+  --accent:#ffb454; --accent-b:#ffc670; --accent-c:#ffd894; --accent-d:#a8752b;
+  --accent-rgb:255,180,84; --warn:#ff8a3d; --ok:#a8e08a;
+  --radius-card:10px;
+  --fs-0:11px; --fs-1:12px; --fs-2:13px; --fs-3:14px; --fs-4:16px;
+  --fs-5:19px; --fs-6:22px; --fs-7:28px;
+}
+*{box-sizing:border-box}
+body{font-family:var(--font-body);color:var(--ink);margin:0}
+</style>
+<style>
+body{background:var(--bg);margin:0 auto;padding:20px 24px 40px;max-width:1120px;
+     font-family:var(--font-body);color:var(--ink)}
+.pg{margin:0 0 30px}
+.pg-h{font-size:var(--fs-1);color:var(--ink-3);letter-spacing:.05em;text-transform:uppercase;margin:0 0 10px}
+.pg-h b{color:var(--accent);text-transform:none;letter-spacing:0;font-weight:600}
+.pg-note{font-size:var(--fs-1);color:var(--ink-3);margin:9px 0 0;line-height:1.6}
+
+.mstripe{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 8px;padding:6px 10px;
+         border:1px solid rgba(255,255,255,.08);border-radius:9px;background:var(--card)}
+.mstripe .lbl{font-size:var(--fs-0);color:var(--ink-3);margin-right:4px}
+.mch{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:7px;
+     border:1px solid rgba(255,255,255,.09);font-size:var(--fs-0);color:var(--ink-2)}
+.mch i{font-family:var(--font-mono);color:var(--ink);font-style:normal}
+.qcard{border:1px solid rgba(255,255,255,.09);border-radius:var(--radius-card);background:var(--card);
+       overflow:hidden;margin-top:8px}
+.qcard-h{display:flex;gap:8px;padding:8px 14px;border-bottom:1px solid rgba(255,255,255,.07)}
+.qcard-h b{font-size:var(--fs-2);color:var(--ink)}
+.qcard-h span{font-size:var(--fs-0);color:var(--ink-3);align-self:center}
+.qrow{display:grid;grid-template-columns:1fr 60px 190px;gap:10px;padding:7px 14px;
+      border-bottom:1px solid rgba(255,255,255,.05);font-size:var(--fs-2)}
+.qrow:last-child{border-bottom:0}
+.qrow .no{font-family:var(--font-mono);color:var(--ink)}
+.qrow .qty,.qrow .mat{color:var(--ink-2)}
+
+/* Згорнутий чіп — спільна основа трьох варіантів */
+.sc{display:inline-flex;align-items:center;gap:8px;padding:4px 10px;border-radius:8px;
+    border:1px solid var(--accent-d);background:rgba(var(--accent-rgb),.07);cursor:pointer;
+    font-size:var(--fs-1);color:var(--ink-2);font-family:inherit;line-height:1.4;
+    transition:background .14s ease,border-color .14s ease}
+.sc:hover{background:rgba(var(--accent-rgb),.13);border-color:var(--accent)}
+.sc:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sc b{color:var(--ink);font-weight:600}
+.sc .t{font-family:var(--font-mono);color:var(--accent);font-size:var(--fs-3);font-weight:600}
+.sc .lay{font-family:var(--font-mono);color:var(--ink-2);font-size:var(--fs-1)}
+.sc .chev{margin-left:2px;color:var(--ink-3);font-size:9px;transition:transform .16s ease}
+.sc[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none;
+     animation:scp 2.4s ease-in-out infinite}
+@keyframes scp{0%,100%{opacity:1}60%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){.dot{animation:none}}
+.sc-b{position:relative;overflow:hidden}
+.sc-b .prog{position:absolute;left:0;bottom:0;height:2px;background:var(--accent)}
+.segs{display:inline-flex;gap:2px;align-items:center}
+.segs s{width:4px;height:9px;border-radius:1px;background:rgba(255,255,255,.13);text-decoration:none}
+.segs s.on{background:var(--accent)}
+
+/* Розгорнуте табло */
+.sp{display:none;margin-top:8px;border:1px solid var(--control-edge);border-radius:var(--radius-card);
+    background:linear-gradient(180deg,var(--card-2),var(--card));overflow:hidden}
+.sp.is-open{display:flex;align-items:stretch}
+.sp-id{display:flex;align-items:center;gap:9px;padding:11px 15px;min-width:180px;
+       border-right:1px solid rgba(255,255,255,.07)}
+.sp-id .nm{font-size:var(--fs-1);font-weight:600;color:var(--ink)}
+.sp-id .sub{display:block;font-size:var(--fs-0);color:var(--ink-3);margin-top:2px}
+.sp-cell{padding:10px 17px;border-right:1px solid rgba(255,255,255,.07);min-width:126px}
+.sp-cell .lb{font-size:var(--fs-0);color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
+.sp-cell .v{font-family:var(--font-mono);font-size:var(--fs-5);color:var(--ink);line-height:1.2}
+.sp-cell .v u{text-decoration:none;color:var(--ink-3);font-size:var(--fs-2)}
+.sp-cell.is-end .v{color:var(--accent);font-size:var(--fs-6);font-weight:600}
+.sp-bar{margin-top:6px;height:3px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden}
+.sp-bar i{display:block;height:100%;background:var(--accent)}
+.sp-phase{display:flex;align-items:center;gap:8px;padding:10px 17px;font-size:var(--fs-1);color:var(--ink-2)}
+.sp-fresh{margin-left:auto;align-self:center;padding:0 15px;font-size:var(--fs-0);color:var(--ink-3)}
+</style>
+</head><body><p class="pg-h" style="margin-bottom:14px">Згорнуто — <b>один рядок із часом завершення</b>. Натисни на чіп: розгорнеться табло. Клікай, воно справді працює.</p><section class="pg"><p class="pg-h">Обраний вигляд &middot; чіп із сегментами + розгорнуте табло</p><div class="mstripe"><span class="lbl">Верстати</span><span class="mch">350i <i>62%</i></span><span class="mch">350i Loader <i>18%</i></span><span class="mch">250i <i>—</i></span><span class="mch">250i dry <i>91%</i></span></div><button class="sc" id="c" aria-expanded="false"><span class="dot"></span><b>SISMA</b><span class="segs"><s class="on"></s><s class="on"></s><s></s><s></s><s></s><s></s><s></s><s></s><s></s><s></s></span><span class="t">20:58</span><span class="chev">&#9660;</span></button><div class="sp" id="c-p">
+  <div class="sp-id"><span class="dot"></span><span><span class="nm">SISMA</span>
+    <span class="sub">SLM &middot; 3D-друк</span></span></div>
+  <div class="sp-cell"><div class="lb">шар</div><div class="v">250<u> / 1049</u></div>
+    <div class="sp-bar"><i style="width:24%"></i></div></div>
+  <div class="sp-cell"><div class="lb">початок</div><div class="v">15:34</div></div>
+  <div class="sp-cell is-end"><div class="lb">кінець</div><div class="v">20:58</div></div>
+  <div class="sp-phase">лишилось 3 год 55 хв</div>
+  <div class="sp-fresh">кадр щойно</div></div><div class="qcard"><div class="qcard-h"><b>Черга</b><span>616 робіт</span></div><div class="qrow"><span class="no">28356</span><span class="qty">2</span><span class="mat">Ti остем репліка</span></div><div class="qrow"><span class="no">28398</span><span class="qty">1</span><span class="mat">Ti остем репліка</span></div><div class="qrow"><span class="no">28379</span><span class="qty">2</span><span class="mat">Ti остем</span></div><div class="qrow"><span class="no">28171</span><span class="qty">2</span><span class="mat">Zr емо A2</span></div></div><p class="pg-note">Обраний варіант. Сегменти по 10% — та сама мова, що в стрічці верстатів; час завершення акцентом. Розгорнуте табло: шар, початок, кінець, скільки лишилось.</p></section>
+<script>
+document.addEventListener('click', function (e) {
+  var btn = e.target.closest ? e.target.closest('.sc') : null;
+  if (!btn) return;
+  var panel = document.getElementById(btn.id + '-p');
+  var open = panel.classList.toggle('is-open');
+  btn.setAttribute('aria-expanded', String(open));
+});
+</script>
+</body></html>

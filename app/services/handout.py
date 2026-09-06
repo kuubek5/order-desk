@@ -333,7 +333,10 @@ def mark_group_found(db: Session, user, client_name: str, day: str) -> MarkGroup
     ).all()
     group_orders = [
         o for o in candidates
-        if (d := parse_sheet_tab(o.sheet_tab)) is not None and d < today
+        # `<= today`, як у handout_eligible_orders: ПММА/титан/віск готові в день
+        # фрезерування і вже стоять на екрані; `< today` мовчки викидав їх із
+        # «Усі знайдено» та «Видати N з M» (ревʼю 07.09.26).
+        if (d := parse_sheet_tab(o.sheet_tab)) is not None and d <= today
     ]
     selected_day = parse_sheet_tab(day) if day else None
     if selected_day is not None:
@@ -379,7 +382,10 @@ def issue_group(db: Session, user, client_name: str, day: str) -> IssueGroupResu
     ).all()
     group_orders = [
         o for o in candidates
-        if (d := parse_sheet_tab(o.sheet_tab)) is not None and d < today
+        # `<= today`, як у handout_eligible_orders: ПММА/титан/віск готові в день
+        # фрезерування і вже стоять на екрані; `< today` мовчки викидав їх із
+        # «Усі знайдено» та «Видати N з M» (ревʼю 07.09.26).
+        if (d := parse_sheet_tab(o.sheet_tab)) is not None and d <= today
     ]
     # When the handout screen is filtered to one day (day chips), the card
     # the operator sees — and therefore what "Видати" closes — is that day's

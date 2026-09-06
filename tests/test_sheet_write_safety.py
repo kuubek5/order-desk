@@ -249,3 +249,66 @@ class TestWritesConfirmTheRow:
         )
         assert writeback.set_client_row_fill(MagicMock(), order, blue=False) is None
         assert painted == [[(11, 12)]]  # зсунутий рядок, не збережений 13
+
+
+class TestEmptyCellIsNotAConfirmation:
+    """Ревʼю 07.09.26 (sync CRITICAL-1/2). gspread віддає None для порожньої
+    клітинки, і звірка позиції довіряла збереженому рядку — а після видалення
+    рядка вище сюди зʼїжджає сусід, у якого наряд часто порожній. Стирання
+    A:K тоді знищувало чужу живу роботу."""
+
+    def _worksheet(self, cell_value, column_values):
+        ws = MagicMock()
+        ws.id = 11
+        ws.cell.return_value = SimpleNamespace(value=cell_value)
+        ws.col_values.return_value = column_values
+        return ws
+
+    def _lab_order(self):
+        return SimpleNamespace(
+            id=1, row_number=7, source="lab", work_order_no="24122",
+            client_name=None, sheet_tab="26.08.26",
+        )
+
+    def test_empty_cell_relocates_instead_of_trusting_the_stored_row(self):
+        from app.sheet_writer import resolve_order_row
+
+        # На збереженій позиції (13) порожньо; наш наряд тепер рядком вище.
+        ws = self._worksheet(None, [""] * 11 + ["24122"])
+        assert resolve_order_row(ws, self._lab_order()) == 12
+
+    def test_empty_cell_with_no_match_anywhere_skips(self):
+        from app.sheet_writer import resolve_order_row
+
+        ws = self._worksheet(None, ["99999"] * 20)
+        assert resolve_order_row(ws, self._lab_order()) is None
+
+    def test_email_order_is_anchored_on_the_client_name(self):
+        """Рядок-нотатка поштової роботи має імʼя клієнта в колонці E — це і є
+        її якір; раніше source="email" не мав якоря взагалі."""
+        from app.sheet_writer import resolve_order_row
+
+        order = SimpleNamespace(
+            id=2, row_number=7, source="email", work_order_no=None,
+            client_name="Кривовид", sheet_tab="26.08.26",
+        )
+        ws = self._worksheet("Хтось інший", [""] * 14 + ["Кривовид"])
+        assert resolve_order_row(ws, order) == 15
+
+    def test_clear_without_an_anchor_is_refused(self, monkeypatch):
+        """Наряд-less лабораторний рядок: писати в нього ще можна (оптимістично),
+        стирати A:K — ніколи."""
+        import app.sheet_writer as sheet_writer
+
+        cleared: list[int] = []
+        monkeypatch.setattr(
+            sheet_writer, "clear_placeholder_row",
+            lambda worksheet, row: cleared.append(row),
+        )
+        order = SimpleNamespace(
+            id=3, row_number=7, source="lab", work_order_no="",
+            client_name=None, sheet_tab="26.08.26",
+        )
+        ws = self._worksheet("", [])
+        assert sheet_writer.clear_order_row(ws, order) is False
+        assert cleared == []

@@ -21,24 +21,26 @@ class MiniClient:
         self.app = app
         self.cookies: dict[str, str] = {}
 
-    def get(self, path: str):
-        return self._run("GET", path, None)
+    def get(self, path: str, headers: dict | None = None):
+        return self._run("GET", path, None, headers)
 
-    def post(self, path: str, data: dict | None = None):
-        return self._run("POST", path, data or {})
+    def post(self, path: str, data: dict | None = None, headers: dict | None = None):
+        return self._run("POST", path, data or {}, headers)
 
     def login(self, username: str, password: str):
         return self.post("/login", {"username": username, "password": password})
 
-    def _run(self, method: str, path: str, data: dict | None):
-        return asyncio.run(self._call(method, path, data))
+    def _run(self, method: str, path: str, data: dict | None, extra: dict | None = None):
+        return asyncio.run(self._call(method, path, data, extra))
 
-    async def _call(self, method: str, path: str, data: dict | None):
+    async def _call(self, method: str, path: str, data: dict | None, extra: dict | None = None):
         split = urlsplit(path)
         body = b""
         # client=127.0.0.1: частина роутів свідомо працює лише «за цим ПК»
         # (`loopback=True` у require_admin/require_settings_edit).
         headers: list[tuple[bytes, bytes]] = [(b"host", b"127.0.0.1:8000")]
+        for name, value in (extra or {}).items():
+            headers.append((name.lower().encode(), str(value).encode()))
         if self.cookies:
             jar = "; ".join(f"{k}={v}" for k, v in self.cookies.items())
             headers.append((b"cookie", jar.encode()))

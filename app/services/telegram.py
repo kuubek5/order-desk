@@ -133,6 +133,16 @@ def send_feedback(db: Session, feedback: Feedback) -> tuple[bool, str | None]:
             pass
 
 
+def _net_error(exc: BaseException, token: str) -> str:
+    """Текст мережевої помилки БЕЗ токена: requests вкладає в повідомлення
+    повний URL `…/bot<TOKEN>/sendMessage`, а він осідав у `Feedback.telegram_error`,
+    у бекапах і в `title=` списку звернень (ревʼю 07.09.26)."""
+    text = str(exc)
+    if token:
+        text = text.replace(token, "***")
+    return f"мережа: {text}"
+
+
 def _send_message(session, token, chat_id, text) -> tuple[bool, str | None]:
     url = _API.format(token=token, method="sendMessage")
     try:
@@ -142,7 +152,7 @@ def _send_message(session, token, chat_id, text) -> tuple[bool, str | None]:
             timeout=_TIMEOUT,
         )
     except Exception as exc:  # noqa: BLE001
-        return False, f"мережа: {exc}"
+        return False, _net_error(exc, token)
     return _check(resp)
 
 
@@ -159,7 +169,7 @@ def _send_photo(session, token, chat_id, path: Path, caption) -> tuple[bool, str
     except OSError as exc:
         return False, f"файл: {exc}"
     except Exception as exc:  # noqa: BLE001
-        return False, f"мережа: {exc}"
+        return False, _net_error(exc, token)
     return _check(resp)
 
 
@@ -191,7 +201,7 @@ def discover_chat_id(db: Session) -> tuple[str | None, str | None]:
     try:
         resp = session.get(url, timeout=_TIMEOUT)
     except Exception as exc:  # noqa: BLE001
-        return None, f"мережа: {exc}"
+        return None, _net_error(exc, token)
     finally:
         try:
             session.close()

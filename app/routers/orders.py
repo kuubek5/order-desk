@@ -706,7 +706,7 @@ def undo_action(request: Request, action_id: int, db: Session = Depends(get_db))
         return toast_response("Скасувати можна лише власну дію", kind="error")
     if entry.undone_at is not None:
         return toast_response("Цю дію вже скасовано", kind="error")
-    if entry.created_at is not None and entry.created_at < utc_now() - timedelta(seconds=UNDO_WINDOW_SECONDS):
+    if entry.created_at is not None and entry.created_at < datetime.now() - timedelta(seconds=UNDO_WINDOW_SECONDS):
         return toast_response("Вікно скасування минуло", kind="error")
     if sync_control.is_paused():
         return toast_response(SYNC_PAUSED_MSG, kind="info")
@@ -728,7 +728,7 @@ def undo_last_action(request: Request, db: Session = Depends(get_db)):
     if sync_control.is_paused():
         return toast_response(SYNC_PAUSED_MSG, kind="info")
 
-    cutoff = utc_now() - timedelta(seconds=UNDO_WINDOW_SECONDS)
+    cutoff = datetime.now() - timedelta(seconds=UNDO_WINDOW_SECONDS)
     entry = (
         db.query(ActionLog)
         .filter(
@@ -751,7 +751,10 @@ def _perform_redo(db: Session, user: "User", entry: ActionLog) -> Response:
 
 
 @router.post("/actions/redo-last")
-async def redo_last_action(request: Request, db: Session = Depends(get_db)):
+# Звичайний `def`, як і undo_action/undo_last_action: perform_redo пише в
+# таблицю СИНХРОННО (gspread), тож роут мусить іти в threadpool, а не на event
+# loop (CLAUDE.md §14 «Запис у таблицю»). Код-ревʼю 07.09.26.
+def redo_last_action(request: Request, db: Session = Depends(get_db)):
     """«Крок вперед» — the static redo button. Re-applies THIS operator's most
     recently undone action (any of UNDOABLE_ACTION_TYPES) that is still inside the
     window. Pressing it again steps forward through earlier undos, mirroring
@@ -762,7 +765,7 @@ async def redo_last_action(request: Request, db: Session = Depends(get_db)):
     if sync_control.is_paused():
         return toast_response(SYNC_PAUSED_MSG, kind="info")
 
-    cutoff = utc_now() - timedelta(seconds=UNDO_WINDOW_SECONDS)
+    cutoff = datetime.now() - timedelta(seconds=UNDO_WINDOW_SECONDS)
     entry = (
         db.query(ActionLog)
         .filter(

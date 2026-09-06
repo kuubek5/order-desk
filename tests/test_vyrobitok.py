@@ -707,3 +707,17 @@ def test_body_partial_renders_day_sync_button():
     )
     assert 'hx-post="/vyrobitok/day-sync"' in html
     assert '{"day": "2026-08-05"}' in html
+
+
+def test_background_freeze_skips_a_day_under_manual_resync():
+    """Ревʼю 07.09.26: між unfreeze_day і комітом ручного синку фоновий
+    заморожувач встигав перезняти день зі СТАРИХ даних — ресинк мовчки губився.
+    Під resync_guard день для нього невидимий."""
+    from datetime import date as _date
+
+    from app.services import vyrobitok as svc
+
+    day = _date(2026, 8, 3)
+    with svc.resync_guard(day):
+        assert day in svc._RESYNC_DAYS
+    assert day not in svc._RESYNC_DAYS

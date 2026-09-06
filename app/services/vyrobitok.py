@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import calendar
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
@@ -49,6 +50,23 @@ from app.business_day import business_now, business_today
 from app.models import Order, VyrobitokCell, VyrobitokDay, VyrobitokMonth
 from app.services.order_dates import order_date
 from app.stats import parse_int_safe
+
+# Дні, які ЗАРАЗ пересинхронізовує оператор («⟳» у табелі). Фоновий
+# заморожувач (freeze_due_days, кожні 10 хв) їх пропускає: інакше між
+# unfreeze_day і комітом синку (секунди, на холодному кеші — десятки) він
+# встигав перезняти день зі СТАРИХ даних, і свідомий ресинк мовчки губився
+# (ревʼю 07.09.26). Памʼять процесу: заморожувач і роут живуть в одному.
+_RESYNC_DAYS: set[date] = set()
+
+
+@contextmanager
+def resync_guard(day: date):
+    """Тримати `day` поза заморожувачем на час ручного ресинку."""
+    _RESYNC_DAYS.add(day)
+    try:
+        yield
+    finally:
+        _RESYNC_DAYS.discard(day)
 
 # ── Колонки й родини матеріалів ─────────────────────────────────────────────
 # Ключ колонки материалу = коротка форма назви з каталогу (Material.name).
@@ -276,6 +294,8 @@ def freeze_due_days(db: Session, now: datetime | None = None) -> dict[str, int]:
     result = {"orders": 0, "slm": 0}
 
     for day in sorted(days):
+        if day in _RESYNC_DAYS:
+            continue  # оператор саме пересинхронізовує цей день — не чіпати
         if day >= today:
             continue
         orders_due, slm_due = _due_freezes(day, today, now)

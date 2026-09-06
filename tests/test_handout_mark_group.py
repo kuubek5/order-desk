@@ -163,13 +163,28 @@ class TestService:
             older = db.scalar(select(Order).where(Order.sheet_tab == BEFORE))
             assert older.status == "відфрезеровано"
 
-    def test_todays_work_is_not_on_the_handout_screen_yet(self):
-        """Видача — це вчорашнє й старіше (§9.4). Сьогоднішнє ще фрезерують."""
+    def test_todays_work_is_part_of_the_group(self):
+        """Сьогоднішній день на видачі ТЕЖ є (ef053c9, 31.08.26: ПММА/титан
+        готові в день фрезерування). Групова дія мусить бачити ті самі роботи,
+        що й екран — інакше «Усі знайдено» мовчки пропускає сьогоднішні."""
         engine = _database()
         today = business_today().strftime("%d.%m.%y")
         with Session(engine, expire_on_commit=False) as db:
             user = _user(db)
             db.add(_order(row_number=60, sheet_tab=today))
+            db.commit()
+
+            result = mark_group_found(db, user, client_name="Basarab", day="")
+            assert result.count == 1
+            assert db.scalar(select(Order).where(Order.row_number == 60)).status == "знайдено при видачі"
+
+    def test_tomorrows_work_is_not_on_the_handout_yet(self):
+        """Завтрашнє — ще ні: межа `<= today`, не «все підряд»."""
+        engine = _database()
+        tomorrow = (business_today() + timedelta(days=1)).strftime("%d.%m.%y")
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            db.add(_order(row_number=61, sheet_tab=tomorrow))
             db.commit()
 
             result = mark_group_found(db, user, client_name="Basarab", day="")

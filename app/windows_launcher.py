@@ -317,6 +317,10 @@ def main() -> int:
             access_log=False,
             log_config=None,
             timeout_graceful_shutdown=10,
+            # Без ProxyHeadersMiddleware: інакше X-Forwarded-For переписує
+            # scope["client"], і is_loopback_request означає «що клієнт написав
+            # у заголовку», а не «з цього компʼютера» (ревʼю 07.09.26).
+            proxy_headers=False,
         )
         server = uvicorn.Server(config)
         _create_shutdown_event()

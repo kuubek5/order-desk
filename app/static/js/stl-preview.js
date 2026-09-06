@@ -83,6 +83,22 @@
   // reduced-motion лишає 0, інакше звичний 1.
   const SAVED_SPEED = loadSavedSpeed();
 
+  // Кеші геометрій/списків файлів — LRU з капом. Панель живе всю зміну, а
+  // оператор на видачі відкриває сотні тек: без капу heap ріс безмежно
+  // (ревʼю 07.09.26). Map зберігає порядок вставки — найстаріший ключ перший.
+  const GEOMETRY_CACHE_MAX = 40;
+  const FILELIST_CACHE_MAX = 200;
+  function cacheSet(map, key, value, max) {
+    if (map.has(key)) map.delete(key);
+    map.set(key, value);
+    while (map.size > max) {
+      const oldest = map.keys().next().value;
+      const gone = map.get(oldest);
+      map.delete(oldest);
+      if (gone && typeof gone.dispose === "function") gone.dispose();
+    }
+  }
+
   const state = {
     token: null,
     triggerEl: null,
@@ -96,8 +112,8 @@
     dragLastX: 0,
     dragLastY: 0,
     speedEl: null,
-    fileListCache: new Map(), // token -> string[]
-    geometryCache: new Map(), // "token filename" -> BufferGeometry (raw)
+    fileListCache: new Map(), // token -> string[]  (LRU, див. cacheSet)
+    geometryCache: new Map(), // "token filename" -> BufferGeometry (raw)  (LRU)
     renderer: null,
     scene: null,
     camera: null,
@@ -438,7 +454,7 @@
     Core.fetchGeometry(token, filename, controller.signal)
       .then((geometry) => {
         if (controller.signal.aborted) return;
-        state.geometryCache.set(geoKey(token, filename), geometry);
+        cacheSet(state.geometryCache, geoKey(token, filename), geometry, GEOMETRY_CACHE_MAX);
         if (state.token !== token || state.activeIndex !== index) return;
         showGeometry(geometry.clone());
       })
@@ -559,7 +575,7 @@
     state.controller = controller;
     Core.fetchFileList(token, controller.signal)
       .then((files) => {
-        state.fileListCache.set(token, files);
+        cacheSet(state.fileListCache, token, files, FILELIST_CACHE_MAX);
         if (state.token !== token) return;
         startWithFiles(token, files);
       })

@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="uk"><head><meta charset="utf-8">
+<title>SISMA — віджет на сторінці черги</title>
+<style>
+/* Токени скопійовані з app/static/css/tokens.css + theme-forge.css (тема
+   «Amber Forge», яка стоїть за замовчуванням) — щоб сторінка відкривалась
+   без сервера й виглядала точно так, як у застосунку. */
+:root{
+  --font-body:'Golos Text',-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'JetBrains Mono','Cascadia Mono',ui-monospace,monospace;
+  --bg:#14100a; --card:#1b150c; --card-2:#221a0e; --card-3:#2a2013;
+  --control-edge:#8a7350; --ink:#f2e8d8; --ink-2:#a89578; --ink-3:#a08c68;
+  --accent:#ffb454; --accent-b:#ffc670; --accent-c:#ffd894; --accent-d:#a8752b;
+  --accent-rgb:255,180,84; --warn:#ff8a3d; --ok:#a8e08a;
+  --radius-card:10px;
+  --fs-0:11px; --fs-1:12px; --fs-2:13px; --fs-3:14px; --fs-4:16px;
+  --fs-5:19px; --fs-6:22px; --fs-7:28px;
+}
+*{box-sizing:border-box}
+body{font-family:var(--font-body);color:var(--ink);margin:0}
+</style>
+<style>
+/* ── Спільне для мокапа (у проді піде в окремий файл) ───────────────────── */
+body{background:var(--bg);padding:22px 26px;max-width:1180px;margin:0 auto}
+.mk-h{font-size:var(--fs-1);color:var(--ink-3);margin:26px 0 8px;letter-spacing:.04em;text-transform:uppercase}
+.mk-h b{color:var(--accent);font-weight:600;text-transform:none;letter-spacing:0}
+.mk-note{font-size:var(--fs-1);color:var(--ink-3);margin:8px 0 0;line-height:1.6}
+.mk-row{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}
+
+/* Спільні дрібниці всіх варіантів */
+.sw{position:relative;border:1px solid var(--control-edge);border-radius:var(--radius-card);
+    background:linear-gradient(180deg,var(--card-2),var(--card));overflow:hidden}
+.sw-name{font-size:var(--fs-1);font-weight:600;color:var(--ink);letter-spacing:.02em}
+.sw-lbl{font-size:var(--fs-0);color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
+.sw-mono{font-family:var(--font-mono)}
+.sw-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block;flex:none}
+.sw-dot.is-live{animation:swpulse 2.4s ease-in-out infinite}
+.sw-dot.is-recoat{background:var(--ink-3);animation:none}
+@keyframes swpulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(var(--accent-rgb),.45)}
+                   60%{opacity:.65;box-shadow:0 0 0 5px rgba(var(--accent-rgb),0)}}
+@media (prefers-reduced-motion:reduce){.sw-dot.is-live{animation:none}}
+
+/* ══ Варіант 1 — «Стрічка часу» ═══════════════════════════════════════════
+   Головна ідея: скільки ЛИШИЛОСЬ, видно як відрізок, а не як число. */
+.sw1{display:grid;grid-template-columns:1fr auto;gap:14px 18px;padding:12px 16px 14px}
+.sw1-head{grid-column:1;grid-row:1;display:flex;align-items:center;gap:10px;min-width:0}
+.sw1-state{font-size:var(--fs-1);color:var(--ink-2)}
+.sw1-layers{margin-left:auto;font-size:var(--fs-1);color:var(--ink-2)}
+.sw1-layers b{font-family:var(--font-mono);color:var(--ink);font-size:var(--fs-3)}
+.sw1-end{grid-column:2;grid-row:1/3;align-self:center;text-align:right;padding-left:18px;
+         border-left:1px solid var(--hair,rgba(255,255,255,.08))}
+.sw1-end .t{display:block;font-family:var(--font-mono);font-size:var(--fs-7);line-height:1;
+            color:var(--accent);font-weight:600;letter-spacing:-.01em}
+.sw1-end .c{display:block;margin-top:4px;font-size:var(--fs-0);color:var(--ink-3)}
+.sw1-track{grid-column:1;grid-row:2;position:relative;height:30px;margin-top:4px}
+.sw1-rail{position:absolute;left:0;right:0;top:11px;height:4px;border-radius:2px;
+          background:rgba(255,255,255,.07)}
+.sw1-fill{position:absolute;left:0;top:11px;height:4px;border-radius:2px;
+          background:linear-gradient(90deg,var(--accent-d),var(--accent))}
+.sw1-pin{position:absolute;top:5px;width:2px;height:16px;background:var(--accent);border-radius:1px;
+         box-shadow:0 0 8px rgba(var(--accent-rgb),.6)}
+.sw1-t0,.sw1-t1{position:absolute;top:19px;font-size:var(--fs-0);color:var(--ink-3);font-family:var(--font-mono)}
+.sw1-t0{left:0}.sw1-t1{right:0}
+.sw1-left{position:absolute;top:-6px;transform:translateX(-50%);font-size:var(--fs-0);
+          color:var(--ink-2);white-space:nowrap;background:var(--card);padding:0 6px;border-radius:4px}
+
+/* ══ Варіант 2 — «Табло» ══════════════════════════════════════════════════
+   Головна ідея: три числа в ряд, кожне зі своїм підписом. Найщільніший. */
+.sw2{display:flex;align-items:stretch;gap:0;padding:0}
+.sw2-id{display:flex;align-items:center;gap:9px;padding:12px 16px;min-width:186px;
+        border-right:1px solid rgba(255,255,255,.07)}
+.sw2-id .sub{display:block;font-size:var(--fs-0);color:var(--ink-3);margin-top:2px}
+.sw2-cell{padding:11px 18px;border-right:1px solid rgba(255,255,255,.07);min-width:132px}
+.sw2-cell:last-child{border-right:0}
+.sw2-cell .v{font-family:var(--font-mono);font-size:var(--fs-5);color:var(--ink);line-height:1.15}
+.sw2-cell .v u{text-decoration:none;color:var(--ink-3);font-size:var(--fs-2)}
+.sw2-cell.is-end .v{color:var(--accent);font-size:var(--fs-6);font-weight:600}
+.sw2-bar{margin-top:7px;height:3px;border-radius:2px;background:rgba(255,255,255,.07);overflow:hidden}
+.sw2-bar i{display:block;height:100%;background:var(--accent);border-radius:2px}
+.sw2-phase{display:flex;align-items:center;gap:8px;padding:11px 18px;
+           font-size:var(--fs-1);color:var(--ink-2)}
+.sw2-fresh{margin-left:auto;align-self:center;padding:0 16px;font-size:var(--fs-0);color:var(--ink-3)}
+
+/* ══ Варіант 3 — «Кільце» ═════════════════════════════════════════════════
+   Головна ідея: одна велика фігура, яку видно через кімнату. */
+.sw3{display:flex;align-items:center;gap:18px;padding:12px 18px}
+.sw3-ring{position:relative;flex:none;width:74px;height:74px}
+.sw3-ring svg{transform:rotate(-90deg)}
+.sw3-ring .bg{fill:none;stroke:rgba(255,255,255,.08);stroke-width:6}
+.sw3-ring .fg{fill:none;stroke:var(--accent);stroke-width:6;stroke-linecap:round}
+.sw3-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+         font-family:var(--font-mono);font-size:var(--fs-5);color:var(--ink);white-space:nowrap}
+.sw3-pct u{text-decoration:none;font-size:var(--fs-1);color:var(--ink-3)}
+.sw3-mid{min-width:0;display:flex;flex-direction:column;gap:3px}
+.sw3-top{display:flex;align-items:center;gap:9px}
+.sw3-layers{font-size:var(--fs-1);color:var(--ink-2)}
+.sw3-layers b{font-family:var(--font-mono);color:var(--ink);font-size:var(--fs-4)}
+.sw3-phase{font-size:var(--fs-1);color:var(--ink-3);display:flex;align-items:center;gap:7px}
+.sw3-end{margin-left:auto;text-align:right;padding-left:20px;
+         border-left:1px solid rgba(255,255,255,.08)}
+.sw3-end .t{font-family:var(--font-mono);font-size:var(--fs-7);line-height:1;color:var(--accent);
+            font-weight:600;display:block}
+.sw3-end .c{font-size:var(--fs-0);color:var(--ink-3);display:block;margin-top:5px}
+
+/* Стан «стоїть» — спільний для всіх трьох: жодних чисел, лише факт. */
+.sw-idle{display:flex;align-items:center;gap:10px;padding:11px 16px;font-size:var(--fs-1);
+         color:var(--ink-3)}
+.sw-idle .sw-dot{background:var(--ink-3)}
+</style>
+
+<style>
+/* Спрощене оточення сторінки — щоб було видно МІСЦЕ віджета, а не сам віджет.
+   Черга, фільтри й шапка намальовані приблизно; віджет — точно такий, як буде. */
+body{background:var(--bg);margin:0;padding:20px 24px 40px;max-width:1120px;margin:0 auto}
+.pg{margin:0 0 34px}
+.pg-h{font-size:var(--fs-1);color:var(--ink-3);letter-spacing:.05em;text-transform:uppercase;margin:0 0 10px}
+.pg-h b{color:var(--accent);text-transform:none;letter-spacing:0;font-weight:600}
+.pg-title{font-size:var(--fs-6);color:var(--ink);font-weight:600;margin:0 0 2px}
+.pg-sub{font-size:var(--fs-1);color:var(--ink-3);margin:0 0 12px}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 6px}
+.pill{font-size:var(--fs-1);color:var(--ink-2);border:1px solid rgba(255,255,255,.09);
+      border-radius:999px;padding:3px 11px}
+.pill.on{color:var(--ink);border-color:var(--accent-d);background:rgba(var(--accent-rgb),.10)}
+.pills-lbl{font-size:var(--fs-0);color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;
+           align-self:center;margin-right:2px}
+.days{display:flex;gap:6px;margin:8px 0 12px}
+.day{font-size:var(--fs-1);color:var(--ink-3);font-family:var(--font-mono);
+     border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:3px 10px}
+.qcard{border:1px solid rgba(255,255,255,.09);border-radius:var(--radius-card);background:var(--card);
+       overflow:hidden;margin-top:10px}
+.qcard-h{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.07)}
+.qcard-h b{font-size:var(--fs-2);color:var(--ink)}
+.qcard-h span{font-size:var(--fs-0);color:var(--ink-3)}
+.qrow{display:grid;grid-template-columns:1fr 70px 200px;gap:10px;align-items:center;
+      padding:8px 14px;border-bottom:1px solid rgba(255,255,255,.05);font-size:var(--fs-2)}
+.qrow:last-child{border-bottom:0}
+.qrow .no{font-family:var(--font-mono);color:var(--ink)}
+.qrow .qty{color:var(--ink-2);font-family:var(--font-mono)}
+.qrow .mat{color:var(--ink-2)}
+.qrow .tag{font-size:var(--fs-0);font-family:var(--font-mono);border:1px solid rgba(255,255,255,.12);
+           border-radius:5px;padding:1px 6px;margin-right:7px;color:var(--ink-3)}
+.mstripe{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px;padding:6px 10px;
+         border:1px solid rgba(255,255,255,.08);border-radius:9px;background:var(--card)}
+.mstripe .lbl{font-size:var(--fs-0);color:var(--ink-3);margin-right:4px}
+.mch{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:7px;
+     border:1px solid rgba(255,255,255,.09);font-size:var(--fs-0);color:var(--ink-2)}
+.mch i{font-family:var(--font-mono);color:var(--ink);font-style:normal}
+.pg-note{font-size:var(--fs-1);color:var(--ink-3);margin:10px 0 0;line-height:1.6}
+</style>
+
+</head><body>
+<p class="pg-h" style="margin-bottom:16px">Як віджет сидить <b>зверху сторінки</b> — три варіанти
+  в однаковому оточенні: шапка, фільтри, смуга днів, стрічка фрезерних верстатів, далі черга.</p>
+<section class="pg">
+  <p class="pg-h">Варіант 1 · <b>Стрічка часу</b></p>
+  <p class="pg-title">Черга робіт</p>
+<p class="pg-sub">616 у вигляді · 1971 од. · пошта: щойно · таблиця: щойно</p>
+<div class="pills"><span class="pills-lbl">Період</span><span class="pill">Сьогодні</span>
+  <span class="pill">Вчора</span><span class="pill">Завтра</span><span class="pill on">Раніше 616</span>
+  <span class="pills-lbl" style="margin-left:10px">Джерело</span><span class="pill on">Усі</span>
+  <span class="pill">Лабораторія</span><span class="pill">Клієнти</span></div>
+<div class="days"><span class="day">01.09</span><span class="day">02.09</span><span class="day">03.09</span></div>
+<div class="mstripe"><span class="lbl">Верстати</span>
+  <span class="mch">350i <i>62%</i></span><span class="mch">350i Loader <i>18%</i></span>
+  <span class="mch">250i <i>—</i></span><span class="mch">250i dry <i>91%</i></span></div>
+  <div class="sw sw1" style="margin:0 0 10px">
+    <div class="sw1-head"><span class="sw-dot is-live"></span><span class="sw-name">SISMA</span>
+      <span class="sw1-state">друкує</span><span class="sw1-layers">шар <b>250</b> з <b>1049</b></span></div>
+    <div class="sw1-track"><div class="sw1-rail"></div><div class="sw1-fill" style="width:24%"></div>
+      <div class="sw1-pin" style="left:24%"></div>
+      <span class="sw1-left" style="left:24%">лишилось 3 год 55 хв</span>
+      <span class="sw1-t0">15:34</span><span class="sw1-t1">20:58</span></div>
+    <div class="sw1-end"><span class="t">20:58</span><span class="c">завершення друку</span></div></div>
+  <div class="qcard"><div class="qcard-h"><b>Черга</b><span>616 робіт</span></div><div class="qrow"><span class="no">28356</span><span class="qty">2</span><span class="mat"><span class="tag">Ti</span>остем репліка</span></div>
+<div class="qrow"><span class="no">28398</span><span class="qty">1</span><span class="mat"><span class="tag">Ti</span>остем репліка</span></div>
+<div class="qrow"><span class="no">28379</span><span class="qty">2</span><span class="mat"><span class="tag">Ti</span>остем</span></div>
+<div class="qrow"><span class="no">28171</span><span class="qty">2</span><span class="mat"><span class="tag">Zr</span>емо A2</span></div>
+<div class="qrow"><span class="no">28376</span><span class="qty">6</span><span class="mat"><span class="tag">PMMA</span>A2</span></div></div>
+  <p class="pg-note">Висота 98 px — 2.6 рядка черги. Єдиний варіант, де видно, скільки ЛИШИЛОСЬ, як відрізок.</p>
+</section><section class="pg">
+  <p class="pg-h">Варіант 2 · <b>Табло</b></p>
+  <p class="pg-title">Черга робіт</p>
+<p class="pg-sub">616 у вигляді · 1971 од. · пошта: щойно · таблиця: щойно</p>
+<div class="pills"><span class="pills-lbl">Період</span><span class="pill">Сьогодні</span>
+  <span class="pill">Вчора</span><span class="pill">Завтра</span><span class="pill on">Раніше 616</span>
+  <span class="pills-lbl" style="margin-left:10px">Джерело</span><span class="pill on">Усі</span>
+  <span class="pill">Лабораторія</span><span class="pill">Клієнти</span></div>
+<div class="days"><span class="day">01.09</span><span class="day">02.09</span><span class="day">03.09</span></div>
+<div class="mstripe"><span class="lbl">Верстати</span>
+  <span class="mch">350i <i>62%</i></span><span class="mch">350i Loader <i>18%</i></span>
+  <span class="mch">250i <i>—</i></span><span class="mch">250i dry <i>91%</i></span></div>
+  <div class="sw sw2" style="margin:0 0 10px">
+    <div class="sw2-id"><span class="sw-dot is-live"></span>
+      <span><span class="sw-name">SISMA</span><span class="sub">SLM · 3D-друк</span></span></div>
+    <div class="sw2-cell"><div class="sw-lbl">шар</div><div class="v">250<u> / 1049</u></div>
+      <div class="sw2-bar"><i style="width:24%"></i></div></div>
+    <div class="sw2-cell"><div class="sw-lbl">почала</div><div class="v">15:34</div></div>
+    <div class="sw2-cell is-end"><div class="sw-lbl">завершить</div><div class="v">20:58</div></div>
+    <div class="sw2-phase"><span class="sw-dot is-live"></span> пише шар</div>
+    <div class="sw2-fresh">кадр щойно</div></div>
+  <div class="qcard"><div class="qcard-h"><b>Черга</b><span>616 робіт</span></div><div class="qrow"><span class="no">28356</span><span class="qty">2</span><span class="mat"><span class="tag">Ti</span>остем репліка</span></div>
+<div class="qrow"><span class="no">28398</span><span class="qty">1</span><span class="mat"><span class="tag">Ti</span>остем репліка</span></div>
+<div class="qrow"><span class="no">28379</span><span class="qty">2</span><span class="mat"><span class="tag">Ti</span>остем</span></div>
+<div class="qrow"><span class="no">28171</span><span class="qty">2</span><span class="mat"><span class="tag">Zr</span>емо A2</span></div>
+<div class="qrow"><span class="no">28376</span><span class="qty">6</span><span class="mat"><span class="tag">PMMA</span>A2</span></div></div>
+  <p class="pg-note">Висота 73 px — рівно 2 рядки черги. Найдешевший за місцем.</p>
+</section><section class="pg">
+  <p class="pg-h">Варіант 3 · <b>Кільце</b></p>
+  <p class="pg-title">Черга робіт</p>
+<p class="pg-sub">616 у вигляді · 1971 од. · пошта: щойно · таблиця: щойно</p>
+<div class="pills"><span class="pills-lbl">Період</span><span class="pill">Сьогодні</span>
+  <span class="pill">Вчора</span><span class="pill">Завтра</span><span class="pill on">Раніше 616</span>
+  <span class="pills-lbl" style="margin-left:10px">Джерело</span><span class="pill on">Усі</span>
+  <span class="pill">Лабораторія</span><span class="pill">Клієнти</span></div>
+<div class="days"><span class="day">01.09</span><span class="day">02.09</span><span class="day">03.09</span></div>
+<div class="mstripe"><span class="lbl">Верстати</span>
+  <span class="mch">350i <i>62%</i></span><span class="mch">350i Loader <i>18%</i></span>
+  <span class="mch">250i <i>—</i></span><span class="mch">250i dry <i>91%</i></span></div>
+  <div class="sw sw3" style="margin:0 0 10px">
+    <div class="sw3-ring"><svg viewBox="0 0 74 74" width="74" height="74" aria-hidden="true">
+      <circle class="bg" cx="37" cy="37" r="32"/>
+      <circle class="fg" cx="37" cy="37" r="32" stroke-dasharray="201.06" stroke-dashoffset="152.8"/></svg>
+      <span class="sw3-pct">24<u>%</u></span></div>
+    <div class="sw3-mid"><div class="sw3-top"><span class="sw-name">SISMA</span>
+      <span class="sw3-layers">шар <b>250</b> з <b>1049</b></span></div>
+      <div class="sw3-phase"><span class="sw-dot is-live"></span> пише шар · почала о 15:34</div></div>
+    <div class="sw3-end"><span class="t">20:58</span><span class="c">завершення друку</span></div></div>
+  <div class="qcard"><div class="qcard-h"><b>Черга</b><span>616 робіт</span></div><div class="qrow"><span class="no">28356</span><span class="qty">2</span><span class="mat"><span class="tag">Ti</span>остем репліка</span></div>
+<div class="qrow"><span class="no">28398</span><span class="qty">1</span><span class="mat"><span class="tag">Ti</span>остем репліка</span></div>
+<div class="qrow"><span class="no">28379</span><span class="qty">2</span><span class="mat"><span class="tag">Ti</span>остем</span></div>
+<div class="qrow"><span class="no">28171</span><span class="qty">2</span><span class="mat"><span class="tag">Zr</span>емо A2</span></div>
+<div class="qrow"><span class="no">28376</span><span class="qty">6</span><span class="mat"><span class="tag">PMMA</span>A2</span></div></div>
+  <p class="pg-note">Висота 100 px — 2.7 рядка. Єдина кругла форма на сторінці, видно бічним зором.</p>
+</section>
+</body></html>

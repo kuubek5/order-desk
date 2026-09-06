@@ -12,7 +12,6 @@
 
 import logging
 import time
-from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException
@@ -29,7 +28,7 @@ from app.export_scanner import (
     cache_counters as export_cache_counters,
     list_export_client_names_cached,
 )
-from app.models import Client, ClientNameAlias, Order, StatusEvent
+from app.models import Client, Order, StatusEvent
 from app.order_folder import folder_to_file_uri
 from app.queue_filters import (
     HANDOUT_SOURCE_FILTERS,
@@ -794,32 +793,3 @@ async def issue_handout_group(
     if request.headers.get("HX-Request"):
         return handout_cards_response(request, user, source, day, db)
     return RedirectResponse(back_url, status_code=303)
-
-
-@router.post("/handout/confirm-alias")
-async def confirm_alias(
-    request: Request,
-    sheet_name: str = Form(...),
-    export_folder_name: str = Form(...),
-    db: Session = Depends(get_db),
-):
-    if get_current_user(request, db) is None:
-        raise HTTPException(status_code=401, detail="увійдіть в систему")
-
-    existing = db.scalar(select(ClientNameAlias).where(ClientNameAlias.sheet_name == sheet_name))
-    if existing is not None:
-        existing.export_folder_name = export_folder_name
-        existing.confirmed = True
-        existing.confirmed_at = datetime.now()
-    else:
-        db.add(
-            ClientNameAlias(
-                sheet_name=sheet_name,
-                export_folder_name=export_folder_name,
-                confirmed=True,
-                confirmed_at=datetime.now(),
-            )
-        )
-    db.commit()
-
-    return RedirectResponse("/handout", status_code=303)

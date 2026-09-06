@@ -79,7 +79,7 @@ def test_fetch_row_fills_maps_row_numbers():
     assert fills[3] == "grey"
 
 
-def test_fetch_row_fills_degrades_to_empty_on_error():
+def test_fetch_row_fills_degrades_to_none_on_error():
     class Boom:
         title = "22.06.26"
 
@@ -88,4 +88,5 @@ def test_fetch_row_fills_degrades_to_empty_on_error():
             def fetch_sheet_metadata(params):
                 raise RuntimeError("api down")
 
-    assert fetch_row_fills(Boom()) == {}
+    # None, не {}: порожній словник = «усі без заливки» = «усі видані» (ревʼю 07.09.26)
+    assert fetch_row_fills(Boom()) is None

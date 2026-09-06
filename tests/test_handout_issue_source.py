@@ -206,3 +206,18 @@ def test_lock_holds_while_the_fill_is_still_cleared():
         order = session.scalars(select(Order)).one()
         assert order.status == "відфрезеровано"
         assert order.issue_locked is True
+
+
+def test_unreadable_fills_do_not_withdraw_an_issue():
+    """Ревʼю 07.09.26 (sync CRITICAL-3). Заливки не прочитались (429 на
+    метаданих) — це «кольори невідомі», а не «всі рядки без заливки». Раніше
+    fetch_row_fills віддавав {} і один збій скасовував «видано» кожному
+    клієнтові — уся ранкова видача поверталась на екран."""
+    with make_session() as session:
+        sync_tab(session, "01.09.26", [client_row()], row_fills={5: ""})
+        assert session.scalars(select(Order)).one().status == "видано"
+
+        sync_tab(session, "01.09.26", [client_row()], row_fills=None)
+        order = session.scalars(select(Order)).one()
+        assert order.status == "видано"
+        assert order.issued_source == "sheet"

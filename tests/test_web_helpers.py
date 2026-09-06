@@ -1,4 +1,5 @@
 import asyncio
+from app.business_day import business_today
 from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -381,7 +382,7 @@ def test_accept_email_stays_in_triage_after_full_accept():
     order = next(value for value in db.added if isinstance(value, Order))
     # Dated like a real наряд so period tabs / is_overdue() treat a priced
     # mail order the same as a table one — see accept_email's comment.
-    assert order.sheet_tab == date.today().strftime("%d.%m.%y")
+    assert order.sheet_tab == business_today().strftime("%d.%m.%y")
     assert order.row_number is None
 
 
@@ -423,7 +424,7 @@ def test_accept_email_links_order_to_appended_sheet_row():
 
     db = FakeDb()
     request = SimpleNamespace(session={"user_id": user.id})
-    today = date.today().strftime("%d.%m.%y")
+    today = business_today().strftime("%d.%m.%y")
     fake_ws = SimpleNamespace(title=today)
 
     with patch("app.services.mail_accept.open_spreadsheet"), \
@@ -492,7 +493,7 @@ def test_write_sheet_fields_skips_email_orders_even_with_sheet_tab():
     but they were never a real spreadsheet row — source, not sheet_tab, must
     gate the write-back, or this would try (and fail/misfire) against a
     worksheet row that doesn't correspond to this order."""
-    order = SimpleNamespace(source="email", sheet_tab=date.today().strftime("%d.%m.%y"))
+    order = SimpleNamespace(source="email", sheet_tab=business_today().strftime("%d.%m.%y"))
     db = SimpleNamespace(add=lambda value: (_ for _ in ()).throw(AssertionError("should not touch the sheet")))
 
     result = _write_sheet_fields(db, order, {"sum3d_id"})
@@ -505,7 +506,7 @@ def test_write_sheet_fields_writes_for_sheet_client_rows():
     ARE real spreadsheet rows matched back by row_number, so a Sum3D typed in
     the CRM must write back — unlike IMAP "email" orders."""
     order = SimpleNamespace(
-        id=7, source="sheet_client", sheet_tab=date.today().strftime("%d.%m.%y"),
+        id=7, source="sheet_client", sheet_tab=business_today().strftime("%d.%m.%y"),
         row_number=5, sum3d_id="PRJ-9",
     )
     added = []
@@ -528,7 +529,7 @@ def test_write_sheet_fields_reports_a_skipped_write_instead_of_ok():
     оператор мусить це бачити. До 06.09.26 у журнал ішло «ok», а роут вважав
     усе записаним (знахідка живого тесту, S.8)."""
     order = SimpleNamespace(
-        id=7, source="lab", sheet_tab=date.today().strftime("%d.%m.%y"),
+        id=7, source="lab", sheet_tab=business_today().strftime("%d.%m.%y"),
         row_number=5, sum3d_id="PRJ-9",
     )
     added = []

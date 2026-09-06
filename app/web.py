@@ -17,9 +17,11 @@ from fastapi import (
     FastAPI,
 )
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from urllib.parse import urlsplit
+
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
@@ -855,6 +857,42 @@ async def unhandled_error_handler(request: Request, exc: Exception):
 # screen itself needs to render.
 _LICENSE_EXEMPT_PATH_PREFIXES = ("/static/",)
 _LICENSE_EXEMPT_PATHS = ("/health", "/license")
+
+
+_MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+@app.middleware("http")
+async def same_origin_guard(request: Request, call_next):
+    """CSRF-стіна для мутацій + заборона фреймити нас із чужого origin.
+
+    `SameSite=Strict` (нижче, SessionMiddleware) відсікає крос-САЙТОВІ POST-и,
+    але site ігнорує порт: `http://127.0.0.1:8002` (dev) і `:8000` (прод) —
+    один site, і кука оператора летить у POST з будь-якої локальної сторінки.
+    Тому кожна мутація мусить приходити з НАШОГО origin (host:port):
+      * є заголовок Origin — він має збігатись із Host;
+      * Origin нема, але браузер каже Sec-Fetch-Site: cross-site/same-site —
+        теж чужий (same-site = інший порт того самого хоста).
+    Запити без обох заголовків (curl, тести, старі клієнти) проходять — це не
+    браузер із чужою вкладкою. Ревʼю 07.09.26 (core/security HIGH-2).
+    """
+    if request.method in _MUTATING_METHODS:
+        origin = request.headers.get("origin")
+        host = request.headers.get("host", "")
+        if origin is not None:
+            if urlsplit(origin).netloc != host:
+                return JSONResponse(
+                    {"detail": "запит з іншого джерела відхилено"}, status_code=403
+                )
+        elif request.headers.get("sec-fetch-site") in ("cross-site", "same-site"):
+            return JSONResponse(
+                {"detail": "запит з іншого джерела відхилено"}, status_code=403
+            )
+    response = await call_next(request)
+    # Картку роботи ми самі показуємо у власному iframe (слайдовер черги) —
+    # тому SAMEORIGIN, не DENY. Origin тут враховує порт.
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    return response
 
 
 @app.middleware("http")

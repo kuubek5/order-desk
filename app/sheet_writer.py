@@ -70,7 +70,9 @@ def _identity_cell(order: Order) -> tuple[int | None, str]:
     source = getattr(order, "source", None)
     if source == "lab":
         return COL_WORK_ORDER_NO, (getattr(order, "work_order_no", "") or "").strip()
-    if source == "sheet_client":
+    if source in ("sheet_client", "email"):
+        # Поштова робота теж має рядок у таблиці — рядок-нотатку з іменем
+        # клієнта в колонці E (append_mail_placeholder_row, e_value).
         return COL_KIND, (getattr(order, "client_name", "") or "").strip()
     return None, ""
 
@@ -107,6 +109,13 @@ def _resolve_row(worksheet: gspread.Worksheet, order: Order) -> int | None:
         current = call_with_retry(lambda: worksheet.cell(row, col).value)
     except Exception:
         return None  # позицію не підтверджено — пропускаємо запис
+    if current is None:
+        # gspread віддає None для ПОРОЖНЬОЇ клітинки. Це не «нема з чим
+        # порівняти», а «на цій позиції вже не наш наряд» (після видалення
+        # рядка вище сюди зʼїхав сусід, у якого наряд часто порожній).
+        # Раніше ця гілка довіряла збереженому рядку — і clear_order_row
+        # витирав A:K чужої живої роботи (ревʼю 07.09.26, sync CRITICAL-1).
+        current = ""
     if not isinstance(current, str):
         return row  # no real value to compare (e.g. a mock) — trust stored row
     if current.strip().casefold() == expected.casefold():
@@ -146,6 +155,13 @@ def clear_order_row(worksheet: gspread.Worksheet, order: Order) -> bool:
     A:K цілком, тож влучання в сусідній рядок знищує чужу живу роботу у
     спільній таблиці без жодного сліду. Не підтвердили позицію — не стираємо.
     Повертає False, якщо стирання пропущено."""
+    col, expected = _identity_cell(order)
+    if col is None or not expected:
+        # Нема з чим звірити (наряд-less лабораторний рядок, клієнт без
+        # імені) — стирати НЕ МОЖНА: «непідтверджений рядок гірший за
+        # пропущений запис» (§14). Запис полів у такий рядок лишається
+        # оптимістичним, а стирання A:K — ні.
+        return False
     row = _resolve_row(worksheet, order)
     if row is None:
         return False

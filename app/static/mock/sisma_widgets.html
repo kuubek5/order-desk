@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="uk" data-theme="forge">
+<head>
+<meta charset="utf-8">
+<title>SISMA — віджет над чергою, 3 варіанти</title>
+<link rel="stylesheet" href="/static/css/fonts.css">
+<link rel="stylesheet" href="/static/css/tokens.css">
+<link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" href="/static/css/treatment-a.css">
+<link rel="stylesheet" href="/static/css/theme-forge.css">
+<style>
+/* ── Спільне для мокапа (у проді піде в окремий файл) ───────────────────── */
+body{background:var(--bg);padding:22px 26px;max-width:1180px;margin:0 auto}
+.mk-h{font-size:var(--fs-1);color:var(--ink-3);margin:26px 0 8px;letter-spacing:.04em;text-transform:uppercase}
+.mk-h b{color:var(--accent);font-weight:600;text-transform:none;letter-spacing:0}
+.mk-note{font-size:var(--fs-1);color:var(--ink-3);margin:8px 0 0;line-height:1.6}
+.mk-row{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}
+
+/* Спільні дрібниці всіх варіантів */
+.sw{position:relative;border:1px solid var(--control-edge);border-radius:var(--radius-card);
+    background:linear-gradient(180deg,var(--card-2),var(--card));overflow:hidden}
+.sw-name{font-size:var(--fs-1);font-weight:600;color:var(--ink);letter-spacing:.02em}
+.sw-lbl{font-size:var(--fs-0);color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
+.sw-mono{font-family:var(--font-mono)}
+.sw-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block;flex:none}
+.sw-dot.is-live{animation:swpulse 2.4s ease-in-out infinite}
+.sw-dot.is-recoat{background:var(--ink-3);animation:none}
+@keyframes swpulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(var(--accent-rgb),.45)}
+                   60%{opacity:.65;box-shadow:0 0 0 5px rgba(var(--accent-rgb),0)}}
+@media (prefers-reduced-motion:reduce){.sw-dot.is-live{animation:none}}
+
+/* ══ Варіант 1 — «Стрічка часу» ═══════════════════════════════════════════
+   Головна ідея: скільки ЛИШИЛОСЬ, видно як відрізок, а не як число. */
+.sw1{display:grid;grid-template-columns:1fr auto;gap:14px 18px;padding:12px 16px 14px}
+.sw1-head{grid-column:1;grid-row:1;display:flex;align-items:center;gap:10px;min-width:0}
+.sw1-state{font-size:var(--fs-1);color:var(--ink-2)}
+.sw1-layers{margin-left:auto;font-size:var(--fs-1);color:var(--ink-2)}
+.sw1-layers b{font-family:var(--font-mono);color:var(--ink);font-size:var(--fs-3)}
+.sw1-end{grid-column:2;grid-row:1/3;align-self:center;text-align:right;padding-left:18px;
+         border-left:1px solid var(--hair,rgba(255,255,255,.08))}
+.sw1-end .t{display:block;font-family:var(--font-mono);font-size:var(--fs-7);line-height:1;
+            color:var(--accent);font-weight:600;letter-spacing:-.01em}
+.sw1-end .c{display:block;margin-top:4px;font-size:var(--fs-0);color:var(--ink-3)}
+.sw1-track{grid-column:1;grid-row:2;position:relative;height:30px;margin-top:4px}
+.sw1-rail{position:absolute;left:0;right:0;top:11px;height:4px;border-radius:2px;
+          background:rgba(255,255,255,.07)}
+.sw1-fill{position:absolute;left:0;top:11px;height:4px;border-radius:2px;
+          background:linear-gradient(90deg,var(--accent-d),var(--accent))}
+.sw1-pin{position:absolute;top:5px;width:2px;height:16px;background:var(--accent);border-radius:1px;
+         box-shadow:0 0 8px rgba(var(--accent-rgb),.6)}
+.sw1-t0,.sw1-t1{position:absolute;top:19px;font-size:var(--fs-0);color:var(--ink-3);font-family:var(--font-mono)}
+.sw1-t0{left:0}.sw1-t1{right:0}
+.sw1-left{position:absolute;top:-6px;transform:translateX(-50%);font-size:var(--fs-0);
+          color:var(--ink-2);white-space:nowrap;background:var(--card);padding:0 6px;border-radius:4px}
+
+/* ══ Варіант 2 — «Табло» ══════════════════════════════════════════════════
+   Головна ідея: три числа в ряд, кожне зі своїм підписом. Найщільніший. */
+.sw2{display:flex;align-items:stretch;gap:0;padding:0}
+.sw2-id{display:flex;align-items:center;gap:9px;padding:12px 16px;min-width:186px;
+        border-right:1px solid rgba(255,255,255,.07)}
+.sw2-id .sub{display:block;font-size:var(--fs-0);color:var(--ink-3);margin-top:2px}
+.sw2-cell{padding:11px 18px;border-right:1px solid rgba(255,255,255,.07);min-width:132px}
+.sw2-cell:last-child{border-right:0}
+.sw2-cell .v{font-family:var(--font-mono);font-size:var(--fs-5);color:var(--ink);line-height:1.15}
+.sw2-cell .v u{text-decoration:none;color:var(--ink-3);font-size:var(--fs-2)}
+.sw2-cell.is-end .v{color:var(--accent);font-size:var(--fs-6);font-weight:600}
+.sw2-bar{margin-top:7px;height:3px;border-radius:2px;background:rgba(255,255,255,.07);overflow:hidden}
+.sw2-bar i{display:block;height:100%;background:var(--accent);border-radius:2px}
+.sw2-phase{display:flex;align-items:center;gap:8px;padding:11px 18px;
+           font-size:var(--fs-1);color:var(--ink-2)}
+.sw2-fresh{margin-left:auto;align-self:center;padding:0 16px;font-size:var(--fs-0);color:var(--ink-3)}
+
+/* ══ Варіант 3 — «Кільце» ═════════════════════════════════════════════════
+   Головна ідея: одна велика фігура, яку видно через кімнату. */
+.sw3{display:flex;align-items:center;gap:18px;padding:12px 18px}
+.sw3-ring{position:relative;flex:none;width:74px;height:74px}
+.sw3-ring svg{transform:rotate(-90deg)}
+.sw3-ring .bg{fill:none;stroke:rgba(255,255,255,.08);stroke-width:6}
+.sw3-ring .fg{fill:none;stroke:var(--accent);stroke-width:6;stroke-linecap:round}
+.sw3-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+         font-family:var(--font-mono);font-size:var(--fs-5);color:var(--ink);white-space:nowrap}
+.sw3-pct u{text-decoration:none;font-size:var(--fs-1);color:var(--ink-3)}
+.sw3-mid{min-width:0;display:flex;flex-direction:column;gap:3px}
+.sw3-top{display:flex;align-items:center;gap:9px}
+.sw3-layers{font-size:var(--fs-1);color:var(--ink-2)}
+.sw3-layers b{font-family:var(--font-mono);color:var(--ink);font-size:var(--fs-4)}
+.sw3-phase{font-size:var(--fs-1);color:var(--ink-3);display:flex;align-items:center;gap:7px}
+.sw3-end{margin-left:auto;text-align:right;padding-left:20px;
+         border-left:1px solid rgba(255,255,255,.08)}
+.sw3-end .t{font-family:var(--font-mono);font-size:var(--fs-7);line-height:1;color:var(--accent);
+            font-weight:600;display:block}
+.sw3-end .c{font-size:var(--fs-0);color:var(--ink-3);display:block;margin-top:5px}
+
+/* Стан «стоїть» — спільний для всіх трьох: жодних чисел, лише факт. */
+.sw-idle{display:flex;align-items:center;gap:10px;padding:11px 16px;font-size:var(--fs-1);
+         color:var(--ink-3)}
+.sw-idle .sw-dot{background:var(--ink-3)}
+</style>
+</head>
+<body>
+
+<p class="mk-h">Варіант 1 · <b>Стрічка часу</b></p>
+<div class="sw sw1">
+    <div class="sw1-head">
+        <span class="sw-dot is-live"></span>
+        <span class="sw-name">SISMA</span>
+        <span class="sw1-state">друкує</span>
+        <span class="sw1-layers">шар <b>250</b> з <b>1049</b></span>
+    </div>
+    <div class="sw1-track">
+        <div class="sw1-rail"></div>
+        <div class="sw1-fill" style="width:24%"></div>
+        <div class="sw1-pin" style="left:24%"></div>
+        <span class="sw1-left" style="left:24%">лишилось 3 год 55 хв</span>
+        <span class="sw1-t0">15:34</span>
+        <span class="sw1-t1">20:58</span>
+    </div>
+    <div class="sw1-end">
+        <span class="t">20:58</span>
+        <span class="c">завершення друку</span>
+    </div>
+</div>
+<p class="mk-note">Час завершення — найбільше число на екрані. Під ним відрізок від старту до кінця з
+    позначкою «зараз»: скільки лишилось, видно фігурою, не тільки цифрою.</p>
+
+<p class="mk-h">Варіант 2 · <b>Табло</b></p>
+<div class="sw sw2">
+    <div class="sw2-id">
+        <span class="sw-dot is-live"></span>
+        <span><span class="sw-name">SISMA</span><span class="sub">SLM · 3D-друк</span></span>
+    </div>
+    <div class="sw2-cell">
+        <div class="sw-lbl">шар</div>
+        <div class="v">250<u> / 1049</u></div>
+        <div class="sw2-bar"><i style="width:24%"></i></div>
+    </div>
+    <div class="sw2-cell">
+        <div class="sw-lbl">почала</div>
+        <div class="v">15:34</div>
+    </div>
+    <div class="sw2-cell is-end">
+        <div class="sw-lbl">завершить</div>
+        <div class="v">20:58</div>
+    </div>
+    <div class="sw2-phase"><span class="sw-dot is-live"></span> пише шар</div>
+    <div class="sw2-fresh">кадр щойно</div>
+</div>
+<p class="mk-note">Кожне число у своїй комірці з підписом — нічого не треба здогадуватись.
+    Найщільніший варіант: займає одну смугу й лишає місце черзі.</p>
+
+<p class="mk-h">Варіант 3 · <b>Кільце</b></p>
+<div class="sw sw3">
+    <div class="sw3-ring">
+        <svg viewBox="0 0 74 74" width="74" height="74" aria-hidden="true">
+            <circle class="bg" cx="37" cy="37" r="32"/>
+            <circle class="fg" cx="37" cy="37" r="32" stroke-dasharray="201.06" stroke-dashoffset="152.8"/>
+        </svg>
+        <span class="sw3-pct">24<u>%</u></span>
+    </div>
+    <div class="sw3-mid">
+        <div class="sw3-top">
+            <span class="sw-name">SISMA</span>
+            <span class="sw3-layers">шар <b>250</b> з <b>1049</b></span>
+        </div>
+        <div class="sw3-phase"><span class="sw-dot is-live"></span> пише шар · почала о 15:34</div>
+    </div>
+    <div class="sw3-end">
+        <span class="t">20:58</span>
+        <span class="c">завершення друку</span>
+    </div>
+</div>
+<p class="mk-note">Одна велика фігура, читається через кімнату. Кільце дає відчуття прогресу,
+    точні числа поруч.</p>
+
+<p class="mk-h">Той самий віджет, коли принтер <b>стоїть</b></p>
+<div class="mk-row">
+    <div class="sw" style="flex:1 1 320px">
+        <div class="sw-idle"><span class="sw-dot"></span> <b class="sw-name">SISMA</b> · готова до роботи, друк не йде</div>
+    </div>
+    <div class="sw" style="flex:1 1 320px">
+        <div class="sw-idle"><span class="sw-dot" style="background:var(--warn)"></span>
+            <b class="sw-name">SISMA</b> · немає зв'язку 12 хв</div>
+    </div>
+</div>
+<p class="mk-note">Порожній стан однаковий у всіх трьох: жодних чисел, лише факт. Хибне число
+    гірше за жодне — те саме правило, що на печах.</p>
+
+<p class="mk-h">Фаза <b>розрівнювання порошку</b> (лазер не пише, робота триває)</p>
+<div class="sw sw2">
+    <div class="sw2-id">
+        <span class="sw-dot is-recoat"></span>
+        <span><span class="sw-name">SISMA</span><span class="sub">SLM · 3D-друк</span></span>
+    </div>
+    <div class="sw2-cell">
+        <div class="sw-lbl">шар</div>
+        <div class="v">253<u> / 1049</u></div>
+        <div class="sw2-bar"><i style="width:24%"></i></div>
+    </div>
+    <div class="sw2-cell">
+        <div class="sw-lbl">почала</div>
+        <div class="v">15:34</div>
+    </div>
+    <div class="sw2-cell is-end">
+        <div class="sw-lbl">завершить</div>
+        <div class="v">20:58</div>
+    </div>
+    <div class="sw2-phase"><span class="sw-dot is-recoat"></span> розрівнює порошок</div>
+    <div class="sw2-fresh">кадр щойно</div>
+</div>
+<p class="mk-note">Крапка гасне й перестає пульсувати, підпис міняється — але числа лишаються
+    на місці. Інакше пауза між шарами читалась би як зависання.</p>
+
+</body>
+</html>

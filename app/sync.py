@@ -716,8 +716,11 @@ def sync_tab(
         # Межа проста й тримає обидва боки: таблиця може забрати те, що сама ж
         # і стверджувала (issued_source == "sheet"), і НЕ може скасувати
         # видачу, яку провів оператор через CRM (issued_source == "portal").
+        # Без прочитаних заливок (row_fills is None) таблиця нічого не
+        # «стверджує» — скасовувати «видано» нема на підставі чого.
         sheet_guess_withdrawn = (
-            is_client
+            row_fills is not None
+            and is_client
             and existing.status == "видано"
             and existing.issued_source in ("sheet", "shifted")
             and status != "видано"

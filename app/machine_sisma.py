@@ -32,12 +32,12 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
 from PIL import Image
 
+from app.machine_ocr import _cache_only_success
 from app.runtime import resource_path
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,10 @@ class SismaReading:
         return round(self.layer * 100 / self.layers_total)
 
 
-@lru_cache(maxsize=1)
+# НЕ lru_cache: він закріпив би порожній `{}` після одного транзієнтного
+# збою читання до кінця життя процесу, і SISMA «раптом» перестала б
+# читатись до рестарту (та сама пастка, що й у machine_ocr, ревʼю 07.09.26).
+@_cache_only_success
 def load_sisma_glyphs() -> dict[str, dict[int, dict[str, tuple[tuple[int, ...], ...]]]]:
     """Еталони символів: набір → висота → символ → бітова матриця.
 

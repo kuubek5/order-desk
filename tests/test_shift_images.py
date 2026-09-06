@@ -389,3 +389,17 @@ def test_prune_route_is_admin_only(db, note):
     db.commit()
     response = shift_router.prune_shift_images_now(request=_request(operator.id), db=db)
     assert response.status_code == 204
+
+
+def test_huge_pixel_dimensions_are_refused_before_decoding(db, note):
+    """Ревʼю 07.09.26: суцільний PNG у кілька КБ розпаковується в сотні МБ;
+    кап на пікселі стоїть ДО повного декодування."""
+    # 1-бітний режим: 9000×5000 = 45 Мп, а файл — кілька КБ.
+    buffer = io.BytesIO()
+    Image.new("1", (9000, 5000), 1).save(buffer, format="PNG")
+    payload = buffer.getvalue()
+    assert len(payload) < shift_images.MAX_IMAGE_BYTES
+
+    with pytest.raises(ShiftImageError, match="Мп"):
+        _add(db, note, payload)
+    assert db.query(ShiftNoteImage).count() == 0

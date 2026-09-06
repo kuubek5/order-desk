@@ -5,7 +5,9 @@
 шаблон — рахує гроші не CRM, її справа чесно віддати цифри (CLAUDE.md §5).
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
+
+from app.business_day import business_today
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
@@ -42,7 +44,9 @@ def get_stats(request: Request, period: str = "week", db: Session = Depends(get_
     if period not in ("today", "week", "month", "all"):
         period = "week"
 
-    today = date.today()
+    # Робоча доба (07:30), не календарна: order_date() теж рахує по ній, інакше
+    # між північчю й ранком «Сьогодні/Тиждень» зсуваються на день (ревʼю 07.09.26).
+    today = business_today()
     period_start = {
         "today": today,
         "week": today - timedelta(days=6),

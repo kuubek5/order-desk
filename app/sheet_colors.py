@@ -86,10 +86,15 @@ def classify_fill(color: dict | None) -> str:
     return ""
 
 
-def fetch_row_fills(worksheet: gspread.Worksheet) -> dict[int, str]:
+def fetch_row_fills(worksheet: gspread.Worksheet) -> dict[int, str] | None:
     """Map data-row number (1-based, as OrderRow.row_number) -> fill class
-    ('blue' / 'grey' / ''). Best-effort: returns {} on any API/shape failure
-    so the caller can degrade to "no colour info" rather than break the sync."""
+    ('blue' / 'grey' / ''). Best-effort: returns None on any API/shape failure
+    so the caller degrades to "no colour info" rather than break the sync.
+
+    Саме None, а не {}: порожній словник читався як «усі рядки без заливки»,
+    тобто «всі видані», а далі — «заливку повернули, видано скасовано» для
+    кожного клієнта. Один 429 на заливках повертав усю ранкову видачу на
+    екран (ревʼю 07.09.26, sync CRITICAL-3)."""
     first_row = HEADER_ROWS + 1
     last_row = HEADER_ROWS + _MAX_DATA_ROWS
     rng = f"{worksheet.title}!{_FILL_COLUMN_LETTER}{first_row}:{_FILL_COLUMN_LETTER}{last_row}"
@@ -102,7 +107,7 @@ def fetch_row_fills(worksheet: gspread.Worksheet) -> dict[int, str]:
         meta = call_with_retry(lambda: worksheet.spreadsheet.fetch_sheet_metadata(params))
         row_data = meta["sheets"][0]["data"][0].get("rowData", [])
     except Exception:  # noqa: BLE001 — colour is a nicety, never fatal to sync
-        return {}
+        return None
 
     fills: dict[int, str] = {}
     for offset, row in enumerate(row_data, start=1):
