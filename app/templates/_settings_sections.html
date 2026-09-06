@@ -4,7 +4,8 @@
            над самим розділом), решта — екран-блокатор із артом. Стан і
            аудиторія тримаються в налаштуваннях, тому відкрити/закрити можна
            без деплою. Логіка — app/services/section_gate.py. #}
-        {% if user.role == 'адмін' %}
+        {# Гейт розділу тепер у settings.html через реєстр меню
+           (`app/services/settings_nav.py`) — тут дубля немає. #}
         <section id="sections" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="sections">
             <div class="num" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7-2.6"/></svg>
@@ -42,4 +43,3 @@
                 {% endfor %}
             </div>
         </section>
-        {% endif %}

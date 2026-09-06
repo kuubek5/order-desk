@@ -17,6 +17,7 @@ from app.changelog import load_changelog
 from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH
 from app.mail_spool import analyze_spool
 from app.services.section_gate import sections_admin
+from app.services.settings_nav import can_edit
 from app.services.settings_status import build_slabs
 from app.models import AppSetting, EmailMessage, MailFilterCategory, MailFilterRule, Order, User
 from app.monthly_backup import list_snapshots
@@ -379,13 +380,18 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
 
     form = await request.form()
     action = form.get("action", "save")
-    # Field-level enforcement, not just a hidden card: an operator's rendered
-    # form only contains the two path inputs, but a hand-crafted POST could
-    # still include google_sheet_id/imap_password — silently drop anything
-    # outside OPERATOR_EDITABLE_KEYS for a non-admin rather than trusting the
-    # DOM to have hidden it.
+    # Field-level enforcement, not just a hidden card: рендер форми показує
+    # рівно те, що людині можна, але саморобний POST міг би принести чуже
+    # поле — тому кожне поле звіряється з правами на ЙОГО розділ
+    # (`app/services/settings_nav.py`), а не з роллю напряму. Ключ без розділу
+    # (нове поле, яке забули підписати) лишається адмінським.
     for field in SETTING_FIELDS:
-        if not is_admin and field.key not in OPERATOR_EDITABLE_KEYS:
+        allowed = (
+            is_admin
+            or field.key in OPERATOR_EDITABLE_KEYS
+            or (field.section and can_edit(user, field.section))
+        )
+        if not allowed:
             continue
         raw = form.get(field.key)
         if raw is None:
@@ -466,12 +472,13 @@ def check_settings_path(
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
-    # Operator-editable (see OPERATOR_EDITABLE_KEYS) — both fields this check
-    # serves are filesystem paths, not credentials, so any logged-in user may
-    # probe them, same as they may now save them. The WRITE half of the probe
-    # (create+delete a marker file at a caller-supplied path) is admin-only:
-    # for an operator it was a write-anywhere oracle over every network share
-    # the KuubMill service account can reach (audit 05.09.26, security M-1).
+    # Читати шлях може будь-хто, хто ввійшов: це не секрет, а «чи бачу я цю
+    # теку з цього ПК». А от ЗАПИС (створити й прибрати файл-маркер за
+    # довільним шляхом із форми) лишається адмінським НАВІТЬ ПІСЛЯ того, як
+    # оператор отримав право редагувати «Шляхи папок»: це не редагування
+    # налаштування, а запис у будь-яку мережеву шару, куди дістає служба
+    # KuubMill (audit 05.09.26, security M-1). Право на розділ таку дію не
+    # покриває — тому тут стоїть роль, а не can_edit.
     if not is_loopback_request(request):
         raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 

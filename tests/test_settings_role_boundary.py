@@ -1,11 +1,15 @@
 """Operator vs admin boundary on /settings and friends.
 
-Google Sheets / IMAP credentials, sync, user management, and backup stay
-admin-only. The two filesystem paths (export_folder_path,
-technician_files_path — see app.settings_store.OPERATOR_EDITABLE_KEYS) are
-open to any logged-in operator: they're a per-machine detail, not a secret,
-and whoever is at the workstation needs to fix a moved folder without
-waiting on an admin.
+Рішення власника 06.09.26 зсунуло межу: «Джерела робіт» (Google Таблиця,
+пошта, шляхи, фільтри, матеріали) і «Обладнання» (пічки, верстати) редагує
+й оператор — включно з секретами, бо в цеху за верстатом стоїть саме він.
+Права описані одним реєстром `app/services/settings_nav.py` (`can_edit`).
+Адмінськими лишились люди й доступ, бекап, оновлення, ліцензія та синк —
+адміністрування самої машини, а не робота цеху.
+
+The two filesystem paths (export_folder_path, technician_files_path — see
+app.settings_store.OPERATOR_EDITABLE_KEYS) were open to any logged-in
+operator from the start: a per-machine detail, not a secret.
 
 Every boundary is asserted at the ROUTE level (calling the handler directly,
 same convention as test_settings_routes.py), because settings.html hiding a
@@ -119,9 +123,16 @@ def test_operator_can_save_path_fields():
     assert get_setting(db, "technician_files_path") == r"D:\tech"
 
 
-def test_operator_cannot_set_credentials_even_when_posted():
-    """Field-level enforcement: even if a hand-crafted request includes a
-    restricted key, it must be silently dropped, not applied."""
+def test_operator_cannot_set_license_key_even_when_posted():
+    """Field-level enforcement: саморобний POST із чужим ключем має бути
+    мовчки відкинутий, а не застосований.
+
+    Межа зсунулась (рішення власника 06.09.26): секрети «Джерел робіт» —
+    Google Sheet ID, пароль пошти — оператор тепер зберігає сам, бо цехом
+    керує він. Незмінним лишилось адміністрування самої машини: ключ
+    ліцензії (розділ `license`) не має розділу для оператора в реєстрі
+    `app/services/settings_nav.py`, тож поле з форми не долітає до БД.
+    """
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
@@ -130,14 +141,18 @@ def test_operator_cannot_set_credentials_even_when_posted():
             {
                 "action": "save",
                 "export_folder_path": r"D:\export",
-                "google_sheet_id": "attacker-supplied-sheet-id",
-                "imap_password": "attacker-supplied-password",
+                "google_sheet_id": "operator-supplied-sheet-id",
+                "imap_password": "operator-supplied-password",
+                "license_key": "attacker-supplied-license",
             },
         )
         asyncio.run(settings_router_mod.post_settings(request=request, db=db))
     assert get_setting(db, "export_folder_path") == r"D:\export"
-    assert get_setting(db, "google_sheet_id") is None
-    assert get_setting(db, "imap_password") is None
+    # Джерела робіт — тепер операторські.
+    assert get_setting(db, "google_sheet_id") == "operator-supplied-sheet-id"
+    assert get_setting(db, "imap_password") == "operator-supplied-password"
+    # Ліцензія — ні.
+    assert get_setting(db, "license_key") is None
 
 
 def test_operator_cannot_trigger_sync_even_when_requested():
@@ -270,7 +285,10 @@ def test_post_settings_still_requires_login():
     "call",
     [
         lambda request, db: queue_router_mod.sync_sheets(request=request, db=db),
-        lambda request, db: settings_router_mod.test_imap_connection(request=request, db=db),
+        # Раніше тут стояв test_imap_connection — з 06.09.26 пошта операторська
+        # (див. tests/test_settings_routes.py). Замість нього — діагностика ваги
+        # таблиці: обслуговування машини, лишилось адмінським.
+        lambda request, db: settings_router_mod.settings_sheet_weight(request=request, db=db),
         lambda request, db: asyncio.run(settings_router_mod.create_operator(request=request, db=db)),
         lambda request, db: settings_router_mod.export_backup(
             request=request, backup_password="pw123456", backup_password_confirm="pw123456", db=db

@@ -25,7 +25,7 @@
                     {% endfor %}
                 </div>
 
-                {% if user.role == 'адмін' %}
+                {% if can_edit(user, 'state') %}
                 <div class="scon-diag" data-selfcheck>
                     <div class="scon-diag-head">
                         <span class="t">Самоперевірка</span>

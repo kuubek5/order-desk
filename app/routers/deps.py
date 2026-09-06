@@ -39,6 +39,7 @@ from app.settings_store import (
     get_notify_style,
 )
 from app.services.queue import is_rush_comment
+from app.services.settings_nav import can_edit, can_see, nav_payload, visible_nav
 from app.services.shift import night_label, open_note_count
 from app.statuses import STATUSES, is_overdue, status_dot
 from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed
@@ -576,6 +577,14 @@ templates.env.globals["app_version"] = VERSION
 # глобал, бо партіали _settings_*.html рендеряться і поза /settings —
 # тестами й майбутніми фрагментами, де повного контексту немає.
 templates.env.globals["slabs"] = {}
+# Меню налаштувань і права на розділ — з реєстру `app/services/settings_nav.py`.
+# Саме глобали, а не контекст роута: рейка `_topbar_nav.html` включається на
+# десятку сторінок (акаунт, матеріали, журнал…), і передавати меню в кожен
+# контекст означало б знову мати кілька місць, які мусять збігатися.
+templates.env.globals["settings_nav"] = visible_nav
+templates.env.globals["can_see"] = can_see
+templates.env.globals["can_edit"] = can_edit
+templates.env.globals["nav_payload"] = nav_payload
 templates.env.globals["notify_prefs"] = _timed_global("notify_prefs", notify_prefs)
 templates.env.globals["shift_pending"] = _timed_global("shift_pending", shift_pending)
 templates.env.globals["feedback_open_count"] = _timed_global("feedback_open_count", feedback_open_count)

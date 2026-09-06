@@ -5,6 +5,7 @@
    what makes the collapsed (icons-only) mode usable. Same routes, same
    admin-only gates, same pending_mail_count badge as before. #}
 {% from "_sync_dot.html" import sync_dot %}
+{% from "_nav_icons.html" import nav_icon %}
 {# Стан синку рахуємо РІВНО ОДИН раз на рендер і віддаємо далі:
    кружок біля «Журналу синку» і живий підпис `_sync_indicator.html`
    дивляться в одне й те саме. Роут черги вже кладе `sync_status` у
@@ -50,139 +51,35 @@
             {% if setup_steps_total is defined %}<span class="rail-settings-prog" aria-label="Прогрес налаштування">{{ setup_steps_done }}/{{ setup_steps_total }}</span>{% endif %}
         </div>
 
-        <nav class="rail-nav-group" aria-label="Огляд">
-            <a href="/settings#state" class="rail-nav-item rail-sset" data-sec="state">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3 7 4-14 3 7h4"/></svg>
-                <span class="rail-label">Стан системи</span>
+        {# Меню — один цикл по реєстру `app/services/settings_nav.py`.
+           До цього тут лежало 150 рядків розмітки з сімома окремими
+           `{% if user.role == 'адмін' %}`, і ті самі ролі дублювалися ще в
+           settings.html, у роутах і в палітрі Ctrl+K. Тепер джерело одне:
+           групи, порядок, ролі й іконки описані в Python, а рейка їх лише
+           малює. Порожня група в реєстр не потрапляє (`visible_nav`), тож
+           заголовків без пунктів у оператора немає. #}
+        {% for group in settings_nav(user) %}
+        {% if group.heading %}<div class="rail-settings-group rail-label">{{ group.title }}</div>{% endif %}
+        <nav class="rail-nav-group" aria-label="{{ group.title }}">
+            {% for item in group.items %}
+            {% if item.kind == 'section' %}
+            <a href="{{ item.href }}" class="rail-nav-item rail-sset" data-sec="{{ item.key }}">
+                {{ nav_icon(item.icon_key) }}
+                <span class="rail-label">{{ item.title }}</span>
             </a>
-        </nav>
-
-        {# Один блок «Джерела робіт»: таблиця й пошта видимі лише адміну, шляхи
-           папок — усім (OPERATOR_EDITABLE_KEYS). Для оператора група
-           згортається до одного пункту, і це правильно; окрема група на нього
-           лише плодила б зайвий заголовок. #}
-        <div class="rail-settings-group rail-label">Джерела робіт</div>
-        <nav class="rail-nav-group" aria-label="Джерела робіт">
-            {% if user.role == 'адмін' %}
-            <a href="/settings#sheets" class="rail-nav-item rail-sset" data-sec="sheets">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" class="duo"/><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
-                <span class="rail-label">Google Таблиця</span>
-            </a>
-            <a href="/settings#imap" class="rail-nav-item rail-sset" data-sec="imap">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" class="duo"/><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/></svg>
-                <span class="rail-label">Пошта (IMAP)</span>
-            </a>
-            {% endif %}
-            <a href="/settings#paths" class="rail-nav-item rail-sset" data-sec="paths">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z" class="duo"/><path d="M3 7h6l2 2h10v10H3z"/></svg>
-                <span class="rail-label">Шляхи папок</span>
-            </a>
-        </nav>
-
-        {# Обладнання цеху — окрема група: піч не є джерелом робіт, вона етап
-           між фрезеруванням і видачею. #}
-        {% if user.role == 'адмін' %}
-        <div class="rail-settings-group rail-label">Обладнання</div>
-        <nav class="rail-nav-group" aria-label="Обладнання">
-            <a href="/settings#furnaces" class="rail-nav-item rail-sset" data-sec="furnaces">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" class="duo"/><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
-                <span class="rail-label">Пічки</span>
-            </a>
-            <a href="/settings#machines" class="rail-nav-item rail-sset" data-sec="machines">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v6" class="duo"/><path d="M12 3v6"/><path d="M7 9h10v4a5 5 0 0 1-10 0z"/><path d="M12 18v3"/></svg>
-                <span class="rail-label">Верстати</span>
-            </a>
-        </nav>
-        {% endif %}
-
-        <div class="rail-settings-group rail-label">Інтерфейс</div>
-        <nav class="rail-nav-group" aria-label="Інтерфейс">
-            <a href="/settings#notifications" class="rail-nav-item rail-sset" data-sec="notifications">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-                <span class="rail-label">Сповіщення</span>
-            </a>
-        </nav>
-
-        {% if user.role == 'адмін' %}
-        <div class="rail-settings-group rail-label">Обробка пошти</div>
-        <nav class="rail-nav-group" aria-label="Обробка пошти">
-            <a href="/settings#mail-download" class="rail-nav-item rail-sset" data-sec="mail-download">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-                <span class="rail-label">Скачування вкладень</span>
-            </a>
-            <a href="/settings#mail-filters" class="rail-nav-item rail-sset" data-sec="mail-filters">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v5l-4 2v-7z" class="duo"/><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>
-                <span class="rail-label">Фільтри пошти</span>
-            </a>
-            <a href="/settings/materials" class="rail-nav-item{% if spath == '/settings/materials' %} is-active{% endif %}">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z" class="duo"/><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/></svg>
-                <span class="rail-label">Матеріали</span>
-            </a>
-            <a href="/settings/feedback" class="rail-nav-item{% if spath == '/settings/feedback' %} is-active{% endif %}">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-9 8.3 9 9 0 0 1-4-.9L3 20l1.1-4a8.38 8.38 0 0 1-.9-4 8.5 8.5 0 0 1 17 .5z" class="duo"/><path d="M21 11.5a8.38 8.38 0 0 1-9 8.3 9 9 0 0 1-4-.9L3 20l1.1-4a8.38 8.38 0 0 1-.9-4 8.5 8.5 0 0 1 17 .5z"/></svg>
-                <span class="rail-label">Зворотний зв'язок</span>
-            </a>
-        </nav>
-
-        {% endif %}
-
-        {# Одна група для обох ролей: у оператора вона згортається до «Мій
-           акаунт» + «Про застосунок», але заголовок лишається — інакше нижні
-           пункти висіли б без підпису. #}
-        <div class="rail-settings-group rail-label">Люди й система</div>
-        <nav class="rail-nav-group" aria-label="Люди й система">
-            {% if user.role == 'адмін' %}
-            <a href="/settings#operators" class="rail-nav-item rail-sset" data-sec="operators">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.2" class="duo"/><circle cx="12" cy="8" r="3.2"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
-                <span class="rail-label">Оператори</span>
-            </a>
-            <a href="/settings#sections" class="rail-nav-item rail-sset" data-sec="sections">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="9" rx="2" class="duo"/><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7-2.6"/></svg>
-                <span class="rail-label">Блокування розділів</span>
+            {% else %}
+            {# Окрема сторінка: перезавантаження, а не свап секції — тому
+               стрілка ↗. Активний пункт тут визначає шлях, а не #hash. #}
+            <a href="{{ item.href }}" class="rail-nav-item{% if spath == item.href %} is-active{% endif %}"{% if spath == item.href %} aria-current="page"{% endif %}>
+                {{ nav_icon(item.icon_key) }}
+                <span class="rail-label">{{ item.title }}</span>
+                {% if item.badge == 'sync_dot' %}{{ sync_dot(nav_sync) }}{% endif %}
+                <svg class="rail-nav-out" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15 15 9M10 9h5v5"/></svg>
             </a>
             {% endif %}
-            <a href="/account" class="rail-nav-item{% if spath == '/account' %} is-active{% endif %}">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2" class="duo"/><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
-                <span class="rail-label">Мій акаунт</span>
-            </a>
-            <a href="/journal" class="rail-nav-item{% if spath == '/journal' %} is-active{% endif %}">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
-                <span class="rail-label">Журнал дій</span>
-            </a>
-            {# Той самий пункт і в drill-in налаштувань: рейка там показує
-               розділи налаштувань замість головного меню, і без цього рядка
-               кружок здоровʼя зникав би рівно на тих екранах, де його йдуть
-               шукати. Гейт свій: сусідній «Журнал дій» відкритий усім, а цей
-               екран — адмінський, і оператор ловив би 403 з меню. #}
-            {% if user.role == 'адмін' %}
-            <a href="/journal/sync" class="rail-nav-item{% if spath == '/journal/sync' %} is-active{% endif %}">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h12l-3.2-3.2"/><path d="M20 15H8l3.2 3.2"/></svg>
-                <span class="rail-label">Журнал синку</span>
-                {{ sync_dot(nav_sync) }}
-            </a>
-            {% endif %}
-            {% if user.role == 'адмін' %}
-            <a href="/settings#backup" class="rail-nav-item rail-sset" data-sec="backup">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3" class="duo"/><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/></svg>
-                <span class="rail-label">Резервна копія</span>
-            </a>
-            {# Сирі знімки вкладок Google (app/sheet_backup.html). data-sec мусить
-               збігатися з id/data-sec секції #sheet-backup у _settings_sheet_backup.html. #}
-            <a href="/settings#sheet-backup" class="rail-nav-item rail-sset" data-sec="sheet-backup">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 7l1-3h14l1 3M4 7v13h16V7M9 11h6M9 15h6" class="duo"/><path d="M4 7h16v13H4zM9 11h6M9 15h6"/></svg>
-                <span class="rail-label">Копії Google-таблиці</span>
-            </a>
-            {% endif %}
-            {# Не під адмін-гейтом: секція «Про застосунок» показується і
-               оператору (з поясненням, що оновлення ставить адміністратор), тож
-               без цього пункту вона була б у DOM, але недосяжна з меню.
-               `data-sec` мусить збігатися з якорем #update, на який веде
-               посилання версії в підвалі rail. #}
-            <a href="/settings#update" class="rail-nav-item rail-sset" data-sec="update">
-                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="duo"/><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
-                <span class="rail-label">Про застосунок</span>
-            </a>
+            {% endfor %}
         </nav>
+        {% endfor %}
     </div>
     {% else %}
     <nav class="rail-nav-group" aria-label="Основна навігація">

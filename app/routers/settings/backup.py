@@ -23,7 +23,7 @@ from app.sheet_backup import (
     read_snapshot_bytes as read_sheet_snapshot_bytes,
     snapshot_all_tabs,
 )
-from .common import require_settings_admin
+from .common import require_settings_edit
 
 router = APIRouter()
 
@@ -136,7 +136,7 @@ def save_sheet_backup_config(
     db: Session = Depends(get_db),
 ):
     """Зберегти вимикач і період авто-знімання вкладок."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "sheet-backup")
     try:
         hours = int((interval_hours or "").strip())
     except (ValueError, TypeError):
@@ -170,7 +170,7 @@ def save_sheet_backup_config(
 def snapshot_sheets_now(request: Request, db: Session = Depends(get_db)):
     """Зняти копію вкладок просто зараз (ручна кнопка). Читає нові й свіжі
     вкладки, старі вже зняті дні не перечитує — тож дешево навіть на проксі."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "sheet-backup")
     result = snapshot_all_tabs(db, DB_PATH)
     if result.error:
         request.session["settings_flash"] = {"kind": "error", "message": result.error}
@@ -194,7 +194,7 @@ def snapshot_sheets_now(request: Request, db: Session = Depends(get_db)):
 @router.get("/settings/sheets/download/{filename}")
 def download_sheet_snapshot(request: Request, filename: str, db: Session = Depends(get_db)):
     """Один CSV-знімок дня. Ім'я на віддачу — назва вкладки (`22.07.26.csv`)."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "sheet-backup")
     data = read_sheet_snapshot_bytes(DB_PATH, filename)
     if data is None:
         raise HTTPException(status_code=404, detail="Знімок не знайдено")
@@ -208,7 +208,7 @@ def download_sheet_snapshot(request: Request, filename: str, db: Session = Depen
 @router.get("/settings/sheets/download-month/{month}")
 def download_sheet_month(request: Request, month: str, db: Session = Depends(get_db)):
     """ZIP усіх знімків одного місяця (`YYYY-MM`)."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "sheet-backup")
     try:
         y, m = month.split("-", 1)
         int(y)  # рік лише перевіряємо на числовість, значення не потрібне
@@ -230,7 +230,7 @@ def download_sheet_month(request: Request, month: str, db: Session = Depends(get
 @router.get("/settings/sheets/download-all")
 def download_sheet_all(request: Request, db: Session = Depends(get_db)):
     """ZIP усіх наявних знімків вкладок — повна страхувальна копія таблиці."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "sheet-backup")
     content, count = build_sheet_backup_zip(DB_PATH)
     if count == 0:
         raise HTTPException(status_code=404, detail="Знімків ще немає")

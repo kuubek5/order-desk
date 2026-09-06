@@ -2,7 +2,8 @@
         {# ── Фільтри пошти · правила та категорії ─────────────────────────
            Same shared panel as the triage «Відфільтровані» tab; actions here
            land back on this section via return_to=settings. Admin-only. #}
-        {% if user.role == 'адмін' %}
+        {# Гейт розділу тепер у settings.html через реєстр меню
+           (`app/services/settings_nav.py`) — тут дубля немає. #}
         <section id="mail-filters" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="mail-filters">
             <div class="num" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v5l-4 2v-7z" class="duo"/><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg>
@@ -13,4 +14,3 @@
                 {% include "_mail_filter_panel.html" %}
             </div>
         </section>
-        {% endif %}

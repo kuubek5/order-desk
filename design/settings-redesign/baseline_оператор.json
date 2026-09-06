@@ -1,0 +1,294 @@
+{
+  "role": "оператор",
+  "pages": {
+    "/settings": {
+      "status": 200,
+      "rail_hrefs": [
+        "/",
+        "/settings#state",
+        "/settings#paths",
+        "/settings#notifications",
+        "/account",
+        "/journal",
+        "/settings#update"
+      ],
+      "sections": [
+        "state",
+        "notifications",
+        "paths",
+        "update"
+      ],
+      "actions": [
+        "action=/logout",
+        "action=/settings",
+        "action=/settings/notifications",
+        "hx-post=/feedback",
+        "hx-post=/settings",
+        "hx-post=/settings/check-path",
+        "hx-post=/settings/notifications"
+      ],
+      "names": [
+        "action",
+        "day_rollover_time",
+        "export_folder_path",
+        "images",
+        "kind",
+        "notify_events",
+        "notify_position",
+        "notify_style",
+        "screen",
+        "severity",
+        "sum3d_projects_path",
+        "technician_files_path",
+        "text",
+        "viewport"
+      ],
+      "ids": [
+        "bd-coarse",
+        "bd-fine",
+        "bd-radarGlow",
+        "bd-vign",
+        "day_rollover_time",
+        "export_folder_path",
+        "export_folder_path-result",
+        "export_folder_path-spinner",
+        "fb-beacon",
+        "fb-close",
+        "fb-done",
+        "fb-drop",
+        "fb-expand",
+        "fb-file",
+        "fb-float",
+        "fb-form",
+        "fb-kind",
+        "fb-root",
+        "fb-screen",
+        "fb-screen-label",
+        "fb-send",
+        "fb-severity",
+        "fb-shots",
+        "fb-sub",
+        "fb-text",
+        "fb-title",
+        "notifications",
+        "notify-spinner",
+        "paths-save-spinner",
+        "radio-glass",
+        "sum3d_projects_path",
+        "sum3d_projects_path-result",
+        "sum3d_projects_path-spinner",
+        "technician_files_path",
+        "technician_files_path-result",
+        "technician_files_path-spinner",
+        "toast-stack",
+        "update",
+        "update-close",
+        "update-overlay",
+        "update-status"
+      ],
+      "slabs": {
+        "state": {
+          "tone": "stand-state-none",
+          "text": "джерела не налаштовані"
+        },
+        "notifications": {
+          "tone": "stand-state-none",
+          "text": "8 з 8 подій"
+        },
+        "paths": {
+          "tone": "stand-state-warn",
+          "text": "теки не задано"
+        },
+        "update": {
+          "tone": "stand-state-none",
+          "text": "v0.10.4"
+        }
+      }
+    },
+    "/account": {
+      "status": 200,
+      "rail_hrefs": [
+        "/",
+        "/settings#state",
+        "/settings#paths",
+        "/settings#notifications",
+        "/account",
+        "/journal",
+        "/settings#update"
+      ],
+      "sections": [],
+      "actions": [
+        "action=/account/initial",
+        "action=/account/password",
+        "action=/logout",
+        "hx-post=/feedback"
+      ],
+      "names": [
+        "acc-tab",
+        "confirm_password",
+        "current_password",
+        "images",
+        "kind",
+        "new_password",
+        "screen",
+        "severity",
+        "sheet_initial",
+        "text",
+        "viewport"
+      ],
+      "ids": [
+        "acc-live",
+        "acc-pane-look",
+        "acc-pane-profile",
+        "acc-pane-screens",
+        "acc-tab-look",
+        "acc-tab-profile",
+        "acc-tab-screens",
+        "bd-coarse",
+        "bd-fine",
+        "bd-radarGlow",
+        "bd-vign",
+        "confirm_password",
+        "current_password",
+        "fb-beacon",
+        "fb-close",
+        "fb-done",
+        "fb-drop",
+        "fb-expand",
+        "fb-file",
+        "fb-float",
+        "fb-form",
+        "fb-kind",
+        "fb-root",
+        "fb-screen",
+        "fb-screen-label",
+        "fb-send",
+        "fb-severity",
+        "fb-shots",
+        "fb-sub",
+        "fb-text",
+        "fb-title",
+        "new_password",
+        "radio-glass",
+        "sheet_initial",
+        "toast-stack",
+        "update-close",
+        "update-overlay",
+        "update-status"
+      ],
+      "slabs": {}
+    },
+    "/journal": {
+      "status": 200,
+      "rail_hrefs": [],
+      "sections": [],
+      "actions": [
+        "action=/journal",
+        "action=/logout",
+        "hx-post=/feedback"
+      ],
+      "names": [
+        "day",
+        "images",
+        "kind",
+        "operator",
+        "screen",
+        "severity",
+        "text",
+        "viewport"
+      ],
+      "ids": [
+        "bd-coarse",
+        "bd-fine",
+        "bd-radarGlow",
+        "bd-vign",
+        "fb-beacon",
+        "fb-close",
+        "fb-done",
+        "fb-drop",
+        "fb-expand",
+        "fb-file",
+        "fb-float",
+        "fb-form",
+        "fb-kind",
+        "fb-root",
+        "fb-screen",
+        "fb-screen-label",
+        "fb-send",
+        "fb-severity",
+        "fb-shots",
+        "fb-sub",
+        "fb-text",
+        "fb-title",
+        "radio-glass",
+        "toast-stack",
+        "update-close",
+        "update-overlay",
+        "update-status"
+      ],
+      "slabs": {}
+    },
+    "/journal/sync": {
+      "status": 403
+    },
+    "/settings/materials": {
+      "status": 403
+    },
+    "/settings/feedback": {
+      "status": 403
+    },
+    "/diag/perf": {
+      "status": 403
+    },
+    "/license": {
+      "status": 200,
+      "rail_hrefs": [],
+      "sections": [],
+      "actions": [
+        "action=/license",
+        "hx-post=/feedback"
+      ],
+      "names": [
+        "images",
+        "kind",
+        "license_key",
+        "screen",
+        "severity",
+        "text",
+        "viewport"
+      ],
+      "ids": [
+        "bd-coarse",
+        "bd-fine",
+        "bd-radarGlow",
+        "bd-vign",
+        "fb-beacon",
+        "fb-close",
+        "fb-done",
+        "fb-drop",
+        "fb-expand",
+        "fb-file",
+        "fb-float",
+        "fb-form",
+        "fb-kind",
+        "fb-root",
+        "fb-screen",
+        "fb-screen-label",
+        "fb-send",
+        "fb-severity",
+        "fb-shots",
+        "fb-sub",
+        "fb-text",
+        "fb-title",
+        "license_key",
+        "machine-id-copy",
+        "radio-glass",
+        "toast-stack",
+        "update-close",
+        "update-overlay",
+        "update-status"
+      ],
+      "slabs": {}
+    }
+  }
+}

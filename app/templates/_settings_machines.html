@@ -7,7 +7,8 @@
 
            «Вимкнений» — на ремонті, а не видалений: налаштування чекають
            повернення, а опитування й показ зупиняються. #}
-        {% if user.role == 'адмін' %}
+        {# Гейт розділу тепер у settings.html через реєстр меню
+           (`app/services/settings_nav.py`) — тут дубля немає. #}
         <div class="wizard-step scon-sec stand-sec" data-sec="machines">
             <div class="num" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7" class="duo"/><path d="M12 3v7"/><path d="M7 10h10v4a5 5 0 0 1-10 0z"/><path d="M12 19v2"/></svg>
@@ -216,4 +217,3 @@
                 <p class="stand-note">Живі кадри — на екрані <a href="/machines">Верстати</a>.</p>
             </div>
         </div>
-        {% endif %}

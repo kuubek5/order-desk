@@ -10,7 +10,8 @@
 
            Тут навмисно НЕМАЄ нічого про керування пічкою: застосунок читає її
            екран і більше нічого з нею не робить. #}
-        {% if user.role == 'адмін' %}
+        {# Гейт розділу тепер у settings.html через реєстр меню
+           (`app/services/settings_nav.py`) — тут дубля немає. #}
         <div class="wizard-step scon-sec stand-sec" data-sec="furnaces">
             <div class="num" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" class="duo"/><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
@@ -105,4 +106,3 @@
                 <p class="stand-note">Стан пічок — на екрані <a href="/furnaces">Пічки</a>.</p>
             </div>
         </div>
-        {% endif %}

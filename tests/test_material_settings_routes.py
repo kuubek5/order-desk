@@ -1,4 +1,4 @@
-"""Material-library settings routes: admin+loopback gating and the catalog
+"""Material-library settings routes: role+loopback gating and the catalog
 mutations (add/delete alias, add material, reclassify). Handlers are called
 directly with a fake request, same style as tests/test_update_check_route.py."""
 
@@ -97,14 +97,33 @@ def test_create_material_adds_category():
         assert "Скло" in material_id_by_name(db)
 
 
-def test_operator_is_forbidden():
+def test_operator_may_edit_materials():
+    """Оператор редагує бібліотеку матеріалів нарівні з адміном.
+
+    Рішення власника 06.09.26: у цеху за верстатом стоїть оператор, і чекати
+    адміна, щоб додати синонім матеріалу, не мало сенсу — розділ «Матеріали»
+    входить у «Джерела робіт» (`edit_roles=None` у `settings_nav`).
+    Без входу дія лишається закритою.
+    """
     with _db() as db:
         op = _operator(db)
         ensure_seeded(db)
+        db.add(Order(source="lab", material_color="небула x", status="нове"))
+        db.commit()
+
         zircon_id = material_id_by_name(db)["Цирконій"]
+        req = _request(op.id)
+        resp = settings_router_mod.add_material_alias(req, material_id=zircon_id, pattern="небула", match_type="contains", db=db)
+
+        assert resp.status_code == 303
+        assert req.session["materials_flash"]["kind"] == "success"
+        assert unresolved_order_count(db) == 0
+        assert db.scalar(select(MaterialAlias).where(MaterialAlias.pattern == "небула")) is not None
+
+        # анонім (не увійшов) — 401, а не тиха правка каталогу
         with pytest.raises(HTTPException) as exc:
-            settings_router_mod.add_material_alias(_request(op.id), material_id=zircon_id, pattern="x", match_type="contains", db=db)
-        assert exc.value.status_code == 403
+            settings_router_mod.add_material_alias(_request(None), material_id=zircon_id, pattern="x", match_type="contains", db=db)
+        assert exc.value.status_code == 401
 
 
 def test_non_loopback_is_forbidden():

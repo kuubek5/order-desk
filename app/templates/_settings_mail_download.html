@@ -3,7 +3,8 @@
            Off (default) → only trusted senders auto-download, the rest wait for
            a manual pull. On → every incoming letter's files land in the spool
            as mail arrives. Admin-only. #}
-        {% if user.role == 'адмін' %}
+        {# Гейт розділу тепер у settings.html через реєстр меню
+           (`app/services/settings_nav.py`) — тут дубля немає. #}
         <section id="mail-download" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="mail-download"
                  data-dl-state="{{ 'all' if mail_download_all else 'trusted' }}">
             <div class="num" aria-hidden="true">
@@ -71,4 +72,3 @@
                 {% endif %}
             </div>
         </section>
-        {% endif %}

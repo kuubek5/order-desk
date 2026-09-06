@@ -46,7 +46,20 @@ OPERATOR_ALLOWED = {
     "POST /diag/perf/client",
 }
 
-GATE_MARKERS = ("require_settings_admin", "require_admin", 'role != "адмін"')
+# `require_settings_edit` — той самий гейт, але права бере з реєстру меню
+# (`app/services/settings_nav.py`): розділ може бути відкритий не лише адміну,
+# і тоді дозвіл описаний ОДНИМ рядком реєстру, а не роллю в роуті.
+# `not can_edit(` — та сама перевірка інлайном там, де роут спершу віддає
+# редирект на /login, а не 401. Саме «not», а не будь-який `can_edit`:
+# у POST /settings can_edit стоїть у циклі по полях, тобто гейт там польовий,
+# а не роутовий — і роут має лишитись у списку винятків.
+GATE_MARKERS = (
+    "require_settings_admin",
+    "require_settings_edit",
+    "require_admin",
+    "not can_edit(",
+    'role != "адмін"',
+)
 
 
 def _routes_without_gate(module: str) -> list[str]:

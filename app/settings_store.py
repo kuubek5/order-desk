@@ -34,41 +34,52 @@ class SettingField:
     # today"), not a credential, and whoever is actually at the workstation
     # needs to fix a moved/renamed folder without waiting on an admin.
     operator_editable: bool = False
+    # Розділ налаштувань, у якому це поле стоїть — ключ із реєстру меню
+    # (`app/services/settings_nav.py`). Саме він вирішує, чи пускати POST:
+    # права на розділ описані в одному місці, а не роздані по полях.
+    section: str = ""
 
 
 SETTING_FIELDS = [
     SettingField(
         key="google_sheet_id",
+        section="sheets",
         label="Google Sheet ID",
         help_text="ID таблиці з адресного рядка Google Sheets",
     ),
     SettingField(
         key="google_service_account_json",
+        section="sheets",
         label="Google Service Account JSON",
         secret=True,
         multiline=True,
         help_text="Вміст JSON-ключа сервісного акаунта Google",
     ),
-    SettingField(key="imap_login", label="Логін пошти (IMAP)"),
+    SettingField(key="imap_login",
+        section="imap", label="Логін пошти (IMAP)"),
     SettingField(
         key="imap_password",
+        section="imap",
         label="Пароль пошти (пароль для програм)",
         secret=True,
     ),
     SettingField(
         key="export_folder_path",
+        section="paths",
         label="Шлях до папки export",
         help_text="Готові роботи для клієнтів з пошти",
         operator_editable=True,
     ),
     SettingField(
         key="technician_files_path",
+        section="paths",
         label="Шлях до папки робіт техніків",
         help_text="Куди лабораторія скидає файли на сервер",
         operator_editable=True,
     ),
     SettingField(
         key="license_key",
+        section="license",
         label="Ліцензійний ключ",
         secret=True,
         help_text="Видає власник продукту для цього комп'ютера",
@@ -78,11 +89,13 @@ SETTING_FIELDS = [
     # looked up by key, not position.
     SettingField(
         key="google_auth_mode",
+        section="sheets",
         label="Спосіб авторизації Google",
         help_text="service_account або oauth",
     ),
     SettingField(
         key="google_oauth_client_json",
+        section="sheets",
         label="Google OAuth Client JSON",
         secret=True,
         multiline=True,
@@ -90,6 +103,7 @@ SETTING_FIELDS = [
     ),
     SettingField(
         key="google_oauth_refresh_token",
+        section="sheets",
         label="Google OAuth Refresh Token",
         secret=True,
         help_text="Заповнюється автоматично після входу через Google — не редагувати вручну",
@@ -100,6 +114,7 @@ SETTING_FIELDS = [
     # git він не потрапляє (CLAUDE.md §7).
     SettingField(
         key="furnace_vnc_password",
+        section="furnaces",
         label="Спільний пароль VNC пічок",
         secret=True,
         help_text="Пароль екрана пічки Austromat (той самий, що в RealVNC)",
@@ -108,6 +123,7 @@ SETTING_FIELDS = [
     # Окремий від пічного: різні сервери, різні паролі.
     SettingField(
         key="machine_vnc_password",
+        section="machines",
         label="Спільний пароль VNC верстатів",
         secret=True,
         help_text="View-only пароль UltraVNC на ПК верстатів (не повний!)",
@@ -118,6 +134,7 @@ SETTING_FIELDS = [
     # (див. app/business_day.py).
     SettingField(
         key="day_rollover_time",
+        section="paths",
         label="Коли починається робочий день",
         help_text="Нічна зміна після півночі ще на вчорашньому дні (типово 07:30)",
         operator_editable=True,
@@ -129,6 +146,7 @@ SETTING_FIELDS = [
     # CRM у цю теку нічого не пише. operator_editable — це шлях, не секрет.
     SettingField(
         key="sum3d_projects_path",
+        section="paths",
         label="Шлях до папки проєктів Sum3D (Cam-work)",
         help_text="Звідки CRM ловить нові проєкти й підказує Sum3D ID",
         operator_editable=True,

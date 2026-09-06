@@ -36,7 +36,8 @@ from app.settings_store import (
     set_mail_default_material,
     set_mail_download_all,
 )
-from .common import require_settings_admin
+from app.services.settings_nav import can_edit
+from .common import require_settings_edit
 
 router = APIRouter()
 
@@ -56,8 +57,8 @@ def get_materials_settings(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not can_edit(user, "materials"):
+        raise HTTPException(status_code=403, detail="розділ доступний лише адміністратору")
 
     ensure_seeded(db)
     flash = request.session.pop("materials_flash", None)
@@ -116,7 +117,7 @@ def probe_material_alias(
     останнє критичне, бо при двох претендентах класифікатор віддає None, тобто
     робота зникає з ОБОХ матеріалів у «не розпізнано».
     """
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "materials")
     result = probe_pattern(db, material_id, pattern, match_type)
     return templates.TemplateResponse(
         request, "_matlib_probe.html", {"probe": result}
@@ -131,7 +132,7 @@ def add_material_alias(
     match_type: str = Form("contains"),
     db: Session = Depends(get_db),
 ):
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "materials")
     try:
         add_alias(db, material_id, pattern, match_type)
         # Apply the new rule to every order, including already-classified ones.
@@ -151,7 +152,7 @@ def add_material_alias(
 
 @router.post("/settings/materials/alias/{alias_id}/delete")
 def remove_material_alias(alias_id: int, request: Request, db: Session = Depends(get_db)):
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "materials")
     alias = db.get(MaterialAlias, alias_id)
     back_to = alias.material_id if alias is not None else None
     delete_alias(db, alias_id)
@@ -173,7 +174,7 @@ def create_material(
     is_production: str = Form("on"),
     db: Session = Depends(get_db),
 ):
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "materials")
     try:
         add_material(db, name, is_production=is_production == "on")
         db.commit()
@@ -186,7 +187,7 @@ def create_material(
 
 @router.post("/settings/materials/reclassify")
 def reclassify_materials(request: Request, db: Session = Depends(get_db)):
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "materials")
     for order in db.scalars(select(Order)).all():
         order.material_id = None
     changed = backfill_orders(db, only_unresolved=False)
@@ -204,7 +205,7 @@ def prune_mail_spool(request: Request, db: Session = Depends(get_db)):
     orphans with no letter row, and rejected letters past the retention
     window). Operator-triggered only — never a background job, see
     app/mail_spool.py."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "mail-download")
     removed, freed = prune_spool(db, Path(MAIL_ATTACHMENTS_PATH))
     mb = round(freed / (1024 * 1024), 1)
     request.session["settings_flash"] = {
@@ -229,7 +230,7 @@ def toggle_mail_download_all(
     files from every sender into the spool as mail arrives. `return_to=mail`
     lands back on the triage screen (the toggle is mirrored in its header),
     otherwise on the settings section."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "mail-download")
     new_value = not get_mail_download_all(db)
     set_mail_download_all(db, new_value)
     db.commit()
@@ -264,7 +265,7 @@ def set_recognition_default_material(
     `back_m` — id матеріалу, відкритого в консолі: повертаємо адміна туди, де
     він стояв, як це роблять решта форм бібліотеки.
     """
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "materials")
     back = f"/settings/materials?m={back_m}" if back_m else "/settings/materials"
     clean = (material_name or "").strip()
     valid_names = {m.name for m in list_materials(db)}

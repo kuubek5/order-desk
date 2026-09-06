@@ -27,7 +27,7 @@ from app.settings_store import (
 )
 from app.crypto import encrypt_value
 from app.services.furnace import FurnaceConfigError, validate_address
-from .common import require_settings_admin
+from .common import require_settings_edit
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def add_furnace(
     Адреса перевіряється ДО збереження: криво написаний рядок краще відбити
     тут, ніж потім показувати оператору порожню плитку «немає зв'язку».
     """
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "furnaces")
     try:
         clean_host, clean_port = validate_address(host, port)
     except FurnaceConfigError as exc:
@@ -98,7 +98,7 @@ def toggle_furnace_background(
     /password: FastAPI приміряє маршрути в порядку оголошення й з'їв би слово
     «background» як номер пічки.
     """
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "furnaces")
     set_furnace_background(db, enabled == "1")
     db.commit()
     request.session["settings_flash"] = {
@@ -114,7 +114,7 @@ def save_furnace_password(
 ):
     """Спільний пароль VNC. Порожнє поле означає «не міняти» — з тієї ж
     причини, що й у рядку пічки вище."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "furnaces")
     if password.strip():
         set_setting(db, "furnace_vnc_password", password.strip())
         db.commit()
@@ -143,7 +143,7 @@ def update_furnace(
     заповнили вдруге. Стерти власний пароль можна словом `-` — так є явний
     спосіб повернути пічку на спільний пароль.
     """
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "furnaces")
     furnace = db.get(Furnace, furnace_id)
     if furnace is None:
         raise HTTPException(status_code=404, detail="пічку не знайдено")
@@ -187,7 +187,7 @@ def delete_furnace(request: Request, furnace_id: int, db: Session = Depends(get_
     """Прибрати пічку з переліку. Її показання лишаються в історії — рядки
     підписані адресою, і чистити їх разом із записом означало б втратити те,
     що вже сталося."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "furnaces")
     furnace = db.get(Furnace, furnace_id)
     if furnace is None:
         raise HTTPException(status_code=404, detail="пічку не знайдено")
@@ -221,7 +221,7 @@ def add_machine(
 ):
     """Додати верстат. Адреса перевіряється ДО збереження — криву краще
     відбити тут, ніж показувати порожню плитку «немає зв'язку»."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "machines")
     # HTTP-агент типово на 8765; VNC — на 5900. Якщо порт не вказано, беремо
     # за замовчуванням той, що відповідає обраному способу.
     if not port.strip():
@@ -268,7 +268,7 @@ def save_machine_password(
     request: Request, password: str = Form(""), db: Session = Depends(get_db)
 ):
     """Спільний view-only пароль UltraVNC верстатів. Порожнє = не міняти."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "machines")
     if password.strip():
         set_setting(db, "machine_vnc_password", password.strip())
         db.commit()
@@ -292,7 +292,7 @@ def save_machine_calibration_path(
     стирається, а не ігнорується: «прибрати свою теку» — окреме бажання, і без
     стирання оператор не мав би як його висловити.
     """
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "machines")
     clean = path.strip().strip('"')
     if clean:
         set_setting(db, "machine_calibration_path", clean)
@@ -314,7 +314,7 @@ def open_machine_calibration_folder(request: Request, db: Session = Depends(get_
     порожня тека — чесна відповідь «кадрів поки нуль», а помилка «шлях не
     знайдено» читалась би як поломка.
     """
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "machines")
     if not is_loopback_request(request):
         raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
     folder = machines_service.calibration_root(get_machine_calibration_path(db))
@@ -345,7 +345,7 @@ def update_machine(
 ):
     """Змінити верстат. Порожній пароль/токен = не міняти; `-` = стерти
     (той самий контракт, що в пічки)."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "machines")
     machine = db.get(Machine, machine_id)
     if machine is None:
         raise HTTPException(status_code=404, detail="верстат не знайдено")
@@ -398,7 +398,7 @@ async def upload_machine_portrait(
 ):
     """Фото верстата для картки на екрані «Верстати». Формат і розмір
     перевіряє machine_portraits (не розширення від браузера)."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "machines")
     machine = db.get(Machine, machine_id)
     if machine is None:
         raise HTTPException(status_code=404, detail="верстат не знайдено")
@@ -416,7 +416,7 @@ async def upload_machine_portrait(
 
 @router.post("/settings/machines/{machine_id}/portrait/delete")
 def delete_machine_portrait(request: Request, machine_id: int, db: Session = Depends(get_db)):
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "machines")
     machine = db.get(Machine, machine_id)
     if machine is None:
         raise HTTPException(status_code=404, detail="верстат не знайдено")
@@ -430,7 +430,7 @@ def delete_machine_portrait(request: Request, machine_id: int, db: Session = Dep
 
 @router.post("/settings/machines/{machine_id}/delete")
 def delete_machine(request: Request, machine_id: int, db: Session = Depends(get_db)):
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "machines")
     machine = db.get(Machine, machine_id)
     if machine is None:
         raise HTTPException(status_code=404, detail="верстат не знайдено")

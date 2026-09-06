@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import select
@@ -88,8 +89,26 @@ def _clean(label: str) -> str:
     return label.replace("⚠", "").replace("✓", "").strip()
 
 
+# Скільки годин запис у журналі ще вважається «свіжою активністю». Старший —
+# не показуємо взагалі: помилка тижневої давності в метриці поруч із живим
+# синком читалась як «щойно зламалось», хоча воркер відтоді відпрацював
+# сотні тихих тіків (SyncLog навмисно не пише рядка на тихий тік).
+SYNC_LOG_FRESH_HOURS = 24
+
+
 def _last_sync_log(db: Session) -> Optional[SyncLog]:
-    return db.scalars(select(SyncLog).order_by(SyncLog.id.desc()).limit(1)).first()
+    """Останній запис журналу — ЛИШЕ якщо він молодший за добу.
+
+    Метрика відповідає на «що робив синк останнім часом». Старий запис на це
+    питання не відповідає, а виглядає як відповідь — тому краще порожньо.
+    """
+    row = db.scalars(select(SyncLog).order_by(SyncLog.id.desc()).limit(1)).first()
+    if row is None or row.occurred_at is None:
+        return None
+    age = datetime.now() - row.occurred_at
+    if age > timedelta(hours=SYNC_LOG_FRESH_HOURS):
+        return None
+    return row
 
 
 # ── окремі розділи ──────────────────────────────────────────────────────────

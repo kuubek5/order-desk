@@ -63,10 +63,32 @@
   var pal = buildPalette();
   document.body.appendChild(pal.root);
 
-  function buildPalette() {
-    // Entries come from the rendered rail sub-nav, so gates/labels stay in sync.
+  function navEntries() {
+    // Головне джерело — реєстр меню з сервера (app/services/settings_nav.py):
+    // ті самі пункти, що в рейці, плюс синоніми пошуку («export», «пароль»),
+    // яких у підписах немає — а скрейп DOM їх узяти нізвідки.
+    var data = document.getElementById("nav-data");
+    if (data) {
+      try {
+        var rows = JSON.parse(data.textContent || "[]");
+        if (rows.length) {
+          return rows.map(function (r) {
+            return {
+              label: r.label,
+              href: r.href,
+              sec: r.sec || "",
+              group: r.group || "",
+              keywords: (r.keywords || []).join(" "),
+            };
+          });
+        }
+      } catch (e) {
+        /* зіпсований JSON не має гасити палітру — падаємо у скрейп нижче */
+      }
+    }
+    // Запасний варіант: рейка в DOM. Лишається для сторінок без #nav-data.
     var links = Array.prototype.slice.call(document.querySelectorAll(".rail-settings a[href]"));
-    var entries = links
+    return links
       .filter(function (a) { return !a.classList.contains("rail-settings-back"); })
       .map(function (a) {
         var label = (a.querySelector(".rail-label") || a).textContent.trim();
@@ -75,8 +97,12 @@
         var prev = a.closest(".rail-nav-group");
         var lbl = prev && prev.previousElementSibling;
         if (lbl && lbl.classList.contains("rail-settings-group")) group = lbl.textContent.trim();
-        return { label: label, href: a.getAttribute("href"), sec: sec, group: group };
+        return { label: label, href: a.getAttribute("href"), sec: sec, group: group, keywords: "" };
       });
+  }
+
+  function buildPalette() {
+    var entries = navEntries();
 
     var root = document.createElement("div");
     root.className = "scon-pal";
@@ -101,7 +127,8 @@
     function render(q) {
       q = (q || "").trim().toLowerCase();
       rows = entries.filter(function (en) {
-        return !q || (en.label + " " + en.group).toLowerCase().indexOf(q) !== -1;
+        var hay = en.label + " " + en.group + " " + (en.keywords || "");
+        return !q || hay.toLowerCase().indexOf(q) !== -1;
       });
       sel = 0;
       if (!rows.length) {

@@ -37,7 +37,8 @@ from app.settings_store import (
 )
 from app.sheets import measure_sheet_weight, open_spreadsheet, reset_sheets_cache
 from app.update_check import get_known_update
-from .common import require_settings_admin
+from app.services.settings_nav import can_edit
+from .common import require_settings_admin, require_settings_edit
 
 logger = logging.getLogger(__name__)
 
@@ -122,8 +123,8 @@ async def save_imap_settings(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not can_edit(user, "imap"):
+        raise HTTPException(status_code=403, detail="розділ доступний лише адміністратору")
 
     form = await request.form()
     login = (form.get("imap_login") or "").strip()
@@ -158,8 +159,8 @@ def test_imap_connection(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not can_edit(user, "imap"):
+        raise HTTPException(status_code=403, detail="розділ доступний лише адміністратору")
 
     result = _probe_imap_login(get_imap_login(db), get_imap_password(db))
     toast_kind = "success" if result["state"] == "success" else "error"
@@ -186,8 +187,8 @@ def test_sheets_connection(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not can_edit(user, "sheets"):
+        raise HTTPException(status_code=403, detail="розділ доступний лише адміністратору")
     if not is_loopback_request(request):
         raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
@@ -223,7 +224,7 @@ def start_google_oauth(request: Request, db: Session = Depends(get_db)):
     admin's system browser on this PC, waits for the consent redirect, and
     stores the resulting refresh token encrypted. On success also switches
     google_auth_mode to "oauth" so subsequent Sheets calls use it."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "sheets")
 
     client_json = (get_google_oauth_client_json(db) or "").strip()
     if not client_json:
@@ -261,7 +262,7 @@ def disconnect_google_oauth(request: Request, db: Session = Depends(get_db)):
     """Clears the stored refresh token and switches back to the service-account
     mode — lets an admin re-run the sign-in flow (e.g. with a different Google
     account) without leaving a stale token behind."""
-    require_settings_admin(request, db)
+    require_settings_edit(request, db, "sheets")
     set_setting(db, "google_oauth_refresh_token", "")
     set_setting(db, "google_auth_mode", "service_account")
     db.commit()

@@ -134,13 +134,24 @@ def test_recognition_default_material_rejects_unknown():
         assert get_mail_default_material(db) is None
 
 
-def test_recognition_operator_forbidden():
+def test_recognition_operator_may_set_default_material():
+    """Оператор сам ставить матеріал за замовчуванням для пошти.
+
+    Рішення власника 06.09.26: розпізнавання пошти — це «Джерела робіт», а за
+    верстатом стоїть оператор; чекати адміна, щоб виправити матеріал у листах,
+    не мало сенсу. Без входу дія лишається закритою.
+    """
     with _db() as db:
         op = _operator(db)
         ensure_materials_seeded(db)
+        settings_router_mod.set_recognition_default_material(_request(op.id), material_name="Цирконій", db=db)
+        assert get_mail_default_material(db) == "Цирконій"
+
+        # анонім (не увійшов) — 401, правило пошти чужому не віддається
         with pytest.raises(HTTPException) as exc:
-            settings_router_mod.set_recognition_default_material(_request(op.id), material_name="Цирконій", db=db)
-        assert exc.value.status_code == 403
+            settings_router_mod.set_recognition_default_material(_request(None), material_name="", db=db)
+        assert exc.value.status_code == 401
+        assert get_mail_default_material(db) == "Цирконій"
 
 
 def test_recognition_non_loopback_forbidden():

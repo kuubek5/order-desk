@@ -569,7 +569,9 @@ def test_open_calibration_folder_creates_it_and_asks_explorer(monkeypatch, tmp_p
 
     opened = []
     monkeypatch.setattr(devices, "open_folder_in_explorer", opened.append)
-    monkeypatch.setattr(devices, "require_settings_admin", lambda request, db: None)
+    # Рішення власника 06.09.26: «Обладнання» редагує й оператор, тож роут
+    # тримає не адмінський гейт, а посекційний `require_settings_edit`.
+    monkeypatch.setattr(devices, "require_settings_edit", lambda request, db, key: None)
     monkeypatch.setattr(devices, "is_loopback_request", lambda request: True)
     monkeypatch.setattr(
         devices, "get_machine_calibration_path", lambda db: str(tmp_path / "kadry")

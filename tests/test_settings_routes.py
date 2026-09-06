@@ -197,13 +197,25 @@ def test_test_imap_connection_requires_authentication():
     assert exc.value.status_code == 401
 
 
-def test_test_imap_connection_requires_admin_role():
+def test_test_imap_connection_allows_operator(monkeypatch):
+    """Рішення власника 06.09.26: «Джерела робіт» редагує й оператор.
+
+    У цеху за верстатом стоїть саме він; чекати адміна, щоб перевірити
+    скриньку після зміни пароля для програм, немає сенсу. Права беруться з
+    реєстру `app/services/settings_nav.py` (`edit_roles=None` у розділу
+    `imap`). Анонім і далі отримує 401 —
+    `test_test_imap_connection_requires_authentication`.
+    """
     engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
-        with pytest.raises(HTTPException) as exc:
-            settings_router_mod.test_imap_connection(request=_request(operator.id), db=db)
-    assert exc.value.status_code == 403
+        context = settings_router_mod.test_imap_connection(request=_request(operator.id), db=db)
+    # Не 403, а звичайна відповідь проби: скринька просто ще не налаштована.
+    assert context["result"]["state"] == "error"
+    assert "логін і пароль" in context["result"]["message"]
 
 
 def test_test_imap_connection_reports_error_when_not_configured(monkeypatch):
@@ -310,14 +322,25 @@ def test_imap_error_reason_distinguishes_network_from_auth():
     assert "з'єднання" in settings_connections_mod._imap_error_reason(ConnectionError("boom"))
 
 
-def test_save_imap_settings_requires_admin():
+def test_save_imap_settings_allows_operator_but_not_anonymous(monkeypatch):
+    """Оператор зберігає логін і пароль скриньки сам (рішення власника
+    06.09.26): пошта — це «Джерела робіт», а не адміністрування машини.
+    Межа лишається одна — без входу нічого, 401."""
     engine = _database()
+    _fake_template_response(monkeypatch)
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
         req = _imap_request(operator.id, {"imap_login": "a@ukr.net", "imap_password": "p"})
+        with patch("app.routers.settings.connections.MailBox") as mock_mailbox_cls:
+            mock_mailbox_cls.return_value.login.return_value = MagicMock()
+            resp = asyncio.run(settings_router_mod.save_imap_settings(request=req, db=db))
+        assert resp.context["result"]["state"] == "success"
+        assert get_imap_login(db) == "a@ukr.net"
+
+        anon = _imap_request(None, {"imap_login": "a@ukr.net", "imap_password": "p"})
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(settings_router_mod.save_imap_settings(request=req, db=db))
-    assert exc.value.status_code == 403
+            asyncio.run(settings_router_mod.save_imap_settings(request=anon, db=db))
+    assert exc.value.status_code == 401
 
 
 def test_save_imap_settings_success_fires_toast_and_persists(monkeypatch):
@@ -388,12 +411,24 @@ def test_test_sheets_connection_requires_authentication():
     assert exc.value.status_code == 401
 
 
-def test_test_sheets_connection_requires_admin_role():
+def test_test_sheets_connection_allows_operator_but_not_from_network(monkeypatch):
+    """Розділ `sheets` теж перейшов оператору (рішення власника 06.09.26) —
+    таблиця це джерело робіт, а не адмінська машинерія. Друга межа НЕ
+    послабилась: дія лишається лише з цього комп'ютера, з мережі — 403
+    (`test_test_sheets_connection_requires_loopback`), без входу — 401."""
     engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
+        context = settings_router_mod.test_sheets_connection(request=_request(operator.id), db=db)
+        assert context["result"]["state"] == "error"  # просто не налаштовано, не 403
+
         with pytest.raises(HTTPException) as exc:
-            settings_router_mod.test_sheets_connection(request=_request(operator.id), db=db)
+            settings_router_mod.test_sheets_connection(
+                request=_request(operator.id, host="203.0.113.5"), db=db
+            )
     assert exc.value.status_code == 403
 
 
@@ -502,13 +537,23 @@ def test_sheets_configured_true_for_oauth_mode_with_token():
 # --- POST /settings/google-oauth/start --------------------------------------
 
 
-def test_start_google_oauth_requires_admin_role():
+def test_start_google_oauth_allows_operator_but_not_anonymous(monkeypatch):
+    """Вхід через Google — частина розділу `sheets`, який з 06.09.26
+    редагує й оператор (рішення власника: цехом керує він). Гейт «лише з
+    цього ПК» лишився — `test_start_google_oauth_requires_loopback`."""
     engine = _database()
+    monkeypatch.setattr(
+        web.templates, "TemplateResponse", lambda request, template, context: context
+    )
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
+        # Без збереженого OAuth Client JSON — звичайна помилка проби, не 403.
+        context = settings_router_mod.start_google_oauth(request=_request(operator.id), db=db)
+        assert "OAuth Client JSON" in context["result"]["message"]
+
         with pytest.raises(HTTPException) as exc:
-            settings_router_mod.start_google_oauth(request=_request(operator.id), db=db)
-    assert exc.value.status_code == 403
+            settings_router_mod.start_google_oauth(request=_request(None), db=db)
+    assert exc.value.status_code == 401
 
 
 def test_start_google_oauth_requires_loopback():
@@ -592,13 +637,19 @@ def test_start_google_oauth_reports_safe_error_on_unexpected_exception(monkeypat
 # --- POST /settings/google-oauth/disconnect ---------------------------------
 
 
-def test_disconnect_google_oauth_requires_admin_role():
+def test_disconnect_google_oauth_allows_operator_but_not_anonymous():
+    """Той самий розділ `sheets` — від'єднати Google може й оператор
+    (рішення власника 06.09.26). Без входу — 401, як і раніше."""
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
+        with patch("app.routers.settings.connections.reset_sheets_cache"):
+            resp = settings_router_mod.disconnect_google_oauth(request=_request(operator.id), db=db)
+        assert resp.status_code == 303
+
         with pytest.raises(HTTPException) as exc:
-            settings_router_mod.disconnect_google_oauth(request=_request(operator.id), db=db)
-    assert exc.value.status_code == 403
+            settings_router_mod.disconnect_google_oauth(request=_request(None), db=db)
+    assert exc.value.status_code == 401
 
 
 def test_disconnect_google_oauth_clears_token_and_resets_mode():
