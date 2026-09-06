@@ -103,6 +103,7 @@ def test_retention_cutoff_is_the_same_day_source_everywhere():
         "app/routers/handout.py",
         "app/services/queue_view.py",
         "app/services/handout.py",
+        "app/services/manual_add.py",
     )
     offenders: list[str] = []
     for rel in screens:

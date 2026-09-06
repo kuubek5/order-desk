@@ -16,7 +16,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
-from time import monotonic
 from urllib.parse import urlencode
 
 from app import sync_control
@@ -26,14 +25,12 @@ from app.models import (
     Comment,
     Order,
     StatusEvent,
-    SyncLog,
     User,
 )
 from app.order_folder import (
     attach_export_folder_uris,
     attach_job_code_folder_uris,
 )
-from app.parser import HEADER_ROWS
 from app.routers.deps import (
     SYNC_PAUSED_MSG,
     attach_action_toast,
@@ -44,7 +41,11 @@ from app.routers.deps import (
     templates,
     toast_response,
 )
-from app.services.order_dates import parse_sheet_tab
+from app.services.manual_add import (
+    create_manual_batch,
+    normalize_target_tab,
+    normalize_work_type,
+)
 from app.services.queue import RETENTION_DAYS, order_is_archived
 from app.services.sheet_writeback import (
     append_comment_background,
@@ -65,12 +66,6 @@ from app.services.undo import (
     log_action,
     perform_redo,
     perform_undo,
-)
-from app.material_catalog import (
-    ensure_seeded,
-    load_alias_rows,
-    material_id_by_name,
-    resolve_material_id,
 )
 from app.sheet_writer import apply_status_markers
 from app.statuses import STATUSES
@@ -358,18 +353,6 @@ def new_order_form(
     return RedirectResponse(f"{target}{separator}{urlencode(params)}", status_code=303)
 
 
-_MAX_MANUAL_ROWS = 30
-
-# Server-side double-submit guard for manual adds. The submit button disables
-# itself client-side, but an F5 re-POST, back-button resubmit, or a browser
-# retry still reaches the server and would append the same rows to the sheet
-# AGAIN. Keyed by user id; an identical payload within the window is treated
-# as the same submit and answered with the normal redirect, writing nothing.
-# In-process state is enough: the app runs as a single local process.
-_MANUAL_ADD_DEDUP_SECONDS = 30.0
-_recent_manual_adds: dict[int, tuple[str, float]] = {}
-
-
 @router.post("/orders/new")
 def create_manual_order(
     request: Request,
@@ -386,23 +369,18 @@ def create_manual_order(
     technician_name: list[str] = Form([]),
     db: Session = Depends(get_db),
 ):
-    """Add one OR several works by hand and mirror them into today's sheet tab.
+    """Форма ручного додавання: розібрати, віддати сервісу, повернути в чергу.
 
-    Each field arrives as a parallel list (one entry per form row), so a single
-    submit can add several clients or several lab наряди at once. Two kinds:
-
-      * client (default) — наряд-less client rows (client name in "Вид роботи",
-        painted the lab's pending blue), source="sheet_client".
-      * lab — normal internal works: наряд in "Номер наряду", вид in "Вид
-        роботи", not painted, source="lab".
-
-    The whole batch is written as one contiguous block in a single sheet call.
-    Each row is linked by row_number so the next sync updates it in place."""
+    Самі правила партії — кілька робіт одним пушем, види «клієнт»/«лабораторія»,
+    вибір вкладки, захист від подвійного сабміту, запис у таблицю й народження
+    Order-ів — живуть у `app/services/manual_add.py`. Тут лишається суто HTTP:
+    куди повернути оператора, гейт паузи синку та очікування результату запису.
+    """
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
 
-    work_type = work_type if work_type in ("client", "lab") else "client"
+    work_type = normalize_work_type(work_type)
     is_lab = work_type == "lab"
 
     # Send the operator back to the exact queue view they submitted from — same
@@ -414,13 +392,9 @@ def create_manual_order(
     if not target.startswith("/") or target.startswith("//"):
         target = default_target
 
-    # The day tab on screen wins over "today" — see append_manual_rows_warm.
-    # Validated as a real dd.mm.yy here so a hand-crafted value can only ever
-    # miss and fall back, never reach the sheet layer as junk. Resolved before
-    # _back so a failed validation can carry it into the retry.
-    wanted_tab = target_tab.strip() if isinstance(target_tab, str) else ""
-    if wanted_tab and parse_sheet_tab(wanted_tab) is None:
-        wanted_tab = ""
+    # Вкладку з екрана звіряємо ще ДО валідації рядків: невдала спроба має
+    # повернути оператора на ТОЙ САМИЙ день, а не скинути його на типовий.
+    wanted_tab = normalize_target_tab(target_tab)
 
     def _back(message: str):
         """Помилка — назад У ЧЕРГУ, з розгорнутою формою і текстом у ній.
@@ -437,146 +411,40 @@ def create_manual_order(
         separator = "&" if "?" in target else "?"
         return RedirectResponse(f"{target}{separator}{urlencode(params)}", status_code=303)
 
-    def _at(values: list[str], i: int) -> str:
-        return values[i].strip() if i < len(values) else ""
-
     if sync_control.is_paused():
         return _back(SYNC_PAUSED_MSG)
 
-    row_count = max(
-        len(client_name), len(work_order_no), len(kind), len(material_color),
-        len(quantity), len(sum3d_id), len(job_code), len(technician_name),
-    )
-    if row_count == 0:
-        return _back("Додайте хоча б одну роботу.")
-    if row_count > _MAX_MANUAL_ROWS:
-        return _back(f"Забагато рядків за раз (макс. {_MAX_MANUAL_ROWS}).")
+    def _write_rows(day, works, *, paint_blue, placement, target_tab):
+        """Дописати партію в таблицю й дочекатись відповіді.
 
-    # Build the per-row work list, validating each non-empty row. Fully blank
-    # rows (an extra field-set the operator left empty) are silently skipped.
-    works: list[dict] = []
-    for i in range(row_count):
-        row_client = _at(client_name, i)
-        row_naryad = _at(work_order_no, i)
-        row_kind = _at(kind, i)
-        row_material = _at(material_color, i)
-        row_qty = _at(quantity, i)
-        row_sum3d = _at(sum3d_id, i)
-        row_job = _at(job_code, i)
-        row_tech = _at(technician_name, i)
+        Append the whole batch on the warm write-back worker (cached spreadsheet/
+        worksheet) in ONE sheet call — the cold request thread would re-pay ~40s of
+        open+worksheet through the lab proxy per call. The worker resolves the
+        newest dated tab ≤ today (today's tab often isn't created yet) and returns
+        which tab it actually wrote to, so the orders land on the same day.
 
-        if is_lab:
-            if not any((row_naryad, row_kind, row_material, row_job, row_tech, row_sum3d)):
-                continue  # empty lab row
-            works.append({
-                "source": "lab", "work_order_no": row_naryad, "kind": row_kind,
-                "e_value": row_kind, "material_color": row_material, "quantity": row_qty,
-                "job_code": row_job, "technician_name": row_tech, "sum3d_id": row_sum3d,
-            })
-        else:
-            if not any((row_client, row_material, row_qty, row_job, row_tech, row_sum3d)):
-                continue  # empty client row
-            if not row_client:
-                return _back(f"Рядок {i + 1}: вкажіть імʼя клієнта.")
-            if not row_material:
-                return _back(f"Рядок {i + 1}: вкажіть матеріал / колір.")
-            works.append({
-                "source": "sheet_client", "client_name": row_client,
-                "e_value": row_client, "material_color": row_material, "quantity": row_qty,
-                "job_code": row_job, "technician_name": row_tech, "sum3d_id": row_sum3d,
-            })
-
-    if not works:
-        return _back("Заповніть хоча б одну роботу.")
-
-    # Double-submit guard (see _recent_manual_adds): the exact same batch from
-    # the same operator inside the window is a resubmit, not a second intent.
-    fingerprint = repr((work_type, works))
-    now_ts = monotonic()
-    last = _recent_manual_adds.get(user.id)
-    if last is not None and last[0] == fingerprint and (now_ts - last[1]) < _MANUAL_ADD_DEDUP_SECONDS:
-        return RedirectResponse(target, status_code=303)
-
-    # Append the whole batch on the warm write-back worker (cached spreadsheet/
-    # worksheet) in ONE sheet call — the cold request thread would re-pay ~40s of
-    # open+worksheet through the lab proxy per call. The worker resolves the
-    # newest dated tab ≤ today (today's tab often isn't created yet) and returns
-    # which tab it actually wrote to, so the orders land on the same day.
-    try:
-        # Через спільну точку пулу: там же живе остання перевірка паузи, щоб
-        # жоден запис не проліз повз неї (аудит 05.09.26, синк M-8).
-        result = submit_sheet_write(
-            append_manual_rows_warm, business_today(), works,
-            paint_blue=(not is_lab),
-            placement=("lab" if is_lab else "client"),
-            target_tab=wanted_tab,
+        Через спільну точку пулу: там же живе остання перевірка паузи, щоб
+        жоден запис не проліз повз неї (аудит 05.09.26, синк M-8). Очікування
+        результату лишається тут, у HTTP-шарі: сервіс не має знати ні про пул,
+        ні про таймаути запиту.
+        """
+        return submit_sheet_write(
+            append_manual_rows_warm, day, works,
+            paint_blue=paint_blue, placement=placement, target_tab=target_tab,
         ).result(timeout=120)
-    except Exception as exc:  # noqa: BLE001 — surface any sheet failure to the operator
-        logger.exception("Manual order sheet write failed")
-        return _back(f"Не вдалося записати в таблицю: {exc}")
-    if isinstance(result, str):
-        # Пул відмовився писати (пауза) — сюди практично не доходить, бо гейт
-        # у роуті вище вже відповів операторові; лишаємо як чесний шлях.
-        return _back(result)
-    if result is None:
-        return _back("У таблиці немає жодної датованої вкладки — створіть день у таблиці спершу.")
-    tab, note_rows = result
 
-    ensure_seeded(db)
-    alias_rows = load_alias_rows(db)
-    name_by_id = material_id_by_name(db)
-    created_ids: list[int] = []
-    for work, note_row in zip(works, note_rows):
-        if work["source"] == "lab":
-            order = Order(
-                source="lab", sheet_tab=tab, row_number=note_row - HEADER_ROWS,
-                work_order_no=work["work_order_no"] or None, kind=work["kind"] or None,
-                material_color=work["material_color"] or None, quantity=work["quantity"] or None,
-                job_code=work["job_code"] or None, technician_name=work["technician_name"] or None,
-                sum3d_id=work["sum3d_id"] or None,
-                status="прийнято" if work["sum3d_id"] else "нове",
-            )
-        else:
-            order = Order(
-                source="sheet_client", sheet_tab=tab, row_number=note_row - HEADER_ROWS,
-                client_name=work["client_name"], material_color=work["material_color"] or None,
-                quantity=work["quantity"] or None, job_code=work["job_code"] or None,
-                technician_name=work["technician_name"] or None,
-                sum3d_id=work["sum3d_id"] or None, status="нове",
-            )
-        order.material_id = resolve_material_id(order.material_color, alias_rows, name_by_id)
-        db.add(order)
-        db.flush()
-        db.add(StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username))
-        # Adding a work by hand IS an operator action, so it belongs in the
-        # journal and the «Останні дії» popup — otherwise a work the operator
-        # just created is the one thing they cannot jump back to. Logged as
-        # "create": listed and locatable, but deliberately NOT undoable — «Крок
-        # назад» is a quick low-friction click and must never silently delete a
-        # row from the shared sheet. Removing a work stays the explicit delete
-        # button, which asks first.
-        log_action(
-            db, order=order, operator=user, action_type="create",
-            note=f"додано вручну: {order.work_order_no or order.client_name or ('#' + str(order.id))}",
-        )
-        created_ids.append(order.id)
-
-    db.add(
-        SyncLog(
-            direction="db_to_sheet", sheet_tab=tab, status="ok",
-            message=f"manual {work_type} ×{len(created_ids)}: рядки {note_rows}",
-        )
+    result = create_manual_batch(
+        db, user=user, work_type=work_type, target_tab=wanted_tab,
+        client_name=client_name, work_order_no=work_order_no, kind=kind,
+        material_color=material_color, quantity=quantity, sum3d_id=sum3d_id,
+        job_code=job_code, technician_name=technician_name,
+        write_rows=_write_rows,
     )
-    db.commit()
+    if result.error is not None:
+        return _back(result.error)
 
-    # Record this successful submit so an immediate resubmit (F5/back) is
-    # recognised and skipped above. Prune stale entries so the dict can't grow
-    # unbounded across a long-running process.
-    _recent_manual_adds[user.id] = (fingerprint, now_ts)
-    for uid, (_, ts) in list(_recent_manual_adds.items()):
-        if now_ts - ts >= _MANUAL_ADD_DEDUP_SECONDS:
-            _recent_manual_adds.pop(uid, None)
-
+    # Повтор сабміту (F5) виглядає для оператора так само, як успіх: у таблицю
+    # й БД не пішло нічого, але «помилки» не сталось.
     return RedirectResponse(target, status_code=303)
 
 
