@@ -92,7 +92,12 @@ from app.services.config_state import (
     sheets_configured,
 )
 from app.services.shift import open_note_count as open_shift_note_count
-from app.services.operators import normalize_initial, validate_initial
+from app.services.operators import (
+    normalize_initial,
+    validate_initial,
+    validate_password,
+    validate_role,
+)
 from app.settings_store import (
     CLEARABLE_SETTING_KEYS,
     OPERATOR_EDITABLE_KEYS,
@@ -173,7 +178,7 @@ def settings_changed_at(db: Session, keys: tuple[str, ...]) -> dict[str, str]:
     }
 
 
-def check_path_status(raw_path: str) -> dict[str, str]:
+def check_path_status(raw_path: str, *, write_probe: bool = True) -> dict[str, str]:
     """Live filesystem probe for the Налаштування path fields (export_folder_path /
     technician_files_path — CLAUDE.md section 7 "мобільним під різні ситуації та ПК").
 
@@ -206,6 +211,13 @@ def check_path_status(raw_path: str) -> dict[str, str]:
             "state": "error",
             "message": "Це не папка — вказано файл замість каталогу",
         }
+
+    if not write_probe:
+        # Non-admins get the read-only answer. Creating and deleting a marker
+        # file in an arbitrary path the caller typed turns this into a
+        # write-anywhere oracle over every share the service account reaches
+        # (audit 05.09.26, security M-1).
+        return {"state": "success", "message": "Папку знайдено"}
 
     marker = path / f".orderdesk-check-{uuid.uuid4().hex}.tmp"
     try:
@@ -552,7 +564,10 @@ def check_settings_path(
         raise HTTPException(status_code=401, detail="увійдіть в систему")
     # Operator-editable (see OPERATOR_EDITABLE_KEYS) — both fields this check
     # serves are filesystem paths, not credentials, so any logged-in user may
-    # probe them, same as they may now save them.
+    # probe them, same as they may now save them. The WRITE half of the probe
+    # (create+delete a marker file at a caller-supplied path) is admin-only:
+    # for an operator it was a write-anywhere oracle over every network share
+    # the KuubMill service account can reach (audit 05.09.26, security M-1).
     if not is_loopback_request(request):
         raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
@@ -562,7 +577,7 @@ def check_settings_path(
         raw_path = export_folder_path
     else:
         raw_path = technician_files_path
-    result = check_path_status(raw_path or "")
+    result = check_path_status(raw_path or "", write_probe=user.role == "адмін")
 
     return templates.TemplateResponse(
         request, "_settings_check_result.html", {"result": result}
@@ -2027,6 +2042,15 @@ async def create_operator(request: Request, db: Session = Depends(get_db)):
     if not username or not password:
         return RedirectResponse("/settings?error=логін+і+пароль+обов'язкові", status_code=303)
 
+    # Спільні правила з `/setup` і «Кабінету» — app/services/operators.py.
+    # Раніше тут не було ЖОДНОЇ перевірки: проходив пароль «1» і роль-одруківка.
+    password_error = validate_password(password)
+    if password_error:
+        return RedirectResponse(f"/settings?error={quote(password_error)}", status_code=303)
+    role_error = validate_role(role)
+    if role_error:
+        return RedirectResponse(f"/settings?error={quote(role_error)}", status_code=303)
+
     existing = db.scalar(select(User).where(User.username == username))
     if existing is not None:
         return RedirectResponse("/settings?error=такий+логін+вже+існує", status_code=303)
@@ -2118,6 +2142,9 @@ async def reset_operator_password(
     new_password = form.get("new_password", "").strip()
     if not new_password:
         return RedirectResponse("/settings?error=введіть+новий+пароль", status_code=303)
+    password_error = validate_password(new_password)
+    if password_error:
+        return RedirectResponse(f"/settings?error={quote(password_error)}", status_code=303)
 
     target.password_hash = hash_password(new_password)
     db.commit()

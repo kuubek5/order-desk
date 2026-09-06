@@ -11,8 +11,6 @@ GET /clients/{client_id}
 GET /clients/{client_id}/pane
 GET /diag/perf
 GET /diag/perf.txt
-GET /docs
-GET /docs/oauth2-redirect
 GET /feedback/images/{image_id}
 GET /feedback/inbox
 GET /furnaces
@@ -36,10 +34,8 @@ GET /machines/strip
 GET /machines/{key}/frame.png
 GET /mail
 GET /mail/{email_id}
-GET /openapi.json
 GET /orders/new
 GET /orders/{order_id}
-GET /redoc
 GET /search
 GET /settings
 GET /settings/feedback

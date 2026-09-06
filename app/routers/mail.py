@@ -39,6 +39,7 @@ from app.mail_export import (
     preview_export_target,
     restore_attachments_to_spool,
     save_attachments_to_export,
+    undo_moves,
 )
 from app.mail_filters import apply_rule_retroactively
 from app.mail_parser import material_candidates
@@ -1072,6 +1073,11 @@ async def accept_email(
     ]
     selected_ids = set(attachment_ids)
     attachments = [a for a in unclaimed if a.id in selected_ids] if selected_ids else unclaimed
+    # (spool source → export destination) for every file this accept physically
+    # moved. Needed to put them back if the commit that records the move fails —
+    # otherwise the files sit in export while the DB still believes they are in
+    # the spool, and triage reports "файли зникли" (audit 05.09.26, mail C-1).
+    moved_pairs: list[tuple[Path, Path]] = []
     if not attachments:
         # Nothing to move, but the sender→client link is still worth keeping.
         remember_sender(db, email, new_order.client_name or "", None)
@@ -1088,14 +1094,16 @@ async def accept_email(
                 client_override, material_override = _resolve_wizard_overrides(
                     folder_pick, folder_new, material_folder
                 )
+                old_paths = [Path(a.saved_path) for a in to_move]
                 new_paths = save_attachments_to_export(
                     export_root,
                     new_order.client_name or "",
                     new_order.material_color or "",
-                    [Path(a.saved_path) for a in to_move],
+                    old_paths,
                     client_folder_override=client_override,
                     material_folder_override=material_override,
                 )
+                moved_pairs = list(zip(old_paths, new_paths))
                 # Файли переїхали — кеш обходу export більше не відповідає диску.
                 clear_export_cache()
                 for attachment, new_path in zip(to_move, new_paths):
@@ -1184,7 +1192,28 @@ async def accept_email(
         if a.order_id is None and Path(a.saved_path).exists()
     ]
     email.status = "нове" if remaining else "прийнято"
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 — файли вже на диску, треба відкотити
+        # The files moved BEFORE this commit. A failed commit (SQLite locked,
+        # disk full under WAL, ...) rolls the DB back to "лист не прийнято", so
+        # the files must go back to the spool too — otherwise the two disagree
+        # forever. Rollback errors are reported, never swallowed.
+        db.rollback()
+        undo_errors = undo_moves(moved_pairs)
+        clear_export_cache()
+        logger.exception("Accept commit failed for email %s", email.id)
+        detail = str(exc)
+        if undo_errors:
+            logger.error("Could not return files to spool: %s", "; ".join(undo_errors))
+            detail += (
+                ". УВАГА: частину файлів не вдалося повернути в лист — "
+                + "; ".join(undo_errors)
+            )
+        return RedirectResponse(
+            f"/mail/{email.id}?error={quote('Не вдалося зберегти прийняття: ' + detail)}",
+            status_code=303,
+        )
 
     # A truthful outcome toast, shown on the page we land on (session flash →
     # base.html). Reports exactly what happened: how many files were saved this
@@ -1593,7 +1622,7 @@ def delete_mail_filter(
     return RedirectResponse(_filters_return_url(return_to), status_code=303)
 
 
-def _unaccept_email(db: Session, email: EmailMessage) -> None:
+def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]:
     """Fully undo EVERY order accepted from this letter (a multi-colour letter
     can have several), returning it to the pre-accept "нове" state: move all
     claimed attachments from export back to the mail spool, blank each order's
@@ -1610,10 +1639,13 @@ def _unaccept_email(db: Session, email: EmailMessage) -> None:
             orders = [legacy]
 
     attachments = list(email.attachments)
+    moved_pairs: list[tuple[Path, Path]] = []
     if attachments:
+        old_paths = [Path(a.saved_path) for a in attachments]
         new_paths = restore_attachments_to_spool(
-            Path(MAIL_ATTACHMENTS_PATH), email.uid, [Path(a.saved_path) for a in attachments]
+            Path(MAIL_ATTACHMENTS_PATH), email.uid, old_paths
         )
+        moved_pairs = list(zip(old_paths, new_paths))
         # Файли переїхали — кеш обходу export більше не відповідає диску.
         clear_export_cache()
         for attachment, new_path in zip(attachments, new_paths):
@@ -1638,6 +1670,7 @@ def _unaccept_email(db: Session, email: EmailMessage) -> None:
     email.order_id = None
     email.status = "нове"
     email.attachments_status = "ready"
+    return moved_pairs
 
 
 @router.post("/mail/{email_id}/restore")
@@ -1671,13 +1704,29 @@ async def restore_email(
         # "прийнято" = fully accepted; a "нове" letter WITH orders = partially
         # accepted (some colours taken, more remain). Either way, undo every
         # order and put all files back — a clean restart of the whole letter.
+        moved_pairs: list[tuple[Path, Path]] = []
         try:
-            _unaccept_email(db, email)
+            moved_pairs = _unaccept_email(db, email)
             db.commit()
-        except (OSError, ValueError) as exc:
+        except Exception as exc:  # noqa: BLE001 — mirror image of accept (C-2)
+            # Two kinds of failure, one compensation. A filesystem error leaves
+            # `moved_pairs` empty (restore_attachments_to_spool rolls its own
+            # move back) and undo_moves is then a no-op. A failed COMMIT is the
+            # dangerous one: files are already back in the spool while the DB
+            # rolls back to "прийнято" with saved_path pointing into export.
             db.rollback()
+            undo_errors = undo_moves(moved_pairs)
+            clear_export_cache()
+            logger.exception("Un-accept commit failed for email %s", email.id)
+            detail = str(exc)
+            if undo_errors:
+                logger.error("Could not return files to export: %s", "; ".join(undo_errors))
+                detail += (
+                    ". УВАГА: частину файлів не вдалося повернути в export — "
+                    + "; ".join(undo_errors)
+                )
             return RedirectResponse(
-                f"/mail?view=archive&error={quote('Не вдалося відкотити прийняття: ' + str(exc))}",
+                f"/mail?view=archive&error={quote('Не вдалося відкотити прийняття: ' + detail)}",
                 status_code=303,
             )
         request.session["toast_flash"] = {

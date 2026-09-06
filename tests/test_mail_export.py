@@ -1,5 +1,6 @@
 from datetime import date
 from functools import partial
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -340,3 +341,82 @@ def test_repeat_different_material_reuses_batch(tmp_path):
     a = save_attachments_to_export(exp, "Іванов", "моно а3", [mk("a.stl")])
     b = save_attachments_to_export(exp, "Іванов", "пмма а2", [mk("b.stl")])
     assert a[0].parent.parent == b[0].parent.parent  # same batch, different material subfolder
+
+
+# ── Windows-зарезервовані імена (аудит 05.09.26, пошта H-4) ───────────────
+def test_sanitize_folder_name_escapes_reserved_device_names():
+    """Клієнт «AUX» або матеріал «PRN» — Windows відмовиться створити теку."""
+    assert sanitize_folder_name("AUX") == "_AUX"
+    assert sanitize_folder_name("nul") == "_nul"
+    assert sanitize_folder_name("COM1") == "_COM1"
+    # Звичайні назви не чіпаємо, навіть якщо починаються так само.
+    assert sanitize_folder_name("Console Dental") == "Console Dental"
+
+
+# ── Частковий файл при міжтомовому переносі (аудит 05.09.26, пошта H-5) ───
+def test_partial_destination_is_removed_when_copy_dies_midway(tmp_path, monkeypatch):
+    """shutil.move між томами = copy2 + unlink. Обірвана копія лишала в export
+    обрізок, якого не було в списку відкату — видача бачила б його як роботу."""
+    import app.mail_export as mail_export
+
+    export_root = tmp_path / "export"
+    src = tmp_path / "incoming.stl"
+    src.write_bytes(b"data")
+
+    def dying_move(source, destination):
+        Path(destination).write_bytes(b"da")  # половина файлу вже скопійована
+        raise OSError("мережу обірвано")
+
+    monkeypatch.setattr(mail_export.shutil, "move", dying_move)
+
+    with pytest.raises(OSError):
+        save_attachments_to_export(export_root, "Клієнт", "моно а3", [src])
+
+    leftovers = [p for p in export_root.rglob("*") if p.is_file()]
+    assert leftovers == [], f"обрізок лишився: {leftovers}"
+    assert src.read_bytes() == b"data", "оригінал у спулі має лишитись недоторканим"
+
+
+# ── Компенсація руху після невдалого коміту (аудит 05.09.26, пошта C-1) ───
+def test_undo_moves_returns_files_to_their_original_paths(tmp_path):
+    from app.mail_export import undo_moves
+
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    export = tmp_path / "export" / "Клієнт" / "17.08.26" / "моно а3"
+    export.mkdir(parents=True)
+    source = spool / "crown.stl"
+    destination = export / "crown.stl"
+    destination.write_bytes(b"STL")
+
+    assert undo_moves([(source, destination)]) == []
+    assert source.read_bytes() == b"STL"
+    assert not destination.exists()
+
+
+def test_undo_moves_reports_failures_instead_of_swallowing(tmp_path, monkeypatch):
+    """Відкат сам може впасти (мережева шара). Тоді про це мусить бути сказано —
+    мовчазна втрата вкладення не лишає жодного сліду."""
+    import app.mail_export as mail_export
+    from app.mail_export import undo_moves
+
+    destination = tmp_path / "crown.stl"
+    destination.write_bytes(b"STL")
+    source = tmp_path / "spool" / "crown.stl"
+
+    monkeypatch.setattr(
+        mail_export, "_move_file",
+        lambda s, d: (_ for _ in ()).throw(OSError("шара недоступна")),
+    )
+    errors = undo_moves([(source, destination)])
+    assert len(errors) == 1 and "шара недоступна" in errors[0]
+
+
+def test_undo_moves_skips_a_file_that_never_moved(tmp_path):
+    """Якщо файл уже на місці — нічого не робимо (ідемпотентність)."""
+    from app.mail_export import undo_moves
+
+    source = tmp_path / "crown.stl"
+    source.write_bytes(b"STL")
+    assert undo_moves([(source, tmp_path / "nowhere.stl")]) == []
+    assert source.exists()

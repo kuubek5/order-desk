@@ -27,6 +27,21 @@ def test_attachment_filename_replaces_illegal_characters():
     assert safe_attachment_filename('case:<1>|?.stl', 1, "application/octet-stream") == "case__1___.stl"
 
 
+def test_attachment_filename_escapes_reserved_windows_names(tmp_path):
+    """`con.stl` — легальне MIME-ім'я, але Windows відмовляє у створенні файлу,
+    і лист залипав у "pending" назавжди (аудит 05.09.26, пошта H-4). Перевіряємо
+    не лише рядок, а й що такий файл реально записується на диск."""
+    safe = safe_attachment_filename("con.stl", 1, "application/octet-stream")
+    assert safe == "_con.stl"
+    assert safe_attachment_filename("NUL", 1, "application/octet-stream") == "_NUL"
+    assert safe_attachment_filename("Lpt1.zip", 1, "application/zip") == "_Lpt1.zip"
+    # Схоже, але не зарезервоване — не чіпаємо.
+    assert safe_attachment_filename("console.stl", 1, "application/octet-stream") == "console.stl"
+
+    (tmp_path / safe).write_bytes(b"STL")
+    assert (tmp_path / safe).read_bytes() == b"STL"
+
+
 def test_attachment_filename_uses_fallback_for_missing_name():
     assert safe_attachment_filename(None, 3, "image/png") == "attachment_3.png"
 

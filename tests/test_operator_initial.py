@@ -73,13 +73,42 @@ def test_create_operator_stores_uppercased_initial():
         admin = _user(db, role="адмін", username="admin")
         asyncio.run(settings_router_mod.create_operator(
             request=_form_request(admin.id, {
-                "username": "roma", "password": "pw", "full_name": "Рома",
+                # Пароль мусить проходити спільну політику довжини
+                # (app/services/operators.PASSWORD_MIN_LENGTH).
+                "username": "roma", "password": "parol-na-desyat", "full_name": "Рома",
                 "role": "оператор", "sheet_initial": "р",
             }),
             db=db,
         ))
         roma = db.scalar(select(User).where(User.username == "roma"))
         assert roma.sheet_initial == "Р"  # normalized to upper
+
+
+def test_create_operator_rejects_weak_password_and_unknown_role():
+    """Адмінське створення не мало ЖОДНОЇ перевірки: проходив пароль «1», а
+    роль-одруківка («aдмін» з латинською a) давала акаунт, який виглядає
+    адміном, але не проходить жоден гейт (аудит 05.09.26, безпека M-3)."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _user(db, role="адмін", username="admin")
+
+        asyncio.run(settings_router_mod.create_operator(
+            request=_form_request(admin.id, {
+                "username": "weak", "password": "1", "full_name": "Слабкий",
+                "role": "оператор", "sheet_initial": "",
+            }),
+            db=db,
+        ))
+        assert db.scalar(select(User).where(User.username == "weak")) is None
+
+        asyncio.run(settings_router_mod.create_operator(
+            request=_form_request(admin.id, {
+                "username": "typo", "password": "parol-na-desyat", "full_name": "Роль",
+                "role": "aдмін", "sheet_initial": "",
+            }),
+            db=db,
+        ))
+        assert db.scalar(select(User).where(User.username == "typo")) is None
 
 
 def test_set_operator_initial_route_updates_and_clears():

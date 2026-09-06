@@ -25,6 +25,7 @@ from app.mail_reader import safe_attachment_filename, unique_destination
 _ARCHIVE_SUFFIXES = {".zip", ".rar"}
 _MAX_ENTRIES = 2000
 _MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB uncompressed
+_CHUNK_BYTES = 65536
 
 # rarfile shells out to an external tool to DECOMPRESS RAR. It searches PATH,
 # but WinRAR/7-Zip install to Program Files without adding themselves to PATH,
@@ -126,17 +127,29 @@ def extract_archive(
     total = 0
     try:
         for member_name, size in entries:
-            total += size or 0
-            if total > _MAX_TOTAL_BYTES:
+            # The declared size comes from the archive's own central directory —
+            # a zip bomb simply lies about it. It is still worth a cheap early
+            # reject, but the ONLY number we trust is what we actually read
+            # below (same approach as link_attachments._stream_to_file).
+            if total + (size or 0) > _MAX_TOTAL_BYTES:
                 raise ArchiveExtractError("розпакований архів завеликий")
             base = Path(str(member_name).replace("\\", "/")).name
             safe = safe_attachment_filename(base, 1, "file")
             if safe in existing_names:
                 continue
             destination = unique_destination(dest_dir, safe)
-            with archive.open(member_name) as source, open(destination, "wb") as fh:
-                fh.write(source.read())
+            # Registered BEFORE the first byte, so a mid-write abort leaves no
+            # orphan half-file: the cleanup below unlinks everything in `written`.
             written.append(destination)
+            with archive.open(member_name) as source, open(destination, "wb") as fh:
+                while True:
+                    chunk = source.read(_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > _MAX_TOTAL_BYTES:
+                        raise ArchiveExtractError("розпакований архів завеликий")
+                    fh.write(chunk)
     except ArchiveExtractError:
         for path in written:
             path.unlink(missing_ok=True)
