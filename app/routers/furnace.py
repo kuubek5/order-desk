@@ -29,6 +29,7 @@ from app.services.furnace import (
     all_idle,
     config_error,
     configured_targets,
+    day_chart,
     eye_crop,
     poll_all,
     resolve_frame,
@@ -151,6 +152,36 @@ def furnaces_refresh(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="увійдіть в систему")
     poll_all(db)
     return templates.TemplateResponse(request, "_furnace_cards.html", _context(request, db, user))
+
+
+@router.get("/furnaces/{key}/history", response_class=HTMLResponse)
+def furnace_history(request: Request, key: str, db: Session = Depends(get_db)):
+    """Історія температури печі за останню добу — графік у самій картці.
+
+    Окремий роут, а не частина /furnaces/cards: плитки перемальовуються що
+    кілька секунд, і тягнути добу показань КОЖНОЇ печі на кожен тік означало б
+    тисячі рядків із бази заради блоку, який зазвичай згорнутий. Тут історія
+    читається один раз — коли її розгорнули.
+
+    `key` звіряється з переліком налаштованих печей (як у resolve_frame), а не
+    підставляється в запит як є: чуже значення дає 404, а не вибірку за тим,
+    що написали в адресному рядку.
+    """
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    target = next((t for t in configured_targets(db) if t.key == key), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="невідома піч")
+    return templates.TemplateResponse(
+        request,
+        "_furnace_history.html",
+        {
+            "request": request,
+            "furnace_name": target.name,
+            # host у показаннях — це ключ печі (див. services.furnace._store).
+            "chart": day_chart(db, target.key),
+        },
+    )
 
 
 @router.get("/furnaces/{key}/frame.png")

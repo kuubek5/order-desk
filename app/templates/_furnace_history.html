@@ -1,0 +1,74 @@
+{# Історія температури печі за останню добу.
+
+   ЧОМУ графік, а не таблиця: питання, з яким сюди приходять, — «як пеклось
+   уночі», тобто про ФОРМУ кривої (вийшла на полицю / провалилась / коли пішла
+   на охолодження). У стовпчику з тисячі рядків форми не видно, а числа поруч
+   однаково лишились текстом.
+
+   ЧОМУ SVG малює сервер: жодного JS і жодної бібліотеки — застосунок працює
+   офлайн на локальному ПК, і графік має з'являтись так само надійно, як решта
+   екрана. Уся геометрія порахована в services/furnace.py, тут лише теги.
+
+   ГОЛОВНЕ — пропуски. Лінія РВЕТЬСЯ там, де температури не було, а місце
+   розриву заштриховане (.fh-gap). Без цього графік з'єднав би два вимірювання
+   прямою через шість годин, і ця пряма була б вигадкою — рівно тим хибним
+   числом, від якого бережеться весь модуль печей.
+
+   Час київський: у базу він лягає таким, яким його показує годинник цеху
+   (див. FurnaceReading), тому тут нічого не переводимо. #}
+{% if chart.has_data %}
+<figure class="fh">
+    <svg class="fh-svg" viewBox="0 0 {{ chart.width + 38 }} {{ chart.height + 24 }}"
+         role="img"
+         aria-label="Температура печі {{ furnace_name }} з {{ chart.started_at.strftime('%H:%M') }} до {{ chart.ended_at.strftime('%H:%M') }}: максимум {{ chart.max_c }} градусів, мінімум {{ chart.min_c }}{% if chart.gaps %}, пропусків у даних: {{ chart.gaps|length }}{% endif %}">
+        <g transform="translate(32,4)">
+            {% for tick in chart.y_ticks %}
+            <line class="fh-grid" x1="0" y1="{{ tick.pos }}" x2="{{ chart.width }}" y2="{{ tick.pos }}"></line>
+            <text class="fh-ylabel" x="-5" y="{{ tick.pos + 3.5 }}">{{ tick.label }}</text>
+            {% endfor %}
+            {# Заштриховані смуги стоять ПІД лінією: вони фон, а не дані. #}
+            {% for gap in chart.gaps %}
+            <rect class="fh-gap" x="{{ gap.x }}" y="0" width="{{ gap.width }}" height="{{ chart.height }}"><title>{{ gap.title }}</title></rect>
+            {% endfor %}
+            {% for tick in chart.x_ticks %}
+            <line class="fh-tick" x1="{{ tick.pos }}" y1="{{ chart.height }}" x2="{{ tick.pos }}" y2="{{ chart.height + 3 }}"></line>
+            <text class="fh-xlabel" x="{{ tick.pos }}" y="{{ chart.height + 14 }}">{{ tick.label }}</text>
+            {% endfor %}
+            {# Кожен суцільний шматок історії — окрема полілінія. Саме тому їх
+               кілька, а не одна: розрив не з'єднується. #}
+            {% for points in chart.lines %}
+            <polyline class="fh-line" points="{{ points }}"></polyline>
+            {% endfor %}
+            {# Одиноке показання без сусідів: крапка — це рівно одне справжнє
+               вимірювання, а не відрізок «звідси досюди». #}
+            {% for dot in chart.dots %}
+            <circle class="fh-dot" cx="{{ dot.x }}" cy="{{ dot.y }}" r="1.8"><title>{{ dot.title }}</title></circle>
+            {% endfor %}
+        </g>
+    </svg>
+    <figcaption class="fh-cap">
+        <span class="mono">{{ chart.started_at.strftime('%d.%m %H:%M') }} → {{ chart.ended_at.strftime('%d.%m %H:%M') }}</span>
+        <span>макс <b class="mono">{{ chart.max_c }} °C</b> · мін <b class="mono">{{ chart.min_c }} °C</b></span>
+        <span>показань <b class="mono">{{ chart.readings }}</b></span>
+        {% if chart.gaps %}
+        {# Пропуски названі словами, а не лише заштриховані: смугу можна не
+           помітити, рядок — ні. #}
+        <span class="fh-gapnote">{{ chart.gap_text }}</span>
+        {% endif %}
+        {% if chart.unread %}
+        <span class="fh-gapnote">без числа: {{ chart.unread }}</span>
+        {% endif %}
+    </figcaption>
+</figure>
+{% else %}
+{# Порожній графік із нульовою лінією збрехав би («було 0 °C»), тому порожній
+   стан — це відсутність графіка, а не графік без даних. #}
+<p class="fu-note">
+    {% if chart.readings %}
+    Даних ще немає: за добу піч озвалась {{ chart.readings }} раз(и), але
+    жодного разу температура не прочиталась.
+    {% else %}
+    Даних ще немає: за останню добу піч не давала показань.
+    {% endif %}
+</p>
+{% endif %}

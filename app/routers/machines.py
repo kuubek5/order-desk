@@ -20,6 +20,8 @@ from app.services.machines import (
     POLL_INTERVAL_SECONDS,
     calibration_status,
     calibration_zip_bytes,
+    configured_targets,
+    day_timeline,
     machine_side_context,
     poll_all,
     resolve_frame,
@@ -134,6 +136,30 @@ def machine_portrait(request: Request, machine_id: int, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="фото немає")
     # У URL є mtime (?v=), тому кешувати можна довго: нове фото = новий URL.
     return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.get("/machines/{key}/history", response_class=HTMLResponse)
+def machine_history(request: Request, key: str, db: Session = Depends(get_db)):
+    """Стрічка «працює/стоїть» верстата за останню добу.
+
+    Читає ЛИШЕ пам'ять процесу (як /machines/side): показання верстатів у базу
+    не пишуться взагалі, тож історія тут — від старту застосунку, і шаблон
+    каже це прямо. До верстата з потоку запиту не ходимо.
+    """
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    target = next((t for t in configured_targets(db) if t.key == key), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="невідомий верстат")
+    return templates.TemplateResponse(
+        request,
+        "_machine_history.html",
+        {
+            "request": request,
+            "machine_name": target.name,
+            "timeline": day_timeline(target.key),
+        },
+    )
 
 
 @router.get("/machines/{key}/frame.png")

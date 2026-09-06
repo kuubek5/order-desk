@@ -18,6 +18,7 @@ GET /furnaces/cards
 GET /furnaces/side
 GET /furnaces/{key}/crop/{name}.png
 GET /furnaces/{key}/frame.png
+GET /furnaces/{key}/history
 GET /handout
 GET /handout/cards
 GET /handout/pulse
@@ -33,6 +34,7 @@ GET /machines/portrait/{machine_id}.jpg
 GET /machines/side
 GET /machines/strip
 GET /machines/{key}/frame.png
+GET /machines/{key}/history
 GET /mail
 GET /mail/{email_id}
 GET /orders/new

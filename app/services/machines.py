@@ -23,7 +23,7 @@ import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -40,7 +40,11 @@ from app.machine_ocr import (
     screen_is_completed,
 )
 from app.models import Machine, Order, ReworkRecord
-from app.services.furnace import _HOST_RE, validate_address  # ті самі правила адреси
+from app.services.furnace import (  # ті самі правила адреси й формат тривалості
+    _HOST_RE,
+    span_text,
+    validate_address,
+)
 from app.config import MACHINE_CALIBRATION_PATH, MACHINE_FRAMES_PATH
 from app.settings_store import get_machine_vnc_password
 
@@ -554,6 +558,8 @@ def poll_target(
                 since.strftime("%H:%M:%S") if since else "невідомо",
                 error,
             )
+        if streak >= PROBLEM_AFTER_FAILURES:
+            record_state(target.key, "off", now)
         return state
 
     # Диск чіпаємо не частіше ніж раз на FRAME_SAVE_INTERVAL_SECONDS: свіжість
@@ -625,6 +631,12 @@ def poll_target(
         state.frame_at = now
         state.error = None
         state.frame_saved_at = saved_at
+
+    record_state(
+        target.key,
+        observed_kind(percent=percent, completed=completed, error=False),
+        now,
+    )
 
     # Поки шрифт підпису неповний, відкладаємо кадр із новим відсотком для
     # навчання. `percent` тут — геометрія (підпис ще не читається, бо саме його
@@ -1077,9 +1089,218 @@ def snapshot(db: Session) -> list[MachineCard]:
     return cards
 
 
+# ── Історія стану за добу ───────────────────────────────────────────────────
+#
+# Питання оператора: «верстат стояв уночі чи фрезерував?». Відповіді не було
+# ніде — картка показує лише «просто зараз».
+#
+# Стрічка живе В ПАМ'ЯТІ ПРОЦЕСУ, а не в базі, і це свідомо. Показання верстата
+# в базу не пишуться взагалі (на відміну від печей), тому «показати вже зібране»
+# і «завести таблицю показань» — дві різні зміни, і робити їх однією означало б
+# протягнути нову схему даних під виглядом графіка. Той самий вибір уже зроблено
+# для `outages` («рахуємо від старту застосунку, і це чесно видно з
+# формулювання»), і графік каже те саме прямо: до першого спостереження — не
+# «стояв», а «немає даних».
+
+# Скільки історії тримаємо. Довше не треба: це оперативна довідка на зміну.
+HISTORY_HOURS = 24
+# Скільки тиші вже вважаємо діркою. Кадр знімається раз на 5 с, тож хвилина без
+# жодного спостереження — це не пауза, а справжня відсутність даних (застосунок
+# перезапустили, опитувач став).
+TIMELINE_GAP_SECONDS = 60.0
+# Стеля відрізків на верстат. Верстат, який блимає між станами, інакше ріс би
+# в пам'яті без межі.
+HISTORY_MAX_SPANS = 600
+TIMELINE_WIDTH = 360
+TIMELINE_HEIGHT = 18
+
+# Що саме показував верстат. Порядок = порядок легенди на екрані.
+KIND_LABELS = {
+    "run": "фрезерує",
+    "done": "програма завершена",
+    "idle": "стоїть",
+    "off": "немає зв'язку",
+    "gap": "немає даних",
+}
+
+# key → список [початок, кінець, стан]. Окремий лок, а не _states_lock:
+# запис у стрічку йде ПІСЛЯ того, як стан уже зафіксовано, і чіпати заради
+# нього лок гарячого шляху не треба.
+_history: dict[str, list] = {}
+_history_lock = threading.Lock()
+
+
+def record_state(key: str, kind: str, now: datetime) -> None:
+    """Додати спостереження в денну стрічку верстата.
+
+    Спостереження, а не подію: ми записуємо те, що бачили В ЦЮ СЕКУНДУ, і
+    тягнемо відрізок далі, поки стан не змінився. Якщо між спостереженнями
+    минуло більше за TIMELINE_GAP_SECONDS, відрізок НЕ подовжується, а
+    починається новий — інакше застосунок, який стояв ніч, «дорисував» би
+    верстату вісім годин фрезерування, яких ніхто не бачив.
+    """
+    if kind not in KIND_LABELS:  # захист від друкарської помилки в новому виклику
+        return
+    with _history_lock:
+        spans = _history.setdefault(key, [])
+        last = spans[-1] if spans else None
+        fresh = last is not None and (now - last[1]).total_seconds() <= TIMELINE_GAP_SECONDS
+        if last is not None and fresh and last[2] == kind:
+            last[1] = now
+        else:
+            if last is not None and fresh:
+                # Стан змінився саме тут — попередній тягнеться до цієї миті,
+                # щоб між відрізками не з'явилась дірка на порожньому місці.
+                last[1] = now
+            spans.append([now, now, kind])
+        cutoff = now - timedelta(hours=HISTORY_HOURS)
+        while len(spans) > 1 and spans[0][1] < cutoff:
+            spans.pop(0)
+        del spans[:-HISTORY_MAX_SPANS]
+
+
+def observed_kind(*, percent, completed, error: bool) -> str:
+    """Що записати у стрічку за результатом одного опитування."""
+    if error:
+        return "off"
+    if completed:
+        return "done"
+    if percent is None:
+        return "idle"
+    return "run" if percent < 100 else "done"
+
+
+@dataclass(frozen=True)
+class TimelineSpan:
+    """Один прямокутник стрічки. `kind` == "gap" — це саме відсутність даних,
+    а не окремий стан верстата."""
+
+    x: float
+    width: float
+    kind: str
+    title: str
+
+
+@dataclass(frozen=True)
+class TimelineTick:
+    pos: float
+    label: str
+
+
+@dataclass(frozen=True)
+class DayTimeline:
+    started_at: datetime
+    ended_at: datetime
+    width: int = TIMELINE_WIDTH
+    height: int = TIMELINE_HEIGHT
+    spans: list[TimelineSpan] = field(default_factory=list)
+    ticks: list[TimelineTick] = field(default_factory=list)
+    # Скільки часу верстат провів у кожному стані, у секундах.
+    totals: dict = field(default_factory=dict)
+    # Від якої миті взагалі є спостереження (старт застосунку або поява
+    # верстата в налаштуваннях). Раніше цього моменту — не «стояв», а «не знаємо».
+    since: Optional[datetime] = None
+
+    @property
+    def has_data(self) -> bool:
+        return any(span.kind != "gap" for span in self.spans)
+
+    @property
+    def summary(self) -> list[tuple]:
+        """(підпис, тривалість) для кожного стану, що траплявся. Порядок —
+        як у KIND_LABELS, щоб рядок не переставлявся від тіку до тіку."""
+        out = []
+        for kind, label in KIND_LABELS.items():
+            seconds = self.totals.get(kind, 0.0)
+            if seconds > 0:
+                out.append((label, span_text(seconds), kind))
+        return out
+
+
+def build_day_timeline(spans: list, *, started_at: datetime, ended_at: datetime) -> DayTimeline:
+    """Відрізки з пам'яті → геометрія стрічки. Чиста функція, тому й тестована."""
+    span_seconds = max(1.0, (ended_at - started_at).total_seconds())
+
+    def x_of(moment: datetime) -> float:
+        share = (moment - started_at).total_seconds() / span_seconds
+        return round(min(1.0, max(0.0, share)) * TIMELINE_WIDTH, 1)
+
+    out: list[TimelineSpan] = []
+    totals: dict[str, float] = {}
+
+    def add(start: datetime, end: datetime, kind: str) -> None:
+        x = x_of(start)
+        seconds = (end - start).total_seconds()
+        totals[kind] = totals.get(kind, 0.0) + seconds
+        out.append(
+            TimelineSpan(
+                x=x,
+                width=max(1.0, round(x_of(end) - x, 1)),
+                kind=kind,
+                title=(
+                    f"{KIND_LABELS[kind]} {start.strftime('%H:%M')}–{end.strftime('%H:%M')}"
+                    f" · {span_text(seconds)}"
+                ),
+            )
+        )
+
+    cursor = started_at
+    since: Optional[datetime] = None
+    for start, end, kind in spans:
+        start = max(start, started_at)
+        end = min(end, ended_at)
+        if end < start:
+            continue
+        # «Від якої миті ми взагалі дивимось» рахується ДО відсіву нульових
+        # відрізків: одне-єдине спостереження — це вже початок нагляду, і
+        # підпис під стрічкою має його назвати.
+        if since is None:
+            since = start
+        if end == start:
+            # Миттєве спостереження без тривалості. Малювати з нього
+            # прямокутник означало б приписати верстату кілька хвилин у
+            # стані, який ми бачили одну мить.
+            continue
+        # Дірка перед цим відрізком — окремим прямокутником, а не розтягнутим
+        # сусідом: невідомість не має виглядати як стан.
+        if (start - cursor).total_seconds() > TIMELINE_GAP_SECONDS:
+            add(cursor, start, "gap")
+        cursor = max(cursor, end)
+        add(start, end, kind)
+    if (ended_at - cursor).total_seconds() > TIMELINE_GAP_SECONDS:
+        add(cursor, ended_at, "gap")
+
+    ticks: list[TimelineTick] = []
+    mark = started_at.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    while mark < ended_at:
+        if mark.hour % 3 == 0:
+            ticks.append(TimelineTick(pos=x_of(mark), label=mark.strftime("%H:%M")))
+        mark += timedelta(hours=1)
+
+    return DayTimeline(
+        started_at=started_at,
+        ended_at=ended_at,
+        spans=out,
+        ticks=ticks,
+        totals=totals,
+        since=since,
+    )
+
+
+def day_timeline(key: str, *, now: Optional[datetime] = None, hours: int = HISTORY_HOURS) -> DayTimeline:
+    """Стрічка «працює/стоїть» одного верстата за останню добу."""
+    ended_at = now or datetime.now()
+    started_at = ended_at - timedelta(hours=hours)
+    with _history_lock:
+        spans = [list(span) for span in _history.get(key, [])]
+    return build_day_timeline(spans, started_at=started_at, ended_at=ended_at)
+
+
 def reset_state_for_tests() -> None:
     with _states_lock:
         _states.clear()
+    with _history_lock:
+        _history.clear()
 
 
 __all__ = [

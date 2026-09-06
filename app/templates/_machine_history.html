@@ -1,0 +1,40 @@
+{# Стрічка «працює/стоїть» верстата за останню добу.
+
+   ЧОМУ стрічка, а не крива: у верстата немає числа, яке має сенс вести в часі
+   (відсоток скидається в нуль на кожній новій програмі). Питання оператора
+   двійкове — «стояв уночі чи фрезерував», — і саме на нього відповідає
+   кольорова смуга: одним поглядом видно, де діри в роботі.
+
+   ЗВІДКИ ДАНІ: пам'ять процесу (services/machines.py). Показання верстатів у
+   базу не пишуться взагалі, тож історія починається зі старту застосунку — і
+   це сказано прямо, а не приховано порожнім місцем: усе до першого
+   спостереження заштриховане як «немає даних».
+
+   SVG малює сервер: жодного JS і жодної бібліотеки, застосунок працює офлайн. #}
+{% if timeline.has_data %}
+<figure class="fh">
+    <svg class="fh-svg" viewBox="0 0 {{ timeline.width }} {{ timeline.height + 20 }}"
+         role="img"
+         aria-label="Стан верстата {{ machine_name }} з {{ timeline.started_at.strftime('%H:%M') }} до {{ timeline.ended_at.strftime('%H:%M') }}">
+        {% for span in timeline.spans %}
+        <rect class="fh-span is-{{ span.kind }}" x="{{ span.x }}" y="0"
+              width="{{ span.width }}" height="{{ timeline.height }}"><title>{{ span.title }}</title></rect>
+        {% endfor %}
+        {% for tick in timeline.ticks %}
+        <line class="fh-tick" x1="{{ tick.pos }}" y1="{{ timeline.height }}" x2="{{ tick.pos }}" y2="{{ timeline.height + 3 }}"></line>
+        <text class="fh-xlabel" x="{{ tick.pos }}" y="{{ timeline.height + 14 }}">{{ tick.label }}</text>
+        {% endfor %}
+    </svg>
+    <figcaption class="fh-cap">
+        {% for label, duration, kind in timeline.summary %}
+        <span class="fh-key"><i class="fh-dotmark is-{{ kind }}"></i>{{ label }} <b class="mono">{{ duration }}</b></span>
+        {% endfor %}
+    </figcaption>
+    {% if timeline.since %}
+    <p class="fh-since">Спостереження від {{ timeline.since.strftime('%d.%m %H:%M') }} — історія
+        живе в пам'яті програми й починається з її запуску.</p>
+    {% endif %}
+</figure>
+{% else %}
+<p class="fu-note">Даних ще немає: спостережень за цим верстатом за останню добу не назбиралось.</p>
+{% endif %}

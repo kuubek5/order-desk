@@ -86,6 +86,21 @@
         </details>
         {% endif %}
 
+        {# Історія за добу. Вантажиться ЛИШЕ коли її розгорнули (toggle … once):
+           графік коштує добу показань з бази, а плитка перемальовується кожні
+           кілька секунд — тягнути це на кожен тік було б безглуздо. Доки блок
+           відкритий, полл узагалі не свапає картки (умова в furnaces.html),
+           інакше графік закривався б сам під час розглядання. #}
+        <details class="fu-hist">
+            <summary>Історія за добу</summary>
+            <div class="fh-slot"
+                 hx-get="/furnaces/{{ card.key }}/history"
+                 hx-trigger="toggle once from:closest details"
+                 hx-swap="innerHTML">
+                <p class="fu-note">Читаю показання…</p>
+            </div>
+        </details>
+
         <footer class="fu-foot text-muted">
             {% if state and state.attempted_at %}
             Кадр {{ state.attempted_at.strftime('%H:%M:%S') }}{% if card.stale() %} · опитувач мовчить{% endif %}

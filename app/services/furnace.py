@@ -636,6 +636,332 @@ def recent_readings(db: Session, host: str, limit: int = 40) -> list[FurnaceRead
     )
 
 
+# ── Історія за добу ─────────────────────────────────────────────────────────
+#
+# Показання пишуться в базу давно, а подивитись їх було ніде: екран знав лише
+# «просто зараз». Питання, заради якого цей блок існує, оператор ставить щоранку
+# — «як пеклось уночі»: чи піч тримала полицю, коли пішла на охолодження, чи не
+# було провалу посеред програми.
+#
+# Головне правило домену тут те саме, що в OCR: пропуск лишається пропуском.
+# Лінія РВЕТЬСЯ там, де температури не було, а саме місце розриву ще й
+# заштриховане. Інакше графік «домалював» би градуси, яких ніхто не бачив, —
+# і став би рівно тим джерелом хибної цифри, від якого весь модуль бережеться.
+
+HISTORY_HOURS = 24
+# Скільки мовчання вже вважаємо діркою. Рядок пишеться «на зміну або раз на
+# хвилину», тож п'ять хвилин без прочитаної температури — це не пауза між
+# записами, а справжня відсутність даних (піч вимкнули, VNC відпав, опитувач
+# стояв).
+HISTORY_GAP_SECONDS = 300.0
+# Стеля рядків на один графік. Під час розігріву температура міняється щокадру,
+# тобто раз на 6 с, — доба такої печі це кілька тисяч рядків. Стеля не дає
+# одному відкритому блоку історії витягти з бази все підряд.
+HISTORY_MAX_ROWS = 20000
+# Система координат графіка. Шапку (підписи осей, поля) домальовує шаблон —
+# тут лише саме поле даних.
+CHART_WIDTH = 360
+CHART_HEIGHT = 110
+# Скільки колонок лишається після проріджування. 120 колонок на добу — це
+# 12 хвилин на колонку: дрібніше на 360 одиницях ширини око все одно не бачить,
+# а розмітка росла б у рази.
+CHART_COLUMNS = 120
+
+
+def day_readings(
+    db: Session,
+    host: str,
+    *,
+    now: Optional[datetime] = None,
+    hours: int = HISTORY_HOURS,
+) -> list[FurnaceReading]:
+    """Показання печі за останню добу, найстаріші спершу.
+
+    Чому не `recent_readings()`: там межа задана КІЛЬКІСТЮ (40 рядків), а рядок
+    пишеться «на зміну або раз на хвилину». Під час розігріву температура
+    міняється щокадру, тож 40 рядків можуть покрити три хвилини, а можуть —
+    сорок. Для питання «що було за добу» межа мусить бути ЧАСОМ, інакше графік
+    мовчки показував би півгодини під виглядом доби.
+
+    `HISTORY_MAX_ROWS` лишається запобіжником, а не межею змісту: беремо
+    НАЙНОВІШІ рядки вікна, тому обрізається завжди хвіст найдавніших, і це
+    видно на графіку як пропуск зліва, а не як тиха підміна періоду.
+    """
+    ended_at = now or datetime.now()
+    started_at = ended_at - timedelta(hours=hours)
+    rows = list(
+        db.scalars(
+            select(FurnaceReading)
+            .where(FurnaceReading.host == host)
+            .where(FurnaceReading.captured_at >= started_at)
+            .where(FurnaceReading.captured_at <= ended_at)
+            .order_by(FurnaceReading.captured_at.desc())
+            .limit(HISTORY_MAX_ROWS)
+        )
+    )
+    rows.reverse()
+    return rows
+
+
+@dataclass(frozen=True)
+class ChartGap:
+    """Проміжок, за який температури НЕМАЄ.
+
+    Це не декорація, а головний елемент графіка: без заштрихованої смуги
+    розрив лінії читався б як «піч стояла», хоч насправді ми просто не знаємо.
+    """
+
+    x: float
+    width: float
+    title: str
+
+
+@dataclass(frozen=True)
+class ChartDot:
+    """Одиноке показання: сусідів у межах HISTORY_GAP_SECONDS немає, лінію
+    вести нема з чим. Крапка — це рівно одне справжнє вимірювання."""
+
+    x: float
+    y: float
+    title: str
+
+
+@dataclass(frozen=True)
+class ChartTick:
+    pos: float
+    label: str
+
+
+@dataclass(frozen=True)
+class DayChart:
+    """Готова геометрія графіка температури: шаблон лише розставляє теги.
+
+    Числа рахуються тут (а не в Jinja) з тієї ж причини, з якої тут живе решта
+    доменної логіки: їх можна перевірити тестом, а розмітку — ні.
+    """
+
+    started_at: datetime
+    ended_at: datetime
+    width: int = CHART_WIDTH
+    height: int = CHART_HEIGHT
+    # Кожен рядок — points для окремої <polyline>. Окремих рядків стільки,
+    # скільки суцільних шматків історії: розрив = новий рядок, не з'єднуємо.
+    lines: list[str] = field(default_factory=list)
+    dots: list[ChartDot] = field(default_factory=list)
+    gaps: list[ChartGap] = field(default_factory=list)
+    x_ticks: list[ChartTick] = field(default_factory=list)
+    y_ticks: list[ChartTick] = field(default_factory=list)
+    top_c: int = 0
+    max_c: Optional[int] = None
+    min_c: Optional[int] = None
+    # Скільки точок реально намальовано і скільки рядків узагалі знайшлось.
+    plotted: int = 0
+    readings: int = 0
+    # Рядки, у яких температури не було (збій зв'язку або нерозпізнане число).
+    unread: int = 0
+    last_at: Optional[datetime] = None
+
+    @property
+    def has_data(self) -> bool:
+        return bool(self.lines or self.dots)
+
+    @property
+    def gap_seconds(self) -> float:
+        return sum(gap.width / self.width for gap in self.gaps) * (
+            self.ended_at - self.started_at
+        ).total_seconds()
+
+    @property
+    def gap_text(self) -> str:
+        """«Скільки доби ми не бачили» — одним рядком під графіком."""
+        if not self.gaps:
+            return ""
+        return f"без даних {span_text(self.gap_seconds)}"
+
+
+def span_text(seconds: float) -> str:
+    """Тривалість словами: «2 год 28 хв», «14 хв», «менше хвилини»."""
+    minutes = int(seconds // 60)
+    if minutes < 1:
+        return "менше хвилини"
+    if minutes < 60:
+        return f"{minutes} хв"
+    hours, rest = divmod(minutes, 60)
+    return f"{hours} год" if rest == 0 else f"{hours} год {rest} хв"
+
+
+def _thin(rows: list[FurnaceReading], x_of) -> list[FurnaceReading]:
+    """Проріджування БЕЗ вигадування.
+
+    У кожній колонці графіка лишаємо реальні показання: перше, останнє,
+    найгарячіше й найхолодніше. Жодне значення не усереднюється — середнє між
+    двома вимірами це вже третє, якого на табло не було, а саме таких чисел
+    цей проєкт і не показує. Пік при цьому не «згладжується»: найгарячіше
+    показання колонки лишається завжди.
+    """
+    if len(rows) <= CHART_COLUMNS * 2:
+        return rows
+    buckets: dict[int, list[FurnaceReading]] = {}
+    for row in rows:
+        column = int(x_of(row.captured_at) / CHART_WIDTH * CHART_COLUMNS)
+        buckets.setdefault(column, []).append(row)
+    kept: list[FurnaceReading] = []
+    for column in sorted(buckets):
+        group = buckets[column]
+        chosen = {
+            id(group[0]): group[0],
+            id(group[-1]): group[-1],
+        }
+        hottest = max(group, key=lambda r: r.temp_c)
+        coldest = min(group, key=lambda r: r.temp_c)
+        chosen[id(hottest)] = hottest
+        chosen[id(coldest)] = coldest
+        kept.extend(sorted(chosen.values(), key=lambda r: r.captured_at))
+    return kept
+
+
+def build_day_chart(
+    readings: list[FurnaceReading],
+    *,
+    started_at: datetime,
+    ended_at: datetime,
+) -> DayChart:
+    """Показання → геометрія. Чиста функція: усе, що варто перевіряти, тут."""
+    span = max(1.0, (ended_at - started_at).total_seconds())
+
+    def x_of(moment: datetime) -> float:
+        share = (moment - started_at).total_seconds() / span
+        return round(min(1.0, max(0.0, share)) * CHART_WIDTH, 1)
+
+    rows = [r for r in readings if r.captured_at is not None]
+    temps = [r for r in rows if r.temp_c is not None]
+    unread = len(rows) - len(temps)
+    if not temps:
+        # Порожній графік із нульовою лінією збрехав би («було 0 °C»), тому
+        # порожній стан — це відсутність графіка, а не графік без даних.
+        return DayChart(
+            started_at=started_at,
+            ended_at=ended_at,
+            readings=len(rows),
+            unread=unread,
+            last_at=rows[-1].captured_at if rows else None,
+        )
+
+    hottest = max(r.temp_c for r in temps)
+    coldest = min(r.temp_c for r in temps)
+    # Шкала завжди від нуля й до круглої сотні: «підігнана» під діапазон вісь
+    # робить із коливання в 5 °C гірський хребет.
+    top = max(200, ((hottest + 99) // 100) * 100)
+
+    def y_of(value: int) -> float:
+        return round(CHART_HEIGHT - value / top * CHART_HEIGHT, 1)
+
+    def gap_of(start: datetime, end: datetime) -> ChartGap:
+        x = x_of(start)
+        return ChartGap(
+            x=x,
+            width=max(1.0, round(x_of(end) - x, 1)),
+            title=(
+                f"немає даних {start.strftime('%H:%M')}–{end.strftime('%H:%M')}"
+                f" · {span_text((end - start).total_seconds())}"
+            ),
+        )
+
+    lines: list[str] = []
+    dots: list[ChartDot] = []
+    gaps: list[ChartGap] = []
+    segment: list[FurnaceReading] = []
+
+    def flush() -> None:
+        if not segment:
+            return
+        if len(segment) == 1:
+            row = segment[0]
+            dots.append(
+                ChartDot(
+                    x=x_of(row.captured_at),
+                    y=y_of(row.temp_c),
+                    title=f"{row.captured_at.strftime('%H:%M')} · {row.temp_c} °C",
+                )
+            )
+        else:
+            lines.append(
+                " ".join(
+                    f"{x_of(r.captured_at)},{y_of(r.temp_c)}" for r in _thin(segment, x_of)
+                )
+            )
+        segment.clear()
+
+    previous: Optional[FurnaceReading] = None
+    for row in temps:
+        if previous is not None:
+            idle = (row.captured_at - previous.captured_at).total_seconds()
+            if idle > HISTORY_GAP_SECONDS:
+                flush()
+                gaps.append(gap_of(previous.captured_at, row.captured_at))
+        segment.append(row)
+        previous = row
+    flush()
+
+    # Краї вікна. Якщо піч почали опитувати посеред доби, ліва частина — це не
+    # «нуль градусів» і не «нічого не відбувалось», а невідомість, і вона має
+    # бути заштрихована так само, як дірка всередині.
+    if (temps[0].captured_at - started_at).total_seconds() > HISTORY_GAP_SECONDS:
+        gaps.insert(0, gap_of(started_at, temps[0].captured_at))
+    if (ended_at - temps[-1].captured_at).total_seconds() > HISTORY_GAP_SECONDS:
+        gaps.append(gap_of(temps[-1].captured_at, ended_at))
+
+    # Підписи часу — щотри години на рівній годині. Час київський: у базу він
+    # лягає таким, яким його показує годинник цеху (див. FurnaceReading), тому
+    # переводити нічого не треба — і не можна, бо це зсунуло б історію на
+    # три години відносно решти екрана.
+    x_ticks: list[ChartTick] = []
+    cursor = started_at.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    while cursor < ended_at:
+        if cursor.hour % 3 == 0:
+            x_ticks.append(ChartTick(pos=x_of(cursor), label=cursor.strftime("%H:%M")))
+        cursor += timedelta(hours=1)
+
+    y_ticks = [
+        ChartTick(pos=y_of(value), label=str(value))
+        for value in (0, top // 2, top)
+    ]
+
+    return DayChart(
+        started_at=started_at,
+        ended_at=ended_at,
+        lines=lines,
+        dots=dots,
+        gaps=gaps,
+        x_ticks=x_ticks,
+        y_ticks=y_ticks,
+        top_c=top,
+        max_c=hottest,
+        min_c=coldest,
+        plotted=sum(line.count(",") for line in lines) + len(dots),
+        readings=len(rows),
+        unread=unread,
+        last_at=rows[-1].captured_at,
+    )
+
+
+def day_chart(
+    db: Session,
+    host: str,
+    *,
+    now: Optional[datetime] = None,
+    hours: int = HISTORY_HOURS,
+) -> DayChart:
+    """Графік температури печі за останню добу."""
+    ended_at = now or datetime.now()
+    started_at = ended_at - timedelta(hours=hours)
+    return build_day_chart(
+        day_readings(db, host, now=ended_at, hours=hours),
+        started_at=started_at,
+        ended_at=ended_at,
+    )
+
+
 def reset_state_for_tests() -> None:
     """Очистити стан процесу між тестами — інакше піч, «побачена» одним
     тестом, лишалась би видимою в наступному."""

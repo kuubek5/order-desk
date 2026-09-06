@@ -91,6 +91,19 @@
                 {% endif %}
             </details>
             {% endif %}
+            {# Історія за добу: стрічка «працює/стоїть». Вантажиться лише коли її
+               розгорнули; поки блок відкритий, полл не свапає картки (умова на
+               будь-який details у machines.html). #}
+            <details class="fu-hist">
+                <summary>Історія за добу</summary>
+                <div class="fh-slot"
+                     hx-get="/machines/{{ card.key }}/history"
+                     hx-trigger="toggle once from:closest details"
+                     hx-swap="innerHTML">
+                    <p class="fu-note">Читаю історію…</p>
+                </div>
+            </details>
+
             {% if card.has_frame %}
             <details class="fu-frame">
                 <summary>Кадр екрана · {{ card.frame_at.strftime('%H:%M:%S') }}</summary>
@@ -160,6 +173,19 @@
             {% endif %}
         </p>
         {% endif %}
+
+        {# Історія за добу: стрічка «працює/стоїть». Вантажиться лише коли її
+           розгорнули; поки блок відкритий, полл не свапає картки (умова на
+           будь-який details у machines.html). #}
+        <details class="fu-hist">
+            <summary>Історія за добу</summary>
+            <div class="fh-slot"
+                 hx-get="/machines/{{ card.key }}/history"
+                 hx-trigger="toggle once from:closest details"
+                 hx-swap="innerHTML">
+                <p class="fu-note">Читаю історію…</p>
+            </div>
+        </details>
 
         {% if card.has_frame %}
         <img class="mc-shot" src="/machines/{{ card.key }}/frame.png?t={{ card.frame_at.timestamp()|int }}"

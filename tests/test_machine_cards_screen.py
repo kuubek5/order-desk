@@ -62,7 +62,10 @@ def test_screen_default_is_portrait_grid_by_model():
     # кадр лишається доступним — за details, з тією ж умовою для полла
     assert '<details class="fu-frame">' in html
     assert "/machines/10.0.0.1-8765/frame.png?t=" in html
-    assert "/machines/10.0.0.2" not in html             # без кадру — без картинки
+    # Без кадру — без картинки. Перевірка саме на frame.png, а не на адресу верстата:
+    # історія за добу (/machines/<key>/history) є й у верстата без кадру — саме тоді
+    # вона й потрібна («що було до того, як він замовк?»).
+    assert "/machines/10.0.0.2/frame.png" not in html
     assert "mc-shot" not in html
 
 
