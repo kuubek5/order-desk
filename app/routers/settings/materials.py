@@ -92,6 +92,10 @@ def get_materials_settings(
             "no_rule_orders": no_rule_orders,
             "collision_orders": collision_orders,
             "show_unresolved": m == -1,
+            # Дефолт пошти живе тут, бо вибирає він саме з цього переліку.
+            # Раніше під нього був окремий екран «Розпізнавання пошти» — див.
+            # коментар до set_recognition_default_material нижче.
+            "default_material": get_mail_default_material(db),
             "flash": flash,
         },
     )
@@ -194,33 +198,6 @@ def reclassify_materials(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse("/settings/materials", status_code=303)
 
 
-@router.get("/settings/recognition", response_class=HTMLResponse)
-def get_recognition_settings(request: Request, db: Session = Depends(get_db)):
-    """Screen: mail recognition settings (admin). Holds the default-material
-    fallback the triage applies to a signal-less milling letter, and points to
-    the two editable dictionaries that live elsewhere — the material library
-    (synonyms like «врім'янка» → ПММА) and the mail filters (exception
-    categories like 3D-друк / моделювання that route a letter out of the queue)."""
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-
-    flash = request.session.pop("recognition_flash", None)
-    return templates.TemplateResponse(
-        request,
-        "settings_recognition.html",
-        {
-            "page_title": "Розпізнавання пошти",
-            "user": user,
-            "materials": list_materials(db),
-            "default_material": get_mail_default_material(db),
-            "flash": flash,
-        },
-    )
-
-
 @router.post("/settings/mail-spool/prune")
 def prune_mail_spool(request: Request, db: Session = Depends(get_db)):
     """Delete the mail-spool folders analyze_spool considers safe (empty ones,
@@ -272,22 +249,33 @@ def toggle_mail_download_all(
 def set_recognition_default_material(
     request: Request,
     material_name: str = Form(""),
+    back_m: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Set (or clear, with an empty value) the material the triage assumes for a
     milling letter with no material signal. Validated against real catalog names
-    so a typo can't silently disable the rule."""
+    so a typo can't silently disable the rule.
+
+    Шлях свідомо лишився історичним (`/settings/recognition/...`), хоча екрана
+    «Розпізнавання пошти» більше немає: той екран був перехідником (два
+    посилання + оцей один селект), і селект переїхав у «Бібліотеку матеріалів».
+    Перейменування шляху нічого не дало б, окрім зайвої правки знімка роутів.
+
+    `back_m` — id матеріалу, відкритого в консолі: повертаємо адміна туди, де
+    він стояв, як це роблять решта форм бібліотеки.
+    """
     require_settings_admin(request, db)
+    back = f"/settings/materials?m={back_m}" if back_m else "/settings/materials"
     clean = (material_name or "").strip()
     valid_names = {m.name for m in list_materials(db)}
     if clean and clean not in valid_names:
-        request.session["recognition_flash"] = {"kind": "error", "message": "Невідомий матеріал."}
-        return RedirectResponse("/settings/recognition", status_code=303)
+        request.session["materials_flash"] = {"kind": "error", "message": "Невідомий матеріал."}
+        return RedirectResponse(back, status_code=303)
     set_mail_default_material(db, clean)
     db.commit()
     if clean:
         message = f"Дефолт без сигналу: {clean}."
     else:
         message = "Дефолтний матеріал вимкнено."
-    request.session["recognition_flash"] = {"kind": "success", "message": message}
-    return RedirectResponse("/settings/recognition", status_code=303)
+    request.session["materials_flash"] = {"kind": "success", "message": message}
+    return RedirectResponse(back, status_code=303)

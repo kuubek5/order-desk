@@ -25,6 +25,33 @@
 .ml-flash.is-ok{background:rgba(75,208,122,.09);border:1px solid rgba(75,208,122,.28);color:#a9e3bd}
 .ml-flash.is-error{background:rgba(var(--alarm-rgb), .1);border:1px solid rgba(var(--alarm-rgb), .3);color:var(--alarm-ink)}
 
+/* ── Пошта: дефолтний матеріал ────────────────────────────────────────────
+   Смуга на всю ширину НАД консоллю, а не пункт у лівій панелі: на вузькому
+   екрані ліва панель стає горизонтальною стрічкою й ховає все, що не є
+   матеріалом (.ml-newmat нижче), а це налаштування має лишатись досяжним.
+
+   Згорнутий стан несе значення (праворуч, моношириною) — його читають частіше,
+   ніж міняють. Рухається лише стрілка: екран нерухомий за задумом файлу. */
+.ml-mail{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
+  margin-bottom:14px}
+.ml-mail summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;
+  padding:11px 15px;font-size:var(--fs-2);color:var(--ink-3);border-radius:var(--r-card)}
+.ml-mail summary::-webkit-details-marker{display:none}
+.ml-mail summary::before{content:"";flex:0 0 6px;width:6px;height:6px;border-right:1.4px solid currentColor;
+  border-bottom:1.4px solid currentColor;transform:rotate(-45deg);margin-left:2px;
+  transition:transform .16s ease}
+.ml-mail[open] summary::before{transform:rotate(45deg)}
+.ml-mail summary:hover{color:var(--ink)}
+.ml-mail-v{margin-left:auto;font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink)}
+.ml-mail-v.is-off{color:var(--ink-3)}
+.ml-mail-body{padding:0 15px 14px;border-top:1px solid var(--line);margin-top:-1px}
+.ml-mail-body p{color:var(--ink-3);font-size:var(--fs-1);line-height:1.55;margin:12px 0 10px;max-width:74ch}
+.ml-mail-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ml-mail-form .ml-inp{flex:0 0 auto;min-width:180px}
+.ml-mail-body p.ml-mail-note{margin:12px 0 0}
+.ml-mail-note a{color:var(--accent-c);text-decoration:none;border-bottom:1px solid rgba(var(--accent-rgb), .35)}
+.ml-mail-note a:hover{border-bottom-color:var(--accent-c)}
+
 /* ── Розкладка консолі ────────────────────────────────────────────────── */
 .ml-console{display:grid;grid-template-columns:252px minmax(0,1fr);gap:14px;align-items:start}
 

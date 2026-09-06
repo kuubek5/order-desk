@@ -23,12 +23,44 @@
     <header class="ml-head">
         <a href="/settings" class="ml-back">Налаштування</a>
         <h1>Бібліотека матеріалів</h1>
-        <p>Правила зіставляють сирий текст колонки «Колір роботи» з матеріалом. Це дані, не код: додав правило — черга перекласифікувалась.</p>
+        <p>Правила зіставляють сирий текст колонки «Колір роботи» з матеріалом. Це дані, не код: додав правило — черга перекласифікувалась. Той самий словник читає тріаж пошти: «врім'янка», «temp» → ПММА.</p>
     </header>
 
     {% if flash %}
     <div class="ml-flash {{ 'is-error' if flash.kind == 'error' else 'is-ok' }}" role="status">{{ flash.message }}</div>
     {% endif %}
+
+    {# ── Пошта ──────────────────────────────────────────────────────────────
+       Переїхало з окремого екрана «Розпізнавання пошти» (аудит 05.09.26, крок
+       2.5). Той екран був перехідником: два посилання плюс ОДИН справжній
+       орган керування — оцей селект. Селект стоїть тепер поруч із переліком,
+       з якого він і вибирає, а посилання на фільтри лишилось приміткою: там
+       живуть категорії-винятки (3D-друк, моделювання), і дублювати їх сюди
+       не можна — словник має бути один (MailFilterRule).
+
+       Згорнуто, але значення видно в самому заголовку: налаштування рідкісне,
+       а от «що зараз підставляється» — питання щоденне. #}
+    <details class="ml-mail">
+        <summary>
+            <span class="ml-mail-k">Пошта без сигналу про матеріал</span>
+            <span class="ml-mail-v {{ 'is-off' if not default_material else '' }}">{{ default_material or 'вимкнено' }}</span>
+        </summary>
+        <div class="ml-mail-body">
+            <p>Лист на фрезерування, у якому матеріал не розпізнано (просто файл і слово «фрезерування»), тріаж заповнює цим матеріалом. Порожньо — поле лишається пустим для оператора. На листи з 3D-друком правило не діє.</p>
+            <form method="post" action="/settings/recognition/default-material" class="ml-mail-form">
+                {# Повертаємось на відкритий матеріал, як і решта форм консолі. #}
+                <input type="hidden" name="back_m" value="{{ selected.id if selected and not show_unresolved else '' }}">
+                <select class="ml-inp" name="material_name" title="Матеріал за замовчуванням">
+                    <option value="" {{ 'selected' if not default_material else '' }}>— вимкнено —</option>
+                    {% for material in materials %}
+                    <option value="{{ material.name }}" {{ 'selected' if default_material == material.name else '' }}>{{ material.name }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="ml-btn">Зберегти</button>
+            </form>
+            <p class="ml-mail-note">Роботи, яких лабораторія не робить (3D-друк, моделювання), прибирає з черги інший словник — категорії-винятки у <a href="/settings#mail-filters">Фільтрах пошти</a>. Тріаж уміє вчитися їм прямо з листа.</p>
+        </div>
+    </details>
 
     <div class="ml-console">
         {# ── Ліва панель: матеріали з вимірами ─────────────────────────── #}

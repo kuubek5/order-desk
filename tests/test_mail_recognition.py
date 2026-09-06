@@ -128,7 +128,9 @@ def test_recognition_default_material_rejects_unknown():
         ensure_materials_seeded(db)
         req = _request(admin.id)
         settings_router_mod.set_recognition_default_material(req, material_name="Неонове скло", db=db)
-        assert req.session["recognition_flash"]["kind"] == "error"
+        # Флеш тепер їде в «Бібліотеку матеріалів»: окремого екрана
+        # «Розпізнавання пошти» немає (аудит 05.09.26, крок 2.5).
+        assert req.session["materials_flash"]["kind"] == "error"
         assert get_mail_default_material(db) is None
 
 

@@ -167,7 +167,7 @@ CLEARABLE_SETTING_KEYS = {
 # the credentials screen (SETTING_FIELDS) — set from their own settings screens.
 # mail_default_material: which material the mail triage assumes when a milling
 # letter carries no material signal at all (empty string / unset = off). See
-# app/mail_reader.py and the /settings/recognition screen.
+# app/mail_reader.py and the material library screen (/settings/materials).
 # mail_download_all: "1" → auto-download attachments for EVERY incoming letter
 # into the spool, not only whitelisted senders; "" / unset → current behaviour
 # (only trusted senders auto-download, the rest wait for a manual pull).

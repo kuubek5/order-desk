@@ -41,7 +41,6 @@ GET /settings
 GET /settings/feedback
 GET /settings/materials
 GET /settings/materials/probe
-GET /settings/recognition
 GET /settings/sheets/download-all
 GET /settings/sheets/download-month/{month}
 GET /settings/sheets/download/{filename}
