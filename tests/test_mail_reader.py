@@ -86,11 +86,19 @@ class FakeMailbox:
     the requested UID out of the ``AND(uid=...)`` criteria string.
     """
 
-    def __init__(self, headers, full_by_uid, *, raise_for_uids=None, calls=None):
+    def __init__(self, headers, full_by_uid, *, raise_for_uids=None, calls=None,
+                 uidvalidity=None):
         self.headers = headers
         self.full_by_uid = full_by_uid
         self.raise_for_uids = raise_for_uids or set()
         self.calls = calls if calls is not None else []
+        # Без uidvalidity `folder` лишається None — mailbox.folder.status падає,
+        # і mail_reader деградує до дедупу самим uid (як було до колонки).
+        self.folder = (
+            SimpleNamespace(status=lambda options=None: {"UIDVALIDITY": int(uidvalidity)})
+            if uidvalidity is not None
+            else None
+        )
 
     def __call__(self, host, timeout):
         self.calls.append(("connect", host, timeout))
@@ -511,3 +519,206 @@ def test_redownload_is_a_no_op_when_every_file_is_in_place(monkeypatch, tmp_path
         email = session.query(EmailMessage).one()
         assert redownload_missing_attachments(session, email, tmp_path) == (0, 0)
         assert len(email.attachments) == 1
+
+
+def test_network_blink_is_not_treated_as_a_lost_file(monkeypatch, tmp_path):
+    """Мережева шара «моргнула» — рядок Attachment мусить лишитись живим.
+
+    Path.exists() ковтає будь-яку OSError і повертає False, тож недоступність
+    UNC-шляху виглядала як видалений файл: рядок зносився назавжди, а файл
+    лишався сиротою на диску. Тут stat() кидає WinError-подібну OSError (НЕ
+    FileNotFoundError) — нічого видаляти й перекачувати не можна.
+
+    Регрес, який ловить тест: повернути `not Path(a.saved_path).exists()` —
+    тоді (removed, saved) стане (1, 1) і поруч ляже двійник.
+    """
+    from pathlib import Path
+
+    from app.mail_reader import redownload_missing_attachments
+    from app.models import EmailMessage
+
+    mailbox = FakeMailbox(
+        headers=[_header_message("21")],
+        full_by_uid={"21": _full_message("21", attachments=[_fake_attachment("a.stl", payload=b"X")])},
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.MISSING_FILE_RETRY_DELAY", 0)
+    with _engine_session() as session:
+        fetch_new_emails(session, tmp_path)
+        email = session.query(EmailMessage).one()
+        saved_path = Path(email.attachments[0].saved_path)
+
+        real_stat = Path.stat
+
+        def blinking_stat(self, *args, **kwargs):
+            if self == saved_path:
+                raise OSError(64, "The specified network name is no longer available")
+            return real_stat(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "stat", blinking_stat)
+        assert redownload_missing_attachments(session, email, tmp_path) == (0, 0)
+        monkeypatch.undo()
+
+        assert len(email.attachments) == 1
+        assert len(list(saved_path.parent.glob("a*.stl"))) == 1
+
+
+def test_transient_error_then_success_keeps_the_attachment(monkeypatch, tmp_path):
+    """Перша спроба падає, друга бачить файл — це не втрата, а моргання."""
+    from pathlib import Path
+
+    from app.mail_reader import _file_is_missing
+
+    target = tmp_path / "case.stl"
+    target.write_bytes(b"X")
+    real_stat = Path.stat
+    calls = {"n": 0}
+
+    def flaky_stat(self, *args, **kwargs):
+        if self == target:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise OSError(1231, "network location cannot be reached")
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr("app.mail_reader.MISSING_FILE_RETRY_DELAY", 0)
+    monkeypatch.setattr(Path, "stat", flaky_stat)
+    assert _file_is_missing(str(target)) is False
+    assert calls["n"] >= 2, "мусить бути повторна спроба, а не один вирок"
+
+
+def test_really_deleted_file_is_still_reported_missing(tmp_path, monkeypatch):
+    """Ретраї не мусять ховати справжню втрату: чистий FileNotFoundError."""
+    from app.mail_reader import _file_is_missing
+
+    monkeypatch.setattr("app.mail_reader.MISSING_FILE_RETRY_DELAY", 0)
+    assert _file_is_missing(str(tmp_path / "nope.stl")) is True
+    assert _file_is_missing(None) is True
+
+
+# --- UIDVALIDITY -------------------------------------------------------------
+
+def test_uidvalidity_change_does_not_hide_a_new_letter(monkeypatch, tmp_path):
+    """Тека перестворена → UID почались спочатку → лист із «зайнятим» номером
+    мусить усе одно потрапити в тріаж.
+
+    Регрес, який ловить тест: повернути дедуп самим uid
+    (`select(EmailMessage.uid).where(...)`) — рядок зі старої нумерації видасть
+    новий лист за «вже імпортований», і в базі лишиться один запис зі СТАРОЮ
+    темою. Лист зникне мовчки, а це рівно те, що заборонено (CLAUDE.md, екран 2).
+    """
+    from app.models import EmailMessage
+
+    _patch_common(
+        monkeypatch,
+        FakeMailbox(
+            headers=[_header_message("5", subject="стара робота")],
+            full_by_uid={"5": _full_message("5", subject="стара робота")},
+            uidvalidity=100,
+        ),
+    )
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+    with _engine_session() as session:
+        assert fetch_new_emails(session, tmp_path) == 1
+        assert session.query(EmailMessage).one().uid_validity == "100"
+
+        _patch_common(
+            monkeypatch,
+            FakeMailbox(
+                headers=[_header_message("5", subject="НОВА робота")],
+                full_by_uid={"5": _full_message("5", subject="НОВА робота")},
+                uidvalidity=200,
+            ),
+        )
+        assert fetch_new_emails(session, tmp_path) == 1
+
+        rows = session.query(EmailMessage).order_by(EmailMessage.id).all()
+        assert [r.uid_validity for r in rows] == ["100", "200"]
+        assert [r.subject for r in rows] == ["стара робота", "НОВА робота"]
+
+
+def test_same_uidvalidity_still_deduplicates(monkeypatch, tmp_path):
+    """Звичайний випадок (номер теки не мінявся) працює як раніше."""
+    from app.models import EmailMessage
+
+    def mailbox():
+        return FakeMailbox(
+            headers=[_header_message("7")],
+            full_by_uid={"7": _full_message("7")},
+            uidvalidity=100,
+        )
+
+    _patch_common(monkeypatch, mailbox())
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+    with _engine_session() as session:
+        assert fetch_new_emails(session, tmp_path) == 1
+        _patch_common(monkeypatch, mailbox())
+        assert fetch_new_emails(session, tmp_path) == 0
+        assert session.query(EmailMessage).count() == 1
+
+
+def test_rows_from_before_the_column_adopt_the_current_uidvalidity(monkeypatch, tmp_path):
+    """Рядок зі старої бази (uid_validity порожній) — не дублікат, а «namespace
+    невідомий»: приймаємо його за поточний і проставляємо значення."""
+    from app.models import EmailMessage
+
+    _patch_common(
+        monkeypatch,
+        FakeMailbox(
+            headers=[_header_message("8")],
+            full_by_uid={"8": _full_message("8")},
+            uidvalidity=100,
+        ),
+    )
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+    with _engine_session() as session:
+        session.add(EmailMessage(uid="8", uid_validity="", status="нове",
+                                 attachments_status="ready"))
+        session.commit()
+
+        assert fetch_new_emails(session, tmp_path) == 0
+        row = session.query(EmailMessage).one()
+        assert row.uid_validity == "100"
+
+
+def test_pending_row_from_a_dead_namespace_is_not_refetched(monkeypatch, tmp_path):
+    """Добирати вкладення за мертвим uid не можна — на сервері під цим номером
+    тепер ЧУЖИЙ лист, і його файли причепились би не туди."""
+    from app.models import Attachment, EmailMessage
+
+    mailbox = FakeMailbox(
+        headers=[],
+        full_by_uid={"5": _full_message("5", attachments=[_fake_attachment("alien.stl")])},
+        uidvalidity=200,
+    )
+    _patch_common(monkeypatch, mailbox)
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+    with _engine_session() as session:
+        session.add(EmailMessage(uid="5", uid_validity="100", status="нове",
+                                 attachments_status="pending"))
+        session.commit()
+
+        fetch_new_emails(session, tmp_path)
+
+        assert session.query(Attachment).count() == 0
+        assert session.query(EmailMessage).one().attachments_status == "pending"
+
+
+def test_unreadable_uidvalidity_falls_back_to_uid_dedup(monkeypatch, tmp_path):
+    """Сервер не віддав UIDVALIDITY (стара поведінка) — дедуп мусить лишитись
+    робочим, а не почати плодити дублікати на кожен синк."""
+    from app.models import EmailMessage
+
+    def mailbox():
+        return FakeMailbox(
+            headers=[_header_message("9")],
+            full_by_uid={"9": _full_message("9")},
+        )
+
+    _patch_common(monkeypatch, mailbox())
+    monkeypatch.setattr("app.mail_reader.guess_fields_from_text", lambda *a, **kw: {})
+    with _engine_session() as session:
+        assert fetch_new_emails(session, tmp_path) == 1
+        _patch_common(monkeypatch, mailbox())
+        assert fetch_new_emails(session, tmp_path) == 0
+        assert session.query(EmailMessage).count() == 1

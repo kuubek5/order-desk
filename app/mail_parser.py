@@ -16,7 +16,15 @@ from app.material_classifier import AliasRow, classify_material
 _PATTERNS = {
     "material_color_guess": r"(?:колір|цвет|матеріал)[:\s]+[-–]?\s*([^\n,;]+)",
     "kind_guess": r"(?:вид роботи|фрезеруванн\w*|на фрезерування)[:\s]*[-–]?\s*([^\n,;]*)",
-    "quantity_guess": r"(?:кількість|к-сть|шт\.?)[:\s]*[-–]?\s*(\d+)",
+    # Дві форми, бо клієнти пишуть і так, і так. Перша — ключове слово ПЕРЕД
+    # числом («кількість: 5»); друга — число ПЕРЕД одиницею («5 шт», «5 од»,
+    # «5 одиниць»), а це найчастіший спосіб у живих листах, і він раніше не
+    # розпізнавався ЗОВСІМ (аудит 05.09.26, пошта M-9). «од» вимагає межу слова
+    # праворуч, інакше «2026 однак» дало б кількість 2026.
+    "quantity_guess": (
+        r"(?:кількість|к-сть|шт\.?)[:\s]*[-–]?\s*(\d+)"
+        r"|\b(\d+)\s*(?:шт\w*|одиниц\w*|од\b)"
+    ),
 }
 
 # Deterministic material recogniser — a sheet-independent backstop for when the
@@ -30,10 +38,20 @@ _PATTERNS = {
 # their prefixes (моноліт before моно) so the fuller match wins. Best-effort for
 # triage only — the operator still reviews and the accept wizard still offers
 # canonical material chips.
+# Права межа слова, незалежна від абетки: `[^\W\d_]` — це «літера» (будь-якої
+# абетки), тож `(?![^\W\d_])` читається як «далі не літера». Потрібна коротким
+# префіксам моно/mono/емо/emo: без неї «монополія» давала матеріал «моно», а
+# «емоційно» — «емо» (аудит 05.09.26, пошта M-9). Довші форми (моноліт,
+# монолит, emotions) стоять окремими альтернативами ПЕРЕД префіксом — саме щоб
+# нова межа не відрізала їх разом із хибними спрацюваннями.
+_NOT_LETTER = r"(?![^\W\d_])"
 _MAT_FAMILY = (
     r"(?:цирконі[йяю]\w*|zircon\w*|пмма|pmma|титан\w*|titan\w*"
-    r"|моноліт\w*|monolight|monolit\w*|моно|mono|емакс\w*|e\.?max|емо|emo"
-    r"|віск\w*|воск\w*|wax)"
+    r"|моноліт\w*|монолит\w*|monolight|monolit\w*"
+    r"|моно" + _NOT_LETTER + r"|mono" + _NOT_LETTER
+    + r"|емакс\w*|e\.?max|emotions?" + _NOT_LETTER
+    + r"|емо" + _NOT_LETTER + r"|emo" + _NOT_LETTER
+    + r"|віск\w*|воск\w*|wax)"
 )
 _MAT_COLOR = r"(?:[аa]\s?[1-4](?:[.,]5)?|[58]00|коре[яйю]\w*|korea)"
 _MATERIAL_FAMILY_RE = re.compile(
@@ -228,7 +246,12 @@ def guess_fields_from_text(
     guesses = {}
     for field, pattern in _PATTERNS.items():
         match = re.search(pattern, text, re.IGNORECASE)
-        guesses[field] = match.group(1).strip() if match and match.group(1).strip() else None
+        # Патерн може мати кілька альтернатив із власними групами (кількість:
+        # «кількість: 5» і «5 шт») — беремо ту, що справді спрацювала.
+        guesses[field] = next(
+            (g.strip() for g in (match.groups() if match else ()) if g and g.strip()),
+            None,
+        )
 
     # Real клієнти often skip the "колір:"/"матеріал:" keyword entirely and
     # just put the bare material/color in the subject or body (e.g. "моно

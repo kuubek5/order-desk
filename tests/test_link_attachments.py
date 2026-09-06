@@ -48,12 +48,19 @@ def test_empty_body():
 # --- download_link (mocked session) --------------------------------------------
 
 class _Resp:
-    def __init__(self, url, headers=None, cookies=None, text="", chunks=None):
+    def __init__(self, url, headers=None, cookies=None, text="", chunks=None, status_code=200):
         self.url = url
         self.headers = headers or {}
         self.cookies = cookies or {}
         self.text = text
         self._chunks = chunks or [b""]
+        self.status_code = status_code
+
+    @property
+    def is_redirect(self):
+        """Як у requests.Response: 3xx із заголовком Location."""
+        location = self.headers.get("location") or self.headers.get("Location")
+        return bool(location) and self.status_code in (301, 302, 303, 307, 308)
 
     def iter_content(self, _size):
         yield from self._chunks
@@ -67,9 +74,10 @@ class _Session:
     def __init__(self, responses):
         self._responses = list(responses)
         self.calls = []
+        self.cookies = {}
 
-    def get(self, url, params=None, stream=False, timeout=None):
-        self.calls.append((url, params))
+    def get(self, url, params=None, stream=False, timeout=None, allow_redirects=None):
+        self.calls.append((url, params, allow_redirects))
         return self._responses.pop(0)
 
 
@@ -137,3 +145,111 @@ def test_non_whitelisted_link_object_refused(tmp_path):
     link = LinkAttachment(kind="ukrnet", url="https://evil.example.com/x.stl", display="…")
     with pytest.raises(LinkDownloadError):
         download_link(link, tmp_path, session=_Session([]))
+
+
+# --- SSRF: whitelist enforced on EVERY redirect hop ----------------------------
+
+def test_redirect_to_foreign_host_is_never_requested(tmp_path):
+    """Кожен хоп перевіряється ДО запиту, не лише кінцевий URL.
+
+    Регрес, який ловить тест: повернути `session.get(url, stream=True, ...)` з
+    типовим allow_redirects=True — тоді requests сам сходив би на evil.example
+    (запит уже стався), а `_host_allowed(response.url)` побачив би дозволений
+    ПЕРШИЙ url і пропустив файл. Тут перевіряємо і що виняток є, і що на чужий
+    хост не пішло жодного запиту.
+    """
+    # Тіло + ім'я файлу лежать просто в 302-відповіді: якби редиректи знову
+    # віддали в requests, старий код побачив би дозволений response.url і
+    # спокійно зберіг цей вміст на диск — тест це й ловить.
+    hop = _Resp(
+        "https://dl.ukr.net/x/big.stl",
+        headers={"location": "https://evil.example.com/payload.bin",
+                 "content-disposition": 'attachment; filename="payload.bin"'},
+        status_code=302,
+        chunks=[b"PWNED"],
+    )
+    leaked = _Resp(
+        "https://evil.example.com/payload.bin",
+        headers={"content-disposition": 'attachment; filename="payload.bin"'},
+        chunks=[b"PWNED"],
+    )
+    session = _Session([hop, leaked])
+    link = LinkAttachment(kind="ukrnet", url="https://dl.ukr.net/x/big.stl", display="…")
+
+    with pytest.raises(LinkDownloadError):
+        download_link(link, tmp_path, session=session)
+
+    requested = [call[0] for call in session.calls]
+    assert requested == ["https://dl.ukr.net/x/big.stl"]
+    assert all("evil.example.com" not in url for url in requested)
+    assert not list(tmp_path.iterdir())
+
+
+def test_redirects_are_not_delegated_to_requests(tmp_path):
+    """allow_redirects мусить бути вимкнений — інакше перевірка хоста
+    відбувається вже після походу по ланцюжку."""
+    resp = _Resp(
+        "https://dl.ukr.net/x/crown.stl",
+        headers={"content-disposition": 'attachment; filename="crown.stl"'},
+        chunks=[b"x"],
+    )
+    session = _Session([resp])
+    link = LinkAttachment(kind="ukrnet", url="https://dl.ukr.net/x/crown.stl", display="…")
+    download_link(link, tmp_path, session=session)
+    assert session.calls[0][2] is False
+
+
+def test_allowed_redirect_hop_is_followed(tmp_path):
+    """Дозволений редирект (Drive → drive.usercontent.google.com) досі працює —
+    ручний прохід не мусить ламати нормальне завантаження."""
+    hop = _Resp(
+        "https://drive.google.com/uc?export=download",
+        headers={"location": "https://drive.usercontent.google.com/download?id=ID"},
+        status_code=302,
+    )
+    real = _Resp(
+        "https://drive.usercontent.google.com/download?id=ID",
+        headers={"content-type": "application/octet-stream",
+                 "content-disposition": "attachment; filename=model.stl"},
+        chunks=[b"STL"],
+    )
+    session = _Session([hop, real])
+    link = LinkAttachment(kind="drive", file_id="ID",
+                          url="https://drive.google.com/file/d/ID/view", display="…")
+    path = download_link(link, tmp_path, session=session)
+    assert path.read_bytes() == b"STL"
+    assert session.calls[1][0] == "https://drive.usercontent.google.com/download?id=ID"
+
+
+def test_relative_redirect_resolves_against_current_url(tmp_path):
+    """Відносний Location не мусить давати порожній хост (і тим самим хибну
+    відмову) — доводимо його до абсолютного відносно поточного URL."""
+    hop = _Resp(
+        "https://dl.ukr.net/x/big.stl",
+        headers={"location": "/y/real.stl"},
+        status_code=302,
+    )
+    real = _Resp(
+        "https://dl.ukr.net/y/real.stl",
+        headers={"content-disposition": 'attachment; filename="real.stl"'},
+        chunks=[b"STL"],
+    )
+    session = _Session([hop, real])
+    link = LinkAttachment(kind="ukrnet", url="https://dl.ukr.net/x/big.stl", display="…")
+    path = download_link(link, tmp_path, session=session)
+    assert path.name == "real.stl"
+    assert session.calls[1][0] == "https://dl.ukr.net/y/real.stl"
+
+
+def test_redirect_loop_stops_instead_of_hanging(tmp_path):
+    """Петля редиректів у межах білого списку не мусить крутитись вічно."""
+    loop = [
+        _Resp("https://dl.ukr.net/x/big.stl",
+              headers={"location": "https://dl.ukr.net/x/big.stl"}, status_code=302)
+        for _ in range(20)
+    ]
+    session = _Session(loop)
+    link = LinkAttachment(kind="ukrnet", url="https://dl.ukr.net/x/big.stl", display="…")
+    with pytest.raises(LinkDownloadError):
+        download_link(link, tmp_path, session=session)
+    assert len(session.calls) <= 7

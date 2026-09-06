@@ -113,3 +113,51 @@ def test_ti_token_does_not_match_inside_words():
 def test_normalize_unifies_comma_case_and_spaces():
     assert normalize_material("Моноліт А 3,5") == "моноліт а 3.5"
     assert normalize_material("  PMMA   A2 ") == "pmma a2"
+
+
+# --- слова-омоніми у вільному тексті листа -------------------------------------
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "нет времени, зробіть будь ласка",
+        "у ближайшее время передзвоню",
+        "время",
+        "перезвоню временем",
+        "монополія на ринку зубних робіт",
+        "дякуємо, дуже емоційно чекаємо",
+        "emotional support letter",
+        "temperature 900 градусів",
+        "another attempt to send",
+        "contemporary design studio",
+        "template for milling",
+    ],
+)
+def test_ordinary_words_are_not_materials(text):
+    """Класифікатор ганяють і по ВІЛЬНОМУ тексту листа, а не лише по короткій
+    колонці «Колір роботи» — там підрядкові аліаси хибно спрацьовували на
+    звичайних словах: «нет времени» → ПММА, «монополія» → Цирконій,
+    «temperature» → ПММА (аудит 05.09.26, пошта M-9).
+
+    Регрес, який ловить тест: прибрати _strip_false_friends із
+    classify_material — кожен із цих рядків знову поверне матеріал.
+    """
+    assert classify_material(text) is None
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("врем'янка a2", PMMA),      # заради чого підрядковий «врем» і існує
+        ("временная коронка", PMMA),  # подвійне «н» — не омонім
+        ("temp a2", PMMA),
+        ("temporary crown", PMMA),
+        ("моно а3", ZIRCON),
+        ("emo a1", ZIRCON),
+        ("Emotions a2", ZIRCON),
+        ("воскова модель", WAX),
+    ],
+)
+def test_real_material_wording_still_resolves(raw, expected):
+    """Фільтр омонімів не сміє з'їдати справжні формулювання."""
+    assert classify_material(raw) == expected

@@ -7,6 +7,9 @@ Security posture (this is the server fetching a URL taken from email content):
   * Only a strict host whitelist is ever fetched — Google Drive and ukr.net
     eDisk. Any other link in the body is ignored, so a malicious email can't
     turn this into an arbitrary-URL fetcher (SSRF).
+  * Redirects are followed BY HAND (`_get_checked`), so the whitelist is
+    enforced on every hop — not only on the final URL after requests has
+    already visited whatever the chain pointed at.
   * Operator-initiated only (a button in triage), never automatic.
   * A hard size cap and timeout bound each download.
   * Files land in the email's own mail-spool folder and then flow through the
@@ -16,7 +19,7 @@ Security posture (this is the server fetching a URL taken from email content):
 from dataclasses import dataclass
 import re
 from pathlib import Path
-from urllib.parse import urlsplit, unquote
+from urllib.parse import urljoin, urlsplit, unquote
 
 import requests
 
@@ -38,6 +41,10 @@ _UKR_LINK_RE = re.compile(r"https?://(?:dl|edisk)\.ukr\.net/[^\s\"'<>\)]+")
 
 _MAX_BYTES = 300 * 1024 * 1024  # 300 MB — comfortably above real STL/CAD files
 _CHUNK = 65536
+# Скільки перенаправлень проходимо вручну. Google Drive реально робить 1-2
+# хопи (uc?export=download → drive.usercontent.google.com), ukr.net — 0-1;
+# запас є, але ланцюжок не нескінченний (петля редиректів = зависання).
+_MAX_REDIRECTS = 5
 
 
 class LinkDownloadError(Exception):
@@ -124,14 +131,66 @@ def _filename_from_content_disposition(header: str | None) -> str | None:
     return None
 
 
-def _confirm_token(response: requests.Response) -> str | None:
+def _confirm_token(
+    response: requests.Response, session: requests.Session | None = None
+) -> str | None:
     """Google Drive shows a virus-scan interstitial for large files; the real
-    download needs a confirm token, carried either in a cookie or the HTML."""
-    for name, value in response.cookies.items():
-        if name.startswith("download_warning"):
-            return value
+    download needs a confirm token, carried either in a cookie or the HTML.
+
+    Дивимось і в куки СЕСІЇ: відколи редиректи проходяться вручну
+    (`_get_checked`), куку `download_warning` міг поставити проміжний хоп, чия
+    відповідь уже закрита — у `response.cookies` її тоді немає, а в сесії є.
+    """
+    for jar in (response.cookies, getattr(session, "cookies", None)):
+        for name, value in (jar or {}).items():
+            if name.startswith("download_warning"):
+                return value
     match = re.search(r"confirm=([0-9A-Za-z_-]+)", response.text)
     return match.group(1) if match else None
+
+
+def _get_checked(
+    session: requests.Session,
+    url: str,
+    *,
+    params: dict | None = None,
+    timeout,
+) -> requests.Response:
+    """GET із РУЧНИМ проходом по редиректах: хост звіряється з білим списком
+    ПЕРЕД кожним запитом.
+
+    ЧОМУ не `allow_redirects=True`: тоді requests сам обходить увесь ланцюжок,
+    а `_host_allowed(response.url)` перевіряє лише КІНЦЕВИЙ URL — тобто запит
+    із нашого сервера на проміжний (можливо чужий) хост УЖЕ відбувся, і
+    перевірка констатує факт заднім числом. Досить open redirect на боці
+    Google/ukr.net, щоб лист із пошти став важелем SSRF. Тут кожен `Location`
+    перевіряється до того, як по ньому підуть, а недозволений хост зупиняє
+    ланцюжок без жодного запиту на нього.
+    """
+    current = url
+    current_params = params
+    for _ in range(_MAX_REDIRECTS + 1):
+        if not _host_allowed(current):
+            raise LinkDownloadError("недозволений хост у перенаправленні")
+        response = session.get(
+            current,
+            params=current_params,
+            stream=True,
+            timeout=timeout,
+            allow_redirects=False,
+        )
+        if not response.is_redirect:
+            return response
+        location = response.headers.get("location") or response.headers.get("Location")
+        response.close()
+        if not location:
+            raise LinkDownloadError("перенаправлення без адреси")
+        # Location буває відносним ("/download?id=…") — доводимо до абсолютного
+        # відносно поточного URL, інакше _host_allowed побачив би порожній хост.
+        current = urljoin(response.url or current, location)
+        # Параметри вже всередині нового URL; повторно їх чіпляти не можна.
+        current_params = None
+    raise LinkDownloadError("забагато перенаправлень")
 
 
 def _stream_to_file(response: requests.Response, dest_dir: Path, filename: str) -> Path:
@@ -173,19 +232,15 @@ def _download_drive(
     existing_names: frozenset[str],
 ) -> Path | None:
     base = "https://drive.google.com/uc?export=download"
-    response = session.get(base, params={"id": file_id}, stream=True, timeout=timeout)
-    if not _host_allowed(response.url):
-        raise LinkDownloadError("недозволений хост у перенаправленні")
+    response = _get_checked(session, base, params={"id": file_id}, timeout=timeout)
     if "text/html" in (response.headers.get("content-type") or "").lower():
-        token = _confirm_token(response)
+        token = _confirm_token(response, session)
         response.close()
         if not token:
             raise LinkDownloadError("файл не розшарено «всім за посиланням» або недоступний")
-        response = session.get(
-            base, params={"id": file_id, "confirm": token}, stream=True, timeout=timeout
+        response = _get_checked(
+            session, base, params={"id": file_id, "confirm": token}, timeout=timeout
         )
-        if not _host_allowed(response.url):
-            raise LinkDownloadError("недозволений хост у перенаправленні")
         if "text/html" in (response.headers.get("content-type") or "").lower():
             raise LinkDownloadError("Google повернув сторінку, не файл (доступ закритий?)")
     filename = _filename_from_content_disposition(
@@ -198,9 +253,7 @@ def _download_direct(
     url: str, dest_dir: Path, session: requests.Session, timeout: int,
     existing_names: frozenset[str],
 ) -> Path | None:
-    response = session.get(url, stream=True, timeout=timeout)
-    if not _host_allowed(response.url):
-        raise LinkDownloadError("недозволений хост у перенаправленні")
+    response = _get_checked(session, url, timeout=timeout)
     filename = (
         _filename_from_content_disposition(response.headers.get("content-disposition"))
         or Path(urlsplit(url).path).name

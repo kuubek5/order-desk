@@ -3,6 +3,7 @@
 import logging
 import mimetypes
 import re
+import time
 from datetime import date, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
@@ -38,6 +39,11 @@ IMAP_TIMEOUT_SECONDS = 20
 MAX_ATTACHMENT_BYTES = 200 * 1024 * 1024
 IMAP_LOOKBACK_DAYS = 30
 IMAP_MAX_MESSAGES = 250
+# Скільки разів перепитуємо диск, перш ніж визнати файл вкладення втраченим,
+# і пауза між спробами. Три швидкі спроби переживають типове моргання
+# мережевої шари, не затримуючи операцію помітно (див. _file_is_missing).
+MISSING_FILE_RETRIES = 3
+MISSING_FILE_RETRY_DELAY = 0.3
 _UNSAFE_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 # Tags that should force a line break in the extracted text so paragraphs/
@@ -395,6 +401,39 @@ def _save_message_attachments(
     return saved
 
 
+def _file_is_missing(raw_path: str | None) -> bool:
+    r"""Чи файл вкладення СПРАВДІ зник з диска.
+
+    ЧОМУ не `Path(...).exists()`: він ковтає будь-яку OSError і повертає False,
+    тож коротке моргання мережі на UNC-шляху (`\\host\share`, WinError 53/64/1231)
+    виглядає точно так само, як видалений файл. А ціна помилки несиметрична:
+    «зник» → рядок Attachment видаляється НАЗАВЖДИ, справжній файл лишається на
+    диску сиротою без рядка, а докачана копія отримує ім'я «(1)» — на видачі
+    оператор бачить двійника і не знає, який справжній.
+
+    Тому: кілька спроб із паузою, і втратою вважається ЛИШЕ чистий
+    FileNotFoundError на останній спробі. Будь-яка інша OSError — це
+    «шара недоступна», і вкладення не чіпаємо.
+    """
+    if not raw_path:
+        return True
+    path = Path(raw_path)
+    missing = True
+    for attempt in range(MISSING_FILE_RETRIES):
+        try:
+            path.stat()
+            return False
+        except FileNotFoundError:
+            missing = True
+        except OSError as exc:
+            # Недоступність, а не відсутність — краще нічого не робити.
+            logger.warning("Не вдалося перевірити %s: %s", raw_path, exc)
+            missing = False
+        if attempt + 1 < MISSING_FILE_RETRIES:
+            time.sleep(MISSING_FILE_RETRY_DELAY)
+    return missing
+
+
 def redownload_missing_attachments(
     session: Session, email_message: EmailMessage, attachments_dir: Path
 ) -> tuple[int, int]:
@@ -422,16 +461,13 @@ def redownload_missing_attachments(
     if not login or not password:
         raise RuntimeError("IMAP не налаштовано — задайте логін і пароль у Налаштуваннях")
 
-    missing = [
-        a for a in email_message.attachments
-        if a.order_id is None and not Path(a.saved_path).exists()
-    ]
+    # Один прохід по диску на вкладення: _file_is_missing ретраїть із паузою,
+    # тож повторна перевірка того самого шляху коштувала б ще одну паузу.
+    checked = [(a, _file_is_missing(a.saved_path)) for a in email_message.attachments]
+    missing = [a for a, gone in checked if a.order_id is None and gone]
     if not missing:
         return (0, 0)
-    alive_names = {
-        a.filename for a in email_message.attachments
-        if Path(a.saved_path).exists()
-    }
+    alive_names = {a.filename for a, gone in checked if not gone}
     for attachment in missing:
         session.delete(attachment)
     # Рядки треба прибрати з сесії ДО повторного збереження, інакше
@@ -469,6 +505,23 @@ def download_attachments_now(session: Session, email_message: EmailMessage, atta
     return saved
 
 
+def _folder_uidvalidity(mailbox) -> str:
+    """UIDVALIDITY поточної теки, або "" якщо сервер його не віддав.
+
+    Це число — namespace для UID: воно змінюється рівно тоді, коли провайдер
+    перестворює теку, і саме тоді старі UID перестають щось означати. Порожній
+    рядок = «не знаємо», і тоді поводимось як раніше (дедуп самим uid): краще
+    не імпортувати дублікати через тимчасову невдачу STATUS-команди.
+    """
+    try:
+        status = mailbox.folder.status(options=["UIDVALIDITY"])
+        value = status.get("UIDVALIDITY")
+    except Exception:
+        logger.warning("Не вдалося прочитати UIDVALIDITY теки — дедуп лише за uid")
+        return ""
+    return "" if value is None else str(value)
+
+
 def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
     """Import recent messages without changing any mailbox flags.
 
@@ -489,8 +542,9 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
 
     We intentionally inspect *all* messages from the bounded recent window,
     rather than only unread messages: opening an order in webmail must not make
-    it invisible to KuubMill.  The database UID constraint makes repeat runs
-    idempotent.
+    it invisible to KuubMill.  The database's unique (uid, uid_validity) pair
+    makes repeat runs idempotent — the UIDVALIDITY half matters because an
+    IMAP UID is only unique while the folder keeps its current UIDVALIDITY.
     """
     login = get_imap_login(session)
     password = get_imap_password(session)
@@ -528,6 +582,8 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
     created = 0
 
     with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:
+        uid_validity = _folder_uidvalidity(mailbox)
+
         # --- Phase 1: headers-only, fast, one row (and commit) per message ---
         headers = list(
             mailbox.fetch(
@@ -540,11 +596,35 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
         )
 
         incoming_uids = {str(msg.uid) for msg in headers}
-        existing_uids = (
-            set(session.scalars(select(EmailMessage.uid).where(EmailMessage.uid.in_(incoming_uids))))
+        # Дедуп у межах ОДНОГО namespace. Рядок з іншим (мертвим) UIDVALIDITY
+        # збігом не вважається: інакше новий лист, якому дістався старий номер,
+        # мовчки не імпортувався б узагалі. Порожній uid_validity у рядку —
+        # спадок часів до колонки: namespace невідомий, тож приймаємо його за
+        # поточний і одразу проставляємо, щоб наступного разу вже знати.
+        existing_rows = (
+            session.execute(
+                select(EmailMessage).where(EmailMessage.uid.in_(incoming_uids))
+            ).scalars().all()
             if incoming_uids
-            else set()
+            else []
         )
+        existing_uids: set[str] = set()
+        adopted = False
+        for row in existing_rows:
+            if not row.uid_validity:
+                row.uid_validity = uid_validity
+                adopted = bool(uid_validity)
+                existing_uids.add(row.uid)
+            elif not uid_validity or row.uid_validity == uid_validity:
+                existing_uids.add(row.uid)
+            else:
+                logger.warning(
+                    "UIDVALIDITY змінився (%s → %s): uid %s належить мертвій "
+                    "нумерації, лист імпортуємо як новий",
+                    row.uid_validity, uid_validity, row.uid,
+                )
+        if adopted:
+            session.commit()
         seen_uids: set[str] = set()
         for msg in headers:
             uid = str(msg.uid)
@@ -555,6 +635,7 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
             session.add(
                 EmailMessage(
                     uid=uid,
+                    uid_validity=uid_validity,
                     from_address=msg.from_,
                     subject=msg.subject,
                     received_at=msg.date,
@@ -570,6 +651,19 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
             session.scalars(select(EmailMessage).where(EmailMessage.attachments_status == "pending"))
         )
         for email_message in pending:
+            # Рядок із мертвої нумерації добирати НЕ можна: той самий uid на
+            # сервері тепер належить ЧУЖОМУ листу, і ми акуратно причепили б
+            # його вкладення не туди. Лишаємо «pending» — видно, що не добрано.
+            if (
+                uid_validity
+                and email_message.uid_validity
+                and email_message.uid_validity != uid_validity
+            ):
+                logger.warning(
+                    "Mail sync: uid %s з нумерації %s (поточна %s) — не добираємо",
+                    email_message.uid, email_message.uid_validity, uid_validity,
+                )
+                continue
             # Scope disk cleanup to just this message: session.info's shared
             # list also holds paths from earlier messages in this same phase
             # 2 loop that already committed successfully and must not be

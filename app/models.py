@@ -410,8 +410,23 @@ class AppSetting(Base):
 class EmailMessage(Base):
     __tablename__ = "email_messages"
 
+    # Унікальність — ПАРА (uid, uid_validity), а не сам uid: IMAP UID
+    # унікальний лише в межах поточного UIDVALIDITY теки. Якщо провайдер
+    # перестворить скриньку, нумерація почнеться спочатку, і старий рядок з
+    # тим самим uid видав би НОВИЙ лист за «вже імпортований» — лист зник би
+    # мовчки (CLAUDE.md, екран 2: лист зникати не може).
+    __table_args__ = (
+        Index("ix_email_messages_uid_validity", "uid", "uid_validity", unique=True),
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True)
-    uid: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    uid: Mapped[str] = mapped_column(String(100), index=True)
+    # UIDVALIDITY теки на момент імпорту рядка. Порожній рядок = namespace
+    # невідомий (рядки, створені до появи колонки); перший синк після оновлення
+    # проставляє їм поточне значення, див. app/mail_reader.fetch_new_emails.
+    uid_validity: Mapped[str] = mapped_column(
+        String(50), default="", server_default="", nullable=False
+    )
     from_address: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     subject: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     body_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

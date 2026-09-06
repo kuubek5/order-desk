@@ -303,3 +303,57 @@ def test_guess_fields_sets_client_from_forwarded_body():
     )
     assert result["client_name_guess"] == "Стоматологія Люмі"
     assert result["material_color_guess"].lower() == "pmma a2"
+
+
+def test_quantity_written_after_the_number():
+    r"""«5 шт» — найчастіша форма в живих листах, і вона раніше не розпізнавалась
+    ЗОВСІМ: регекс вимагав ключове слово ПЕРЕД числом (аудит 05.09.26, M-9).
+
+    Регрес, який ловить тест: повернути патерн
+    r"(?:кількість|к-сть|шт\.?)[:\s]*[-–]?\s*(\d+)" — quantity_guess стане None.
+    """
+    assert guess_fields_from_text("Доброго дня, 5 шт коронок")["quantity_guess"] == "5"
+    assert guess_fields_from_text("12 штук")["quantity_guess"] == "12"
+    assert guess_fields_from_text("потрібно 3 одиниці")["quantity_guess"] == "3"
+    assert guess_fields_from_text("7 од")["quantity_guess"] == "7"
+
+
+def test_quantity_does_not_fire_on_a_random_number():
+    """Число саме по собі — не кількість; «од» мусить бути окремим словом."""
+    assert guess_fields_from_text("замовлення 24122")["quantity_guess"] is None
+    assert guess_fields_from_text("2026 однак не вийшло")["quantity_guess"] is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "монополія на ринку",
+        "монопольний постачальник",
+        "дякуємо, дуже емоційно чекаємо",
+        "emotional support",
+    ],
+)
+def test_material_family_needs_a_word_boundary_on_the_right(text):
+    """«моно»/«емо» — короткі префікси без правої межі слова, тож звичайні
+    слова давали матеріал (аудит 05.09.26, M-9).
+
+    Регрес, який ловить тест: прибрати _NOT_LETTER з альтернатив моно/mono/
+    емо/emo — «монополія» знову поверне «моно».
+    """
+    assert guess_material_color_family(text) is None
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("моно а3", "моно а3"),
+        ("mono a3", "mono a3"),
+        ("емо А2", "емо А2"),
+        ("моноліт а 3", "моноліт а 3"),
+        ("монолит а2", "монолит а2"),   # рос. написання не мусить загубитись
+        ("Emotions a2", "Emotions a2"),  # повна назва лінійки — теж матеріал
+        ("pmma a3.5", "pmma a3.5"),
+    ],
+)
+def test_material_family_still_recognises_real_wording(text, expected):
+    assert guess_material_color_family(text) == expected

@@ -96,6 +96,39 @@ SEED_ALIASES: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
+# Слова, які МІСТЯТЬ аліас матеріалу, але матеріалом не є.
+#
+# ЧОМУ це взагалі потрібно. Аліаси навмисно підрядкові ("циркон" ловить
+# "цирконій", "врем" — "врем'янку"), і на короткому рядку колонки «Колір
+# роботи» це безпечно. Але той самий класифікатор ганяють по ВІЛЬНОМУ тексту
+# листа (app/mail_parser.guess_fields_from_text, editable-dictionary backstop),
+# а там «нет времени» давало ПММА, «монополія» — цирконій, «temperature» — знову
+# ПММА (аудит 05.09.26, пошта M-9). Просту праву межу слова аліасам не додаси:
+# вона ж відрізала б «воскова», «цирконій», «hipsa» — тобто саме те, заради чого
+# підрядковий режим і існує.
+#
+# Тому звужуємо з іншого боку: ці конкретні слова вирізаються ЦІЛИКОМ (межі з
+# обох боків) ще до порівняння з аліасами. «Временная», «врем'янка», «temp a2»,
+# «Emotions» під шаблони не підпадають і лишаються недоторканими. Список — код,
+# а не дані: він однаковий на всіх інсталяціях і не потребує міграції, на
+# відміну від самих аліасів (SEED_ALIASES + міграція для наявних баз).
+_FALSE_FRIEND_RE = re.compile(
+    r"\b(?:"
+    r"врем['’]?я|времен(?:и|ем|ах|у)"           # «нет времени», «зі часом» → не ПММА
+    r"|монопол\w*"                               # «монополія» → не «моно»
+    r"|емоц\w*|эмоц\w*|emotional\w*"             # «емоційно» → не «емо»
+    r"|temperatur\w*|attempt\w*|contemporar\w*|templat\w*"  # містять «temp»
+    r")\b"
+)
+
+
+def _strip_false_friends(normalized: str) -> str:
+    """Прибрати з нормалізованого тексту слова-омоніми (див. _FALSE_FRIEND_RE)."""
+    if not normalized:
+        return normalized
+    return re.sub(r"\s+", " ", _FALSE_FRIEND_RE.sub(" ", normalized)).strip()
+
+
 _FUZZY_THRESHOLD = 84.0
 _MIN_FUZZY_LEN = 4  # don't fuzzy-match very short tokens (a2, ti, 800)
 
@@ -140,7 +173,7 @@ def classify_material(raw: str | None, aliases: list[AliasRow] | None = None) ->
     """Return the material category name for a raw colour string, or None if it
     can't be resolved confidently. Pure: `aliases` defaults to the seed so it
     works without a DB (tests, backfill dry-runs)."""
-    normalized = normalize_material(raw)
+    normalized = _strip_false_friends(normalize_material(raw))
     if not normalized:
         return None
     rows = aliases if aliases is not None else seed_alias_rows()
