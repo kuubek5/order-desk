@@ -38,6 +38,7 @@ from app.services.queue import queue_sync_summary
 from app.services.queue_view import build_queue_view, live_sync_status
 from app.sheet_sync_service import (
     SheetSyncError,
+    header_mismatch_pending,
     mass_vanish_pending,
     pop_import_flash,
     start_background_import,
@@ -429,7 +430,11 @@ def sheet_mass_vanish_banner(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request,
         "_mass_vanish_banner.html",
-        {"user": user, "mass_vanish": mass_vanish_pending()},
+        {
+            "user": user,
+            "mass_vanish": mass_vanish_pending(),
+            "header_mismatch": header_mismatch_pending(),
+        },
     )
 
 

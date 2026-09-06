@@ -82,3 +82,19 @@ def db_session(db_engine) -> Session:
     """
     with Session(db_engine, expire_on_commit=False) as session:
         yield session
+
+
+@pytest.fixture(autouse=True)
+def _fresh_sheets_quota_counter():
+    """Лічильник запитів до Sheets живе на ПРОЦЕС, а тести ганяють синк сотні
+    разів. Без скидання один файл «витрачає квоту» наступному, і гальмо
+    гарячої смуги (app/sheets.quota_is_tight) спрацьовує в тестах, які про
+    нього нічого не знають — падіння виглядає як плаваюче й залежне від
+    порядку. Скидаємо перед КОЖНИМ тестом: у бою лічильник так само починає
+    з нуля при старті процесу.
+    """
+    from app.sheets import reset_api_call_counter
+
+    reset_api_call_counter()
+    yield
+    reset_api_call_counter()

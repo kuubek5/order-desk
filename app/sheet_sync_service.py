@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 import json
+import logging
 import re
 import time
 from threading import Lock, Thread
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.business_day import business_today
 from app.db import SessionLocal
 from app.models import Order, SyncLog
-from app.parser import parse_rows
+from app.parser import header_mismatches, parse_rows
 from app.sheet_colors import fetch_row_fills
 from app.settings_store import (
     get_google_service_account_json,
@@ -24,13 +25,17 @@ from app.settings_store import (
     set_setting,
 )
 from app.sheets import (
+    api_calls_last_minute,
     call_with_retry,
     get_worksheet_by_name,
     open_spreadsheet,
+    quota_is_tight,
     tab_name_for,
 )
 from app.sync import sync_tab
 
+
+logger = logging.getLogger(__name__)
 
 _DATE_TAB_RE = re.compile(r"^\d{2}\.\d{2}\.\d{2}$")
 _INITIAL_LOOKBACK_DAYS = 30
@@ -99,6 +104,26 @@ def _listing_is_trustworthy(all_dated_titles: set[str], today: date) -> bool:
         (today - timedelta(days=offset)).strftime("%d.%m.%y") for offset in (0, 1)
     }
     return bool(all_dated_titles & recent)
+
+
+# Вкладки, чию структуру ми НЕ впізнали, і чому. Тримаємо в памʼяті поруч із
+# `_mass_vanish_pending` і показуємо тим самим банером: обидва стани про одне —
+# «синк свідомо НЕ чіпає ці дані, поки людина не гляне».
+_header_mismatch: dict[str, list[str]] = {}
+
+
+def header_mismatch_pending() -> dict[str, list[str]]:
+    """Вкладки зі зсунутими заголовками → перелік розбіжностей (для банера)."""
+    with _mass_vanish_lock:
+        return {tab: list(problems) for tab, problems in _header_mismatch.items()}
+
+
+def _record_header_mismatch(tab: str, problems: list[str]) -> None:
+    with _mass_vanish_lock:
+        if problems:
+            _header_mismatch[tab] = list(problems)
+        else:
+            _header_mismatch.pop(tab, None)
 
 
 def _record_mass_vanish(tab: str, held: int) -> None:
@@ -438,6 +463,27 @@ def sync_google_sheets(
             current_tab = worksheet.title
             try:
                 raw = call_with_retry(worksheet.get_all_values)
+                # Структура вкладки — ПЕРЕД імпортом. Вставлена колонка зсуває
+                # кожен індекс: «Ім'я техніка» читалось би як Sum3D, усі роботи
+                # дня стали б «прийнято», частина зникла б із черги, а запис
+                # Sum3D ліг би в чужу колонку (аудит 05.09.26, синк H-6).
+                # Дешевша перевірка кількох якорів рятує і читання, і запис.
+                problems = header_mismatches(raw)
+                _record_header_mismatch(current_tab, problems)
+                if problems:
+                    session.add(
+                        SyncLog(
+                            direction="sheet_to_db",
+                            sheet_tab=current_tab,
+                            status="error",
+                            message=(
+                                "структура вкладки не впізнана, імпорт пропущено: "
+                                + "; ".join(problems)
+                            ),
+                        )
+                    )
+                    session.commit()
+                    continue
                 rows = parse_rows(raw)
                 # Read fill colours (best-effort) so client rows whose blue was
                 # cleared flip to "видано" and grey SLM rows are filtered out.
@@ -626,6 +672,18 @@ def sync_hot_tab(
     summary or None when skipped / no hot tab exists yet."""
     if not _sync_lock.acquire(blocking=False):
         return None
+    # Гальмо квоти. «Турбо» (тік 5 с) × до 4 вкладок × 2 виклики ≈ 100 запитів
+    # на хвилину при ліміті Google 60 — тобто систематичний 429, а не випадковий
+    # (аудит 05.09.26, синк H-7). Коли лічильник підходить до краю, гарячий тік
+    # ПРОПУСКАЄМО: він і так лише прискорює те, що повний синк зробить сам.
+    # Робимо це ДО open_spreadsheet, бо саме він і є першим викликом.
+    if quota_is_tight():
+        _sync_lock.release()
+        logger.info(
+            "Гарячий тік пропущено: %d запитів до Sheets за останню хвилину",
+            api_calls_last_minute(),
+        )
+        return None
     try:
         _configuration(session)
         spreadsheet = open_spreadsheet(db=session)
@@ -641,6 +699,13 @@ def sync_hot_tab(
             if worksheet is None:
                 continue  # tab not created yet (early morning) — skip
             raw = call_with_retry(worksheet.get_all_values)
+            # Та сама звірка структури, що й у повному синку: гаряча смуга
+            # читає ті самі вкладки кожні 15 с, і без перевірки саме вона
+            # першою розтягла б зсунуті колонки по базі.
+            problems = header_mismatches(raw)
+            _record_header_mismatch(tab_title, problems)
+            if problems:
+                continue
             rows = parse_rows(raw)
             # Colours are cheap now (the CF-bloat cleanup took the metadata
             # fetch from ~7s to ~0.3s), so the hot lane reads them too: blue

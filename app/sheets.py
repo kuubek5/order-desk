@@ -133,6 +133,44 @@ def _record_api_call(now: float | None = None) -> int:
     return count
 
 
+
+# Скільки запитів за хвилину вважаємо «край». Ліміт Google — 60 на кожен вид
+# (читання/запис) на користувача; беремо 45, бо між нашою перевіркою і самим
+# запитом ще встигає пройти фоновий тік, а 429 коштує дорожче за пропущений
+# цикл: `call_with_retry` на квоті СПИТЬ 20/40/60 с, тримаючи `_sync_lock`, і
+# на ці дві хвилини ручний синк відповідає «вже виконується».
+GOOGLE_QUOTA_SOFT_LIMIT = 45
+
+
+def api_calls_last_minute(now: float | None = None) -> int:
+    """Скільки запитів до Sheets ми зробили за останні 60 с.
+
+    Лічильник уже вів `_record_api_call` — але лише в лог. Гаряча смуга тепер
+    ЧИТАЄ це число і пропускає свій тік, коли підходить до краю: краще один
+    пропущений цикл, ніж систематичний 429 (аудит 05.09.26, синк H-7).
+    """
+    moment = time.monotonic() if now is None else now
+    with _rate_lock:
+        cutoff = moment - _RATE_WINDOW_SECONDS
+        while _rate_calls and _rate_calls[0] < cutoff:
+            _rate_calls.popleft()
+        return len(_rate_calls)
+
+
+def reset_api_call_counter() -> None:
+    """Забути історію викликів. Потрібно тестам: лічильник живе на ПРОЦЕС, тож
+    без скидання один файл тестів «витрачає квоту» наступному, і гальмо
+    спрацьовує там, де його не перевіряють (див. tests/conftest.py)."""
+    global _rate_reported_at
+    with _rate_lock:
+        _rate_calls.clear()
+        _rate_reported_at = 0.0
+
+
+def quota_is_tight(now: float | None = None) -> bool:
+    """Чи ми біля межі квоти читань — тоді необовʼязкові тіки краще пропустити."""
+    return api_calls_last_minute(now) >= GOOGLE_QUOTA_SOFT_LIMIT
+
 def call_with_retry(
     fn: Callable[[], _T],
     *,

@@ -69,7 +69,11 @@ from app.services.queue import (
 )
 from app.services.shift import open_notes as open_shift_notes
 from app.services.system_load import snapshot as system_load_snapshot
-from app.sheet_sync_service import is_sheet_sync_running, mass_vanish_pending
+from app.sheet_sync_service import (
+    header_mismatch_pending,
+    is_sheet_sync_running,
+    mass_vanish_pending,
+)
 from app.statuses import STATUSES, is_overdue
 from app.sync_control import SYNC_SPEED_PRESETS, get_sync_speed, record_viewed_day
 from app.sync_heartbeat import sync_status_pair
@@ -459,6 +463,9 @@ def build_queue_view(
             # Банер масового видалення: вкладки, чиї видалення тримає запобіжник
             # (schema-guard), з кнопкою «Звірити видалення». Порожньо = банера нема.
             "mass_vanish": mass_vanish_pending(),
+            # Зсув колонок у таблиці — той самий банер, той самий сенс:
+            # синк свідомо стоїть, поки людина не гляне (синк H-6).
+            "header_mismatch": header_mismatch_pending(),
             "has_any_orders": bool(all_orders),
             "sheets_configured": sheets_configured(db),
             # Флеші живуть у сесії запиту, тобто на HTTP-рівні — їх домішує роут
