@@ -186,6 +186,12 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 /* Одиниці — третє число, тому тихіші за перші два: при видачі рахують клієнтів
    і роботи, а одиниці потрібні звітності. */
 .handoutv2 .hkpi-units{margin-left:7px;color:var(--ink-3);font-size:var(--fs-0)}
+/* Пошук клієнта в списку (UX 1.6) — фільтр без перезапиту, порядок карток
+   лишається тим самим (правило №1 видачі). */
+.handoutv2 .hfind{display:flex;align-items:center;gap:8px;margin:8px 0}
+.handoutv2 .hfind .form-input{max-width:320px}
+.handoutv2 .hfind-count{color:var(--ink-3);font-size:var(--fs-2)}
+.handoutv2 .ccard[hidden]{display:none}
 .handoutv2 .hsrc{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
 .handoutv2 .hsrc a{
   display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 12px;border-radius:999px;

@@ -52,6 +52,19 @@
         {% include "_handout_kpi.html" %}
         {% endif %}
 
+        {# Пошук клієнта — клієнтський фільтр, НЕ новий запит (аудит 05.09.26,
+           UX 1.6). Порядок списку правило №1 видачі забороняє чіпати, тож тут
+           лише ховаються картки, що не збіглись; черговість решти та сама.
+           Поле стоїть ПОЗА `#handout-list`, який свапає HTMX, — інакше воно
+           втрачало б фокус і текст після кожної галочки. #}
+        {% if client_groups %}
+        <div class="hfind">
+            <input type="search" id="handout-find" class="form-input" autocomplete="off"
+                   placeholder="Пошук клієнта в списку" aria-label="Пошук клієнта в списку">
+            <span class="hfind-count mono" id="handout-find-count" hidden></span>
+        </div>
+        {% endif %}
+
         <nav class="hsrc" aria-label="Джерело робіт">
             <a href="/handout?source=all&day={{ day_param }}" class="{% if source == 'all' %}on{% endif %}"{% if source == 'all' %} aria-current="page"{% endif %}>Усі <span class="mono">{{ source_counts.all }}</span></a>
             <a href="/handout?source=email&day={{ day_param }}" class="{% if source == 'email' %}on{% endif %}"{% if source == 'email' %} aria-current="page"{% endif %}>Пошта <span class="mono">{{ source_counts.email }}</span></a>

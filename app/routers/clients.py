@@ -251,8 +251,23 @@ def get_client_detail(request: Request, client_id: int, db: Session = Depends(ge
             "folder_names": folder_names,
             "bound_folder": bound_folder,
             "folder_suggestions": folder_suggestions,
+            "return_to": safe_return_to(request.query_params.get("return_to")),
         },
     )
+
+
+def safe_return_to(raw: str | None) -> str:
+    """Куди дозволено повернути після дії — і НІЧОГО іншого.
+
+    Значення приходить із посилання («Прив'язати папку» на видачі), тобто з
+    URL, який може підмінити будь-хто. Пускаємо лише власні відносні шляхи:
+    зовнішній хост (`//evil`, `https://…`) перетворив би внутрішню кнопку на
+    відкритий редірект.
+    """
+    value = (raw or "").strip()
+    if not value.startswith("/") or value.startswith("//"):
+        return ""
+    return value
 
 
 @router.post("/clients/{client_id}/folder", response_class=HTMLResponse)
@@ -260,6 +275,7 @@ def bind_client_folder(
     request: Request,
     client_id: int,
     export_folder_name: str = Form(""),
+    return_to: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Bind (or unbind, with an empty value) the client's folder in `export`.
@@ -308,6 +324,10 @@ def bind_client_folder(
             {"user": user, "swap_list_item": True, "bound_now": bool(value),
              **client_pane_context(db, client)},
         )
+    # Прийшли з видачі — туди ж і повертаємось, у той самий день (UX 1.6).
+    back = safe_return_to(return_to)
+    if back:
+        return RedirectResponse(back, status_code=303)
     return RedirectResponse(f"/clients/{client_id}?saved=1", status_code=303)
 
 

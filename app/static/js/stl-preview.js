@@ -70,6 +70,31 @@
   // заморозка, а збережений вибір повертається при новому відкритті.
   const SPEED_STORAGE_KEY = "stl-preview-spin-speed";
 
+  // Розмір панелі теж запам'ятовується, і дефолт тут — РОЗГОРНУТА (аудит
+  // 05.09.26, UX 1.5). STL-прев'ю — головний інструмент звірки на видачі
+  // (CLAUDE.md §2, §9.4): оператор відкриває його на кожну коронку і щоразу
+  // мусив тиснути «розгорнути». На 300×240 сусідні анатомії не розрізняються,
+  // тож маленька панель — це і зайвий клік, і ризик видати не ту роботу.
+  const MAX_STORAGE_KEY = "stl-preview-max";
+
+  function loadMaxPreference() {
+    try {
+      const raw = window.localStorage.getItem(MAX_STORAGE_KEY);
+      if (raw === null) return true; // за замовчуванням — на весь екран
+      return raw === "1";
+    } catch (_) {
+      return true; // приватний режим — поводимось як із дефолтом
+    }
+  }
+
+  function saveMaxPreference(on) {
+    try {
+      window.localStorage.setItem(MAX_STORAGE_KEY, on ? "1" : "0");
+    } catch (_) {
+      /* сховище недоступне — просто не запам'ятаємо цю сесію */
+    }
+  }
+
   function loadSavedSpeed() {
     try {
       const raw = window.localStorage.getItem(SPEED_STORAGE_KEY);
@@ -153,10 +178,13 @@
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
     maxBtn.addEventListener("click", () => {
       const on = state.panelEl.classList.toggle("is-max");
-      maxBtn.setAttribute("aria-label", on ? "Згорнути" : "Розгорнути на весь екран");
-      maxBtn.title = maxBtn.getAttribute("aria-label");
+      syncMaxButton(on);
+      // Свідомий вибір кнопкою — запам'ятовуємо. Вихід через Esc НЕ пишеться:
+      // це разова дія «згорнути зараз», а не зміна звички.
+      saveMaxPreference(on);
       resizeRenderer();
     });
+    state.maxBtnEl = maxBtn;
     head.appendChild(maxBtn);
 
     const closeBtn = document.createElement("button");
@@ -601,6 +629,12 @@
     panel.style.top = `${top}px`;
   }
 
+  function syncMaxButton(on) {
+    if (!state.maxBtnEl) return;
+    state.maxBtnEl.setAttribute("aria-label", on ? "Згорнути" : "Розгорнути на весь екран");
+    state.maxBtnEl.title = state.maxBtnEl.getAttribute("aria-label");
+  }
+
   function openPanel(triggerEl, token) {
     ensurePanel();
 
@@ -637,6 +671,12 @@
     }
 
     state.filesEl.innerHTML = "";
+    // Розмір — такий, яким оператор лишив його минулого разу (дефолт: на весь
+    // екран). Ставимо ДО positionPanel: у розгорнутому стані панель займає
+    // екран і рахувати позицію біля рядка не треба.
+    const wantMax = loadMaxPreference();
+    state.panelEl.classList.toggle("is-max", wantMax);
+    syncMaxButton(wantMax);
     positionPanel(triggerEl);
     state.panelEl.hidden = false;
     state.open = true;
@@ -718,6 +758,7 @@
     if (event.key !== "Escape" || !state.open) return;
     if (state.panelEl && state.panelEl.classList.contains("is-max")) {
       state.panelEl.classList.remove("is-max");
+      syncMaxButton(false);
       resizeRenderer();
       return;
     }

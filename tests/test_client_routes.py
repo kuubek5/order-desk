@@ -255,7 +255,7 @@ class TestBindClientFolder:
             client = self._client(db)
             clients_router_mod.bind_client_folder(
                 request=_request(user.id), client_id=client.id,
-                export_folder_name="  Басараб Лаб  ", db=db,
+                export_folder_name="  Басараб Лаб  ", return_to="", db=db,
             )
             alias = db.query(ClientNameAlias).one()
             assert alias.sheet_name == "Басараб"
@@ -270,9 +270,9 @@ class TestBindClientFolder:
             user = _operator(db)
             client = self._client(db)
             clients_router_mod.bind_client_folder(request=_request(user.id), client_id=client.id,
-                                   export_folder_name="Стара", db=db)
+                                   export_folder_name="Стара", return_to="", db=db)
             clients_router_mod.bind_client_folder(request=_request(user.id), client_id=client.id,
-                                   export_folder_name="Нова", db=db)
+                                   export_folder_name="Нова", return_to="", db=db)
             alias = db.query(ClientNameAlias).one()          # not a second row
             assert alias.export_folder_name == "Нова"
 
@@ -284,10 +284,39 @@ class TestBindClientFolder:
             user = _operator(db)
             client = self._client(db)
             clients_router_mod.bind_client_folder(request=_request(user.id), client_id=client.id,
-                                   export_folder_name="Басараб Лаб", db=db)
+                                   export_folder_name="Басараб Лаб", return_to="", db=db)
             clients_router_mod.bind_client_folder(request=_request(user.id), client_id=client.id,
-                                   export_folder_name="", db=db)
+                                   export_folder_name="", return_to="", db=db)
             assert db.query(ClientNameAlias).count() == 0
+
+    def test_binding_returns_to_the_handout_day_it_came_from(self):
+        """«Прив'язати папку» на видачі вело на картку клієнта і лишало там:
+        оператор мусив шукати свій день заново (аудит 05.09.26, UX 1.6)."""
+        engine = _database()
+        with Session(engine) as db:
+            user = _operator(db)
+            client = self._client(db)
+            response = clients_router_mod.bind_client_folder(
+                request=_request(user.id), client_id=client.id,
+                export_folder_name="Басараб Лаб",
+                return_to="/handout?source=email&day=05.09.26", db=db,
+            )
+            assert response.status_code == 303
+            assert response.headers["location"] == "/handout?source=email&day=05.09.26"
+
+    def test_return_to_refuses_an_external_address(self):
+        """Значення приходить із URL, тож будь-хто може його підмінити. Чужий
+        хост зробив би внутрішню кнопку відкритим редіректом."""
+        engine = _database()
+        with Session(engine) as db:
+            user = _operator(db)
+            client = self._client(db)
+            for hostile in ("//evil.example", "https://evil.example/x", "javascript:alert(1)"):
+                response = clients_router_mod.bind_client_folder(
+                    request=_request(user.id), client_id=client.id,
+                    export_folder_name="Басараб Лаб", return_to=hostile, db=db,
+                )
+                assert response.headers["location"] == f"/clients/{client.id}?saved=1"
 
     def test_requires_authentication(self):
         engine = _database()
@@ -295,7 +324,7 @@ class TestBindClientFolder:
             client = self._client(db)
             response = clients_router_mod.bind_client_folder(
                 request=_request(None), client_id=client.id,
-                export_folder_name="Басараб", db=db,
+                export_folder_name="Басараб", return_to="", db=db,
             )
         assert isinstance(response, RedirectResponse)
 
@@ -305,7 +334,7 @@ class TestBindClientFolder:
             user = _operator(db)
             with pytest.raises(HTTPException) as exc:
                 clients_router_mod.bind_client_folder(request=_request(user.id), client_id=999,
-                                       export_folder_name="X", db=db)
+                                       export_folder_name="X", return_to="", db=db)
             assert exc.value.status_code == 404
 
 
@@ -403,7 +432,7 @@ class TestClientsMasterScreen:
             _, unbound = self._seed(db)
             ctx = clients_router_mod.bind_client_folder(
                 request=_request(user.id, htmx=True), client_id=unbound.id,
-                export_folder_name="Krivovid", db=db,
+                export_folder_name="Krivovid", return_to="", db=db,
             )
         assert ctx["bound_folder"] == "Krivovid"
         assert ctx["swap_list_item"] is True and ctx["bound_now"] is True

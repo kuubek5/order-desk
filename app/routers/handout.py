@@ -385,6 +385,12 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             # їде контекстом, а не читається в шаблоні.
             "handout_layout": (user.handout_layout or "") if user else "",
             "unbound_count": unbound_count,
+            # Куди повернути оператора після «Прив'язати папку»: рівно той
+            # самий день і фільтр джерела, на яких він стоїть (аудит 05.09.26,
+            # UX 1.6). Без цього прив'язка викидала його на список усіх днів.
+            "handout_return_to": handout_back_url(
+                source, selected_day.strftime("%d.%m.%y") if selected_day else ""
+            ),
     }
 
 
