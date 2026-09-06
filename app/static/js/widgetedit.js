@@ -18,7 +18,7 @@
   var LS_KEY = "widgetEditMode";
 
   function lsSet(value) {
-    try { localStorage.setItem(LS_KEY, value ? "1" : "0"); } catch (e) {}
+    KMStore.set(LS_KEY, value ? "1" : "0");
   }
 
   function isOn() {

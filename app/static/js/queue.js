@@ -562,9 +562,12 @@ document.addEventListener("click", (event) => {
   const LS_WIDTHS = "queueColWidths";
   const MIN_COL = 60;
 
-  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
-  function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+  // Через KMStore: він додає префікс kuubmill:v1: і сам переживає приватний
+  // режим (див. storage.js). Локальні обгортки лишаються — решта файлу вже
+  // написана під lsGet/lsSet/lsDel.
+  function lsGet(k) { return KMStore.get(k); }
+  function lsSet(k, v) { KMStore.set(k, v); }
+  function lsDel(k) { KMStore.remove(k); }
 
   // Live lookup — the queue table is re-rendered by the 15s #queue-rows poll,
   // so a reference captured once would go stale. Every helper re-queries.
@@ -773,6 +776,26 @@ document.addEventListener("htmx:afterSwap", (event) => {
     event.preventDefault();
     open(link.getAttribute("data-order-detail"));
   });
+
+  // Клавіатура для рядків архіву («Аркуш»): <tr data-order-detail tabindex="0">.
+  // Чому не справжня <button>/<a>: ціллю є ВЕСЬ рядок (оператор влучає будь-де),
+  // а <tr> не можна перетворити на кнопку чи посилання, не зламавши сітку
+  // таблиці — рядок перестане читатись як рядок, і зникнуть заголовки колонок,
+  // якими читалка озвучує клітинки. Тому семантика лишається табличною, а
+  // активація з клавіатури дописується сюди — поруч із кліком, одним слухачем.
+  // У черзі/паспорті ті самі data-order-detail висять на справжніх <a>: там
+  // Enter уже працює нативно, тому їх пропускаємо, щоб не відкрити панель двічі.
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " " && event.key !== "Spacebar") return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = event.target.closest && event.target.closest("[data-order-detail]");
+    if (!link) return;
+    const tag = link.tagName;
+    if (tag === "A" || tag === "BUTTON") return;
+    // Пробіл на сфокусованому рядку інакше прогорне сторінку під панеллю.
+    event.preventDefault();
+    open(link.getAttribute("data-order-detail"));
+  });
   if (closeBtn) closeBtn.addEventListener("click", close);
   if (backdrop) backdrop.addEventListener("click", close);
   document.addEventListener("keydown", (event) => {
@@ -880,7 +903,7 @@ const FURNACE_SIDE_KEY = "furnaceSideOpen";
 document.addEventListener("click", (event) => {
   if (!event.target.closest("[data-furnace-side-toggle]")) return;
   const open = document.body.classList.toggle("furnace-side-open");
-  try { localStorage.setItem(FURNACE_SIDE_KEY, open ? "1" : "0"); } catch (e) { /* приватний режим */ }
+  KMStore.set(FURNACE_SIDE_KEY, open ? "1" : "0"); // приватний режим ковтає сам KMStore
   document.querySelectorAll("[data-furnace-side-toggle]").forEach((btn) => {
     btn.setAttribute("aria-expanded", String(open));
   });
@@ -904,7 +927,7 @@ const MACHINE_SIDE_KEY = "machineSideOpen";
 document.addEventListener("click", (event) => {
   if (!event.target.closest("[data-machine-side-toggle]")) return;
   const open = document.body.classList.toggle("machine-side-open");
-  try { localStorage.setItem(MACHINE_SIDE_KEY, open ? "1" : "0"); } catch (e) { /* приватний режим */ }
+  KMStore.set(MACHINE_SIDE_KEY, open ? "1" : "0"); // приватний режим ковтає сам KMStore
   document.querySelectorAll("[data-machine-side-toggle]").forEach((btn) => {
     btn.setAttribute("aria-expanded", String(open));
   });
@@ -926,8 +949,8 @@ document.addEventListener("htmx:afterSettle", (event) => {
 // «влазить» сам. Клас живе на <body>, тому переживає 15с-свап #queue-rows.
 (function () {
   const KEY = "qsideCollapsed";
-  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function lsGet(k) { return KMStore.get(k); }
+  function lsSet(k, v) { KMStore.set(k, v); }
 
   function apply(on) {
     document.body.classList.toggle("qside-collapsed", on);

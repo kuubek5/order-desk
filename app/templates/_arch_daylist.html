@@ -21,6 +21,11 @@
         </thead>
         <tbody>
             {% for order in day_orders %}
+            {# tabindex="0" лишається на <tr>, а не переїжджає на <button>/<a>:
+               клікабельний тут увесь рядок, і перетворення <tr> на кнопку
+               зламало б сітку таблиці для читалки (зникли б заголовки колонок).
+               Активацію з клавіатури (Enter/Пробіл) робить спільний слухач у
+               queue.js — той самий, що обробляє клік по [data-order-detail]. #}
             <tr data-order-detail="{{ order.id }}" tabindex="0">
                 <td class="c-num mono">{{ loop.index }}</td>
                 <td class="c-nar mono">{{ order.work_order_no or '—' }}</td>

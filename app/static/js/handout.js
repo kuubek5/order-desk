@@ -37,22 +37,14 @@ document.addEventListener("click", (event) => {
   // один бік — ось другий.
   if (btn.hasAttribute("data-layout-set")) return;
   const mode = btn.dataset.viewMode === "tiles" ? "tiles" : "rows";
-  try {
-    window.localStorage.setItem(HANDOUT_VIEW_KEY, mode);
-  } catch (_) {
-    /* private mode / storage disabled — the toggle still works this session */
-  }
+  // Через KMStore: префікс kuubmill:v1: і ковтання приватного режиму — там.
+  KMStore.set(HANDOUT_VIEW_KEY, mode);
   applyHandoutView(mode);
 });
 
 function restoreHandoutView() {
   if (!document.querySelector("[data-view-root]")) return;
-  let saved = "rows";
-  try {
-    saved = window.localStorage.getItem(HANDOUT_VIEW_KEY) || "rows";
-  } catch (_) {
-    /* ignore */
-  }
+  const saved = KMStore.get(HANDOUT_VIEW_KEY) || "rows";
   applyHandoutView(saved);
 }
 
@@ -111,26 +103,17 @@ function handoutCollapseKey(card) {
 function saveHandoutCollapsed(card, collapsed) {
   const key = handoutCollapseKey(card);
   if (!key) return;
-  try {
-    // Записуємо тільки згорнуті. Розгорнута картка — стан за замовчуванням,
-    // і зберігати його означало б засмічувати сховище на кожного клієнта.
-    if (collapsed) window.localStorage.setItem(key, "1");
-    else window.localStorage.removeItem(key);
-  } catch (_) {
-    /* private mode / storage disabled */
-  }
+  // Записуємо тільки згорнуті. Розгорнута картка — стан за замовчуванням,
+  // і зберігати його означало б засмічувати сховище на кожного клієнта.
+  if (collapsed) KMStore.set(key, "1");
+  else KMStore.remove(key);
 }
 
 function restoreHandoutCollapsed() {
   document.querySelectorAll(".ccard[data-client]").forEach((card) => {
     const key = handoutCollapseKey(card);
     if (!key) return;
-    let saved = null;
-    try {
-      saved = window.localStorage.getItem(key);
-    } catch (_) {
-      return;
-    }
+    const saved = KMStore.get(key);
     // Нічого не збережено — лишаємо серверний стан (виданий клієнт приходить
     // згорнутим сам).
     if (saved === null) return;

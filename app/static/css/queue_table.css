@@ -148,7 +148,9 @@
 }
 
 .copy-button.copy-success {
-  color: var(--color-success, #83c995);
+  /* Без запасного хардкоду: --color-success оголошено і в tokens.css, і в
+     theme-forge.css, тож fallback ніколи не спрацьовував, а хардкод лишався. */
+  color: var(--color-success);
   animation: copyPop 0.32s ease;
 }
 @keyframes copyPop {
@@ -223,22 +225,26 @@
   color: var(--color-text);
 }
 
+/* Банери синку — на семантичних токенах станів (--ok / --alarm / --warn),
+   а не на власних трьох кольорах: банер «синк пройшов» мусить бути того ж
+   зеленого/бірюзового, що й решта успіху в поточній темі, інакше на Amber
+   Forge він лишався б холодним острівцем із темної теми. */
 .sync-notice-success {
-  background: rgba(131, 201, 149, 0.1);
-  border-color: rgba(131, 201, 149, 0.35);
+  background: rgba(var(--ok-rgb), 0.1);
+  border-color: rgba(var(--ok-rgb), 0.35);
 }
 
 .sync-notice-error {
-  background: rgba(232, 90, 90, 0.1);
-  border-color: rgba(232, 90, 90, 0.35);
-  color: #f1b2b2;
+  background: rgba(var(--alarm-rgb), 0.1);
+  border-color: rgba(var(--alarm-rgb), 0.35);
+  color: var(--alarm-ink);
 }
 
 /* Проактивний банер масового видалення: попередження + кнопка «Звірити
    видалення». Текст ліворуч, дія праворуч. Бурштиновий (увага, не помилка). */
 .sync-notice-warn {
-  background: rgba(240, 163, 94, 0.1);
-  border-color: rgba(240, 163, 94, 0.4);
+  background: rgba(var(--warn-rgb), 0.1);
+  border-color: rgba(var(--warn-rgb), 0.4);
 }
 .mass-vanish-banner {
   gap: var(--space-4);

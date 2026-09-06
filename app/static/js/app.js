@@ -347,11 +347,8 @@ document.addEventListener("click", (event) => {
   const btn = event.target.closest("[data-rail-collapse]");
   if (!btn) return;
   const collapsed = document.body.classList.toggle("rail-collapsed");
-  try {
-    localStorage.setItem("railCollapsed", collapsed ? "1" : "0");
-  } catch (_error) {
-    /* private mode / storage disabled — toggle still works for this page */
-  }
+  // KMStore сам ковтає приватний режим і сам чіпляє префікс kuubmill:v1:.
+  KMStore.set("railCollapsed", collapsed ? "1" : "0");
   btn.setAttribute("aria-label", collapsed ? "Розгорнути меню" : "Згорнути меню");
   btn.setAttribute("title", collapsed ? "Розгорнути меню" : "Згорнути меню");
 });

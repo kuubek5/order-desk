@@ -493,12 +493,12 @@
     // щоразу починати з «Профілю». Клавіатура: Enter/Space на підпису.
     var tabs = document.querySelectorAll('.acc-tab-input');
     try {
-      var last = localStorage.getItem('accTab');
+      var last = KMStore.get('accTab');
       if (last && document.getElementById(last)) document.getElementById(last).checked = true;
     } catch (e) {}
     tabs.forEach(function(t){
       t.addEventListener('change', function(){
-        try { localStorage.setItem('accTab', t.id); } catch (e) {}
+        KMStore.set('accTab', t.id);
       });
     });
     document.querySelectorAll('.acc-tabbar label').forEach(function(l){

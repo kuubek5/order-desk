@@ -55,44 +55,29 @@
     return colorCache;
   }
 
-  // Сховище може бути вимкнене (приватний режим) — тоді просто працюємо на
-  // дефолті, а не падаємо і не втрачаємо прев'ю.
+  // Сховище — через KMStore (storage.js): він додає спільний префікс
+  // kuubmill:v1: і сам ковтає вимкнене сховище (приватний режим), повертаючи
+  // null. Тут лишається тільки розбір значення й дефолти.
   function readBool(key, fallback) {
-    try {
-      var raw = window.localStorage.getItem(key);
-      if (raw === null) return fallback;
-      return raw === "1";
-    } catch (_) {
-      return fallback;
-    }
+    var raw = KMStore.get(key);
+    if (raw === null) return fallback;
+    return raw === "1";
   }
 
   function writeBool(key, on) {
-    try {
-      window.localStorage.setItem(key, on ? "1" : "0");
-    } catch (_) {
-      /* сховище недоступне — просто не запам'ятаємо цю сесію */
-    }
+    KMStore.set(key, on ? "1" : "0");
   }
 
   function readNumber(key, min, max) {
-    try {
-      var raw = window.localStorage.getItem(key);
-      if (raw === null) return null;
-      var v = Number(raw);
-      if (!Number.isFinite(v)) return null;
-      return Math.min(max, Math.max(min, v));
-    } catch (_) {
-      return null;
-    }
+    var raw = KMStore.get(key);
+    if (raw === null) return null;
+    var v = Number(raw);
+    if (!Number.isFinite(v)) return null;
+    return Math.min(max, Math.max(min, v));
   }
 
   function writeNumber(key, v) {
-    try {
-      window.localStorage.setItem(key, String(v));
-    } catch (_) {
-      /* сховище недоступне — просто не запам'ятаємо цю сесію */
-    }
+    KMStore.set(key, String(v));
   }
 
   // Один рендерер на полотно: браузер тримає лише ~16 WebGL-контекстів

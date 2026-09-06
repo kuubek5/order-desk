@@ -155,13 +155,13 @@ document.addEventListener("input", (event) => {
   }
 
   // Honour a cooldown left over from a recent submit (page reloaded after sync).
-  const at = parseInt(localStorage.getItem(KEY) || "0", 10);
+  const at = parseInt(KMStore.get(KEY) || "0", 10);
   const elapsed = Date.now() - at;
   if (at && elapsed >= 0 && elapsed < cooldownMs) lock(cooldownMs - elapsed);
 
   form.addEventListener("submit", (event) => {
     if (btn.disabled) { event.preventDefault(); return; } // locked → ignore
-    localStorage.setItem(KEY, String(Date.now()));
+    KMStore.set(KEY, String(Date.now()));
     btn.classList.add("is-syncing");
     btn.disabled = true; // submission already fired; this just blocks a 2nd click
     if (label) label.textContent = "Перевіряю…";

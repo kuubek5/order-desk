@@ -493,7 +493,10 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
    видимий, бо hover там нема. */
 .q2 .queue-row:hover .sum3d-clear{opacity:1}
 .q2 .sum3d-clear:focus-visible{opacity:1;outline:2px solid var(--control-edge);outline-offset:1px}
-.q2 .sum3d-clear:hover{color:var(--color-overdue,#e5736a);background:rgba(229,115,106,.12)}
+/* Без запасного хардкоду і на токенній підкладці: --color-overdue/--alarm-rgb
+   є в обох темах, тож fallback ніколи не спрацьовував, а фон із власного
+   rgba(229,115,106) не їхав за темою разом із текстом. */
+.q2 .sum3d-clear:hover{color:var(--color-overdue);background:rgba(var(--alarm-rgb),.12)}
 @media (hover:none){.q2 .sum3d-clear{opacity:.55}}
 .q2 .folder-link{margin-left:6px;color:var(--ink-3);display:inline-flex;vertical-align:middle}
 .q2 .folder-link svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}

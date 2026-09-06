@@ -41,8 +41,13 @@ VENDORED = {"three-0.128.0.min.js", "STLLoader-0.128.0.js", "htmx-1.9.10.min.js"
 # Порядок значущий: класичні скрипти з defer виконуються саме так, і пізніший
 # бачить те, що оголосив попередній.
 BASE_HTML_SCRIPTS = [
-    # Лічильник затримок стоїть першим навмисно: він має підписатись на
-    # htmx-події раніше за решту скриптів, інакше проґавить ранні свапи.
+    # storage.js — найперший і ЄДИНИЙ без defer: анти-мигтіння в <body>
+    # виконується раніше за будь-який defer, а йому теж потрібен KMStore
+    # (префікс ключів localStorage). Свідома зміна від 06.09.26.
+    "/static/js/storage.js",
+    # Лічильник затримок стоїть першим серед defer навмисно: він має
+    # підписатись на htmx-події раніше за решту скриптів, інакше проґавить
+    # ранні свапи.
     "/static/js/perf.js",
     "/static/js/app.js",
     "/static/js/queue.js",
@@ -221,6 +226,33 @@ def test_global_scripts_have_no_duplicate_top_level_declarations(tmp_path):
     assert result.returncode == 0, (
         "Склеєні глобальні скрипти не парсяться — найімовірніше одне ім'я "
         "оголошено у двох файлах:\n" + result.stderr.strip()
+    )
+
+
+# Прямий доступ до localStorage повз KMStore. Дозволений рівно в storage.js —
+# там він і живе.
+_RAW_STORAGE = re.compile(r"localStorage\s*\.\s*(?:get|set|remove)Item")
+
+
+def test_localstorage_goes_through_the_versioned_helper():
+    """Ключі localStorage будує лише KMStore (storage.js), з префіксом v1.
+
+    Літерал ключа, скопійований у сусідній файл, розходиться на першій же
+    правці — і настройка оператора тихо «зникає», бо пишеться під одним
+    ім'ям, а читається під іншим. Тому єдиний вхід до сховища — KMStore.set /
+    .get / .remove; префікс `kuubmill:v1:` додає рівно одне місце."""
+    offenders = []
+    for path in sorted(STATIC_JS.glob("*.js")):
+        if path.name in VENDORED or path.name == "storage.js":
+            continue
+        if _RAW_STORAGE.search(path.read_text(encoding="utf-8")):
+            offenders.append(path.name)
+    for path in sorted(TEMPLATES_DIR.rglob("*.html")):
+        if _RAW_STORAGE.search(path.read_text(encoding="utf-8")):
+            offenders.append(path.name)
+    assert not offenders, (
+        "Прямий localStorage повз KMStore (ключ лишиться без префікса "
+        "kuubmill:v1: і не мігрує): " + ", ".join(offenders)
     )
 
 

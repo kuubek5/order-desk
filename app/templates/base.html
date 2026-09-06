@@ -46,9 +46,15 @@
     {# Форма зворотного зв'язку (маячок + панель). Ізольований компонент на
        токенах — тему не знає, їде за нею сама; місце в каскаді некритичне. #}
     <link rel="stylesheet" href="/static/css/feedback.css?v={{ static_ver('css/feedback.css') }}">
+    {# Ключі localStorage (префікс kuubmill:v1:) — єдиною функцією KMStore.
+       БЕЗ defer і найпершим свідомо: анти-мигтіння нижче в <body> виконується
+       раніше за будь-який defer, а йому теж треба будувати ключ через ту саму
+       функцію, інакше префікс розповзеться літералами. Файл крихітний, тож
+       блокування — це один локальний запит із кешу. #}
+    <script src="/static/js/storage.js?v={{ static_ver('js/storage.js') }}"></script>
     {# Лічильник затримок: міряє те, чого сервер не бачить — свап і
-       перемальовку. Стоїть ПЕРШИМ, щоб встигнути підписатись на htmx-події
-       раніше за решту скриптів. #}
+       перемальовку. Стоїть ПЕРШИМ СЕРЕД defer, щоб встигнути підписатись на
+       htmx-події раніше за решту скриптів. #}
     <script src="/static/js/perf.js?v={{ static_ver('js/perf.js') }}" defer></script>
     <script src="/static/js/app.js?v={{ static_ver('js/app.js') }}" defer></script>
     <script src="/static/js/queue.js?v={{ static_ver('js/queue.js') }}" defer></script>
@@ -77,7 +83,7 @@
    малювання»; тепер значення вже в розмітці, тому мигтіти нема чому,
    і набір їде за оператором, а не за браузером. #}
 <body data-perf-id="{{ perf_id() }}"{% if _up.queue_density %} data-density="{{ _up.queue_density }}"{% endif %}{% if _up.queue_mat_style %} data-matstyle="{{ _up.queue_mat_style }}"{% endif %}>
-    <script>try{if(localStorage.getItem('railCollapsed')==='1')document.body.classList.add('rail-collapsed');if(localStorage.getItem('layoutEditMode')==='1')document.body.classList.add('layout-edit');if(localStorage.getItem('widgetEditMode')==='1')document.body.classList.add('widget-edit');if(localStorage.getItem('furnaceSideOpen')==='1')document.body.classList.add('furnace-side-open');if(localStorage.getItem('machineSideOpen')==='1')document.body.classList.add('machine-side-open');if(localStorage.getItem('qsideCollapsed')==='1')document.body.classList.add('qside-collapsed');}catch(e){}</script>
+    <script>try{var S=window.KMStore;if(S){if(S.get('railCollapsed')==='1')document.body.classList.add('rail-collapsed');if(S.get('layoutEditMode')==='1')document.body.classList.add('layout-edit');if(S.get('widgetEditMode')==='1')document.body.classList.add('widget-edit');if(S.get('furnaceSideOpen')==='1')document.body.classList.add('furnace-side-open');if(S.get('machineSideOpen')==='1')document.body.classList.add('machine-side-open');if(S.get('qsideCollapsed')==='1')document.body.classList.add('qside-collapsed');}}catch(e){}</script>
     {% include "_backdrop.html" %}
     {# SVG-фільтр «рідкого скла» для перемикача скачування (див. .dl-seg у
        base.css). Визначається раз на сторінку, бо тогл є і в /settings, і в

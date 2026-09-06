@@ -23,6 +23,8 @@
             </thead>
             <tbody>
                 {% for r in results %}
+                {# Див. _arch_daylist.html: рядок лишається <tr>, Enter/Пробіл
+                   ловить спільний слухач [data-order-detail] у queue.js. #}
                 <tr data-order-detail="{{ r.order.id }}" tabindex="0">
                     <td class="c-date mono">{{ r.date_label }}</td>
                     <td class="c-nar mono">{{ r.order.work_order_no or '—' }}</td>

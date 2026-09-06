@@ -48,7 +48,12 @@
         {# Під кожним числом — його ж пікселі з табло, у рідному масштабі.
            Це не прикраса: поки значення читається з картинки, останнє слово
            лишається за оком оператора, і доказ має стояти впритул до числа,
-           а не ховатись у «деталях». #}
+           а не ховатись у «деталях».
+
+           alt="" свідомо: смужка — доказ ДЛЯ ОКА, а сам зміст (залишок,
+           температура) уже стоїть текстом поруч. З осмисленим alt читалка
+           озвучувала б те саме число двічі, а перевірити пікселі на слух
+           однаково неможливо — тож для читалки картинка декоративна. #}
         <div class="fu-nums">
             <div class="fu-num">
                 <span class="fu-num-label">До кінця програми</span>
@@ -57,7 +62,7 @@
                 <span class="fu-num-note">буде о {{ state.done_at.strftime('%H:%M') }}</span>
                 {% endif %}
                 <img class="fu-eye" src="/furnaces/{{ card.key }}/crop/srok.png?t={{ stamp }}"
-                     alt="Лічильник залишку програми на табло печі" loading="lazy">
+                     alt="" loading="lazy">
             </div>
             <div class="fu-num">
                 <span class="fu-num-label">Температура</span>
@@ -66,7 +71,7 @@
                 <span class="fu-num-note mono">{{ state.reading.command }}</span>
                 {% endif %}
                 <img class="fu-eye" src="/furnaces/{{ card.key }}/crop/temp.png?t={{ stamp }}"
-                     alt="Температура на табло печі" loading="lazy">
+                     alt="" loading="lazy">
             </div>
         </div>
 
