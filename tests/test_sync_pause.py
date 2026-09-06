@@ -14,7 +14,6 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-import app.web as web
 from app.routers import orders as orders_router_mod
 from app.routers import queue as queue_router_mod
 from app import sync_control
