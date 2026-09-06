@@ -5,7 +5,7 @@ import asyncio
 import json
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from starlette.datastructures import Headers
 from sqlalchemy import create_engine, select
@@ -56,8 +56,7 @@ def _order(db, **kw):
 
 
 def _run_sum3d(db, user, order, value):
-    with patch.object(orders_router_mod, "write_sheet_fields", return_value=None), \
-         patch.object(orders_router_mod, "write_rework_sum3d_fields", return_value=None), \
+    with patch.object(orders_router_mod, "await_on_writeback", new_callable=AsyncMock, return_value=None), \
          patch.object(orders_router_mod, "attach_export_folder_uris"), \
          patch.object(orders_router_mod, "attach_job_code_folder_uris"), \
          patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
@@ -66,7 +65,7 @@ def _run_sum3d(db, user, order, value):
 
 
 def _run_status(db, user, order, status):
-    with patch.object(orders_router_mod, "write_sheet_fields", return_value=None), \
+    with patch.object(orders_router_mod, "await_on_writeback", new_callable=AsyncMock, return_value=None), \
          patch.object(orders_router_mod, "attach_export_folder_uris"), \
          patch.object(orders_router_mod, "attach_job_code_folder_uris"), \
          patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
@@ -145,10 +144,10 @@ def test_log_action_helper_stringifies_values():
 
 
 def _run_undo(db, user, action_id):
-    with patch.object(orders_router_mod, "write_sheet_fields", return_value=None), \
-         patch.object(orders_router_mod, "write_rework_sum3d_fields", return_value=None):
-        return asyncio.run(orders_router_mod.undo_action(
-            request=_request(user.id), action_id=action_id, db=db))
+    with patch.object(orders_router_mod, "await_on_writeback", new_callable=AsyncMock, return_value=None):
+        # Роут навмисно синхронний: запис у таблицю не має жити на event loop.
+        return orders_router_mod.undo_action(
+            request=_request(user.id), action_id=action_id, db=db)
 
 
 def test_undo_sum3d_reverts_value_letter_and_status():
@@ -245,10 +244,8 @@ def test_undo_logs_an_undo_action():
 
 
 def _run_undo_last(db, user):
-    with patch.object(orders_router_mod, "write_sheet_fields", return_value=None), \
-         patch.object(orders_router_mod, "write_rework_sum3d_fields", return_value=None), \
-         patch.object(orders_router_mod, "write_calculated_cell", return_value=None):
-        return asyncio.run(orders_router_mod.undo_last_action(request=_request(user.id), db=db))
+    with patch.object(orders_router_mod, "await_on_writeback", new_callable=AsyncMock, return_value=None):
+        return orders_router_mod.undo_last_action(request=_request(user.id), db=db)
 
 
 def test_undo_last_reverts_most_recent_action():
@@ -306,9 +303,7 @@ def test_undo_last_only_sees_own_actions():
 
 
 def _run_redo_last(db, user):
-    with patch.object(orders_router_mod, "write_sheet_fields", return_value=None), \
-         patch.object(orders_router_mod, "write_rework_sum3d_fields", return_value=None), \
-         patch.object(orders_router_mod, "write_calculated_cell", return_value=None):
+    with patch.object(orders_router_mod, "await_on_writeback", new_callable=AsyncMock, return_value=None):
         return asyncio.run(orders_router_mod.redo_last_action(request=_request(user.id), db=db))
 
 
@@ -372,7 +367,7 @@ def test_redo_with_nothing_to_redo_is_noop():
 
 
 def _run_set_operator(db, user, order, value):
-    with patch.object(orders_router_mod, "write_calculated_cell", return_value=None), \
+    with patch.object(orders_router_mod, "await_on_writeback", new_callable=AsyncMock, return_value=None), \
          patch.object(orders_router_mod, "attach_export_folder_uris"), \
          patch.object(orders_router_mod, "attach_job_code_folder_uris"), \
          patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):

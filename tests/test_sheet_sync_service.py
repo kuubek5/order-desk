@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import gspread
@@ -11,6 +12,7 @@ from app.db import Base
 from app.models import Order, SyncLog
 from app.sheet_sync_service import (
     SheetSyncBusyError,
+    mass_vanish_pending,
     SheetSyncConfigurationError,
     SheetSyncError,
     _sync_lock,
@@ -658,3 +660,133 @@ def test_mass_vanish_pending_records_and_clears():
     assert mass_vanish_pending().get("01.01.30") == 12
     _record_mass_vanish("01.01.30", 0)
     assert "01.01.30" not in mass_vanish_pending()
+
+
+# --- Запобіжник на «вкладка зникла цілком» (аудит 05.09.26, синк H-3/H-4) ----
+
+
+def _clear_vanish_state():
+    from app.sheet_sync_service import _mass_vanish_pending, _mass_vanish_lock
+
+    with _mass_vanish_lock:
+        _mass_vanish_pending.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_mass_vanish():
+    _clear_vanish_state()
+    yield
+    _clear_vanish_state()
+
+
+def _many_orphans(session, gone_tab, count=8):
+    for i in range(count):
+        session.add(Order(source="lab", sheet_tab=gone_tab, row_number=i + 1,
+                          work_order_no=f"9{i:03d}", status="нове"))
+    session.commit()
+
+
+def test_bulk_vanished_tab_is_held_not_archived(monkeypatch):
+    """Неповний листинг вкладок виглядає точно як «день видалили». Порядковий
+    синк має поріг >5 І >25%, а ця гілка не мала жодного — і цілі робочі дні
+    йшли в Архів, звідки самі не повертаються (фонове вікно їх не читає)."""
+    configured(monkeypatch)
+    today = business_today()
+    current = worksheet(today, "200")
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [current]
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
+
+    gone_tab = (today - timedelta(days=3)).strftime("%d.%m.%y")
+    with make_session() as session:
+        _many_orphans(session, gone_tab)
+
+        result = sync_google_sheets(session)
+
+        assert result.deleted == 0
+        assert session.scalars(
+            select(Order).where(Order.archived_at.isnot(None))
+        ).all() == []
+        logs = [log.message for log in session.scalars(select(SyncLog)).all()]
+        assert any("притримано архівацію" in message for message in logs)
+        # Банер бачить саме цю вкладку — і «Звірити видалення» цілиться в неї.
+        assert mass_vanish_pending().get(gone_tab) == 8
+
+
+def test_confirmed_tab_is_archived_while_its_neighbour_stays_protected(monkeypatch):
+    """«Звірити видалення» знімає поріг ЛИШЕ для підтверджених вкладок."""
+    configured(monkeypatch)
+    today = business_today()
+    current = worksheet(today, "200")
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [current]
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
+
+    confirmed_tab = (today - timedelta(days=3)).strftime("%d.%m.%y")
+    other_tab = (today - timedelta(days=4)).strftime("%d.%m.%y")
+    with make_session() as session:
+        _many_orphans(session, confirmed_tab, count=8)
+        _many_orphans(session, other_tab, count=8)
+
+        result = sync_google_sheets(
+            session, trigger="manual", force_reconcile_tabs={confirmed_tab}
+        )
+
+        archived_tabs = set(session.scalars(
+            select(Order.sheet_tab).where(Order.archived_at.isnot(None))
+        ).all())
+        assert archived_tabs == {confirmed_tab}
+        assert result.deleted == 8
+
+
+def test_listing_without_today_or_yesterday_archives_nothing(monkeypatch):
+    """Листинг без свіжої вкладки — це не «видалили дні», а недостовірна
+    відповідь (кеш/обрив проксі). Архівувати за нею не можна."""
+    configured(monkeypatch)
+    today = business_today()
+    stale = worksheet(today - timedelta(days=10), "old")
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [stale]
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
+
+    gone_tab = (today - timedelta(days=3)).strftime("%d.%m.%y")
+    with make_session() as session:
+        session.add(Order(source="lab", sheet_tab="seed", row_number=1, status="нове"))
+        session.add(Order(source="lab", sheet_tab=gone_tab, row_number=2,
+                          work_order_no="111", status="нове"))
+        session.commit()
+
+        result = sync_google_sheets(session)
+
+        assert result.deleted == 0
+        assert session.scalars(
+            select(Order).where(Order.archived_at.isnot(None))
+        ).all() == []
+
+
+def test_force_reconcile_flag_reaches_only_the_confirmed_tab(monkeypatch):
+    """Прапорець «я справді видалив пачку» більше не булевий на весь прогін:
+    сусідня вкладка, прочитана обрізано, лишається під захистом (синк H-4)."""
+    configured(monkeypatch)
+    today = business_today()
+    current = worksheet(today, "200")
+    yesterday = worksheet(today - timedelta(days=1), "201")
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [yesterday, current]
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
+
+    seen: dict[str, bool] = {}
+
+    def fake_sync_tab(session, tab, rows, **kwargs):
+        seen[tab] = kwargs["force_reconcile"]
+        return SimpleNamespace(created=0, updated=0, unchanged=0, deleted=0,
+                               held_mass_vanish=0)
+
+    monkeypatch.setattr("app.sheet_sync_service.sync_tab", fake_sync_tab)
+
+    with make_session() as session:
+        sync_google_sheets(
+            session, trigger="manual", force_reconcile_tabs={current.title}
+        )
+
+    assert seen == {current.title: True, yesterday.title: False}

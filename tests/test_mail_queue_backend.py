@@ -1010,7 +1010,12 @@ def test_restore_accepted_email_unwinds_order_and_files(monkeypatch):
     fake_ws = SimpleNamespace(id=1, title="15.08.26")
     monkeypatch.setattr(mail_router_mod, "get_worksheet_by_name", lambda ss, name: fake_ws)
     cleared = {}
-    monkeypatch.setattr(mail_router_mod, "clear_placeholder_row", lambda ws, row: cleared.setdefault("row", row))
+    # Стирання плейсхолдера тепер іде через identity-звірку рядка
+    # (`clear_order_row`, аудит 05.09.26, синк H-5).
+    monkeypatch.setattr(
+        mail_router_mod, "clear_order_row",
+        lambda ws, order: cleared.setdefault("row", order.row_number + 6) or True,
+    )
 
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)

@@ -8,6 +8,7 @@
 в SyncLog і повертається рядком, а не летить винятком в обличчя операторові.
 """
 
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 import logging
@@ -20,10 +21,11 @@ from app.parser import HEADER_ROWS
 from app.sheet_writer import (
     append_manual_work_rows,
     append_order_comment,
-    clear_placeholder_row,
+    clear_order_row,
     clear_row_fills,
     paint_row_fills,
     RowOccupiedError,
+    resolve_order_row,
     restore_order_row,
     write_calculated,
     write_order_fields,
@@ -144,6 +146,77 @@ def append_manual_rows_warm(
         return worksheet.title, rows
 
 
+# Скільки чекати на відповідь Google, перш ніж відпустити оператора. Запис із
+# черги пулу від цього не зникає — просто перестаємо тримати запит.
+_AWAIT_WRITE_TIMEOUT_SECONDS = 90
+
+
+async def await_on_writeback(fn, *args) -> str | None:
+    """Виконати запис у таблицю на воркері write-back і дочекатись результату,
+    НЕ блокуючи event loop.
+
+    До аудиту 05.09.26 роути `async def` викликали gspread прямо на event loop:
+    FastAPI виконує `async def` без threadpool, тож холодне відкриття таблиці
+    (~40 с на лаб-проксі) або сон `call_with_retry` після 429 (20/40/60 с)
+    заморожували ВЕСЬ застосунок — другий оператор бачив зависання, полл черги
+    стояв. Тут робота йде на єдиний теплий потік пулу (він же серіалізує
+    записи), а `await` віддає керування циклу подій.
+
+    Повертає рядок помилки або None — той самий контракт, що й у синхронних
+    `write_*`, щоб роут показав чесне «записано / не вдалось».
+    """
+    future = sheet_writeback_pool.submit(fn, *args)
+    try:
+        return await asyncio.wait_for(
+            asyncio.wrap_future(future), _AWAIT_WRITE_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
+        # Потік не переривається — запис лишається в черзі й, найпевніше,
+        # дійде. Кажемо саме це, а не «не вдалося».
+        logger.warning("Sheet write-back is taking longer than %ss", _AWAIT_WRITE_TIMEOUT_SECONDS)
+        return "таблиця не відповідає — запис лишився в черзі й може ще пройти"
+    except Exception as exc:  # noqa: BLE001 — помилка йде в тост, не в 500
+        logger.exception("Sheet write-back on the pool failed")
+        return str(exc) or "запис у таблицю не вдався"
+
+
+def write_sheet_fields_warm(order_id: int, fields: set[str]) -> str | None:
+    """`write_sheet_fields` на воркері: власна сесія (сесії SQLAlchemy не
+    потоко-безпечні), значення читаються з БД, тож викликач мусить спершу
+    закомітити свої зміни."""
+    with SessionLocal() as bg:
+        order = bg.get(Order, order_id)
+        if order is None:
+            return None
+        error = write_sheet_fields(bg, order, fields)
+        bg.commit()
+        return error
+
+
+def write_calculated_cell_warm(order_id: int, value: str) -> str | None:
+    """`write_calculated_cell` на воркері — див. `write_sheet_fields_warm`."""
+    with SessionLocal() as bg:
+        order = bg.get(Order, order_id)
+        if order is None:
+            return None
+        error = write_calculated_cell(bg, order, value)
+        bg.commit()
+        return error
+
+
+def write_rework_sum3d_fields_warm(
+    order_id: int, value: str, letter: str | None = None
+) -> str | None:
+    """`write_rework_sum3d_fields` на воркері — див. `write_sheet_fields_warm`."""
+    with SessionLocal() as bg:
+        order = bg.get(Order, order_id)
+        if order is None:
+            return None
+        error = write_rework_sum3d_fields(bg, order, value, letter)
+        bg.commit()
+        return error
+
+
 def write_sheet_fields_background(order_id: int, fields: set[str]) -> None:
     """Queue a sheet write-back on the shared writer so the request returns
     immediately. The DB is already committed by the caller; this mirrors the
@@ -216,7 +289,13 @@ def set_client_row_fill(db: Session, order: Order, *, blue: bool) -> str | None:
         worksheet = get_worksheet_by_name(spreadsheet, order.sheet_tab)
         if worksheet is None:
             return None
-        rows = [(worksheet.id, order.row_number + HEADER_ROWS)]
+        # Позицію звіряємо перед фарбуванням: після видалення рядка вище
+        # збережений row_number показує на СУСІДНЮ живу роботу, і «видано»
+        # проставилось би не тому клієнту (аудит 05.09.26, синк H-5).
+        row = resolve_order_row(worksheet, order)
+        if row is None:
+            return "рядок у таблиці не підтверджено — заливку не змінено"
+        rows = [(worksheet.id, row)]
         if blue:
             paint_row_fills(spreadsheet, rows)
         else:
@@ -258,7 +337,7 @@ def set_client_row_fill_background(order_id: int, *, blue: bool) -> None:
     sheet_writeback_pool.submit(worker)
 
 
-def clear_sheet_row_background(sheet_tab: str, row_number: int) -> None:
+def clear_sheet_row_background(order_id: int) -> None:
     """Blank a deleted order's row in the sheet, on the write-back worker.
 
     BLANK, never delete: removing a row in Google shifts every row below it up,
@@ -266,26 +345,103 @@ def clear_sheet_row_background(sheet_tab: str, row_number: int) -> None:
     exact corruption app/sync.py::_relink_moved_rows had to be written to
     repair). An all-empty row reads as free on the next sync, so nothing is
     re-imported and the neighbours keep their positions.
+
+    Takes an order_id, not (tab, row): blanking wipes A:K, so the row must be
+    confirmed to still hold THIS work. While the write sat in the pool queue a
+    technician may have deleted a row above it, and the stored position would
+    then point at someone else's live work (аудит 05.09.26, синк H-5).
     """
     def worker() -> None:
         try:
             with SessionLocal() as bg:
+                order = bg.get(Order, order_id)
+                if order is None or not order.sheet_tab or order.row_number is None:
+                    return
+                sheet_tab = order.sheet_tab
                 worksheet = get_worksheet_by_name(open_spreadsheet(db=bg), sheet_tab)
                 if worksheet is None:
                     logger.warning("Delete: sheet tab %s not found", sheet_tab)
                     return
-                clear_placeholder_row(worksheet, row_number + HEADER_ROWS)
+                if not clear_order_row(worksheet, order):
+                    bg.add(SyncLog(
+                        direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
+                        message=(
+                            f"order {order_id}: рядок не підтверджено — "
+                            "стирання пропущено, приберіть рядок у таблиці вручну"
+                        ),
+                    ))
+                    bg.commit()
+                    return
                 bg.add(
                     SyncLog(
                         direction="db_to_sheet", sheet_tab=sheet_tab, status="ok",
-                        message=f"видалено роботу: очищено рядок {row_number + HEADER_ROWS}",
+                        message=f"видалено роботу {order_id}: рядок очищено",
                     )
                 )
                 bg.commit()
         except Exception:
-            logger.exception("Clearing sheet row failed for %s row %s", sheet_tab, row_number)
+            logger.exception("Clearing sheet row failed for order %s", order_id)
 
     sheet_writeback_pool.submit(worker)
+
+
+def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
+    """Увесь запис однієї видачі клієнта — ОДНИМ завданням на воркері.
+
+    Раніше `issue_handout_group` робив це на event loop і по одній роботі:
+    холодне відкриття таблиці (~40 с) плюс ~4 виклики на кожну з N робіт —
+    «Видати 8 з 8» давало понад дві хвилини повністю замороженого застосунку
+    (аудит 05.09.26, синк C-2). Тут таблиця відкривається один раз на теплому
+    потоці, а біла заливка всіх рядків клієнта йде однією пакетною правкою.
+
+    `field_map`: id роботи → поля-маркери, які порахував роут (він же вже
+    закомітив статуси). Повертає перший рядок помилки або None.
+    """
+    if not field_map:
+        return None
+    error: str | None = None
+    with SessionLocal() as bg:
+        fill_rows: list[tuple[int, int]] = []
+        spreadsheet = None
+        for order_id, fields in field_map.items():
+            order = bg.get(Order, order_id)
+            if order is None:
+                continue
+            error = write_sheet_fields(bg, order, set(fields)) or error
+            if (
+                order.source != "sheet_client"
+                or not order.sheet_tab
+                or order.row_number is None
+            ):
+                continue
+            try:
+                if spreadsheet is None:
+                    spreadsheet = open_spreadsheet(db=bg)
+                worksheet = get_worksheet_by_name(spreadsheet, order.sheet_tab)
+                if worksheet is None:
+                    continue
+                # Позицію звіряємо перед тим, як білити: після видалення рядка
+                # вище збережений row_number показує на чужу живу роботу, і
+                # «видано» знялось би не з того клієнта (синк H-5).
+                row = resolve_order_row(worksheet, order)
+                if row is None:
+                    error = error or (
+                        f"робота {order_id}: рядок у таблиці не підтверджено — "
+                        "заливку не знято"
+                    )
+                    continue
+                fill_rows.append((worksheet.id, row))
+            except Exception as exc:  # noqa: BLE001 — статус «видано» лишається
+                logger.exception("Handout group fill lookup failed for order %s", order_id)
+                error = error or str(exc)
+        if fill_rows and spreadsheet is not None:
+            try:
+                clear_row_fills(spreadsheet, fill_rows)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Failed to clear blue fill for a handout group")
+                error = error or str(exc)
+        bg.commit()
+    return error
 
 
 def write_rework_sum3d_fields(

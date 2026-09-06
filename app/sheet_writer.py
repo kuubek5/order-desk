@@ -97,14 +97,16 @@ def _resolve_row(worksheet: gspread.Worksheet, order: Order) -> int | None:
 
     # Через `call_with_retry`, як і сам запис нижче: у лабораторії між нами й
     # Google стоїть TLS-проксі, який регулярно рве з'єднання й віддає 429.
-    # Голий `except` тут означав «не перевірили — пишемо в збережений рядок»,
+    # Коли повтори вичерпані, звірки НЕ БУЛО — і саме тоді ми пропускаємо
+    # запис, а не пишемо наосліп. Раніше ця гілка повертала збережений рядок,
     # тобто одне чхання мережі перетворювало звірку позиції на її пропуск, і
-    # запис міг лягти сусідові (рівно те, від чого ця функція й захищає).
-    # Повтори вичерпані — ТОДІ довіряємо збереженій позиції, як і раніше.
+    # запис міг лягти сусідові — рівно те, від чого ця функція й захищає
+    # (аудит 05.09.26, синк M-11). Ціна — рідкісний пропуск, який видно в
+    # тості й самолікується наступною правкою.
     try:
         current = call_with_retry(lambda: worksheet.cell(row, col).value)
     except Exception:
-        return row  # мережа не відповідає навіть з повторами — не блокуємо запис
+        return None  # позицію не підтверджено — пропускаємо запис
     if not isinstance(current, str):
         return row  # no real value to compare (e.g. a mock) — trust stored row
     if current.strip().casefold() == expected.casefold():
@@ -126,6 +128,29 @@ def _resolve_row(worksheet: gspread.Worksheet, order: Order) -> int | None:
     resolved = matches[0]
     order.row_number = resolved - HEADER_ROWS
     return resolved
+
+
+def resolve_order_row(worksheet: gspread.Worksheet, order: Order) -> int | None:
+    """Публічна обгортка `_resolve_row` для тих, хто фарбує чи стирає рядок
+    цілком (заливка видачі, стирання видаленої роботи). До аудиту 05.09.26
+    вони брали `order.row_number + HEADER_ROWS` напряму й після зсуву рядків
+    могли зафарбувати — або СТЕРТИ — чужу живу роботу. `None` = «не
+    підтверджено», і викликач мусить пропустити дію."""
+    return _resolve_row(worksheet, order)
+
+
+def clear_order_row(worksheet: gspread.Worksheet, order: Order) -> bool:
+    """Стерти рядок цієї роботи, СПЕРШУ підтвердивши, що він досі її.
+
+    Стирання не має «оптимістичного» варіанта: `clear_placeholder_row` чистить
+    A:K цілком, тож влучання в сусідній рядок знищує чужу живу роботу у
+    спільній таблиці без жодного сліду. Не підтвердили позицію — не стираємо.
+    Повертає False, якщо стирання пропущено."""
+    row = _resolve_row(worksheet, order)
+    if row is None:
+        return False
+    clear_placeholder_row(worksheet, row)
+    return True
 
 
 def _set_row_fills(
@@ -614,8 +639,16 @@ def append_order_comment(
     order: Order,
     comment_line: str,
 ) -> str:
-    """Append to the live sheet cell so external edits are not overwritten."""
-    row = _sheet_row(order)
+    """Append to the live sheet cell so external edits are not overwritten.
+
+    Position is confirmed first: a comment written to a stored row_number after
+    someone deleted a row above lands in a NEIGHBOUR's comment cell — and this
+    one appends, so it also carries their text along (аудит 05.09.26, синк H-5).
+    Raises when the row can't be confirmed — the caller records the failure in
+    SyncLog and the comment still lives in the CRM, which is the source of truth."""
+    row = _resolve_row(worksheet, order)
+    if row is None:
+        raise RuntimeError("рядок у таблиці не підтверджено — коментар не дописано")
     a1 = gspread.utils.rowcol_to_a1(row, COL_CAM_COMMENT)
     cell = call_with_retry(lambda: worksheet.acell(a1))
     current = (cell.value or "").strip()

@@ -5,7 +5,7 @@ revert). Mail is intentionally NOT paused: it doesn't touch the sheet."""
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -74,7 +74,8 @@ def test_set_sum3d_refused_while_paused_without_touching_db():
         user = _user(db)
         order = _order(db, sum3d_id=None)
         sync_control.pause()
-        with patch.object(orders_router_mod, "write_sheet_fields") as write:
+        with patch.object(orders_router_mod, "await_on_writeback",
+                          new_callable=AsyncMock) as write:
             asyncio.run(orders_router_mod.set_sum3d_id(
                 request=_request(user.id), order_id=order.id,
                 sum3d_id="12-01-45", db=db,

@@ -233,7 +233,7 @@ def perform_redo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
             return UndoOutcome("Робота вже видалена", kind="info")
         order.archived_at = datetime.utcnow()
         if order.source in ("lab", "sheet_client") and order.sheet_tab and order.row_number:
-            clear_sheet_row_background(order.sheet_tab, order.row_number)
+            clear_sheet_row_background(order.id)
         sync_error = None
         db.add(StatusEvent(
             order_id=order.id, operator_id=user.id, status=order.status,

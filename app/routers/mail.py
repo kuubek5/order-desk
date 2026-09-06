@@ -97,7 +97,7 @@ from app.settings_store import (
     get_imap_login,
     get_mail_download_all,
 )
-from app.sheet_writer import append_mail_placeholder_row, clear_placeholder_row
+from app.sheet_writer import append_mail_placeholder_row, clear_order_row
 from app.sheets import get_worksheet_by_name, latest_worksheet_on_or_before, open_spreadsheet
 
 logger = logging.getLogger(__name__)
@@ -1661,7 +1661,14 @@ def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]
                     spreadsheet = open_spreadsheet(db=db)
                 worksheet = get_worksheet_by_name(spreadsheet, order.sheet_tab)
                 if worksheet is not None:
-                    clear_placeholder_row(worksheet, order.row_number + HEADER_ROWS)
+                    # Через identity, не за збереженою позицією: стирання чистить
+                    # A:K, тож влучання в сусідній рядок знищує чужу живу роботу
+                    # (аудит 05.09.26, синк H-5).
+                    if not clear_order_row(worksheet, order):
+                        logger.warning(
+                            "Sheet row for email %s not confirmed — placeholder left as is",
+                            email.id,
+                        )
             except Exception:  # noqa: BLE001 — sheet cleanup must not block the undo
                 logger.exception("Could not blank sheet placeholder row for email %s", email.id)
 
