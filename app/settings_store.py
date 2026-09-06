@@ -14,7 +14,7 @@ from typing import Optional
 from cryptography.fernet import InvalidToken
 from sqlalchemy.orm import Session
 
-from app.config import EXPORT_FOLDER_PATH, GOOGLE_SHEET_ID
+from app.config import EXPORT_FOLDER_PATH, GOOGLE_SHEET_ID, MACHINE_CALIBRATION_PATH
 from app.crypto import decrypt_value, encrypt_value
 from app.models import AppSetting
 
@@ -161,6 +161,7 @@ CLEARABLE_SETTING_KEYS = {
     "technician_files_path",
     "sum3d_projects_path",
     "day_rollover_time",
+    "machine_calibration_path",
 }
 
 # Non-secret preference keys stored in the same AppSetting table but NOT part of
@@ -186,6 +187,9 @@ PREFERENCE_KEYS = {
     # Аудиторія блокатора: "*" (усі не-адміни) або перелік ролей через кому.
     "section_audience:stats",
     "furnace_background",
+    # Тека калібрувальних кадрів верстатів (Налаштування → Верстати). Порожнє
+    # значення = типова тека застосунку, тому ключ ще й у CLEARABLE.
+    "machine_calibration_path",
     "mail_default_material",
     "mail_download_all",
     "notify_style",
@@ -317,6 +321,17 @@ def get_google_service_account_json(session: Session) -> Optional[str]:
 
 def get_export_folder_path(session: Session) -> str:
     return get_setting(session, "export_folder_path") or EXPORT_FOLDER_PATH
+
+
+def get_machine_calibration_path(session: Session) -> str:
+    """Тека калібрувальних кадрів верстатів. Порожньо = типова тека застосунку.
+
+    Виведена в інтерфейс (Налаштування → Верстати) з практичної причини:
+    кадри збираються сотнями, а на цеховому ПК системний диск буває тісний —
+    оператор має мати змогу відвести під них іншу теку, не лізучи в змінні
+    середовища.
+    """
+    return get_setting(session, "machine_calibration_path") or MACHINE_CALIBRATION_PATH
 
 
 def get_technician_files_path(session: Session) -> Optional[str]:

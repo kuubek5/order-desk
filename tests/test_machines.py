@@ -531,3 +531,61 @@ def test_machines_poll_pauses_for_any_open_details():
     # Саме УМОВА, а не файл: у коментарі поруч старий селектор згадується
     # навмисно, як пояснення.
     assert "fu-frame" not in condition, "умова знову звузилась до одного класу"
+
+
+def test_calibration_routes_are_not_eaten_by_the_id_route():
+    """Та сама пастка, що з паролем печі: /settings/machines/{machine_id}
+    з'їв би «calibration-path» як номер верстата (422 замість збереження)."""
+    from app.routers.settings import router
+
+    paths = [route.path for route in router.routes if "machines" in route.path]
+    for path in ("/settings/machines/calibration-path", "/settings/machines/calibration-folder"):
+        assert paths.index(path) < paths.index("/settings/machines/{machine_id}"), path
+
+
+def test_calibration_root_follows_the_setting(monkeypatch, tmp_path):
+    """Тека з налаштувань старша за типову — інакше кнопка «Відкрити теку»
+    показувала б одне місце, а збирач писав би в інше."""
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "default"))
+    assert service.calibration_root() == tmp_path / "default"
+    assert service.calibration_root(str(tmp_path / "own")) == tmp_path / "own"
+
+    with service._calib_lock:
+        service._calib_last_timed.clear()
+    service.collect_calibration_frame_timed("m", _calib_frame(40), str(tmp_path / "own"))
+
+    assert list((tmp_path / "own" / "m").glob("t-*.png")), "кадр пішов у теку з налаштувань"
+    assert not (tmp_path / "default").exists(), "типова тека не чіпалась"
+
+    status = service.calibration_status(str(tmp_path / "own"))
+    assert status["frames"] == 1
+
+
+def test_open_calibration_folder_creates_it_and_asks_explorer(monkeypatch, tmp_path):
+    """Кнопка «Відкрити теку»: теку створюємо, якщо її ще нема — порожня тека
+    чесно каже «кадрів нуль», а помилка «шлях не знайдено» читалась би як
+    поломка. Провідник кличемо рівно на ту теку, що показана в налаштуваннях."""
+    from app.routers.settings import devices
+
+    opened = []
+    monkeypatch.setattr(devices, "open_folder_in_explorer", opened.append)
+    monkeypatch.setattr(devices, "require_settings_admin", lambda request, db: None)
+    monkeypatch.setattr(devices, "is_loopback_request", lambda request: True)
+    monkeypatch.setattr(
+        devices, "get_machine_calibration_path", lambda db: str(tmp_path / "kadry")
+    )
+
+    response = devices.open_machine_calibration_folder(request=None, db=None)
+
+    assert response.status_code == 204
+    assert opened == [tmp_path / "kadry"]
+    assert (tmp_path / "kadry").is_dir(), "теку створили, а не впали з 500"
+
+
+def test_calibration_path_key_is_writable_and_clearable():
+    """Живий 500 на цьому й спіймали: роут був, а ключа не було в білому
+    списку set_setting. Тримаємо обидва прапорці явно."""
+    from app.settings_store import CLEARABLE_SETTING_KEYS, SETTING_KEYS
+
+    assert "machine_calibration_path" in SETTING_KEYS
+    assert "machine_calibration_path" in CLEARABLE_SETTING_KEYS

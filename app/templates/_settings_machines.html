@@ -137,6 +137,32 @@
                     </form>
                 </div>
 
+                {# Тека калібрувальних кадрів. Стоїть поруч із галкою «Калібр.»
+                   у таблиці навмисно: вмикач збору і місце, куди він пише —
+                   одне рішення оператора, розведене по різних екранах воно
+                   змушувало б шукати кадри по %LOCALAPPDATA% руками. #}
+                <div class="settings-field">
+                    <label for="machine_calib_path">Тека калібрувальних кадрів</label>
+                    <p class="settings-help">
+                        Сюди складаються кадри, поки в таблиці стоїть галка <b>Калібр.</b>
+                        Порожнє поле — типова тека застосунку. Зараз:
+                        <span class="mono">{{ machine_calibration_path }}</span>{% if machine_calibration_frames %},
+                        кадрів: <b>{{ machine_calibration_frames }}</b>{% endif %}.
+                    </p>
+                    <form method="post" action="/settings/machines/calibration-path" class="fu-add-row">
+                        <input id="machine_calib_path" class="login-input mono" name="path"
+                               value="{{ machine_calibration_custom }}"
+                               placeholder="{{ machine_calibration_path }}" maxlength="400">
+                        <button type="submit" class="settings-secondary-button">Зберегти теку</button>
+                        <button type="button" class="settings-secondary-button"
+                                hx-post="/settings/machines/calibration-folder"
+                                hx-swap="none"
+                                hx-on::after-request="if(event.detail.successful){showToast('Відкрито теку у Провіднику','success')}else{showToast('Не вдалося відкрити теку кадрів','error')}">
+                            Відкрити теку
+                        </button>
+                    </form>
+                </div>
+
                 {# Довідка про агента: згорнута, бо потрібна раз на верстат —
                    але саме тоді потрібна ЦІЛКОМ, разом із посиланням, кроками
                    й чесною відповіддю «а що ви там знімаєте». #}

@@ -145,6 +145,8 @@ POST /settings/google-oauth/start
 POST /settings/handout-qc
 POST /settings/imap
 POST /settings/machines
+POST /settings/machines/calibration-folder
+POST /settings/machines/calibration-path
 POST /settings/machines/password
 POST /settings/machines/{machine_id}
 POST /settings/machines/{machine_id}/delete

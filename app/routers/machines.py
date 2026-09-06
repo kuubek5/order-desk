@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.machine_portraits import portrait_path
+from app.settings_store import get_machine_calibration_path
 from app.routers.deps import get_current_user, login_redirect, get_db, is_loopback_request, templates
 from app.services.machines import (
     POLL_INTERVAL_SECONDS,
@@ -39,7 +40,7 @@ def _context(request: Request, db: Session, user) -> dict:
         "cards": snapshot(db),
         "poll_seconds": int(POLL_INTERVAL_SECONDS),
         # Банер калібрування: показується, лише доки шрифт підпису неповний.
-        "calibration": calibration_status(),
+        "calibration": calibration_status(get_machine_calibration_path(db)),
     }
 
 
@@ -117,7 +118,7 @@ def machines_calibration_zip(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="лише для адміністратора")
     if not is_loopback_request(request):
         raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
-    data = calibration_zip_bytes()
+    data = calibration_zip_bytes(get_machine_calibration_path(db))
     return Response(
         content=data,
         media_type="application/zip",

@@ -46,7 +46,7 @@ from app.services.furnace import (  # ті самі правила адреси 
     validate_address,
 )
 from app.config import MACHINE_CALIBRATION_PATH, MACHINE_FRAMES_PATH
-from app.settings_store import get_machine_vnc_password
+from app.settings_store import get_machine_calibration_path, get_machine_vnc_password
 
 logger = logging.getLogger(__name__)
 
@@ -250,13 +250,26 @@ _calib_last_timed: dict[str, float] = {}
 _calib_lock = threading.Lock()
 
 
+def calibration_root(root: Optional[str] = None) -> Path:
+    """Корінь калібрувальних кадрів.
+
+    `root` приходить із налаштувань (Налаштування → Верстати, ключ
+    `machine_calibration_path`) — оператор може покласти кадри на іншу теку,
+    коли на системному диску тісно. Порожньо = типова тека застосунку.
+    Резолвиться ТУТ, а не в кожній функції, щоб «звідки беруться кадри» мало
+    одну відповідь: банер, zip, збирач і кнопка «Відкрити теку» мусять
+    дивитись в одне місце, інакше оператор шукає кадри там, де їх нема.
+    """
+    return Path(root or MACHINE_CALIBRATION_PATH)
+
+
 def _sanitize_key(key: str) -> str:
     """Ключ верстата у безпечний сегмент шляху (адреса вже валідна, це пасок
     безпеки: у назву теки не має потрапити ані роздільник, ані «..»)."""
     return "".join(ch if (ch.isalnum() or ch in ".-") else "_" for ch in key)
 
 
-def calibration_status() -> dict:
+def calibration_status(root: Optional[str] = None) -> dict:
     """Стан збору калібрувальних кадрів — для банера на екрані «Верстати».
 
     Каже операторові рівно те, що йому треба знати: скільки кадрів уже
@@ -264,28 +277,28 @@ def calibration_status() -> dict:
     ховається, і збирати більше нема потреби.
     """
     missing = sorted(missing_caption_digits())
-    root = Path(MACHINE_CALIBRATION_PATH)
+    folder = calibration_root(root)
     frames = 0
-    if root.exists():
+    if folder.exists():
         # І кадри по відсотку (pct-*), і зібрані за часом (t-*).
-        frames = sum(1 for _ in root.glob("*/*.png"))
+        frames = sum(1 for _ in folder.glob("*/*.png"))
     # Банер показуємо, доки RemiCORE-цифри неповні АБО вже є зібрані кадри
     # (у т.ч. з ручного режиму для нового покоління) — щоб кнопка «Скачати»
     # була доступна навіть коли RemiCORE-шрифт уже повний.
     return {"active": bool(missing) or frames > 0, "missing": missing, "frames": frames}
 
 
-def calibration_zip_bytes() -> bytes:
+def calibration_zip_bytes(root: Optional[str] = None) -> bytes:
     """Усі калібрувальні кадри одним zip — щоб оператор забрав їх із робочого
     ПК одним файлом і надіслав. Порожньо, якщо нічого не зібрано."""
     import io
     import zipfile
 
-    root = Path(MACHINE_CALIBRATION_PATH)
+    folder = calibration_root(root)
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        if root.exists():
-            for png in sorted(root.glob("*/*.png")):
+        if folder.exists():
+            for png in sorted(folder.glob("*/*.png")):
                 # Ім'я в архіві: <верстат>/<файл>, шлях на диску не розкриваємо.
                 archive.write(png, arcname=f"{png.parent.name}/{png.name}")
     return buffer.getvalue()
@@ -316,7 +329,9 @@ def _evict_oldest_timed(folder: Path, keep: int) -> None:
             logger.debug("Калібрувальний кадр %s не видалився", png, exc_info=True)
 
 
-def collect_calibration_frame_timed(key: str, frame: "Image.Image") -> None:
+def collect_calibration_frame_timed(
+    key: str, frame: "Image.Image", root: Optional[str] = None
+) -> None:
     """Відкласти кадр за ЧАСОМ (ручний режим калібрування, `collect_calibration`).
 
     Для верстата, де відсоток ще не читається (нове покоління, інша розкладка),
@@ -332,7 +347,7 @@ def collect_calibration_frame_timed(key: str, frame: "Image.Image") -> None:
             if last is not None and now - last < CALIBRATION_TIMED_INTERVAL_SECONDS:
                 return
             _calib_last_timed[key] = now
-        folder = Path(MACHINE_CALIBRATION_PATH) / _sanitize_key(key)
+        folder = calibration_root(root) / _sanitize_key(key)
         folder.mkdir(parents=True, exist_ok=True)
         # Кап тут — КІЛЬЦЕВИЙ, а не «стоп». Бойовий випадок 06.09.26: SISMA
         # півдня стояла з увімкненою галкою, за 33 хвилини набила кап кадрами
@@ -361,7 +376,9 @@ def collect_calibration_frame_timed(key: str, frame: "Image.Image") -> None:
         logger.debug("Калібрувальний кадр (час) верстата %s не збережено", key, exc_info=True)
 
 
-def collect_calibration_frame(key: str, frame: "Image.Image", geometry_percent: int) -> None:
+def collect_calibration_frame(
+    key: str, frame: "Image.Image", geometry_percent: int, root: Optional[str] = None
+) -> None:
     """Відкласти кадр для навчання шрифту — САМЕ доти, доки шрифт неповний.
 
     Викликається з опитування щоразу, коли з кадру знялась геометрія. Пише
@@ -378,7 +395,7 @@ def collect_calibration_frame(key: str, frame: "Image.Image", geometry_percent: 
             return  # шрифт уже повний — збирати нема потреби
         if not (0 <= geometry_percent <= 100):
             return
-        folder = Path(MACHINE_CALIBRATION_PATH) / _sanitize_key(key)
+        folder = calibration_root(root) / _sanitize_key(key)
         folder.mkdir(parents=True, exist_ok=True)
         target = folder / f"pct-{geometry_percent:03d}.png"
         if target.exists():
@@ -679,12 +696,18 @@ def poll_target(
     # навчання. `percent` тут — геометрія (підпис ще не читається, бо саме його
     # й калібруємо), тобто правильна мітка. Коли всі цифри вивчено —
     # collect_calibration_frame сам нічого не робить.
-    if percent is not None:
-        collect_calibration_frame(target.key, frame, percent)
-    # Ручний режим: збираємо кадри за часом навіть коли відсоток НЕ читається —
-    # саме для верстатів, де читача ще нема (нове покоління, інша розкладка).
-    if target.collect_calibration:
-        collect_calibration_frame_timed(target.key, frame)
+    #
+    # Теку резолвимо ЛИШЕ коли справді збираємо: це запит до налаштувань, а
+    # poll_target крутиться на кожен верстат кожні 15 с.
+    if percent is not None or target.collect_calibration:
+        calib_root = get_machine_calibration_path(db)
+        if percent is not None:
+            collect_calibration_frame(target.key, frame, percent, calib_root)
+        # Ручний режим: збираємо кадри за часом навіть коли відсоток НЕ
+        # читається — саме для верстатів, де читача ще нема (нове покоління,
+        # інша розкладка).
+        if target.collect_calibration:
+            collect_calibration_frame_timed(target.key, frame, calib_root)
 
     # Що фрезерується — лише через агента (заголовок вікна). У VNC такого
     # каналу немає, і вигадувати його з картинки ми не будемо.

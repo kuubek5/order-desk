@@ -8,20 +8,28 @@ tests/test_furnace.py). Печі й верстати лежать в ОДНОМ�
 порядок видно у файлі й він не залежить від порядку include_router().
 """
 
+import logging
 from datetime import datetime
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 from app.models import Furnace, Machine
-from app.routers.deps import get_db
+from app.platform_windows import open_folder_in_explorer
+from app.routers.deps import get_db, is_loopback_request
 from app.machine_portraits import PortraitError, delete_portrait, save_portrait
 from app.services import machines as machines_service
-from app.settings_store import set_furnace_background, set_setting
+from app.settings_store import (
+    get_machine_calibration_path,
+    set_furnace_background,
+    set_setting,
+)
 from app.crypto import encrypt_value
 from app.services.furnace import FurnaceConfigError, validate_address
 from .common import require_settings_admin
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -269,6 +277,56 @@ def save_machine_password(
         message = "Пароль не змінено — поле лишилось порожнім."
     request.session["settings_flash"] = {"kind": "success", "message": message}
     return RedirectResponse("/settings#machines", status_code=303)
+
+
+@router.post("/settings/machines/calibration-path")
+def save_machine_calibration_path(
+    request: Request, path: str = Form(""), db: Session = Depends(get_db)
+):
+    """Тека, куди складаються калібрувальні кадри верстатів.
+
+    Оголошено ВИЩЕ `/settings/machines/{machine_id}` — інакше FastAPI з'їв би
+    «calibration-path» як номер верстата (та сама пастка, що з паролем печі).
+
+    Порожнє поле = повернутись до типової теки застосунку, тому цей ключ
+    стирається, а не ігнорується: «прибрати свою теку» — окреме бажання, і без
+    стирання оператор не мав би як його висловити.
+    """
+    require_settings_admin(request, db)
+    clean = path.strip().strip('"')
+    if clean:
+        set_setting(db, "machine_calibration_path", clean)
+        message = f"Кадри верстатів складатимуться в {clean}."
+    else:
+        set_setting(db, "machine_calibration_path", "")
+        message = "Теку кадрів повернуто на типову."
+    db.commit()
+    request.session["settings_flash"] = {"kind": "success", "message": message}
+    return RedirectResponse("/settings#machines", status_code=303)
+
+
+@router.post("/settings/machines/calibration-folder")
+def open_machine_calibration_folder(request: Request, db: Session = Depends(get_db)):
+    """Відкрити теку кадрів у Провіднику — на ЦЬОМУ ПК.
+
+    Кадри існують, щоб їх забрати й надіслати; шукати теку руками по
+    `%LOCALAPPDATA%` оператор не повинен. Тека створюється, якщо її ще нема:
+    порожня тека — чесна відповідь «кадрів поки нуль», а помилка «шлях не
+    знайдено» читалась би як поломка.
+    """
+    require_settings_admin(request, db)
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    folder = machines_service.calibration_root(get_machine_calibration_path(db))
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        open_folder_in_explorer(folder)
+    except NotImplementedError:
+        raise HTTPException(status_code=501, detail="відкриття папки підтримується лише у Windows")
+    except OSError:
+        logger.exception("Тека калібрувальних кадрів не відкрилась: %s", folder)
+        raise HTTPException(status_code=500, detail="не вдалося відкрити теку")
+    return Response(status_code=204)
 
 
 @router.post("/settings/machines/{machine_id}")

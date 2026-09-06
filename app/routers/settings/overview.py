@@ -44,6 +44,7 @@ from app.settings_store import (
     get_export_folder_path,
     get_furnace_background,
     get_furnace_vnc_password,
+    get_machine_calibration_path,
     get_machine_vnc_password,
     get_setting,
     get_mail_download_all,
@@ -313,6 +314,14 @@ def get_settings(
             # Верстати: той самий контракт — рядки без паролів, лише ознака.
             "machines": (_machines := machines_service.list_machines(db)),
             "machine_password_set": bool(get_machine_vnc_password(db)),
+            # Тека калібрувальних кадрів: показуємо ДІЮЧУ (з урахуванням
+            # типової) і окремо власну — у поле підставляється лише власна,
+            # інакше «зберегти» перетворило б типову теку на прибиту цвяхами.
+            "machine_calibration_path": get_machine_calibration_path(db),
+            "machine_calibration_custom": get_setting(db, "machine_calibration_path") or "",
+            "machine_calibration_frames": machines_service.calibration_status(
+                get_machine_calibration_path(db)
+            )["frames"],
             # Версія (mtime) фото на верстат — для мініатюри в таблиці; None = нема.
             "machine_portrait_version": {m.id: portrait_version(m.id) for m in _machines},
             "spool_report": (_spool_report := analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH))),
