@@ -1,78 +1,98 @@
 {% extends "base.html" %}
+{% from "_settings_slab.html" import slab %}
 
 {% block title %}Зворотний зв'язок — KuubMill{% endblock %}
 
 {% block extra_head %}
+{# Той самий комплект і в тому самому порядку, що на /settings: розкладка
+   «Стенд» перекриває settings.css і settings_console.css рівною специфічністю,
+   тобто виграє ПОРЯДКОМ (CLAUDE.md §14). Раніше сторінка тягла лише
+   login.css + settings.css, але розмічена була класами matlib.css — того
+   файлу тут не було, і екран рендерився геть без верстки: голі h2 на пів
+   екрана, інпути на всю ширину, жодної картки. #}
 <link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
 <link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
+<link rel="stylesheet" href="/static/css/settings_console.css?v={{ static_ver('css/settings_console.css') }}">
+<link rel="stylesheet" href="/static/css/settings_stand.css?v={{ static_ver('css/settings_stand.css') }}">
 {% endblock %}
 
 {% block content %}
 {% set topbar_active = 'settings' %}
 {% include "_topbar_nav.html" %}
 
-<main class="setv2 matlib">
-    <div class="matlib-head">
-        <a href="/settings" class="matlib-back">← Налаштування</a>
-        <h1>Зворотний зв'язок</h1>
-        <p class="wizard-sub">Форма «баг / ідея / питання» доступна операторам на кожному екрані (маячок у кутку). Звернення завжди зберігаються в базі й видно на екрані <a href="/feedback/inbox" class="matlib-link" style="display:inline">«Вхідні»</a>. Тут — необов'язковий Telegram-пуш через бота VARTAAIR: миттєве сповіщення зі скріншотом.</p>
-    </div>
-
+<main class="setv2 scon">
     {% if flash %}
-    <div class="matlib-flash {{ 'is-error' if flash.kind == 'error' else 'is-ok' }}">{{ flash.message }}</div>
+    <div class="settings-success{% if flash.kind == 'error' %} settings-error{% endif %}"><p>{{ flash.message }}</p></div>
     {% endif %}
 
-    <form method="post" action="/settings/feedback">
-        <section class="panel matlib-material">
-            <div class="card-head">
-                <h2>Telegram-пуш</h2>
+    {# Назву розділу несе плита нижче — тут лише шлях назад, інакше
+       «Зворотний зв'язок» стояв би на екрані двічі підряд. #}
+    <header class="scon-top scon-top-sub">
+        <a href="/settings" class="scon-back">← Налаштування</a>
+    </header>
+
+    <div class="scon-panel">
+        {# Окрема сторінка, тому секція показана одразу (`is-shown`):
+           settings_console.js сюди не вантажиться й перемикати нічого. #}
+        <div class="wizard-step scon-sec stand-sec is-shown" data-sec="feedback">
+            <div class="box">
+                {{ slab('Зворотний зв\'язок',
+                        'Форма «баг / ідея / питання» доступна операторам на кожному екрані. Звернення завжди пишуться в базу; Telegram — необов\'язковий пуш зі скріншотом.',
+                        none) }}
+
+                <div class="stand-cells">
+                    <div class="stand-cell w4">
+                        <h3>Telegram-пуш</h3>
+                        <p class="settings-help">Запис у базу працює завжди — цей вимикач лише про сповіщення в Telegram через бота VARTAAIR.</p>
+                        <form method="post" action="/settings/feedback">
+                            <label class="settings-backup-confirm stand-toggle">
+                                <input type="checkbox" name="feedback_telegram_enabled" value="1" {{ 'checked' if push_enabled else '' }}>
+                                Слати звернення в Telegram
+                            </label>
+
+                            <div class="settings-field">
+                                <label for="tg-token">Токен бота VARTAAIR{% if token_saved %} <span class="text-muted">— збережено</span>{% endif %}</label>
+                                <div class="login-glow"><div class="login-input-wrap">
+                                    <input class="login-input" type="password" id="tg-token" name="telegram_bot_token"
+                                           placeholder="{{ '••••••••  (залиш порожнім — не міняти)' if token_saved else '123456:AA...' }}"
+                                           autocomplete="off">
+                                </div></div>
+                                <p class="settings-help">Видає власник бота через @BotFather. Зберігається зашифровано, у контекст сторінки не потрапляє.</p>
+                            </div>
+
+                            <div class="settings-field">
+                                <label for="tg-chat">Chat ID</label>
+                                <div class="login-glow"><div class="login-input-wrap">
+                                    <input class="login-input" type="text" id="tg-chat" name="telegram_chat_id"
+                                           value="{{ chat_id }}" placeholder="напр. 123456789" autocomplete="off">
+                                </div></div>
+                                <p class="settings-help">Куди бот шле. Найпростіше — кнопкою «Прив'язати чат» праворуч.</p>
+                            </div>
+
+                            <div class="settings-actions">
+                                <button type="submit" class="login-submit settings-submit">Зберегти</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    {# Дві проби в одній комірці: обидві нічого не міняють у
+                       налаштуваннях, обидві відповідають на одне питання —
+                       «чи бот узагалі доходить». Тримати їх окремими картками
+                       на пів екрана кожна не було за чим. #}
+                    <div class="stand-cell w2">
+                        <h3>Перевірка зв'язку</h3>
+                        <p class="settings-help">Бот не може написати першим, поки з ним не почали діалог. Порядок: збережи токен → відкрий <b>VARTAAIR</b> у Telegram і натисни <b>Start</b> → «Прив'язати чат»: chat_id підставиться сам.</p>
+                        <form method="post" action="/settings/feedback/bind">
+                            <button type="submit" class="settings-secondary-button">Прив'язати чат</button>
+                        </form>
+                        <p class="settings-help">Тестове повідомлення переконає, що токен і chat_id робочі.</p>
+                        <form method="post" action="/settings/feedback/test">
+                            <button type="submit" class="settings-secondary-button">Надіслати тест</button>
+                        </form>
+                    </div>
+                </div>
             </div>
-            <p class="wizard-sub">Запис у базу працює завжди — цей вимикач лише про сповіщення в Telegram.</p>
-
-            <label class="settings-check" style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
-                <input type="checkbox" name="feedback_telegram_enabled" value="1" {{ 'checked' if push_enabled else '' }}>
-                <span>Слати звернення в Telegram</span>
-            </label>
-
-            <div class="wizard-field">
-                <label for="tg-token">Токен бота VARTAAIR{% if token_saved %} <span class="text-muted">— збережено</span>{% endif %}</label>
-                <input class="login-input" type="password" id="tg-token" name="telegram_bot_token"
-                       placeholder="{{ '••••••••  (залиш порожнім — не міняти)' if token_saved else '123456:AA...' }}"
-                       autocomplete="off">
-                <p class="wizard-sub">Видає власник бота через @BotFather. Зберігається зашифровано, у контекст сторінки не потрапляє.</p>
-            </div>
-
-            <div class="wizard-field">
-                <label for="tg-chat">Chat ID</label>
-                <input class="login-input" type="text" id="tg-chat" name="telegram_chat_id"
-                       value="{{ chat_id }}" placeholder="напр. 123456789" autocomplete="off">
-                <p class="wizard-sub">Куди бот шле. Найпростіше — кнопкою нижче: напиши боту <strong>/start</strong> у Telegram, потім натисни «Прив'язати чат».</p>
-            </div>
-
-            <div class="matlib-add-alias" style="gap:10px">
-                <button type="submit" class="settings-secondary-button">Зберегти</button>
-            </div>
-        </section>
-    </form>
-
-    <section class="panel matlib-material">
-        <div class="card-head">
-            <h2>Прив'язати чат</h2>
         </div>
-        <p class="wizard-sub">Бот не може написати першим, поки ти не почав із ним діалог. Порядок: 1) збережи токен вище; 2) відкрий бота <strong>VARTAAIR</strong> у Telegram і натисни <strong>Start</strong> (або надішли /start); 3) натисни тут — і chat_id підставиться сам.</p>
-        <form method="post" action="/settings/feedback/bind" class="matlib-add-alias" style="gap:10px">
-            <button type="submit" class="settings-secondary-button">Прив'язати чат</button>
-        </form>
-    </section>
-
-    <section class="panel matlib-material">
-        <div class="card-head">
-            <h2>Перевірка</h2>
-        </div>
-        <p class="wizard-sub">Надіслати тестове повідомлення в Telegram — переконатись, що токен і chat_id робочі.</p>
-        <form method="post" action="/settings/feedback/test" class="matlib-add-alias" style="gap:10px">
-            <button type="submit" class="settings-secondary-button">Надіслати тест</button>
-        </form>
-    </section>
+    </div>
 </main>
 {% endblock %}

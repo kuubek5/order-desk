@@ -213,18 +213,25 @@ main.setv2.scon {
 /* ── нижній бар дій секції ─────────────────────────────────
    Перевірка (проба) зліва, збереження (коміт) справа, розділені
    гнучким проміжком. Тонка лінія зверху відділяє від полів. */
+/* Кнопки стоять ЛІВОРУЧ, під полями, які вони зберігають. Раніше тут була
+   розпірка `.scon-actionbar-gap`, яка відкидала їх до правого краю: на
+   ~950px панелі виходила смуга порожнечі через увесь розділ, а «Зберегти»
+   опинявся далі від форми, ніж «Небезпечна зона» під ним. Решта дій у
+   консолі (`.settings-actions`) і так вирівняна ліворуч. */
 .scon .scon-actionbar {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 20px;
-  padding-top: 16px;
+  margin-top: 4px;
+  /* Відступ знизу тут ОБОВʼЯЗКОВИЙ: панель дій і «Небезпечна зона» лежать
+     усередині <form>, тобто це не сусідні діти .box — gap:16px між ними не
+     працює, і кнопка «Зберегти» злипалася з червоною рамкою. */
+  margin-bottom: 16px;
+  padding-top: 14px;
   border-top: 1px solid var(--line);
 }
-.scon .scon-actionbar-gap {
-  flex: 1 1 24px;
-}
+.scon .scon-actionbar-gap { display: none; }
 .scon .scon-actionbar .login-submit,
 .scon .scon-actionbar .settings-submit,
 .scon .scon-actionbar .settings-secondary-button {

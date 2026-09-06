@@ -183,7 +183,7 @@ def _slab_sheets(db: Session, ctx: dict) -> Slab:
         ok = (last.status or "").lower() in {"ok", "успіх", "success"}
         meters.append(
             Meter(
-                k="Останній запис у журналі",
+                k="Останній запис",
                 v=last.occurred_at.strftime("%H:%M") if last.occurred_at else "—",
                 s=(last.sheet_tab or last.direction or "").strip() or (last.status or ""),
                 tone=TONE_OK if ok else TONE_WARN,

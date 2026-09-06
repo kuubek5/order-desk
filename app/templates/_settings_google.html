@@ -82,7 +82,7 @@
                            та сама пара cred-row + cred-field одним батьком — саме її
                            шукає queue.js (group.parentElement). #}
                         {% set sa_saved = values_set['google_service_account_json'] %}
-                        <div class="stand-cell w3" data-authmode-block="service_account" {% if auth_mode == 'oauth' %}hidden{% endif %}>
+                        <div class="stand-cell w6" data-authmode-block="service_account" {% if auth_mode == 'oauth' %}hidden{% endif %}>
                             <h3>JSON-ключ сервісного акаунта</h3>
                             <div class="settings-field">
                                 <div class="cred-row" data-cred-toggle-group>
@@ -155,7 +155,6 @@
                        HTMX-збереження відповідає 204 + тост, сторінка не
                        перезавантажується; без JS — звичайний POST. #}
                     <div class="scon-actionbar">
-                        <span class="scon-actionbar-gap"></span>
                         <span class="check-spinner htmx-indicator" id="sheets-save-spinner" aria-hidden="true"></span>
                         <button type="submit" name="action" value="save" class="settings-secondary-button"
                                 hx-post="/settings" hx-include="closest form"

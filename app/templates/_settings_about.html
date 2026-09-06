@@ -58,6 +58,11 @@
                 {% if changelog %}
                 <div class="scon-changelog">
                     <h3 class="scon-changelog-title">Журнал змін</h3>
+                    {# Список релізів росте з кожним випуском, а розділ «Про
+                       застосунок» — не архів: у ньому головне версія й кнопка
+                       оновлення. Тому історія живе у власному скрол-боксі
+                       фіксованої висоти, а не тягне сторінку вниз на екрани. #}
+                    <div class="scon-rel-list">
                     {% for rel in changelog %}
                     <details class="scon-rel" {% if loop.first %}open{% endif %}>
                         <summary>
@@ -82,6 +87,7 @@
                         </div>
                     </details>
                     {% endfor %}
+                    </div>
                 </div>
                 {% endif %}
             </div>

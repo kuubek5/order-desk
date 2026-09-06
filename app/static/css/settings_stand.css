@@ -109,6 +109,11 @@
 .scon .stand-meters {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  /* Три рядки на всю смугу: підпис · число · пояснення. Плитки беруть їх
+     через subgrid, тому довгий підпис («Скачування вкладень») переноситься
+     в два рядки, НЕ зсуваючи число вниз відносно сусідів — раніше одна
+     плитка з довгою назвою ламала рівну лінію чисел. */
+  grid-template-rows: auto auto auto;
   gap: 10px;
   margin-top: 14px;
 }
@@ -118,6 +123,14 @@
   border-radius: var(--r-card);
   padding: 10px 12px;
   min-width: 0;
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  align-content: start;
+}
+/* Браузер без subgrid просто лишає стару поведінку — нічого не ламається. */
+@supports not (grid-template-rows: subgrid) {
+  .scon .stand-m { display: block; }
 }
 .scon .stand-m .k {
   font-size: var(--fs-0);
@@ -282,3 +295,125 @@
    переведених розділах мають лишатись читабельними. */
 .scon .stand-sec > .box { gap: var(--space-4); }
 .scon .stand-note { font-size: var(--fs-1); color: var(--ink-3); line-height: 1.45; margin: 0; }
+
+/* ── «Небезпечна зона» з формою, а не з однією кнопкою ────────────────── */
+/* Рядок із формою: пояснення на всю ширину зверху, під ним два стовпці —
+   файл ліворуч, пароль і підтвердження праворуч. До цього тут стояв
+   інлайновий style="display:block", і форма падала в один вузький стовп,
+   лишаючи половину картки порожньою. */
+.scon .stand-drow-form { display: block; }
+.scon .stand-drow-form .stand-dtext { margin-bottom: 12px; }
+.scon .stand-dform {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  /* .settings-backup-form має max-width:32rem — розмір вузької картки
+     майстра. У зоні на всю ширину це лишало половину рядка порожньою. */
+  max-width: none;
+}
+.scon .stand-dform > .settings-field { margin-bottom: 0; }
+.scon .stand-dside {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* Кнопка притискається до низу стовпця, щоб її край збігався з нижнім
+     краєм дропзони — інакше вона висить посеред порожнечі. */
+  justify-content: flex-start;
+}
+.scon .stand-dside .settings-field { margin-bottom: 0; }
+.scon .stand-dside .settings-backup-confirm { margin: 0; }
+.scon .stand-danger .settings-backup-danger { align-self: flex-start; }
+@media (max-width: 900px) {
+  .scon .stand-dform { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Список автоматичних копій живе коміркою поруч із ручною формою. */
+.scon .stand-cell.monthly-backups .monthly-backups-list { margin-top: 2px; }
+.scon .stand-cell .settings-help { margin: 0; }
+.scon .stand-cell .settings-backup-form { gap: var(--space-3, 10px); }
+
+/* ── журнал змін не тягне сторінку вниз ───────────────────────────────── */
+.scon .scon-rel-list {
+  max-height: min(52vh, 440px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  /* Останній елемент розчиняється — видно, що список триває далі. */
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent);
+}
+.scon .scon-rel-list::-webkit-scrollbar { width: 8px; }
+.scon .scon-rel-list::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 999px;
+}
+.scon .scon-rel-list::-webkit-scrollbar-track { background: transparent; }
+
+/* Шапка окремої сторінки налаштувань (Матеріали, Зворотний зв'язок):
+   назву несе плита, тут лишається лише шлях назад. */
+.scon .scon-top-sub {
+  align-items: center;
+  margin-bottom: 10px;
+}
+.scon .scon-back {
+  font-size: var(--fs-2);
+  color: var(--ink-3);
+  text-decoration: none;
+}
+.scon .scon-back:hover { color: var(--accent-c); }
+
+/* Вимикач у формі — окремий рядок, а не приліплений до наступного поля. */
+.scon .stand-toggle {
+  margin: 2px 0 14px;
+  font-size: var(--fs-2);
+  color: var(--ink);
+}
+/* Форми в комірках дихають однаково: поле → підказка → наступне поле.
+   ТІЛЬКИ форми без власного класу: `.fu-add-row` та інші розмічені форми
+   самі задають напрям (рядок), і нав'язаний column робив flex-basis
+   висотою — поле пароля виростало на 280px заввишки. */
+.scon .stand-cell > form:not([class]) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 10px);
+}
+.scon .stand-cell > form:not([class]) .settings-field { margin-bottom: 0; }
+
+/* ── спільна панель фільтрів пошти всередині «Стенда» ─────────────────── */
+/* Панель прийшла з тріажу, де вона стоїть у вузькій колонці й тому тягнеться
+   на всю ширину. У налаштуваннях та сама розмітка розповзалась на 1000px:
+   три блоки без карток, селекти на весь екран. Тут вона отримує ті самі
+   поверхні, що й решта розділу, а поля — розумну межу ширини. Стилі
+   заскоплені на .scon, тож екран пошти не змінюється. */
+.scon .filter-rules {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.scon .filter-rules > .dsec {
+  grid-column: span 3;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 14px 15px;
+  min-width: 0;
+}
+/* Перелік правил ширший за форму додавання: у ньому живуть шаблони й лічильники. */
+.scon .filter-rules > .dsec:first-of-type { grid-column: span 6; }
+.scon .filter-rules > .wiz-error { grid-column: span 6; }
+.scon .filter-rules .dlabel {
+  font-family: var(--font-head);
+  font-size: var(--fs-2);
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+@media (max-width: 900px) {
+  .scon .filter-rules > .dsec,
+  .scon .filter-rules > .dsec:first-of-type { grid-column: span 6; }
+}
+
