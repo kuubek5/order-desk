@@ -104,7 +104,12 @@ def test_manual_add_refused_while_paused():
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         sync_control.pause()
-        with patch.object(web, "_sheet_writeback_pool") as pool:
+        # Підміна цілить у ТОЙ САМИЙ обʼєкт, який кличе роут:
+        # `web._sheet_writeback_pool` — лише інший аліас того ж пулу, і
+        # патч по ньому не впливав на `orders.sheet_writeback_pool`, тож
+        # `assert_not_called` перевіряв мок, якого ніхто не кличе
+        # (CLAUDE.md §14: підміна після переносу коду мовчки стає no-op).
+        with patch.object(orders_router_mod, "sheet_writeback_pool") as pool:
             resp = orders_router_mod.create_manual_order(
                 request=_request(user.id), work_type="client", db=db,
                 client_name=["Неда"], material_color=["mono b1"],

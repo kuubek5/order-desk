@@ -328,33 +328,34 @@ def new_order_form(
     job_code: str = "", technician_name: str = "",
     return_to: str = "", target_tab: str = "",
 ):
-    user = get_current_user(request, db)
-    if user is None:
+    """Окремої сторінки «додати роботу» більше немає — форма живе в Черзі.
+
+    Це була друга копія тієї самої форми (аудит 05.09.26, крок 2.4): у Черзі
+    вона вже є inline під кнопкою «+», і саме нею користуються. Окрема сторінка
+    лишалась дорогою для помилок: невдала валідація викидала оператора з черги
+    на порожній екран, а повернувшись, він бачив чергу вже без свого дня й
+    фільтрів. Тепер будь-який шлях сюди веде назад у чергу з розгорнутою
+    формою; помилка показується в ній самій.
+
+    Роут лишається (а не видаляється) навмисно: на нього ще ведуть закладки й
+    старі посилання, і множина роутів у знімку `tests/route_inventory.txt` не
+    змінюється.
+    """
+    if get_current_user(request, db) is None:
         return login_redirect(request)
-    return templates.TemplateResponse(
-        request,
-        "new_order.html",
-        {
-            "user": user,
-            # Робоча доба: о 02:00 нічний оператор веде ще вчорашній день, і
-            # форма мусить пропонувати ЙОГО вкладку, а не нову календарну.
-            "today": business_today().strftime("%d.%m.%y"),
-            "error": error or None,
-            # Carried through a failed validation so the retry still writes to
-            # the day tab the operator started from and lands back there. This
-            # page is reached almost only via _back, so losing them here meant
-            # the second attempt silently fell back to today's tab.
-            "return_to": return_to,
-            "target_tab": target_tab,
-            "form": {
-                "work_type": work_type if work_type in ("client", "lab") else "client",
-                "client_name": client_name, "work_order_no": work_order_no,
-                "kind": kind, "material_color": material_color,
-                "quantity": quantity, "sum3d_id": sum3d_id,
-                "job_code": job_code, "technician_name": technician_name,
-            },
-        },
-    )
+
+    # `return_to` — куди оператор просив повернутись; він і є цільовою чергою.
+    # Порожній або чужий (зовнішній хост) — просто корінь.
+    target = return_to if return_to.startswith("/") and not return_to.startswith("//") else "/"
+    params = {"add": "1"}
+    if error:
+        params["add_error"] = error
+    if work_type in ("client", "lab"):
+        params["add_type"] = work_type
+    if target_tab:
+        params["target_tab"] = target_tab
+    separator = "&" if "?" in target else "?"
+    return RedirectResponse(f"{target}{separator}{urlencode(params)}", status_code=303)
 
 
 _MAX_MANUAL_ROWS = 30
@@ -422,11 +423,19 @@ def create_manual_order(
         wanted_tab = ""
 
     def _back(message: str):
-        params = urlencode({
-            "error": message, "work_type": work_type,
-            "return_to": target, "target_tab": wanted_tab,
-        })
-        return RedirectResponse(f"/orders/new?{params}", status_code=303)
+        """Помилка — назад У ЧЕРГУ, з розгорнутою формою і текстом у ній.
+
+        Раніше вело на окрему сторінку `/orders/new`, і оператор втрачав день,
+        фільтри та прокрутку через невдалу валідацію одного поля (аудит
+        05.09.26, крок 2.4). `target` — та сама черга, з якої він тиснув.
+        """
+        params = {"add": "1", "add_error": message}
+        if work_type in ("client", "lab"):
+            params["add_type"] = work_type
+        if wanted_tab:
+            params["target_tab"] = wanted_tab
+        separator = "&" if "?" in target else "?"
+        return RedirectResponse(f"{target}{separator}{urlencode(params)}", status_code=303)
 
     def _at(values: list[str], i: int) -> str:
         return values[i].strip() if i < len(values) else ""

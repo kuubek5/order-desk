@@ -1052,3 +1052,46 @@ document.addEventListener("click", (event) => {
     })
     .catch(() => {});
 });
+
+// ── Повернення з невдалого додавання роботи (аудит 05.09.26, крок 2.4) ──
+// Окремої сторінки «додати роботу» більше немає: /orders/new редіректить сюди
+// з `?add=1`, а помилка приходить у `add_error`. Розгортаємо ту саму inline-
+// форму, показуємо текст у ній і прибираємо параметри з адреси, щоб
+// перезавантаження сторінки не показало ту саму помилку вдруге.
+function openAddworkFromQuery() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("add") !== "1") return;
+  const form = document.querySelector("[data-addwork]");
+  if (!form) return;
+
+  form.hidden = false;
+  const toggle = document.querySelector("[data-addwork-toggle]");
+  if (toggle) toggle.setAttribute("aria-expanded", "true");
+
+  const type = params.get("add_type");
+  if (type === "client" || type === "lab") applyAddworkType(form, type);
+
+  const message = params.get("add_error");
+  const box = form.querySelector("[data-addwork-error]");
+  if (box) {
+    box.textContent = message || "";
+    box.hidden = !message;
+  }
+
+  const first = form.querySelector("input:not([disabled]):not([type=hidden])");
+  if (first) first.focus();
+  if (message) form.scrollIntoView({ block: "center" });
+
+  // Адресу чистимо, але day/фільтри лишаємо — оператор має бачити свій день.
+  ["add", "add_error", "add_type"].forEach((key) => params.delete(key));
+  const query = params.toString();
+  window.history.replaceState(
+    null, "", window.location.pathname + (query ? "?" + query : "")
+  );
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", openAddworkFromQuery);
+} else {
+  openAddworkFromQuery();
+}

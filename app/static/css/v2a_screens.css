@@ -60,6 +60,9 @@ main.worldv2.search-wide{max-width:none}
 .q2 .addwork[hidden]{display:none}
 .q2 .addwork-rows{display:flex;flex-direction:column;gap:8px}
 .q2 .addwork-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+/* Помилка додавання роботи — у самій формі, а не на окремій сторінці
+   (аудит 05.09.26, крок 2.4). */
+.q2 .addwork-error{margin:0 0 10px;padding:9px 12px;border-radius:var(--r-ctl);border:1px solid rgba(var(--danger-rgb,217,83,79),.5);background:rgba(var(--danger-rgb,217,83,79),.12);color:var(--ink);font-size:var(--fs-2)}
 .q2 .addwork-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .q2 .addwork-addrow{height:34px;padding:0 13px;border-radius:8px;border:1px dashed var(--line-2);background:none;
   color:var(--ink-2);font:inherit;font-size:var(--fs-2);cursor:pointer;white-space:nowrap;
