@@ -16,13 +16,26 @@ from app.business_day import BUSINESS_TIMEZONE, business_date_of
 from app.models import Order
 
 
+# Назви вкладок дворозрядні («05.09.26»), а `%y` тлумачить 69-99 як 1969-1999:
+# вкладка «01.01.70» розібралась би як 1970 рік і потягла б за собою роботу на
+# півстоліття назад — повз будь-яке вікно черги, назавжди (аудит 05.09.26,
+# синк LOW). Реальні вкладки лабораторії лежать біля сьогодні, тож дату поза
+# розумним вікном вважаємо не датою взагалі: така вкладка просто не є
+# «датованою», її не імпортують і не архівують.
+_TAB_YEAR_MIN = 2000
+_TAB_YEARS_AHEAD = 5
+
+
 def parse_sheet_tab(sheet_tab: str | None) -> date | None:
     if not sheet_tab:
         return None
     try:
-        return datetime.strptime(sheet_tab, "%d.%m.%y").date()
+        parsed = datetime.strptime(sheet_tab, "%d.%m.%y").date()
     except ValueError:
         return None
+    if parsed.year < _TAB_YEAR_MIN or parsed.year > date.today().year + _TAB_YEARS_AHEAD:
+        return None
+    return parsed
 
 
 def order_date(order: Order) -> date:

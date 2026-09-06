@@ -19,7 +19,7 @@ from starlette.requests import Request
 from urllib.parse import urlencode
 
 from app import sync_control
-from app.business_day import business_today
+from app.business_day import business_today, utc_now
 from app.models import (
     ActionLog,
     Comment,
@@ -68,7 +68,7 @@ from app.services.undo import (
     perform_undo,
 )
 from app.sheet_writer import apply_status_markers
-from app.statuses import STATUSES
+from app.statuses import STATUSES, STATUS_ACCEPTED, STATUS_NEW
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ async def set_sum3d_id(
             # The letter in М is the "прораховано" marker, so advance the DB
             # status to match (never downgrade a further state), recording the
             # real logged-in operator who calculated it.
-            if order.status in ("нове", "прийнято"):
+            if order.status in (STATUS_NEW, STATUS_ACCEPTED):
                 order.status = "прораховано"
                 db.add(StatusEvent(
                     order_id=order.id, operator_id=user.id,
@@ -580,7 +580,7 @@ async def delete_order(
     if sync_control.is_paused():
         return toast_response(SYNC_PAUSED_MSG, kind="info")
 
-    order.archived_at = datetime.utcnow()
+    order.archived_at = utc_now()
     db.add(
         StatusEvent(
             order_id=order.id, operator_id=user.id, status=order.status,
@@ -706,7 +706,7 @@ def undo_action(request: Request, action_id: int, db: Session = Depends(get_db))
         return toast_response("Скасувати можна лише власну дію", kind="error")
     if entry.undone_at is not None:
         return toast_response("Цю дію вже скасовано", kind="error")
-    if entry.created_at is not None and entry.created_at < datetime.utcnow() - timedelta(seconds=UNDO_WINDOW_SECONDS):
+    if entry.created_at is not None and entry.created_at < utc_now() - timedelta(seconds=UNDO_WINDOW_SECONDS):
         return toast_response("Вікно скасування минуло", kind="error")
     if sync_control.is_paused():
         return toast_response(SYNC_PAUSED_MSG, kind="info")
@@ -728,7 +728,7 @@ def undo_last_action(request: Request, db: Session = Depends(get_db)):
     if sync_control.is_paused():
         return toast_response(SYNC_PAUSED_MSG, kind="info")
 
-    cutoff = datetime.utcnow() - timedelta(seconds=UNDO_WINDOW_SECONDS)
+    cutoff = utc_now() - timedelta(seconds=UNDO_WINDOW_SECONDS)
     entry = (
         db.query(ActionLog)
         .filter(
@@ -762,7 +762,7 @@ async def redo_last_action(request: Request, db: Session = Depends(get_db)):
     if sync_control.is_paused():
         return toast_response(SYNC_PAUSED_MSG, kind="info")
 
-    cutoff = datetime.utcnow() - timedelta(seconds=UNDO_WINDOW_SECONDS)
+    cutoff = utc_now() - timedelta(seconds=UNDO_WINDOW_SECONDS)
     entry = (
         db.query(ActionLog)
         .filter(

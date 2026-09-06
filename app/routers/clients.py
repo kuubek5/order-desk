@@ -8,7 +8,6 @@
 
 import logging
 import time
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -16,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
+from app.business_day import utc_now
 from app.client_profile import (
     count_matching_orders,
     find_matching_orders,
@@ -297,12 +297,12 @@ def bind_client_folder(
     elif alias is None:
         db.add(ClientNameAlias(
             sheet_name=client.canonical_name, export_folder_name=value,
-            confirmed=True, confirmed_at=datetime.utcnow(),
+            confirmed=True, confirmed_at=utc_now(),
         ))
     else:
         alias.export_folder_name = value
         alias.confirmed = True
-        alias.confirmed_at = datetime.utcnow()
+        alias.confirmed_at = utc_now()
     db.commit()
 
     # From the Майстер the reply is the card itself plus an out-of-band swap of

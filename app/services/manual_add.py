@@ -21,6 +21,7 @@ from typing import Callable
 
 from sqlalchemy.orm import Session
 
+from app.statuses import STATUS_ACCEPTED, STATUS_NEW
 from app.business_day import business_today
 from app.material_catalog import (
     ensure_seeded,
@@ -252,7 +253,7 @@ def create_manual_batch(
                 material_color=work["material_color"] or None, quantity=work["quantity"] or None,
                 job_code=work["job_code"] or None, technician_name=work["technician_name"] or None,
                 sum3d_id=work["sum3d_id"] or None,
-                status="прийнято" if work["sum3d_id"] else "нове",
+                status=STATUS_ACCEPTED if work["sum3d_id"] else STATUS_NEW,
             )
         else:
             order = Order(

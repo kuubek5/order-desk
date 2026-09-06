@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 import json
 import logging
 import re
@@ -13,7 +13,7 @@ from threading import Lock, Thread
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.business_day import business_today
+from app.business_day import business_today, utc_now
 from app.db import SessionLocal
 from app.models import Order, SyncLog
 from app.parser import header_mismatches, parse_rows
@@ -32,6 +32,7 @@ from app.sheets import (
     quota_is_tight,
     tab_name_for,
 )
+from app.services.order_dates import parse_sheet_tab
 from app.sync import sync_tab
 
 
@@ -239,12 +240,15 @@ class SheetSyncSummary:
 
 
 def _parse_tab_date(title: str) -> date | None:
+    """Дата вкладки — тим самим правилом, що й усюди (`parse_sheet_tab`).
+
+    Спільне джерело важливе саме тут: цей парсер вирішує, ЩО імпортувати і що
+    вважати «зниклою вкладкою». Якби він тлумачив дату інакше за решту екранів,
+    робота могла б жити на дні, якого черга не показує.
+    """
     if not _DATE_TAB_RE.fullmatch(title):
         return None
-    try:
-        return datetime.strptime(title, "%d.%m.%y").date()
-    except ValueError:
-        return None
+    return parse_sheet_tab(title)
 
 
 _LAST_FULL_SYNC_KEY = "last_full_sync_date"
@@ -607,7 +611,7 @@ def sync_google_sheets(
                 # prunes old days for space) archives its orders instead of wiping
                 # them — they leave the working queue but stay findable in the
                 # Archive. Email orders and non-dated sheet_tab values are untouched.
-                archived_at = datetime.utcnow()
+                archived_at = utc_now()
                 for orphan in orphans:
                     orphan.archived_at = archived_at
                     summary.deleted += 1

@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -86,3 +86,15 @@ def business_today(now: datetime | None = None) -> date:
     зміна ще на вчорашньому дні), о 08:00 — вже 3 вересня.
     """
     return business_date_of(now or business_now())
+
+
+def utc_now() -> datetime:
+    """UTC-час без часового поясу — заміна `datetime.utcnow()`.
+
+    Значення те саме, що й раніше (усі колонки `DateTime` в базі наївні, і
+    міняти це зараз означало б переписати всі порівняння). Різниця лише в тому,
+    що `utcnow()` оголошено застарілим у Python 3.12: коли інтерпретатор на
+    робочому ПК оновиться, воно почне сипати попередженнями, а колись і зникне.
+    Одна функція замість п'ятнадцяти викликів — і міняти буде що одне місце.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)

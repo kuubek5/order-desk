@@ -30,6 +30,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 
+from app.business_day import utc_now
 from app.crypto import decrypt_value, encrypt_value
 from app.models import (
     AppSetting,
@@ -137,7 +138,7 @@ def create_backup(session: Session, password: str) -> bytes:
     envelope = {
         "format_version": FORMAT_VERSION,
         "app": "order-desk",
-        "created_at": datetime.utcnow().isoformat() + "Z",
+        "created_at": utc_now().isoformat() + "Z",
         "kdf": "pbkdf2-sha256",
         "kdf_iterations": KDF_ITERATIONS,
         "salt": base64.b64encode(salt).decode("ascii"),

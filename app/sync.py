@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.business_day import utc_now
 from app.material_catalog import (
     ensure_seeded,
     load_alias_rows,
@@ -624,7 +625,7 @@ def sync_tab(
                 # роботу ЛИШЕ коли архівації більше 10 хвилин: бланкінг за цей
                 # час давно завершився б, отже робота в таблиці — це правда, а
                 # не хвіст видалення.
-                archived_for = datetime.utcnow() - existing.archived_at
+                archived_for = utc_now() - existing.archived_at
                 if archived_for > timedelta(minutes=10):
                     existing.archived_at = None
                     session.add(
@@ -687,7 +688,7 @@ def sync_tab(
             ]
             merged = previous + [name for name in edited if name not in previous]
             existing.sheet_changed_fields = ", ".join(merged)[:400]
-            existing.sheet_changed_at = datetime.utcnow()
+            existing.sheet_changed_at = utc_now()
             session.add(
                 StatusEvent(
                     order_id=existing.id, status=existing.status, actor="sync",
@@ -784,7 +785,7 @@ def sync_tab(
     # This was the "delete from sheet, stays in CRM, manual sync no help" report:
     # a just-imported наряд deleted seconds later sat inside the grace, and every
     # manual sync in that window skipped it.
-    grace_cutoff = datetime.utcnow() - timedelta(seconds=deletion_grace_seconds)
+    grace_cutoff = utc_now() - timedelta(seconds=deletion_grace_seconds)
     if had_raw_rows:
         # ЗАПОБІЖНИК ВІД МАСОВОЇ АРХІВАЦІЇ. Техніки чистять рядки по одному-два;
         # коли за один тік «зникає» чверть вкладки — це майже напевно не
@@ -839,7 +840,7 @@ def sync_tab(
                 # prunes old rows/tabs for space, which must never lose our
                 # copy). Aged-out active orders drop from the queue by date;
                 # this marks the ones removed EARLY.
-                order.archived_at = datetime.utcnow()
+                order.archived_at = utc_now()
                 result.deleted += 1
 
     return result

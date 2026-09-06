@@ -17,6 +17,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from app import sync_control
+from app.business_day import business_today
 from app.db import SessionLocal
 from app.models import Comment, Order, SyncLog
 from app.parser import HEADER_ROWS
@@ -91,7 +92,10 @@ def warm_sheet_writeback() -> None:
             # add (create_manual_order) runs its append here, and the
             # worksheet() metadata fetch is another ~18s cold on the lab
             # proxy — warming it now keeps the add to just the append.
-            get_worksheet_by_name(ss, date.today().strftime("%d.%m.%y"))
+            # business_today(), не date.today(): о 02:00 нічний оператор веде ще
+            # ВЧОРАШНІЙ день, і прогрівати треба його вкладку — інакше перша ж
+            # правка вночі платить ~40 с холодного відкриття (аудит, синк LOW).
+            get_worksheet_by_name(ss, business_today().strftime("%d.%m.%y"))
     except Exception:
         logger.info("Sheet write-back warmup skipped (sheet not ready)")
 

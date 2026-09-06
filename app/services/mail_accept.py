@@ -16,12 +16,12 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import date
 from pathlib import Path
 import logging
 
 from sqlalchemy.orm import Session
 
+from app.business_day import business_today
 from app.export_scanner import clear_export_cache
 from app.link_attachments import undownloaded_links
 from app.mail_export import (
@@ -221,8 +221,14 @@ def _resolve_target_tab(db: Session, email: EmailMessage):
     датовану вкладку ≤ сьогодні; якщо таблиця недоступна — лишаємо назву
     сьогоднішнього дня, як було. Знайдений аркуш повертаємо, щоб не тягнути
     його вдруге при записі нотатки.
+
+    День — РОБОЧИЙ (`business_today`), а не календарний: о 02:00 нічний
+    оператор веде ще вчорашній день, і лист, прийнятий тоді, мусить лягти в
+    ЙОГО вкладку. Це та сама межа, яку CLAUDE.md §14 вимагає скрізь; тут вона
+    лишалась календарною з часів, коли правила ще не було, і сторож
+    `tests/test_business_day.py` знайшов це, щойно код переїхав під його нагляд.
     """
-    today = date.today()
+    today = business_today()
     target_tab = today.strftime("%d.%m.%y")
     try:
         worksheet = latest_worksheet_on_or_before(open_spreadsheet(db=db), today)

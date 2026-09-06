@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app import perf
+from app.business_day import utc_now
 from app.__version__ import VERSION
 from app.db import SessionLocal
 from app.material_class import (
@@ -293,13 +294,13 @@ def busy_operators() -> int:
     N хв» у самому тексті діалогу, щоб ніхто не читав його як «онлайн».
     """
     try:
-        from datetime import datetime, timedelta
+        from datetime import timedelta
 
         from sqlalchemy import func, select
 
         from app.models import ActionLog
 
-        cutoff = datetime.utcnow() - timedelta(minutes=BUSY_OPERATOR_WINDOW_MINUTES)
+        cutoff = utc_now() - timedelta(minutes=BUSY_OPERATOR_WINDOW_MINUTES)
         db = SessionLocal()
         try:
             return db.scalar(

@@ -87,21 +87,6 @@ MACHINE_FRAMES_PATH = os.environ.get(
 MACHINE_PORTRAITS_PATH = os.environ.get(
     "MACHINE_PORTRAITS_PATH", str(DATA_DIR / "machine_portraits")
 )
-# Фото конкретного верстата (Налаштування → Верстати → «Фото»): один JPEG
-# на верстат, ім'я = id рядка. Без фото картка бере дефолтний портрет моделі.
-MACHINE_PORTRAITS_PATH = os.environ.get(
-    "MACHINE_PORTRAITS_PATH", str(DATA_DIR / "machine_portraits")
-)
-# Фото конкретного верстата (Налаштування → Верстати → «Фото»): один JPEG
-# на верстат, ім'я = id рядка. Без фото картка бере дефолтний портрет моделі.
-MACHINE_PORTRAITS_PATH = os.environ.get(
-    "MACHINE_PORTRAITS_PATH", str(DATA_DIR / "machine_portraits")
-)
-# Фото конкретного верстата (Налаштування → Верстати → «Фото»): один JPEG
-# на верстат, ім'я = id рядка. Без фото картка бере дефолтний портрет моделі.
-MACHINE_PORTRAITS_PATH = os.environ.get(
-    "MACHINE_PORTRAITS_PATH", str(DATA_DIR / "machine_portraits")
-)
 # Калібрувальні кадри верстата: програма збирає їх САМА, поки шрифт підпису
 # смуги ще не вивчено (бракує цифр у machine_glyphs.json), і зупиняється, коли
 # всі цифри є. Оператор лише скачує їх одним zip і надсилає — навчання

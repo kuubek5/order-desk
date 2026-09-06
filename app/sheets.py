@@ -553,7 +553,11 @@ def latest_worksheet_on_or_before(
     has no usable dated tab at all."""
     best_date: date | None = None
     best_ws: gspread.Worksheet | None = None
-    for ws in spreadsheet.worksheets():
+    # Через call_with_retry, як і решта звернень до Google: без нього цей
+    # виклик не переживав ані 429, ані обрив проксі — і, головне, не
+    # потрапляв у лічильник квоти, тобто гальмо гарячої смуги його не
+    # бачило (аудит 05.09.26, синк LOW).
+    for ws in call_with_retry(spreadsheet.worksheets):
         try:
             tab_date = datetime.strptime(ws.title, "%d.%m.%y").date()
         except ValueError:

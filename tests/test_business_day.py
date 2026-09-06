@@ -104,6 +104,12 @@ def test_retention_cutoff_is_the_same_day_source_everywhere():
         "app/services/queue_view.py",
         "app/services/handout.py",
         "app/services/manual_add.py",
+        "app/services/sheet_writeback.py",
+        "app/services/mail_accept.py",
+        # Тека файлів у `export` називається днем, і він мусить збігатися з
+        # днем рядка в таблиці — інакше видача шукає роботу під одним днем,
+        # а файли лежать під іншим (нічна зміна).
+        "app/mail_export.py",
     )
     offenders: list[str] = []
     for rel in screens:

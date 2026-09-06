@@ -12,6 +12,7 @@ import re
 import shutil
 from pathlib import Path
 
+from app.business_day import business_today
 from app.client_matcher import match_client_name
 from app.safe_names import avoid_reserved_device_name
 
@@ -23,7 +24,13 @@ def _batch_base_name(today: date) -> str:
     """The per-drop-off batch folder is named for the download date (dd.mm.yy),
     so the morning handout can orient by date instead of an opaque "нова папка".
     Same-day drop-offs reuse this folder (or a numbered sibling); a new day gets
-    a fresh date folder."""
+    a fresh date folder.
+
+    День тут РОБОЧИЙ (див. виклики нижче), і це не дрібниця: о 02:00 нічний
+    оператор веде ще вчорашній день. З календарним днем його файли лягали б у
+    теку «07.09.26», тоді як рядок-нотатка в таблиці — у вкладку «06.09.26»:
+    видача шукала б роботу за одним днем, а файли лежали б під іншим.
+    """
     return today.strftime("%d.%m.%y")
 
 
@@ -141,7 +148,7 @@ def preview_export_target(
     without touching the filesystem — drives the wizard's directory step so the
     operator confirms the path before committing. Mirrors the same resolver /
     batch-reuse / material-folder logic; keep the two in step."""
-    base = _batch_base_name(today or date.today())
+    base = _batch_base_name(today or business_today())
     override = (client_folder_override or "").strip()
     if override:
         client_folder = sanitize_folder_name(override)
@@ -292,7 +299,7 @@ def save_attachments_to_export(
     if not attachment_paths:
         return []
 
-    base = _batch_base_name(today or date.today())
+    base = _batch_base_name(today or business_today())
 
     # The accept wizard's directory step lets the operator pin an exact client
     # folder (e.g. reuse "Vision Dental" when the fuzzy match would have made a

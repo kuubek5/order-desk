@@ -7,11 +7,11 @@ HTTP-відповідь (тост, HX-Trigger) лишається в HTTP-шар
 """
 
 from dataclasses import dataclass
-from datetime import datetime
 import json
 
 from sqlalchemy.orm import Session
 
+from app.business_day import utc_now
 from app.models import ActionLog, Order, StatusEvent, User
 from app.services.sheet_writeback import (
     clear_sheet_row_background,
@@ -160,7 +160,7 @@ def perform_undo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
     else:
         return UndoOutcome("Цей тип дії поки не скасовується", kind="error")
 
-    entry.undone_at = datetime.utcnow()
+    entry.undone_at = utc_now()
     log_action(
         db, order=order, operator=user, action_type="undo",
         field=entry.field, note=f"скасовано: {entry.note}",
@@ -231,7 +231,7 @@ def perform_redo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
     elif entry.action_type == "delete":
         if order.archived_at is not None:
             return UndoOutcome("Робота вже видалена", kind="info")
-        order.archived_at = datetime.utcnow()
+        order.archived_at = utc_now()
         if order.source in ("lab", "sheet_client") and order.sheet_tab and order.row_number:
             clear_sheet_row_background(order.id)
         sync_error = None
