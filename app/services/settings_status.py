@@ -505,6 +505,27 @@ def _slab_about(ctx: dict) -> Slab:
     return Slab(tone=TONE_NONE, label=f"v{version}", meters=meters)
 
 
+# Ключ розділу → як зібрати його плиту. Словник, а не тіло функції, бо плиту
+# треба вміти зібрати й ПООДИНЦІ: «Сповіщення» живуть тепер у кабінеті
+# (/account), і тягнути туди снапшоти печей заради однієї плити не варто.
+_SLAB_BUILDERS = {
+    "state": lambda db, ctx: _slab_state(ctx),
+    "notifications": lambda db, ctx: _slab_notifications(ctx),
+    "sheets": _slab_sheets,
+    "operators": lambda db, ctx: _slab_operators(ctx),
+    "sections": lambda db, ctx: _slab_sections(ctx),
+    "backup": lambda db, ctx: _slab_backup(ctx),
+    "sheet-backup": lambda db, ctx: _slab_sheet_backup(ctx),
+    "imap": lambda db, ctx: _slab_imap(ctx),
+    "paths": lambda db, ctx: _slab_paths(ctx),
+    "mail-download": lambda db, ctx: _slab_mail_download(ctx),
+    "mail-filters": lambda db, ctx: _slab_mail_filters(ctx),
+    "furnaces": _slab_furnaces,
+    "machines": _slab_machines,
+    "update": lambda db, ctx: _slab_about(ctx),
+}
+
+
 def build_slabs(db: Session, ctx: dict) -> dict[str, Slab]:
     """Плити для всіх розділів. Ключ = `data-sec` секції в шаблоні.
 
@@ -512,22 +533,13 @@ def build_slabs(db: Session, ctx: dict) -> dict[str, Slab]:
     пристрою з потоку запиту не ходимо, інакше мовчазний ПК тримав би
     налаштування двадцять секунд.
     """
-    return {
-        "state": _slab_state(ctx),
-        "notifications": _slab_notifications(ctx),
-        "sheets": _slab_sheets(db, ctx),
-        "operators": _slab_operators(ctx),
-        "sections": _slab_sections(ctx),
-        "backup": _slab_backup(ctx),
-        "sheet-backup": _slab_sheet_backup(ctx),
-        "imap": _slab_imap(ctx),
-        "paths": _slab_paths(ctx),
-        "mail-download": _slab_mail_download(ctx),
-        "mail-filters": _slab_mail_filters(ctx),
-        "furnaces": _slab_furnaces(db, ctx),
-        "machines": _slab_machines(db, ctx),
-        "update": _slab_about(ctx),
-    }
+    return {key: build(db, ctx) for key, build in _SLAB_BUILDERS.items()}
 
 
-__all__ = ["Meter", "Slab", "build_slabs", "TONE_OK", "TONE_WARN", "TONE_ALARM", "TONE_NONE"]
+def build_slab(key: str, db: Session, ctx: dict) -> Optional[Slab]:
+    """Одна плита за ключем — для екранів поза /settings."""
+    build = _SLAB_BUILDERS.get(key)
+    return build(db, ctx) if build else None
+
+
+__all__ = ["Meter", "Slab", "build_slabs", "build_slab", "TONE_OK", "TONE_WARN", "TONE_ALARM", "TONE_NONE"]

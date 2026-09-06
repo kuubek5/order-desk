@@ -417,3 +417,44 @@
   .scon .filter-rules > .dsec:first-of-type { grid-column: span 6; }
 }
 
+/* ── вкладки всередині розділу ────────────────────────────────────────── */
+/* Частина розділів — одне господарство: копії таблиці страхують ТУ САМУ
+   таблицю, режим скачування належить ТІЙ САМІЙ скриньці. Замість двох
+   пунктів меню через півекрана один розділ із двома вкладками; меню й Ctrl+K
+   і далі знають обидва ключі й відкривають потрібну вкладку одразу. */
+.scon .stand-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--card-2);
+  align-self: flex-start;
+  flex-wrap: wrap;
+}
+.scon .stand-tab {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: var(--fs-2);
+  font-weight: 500;
+  padding: 7px 14px;
+  border-radius: calc(var(--r-ctl) - 3px);
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.scon .stand-tab:hover { color: var(--ink); }
+.scon .stand-tab.is-on {
+  background: rgba(var(--accent-base-rgb), .12);
+  border-color: rgba(var(--accent-rgb), .3);
+  color: var(--accent-c);
+}
+.scon .stand-tabpane { display: none; }
+.scon .stand-tabpane.is-on {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+

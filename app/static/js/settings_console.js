@@ -22,20 +22,53 @@
     return sections.map(function (s) { return s.dataset.sec; });
   }
 
+  // ── вкладки всередині розділу ────────────────────────────
+  // Частина розділів злилась у вкладки («Копії таблиці» всередині Google
+  // Таблиці, «Скачування вкладень» усередині Пошти). Меню й Ctrl+K і далі
+  // знають їх окремими ключами, тому тут карта «ключ вкладки → її розділ»:
+  // адреса /settings#sheet-backup відкриває Google Таблицю на другій вкладці.
+  var tabHost = {};
+  sections.forEach(function (sec) {
+    Array.prototype.forEach.call(sec.querySelectorAll("[data-tab]"), function (pane) {
+      tabHost[pane.dataset.tab] = sec.dataset.sec;
+    });
+  });
+
+  function showTab(sec, tabKey) {
+    var panes = Array.prototype.slice.call(sec.querySelectorAll("[data-tab]"));
+    if (!panes.length) return;
+    if (!tabKey || !panes.some(function (p) { return p.dataset.tab === tabKey; })) {
+      tabKey = panes[0].dataset.tab;
+    }
+    panes.forEach(function (p) { p.classList.toggle("is-on", p.dataset.tab === tabKey); });
+    Array.prototype.forEach.call(sec.querySelectorAll(".stand-tab"), function (b) {
+      var on = b.dataset.tabgo === tabKey;
+      b.classList.toggle("is-on", on);
+      b.setAttribute("aria-selected", on ? "true" : "false");
+    });
+  }
+
   // ── show one section ─────────────────────────────────────
   function show(key, focusSel) {
     var keys = sectionKeys();
+    var tab = null;
+    if (keys.indexOf(key) === -1 && tabHost[key]) {
+      tab = key;
+      key = tabHost[key];
+    }
     if (keys.indexOf(key) === -1) key = keys.indexOf("state") !== -1 ? "state" : keys[0];
     sections.forEach(function (s) {
-      s.classList.toggle("is-shown", s.dataset.sec === key);
+      var on = s.dataset.sec === key;
+      s.classList.toggle("is-shown", on);
+      if (on) showTab(s, tab);
     });
     railItems.forEach(function (a) {
-      var on = a.dataset.sec === key;
+      var on = a.dataset.sec === (tab || key);
       a.classList.toggle("is-active", on);
       if (on) a.setAttribute("aria-current", "true");
       else a.removeAttribute("aria-current");
     });
-    if (history.replaceState) history.replaceState(null, "", "#" + key);
+    if (history.replaceState) history.replaceState(null, "", "#" + (tab || key));
     if (focusSel) {
       window.setTimeout(function () {
         var f = main.querySelector(focusSel);
@@ -53,9 +86,25 @@
   railItems.forEach(function (a) {
     a.addEventListener("click", function (e) {
       var key = a.dataset.sec;
-      if (sectionKeys().indexOf(key) === -1) return; // external → let it navigate
+      // Ключ вкладки теж наш: він веде в розділ-господар, а не на іншу сторінку.
+      if (sectionKeys().indexOf(key) === -1 && !tabHost[key]) return;
       e.preventDefault();
       show(key);
+    });
+  });
+
+  // ── клік по вкладці всередині розділу ────────────────────
+  main.addEventListener("click", function (e) {
+    var btn = e.target.closest ? e.target.closest(".stand-tab") : null;
+    if (!btn) return;
+    var sec = btn.closest(".scon-sec");
+    if (!sec) return;
+    e.preventDefault();
+    showTab(sec, btn.dataset.tabgo);
+    // Адреса рядка називає саме вкладку — посилання можна скинути колезі.
+    if (history.replaceState) history.replaceState(null, "", "#" + btn.dataset.tabgo);
+    railItems.forEach(function (a) {
+      a.classList.toggle("is-active", a.dataset.sec === btn.dataset.tabgo);
     });
   });
 
@@ -159,7 +208,7 @@
       var en = rows[i];
       if (!en) return;
       close();
-      if (en.sec && sectionKeys().indexOf(en.sec) !== -1) show(en.sec);
+      if (en.sec && knownKey(en.sec)) show(en.sec);
       else window.location.href = en.href;
     }
     function open() {
@@ -420,11 +469,16 @@
   });
 
   // ── boot ─────────────────────────────────────────────────
+  // Ключ вкладки («#sheet-backup») теж валідний старт: show() сам знайде
+  // розділ-господар і відкриє потрібну вкладку.
+  function knownKey(k) {
+    return sectionKeys().indexOf(k) !== -1 || Object.prototype.hasOwnProperty.call(tabHost, k);
+  }
   var start = (location.hash || "").replace("#", "");
-  show(sectionKeys().indexOf(start) !== -1 ? start : "state");
+  show(knownKey(start) ? start : "state");
   animateCounters();
   window.addEventListener("hashchange", function () {
     var k = (location.hash || "").replace("#", "");
-    if (sectionKeys().indexOf(k) !== -1) show(k);
+    if (knownKey(k)) show(k);
   });
 })();

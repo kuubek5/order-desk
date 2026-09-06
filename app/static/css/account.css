@@ -47,7 +47,11 @@ main.accv2{max-width:1340px;margin:0 auto;padding:24px 22px 56px}
   background:var(--raise);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .24)}
 #acc-tab-profile:checked ~ #acc-pane-profile,
 #acc-tab-look:checked    ~ #acc-pane-look,
-#acc-tab-screens:checked ~ #acc-pane-screens{display:block}
+#acc-tab-screens:checked ~ #acc-pane-screens,
+#acc-tab-notify:checked  ~ #acc-pane-notify{display:block}
+/* Обгортка партіала сповіщень: .scon у settings_console.css звужує main і
+   ховає секції — тут це лише контейнер стилів, не консоль налаштувань. */
+.acc-notify{max-width:none}
 
 /* ── Профіль ──────────────────────────────────────────────────────────
    Дві короткі форми поруч: разом вони вміщаються в екран, тоді як у стос

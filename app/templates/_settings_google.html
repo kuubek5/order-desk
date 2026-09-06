@@ -7,6 +7,12 @@
         <div class="wizard-step scon-sec stand-sec {{ st }}" data-sec="sheets">
             <div class="num">{% if step_done[1] %}✓{% else %}1{% endif %}</div>
             <div class="box">
+                <div class="stand-tabs" role="tablist">
+                    <button type="button" class="stand-tab is-on" role="tab" data-tabgo="sheets" aria-selected="true">Таблиця</button>
+                    <button type="button" class="stand-tab" role="tab" data-tabgo="sheet-backup" aria-selected="false">Копії таблиці</button>
+                </div>
+
+                <div class="stand-tabpane is-on" data-tab="sheets">
                 {% call slab('Google Таблиця', 'Основне джерело черги робіт.', slabs['sheets']) %}
                     <button
                         type="button"
@@ -193,5 +199,11 @@
                         </div>
                     </div>
                 </form>
+                </div>
+
+                {# «Копії таблиці» — друга вкладка того самого розділу: це
+                   страховка САМЕ цієї таблиці, і шукати її за три пункти
+                   меню від неї не було жодної причини. #}
+                {% include "_settings_sheet_backup.html" %}
             </div>
         </div>

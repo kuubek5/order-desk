@@ -63,14 +63,14 @@
         <nav class="rail-nav-group" aria-label="{{ group.title }}">
             {% for item in group.items %}
             {% if item.kind == 'section' %}
-            <a href="{{ item.href }}" class="rail-nav-item rail-sset" data-sec="{{ item.key }}">
+            <a href="{{ item.href }}" class="rail-nav-item rail-sset{% if item.parent %} is-sub{% endif %}" data-sec="{{ item.key }}">
                 {{ nav_icon(item.icon_key) }}
                 <span class="rail-label">{{ item.title }}</span>
             </a>
             {% else %}
             {# Окрема сторінка: перезавантаження, а не свап секції — тому
                стрілка ↗. Активний пункт тут визначає шлях, а не #hash. #}
-            <a href="{{ item.href }}" class="rail-nav-item{% if spath == item.href %} is-active{% endif %}"{% if spath == item.href %} aria-current="page"{% endif %}>
+            <a href="{{ item.href }}" class="rail-nav-item{% if item.parent %} is-sub{% endif %}{% if spath == item.href %} is-active{% endif %}"{% if spath == item.href %} aria-current="page"{% endif %}>
                 {{ nav_icon(item.icon_key) }}
                 <span class="rail-label">{{ item.title }}</span>
                 {% if item.badge == 'sync_dot' %}{{ sync_dot(nav_sync) }}{% endif %}

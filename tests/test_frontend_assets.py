@@ -264,20 +264,26 @@ def test_localstorage_goes_through_the_versioned_helper():
 # (Крок 5). Порядок тут і є порядком на екрані, тож він частина поведінки.
 SETTINGS_SECTIONS = [
     "_settings_state.html",
-    "_settings_notifications.html",
     "_settings_google.html",
     "_settings_operators.html",
     "_settings_sections.html",
     "_settings_backup.html",
-    "_settings_sheet_backup.html",
     "_settings_imap.html",
     "_settings_paths.html",
-    "_settings_mail_download.html",
     "_settings_mail_filters.html",
     "_settings_furnace.html",
     "_settings_machines.html",
     "_settings_about.html",
 ]
+
+# Партіали, які більше не включаються з settings.html напряму, бо стали
+# ВКЛАДКАМИ (06.09.26): їх включає розділ-господар, і саме там їх треба
+# шукати, якщо розділ раптом зник з екрана.
+SETTINGS_TAB_PARTIALS = {
+    "_settings_sheet_backup.html": "_settings_google.html",
+    "_settings_mail_download.html": "_settings_imap.html",
+    "_settings_notifications.html": "account.html",
+}
 
 
 def test_every_template_parses():
@@ -436,3 +442,17 @@ def test_every_template_referenced_in_code_exists():
         "Код рендерить шаблони, яких немає на диску (роут упаде 500):" + chr(10)
         + chr(10).join(sorted(missing))
     )
+
+
+def test_tab_partials_are_included_by_their_host():
+    """Вкладка без господаря = розділ, до якого не дійти жодним шляхом.
+
+    Партіал зник із settings.html свідомо (він тепер вкладка), але це означає,
+    що єдиний вхід у нього — include у господаря. Якщо той include зникне,
+    сторінка відкриється як ні в чому не бувало, просто без цілого розділу."""
+    missing = []
+    for partial, host in SETTINGS_TAB_PARTIALS.items():
+        html = (TEMPLATES_DIR / host).read_text(encoding="utf-8")
+        if f'include "{partial}"' not in html:
+            missing.append(f"{partial}: немає include у {host}")
+    assert not missing, chr(10).join(missing)

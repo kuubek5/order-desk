@@ -61,6 +61,11 @@ class NavItem:
     gate: bool = False
     """Пункт підпадає під «Блокування розділів» (`section_gate.SECTIONS`)."""
 
+    parent: Optional[str] = None
+    """Ключ розділу-господаря, якщо це його ВКЛАДКА, а не окрема секція.
+    Пункт лишається в меню й у Ctrl+K: адреса `/settings#<ключ>` відкриває
+    господаря одразу на потрібній вкладці (`settings_console.js`)."""
+
     @property
     def icon_key(self) -> str:
         return self.icon or self.key
@@ -95,8 +100,10 @@ NAV: tuple = (
             NavItem(
                 key="notifications",
                 title="Сповіщення",
-                href="/settings#notifications",
+                href="/account#notifications",
+                kind="page",
                 edit_roles=None,
+                parent="account",
                 keywords=("спливні", "звук", "попап"),
             ),
             NavItem(
@@ -136,6 +143,7 @@ NAV: tuple = (
                 title="Копії таблиці",
                 href="/settings#sheet-backup",
                 edit_roles=None,
+                parent="sheets",
                 keywords=("знімок", "csv", "відновлення", "вкладки"),
             ),
             NavItem(
@@ -146,18 +154,19 @@ NAV: tuple = (
                 keywords=("ukr.net", "пошта", "пароль", "скринька"),
             ),
             NavItem(
+                key="mail-download",
+                title="Скачування вкладень",
+                href="/settings#mail-download",
+                edit_roles=None,
+                parent="imap",
+                keywords=("вкладення", "архів", "rar", "спул"),
+            ),
+            NavItem(
                 key="paths",
                 title="Шляхи папок",
                 href="/settings#paths",
                 edit_roles=None,
                 keywords=("export", "sum3d", "cam-work", "тека", "мережа"),
-            ),
-            NavItem(
-                key="mail-download",
-                title="Скачування вкладень",
-                href="/settings#mail-download",
-                edit_roles=None,
-                keywords=("вкладення", "архів", "rar", "спул"),
             ),
             NavItem(
                 key="mail-filters",

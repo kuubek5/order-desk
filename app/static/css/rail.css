@@ -392,6 +392,17 @@
     display: none;
   }
 
+  /* Пункт-вкладка: живе всередині сусіднього розділу, тому стоїть під ним
+     із відступом і тихішим підписом — видно, що це не окремий екран. */
+  .rail-settings .rail-nav-item.is-sub {
+    padding-left: 30px;
+    font-size: var(--fs-1);
+    color: var(--ink-3);
+  }
+  .rail-settings .rail-nav-item.is-sub .rail-nav-icon { opacity: .7; }
+  .rail-settings .rail-nav-item.is-sub.is-active { color: var(--accent-c); }
+  body.rail-collapsed .rail-settings .rail-nav-item.is-sub { padding-left: 0; }
+
   /* ---- Collapsed rail (icons only) ---- */
   body.rail-collapsed:has(.topbar-user) {
     padding-left: 64px;

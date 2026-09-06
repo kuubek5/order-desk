@@ -24,6 +24,7 @@ from app.license import (
 )
 from app.models import User
 from app.services.widget_order import clean_load_metrics, clean_side_order, clean_strip_order
+from app.services.settings_status import build_slab
 from app.routers.deps import UI_SESSION_KEY, get_current_user, login_redirect, get_db, templates
 from app.services.look_prefs import (
     LookError,
@@ -39,7 +40,13 @@ from app.services.operators import (
     validate_password,
     validate_initial,
 )
-from app.settings_store import set_setting
+from app.settings_store import (
+    NOTIFY_EVENTS,
+    get_notify_events,
+    get_notify_position,
+    get_notify_style,
+    set_setting,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +216,19 @@ async def get_account(request: Request, db: Session = Depends(get_db)):
     if user is None:
         return login_redirect(request)
 
-    return templates.TemplateResponse(request, "account.html", {"user": user})
+    # «Сповіщення» переїхали з /settings у кабінет: це преференції ЛЮДИНИ за
+    # цим робочим місцем, а не налаштування машини. Партіал лишився той самий
+    # (_settings_notifications.html) і шле в той самий POST /settings/notifications,
+    # тому сюди треба покласти те, що він читає.
+    notify_ctx = {
+        "notify_style": get_notify_style(db),
+        "notify_position": get_notify_position(db),
+        "notify_events": get_notify_events(db),
+        "notify_all": NOTIFY_EVENTS,
+    }
+    context = {"user": user, **notify_ctx}
+    context["slabs"] = {"notifications": build_slab("notifications", db, notify_ctx)}
+    return templates.TemplateResponse(request, "account.html", context)
 
 
 # "" лишається дозволеним лише для сумісності зі старими БД (до зміни дефолту

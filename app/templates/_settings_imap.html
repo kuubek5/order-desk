@@ -7,6 +7,12 @@
         <div class="wizard-step scon-sec stand-sec {{ st }}" data-sec="imap">
             <div class="num">{% if step_done[4] %}✓{% else %}4{% endif %}</div>
             <div class="box">
+                <div class="stand-tabs" role="tablist">
+                    <button type="button" class="stand-tab is-on" role="tab" data-tabgo="imap" aria-selected="true">Скринька</button>
+                    <button type="button" class="stand-tab" role="tab" data-tabgo="mail-download" aria-selected="false">Скачування вкладень</button>
+                </div>
+
+                <div class="stand-tabpane is-on" data-tab="imap">
                 {% call slab('Пошта (IMAP)', 'Замовлення клієнтів листами з усієї країни (ukr.net).', slabs['imap']) %}
                     <button
                         type="button"
@@ -88,5 +94,10 @@
                                 hx-disabled-elt="this">Зберегти</button>
                     </div>
                 </form>
+                </div>
+
+                {# «Скачування вкладень» — режим тієї самої скриньки, тому
+                   вкладка тут, а не окремий пункт меню через півекрана. #}
+                {% include "_settings_mail_download.html" %}
             </div>
         </div>

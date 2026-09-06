@@ -53,6 +53,18 @@ def _section_keys_in_templates() -> set[str]:
     return keys
 
 
+def _tab_keys_in_templates() -> set[str]:
+    """`data-tab` панелей-вкладок: розділ живе всередині іншого розділу
+    («Копії таблиці» в Google Таблиці, «Скачування вкладень» у Пошті,
+    «Сповіщення» — у кабінеті)."""
+    keys: set[str] = set()
+    for path in list(TEMPLATES.glob("_settings_*.html")) + [TEMPLATES / "account.html"]:
+        text = io.open(path, encoding="utf-8").read()
+        for match in re.finditer(r'stand-tabpane[^>]*data-tab="([^"]+)"', text):
+            keys.add(match.group(1))
+    return keys
+
+
 def _known_paths() -> set[str]:
     lines = io.open(ROUTES, encoding="utf-8").read().split("\n")
     return {line.split(" ", 1)[1].strip() for line in lines if line.strip() and " " in line}
@@ -62,19 +74,37 @@ def _known_paths() -> set[str]:
 
 
 def test_every_nav_href_resolves():
-    sections = _section_keys_in_templates()
+    sections = _section_keys_in_templates() | _tab_keys_in_templates()
     paths = _known_paths()
     broken: list[str] = []
     for item in ITEMS.values():
         if item.kind == "section":
             if item.key not in sections:
-                broken.append(f"{item.key}: немає секції з data-sec у _settings_*.html")
+                broken.append(f"{item.key}: немає ні секції, ні вкладки з таким ключем")
             if not item.href.startswith("/settings#"):
                 broken.append(f"{item.key}: секція має вести на /settings#<ключ>")
         else:
-            if item.href not in paths:
-                broken.append(f"{item.key}: {item.href} немає в route_inventory.txt")
-    assert not broken, "\n".join(broken)
+            # У сторінки може бути якір на вкладку (/account#notifications) —
+            # роут перевіряємо без нього.
+            path = item.href.split("#", 1)[0]
+            if path not in paths:
+                broken.append(f"{item.key}: {path} немає в route_inventory.txt")
+    assert not broken, chr(10).join(broken)
+
+
+def test_tab_items_point_at_a_real_host():
+    """`parent` мусить називати розділ, який справді існує в реєстрі —
+    інакше меню вело б у порожнечу, а вкладку ніхто не показав би."""
+    for item in ITEMS.values():
+        if item.parent:
+            assert item.parent in ITEMS, f"{item.key}: господар «{item.parent}» поза реєстром"
+            assert item.parent != item.key
+
+
+def test_every_tab_pane_is_registered():
+    """Панель-вкладка без пункту меню недосяжна так само, як осиротіла секція."""
+    orphans = sorted(_tab_keys_in_templates() - set(ITEMS))
+    assert not orphans, f"вкладки поза реєстром меню: {orphans}"
 
 
 # ── 2. Кожна секція екрана досяжна з меню ───────────────────────────────

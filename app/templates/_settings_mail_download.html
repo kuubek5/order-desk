@@ -5,12 +5,9 @@
            as mail arrives. Admin-only. #}
         {# Гейт розділу тепер у settings.html через реєстр меню
            (`app/services/settings_nav.py`) — тут дубля немає. #}
-        <section id="mail-download" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="mail-download"
-                 data-dl-state="{{ 'all' if mail_download_all else 'trusted' }}">
-            <div class="num" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-            </div>
-            <div class="box">
+        {# Вкладка розділу-господаря: власної секції більше немає,
+           тому нема й другої плити в меню. #}
+        <div class="stand-tabpane" data-tab="mail-download" data-dl-state="{{ 'all' if mail_download_all else 'trusted' }}">
                 {{ slab('Скачування вкладень', 'Що качається з пошти автоматично і скільки місця займає спул.', slabs['mail-download']) }}
 
                 <div class="stand-cells">
@@ -70,5 +67,4 @@
                     </div>
                 </div>
                 {% endif %}
-            </div>
-        </section>
+        </div>

@@ -58,16 +58,19 @@
            групи мусив збігатися з гейтами рейки руками; розділ, доданий у
            меню, але забутий тут, рендерився в порожнечу. Тепер обидва боки
            читають один рядок реєстру. #}
+        {# Три розділи більше не стоять тут окремо:
+           · «Сповіщення» → вкладка кабінета /account (преференції людини);
+           · «Копії таблиці» → вкладка всередині «Google Таблиця»;
+           · «Скачування вкладень» → вкладка всередині «Пошта (IMAP)».
+           Їхні партіали включаються з розділів-господарів, роути й ключі
+           реєстру меню лишились ті самі. #}
         {% if can_see(user, 'state') %}{% include "_settings_state.html" %}{% endif %}
-        {% if can_see(user, 'notifications') %}{% include "_settings_notifications.html" %}{% endif %}
         {% if can_see(user, 'sheets') %}{% include "_settings_google.html" %}{% endif %}
         {% if can_see(user, 'operators') %}{% include "_settings_operators.html" %}{% endif %}
         {% if can_see(user, 'sections') %}{% include "_settings_sections.html" %}{% endif %}
         {% if can_see(user, 'backup') %}{% include "_settings_backup.html" %}{% endif %}
-        {% if can_see(user, 'sheet-backup') %}{% include "_settings_sheet_backup.html" %}{% endif %}
         {% if can_see(user, 'imap') %}{% include "_settings_imap.html" %}{% endif %}
         {% if can_see(user, 'paths') %}{% include "_settings_paths.html" %}{% endif %}
-        {% if can_see(user, 'mail-download') %}{% include "_settings_mail_download.html" %}{% endif %}
         {% if can_see(user, 'mail-filters') %}{% include "_settings_mail_filters.html" %}{% endif %}
         {% if can_see(user, 'furnaces') %}{% include "_settings_furnace.html" %}{% endif %}
         {% if can_see(user, 'machines') %}{% include "_settings_machines.html" %}{% endif %}

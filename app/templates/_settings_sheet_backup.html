@@ -5,11 +5,9 @@
            залити назад. Логіка: app/sheet_backup.py, роути: routers/settings.py.
            Іконки — намальовані SVG у стилі решти налаштувань (жодних юнікод-
            стрілок), 1.8 stroke. #}
-        <section id="sheet-backup" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="sheet-backup">
-            <div class="num" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1.5" class="duo"/><path d="M4 9h16M9 9v11M4 14h5"/></svg>
-            </div>
-            <div class="box">
+        {# Вкладка розділу-господаря: власної секції більше немає,
+           тому нема й другої плити в меню. #}
+        <div class="stand-tabpane" data-tab="sheet-backup">
                 {{ slab('Копії Google-таблиці', 'Дослівна CSV-копія кожної денної вкладки — страховка для відновлення самої таблиці.', slabs['sheet-backup']) }}
 
                 {# ── Налаштування авто-знімання ─────────────────────────── #}
@@ -118,5 +116,4 @@
                     </ol>
                     <p class="wizard-sub">Копія містить значення клітинок дослівно. Формули й ручні кольори заливок не переносяться.</p>
                 </details>
-            </div>
-        </section>
+        </div>

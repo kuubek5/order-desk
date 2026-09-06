@@ -90,4 +90,7 @@ async def save_notification_prefs(request: Request, db: Session = Depends(get_db
     db.commit()
     if request.headers.get("HX-Request") == "true":
         return toast_response("Налаштування сповіщень збережено")
-    return RedirectResponse("/settings#notifications", status_code=303)
+    # Без JS повертаємо туди, ЗВІДКИ прийшли: розділ переїхав у кабінет
+    # (/account, вкладка «Сповіщення»), і старий редірект на /settings кидав
+    # би людину на «Стан системи» — секції з таким якорем там більше немає.
+    return RedirectResponse("/account#notifications", status_code=303)

@@ -2,8 +2,10 @@
         {# ── Спливаючі сповіщення ─────────────────────────────────────
            Вигляд, позиція і перелік системних тригерів. Не адмінське: це
            екранні преференції одного робочого місця, як і шляхи папок. #}
-        <section id="notifications" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="notifications">
-            <div class="box">
+        {# Живе в кабінеті /account як вкладка «Сповіщення»: це преференції
+           ЛЮДИНИ за цим робочим місцем, а не налаштування машини. Форма й
+           роут ті самі (POST /settings/notifications). #}
+        <div id="notifications" class="stand-tabpane is-on" data-tab="notifications">
                 {{ slab('Спливаючі сповіщення', 'Короткі повідомлення, які самі зникають. Критичні (червоні) не зникають — їх закриває оператор.', slabs['notifications']) }}
 
                 <form method="post" action="/settings/notifications"
@@ -63,5 +65,4 @@
                     </div>
                     <p class="settings-help">Вигляд і позиція застосуються після збереження й перезавантаження екрана. «Показати приклад» демонструє поточний збережений стиль.</p>
                 </form>
-            </div>
-        </section>
+        </div>

@@ -8,6 +8,11 @@
 {# Стрічка верстатів: зразки в кабінеті малюються тими самими правилами, що
    й справжня стрічка над чергою (furnaces.css, .mstrip[data-variant]). #}
 <link rel="stylesheet" href="/static/css/furnaces.css?v={{ static_ver('css/furnaces.css') }}">
+{# Вкладка «Сповіщення» — партіал налаштувань, тому сюди їде і його
+   розкладка. Порядок важливий: «Стенд» має лежати ПІСЛЯ settings.css і
+   settings_console.css (CLAUDE.md §14), account.css — останнім. #}
+<link rel="stylesheet" href="/static/css/settings_console.css?v={{ static_ver('css/settings_console.css') }}">
+<link rel="stylesheet" href="/static/css/settings_stand.css?v={{ static_ver('css/settings_stand.css') }}">
 <link rel="stylesheet" href="/static/css/account.css?v={{ static_ver('css/account.css') }}">
 {% endblock %}
 
@@ -53,11 +58,13 @@
         <input type="radio" name="acc-tab" id="acc-tab-profile" class="acc-tab-input" checked>
         <input type="radio" name="acc-tab" id="acc-tab-look" class="acc-tab-input">
         <input type="radio" name="acc-tab" id="acc-tab-screens" class="acc-tab-input">
+        <input type="radio" name="acc-tab" id="acc-tab-notify" class="acc-tab-input">
 
         <nav class="acc-tabbar" aria-label="Розділи кабінету">
             <label for="acc-tab-profile" tabindex="0">Профіль</label>
             <label for="acc-tab-look" tabindex="0">Вигляд</label>
             <label for="acc-tab-screens" tabindex="0">Робочі екрани</label>
+            <label for="acc-tab-notify" tabindex="0">Сповіщення</label>
         </nav>
 
         {# ── Профіль ───────────────────────────────────────────────────
@@ -370,6 +377,16 @@
                 </div>
             </div>
         </section>
+
+        {# ── Сповіщення ────────────────────────────────────────────────
+           Той самий партіал, що раніше стояв розділом у /settings. Обгортка
+           .scon потрібна, бо вся розкладка «Стенда» заскоплена на неї;
+           форма, роут і ключі полів не змінились. #}
+        <section class="acc-pane" id="acc-pane-notify">
+            <div class="scon acc-notify">
+                {% include "_settings_notifications.html" %}
+            </div>
+        </section>
     </div>
 </main>
 {% endblock %}
@@ -496,6 +513,11 @@
       var last = KMStore.get('accTab');
       if (last && document.getElementById(last)) document.getElementById(last).checked = true;
     } catch (e) {}
+    // Адреса сильніша за памʼять: /account#notifications приходить із меню
+    // налаштувань, і людина чекає побачити саме сповіщення.
+    var byHash = { '#notifications': 'acc-tab-notify', '#look': 'acc-tab-look' };
+    var wanted = byHash[location.hash];
+    if (wanted && document.getElementById(wanted)) document.getElementById(wanted).checked = true;
     tabs.forEach(function(t){
       t.addEventListener('change', function(){
         KMStore.set('accTab', t.id);
