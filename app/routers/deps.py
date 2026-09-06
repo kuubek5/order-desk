@@ -10,6 +10,7 @@ import json
 import logging
 from pathlib import Path
 
+from fastapi import HTTPException
 from fastapi.responses import RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -109,6 +110,33 @@ def is_loopback_request(request: Request) -> bool:
         return ipaddress.ip_address(request.client.host).is_loopback
     except ValueError:
         return False
+
+
+def require_admin(request: Request, db: Session, *, loopback: bool = True) -> User:
+    """Один гейт «це адмін» на весь застосунок (аудит 05.09.26, крок 2.7).
+
+    До цього перевірок було чотири незалежні копії — у `settings.py`, `diag.py`
+    і два різні інлайни в роутерах, — і вони встигли розійтись: `/diag/*` пускав
+    адміна по мережі, а `/settings/furnaces/password` — ні. Асиметрія була не
+    рішенням, а дрейфом. Тепер правило одне, а винятки видно в коді як
+    `loopback=False` замість того, щоб губитись між файлами.
+
+    `loopback=True` (типово) — дія керує САМОЮ машиною або її секретами:
+    оновлення, паролі пристроїв, шляхи, бекапи, діагностика. Такі речі мають
+    сенс лише за фізичним ПК, тож мережевий клієнт відсікається навіть із
+    валідною сесією адміна.
+
+    Кидає 401, якщо не ввійшов, і 403 у решті випадків — той самий контракт,
+    що був у `require_settings_admin`.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if loopback and not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    return user
 
 
 def toast_response(message: str, *, kind: str = "success", triggers: dict | None = None) -> Response:

@@ -80,6 +80,7 @@ from app.routers.deps import (
     login_redirect,
     get_db,
     is_loopback_request,
+    require_admin,
     templates,
     toast_response,
 )
@@ -262,16 +263,13 @@ def _sheet_snapshots_context() -> dict:
 
 
 def require_settings_admin(request: Request, db: Session):
-    """Admin + loopback gate shared by the settings mutation routes. Returns the
-    user; raises the same 401/403s the other settings POSTs use."""
-    user = get_current_user(request, db)
-    if user is None:
-        raise HTTPException(status_code=401, detail="увійдіть в систему")
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
-    return user
+    """Admin + loopback gate shared by the settings mutation routes.
+
+    Сама перевірка живе в `deps.require_admin` — одна на застосунок (аудит
+    05.09.26, крок 2.7). Ця назва лишається, бо на неї спираються ~30 роутів
+    і тести; вона тепер лише каже, ЯКИЙ саме варіант гейта тут потрібен.
+    """
+    return require_admin(request, db, loopback=True)
 
 
 @router.get("/settings", response_class=HTMLResponse)

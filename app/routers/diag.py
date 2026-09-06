@@ -27,18 +27,33 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app import perf
-from app.routers.deps import get_current_user, login_redirect, get_db, templates
+from app.routers.deps import (
+    get_current_user,
+    get_db,
+    login_redirect,
+    require_admin,
+    templates,
+)
 
 router = APIRouter()
 
 
 def _require_admin(request: Request, db: Session):
-    user = get_current_user(request, db)
-    if user is None:
+    """Гейт діагностики: адмін + цей комп'ютер.
+
+    Перевірку робить спільний `deps.require_admin` (аудит 05.09.26, крок 2.7).
+    Loopback додано свідомо: `/diag/perf` показує шляхи, СТАТУСИ і query-стрінги
+    всіх недавніх запитів — а там бувають імена клієнтів і фільтри. Раніше сюди
+    пускало адміна по мережі, тоді як пароль печі — ні; це була не політика, а
+    дрейф.
+
+    Повертає ту саму пару `(user, response)`, що й раніше: не ввійшов — редірект
+    на логін (діагностика відкривається з браузера, тож 401 JSON тут гірший за
+    сторінку входу), решта — 403 винятком.
+    """
+    if get_current_user(request, db) is None:
         return None, login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-    return user, None
+    return require_admin(request, db, loopback=True), None
 
 
 def _rows(limit: int = 120) -> list[dict]:
@@ -145,7 +160,7 @@ def post_perf_clear(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/diag/perf/client")
-async def post_perf_client(request: Request):
+async def post_perf_client(request: Request, db: Session = Depends(get_db)):
     """Клієнтські числа для вже записаної проби.
 
     БЕЗ гейту на адміна свідомо: це шле сама сторінка будь-якого залогіненого
@@ -153,7 +168,10 @@ async def post_perf_client(request: Request):
     лише для `request_id`, який ми самі видали — чужого рядка сюди не
     підсунути, а вміст іде в буфер у пам'яті, не в базу.
     """
-    if request.session.get("user_id") is None:
+    # Через get_current_user, а не через сиру куку: деактивований оператор із
+    # живою сесією проходив сюди, тоді як усі інші роути його вже відсікають і
+    # чистять сесію (аудит 05.09.26, безпека L-1).
+    if get_current_user(request, db) is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
     try:
         payload = await request.json()
