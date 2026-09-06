@@ -630,3 +630,10 @@
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+/* Стан синку в рейці (UX 1.8): той самий партіал, що в шапці Черги, тож
+   успадковує .tl-sync; тут лише місце й розмір. Згорнута рейка його ховає —
+   у 56 px тексту нема куди подіти. */
+.rail-sync{padding:6px 12px;font-size:var(--fs-1);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rail-sync .tl-sync{display:inline-flex;align-items:center;gap:6px}
+body.rail-collapsed .rail-sync{display:none}

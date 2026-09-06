@@ -246,6 +246,73 @@ def shift_pending() -> int:
         return 0
 
 
+# Скільки хвилин активності вважаємо «оператор зараз працює». Пів години —
+# щоб пауза на каву не рахувалась виходом, і щоб учорашня зміна не рахувалась
+# зовсім.
+BUSY_OPERATOR_WINDOW_MINUTES = 30
+
+
+def busy_operators() -> int:
+    """Скільки операторів щось робили за останні пів години.
+
+    Потрібно для підтвердження «Встановити оновлення»: воно перезапускає
+    застосунок, і на спільному цеховому ПК це може обірвати колегу посеред
+    прийняття листа чи видачі (аудит 05.09.26, UX 1.10).
+
+    Таблиці живих сесій у застосунку немає, і заводити її заради одного діалогу
+    було б занадто: рахуємо за слідом у журналі дій — це те саме «хтось зараз
+    працює», лише з точністю до вікна. Число чесно називається «за останні
+    N хв» у самому тексті діалогу, щоб ніхто не читав його як «онлайн».
+    """
+    try:
+        from datetime import datetime, timedelta
+
+        from sqlalchemy import func, select
+
+        from app.models import ActionLog
+
+        cutoff = datetime.utcnow() - timedelta(minutes=BUSY_OPERATOR_WINDOW_MINUTES)
+        db = SessionLocal()
+        try:
+            return db.scalar(
+                select(func.count(func.distinct(ActionLog.operator_id))).where(
+                    ActionLog.created_at >= cutoff
+                )
+            ) or 0
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001 — діалог не варт того, щоб ламати рендер
+        logger.debug("busy_operators fell back to 0", exc_info=True)
+        return 0
+
+
+def sync_state() -> dict | None:
+    """Стан синку таблиці для рейки — Jinja-глобал зі своєю сесією.
+
+    До аудиту 05.09.26 (UX 1.8) `_sync_indicator.html` жив лише в шапці Черги,
+    бо контекст `sync_status` готував лише її роут. Тобто пауза синку чи
+    «немає відповіді» були невидимі з Видачі, Пошти й Архіву — саме там, де
+    оператор проводить ранок. Той самий патерн, що shift_pending: власна
+    сесія, широкий except, індикатор не сміє завалити рендер.
+
+    `None` — таблиця не налаштована; шаблон тоді нічого не малює.
+    """
+    try:
+        from app.routers.queue import live_sync_status
+        from app.services.config_state import sheets_configured
+
+        db = SessionLocal()
+        try:
+            if not sheets_configured(db):
+                return None
+            return live_sync_status(db)
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001 — індикатор не варт того, щоб ламати рендер
+        logger.debug("sync_state fell back to None", exc_info=True)
+        return None
+
+
 def feedback_open_count() -> int:
     """Скільки нових звернень зворотного зв'язку — для бейдра «Вхідні» в рейці.
 
@@ -478,5 +545,7 @@ templates.env.globals["app_version"] = VERSION
 templates.env.globals["notify_prefs"] = _timed_global("notify_prefs", notify_prefs)
 templates.env.globals["shift_pending"] = _timed_global("shift_pending", shift_pending)
 templates.env.globals["feedback_open_count"] = _timed_global("feedback_open_count", feedback_open_count)
+templates.env.globals["busy_operators"] = _timed_global("busy_operators", busy_operators)
+templates.env.globals["sync_state"] = _timed_global("sync_state", sync_state)
 templates.env.globals["ui_prefs"] = _timed_global("ui_prefs", ui_prefs)
 templates.env.filters["night_label"] = night_label

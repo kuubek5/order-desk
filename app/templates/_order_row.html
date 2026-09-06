@@ -30,6 +30,12 @@
    і з місць, які набору не знають (сторонні партіали), і тоді він має
    намалюватись без мітки, а не впасти. #}
 {% set _focused = focused_ids is defined and focused_ids and order.id in focused_ids %}
+{# `row_locked` — рядок архівної роботи (видно лише в /search). Архів існує
+   як історія: правити його з пошуку означало б тихо міняти минуле, і саме тому
+   картка роботи для архівних відкривається read-only (order_detail: read_only).
+   Рядок мусив поводитись так само (аудит 05.09.26, UX 1.7): показуємо ті самі
+   значення, але без полів і без дій. #}
+{% set row_locked = order.archived_at is defined and order.archived_at %}
 <tr{% if _matrow %} data-mat="{{ _matrow.cls }}"{% endif %} class="queue-row{% if _focused %} queue-row-focus{% endif %} {% if _changed %}queue-row-changed{% endif %} {% if _changed_taken %}queue-row-changed-taken{% endif %} {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if order.source == 'sheet_client' %}queue-row-client{% endif %} {% if _rework %}queue-row-rework{% endif %}" id="order-row-{{ order.id }}">
     {# Джерело рядка — вкладка (день) Google-таблиці, де його знайдено. Показуємо
        лише у пошуку (show_source), де результати охоплюють усі дні; у черзі
@@ -121,6 +127,31 @@
            бейджі про одне й те саме — шум. #}
         <span class="badge redo">переробка</span>
         {% endif %}
+        {# Статус — ДІЄЮ РЯДКА (аудит 05.09.26, UX 1.7). Колонку статусу
+           приховано на прохання власника, і разом із нею зі списку зник
+           єдиний спосіб поставити «проблема» чи «переробка»: доводилось
+           відкривати картку роботи, тобто йти зі списку й повертатись —
+           проти правила «один клік на дію». Меню лежить біля кнопки
+           видалення, зʼявляється так само на наведення й не додає рядку
+           жодного нового кольору (сигнальні канали не чіпаємо). #}
+        {% if not row_locked %}
+        <details class="rowmenu">
+            <summary class="rowmenu-btn" title="Статус роботи" aria-label="Змінити статус">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+            </summary>
+            <div class="rowmenu-pop" role="menu">
+                <span class="rowmenu-h">Статус</span>
+                {% for s in statuses %}
+                <button type="button" role="menuitem"
+                        class="rowmenu-item{% if s == order.status %} on{% endif %}"
+                        hx-post="/orders/{{ order.id }}/status"
+                        hx-vals='{"status": "{{ s }}"}'
+                        hx-target="#order-row-{{ order.id }}"
+                        hx-swap="outerHTML">{{ s }}</button>
+                {% endfor %}
+            </div>
+        </details>
+        {% endif %}
         {# ПЕРЕНЕСЕНО з комірки «Статус» у комірку наряду: колонку статусу
            тимчасово приховано (td.status{display:none}), і разом з нею зникала
            ЦЯ кнопка — getClientRects() порожній, видалити рядок було
@@ -133,6 +164,7 @@
            first and the toast would never reach the listener on <body>. The row
            is dropped here instead, once the request is known to have succeeded —
            the day tab, filters and scroll all stay untouched. #}
+        {% if not row_locked %}
         <form class="row-delete-form"
               hx-post="/orders/{{ order.id }}/delete"
               hx-vals='{"inline": "1"}'
@@ -144,6 +176,9 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
             </button>
         </form>
+        {% else %}
+        <span class="badge arch" title="Робота в архіві — лише перегляд">архів</span>
+        {% endif %}
         {# Secondary client line only for internal lab works (наряд is the
            identity, client shown below it). For email/client rows the client
            name IS the identity above, so repeating it here is redundant. #}
@@ -186,11 +221,15 @@
            single-line <input> clipped anything past ~220px with no way to see
            it. Saves on blur (change); Enter saves, Shift+Enter adds a newline
            (app.js). Writes back to the sheet — see set_cam_comment. #}
+        {% if row_locked %}
+        <span class="cam-comment-text cam" title="{{ order.cam_comment or '' }}">{{ order.cam_comment or '—' }}</span>
+        {% else %}
         <form class="cam-comment-form" onsubmit="return false" hx-post="/orders/{{ order.id }}/cam-comment" hx-trigger="change" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML">
             <textarea name="cam_comment" rows="1"
                    class="cam-comment-input cam-comment-text cam{% if order.cam_comment and '!!' in order.cam_comment %} attn{% endif %}"
                    placeholder="коментар…" title="{{ order.cam_comment or 'Введіть коментар для CAM-оператора' }}">{{ order.cam_comment or '' }}</textarea>
         </form>
+        {% endif %}
     </td>
     <td class="sum3d-id">
         {# No save button (галочку прибрано): the input auto-saves on change —
@@ -203,6 +242,9 @@
            `from:find` scopes the Enter listener to THIS row's input — a bare
            `.sum3d-input` selector is document-wide and made one Enter fire
            every visible row's form. #}
+        {% if row_locked %}
+        <span class="mono">{{ (_rework.sum3d_id if _rework else order.sum3d_id) or '—' }}</span>
+        {% else %}
         <form class="sum3d-form" onsubmit="return false"
               hx-post="/orders/{{ order.id }}/sum3d-id"
               hx-trigger="change from:find input, keyup[key=='Enter'] from:find input"
@@ -230,6 +272,7 @@
             <button type="button" class="sum3d-clear" title="Видалити Sum3D — робота повернеться в «можна брати»" aria-label="Видалити Sum3D">✕</button>
             {% endif %}
         </form>
+        {% endif %}
         {# ПЕРЕНЕСЕНО з прихованої комірки «Статус» СЮДИ: провалився запис саме
            цього значення в таблицю, тож попередження має стояти біля нього, а
            не в комірці, якої не видно. #}
@@ -253,6 +296,9 @@
        change — той самий /operator). onsubmit гасить нативний submit Enter у
        формі з одним інпутом (як у sum3d-form). Дія логується → «Крок назад». #}
     <td class="calc-op">
+        {% if row_locked %}
+        <span class="mono">{{ order.calculated_raw or '—' }}</span>
+        {% else %}
         <form class="operator-form" onsubmit="return false"
               hx-post="/orders/{{ order.id }}/operator"
               hx-trigger="change from:find input, keyup[key=='Enter'] from:find input"
@@ -261,6 +307,7 @@
                    class="mono operator-input" placeholder="—"
                    title="Хто прорахував — стовпець «Прорахував» (М). Впишіть і натисніть Enter; порожнє поле очищає.">
         </form>
+        {% endif %}
     </td>
     <td class="status">
         <form hx-post="/orders/{{ order.id }}/status" hx-target="#order-row-{{ order.id }}" hx-swap="outerHTML" hx-trigger="change">

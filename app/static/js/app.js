@@ -307,6 +307,22 @@ document.addEventListener("click", (event) => {
     if (!form) return;
     event.preventDefault();
 
+    // Один клік перезапускав застосунок посеред зміни на СПІЛЬНОМУ цеховому
+    // ПК: колега міг саме приймати лист або вести видачу (аудит 05.09.26,
+    // UX 1.10). Питаємо один раз, і кажемо, кого це зачепить. Число готує
+    // сервер (data-busy) — це оператори, що щось робили за останні пів
+    // години, а не «онлайн»: таблиці сесій у застосунку немає.
+    const busy = parseInt(form.dataset.busy || "0", 10) || 0;
+    const who = busy > 1
+      ? `Зараз працюють ще ${busy - 1} — їхню роботу обірве.`
+      : "";
+    if (!window.confirm(
+      "Встановити оновлення? Застосунок перезапуститься, і всі відкриті " +
+      "екрани оновляться. " + who
+    )) {
+      return;
+    }
+
     const button = form.querySelector('button[type="submit"]');
     if (button) button.disabled = true;
 
