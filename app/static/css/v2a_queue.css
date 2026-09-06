@@ -553,6 +553,9 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
 @media (hover:none){.q2 .row-delete{opacity:.55}}
 
 .q2 .qfoot{display:flex;align-items:center;gap:10px;padding:9px 15px;border-top:1px solid var(--line);font-size:var(--fs-1);color:var(--ink-3);flex-wrap:wrap}
+/* «Показати ще» — сторінка рядків (аудит 06.09.26): кнопка живе в підвалі таблиці, свапає #queue-rows з більшим limit. */
+.q2 .qfoot .qmore{margin-left:auto;padding:5px 12px;border:1px solid var(--control-edge,var(--line));border-radius:999px;background:transparent;color:var(--ink-2);font:inherit;font-size:var(--fs-1);cursor:pointer}
+.q2 .qfoot .qmore:hover{border-color:var(--accent);color:var(--ink-1)}
 .q2 .queue-empty{padding:46px 22px;text-align:center;background:none;border:0}
 .q2 .queue-empty-icon{width:26px;height:26px;stroke:var(--ink-3);fill:none;stroke-width:1.4;margin-bottom:10px}
 

@@ -1,0 +1,37 @@
+{# Список релізів журналу змін («Про застосунок»). Один шаблон на два
+   випадки: перші 8 у самій сторінці (_settings_about.html) і повний список
+   фрагментом за кліком (GET /settings/changelog) — кнопка нижче свапає цей
+   самий контейнер. Розмітка релізу тут єдина, щоб два рендери не розійшлись. #}
+<div class="scon-rel-list" id="changelog-list">
+                    {% for rel in changelog %}
+                    <details class="scon-rel" {% if loop.first %}open{% endif %}>
+                        <summary>
+                            <span class="scon-more-caret" aria-hidden="true">›</span>
+                            <span class="scon-rel-ver mono">
+                                {% if rel.is_unreleased %}Наступна версія{% else %}v{{ rel.version }}{% endif %}
+                            </span>
+                            {% if not rel.is_unreleased and rel.version == app_version %}
+                            <span class="scon-rel-now">встановлена</span>
+                            {% endif %}
+                            {% if rel.date %}<span class="scon-rel-date mono">{{ rel.date }}</span>{% endif %}
+                        </summary>
+                        <div class="scon-rel-body">
+                            {% for group in rel.groups %}
+                            <div class="scon-rel-group scon-rel-{{ group.label|lower }}">
+                                <span class="scon-rel-label">{{ group.label }}</span>
+                                <ul>
+                                    {% for item in group.items %}<li>{{ item | changelog_md }}</li>{% endfor %}
+                                </ul>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </details>
+                    {% endfor %}
+                    
+                    {% if changelog_more %}
+                    <button type="button" class="settings-secondary-button scon-rel-more"
+                            hx-get="/settings/changelog" hx-target="#changelog-list" hx-swap="outerHTML">
+                        Показати всі {{ changelog_total }} релізів
+                    </button>
+                    {% endif %}
+</div>

@@ -206,6 +206,19 @@ NAV: tuple = (
         ),
     ),
     NavGroup(
+        key="workflow",
+        title="Робочий процес",
+        items=(
+            NavItem(
+                key="handout",
+                title="Ранкова видача",
+                href="/settings#handout",
+                roles=ADMIN_ONLY,
+                keywords=("qc", "чеклист", "знайдено", "видача", "звірка"),
+            ),
+        ),
+    ),
+    NavGroup(
         key="people",
         title="Люди й доступ",
         items=(

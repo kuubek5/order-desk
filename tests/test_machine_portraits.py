@@ -186,24 +186,23 @@ def test_portrait_routes_gate_and_serve(portraits_dir):
             return SimpleNamespace(session={"user_id": uid} if uid else {}, client=SimpleNamespace(host=host))
 
         upload = SimpleNamespace(file=_jpeg(), filename="p.jpg")
-        import asyncio
         # Рішення власника 06.09.26: розділ «Обладнання» редагує й оператор —
         # він стоїть за верстатом і фотографує його сам, чекати адміна нема
         # сенсу. Два інші замки лишаються: без входу й не з цього ПК — ні.
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(settings_router.upload_machine_portrait(request=req(None), machine_id=machine.id, photo=upload, db=db))
+            settings_router.upload_machine_portrait(request=req(None), machine_id=machine.id, photo=upload, db=db)
         assert exc.value.status_code == 401
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(settings_router.upload_machine_portrait(request=req(op.id, "10.0.0.9"), machine_id=machine.id, photo=upload, db=db))
+            settings_router.upload_machine_portrait(request=req(op.id, "10.0.0.9"), machine_id=machine.id, photo=upload, db=db)
         assert exc.value.status_code == 403
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(settings_router.upload_machine_portrait(request=req(admin.id, "10.0.0.9"), machine_id=machine.id, photo=upload, db=db))
+            settings_router.upload_machine_portrait(request=req(admin.id, "10.0.0.9"), machine_id=machine.id, photo=upload, db=db)
         assert exc.value.status_code == 403
 
-        r = asyncio.run(settings_router.upload_machine_portrait(request=req(op.id), machine_id=machine.id, photo=SimpleNamespace(file=_jpeg()), db=db))
+        r = settings_router.upload_machine_portrait(request=req(op.id), machine_id=machine.id, photo=SimpleNamespace(file=_jpeg()), db=db)
         assert r.status_code == 303 and (portraits_dir / f"{machine.id}.jpg").is_file()
         mp.delete_portrait(machine.id)
-        r = asyncio.run(settings_router.upload_machine_portrait(request=req(admin.id), machine_id=machine.id, photo=SimpleNamespace(file=_jpeg()), db=db))
+        r = settings_router.upload_machine_portrait(request=req(admin.id), machine_id=machine.id, photo=SimpleNamespace(file=_jpeg()), db=db)
         assert r.status_code == 303 and (portraits_dir / f"{machine.id}.jpg").is_file()
 
         with pytest.raises(HTTPException) as exc:

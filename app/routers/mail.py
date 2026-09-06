@@ -84,6 +84,7 @@ from app.services.config_state import (
     mail_preview_roots,
     mail_trusted_roots,
 )
+from app.services.settings_nav import can_edit
 from app.settings_store import (
     get_export_folder_path,
     get_imap_login,
@@ -959,7 +960,7 @@ def toggle_sender_auto(
 
 
 @router.post("/mail/{email_id}/accept", response_class=HTMLResponse)
-async def accept_email(
+def accept_email(
     request: Request,
     email_id: int,
     client_name: str = Form(...),
@@ -1060,7 +1061,7 @@ async def accept_email(
 
 
 @router.post("/mail/{email_id}/reject")
-async def reject_email(
+def reject_email(
     request: Request,
     email_id: int,
     db: Session = Depends(get_db),
@@ -1221,8 +1222,8 @@ def create_mail_filter(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not can_edit(user, "mail-filters"):
+        raise HTTPException(status_code=403, detail="недостатньо прав")
 
     kind = kind.strip()
     pattern = pattern.strip()
@@ -1279,8 +1280,8 @@ def edit_mail_filter(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not can_edit(user, "mail-filters"):
+        raise HTTPException(status_code=403, detail="недостатньо прав")
 
     rule = db.get(MailFilterRule, rule_id)
     if rule is None:
@@ -1320,8 +1321,8 @@ def create_filter_category(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not can_edit(user, "mail-filters"):
+        raise HTTPException(status_code=403, detail="недостатньо прав")
 
     name = name.strip()
     if name and not db.scalar(
@@ -1347,8 +1348,8 @@ def rename_filter_category(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not can_edit(user, "mail-filters"):
+        raise HTTPException(status_code=403, detail="недостатньо прав")
 
     cat = db.get(MailFilterCategory, category_id)
     if cat is None:
@@ -1386,8 +1387,8 @@ def delete_filter_category(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not can_edit(user, "mail-filters"):
+        raise HTTPException(status_code=403, detail="недостатньо прав")
 
     cat = db.get(MailFilterCategory, category_id)
     if cat is None:
@@ -1428,6 +1429,8 @@ def dismiss_filter_suggest(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+    if not can_edit(user, "mail-filters"):
+        raise HTTPException(status_code=403, detail="недостатньо прав")
 
     address = address.strip()
     if address:
@@ -1454,8 +1457,8 @@ def toggle_mail_filter(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not can_edit(user, "mail-filters"):
+        raise HTTPException(status_code=403, detail="недостатньо прав")
 
     rule = db.get(MailFilterRule, rule_id)
     if rule is None:
@@ -1480,8 +1483,8 @@ def delete_mail_filter(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not can_edit(user, "mail-filters"):
+        raise HTTPException(status_code=403, detail="недостатньо прав")
 
     rule = db.get(MailFilterRule, rule_id)
     if rule is None:
@@ -1557,7 +1560,7 @@ def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]
 
 
 @router.post("/mail/{email_id}/restore")
-async def restore_email(
+def restore_email(
     request: Request,
     email_id: int,
     db: Session = Depends(get_db),

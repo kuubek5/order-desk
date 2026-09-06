@@ -30,8 +30,8 @@ def test_previous_month_wraps_january():
 
 
 def test_snapshot_filename_is_zero_padded_iso():
-    assert snapshot_filename(2026, 7) == "orderdesk-2026-07.db"
-    assert snapshot_filename(2026, 12) == "orderdesk-2026-12.db"
+    assert snapshot_filename(2026, 7) == "kuubmill-2026-07.db"
+    assert snapshot_filename(2026, 12) == "kuubmill-2026-12.db"
 
 
 def test_month_label_uk():
@@ -43,7 +43,7 @@ def test_ensure_creates_previous_month_snapshot(tmp_path):
     created = ensure_monthly_snapshot(engine, db_path, today=date(2026, 8, 2))
 
     assert created is not None
-    assert created.name == "orderdesk-2026-07.db"
+    assert created.name == "kuubmill-2026-07.db"
     assert created.parent == backups_dir(db_path)
     # The snapshot is a real, queryable SQLite copy with the data intact.
     con = sqlite3.connect(created)
@@ -70,7 +70,7 @@ def test_new_month_produces_a_second_snapshot(tmp_path):
     ensure_monthly_snapshot(engine, db_path, today=date(2026, 9, 1))  # August
 
     names = [p.name for p in list_snapshots(db_path)]
-    assert names == ["orderdesk-2026-08.db", "orderdesk-2026-07.db"]  # newest first
+    assert names == ["kuubmill-2026-08.db", "kuubmill-2026-07.db"]  # newest first
 
 
 def test_leftover_tmp_file_does_not_block_snapshot(tmp_path):
@@ -78,8 +78,30 @@ def test_leftover_tmp_file_does_not_block_snapshot(tmp_path):
     folder = backups_dir(db_path)
     folder.mkdir(parents=True, exist_ok=True)
     # Simulate a crash mid-copy that left a stale .tmp behind.
-    (folder / "orderdesk-2026-07.db.tmp").write_bytes(b"garbage")
+    (folder / "kuubmill-2026-07.db.tmp").write_bytes(b"garbage")
 
     created = ensure_monthly_snapshot(engine, db_path, today=date(2026, 8, 2))
     assert created is not None and created.exists()
-    assert not (folder / "orderdesk-2026-07.db.tmp").exists()
+    assert not (folder / "kuubmill-2026-07.db.tmp").exists()
+
+
+def test_legacy_orderdesk_prefix_still_lists_alongside_new_prefix(tmp_path):
+    """F18: KuubMill renamed monthly snapshots from `orderdesk-` to
+    `kuubmill-` (CLAUDE.md §14 rename migrations). Old files on a machine
+    that's been running since before the rename must stay visible — the
+    admin's backup screen listing them is the whole point of a snapshot."""
+    engine, db_path = _seeded_db(tmp_path)
+    folder = backups_dir(db_path)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "orderdesk-2026-07.db").write_bytes(b"legacy snapshot")
+    (folder / "kuubmill-2026-08.db").write_bytes(b"new snapshot")
+
+    names = [p.name for p in list_snapshots(db_path)]
+    assert set(names) == {"orderdesk-2026-07.db", "kuubmill-2026-08.db"}
+    # Newest first despite "k" < "o" sorting the other way lexically.
+    assert names == ["kuubmill-2026-08.db", "orderdesk-2026-07.db"]
+
+    # A fresh snapshot after the rename is always written under the new name.
+    created = ensure_monthly_snapshot(engine, db_path, today=date(2026, 10, 1))
+    assert created is not None
+    assert created.name == "kuubmill-2026-09.db"

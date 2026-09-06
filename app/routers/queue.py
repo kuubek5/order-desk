@@ -94,6 +94,9 @@ def get_queue(
     # «Останні дії» popup when the action it points at lives on another day tab
     # or behind different filters, so the jump survives the navigation.
     focus: str = "",
+    # Скільки рядків малювати: «Показати ще» під таблицею шле більший limit
+    # (сторінка рядків — app/services/queue_view.py, QUEUE_ROWS_PAGE).
+    limit: int | None = None,
     db: Session = Depends(get_db),
 ):
     """Тонкий роут: розібрати рядок запиту, покликати сервіс, віддати шаблон.
@@ -121,6 +124,7 @@ def get_queue(
         sort_dir=sort_dir,
         partial=partial,
         focus=focus,
+        limit=limit,
     )
 
     # Флеші — єдине, що лишилось на цьому боці: вони живуть у сесії ЗАПИТУ,

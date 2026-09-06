@@ -1,0 +1,35 @@
+{% from "_settings_slab.html" import slab %}
+        {# ── Ранкова видача · правила процесу ─────────────────────────────
+           Перемикачі ПРОЦЕСУ видачі — однакові для всіх операторів, а не
+           вигляд екрана під себе (той живе в кабінеті). Перший — QC-чеклист
+           (рішення власника 06.09.26: опційно, вимкнено за замовчуванням).
+           Роут POST /settings/handout-qc жив без жодної кнопки — вмикався
+           лише curl-ом (аудит 06.09.26). Логіка — app/services/handout_qc.py. #}
+        <section id="handout" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="handout">
+            <div class="num" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5z" class="duo"/><path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5z"/><path d="M3 8.5 12 13l9-4.5M12 13v7"/></svg>
+            </div>
+            <div class="box">
+                {{ slab('Ранкова видача', 'Правила екрана видачі — однакові для всіх операторів.', slabs['handout']) }}
+
+                <div class="stand-cells">
+                    <div class="stand-cell w6">
+                        <h3>QC-чеклист перед «знайдено»</h3>
+                        <p class="stand-note">Три звірки — форма з STL-прев'ю, матеріал і колір, кількість одиниць — перш ніж рядок стане «знайдено». Це свідомий другий клік заради страховки від чужої коронки в пакетику (правило «один клік» з CLAUDE.md §2 тут порушується навмисно). Галочки ніде не зберігаються — цінність у зупинці погляду.</p>
+                        {% if can_edit(user, 'handout') %}
+                        <form method="post" action="/settings/handout-qc">
+                            <label class="settings-backup-confirm stand-toggle">
+                                <input type="checkbox" name="handout_qc" value="1" {{ 'checked' if handout_qc else '' }}>
+                                Вимагати три звірки перед «знайдено»
+                            </label>
+                            <div class="settings-check-row">
+                                <button type="submit" class="login-submit settings-submit">Зберегти</button>
+                            </div>
+                        </form>
+                        {% else %}
+                        <p class="stand-note">Зараз: <strong>{% if handout_qc %}увімкнено{% else %}вимкнено{% endif %}</strong>. Змінює адміністратор.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </section>

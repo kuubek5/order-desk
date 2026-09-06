@@ -59,7 +59,10 @@ def export_backup(
         return RedirectResponse("/settings", status_code=303)
 
     content = create_backup(db, backup_password)
-    filename = f"orderdesk-backup-{datetime.now().strftime('%Y%m%d-%H%M')}.json"
+    # Генерується й одразу скачується — це не файл, який хтось читає назад за
+    # іменем (на відміну від app/monthly_backup.py SNAPSHOT_PREFIX), тож без
+    # старого варіанту сумісності: перейменувати можна одразу (CLAUDE.md §14).
+    filename = f"kuubmill-backup-{datetime.now().strftime('%Y%m%d-%H%M')}.json"
     return Response(
         content=content,
         media_type="application/json",

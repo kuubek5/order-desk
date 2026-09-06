@@ -415,6 +415,63 @@ def test_the_same_address_cannot_be_added_twice():
         assert len(service.list_furnaces(db)) == 1
 
 
+def test_poll_all_default_timeout_matches_capture_default(monkeypatch, tmp_path):
+    """Фоновий тік не передає timeout — capture лишається на своєму дефолті
+    (20 с): мовчазна піч поза межами ручної кнопки не має вкорочуватись."""
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    seen = []
+
+    def _capture(host, port=None, password=None, timeout=20.0, **_kwargs):
+        seen.append(timeout)
+        return _frame("run")
+
+    monkeypatch.setattr(service, "capture", _capture)
+
+    with Session(_database()) as db:
+        _add_furnace(db)
+        service.poll_all(db)
+
+    assert seen == [20.0]
+
+
+def test_poll_all_manual_timeout_reaches_capture(monkeypatch, tmp_path):
+    """Ручна кнопка «Оновити зараз» передає власний, коротший timeout —
+    людина чекає, і 20-секундний VNC-дедлайн мертвої печі не має її тримати."""
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    seen = []
+
+    def _capture(host, port=None, password=None, timeout=20.0, **_kwargs):
+        seen.append(timeout)
+        return _frame("run")
+
+    monkeypatch.setattr(service, "capture", _capture)
+
+    with Session(_database()) as db:
+        _add_furnace(db)
+        service.poll_all(db, timeout=6.0)
+
+    assert seen == [6.0]
+
+
+def test_furnaces_refresh_route_uses_a_short_manual_timeout(monkeypatch):
+    """Роут /furnaces/refresh (кнопка «Оновити зараз») мусить кликати
+    poll_all із timeout=6.0, а не дефолтом фонового тіку — див.
+    app/services/furnace.py poll_all і CLAUDE.md §14 «Печі»."""
+    from app.routers import furnace as router
+
+    _capture_context(monkeypatch)
+    calls = []
+    monkeypatch.setattr(router, "poll_all", lambda db, timeout=None: calls.append(timeout))
+
+    with Session(_database()) as db:
+        user = User(username="op", password_hash="x", full_name="Оп")
+        db.add(user)
+        db.commit()
+        router.furnaces_refresh(_request(user.id), db)
+
+    assert calls == [6.0]
+
+
 def test_poll_all_grabs_frames_in_parallel(monkeypatch, tmp_path):
     """Вимкнена піч мовчить до дедлайну. Послідовний обхід означав би, що
     живі печі на екрані старіють через мертві, тому знімки йдуть одночасно."""

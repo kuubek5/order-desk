@@ -72,6 +72,29 @@ def test_analyze_on_missing_root_is_empty(tmp_path, db_session):
     assert (rep.total_bytes, rep.total_dirs, rep.prunable_dirs) == (0, 0, [])
 
 
+def test_analyze_keeps_folder_when_uid_shared_across_uid_validity(tmp_path, db_session):
+    # UIDVALIDITY changed on the mailbox: two rows now share the same uid
+    # (see app/models.py EmailMessage docstring, migration 0045). One is an
+    # old rejected letter from the previous namespace; the other is a live
+    # «нове» letter under the new namespace. A naive uid-keyed dict would
+    # keep whichever row `session.execute` returns last and could mark the
+    # folder prunable even though the live letter still needs its files.
+    db = db_session
+    db.add(EmailMessage(
+        uid="5", uid_validity="111", status="відхилено",
+        received_at=datetime.now() - timedelta(days=90),
+    ))
+    db.add(EmailMessage(
+        uid="5", uid_validity="222", status="нове",
+        received_at=datetime.now(),
+    ))
+    db.commit()
+    live = _spool_dir(tmp_path, "5", ("crown.stl", b"L" * 400))
+
+    rep = analyze_spool(db, tmp_path)
+    assert live not in set(rep.prunable_dirs)
+
+
 def test_prune_is_idempotent(tmp_path, db_session):
     db = db_session
     _letter(db, "3", "відхилено", days_ago=90)

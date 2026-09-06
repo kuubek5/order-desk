@@ -172,8 +172,6 @@ def accept_letter(
             db.rollback()
             return AcceptResult(error="Не вдалося зберегти вкладення: " + str(exc))
 
-    _write_placeholder_row(db, email, new_order, target_worksheet)
-
     # Частково чи повністю: якщо в листі лишились нерозібрані файли (інший
     # колір, який оператор ще не приймав), лишаємо «нове», щоб він тримався в
     # тріажі; інакше лист прийнято повністю.
@@ -183,6 +181,12 @@ def accept_letter(
     ]
     email.status = "нове" if remaining else "прийнято"
 
+    # Порядок навмисний: файли → база → таблиця. Рядок-нотатку в спільну
+    # Google-таблицю пишемо ОСТАННІМ і лише після успішного коміту бази —
+    # append у чужу таблицю не відкотити, на відміну від файлів (undo_moves)
+    # і рядків SQLite (db.rollback). Раніше рядок писався ДО db.commit(): невдалий
+    # коміт компенсував лише переміщення файлів, а рядок-нотатка лишався в
+    # таблиці — наступний синк імпортував його як ДРУГИЙ наряд-less наряд.
     try:
         db.commit()
     except Exception as exc:  # noqa: BLE001 — файли вже на диску, треба відкотити
@@ -202,6 +206,20 @@ def accept_letter(
                 + "; ".join(undo_errors)
             )
         return AcceptResult(error="Не вдалося зберегти прийняття: " + detail)
+
+    # Прийняття вже успішне (перший коміт пройшов) — рядок-нотатка лише
+    # зручність. `_write_placeholder_row` сама ковтає мережеві помилки в
+    # SyncLog, але задля цього ж SyncLog-рядка й `new_order.row_number`
+    # потрібен ще один коміт; його невдача лише логується, прийняття листа
+    # назад не відкочуємо.
+    _write_placeholder_row(db, email, new_order, target_worksheet)
+    try:
+        db.commit()
+    except Exception:  # noqa: BLE001 — прийняття вже відбулось, це лише журнал
+        db.rollback()
+        logger.exception(
+            "Could not persist placeholder-row bookkeeping for email %s", email.id
+        )
 
     return AcceptResult(
         order=new_order,

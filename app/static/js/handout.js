@@ -191,6 +191,10 @@ document.body.addEventListener("htmx:afterSettle", (event) => {
 // тілі документа, тож без `stopPropagation` запит пішов би паралельно з
 // діалогом — і галочка ставилась би до звірки, тобто гейта не було б узагалі.
 let qcForm = null;
+// Елемент, з якого відкрили діалог (зазвичай кнопка «Знайдено» рядка) —
+// фокус повертається на нього (чи на кнопку submit форми) при закритті,
+// інакше фокус лишався б на видаленому діалозі й «падав» на body.
+let qcTriggerEl = null;
 
 function qcDialog() {
   return document.getElementById("qc-dialog");
@@ -207,17 +211,34 @@ function qcReset() {
   if (confirm) confirm.disabled = true;
 }
 
+// Фокус-пастка модалки: без неї Tab виводив фокус за межі діалогу на
+// приховані елементи списку позаду — role="dialog" aria-modal="true" сам
+// по собі цього не забороняє, браузер таку поведінку не дає безкоштовно.
+function qcFocusable() {
+  const dialog = qcDialog();
+  if (!dialog) return [];
+  return Array.from(
+    dialog.querySelectorAll('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')
+  );
+}
+
 function qcClose() {
   const dialog = qcDialog();
+  const form = qcForm;
   if (dialog) dialog.hidden = true;
   qcForm = null;
   qcReset();
+  const submitBtn = form && form.querySelector('button[type="submit"], input[type="submit"]');
+  const restoreTarget = submitBtn || qcTriggerEl;
+  qcTriggerEl = null;
+  if (restoreTarget && typeof restoreTarget.focus === "function") restoreTarget.focus();
 }
 
 function qcOpen(form) {
   const dialog = qcDialog();
   if (!dialog) return false;
   qcForm = form;
+  qcTriggerEl = document.activeElement;
   qcReset();
   const label = dialog.querySelector("[data-qc-work]");
   if (label) label.textContent = form.dataset.qcLabel || "";
@@ -266,5 +287,21 @@ document.addEventListener("click", (event) => {
 
 document.addEventListener("keydown", (event) => {
   const dialog = qcDialog();
-  if (dialog && !dialog.hidden && event.key === "Escape") qcClose();
+  if (!dialog || dialog.hidden) return;
+  if (event.key === "Escape") {
+    qcClose();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusable = qcFocusable();
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 });

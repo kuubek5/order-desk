@@ -11,9 +11,12 @@ from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
+from app import sync_control
 from app.business_day import set_rollover
 from app.changelog import load_changelog
+from app.services.handout_qc import qc_checklist_enabled
 from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH
 from app.mail_spool import analyze_spool
 from app.services.section_gate import sections_admin
@@ -243,6 +246,8 @@ def get_settings(
         "service_account_email": get_service_account_email(db),
         # Curated changelog from CHANGELOG.md, rendered in «Про застосунок».
         "changelog": load_changelog(),
+        # Правила видачі: QC-чеклист перед «знайдено» (розділ «Ранкова видача»).
+        "handout_qc": qc_checklist_enabled(db),
         # Popup-notification preferences («Спливаючі сповіщення»).
         "notify_style": get_notify_style(db),
         "notify_position": get_notify_position(db),
@@ -435,9 +440,23 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
     # still posts here and still gets the redirect below.
     hx = request.headers.get("HX-Request") == "true"
 
+    if action == "save_and_sync" and sync_control.is_paused():
+        # Той самий гейт, що й ручний "/sheets/sync" (app/routers/queue.py) і
+        # день-синк у Виробітку: пауза зупиняє ЙОГО читання й запис, «зберегти
+        # й синхронізувати» не мало лишатись дірою повз неї (F6, аудит
+        # 06.09.26).
+        message = "Синхронізацію призупинено. Зніміть паузу, щоб синхронізувати."
+        if hx:
+            return toast_response(message, kind="error")
+        request.session["sync_flash"] = {"kind": "error", "message": message}
+        return RedirectResponse("/", status_code=303)
+
     if action == "save_and_sync":
         try:
-            summary = sync_google_sheets(db)
+            # Не на event loop (CLAUDE.md §14): gspread ходить у мережу й
+            # блокує потік. Роут лишається `async def` лише заради
+            # `await request.form()` вище — важка частина винесена сюди.
+            summary = await run_in_threadpool(sync_google_sheets, db)
         except SheetSyncError as exc:
             if hx:
                 return toast_response("Синхронізація: " + str(exc), kind="error")

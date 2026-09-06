@@ -8,11 +8,11 @@
 tests/route_inventory.txt. Будь-яке відхилення — червоний.
 
 Коли роут додають/прибирають СВІДОМО — оновити знімок:
-    python -c "import app.web,io; \
-rows=sorted({(m+' '+r.path) for r in app.web.app.routes \
-if getattr(r,'path',None) for m in (getattr(r,'methods',None) or ['MOUNT']) \
-if m not in ('HEAD','OPTIONS')}); \
+    PYTHONPATH=. python -c "import io; from tests.test_route_inventory import _current_routes; \
+rows=sorted(_current_routes()); \
 io.open('tests/route_inventory.txt','w',encoding='utf-8',newline='\\n').write(chr(10).join(rows)+chr(10))"
+(з кореня репо). Старий однорядковий варіант через `app.web.app.routes` давав
+2 рядки замість ~197: FastAPI ховає include_router у _IncludedRouter — див. _walk.
 і переконатись, що зміна навмисна.
 """
 

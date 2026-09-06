@@ -505,6 +505,23 @@ def _slab_about(ctx: dict) -> Slab:
     return Slab(tone=TONE_NONE, label=f"v{version}", meters=meters)
 
 
+def _slab_handout(ctx: dict) -> Slab:
+    """Видача: правила процесу. Увімкнений чеклист — факт, а не «зелено»:
+    плита не має підтвердженого сигналу, тож тон завжди нейтральний."""
+    on = bool(ctx.get("handout_qc"))
+    return Slab(
+        tone=TONE_NONE,
+        label="QC-чеклист увімкнено" if on else "«знайдено» в один клік",
+        meters=[
+            Meter(
+                k="QC перед «знайдено»",
+                v="увімкнено" if on else "вимкнено",
+                s="три звірки на кожну роботу" if on else "один клік (CLAUDE.md §2)",
+            ),
+        ],
+    )
+
+
 # Ключ розділу → як зібрати його плиту. Словник, а не тіло функції, бо плиту
 # треба вміти зібрати й ПООДИНЦІ: «Сповіщення» живуть тепер у кабінеті
 # (/account), і тягнути туди снапшоти печей заради однієї плити не варто.
@@ -522,6 +539,7 @@ _SLAB_BUILDERS = {
     "mail-filters": lambda db, ctx: _slab_mail_filters(ctx),
     "furnaces": _slab_furnaces,
     "machines": _slab_machines,
+    "handout": lambda db, ctx: _slab_handout(ctx),
     "update": lambda db, ctx: _slab_about(ctx),
 }
 

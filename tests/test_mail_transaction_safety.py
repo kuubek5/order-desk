@@ -7,7 +7,6 @@
 Відкат прийняття (`restore_email`) — дзеркальний випадок.
 """
 
-import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -90,11 +89,11 @@ def _letter(db: Session, spool_dir: Path) -> tuple[EmailMessage, Path]:
 
 
 def _accept(db, user, email):
-    return asyncio.run(mail_router_mod.accept_email(
+    return mail_router_mod.accept_email(
         request=_request(user.id), email_id=email.id,
         client_name="Люмі-Дент", material_color="моно а3", kind="", quantity="",
         folder_pick="", folder_new="", material_folder="", attachment_ids=[], db=db,
-    ))
+    )
 
 
 def test_failed_accept_commit_returns_files_to_the_spool(tmp_path, monkeypatch):
@@ -131,6 +130,84 @@ def test_failed_accept_commit_returns_files_to_the_spool(tmp_path, monkeypatch):
         assert db.scalar(select(Attachment)).saved_path == str(stl)
 
 
+def test_failed_first_commit_never_writes_the_sheet_placeholder_row(tmp_path, monkeypatch):
+    """F14: `_write_placeholder_row` appends a REAL row to the shared Google
+    Sheet. If it ran before the DB commit, a failed commit would compensate
+    file moves but leave that row behind — the next sync would import it as a
+    second наряд-less order. It must run only AFTER a successful commit, so a
+    failing commit must never reach it at all."""
+    engine = _database()
+    export_root, mail_root = _wire(monkeypatch, tmp_path)
+
+    placeholder_calls = []
+    monkeypatch.setattr(
+        mail_accept_svc, "append_mail_placeholder_row",
+        lambda *a, **k: placeholder_calls.append((a, k)) or 999,
+    )
+    # Дати `_write_placeholder_row` дійсний аркуш — інакше вона піде гілкою
+    # "вкладки немає" й нічого не доведе про порядок викликів.
+    fake_worksheet = SimpleNamespace(title="01.01.26")
+    monkeypatch.setattr(
+        mail_accept_svc, "latest_worksheet_on_or_before",
+        lambda *args, **kwargs: fake_worksheet,
+    )
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email, stl = _letter(db, mail_root / "u1")
+
+        def failing_commit():
+            raise RuntimeError("database is locked")
+
+        monkeypatch.setattr(db, "commit", failing_commit)
+        response = _accept(db, user, email)
+        assert response.status_code == 303
+        assert "error=" in response.headers["location"]
+
+    assert placeholder_calls == []
+
+
+def test_successful_accept_writes_the_sheet_placeholder_row_once(tmp_path, monkeypatch):
+    """F14 (успішний шлях): рядок-нотатка пишеться РІВНО раз, після коміту
+    бази, і привʼязує щойно записаний рядок таблиці до нової роботи."""
+    engine = _database()
+    export_root, mail_root = _wire(monkeypatch, tmp_path)
+
+    placeholder_calls = []
+
+    def _fake_append(worksheet, client_name, quantity, material_color, **kwargs):
+        placeholder_calls.append((client_name, quantity, material_color))
+        return 65  # рядок таблиці (з урахуванням заголовків)
+
+    monkeypatch.setattr(mail_accept_svc, "append_mail_placeholder_row", _fake_append)
+    fake_worksheet = SimpleNamespace(title="01.01.26")
+    # `_wire` stubs `open_spreadsheet` to throw (no other test here needs the
+    # sheet), which makes `_resolve_target_tab` swallow the error and return
+    # worksheet=None before `latest_worksheet_on_or_before` is even called.
+    # This test is specifically about the sheet write happening — give it a
+    # spreadsheet that resolves.
+    monkeypatch.setattr(mail_accept_svc, "open_spreadsheet", lambda db=None: object())
+    monkeypatch.setattr(
+        mail_accept_svc, "latest_worksheet_on_or_before",
+        lambda *args, **kwargs: fake_worksheet,
+    )
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email, stl = _letter(db, mail_root / "u1")
+        response = _accept(db, user, email)
+        assert response.status_code == 303
+        assert "error=" not in response.headers["location"]
+
+    assert len(placeholder_calls) == 1
+
+    with Session(engine) as db:
+        order = db.scalar(select(Order))
+        assert order is not None
+        from app.parser import HEADER_ROWS
+        assert order.row_number == 65 - HEADER_ROWS
+
+
 def test_failed_unaccept_commit_returns_files_to_export(tmp_path, monkeypatch):
     """Дзеркальний випадок: відкат прийняття перемістив файли назад у спул, але
     коміт впав → БД знову вважає лист прийнятим, тож файли мусять повернутись
@@ -151,9 +228,7 @@ def test_failed_unaccept_commit_returns_files_to_export(tmp_path, monkeypatch):
             raise RuntimeError("database is locked")
 
         monkeypatch.setattr(db, "commit", failing_commit)
-        response = asyncio.run(
-            mail_router_mod.restore_email(request=_request(user.id), email_id=email.id, db=db)
-        )
+        response = mail_router_mod.restore_email(request=_request(user.id), email_id=email.id, db=db)
         assert response.status_code == 303
         assert "error=" in response.headers["location"]
 
