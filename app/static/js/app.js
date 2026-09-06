@@ -353,6 +353,74 @@ document.addEventListener("click", (event) => {
   btn.setAttribute("title", collapsed ? "Розгорнути меню" : "Згорнути меню");
 });
 
+// ── Вкладки розділу в рейці налаштувань ───────────────────────────────────
+// Частина розділів має всередині вкладки («Копії таблиці» в Google Таблиці,
+// «Скачування вкладень» у Пошті, «Сповіщення» в кабінеті). У рейці вони
+// стоять під своїм господарем і ЗГОРНУТІ: меню не повинно розповідати про
+// внутрішній устрій розділу тому, хто його зараз не відкриває.
+//
+// Розкриває їх сам господар (клік по ньому і відкриває розділ, і показує
+// вкладки) або каретка поруч — коли треба лише зазирнути, нікуди не йдучи.
+// Стан памʼятається, тому оператор, який живе в «Копіях», не розкриває їх
+// щоразу заново.
+(function initRailSubs() {
+  const groups = document.querySelectorAll("[data-subs-of]");
+  if (!groups.length) return;
+
+  function parentOf(key) {
+    return document.querySelector('[data-subparent="' + CSS.escape(key) + '"]');
+  }
+
+  function setOpen(key, open) {
+    const box = document.querySelector('[data-subs-of="' + CSS.escape(key) + '"]');
+    if (!box) return;
+    box.hidden = !open;
+    const head = parentOf(key);
+    if (head) {
+      head.classList.toggle("is-subs-open", open);
+      const caret = head.querySelector("[data-subtoggle]");
+      if (caret) caret.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+  }
+
+  // Відкриваємо самі, коли активний пункт живе в цій групі — інакше людина
+  // бачила б підсвічений розділ і жодного натяку, ЯКА саме вкладка відкрита.
+  // Стан НЕ памʼятається між заходами: типово згорнуто. Єдиний виняток —
+  // група, всередині якої стоїть активний пункт: інакше людина бачила б
+  // підсвічений розділ і жодного натяку, ЯКА саме вкладка зараз відкрита.
+  groups.forEach((box) => {
+    const key = box.dataset.subsOf;
+    const head = parentOf(key);
+    const open =
+      !!box.querySelector(".is-active") ||
+      !!(head && head.querySelector(".rail-nav-item.is-active"));
+    setOpen(key, open);
+  });
+
+  document.addEventListener("click", (event) => {
+    const caret = event.target.closest("[data-subtoggle]");
+    if (caret) {
+      // Каретка НЕ веде в розділ: це «зазирнути», а не «перейти».
+      event.preventDefault();
+      event.stopPropagation();
+      const key = caret.dataset.subtoggle;
+      const box = document.querySelector('[data-subs-of="' + CSS.escape(key) + '"]');
+      setOpen(key, box ? box.hidden : true);
+      return;
+    }
+    const head = event.target.closest("[data-subparent]");
+    if (head) setOpen(head.dataset.subparent, true);
+  });
+
+  // Свій розділ відкрили не мишею (палітра Ctrl+K, #hash) — рейку теж треба
+  // розгорнути, щоб активна вкладка була видима.
+  window.railSubsReveal = function (key) {
+    const item = document.querySelector('.rail-nav-item[data-sec="' + CSS.escape(key) + '"]');
+    const box = item && item.closest("[data-subs-of]");
+    if (box) setOpen(box.dataset.subsOf, true);
+  };
+})();
+
 // Global toast notifications. Спливаюче повідомлення всередині CRM — щоб
 // оператор бачив реальну причину помилки (напр. ukr.net відхилив вхід у пошту),
 // а не мовчазний перезавантажений екран. Викликається двома шляхами:

@@ -68,6 +68,7 @@
       if (on) a.setAttribute("aria-current", "true");
       else a.removeAttribute("aria-current");
     });
+    if (window.railSubsReveal) window.railSubsReveal(tab || key);
     if (history.replaceState) history.replaceState(null, "", "#" + (tab || key));
     if (focusSel) {
       window.setTimeout(function () {
@@ -106,6 +107,7 @@
     railItems.forEach(function (a) {
       a.classList.toggle("is-active", a.dataset.sec === btn.dataset.tabgo);
     });
+    if (window.railSubsReveal) window.railSubsReveal(btn.dataset.tabgo);
   });
 
   // ── command palette ──────────────────────────────────────

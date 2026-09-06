@@ -393,7 +393,60 @@
   }
 
   /* Пункт-вкладка: живе всередині сусіднього розділу, тому стоїть під ним
-     із відступом і тихішим підписом — видно, що це не окремий екран. */
+     із відступом і тихішим підписом — видно, що це не окремий екран.
+     Група згорнута, поки не відкриють розділ або не тиснуть каретку
+     (app.js → initRailSubs). */
+  .rail-subs[hidden] { display: none; }
+  .rail-subs {
+    display: block;
+    animation: railSubsIn .16s cubic-bezier(.16, 1, .3, 1) both;
+  }
+  @keyframes railSubsIn {
+    from { opacity: 0; transform: translate3d(0, -4px, 0); }
+    to   { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rail-subs { animation: none; }
+  }
+
+  /* Каретка господаря: клік по ній лише розкриває список, не веде в розділ.
+     Стоїть поверх правого краю посилання (сусід, не дитина — <button>
+     усередині <a> недопустимий), тому підпис не з'їжджає. */
+  .rail-head { position: relative; }
+  .rail-head.has-subs .rail-nav-item { padding-right: 30px; }
+  .rail-head .rail-sub-caret {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    opacity: .45;
+    cursor: pointer;
+    transition: transform .16s ease, opacity .15s ease, background .15s ease;
+  }
+  .rail-head .rail-sub-caret svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .rail-head:hover .rail-sub-caret { opacity: .8; }
+  .rail-head .rail-sub-caret:hover { background: rgba(255, 255, 255, .06); opacity: 1; }
+  .rail-head.is-subs-open .rail-sub-caret { transform: translateY(-50%) rotate(90deg); }
+  body.rail-collapsed .rail-sub-caret,
+  body.rail-collapsed .rail-subs { display: none; }
+
   .rail-settings .rail-nav-item.is-sub {
     padding-left: 30px;
     font-size: var(--fs-1);

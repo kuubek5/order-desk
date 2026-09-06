@@ -516,8 +516,16 @@
     // Адреса сильніша за памʼять: /account#notifications приходить із меню
     // налаштувань, і людина чекає побачити саме сповіщення.
     var byHash = { '#notifications': 'acc-tab-notify', '#look': 'acc-tab-look' };
-    var wanted = byHash[location.hash];
-    if (wanted && document.getElementById(wanted)) document.getElementById(wanted).checked = true;
+    function tabFromHash() {
+      var id = byHash[location.hash];
+      var el = id && document.getElementById(id);
+      if (el && !el.checked) { el.checked = true; el.dispatchEvent(new Event('change')); }
+      return !!el;
+    }
+    tabFromHash();
+    // Клік по «Сповіщення» в рейці, коли ми ВЖЕ в кабінеті, змінює лише хеш —
+    // без цього слухача не відбувалось нічого, і пункт виглядав мертвим.
+    window.addEventListener('hashchange', tabFromHash);
     tabs.forEach(function(t){
       t.addEventListener('change', function(){
         KMStore.set('accTab', t.id);

@@ -61,21 +61,52 @@
         {% for group in settings_nav(user) %}
         {% if group.heading %}<div class="rail-settings-group rail-label">{{ group.title }}</div>{% endif %}
         <nav class="rail-nav-group" aria-label="{{ group.title }}">
-            {% for item in group.items %}
+            {# Підпункти (вкладки розділу) малюються ПІД своїм господарем і
+               згорнуті: рейка не має пояснювати внутрішній устрій розділу
+               тому, хто його зараз не відкриває. Розкриває їх сам господар —
+               або каретка поруч, якщо треба лише зазирнути. #}
+            {% for item in group.items if not item.parent %}
+            {% set kids = group.items | selectattr('parent', 'equalto', item.key) | list %}
             {% if item.kind == 'section' %}
-            <a href="{{ item.href }}" class="rail-nav-item rail-sset{% if item.parent %} is-sub{% endif %}" data-sec="{{ item.key }}">
-                {{ nav_icon(item.icon_key) }}
-                <span class="rail-label">{{ item.title }}</span>
-            </a>
+            {# Каретка — СУСІД посилання, а не його дитина: <button> усередині
+               <a> недопустимий за специфікацією, і браузер із такою вкладеністю
+               робив із каретки порожній прямокутник. #}
+            <div class="rail-head{% if kids %} has-subs{% endif %}"{% if kids %} data-subparent="{{ item.key }}"{% endif %}>
+                <a href="{{ item.href }}" class="rail-nav-item rail-sset" data-sec="{{ item.key }}">
+                    {{ nav_icon(item.icon_key) }}
+                    <span class="rail-label">{{ item.title }}</span>
+                </a>
+                {% if kids %}<button type="button" class="rail-sub-caret" data-subtoggle="{{ item.key }}" aria-label="Показати вкладки розділу «{{ item.title }}»" aria-expanded="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>{% endif %}
+            </div>
             {% else %}
             {# Окрема сторінка: перезавантаження, а не свап секції — тому
                стрілка ↗. Активний пункт тут визначає шлях, а не #hash. #}
-            <a href="{{ item.href }}" class="rail-nav-item{% if item.parent %} is-sub{% endif %}{% if spath == item.href %} is-active{% endif %}"{% if spath == item.href %} aria-current="page"{% endif %}>
-                {{ nav_icon(item.icon_key) }}
-                <span class="rail-label">{{ item.title }}</span>
-                {% if item.badge == 'sync_dot' %}{{ sync_dot(nav_sync) }}{% endif %}
-                <svg class="rail-nav-out" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15 15 9M10 9h5v5"/></svg>
-            </a>
+            <div class="rail-head{% if kids %} has-subs{% endif %}"{% if kids %} data-subparent="{{ item.key }}"{% endif %}>
+                <a href="{{ item.href }}" class="rail-nav-item{% if spath == item.href %} is-active{% endif %}"{% if spath == item.href %} aria-current="page"{% endif %}>
+                    {{ nav_icon(item.icon_key) }}
+                    <span class="rail-label">{{ item.title }}</span>
+                    {% if item.badge == 'sync_dot' %}{{ sync_dot(nav_sync) }}{% endif %}
+                    {% if not kids %}<svg class="rail-nav-out" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15 15 9M10 9h5v5"/></svg>{% endif %}
+                </a>
+                {% if kids %}<button type="button" class="rail-sub-caret" data-subtoggle="{{ item.key }}" aria-label="Показати вкладки розділу «{{ item.title }}»" aria-expanded="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>{% endif %}
+            </div>
+            {% endif %}
+            {% if kids %}
+            <div class="rail-subs" data-subs-of="{{ item.key }}" hidden>
+                {% for kid in kids %}
+                {% if kid.kind == 'section' %}
+                <a href="{{ kid.href }}" class="rail-nav-item rail-sset is-sub" data-sec="{{ kid.key }}">
+                    {{ nav_icon(kid.icon_key) }}
+                    <span class="rail-label">{{ kid.title }}</span>
+                </a>
+                {% else %}
+                <a href="{{ kid.href }}" class="rail-nav-item is-sub{% if spath == kid.href %} is-active{% endif %}" data-sec="{{ kid.key }}">
+                    {{ nav_icon(kid.icon_key) }}
+                    <span class="rail-label">{{ kid.title }}</span>
+                </a>
+                {% endif %}
+                {% endfor %}
+            </div>
             {% endif %}
             {% endfor %}
         </nav>
