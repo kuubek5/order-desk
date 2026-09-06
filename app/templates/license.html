@@ -1,39 +1,60 @@
 {% extends "base.html" %}
 
-{% block title %}Активація ліцензії — KuubMill{% endblock %}
+{% block title %}Ліцензія — KuubMill{% endblock %}
 
 {% block extra_head %}
 <link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
 {% endblock %}
 
 {% block content %}
-<div class="login-page">
-    <div class="card login-card setup-card">
-        <h1>Активація KuubMill</h1>
+{# Сторінка живе у двох ролях, і структура однакова для обох: паспорт
+   ліцензії — шапка зі статусом, поля-факти, машинний ID, дії.
+   • Брама: ліцензії нема, застосунок заблоковано (див. license_gate у
+     web.py). Сесії може не бути зовсім, тому навігації тут НЕМА — вести
+     нікуди, кожен інший маршрут поверне сюди ж.
+   • Довідка: адмін зайшов з рейки налаштувань подивитись термін. Тоді і
+     тільки тоді зверху зʼявляються посилання назад — раніше екран був
+     глухим кутом. #}
+{% set activated = status and status.valid %}
+{% set signed_in = request.session.get('user_id') %}
+<div class="login-page licpage">
+    {% if activated and signed_in %}
+    <nav class="lic-nav" aria-label="Навігація">
+        <a class="lic-back" href="/settings#license"><span class="lic-arrow" aria-hidden="true">←</span> Налаштування</a>
+        <a class="lic-back" href="/">До черги</a>
+    </nav>
+    {% endif %}
 
-        {% if status and status.valid %}
-        <p class="login-subtitle">
-            Активовано{% if status.customer %} для «{{ status.customer }}»{% endif %}{% if status.expires_at %}, дійсна до {{ status.expires_at.strftime('%d.%m.%Y') }}{% endif %}.
-        </p>
-        {# На активованій машині головна дія — піти працювати, а не вводити
-           ще один ключ. Раніше «Продовжити» було найдрібнішим елементом
-           сторінки, форма рендерилась безумовно, фокус стояв у порожньому
-           обов'язковому полі, і найпомітніша кнопка робила непотрібне. #}
-        <a class="login-submit license-continue" href="/">Продовжити →</a>
-        {% else %}
-        <p class="login-subtitle">Введіть ліцензійний ключ, виданий власником KuubMill для цього комп'ютера.</p>
-        {% endif %}
+    <div class="card login-card lic-card">
+        <header class="lic-head">
+            <div class="lic-title">
+                <span class="lic-eyebrow">KuubMill</span>
+                <h1>Ліцензія</h1>
+            </div>
+            <span class="lic-pill lic-pill-{{ pill.tone }}">{{ pill.label }}</span>
+        </header>
 
         {% if error %}
         <p class="login-error" role="alert">{{ error }}</p>
         {% endif %}
 
-        <div class="login-field">
-            {# label без for і без обгортання був мертвим кліком, а кнопка —
-               без назви в дереві доступності. Плюс явна підказка «копіювати»:
-               це разова дія по телефону з власником, і «а я скопіював?»
-               коштує дзвінка. #}
-            <label for="machine-id-copy">Ідентифікатор цього комп'ютера (machine ID)</label>
+        {% if activated %}
+        <dl class="lic-facts">
+            <div class="lic-fact">
+                <dt>Дійсна до</dt>
+                <dd class="mono">{% if status.expires_at %}{{ status.expires_at.strftime('%d.%m.%Y') }}{% else %}безстрокова{% endif %}</dd>
+            </div>
+        </dl>
+        {% else %}
+        <p class="login-subtitle lic-lede">Введіть ліцензійний ключ, виданий власником KuubMill для цього комп'ютера.</p>
+        {% endif %}
+
+        {# Machine ID окремим блоком, а не рядком таблиці: це єдине, що
+           оператор звідси забирає, і воно клікабельне. У рядку «підпис —
+           значення» шістнадцять моноширинних символів плюс підказка
+           «копіювати» не вміщались і ламали колонку. #}
+        <div class="lic-idblock">
+            <label for="machine-id-copy" class="lic-idlabel">Ідентифікатор цього комп'ютера (machine ID)</label>
             <div class="login-glow">
                 <div class="login-input-wrap">
                     <button type="button" id="machine-id-copy" class="mono copy-button license-machine-id"
@@ -45,23 +66,20 @@
             <p class="login-hint">Надішліть цей ID власнику KuubMill, щоб отримати ліцензійний ключ.</p>
         </div>
 
-        {% if status and status.valid %}<details class="license-rekey"><summary class="login-hint">Ввести інший ключ</summary>{% endif %}
-        <form method="post" action="/license">
-            <div class="login-field">
-                <label for="license_key">Ліцензійний ключ</label>
-                <div class="login-glow">
-                    <div class="login-input-wrap">
-                        <input type="text" id="license_key" name="license_key" class="login-input mono"
-                               value="{{ license_key_input|default('') }}"
-                               placeholder="вставте ключ, виданий власником"
-                               autocomplete="off" required{% if not (status and status.valid) %} autofocus{% endif %}>
-                    </div>
-                </div>
-            </div>
-
-            <button type="submit" class="login-submit">Активувати</button>
-        </form>
-        {% if status and status.valid %}</details>{% endif %}
+        {# На активованій машині головна дія — піти працювати, а не вводити
+           ще один ключ: форма ховається у <details>, фокус не стоїть у
+           порожньому обовʼязковому полі. #}
+        <div class="lic-actions">
+            {% if activated %}
+            <a class="login-submit license-continue" href="/">Продовжити →</a>
+            <details class="license-rekey">
+                <summary class="lic-summary">Ввести інший ключ</summary>
+                {% include "_license_form.html" %}
+            </details>
+            {% else %}
+            {% include "_license_form.html" %}
+            {% endif %}
+        </div>
     </div>
 </div>
 {% endblock %}

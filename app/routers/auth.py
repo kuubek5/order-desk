@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.auth import hash_password, verify_password
+from app.business_day import business_today
 from app.license import (
     REASON_NOT_ACTIVATED,
     get_license_status,
@@ -57,6 +58,24 @@ router = APIRouter()
 FIRST_ADMIN_LOCK = Lock()
 
 
+# Термін і стан ліцензії читаються з однієї пігулки в шапці паспорта, тому
+# її текст рахується тут, а не в шаблоні: Jinja не має «сьогодні», а межа
+# доби в застосунку робоча (business_today), не календарна.
+LICENSE_EXPIRY_WARNING_DAYS = 30
+
+
+def _license_pill(status) -> dict:
+    if not status.valid:
+        return {"tone": "bad", "label": "не активна"}
+    if status.expires_at is not None:
+        days = (status.expires_at.date() - business_today()).days
+        if days <= LICENSE_EXPIRY_WARNING_DAYS:
+            if days <= 0:
+                return {"tone": "bad", "label": "спливає сьогодні"}
+            return {"tone": "warn", "label": f"спливає через {days} дн."}
+    return {"tone": "ok", "label": "активна"}
+
+
 @router.get("/license", response_class=HTMLResponse)
 def license_form(request: Request, db: Session = Depends(get_db)):
     status = get_license_status(db)
@@ -71,7 +90,12 @@ def license_form(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request,
         "license.html",
-        {"status": status, "machine_id": get_machine_id(), "error": error},
+        {
+            "status": status,
+            "machine_id": get_machine_id(),
+            "error": error,
+            "pill": _license_pill(status),
+        },
     )
 
 
@@ -90,6 +114,7 @@ async def license_submit(
                 "machine_id": machine_id,
                 "error": status.reason,
                 "license_key_input": license_key.strip(),
+                "pill": _license_pill(status),
             },
             status_code=400,
         )

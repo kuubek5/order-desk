@@ -388,15 +388,155 @@ body:has(.login-page) .app-backdrop .radar-hud { display: none; }
   .login-scene .ls-dust { display: none; }
 }
 
-/* Ліцензія: на активованій машині «Продовжити» — головна дія, а форма ключа
-   ховається у <details>. Раніше форма рендерилась безумовно, фокус стояв у
-   порожньому обов'язковому полі, і найпомітніша кнопка робила непотрібне. */
+/* ── Ліцензія: паспорт ────────────────────────────────────────────────────
+   Сторінка грає дві ролі одним каркасом (див. license.html): брама без
+   ліцензії та довідка для адміна. Усе на токенах, жодного літерального
+   кольору — екран їде за темою разом з рештою застосунку. */
+.licpage { gap: var(--space-4); }
+
+/* Навігація зʼявляється ЛИШЕ на активованій машині з живою сесією: без
+   ліцензії будь-який інший маршрут повертає сюди ж, і посилання були б
+   петлею. Раніше виходу не було зовсім — екран був глухим кутом. */
+.lic-nav {
+  width: 100%;
+  max-width: 30rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+/* Друге посилання відсунуте вправо: два підписи впритул читались як одна
+   хлібна крихта «Налаштування Черга», хоча це різні місця. */
+.lic-nav .lic-back + .lic-back { margin-left: auto; }
+.lic-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-2);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  padding: var(--space-1) 0;
+  transition: color var(--ui-speed) ease;
+}
+.lic-back:hover { color: var(--color-accent); }
+.lic-back:focus-visible {
+  color: var(--color-accent);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.lic-arrow { font-size: var(--fs-3); line-height: 1; }
+
+.lic-card { max-width: 30rem; }
+
+.lic-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+.lic-eyebrow {
+  display: block;
+  font-size: var(--fs-0);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-1);
+}
+/* Специфічність підвищено свідомо: нижче в файлі стоїть пізніший
+   `.login-card h1` (1.75rem), який інакше переміг би за порядком. */
+.login-card .lic-title h1 { font-size: var(--fs-6); margin: 0; }
+
+/* Статус — єдиний кольоровий сигнал сторінки, тому кольори РОЛЕЙ, а не
+   акцент теми: «спливає» і «не активна» мусять читатись як попередження
+   навіть у темі, де акцент сам по собі теплий. */
+.lic-pill {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  font: 500 var(--fs-0)/1 var(--font-body);
+  letter-spacing: 0.04em;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.lic-pill-ok { color: var(--ok); }
+.lic-pill-warn { color: var(--warn); }
+.lic-pill-bad { color: var(--alarm); }
+
+.lic-facts { margin: 0 0 var(--space-5); }
+.lic-fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+}
+.lic-fact + .lic-fact { border-top: 1px solid var(--line); }
+.lic-fact dt { font-size: var(--fs-2); color: var(--color-text-muted); }
+.lic-fact dd {
+  margin: 0;
+  font-size: var(--fs-3);
+  color: var(--color-text);
+  text-align: right;
+}
+
+.lic-lede { margin-bottom: var(--space-5); }
+
+/* Machine ID — окремим блоком, а не рядком «підпис — значення»: це єдине,
+   що оператор звідси забирає, воно клікабельне, і шістнадцять моноширинних
+   символів плюс підказка «копіювати» в колонку не вміщались. */
+.lic-idblock { margin-bottom: var(--space-5); }
+.lic-idlabel {
+  display: block;
+  font-size: var(--fs-2);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.lic-actions { display: flex; flex-direction: column; gap: var(--space-3); }
 .license-continue { display: block; text-align: center; text-decoration: none; }
-.license-rekey { margin-top: var(--space-5); }
-.license-rekey summary { cursor: pointer; }
+.license-rekey { margin: 0; }
+.lic-summary {
+  cursor: pointer;
+  font-size: var(--fs-2);
+  color: var(--color-text-muted);
+  padding: var(--space-2) 0;
+  transition: color var(--ui-speed) ease;
+}
+.lic-summary:hover { color: var(--color-accent); }
+.lic-summary:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 4px; }
+.license-rekey[open] .lic-summary { margin-bottom: var(--space-3); }
+
+/* «Активувати» під <details> — вторинна: головна дія активованої машини вже
+   стоїть вище. Власний вигляд, а не .btn: той стилізований лише всередині
+   екранних скоупів (.q2, .mailv2 …), а ця сторінка живе поза ними — гола
+   кнопка браузера читалась би як другий баг. */
+.lic-secondary {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid var(--control-edge);
+  border-radius: var(--radius-input);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--ui-speed) ease, border-color var(--ui-speed) ease;
+}
+.lic-secondary:hover { color: var(--accent-c); border-color: var(--accent-b); }
+.lic-secondary:focus-visible { outline: 2px solid var(--accent-b); outline-offset: 2px; }
+
 /* Machine ID копіюється одним кліком — але афорданс жив лише в title.
    Явна підказка поруч, і ✓ після copy-success (клас вішає app.js). */
-.license-machine-id { display: flex; align-items: center; gap: var(--space-3); justify-content: space-between; }
+.license-machine-id {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  justify-content: space-between;
+}
 .license-machine-id .lmi-cue {
   font: 500 11px var(--font-body);
   color: var(--accent-c);
@@ -406,6 +546,13 @@ body:has(.login-page) .app-backdrop .radar-hud { display: none; }
   flex: 0 0 auto;
 }
 .license-machine-id.copy-success .lmi-cue::after { content: " ✓"; }
+
+@media (max-width: 480px) {
+  .lic-head { flex-direction: column; }
+  .lic-fact { flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+  .lic-fact dd { text-align: left; }
+  .license-machine-id { flex-wrap: wrap; gap: var(--space-2); }
+}
 
 /* ── Сторінка помилки ─────────────────────────────────────────────────────
    Той самий каркас, що й вхід (.login-page / .login-card), бо це теж екран

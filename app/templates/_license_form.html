@@ -1,0 +1,16 @@
+{# Форма ключа. Один партіал на обидва стани сторінки: на брамі стоїть
+   відкрито і тримає фокус, на активованій машині — усередині <details>. #}
+<form method="post" action="/license" class="lic-form">
+    <div class="login-field">
+        <label for="license_key">Ліцензійний ключ</label>
+        <div class="login-glow">
+            <div class="login-input-wrap">
+                <input type="text" id="license_key" name="license_key" class="login-input mono"
+                       value="{{ license_key_input|default('') }}"
+                       placeholder="вставте ключ, виданий власником"
+                       autocomplete="off" required{% if not (status and status.valid) %} autofocus{% endif %}>
+            </div>
+        </div>
+    </div>
+    <button type="submit" class="{% if status and status.valid %}lic-secondary{% else %}login-submit{% endif %}">Активувати</button>
+</form>
