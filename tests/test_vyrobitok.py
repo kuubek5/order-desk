@@ -284,9 +284,11 @@ def test_catchup_resync_of_same_tab_does_not_double():
         _orow(50, material_color="4", kind="CADCAM Команда"),   # лаб СЛМ 4
         _orow(51, quantity="12", kind="CadCam Energy"),          # файловий СЛМ 12
     ]
-    sync_tab(db, "05.08.26", rows); db.commit()
+    sync_tab(db, "05.08.26", rows)
+    db.commit()
     t1 = compute_month(db, 2026, 8).totals
-    sync_tab(db, "05.08.26", rows); db.commit()   # догін тієї самої вкладки
+    sync_tab(db, "05.08.26", rows)   # догін тієї самої вкладки
+    db.commit()
     t2 = compute_month(db, 2026, 8).totals
 
     assert t1["lab_zr"] == 5 and t1["lab_slm"] == 4 and t1["mail_slm"] == 12
@@ -301,9 +303,11 @@ def test_override_survives_catchup_resync():
     db = _db()
     rows = [_orow(50, material_color="4", kind="CADCAM Команда"),
             _orow(51, quantity="12", kind="CadCam Energy")]
-    sync_tab(db, "05.08.26", rows); db.commit()
+    sync_tab(db, "05.08.26", rows)
+    db.commit()
     set_cell(db, date(2026, 8, 5), "mail_slm", 99)
-    sync_tab(db, "05.08.26", rows); db.commit()
+    sync_tab(db, "05.08.26", rows)
+    db.commit()
     cell = next(r for r in compute_month(db, 2026, 8).rows if r["dayn"] == 5)["cells"]["mail_slm"]
     assert cell["num"] == 99 and cell["auto"] == 12 and cell["edited"] is True
 

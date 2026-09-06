@@ -99,3 +99,42 @@ def test_migrations_build_every_table_the_models_declare():
             conn.close()
 
     assert not problems, "дрейф «моделі ↔ міграції»:\n  " + "\n  ".join(problems)
+
+
+def test_every_index_declared_in_models_exists_in_migrations():
+    """Той самий дрейф, але на ІНДЕКСИ.
+
+    Індекс не ламає запит — він ламає лише швидкість, тому його відсутність не
+    видно ні в тестах (`create_all` створює індекси з моделей), ні в
+    `app/schema.py` (`_matches_models` звіряє тільки колонки). Наявна база
+    просто мовчки продовжує повний перебір `orders`, і помітять це не одразу,
+    а коли черга «якось повільно відкривається».
+
+    Перевірка свідомо ОДНОСТОРОННЯ: усе з моделей мусить бути в міграціях, але
+    не навпаки. У міграціях є індекси, яких у моделях немає навмисно (напр.
+    `ix_clients_canonical_name_unique` — часткова унікальність, яку SQLAlchemy
+    не описує), і вимагати їх у `models.py` було б хибною тривогою.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "drift_indexes.db"
+        _alembic_upgrade(db_path)
+
+        conn = sqlite3.connect(db_path)
+        try:
+            migrated = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='index' AND name NOT LIKE 'sqlite_%'"
+                )
+            }
+        finally:
+            conn.close()
+
+    declared = {
+        index.name
+        for table in Base.metadata.tables.values()
+        for index in table.indexes
+    }
+    missing = declared - migrated
+    assert not missing, f"індекс є в models.py, немає в міграціях: {sorted(missing)}"

@@ -2,3 +2,7 @@
 pytest-cov>=4.0
 ruff>=0.4.0
 mypy>=1.8.0
+# Runs the ruff lint hook before every commit (.pre-commit-config.yaml), so a
+# lint error is caught locally instead of turning the CI build red after push.
+# Enable once per clone: python -m pre_commit install
+pre-commit>=3.7

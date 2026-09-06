@@ -5,6 +5,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -123,7 +124,11 @@ class Order(Base):
     material_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("materials.id"), nullable=True, index=True
     )
-    status: Mapped[str] = mapped_column(String(100), default="нове")
+    # index: за статусом фільтрують два найгарячіші екрани — Черга (незавершені)
+    # і Видача (невидані). Без індексу кожен такий запит = повний перебір
+    # `orders`, а таблиця росте на ~92 рядки за КОЖЕН робочий день і не
+    # чиститься (архів зберігає все, див. §14 «Retention»).
+    status: Mapped[str] = mapped_column(String(100), default="нове", index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()
     )
@@ -177,6 +182,16 @@ class Order(Base):
     # статус. Без цього зняття галочки не пережило б наступний синк: у таблиці
     # заливки як не було, так і немає, і «видано» повернулось би само.
     issue_locked: Mapped[bool] = mapped_column(default=False)
+
+    # Складений індекс під головний запит Видачі: «невидані роботи цього
+    # клієнта». Порядок колонок НЕ довільний — спершу `client_name` (рівність,
+    # відсікає майже все), потім `status`. Зворотний порядок sqlite не
+    # використав би для вибірки по клієнту, а окремий індекс на `status`
+    # (вище) тут не рятує: значень статусу одиниці, тож сам по собі він
+    # відсіює мало.
+    __table_args__ = (
+        Index("ix_orders_client_name_status", "client_name", "status"),
+    )
 
     status_events: Mapped[list["StatusEvent"]] = relationship(
         "StatusEvent", back_populates="order", cascade="all, delete-orphan"
