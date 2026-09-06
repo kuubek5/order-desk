@@ -51,7 +51,7 @@ from app.services.sheet_writeback import (
     append_manual_rows_warm,
     await_on_writeback,
     clear_sheet_row_background,
-    sheet_writeback_pool,
+    submit_sheet_write,
     write_calculated_cell_warm,
     write_rework_sum3d_fields_warm,
     write_sheet_fields_background,
@@ -503,7 +503,9 @@ def create_manual_order(
     # newest dated tab ≤ today (today's tab often isn't created yet) and returns
     # which tab it actually wrote to, so the orders land on the same day.
     try:
-        result = sheet_writeback_pool.submit(
+        # Через спільну точку пулу: там же живе остання перевірка паузи, щоб
+        # жоден запис не проліз повз неї (аудит 05.09.26, синк M-8).
+        result = submit_sheet_write(
             append_manual_rows_warm, business_today(), works,
             paint_blue=(not is_lab),
             placement=("lab" if is_lab else "client"),
@@ -512,6 +514,10 @@ def create_manual_order(
     except Exception as exc:  # noqa: BLE001 — surface any sheet failure to the operator
         logger.exception("Manual order sheet write failed")
         return _back(f"Не вдалося записати в таблицю: {exc}")
+    if isinstance(result, str):
+        # Пул відмовився писати (пауза) — сюди практично не доходить, бо гейт
+        # у роуті вище вже відповів операторові; лишаємо як чесний шлях.
+        return _back(result)
     if result is None:
         return _back("У таблиці немає жодної датованої вкладки — створіть день у таблиці спершу.")
     tab, note_rows = result
@@ -974,6 +980,14 @@ async def add_order_comment(
     clean_text = text.strip()
     if not clean_text:
         raise HTTPException(status_code=400, detail="коментар не може бути порожнім")
+
+    # Коментар дописується в живу клітинку K таблиці, тобто це ЗАПИС — а цей
+    # роут єдиний із чотирнадцяти не питав про паузу. Адмін ставив паузу, щоб
+    # руками перебудувати вкладку, і саме туди летів коментар (аудит 05.09.26,
+    # синк M-8). Пул тепер має власну страховку, але операторові потрібна
+    # зрозуміла відповідь, а не мовчазний пропуск.
+    if sync_control.is_paused():
+        return toast_response(SYNC_PAUSED_MSG, kind="info")
 
     now = datetime.now()
     author = user.full_name or user.username

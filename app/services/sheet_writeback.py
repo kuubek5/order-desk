@@ -10,11 +10,13 @@
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from functools import wraps
 from datetime import date, datetime
 import logging
 
 from sqlalchemy.orm import Session
 
+from app import sync_control
 from app.db import SessionLocal
 from app.models import Comment, Order, SyncLog
 from app.parser import HEADER_ROWS
@@ -43,6 +45,39 @@ logger = logging.getLogger(__name__)
 # cache and costs just the ~3s batch_update. It also serialises writes, so two
 # quick edits to the same cell can't land out of order.
 sheet_writeback_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sheet-writeback")
+
+
+
+# ── Пауза синку: остання лінія, спільна для ВСІХ записів ──────────────────
+# Гейт `sync_control.is_paused()` стоїть у роутах — там він і має бути, бо
+# видає операторові зрозумілу відповідь («синк на паузі»). Але роутів чотирнадцять,
+# і один з них (коментар до роботи) гейта не мав узагалі: адмін ставив паузу,
+# щоб перебудувати вкладку руками, а коментар усе одно летів у живу клітинку
+# K посеред його правки (аудит 05.09.26, синк M-8).
+#
+# Тому пауза перевіряється ще й ТУТ, в одній точці, через яку проходить кожен
+# запис у таблицю. Це не заміна гейтам у роутах, а страховка: роут відповідає
+# за повідомлення, пул — за те, щоб під час паузи в Google не пішло НІЧОГО.
+SHEET_PAUSED_MESSAGE = "синк на паузі — у таблицю не записано"
+
+
+def _guard_paused(fn):
+    """Обгортка задачі пулу: на паузі не викликає fn, а каже, що пропустила."""
+
+    @wraps(fn)
+    def guarded(*args, **kwargs):
+        if sync_control.is_paused():
+            logger.info("Запис у таблицю пропущено (пауза): %s", getattr(fn, "__name__", fn))
+            return SHEET_PAUSED_MESSAGE
+        return fn(*args, **kwargs)
+
+    return guarded
+
+
+def submit_sheet_write(fn, *args, **kwargs):
+    """Єдина точка входу в пул write-back. Усі записи йдуть через неї, тож
+    пауза й будь-яка майбутня спільна умова додаються в ОДНОМУ місці."""
+    return sheet_writeback_pool.submit(_guard_paused(fn), *args, **kwargs)
 
 
 def warm_sheet_writeback() -> None:
@@ -181,7 +216,7 @@ async def await_on_writeback(fn, *args) -> str | None:
     Повертає рядок помилки або None — той самий контракт, що й у синхронних
     `write_*`, щоб роут показав чесне «записано / не вдалось».
     """
-    future = sheet_writeback_pool.submit(fn, *args)
+    future = submit_sheet_write(fn, *args)
     try:
         return await asyncio.wait_for(
             asyncio.wrap_future(future), _AWAIT_WRITE_TIMEOUT_SECONDS
@@ -249,7 +284,7 @@ def write_sheet_fields_background(order_id: int, fields: set[str]) -> None:
         except Exception:
             logger.exception("Background sheet write-back failed for order %s", order_id)
 
-    sheet_writeback_pool.submit(worker)
+    submit_sheet_write(worker)
 
 
 def append_comment_background(order_id: int, comment_id: int, line: str) -> None:
@@ -290,7 +325,7 @@ def append_comment_background(order_id: int, comment_id: int, line: str) -> None
         except Exception:
             logger.exception("Background comment append failed for order %s", order_id)
 
-    sheet_writeback_pool.submit(worker)
+    submit_sheet_write(worker)
 
 
 def set_client_row_fill(db: Session, order: Order, *, blue: bool) -> str | None:
@@ -350,7 +385,7 @@ def set_client_row_fill_background(order_id: int, *, blue: bool) -> None:
         except Exception:
             logger.exception("Фонова заливка рядка не вдалася для роботи %s", order_id)
 
-    sheet_writeback_pool.submit(worker)
+    submit_sheet_write(worker)
 
 
 def clear_sheet_row_background(order_id: int) -> None:
@@ -398,7 +433,7 @@ def clear_sheet_row_background(order_id: int) -> None:
         except Exception:
             logger.exception("Clearing sheet row failed for order %s", order_id)
 
-    sheet_writeback_pool.submit(worker)
+    submit_sheet_write(worker)
 
 
 def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
@@ -576,7 +611,7 @@ def restore_sheet_row(order: Order) -> str | None:
     came back before it decides to un-archive the order. Same submit-and-wait
     shape the manual-add path already uses (append_manual_rows_warm)."""
     try:
-        return sheet_writeback_pool.submit(restore_sheet_row_warm, order.id).result(timeout=120)
+        return submit_sheet_write(restore_sheet_row_warm, order.id).result(timeout=120)
     except Exception as exc:  # noqa: BLE001 — includes the wait timing out
         logger.exception("Restoring sheet row failed for order %s", order.id)
         return str(exc) or "таблиця не відповідає"

@@ -209,7 +209,12 @@ def _sheet_hot_tick(db: Session) -> None:
         logger.warning("Hot-tab sheet sync failed: %s", exc)
         return
     if summary is None:
-        return  # lock busy (full sync in flight) or today's tab not created yet
+        # Замок зайнятий (іде повний синк), вкладки ще немає, або гальмо квоти
+        # пропустило тік. Це не помилка — але й не «ок»: під час довгого
+        # імпорту історії пульс протухав, і оператор бачив хибну тривогу
+        # посеред успішної операції (синк M-10).
+        _record_sync_heartbeat("sheet", status="skipped")
+        return
     _record_sync_heartbeat("sheet", status="ok")
     if summary.created or summary.updated or summary.deleted:
         logger.info(
@@ -245,6 +250,13 @@ def _sheet_sync_worker(stop_event: Event) -> None:
         # the first thing after a pause is a complete re-read of the table.
         if sync_control.is_paused():
             next_full = 0.0
+            # Пульс мусить показувати «мовчимо свідомо», а не «немає
+            # відповіді»: без цього рядка через 3 хв паузи бічна панель писала
+            # «⚠ немає відповіді від фонового процесу», хоча процес живий і
+            # стоїть на прохання адміна (аудит 05.09.26, синк M-10). Статус
+            # "skipped" саме для цього: рухає час спроби, не перебиваючи
+            # попередній результат.
+            _record_sync_heartbeat("sheet", status="skipped")
             stop_event.wait(speed["hot"])
             continue
         run_full = monotonic() >= next_full

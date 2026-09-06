@@ -108,14 +108,14 @@ def test_manual_add_refused_while_paused():
         # патч по ньому не впливав на `orders.sheet_writeback_pool`, тож
         # `assert_not_called` перевіряв мок, якого ніхто не кличе
         # (CLAUDE.md §14: підміна після переносу коду мовчки стає no-op).
-        with patch.object(orders_router_mod, "sheet_writeback_pool") as pool:
+        with patch.object(orders_router_mod, "submit_sheet_write") as pool:
             resp = orders_router_mod.create_manual_order(
                 request=_request(user.id), work_type="client", db=db,
                 client_name=["Неда"], material_color=["mono b1"],
                 work_order_no=[], kind=[], quantity=[], sum3d_id=[],
                 job_code=[], technician_name=[],
             )
-        pool.submit.assert_not_called()
+        pool.assert_not_called()
         assert resp.status_code == 303
         assert db.scalar(select(Order)) is None
 
