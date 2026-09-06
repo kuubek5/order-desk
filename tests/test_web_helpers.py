@@ -355,7 +355,7 @@ def test_accept_email_stays_in_triage_after_full_accept():
     # settings-store lookup returns None) and make a live network call —
     # this test only cares about the queue-redirect behavior, so the
     # sheet-note write-back is stubbed out at the boundary instead.
-    with patch("app.routers.mail.open_spreadsheet"), patch(
+    with patch("app.services.mail_accept.open_spreadsheet"), patch(
         "app.routers.mail.get_worksheet_by_name", return_value=None
     ):
         response = asyncio.run(
@@ -428,9 +428,9 @@ def test_accept_email_links_order_to_appended_sheet_row():
     today = date.today().strftime("%d.%m.%y")
     fake_ws = SimpleNamespace(title=today)
 
-    with patch("app.routers.mail.open_spreadsheet"), \
-         patch("app.routers.mail.latest_worksheet_on_or_before", return_value=fake_ws), \
-         patch("app.routers.mail.append_mail_placeholder_row", return_value=70):
+    with patch("app.services.mail_accept.open_spreadsheet"), \
+         patch("app.services.mail_accept.latest_worksheet_on_or_before", return_value=fake_ws), \
+         patch("app.services.mail_accept.append_mail_placeholder_row", return_value=70):
         asyncio.run(accept_email(
             request=request, email_id=email.id,
             client_name="Клієнт", material_color="моно A2", kind="анатомія", quantity="1", attachment_ids=[], db=db,

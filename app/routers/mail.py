@@ -15,7 +15,7 @@
 
 import json
 import logging
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
@@ -39,7 +39,6 @@ from app.mail_export import (
     list_client_folders,
     preview_export_target,
     restore_attachments_to_spool,
-    save_attachments_to_export,
     undo_moves,
 )
 from app.mail_filters import apply_rule_retroactively
@@ -54,12 +53,6 @@ from app.mail_sync_service import (
     MailSyncError,
     run_sync_owned_session,
 )
-from app.material_catalog import (
-    ensure_seeded,
-    load_alias_rows,
-    material_id_by_name,
-    resolve_material_id,
-)
 from app.models import (
     Attachment,
     ClientSenderMemory,
@@ -67,14 +60,11 @@ from app.models import (
     MailFilterCategory,
     MailFilterRule,
     Order,
-    StatusEvent,
-    SyncLog,
 )
 from app.order_folder import (
     attach_email_preview_tokens,
     resolve_email_attachment_folder,
 )
-from app.parser import HEADER_ROWS
 from app.platform_windows import open_folder_in_explorer
 from app.queue_filters import (
     SERVICE_TYPE_FILTERS,
@@ -88,7 +78,8 @@ from app.routers.deps import (
     is_loopback_request,
     templates,
 )
-from app.sender_memory import list_sender_memories, lookup_sender, remember_sender
+from app.sender_memory import list_sender_memories, lookup_sender
+from app.services.mail_accept import accept_letter, resolve_wizard_overrides
 from app.services.config_state import (
     mail_preview_roots,
     mail_trusted_roots,
@@ -98,8 +89,8 @@ from app.settings_store import (
     get_imap_login,
     get_mail_download_all,
 )
-from app.sheet_writer import append_mail_placeholder_row, clear_order_row
-from app.sheets import get_worksheet_by_name, latest_worksheet_on_or_before, open_spreadsheet
+from app.sheet_writer import clear_order_row
+from app.sheets import get_worksheet_by_name, open_spreadsheet
 
 logger = logging.getLogger(__name__)
 
@@ -666,15 +657,10 @@ def _lab_material_colors(db: Session) -> list[str]:
     )
 
 
-def _resolve_wizard_overrides(
-    folder_pick: str, folder_new: str, material_folder: str
-) -> tuple[str, str]:
-    """Fold the step-2 directory controls into the two overrides
-    save_attachments_to_export understands. A typed new folder name wins over
-    the dropdown pick; an empty pick means "auto-resolve". Material subfolder is
-    passed through as-is (empty -> derive from material_color)."""
-    client_override = (folder_new or "").strip() or (folder_pick or "").strip()
-    return client_override, (material_folder or "").strip()
+# Правило «яка тека перемагає» живе поруч із самим переносом файлів
+# (app/services/mail_accept.py). Тут лишається імʼя, бо на нього спираються
+# візард і тести — але це той САМИЙ код, не друга копія.
+_resolve_wizard_overrides = resolve_wizard_overrides
 
 
 @router.post("/mail/{email_id}/wizard", response_class=HTMLResponse)
@@ -987,6 +973,13 @@ async def accept_email(
     accept_anyway: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    """Прийняти лист (або одну кольорову партію) у чергу.
+
+    Тут лишився ЛИШЕ HTTP: форма, фрагмент візарда з помилкою, тост і куди
+    вести далі. Уся доменна робота — створення роботи, перенос файлів у
+    export з компенсацією, рядок-нотатка в таблиці — у
+    `app.services.mail_accept.accept_letter` (аудит 05.09.26, крок 2.8).
+    """
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
@@ -1022,250 +1015,44 @@ async def accept_email(
             ),
         )
 
-    if email.attachments_status == "pending":
-        # Attachments are still downloading (two-phase fetch, see
-        # app.mail_reader.fetch_new_emails). Accepting now would create an
-        # order with zero attachments, flip email.status away from "нове"
-        # (blocking any later retry via the status guard above), and orphan
-        # the files phase 2 saves afterward — there's no code path left that
-        # would ever move them into export. Refuse instead of losing files.
-        return _accept_failed("Вкладення ще завантажуються, зачекайте і спробуйте ще раз")
-
-    # Файли за посиланням (Drive, ukr.net) не є вкладеннями листа, тому
-    # attachments_status їх не бачить: лист зі статусом «skipped» і трьома STL
-    # на Drive проходив прийняття мовчки, створюючи роботу БЕЗ жодного файлу.
-    # Оператор бере її в Sum3D, файлів немає, а лист уже в архіві. Гейт на
-    # клієнті обходиться, тому він мусить бути й тут; свідоме «однаково
-    # прийняти» проходить через accept_anyway.
-    unfetched = undownloaded_links(email)
-    if unfetched and not accept_anyway:
-        return _accept_failed(
-            f"Ще {len(unfetched)} файл(ів) за посиланням не скачано — "
-            "скачайте у вкладці «Файли + STL» або підтвердіть прийняття без них"
-        )
-
-    # Which dated tab does this order belong to? The lab often works a day or
-    # two behind, so TODAY's tab may not exist yet — writing the placeholder to
-    # "16.08.26" when the newest real tab is "15.08.26" silently drops the row
-    # (get_worksheet_by_name returns None) and strands the order on a phantom
-    # day. Resolve to the newest existing dated tab on or before today instead;
-    # fall back to today's name only if the sheet is unreachable or has no dated
-    # tab, preserving the old behaviour in that edge case. The resolved
-    # worksheet is reused for the write-back below (one fewer tab fetch).
-    today = date.today()
-    target_tab = today.strftime("%d.%m.%y")
-    target_worksheet = None
-    try:
-        target_worksheet = latest_worksheet_on_or_before(open_spreadsheet(db=db), today)
-        if target_worksheet is not None:
-            target_tab = target_worksheet.title
-    except Exception as exc:  # noqa: BLE001 — sheet trouble must not block accept
-        logger.warning("Could not resolve target sheet tab for email %s: %s", email.id, exc)
-
-    new_order = Order(
-        source="email",
-        # Real наряд identifier from the sheet — email orders never get one,
-        # but sheet_tab uses the same "%d.%m.%y" shape table tabs use, so period
-        # tabs, is_overdue() and folder lookups treat a priced mail order exactly
-        # like one entered from the sheet (CLAUDE.md: an operator wants to find
-        # yesterday's mail-sourced job the same way they'd find a table one).
-        # row_number stays None on purpose — that's the real signal (source ==
-        # "lab" too) that stops sheet write-back.
-        sheet_tab=target_tab,
-        row_number=None,
-        client_name=client_name.strip() or None,
-        material_color=material_color.strip() or None,
-        kind=kind.strip() or None,
-        quantity=quantity.strip() or None,
-        status="нове",
+    result = accept_letter(
+        db, user, email,
+        client_name=client_name, material_color=material_color, kind=kind,
+        quantity=quantity, folder_pick=folder_pick, folder_new=folder_new,
+        material_folder=material_folder, attachment_ids=attachment_ids,
+        accept_anyway=bool(accept_anyway),
     )
-    ensure_seeded(db)
-    new_order.material_id = resolve_material_id(
-        new_order.material_color, load_alias_rows(db), material_id_by_name(db)
-    )
-    new_order.source_email_id = email.id
-    db.add(new_order)
-    db.flush()
+    if not result.ok:
+        return _accept_failed(result.error)
 
-    email.order_id = new_order.id
-    db.add(
-        StatusEvent(order_id=new_order.id, operator_id=user.id, status="нове", actor=user.username)
-    )
-
-    # Partial accept: only the files the operator selected for THIS colour move
-    # now (a multi-colour letter is accepted in batches). "Unclaimed" = files
-    # not yet moved by a previous batch (order_id is None). An empty selection
-    # means "all remaining", the single-colour default.
-    unclaimed = [
-        a for a in email.attachments
-        if a.order_id is None and Path(a.saved_path).exists()
-    ]
-    selected_ids = set(attachment_ids)
-    attachments = [a for a in unclaimed if a.id in selected_ids] if selected_ids else unclaimed
-    # (spool source → export destination) for every file this accept physically
-    # moved. Needed to put them back if the commit that records the move fails —
-    # otherwise the files sit in export while the DB still believes they are in
-    # the spool, and triage reports "файли зникли" (audit 05.09.26, mail C-1).
-    moved_pairs: list[tuple[Path, Path]] = []
-    if not attachments:
-        # Nothing to move, but the sender→client link is still worth keeping.
-        remember_sender(db, email, new_order.client_name or "", None)
-    if attachments:
-        try:
-            export_root = Path(get_export_folder_path(db))
-            # Files already auto-staged into export (trusted-sender auto-download)
-            # must NOT be moved again — only linked to this order. The rest move
-            # from the spool as usual.
-            to_move = [a for a in attachments if not a.staged_to_export]
-            staged = [a for a in attachments if a.staged_to_export]
-            used_folder = None
-            if to_move:
-                client_override, material_override = _resolve_wizard_overrides(
-                    folder_pick, folder_new, material_folder
-                )
-                old_paths = [Path(a.saved_path) for a in to_move]
-                new_paths = save_attachments_to_export(
-                    export_root,
-                    new_order.client_name or "",
-                    new_order.material_color or "",
-                    old_paths,
-                    client_folder_override=client_override,
-                    material_folder_override=material_override,
-                )
-                moved_pairs = list(zip(old_paths, new_paths))
-                # Файли переїхали — кеш обходу export більше не відповідає диску.
-                clear_export_cache()
-                for attachment, new_path in zip(to_move, new_paths):
-                    attachment.saved_path = str(new_path)
-                    attachment.order_id = new_order.id
-                try:
-                    used_folder = new_paths[0].relative_to(export_root).parts[0] if new_paths else None
-                except (ValueError, IndexError):
-                    used_folder = None
-            for attachment in staged:
-                attachment.order_id = new_order.id
-            if used_folder is None and staged:
-                try:
-                    used_folder = Path(staged[0].saved_path).relative_to(export_root).parts[0]
-                except (ValueError, IndexError):
-                    used_folder = None
-            db.add(SyncLog(direction="mail_to_export", status="ok", message=f"email {email.id}: {len(attachments)} файл(ів)"))
-            remember_sender(db, email, new_order.client_name or "", used_folder)
-        except (OSError, ValueError) as exc:
-            db.rollback()
-            return _accept_failed("Не вдалося зберегти вкладення: " + str(exc))
-
-    # Mirrors the pricing placeholder line operators already write into the
-    # shared sheet by hand for phone/email orders (CLAUDE.md section 2:
-    # client name in "Вид роботи", quantity in "Кількість", наряд left
-    # blank until priced). Independent of the attachment move above and
-    # never allowed to block acceptance: a missing today's tab, a network
-    # hiccup, or any other failure is just logged to SyncLog so the
-    # operator isn't stuck on a 500 for a convenience write-back.
-    try:
-        # Reuse the tab resolved above (newest dated tab ≤ today). None means
-        # the sheet was unreachable or has no dated tab — log and skip, exactly
-        # as the old "tab not found" branch did.
-        worksheet = target_worksheet
-        if worksheet is None:
-            db.add(
-                SyncLog(
-                    direction="mail_to_sheet",
-                    sheet_tab=new_order.sheet_tab,
-                    status="error",
-                    message=(
-                        f"email {email.id}: доступної датованої вкладки немає, "
-                        "рядок-нотатку не записано"
-                    ),
-                )
-            )
-        else:
-            note_row = append_mail_placeholder_row(
-                worksheet,
-                new_order.client_name or "",
-                new_order.quantity or "",
-                new_order.material_color or "",
-            )
-            # Link the order to the row we just wrote. Without this, the next
-            # sheet sync re-imports that наряд-less row as a SEPARATE
-            # source="sheet_client" order — the same work would then appear
-            # twice (once as "Пошта", once as "Клієнт"). With the row_number set,
-            # sync matches it to this order and updates in place instead.
-            new_order.row_number = note_row - HEADER_ROWS
-            db.add(
-                SyncLog(
-                    direction="mail_to_sheet",
-                    sheet_tab=new_order.sheet_tab,
-                    status="ok",
-                    message=f"email {email.id}: рядок-нотатка записана в рядок {note_row}",
-                )
-            )
-    except Exception as exc:
-        db.add(
-            SyncLog(
-                direction="mail_to_sheet",
-                sheet_tab=new_order.sheet_tab,
-                status="error",
-                message=f"email {email.id}: не вдалося записати рядок-нотатку: {exc}",
-            )
-        )
-
-    # Partial vs full acceptance: if the letter still holds unclaimed files
-    # (another colour the operator hasn't accepted yet), keep it "нове" so it
-    # stays in triage to be finished; otherwise it's fully accepted.
-    remaining = [
-        a for a in email.attachments
-        if a.order_id is None and Path(a.saved_path).exists()
-    ]
-    email.status = "нове" if remaining else "прийнято"
-    try:
-        db.commit()
-    except Exception as exc:  # noqa: BLE001 — файли вже на диску, треба відкотити
-        # The files moved BEFORE this commit. A failed commit (SQLite locked,
-        # disk full under WAL, ...) rolls the DB back to "лист не прийнято", so
-        # the files must go back to the spool too — otherwise the two disagree
-        # forever. Rollback errors are reported, never swallowed.
-        db.rollback()
-        undo_errors = undo_moves(moved_pairs)
-        clear_export_cache()
-        logger.exception("Accept commit failed for email %s", email.id)
-        detail = str(exc)
-        if undo_errors:
-            logger.error("Could not return files to spool: %s", "; ".join(undo_errors))
-            detail += (
-                ". УВАГА: частину файлів не вдалося повернути в лист — "
-                + "; ".join(undo_errors)
-            )
-        return _accept_failed("Не вдалося зберегти прийняття: " + detail)
-
-    # A truthful outcome toast, shown on the page we land on (session flash →
-    # base.html). Reports exactly what happened: how many files were saved this
-    # batch and, for a multi-colour letter, how many still wait in the letter.
-    saved = len(attachments)
-    mat = (new_order.material_color or "").strip() or "без матеріалу"
-    if remaining:
+    # Чесний тост: скільки файлів збережено саме цією партією і скільки ще
+    # чекає в листі, якщо кольорів кілька.
+    if result.partial:
         message = (
-            f"Прийнято партію «{mat}»: збережено {saved} файл(ів). "
-            f"Лишилось {len(remaining)} файл(ів) у листі — прийміть наступний колір."
+            f"Прийнято партію «{result.material_label}»: збережено "
+            f"{result.saved_files} файл(ів). Лишилось {result.remaining_files} "
+            "файл(ів) у листі — прийміть наступний колір."
         )
-        kind = "success"
-    elif saved:
-        message = f"Роботу «{mat}» прийнято в чергу: збережено {saved} файл(ів)."
-        kind = "success"
+        toast_kind = "success"
+    elif result.saved_files:
+        message = (
+            f"Роботу «{result.material_label}» прийнято в чергу: "
+            f"збережено {result.saved_files} файл(ів)."
+        )
+        toast_kind = "success"
     else:
-        message = f"Роботу «{mat}» прийнято в чергу без файлів (файлів не знайдено)."
-        kind = "warning"
-    request.session["toast_flash"] = {"kind": kind, "message": message}
+        message = (
+            f"Роботу «{result.material_label}» прийнято в чергу без файлів "
+            "(файлів не знайдено)."
+        )
+        toast_kind = "warning"
+    request.session["toast_flash"] = {"kind": toast_kind, "message": message}
 
-    # Where to land: STAY IN TRIAGE either way. Still files left → back to this
-    # letter to accept the next colour; fully done → the triage list, so the
-    # operator keeps their place and the next letter is one click away. (This
-    # used to redirect to the client queue when finished, which ejected the
-    # operator from the screen on every completed letter and made them navigate
-    # back — the reward for finishing was losing your place. The toast already
-    # links the created order.) The wizard posts over HTMX, so a 303 would swap
-    # page HTML into the panel — HX-Redirect drives a real navigation.
-    target = f"/mail?open={email.id}" if remaining else "/mail"
+    # Куди вести: ЛИШАЄМОСЬ У ТРІАЖІ в обох випадках. Є ще файли → назад у цей
+    # лист, приймати наступний колір; готово → у список, щоб оператор не
+    # втратив місце і наступний лист був за один клік. Візард шле форму через
+    # HTMX, тож 303 підмінив би HTML сторінки в панель — потрібен HX-Redirect.
+    target = f"/mail?open={email.id}" if result.partial else "/mail"
     request_headers = getattr(request, "headers", None) or {}
     if request_headers.get("HX-Request") == "true":
         return Response(status_code=204, headers={"HX-Redirect": target})

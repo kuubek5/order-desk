@@ -13,7 +13,9 @@ import app.web as web
 from app.link_attachments import LinkDownloadError
 from app.services.queue import known_order_dates
 from app.routers import mail as mail_router_mod
+from app.services import mail_accept as mail_accept_svc
 from app.routers import orders as orders_router_mod
+from app.services import manual_add as manual_add_svc
 from app.routers import queue as queue_router_mod
 from app.services import queue_view
 from app import sync_control
@@ -53,7 +55,10 @@ def test_queue_eagerly_exposes_pending_mail_newest_first_independent_of_filters(
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (mail_router_mod, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: "")
     monkeypatch.setattr(
         web.templates, "TemplateResponse", lambda request, template, context: context
     )
@@ -90,7 +95,10 @@ def _call_get_queue(db, user, monkeypatch, tmp_path, **kwargs):
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (mail_router_mod, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: "")
     monkeypatch.setattr(
         web.templates, "TemplateResponse", lambda request, template, context: context
     )
@@ -111,7 +119,10 @@ def test_partial_rows_renders_fragment_not_full_page(tmp_path, monkeypatch):
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (mail_router_mod, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: "")
     captured = {}
     monkeypatch.setattr(
         web.templates,
@@ -241,7 +252,9 @@ def _stub_sheet_write(monkeypatch, note_rows=None, tab=None):
     cap = {}
     # Fresh double-submit dedup state per test so module-level state can't leak
     # between tests that share a user id + payload.
-    monkeypatch.setattr(orders_router_mod, "_recent_manual_adds", {})
+    # Стан дедупу живе в сервісі `manual_add`, а не в роуті — підміна мусить
+    # цілити туди, інакше вона мовчки стане no-op (CLAUDE.md §14).
+    monkeypatch.setattr(manual_add_svc, "_recent_manual_adds", {})
     # Додавання рядків живе у сервісі write-back — підміняти треба там, де
     # його читають.
     monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
@@ -435,7 +448,7 @@ def test_create_manual_order_requires_client_and_material(monkeypatch):
 
 def test_create_manual_order_reports_missing_today_tab(monkeypatch):
     engine = _database()
-    monkeypatch.setattr(orders_router_mod, "_recent_manual_adds", {})
+    monkeypatch.setattr(manual_add_svc, "_recent_manual_adds", {})
     monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
     # No dated tab anywhere in the document -> resolver returns None.
     monkeypatch.setattr(writeback_service, "latest_worksheet_on_or_before", lambda ss, d: None)
@@ -491,7 +504,7 @@ def test_create_manual_order_refuses_offsite_return_to(monkeypatch, hostile):
 def test_create_manual_order_double_submit_is_ignored(monkeypatch):
     """An F5/back resubmit of the exact same batch by the same operator inside
     the dedup window writes NOTHING new — one order, one sheet append."""
-    monkeypatch.setattr(orders_router_mod, "_recent_manual_adds", {})
+    monkeypatch.setattr(manual_add_svc, "_recent_manual_adds", {})
     engine = _database()
     cap = _stub_sheet_write(monkeypatch, note_rows=[65])
     with Session(engine, expire_on_commit=False) as db:
@@ -508,7 +521,7 @@ def test_create_manual_order_double_submit_is_ignored(monkeypatch):
 
 def test_create_manual_order_different_payload_not_deduped(monkeypatch):
     """A genuinely different second add (another client) is not swallowed."""
-    monkeypatch.setattr(orders_router_mod, "_recent_manual_adds", {})
+    monkeypatch.setattr(manual_add_svc, "_recent_manual_adds", {})
     engine = _database()
     cap = _stub_sheet_write(monkeypatch)
     with Session(engine, expire_on_commit=False) as db:
@@ -786,7 +799,10 @@ def test_open_mail_folder_opens_safe_db_path_and_returns_no_content(tmp_path, mo
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (mail_router_mod, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: "")
     opened: list = []
     monkeypatch.setattr(mail_router_mod, "open_folder_in_explorer", opened.append)
 
@@ -824,7 +840,10 @@ def test_open_mail_folder_rejects_db_path_outside_roots(tmp_path, monkeypatch):
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (mail_router_mod, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: "")
 
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
@@ -964,7 +983,10 @@ def test_open_mail_folder_reports_non_windows_backend(tmp_path, monkeypatch):
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (mail_router_mod, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: "")
     monkeypatch.setattr(mail_router_mod, "open_folder_in_explorer", lambda _folder: (_ for _ in ()).throw(NotImplementedError())
     )
 
@@ -1007,7 +1029,8 @@ def test_restore_accepted_email_unwinds_order_and_files(monkeypatch):
     monkeypatch.setattr(mail_router_mod, "restore_attachments_to_spool",
         lambda root, uid, paths: moved.setdefault("call", (uid, paths)) or [__import__("pathlib").Path(f"/spool/{uid}/f.stl")],
     )
-    monkeypatch.setattr(mail_router_mod, "open_spreadsheet", lambda db=None: object())
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "open_spreadsheet", lambda db=None: object())
     fake_ws = SimpleNamespace(id=1, title="15.08.26")
     monkeypatch.setattr(mail_router_mod, "get_worksheet_by_name", lambda ss, name: fake_ws)
     cleared = {}
@@ -1215,8 +1238,12 @@ def test_accept_remembers_sender_and_wizard_prefills_next_time(monkeypatch, tmp_
     engine = _database()
     export_root = tmp_path / "export"
     export_root.mkdir()
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export_root))
-    monkeypatch.setattr(mail_router_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: str(export_root))
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     spool = tmp_path / "spool" / "u1"
     spool.mkdir(parents=True)
     stl = spool / "crown.stl"
@@ -1292,10 +1319,14 @@ def test_partial_accept_multi_colour_letter(monkeypatch, tmp_path):
     export_root.mkdir()
     spool = tmp_path / "spool" / "u1"
     spool.mkdir(parents=True)
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export_root))
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: str(export_root))
     for _mod in (mail_router_mod, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(tmp_path / "spool"))
-    monkeypatch.setattr(mail_router_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     monkeypatch.setattr(web.templates, "TemplateResponse", lambda request, template, context: context)
 
     with Session(engine, expire_on_commit=False) as db:
@@ -1360,8 +1391,12 @@ def test_accept_empty_selection_takes_all_unclaimed(monkeypatch, tmp_path):
     export_root.mkdir()
     spool = tmp_path / "spool" / "u2"
     spool.mkdir(parents=True)
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export_root))
-    monkeypatch.setattr(mail_router_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: str(export_root))
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     monkeypatch.setattr(web.templates, "TemplateResponse", lambda request, template, context: context)
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
@@ -1423,7 +1458,10 @@ def test_get_mail_open_prerenders_panel_and_marks_row(monkeypatch):
         lambda request, template, context: captured.update(ctx=context) or context,
     )
     monkeypatch.setattr(mail_router_mod, "attach_email_preview_tokens", lambda *a, **k: None)
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: "")
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="op", status="нове", from_address="c@x.ua", subject="s")
@@ -1449,8 +1487,12 @@ def test_partial_accept_redirects_to_two_pane_open(monkeypatch, tmp_path):
     export_root.mkdir()
     spool = tmp_path / "spool" / "p"
     spool.mkdir(parents=True)
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export_root))
-    monkeypatch.setattr(mail_router_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: str(export_root))
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="p", status="нове", from_address="c@x.ua", attachments_status="ready")
@@ -1482,8 +1524,12 @@ def test_accept_sets_truthful_outcome_toast(monkeypatch, tmp_path):
     export_root.mkdir()
     spool = tmp_path / "spool" / "t"
     spool.mkdir(parents=True)
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export_root))
-    monkeypatch.setattr(mail_router_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: str(export_root))
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "open_spreadsheet", lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")))
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         email = EmailMessage(uid="t", status="нове", from_address="c@x.ua", attachments_status="ready")
@@ -1547,7 +1593,10 @@ def test_pending_list_order_is_frozen_by_watermark(tmp_path, monkeypatch):
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (mail_router_mod, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: "")
     captured = {}
     monkeypatch.setattr(
         web.templates,
@@ -1596,7 +1645,10 @@ def test_watermark_does_not_freeze_archive_or_filtered_views(tmp_path, monkeypat
     # config_state (довірені корені для «Відкрити папку»).
     for _mod in (mail_router_mod, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: "")
     captured = {}
     monkeypatch.setattr(
         web.templates,
@@ -1627,7 +1679,7 @@ def test_manual_add_writes_to_the_day_tab_on_screen(monkeypatch):
     engine = _database()
     seen = {}
     tomorrow = SimpleNamespace(title="26.08.26")
-    monkeypatch.setattr(orders_router_mod, "_recent_manual_adds", {})
+    monkeypatch.setattr(manual_add_svc, "_recent_manual_adds", {})
     monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
     monkeypatch.setattr(
         writeback_service, "get_worksheet_by_name",
@@ -1821,7 +1873,10 @@ def test_full_render_skips_network_scans_partial_does_them(tmp_path, monkeypatch
     mail_root.mkdir()
     for _mod in (mail_router_mod, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: "")
     monkeypatch.setattr(
         web.templates, "TemplateResponse", lambda request, template, context: context
     )
@@ -1856,7 +1911,10 @@ def test_full_render_does_not_scan_sum3d(tmp_path, monkeypatch):
     mail_root.mkdir()
     for _mod in (mail_router_mod, config_state):
         monkeypatch.setattr(_mod, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: "")
+    # Прийняття листа живе в сервісі (крок 2.8), тож підміна цілить
+    # в ОБИДВА модулі — інакше вона тихо перестала б впливати.
+    for _mod in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(_mod, "get_export_folder_path", lambda _db: "")
     monkeypatch.setattr(
         web.templates, "TemplateResponse", lambda request, template, context: context
     )

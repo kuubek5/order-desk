@@ -19,6 +19,7 @@ import app.web as web
 from app.db import Base
 from app.models import Attachment, EmailMessage, Order, User
 from app.routers import mail as mail_router_mod
+from app.services import mail_accept as mail_accept_svc
 from app.services import config_state
 
 
@@ -49,13 +50,23 @@ def _wire(monkeypatch, tmp_path):
     (mail_root / "u1").mkdir(parents=True)
     for module in (mail_router_mod, config_state):
         monkeypatch.setattr(module, "MAIL_ATTACHMENTS_PATH", str(mail_root))
-    monkeypatch.setattr(mail_router_mod, "get_export_folder_path", lambda _db: str(export_root))
+    # Прийняття листа переїхало в сервіс (аудит, крок 2.8), а відкат прийняття
+    # лишився в роуті — тож підміняємо в ОБОХ модулях. Якби ми лишили тільки
+    # роутер, тест став би зеленим і порожнім: сервіс читав би справжні
+    # налаштування (CLAUDE.md §14).
+    # Прийняття листа переїхало в сервіс (крок 2.8), відкат прийняття лишився
+    # в роуті — тож `get_export_folder_path` і `open_spreadsheet` підміняємо в
+    # ОБОХ. `latest_worksheet_on_or_before` тепер кличе лише сервіс, і в роуті
+    # цього імені вже немає: підміна там впала б з AttributeError, і це добре —
+    # мовчазний no-op був би гіршим (CLAUDE.md §14).
+    for module in (mail_router_mod, mail_accept_svc):
+        monkeypatch.setattr(module, "get_export_folder_path", lambda _db: str(export_root))
+        monkeypatch.setattr(
+            module, "open_spreadsheet",
+            lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")),
+        )
     monkeypatch.setattr(
-        mail_router_mod, "open_spreadsheet",
-        lambda db=None: (_ for _ in ()).throw(RuntimeError("no sheet")),
-    )
-    monkeypatch.setattr(
-        mail_router_mod, "latest_worksheet_on_or_before",
+        mail_accept_svc, "latest_worksheet_on_or_before",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
