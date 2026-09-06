@@ -45,6 +45,8 @@ from app.routers.deps import (
 )
 from app.services.clients import ensure_client_profiles, quantity_units
 from app.services.handout import (
+    ISSUE_GROUP_ISSUED,
+    ISSUE_GROUP_NOTHING_FOUND,
     handout_day_totals,
     HANDOUT_ALL_DAYS,
     entries_for_material,
@@ -53,6 +55,7 @@ from app.services.handout import (
     handout_eligible_orders,
     handout_not_before,
     handout_select_day,
+    issue_group,
     matched_folders,
     scan_export_for_clients,
     scan_export_latest_for_clients,
@@ -64,7 +67,6 @@ from app.services.sheet_writeback import (
     set_client_row_fill_background,
 )
 from app.settings_store import get_export_folder_path
-from app.sheet_writer import apply_status_markers
 from app.stl_preview import build_preview_token_lexical, validate_preview_roots
 
 logger = logging.getLogger(__name__)
@@ -718,53 +720,27 @@ async def issue_handout_group(
         request.session["toast_flash"] = {"message": SYNC_PAUSED_MSG, "kind": "info"}
         return RedirectResponse(handout_back_url(source, day), status_code=303)
 
-    today = business_today()
-    candidates = db.scalars(
-        select(Order).where(Order.client_name == client_name, Order.status != "видано")
-    ).all()
-    group_orders = [
-        o for o in candidates
-        if (d := parse_sheet_tab(o.sheet_tab)) is not None and d < today
-    ]
-    # When the handout screen is filtered to one day (day chips), the card
-    # the operator sees — and therefore what "Видати" closes — is that day's
-    # works only; the client's other days stay open.
-    selected_day = parse_sheet_tab(day) if day else None
     back_url = handout_back_url(source, day)
-    if selected_day is not None:
-        group_orders = [
-            o for o in group_orders if parse_sheet_tab(o.sheet_tab) == selected_day
-        ]
-    if not group_orders:
-        return RedirectResponse(back_url, status_code=303)
-    # Видаємо рівно те, що оператор уже знайшов. Решта лишається в картці.
-    group_orders = [
-        o for o in group_orders if o.status in ("знайдено при видачі", "видано")
-    ]
-    if not group_orders:
+    # Доменна частина (вибірка групи, фільтр за днем, «видаємо лише знайдене»,
+    # статуси й коміт) — у сервісі; сюди повертається лише те, що ще треба
+    # дописати в таблицю.
+    result = issue_group(db, user, client_name=client_name, day=day)
+
+    if result.outcome == ISSUE_GROUP_NOTHING_FOUND:
         request.session["handout_flash"] = {
             "kind": "info",
             "message": "Нічого видавати: жодну роботу цього клієнта не позначено «знайдено».",
         }
+    if result.outcome != ISSUE_GROUP_ISSUED:
         return RedirectResponse(back_url, status_code=303)
-
-    actor = user.full_name or user.username
-    field_map: dict[int, list[str]] = {}
-    for order in group_orders:
-        order.status = "видано"
-        sheet_fields = apply_status_markers(order, "видано", actor=actor)
-        db.add(
-            StatusEvent(order_id=order.id, operator_id=user.id, status="видано", actor=user.username)
-        )
-        field_map[order.id] = sorted(sheet_fields)
-
-    db.commit()
 
     # Уся таблиця — ОДНИМ завданням на воркері write-back, після коміту.
     # Раніше цей цикл ходив у Google прямо на event loop: холодне відкриття
     # таблиці плюс ~4 виклики на кожну роботу — «Видати 8 з 8» заморожувало
     # застосунок на дві з гаком хвилини (аудит 05.09.26, синк C-2).
-    sync_error = await await_on_writeback(issue_group_warm, field_map)
+    # `await` лишається В РОУТІ свідомо: це очікування на HTTP-рівні, сервіс
+    # про event loop не знає.
+    sync_error = await await_on_writeback(issue_group_warm, result.field_map)
 
     if sync_error:
         request.session["handout_flash"] = {

@@ -8,6 +8,7 @@
 """
 
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -19,8 +20,9 @@ from app.client_matcher import match_client_name
 from app.export_scanner import scan_export_client_cached, scan_export_client_latest_cached
 from app.material_match import materials_match
 from app.services.clients import quantity_units
-from app.models import ClientNameAlias, Order
+from app.models import ClientNameAlias, Order, StatusEvent
 from app.services.order_dates import parse_sheet_tab
+from app.sheet_writer import apply_status_markers
 
 EXPORT_SCAN_WORKERS = 16
 """Виміряно на бойовому сховищі 27.08.26 (746 тек клієнтів, Synology/SMB):
@@ -266,3 +268,83 @@ def handout_day_totals(db: Session, day, groups: list[dict]) -> dict:
         "units": sum(quantity_units(o.quantity) for o in shown_orders)
         + sum(quantity_units(o.quantity) for o in issued),
     }
+# Чим скінчилась спроба видати групу. Три різні кінцівки, і роут поводиться з
+# кожною по-своєму, тож повертаємо не булеве «вийшло / не вийшло».
+ISSUE_GROUP_EMPTY = "empty"
+"""У цього клієнта в показаному дні взагалі немає що видавати."""
+
+ISSUE_GROUP_NOTHING_FOUND = "nothing_found"
+"""Роботи є, але жодну не позначено «знайдено» — оператору треба сказати чому."""
+
+ISSUE_GROUP_ISSUED = "issued"
+"""Статуси проставлено й закомічено; лишається запис у таблицю."""
+
+
+@dataclass(frozen=True)
+class IssueGroupResult:
+    """Що зробила видача групи і що лишилось дописати в таблицю.
+
+    `field_map` — {id роботи: імена полів для запису}. Він іде В ОДНЕ завдання
+    воркера write-back (`issue_group_warm`), а не по роботі за раз: цикл
+    походів у Google прямо з обробника заморожував застосунок на дві хвилини
+    на «Видати 8 з 8» (аудит 05.09.26, синк C-2).
+    """
+
+    outcome: str
+    field_map: dict[int, list[str]]
+
+
+def issue_group(db: Session, user, client_name: str, day: str) -> IssueGroupResult:
+    """Видати все ЗНАЙДЕНЕ в цього клієнта: статуси в БД + що писати в таблицю.
+
+    Групу перескладаємо на сервері з `client_name` — списку id з форми не
+    віримо ніколи.
+
+    Часткова видача — норма процесу, не виняток (CLAUDE.md §2): цирконій іде
+    через три пічки, які відкриваються ~9:00, в обід і під вечір, тож роботи
+    одного клієнта фізично виходять у різний час. Тому видаємо рівно ті
+    роботи, що вже позначені «знайдено при видачі»/«видано», а решта лишається
+    в картці.
+
+    Комітимо ТУТ, до запису в таблицю: БД — джерело правди, і збій проксі не
+    має відкочувати рішення оператора. Сам запис у таблицю робить роут (це
+    await на HTTP-рівні) з `field_map`, який ми повернули.
+    """
+    today = business_today()
+    candidates = db.scalars(
+        select(Order).where(Order.client_name == client_name, Order.status != "видано")
+    ).all()
+    group_orders = [
+        o for o in candidates
+        if (d := parse_sheet_tab(o.sheet_tab)) is not None and d < today
+    ]
+    # When the handout screen is filtered to one day (day chips), the card
+    # the operator sees — and therefore what "Видати" closes — is that day's
+    # works only; the client's other days stay open.
+    selected_day = parse_sheet_tab(day) if day else None
+    if selected_day is not None:
+        group_orders = [
+            o for o in group_orders if parse_sheet_tab(o.sheet_tab) == selected_day
+        ]
+    if not group_orders:
+        return IssueGroupResult(ISSUE_GROUP_EMPTY, {})
+
+    # Видаємо рівно те, що оператор уже знайшов. Решта лишається в картці.
+    group_orders = [
+        o for o in group_orders if o.status in ("знайдено при видачі", "видано")
+    ]
+    if not group_orders:
+        return IssueGroupResult(ISSUE_GROUP_NOTHING_FOUND, {})
+
+    actor = user.full_name or user.username
+    field_map: dict[int, list[str]] = {}
+    for order in group_orders:
+        order.status = "видано"
+        sheet_fields = apply_status_markers(order, "видано", actor=actor)
+        db.add(
+            StatusEvent(order_id=order.id, operator_id=user.id, status="видано", actor=user.username)
+        )
+        field_map[order.id] = sorted(sheet_fields)
+
+    db.commit()
+    return IssueGroupResult(ISSUE_GROUP_ISSUED, field_map)

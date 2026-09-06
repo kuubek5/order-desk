@@ -15,6 +15,7 @@ from app.services.queue import known_order_dates
 from app.routers import mail as mail_router_mod
 from app.routers import orders as orders_router_mod
 from app.routers import queue as queue_router_mod
+from app.services import queue_view
 from app import sync_control
 from app.services import config_state
 from app.routers import stl as stl_router_mod
@@ -1718,7 +1719,7 @@ def test_sum_units_counts_only_clean_integers():
         SimpleNamespace(quantity=None),      # none — skipped
         SimpleNamespace(quantity=" 2 "),     # padded int — counted
     ]
-    assert queue_router_mod.sum_units(orders) == 6
+    assert queue_view.sum_units(orders) == 6
 
 
 def test_total_units_reflects_source_filter(monkeypatch, tmp_path):
@@ -1827,11 +1828,11 @@ def test_full_render_skips_network_scans_partial_does_them(tmp_path, monkeypatch
 
     calls = {"export": 0, "tech": 0}
     monkeypatch.setattr(
-        queue_router_mod, "attach_export_folder_uris",
+        queue_view, "attach_export_folder_uris",
         lambda db, orders: calls.__setitem__("export", calls["export"] + 1),
     )
     monkeypatch.setattr(
-        queue_router_mod, "attach_job_code_folder_uris",
+        queue_view, "attach_job_code_folder_uris",
         lambda db, orders: calls.__setitem__("tech", calls["tech"] + 1),
     )
 

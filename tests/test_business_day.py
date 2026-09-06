@@ -91,11 +91,18 @@ def test_retention_cutoff_is_the_same_day_source_everywhere():
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
+    # Список ЖОРСТКИЙ, і це його слабке місце: код, що переїхав у сервіс,
+    # випадає зі сторожа мовчки. Саме так сталось 06.09.26, коли логіка черги
+    # й видачі поїхала з роутерів у `app/services/` (аудит, крок 2.8) — дірку
+    # видно лише якщо про неї памʼятати. Переносиш логіку екрана — додай файл
+    # сюди тим самим комітом.
     screens = (
         "app/routers/queue.py",
         "app/routers/archive.py",
         "app/routers/orders.py",
         "app/routers/handout.py",
+        "app/services/queue_view.py",
+        "app/services/handout.py",
     )
     offenders: list[str] = []
     for rel in screens:
