@@ -971,13 +971,18 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
    так само читається зліва направо. На вузькому екрані згортається у два. */
 .setv2 .fu-add{padding:12px 14px;border:1px dashed var(--line-2);border-radius:var(--r-card);background:var(--card-2)}
 .setv2 .fu-add .settings-field{margin-bottom:0}
-.setv2 .fu-add-row{display:grid;grid-template-columns:1.2fr 1.2fr 84px 1.3fr 1.1fr auto;gap:8px;align-items:center}
+.setv2 .fu-add .fu-add-row{display:grid;grid-template-columns:1.2fr 1.2fr 84px 1.3fr 1.1fr auto;gap:8px;align-items:center}
 .setv2 .fu-add-row .login-input{height:34px;padding:0 10px;font-size:var(--fs-2);min-width:0}
 .setv2 .fu-add-row .settings-secondary-button{height:34px;padding:0 14px;white-space:nowrap}
 @media (max-width:900px){
-  .setv2 .fu-add-row{grid-template-columns:1fr 1fr 84px}
-  .setv2 .fu-add-row .settings-secondary-button{grid-column:1/-1;justify-self:start}
+  .setv2 .fu-add .fu-add-row{grid-template-columns:1fr 1fr 84px}
+  .setv2 .fu-add .fu-add-row .settings-secondary-button{grid-column:1/-1;justify-self:start}
 }
+/* Короткі форми «поле + кнопка» (спільний пароль, тека кадрів) НЕ живуть у
+   сітці рядка «Додати»: колонок там сім, а полів два — поле стискалось до
+   1.2fr і кнопки роз'їжджались. Тут потрібен простий ряд. */
+.setv2 form.fu-add-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.setv2 form.fu-add-row .login-input{flex:1 1 280px}
 
 /* Фото верстата в таблиці налаштувань (04.09.26): мініатюра = кнопка вибору
    файлу. Дефолт моделі показано притишеним із пунктиром — видно, що фото
@@ -1002,7 +1007,7 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .setv2 .fu-model-select{display:block;width:118px;height:28px;margin-top:4px;padding:0 6px;font-size:var(--fs-0);
   font-family:var(--font-mono);color:var(--ink-2)}
 .setv2 .fu-add-row .fu-model-select{display:inline-block;width:auto;height:34px;margin-top:0;font-size:var(--fs-1)}
-.setv2 .fu-add-row{grid-template-columns:1.2fr 1.2fr 84px 1.3fr 1.1fr auto auto}
+.setv2 .fu-add .fu-add-row{grid-template-columns:1.2fr 1.2fr 84px 1.3fr 1.1fr auto auto}
 
 /* Керування розділами «в розробці» (Налаштування → Оператори, лише адмін). */
 .secmgr-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
