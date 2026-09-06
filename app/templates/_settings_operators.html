@@ -1,15 +1,10 @@
+{% from "_settings_slab.html" import slab %}
         {# ── Крок 2 · Оператори ──────────────────────────────────────── #}
         {% set st = 'done' if step_done[2] else ('active' if ns.active == 2 else '') %}
-        <div class="wizard-step scon-sec {{ st }}" data-sec="operators">
+        <div class="wizard-step scon-sec stand-sec {{ st }}" data-sec="operators">
             <div class="num">{% if step_done[2] %}✓{% else %}2{% endif %}</div>
             <div class="box">
-                <div class="wizard-step-head">
-                    <h2>Оператори</h2>
-                    <span class="connection-state {% if operators_exist %}connection-state-ready{% endif %}">
-                        {% if operators_exist %}{{ operators|length }} акаунт(и){% else %}Немає акаунтів{% endif %}
-                    </span>
-                </div>
-                <p class="wizard-sub">Облікові записи операторів. Дії в історії робіт прив’язані до кожного.</p>
+                {{ slab('Оператори', 'Облікові записи операторів. Дії в історії робіт прив’язані до кожного.', slabs['operators']) }}
 
                 <div class="table-scroll">
                 <table class="queue-table users-table">
@@ -64,6 +59,9 @@
                 </table>
                 </div>
 
+                <div class="stand-cells">
+                <div class="stand-cell w3">
+                <h3>Додати оператора</h3>
                 <form method="post" action="/settings/users" class="users-add-form">
                     <div class="settings-field">
                         <label for="full_name">Ім'я</label>
@@ -111,18 +109,17 @@
                     </div>
                     <button type="submit" class="login-submit settings-submit">Додати оператора</button>
                 </form>
+                </div>
 
                 {# ПІН розділу «Виробіток»: один код на розділ, тримається до
                    кінця зміни. Порожнє поле = зняти захист. Самого коду не
                    показуємо (як пароль) — лише ознаку «задано». #}
-                <form method="post" action="/settings/vyrobitok-pin" class="users-add-form" style="margin-top:18px;">
-                    <div class="wizard-step-head">
-                        <h2 style="font-size:var(--fs-4);">ПІН «Виробітку»</h2>
-                        <span class="connection-state {% if vyrobitok_pin_set %}connection-state-ready{% endif %}">
-                            {% if vyrobitok_pin_set %}Задано{% else %}Відкрито{% endif %}
-                        </span>
-                    </div>
-                    <p class="wizard-sub">Розділ місячного табеля під кодом до кінця сесії. Порожнє поле знімає захист.</p>
+                <div class="stand-cell w3">
+                <h3>ПІН «Виробітку»
+                    <span class="connection-state {% if vyrobitok_pin_set %}connection-state-ready{% endif %}">{% if vyrobitok_pin_set %}задано{% else %}відкрито{% endif %}</span>
+                </h3>
+                <form method="post" action="/settings/vyrobitok-pin" class="users-add-form">
+                    <p class="settings-help">Розділ місячного табеля під кодом до кінця сесії. Порожнє поле знімає захист.</p>
                     <div class="settings-field">
                         <label for="vyrobitok_pin">Код доступу</label>
                         <div class="login-glow">
@@ -135,5 +132,7 @@
                     </div>
                     <button type="submit" class="login-submit settings-submit">Зберегти ПІН</button>
                 </form>
+                </div>
+                </div>
             </div>
         </div>

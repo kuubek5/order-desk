@@ -571,6 +571,11 @@ templates.env.globals["get_known_update"] = get_known_update
 # without threading it through each route's context — same rationale as the
 # globals above. Single source of truth is app/__version__.py.
 templates.env.globals["app_version"] = VERSION
+# Плити стану розділів налаштувань. Порожній словник = «даних немає»:
+# макрос _settings_slab.html малює лише назву й підзаголовок. Потрібен як
+# глобал, бо партіали _settings_*.html рендеряться і поза /settings —
+# тестами й майбутніми фрагментами, де повного контексту немає.
+templates.env.globals["slabs"] = {}
 templates.env.globals["notify_prefs"] = _timed_global("notify_prefs", notify_prefs)
 templates.env.globals["shift_pending"] = _timed_global("shift_pending", shift_pending)
 templates.env.globals["feedback_open_count"] = _timed_global("feedback_open_count", feedback_open_count)

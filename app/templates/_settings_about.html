@@ -1,47 +1,55 @@
+{% from "_settings_slab.html" import slab %}
         {# ── Про застосунок · версія та оновлення ────────────────────────
            A final node on the wizard's decorative rail (so it reads as part of
            the same flow, not a detached card). Not a numbered step — its node
            carries an info glyph instead. Anchor `#update`: the rail version tag
            links straight here. #}
-        <section id="update" class="wizard-step wizard-step-about scon-sec" data-sec="update">
+        <section id="update" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="update">
             <div class="num" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" class="duo"/><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
             </div>
             <div class="box">
-                <div class="wizard-step-head">
-                    <h2>Про застосунок</h2>
-                    <span class="connection-state connection-state-ready mono">v{{ app_version }}</span>
-                </div>
-                <p class="settings-help">Програма щодня автоматично перевіряє наявність нової версії. Коли вона з’являється — ви побачите сповіщення й зможете встановити оновлення кнопкою. Можна також перевірити вручну зараз.</p>
-                {% if user.role == 'адмін' %}
-                <div class="settings-check-row">
-                <button
-                    type="button"
-                    class="settings-secondary-button settings-check-button"
-                    hx-post="/settings/update/check"
-                    hx-target="#update-check-result"
-                    hx-swap="innerHTML"
-                    hx-indicator="#update-check-spinner"
-                    hx-params="none"
-                >Перевірити оновлення</button>
-                <span class="check-spinner htmx-indicator" id="update-check-spinner" aria-hidden="true"></span>
-                <span id="update-check-result" class="settings-check-result" aria-live="polite">
-                    {% set known = get_known_update() %}
-                    {% if known %}
-                    <span class="check-pill check-pill-warning update-check-found" role="status">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-                        <span>Доступне оновлення <strong>v{{ known.version }}</strong></span>
-                        <form method="post" action="/settings/update/install" class="update-check-install" data-busy="{{ busy_operators() }}">
-                            <button type="submit" class="settings-secondary-button">Встановити v{{ known.version }}</button>
-                        </form>
-                        {% if known.html_url %}<a href="{{ known.html_url }}" target="_blank" rel="noopener">Деталі релізу</a>{% endif %}
-                    </span>
+                {% call slab('Про застосунок', 'Версія, оновлення й журнал змін.', slabs['update']) %}
+                    {% if user.role == 'адмін' %}
+                    <button
+                        type="button"
+                        class="settings-secondary-button settings-check-button"
+                        hx-post="/settings/update/check"
+                        hx-target="#update-check-result"
+                        hx-swap="innerHTML"
+                        hx-indicator="#update-check-spinner"
+                        hx-params="none"
+                    >Перевірити оновлення</button>
+                    <span class="check-spinner htmx-indicator" id="update-check-spinner" aria-hidden="true"></span>
                     {% endif %}
-                </span>
+                {% endcall %}
+
+                <div class="stand-cells">
+                    <div class="stand-cell w6">
+                        <h3>Оновлення</h3>
+                        <p class="stand-note">Програма щодня автоматично перевіряє наявність нової версії. Коли вона зʼявляється — ви побачите сповіщення й зможете встановити оновлення кнопкою. Встановлення перезапускає застосунок, тому воно запитує підтвердження й показує, скільки операторів зараз працює.</p>
+                        {% if user.role == 'адмін' %}
+                        {# Результат перевірки живе ТУТ, а не в плиті: сюди HTMX
+                           свапає фрагмент _update_check_result.html разом із формою
+                           встановлення, і в плиті вона б не помістилась. #}
+                        <span id="update-check-result" class="settings-check-result" aria-live="polite">
+                            {% set known = get_known_update() %}
+                            {% if known %}
+                            <span class="check-pill check-pill-warning update-check-found" role="status">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+                                <span>Доступне оновлення <strong>v{{ known.version }}</strong></span>
+                                <form method="post" action="/settings/update/install" class="update-check-install" data-busy="{{ busy_operators() }}">
+                                    <button type="submit" class="settings-secondary-button">Встановити v{{ known.version }}</button>
+                                </form>
+                                {% if known.html_url %}<a href="{{ known.html_url }}" target="_blank" rel="noopener">Деталі релізу</a>{% endif %}
+                            </span>
+                            {% endif %}
+                        </span>
+                        {% else %}
+                        <p class="stand-note">Перевірка оновлень доступна адміністратору.</p>
+                        {% endif %}
+                    </div>
                 </div>
-                {% else %}
-                <p class="settings-help">Перевірка оновлень доступна адміністратору.</p>
-                {% endif %}
 
                 {# ── Журнал змін ──────────────────────────────────────────
                    Джерело — CHANGELOG.md (їде в білд), парситься в

@@ -1,15 +1,12 @@
+{% from "_settings_slab.html" import slab %}
         {# ── Стан системи ─────────────────────────────────────────────
            Огляд-екран: жива карта конвеєра (лічильники з context) + реальна
            самоперевірка (POST /settings/selfcheck, той самий бекенд, що й
            окремі кнопки «Перевірити»). Видимий усім; кнопка перевірки —
            лише адмін (ендпоінт admin+loopback). #}
-        <section class="wizard-step wizard-step-about scon-sec" data-sec="state">
+        <section class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="state">
             <div class="box">
-                <div class="wizard-step-head">
-                    <h2>Стан системи</h2>
-                    <span class="connection-state connection-state-ready">Огляд</span>
-                </div>
-                <p class="wizard-sub">Куди рухаються роботи просто зараз, і чи все на місці.</p>
+                {{ slab('Стан системи', 'Куди рухаються роботи просто зараз, і чи все на місці.', slabs['state']) }}
 
                 <div class="scon-map" role="img" aria-label="Стан конвеєра робіт">
                     {% for node in state_nodes %}
@@ -26,24 +23,6 @@
                         </div>
                     </div>
                     {% endfor %}
-                </div>
-
-                {# Фонові процеси: той самий heartbeat, що в сайдбарі черги.
-                   Головне тут — «немає відповіді від фонового процесу»: воно
-                   відрізняє «тихо, бо нічого не було» від «тред помер». #}
-                <div class="scon-beat">
-                    <div class="scon-beat-row scon-beat-{{ sync_status.mail.state }}">
-                        <span class="d" aria-hidden="true"></span>
-                        <span class="n">Пошта (IMAP)</span>
-                        <span class="v">{{ sync_status.mail.label }}</span>
-                        <span class="i mono">кожні {{ sync_intervals.mail }} хв</span>
-                    </div>
-                    <div class="scon-beat-row scon-beat-{{ sync_status.sheet.state }}">
-                        <span class="d" aria-hidden="true"></span>
-                        <span class="n">Google Таблиця</span>
-                        <span class="v">{{ sync_status.sheet.label }}</span>
-                        <span class="i mono">кожні {{ sync_intervals.sheet }} хв</span>
-                    </div>
                 </div>
 
                 {% if user.role == 'адмін' %}

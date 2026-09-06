@@ -1,3 +1,4 @@
+{% from "_settings_slab.html" import slab %}
         {# ── Верстати ─────────────────────────────────────────────────────
            Дзеркало розділу пічок: рядок на верстат — назва, адреса ПК, порт,
            вимикач, власний пароль. Системного доступу до софта верстата
@@ -7,22 +8,12 @@
            «Вимкнений» — на ремонті, а не видалений: налаштування чекають
            повернення, а опитування й показ зупиняються. #}
         {% if user.role == 'адмін' %}
-        <div class="wizard-step scon-sec" data-sec="machines">
+        <div class="wizard-step scon-sec stand-sec" data-sec="machines">
             <div class="num" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v7" class="duo"/><path d="M12 3v7"/><path d="M7 10h10v4a5 5 0 0 1-10 0z"/><path d="M12 19v2"/></svg>
             </div>
             <div class="box">
-                <div class="wizard-step-head">
-                    <h2>Верстати</h2>
-                    <span class="connection-state {% if machines %}connection-state-ready{% endif %}">
-                        {% if machines %}{{ machines|length }} у переліку{% else %}Немає{% endif %}
-                    </span>
-                </div>
-                <p class="wizard-sub">
-                    На ПК верстата ставиться UltraVNC Server у режимі «тільки перегляд» —
-                    CRM знімає кадр екрана RemiCORE раз на кілька секунд. Жодного вводу
-                    у верстат застосунок не шле і не вміє слати.
-                </p>
+                {{ slab('Верстати', 'CRM знімає кадр екрана RemiCORE раз на кілька секунд. Жодного вводу у верстат застосунок не шле і не вміє слати.', slabs['machines']) }}
 
                 {% if machines %}
                 <table class="fu-table">
@@ -107,9 +98,11 @@
                 </table>
                 {% endif %}
 
+                <div class="stand-cells">
+                <div class="stand-cell w6">
+                <h3>Додати верстат</h3>
                 <form method="post" action="/settings/machines" class="fu-add">
                     <div class="settings-field">
-                        <label for="machine_new_name">Додати верстат</label>
                         <p class="settings-help">Два способи читати екран, заповни ОДИН: <b>Токен агента</b> — наш HTTP-агент (порт <b>8765</b>), бачить синю смугу %; <b>Пароль VNC</b> — класичний UltraVNC (порт <b>5900</b>), смуги % не бачить. Назву видно на екрані верстатів.</p>
                         <div class="fu-add-row">
                             <input id="machine_new_name" class="login-input" name="name" placeholder="350i №1" maxlength="80" required>
@@ -125,9 +118,13 @@
                         </div>
                     </div>
                 </form>
+                </div>
 
+                <div class="stand-cell w3">
+                <h3>Спільний пароль VNC
+                    <span class="connection-state {% if machine_password_set %}connection-state-ready{% endif %}">{% if machine_password_set %}збережено{% else %}не задано{% endif %}</span>
+                </h3>
                 <div class="settings-field">
-                    <label for="machine_shared_password">Спільний пароль VNC</label>
                     <p class="settings-help">View-only пароль UltraVNC, якщо він однаковий на всіх верстатних ПК. Порожнє поле лишає збережений пароль без змін.</p>
                     <form method="post" action="/settings/machines/password" class="fu-add-row">
                         <input id="machine_shared_password" class="login-input" type="password" name="password"
@@ -136,13 +133,15 @@
                         <button type="submit" class="settings-secondary-button">Зберегти пароль</button>
                     </form>
                 </div>
+                </div>
 
                 {# Тека калібрувальних кадрів. Стоїть поруч із галкою «Калібр.»
                    у таблиці навмисно: вмикач збору і місце, куди він пише —
                    одне рішення оператора, розведене по різних екранах воно
                    змушувало б шукати кадри по %LOCALAPPDATA% руками. #}
+                <div class="stand-cell w3">
+                <h3>Тека калібрувальних кадрів</h3>
                 <div class="settings-field">
-                    <label for="machine_calib_path">Тека калібрувальних кадрів</label>
                     <p class="settings-help">
                         Сюди складаються кадри, поки в таблиці стоїть галка <b>Калібр.</b>
                         Порожнє поле — типова тека застосунку. Зараз:
@@ -161,6 +160,8 @@
                         </button>
                     </form>
                     {% include "_machine_calibration_banner.html" %}
+                </div>
+                </div>
                 </div>
 
                 {# Довідка про агента: згорнута, бо потрібна раз на верстат —
@@ -212,7 +213,7 @@
                     </div>
                 </details>
 
-                <p class="settings-help">Живі кадри — на екрані <a href="/machines">Верстати</a>.</p>
+                <p class="stand-note">Живі кадри — на екрані <a href="/machines">Верстати</a>.</p>
             </div>
         </div>
         {% endif %}

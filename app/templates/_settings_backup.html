@@ -1,18 +1,15 @@
+{% from "_settings_slab.html" import slab %}
         {# ── Крок 3 · Резервна копія ─────────────────────────────────── #}
         {% set st = 'done' if step_done[3] else ('active' if ns.active == 3 else '') %}
-        <div class="wizard-step scon-sec {{ st }}" data-sec="backup">
+        <div class="wizard-step scon-sec stand-sec {{ st }}" data-sec="backup">
             <div class="num">{% if step_done[3] %}✓{% else %}3{% endif %}</div>
             <div class="box">
-                <div class="wizard-step-head">
-                    <h2>Резервна копія</h2>
-                    <span class="connection-state connection-state-ready">Готово</span>
-                </div>
-                <p class="wizard-sub">
-                    Повний знімок бази — роботи, клієнти, оператори, налаштування та секрети (Google, IMAP) — перешифрований
-                    під пароль, який ти задаєш нижче. Файл переносний на інший ПК чи обліковий запис Windows: секрети тут
-                    зашифровані окремим паролем бекапу, а не ключем цього комп'ютера.
-                </p>
+                {{ slab('Резервна копія', 'Повний знімок бази під власним паролем — переносний на інший ПК.', slabs['backup']) }}
 
+                <div class="stand-cells">
+                <div class="stand-cell w3">
+                <h3>Створити копію</h3>
+                <p class="settings-help">Роботи, клієнти, оператори, налаштування й секрети (Google, IMAP), перешифровані під цей пароль. Ключем цього ПК копія не прив’язана — її можна відкрити на іншій машині.</p>
                 <form method="post" action="/settings/backup/export" class="settings-backup-form">
                     <div class="settings-field">
                         <label for="backup_password">Пароль резервної копії</label>
@@ -30,10 +27,17 @@
                     </div>
                     <button type="submit" class="login-submit settings-submit">Створити й завантажити бекап</button>
                 </form>
+                </div>
+                </div>
 
-                <div class="settings-backup-divider"></div>
+                <div class="stand-danger">
+                <h3>Небезпечна зона<span class="stand-danger-note">замінює ВСІ поточні дані</span></h3>
+                <div class="stand-drow" style="display:block">
+                <div class="stand-dtext"><b>Відновити з бекапу</b><p>Поточні роботи, клієнти й налаштування буде повністю замінено вмістом файлу. Скасувати не можна.</p></div>
+                <form method="post" action="/settings/backup/import" enctype="multipart/form-data" class="settings-backup-form"
+                      onsubmit="return confirm('Замінити ВСІ поточні дані даними з файлу?
 
-                <form method="post" action="/settings/backup/import" enctype="multipart/form-data" class="settings-backup-form">
+Поточні роботи, клієнти, оператори й налаштування буде втрачено. Скасувати не можна.')">
                     <div class="settings-field">
                         <label for="backup_file">Файл резервної копії</label>
                         <label class="dropzone" id="backup-dropzone">
@@ -59,8 +63,8 @@
                     </label>
                     <button type="submit" class="settings-secondary-button settings-backup-danger">Відновити з бекапу</button>
                 </form>
-
-                <div class="settings-backup-divider"></div>
+                </div>
+                </div>
 
                 {# Автоматичні місячні знімки БД (app/monthly_backup.py). Read-only
                    список — застосунок сам робить копію на початку кожного місяця.

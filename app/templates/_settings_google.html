@@ -1,142 +1,160 @@
-        {# ── Крок 1 · Google Таблиця ─────────────────────────────────── #}
+{% from "_settings_slab.html" import slab %}
+        {# ── Google Таблиця ─────────────────────────────────────────────
+           Макет «Стенд»: плита стану згори (реальний heartbeat синку, не
+           «поле заповнене»), поля в сітці, руйнівні разові дії — в окремій
+           зоні внизу. Роути, HTMX-обвʼязка й гейт ролі не змінені. #}
         {% set st = 'done' if step_done[1] else ('active' if ns.active == 1 else '') %}
-        <div class="wizard-step scon-sec {{ st }}" data-sec="sheets">
+        <div class="wizard-step scon-sec stand-sec {{ st }}" data-sec="sheets">
             <div class="num">{% if step_done[1] %}✓{% else %}1{% endif %}</div>
             <div class="box">
-                <div class="wizard-step-head">
-                    <h2>Google Таблиця</h2>
-                    <span class="connection-state {% if google_configured %}connection-state-ready{% endif %}">
-                        {% if google_configured %}Підключено{% else %}Не підключено{% endif %}
-                    </span>
-                </div>
-                <p class="wizard-sub">Основне джерело черги робіт.</p>
+                {% call slab('Google Таблиця', 'Основне джерело черги робіт.', slabs['sheets']) %}
+                    <button
+                        type="button"
+                        class="settings-secondary-button settings-check-button"
+                        hx-post="/settings/test-sheets"
+                        hx-target="#sheets-check-result"
+                        hx-swap="innerHTML"
+                        hx-indicator="#sheets-check-spinner"
+                        hx-params="none"
+                    >Перевірити доступ</button>
+                    <span class="check-spinner htmx-indicator" id="sheets-check-spinner" aria-hidden="true"></span>
+                    <span id="sheets-check-result" class="settings-check-result" aria-live="polite"></span>
+                {% endcall %}
 
                 <form method="post" action="/settings">
-                    <div class="settings-field">
-                        <label for="google_sheet_id">Посилання або ID таблиці</label>
-                        <div class="login-glow">
-                            <div class="login-input-wrap">
-                                <input
-                                    type="text"
-                                    id="google_sheet_id"
-                                    name="google_sheet_id"
-                                    class="login-input"
-                                    value="{{ values['google_sheet_id'] or '' }}"
-                                    placeholder="вставте посилання з адресного рядка Google Sheets"
-                                >
-                            </div>
-                        </div>
-                        <p class="settings-help">Можна вставити ціле посилання — ID з нього дістанеться сам.
-                            {% if values['google_sheet_id'] %}
-                            <a href="https://docs.google.com/spreadsheets/d/{{ values['google_sheet_id'] }}/edit" target="_blank" rel="noopener">Відкрити таблицю ↗</a>
-                            {% endif %}
-                        </p>
-                    </div>
-
-                    {# Підключення в режимі сервісного акаунта = поділитися таблицею
-                       з ЦІЄЮ адресою. Без неї на екрані оператор не знає, що
-                       вставляти в діалог «Поділитися» — і це єдиний крок, який
-                       відділяє «не підключено» від «працює». #}
-                    {% if (values['google_auth_mode'] or 'service_account') != 'oauth' and service_account_email %}
-                    <div class="settings-field sa-share">
-                        <label>Доступ до таблиці</label>
-                        <p class="settings-help">Відкрийте таблицю в Google → <strong>Поділитися</strong> → вставте цю адресу → права <strong>Редактор</strong>.</p>
-                        <div class="sa-share-row">
-                            <code class="mono sa-share-mail" id="sa-email">{{ service_account_email }}</code>
-                            <button type="button" class="settings-secondary-button settings-check-button"
-                                    data-copy-target="#sa-email">Копіювати</button>
-                        </div>
-                    </div>
-                    {% endif %}
-
-                    {% set auth_mode = values['google_auth_mode'] or 'service_account' %}
-                    <div class="settings-field">
-                        <label>Спосіб авторизації</label>
-                        <div class="addwork-seg" role="group" aria-label="Спосіб авторизації Google" data-authmode-seg>
-                            <button type="button" class="{% if auth_mode != 'oauth' %}is-active{% endif %}" data-authmode="service_account">Сервісний акаунт</button>
-                            <button type="button" class="{% if auth_mode == 'oauth' %}is-active{% endif %}" data-authmode="oauth">Google-акаунт</button>
-                        </div>
-                        <input type="hidden" name="google_auth_mode" value="{{ auth_mode }}" data-authmode-input>
-                    </div>
-
-                    {% set sa_saved = values_set['google_service_account_json'] %}
-                    <div class="settings-field" data-authmode-block="service_account" {% if auth_mode == 'oauth' %}hidden{% endif %}>
-                        <div class="cred-row" data-cred-toggle-group>
-                            <label for="google_service_account_json" class="cred-row-label">JSON-ключ сервісного акаунта</label>
-                            <span class="cred-status {% if sa_saved %}cred-status-ready{% endif %}">{% if sa_saved %}збережено{% else %}не задано{% endif %}</span>
-                            {% if changed_at.google_service_account_json %}<span class="scon-changed mono">змінено {{ changed_at.google_service_account_json }}</span>{% endif %}
-                            <button type="button" class="link-button" data-cred-toggle>{% if sa_saved %}Змінити{% else %}Вставити{% endif %}</button>
-                        </div>
-                        <div class="login-glow" data-cred-field {% if sa_saved %}hidden{% endif %}>
-                            <div class="login-input-wrap">
-                                <textarea
-                                    id="google_service_account_json"
-                                    name="google_service_account_json"
-                                    class="login-input settings-textarea"
-                                    placeholder="Вміст JSON-ключа сервісного акаунта Google"
-                                ></textarea>
-                            </div>
-                        </div>
-                    </div>
-
-                    {% set oauth_saved = values_set['google_oauth_client_json'] %}
-                    <div class="settings-field" data-authmode-block="oauth" {% if auth_mode != 'oauth' %}hidden{% endif %}>
-                        <div class="cred-row" data-cred-toggle-group>
-                            <label for="google_oauth_client_json" class="cred-row-label">OAuth Client JSON</label>
-                            <span class="cred-status {% if oauth_saved %}cred-status-ready{% endif %}">{% if oauth_saved %}збережено{% else %}не задано{% endif %}</span>
-                            {% if changed_at.google_oauth_client_json %}<span class="scon-changed mono">змінено {{ changed_at.google_oauth_client_json }}</span>{% endif %}
-                            <button type="button" class="link-button" data-cred-toggle>{% if oauth_saved %}Змінити{% else %}Вставити{% endif %}</button>
-                        </div>
-                        <div class="login-glow" data-cred-field {% if oauth_saved %}hidden{% endif %}>
-                            <div class="login-input-wrap">
-                                <textarea
-                                    id="google_oauth_client_json"
-                                    name="google_oauth_client_json"
-                                    class="login-input settings-textarea"
-                                    placeholder="JSON «Desktop app» OAuth-клієнта з Google Cloud Console"
-                                ></textarea>
+                    <div class="stand-cells">
+                        <div class="stand-cell w4">
+                            <h3>Таблиця</h3>
+                            <div class="settings-field">
+                                <label for="google_sheet_id">Посилання або ID таблиці</label>
+                                <div class="login-glow">
+                                    <div class="login-input-wrap">
+                                        <input
+                                            type="text"
+                                            id="google_sheet_id"
+                                            name="google_sheet_id"
+                                            class="login-input"
+                                            value="{{ values['google_sheet_id'] or '' }}"
+                                            placeholder="вставте посилання з адресного рядка Google Sheets"
+                                        >
+                                    </div>
+                                </div>
+                                <p class="settings-help">Можна вставити ціле посилання — ID з нього дістанеться сам.
+                                    {% if values['google_sheet_id'] %}
+                                    <a href="https://docs.google.com/spreadsheets/d/{{ values['google_sheet_id'] }}/edit" target="_blank" rel="noopener">Відкрити таблицю ↗</a>
+                                    {% endif %}
+                                </p>
                             </div>
                         </div>
 
-                        <div class="settings-check-row">
-                            <span class="connection-state {% if values_set['google_oauth_refresh_token'] %}connection-state-ready{% endif %}">
-                                {% if values_set['google_oauth_refresh_token'] %}Акаунт підключено{% else %}Акаунт не підключено{% endif %}
-                            </span>
-                            <button
-                                type="button"
-                                class="settings-secondary-button settings-check-button"
-                                hx-post="/settings/google-oauth/start"
-                                hx-target="#oauth-check-result"
-                                hx-swap="innerHTML"
-                                hx-indicator="#oauth-check-spinner"
-                                hx-params="none"
-                            >Увійти через Google</button>
-                            {% if values_set['google_oauth_refresh_token'] %}
-                            <button type="submit" formaction="/settings/google-oauth/disconnect" formnovalidate class="link-button">Відключити</button>
-                            {% endif %}
-                            <span class="check-spinner htmx-indicator" id="oauth-check-spinner" aria-hidden="true"></span>
-                            <span id="oauth-check-result" class="settings-check-result" aria-live="polite"></span>
+                        {% set auth_mode = values['google_auth_mode'] or 'service_account' %}
+                        <div class="stand-cell w2">
+                            <h3>Спосіб входу</h3>
+                            <div class="settings-field">
+                                <div class="addwork-seg" role="group" aria-label="Спосіб авторизації Google" data-authmode-seg>
+                                    <button type="button" class="{% if auth_mode != 'oauth' %}is-active{% endif %}" data-authmode="service_account">Сервісний акаунт</button>
+                                    <button type="button" class="{% if auth_mode == 'oauth' %}is-active{% endif %}" data-authmode="oauth">Google-акаунт</button>
+                                </div>
+                                <input type="hidden" name="google_auth_mode" value="{{ auth_mode }}" data-authmode-input>
+                            </div>
                         </div>
-                        <p class="settings-help">Спершу «Зберегти», тоді «Увійти через Google» — відкриється системний браузер для входу тим акаунтом, що має доступ до таблиці.</p>
+
+                        {# Підключення в режимі сервісного акаунта = поділитися таблицею
+                           з ЦІЄЮ адресою. Без неї на екрані оператор не знає, що
+                           вставляти в діалог «Поділитися» — і це єдиний крок, який
+                           відділяє «не підключено» від «працює». #}
+                        {% if (values['google_auth_mode'] or 'service_account') != 'oauth' and service_account_email %}
+                        <div class="stand-cell w6">
+                            <h3>Доступ до таблиці</h3>
+                            <div class="settings-field sa-share">
+                                <p class="settings-help">Відкрийте таблицю в Google → <strong>Поділитися</strong> → вставте цю адресу → права <strong>Редактор</strong>.</p>
+                                <div class="sa-share-row">
+                                    <code class="mono sa-share-mail" id="sa-email">{{ service_account_email }}</code>
+                                    <button type="button" class="settings-secondary-button settings-check-button"
+                                            data-copy-target="#sa-email">Копіювати</button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {# Ключі. Атрибут data-authmode-block стоїть на КОМІРЦІ, щоб
+                           разом із полем ховався й її заголовок; усередині лишається
+                           та сама пара cred-row + cred-field одним батьком — саме її
+                           шукає queue.js (group.parentElement). #}
+                        {% set sa_saved = values_set['google_service_account_json'] %}
+                        <div class="stand-cell w3" data-authmode-block="service_account" {% if auth_mode == 'oauth' %}hidden{% endif %}>
+                            <h3>JSON-ключ сервісного акаунта</h3>
+                            <div class="settings-field">
+                                <div class="cred-row" data-cred-toggle-group>
+                                    <label for="google_service_account_json" class="cred-row-label">Ключ</label>
+                                    <span class="cred-status {% if sa_saved %}cred-status-ready{% endif %}">{% if sa_saved %}збережено{% else %}не задано{% endif %}</span>
+                                    {% if changed_at.google_service_account_json %}<span class="scon-changed mono">змінено {{ changed_at.google_service_account_json }}</span>{% endif %}
+                                    <button type="button" class="link-button" data-cred-toggle>{% if sa_saved %}Змінити{% else %}Вставити{% endif %}</button>
+                                </div>
+                                <div class="login-glow" data-cred-field {% if sa_saved %}hidden{% endif %}>
+                                    <div class="login-input-wrap">
+                                        <textarea
+                                            id="google_service_account_json"
+                                            name="google_service_account_json"
+                                            class="login-input settings-textarea"
+                                            placeholder="Вміст JSON-ключа сервісного акаунта Google"
+                                        ></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {% set oauth_saved = values_set['google_oauth_client_json'] %}
+                        <div class="stand-cell w6" data-authmode-block="oauth" {% if auth_mode != 'oauth' %}hidden{% endif %}>
+                            <h3>OAuth Client JSON</h3>
+                            <div class="settings-field">
+                                <div class="cred-row" data-cred-toggle-group>
+                                    <label for="google_oauth_client_json" class="cred-row-label">Ключ клієнта</label>
+                                    <span class="cred-status {% if oauth_saved %}cred-status-ready{% endif %}">{% if oauth_saved %}збережено{% else %}не задано{% endif %}</span>
+                                    {% if changed_at.google_oauth_client_json %}<span class="scon-changed mono">змінено {{ changed_at.google_oauth_client_json }}</span>{% endif %}
+                                    <button type="button" class="link-button" data-cred-toggle>{% if oauth_saved %}Змінити{% else %}Вставити{% endif %}</button>
+                                </div>
+                                <div class="login-glow" data-cred-field {% if oauth_saved %}hidden{% endif %}>
+                                    <div class="login-input-wrap">
+                                        <textarea
+                                            id="google_oauth_client_json"
+                                            name="google_oauth_client_json"
+                                            class="login-input settings-textarea"
+                                            placeholder="JSON «Desktop app» OAuth-клієнта з Google Cloud Console"
+                                        ></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="settings-check-row">
+                                <span class="connection-state {% if values_set['google_oauth_refresh_token'] %}connection-state-ready{% endif %}">
+                                    {% if values_set['google_oauth_refresh_token'] %}Акаунт підключено{% else %}Акаунт не підключено{% endif %}
+                                </span>
+                                <button
+                                    type="button"
+                                    class="settings-secondary-button settings-check-button"
+                                    hx-post="/settings/google-oauth/start"
+                                    hx-target="#oauth-check-result"
+                                    hx-swap="innerHTML"
+                                    hx-indicator="#oauth-check-spinner"
+                                    hx-params="none"
+                                >Увійти через Google</button>
+                                {% if values_set['google_oauth_refresh_token'] %}
+                                <button type="submit" formaction="/settings/google-oauth/disconnect" formnovalidate class="link-button">Відключити</button>
+                                {% endif %}
+                                <span class="check-spinner htmx-indicator" id="oauth-check-spinner" aria-hidden="true"></span>
+                                <span id="oauth-check-result" class="settings-check-result" aria-live="polite"></span>
+                            </div>
+                            <p class="settings-help">Спершу «Зберегти», тоді «Увійти через Google» — відкриється системний браузер для входу тим акаунтом, що має доступ до таблиці.</p>
+                        </div>
                     </div>
 
-                    {# Один нижній бар дій: зліва перевірка (проба, нічого не
-                       змінює) + її результат, справа збереження. «Зберегти й
-                       синхронізувати» — єдина залита кнопка (коміт), «Зберегти» —
-                       тихіша поруч. HTMX-збереження відповідає 204 + тост, тож
-                       сторінка не перезавантажується; без JS — звичайний POST. #}
+                    {# Панель збереження. «Зберегти й синхронізувати» — єдина залита
+                       кнопка розділу (коміт), «Зберегти» тихіша поруч. Проба
+                       («Перевірити доступ») переїхала в плиту, до стану.
+                       HTMX-збереження відповідає 204 + тост, сторінка не
+                       перезавантажується; без JS — звичайний POST. #}
                     <div class="scon-actionbar">
-                        <button
-                            type="button"
-                            class="settings-secondary-button settings-check-button"
-                            hx-post="/settings/test-sheets"
-                            hx-target="#sheets-check-result"
-                            hx-swap="innerHTML"
-                            hx-indicator="#sheets-check-spinner"
-                            hx-params="none"
-                        >Перевірити доступ</button>
-                        <span class="check-spinner htmx-indicator" id="sheets-check-spinner" aria-hidden="true"></span>
-                        <span id="sheets-check-result" class="settings-check-result" aria-live="polite"></span>
                         <span class="scon-actionbar-gap"></span>
                         <span class="check-spinner htmx-indicator" id="sheets-save-spinner" aria-hidden="true"></span>
                         <button type="submit" name="action" value="save" class="settings-secondary-button"
@@ -147,27 +165,34 @@
                                 hx-indicator="#sheets-save-spinner" hx-disabled-elt="this">Зберегти й синхронізувати</button>
                     </div>
 
-                    {# Разовий повний імпорт заховано під розкривачку — важка дія,
-                       яку роблять раз, не має стояти на одному рівні зі «Зберегти».
+                    {# Разові дії стоять у власній зоні, а не під розкривачкою поруч
+                       зі «Зберегти»: обидві важкі, обидві міняють чергу масово.
                        formaction перекидає цю ж форму на окремий роут; поля конфігу
                        він ігнорує — синк іде по вже збереженому. #}
-                    <details class="scon-more">
-                        <summary><span class="scon-more-caret" aria-hidden="true">›</span> Разові дії</summary>
-                        <div class="scon-more-body">
+                    <div class="stand-danger">
+                        <h3>Небезпечна зона<span class="stand-danger-note">важкі разові дії над усією чергою</span></h3>
+                        <div class="stand-drow">
+                            <div class="stand-dtext">
+                                <b>Імпортувати всю історію</b>
+                                <p>Підтягує всі минулі дні з таблиці в чергу — може зайняти час через проксі. Періодична синхронізація й далі оновлює лише поточні дні.</p>
+                            </div>
                             <button type="submit" formaction="/sheets/import-history" formnovalidate
-                                    class="settings-secondary-button">Імпортувати всю історію</button>
-                            <p class="settings-help">Підтягує всі минулі дні з таблиці в чергу (може зайняти трохи часу через проксі). Періодична синхронізація й далі оновлює лише поточні дні.</p>
-
-                            {# Звірка масового видалення. Звичайний синк захищає чергу від
-                               помилкового читання: коли за раз «зникає» чверть вкладки, він
-                               НЕ архівує. Ця дія — для випадку, коли оператор СВІДОМО видалив
-                               пачку рядків у таблиці й хоче прибрати їх із черги. #}
+                                    class="settings-secondary-button"
+                                    onclick="return confirm('Імпортувати ВСЮ історію з таблиці?\n\nЦе важка разова дія: читаються всі минулі вкладки, через проксі вона може тривати десятки хвилин і навантажити синк. Звичайне оновлення черги для цього не потрібне.');">Імпортувати</button>
+                        </div>
+                        <div class="stand-drow">
+                            <div class="stand-dtext">
+                                <b>Звірити видалення</b>
+                                <p>Прибирає з черги в Архів рядки, які ви видалили з таблиці, навіть коли їх багато (обходить захист від масового зникнення). Помилкове — самозагоюється наступним синком.</p>
+                            </div>
+                            {# Звичайний синк захищає чергу від помилкового читання: коли
+                               за раз «зникає» чверть вкладки, він НЕ архівує. Ця дія —
+                               для випадку, коли оператор СВІДОМО видалив пачку рядків. #}
                             <button type="submit" formaction="/sheets/reconcile-deletions" formnovalidate
                                     class="settings-secondary-button"
                                     onclick="return confirm('Ви ВИДАЛИЛИ пачку рядків у Google Таблиці і хочете прибрати їх із черги в Архів?\n\nЗвичайний синк тримає їх, бо велике зникнення схоже на збій читання. Підтвердьте лише якщо справді видаляли — інакше живі роботи можуть піти в Архів (повернуться наступним синком через 10 хв).');">Звірити видалення</button>
-                            <p class="settings-help">Прибирає з черги в Архів рядки, які ви видалили з таблиці, навіть коли їх багато (обходить захист від масового зникнення). Помилкове — самозагоюється наступним синком.</p>
                         </div>
-                    </details>
+                    </div>
                 </form>
             </div>
         </div>

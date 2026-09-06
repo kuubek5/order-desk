@@ -1,0 +1,43 @@
+{# ── Плита стану розділу (макет «Стенд») ──────────────────────────────────
+   Один компонент на всі 14 розділів: назва · призначення · пігулка стану ·
+   метрики · дії. Дані — app/services/settings_status.py; шаблон НЕ рахує
+   станів сам, інакше два джерела правди розійшлися б (урок смуги печей).
+
+   Колір несе зміст і лише його:
+     ok    — є підтвердження, що працює (свіжий heartbeat, кадр, активний адмін)
+     warn  — щось не так або не увімкнено
+     alarm — є помилка
+     none  — невідомо / не налаштовано (сірий, НІКОЛИ не зелений)
+
+   Дії передаються через {% call %} — туди йдуть ЛИШЕ проби (read-only) і
+   переходи. Кнопки збереження лишаються у своїй формі внизу розділу: у плити
+   немає <form>, і submit звідси нічого б не надіслав.
+#}
+{% macro slab(title, sub, s) %}
+<div class="stand-slab">
+    <div class="stand-slabtop">
+        <div class="stand-title">
+            <h2>{{ title }}</h2>
+            {% if sub %}<p>{{ sub }}</p>{% endif %}
+        </div>
+        {% if s and s.label %}
+        <span class="stand-state stand-state-{{ s.tone }}">{{ s.label }}</span>
+        {% endif %}
+        {% if caller %}<div class="stand-acts">{{ caller() }}</div>{% endif %}
+    </div>
+    {% if s and s.meters %}
+    <div class="stand-meters">
+        {% for m in s.meters %}
+        <div class="stand-m{% if m.tone %} stand-m-{{ m.tone }}{% endif %}">
+            <div class="k">{{ m.k }}</div>
+            {# Моноширинний — лише для чисел, часу й ідентифікаторів (правило
+               проєкту). Текстове значення («очікує першої перевірки») у моно
+               ламається на три рядки й читається як код. #}
+            <div class="v{% if m.v and m.v[0].isdigit() %} is-num{% endif %}">{{ m.v }}</div>
+            {% if m.s %}<div class="s">{{ m.s }}</div>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}

@@ -411,3 +411,28 @@ def test_flex_value_slot_keeps_the_space_between_word_and_code():
             ".mp-v — flex без gap: пробіл між словом і кодом матеріалу "
             "колапсує, і «моно А3» знову стане «моноА3»"
         )
+
+
+# ── Кожен шаблон, який згадує код, існує на диску ───────────────────────────
+# Привід: `_settings_check_result.html` зник у коміті 33e8f37 (28.08.26), а сім
+# викликів лишились. Наслідок був тихий і довгий — КОЖНА кнопка «Перевірити» в
+# налаштуваннях (доступ до таблиці, вхід в IMAP, перевірка теки, вага таблиці)
+# віддавала 500, HTMX нічого не вставляв, і оператор бачив кнопку, яка просто
+# нічого не робить. Жоден тест цього не ловив: роути тестувались моками, а
+# розмітка — прямим рендером шаблонів.
+_TEMPLATE_CALL = re.compile(r'TemplateResponse\(\s*(?:request\s*,\s*)?["\']([\w./-]+\.html)["\']')
+_TEMPLATE_CALL_KW = re.compile(r'TemplateResponse\(\s*\n\s*request,\s*\n\s*["\']([\w./-]+\.html)["\']')
+
+
+def test_every_template_referenced_in_code_exists():
+    missing: list[str] = []
+    for path in (Path(__file__).parent.parent / "app").rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        names = set(_TEMPLATE_CALL.findall(text)) | set(_TEMPLATE_CALL_KW.findall(text))
+        for name in names:
+            if not (TEMPLATES_DIR / name).exists():
+                missing.append(f"{path.name} -> {name}")
+    assert not missing, (
+        "Код рендерить шаблони, яких немає на диску (роут упаде 500):" + chr(10)
+        + chr(10).join(sorted(missing))
+    )

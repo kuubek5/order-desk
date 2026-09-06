@@ -1,18 +1,16 @@
+{% from "_settings_slab.html" import slab %}
         {# ── Спливаючі сповіщення ─────────────────────────────────────
            Вигляд, позиція і перелік системних тригерів. Не адмінське: це
            екранні преференції одного робочого місця, як і шляхи папок. #}
-        <section id="notifications" class="wizard-step wizard-step-about scon-sec" data-sec="notifications">
+        <section id="notifications" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="notifications">
             <div class="box">
-                <div class="wizard-step-head">
-                    <h2>Спливаючі сповіщення</h2>
-                    <span class="connection-state connection-state-ready">{{ notify_events|length }} з {{ notify_all|length }} подій</span>
-                </div>
-                <p class="wizard-sub">Короткі повідомлення, які самі зникають. Критичні (червоні) не зникають — їх закриває оператор.</p>
+                {{ slab('Спливаючі сповіщення', 'Короткі повідомлення, які самі зникають. Критичні (червоні) не зникають — їх закриває оператор.', slabs['notifications']) }}
 
                 <form method="post" action="/settings/notifications"
                       hx-post="/settings/notifications" hx-indicator="#notify-spinner">
+                    <div class="stand-cells">
+                    <div class="stand-cell w3"><h3>Вигляд</h3>
                     <div class="settings-field">
-                        <label>Вигляд</label>
                         <div class="notify-styles">
                             {% for val, name, hint in [('glass','Скляна','основна — розмиває фон, важливість ребром'),('card','Картка','допоміжна — щільна підкладка, без скла')] %}
                             <label class="notify-pick {% if notify_style == val %}is-on{% endif %}">
@@ -23,9 +21,10 @@
                             {% endfor %}
                         </div>
                     </div>
+                    </div>
 
+                    <div class="stand-cell w3"><h3>Позиція на екрані</h3>
                     <div class="settings-field">
-                        <label>Позиція на екрані</label>
                         <div class="notify-pos">
                             {% for val, name in [('tc','Зверху по центру'),('tr','Зверху справа'),('br','Знизу справа'),('bl','Знизу зліва')] %}
                             <label class="notify-pick pos {% if notify_position == val %}is-on{% endif %}">
@@ -38,8 +37,10 @@
                         <p class="settings-help">Коли відкрито паспорт роботи, праві позиції автоматично зсуваються, щоб його не накривати.</p>
                     </div>
 
+                    </div>
+
+                    <div class="stand-cell w6"><h3>Системні події</h3>
                     <div class="settings-field">
-                        <label>Системні події</label>
                         <p class="settings-help">Що саме має спливати. Перевірка стану — раз на 30 секунд; повідомлення показується лише на <strong>зміні</strong> стану, не повторюється щохвилини.</p>
                         <div class="notify-events">
                             {% for key, label, level, _default in notify_all %}
@@ -51,6 +52,8 @@
                             </label>
                             {% endfor %}
                         </div>
+                    </div>
+                    </div>
                     </div>
 
                     <div class="scon-actionbar">

@@ -1,0 +1,284 @@
+/* Settings «Стенд» — макет розділу налаштувань (варіант B, 06.09.26).
+
+   Вантажиться ПІСЛЯ settings.css і settings_console.css, тож рівні за
+   специфічністю перекриття виграють порядком (CLAUDE.md §14: порядок <link>
+   і Є каскадом). Нічого не ламає: перемикання секцій, форми, HTMX і гейти
+   ролей лишаються ті самі — тут лише розкладка й поверхні.
+
+   Що лікує (див. design/settings-redesign/ARCHITECTURE.md):
+     1. розділ більше не один стовп на всю ширину — поля лягають у сітку;
+     2. стан не ховається в кутку — плита з метриками стоїть першою;
+     3. поле вводу «втоплене» (--well), а не однакове з карткою;
+     4. руйнівні дії живуть у власній зоні, проби — біля стану. */
+
+/* ── плита стану ──────────────────────────────────────────────────────── */
+.scon .stand-slab {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(var(--accent-rgb), .2);
+  background:
+    radial-gradient(120% 160% at 12% 0%, rgba(var(--accent-rgb), .1), transparent 55%),
+    var(--card-2);
+  padding: 16px 18px;
+}
+/* Технічна сітка-«блюпринт» під кутом — той самий мотив, що на вході й
+   порожніх станах. Декор, тому pointer-events:none і окремий шар. */
+.scon .stand-slab::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(var(--accent-rgb), .04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--accent-rgb), .04) 1px, transparent 1px);
+  background-size: 34px 34px;
+  -webkit-mask-image: linear-gradient(105deg, transparent 45%, #000);
+  mask-image: linear-gradient(105deg, transparent 45%, #000);
+}
+.scon .stand-slab > * { position: relative; z-index: 1; }
+
+.scon .stand-slabtop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.scon .stand-title { min-width: 0; }
+.scon .stand-title h2 {
+  font-family: var(--font-head);
+  font-size: var(--fs-5);
+  font-weight: 700;
+  letter-spacing: -.015em;
+  margin: 0;
+}
+.scon .stand-title p {
+  margin: 3px 0 0;
+  font-size: var(--fs-2);
+  color: var(--ink-2);
+}
+.scon .stand-acts {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* Кнопки в плиті — це ПРОБИ (нічого не змінюють), тому жодної залитої:
+   заливка на екрані лишається за «Зберегти» внизу форми. */
+.scon .stand-acts .settings-secondary-button { margin: 0; }
+
+/* пігулка стану */
+.scon .stand-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-1);
+  font-weight: 600;
+  padding: 3px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--card);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.scon .stand-state::before {
+  content: "";
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.scon .stand-state-ok    { color: var(--ok, #a8e08a); border-color: rgba(168, 224, 138, .32); background: rgba(168, 224, 138, .08); }
+.scon .stand-state-warn  { color: var(--warn); border-color: rgba(255, 138, 61, .32); background: rgba(255, 138, 61, .08); }
+.scon .stand-state-alarm { color: var(--alarm); border-color: rgba(255, 107, 82, .34); background: rgba(255, 107, 82, .09); }
+.scon .stand-state-none  { color: var(--ink-3); }
+/* Тривога помітна навіть краєм ока — але без нескінченної петлі: одна
+   коротка пульсація ловить погляд і зупиняється (правило тріажу — жодних
+   анімацій-петель у робочому екрані). */
+.scon .stand-state-alarm { animation: standAlarm .9s ease-out 2; }
+@keyframes standAlarm {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 82, 0); }
+  50%      { box-shadow: 0 0 0 4px rgba(255, 107, 82, .18); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scon .stand-state-alarm { animation: none; }
+}
+
+/* ── метрики ──────────────────────────────────────────────────────────── */
+.scon .stand-meters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+.scon .stand-m {
+  background: rgba(var(--bg-rgb), .5);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-card);
+  padding: 10px 12px;
+  min-width: 0;
+}
+.scon .stand-m .k {
+  font-size: var(--fs-0);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 700;
+}
+.scon .stand-m .v {
+  font-family: var(--font-body);
+  font-size: var(--fs-4);
+  font-weight: 600;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  margin: 5px 0 2px;
+  overflow-wrap: anywhere;
+}
+/* Моно — тільки числам, часу й ідентифікаторам. Текст у моно ламається
+   на три рядки й читається як код. */
+.scon .stand-m .v.is-num { font-family: var(--font-mono); font-size: var(--fs-4); }
+.scon .stand-m .s {
+  font-size: var(--fs-1);
+  color: var(--ink-3);
+  line-height: 1.35;
+}
+.scon .stand-m-ok .v    { color: var(--ok, #a8e08a); }
+.scon .stand-m-warn .v  { color: var(--warn); }
+.scon .stand-m-alarm .v { color: var(--alarm); }
+.scon .stand-m-none .v  { color: var(--ink-2); }
+
+/* ── сітка полів ──────────────────────────────────────────────────────── */
+.scon .stand-cells {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+.scon .stand-cell {
+  grid-column: span 3;
+  min-width: 0;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 14px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 10px);
+}
+.scon .stand-cell.w2 { grid-column: span 2; }
+.scon .stand-cell.w3 { grid-column: span 3; }
+.scon .stand-cell.w4 { grid-column: span 4; }
+.scon .stand-cell.w6 { grid-column: span 6; }
+.scon .stand-cell > h3 {
+  font-family: var(--font-head);
+  font-size: var(--fs-2);
+  font-weight: 700;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.scon .stand-cell > h3 .connection-state,
+.scon .stand-cell > h3 .cred-status { margin-left: auto; }
+.scon .stand-cell .settings-field { margin-bottom: 0; }
+/* Комірка ховається цілком разом із заголовком: атрибут data-authmode-block
+   стоїть на ній, а queue.js вимикає її через el.hidden. */
+.scon .stand-cell[hidden] { display: none; }
+@media (max-width: 900px) {
+  .scon .stand-cells { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scon .stand-cell,
+  .scon .stand-cell.w2,
+  .scon .stand-cell.w4,
+  .scon .stand-cell.w6 { grid-column: span 2; }
+}
+
+/* Втоплений ввід. Раніше поле й картка різнилися на 3-5% яскравості —
+   око не бачило межі. Тільки в налаштуваннях: на вході та сама .login-input
+   стоїть на іншому фоні й там усе гаразд. */
+.scon .login-input,
+.scon .settings-textarea,
+.scon select.login-input { background: var(--well); }
+.scon .stand-cell .login-input { border-color: var(--line-2); }
+
+/* ── зона руйнівних дій ───────────────────────────────────────────────── */
+.scon .stand-danger {
+  border: 1px solid rgba(255, 107, 82, .24);
+  border-radius: var(--r-card);
+  background: linear-gradient(180deg, rgba(255, 107, 82, .05), transparent 60%);
+}
+.scon .stand-danger > h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  padding: 11px 15px;
+  border-bottom: 1px solid rgba(255, 107, 82, .18);
+  font-family: var(--font-head);
+  font-size: var(--fs-2);
+  font-weight: 700;
+  color: var(--alarm);
+}
+.scon .stand-danger > h3 .stand-danger-note {
+  margin-left: auto;
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: var(--fs-1);
+  color: var(--ink-3);
+}
+.scon .stand-drow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 15px;
+  border-top: 1px solid var(--line);
+}
+.scon .stand-drow:first-of-type { border-top: 0; }
+.scon .stand-dtext { flex: 1; min-width: 0; }
+.scon .stand-dtext b {
+  display: block;
+  font-size: var(--fs-2);
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 2px;
+}
+.scon .stand-dtext p { margin: 0; font-size: var(--fs-1); color: var(--ink-3); line-height: 1.4; }
+.scon .stand-danger .settings-secondary-button {
+  color: var(--alarm);
+  border-color: rgba(255, 107, 82, .32);
+  background: rgba(255, 107, 82, .06);
+  flex: none;
+}
+.scon .stand-danger .settings-secondary-button:hover {
+  border-color: rgba(255, 107, 82, .5);
+  background: rgba(255, 107, 82, .13);
+  color: var(--alarm);
+}
+
+/* ── реєстр пристроїв (пічки, верстати) ───────────────────────────────── */
+.scon .stand-devs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+.scon .stand-dev {
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.scon .stand-dev.is-broken { border-color: rgba(255, 138, 61, .3); }
+.scon .stand-dev-top { display: flex; align-items: flex-start; gap: 10px; }
+.scon .stand-dev-top .stand-state { margin-left: auto; }
+.scon .stand-dev-name { font-size: var(--fs-3); font-weight: 600; min-width: 0; }
+.scon .stand-dev-addr { font-family: var(--font-mono); font-size: var(--fs-1); color: var(--ink-3); margin-top: 2px; }
+
+/* ── дрібне ───────────────────────────────────────────────────────────── */
+/* Плита вже несе назву розділу — стара пара «заголовок + чіп» більше не
+   малюється в розмічених партіалах, але залишкові .wizard-sub у ще не
+   переведених розділах мають лишатись читабельними. */
+.scon .stand-sec > .box { gap: var(--space-4); }
+.scon .stand-note { font-size: var(--fs-1); color: var(--ink-3); line-height: 1.45; margin: 0; }

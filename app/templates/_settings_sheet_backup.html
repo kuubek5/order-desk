@@ -1,26 +1,21 @@
+{% from "_settings_slab.html" import slab %}
         {# ── Копії Google-таблиці · сирі знімки вкладок ───────────────────
            Страховка для відновлення САМОЇ таблиці, коли адмін почистив старі
            дні з Google. Дослівна CSV-копія кожної датованої вкладки → можна
            залити назад. Логіка: app/sheet_backup.py, роути: routers/settings.py.
            Іконки — намальовані SVG у стилі решти налаштувань (жодних юнікод-
            стрілок), 1.8 stroke. #}
-        <section id="sheet-backup" class="wizard-step wizard-step-about scon-sec" data-sec="sheet-backup">
+        <section id="sheet-backup" class="wizard-step wizard-step-about scon-sec stand-sec" data-sec="sheet-backup">
             <div class="num" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="1.5" class="duo"/><path d="M4 9h16M9 9v11M4 14h5"/></svg>
             </div>
             <div class="box">
-                <div class="wizard-step-head">
-                    <h2>Копії Google-таблиці</h2>
-                    <span class="connection-state {% if sheet_backup_enabled %}connection-state-ready{% endif %}">
-                        {% if sheet_backup_enabled %}Авто увімкнено{% else %}Вимкнено{% endif %}
-                    </span>
-                </div>
-                <p class="wizard-sub">
-                    Дослівна копія кожної денної вкладки у CSV. Почистять старі дні в Google або трапиться біда —
-                    заллєш копію назад і відновиш день чи місяць. Копії — лише текст, місця майже не займають.
-                </p>
+                {{ slab('Копії Google-таблиці', 'Дослівна CSV-копія кожної денної вкладки — страховка для відновлення самої таблиці.', slabs['sheet-backup']) }}
 
                 {# ── Налаштування авто-знімання ─────────────────────────── #}
+                <div class="stand-cells">
+                <div class="stand-cell w3">
+                <h3>Автоматичне знімання</h3>
                 <form method="post" action="/settings/sheets/config" class="dsec sbk-config">
                     <label class="sbk-switch">
                         <input type="checkbox" name="enabled" {% if sheet_backup_enabled %}checked{% endif %}>
@@ -46,22 +41,24 @@
                     <button type="submit" class="settings-secondary-button sbk-save">Зберегти</button>
                     <p class="sbk-config-hint">Від {{ sheet_backup_interval_min }} до {{ sheet_backup_interval_max }} год, типово 6. Порожні вкладки та обрізані читання не зберігаються.</p>
                 </form>
+                </div>
 
-                {# ── Ручний знімок + скачати все (одна дія-рядок) ────────── #}
-                <div class="dsec sbk-actions">
-                    <div class="sbk-action-main">
-                        <div class="dlabel">Зняти копію зараз</div>
-                        <p class="wizard-sub">Не чекаючи розкладу. Перший запуск підтягне всю наявну історію.</p>
+                <div class="stand-cell w3">
+                    <h3>Зняти копію зараз</h3>
+                    <div class="dsec sbk-actions">
+                        <div class="sbk-action-main">
+                            <p class="settings-help">Не чекаючи розкладу. Перший запуск підтягне всю наявну історію.</p>
                         <form method="post" action="/settings/sheets/snapshot">
                             <button type="submit" class="login-submit settings-submit sbk-snapshot">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M8 11l4 4 4-4M5 20h14"/></svg>
                                 Зняти копію вкладок
                             </button>
                         </form>
+                        </div>
                     </div>
                 </div>
 
-                {# ── Наявні копії ───────────────────────────────────────── #}
+                <div class="stand-cell w6">
                 <div class="dsec sbk-saved">
                     <div class="sbk-saved-head">
                         <div class="dlabel">Збережені копії</div>
@@ -103,6 +100,8 @@
                     {% else %}
                     <p class="sbk-empty">Копій ще немає. Перша зʼявиться після знімання — кнопкою вище або авто-проходом.</p>
                     {% endif %}
+                </div>
+                </div>
                 </div>
 
                 {# ── Що робити при аварії ────────────────────────────────── #}

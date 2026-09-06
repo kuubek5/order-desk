@@ -6,6 +6,9 @@
 <link rel="stylesheet" href="/static/css/login.css?v={{ static_ver('css/login.css') }}">
 <link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
 <link rel="stylesheet" href="/static/css/settings_console.css?v={{ static_ver('css/settings_console.css') }}">
+{# «Стенд» вантажиться ОСТАННІМ: перекриває розкладку розділів з settings.css
+   і settings_console.css рівною специфічністю, тобто виграє порядком. #}
+<link rel="stylesheet" href="/static/css/settings_stand.css?v={{ static_ver('css/settings_stand.css') }}">
 {% endblock %}
 
 {% block content %}

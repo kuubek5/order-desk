@@ -17,6 +17,7 @@ from app.changelog import load_changelog
 from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH
 from app.mail_spool import analyze_spool
 from app.services.section_gate import sections_admin
+from app.services.settings_status import build_slabs
 from app.models import AppSetting, EmailMessage, MailFilterCategory, MailFilterRule, Order, User
 from app.monthly_backup import list_snapshots
 from app.routers.deps import (
@@ -220,151 +221,153 @@ def get_settings(
         if done
     )
 
-    return templates.TemplateResponse(
-        request,
-        "settings.html",
-        {
-            "fields": SETTING_FIELDS,
-            "values": values,
-            "values_set": values_set,
-            "user": user,
-            "saved": saved is not None or (settings_flash and settings_flash["kind"] == "success"),
-            "saved_message": (
-                settings_flash["message"]
-                if settings_flash and settings_flash["kind"] == "success" and settings_flash.get("message")
-                else None
-            ),
-            "welcome": welcome is not None,
-            "sheets_configured": sheets_configured(db),
-            "imap_configured": imap_configured(db),
-            "google_configured": google_configured,
-            # The address the spreadsheet must be shared with — without it on
-            # screen there is no way to know what to paste into Google's Share
-            # dialog, which is the whole of "connecting" in service-account mode.
-            "service_account_email": get_service_account_email(db),
-            # Curated changelog from CHANGELOG.md, rendered in «Про застосунок».
-            "changelog": load_changelog(),
-            # Popup-notification preferences («Спливаючі сповіщення»).
-            "notify_style": get_notify_style(db),
-            "notify_position": get_notify_position(db),
-            "notify_events": get_notify_events(db),
-            "notify_all": NOTIFY_EVENTS,
-            "paths_set": paths_set,
-            "operators_exist": operators_exist,
-            # Чи заданий ПІН розділу «Виробіток» (значення не показуємо — лише
-            # ознаку, як пароль). Порожньо = розділ відкритий.
-            "vyrobitok_pin_set": bool(get_setting(db, "vyrobitok_pin")),
-            # Розділи «в розробці / тестується» — керування станом (адмін).
-            "sections_admin": sections_admin(db),
-            "backup_available": backup_available,
-            "monthly_snapshots": [
-                {
-                    "name": p.name,
-                    "size_mb": round(p.stat().st_size / (1024 * 1024), 1),
-                }
-                for p in list_snapshots(DB_PATH)
-            ],
-            # Сирі знімки вкладок Google-таблиці (app/sheet_backup.py).
-            "sheet_backup_enabled": get_sheet_backup_enabled(db),
-            "sheet_backup_interval_hours": get_sheet_backup_interval_hours(db),
-            "sheet_backup_interval_min": SHEET_BACKUP_INTERVAL_MIN_HOURS,
-            "sheet_backup_interval_max": SHEET_BACKUP_INTERVAL_MAX_HOURS,
-            **_sheet_snapshots_context(),
-            "setup_steps_done": setup_steps_done,
-            "setup_steps_total": setup_steps_total,
-            "operators": operators,
-            # Background-loop liveness, same source the queue sidebar renders.
-            # "Стан системи" is where an operator actually looks for it, and the
-            # stale-heartbeat detector (STALE_HEARTBEAT_MULTIPLIER) is the one
-            # signal that distinguishes "quiet because idle" from "worker died".
-            "sync_status": sync_status_pair(db, datetime.now()),
-            "sync_intervals": {
-                "mail": MAIL_SYNC_INTERVAL_SECONDS // 60,
-                "sheet": SHEET_SYNC_INTERVAL_SECONDS // 60,
-            },
-            "changed_at": settings_changed_at(
-                db,
-                (
-                    "google_sheet_id",
-                    "google_service_account_json",
-                    "google_oauth_client_json",
-                    "imap_login",
-                    "imap_password",
-                    "export_folder_path",
-                    "technician_files_path",
-                ),
-            ),
-            # «Фільтри пошти» section — same shared panel as the filtered tab.
-            "filter_rules": db.scalars(
-                select(MailFilterRule).order_by(MailFilterRule.id.desc())
-            ).all(),
-            "filter_categories": _mail_filter_categories(db),
-            "filter_category_rows": db.scalars(
-                select(MailFilterCategory).order_by(MailFilterCategory.id.asc())
-            ).all(),
-            "mail_download_all": get_mail_download_all(db),
-            # Пічки: рядки таблиці як є, паролі — НІКОЛИ. Назад у поле секрет
-            # не підставляється, у шаблон іде лише ознака «збережено».
-            "furnaces": list_furnaces(db),
-            "furnace_password_set": bool(get_furnace_vnc_password(db)),
-            "furnace_bg": get_furnace_background(db),
-            # Верстати: той самий контракт — рядки без паролів, лише ознака.
-            "machines": (_machines := machines_service.list_machines(db)),
-            "machine_password_set": bool(get_machine_vnc_password(db)),
-            # Тека калібрувальних кадрів: показуємо ДІЮЧУ (з урахуванням
-            # типової) і окремо власну — у поле підставляється лише власна,
-            # інакше «зберегти» перетворило б типову теку на прибиту цвяхами.
-            "machine_calibration_path": get_machine_calibration_path(db),
-            "machine_calibration_custom": get_setting(db, "machine_calibration_path") or "",
-            # Стан збору кадрів (той самий фрагмент, що оновлює себе поллом).
-            "calibration": machines_service.calibration_status(
-                get_machine_calibration_path(db)
-            ),
-            # Версія (mtime) фото на верстат — для мініатюри в таблиці; None = нема.
-            "machine_portrait_version": {m.id: portrait_version(m.id) for m in _machines},
-            "spool_report": (_spool_report := analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH))),
-            # "Стан системи" flow map — honest, cheap counts (one scalar each).
-            # No export-folder scan here; that's the heavy walk we keep off page load.
-            "state_nodes": [
-                {
-                    "n": db.scalar(
-                        select(func.count())
-                        .select_from(EmailMessage)
-                        .where(
-                            EmailMessage.status == "нове",
-                            EmailMessage.filter_category.is_(None),
-                        )
-                    ) or 0,
-                    "l": "Пошта",
-                    "u": "у тріажі",
-                },
-                {"n": _spool_report.total_dirs, "l": "Спул", "u": f"{_spool_report.total_mb} МБ"},
-                {
-                    "n": db.scalar(
-                        select(func.count())
-                        .select_from(Order)
-                        .where(Order.status != "видано", Order.archived_at.is_(None))
-                    ) or 0,
-                    "l": "Черга",
-                    "u": "активні",
-                },
-                {
-                    "n": db.scalar(
-                        select(func.count())
-                        .select_from(Order)
-                        .where(Order.archived_at.is_not(None))
-                    ) or 0,
-                    "l": "Архів",
-                    "u": "робіт",
-                },
-            ],
-            "error": error or (
-                settings_flash["message"]
-                if settings_flash and settings_flash["kind"] == "error"
-                else None
-            ),
+    context = {
+        "fields": SETTING_FIELDS,
+        "values": values,
+        "values_set": values_set,
+        "user": user,
+        "saved": saved is not None or (settings_flash and settings_flash["kind"] == "success"),
+        "saved_message": (
+            settings_flash["message"]
+            if settings_flash and settings_flash["kind"] == "success" and settings_flash.get("message")
+            else None
+        ),
+        "welcome": welcome is not None,
+        "sheets_configured": sheets_configured(db),
+        "imap_configured": imap_configured(db),
+        "google_configured": google_configured,
+        # The address the spreadsheet must be shared with — without it on
+        # screen there is no way to know what to paste into Google's Share
+        # dialog, which is the whole of "connecting" in service-account mode.
+        "service_account_email": get_service_account_email(db),
+        # Curated changelog from CHANGELOG.md, rendered in «Про застосунок».
+        "changelog": load_changelog(),
+        # Popup-notification preferences («Спливаючі сповіщення»).
+        "notify_style": get_notify_style(db),
+        "notify_position": get_notify_position(db),
+        "notify_events": get_notify_events(db),
+        "notify_all": NOTIFY_EVENTS,
+        "paths_set": paths_set,
+        "operators_exist": operators_exist,
+        # Чи заданий ПІН розділу «Виробіток» (значення не показуємо — лише
+        # ознаку, як пароль). Порожньо = розділ відкритий.
+        "vyrobitok_pin_set": bool(get_setting(db, "vyrobitok_pin")),
+        # Розділи «в розробці / тестується» — керування станом (адмін).
+        "sections_admin": sections_admin(db),
+        "backup_available": backup_available,
+        "monthly_snapshots": [
+            {
+                "name": p.name,
+                "size_mb": round(p.stat().st_size / (1024 * 1024), 1),
+            }
+            for p in list_snapshots(DB_PATH)
+        ],
+        # Сирі знімки вкладок Google-таблиці (app/sheet_backup.py).
+        "sheet_backup_enabled": get_sheet_backup_enabled(db),
+        "sheet_backup_interval_hours": get_sheet_backup_interval_hours(db),
+        "sheet_backup_interval_min": SHEET_BACKUP_INTERVAL_MIN_HOURS,
+        "sheet_backup_interval_max": SHEET_BACKUP_INTERVAL_MAX_HOURS,
+        **_sheet_snapshots_context(),
+        "setup_steps_done": setup_steps_done,
+        "setup_steps_total": setup_steps_total,
+        "operators": operators,
+        # Background-loop liveness, same source the queue sidebar renders.
+        # "Стан системи" is where an operator actually looks for it, and the
+        # stale-heartbeat detector (STALE_HEARTBEAT_MULTIPLIER) is the one
+        # signal that distinguishes "quiet because idle" from "worker died".
+        "sync_status": sync_status_pair(db, datetime.now()),
+        "sync_intervals": {
+            "mail": MAIL_SYNC_INTERVAL_SECONDS // 60,
+            "sheet": SHEET_SYNC_INTERVAL_SECONDS // 60,
         },
-    )
+        "changed_at": settings_changed_at(
+            db,
+            (
+                "google_sheet_id",
+                "google_service_account_json",
+                "google_oauth_client_json",
+                "imap_login",
+                "imap_password",
+                "export_folder_path",
+                "technician_files_path",
+            ),
+        ),
+        # «Фільтри пошти» section — same shared panel as the filtered tab.
+        "filter_rules": db.scalars(
+            select(MailFilterRule).order_by(MailFilterRule.id.desc())
+        ).all(),
+        "filter_categories": _mail_filter_categories(db),
+        "filter_category_rows": db.scalars(
+            select(MailFilterCategory).order_by(MailFilterCategory.id.asc())
+        ).all(),
+        "mail_download_all": get_mail_download_all(db),
+        # Пічки: рядки таблиці як є, паролі — НІКОЛИ. Назад у поле секрет
+        # не підставляється, у шаблон іде лише ознака «збережено».
+        "furnaces": list_furnaces(db),
+        "furnace_password_set": bool(get_furnace_vnc_password(db)),
+        "furnace_bg": get_furnace_background(db),
+        # Верстати: той самий контракт — рядки без паролів, лише ознака.
+        "machines": (_machines := machines_service.list_machines(db)),
+        "machine_password_set": bool(get_machine_vnc_password(db)),
+        # Тека калібрувальних кадрів: показуємо ДІЮЧУ (з урахуванням
+        # типової) і окремо власну — у поле підставляється лише власна,
+        # інакше «зберегти» перетворило б типову теку на прибиту цвяхами.
+        "machine_calibration_path": get_machine_calibration_path(db),
+        "machine_calibration_custom": get_setting(db, "machine_calibration_path") or "",
+        # Стан збору кадрів (той самий фрагмент, що оновлює себе поллом).
+        "calibration": machines_service.calibration_status(
+            get_machine_calibration_path(db)
+        ),
+        # Версія (mtime) фото на верстат — для мініатюри в таблиці; None = нема.
+        "machine_portrait_version": {m.id: portrait_version(m.id) for m in _machines},
+        "spool_report": (_spool_report := analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH))),
+        # "Стан системи" flow map — honest, cheap counts (one scalar each).
+        # No export-folder scan here; that's the heavy walk we keep off page load.
+        "state_nodes": [
+            {
+                "n": db.scalar(
+                    select(func.count())
+                    .select_from(EmailMessage)
+                    .where(
+                        EmailMessage.status == "нове",
+                        EmailMessage.filter_category.is_(None),
+                    )
+                ) or 0,
+                "l": "Пошта",
+                "u": "у тріажі",
+            },
+            {"n": _spool_report.total_dirs, "l": "Спул", "u": f"{_spool_report.total_mb} МБ"},
+            {
+                "n": db.scalar(
+                    select(func.count())
+                    .select_from(Order)
+                    .where(Order.status != "видано", Order.archived_at.is_(None))
+                ) or 0,
+                "l": "Черга",
+                "u": "активні",
+            },
+            {
+                "n": db.scalar(
+                    select(func.count())
+                    .select_from(Order)
+                    .where(Order.archived_at.is_not(None))
+                ) or 0,
+                "l": "Архів",
+                "u": "робіт",
+            },
+        ],
+        "error": error or (
+            settings_flash["message"]
+            if settings_flash and settings_flash["kind"] == "error"
+            else None
+        ),
+    }
+
+    # Плити стану розділів (макет «Стенд»). Рахуються ПІСЛЯ контексту й з
+    # нього ж: жодного власного джерела правди — інакше плита й тіло
+    # розділу показували б різні числа (урок смуги печей).
+    context["slabs"] = build_slabs(db, context)
+    return templates.TemplateResponse(request, "settings.html", context)
 
 
 @router.post("/settings", response_class=HTMLResponse)
