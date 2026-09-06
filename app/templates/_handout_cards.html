@@ -47,8 +47,13 @@
            (`is-issued` + aria-expanded="false"). До 05.09.26 його ховав фільтр
            `status != "видано"`, і через це збій зі зсувом заливки був
            невидимий: двоє клієнтів «видались» самі, а екран мовчав. #}
+        {# data-client/data-day — ключі для памʼяті згортання і для пошуку по
+           клієнту (handout.js). Позиція для цього не годиться: вона зсувається
+           при зміні фільтра дня, і згорнутою «прокидалась» би чужа картка. #}
         <section class="ccard {% if group.all_found %}done{% endif %} {% if group.all_issued %}is-issued{% endif %} {% if group.issued_from_sheet %}issue-doubt{% endif %} {% if group.is_current %}current{% endif %}"
-                 id="handout-client-{{ group.position }}">
+                 id="handout-client-{{ group.position }}"
+                 data-client="{{ group.client_name }}"
+                 data-day="{{ selected_day or 'all' }}">
             <div class="card-head">
                 <button type="button" class="card-collapse" aria-expanded="{{ 'false' if group.all_issued else 'true' }}" title="Згорнути / розгорнути">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -84,8 +89,11 @@
                     {# Тихо на всіх картках, голосно лише на тій, де оператор
                        зараз: 34 бурштинові заклики одночасно ховають той один,
                        що справді потрібен. Загальний стан каже банер угорі. #}
+                    {# return_to — щоб після прив'язки оператор повернувся В ТОЙ
+                       САМИЙ день видачі, а не шукав його заново (аудит 05.09.26,
+                       UX 1.6). #}
                     <a class="bind-folder {% if group.is_current %}lead{% endif %}"
-                       href="{% if group.client_id %}/clients/{{ group.client_id }}{% else %}/clients{% endif %}">Прив'язати папку</a>
+                       href="{% if group.client_id %}/clients/{{ group.client_id }}?return_to={{ handout_return_to|urlencode }}{% else %}/clients{% endif %}">Прив'язати папку</a>
                     {% endif %}
                     {# Часткова видача — норма (CLAUDE.md §2): пічки відкриваються
                        тричі на день, тож роботи клієнта виходять партіями. Кнопка

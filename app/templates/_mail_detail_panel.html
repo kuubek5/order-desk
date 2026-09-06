@@ -100,9 +100,12 @@
                the word — and applies retroactively to the queue right now. #}
             <details class="dsec teach-filter">
                 <summary class="dlabel teach-filter-sum">Навчити фільтр за словом</summary>
-                <form method="post" action="/mail/filters" class="teach-filter-form">
+                {# Свапаємо весь блок «Навчити фільтр» на підтвердження — лист
+                   лишається відкритим (UX 1.3). Без JS форма працює як раніше. #}
+                <form method="post" action="/mail/filters" class="teach-filter-form"
+                      hx-post="/mail/filters" hx-target="closest .teach-filter" hx-swap="outerHTML">
                     <input type="hidden" name="kind" value="keyword">
-                    <input type="hidden" name="return_to" value="">
+                    <input type="hidden" name="return_to" value="letter">
                     <input type="text" name="pattern" class="suminput sm mono" placeholder="слово, напр. моделювання" aria-label="Слово, за яким фільтрувати листи" required>
                     <select name="category" class="suminput sm" aria-label="Категорія">
                         {% for cat in filter_categories %}
@@ -270,6 +273,16 @@
                     <div class="stl-gallery-stage">
                         <canvas class="stl-gallery-canvas"></canvas>
                         <div class="stl-gallery-status">Завантаження прев'ю…</div>
+                        {# Розгортання на весь екран: у тріажі модель звіряють
+                           поруч із формою, тож дефолт — вбудований вигляд, а
+                           вибір оператора запам'ятовується (stl-gallery.js). #}
+                        <button type="button" class="stl-gallery-max" aria-pressed="false"
+                                aria-label="Розгорнути на весь екран" title="Розгорнути на весь екран">
+                            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>
+                            </svg>
+                        </button>
                     </div>
                     <div class="stl-gallery-files" role="list" aria-label="STL-файли вкладення"></div>
                 </div>

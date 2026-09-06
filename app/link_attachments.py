@@ -52,6 +52,25 @@ class LinkAttachment:
     file_id: str | None = None  # Google Drive file id, when kind == "drive"
 
 
+def undownloaded_links(email) -> list["LinkAttachment"]:
+    """Посилання з листа, файли за якими ще НЕ скачано.
+
+    Одна функція на всіх, бо це число вирішує три різні речі: бейдж готовності
+    в списку тріажу, попередження в панелі листа і серверний гейт прийняття.
+    Три копії розрахунку вже розійшлися одного разу — список показував
+    «ГОТОВО» на листі, який прийняти було не можна (аудит 05.09.26, UX 1.4).
+    """
+    import json as _json
+
+    handled_raw = getattr(email, "handled_link_refs", None)
+    handled = set(_json.loads(handled_raw)) if handled_raw else set()
+    return [
+        link
+        for link in extract_download_links(getattr(email, "body_text", "") or "")
+        if (link.file_id or link.url) not in handled
+    ]
+
+
 def _host_allowed(url: str) -> bool:
     host = (urlsplit(url).hostname or "").lower()
     return host in _ALLOWED_HOSTS or any(host.endswith(s) for s in _ALLOWED_SUFFIXES)

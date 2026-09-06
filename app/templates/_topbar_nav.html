@@ -217,6 +217,13 @@
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" class="duo"/><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
             <span class="rail-label">Пошук</span>
         </a>
+        {# Журнал дій існував лише в підменю налаштувань — тобто оператор,
+           якому треба «хто це зробив», мусив знати, що шукати його там
+           (аудит 05.09.26, UX 1.8). #}
+        <a href="/journal" class="rail-nav-item{% if topbar_active == 'journal' %} is-active{% endif %}"{% if topbar_active == 'journal' %} aria-current="page"{% endif %}>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h13l3 3v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" class="duo"/><path d="M4 4h13l3 3v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+            <span class="rail-label">Журнал дій</span>
+        </a>
         <a href="/stats" class="rail-nav-item{% if topbar_active == 'stats' %} is-active{% endif %}"{% if topbar_active == 'stats' %} aria-current="page"{% endif %}>
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V5M16 20v-7M22 20H2"/></svg>
             <span class="rail-label">Статистика</span>
@@ -249,10 +256,23 @@
     {% if user.role == 'адмін' and update %}
     <div class="rail-update-notice">
         <p>Доступне оновлення <strong>v{{ update.version }}</strong></p>
-        <form method="post" action="/settings/update/install">
+        {# data-busy: скільки операторів щось робили за останні пів години —
+           перезапуск обірве їхню роботу (UX 1.10). Підтвердження — в app.js,
+           бо саме він перехоплює сабміт і показує оверлей. #}
+        <form method="post" action="/settings/update/install" data-busy="{{ busy_operators() }}">
             <button type="submit" class="rail-update-install-button">Встановити</button>
         </form>
         <a href="{{ update.html_url }}" target="_blank" rel="noopener">Деталі релізу</a>
+    </div>
+    {% endif %}
+
+    {# Стан синку — на КОЖНОМУ екрані, а не лише на Черзі: пауза чи «немає
+       відповіді» однаково важливі на Видачі й у Пошті (UX 1.8). На самій
+       Черзі не дублюємо — там той самий партіал стоїть у шапці, і два полли
+       кожні 3 с ходили б за одним і тим самим. #}
+    {% if topbar_active != 'queue' %}
+    <div class="rail-sync">
+        {% include "_sync_indicator.html" %}
     </div>
     {% endif %}
 

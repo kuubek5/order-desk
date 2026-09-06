@@ -33,6 +33,7 @@ from app.link_attachments import (
     LinkDownloadError,
     download_link,
     extract_download_links,
+    undownloaded_links,
 )
 from app.mail_export import (
     list_client_folders,
@@ -434,12 +435,9 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
         "material_folder": "",
         "material_cands": material_candidates(seed, _lab_material_colors(db)),
         "body_links": extract_download_links(email.body_text),
-        "undownloaded_links": [
-            dl for dl in extract_download_links(email.body_text)
-            if (dl.file_id or dl.url) not in (
-                set(json.loads(email.handled_link_refs)) if email.handled_link_refs else set()
-            )
-        ],
+        # Один розрахунок на бейдж списку, панель і гейт прийняття —
+        # link_attachments.undownloaded_links (аудит 05.09.26, UX 1.4).
+        "undownloaded_links": undownloaded_links(email),
         "handled_link_refs": set(json.loads(email.handled_link_refs)) if email.handled_link_refs else set(),
         # Any ZIP/RAR still sitting among the attachments (auto-unpack failed or
         # is off) → offer the manual «Розпакувати» reserve button.
@@ -706,6 +704,27 @@ def mail_wizard(
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")
 
+    ctx = _wizard_context(
+        db, user, email, step,
+        client_name=client_name, material_color=material_color, kind=kind,
+        quantity=quantity, folder_pick=folder_pick, folder_new=folder_new,
+        material_folder=material_folder, attachment_ids=attachment_ids,
+    )
+    return templates.TemplateResponse(request, "_mail_wizard.html", ctx)
+
+
+def _wizard_context(
+    db: Session, user, email: EmailMessage, step: int, *,
+    client_name: str = "", material_color: str = "", kind: str = "",
+    quantity: str = "", folder_pick: str = "", folder_new: str = "",
+    material_folder: str = "", attachment_ids: list[int] | None = None,
+    error: str = "",
+) -> dict:
+    """Контекст одного кроку візарда — окремо від роуту, бо його рендерить не
+    лише сам візард: прийняття, що не пройшло, повертає ТОЙ САМИЙ крок 3 з
+    поясненням, замість того щоб редіректом викинути оператора зі сторінки й
+    стерти все введене (аудит 05.09.26, UX 1.2)."""
+    attachment_ids = list(attachment_ids or [])
     step = max(1, min(3, step))
     known = _lab_material_colors(db)
     # Candidates from the operator's current material text, or the recognised
@@ -748,12 +767,9 @@ def mail_wizard(
         # Крок 3 мусить бачити те саме, що й картка листа: без цього ключа
         # попередження про нескачані файли за посиланням фізично не могло
         # відрендеритись, бо візард будується не з _mail_panel_context.
-        "undownloaded_links": [
-            link
-            for link in extract_download_links(email.body_text)
-            if (link.file_id or link.url)
-            not in (set(json.loads(email.handled_link_refs)) if email.handled_link_refs else set())
-        ],
+        "undownloaded_links": undownloaded_links(email),
+        # Порожній рядок — банера немає; шаблон малює його лише коли є текст.
+        "error": error,
         **_email_partial_state(db, email),
     }
     # Files that will move in THIS batch: the operator's selection, or all
@@ -769,7 +785,7 @@ def mail_wizard(
         ctx["existing_folders"] = list_client_folders(export_root)
         ctx["attachment_count"] = ctx["batch_count"]
 
-    return templates.TemplateResponse(request, "_mail_wizard.html", ctx)
+    return ctx
 
 
 @router.post("/mail/{email_id}/open-folder", status_code=204)
@@ -980,6 +996,32 @@ async def accept_email(
         raise HTTPException(status_code=404, detail="email not found")
     if email.status != "нове":
         raise HTTPException(status_code=409, detail="лист уже оброблено")
+
+    def _accept_failed(message: str):
+        """Помилка прийняття — НАЗАД у крок 3, а не редіректом зі сторінки.
+
+        Візард живе у фрагменті `#mail-wizard`, і редірект на
+        `/mail/{id}?error=…` перезавантажував увесь екран: усе, що оператор
+        заповнив у трьох кроках, зникало, а лист доводилось відкривати заново
+        (аудит 05.09.26, UX 1.2). Тепер повертаємо той самий крок із тими ж
+        значеннями і поясненням угорі. Не-HTMX виклик (форма без JS) лишається
+        на старому редіректі — там фрагмент нікуди вставити.
+        """
+        if not _is_htmx(request):
+            return RedirectResponse(
+                f"/mail/{email.id}?error={quote(message)}", status_code=303
+            )
+        return templates.TemplateResponse(
+            request, "_mail_wizard.html",
+            _wizard_context(
+                db, user, email, 3,
+                client_name=client_name, material_color=material_color, kind=kind,
+                quantity=quantity, folder_pick=folder_pick, folder_new=folder_new,
+                material_folder=material_folder, attachment_ids=attachment_ids,
+                error=message,
+            ),
+        )
+
     if email.attachments_status == "pending":
         # Attachments are still downloading (two-phase fetch, see
         # app.mail_reader.fetch_new_emails). Accepting now would create an
@@ -987,10 +1029,7 @@ async def accept_email(
         # (blocking any later retry via the status guard above), and orphan
         # the files phase 2 saves afterward — there's no code path left that
         # would ever move them into export. Refuse instead of losing files.
-        return RedirectResponse(
-            f"/mail/{email.id}?error={quote('Вкладення ще завантажуються, зачекайте і спробуйте ще раз')}",
-            status_code=303,
-        )
+        return _accept_failed("Вкладення ще завантажуються, зачекайте і спробуйте ще раз")
 
     # Файли за посиланням (Drive, ukr.net) не є вкладеннями листа, тому
     # attachments_status їх не бачить: лист зі статусом «skipped» і трьома STL
@@ -998,21 +1037,11 @@ async def accept_email(
     # Оператор бере її в Sum3D, файлів немає, а лист уже в архіві. Гейт на
     # клієнті обходиться, тому він мусить бути й тут; свідоме «однаково
     # прийняти» проходить через accept_anyway.
-    _handled_raw = getattr(email, "handled_link_refs", None)
-    _handled = set(json.loads(_handled_raw)) if _handled_raw else set()
-    unfetched = [
-        link
-        for link in extract_download_links(getattr(email, "body_text", "") or "")
-        if (link.file_id or link.url) not in _handled
-    ]
+    unfetched = undownloaded_links(email)
     if unfetched and not accept_anyway:
-        return RedirectResponse(
-            f"/mail/{email.id}?error="
-            + quote(
-                f"Ще {len(unfetched)} файл(ів) за посиланням не скачано — "
-                "скачайте у вкладці «Файли + STL» або підтвердіть прийняття без них"
-            ),
-            status_code=303,
+        return _accept_failed(
+            f"Ще {len(unfetched)} файл(ів) за посиланням не скачано — "
+            "скачайте у вкладці «Файли + STL» або підтвердіть прийняття без них"
         )
 
     # Which dated tab does this order belong to? The lab often works a day or
@@ -1124,10 +1153,7 @@ async def accept_email(
             remember_sender(db, email, new_order.client_name or "", used_folder)
         except (OSError, ValueError) as exc:
             db.rollback()
-            return RedirectResponse(
-                f"/mail/{email.id}?error={quote('Не вдалося зберегти вкладення: ' + str(exc))}",
-                status_code=303,
-            )
+            return _accept_failed("Не вдалося зберегти вкладення: " + str(exc))
 
     # Mirrors the pricing placeholder line operators already write into the
     # shared sheet by hand for phone/email orders (CLAUDE.md section 2:
@@ -1210,10 +1236,7 @@ async def accept_email(
                 ". УВАГА: частину файлів не вдалося повернути в лист — "
                 + "; ".join(undo_errors)
             )
-        return RedirectResponse(
-            f"/mail/{email.id}?error={quote('Не вдалося зберегти прийняття: ' + detail)}",
-            status_code=303,
-        )
+        return _accept_failed("Не вдалося зберегти прийняття: " + detail)
 
     # A truthful outcome toast, shown on the page we land on (session flash →
     # base.html). Reports exactly what happened: how many files were saved this
@@ -1335,6 +1358,37 @@ def _mail_filter_categories(db: Session) -> list[str]:
     return list(names) or list(_DEFAULT_FILTER_CATEGORIES)
 
 
+def _filters_panel_response(
+    request: Request, db: Session, return_to: str, *, error: str = ""
+):
+    """Панель фільтрів як фрагмент — відповідь на будь-яку дію з нею по HTMX.
+
+    До аудиту 05.09.26 (UX 1.3) кожна кнопка тут була звичайною формою з
+    редіректом: створення правила з тріажу перекидало на іншу вкладку, і лист,
+    заради якого правило й створювали, доводилось шукати заново. Тепер
+    оновлюється сама панель, а екран лишається на місці.
+    """
+    return templates.TemplateResponse(
+        request,
+        "_mail_filter_panel.html",
+        {
+            "filter_rules": db.scalars(
+                select(MailFilterRule).order_by(MailFilterRule.id.desc())
+            ).all(),
+            "filter_categories": _mail_filter_categories(db),
+            "filter_category_rows": db.scalars(
+                select(MailFilterCategory).order_by(MailFilterCategory.id.asc())
+            ).all(),
+            "return_to": return_to,
+            "filter_panel_error": error,
+        },
+    )
+
+
+def _is_htmx(request: Request) -> bool:
+    return (getattr(request, "headers", {}) or {}).get("HX-Request") == "true"
+
+
 def _filters_return_url(return_to: str) -> str:
     """Where a filter-rule/category action lands: the settings section when the
     form lives there, the filtered tab otherwise."""
@@ -1387,9 +1441,11 @@ def create_mail_filter(
     pattern = pattern.strip()
     category = category.strip()
     if kind not in ("keyword", "sender") or not pattern or not category:
+        message = "Правило: вкажіть тип, шаблон і категорію"
+        if _is_htmx(request):
+            return _filters_panel_response(request, db, return_to, error=message)
         return RedirectResponse(
-            f"/mail?view=filtered&error={quote('Правило: вкажіть тип, шаблон і категорію')}",
-            status_code=303,
+            f"/mail?view=filtered&error={quote(message)}", status_code=303,
         )
 
     rule = MailFilterRule(
@@ -1398,9 +1454,24 @@ def create_mail_filter(
     )
     db.add(rule)
     db.flush()
-    apply_rule_retroactively(db, rule)
+    moved = apply_rule_retroactively(db, rule)
     db.commit()
 
+    # «Навчити фільтр» тиснуть, стоячи в самому листі. Відповідь — підтвердження
+    # на місці блоку, а не редірект на іншу вкладку (аудит 05.09.26, UX 1.3).
+    if return_to == "letter" and _is_htmx(request):
+        return templates.TemplateResponse(
+            request, "_mail_filter_taught.html",
+            {
+                "user": user,
+                "taught_pattern": pattern,
+                "taught_category": category,
+                "taught_hits": moved if isinstance(moved, int) else None,
+            },
+        )
+
+    if _is_htmx(request):
+        return _filters_panel_response(request, db, return_to)
     return RedirectResponse(_filters_return_url(return_to), status_code=303)
 
 
@@ -1432,8 +1503,11 @@ def edit_mail_filter(
     pattern = pattern.strip()
     category = category.strip()
     if kind not in ("keyword", "sender") or not pattern or not category:
+        message = "Правило: вкажіть тип, шаблон і категорію"
+        if _is_htmx(request):
+            return _filters_panel_response(request, db, return_to, error=message)
         return RedirectResponse(
-            f"{_filters_return_url(return_to)}&error={quote('Правило: вкажіть тип, шаблон і категорію')}"
+            f"{_filters_return_url(return_to)}&error={quote(message)}"
             if return_to != "settings"
             else _filters_return_url(return_to),
             status_code=303,
@@ -1444,6 +1518,8 @@ def edit_mail_filter(
     rule.category = category
     apply_rule_retroactively(db, rule)
     db.commit()
+    if _is_htmx(request):
+        return _filters_panel_response(request, db, return_to)
     return RedirectResponse(_filters_return_url(return_to), status_code=303)
 
 
@@ -1466,6 +1542,8 @@ def create_filter_category(
     ):
         db.add(MailFilterCategory(name=name))
         db.commit()
+    if _is_htmx(request):
+        return _filters_panel_response(request, db, return_to)
     return RedirectResponse(_filters_return_url(return_to), status_code=303)
 
 
@@ -1503,6 +1581,8 @@ def rename_filter_category(
             .values(filter_category=new_name)
         )
         db.commit()
+    if _is_htmx(request):
+        return _filters_panel_response(request, db, return_to)
     return RedirectResponse(_filters_return_url(return_to), status_code=303)
 
 
@@ -1531,15 +1611,20 @@ def delete_filter_category(
         )
     ) or 0
     if in_use:
+        message = "Категорію використовують правила — спершу змініть їх"
+        if _is_htmx(request):
+            return _filters_panel_response(request, db, return_to, error=message)
         target = _filters_return_url(return_to)
         sep = "&" if "?" in target else "?"
         return RedirectResponse(
-            f"{target}{sep}error={quote('Категорію використовують правила — спершу змініть їх')}"
+            f"{target}{sep}error={quote(message)}"
             if return_to != "settings" else target,
             status_code=303,
         )
     db.delete(cat)
     db.commit()
+    if _is_htmx(request):
+        return _filters_panel_response(request, db, return_to)
     return RedirectResponse(_filters_return_url(return_to), status_code=303)
 
 
@@ -1590,6 +1675,8 @@ def toggle_mail_filter(
         raise HTTPException(status_code=404, detail="rule not found")
     rule.enabled = not rule.enabled
     db.commit()
+    if _is_htmx(request):
+        return _filters_panel_response(request, db, return_to)
     return RedirectResponse(_filters_return_url(return_to), status_code=303)
 
 
@@ -1619,6 +1706,8 @@ def delete_mail_filter(
     )
     db.delete(rule)
     db.commit()
+    if _is_htmx(request):
+        return _filters_panel_response(request, db, return_to)
     return RedirectResponse(_filters_return_url(return_to), status_code=303)
 
 

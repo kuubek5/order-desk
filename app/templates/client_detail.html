@@ -12,6 +12,11 @@
 
 <main class="worldv2">
     <div class="detail-header">
+        {# Прийшли з видачі — повертаємо ТУДИ ж, у той самий день (UX 1.6).
+           Інакше після прив'язки папки оператор шукав свій день заново. #}
+        {% if return_to %}
+        <a href="{{ return_to }}" class="detail-back">← До видачі</a>
+        {% endif %}
         <a href="/clients" class="detail-back">← До клієнтів</a>
         <a href="/stats" class="detail-back">Статистика</a>
     </div>
@@ -47,6 +52,7 @@
            видача пише «папку не знайдено автоматично» і STL-превʼю показувати
            нічого. Підказки — ті самі нечіткі кандидати, що рахує видача. #}
         <form method="post" action="/clients/{{ client.id }}/folder" class="mail-form folder-bind">
+            {% if return_to %}<input type="hidden" name="return_to" value="{{ return_to }}">{% endif %}
             <div class="form-group">
                 <label for="export_folder_name">Папка робіт на диску</label>
                 <input type="text" id="export_folder_name" name="export_folder_name" class="form-input mono"
@@ -76,23 +82,7 @@
             <button type="submit" class="form-submit">Зберегти папку</button>
         </form>
 
-        <form method="post" action="/clients/{{ client.id }}" class="mail-form">
-            <div class="form-group">
-                <label for="phone">Телефон</label>
-                <input type="text" id="phone" name="phone" class="form-input" value="{{ client.phone or '' }}" placeholder="+380...">
-            </div>
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" class="form-input" value="{{ client.email or '' }}" placeholder="client@example.com">
-            </div>
-            <div class="form-group">
-                <label for="notes">Нотатки</label>
-                <textarea id="notes" name="notes" class="form-input" rows="3" placeholder="довільні нотатки оператора">{{ client.notes or '' }}</textarea>
-            </div>
-            <div class="form-actions">
-                <button type="submit" class="form-submit">Зберегти контакти</button>
-            </div>
-        </form>
+        {% include "_client_contacts.html" %}
     </div>
 
     <!-- Materials breakdown -->

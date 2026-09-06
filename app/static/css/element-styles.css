@@ -219,3 +219,50 @@ html[data-chips="gradient"] .status-badge,
 .ldsw[data-loader-sample]:not([data-loader-sample=""]) .mill-spin { display: none; },
 .acc-live[data-loader-sample]:not([data-loader-sample=""]) .mill-spin { display: none; }
 @media (prefers-reduced-motion: reduce) { .ldsw .mill-spin { animation: none } }
+
+/* ══ ГЛОБАЛЬНИЙ ІНДИКАТОР ЗАЙНЯТОСТІ ═════════════════════════════════════
+   Аудит 05.09.26 (UX 1.1): «працюю» показували 8 кнопок із ~92. Оператор
+   тиснув, нічого не змінювалось — і тиснув ще раз. Тепер БУДЬ-ЯКИЙ елемент,
+   що чекає відповідь, тьмяніє й перестає приймати кліки, без жодної правки
+   розмітки: HTMX сам вішає .htmx-request на елемент, що зробив запит.
+
+   Три виключення, кожне свідоме:
+   · [hx-trigger*="every"] — полли (черга 15 с, індикатор синку 3 с, печі,
+     верстати). Вони не дія оператора; блимання кожні кілька секунд зробило б
+     екран нервовим — саме та «декоративна анімація», якої §8 не хоче.
+   · .htmx-indicator і *-spinner — це САМІ індикатори (окремі спінери в
+     налаштуваннях). Тьмянити індикатор — безглуздя.
+   · затримка 120 мс: локальна відповідь приходить швидше, ніж око встигає
+     помітити, тож швидкі дії не блимають узагалі. */
+.htmx-request:not([hx-trigger*="every"]):not(.htmx-indicator):not([id$="-spinner"]):not(.check-spinner) {
+  opacity: .55;
+  cursor: progress;
+  /* Другий клік по кнопці, що вже працює, давав дубль дії (і дубль рядка в
+     таблиці). Поки триває запит — елемент кліків не приймає. */
+  pointer-events: none;
+  transition: opacity .12s linear .12s;
+}
+
+/* Кнопкам — ще й кільце, що крутиться: тьмяність каже «зайнято», кільце
+   каже «жива, не зависла». Тільки ::after, тому розмітка не змінюється. */
+button.htmx-request::after,
+.btn.htmx-request::after,
+[role="button"].htmx-request::after {
+  content: "";
+  display: inline-block;
+  width: .72em;
+  height: .72em;
+  margin-inline-start: .5em;
+  vertical-align: -.08em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: htmxBusySpin .7s linear infinite;
+}
+@keyframes htmxBusySpin { to { transform: rotate(360deg) } }
+
+@media (prefers-reduced-motion: reduce) {
+  button.htmx-request::after,
+  .btn.htmx-request::after,
+  [role="button"].htmx-request::after { animation: none; opacity: .6 }
+}

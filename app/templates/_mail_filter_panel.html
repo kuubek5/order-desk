@@ -2,7 +2,14 @@
    «Відфільтровані» tab and the settings screen's «Фільтри пошти» section.
    Needs: filter_rules, filter_categories, and return_to ("" → back to the
    filtered tab, "settings" → back to /settings#mail-filters). #}
-<div class="filter-rules">
+{# Кожна дія свапає ПАНЕЛЬ ЦІЛКОМ, не окремий рядок: тут вісім кнопок, і
+   вісім різних цілей розійшлися б із першою ж правкою. Панель мала —
+   перемалювати її дешевше, ніж тримати вісім контрактів (аудит 05.09.26,
+   UX 1.3). Без JS форми лишаються звичайними: `action` на місці. #}
+<div class="filter-rules" id="mail-filter-panel">
+    {% if filter_panel_error %}
+    <div class="wiz-error" role="alert">{{ filter_panel_error }}</div>
+    {% endif %}
     <div class="dsec">
         <div class="dlabel">Правила фільтрації</div>
         {% if filter_rules %}
@@ -20,7 +27,8 @@
                 </summary>
                 {# Inline edit: change pattern/category/kind in place — no more
                    delete-and-recreate. Re-applies retroactively on save. #}
-                <form method="post" action="/mail/filters/{{ rule.id }}/edit" class="rule-edit">
+                <form method="post" action="/mail/filters/{{ rule.id }}/edit" class="rule-edit"
+                      hx-post="/mail/filters/{{ rule.id }}/edit" hx-target="#mail-filter-panel" hx-swap="outerHTML">
                     <input type="hidden" name="return_to" value="{{ return_to }}">
                     <select name="kind" class="suminput sm" aria-label="Тип правила">
                         <option value="keyword" {% if rule.kind == 'keyword' %}selected{% endif %}>Слово в темі/тексті</option>
@@ -37,8 +45,14 @@
                     </select>
                     <div class="rule-edit-actions">
                         <button type="submit" class="btn sm primary">Зберегти</button>
-                        <button type="submit" class="btn sm" formaction="/mail/filters/{{ rule.id }}/toggle" title="{% if rule.enabled %}Правило активне — призупинити{% else %}Правило на паузі — увімкнути{% endif %}">{% if rule.enabled %}⏸ Пауза{% else %}▶ Увімкнути{% endif %}</button>
+                        <button type="submit" class="btn sm" formaction="/mail/filters/{{ rule.id }}/toggle"
+                                hx-post="/mail/filters/{{ rule.id }}/toggle" hx-include="closest form" hx-target="#mail-filter-panel" hx-swap="outerHTML"
+                                title="{% if rule.enabled %}Правило активне — призупинити{% else %}Правило на паузі — увімкнути{% endif %}">{% if rule.enabled %}⏸ Пауза{% else %}▶ Увімкнути{% endif %}</button>
+                        {# hx-confirm, не onclick: htmx не питає у onclick дозволу,
+                           тож зі свапом підтвердження мовчки зникло б. #}
                         <button type="submit" class="btn sm danger" formaction="/mail/filters/{{ rule.id }}/delete"
+                                hx-post="/mail/filters/{{ rule.id }}/delete" hx-include="closest form" hx-target="#mail-filter-panel" hx-swap="outerHTML"
+                                hx-confirm="Видалити правило? Відфільтровані ним листи лишаться у вкладці «Відфільтровані»."
                                 onclick="return confirm('Видалити правило? Відфільтровані ним листи лишаться у вкладці «Відфільтровані».')">✕ Видалити</button>
                     </div>
                 </form>
@@ -52,7 +66,7 @@
 
     <div class="dsec">
         <div class="dlabel">Нове правило</div>
-        <form method="post" action="/mail/filters" class="rule-new">
+        <form method="post" action="/mail/filters" class="rule-new" hx-post="/mail/filters" hx-target="#mail-filter-panel" hx-swap="outerHTML">
             <input type="hidden" name="return_to" value="{{ return_to }}">
             <select name="kind" class="suminput" aria-label="Тип правила">
                 <option value="keyword">Слово в темі/тексті</option>
@@ -73,7 +87,8 @@
         <div class="dlabel">Категорії</div>
         <div class="catlist">
             {% for cat in filter_category_rows %}
-            <form method="post" action="/mail/filter-categories/{{ cat.id }}/rename" class="catrow">
+            <form method="post" action="/mail/filter-categories/{{ cat.id }}/rename" class="catrow"
+                  hx-post="/mail/filter-categories/{{ cat.id }}/rename" hx-target="#mail-filter-panel" hx-swap="outerHTML">
                 <input type="hidden" name="return_to" value="{{ return_to }}">
                 <input type="text" name="name" class="suminput sm" value="{{ cat.name }}" aria-label="Назва категорії">
                 <button type="submit" class="btn sm" title="Перейменувати (оновить правила й листи)">Зберегти</button>
@@ -81,12 +96,15 @@
                    безпеки не може мати двох трактувань за 8 px одне від одного,
                    тим паче що поруч стоїть «Зберегти». #}
                 <button type="submit" class="btn sm danger" formaction="/mail/filter-categories/{{ cat.id }}/delete"
+                        hx-post="/mail/filter-categories/{{ cat.id }}/delete" hx-include="closest form" hx-target="#mail-filter-panel" hx-swap="outerHTML"
+                        hx-confirm="Видалити категорію «{{ cat.name }}»?"
                         onclick="return confirm('Видалити категорію «{{ cat.name }}»?')"
                         title="Видалити (лише якщо не використовується правилами)">✕</button>
             </form>
             {% endfor %}
         </div>
-        <form method="post" action="/mail/filter-categories" class="catrow cat-new">
+        <form method="post" action="/mail/filter-categories" class="catrow cat-new"
+              hx-post="/mail/filter-categories" hx-target="#mail-filter-panel" hx-swap="outerHTML">
             <input type="hidden" name="return_to" value="{{ return_to }}">
             <input type="text" name="name" class="suminput sm" placeholder="нова категорія…" required>
             <button type="submit" class="btn sm primary">Додати</button>

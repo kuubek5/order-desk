@@ -135,10 +135,22 @@ def _day_orders(archived: list[Order], selected_date: date) -> list[Order]:
     )
 
 
+# Порожня відповідь на невалідний параметр показувала порожнє місце: HTMX не
+# свапає 4xx узагалі, тож оператор бачив, що «нічого не сталось», і тиснув ще
+# раз. Тепер це 200 із поясненням — стан «зрозуміли запит, показати нема чого»
+# (аудит 05.09.26, UX 1.9).
+def _archive_notice(text: str) -> HTMLResponse:
+    return HTMLResponse(f'<div class="arch-empty" role="status">{text}</div>')
+
+
 @router.get("/archive", response_class=HTMLResponse)
-def get_archive(request: Request, db: Session = Depends(get_db)):
+def get_archive(request: Request, month: str = "", date: str = "", db: Session = Depends(get_db)):
     """Оболонка архіву: ліва рейка місяців + права панель з уже розкритим
-    найсвіжішим місяцем. Далі рівні підмінює HTMX, сторінка не перезавантажується."""
+    місяцем. Далі рівні підмінює HTMX, сторінка не перезавантажується.
+
+    `month`/`date` в адресі — те, що записує `hx-push-url`: перезавантаження
+    сторінки, «назад» у браузері й надіслане колезі посилання відкривають той
+    самий місяць і день, а не найсвіжіший (аудит 05.09.26, UX 1.9)."""
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
@@ -153,9 +165,16 @@ def get_archive(request: Request, db: Session = Depends(get_db)):
         "months": months,
     }
     if months:
-        year, mon = parse_archive_month(months[0]["ym"])
+        known = {m["ym"] for m in months}
+        wanted = month if month in known else months[0]["ym"]
+        year, mon = parse_archive_month(wanted)
         base.update(_month_detail_ctx(year, mon, day_counts, month_counts))
-        base["active_ym"] = months[0]["ym"]
+        base["active_ym"] = wanted
+        selected_date = parse_sheet_tab(date) if date else None
+        if selected_date is not None:
+            base["selected_date"] = selected_date
+            base["day_label"] = selected_date.strftime("%d.%m.%Y")
+            base["day_orders"] = _day_orders(archived, selected_date)
     return templates.TemplateResponse(request, "archive.html", base)
 
 
@@ -172,7 +191,7 @@ def get_archive_detail(
 
     parsed = parse_archive_month(month)
     if parsed is None:
-        return HTMLResponse("", status_code=400)
+        return _archive_notice("Місяць не розпізнано — оберіть його в списку ліворуч.")
     _, day_counts, month_counts = _load_archived(db)
     year, mon = parsed
     ctx = {"user": user, **_month_detail_ctx(year, mon, day_counts, month_counts)}
@@ -192,7 +211,7 @@ def get_archive_day(
 
     selected_date = parse_sheet_tab(date_param) if date_param else None
     if selected_date is None:
-        return HTMLResponse("", status_code=400)
+        return _archive_notice("Дату не розпізнано — оберіть день у календарі.")
     archived, _, _ = _load_archived(db)
     ctx = {
         "user": user,

@@ -1,0 +1,24 @@
+{# Контакти клієнта окремим фрагментом: збереження свапає саме його, а не
+   перезавантажує сторінку (аудит 05.09.26, UX 1.3). Без JS форма лишається
+   звичайною — `action` на місці, редірект той самий. #}
+<form method="post" action="/clients/{{ client.id }}" class="mail-form" id="client-contacts"
+      hx-post="/clients/{{ client.id }}" hx-target="#client-contacts" hx-swap="outerHTML">
+    {% if contacts_saved %}
+    <p class="settings-hint" role="status">Контакти збережено</p>
+    {% endif %}
+    <div class="form-group">
+        <label for="phone">Телефон</label>
+        <input type="text" id="phone" name="phone" class="form-input" value="{{ client.phone or '' }}" placeholder="+380...">
+    </div>
+    <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" class="form-input" value="{{ client.email or '' }}" placeholder="client@example.com">
+    </div>
+    <div class="form-group">
+        <label for="notes">Нотатки</label>
+        <textarea id="notes" name="notes" class="form-input" rows="3" placeholder="довільні нотатки оператора">{{ client.notes or '' }}</textarea>
+    </div>
+    <div class="form-actions">
+        <button type="submit" class="form-submit">Зберегти контакти</button>
+    </div>
+</form>

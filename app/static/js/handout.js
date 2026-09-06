@@ -92,3 +92,110 @@ document.addEventListener("click", (event) => {
       if (window.showToast) window.showToast("Не вдалось зберегти розкладку", "error");
     });
 });
+
+// ── Памʼять згортання карток (аудит 05.09.26, UX 1.6) ───────────────────
+// Кожна галочка «знайдено» підмінює весь `#handout-list` через HTMX, тож
+// клас `.is-collapsed`, поставлений рукою, зникав разом зі старим DOM: усе,
+// що оператор згорнув за ранок, розгорталося назад після КОЖНОЇ галочки.
+// Ключ — клієнт + день, а не позиція в списку: позиція зсувається при зміні
+// фільтра дня, і згорнутою «прокидалась» би чужа картка.
+const HANDOUT_COLLAPSE_PREFIX = "handout:collapsed:";
+
+function handoutCollapseKey(card) {
+  const client = card.dataset.client || "";
+  const day = card.dataset.day || "all";
+  if (!client) return null;
+  return HANDOUT_COLLAPSE_PREFIX + client + ":" + day;
+}
+
+function saveHandoutCollapsed(card, collapsed) {
+  const key = handoutCollapseKey(card);
+  if (!key) return;
+  try {
+    // Записуємо тільки згорнуті. Розгорнута картка — стан за замовчуванням,
+    // і зберігати його означало б засмічувати сховище на кожного клієнта.
+    if (collapsed) window.localStorage.setItem(key, "1");
+    else window.localStorage.removeItem(key);
+  } catch (_) {
+    /* private mode / storage disabled */
+  }
+}
+
+function restoreHandoutCollapsed() {
+  document.querySelectorAll(".ccard[data-client]").forEach((card) => {
+    const key = handoutCollapseKey(card);
+    if (!key) return;
+    let saved = null;
+    try {
+      saved = window.localStorage.getItem(key);
+    } catch (_) {
+      return;
+    }
+    // Нічого не збережено — лишаємо серверний стан (виданий клієнт приходить
+    // згорнутим сам).
+    if (saved === null) return;
+    const collapsed = saved === "1";
+    card.classList.toggle("is-collapsed", collapsed);
+    const toggle = card.querySelector(".card-collapse");
+    if (toggle) toggle.setAttribute("aria-expanded", String(!collapsed));
+  });
+}
+
+document.addEventListener("click", (event) => {
+  const toggle = event.target.closest(".card-collapse");
+  if (!toggle) return;
+  const card = toggle.closest(".ccard");
+  // Сам клас перемикає загальний обробник у app.js; тут лише запамʼятовуємо
+  // результат. Обидва слухають ту саму подію, тож стан уже актуальний.
+  if (card) saveHandoutCollapsed(card, card.classList.contains("is-collapsed"));
+});
+
+// ── Пошук клієнта в списку (UX 1.6) ─────────────────────────────────────
+// Чисто клієнтський фільтр: ховає картки, що не збіглись, і НЕ чіпає порядок
+// решти — правило №1 видачі (порядок фіксується на початку дня, жодного
+// авто-пересортування під руками).
+function applyHandoutFilter() {
+  const input = document.getElementById("handout-find");
+  if (!input) return;
+  const needle = input.value.trim().toLowerCase();
+  const counter = document.getElementById("handout-find-count");
+  let shown = 0;
+  let total = 0;
+  document.querySelectorAll(".ccard[data-client]").forEach((card) => {
+    total += 1;
+    const name = (card.dataset.client || "").toLowerCase();
+    const match = !needle || name.includes(needle);
+    card.hidden = !match;
+    if (match) shown += 1;
+    // Покажчик дня ліворуч мусить ховати ті самі рядки, інакше клік по ньому
+    // веде до схованої картки.
+    const nav = document.querySelector('.daynav a[href="#' + card.id + '"]');
+    if (nav) nav.hidden = !match;
+  });
+  if (counter) {
+    counter.hidden = !needle;
+    counter.textContent = needle ? shown + " з " + total : "";
+  }
+}
+
+document.addEventListener("input", (event) => {
+  if (event.target && event.target.id === "handout-find") applyHandoutFilter();
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  restoreHandoutCollapsed();
+  applyHandoutFilter();
+});
+
+// Відновлюємо ПІСЛЯ settle, не після swap. Картка клієнта має id
+// (`handout-client-N`), а HTMX на фазі settle звіряє старий і новий вузли за
+// id і повертає їм атрибути зі свого списку — серед яких `class`. Клас
+// `.is-collapsed`, поставлений на `htmx:afterSwap`, через 20 мс мовчки
+// затирався серверним значенням, і згортання «злітало» рівно так само, як до
+// правки. Фільтр цього не помітив, бо ховає через властивість `hidden`, якої
+// в тому списку немає — саме тому симптом виглядав вибірковим.
+document.body.addEventListener("htmx:afterSettle", (event) => {
+  if (!event.target || event.target.id !== "handout-list") return;
+  restoreHandoutCollapsed();
+  applyHandoutFilter();
+});

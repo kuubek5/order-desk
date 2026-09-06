@@ -45,6 +45,29 @@
   }
   const MODEL_COLOR = stlModelColor();
 
+  // Розгортання на весь екран (аудит 05.09.26, UX 1.5). Панель прев'ю на
+  // видачі відкривається розгорнутою за замовчуванням, бо там звірка форми —
+  // єдина робота оператора. Тут інакше: тріаж — це заповнення полів ПОРУЧ із
+  // моделлю, тож автоматичний фулскрін перекривав би саму форму. Тому кнопка
+  // є, вибір запам'ятовується, але дефолт — вбудований вигляд.
+  const MAX_STORAGE_KEY = "stl-gallery-max";
+
+  function loadMaxPreference() {
+    try {
+      return window.localStorage.getItem(MAX_STORAGE_KEY) === "1";
+    } catch (_) {
+      return false; // приватний режим / сховище вимкнене
+    }
+  }
+
+  function saveMaxPreference(on) {
+    try {
+      window.localStorage.setItem(MAX_STORAGE_KEY, on ? "1" : "0");
+    } catch (_) {
+      /* просто не запам'ятаємо цю сесію */
+    }
+  }
+
   // Живі галереї цієї сторінки. HTMX не повідомляє про смерть вузла, тож
   // єдиний надійний момент прибрати — наступний свап: те, чого вже немає в
   // документі, більше ніколи не оживе.
@@ -286,6 +309,34 @@
       selectFile(index);
     });
 
+    // Розгортання на весь екран: та сама роль, що й у панелі прев'ю на видачі.
+    const maxBtn = root.querySelector(".stl-gallery-max");
+    function applyMax(on) {
+      root.classList.toggle("is-max", on);
+      if (maxBtn) {
+        maxBtn.setAttribute("aria-label", on ? "Згорнути" : "Розгорнути на весь екран");
+        maxBtn.title = maxBtn.getAttribute("aria-label");
+        maxBtn.setAttribute("aria-pressed", on ? "true" : "false");
+      }
+      resizeRenderer();
+    }
+    if (maxBtn) {
+      maxBtn.addEventListener("click", () => {
+        const on = !root.classList.contains("is-max");
+        applyMax(on);
+        saveMaxPreference(on);
+      });
+      applyMax(loadMaxPreference());
+    }
+    // Esc виходить із фулскріна, але вибір НЕ переписує: це разове «згорнути
+    // зараз», а не зміна звички (той самий контракт, що в stl-preview.js).
+    function onKeydown(event) {
+      if (event.key !== "Escape") return;
+      if (!root.classList.contains("is-max")) return;
+      applyMax(false);
+    }
+    document.addEventListener("keydown", onKeydown);
+
     // Keep the render crisp when the layout width changes.
     let resizeObserver = null;
     if (typeof ResizeObserver !== "undefined") {
@@ -311,6 +362,7 @@
         listController.abort();
         if (resizeObserver) resizeObserver.disconnect();
         else window.removeEventListener("resize", resizeRenderer);
+        document.removeEventListener("keydown", onKeydown);
         clearMesh();
         state.geometryCache.forEach((geometry) => {
           geometry.dispose && geometry.dispose();

@@ -32,7 +32,8 @@
             {% for m in months %}
             <a class="arch-month {% if m.ym == active_ym %}on{% endif %}" data-ym="{{ m.ym }}"
                href="/archive?month={{ m.ym }}"
-               hx-get="/archive/detail?month={{ m.ym }}" hx-target="#arch-detail" hx-swap="innerHTML">
+               hx-get="/archive/detail?month={{ m.ym }}" hx-target="#arch-detail" hx-swap="innerHTML"
+               hx-push-url="/archive?month={{ m.ym }}">
                 <div class="am-info">
                     <div class="am-label">{{ m.label }}</div>
                     <div class="am-count mono">{{ m.count }}</div>

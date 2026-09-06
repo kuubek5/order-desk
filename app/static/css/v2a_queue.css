@@ -511,6 +511,9 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
 .q2 .badge{font-size:var(--fs-0);padding:1px 7px;border-radius:5px;font-weight:500}
 .q2 .badge.problem{background:rgba(var(--alarm-rgb), .14);color:var(--alarm);border:1px solid rgba(var(--alarm-rgb), .3)}
 .q2 .badge.redo{background:rgba(var(--warn-rgb), .13);color:var(--warn);border:1px solid rgba(var(--warn-rgb), .3)}
+/* «архів» — рядок архівної роботи в /search: показуємо, чому в ньому нема
+   полів і дій (UX 1.7). Тихий, без кольору стану: це не сигнал, а мітка. */
+.q2 .badge.arch{background:var(--raise);color:var(--ink-3);border:1px solid var(--line)}
 .q2 .sync-warning{color:var(--warn);margin-left:5px;display:inline-flex;vertical-align:middle}
 .q2 .sync-warning svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7}
 
@@ -1005,3 +1008,17 @@ body.sum3d-panel-open .q2 .s3t-panel{display:flex}
   .q2 .sysload.pulse{animation:none}
   .q2 .sysload .bar i{transition:none}
 }
+
+/* Меню «⋯» рядка черги (UX 1.7): статус як дія рядка, без повернення колонки.
+   Поводиться як кнопка видалення поруч — тихе, доки на рядок не навели. */
+.q2 .rowmenu{position:relative;display:inline-block}
+.q2 .rowmenu-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;color:var(--ink-3);cursor:pointer;opacity:0;list-style:none;transition:opacity .12s ease,color .12s ease,background .12s ease}
+.q2 .rowmenu-btn::-webkit-details-marker{display:none}
+.q2 .queue-row:hover .rowmenu-btn,.q2 .rowmenu[open] .rowmenu-btn,.q2 .rowmenu-btn:focus-visible{opacity:1}
+.q2 .rowmenu-btn:hover{color:var(--ink);background:var(--raise)}
+.q2 .rowmenu-btn svg{width:16px;height:16px;fill:currentColor}
+.q2 .rowmenu-pop{position:absolute;z-index:20;top:calc(100% + 4px);left:0;min-width:190px;display:flex;flex-direction:column;gap:2px;padding:6px;border:1px solid var(--line-2);border-radius:var(--r-card);background:var(--card);box-shadow:0 16px 40px rgba(0,0,0,.45)}
+.q2 .rowmenu-h{padding:2px 8px 6px;font-size:var(--fs-0);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.q2 .rowmenu-item{padding:7px 9px;border:0;border-radius:8px;background:none;color:var(--ink-2);text-align:left;font-size:var(--fs-2);cursor:pointer}
+.q2 .rowmenu-item:hover{background:var(--raise);color:var(--ink)}
+.q2 .rowmenu-item.on{color:var(--accent-c);font-weight:600}
