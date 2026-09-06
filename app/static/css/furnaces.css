@@ -390,7 +390,7 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
    фаза найтихіша: вона пояснює паузу, а не є новиною. */
 .mc-slm{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 8px;
   font-size:var(--fs-1);color:var(--ink-2)}
-.mc-slm b{color:var(--ink-1)}
+.mc-slm b{color:var(--ink)}
 .mc-slm-ends{color:var(--ink-2)}
 .mc-slm-phase{color:var(--ink-3)}
 
