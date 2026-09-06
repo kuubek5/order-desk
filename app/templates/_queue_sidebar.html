@@ -96,6 +96,11 @@
     </div>
 
 
+    {# Збережені вигляди — власні набори фільтрів оператора. Стоять після
+       готових фільтрів і перед смугою днів: спершу «як налаштувати», потім
+       «мої готові налаштування», далі день. #}
+    {% include "_queue_views.html" %}
+
     {% if date_tabs %}
     {% set selected_value = selected_date.strftime('%d.%m.%y') if selected_date else '' %}
     <div class="date-strip" aria-label="Дні з роботами">

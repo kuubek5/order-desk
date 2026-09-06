@@ -35,7 +35,16 @@ from app.services.queue import queue_sync_summary
 # `live_sync_status` лишається доступним і як атрибут ЦЬОГО модуля: його
 # використовує роут /sheets/state нижче, а app/routers/deps.py імпортує його
 # саме звідси.
-from app.services.queue_view import build_queue_view, live_sync_status
+from app.services.queue_view import (
+    SavedViewError,
+    build_queue_view,
+    delete_view,
+    live_sync_status,
+    normalize_view_query,
+    rename_view,
+    save_view,
+    saved_views,
+)
 from app.sheet_sync_service import (
     SheetSyncError,
     header_mismatch_pending,
@@ -142,6 +151,102 @@ def set_sync_speed(request: Request, preset: str = Form(""), db: Session = Depen
             "sync_speed_active": sync_control.get_speed_preset(),
         },
     )
+
+
+def _views_panel(
+    request: Request,
+    db: Session,
+    user,
+    current: str,
+    *,
+    error: str | None = None,
+    open_form: str = "",
+    form_name: str = "",
+) -> HTMLResponse:
+    """Перемалювати смугу «Вигляди» — єдина відповідь усіх трьох дій нижче.
+
+    Свап іде outerHTML по `#queue-views`, тому сторінка не перезавантажується
+    й прокрутка черги лишається на місці. `current` — рядок фільтрів, на якому
+    оператор зараз стоїть: він приходить з форми, бо смуга не знає адреси
+    сторінки, і нормалізується тут, щоб підсвітка активного вигляду порівнювала
+    однакові форми запису.
+    """
+    return templates.TemplateResponse(
+        request,
+        "_queue_views.html",
+        {
+            "user": user,
+            "saved_views": saved_views(db, user),
+            "view_qs": normalize_view_query(current),
+            "views_error": error,
+            # Яка форма лишається розгорнутою після відповіді: "" — жодна,
+            # "new" — «Зберегти поточний», інакше id вигляду. Потрібно рівно
+            # для помилки: інакше свап зітер би набране ім'я, і оператор
+            # набирав би його заново, не зрозумівши, що саме не так.
+            "views_open_form": open_form,
+            "views_form_name": form_name,
+        },
+    )
+
+
+@router.post("/queue/views", response_class=HTMLResponse)
+def create_queue_view(
+    request: Request,
+    name: str = Form(""),
+    current: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Зберегти поточний набір фільтрів черги як іменований вигляд."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    try:
+        save_view(db, user, name, current)
+    except SavedViewError as exc:
+        return _views_panel(
+            request, db, user, current,
+            error=str(exc), open_form="new", form_name=name,
+        )
+    return _views_panel(request, db, user, current)
+
+
+@router.post("/queue/views/{view_id}/rename", response_class=HTMLResponse)
+def rename_queue_view(
+    request: Request,
+    view_id: int,
+    name: str = Form(""),
+    current: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Перейменувати свій вигляд. Чужий id сюди не пролазить — `rename_view`
+    шукає рядок разом із `user_id`."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    try:
+        rename_view(db, user, view_id, name)
+    except SavedViewError as exc:
+        return _views_panel(
+            request, db, user, current,
+            error=str(exc), open_form=str(view_id), form_name=name,
+        )
+    return _views_panel(request, db, user, current)
+
+
+@router.post("/queue/views/{view_id}/delete", response_class=HTMLResponse)
+def remove_queue_view(
+    request: Request,
+    view_id: int,
+    current: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Прибрати свій вигляд. Чужий (або вже видалений) — тихий no-op: смуга
+    просто перемальовується, бо показувати помилку за зниклий рядок нема сенсу."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    delete_view(db, user, view_id)
+    return _views_panel(request, db, user, current)
 
 
 @router.get("/search", response_class=HTMLResponse)

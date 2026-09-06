@@ -710,6 +710,51 @@ class OrderFocus(Base):
     user: Mapped["User"] = relationship("User")
 
 
+class SavedQueueView(Base):
+    """Збережений вигляд черги — набір фільтрів оператора під власною назвою.
+
+    Навіщо: оператор щоранку ставить той самий набір чіпів (день, джерело,
+    готовність, сортування) і робить чотири-п'ять кліків до першого погляду на
+    роботу. Тут набір лягає одним рядком і повертається одним кліком.
+
+    Вигляд ПРИВАТНИЙ: `user_id` входить і в ключ, і в КОЖНУ вибірку. Чужий
+    набір фільтрів у смузі був би шумом, а не підказкою — у зміні максимум
+    двоє, і в кожного своя ділянка.
+
+    Чому окрема таблиця, а не колонка в `users`: виглядів кілька, вони мають
+    порядок і перейменовуються поштучно — CSV у колонці довелося б розбирати
+    руками на кожній правці.
+
+    `query` — рівно той рядок GET-параметрів, який уже розуміє черга
+    (`period/ready/source/date/...`), а не власний паралельний формат: інакше
+    будь-яка зміна набору фільтрів тихо ламала б збережені вигляди. Невідомий
+    чи застарілий параметр відсіюється й на записі, й на читанні
+    (`app/services/queue_view.py::normalize_view_query`).
+    """
+
+    __tablename__ = "saved_queue_views"
+    __table_args__ = (
+        # Подвійний клік або друга вкладка інакше дадуть два однойменних
+        # вигляди, і оператор не відрізнить їх у смузі.
+        UniqueConstraint("user_id", "name", name="uq_saved_queue_view_user_name"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(60))
+    query: Mapped[str] = mapped_column(String(500), default="", server_default="")
+    # Порядок пігулок у смузі. Окреме поле, а не сортування за id: смуга —
+    # м'язова пам'ять, і видалення сусіда не має пересувати решту.
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Час локальний, БЕЗ server_default: на SQLite func.now() пише UTC —
+    # той самий урок, що в ShiftNote і OrderFocus.
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+
+    user: Mapped["User"] = relationship("User")
+
+
 class Feedback(Base):
     """Звернення оператора: баг, ідея або питання (форма зворотного зв'язку).
 

@@ -1025,3 +1025,75 @@ body.sum3d-panel-open .q2 .s3t-panel{display:flex}
 .q2 .rowmenu-item{padding:7px 9px;border:0;border-radius:8px;background:none;color:var(--ink-2);text-align:left;font-size:var(--fs-2);cursor:pointer}
 .q2 .rowmenu-item:hover{background:var(--raise);color:var(--ink)}
 .q2 .rowmenu-item.on{color:var(--accent-c);font-weight:600}
+
+/* ── Збережені вигляди черги (смуга фільтрів) ──────────────────────────────
+   Пігулка вигляду свідомо тихіша за .seg: це ярлик на набір фільтрів, а не
+   ще один фільтр — вона не має конкурувати очима з «Період / Джерело /
+   Готовність». Активний вигляд бере ту саму акцентну заливку, що активний
+   пункт seg, щоб «де я зараз» читалось одним словником по всій смузі.
+   Кольори — лише через var(), як вимагає тема. */
+.q2 .qviews{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.q2 .qviews .qv-list{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+/* Пігулки й форми ховаються атрибутом hidden — inline-flex нижче його б
+   переміг, тому вимикаємо явно. */
+.q2 .qviews [hidden]{display:none}
+.q2 .qv{
+  display:inline-flex;align-items:center;gap:2px;height:28px;padding:0 4px 0 0;
+  border-radius:999px;border:1px solid var(--line);background:var(--card);
+}
+.q2 .qv .qv-go{
+  display:inline-flex;align-items:center;height:26px;padding:0 4px 0 11px;
+  font-size:var(--fs-1);color:var(--ink-2);text-decoration:none;max-width:190px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  transition:color var(--ui-speed) ease;
+}
+.q2 .qv:hover{border-color:var(--line-2)}
+.q2 .qv .qv-go:hover{color:var(--ink);opacity:1}
+.q2 .qv.is-active{background:rgba(var(--accent-base-rgb), .16);border-color:rgba(var(--accent-rgb), .34)}
+.q2 .qv.is-active .qv-go{color:var(--accent-c)}
+.q2 .qv .qv-ren,.q2 .qv .qv-del{
+  appearance:none;border:0;background:transparent;padding:0;width:18px;height:18px;
+  border-radius:50%;display:grid;place-items:center;color:var(--ink-3);cursor:pointer;
+  transition:background var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.q2 .qv .qv-ren:hover{background:var(--raise);color:var(--ink)}
+.q2 .qv .qv-del:hover{background:rgba(var(--alarm-rgb), .16);color:var(--alarm)}
+.q2 .qv .qv-ren svg{width:11px;height:11px}
+.q2 .qv .qv-del svg{width:10px;height:10px}
+.q2 .qviews svg{stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;fill:none}
+
+/* Кнопка «Зберегти поточний» — пунктирна, як .fchip: дія над смугою, а не
+   ще один її пункт. */
+.q2 .qv-add{
+  appearance:none;height:28px;padding:0 11px;border-radius:999px;
+  border:1px dashed var(--line-2);background:transparent;color:var(--ink-3);
+  font:inherit;font-size:var(--fs-1);display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease;
+}
+.q2 .qv-add:hover{color:var(--ink-2);border-color:var(--line)}
+.q2 .qv-add svg{width:12px;height:12px}
+
+.q2 .qv-form{
+  display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 4px 0 8px;
+  border-radius:999px;border:1px solid rgba(var(--accent-rgb), .34);background:var(--card);
+}
+.q2 .qv-form input[type=text]{
+  appearance:none;border:0;background:transparent;color:var(--ink);font:inherit;
+  font-size:var(--fs-1);width:150px;padding:0;outline:none;
+}
+.q2 .qv-form .qv-ok,.q2 .qv-form .qv-cancel{
+  appearance:none;border:0;background:transparent;padding:0;width:20px;height:20px;
+  border-radius:50%;display:grid;place-items:center;color:var(--ink-3);cursor:pointer;
+  transition:background var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.q2 .qv-form .qv-ok:hover{background:rgba(var(--accent-base-rgb), .18);color:var(--accent-c)}
+.q2 .qv-form .qv-cancel:hover{background:var(--raise);color:var(--ink)}
+.q2 .qv-form svg{width:11px;height:11px}
+
+/* Причина відмови стоїть у самій смузі, а не в тості: оператор дивиться сюди,
+   бо тут щойно набирав назву. */
+.q2 .qviews .qv-err{font-size:var(--fs-1);color:var(--alarm)}
+
+.q2 .qviews a:focus-visible,.q2 .qviews button:focus-visible,.q2 .qv-form input:focus-visible{
+  outline:2px solid var(--accent-b);outline-offset:2px;border-radius:999px;
+}
