@@ -42,6 +42,9 @@
   </form>
   {% else %}
   {% set g = grid %}
+  {% if flash %}
+  <p class="vt-flash {{ flash.kind }}">{{ flash.message }}</p>
+  {% endif %}
   <div class="vt-navbar">
     <div class="year">
       <a class="yr-btn" href="/vyrobitok?year={{ g.year - 1 }}&month={{ g.month }}" aria-label="Попередній рік">‹</a>
@@ -55,6 +58,19 @@
       {% endfor %}
     </div>
     <div class="spacer">
+      {# Добір СЛМ за показаний місяць. СЛМ пише синк, а він читає лише
+         сьогодні±1 — дні, чиї вкладки вже вийшли з вікна, лишаються з
+         порожніми СЛМ-колонками. Кнопка перечитує вкладки цього місяця й
+         дописує тільки їх; черга не зачіпається. #}
+      <form method="post" action="/vyrobitok/slm-backfill" class="vt-lock-form">
+        <input type="hidden" name="year" value="{{ g.year }}">
+        <input type="hidden" name="month" value="{{ g.month }}">
+        <button type="submit" class="vt-lockbtn" {% if slm_backfill_running %}disabled{% endif %}
+                title="Перечитати вкладки місяця й дописати числа СЛМ (черга не зачіпається)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/></svg>
+          {% if slm_backfill_running %}Добираю СЛМ…{% else %}Добрати СЛМ{% endif %}
+        </button>
+      </form>
       {% if pin_protected %}
       {# Замкнути розділ негайно — наступний вхід знову попросить код. Дозвіл і
          так протухає за годину; ця кнопка для «відходжу від спільного ПК». #}
