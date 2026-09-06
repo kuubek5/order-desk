@@ -99,6 +99,22 @@
                        тричі на день, тож роботи клієнта виходять партіями. Кнопка
                        з'являється, щойно знайдено ХОЧ ОДНУ, і каже, скільки саме
                        піде зараз. Прогрес лишається поруч, доки картка не зібрана. #}
+                    {# «Усі знайдено» — одна кнопка замість 12-50 галочок, коли
+                       оператор дійсно зібрав увесь лоток. Видачу вона НЕ робить:
+                       рішення «тримаю коронку» і «віддав логісту» лишаються
+                       окремими (§2, часткова видача — норма). #}
+                    {% if found_n < total_n %}
+                    <form method="post" action="/handout/mark-found-group" class="markall-form"
+                          hx-post="/handout/mark-found-group" hx-target="#handout-list" hx-swap="outerHTML">
+                        <input type="hidden" name="client_name" value="{{ group.client_name }}">
+                        <input type="hidden" name="source" value="{{ source }}">
+                        <input type="hidden" name="day" value="{{ day_param }}">
+                        <button type="submit" class="markall-btn"
+                                title="Позначити знайденими решту {{ total_n - found_n }} роб. цього клієнта. Видача — окремою кнопкою.">
+                            Усі знайдено
+                        </button>
+                    </form>
+                    {% endif %}
                     {% if found_n < total_n %}
                     <div class="progress-wrap">
                         <span class="progress-num"><b>{{ found_n }}</b> / {{ total_n }} знайдено</span>

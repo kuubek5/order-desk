@@ -8,7 +8,7 @@
 """
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -23,6 +23,7 @@ from app.services.clients import quantity_units
 from app.models import ClientNameAlias, Order, StatusEvent
 from app.services.order_dates import parse_sheet_tab
 from app.sheet_writer import apply_status_markers
+from app.statuses import STATUS_FOUND, STATUS_ISSUED
 
 EXPORT_SCAN_WORKERS = 16
 """Виміряно на бойовому сховищі 27.08.26 (746 тек клієнтів, Synology/SMB):
@@ -292,6 +293,68 @@ class IssueGroupResult:
 
     outcome: str
     field_map: dict[int, list[str]]
+
+
+MARK_GROUP_EMPTY = "empty"
+MARK_GROUP_DONE = "done"
+
+
+@dataclass
+class MarkGroupResult:
+    """Скільки робіт клієнта щойно стали «знайдено» і які саме."""
+
+    outcome: str
+    order_ids: list[int] = field(default_factory=list)
+
+    @property
+    def count(self) -> int:
+        return len(self.order_ids)
+
+
+def mark_group_found(db: Session, user, client_name: str, day: str) -> MarkGroupResult:
+    """Позначити знайденими ВСІ ще не знайдені роботи цього клієнта.
+
+    Навіщо: у клієнта буває 12-50 робіт, і коли оператор дійсно знайшов увесь
+    лоток, він ставить 12-50 галочок поспіль. Одна кнопка на картку прибирає цю
+    рутину (аудит 05.09.26, крок 3.5).
+
+    Чого це НЕ робить — і це головне: «видано» лишається окремою дією. Правило
+    видачі №2 («один клік на дію») означає саме розділення двох рішень —
+    «я тримаю коронку в руках» і «я віддав її логісту». Часткова видача — норма
+    (§2), тож зливати обидва кроки в одну кнопку не можна: клієнт із трьох
+    пічок отримав би «видано» на роботи, які ще в печі.
+
+    Групу перескладаємо на сервері з `client_name`, як і `issue_group`, і
+    фільтруємо тим самим днем — списку id з форми не віримо.
+    """
+    today = business_today()
+    candidates = db.scalars(
+        select(Order).where(Order.client_name == client_name, Order.status != STATUS_ISSUED)
+    ).all()
+    group_orders = [
+        o for o in candidates
+        if (d := parse_sheet_tab(o.sheet_tab)) is not None and d < today
+    ]
+    selected_day = parse_sheet_tab(day) if day else None
+    if selected_day is not None:
+        group_orders = [
+            o for o in group_orders if parse_sheet_tab(o.sheet_tab) == selected_day
+        ]
+
+    # Уже знайдені пропускаємо: кнопка добирає решту, а не переставляє статус
+    # заново (інакше в історії з'явився б другий StatusEvent про те саме).
+    pending = [o for o in group_orders if o.status != STATUS_FOUND]
+    if not pending:
+        return MarkGroupResult(MARK_GROUP_EMPTY)
+
+    for order in pending:
+        order.status = STATUS_FOUND
+        db.add(StatusEvent(
+            order_id=order.id, operator_id=user.id,
+            status=order.status, actor=user.username,
+        ))
+    db.commit()
+    return MarkGroupResult(MARK_GROUP_DONE, [o.id for o in pending])
 
 
 def issue_group(db: Session, user, client_name: str, day: str) -> IssueGroupResult:

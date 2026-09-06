@@ -73,6 +73,13 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
   transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,transform .12s ease}
 .handoutv2 .issue-btn:hover{background:rgba(var(--accent-base-rgb), .28);border-color:var(--accent);transform:translateY(-1px)}
 .handoutv2 .issue-btn:active{transform:translateY(0)}
+/* «Усі знайдено» — помічник, а не рішення: тому НЕ акцентна, а нейтральна.
+   Найгучнішою в картці лишається «Видати», бо саме вона закриває клієнта;
+   якби обидві були акцентні, оператор клацав би їх наосліп поспіль. */
+.handoutv2 .markall-btn{height:34px;padding:0 14px;border-radius:var(--r-ctl);border:1px solid var(--control-edge);
+  background:var(--field);color:var(--ink-2);font:inherit;font-size:var(--fs-2);font-weight:600;cursor:pointer;white-space:nowrap;
+  transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease}
+.handoutv2 .markall-btn:hover{color:var(--ink);border-color:var(--line-2)}
 .handoutv2 .card-head{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 /* Collapse chevron: folds the card body away, stays expanded by default. */
 .handoutv2 .card-collapse{flex:0 0 auto;width:24px;height:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;

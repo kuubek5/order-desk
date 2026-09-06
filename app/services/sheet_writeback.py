@@ -440,6 +440,61 @@ def clear_sheet_row_background(order_id: int) -> None:
     submit_sheet_write(worker)
 
 
+def clear_group_fills_background(order_ids: list[int]) -> None:
+    """Зняти синю заливку з рядків цілої групи — ОДНІЄЮ пакетною правкою.
+
+    Це фонова пара до кнопки «Усі знайдено» (аудит 05.09.26, крок 3.5). Робити
+    те саме циклом із `set_client_row_fill_background` не можна: у клієнта
+    буває 50 робіт, і кожна поставила б у чергу воркера окреме завдання з
+    власним пошуком рядка — та сама арифметика, що вже одного разу заморозила
+    видачу на дві хвилини (синк C-2). Тут таблиця відкривається один раз.
+
+    Заливка — дзеркало стану, а не сам стан: статуси вже закомічені, і
+    втрачений мазок самолікується наступною точковою правкою, тож помилки
+    лише логуються.
+    """
+    if not order_ids:
+        return
+
+    def worker() -> None:
+        try:
+            with SessionLocal() as bg:
+                fill_rows: list[tuple[int, int]] = []
+                spreadsheet = None
+                for order_id in order_ids:
+                    order = bg.get(Order, order_id)
+                    if (
+                        order is None
+                        or order.source != "sheet_client"
+                        or not order.sheet_tab
+                        or order.row_number is None
+                    ):
+                        continue
+                    if spreadsheet is None:
+                        spreadsheet = open_spreadsheet(db=bg)
+                    worksheet = get_worksheet_by_name(spreadsheet, order.sheet_tab)
+                    if worksheet is None:
+                        continue
+                    # Позицію звіряємо перед тим, як білити: після видалення
+                    # рядка вище збережений row_number показує на чужу живу
+                    # роботу (синк H-5).
+                    row = resolve_order_row(worksheet, order)
+                    if row is None:
+                        logger.warning(
+                            "Заливку рядка для роботи %s не знято: рядок не підтверджено",
+                            order_id,
+                        )
+                        continue
+                    fill_rows.append((worksheet.id, row))
+                if fill_rows and spreadsheet is not None:
+                    clear_row_fills(spreadsheet, fill_rows)
+                bg.commit()
+        except Exception:
+            logger.exception("Фонове зняття заливки групи не вдалося")
+
+    submit_sheet_write(worker)
+
+
 def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
     """Увесь запис однієї видачі клієнта — ОДНИМ завданням на воркері.
 

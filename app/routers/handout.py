@@ -47,6 +47,7 @@ from app.services.clients import ensure_client_profiles, quantity_units
 from app.services.handout import (
     ISSUE_GROUP_ISSUED,
     ISSUE_GROUP_NOTHING_FOUND,
+    MARK_GROUP_DONE,
     handout_day_totals,
     HANDOUT_ALL_DAYS,
     entries_for_material,
@@ -56,6 +57,7 @@ from app.services.handout import (
     handout_not_before,
     handout_select_day,
     issue_group,
+    mark_group_found,
     matched_folders,
     scan_export_for_clients,
     scan_export_latest_for_clients,
@@ -63,6 +65,7 @@ from app.services.handout import (
 from app.services.order_dates import parse_sheet_tab, sheet_order_key
 from app.services.sheet_writeback import (
     await_on_writeback,
+    clear_group_fills_background,
     issue_group_warm,
     set_client_row_fill_background,
 )
@@ -681,6 +684,37 @@ async def unissue_order(
     # і людина, яка дивиться в таблицю, вважатиме роботу виданою.
     if not sync_control.is_paused():
         set_client_row_fill_background(order.id, blue=True)
+    if request.headers.get("HX-Request"):
+        return handout_cards_response(request, user, source, day, db)
+    return RedirectResponse(handout_back_url(source, day), status_code=303)
+
+
+@router.post("/handout/mark-found-group")
+async def mark_found_group(
+    request: Request,
+    client_name: str = Form(...),
+    source: str = Form("all"),
+    day: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Одна кнопка замість 12-50 галочок: усі роботи клієнта — «знайдено».
+
+    Це НЕ видача. Розділення двох рішень («тримаю коронку» і «віддав логісту»)
+    — свідоме правило §2, бо часткова видача норма; кнопка «Видати N з M»
+    лишається окремою (аудит 05.09.26, крок 3.5).
+
+    Гейт паузи такий самий, як у поодинокої галочки: статус ставиться завжди
+    (БД — джерело правди), а в таблицю на паузі не пишемо нічого. Заливка йде
+    у фон однією пакетною правкою — оператор не чекає на Google.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    result = mark_group_found(db, user, client_name=client_name, day=day)
+    if result.outcome == MARK_GROUP_DONE and not sync_control.is_paused():
+        clear_group_fills_background(result.order_ids)
+
     if request.headers.get("HX-Request"):
         return handout_cards_response(request, user, source, day, db)
     return RedirectResponse(handout_back_url(source, day), status_code=303)

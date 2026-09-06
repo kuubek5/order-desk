@@ -310,6 +310,26 @@
 .handoutv2 .issue-btn:active{ transform: translateY(var(--press-y)); box-shadow: var(--relief-a); }
 .handoutv2 .issue-btn:focus-visible{ outline: var(--focus-w) solid var(--accent-c); outline-offset: var(--focus-off); }
 
+/* «Усі знайдено» — та сама геометрія, що й решта контролів видачі, але тиха:
+   ієрархія «Видати гучніше» тримається кольором, а не розміром. */
+.handoutv2 .markall-btn{
+  height: var(--ctl-h);
+  padding: 0 var(--btn-px);
+  border-radius: var(--ctl-r);
+  border: var(--ctl-bw) solid var(--control-edge);
+  font-size: var(--ctl-fs);
+  font-weight: var(--ctl-fw);
+  letter-spacing: var(--ctl-ls);
+  transition:
+    background var(--t-fast) var(--ease-a),
+    color var(--t-fast) var(--ease-a),
+    border-color var(--t-fast) var(--ease-a),
+    transform var(--t-fast) var(--ease-a),
+    box-shadow var(--t-fast) var(--ease-a);
+}
+.handoutv2 .markall-btn:active{ transform: translateY(var(--press-y)); box-shadow: var(--relief-a); }
+.handoutv2 .markall-btn:focus-visible{ outline: var(--focus-w) solid var(--accent-c); outline-offset: var(--focus-off); }
+
 /* «Папка» — тиха дія, з якої починається впізнавання роботи. */
 .handoutv2 .fbtn{
   height: var(--ctl-h);

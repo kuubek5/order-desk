@@ -79,6 +79,7 @@ POST /feedback/{feedback_id}/seen
 POST /furnaces/refresh
 POST /handout/confirm-alias
 POST /handout/issue-group
+POST /handout/mark-found-group
 POST /license
 POST /login
 POST /logout
