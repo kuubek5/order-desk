@@ -291,6 +291,31 @@ def calibration_zip_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def _evict_oldest_timed(folder: Path, keep: int) -> None:
+    """Лишити в теці не більше `keep` кадрів, видаляючи найстаріші `t-*`.
+
+    Рахуємо ВСІ png (кап на теку спільний з `pct-*`), а видаляємо лише timed:
+    покадровий набір по відсотках цінніший за стрічку часу.
+    """
+    total = sum(1 for _ in folder.glob("*.png"))
+    if total <= keep:
+        return
+    # Сортуємо за ЧАСОМ ФАЙЛУ, не за іменем: у імені лише HHMMSS, тож друк
+    # через північ поставив би найстаріші кадри в кінець списку.
+    def stamp(f: Path) -> float:
+        try:
+            return f.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    timed = sorted(folder.glob("t-*.png"), key=stamp)
+    for png in timed[: total - keep]:
+        try:
+            png.unlink()
+        except OSError:
+            logger.debug("Калібрувальний кадр %s не видалився", png, exc_info=True)
+
+
 def collect_calibration_frame_timed(key: str, frame: "Image.Image") -> None:
     """Відкласти кадр за ЧАСОМ (ручний режим калібрування, `collect_calibration`).
 
@@ -309,6 +334,18 @@ def collect_calibration_frame_timed(key: str, frame: "Image.Image") -> None:
             _calib_last_timed[key] = now
         folder = Path(MACHINE_CALIBRATION_PATH) / _sanitize_key(key)
         folder.mkdir(parents=True, exist_ok=True)
+        # Кап тут — КІЛЬЦЕВИЙ, а не «стоп». Бойовий випадок 06.09.26: SISMA
+        # півдня стояла з увімкненою галкою, за 33 хвилини набила кап кадрами
+        # НЕРУХОМОГО екрана — і коли друк нарешті стартував, збирач мовчав.
+        # Тобто кап відсікав рівно ті кадри, заради яких його вмикали.
+        # Тепер найстаріші timed-кадри витісняються новими: у теці завжди
+        # лежать ОСТАННІ ~30 хвилин життя екрана.
+        #
+        # Витісняємо лише `t-*` (зібрані за часом). Кадри `pct-*` — по одному
+        # на відсоток, вони незамінні й не мусять гинути через ручний режим.
+        _evict_oldest_timed(folder, CALIBRATION_MAX_FRAMES - 1)
+        # Витіснити могло й не вийти — якщо кап забитий кадрами `pct-*`, які
+        # ми не чіпаємо. Тоді поводимось як раніше: мовчки не пишемо.
         if sum(1 for _ in folder.glob("*.png")) >= CALIBRATION_MAX_FRAMES:
             return
         # Мілісекунди в імені — унікальність навіть за кількох збережень в одну

@@ -6,6 +6,7 @@ RFB-стендом у test_furnace_vnc.py (включно з перевірко�
 стан у пам'яті, чесність про помилки, межі роутів.
 """
 
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -303,6 +304,47 @@ def test_timed_calibration_collects_and_dedups_by_time(monkeypatch, tmp_path):
         service._calib_last_timed["192.168.1.81-8765"] = 0.0
     service.collect_calibration_frame_timed("192.168.1.81-8765", _calib_frame(60))
     assert len(list(folder.glob("t-*.png"))) == 2
+
+
+def test_timed_calibration_cap_is_a_ring_not_a_stop(monkeypatch, tmp_path):
+    """Бойовий випадок 06.09.26: верстат півдня СТОЯВ із увімкненою галкою,
+    набив кап кадрами нерухомого екрана — і коли друк стартував, збирач мовчав.
+    Кап мусить витісняти найстаріші timed-кадри, а не глушити збір."""
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    monkeypatch.setattr(service, "CALIBRATION_MAX_FRAMES", 3)
+    folder = tmp_path / "calib" / "m"
+    folder.mkdir(parents=True)
+    for i in range(3):
+        stale = folder / f"t-00000{i}000.png"
+        stale.write_bytes(b"stale")
+        os.utime(stale, (1000 + i, 1000 + i))
+
+    with service._calib_lock:
+        service._calib_last_timed.clear()
+    service.collect_calibration_frame_timed("m", _calib_frame(70))
+
+    names = sorted(f.name for f in folder.glob("*.png"))
+    assert len(names) == 3, "кап тримається"
+    assert "t-000000000.png" not in names, "найстаріший мав витіснитись"
+    assert any(f.stat().st_size > 5 for f in folder.glob("*.png")), "новий кадр записався"
+
+
+def test_timed_calibration_never_evicts_percent_frames(monkeypatch, tmp_path):
+    """Кадри `pct-*` (по одному на відсоток) незамінні — ручний режим не має
+    права їх з'їдати. Кап забитий ними → просто не пишемо."""
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    monkeypatch.setattr(service, "CALIBRATION_MAX_FRAMES", 2)
+    folder = tmp_path / "calib" / "m"
+    folder.mkdir(parents=True)
+    for pct in (40, 60):
+        (folder / f"pct-{pct:03d}.png").write_bytes(b"precious")
+
+    with service._calib_lock:
+        service._calib_last_timed.clear()
+    service.collect_calibration_frame_timed("m", _calib_frame(70))
+
+    assert len(list(folder.glob("pct-*.png"))) == 2, "відсоткові кадри цілі"
+    assert not list(folder.glob("t-*.png")), "новий кадр не пишеться поверх капу"
 
 
 def test_timed_calibration_never_raises(monkeypatch, tmp_path):
