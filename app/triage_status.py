@@ -9,6 +9,8 @@ global (registered in app/web.py) by _mail_triage_list.html and the detail panel
 
 from __future__ import annotations
 
+from app.link_attachments import undownloaded_links
+
 
 def triage_readiness(email) -> dict:
     """Return {"state": ..., "missing": [labels]} for one triage letter.
@@ -41,6 +43,15 @@ def triage_readiness(email) -> dict:
     missing: list[str] = []
     if not (getattr(email, "material_color_guess", None) or "").strip():
         missing.append("матеріал")
+
+    # Нескачані файли за посиланням. Сервер прийняти такий лист НЕ ДАЄ
+    # (гейт у accept_email), а список тріажу малював «ГОТОВО» — оператор
+    # клацав прийняття і впирався в помилку, не розуміючи чому (аудит
+    # 05.09.26, UX 1.4). Один розрахунок на бейдж, панель і гейт живе в
+    # link_attachments.undownloaded_links.
+    pending_links = len(undownloaded_links(email))
+    if pending_links:
+        missing.append(f"{pending_links} файл(ів) за посиланням")
 
     return {"state": "ready" if not missing else "incomplete", "missing": missing}
 

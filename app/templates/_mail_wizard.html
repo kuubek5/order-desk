@@ -151,8 +151,16 @@
 </form>
 
 {% else %}
-<form class="wiz-step" id="wiz3form" hx-post="/mail/{{ email.id }}/accept" hx-swap="none">
+{# hx-target/hx-swap, а не `none`: невдале прийняття повертає ЦЕЙ САМИЙ крок
+   із заповненими значеннями і поясненням, замість того щоб редіректом
+   перезавантажити екран і стерти введене (UX 1.2). Успіх — 204 + HX-Redirect,
+   і htmx на 204 нічого не свапає, тож успішний шлях не змінився. #}
+<form class="wiz-step" id="wiz3form" hx-post="/mail/{{ email.id }}/accept"
+      hx-target="#mail-wizard" hx-swap="innerHTML">
     <div class="wiz-title">Крок 3 · Підтвердження</div>
+    {% if error %}
+    <div class="wiz-error" role="alert">{{ error }}</div>
+    {% endif %}
     <input type="hidden" name="client_name" value="{{ client_name }}">
     <input type="hidden" name="material_color" value="{{ material_color }}">
     <input type="hidden" name="kind" value="{{ kind }}">

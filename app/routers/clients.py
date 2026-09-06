@@ -353,4 +353,12 @@ def update_client(
     client.notes = notes.strip() or None
     db.commit()
 
+    # Збереження контактів більше не перезавантажує сторінку клієнта: свапаємо
+    # саму форму з підтвердженням (аудит 05.09.26, UX 1.3). Без JS — старий
+    # редірект, тому форма лишається робочою і без HTMX.
+    if request.headers.get("HX-Request") == "true":
+        return templates.TemplateResponse(
+            request, "_client_contacts.html",
+            {"user": user, "client": client, "contacts_saved": True},
+        )
     return RedirectResponse(f"/clients/{client_id}?saved=1", status_code=303)

@@ -435,6 +435,9 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 .mailv2 .empty-triage p{margin:0;font-size:var(--fs-2);color:var(--ink-3);max-width:36ch;line-height:1.5}
 .mailv2 .empty-triage a{color:var(--accent-c)}
 
+/* Помилка прийняття — у самому візарді, поруч із кнопкою (UX 1.2). */
+.mailv2 .wiz-error{margin:0 0 10px;padding:9px 12px;border-radius:var(--r-ctl);border:1px solid var(--danger, #d9534f);background:rgba(217,83,79,.12);color:var(--ink);font-size:var(--fs-2)}
+
 /* --- inline STL gallery (app/static/js/stl-gallery.js) --- */
 /* Розгортання на весь екран (аудит 05.09.26, UX 1.5): та сама роль, що в
    панелі прев'ю на видачі, але тут дефолт — вбудований вигляд, бо в тріажі
