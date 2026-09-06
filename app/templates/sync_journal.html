@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Журнал синку — KuubMill{% endblock %}
+
+{% block extra_head %}
+{# settings.css дає типографіку діагностичних екранів (setv2, .settings-help);
+   решта — у screens.css, який base.html і так вантажить на кожну сторінку. #}
+<link rel="stylesheet" href="/static/css/settings.css?v={{ static_ver('css/settings.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'sync-journal' %}
+{% include "_topbar_nav.html" %}
+
+<main class="setv2">
+    <h1>Журнал синку</h1>
+    <p class="settings-help">
+        Що робив синк і чим це закінчилось. «Пропущено» — не успіх: рядок
+        свідомо не записано (пауза або рядок у таблиці не підтверджено).
+    </p>
+
+    {# Стан «зараз» — той самий пульс, що малює кружок у рейці. Живий підпис
+       поруч оновлює себе сам (полл /sheets/state кожні 3 с), тому тут його не
+       дублюємо статикою, яка через хвилину брехала б. #}
+    <div class="sj-now">
+        <span class="sj-now-item">
+            <b>Таблиця:</b>
+            {%- if sync_status.sheet.paused %} на паузі
+            {%- elif sync_status.sheet.running %} синхронізує…
+            {%- else %} {{ sync_status.sheet.label }}{% endif %}
+        </span>
+        <span class="sj-now-item">
+            <b>Пошта:</b>
+            {%- if sync_status.mail.running %} перевіряє…
+            {%- else %} {{ sync_status.mail.label }}{% endif %}
+        </span>
+    </div>
+
+    <form method="get" action="/journal/sync" class="journal-filters">
+        <select name="direction" aria-label="Напрямок" class="login-input jf-op">
+            <option value="">усі напрямки</option>
+            {% for code, label in direction_labels.items() %}
+            <option value="{{ code }}" {% if selected_direction == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select name="status" aria-label="Статус" class="login-input jf-op">
+            <option value="">усі статуси</option>
+            {% for code, label in status_labels.items() %}
+            <option value="{{ code }}" {% if selected_status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <input type="date" name="day" value="{{ selected_day }}" aria-label="День" class="login-input jf-day">
+        <button type="submit" class="login-submit settings-submit">Показати</button>
+        {% if selected_direction or selected_status or selected_day %}
+        <a href="/journal/sync" class="link-button">Скинути</a>
+        {% endif %}
+    </form>
+
+    {% if groups %}
+    {# Підсумок по показаному вікну, а не по всій базі: інакше цифра
+       суперечила б списку під нею. #}
+    <div class="sj-counts mono">
+        <span class="sj-pill is-ok">успіх {{ counts.ok }}</span>
+        <span class="sj-pill is-skipped">пропущено {{ counts.skipped }}</span>
+        <span class="sj-pill is-error">помилок {{ counts.error }}</span>
+    </div>
+
+    {% for group in groups %}
+    <div class="sj-day">
+        <h2 class="sj-day-head">{{ group.day.strftime('%d.%m.%Y') if group.day else 'без дати' }}</h2>
+        <div class="sj-list">
+            {% for row in group.rows %}
+            <div class="sj-row is-{{ row.status }}">
+                <span class="sj-time mono">{{ row.occurred_at.strftime('%H:%M:%S') if row.occurred_at else '—' }}</span>
+                <span class="sj-status">{{ status_labels.get(row.status, row.status) }}</span>
+                <span class="sj-dir">{{ direction_labels.get(row.direction, row.direction) }}</span>
+                <span class="sj-tab mono">{{ row.sheet_tab or '' }}</span>
+                <span class="sj-msg">{{ row.message or '' }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if truncated %}
+    <p class="settings-help" style="margin-top:12px;">Показано останні {{ limit }} записів. Уточніть фільтр (день, напрямок або статус), щоб побачити старіші.</p>
+    {% endif %}
+    {% else %}
+    {# Порожньо ≠ добре: журнал міг просто ніколи не заповнюватись. Кажемо
+       рівно те, що знаємо. #}
+    <p class="settings-help" style="margin-top:12px;">Записів за цим фільтром немає. Це не означає «все гаразд» — можливо, синк ще жодного разу не відпрацював.</p>
+    {% endif %}
+</main>
+{% endblock %}

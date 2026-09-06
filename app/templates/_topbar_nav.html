@@ -4,6 +4,15 @@
    being omitted, so the rail's icon set stays stable across pages — which is
    what makes the collapsed (icons-only) mode usable. Same routes, same
    admin-only gates, same pending_mail_count badge as before. #}
+{% from "_sync_dot.html" import sync_dot %}
+{# Стан синку рахуємо РІВНО ОДИН раз на рендер і віддаємо далі:
+   кружок біля «Журналу синку» і живий підпис `_sync_indicator.html`
+   дивляться в одне й те саме. Роут черги вже кладе `sync_status` у
+   контекст — тоді глобал `sync_state()` (власна сесія БД) не смикаємо
+   взагалі. Операторам кружок не показуємо (екран журналу адмінський),
+   тож для них нічого й не рахуємо. #}
+{%- set nav_sync = (sync_status if sync_status is defined and sync_status else sync_state())
+                   if user.role == 'адмін' else none -%}
 <div class="topbar-user">
     <div class="rail-top">
         <a href="/" class="rail-brand">
@@ -140,6 +149,18 @@
                 <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
                 <span class="rail-label">Журнал дій</span>
             </a>
+            {# Той самий пункт і в drill-in налаштувань: рейка там показує
+               розділи налаштувань замість головного меню, і без цього рядка
+               кружок здоровʼя зникав би рівно на тих екранах, де його йдуть
+               шукати. Гейт свій: сусідній «Журнал дій» відкритий усім, а цей
+               екран — адмінський, і оператор ловив би 403 з меню. #}
+            {% if user.role == 'адмін' %}
+            <a href="/journal/sync" class="rail-nav-item{% if spath == '/journal/sync' %} is-active{% endif %}">
+                <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h12l-3.2-3.2"/><path d="M20 15H8l3.2 3.2"/></svg>
+                <span class="rail-label">Журнал синку</span>
+                {{ sync_dot(nav_sync) }}
+            </a>
+            {% endif %}
             {% if user.role == 'адмін' %}
             <a href="/settings#backup" class="rail-nav-item rail-sset" data-sec="backup">
                 <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3" class="duo"/><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/></svg>
@@ -220,6 +241,18 @@
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h13l3 3v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" class="duo"/><path d="M4 4h13l3 3v13a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
             <span class="rail-label">Журнал дій</span>
         </a>
+        {# Журнал синку — діагностика «що робив синк і чим це закінчилось».
+           Був невидимий узагалі: SyncLog писався, а результат долітав лише
+           разовим тостом (аудит 05.09.26, крок 3.1). Кружок поруч — здоровʼя
+           синку; його оновлює полл /sheets/state через hx-swap-oob, тому він
+           живий на кожному екрані БЕЗ власного запиту. #}
+        {% if user.role == 'адмін' %}
+        <a href="/journal/sync" class="rail-nav-item{% if topbar_active == 'sync-journal' %} is-active{% endif %}"{% if topbar_active == 'sync-journal' %} aria-current="page"{% endif %}>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h12l-3.2-3.2"/><path d="M20 15H8l3.2 3.2"/></svg>
+            <span class="rail-label">Журнал синку</span>
+            {{ sync_dot(nav_sync) }}
+        </a>
+        {% endif %}
         <a href="/stats" class="rail-nav-item{% if topbar_active == 'stats' %} is-active{% endif %}"{% if topbar_active == 'stats' %} aria-current="page"{% endif %}>
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V5M16 20v-7M22 20H2"/></svg>
             <span class="rail-label">Статистика</span>
@@ -268,7 +301,9 @@
        кожні 3 с ходили б за одним і тим самим. #}
     {% if topbar_active != 'queue' %}
     <div class="rail-sync">
-        {% include "_sync_indicator.html" %}
+        {# `with` передає вже порахований стан: інакше партіал сам покликав би
+           sync_state() — другу сесію БД на той самий рендер. #}
+        {% with sync_status = nav_sync %}{% include "_sync_indicator.html" %}{% endwith %}
     </div>
     {% endif %}
 

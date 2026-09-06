@@ -623,3 +623,98 @@
   outline: 2px solid var(--accent-b);
   outline-offset: 2px;
 }
+
+
+/* ── Здоровʼя синку: кружок у рейці + екран «Журнал синку» (крок 3.1) ──────
+   screens.css підключений ПІСЛЯ rail.css, тож ці правила лягають зверху —
+   порядок <link> у base.html не чіпаємо (він і є каскад). */
+
+/* Кружок біля пункту «Журнал синку». Права позиція — як у .mail-nav-count,
+   щоб сигнали рейки читались одним стовпчиком, а не вроздріб. */
+.rail-sync-dot {
+  margin-left: auto;
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  background: currentColor;
+}
+.rail-sync-dot.is-ok { color: var(--ok); }
+.rail-sync-dot.is-warn { color: var(--warn); }
+.rail-sync-dot.is-error { color: var(--alarm); }
+/* Стан невідомий — ПОРОЖНЄ кільце приглушеним чорнилом, а не залитий кружок.
+   Форма відрізняється від трьох «справжніх» станів, тому «ще не знаю» не
+   можна прочитати як тьмяно-зелений (CLAUDE.md §14: хибна цифра гірша за
+   жодну). */
+.rail-sync-dot.is-none {
+  color: var(--ink-3);
+  background: transparent;
+}
+/* Згорнута рейка: підпису немає, тож margin-left:auto нічого не відсуває —
+   кружок сідає в кут іконки, як лічильник пошти. */
+body.rail-collapsed .rail-sync-dot {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  margin-left: 0;
+}
+
+/* Екран «Журнал синку» */
+.sj-now {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: var(--space-4) 0;
+  font-size: var(--fs-1);
+  color: var(--ink-2);
+}
+.sj-counts {
+  display: flex;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-2);
+}
+.sj-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: var(--fs-0);
+  color: var(--ink-2);
+}
+.sj-pill.is-ok { border-color: rgba(var(--ok-rgb), .45); color: var(--ok); }
+.sj-pill.is-skipped { border-color: rgba(var(--warn-rgb), .45); color: var(--warn); }
+.sj-pill.is-error { border-color: rgba(var(--alarm-rgb), .45); color: var(--alarm); }
+
+.sj-day-head {
+  margin: var(--space-5) 0 var(--space-2);
+  font-size: var(--fs-2);
+  color: var(--ink-2);
+}
+.sj-list { display: flex; flex-direction: column; }
+/* Рядок — сітка, а не таблиця: повідомлення бувають довгі (текст винятку), і
+   в останній колонці воно переноситься, не ламаючи вирівнювання часу. */
+.sj-row {
+  display: grid;
+  grid-template-columns: 5.5rem 6rem 9rem 6rem minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-1);
+  color: var(--ink-2);
+}
+.sj-row .sj-time { color: var(--ink-3); }
+.sj-row .sj-msg { overflow-wrap: anywhere; }
+/* Статус фарбує лише СВОЄ слово, а не весь рядок: у журналі помилок бувають
+   десятки поспіль, і суцільна червона стіна перестає щось означати. */
+.sj-row.is-ok .sj-status { color: var(--ok); }
+.sj-row.is-skipped .sj-status { color: var(--warn); }
+.sj-row.is-error .sj-status { color: var(--alarm); }
+.sj-row.is-error { background: rgba(var(--alarm-rgb), .05); }
+
+@media (max-width: 900px) {
+  .sj-row {
+    grid-template-columns: 5rem 6rem minmax(0, 1fr);
+  }
+  .sj-row .sj-dir, .sj-row .sj-tab { grid-column: span 1; }
+}

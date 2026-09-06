@@ -23,6 +23,7 @@ GET /handout/cards
 GET /handout/pulse
 GET /health
 GET /journal
+GET /journal/sync
 GET /license
 GET /login
 GET /machines

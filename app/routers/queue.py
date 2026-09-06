@@ -389,6 +389,12 @@ def sheet_sync_state(request: Request, db: Session = Depends(get_db)):
         "sync_status": live_sync_status(db),
         "sheets_configured": sheets_configured(db),
         "peeks": {"sync": queue_sync_summary(db)},
+        # Кружок здоровʼя синку в рейці їде «зайцем» у цій же відповіді
+        # (hx-swap-oob), бо полл сюди й так ходить кожні 3 с — окремий полл на
+        # кружок подвоїв би запити на кожному екрані. Лише адміну: у оператора
+        # пункт «Журнал синку» не рендериться, і htmx лаявся б у консоль на
+        # ненайдену ціль OOB-свапу.
+        "oob_dot": user.role == "адмін",
     }
     response = templates.TemplateResponse(request, "_sync_indicator.html", context)
     flash = pop_import_flash()
