@@ -441,3 +441,244 @@ def test_day_with_only_untaken_lab_rows_shows_zero_not_stale_snapshot():
     taken.sum3d_id = None
     db.commit()
     assert _totals(db)["lab_zr"] == 0
+
+
+# ── Заморозка дня ────────────────────────────────────────────────────────────
+# Кожна колонка закривається тоді, коли її вже ніхто не дописує: лабораторія й
+# пошта — о 07:30 (кінець робочої доби), СЛМ — о 18:00 того ж дня.
+
+def _freeze(db, *, at):
+    from app.services.vyrobitok import freeze_due_days
+    return freeze_due_days(db, now=at)
+
+
+def test_orders_freeze_at_rollover_slm_waits_until_evening():
+    from datetime import datetime
+    from app.services.vyrobitok import store_slm_totals
+
+    db = _db()
+    mat = _materials(db)
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=30, day=5)
+    store_slm_totals(db, date(2026, 8, 5), lab_units=4, mail_units=115)
+    db.commit()
+
+    # 08:00 наступного дня: доба вже перегорнулась — роботи закрито, СЛМ ні.
+    res = _freeze(db, at=datetime(2026, 8, 6, 8, 0))
+    assert res == {"orders": 1, "slm": 0}
+
+    # 18:00 того ж дня — закривається і СЛМ.
+    res = _freeze(db, at=datetime(2026, 8, 6, 18, 0))
+    assert res == {"orders": 0, "slm": 1}
+
+    # Ідемпотентно: повторний прохід нічого не додає.
+    assert _freeze(db, at=datetime(2026, 8, 6, 18, 5)) == {"orders": 0, "slm": 0}
+
+
+def test_frozen_day_keeps_number_when_works_vanish_from_sheet():
+    """Головне, заради чого заморозка: почищена вкладка не забирає зароблене."""
+    from datetime import datetime
+
+    db = _db()
+    mat = _materials(db)
+    a = _order(db, source="lab", material_id=mat["Цирконій"], qty=30, day=5)
+    b = _order(db, source="lab", material_id=mat["Цирконій"], qty=20, day=5)
+    assert _totals(db)["lab_zr"] == 50
+
+    _freeze(db, at=datetime(2026, 8, 6, 8, 0))
+
+    # Половину рядків прибрали з таблиці (синк проставив archived_at).
+    b.archived_at = date(2026, 8, 7)
+    db.commit()
+    assert _totals(db)["lab_zr"] == 50
+
+    # Потім зникло все — число все одно стоїть.
+    a.archived_at = date(2026, 8, 7)
+    db.commit()
+    assert _totals(db)["lab_zr"] == 50
+
+
+def test_freeze_writes_zero_for_column_that_emptied():
+    """Колонка, яка спорожніла ДО заморозки, морозиться нулем, а не старим
+    знімком: інакше вона закам'яніла б у числі, якого вже нема."""
+    from datetime import datetime
+
+    db = _db()
+    mat = _materials(db)
+    zr = _order(db, source="lab", material_id=mat["Цирконій"], qty=30, day=5)
+    _order(db, source="lab", material_id=mat["ПММА"], qty=11, day=5)
+    assert _totals(db)["lab_zr"] == 30  # знімок 30 записано
+
+    zr.archived_at = date(2026, 8, 6)   # цирконій зник, день ще живий (ПММА)
+    db.commit()
+    _freeze(db, at=datetime(2026, 8, 6, 8, 0))
+    totals = _totals(db)
+    assert totals["lab_zr"] == 0 and totals["lab_pmma"] == 11
+
+
+def test_sync_cannot_overwrite_frozen_slm():
+    from datetime import datetime
+    from app.services.vyrobitok import store_slm_totals
+
+    db = _db()
+    _materials(db)
+    store_slm_totals(db, date(2026, 8, 5), lab_units=4, mail_units=115)
+    db.commit()
+    _freeze(db, at=datetime(2026, 8, 6, 18, 0))
+
+    # Вкладку почистили — синк намагається записати нулі.
+    store_slm_totals(db, date(2026, 8, 5), lab_units=0, mail_units=0)
+    db.commit()
+    totals = _totals(db)
+    assert (totals["lab_slm"], totals["mail_slm"]) == (4, 115)
+
+    # Свідомий синк одного дня спершу знімає заморозку — і тоді пише як є.
+    from app.services.vyrobitok import unfreeze_day
+    unfreeze_day(db, date(2026, 8, 5))
+    store_slm_totals(db, date(2026, 8, 5), lab_units=0, mail_units=0)
+    db.commit()
+    assert _totals(db)["mail_slm"] == 0
+
+
+def test_slm_still_syncs_freely_before_its_freeze():
+    """До 18:00 СЛМ живий: і дописати, і виправити вниз."""
+    from datetime import datetime
+    from app.services.vyrobitok import store_slm_totals
+
+    db = _db()
+    _materials(db)
+    store_slm_totals(db, date(2026, 8, 5), lab_units=0, mail_units=190)
+    db.commit()
+    _freeze(db, at=datetime(2026, 8, 6, 8, 0))   # роботи закрито, СЛМ — ні
+
+    store_slm_totals(db, date(2026, 8, 5), lab_units=2, mail_units=19)  # виправили
+    db.commit()
+    totals = _totals(db)
+    assert (totals["lab_slm"], totals["mail_slm"]) == (2, 19)
+
+
+def test_operator_override_beats_freeze():
+    from datetime import datetime
+
+    db = _db()
+    mat = _materials(db)
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=30, day=5)
+    _freeze(db, at=datetime(2026, 8, 6, 8, 0))
+
+    set_cell(db, date(2026, 8, 5), "lab_zr", 33)
+    grid = compute_month(db, 2026, 8)
+    cell = next(r for r in grid.rows if r["dayn"] == 5)["cells"]["lab_zr"]
+    assert cell["num"] == 33 and cell["auto"] == 30 and cell["edited"] is True
+
+
+def test_unfreeze_lets_the_day_recount():
+    """«Синк цього дня» знімає заморозку — день рахується начисто."""
+    from datetime import datetime
+    from app.services.vyrobitok import unfreeze_day
+
+    db = _db()
+    mat = _materials(db)
+    o = _order(db, source="lab", material_id=mat["Цирконій"], qty=30, day=5)
+    _freeze(db, at=datetime(2026, 8, 6, 8, 0))
+    o.archived_at = date(2026, 8, 7)
+    db.commit()
+    assert _totals(db)["lab_zr"] == 30          # заморожено
+
+    unfreeze_day(db, date(2026, 8, 5))
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=12, day=5)
+    assert _totals(db)["lab_zr"] == 12          # начисто, з того що є
+
+
+def test_today_is_never_frozen():
+    from datetime import datetime
+    from app.business_day import business_today
+
+    db = _db()
+    mat = _materials(db)
+    today = business_today()
+    o = Order(source="lab", sheet_tab=today.strftime("%d.%m.%y"), row_number=1,
+              material_id=mat["Цирконій"], quantity="30", sum3d_id="12-01-45",
+              status="відфрезеровано")
+    db.add(o)
+    db.commit()
+
+    assert _freeze(db, at=datetime.now()) == {"orders": 0, "slm": 0}
+    grid = compute_month(db, today.year, today.month)
+    row = next(r for r in grid.rows if r["dayn"] == today.day)
+    assert row["frozen"] is False
+
+
+def test_catchup_freezes_days_missed_while_pc_was_off():
+    """ПК стояв тиждень — перший прохід закриває всі пропущені дні."""
+    from datetime import datetime
+
+    db = _db()
+    mat = _materials(db)
+    for d in (3, 4, 5):
+        _order(db, source="lab", material_id=mat["Цирконій"], qty=10, day=d)
+    res = _freeze(db, at=datetime(2026, 8, 12, 9, 0))
+    assert res == {"orders": 3, "slm": 3}   # усі три дні, і роботи, і СЛМ
+
+
+def test_day_sync_route_unfreezes_then_syncs_only_that_tab(monkeypatch):
+    from app.routers import vyrobitok as vr
+    from app.services.vyrobitok import freeze_due_days
+    from datetime import datetime
+
+    db = _db()
+    mat = _materials(db)
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=30, day=5)
+    freeze_due_days(db, now=datetime(2026, 8, 6, 18, 0))
+
+    seen = {}
+    def fake_sync(session, *, trigger, include_tabs=None, **kw):
+        seen["trigger"] = trigger
+        seen["tabs"] = include_tabs
+        # За заморозки цей запис пропав би; після розморозки має лягти.
+        from app.services.vyrobitok import store_slm_totals
+        store_slm_totals(session, date(2026, 8, 5), lab_units=7, mail_units=70)
+        session.commit()
+    monkeypatch.setattr(vr, "sync_google_sheets", fake_sync)
+    monkeypatch.setattr(vr, "get_current_user", lambda r, db: object())
+    monkeypatch.setattr(vr, "_pin_required", lambda r, db: False)
+
+    resp = vr.post_vyrobitok_day_sync(_req({}), day="2026-08-05", db=db)
+    assert resp.status_code == 200
+    assert seen == {"trigger": "manual", "tabs": {"05.08.26"}}   # одна вкладка
+
+    grid = compute_month(db, 2026, 8)
+    row = next(r for r in grid.rows if r["dayn"] == 5)
+    assert row["frozen"] is False
+    assert row["cells"]["mail_slm"]["num"] == 70
+
+
+def test_day_sync_route_reports_sync_failure(monkeypatch):
+    from app.routers import vyrobitok as vr
+    from app.sheet_sync_service import SheetSyncError
+
+    db = _db()
+    _materials(db)
+    def boom(session, **kw):
+        raise SheetSyncError("проксі не відповідає")
+    monkeypatch.setattr(vr, "sync_google_sheets", boom)
+    monkeypatch.setattr(vr, "get_current_user", lambda r, db: object())
+    monkeypatch.setattr(vr, "_pin_required", lambda r, db: False)
+
+    resp = vr.post_vyrobitok_day_sync(_req({}), day="2026-08-05", db=db)
+    assert resp.status_code == 200
+    assert resp.context["day_sync_error"] == "проксі не відповідає"
+
+
+def test_body_partial_renders_day_sync_button():
+    from app.routers.deps import templates
+    from app.services.vyrobitok import HUE, MATERIAL_COLS, OPAK_PEOPLE
+
+    db = _db()
+    mat = _materials(db)
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=30)
+    grid = compute_month(db, 2026, 8)
+    html = templates.env.get_template("_vyrobitok_body.html").render(
+        grid=grid, material_cols=MATERIAL_COLS, opak_people=OPAK_PEOPLE, hue=HUE,
+        day_sync_error=None,
+    )
+    assert 'hx-post="/vyrobitok/day-sync"' in html
+    assert '{"day": "2026-08-05"}' in html

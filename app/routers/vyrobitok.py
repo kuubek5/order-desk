@@ -26,6 +26,8 @@ from starlette.requests import Request
 from app.business_day import business_today
 from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.services.attempt_limit import block_message, pin_limiter
+from app.sheet_sync_service import SheetSyncError, sync_google_sheets
+from app.sheets import tab_name_for
 from app.services.vyrobitok import (
     HUE,
     MATERIAL_COLS,
@@ -33,6 +35,7 @@ from app.services.vyrobitok import (
     compute_month,
     save_month_settings,
     set_cell,
+    unfreeze_day,
 )
 from app.settings_store import get_setting
 
@@ -151,6 +154,50 @@ def post_vyrobitok_pin(
         },
         status_code=400,
     )
+
+
+@router.post("/vyrobitok/day-sync", response_class=HTMLResponse)
+def post_vyrobitok_day_sync(
+    request: Request, day: str = Form(...), db: Session = Depends(get_db)
+):
+    """Перечитати вкладку ОДНОГО дня й перерахувати його начисто.
+
+    Звичайний (`def`) роут, а не `async`: синк ходить у мережу й блокує потік —
+    на event loop його пускати не можна (CLAUDE.md §14).
+
+    Це та сама ручна синхронізація, лише звужена до однієї вкладки
+    (`include_tabs`), тож усі перевірки й запобіжники ті самі: структура
+    вкладки, кольори заливки, запис СЛМ, поріг масової архівації. Дія свідома,
+    точкова й дешева (одне читання, ~3 с на теплому кеші) — тому вона ЄДИНА,
+    що знімає заморозку дня: якщо оператор знає, що таблиця ціла, а знімок ні,
+    він каже це прямо. Фоновий і повний синк заморожений день не чіпають.
+
+    Двостороння: якщо рядок із тієї вкладки в таблиці вже видалили, робота піде
+    в архів так само, як при звичайному ручному синку того дня.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    if _pin_required(request, db):
+        return RedirectResponse("/vyrobitok", status_code=303)
+
+    try:
+        d = date.fromisoformat(day)
+    except ValueError:
+        return HTMLResponse("невірна дата", status_code=422)
+
+    # Розморожуємо ДО синку: інакше запис СЛМ упреться в заморозку й тихо
+    # пропустить число, заради якого синк і запускали.
+    unfreeze_day(db, d)
+    error: str | None = None
+    try:
+        sync_google_sheets(db, trigger="manual", include_tabs={tab_name_for(d)})
+    except SheetSyncError as exc:
+        error = str(exc)
+
+    context = _grid_context(db, user, d.year, d.month)
+    context["day_sync_error"] = error
+    return templates.TemplateResponse(request, "_vyrobitok_body.html", context)
 
 
 @router.post("/vyrobitok/lock")

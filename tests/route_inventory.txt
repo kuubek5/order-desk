@@ -189,6 +189,7 @@ POST /shift/notes/{note_id}/resolve
 POST /sync-speed
 POST /sync/pause
 POST /vyrobitok/cell
+POST /vyrobitok/day-sync
 POST /vyrobitok/lock
 POST /vyrobitok/pin
 POST /vyrobitok/settings

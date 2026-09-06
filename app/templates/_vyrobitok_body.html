@@ -4,6 +4,9 @@
    Свап цілим #vyrobitok-body: change спрацьовує на blur, фокусу в клітинці
    вже немає, тож перемал нічого не рве. #}
 <div id="vyrobitok-body">
+{% if day_sync_error %}
+<p class="vt-flash error">Синхронізація дня не вдалась: {{ day_sync_error }}</p>
+{% endif %}
 {% set g = grid %}
 {% set m = g.money %}
 
@@ -64,7 +67,15 @@
       </tr>
       {% else %}
       <tr class="{% if row.is_today %}today{% endif %}">
-        <td class="day">{{ row.dayn }}{% if row.weekend_short %} {{ row.weekend_short }}{% endif %}</td>
+        {# Клік по ⟳ перечитує вкладку цього дня й рахує його начисто — єдина
+           дія, що знімає заморозку. Замок поруч = день уже закрито. #}
+        <td class="day">
+          <span class="dn">{{ row.dayn }}{% if row.weekend_short %} {{ row.weekend_short }}{% endif %}</span>
+          {% if row.frozen %}<span class="fz" title="День закрито — число не перераховується">•</span>{% endif %}
+          <button type="button" class="daysync" title="Перечитати вкладку {{ row.dayn }} і перерахувати день"
+                  hx-post="/vyrobitok/day-sync" hx-target="#vyrobitok-body" hx-swap="outerHTML"
+                  hx-vals='{"day": "{{ row.date }}"}' hx-indicator="this">⟳</button>
+        </td>
         {% for key, label in material_cols %}{{ cell(row, 'lab_' ~ key, '') }}{% endfor %}
         <td class="gap"></td>
         {% for key, label in material_cols %}{{ cell(row, 'mail_' ~ key, 'g-mail') }}{% endfor %}

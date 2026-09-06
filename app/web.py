@@ -125,6 +125,7 @@ from app.sheet_sync_service import (
     sync_sheets_background,
 )
 from app.services.system_load import sample as _sample_system_load
+from app.services.vyrobitok import freeze_due_days
 from app.update_check import _update_check_worker
 
 logger = logging.getLogger(__name__)
@@ -309,6 +310,37 @@ def _monthly_backup_worker(stop_event: Event) -> None:
     while not stop_event.is_set():
         _monthly_backup_tick()
         stop_event.wait(MONTHLY_BACKUP_INTERVAL_SECONDS)
+
+
+# Заморозка днів «Виробітку». Тік частий і дешевий (кілька SELECT по власних
+# таблицях, без мережі), бо має влучити близько до двох моментів доби: 07:30
+# (кінець робочої доби — морозяться лабораторія й пошта) і 18:00 (морозиться
+# СЛМ того ж дня). Догін вбудований у сам прохід: ПК стояв — перший тік після
+# запуску закриє всі пропущені дні.
+VYROBITOK_FREEZE_INTERVAL_SECONDS = 10 * 60
+VYROBITOK_FREEZE_INITIAL_DELAY_SECONDS = 45
+
+
+def _vyrobitok_freeze_tick() -> None:
+    """Одна спроба заморозити дні, чий час настав. Ніколи не кидає."""
+    try:
+        with SessionLocal() as db:
+            result = freeze_due_days(db)
+    except Exception:
+        logger.exception("Vyrobitok freeze failed")
+        return
+    if result["orders"] or result["slm"]:
+        logger.info(
+            "Виробіток заморожено: робіт %d, СЛМ %d", result["orders"], result["slm"]
+        )
+
+
+def _vyrobitok_freeze_worker(stop_event: Event) -> None:
+    if stop_event.wait(VYROBITOK_FREEZE_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        _vyrobitok_freeze_tick()
+        stop_event.wait(VYROBITOK_FREEZE_INTERVAL_SECONDS)
 
 
 # Скріншоти записок передачі зміни живуть 6 місяців (рішення власника), текст
@@ -714,6 +746,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("order-desk-machines", _machine_worker),
         _BackgroundWorker("kuubmill-feedback-retry", _feedback_push_retry_worker),
         _BackgroundWorker("kuubmill-system-load", _system_load_worker),
+        _BackgroundWorker("kuubmill-vyrobitok-freeze", _vyrobitok_freeze_worker),
     ]
     for w in workers:
         w.start()

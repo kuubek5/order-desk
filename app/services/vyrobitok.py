@@ -40,13 +40,13 @@ from __future__ import annotations
 import calendar
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.business_day import business_today
-from app.models import Order, VyrobitokCell, VyrobitokMonth
+from app.business_day import business_now, business_today
+from app.models import Order, VyrobitokCell, VyrobitokDay, VyrobitokMonth
 from app.services.order_dates import order_date
 from app.stats import parse_int_safe
 
@@ -203,22 +203,141 @@ def _load_month_settings(db: Session, year: int, month: int) -> VyrobitokMonth:
     return row
 
 
-def compute_month(
-    db: Session, year: int, month: int, *, persist: bool = True
-) -> MonthGrid:
-    days_in_month = calendar.monthrange(year, month)[1]
-    first = date(year, month, 1)
-    last = date(year, month, days_in_month)
-    today = business_today()
+# ── Заморозка дня ────────────────────────────────────────────────────────────
+# Кожна колонка закривається тоді, коли її вже ніхто не дописує (рішення
+# власника 06.09.26). Робоча доба кінчається о 07:30, і на цій межі лабораторія
+# з поштою вже сталі — нічна зміна дописала «підранок» у ту саму вкладку. СЛМ
+# заповнюють руками ще пів дня ПІСЛЯ кінця доби (зазвичай до 12:00, у вкладку
+# минулого дня) і там же виправляють описки, тож він синкається далі й
+# морозиться увечері.
+SLM_FREEZE_HOUR = 18
 
+
+def _day_rows(db: Session, first: date, last: date) -> dict[date, VyrobitokDay]:
+    rows = db.scalars(
+        select(VyrobitokDay).where(VyrobitokDay.day.between(first, last))
+    ).all()
+    return {row.day: row for row in rows}
+
+
+def orders_frozen_days(db: Session, first: date, last: date) -> set[date]:
+    """Дні діапазону, де колонки робіт уже закриті."""
+    return {
+        day for day, row in _day_rows(db, first, last).items()
+        if row.orders_frozen_at is not None
+    }
+
+
+def slm_is_frozen(db: Session, day: date) -> bool:
+    row = db.get(VyrobitokDay, day)
+    return row is not None and row.slm_frozen_at is not None
+
+
+def _due_freezes(day: date, today: date, now: datetime) -> tuple[bool, bool]:
+    """(роботи, СЛМ) — що з цього для дня `day` вже має бути заморожене.
+
+    Роботи — щойно робоча доба перегорнулась. СЛМ — о 18:00 наступної робочої
+    доби (а якщо застосунок стояв і доба вже не наступна — просто час настав).
+    """
+    orders_due = day < today
+    if day >= today:
+        slm_due = False
+    elif day == today - timedelta(days=1):
+        slm_due = now.hour >= SLM_FREEZE_HOUR
+    else:
+        slm_due = True
+    return orders_due, slm_due
+
+
+def freeze_due_days(db: Session, now: datetime | None = None) -> dict[str, int]:
+    """Закрити всі дні, чий час настав. Ідемпотентно; викликається за розкладом.
+
+    Догін вбудований: ПК вимикали — на старті цей же прохід закриє всі
+    пропущені дні. Дані для цього є, поки роботи живі в базі.
+
+    Заморожуючи роботи, знімок пишемо ЯВНО по всіх колонках дня, включно з
+    нулями: інакше колонка, яка спорожніла (роботи зникли з таблиці), лишилась
+    би зі старим числом попереднього знімка й закам'яніла б у ньому.
+    """
+    # Київський час: межа доби й 18:00 — це годинник у цеху, не UTC. У базу
+    # кладемо наївний штамп (усі DateTime у схемі наївні — CLAUDE.md §14).
+    now = now or business_now()
+    today = business_today(now)
+    stamp = now.replace(tzinfo=None)
+
+    # Дні-кандидати: усе, де є що морозити — живі роботи або вже знята клітинка.
+    days: set[date] = set(
+        db.scalars(select(VyrobitokCell.day).distinct()).all()
+    )
+    for order in db.scalars(select(Order).where(Order.archived_at.is_(None))):
+        days.add(order_date(order))
+
+    rows = _day_rows(db, min(days), max(days)) if days else {}
+    result = {"orders": 0, "slm": 0}
+
+    for day in sorted(days):
+        if day >= today:
+            continue
+        orders_due, slm_due = _due_freezes(day, today, now)
+        row = rows.get(day)
+        need_orders = orders_due and (row is None or row.orders_frozen_at is None)
+        need_slm = slm_due and (row is None or row.slm_frozen_at is None)
+        if not need_orders and not need_slm:
+            continue
+        if row is None:
+            row = VyrobitokDay(day=day)
+            db.add(row)
+            rows[day] = row
+        if need_orders:
+            _snapshot_orders(db, day)
+            row.orders_frozen_at = stamp
+            result["orders"] += 1
+        if need_slm:
+            row.slm_frozen_at = stamp
+            result["slm"] += 1
+    if result["orders"] or result["slm"]:
+        db.commit()
+    return result
+
+
+def _snapshot_orders(db: Session, day: date) -> None:
+    """Записати знімок колонок робіт за день — по ВСІХ колонках, і нулі теж."""
+    auto, _live, _months = _live_units(db, day, day)
+    cells = db.scalars(
+        select(VyrobitokCell).where(VyrobitokCell.day == day)
+    ).all()
+    by_key = {c.col_key: c for c in cells}
+    for col_key in sorted(ORDER_COLS):
+        value = auto.get((day, col_key), 0)
+        cell = by_key.get(col_key)
+        if cell is None:
+            db.add(VyrobitokCell(day=day, col_key=col_key, auto_value=value))
+        elif cell.auto_value != value:
+            cell.auto_value = value
+
+
+def unfreeze_day(db: Session, day: date) -> None:
+    """Зняти обидві позначки — свідомий «синк цього дня» рахує начисто."""
+    row = db.get(VyrobitokDay, day)
+    if row is not None:
+        db.delete(row)
+        db.commit()
+
+
+def _live_units(
+    db: Session, first: date, last: date
+) -> tuple[dict[tuple[date, str], int], set[date], set[tuple[int, int]]]:
+    """Одиниці з ЖИВИХ Orders: (день,колонка) → сума, живі дні, місяці з даними.
+
+    Спільне для показу й для заморозки — щоб заморожене число рахувалось за
+    тими самими правилами, за якими день показувався до неї.
+    """
     orders = db.scalars(
         select(Order)
         .options(selectinload(Order.material))
         .where(Order.archived_at.is_(None))
     ).all()
 
-    # Авто-одиниці по (день, колонка) + які місяці взагалі мають дані (для
-    # притишення в стрічці місяців) + які дні місяця ще «живі» (є роботи).
     auto: dict[tuple[date, str], int] = defaultdict(int)
     live_days: set[date] = set()
     months_with_orders: set[tuple[int, int]] = set()
@@ -242,6 +361,19 @@ def compute_month(
             continue
         col_key = f"{_source_bucket(order.source)}_{key}"
         auto[(d, col_key)] += parse_int_safe(order.quantity) or 0
+    return auto, live_days, months_with_orders
+
+
+def compute_month(
+    db: Session, year: int, month: int, *, persist: bool = True
+) -> MonthGrid:
+    days_in_month = calendar.monthrange(year, month)[1]
+    first = date(year, month, 1)
+    last = date(year, month, days_in_month)
+    today = business_today()
+
+    auto, live_days, months_with_orders = _live_units(db, first, last)
+    frozen = orders_frozen_days(db, first, last)
 
     cells = db.scalars(
         select(VyrobitokCell).where(VyrobitokCell.day.between(first, last))
@@ -251,10 +383,14 @@ def compute_month(
     }
 
     # Знімок авто у сховище для «живих» днів — щоб минулий місяць вижив, коли
-    # роботи заархівуються. Пишемо лише те, що змінилось.
+    # роботи заархівуються. Пишемо лише те, що змінилось. Заморожений день
+    # пропускаємо: його число вже закрите, і перерахунок із почищеної вкладки
+    # тільки зіпсував би його (саме заради цього заморозка й існує).
     if persist:
         changed = False
         for (d, col_key), value in auto.items():
+            if d in frozen:
+                continue
             cell = by_key.get((d, col_key))
             if cell is None:
                 cell = VyrobitokCell(day=d, col_key=col_key, auto_value=value)
@@ -276,7 +412,7 @@ def compute_month(
         if col_key in SNAPSHOT_COLS:
             # ORDER-колонки на живий день — рахуємо з Orders; СЛМ і мертві дні —
             # зі знімка auto_value (СЛМ туди пише синк, решту — цей же метод).
-            if col_key in ORDER_COLS and d in live_days:
+            if col_key in ORDER_COLS and d in live_days and d not in frozen:
                 eff_auto = auto.get((d, col_key), 0)
             elif cell is not None and cell.auto_value is not None:
                 eff_auto = cell.auto_value
@@ -313,6 +449,9 @@ def compute_month(
                 # він мусить лишатись повним і підсвіченим навіть у вихідний.
                 "is_off": weekend and not has_any and d != today,
                 "is_today": d == today,
+                # День закрито: число більше не перераховується. Показуємо, щоб
+                # оператор розумів, чому цифра не реагує на правки в таблиці.
+                "frozen": d in frozen,
                 "cells": day_cells,
             }
         )
@@ -476,12 +615,21 @@ def slm_totals_from_rows(rows) -> tuple[int, int]:
     return lab, mail
 
 
-def store_slm_totals(session: Session, day: date, lab_units: int, mail_units: int) -> None:
+def store_slm_totals(
+    session: Session, day: date, lab_units: int, mail_units: int
+) -> None:
     """Записати авто-число СЛМ у клітинки табеля (lab_slm / mail_slm) за день.
 
     Пише лише `auto_value`; правку оператора (`override_value`) не чіпає — тому
     ручне виправлення переживає синк. Без commit: транзакцією керує викликач
-    (sync_tab комітиться поблочно у своєму синк-циклі)."""
+    (sync_tab комітиться поблочно у своєму синк-циклі).
+
+    Заморожений день синк не чіпає: СЛМ дописують і правлять ще пів дня після
+    кінця доби, тому він морозиться о 18:00 — а після того почищена або
+    перечитана вкладка вже не має права затерти закрите число. Свідомий шлях
+    один — «синк цього дня» знімає заморозку ПЕРЕД читанням вкладки."""
+    if slm_is_frozen(session, day):
+        return
     for col_key, units in (("lab_slm", lab_units), ("mail_slm", mail_units)):
         cell = session.scalar(
             select(VyrobitokCell).where(

@@ -107,6 +107,20 @@
    сам проміжок. */
 .vt th:has(+ .gap), .vt td:has(+ .gap) { border-right: 0; }
 .vt .day { font-family: var(--font-mono); color: var(--ink-3); text-align: right; padding-right: 10px; }
+/* Клітинка дня несе три речі: число, крапку «день закрито» і ⟳ синку цього
+   дня. Кнопка проявляється на наведення рядка — щоб ряд днів лишався спокійним
+   стовпцем чисел, а не смугою іконок. */
+.vt .day { white-space: nowrap; }
+.vt .day .fz { color: var(--ink-4, var(--ink-3)); margin-left: 4px; opacity: .7; }
+.vt .day .daysync {
+  margin-left: 6px; padding: 0 3px; cursor: pointer; font-size: var(--fs-1);
+  line-height: 1; color: var(--ink-3); background: none; border: 0;
+  opacity: 0; transition: opacity .12s ease, color .12s ease;
+}
+.vt tbody tr:hover .day .daysync, .vt .day .daysync:focus-visible { opacity: 1; }
+.vt .day .daysync:hover { color: var(--accent-c); }
+/* htmx лишає .htmx-request на індикаторі, поки запит іде */
+.vt .day .daysync.htmx-request { opacity: 1; color: var(--accent-c); }
 .vt tr.off td { color: var(--ink-3); opacity: .5; }
 .vt tfoot td {
   padding: 16px 9px 4px; border-top: 1px solid var(--line);
