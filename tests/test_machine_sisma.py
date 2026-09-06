@@ -7,7 +7,7 @@
 коли машина наносить порошок.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -187,3 +187,48 @@ def test_card_template_renders_the_layer_line():
     assert "1049" in html
     assert "закінчить о <b class=\"mono\">20:58</b>" in html
     assert "пише шар" in html
+
+
+def test_printer_leaves_the_milling_strip_and_gets_its_own_widget(monkeypatch):
+    """SLM-принтер не стоїть в одному ряду з фрезерними: у них відсоток
+    програми, у нього шари й час завершення (рішення власника 06.09.26)."""
+    from types import SimpleNamespace
+
+    from app.services import machines as service
+
+    now = datetime(2026, 9, 6, 17, 0)
+
+    def card(is_sisma):
+        state = service.MachineState(
+            target=SimpleNamespace(key="k", name="X", host="h", port=8765,
+                                   portrait_model="", machine_id=1),
+            frame_at=now, is_sisma=is_sisma,
+        )
+        return service.MachineCard(target=state.target, state=state, now=now)
+
+    printer, mill = card(True), card(False)
+    monkeypatch.setattr(service, "snapshot", lambda db: [printer, mill])
+    monkeypatch.setattr(service, "strip_summary", lambda db: {})
+
+    assert service.machine_side_context(None)["machine_cards"] == [mill]
+    assert service.sisma_context(None)["sisma_cards"] == [printer]
+
+
+def test_printer_stays_in_its_widget_even_without_a_link():
+    """Обрив звʼязку не має ховати принтер: саме тоді він і потрібен."""
+    from types import SimpleNamespace
+
+    from app.services import machines as service
+
+    now = datetime(2026, 9, 6, 17, 0)
+    state = service.MachineState(
+        target=SimpleNamespace(key="k", name="SISMA", host="h", port=8765,
+                               portrait_model="", machine_id=1),
+        frame_at=now - timedelta(hours=2), is_sisma=True, error="агент мовчить",
+        error_at=now, fail_streak=5,
+    )
+    card = service.MachineCard(target=state.target, state=state, now=now)
+
+    assert card.is_sisma_machine is True, "лишається у своєму віджеті"
+    assert card.is_sisma is False, "але даних з протухлого кадру не показуємо"
+    assert card.layers is None and card.ends_at is None

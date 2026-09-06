@@ -24,6 +24,7 @@ from app.services.machines import (
     configured_targets,
     day_timeline,
     machine_side_context,
+    sisma_context,
     poll_all,
     resolve_frame,
     snapshot,
@@ -79,6 +80,21 @@ def machines_strip(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request, "_machine_strip.html", machine_side_context(db)
     )
+
+
+@router.get("/machines/sisma", response_class=HTMLResponse)
+def machines_sisma(request: Request, db: Session = Depends(get_db)):
+    """Віджет SLM-принтера над чергою — власний 15-секундний годинник.
+
+    Оголошено ВИЩЕ `/machines/{key}/frame.png`: параметричний роут з'їв би
+    «sisma» як ключ верстата (та сама пастка, що з zip і банером).
+
+    Той самий контракт, що в /machines/strip: лише пам'ять процесу, обгортка
+    віддається завжди — інакше фрагмент зник би з DOM разом зі своїм поллом.
+    """
+    if get_current_user(request, db) is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+    return templates.TemplateResponse(request, "_sisma_widget.html", sisma_context(db))
 
 
 @router.get("/machines/cards", response_class=HTMLResponse)

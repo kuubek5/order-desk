@@ -191,6 +191,7 @@ class MachineState:
     # відсоток фрезерування, а `ends_at` — не наша оцінка, а слово машини.
     layer: Optional[int] = None
     layers_total: Optional[int] = None
+    started_at: Optional[datetime] = None
     ends_at: Optional[datetime] = None
     # Фаза лазера: True — пише шар, False — розрівнює порошок між шарами.
     # Друк іде в ОБОХ випадках (див. app/machine_sisma).
@@ -816,6 +817,7 @@ def poll_target(
         state.is_sisma = sisma is not None
         state.layer = sisma.layer if sisma else None
         state.layers_total = sisma.layers_total if sisma else None
+        state.started_at = sisma.started_at if sisma else None
         state.ends_at = sisma.ends_at if sisma else None
         state.lasing = sisma.lasing if sisma else None
         state.frame_at = now
@@ -1031,8 +1033,17 @@ class MachineCard:
     # ніж не показати нічого — за цим числом планують зміну.
 
     @property
+    def is_sisma_machine(self) -> bool:
+        """Це SLM-принтер — за ОСТАННІМ упізнаним екраном, без огляду на
+        свіжість. Саме за цим полем віджет вирішує, кого показувати: інакше
+        принтер, який щойно втратив зв'язок, зник би з екрана разом із
+        повідомленням про обрив — тобто саме тоді, коли він найпотрібніший."""
+        return bool(self.state and self.state.is_sisma)
+
+    @property
     def is_sisma(self) -> bool:
-        return bool(self.state and self.state.is_sisma and not (self.stale or self.has_problem))
+        """Дані принтера можна ЧИТАТИ — кадр свіжий і зв'язок є."""
+        return self.is_sisma_machine and not (self.stale or self.has_problem)
 
     @property
     def layers(self) -> Optional[tuple[int, int]]:
@@ -1044,6 +1055,11 @@ class MachineCard:
         return (self.state.layer, self.state.layers_total)
 
     @property
+    def started_at(self) -> Optional[datetime]:
+        """Коли машина почала друк — її ж слова з екрана."""
+        return self.state.started_at if self.is_sisma else None
+
+    @property
     def ends_at(self) -> Optional[datetime]:
         """Коли машина обіцяє закінчити — ЇЇ прогноз, не наш."""
         return self.state.ends_at if self.is_sisma else None
@@ -1052,6 +1068,25 @@ class MachineCard:
     def lasing(self) -> Optional[bool]:
         """True — пише шар, False — розрівнює порошок. Обидва = працює."""
         return self.state.lasing if self.is_sisma else None
+
+    @property
+    def left_text(self) -> str:
+        """«лишилось 3 год 55 хв» — різниця між прогнозом машини і зараз.
+
+        Порожньо, коли термін уже минув: «лишилось -12 хв» гірше за тишу, а
+        прогноз машини на паузах цілком може відстати від годинника."""
+        ends = self.ends_at
+        if ends is None:
+            return ""
+        seconds = (ends - self.now).total_seconds()
+        if seconds <= 0:
+            return ""
+        hours, minutes = divmod(int(seconds) // 60, 60)
+        if hours and minutes:
+            return f"лишилось {hours} год {minutes} хв"
+        if hours:
+            return f"лишилось {hours} год"
+        return f"лишилось {minutes} хв"
 
     @property
     def phase_text(self) -> str:
@@ -1244,8 +1279,25 @@ def machine_side_context(db: Session) -> dict:
 
     Спільний для роута полла (/machines/side) і для першого рендера черги —
     щоб два входи не розійшлись (урок віджета пічок). Читає лише памʼять
-    процесу, до верстатів не ходить."""
-    return {"machine_cards": snapshot(db), "machine_summary": strip_summary(db)}
+    процесу, до верстатів не ходить.
+
+    SLM-принтери сюди НЕ потрапляють: у фрезерного відсоток програми, у
+    принтера — шари й час завершення, і в одному ряду вони читаються як
+    однакові речі (рішення власника 06.09.26). Принтер живе у власному
+    віджеті над чергою.
+    """
+    return {
+        "machine_cards": [c for c in snapshot(db) if not c.is_sisma_machine],
+        "machine_summary": strip_summary(db),
+    }
+
+
+def sisma_context(db: Session) -> dict:
+    """Контекст віджета SLM-принтерів над чергою.
+
+    Той самий контракт, що в machine_side_context: лише памʼять процесу, і
+    ОДИН вхід для першого рендера й для полла."""
+    return {"sisma_cards": [c for c in snapshot(db) if c.is_sisma_machine]}
 
 
 def strip_summary(db: Session) -> dict:

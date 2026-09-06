@@ -54,7 +54,7 @@ from app.services.furnace import (
     strip_cards as furnace_cards,
     strip_summary as furnace_summary,
 )
-from app.services.machines import machine_side_context, milling_now
+from app.services.machines import machine_side_context, milling_now, sisma_context
 from app.services.order_dates import order_date, parse_sheet_tab
 from app.services.queue import (
     QUEUE_SORT_FIELDS,
@@ -496,6 +496,8 @@ def build_queue_view(
             # Контекст будує ТОЙ САМИЙ machine_side_context, що й роут, щоб
             # два входи не розійшлись (урок віджета пічок).
             **machine_side_context(db),
+            # Той самий вхід, що й роут /machines/sisma — див. _sisma_widget.html.
+            **sisma_context(db),
             # Жива стрічка навантаження — перший рендер; далі #system-load
             # оновлює себе через /system/load. Стан лише з памʼяті.
             "load": system_load_snapshot(),

@@ -33,6 +33,7 @@ GET /machines/calibration/banner
 GET /machines/cards
 GET /machines/portrait/{machine_id}.jpg
 GET /machines/side
+GET /machines/sisma
 GET /machines/strip
 GET /machines/{key}/frame.png
 GET /machines/{key}/history

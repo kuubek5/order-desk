@@ -1,0 +1,98 @@
+{# Віджет SLM-принтера над чергою.
+
+   Чому окремо від стрічки верстатів: у фрезерного відсоток програми, у
+   принтера — шари й час завершення. В одному ряду вони читались би як
+   однакові речі (рішення власника 06.09.26).
+
+   Згорнуто це ОДИН рядок з часом завершення — тим єдиним числом, яке
+   дивляться десять разів на день. Решта (шари, початок, скільки лишилось)
+   потрібна раз-другий, тому чекає за кліком.
+
+   Стан «розгорнуто» живе класом на <body> + localStorage, а НЕ всередині
+   цього фрагмента: він свапається поллом кожні 15 с, і стан всередині
+   згортався б під рукою (той самий урок, що зі смугою печей).
+
+   Обгортка віддається ЗАВЖДИ, навіть без принтерів — інакше елемент зник би
+   з DOM разом зі своїм поллом і більше не повернувся б без перезавантаження
+   сторінки. #}
+<div id="sisma-strip"
+     class="sw-wrap{% if not sisma_cards %} is-empty{% endif %}"
+     hx-get="/machines/sisma"
+     hx-trigger="every 15s"
+     hx-target="this"
+     hx-swap="outerHTML"
+     hx-disinherit="*"
+     {% if not sisma_cards %}hidden{% endif %}
+     aria-label="3D-друк">
+{% for card in sisma_cards %}
+    {% set state = 'off' if card.has_problem else ('done' if card.is_completed else ('run' if card.layers else 'idle')) %}
+    <div class="sw-unit is-{{ state }}">
+        <button type="button" class="sw-chip" data-sisma-toggle
+                aria-expanded="false" aria-controls="sisma-panel-{{ loop.index }}"
+                title="{{ card.target.name }} — {{ card.target.host }}">
+            <span class="sw-dot{% if card.lasing %} is-live{% endif %}" aria-hidden="true"></span>
+            <b>{{ card.target.name }}</b>
+            {% if card.has_problem %}
+            <span class="sw-off">немає зв'язку</span>
+            {% elif card.is_completed %}
+            <span class="sw-off is-done">друк завершено</span>
+            {% elif card.layers %}
+            {# Сегменти по 10% — та сама мова, що в стрічці верстатів. Точні
+               шари чекають у розгорнутому вигляді: тут місце лише на грубу
+               шкалу й на головне число. #}
+            {% set lit = ((card.percent or 0) / 10)|round|int %}
+            <span class="sw-segs" aria-hidden="true">{% for k in range(10) %}<s{% if k < lit %} class="on"{% endif %}></s>{% endfor %}</span>
+            {% if card.ends_at %}
+            <span class="sw-time">{{ card.ends_at.strftime('%H:%M') }}</span>
+            {% else %}
+            <span class="sw-off">друкує</span>
+            {% endif %}
+            {% else %}
+            <span class="sw-off">друк не йде</span>
+            {% endif %}
+            <span class="sw-chev" aria-hidden="true">▾</span>
+        </button>
+
+        {# Панель. Її вміст існує в DOM завжди — розгортання це показ, а не
+           запит: інакше на кожен клік ішов би похід на сервер, а віджет має
+           відкриватись миттєво. #}
+        <div class="sw-panel" id="sisma-panel-{{ loop.index }}">
+            <div class="sw-art" aria-hidden="true"></div>
+            <div class="sw-veil" aria-hidden="true"></div>
+            <div class="sw-id">
+                <span class="sw-dot{% if card.lasing %} is-live{% endif %}" aria-hidden="true"></span>
+                <span>
+                    <span class="sw-nm">{{ card.target.name }}</span>
+                    <span class="sw-sub mono">{{ card.target.host }}</span>
+                </span>
+            </div>
+            {% if card.has_problem %}
+            <div class="sw-cell is-wide"><div class="sw-lb">зв'язок</div>
+                <div class="sw-alert">{{ card.problem_text }}</div></div>
+            {% elif card.layers %}
+            <div class="sw-cell">
+                <div class="sw-lb">шар</div>
+                <div class="sw-v">{{ card.layers[0] }}<u> / {{ card.layers[1] }}</u></div>
+                <div class="sw-bar"><i style="width:{{ card.percent or 0 }}%"></i></div>
+            </div>
+            {% if card.started_at %}
+            <div class="sw-cell"><div class="sw-lb">початок</div>
+                <div class="sw-v">{{ card.started_at.strftime('%H:%M') }}</div></div>
+            {% endif %}
+            {% if card.ends_at %}
+            <div class="sw-cell is-end"><div class="sw-lb">кінець</div>
+                <div class="sw-v">{{ card.ends_at.strftime('%H:%M') }}</div></div>
+            {% endif %}
+            {% if card.left_text %}<div class="sw-left">{{ card.left_text }}</div>{% endif %}
+            {% elif card.is_completed %}
+            <div class="sw-cell is-wide"><div class="sw-lb">стан</div>
+                <div class="sw-v sw-v-word">друк завершено — зняти</div></div>
+            {% else %}
+            <div class="sw-cell is-wide"><div class="sw-lb">стан</div>
+                <div class="sw-v sw-v-word">друк не йде</div></div>
+            {% endif %}
+            <div class="sw-fresh">{% if card.frame_at %}кадр {{ card.frame_at.strftime('%H:%M:%S') }}{% endif %}</div>
+        </div>
+    </div>
+{% endfor %}
+</div>

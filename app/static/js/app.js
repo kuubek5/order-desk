@@ -353,6 +353,41 @@ document.addEventListener("click", (event) => {
   btn.setAttribute("title", collapsed ? "Розгорнути меню" : "Згорнути меню");
 });
 
+// Віджет 3D-друку над чергою: чіп розгортається в табло.
+//
+// Стан живе КЛАСОМ НА BODY, а не всередині віджета: сам віджет свапається
+// поллом кожні 15 с (hx-swap="outerHTML"), і будь-який стан у ньому згортався
+// б під рукою оператора. Той самий урок, що зі смугою печей.
+//
+// Делегований слухач — з тієї ж причини: після свапу кнопка в DOM уже інша,
+// і прямий addEventListener на неї перестав би працювати мовчки.
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-sisma-toggle]");
+  if (!btn) return;
+  const open = document.body.classList.toggle("sisma-open");
+  KMStore.set("sismaOpen", open ? "1" : "0");
+  syncSismaToggles();
+});
+
+// aria-expanded мусить оновитись і після полла, і при відновленні стану з
+// localStorage — тому це окрема функція, а не рядок усередині обробника.
+function syncSismaToggles() {
+  const open = document.body.classList.contains("sisma-open");
+  document.querySelectorAll("[data-sisma-toggle]").forEach((btn) => {
+    btn.setAttribute("aria-expanded", String(open));
+    btn.setAttribute("title", open ? "Згорнути" : "Показати шари й час завершення");
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  if (KMStore.get("sismaOpen") === "1") document.body.classList.add("sisma-open");
+  syncSismaToggles();
+});
+// Після полла кнопки в DOM нові — повертаємо їм правильний aria-стан.
+document.body.addEventListener("htmx:afterSwap", (event) => {
+  if (event.target && event.target.id === "sisma-strip") syncSismaToggles();
+});
+
 // ── Вкладки розділу в рейці налаштувань ───────────────────────────────────
 // Частина розділів має всередині вкладки («Копії таблиці» в Google Таблиці,
 // «Скачування вкладень» у Пошті, «Сповіщення» в кабінеті). У рейці вони

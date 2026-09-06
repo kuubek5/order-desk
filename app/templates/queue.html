@@ -125,6 +125,10 @@
        повернути, розкоментувавши цей include; сам _queue_kpi_row.html цілий. #}
     {# {% include "_queue_kpi_row.html" %} #}
     {% include "_queue_peek_row.html" %}
+    {# 3D-друк (SLM) — окремим віджетом НАД стрічкою фрезерних: у принтера
+       шари й час завершення, у верстатів відсоток, і в одному ряду вони
+       читались би як однакові речі. #}
+    {% include "_sisma_widget.html" %}
     {# Стрічка верстатів «назва + %». Теж ВИЩЕ `.worklayout` — поза
        `#queue-rows`, свій полл; обгортка завжди (див. _machine_strip.html). #}
     {% include "_machine_strip.html" %}
