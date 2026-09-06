@@ -45,6 +45,17 @@
                 {% if card.has_problem %}
                 <span class="ms-pct err">—</span>
                 <span class="ms-note">немає зв'язку</span>
+                {% elif card.is_completed %}
+                {# «Готово» СТАРШЕ за відсоток: верстат, що дійшов до 100 і
+                   стоїть, уже не «фрезерує 100%», його треба знімати. Раніше
+                   ця гілка стояла нижче й до неї доходили лише верстати
+                   нового покоління, де смуга зникає сама. #}
+                <span class="ms-pct is-done">готово</span>
+                {% if card.orders %}
+                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}{% if card.orders|length > 1 %} <b class="ms-more">+{{ card.orders|length - 1 }}</b>{% endif %}</span>
+                {% elif card.sum3d_id %}
+                <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
+                {% endif %}
                 {% elif card.percent is not none %}
                 <span class="ms-pct">{{ card.percent }}<i>%</i></span>
                 {% if card.orders %}

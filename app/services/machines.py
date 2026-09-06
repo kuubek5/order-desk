@@ -98,6 +98,9 @@ STALE_AFTER_SECONDS = 120.0
 # Числа при цьому НЕ підмінюються: за їхню свіжість і далі відповідає
 # STALE_AFTER_SECONDS.
 PROBLEM_AFTER_FAILURES = 3
+# Скільки відсоток мусить простояти на 100, щоб це вважалось «завершено».
+# Див. MachineCard.is_completed: витримка проти блимання галочкою.
+COMPLETED_AFTER_SECONDS = 120.0
 # Скільки останніх обривів памʼятаємо на верстат. Десяти вистачає, щоб побачити
 # закономірність («рветься щогодини» / «один раз уночі»), і вони нічого не
 # важать для памʼяті.
@@ -256,11 +259,91 @@ def frames_root() -> Path:
 # буде ~101 (по одному на відсоток), але це запобіжник від патологічного
 # накопичення, якщо геометрія почне стрибати. Диск локальний, кадр ~50КБ.
 CALIBRATION_MAX_FRAMES = 130
-# Ручний (за часом) збір: не частіше ніж раз на стільки секунд, щоб за програму
-# набрати РІЗНІ кадри, а не сотні однакових.
+# Ручний збір: не частіше ніж раз на стільки секунд. Це не «крок збору», а
+# стеля навантаження — кадр однаково візьмуть лише якщо він НЕСХОЖИЙ на вже
+# збережені (див. collect_calibration_frame_timed).
 CALIBRATION_TIMED_INTERVAL_SECONDS = 15.0
+
+# ── Відбір за НЕСХОЖІСТЮ ────────────────────────────────────────────────────
+# Навіщо. Кадри збирають, щоб навчити читач РІДКІСНИХ екранів: помилка,
+# завершення, діалог. Збір «раз на 15 секунд» їх якраз і губить: доба простою
+# забиває кільце однаковими кадрами, а двохвилинна аварія о третій ночі до
+# ранку витісняється (бойовий випадок 06.09.26 — 107 кадрів простою зі 130).
+#
+# Тому кадр відкладається, лише якщо він не схожий на жоден уже збережений, а
+# коли тека повна — витісняється не найстаріший, а НАЙЗАЙВІШИЙ: той, що
+# найближчий до свого сусіда. Набір сам себе тримає різноманітним, і рідкісний
+# екран не зникає ніколи, бо йому нема на що бути схожим.
+#
+# Підпис кадру — та сама мініатюра, що в scripts/machine_frame_clusters.py:
+# цифри на ній зникають, розкладка лишається. Тобто «той самий екран з іншим
+# відсотком» дублем НЕ вважається помилково — він і є дубль.
+CALIBRATION_SIGNATURE_SIZE = (64, 48)
+# Середня різниця яскравості (0..255), нижче якої кадри вважаємо однаковими.
+# 6 підібрано на 130 бойових кадрах SISMA: простій і друк розходяться на 10.2,
+# сусідні кадри одного стану — на частки одиниці.
+CALIBRATION_NOVELTY_THRESHOLD = 6.0
+
 _calib_last_timed: dict[str, float] = {}
+# Підписи вже збережених кадрів: ключ верстата → {ім'я файлу: підпис}.
+# Тримаємо в памʼяті, щоб не перечитувати теку на кожному опитуванні;
+# перший доступ підіймає з диска (файлів щонайбільше CALIBRATION_MAX_FRAMES).
+_calib_signatures: dict[str, dict[str, tuple[int, ...]]] = {}
 _calib_lock = threading.Lock()
+
+
+def _frame_signature(frame: "Image.Image") -> tuple[int, ...]:
+    """Мініатюра кадру як плаский підпис яскравості."""
+    small = frame.convert("L").resize(CALIBRATION_SIGNATURE_SIZE, Image.BILINEAR)
+    return tuple(small.tobytes())
+
+
+def _signature_distance(a: tuple[int, ...], b: tuple[int, ...]) -> float:
+    if len(a) != len(b):
+        return 255.0
+    return sum(abs(x - y) for x, y in zip(a, b)) / len(a)
+
+
+def _known_signatures(folder: Path, key: str) -> dict[str, tuple[int, ...]]:
+    """Підписи кадрів, що вже лежать у теці цього верстата.
+
+    Читаємо диск ОДИН раз на процес: далі словник підтримується записами й
+    витісненнями. Кадр, який не відкрився, просто пропускаємо — зіпсований
+    файл не привід зупинити збір.
+    """
+    known = _calib_signatures.get(key)
+    if known is not None:
+        return known
+    known = {}
+    for png in sorted(folder.glob("d-*.png")):
+        try:
+            with Image.open(png) as frame:
+                known[png.name] = _frame_signature(frame)
+        except Exception:  # noqa: BLE001 — битий файл не має валити збір
+            logger.debug("Калібрувальний кадр %s не прочитався", png, exc_info=True)
+    _calib_signatures[key] = known
+    return known
+
+
+def _most_redundant(known: dict[str, tuple[int, ...]]) -> Optional[str]:
+    """Ім'я найзайвішого кадру — того, що найближчий до свого сусіда.
+
+    Саме він, а не найстаріший: набір мусить лишатись різноманітним, а вік
+    кадру про його цінність нічого не каже.
+    """
+    if len(known) < 2:
+        return None
+    names = list(known)
+    best_name, best_gap = None, None
+    for i, name in enumerate(names):
+        gap = min(
+            _signature_distance(known[name], known[other])
+            for j, other in enumerate(names)
+            if i != j
+        )
+        if best_gap is None or gap < best_gap:
+            best_name, best_gap = name, gap
+    return best_name
 
 
 def calibration_root(root: Optional[str] = None) -> Path:
@@ -343,41 +426,19 @@ def calibration_zip_bytes(root: Optional[str] = None) -> bytes:
     return buffer.getvalue()
 
 
-def _evict_oldest_timed(folder: Path, keep: int) -> None:
-    """Лишити в теці не більше `keep` кадрів, видаляючи найстаріші `t-*`.
-
-    Рахуємо ВСІ png (кап на теку спільний з `pct-*`), а видаляємо лише timed:
-    покадровий набір по відсотках цінніший за стрічку часу.
-    """
-    total = sum(1 for _ in folder.glob("*.png"))
-    if total <= keep:
-        return
-    # Сортуємо за ЧАСОМ ФАЙЛУ, не за іменем: у імені лише HHMMSS, тож друк
-    # через північ поставив би найстаріші кадри в кінець списку.
-    def stamp(f: Path) -> float:
-        try:
-            return f.stat().st_mtime
-        except OSError:
-            return 0.0
-
-    timed = sorted(folder.glob("t-*.png"), key=stamp)
-    for png in timed[: total - keep]:
-        try:
-            png.unlink()
-        except OSError:
-            logger.debug("Калібрувальний кадр %s не видалився", png, exc_info=True)
-
-
 def collect_calibration_frame_timed(
     key: str, frame: "Image.Image", root: Optional[str] = None
 ) -> None:
-    """Відкласти кадр за ЧАСОМ (ручний режим калібрування, `collect_calibration`).
+    """Відкласти кадр, ЯКЩО ВІН НЕСХОЖИЙ на вже зібрані (ручний режим, галка
+    «Калібр.»).
 
-    Для верстата, де відсоток ще не читається (нове покоління, інша розкладка),
-    дедуп за відсотком неможливий — тож беремо кадр не частіше ніж раз на
-    CALIBRATION_TIMED_INTERVAL_SECONDS. За програму набереться спред кадрів на
-    різних відсотках, оператор їх качає кнопкою «Скачати кадри», як і раніше.
-    Кап той самий. Ніколи не кидає — збір це зручність, не робота.
+    Ім'я лишилось історичним, а правило змінилось: час тепер лише стеля
+    навантаження (не частіше ніж раз на CALIBRATION_TIMED_INTERVAL_SECONDS), а
+    рішення «писати чи ні» ухвалює несхожість. Причина — у розділі
+    CALIBRATION_NOVELTY_THRESHOLD: збір за годинником губить рідкісні екрани,
+    заради яких його й вмикають.
+
+    Ніколи не кидає: збір — зручність, а не робота.
     """
     try:
         now = time.monotonic()
@@ -386,33 +447,45 @@ def collect_calibration_frame_timed(
             if last is not None and now - last < CALIBRATION_TIMED_INTERVAL_SECONDS:
                 return
             _calib_last_timed[key] = now
+
         folder = calibration_root(root) / _sanitize_key(key)
         folder.mkdir(parents=True, exist_ok=True)
-        # Кап тут — КІЛЬЦЕВИЙ, а не «стоп». Бойовий випадок 06.09.26: SISMA
-        # півдня стояла з увімкненою галкою, за 33 хвилини набила кап кадрами
-        # НЕРУХОМОГО екрана — і коли друк нарешті стартував, збирач мовчав.
-        # Тобто кап відсікав рівно ті кадри, заради яких його вмикали.
-        # Тепер найстаріші timed-кадри витісняються новими: у теці завжди
-        # лежать ОСТАННІ ~30 хвилин життя екрана.
-        #
-        # Витісняємо лише `t-*` (зібрані за часом). Кадри `pct-*` — по одному
-        # на відсоток, вони незамінні й не мусять гинути через ручний режим.
-        _evict_oldest_timed(folder, CALIBRATION_MAX_FRAMES - 1)
-        # Витіснити могло й не вийти — якщо кап забитий кадрами `pct-*`, які
-        # ми не чіпаємо. Тоді поводимось як раніше: мовчки не пишемо.
-        if sum(1 for _ in folder.glob("*.png")) >= CALIBRATION_MAX_FRAMES:
-            return
-        # Мілісекунди в імені — унікальність навіть за кількох збережень в одну
-        # секунду (у проді інтервал 15 с, але хай ім'я не колізить ніколи).
-        stamp = datetime.now().strftime("%H%M%S%f")[:-3]
-        target = folder / f"t-{stamp}.png"
-        if target.exists():
-            return
-        tmp = folder / f".t-{stamp}.tmp.png"
-        frame.save(tmp, format="PNG")
-        tmp.replace(target)
+        signature = _frame_signature(frame)
+
+        with _calib_lock:
+            known = _known_signatures(folder, key)
+            if known:
+                nearest = min(_signature_distance(signature, s) for s in known.values())
+                if nearest <= CALIBRATION_NOVELTY_THRESHOLD:
+                    return  # такий екран уже є — писати нема сенсу
+
+            # Тека повна: звільняємо місце, викидаючи НАЙЗАЙВІШИЙ кадр (той,
+            # що найближчий до сусіда), а не найстаріший. Так набір лишається
+            # різноманітним, і давня аварія переживе тиждень простою.
+            #
+            # Рахуємо ВСІ png (кап на теку спільний), а видаляємо лише свої
+            # `d-*`: кадри `pct-*` — по одному на відсоток, вони незамінні.
+            if sum(1 for _ in folder.glob("*.png")) >= CALIBRATION_MAX_FRAMES:
+                victim = _most_redundant(known)
+                if victim is None:
+                    return
+                try:
+                    (folder / victim).unlink()
+                except OSError:
+                    logger.debug("Кадр %s не видалився", victim, exc_info=True)
+                    return
+                known.pop(victim, None)
+
+            stamp = datetime.now().strftime("%H%M%S%f")[:-3]
+            target = folder / f"d-{stamp}.png"
+            if target.exists():
+                return
+            tmp = folder / f".d-{stamp}.tmp.png"
+            frame.save(tmp, format="PNG")
+            tmp.replace(target)
+            known[target.name] = signature
     except Exception:  # noqa: BLE001 — збір не має валити опитування
-        logger.debug("Калібрувальний кадр (час) верстата %s не збережено", key, exc_info=True)
+        logger.debug("Калібрувальний кадр верстата %s не збережено", key, exc_info=True)
 
 
 def collect_calibration_frame(
@@ -1067,14 +1140,28 @@ class MachineCard:
 
     @property
     def is_completed(self) -> bool:
-        """Програма завершена — на екрані підсумок SUMMARY («Completed»).
+        """Програма завершена. Два незалежні шляхи, і обидва потрібні.
 
-        Читається зі СВІЖОГО кадру, як і відсоток: показувати «завершено» з
-        протухлого кадру означало б те саме «хибне число», якого ми уникаємо.
-        Взаємно виключне з `percent` за побудовою детектора."""
-        if not (self.state and self.state.completed):
+        (1) Екран підсумку SUMMARY («Completed») — є лише на верстатах нового
+        покоління. Саме тому галочку досі бачив ОДИН верстат із чотирьох, а
+        решта показували «100%» і мовчали (скарга власника 06.09.26).
+
+        (2) Відсоток стоїть на 100 довше COMPLETED_AFTER_SECONDS. Пауза тут не
+        косметична: смуга торкається сотні й на мить перед зміною програми, і
+        без витримки галочка блимала б на здоровому верстаті. Дві хвилини —
+        свідомо більше, ніж будь-який такий доторк, і менше, ніж час, за який
+        оператор дійде знімати роботу.
+
+        Читається зі СВІЖОГО кадру, як і відсоток: «завершено» з протухлого
+        кадру — те саме хибне число, якого ми уникаємо."""
+        if not self.state or self.stale or self.has_problem:
             return False
-        return not (self.stale or self.has_problem)
+        if self.state.completed:
+            return True
+        if self.state.percent != 100 or self.state.percent_changed_at is None:
+            return False
+        held = (self.now - self.state.percent_changed_at).total_seconds()
+        return held >= COMPLETED_AFTER_SECONDS
 
     @property
     def has_program(self) -> bool:

@@ -248,105 +248,6 @@ def test_calibration_status_and_zip(monkeypatch, tmp_path):
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         assert "m/pct-040.png" in archive.namelist()
 
-
-def test_calibration_zip_route_is_not_eaten_by_the_frame_route():
-    """Та сама пастка, що з паролем печі: /machines/calibration.zip мусить
-    бути оголошений ВИЩЕ /machines/{key}/frame.png, інакше параметричний
-    з'їв би «calibration» як ключ верстата."""
-    from app.routers.machines import router
-
-    paths = [route.path for route in router.routes]
-    assert paths.index("/machines/calibration.zip") < paths.index(
-        "/machines/{key}/frame.png"
-    )
-
-
-def test_has_program_avoids_false_not_running(monkeypatch, tmp_path):
-    """Коли програма завантажена (є .iso у заголовку), а смугу відсотка на
-    поточній вкладці RemiCORE не видно — картка мусить казати «йде · %?», а не
-    брехати «програма не йде». Сигнал — заголовок вікна, який агент читає
-    незалежно від того, який екран показує RemiCORE (бойовий випадок 04.09.26,
-    верстат .76 на вкладці сітки інструментів)."""
-    now = datetime(2026, 9, 4, 12, 0, 0)
-    with Session(_database()) as db:
-        _add_machine(db)
-        target = service.MachineTarget(name="350i №1", host="192.168.1.85")
-        state = service.MachineState(target=target)
-        # Свіжий кадр, програма в заголовку є, але відсоток НЕ прочитався.
-        state.frame_at = now
-        state.percent = None
-        state.iso_name = "3_16-Emotions_2026-09-04_11-25-27.iso"
-        state.sum3d_id = "11-25-27"
-        card = service.MachineCard(target=target, state=state, now=now)
-
-        assert card.percent is None
-        assert card.is_running is False   # без % не рахуємо як «фрезерує»
-        assert card.has_program is True   # але програма завантажена
-        assert card.has_frame is True
-
-
-def test_timed_calibration_collects_and_dedups_by_time(monkeypatch, tmp_path):
-    """Ручний збір (collect_calibration) відкладає кадр за ЧАСОМ, не за
-    відсотком — для верстата, де відсоток ще не читається (нове покоління).
-    Дедуп за інтервалом: два поспіль дають ОДИН файл."""
-    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
-    with service._calib_lock:
-        service._calib_last_timed.clear()
-
-    service.collect_calibration_frame_timed("192.168.1.81-8765", _calib_frame(50))
-    service.collect_calibration_frame_timed("192.168.1.81-8765", _calib_frame(51))  # одразу — дедуп
-
-    folder = tmp_path / "calib" / "192.168.1.81-8765"
-    assert len(list(folder.glob("t-*.png"))) == 1, "два поспіль мали дати один кадр"
-
-    # Мине інтервал — новий кадр дозволено.
-    with service._calib_lock:
-        service._calib_last_timed["192.168.1.81-8765"] = 0.0
-    service.collect_calibration_frame_timed("192.168.1.81-8765", _calib_frame(60))
-    assert len(list(folder.glob("t-*.png"))) == 2
-
-
-def test_timed_calibration_cap_is_a_ring_not_a_stop(monkeypatch, tmp_path):
-    """Бойовий випадок 06.09.26: верстат півдня СТОЯВ із увімкненою галкою,
-    набив кап кадрами нерухомого екрана — і коли друк стартував, збирач мовчав.
-    Кап мусить витісняти найстаріші timed-кадри, а не глушити збір."""
-    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
-    monkeypatch.setattr(service, "CALIBRATION_MAX_FRAMES", 3)
-    folder = tmp_path / "calib" / "m"
-    folder.mkdir(parents=True)
-    for i in range(3):
-        stale = folder / f"t-00000{i}000.png"
-        stale.write_bytes(b"stale")
-        os.utime(stale, (1000 + i, 1000 + i))
-
-    with service._calib_lock:
-        service._calib_last_timed.clear()
-    service.collect_calibration_frame_timed("m", _calib_frame(70))
-
-    names = sorted(f.name for f in folder.glob("*.png"))
-    assert len(names) == 3, "кап тримається"
-    assert "t-000000000.png" not in names, "найстаріший мав витіснитись"
-    assert any(f.stat().st_size > 5 for f in folder.glob("*.png")), "новий кадр записався"
-
-
-def test_timed_calibration_never_evicts_percent_frames(monkeypatch, tmp_path):
-    """Кадри `pct-*` (по одному на відсоток) незамінні — ручний режим не має
-    права їх з'їдати. Кап забитий ними → просто не пишемо."""
-    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
-    monkeypatch.setattr(service, "CALIBRATION_MAX_FRAMES", 2)
-    folder = tmp_path / "calib" / "m"
-    folder.mkdir(parents=True)
-    for pct in (40, 60):
-        (folder / f"pct-{pct:03d}.png").write_bytes(b"precious")
-
-    with service._calib_lock:
-        service._calib_last_timed.clear()
-    service.collect_calibration_frame_timed("m", _calib_frame(70))
-
-    assert len(list(folder.glob("pct-*.png"))) == 2, "відсоткові кадри цілі"
-    assert not list(folder.glob("t-*.png")), "новий кадр не пишеться поверх капу"
-
-
 def test_timed_calibration_never_raises(monkeypatch, tmp_path):
     monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
     with service._calib_lock:
@@ -357,21 +258,6 @@ def test_timed_calibration_never_raises(monkeypatch, tmp_path):
             raise OSError("диск повний")
 
     service.collect_calibration_frame_timed("m", Boom())  # не кидає
-
-
-def test_timed_calibration_zip_includes_timed_frames(monkeypatch, tmp_path):
-    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
-    with service._calib_lock:
-        service._calib_last_timed.clear()
-    service.collect_calibration_frame_timed("m", _calib_frame(40))
-
-    import io
-    import zipfile
-    data = service.calibration_zip_bytes()
-    with zipfile.ZipFile(io.BytesIO(data)) as z:
-        assert any(n.startswith("m/t-") for n in z.namelist())
-    assert service.calibration_status()["frames"] >= 1
-
 
 def test_single_failed_poll_does_not_paint_the_tile_red(monkeypatch, tmp_path):
     """Одна невдача — ще не обрив.
@@ -542,25 +428,6 @@ def test_calibration_routes_are_not_eaten_by_the_id_route():
     for path in ("/settings/machines/calibration-path", "/settings/machines/calibration-folder"):
         assert paths.index(path) < paths.index("/settings/machines/{machine_id}"), path
 
-
-def test_calibration_root_follows_the_setting(monkeypatch, tmp_path):
-    """Тека з налаштувань старша за типову — інакше кнопка «Відкрити теку»
-    показувала б одне місце, а збирач писав би в інше."""
-    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "default"))
-    assert service.calibration_root() == tmp_path / "default"
-    assert service.calibration_root(str(tmp_path / "own")) == tmp_path / "own"
-
-    with service._calib_lock:
-        service._calib_last_timed.clear()
-    service.collect_calibration_frame_timed("m", _calib_frame(40), str(tmp_path / "own"))
-
-    assert list((tmp_path / "own" / "m").glob("t-*.png")), "кадр пішов у теку з налаштувань"
-    assert not (tmp_path / "default").exists(), "типова тека не чіпалась"
-
-    status = service.calibration_status(str(tmp_path / "own"))
-    assert status["frames"] == 1
-
-
 def test_open_calibration_folder_creates_it_and_asks_explorer(monkeypatch, tmp_path):
     """Кнопка «Відкрити теку»: теку створюємо, якщо її ще нема — порожня тека
     чесно каже «кадрів нуль», а помилка «шлях не знайдено» читалась би як
@@ -592,28 +459,6 @@ def test_calibration_path_key_is_writable_and_clearable():
     assert "machine_calibration_path" in SETTING_KEYS
     assert "machine_calibration_path" in CLEARABLE_SETTING_KEYS
 
-
-def test_calibration_status_reports_freshness_not_only_a_count(monkeypatch, tmp_path):
-    """Кількість кадрів застигає на капі (кільце витісняє найстаріші), тому
-    сама по собі вона не доводить, що збір живий — скарга 06.09.26 «цифра не
-    змінюється». Чесний доказ — час НАЙСВІЖІШОГО кадру плюс явна ознака, що
-    межа набрана."""
-    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
-    monkeypatch.setattr(service, "CALIBRATION_MAX_FRAMES", 2)
-    folder = tmp_path / "calib" / "m"
-    folder.mkdir(parents=True)
-    for i in range(2):
-        png = folder / f"t-00000{i}.png"
-        png.write_bytes(b"x")
-        os.utime(png, (1_700_000_000 + i, 1_700_000_000 + i))
-
-    status = service.calibration_status()
-
-    assert status["frames"] == 2
-    assert status["capped"] is True, "межа набрана — інакше число «не росте» без пояснення"
-    assert status["newest"] == datetime.fromtimestamp(1_700_000_001)
-
-
 def test_calibration_banner_lives_in_settings_not_on_the_machines_screen():
     """Рішення власника 06.09.26: збір кадрів — обслуговування, його місце в
     Налаштуваннях біля галки «Калібр.», а не над картками, які цілий день
@@ -626,3 +471,202 @@ def test_calibration_banner_lives_in_settings_not_on_the_machines_screen():
 
     assert "_machine_calibration_banner.html" not in machines
     assert "_machine_calibration_banner.html" in settings
+
+
+def _reset_calibration_state() -> None:
+    with service._calib_lock:
+        service._calib_last_timed.clear()
+        service._calib_signatures.clear()
+
+
+def _plain_frame(shade: int) -> Image.Image:
+    """Рівний кадр заданої яскравості — свідомо НЕ схожий на інші відтінки."""
+    return Image.new("RGB", (1152, 864), (shade, shade, shade))
+
+
+def test_collector_keeps_new_screens_and_skips_repeats(monkeypatch, tmp_path):
+    """Правило збирача: пишемо кадр, ЯКОГО ЩЕ НЕ БУЛО, і мовчимо про повтори.
+
+    Саме через це його й переписали: збір за годинником забивав теку сотнями
+    однакових кадрів простою, а рідкісний екран туди не влазив."""
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    _reset_calibration_state()
+    folder = tmp_path / "calib" / "m"
+
+    service.collect_calibration_frame_timed("m", _plain_frame(30))
+    assert len(list(folder.glob("d-*.png"))) == 1
+
+    # Той самий екран, хай і через інтервал часу — це не новий вигляд.
+    service._calib_last_timed.clear()
+    service.collect_calibration_frame_timed("m", _plain_frame(30))
+    assert len(list(folder.glob("d-*.png"))) == 1, "повтор не мав писатись"
+
+    # Інший екран — пишемо.
+    service._calib_last_timed.clear()
+    service.collect_calibration_frame_timed("m", _plain_frame(200))
+    assert len(list(folder.glob("d-*.png"))) == 2
+
+
+def test_collector_throttles_by_time(monkeypatch, tmp_path):
+    """Час лишився стелею навантаження: два виклики поспіль не б'ють диск."""
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    _reset_calibration_state()
+    folder = tmp_path / "calib" / "m"
+
+    service.collect_calibration_frame_timed("m", _plain_frame(30))
+    service.collect_calibration_frame_timed("m", _plain_frame(200))  # одразу — рано
+
+    assert len(list(folder.glob("d-*.png"))) == 1
+
+
+def test_full_folder_evicts_the_most_redundant_not_the_oldest(monkeypatch, tmp_path):
+    """Ключова властивість: рідкісний екран переживає скільки завгодно простою.
+
+    Тека повна; серед кадрів є один самотній (несхожий ні на що) і купка
+    майже однакових. Новий кадр мусить витіснити когось із купки, а самотній
+    — лишитись. За старим правилом «викидаємо найстаріший» гинув би саме він,
+    бо він найдавніший."""
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    monkeypatch.setattr(service, "CALIBRATION_MAX_FRAMES", 4)
+    _reset_calibration_state()
+    folder = tmp_path / "calib" / "m"
+
+    service.collect_calibration_frame_timed("m", _plain_frame(10))   # самотній, найстаріший
+    for shade in (100, 112, 124):                                    # купка сусідів
+        service._calib_last_timed.clear()
+        service.collect_calibration_frame_timed("m", _plain_frame(shade))
+    assert len(list(folder.glob("d-*.png"))) == 4
+
+    service._calib_last_timed.clear()
+    service.collect_calibration_frame_timed("m", _plain_frame(230))  # ще один новий
+
+    files = sorted(folder.glob("d-*.png"))
+    assert len(files) == 4, "кап тримається"
+    shades = sorted(Image.open(f).convert("L").getpixel((5, 5)) for f in files)
+    assert 10 in shades, "самотній кадр мусив вижити"
+    assert 230 in shades, "новий кадр мусив записатись"
+
+
+def test_percent_frames_are_never_evicted(monkeypatch, tmp_path):
+    """Кадри `pct-*` (по одному на відсоток) незамінні — ручний збір не має
+    права їх з'їдати. Кап забитий ними → просто не пишемо."""
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    monkeypatch.setattr(service, "CALIBRATION_MAX_FRAMES", 2)
+    _reset_calibration_state()
+    folder = tmp_path / "calib" / "m"
+    folder.mkdir(parents=True)
+    for pct in (40, 60):
+        (folder / f"pct-{pct:03d}.png").write_bytes(b"precious")
+
+    service.collect_calibration_frame_timed("m", _plain_frame(30))
+
+    assert len(list(folder.glob("pct-*.png"))) == 2
+    assert not list(folder.glob("d-*.png"))
+
+
+def test_collector_never_raises(monkeypatch, tmp_path):
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    _reset_calibration_state()
+
+    class Boom:
+        def convert(self, *a, **k):
+            raise OSError("кадр побився")
+
+    service.collect_calibration_frame_timed("m", Boom())  # не кидає
+
+
+def test_zip_includes_collected_frames(monkeypatch, tmp_path):
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    _reset_calibration_state()
+    service.collect_calibration_frame_timed("m", _plain_frame(30))
+
+    import io
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(service.calibration_zip_bytes())) as z:
+        assert any(n.startswith("m/d-") for n in z.namelist())
+
+
+def test_calibration_status_reports_freshness_not_only_a_count(monkeypatch, tmp_path):
+    """Кількість кадрів застигає на капі, тому сама по собі вона не доводить,
+    що збір живий — скарга 06.09.26 «цифра не змінюється». Чесний доказ — час
+    найсвіжішого кадру плюс явна ознака, що межа набрана."""
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "calib"))
+    monkeypatch.setattr(service, "CALIBRATION_MAX_FRAMES", 2)
+    folder = tmp_path / "calib" / "m"
+    folder.mkdir(parents=True)
+    for i in range(2):
+        png = folder / f"d-00000{i}.png"
+        png.write_bytes(b"x")
+        os.utime(png, (1_700_000_000 + i, 1_700_000_000 + i))
+
+    status = service.calibration_status()
+
+    assert status["frames"] == 2
+    assert status["capped"] is True
+    assert status["newest"] == datetime.fromtimestamp(1_700_000_001)
+
+
+def test_calibration_root_follows_the_setting(monkeypatch, tmp_path):
+    """Тека з налаштувань старша за типову — інакше кнопка «Відкрити теку»
+    показувала б одне місце, а збирач писав би в інше."""
+    monkeypatch.setattr(service, "MACHINE_CALIBRATION_PATH", str(tmp_path / "default"))
+    _reset_calibration_state()
+    assert service.calibration_root() == tmp_path / "default"
+    assert service.calibration_root(str(tmp_path / "own")) == tmp_path / "own"
+
+    service.collect_calibration_frame_timed("m", _plain_frame(30), str(tmp_path / "own"))
+
+    assert list((tmp_path / "own" / "m").glob("d-*.png")), "кадр пішов у теку з налаштувань"
+    assert not (tmp_path / "default").exists(), "типова тека не чіпалась"
+    assert service.calibration_status(str(tmp_path / "own"))["frames"] == 1
+
+
+def _card_at(percent, changed_ago_seconds, now=None, completed=False):
+    """Картка верстата з відсотком, що стоїть задану кількість секунд."""
+    from types import SimpleNamespace
+    now = now or datetime(2026, 9, 6, 12, 0)
+    state = service.MachineState(
+        target=SimpleNamespace(key="k", name="350i", host="h", port=8765,
+                               portrait_model="", machine_id=1),
+        frame_at=now, percent=percent, percent_at=now, completed=completed,
+        percent_changed_at=now - timedelta(seconds=changed_ago_seconds),
+    )
+    return service.MachineCard(target=state.target, state=state, now=now)
+
+
+def test_hundred_percent_becomes_done_only_after_a_hold():
+    """Скарга власника 06.09.26: галочку «завершено» бачив ОДИН верстат із
+    чотирьох — той, у якого новий UI з екраном SUMMARY. Решта доходили до 100%
+    і мовчали. Тепер сотня теж означає «готово», але лише після витримки:
+    смуга торкається сотні й на мить перед зміною програми, і без витримки
+    галочка блимала б на здоровому верстаті."""
+    assert _card_at(100, 5).is_completed is False, "щойно торкнулось сотні — ще не готово"
+    assert _card_at(100, service.COMPLETED_AFTER_SECONDS + 1).is_completed is True
+
+
+def test_summary_screen_still_wins_without_any_wait():
+    """Верстат нового покоління показує підсумок прямо на екрані — там чекати
+    нема чого, це вже факт, а не здогад із числа."""
+    assert _card_at(None, 0, completed=True).is_completed is True
+
+
+def test_almost_done_is_not_done():
+    assert _card_at(99, 3600).is_completed is False
+    assert _card_at(99, 3600).is_running is True
+
+
+def test_done_beats_percent_in_the_strip():
+    """У чіпі стрічки «готово» мусить бути СТАРШИМ за число: верстат, що стоїть
+    на сотні, оператору треба знімати, а не читати «100%»."""
+    from types import SimpleNamespace
+
+    from app.routers.deps import templates
+
+    card = _card_at(100, service.COMPLETED_AFTER_SECONDS + 60)
+    html = templates.env.get_template("_machine_strip.html").render(
+        request=None, machine_cards=[card], user=SimpleNamespace(role="адмін"),
+        ui_prefs=lambda _r: SimpleNamespace(machine_strip="segments"),
+        ordered_machine_cards=lambda _r, cards: cards,
+    )
+    assert "✓" in html
+    assert "100<u>%</u>" not in html

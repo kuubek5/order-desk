@@ -42,6 +42,9 @@ main.furnaces{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex
   font:600 11.5px/1 var(--font-mono);letter-spacing:.04em;border:1px solid transparent;white-space:nowrap}
 .furnaces .fu-pill.is-run{color:var(--accent-c);border-color:var(--accent-d);background:rgba(var(--accent-rgb), .10)}
 .furnaces .fu-pill.is-wait{color:var(--ink-2);border-color:var(--line-2)}
+/* «Готово · зняти» — окремий тон від «фрезерує»: це не стан роботи, а
+   ЗАВДАННЯ операторові. Тому суцільніший фон і повна яскравість акценту. */
+.furnaces .fu-pill.is-done{color:var(--bg);border-color:var(--accent);background:var(--accent);font-weight:600}
 .furnaces .fu-pill.is-offline{color:var(--alarm);border-color:var(--color-overdue-border);background:var(--color-overdue-surface)}
 .furnaces .fu-pill.is-unknown{color:var(--warn);border-color:var(--warn)}
 

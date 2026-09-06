@@ -28,6 +28,9 @@
                 </div>
                 {% if card.has_problem %}
                 <span class="fu-pill is-offline">немає зв'язку</span>
+                {% elif card.is_completed %}
+                {# «Готово» старше за відсоток — див. _machine_side.html. #}
+                <span class="fu-pill is-done">готово · зняти</span>
                 {% elif card.percent is not none %}
                 <span class="mc-bigpct mc-pct" aria-label="Виконано {{ card.percent }} відсотків">{{ card.percent }}<u>%</u></span>
                 {% elif card.has_frame and not card.stale %}
