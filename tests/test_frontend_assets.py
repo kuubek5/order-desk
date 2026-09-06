@@ -16,6 +16,8 @@
    Ловиться склеюванням усіх глобальних скриптів в один і `node --check`.
 
 Коли скрипт додають/прибирають СВІДОМО — оновити BASE_HTML_SCRIPTS нижче.
+Важке 3D живе окремо (STL_SCRIPTS / STL_PAGES): воно підключається лише на
+екранах зі справжнім STL, тому й знімок у нього свій.
 """
 
 import re
@@ -52,16 +54,38 @@ BASE_HTML_SCRIPTS = [
     "/static/js/settings.js",
     "/static/js/shift.js",
     "/static/js/feedback.js",
-    "/static/js/three-0.128.0.min.js",
-    "/static/js/STLLoader-0.128.0.js",
-    "/static/js/stl-preview.js",
-    "/static/js/stl-gallery.js",
     "/static/js/htmx-1.9.10.min.js",
 ]
 
+# Важкі 3D-ассети живуть окремо (_stl_scripts.html) і вантажаться ЛИШЕ на
+# екранах зі справжнім STL (аудит 05.09.26, крок 2.10): одна three.js — 589 КБ,
+# і на вході чи в налаштуваннях вона не потрібна взагалі. Порядок тут теж
+# значущий: three → STLLoader → спільне ядро → його споживачі.
+STL_SCRIPTS = [
+    "/static/js/three-0.128.0.min.js",
+    "/static/js/STLLoader-0.128.0.js",
+    "/static/js/stl-render-core.js",
+    "/static/js/stl-preview.js",
+    "/static/js/stl-gallery.js",
+]
+
+# Екрани, які підключають 3D. Знімок: з'явився STL на новому екрані —
+# додай його сюди РАЗОМ із блоком stl_scripts у шаблоні.
+STL_PAGES = [
+    "handout.html",
+    "mail_detail.html",
+    "mail_triage.html",
+    "order_detail.html",
+    "queue.html",
+    "search.html",
+]
+
 # З них — наші, що ділять один глобальний простір. Саме їх склеюємо, щоб
-# зловити подвійне оголошення після розбиття.
-OUR_GLOBAL_SCRIPTS = [s for s in BASE_HTML_SCRIPTS if Path(s).name not in VENDORED]
+# зловити подвійне оголошення після розбиття. STL-скрипти тут теж: на своїх
+# екранах вони ділять той самий простір із рештою.
+OUR_GLOBAL_SCRIPTS = [
+    s for s in BASE_HTML_SCRIPTS + STL_SCRIPTS if Path(s).name not in VENDORED
+]
 
 
 def _node() -> str:
@@ -110,6 +134,71 @@ def test_base_html_loads_the_expected_scripts_in_order():
         f"  зараз:  {_script_srcs()}\n"
         f"  знімок: {BASE_HTML_SCRIPTS}\n"
         "Якщо зміна свідома — онови BASE_HTML_SCRIPTS у цьому файлі."
+    )
+
+
+def test_stl_bundle_is_loaded_only_by_screens_that_show_stl():
+    """Важке 3D — лише там, де є STL, і СКРІЗЬ, де він є.
+
+    Дві тихі помилки, які це ловить:
+    1. блок `stl_scripts` додали туди, де 3D немає — екран знову тягне
+       ~647 КБ дарма (саме це й прибирав крок 2.10);
+    2. новий екран із STL-токеном блок ЗАБУЛИ — прев'ю мовчить,
+       бо THREE немає, а скрипти просто виходять без помилки.
+    """
+    declares = sorted(
+        path.name
+        # Лише екрани: партіали не розширюють base.html і блоків не мають
+        # (а в самому _stl_scripts.html цей рядок є лише як підказка в коментарі).
+        for path in TEMPLATES_DIR.glob("*.html")
+        if not path.name.startswith("_")
+        if re.search(r"\{%\s*block\s+stl_scripts\s*%\}\s*\{%\s*include", path.read_text(encoding="utf-8"))
+    )
+    assert declares == sorted(STL_PAGES), (
+        "Набір екранів із 3D змінився." + chr(10)
+        + f"  зараз:  {declares}" + chr(10)
+        + f"  знімок: {sorted(STL_PAGES)}" + chr(10)
+        + "Якщо зміна свідома — онови STL_PAGES у цьому файлі."
+    )
+
+    # Шаблон із токеном мусить або сам підключати 3D, або бути
+    # частиною такого екрана (транзитивно через include).
+    includes = {
+        path.name: set(re.findall(r'\{%\s*include\s+"([^"]+)"', path.read_text(encoding="utf-8")))
+        for path in TEMPLATES_DIR.glob("*.html")
+    }
+    covered, queue = set(), list(STL_PAGES)
+    while queue:
+        name = queue.pop()
+        if name in covered:
+            continue
+        covered.add(name)
+        queue.extend(includes.get(name, ()))
+
+    orphans = sorted(
+        path.name
+        for path in TEMPLATES_DIR.glob("*.html")
+        if "data-stl-preview-token" in path.read_text(encoding="utf-8")
+        or "data-stl-gallery-token" in path.read_text(encoding="utf-8")
+        if path.name not in covered
+    )
+    assert not orphans, (
+        "Шаблони з STL-токеном, до яких не доїжджає three.js: " + str(orphans)
+    )
+
+
+def test_stl_partial_loads_its_scripts_in_order():
+    """Порядок усередині _stl_scripts.html — також частина поведінки.
+
+    stl-render-core.js чекає THREE під час виконання, а панель і галерея —
+    window.StlRenderCore. Переставиш — прев'ю мовчки вимкнеться."""
+    html = (TEMPLATES_DIR / "_stl_scripts.html").read_text(encoding="utf-8")
+    # Коментар Jinja на початку теж згадує теги — беремо лише справжні.
+    found = re.findall(r'<script\s+src="([^"?]+)', html)
+    assert found == STL_SCRIPTS, (
+        "Склад або порядок 3D-скриптів змінився." + chr(10)
+        + f"  зараз:  {found}" + chr(10)
+        + f"  знімок: {STL_SCRIPTS}"
     )
 
 

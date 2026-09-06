@@ -1,0 +1,17 @@
+{# Важкі 3D-ассети STL-прев'ю: three.js (589 КБ) + STLLoader + наші скрипти,
+   разом ~647 КБ. Раніше вантажились на КОЖНІЙ сторінці — навіть на вході, де
+   3D немає взагалі. Тепер підключаються лише там, де в розмітці є
+   `data-stl-preview-token` / `data-stl-gallery-token`: черга, пошук, ранкова
+   видача, паспорт роботи, тріаж пошти.
+
+   ПОРЯДОК ОБОВ'ЯЗКОВИЙ: three → STLLoader → спільне ядро → його споживачі.
+   Це класичні скрипти з defer: виконуються в порядку тегів, ділять один
+   глобальний простір. Сторож — tests/test_frontend_assets.py.
+
+   Підключати на новому екрані: `{% block stl_scripts %}{% include
+   "_stl_scripts.html" %}{% endblock %}` одразу після блоку title. #}
+<script src="/static/js/three-0.128.0.min.js" defer></script>
+<script src="/static/js/STLLoader-0.128.0.js" defer></script>
+<script src="/static/js/stl-render-core.js?v={{ static_ver('js/stl-render-core.js') }}" defer></script>
+<script src="/static/js/stl-preview.js?v={{ static_ver('js/stl-preview.js') }}" defer></script>
+<script src="/static/js/stl-gallery.js?v={{ static_ver('js/stl-gallery.js') }}" defer></script>

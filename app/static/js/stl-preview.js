@@ -38,31 +38,15 @@
 (function () {
   "use strict";
 
-  if (typeof THREE === "undefined" || typeof THREE.STLLoader === "undefined") {
+  // Спільне ядро (stl-render-core.js) тримає все, що однакове з галереєю
+  // тріажу: WebGL-контекст, парсинг STL, центрування моделі, колір із
+  // токена, звільнення контексту. Немає ядра або three.js — панелі немає.
+  const Core = window.StlRenderCore;
+  if (!Core || !Core.available()) {
     return;
   }
 
-  const REDUCED_MOTION =
-    window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  // Base per-frame rotation (radians) at slider position 1.0. The speed slider
-  // scales this; 0 = frozen. Default respects prefers-reduced-motion (starts
-  // still) but the slider lets the operator opt back into spin.
-  const BASE_SPIN_Y = 0.012;
-  const BASE_SPIN_X = 0.003;
-
-  // Warm teal accent that stays visible against the dark v2a stage; normals
-  // are recomputed below so the mesh is never solid black regardless of STL.
-  // Колір читається з токена --stl-model (тема може перефарбувати модель);
-  // 0x5eead4 — запасний, якщо токена нема.
-  function stlModelColor() {
-    try {
-      var v = getComputedStyle(document.body).getPropertyValue('--stl-model').trim();
-      if (/^#[0-9a-fA-F]{6}$/.test(v)) return parseInt(v.slice(1), 16);
-    } catch (e) {}
-    return 0x5eead4;
-  }
-  const MODEL_COLOR = stlModelColor();
+  const REDUCED_MOTION = Core.reducedMotion();
 
   // Швидкість авто-обертання запам'ятовується між сесіями (прохання оператора
   // 28.08.26): виставив слайдером — так і лишається наступного разу, поки сам
@@ -77,42 +61,22 @@
   // тож маленька панель — це і зайвий клік, і ризик видати не ту роботу.
   const MAX_STORAGE_KEY = "stl-preview-max";
 
+  // Дефолт живе САМЕ ТУТ, а не в ядрі: панель видачі без збереженого
+  // вибору відкривається РОЗГОРНУТОЮ, галерея тріажу — вбудованою.
   function loadMaxPreference() {
-    try {
-      const raw = window.localStorage.getItem(MAX_STORAGE_KEY);
-      if (raw === null) return true; // за замовчуванням — на весь екран
-      return raw === "1";
-    } catch (_) {
-      return true; // приватний режим — поводимось як із дефолтом
-    }
+    return Core.readBool(MAX_STORAGE_KEY, true);
   }
 
   function saveMaxPreference(on) {
-    try {
-      window.localStorage.setItem(MAX_STORAGE_KEY, on ? "1" : "0");
-    } catch (_) {
-      /* сховище недоступне — просто не запам'ятаємо цю сесію */
-    }
+    Core.writeBool(MAX_STORAGE_KEY, on);
   }
 
   function loadSavedSpeed() {
-    try {
-      const raw = window.localStorage.getItem(SPEED_STORAGE_KEY);
-      if (raw === null) return null;
-      const v = Number(raw);
-      if (!Number.isFinite(v)) return null;
-      return Math.min(3, Math.max(0, v)); // у межах слайдера
-    } catch (_) {
-      return null; // приватний режим / сховище вимкнене
-    }
+    return Core.readNumber(SPEED_STORAGE_KEY, 0, 3); // у межах слайдера
   }
 
   function saveSpeed(v) {
-    try {
-      window.localStorage.setItem(SPEED_STORAGE_KEY, String(v));
-    } catch (_) {
-      /* сховище недоступне — просто не запам'ятаємо цю сесію */
-    }
+    Core.writeNumber(SPEED_STORAGE_KEY, v);
   }
 
   // Збережене значення має пріоритет над дефолтом; якщо нічого не збережено —
@@ -294,99 +258,34 @@
   function ensureRenderer() {
     if (state.renderer) return;
     ensurePanel();
-
-    const renderer = new THREE.WebGLRenderer({
-      canvas: state.canvasEl,
-      antialias: true,
-      alpha: true,
-      preserveDrawingBuffer: false,
-    });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 1000);
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const key = new THREE.DirectionalLight(0xffffff, 0.9);
-    key.position.set(2, 3, 4);
-    scene.add(key);
-    const rim = new THREE.DirectionalLight(MODEL_COLOR, 0.45);
-    rim.position.set(-3, -2, -2);
-    scene.add(rim);
-
-    state.renderer = renderer;
-    state.scene = scene;
-    state.camera = camera;
-    resizeRenderer();
+    // Ядро дописує canvas/renderer/scene/camera прямо в state, тож решта
+    // файлу працює зі звичними state.renderer / state.camera / state.mesh.
+    Core.createView(state, state.canvasEl);
   }
 
   function resizeRenderer() {
-    if (!state.renderer) return;
-    const rect = state.canvasEl.getBoundingClientRect();
-    const w = Math.max(1, Math.round(rect.width));
-    const h = Math.max(1, Math.round(rect.height));
-    state.renderer.setSize(w, h, false);
-    state.camera.aspect = w / h;
-    state.camera.updateProjectionMatrix();
-    renderOnce();
+    Core.resizeView(state);
   }
 
   function setStatus(text) {
     ensurePanel();
-    state.statusEl.textContent = text || "";
-    state.statusEl.style.display = text ? "flex" : "none";
-    state.canvasEl.style.visibility = text ? "hidden" : "visible";
+    Core.applyStatus(state.statusEl, state.canvasEl, text);
   }
 
   function clearMesh() {
-    if (state.mesh) {
-      state.scene.remove(state.mesh);
-      state.mesh.geometry?.dispose?.();
-      state.mesh.material?.dispose?.();
-      state.mesh = null;
-    }
+    Core.clearMesh(state);
   }
 
   function renderOnce() {
-    if (state.renderer && state.scene && state.camera) {
-      state.renderer.render(state.scene, state.camera);
-    }
+    Core.renderOnce(state);
   }
 
   function showGeometry(geometry) {
     ensureRenderer();
-    clearMesh();
-
-    // CAD/CAM-exported STLs often ship zero/degenerate per-facet normals
-    // (slicers recompute their own) — with MeshStandardMaterial every N·L term
-    // is then zero and the mesh renders solid black despite loading fine.
-    // Always recompute from the triangle winding.
-    geometry.deleteAttribute("normal");
-    geometry.computeVertexNormals();
-
-    geometry.computeBoundingBox();
-    const size = new THREE.Vector3();
-    geometry.boundingBox.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z) || 1;
-
-    // Center the GEOMETRY's own vertices (not mesh.position, which lives in
-    // unscaled parent space and would fling the scaled-down mesh out of the
-    // frustum). See the long note the mail gallery/preview history carries.
-    geometry.center();
-
-    const material = new THREE.MeshStandardMaterial({
-      color: MODEL_COLOR,
-      metalness: 0.18,
-      roughness: 0.5,
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.scale.setScalar(2.2 / maxDim);
-
-    state.scene.add(mesh);
-    state.mesh = mesh;
-    state.camera.position.set(0, 0.6, 3.4);
-    state.camera.lookAt(0, 0, 0);
-
+    // Нормалі, центрування, масштаб і камера — у ядрі (спільне з галереєю).
+    // Камера при цьому вертається в дефолтну позицію — нова модель
+    // має починатись із зрозумілого ракурсу, а не з чужого зуму.
+    Core.showGeometry(state, geometry);
     setStatus(null);
     startRenderLoop();
   }
@@ -490,10 +389,7 @@
         renderOnce();
         return;
       }
-      if (state.mesh) {
-        state.mesh.rotation.y += BASE_SPIN_Y * state.spinSpeed;
-        state.mesh.rotation.x += BASE_SPIN_X * state.spinSpeed;
-      }
+      Core.spinMesh(state.mesh, state.spinSpeed);
       renderOnce();
       state.rafId = window.requestAnimationFrame(tick);
     }
@@ -507,52 +403,16 @@
     }
   }
 
+  // Розмітка списку файлів спільна з галереєю; різниться лише клас кнопки.
+  const FILE_CLASS = "stl-panel-file";
+
   function renderFileList() {
     ensurePanel();
-    state.filesEl.innerHTML = "";
-    state.files.forEach((filename, i) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "stl-panel-file" + (i === state.activeIndex ? " is-active" : "");
-      btn.dataset.index = String(i);
-      btn.setAttribute("role", "listitem");
-      btn.setAttribute("aria-pressed", i === state.activeIndex ? "true" : "false");
-
-      const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      icon.setAttribute("viewBox", "0 0 24 24");
-      icon.setAttribute("aria-hidden", "true");
-      icon.innerHTML =
-        '<path d="M12 2 2 7.5v9L12 22l10-5.5v-9L12 2z"/><path d="M2 7.5 12 13l10-5.5M12 13v9"/>';
-      btn.appendChild(icon);
-
-      const name = document.createElement("span");
-      name.className = "name mono";
-      name.textContent = filename;
-      btn.appendChild(name);
-
-      state.filesEl.appendChild(btn);
-    });
+    Core.renderFileList(state.filesEl, state.files, state.activeIndex, FILE_CLASS);
   }
 
   function updateActiveFile(index) {
-    const buttons = state.filesEl.querySelectorAll(".stl-panel-file");
-    buttons.forEach((btn, i) => {
-      const active = i === index;
-      btn.classList.toggle("is-active", active);
-      btn.setAttribute("aria-pressed", active ? "true" : "false");
-    });
-  }
-
-  function fetchGeometry(token, filename, signal) {
-    return fetch(
-      `/stl-preview/${encodeURIComponent(token)}/${encodeURIComponent(filename)}`,
-      { signal }
-    )
-      .then((response) => {
-        if (!response.ok) throw new Error("file-failed");
-        return response.arrayBuffer();
-      })
-      .then((buffer) => new THREE.STLLoader().parse(buffer));
+    Core.updateActiveFile(state.filesEl, FILE_CLASS, index);
   }
 
   function selectFile(index) {
@@ -575,7 +435,7 @@
     const controller = new AbortController();
     state.controller = controller;
 
-    fetchGeometry(token, filename, controller.signal)
+    Core.fetchGeometry(token, filename, controller.signal)
       .then((geometry) => {
         if (controller.signal.aborted) return;
         state.geometryCache.set(geoKey(token, filename), geometry);
@@ -697,13 +557,8 @@
 
     const controller = new AbortController();
     state.controller = controller;
-    fetch(`/stl-preview/${encodeURIComponent(token)}`, { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error("list-failed");
-        return response.json();
-      })
-      .then((data) => {
-        const files = Array.isArray(data.files) ? data.files : [];
+    Core.fetchFileList(token, controller.signal)
+      .then((files) => {
         state.fileListCache.set(token, files);
         if (state.token !== token) return;
         startWithFiles(token, files);

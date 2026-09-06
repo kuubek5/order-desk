@@ -63,10 +63,12 @@
     <script src="/static/js/settings.js?v={{ static_ver('js/settings.js') }}" defer></script>
     <script src="/static/js/shift.js?v={{ static_ver('js/shift.js') }}" defer></script>
     <script src="/static/js/feedback.js?v={{ static_ver('js/feedback.js') }}" defer></script>
-    <script src="/static/js/three-0.128.0.min.js" defer></script>
-    <script src="/static/js/STLLoader-0.128.0.js" defer></script>
-    <script src="/static/js/stl-preview.js?v={{ static_ver('js/stl-preview.js') }}" defer></script>
-    <script src="/static/js/stl-gallery.js?v={{ static_ver('js/stl-gallery.js') }}" defer></script>
+    {# 3D-прев'ю (three.js + STLLoader + наші скрипти, ~647 КБ) вантажиться
+       ЛИШЕ на екранах, де в розмітці є STL-токен — див. _stl_scripts.html.
+       Блок стоїть тут, а не в extra_head, щоб порядок виконання лишався
+       незмінним: наші скрипти → three → STLLoader → ядро → панель/галерея →
+       htmx. #}
+    {% block stl_scripts %}{% endblock %}
     {% block extra_head %}{% endblock %}
     <script src="/static/js/htmx-1.9.10.min.js"></script>
 </head>

@@ -25,25 +25,15 @@
 (function () {
   "use strict";
 
-  if (typeof THREE === "undefined" || typeof THREE.STLLoader === "undefined") {
+  // Спільне ядро (stl-render-core.js) тримає все, що однакове з панеллю
+  // прев'ю: WebGL-контекст, парсинг STL, центрування моделі, колір із токена,
+  // звільнення контексту. Немає ядра або three.js — галереї немає.
+  const Core = window.StlRenderCore;
+  if (!Core || !Core.available()) {
     return;
   }
 
-  const REDUCED_MOTION =
-    window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  // Warm accent that stays visible against the dark v2a stage; normals are
-  // recomputed below so the mesh is never solid black regardless of the STL.
-  // Колір читається з токена --stl-model, щоб тема (theme-forge.css) могла
-  // перефарбувати модель; 0x5eead4 — запасний, якщо токена нема.
-  function stlModelColor() {
-    try {
-      var v = getComputedStyle(document.body).getPropertyValue('--stl-model').trim();
-      if (/^#[0-9a-fA-F]{6}$/.test(v)) return parseInt(v.slice(1), 16);
-    } catch (e) {}
-    return 0x5eead4;
-  }
-  const MODEL_COLOR = stlModelColor();
+  const REDUCED_MOTION = Core.reducedMotion();
 
   // Розгортання на весь екран (аудит 05.09.26, UX 1.5). Панель прев'ю на
   // видачі відкривається розгорнутою за замовчуванням, бо там звірка форми —
@@ -52,26 +42,15 @@
   // є, вибір запам'ятовується, але дефолт — вбудований вигляд.
   const MAX_STORAGE_KEY = "stl-gallery-max";
 
+  // Дефолт живе САМЕ ТУТ, а не в ядрі: тріаж без збереженого вибору
+  // відкривається вбудованим, панель видачі — розгорнутою.
   function loadMaxPreference() {
-    try {
-      return window.localStorage.getItem(MAX_STORAGE_KEY) === "1";
-    } catch (_) {
-      return false; // приватний режим / сховище вимкнене
-    }
+    return Core.readBool(MAX_STORAGE_KEY, false);
   }
 
   function saveMaxPreference(on) {
-    try {
-      window.localStorage.setItem(MAX_STORAGE_KEY, on ? "1" : "0");
-    } catch (_) {
-      /* просто не запам'ятаємо цю сесію */
-    }
+    Core.writeBool(MAX_STORAGE_KEY, on);
   }
-
-  // Живі галереї цієї сторінки. HTMX не повідомляє про смерть вузла, тож
-  // єдиний надійний момент прибрати — наступний свап: те, чого вже немає в
-  // документі, більше ніколи не оживе.
-  const live = [];
 
   function setupGallery(root) {
     if (root.dataset.galleryInit) return; // already wired (e.g. re-scanned after an HTMX swap)
@@ -98,100 +77,27 @@
     };
 
     function setStatus(text) {
-      if (!statusEl) return;
-      statusEl.textContent = text || "";
-      statusEl.style.display = text ? "flex" : "none";
-      canvas.style.visibility = text ? "hidden" : "visible";
+      Core.applyStatus(statusEl, canvas, text);
     }
 
     function ensureRenderer() {
       if (state.renderer) return;
-
-      const renderer = new THREE.WebGLRenderer({
-        canvas,
-        antialias: true,
-        alpha: true,
-        preserveDrawingBuffer: false,
-      });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 1000);
-
-      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-      const key = new THREE.DirectionalLight(0xffffff, 0.9);
-      key.position.set(2, 3, 4);
-      scene.add(key);
-      const rim = new THREE.DirectionalLight(MODEL_COLOR, 0.45);
-      rim.position.set(-3, -2, -2);
-      scene.add(rim);
-
-      state.renderer = renderer;
-      state.scene = scene;
-      state.camera = camera;
-      resizeRenderer();
+      // Ядро дописує canvas/renderer/scene/camera прямо в state.
+      Core.createView(state, canvas);
     }
 
     function resizeRenderer() {
-      if (!state.renderer) return;
-      const rect = canvas.getBoundingClientRect();
-      const w = Math.max(1, Math.round(rect.width));
-      const h = Math.max(1, Math.round(rect.height));
-      state.renderer.setSize(w, h, false);
-      state.camera.aspect = w / h;
-      state.camera.updateProjectionMatrix();
-      renderOnce();
-    }
-
-    function clearMesh() {
-      if (state.mesh) {
-        state.scene.remove(state.mesh);
-        state.mesh.geometry && state.mesh.geometry.dispose && state.mesh.geometry.dispose();
-        state.mesh.material && state.mesh.material.dispose && state.mesh.material.dispose();
-        state.mesh = null;
-      }
+      Core.resizeView(state);
     }
 
     function renderOnce() {
-      if (state.renderer && state.scene && state.camera) {
-        state.renderer.render(state.scene, state.camera);
-      }
+      Core.renderOnce(state);
     }
 
     function showGeometry(geometry) {
       ensureRenderer();
-      clearMesh();
-
-      // CAD/CAM-exported STLs often ship zero/degenerate per-facet normals
-      // (slicers recompute their own) — with MeshStandardMaterial that makes
-      // every N·L term zero and the mesh renders solid black despite loading
-      // fine. Always recompute from the triangle winding.
-      geometry.deleteAttribute("normal");
-      geometry.computeVertexNormals();
-
-      geometry.computeBoundingBox();
-      const size = new THREE.Vector3();
-      geometry.boundingBox.getSize(size);
-      const maxDim = Math.max(size.x, size.y, size.z) || 1;
-
-      // Center the GEOMETRY's own vertices (not mesh.position, which lives in
-      // unscaled parent space and would fling the scaled-down mesh out of the
-      // frustum). See the long note in stl-preview.js for the full reasoning.
-      geometry.center();
-
-      const material = new THREE.MeshStandardMaterial({
-        color: MODEL_COLOR,
-        metalness: 0.18,
-        roughness: 0.5,
-      });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.scale.setScalar(2.2 / maxDim);
-
-      state.scene.add(mesh);
-      state.mesh = mesh;
-      state.camera.position.set(0, 0.6, 3.4);
-      state.camera.lookAt(0, 0, 0);
-
+      // Нормалі, центрування, масштаб і камера — у ядрі (спільне з панеллю).
+      Core.showGeometry(state, geometry);
       setStatus(null);
       startRenderLoop();
     }
@@ -207,10 +113,7 @@
           stopRenderLoop();
           return;
         }
-        if (state.mesh) {
-          state.mesh.rotation.y += 0.012;
-          state.mesh.rotation.x += 0.003;
-        }
+        Core.spinMesh(state.mesh, 1); // галерея без слайдера — завжди базова швидкість
         renderOnce();
         state.rafId = window.requestAnimationFrame(tick);
       }
@@ -224,49 +127,15 @@
       }
     }
 
+    // Розмітка списку файлів спільна з панеллю; різниться лише клас кнопки.
+    const FILE_CLASS = "stl-gallery-file";
+
     function renderFileList() {
-      filesEl.innerHTML = "";
-      state.files.forEach((filename, i) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "stl-gallery-file" + (i === state.activeIndex ? " is-active" : "");
-        btn.dataset.index = String(i);
-        btn.setAttribute("role", "listitem");
-        btn.setAttribute("aria-pressed", i === state.activeIndex ? "true" : "false");
-
-        const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        icon.setAttribute("viewBox", "0 0 24 24");
-        icon.setAttribute("aria-hidden", "true");
-        icon.innerHTML =
-          '<path d="M12 2 2 7.5v9L12 22l10-5.5v-9L12 2z"/><path d="M2 7.5 12 13l10-5.5M12 13v9"/>';
-        btn.appendChild(icon);
-
-        const name = document.createElement("span");
-        name.className = "name mono";
-        name.textContent = filename;
-        btn.appendChild(name);
-
-        filesEl.appendChild(btn);
-      });
+      Core.renderFileList(filesEl, state.files, state.activeIndex, FILE_CLASS);
     }
 
     function updateActiveFile(index) {
-      const buttons = filesEl.querySelectorAll(".stl-gallery-file");
-      buttons.forEach((btn, i) => {
-        const active = i === index;
-        btn.classList.toggle("is-active", active);
-        btn.setAttribute("aria-pressed", active ? "true" : "false");
-      });
-    }
-
-    function fetchGeometry(filename, signal) {
-      return fetch(
-        `/stl-preview/${encodeURIComponent(token)}/${encodeURIComponent(filename)}`,
-        { signal }
-      ).then((response) => {
-        if (!response.ok) throw new Error("file-failed");
-        return response.arrayBuffer();
-      }).then((buffer) => new THREE.STLLoader().parse(buffer));
+      Core.updateActiveFile(filesEl, FILE_CLASS, index);
     }
 
     function selectFile(index) {
@@ -288,7 +157,7 @@
       const controller = new AbortController();
       state.controller = controller;
 
-      fetchGeometry(filename, controller.signal)
+      Core.fetchGeometry(token, filename, controller.signal)
         .then((geometry) => {
           if (controller.signal.aborted) return;
           state.geometryCache.set(filename, geometry);
@@ -349,12 +218,12 @@
     // Kick off: fetch the STL file list for this token.
     const listController = new AbortController();
 
-    // Прибирання за собою, коли панель зникла з DOM (див. `sweep` нижче).
-    // Без цього кожен клік по листу в тріажі лишав ЖИВИЙ WebGLRenderer на
+    // Прибирання за собою, коли панель зникла з DOM (Core.sweep на кожен
+    // свап). Без цього кожен клік по листу в тріажі лишав ЖИВИЙ WebGLRenderer на
     // викинутому <canvas>: браузер тримає лише ~16 контекстів одночасно, тож
     // після пари десятків переглянутих листів прев'ю мовчки переставало
     // малюватись — оператор бачив «глючить», а не помилку.
-    live.push({
+    Core.track({
       root,
       dispose() {
         stopRenderLoop();
@@ -363,30 +232,14 @@
         if (resizeObserver) resizeObserver.disconnect();
         else window.removeEventListener("resize", resizeRenderer);
         document.removeEventListener("keydown", onKeydown);
-        clearMesh();
-        state.geometryCache.forEach((geometry) => {
-          geometry.dispose && geometry.dispose();
-        });
-        state.geometryCache.clear();
-        if (state.renderer) {
-          // forceContextLoss звільняє контекст ОДРАЗУ, не чекаючи збирача
-          // сміття — саме ліміт контекстів тут і впирається.
-          state.renderer.dispose();
-          state.renderer.forceContextLoss && state.renderer.forceContextLoss();
-          state.renderer = null;
-        }
-        state.scene = null;
-        state.camera = null;
+        Core.disposeGeometries(state.geometryCache);
+        // disposeView знімає меш і робить forceContextLoss.
+        Core.disposeView(state);
       },
     });
     setStatus("Завантаження прев'ю…");
-    fetch(`/stl-preview/${encodeURIComponent(token)}`, { signal: listController.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error("list-failed");
-        return response.json();
-      })
-      .then((data) => {
-        const files = Array.isArray(data.files) ? data.files : [];
+    Core.fetchFileList(token, listController.signal)
+      .then((files) => {
         if (files.length === 0) {
           // No STL after all — drop the whole gallery section, the plain
           // attachment list stays as the record of files.
@@ -402,21 +255,8 @@
       });
   }
 
-  function sweep() {
-    for (let i = live.length - 1; i >= 0; i -= 1) {
-      if (!document.contains(live[i].root)) {
-        try {
-          live[i].dispose();
-        } catch (err) {
-          /* прибирання не має ламати свап */
-        }
-        live.splice(i, 1);
-      }
-    }
-  }
-
   function init() {
-    sweep();
+    Core.sweep();
     const roots = document.querySelectorAll("[data-stl-gallery-token]");
     roots.forEach(setupGallery);
   }
