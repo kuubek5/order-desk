@@ -210,6 +210,10 @@ PREFERENCE_KEYS = {
     # (число годин; дефолт 6).
     "sheet_backup_enabled",
     "sheet_backup_interval_hours",
+    # QC-чеклист на видачі (app/services/handout_qc.py): "1" — питати три
+    # звірки перед «знайдено», порожньо/не задано — один клік, як було.
+    # Дефолт свідомо ВИМКНЕНО: це зміна процесу, рішення власника.
+    "handout_qc_checklist",
 }
 
 SETTING_KEYS = {field.key for field in SETTING_FIELDS} | PREFERENCE_KEYS

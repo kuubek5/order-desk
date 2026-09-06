@@ -16,6 +16,7 @@ from app.business_day import set_rollover
 from app.changelog import load_changelog
 from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH
 from app.mail_spool import analyze_spool
+from app.services.handout_qc import HANDOUT_QC_ITEMS, qc_checklist_enabled
 from app.services.section_gate import sections_admin
 from app.models import AppSetting, EmailMessage, MailFilterCategory, MailFilterRule, Order, User
 from app.monthly_backup import list_snapshots
@@ -255,6 +256,8 @@ def get_settings(
             "vyrobitok_pin_set": bool(get_setting(db, "vyrobitok_pin")),
             # Розділи «в розробці / тестується» — керування станом (адмін).
             "sections_admin": sections_admin(db),
+            "handout_qc_enabled": qc_checklist_enabled(db),
+            "handout_qc_items": HANDOUT_QC_ITEMS,
             "backup_available": backup_available,
             "monthly_snapshots": [
                 {

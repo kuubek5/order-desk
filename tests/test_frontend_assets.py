@@ -264,6 +264,7 @@ SETTINGS_SECTIONS = [
     "_settings_google.html",
     "_settings_operators.html",
     "_settings_sections.html",
+    "_settings_handout.html",
     "_settings_backup.html",
     "_settings_sheet_backup.html",
     "_settings_imap.html",

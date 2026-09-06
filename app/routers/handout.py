@@ -62,6 +62,7 @@ from app.services.handout import (
     scan_export_for_clients,
     scan_export_latest_for_clients,
 )
+from app.services.handout_qc import HANDOUT_QC_ITEMS, qc_checklist_enabled
 from app.services.order_dates import parse_sheet_tab, sheet_order_key
 from app.services.sheet_writeback import (
     await_on_writeback,
@@ -390,6 +391,11 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             # їде контекстом, а не читається в шаблоні.
             "handout_layout": (user.handout_layout or "") if user else "",
             "unbound_count": unbound_count,
+            # QC-чеклист (опційний, вимкнений за замовчуванням). Їде і у
+            # фрагмент карток теж: кнопки «знайдено» живуть саме там, і після
+            # HTMX-підміни вони мусять лишитись під тим самим правилом.
+            "handout_qc": qc_checklist_enabled(db),
+            "handout_qc_items": HANDOUT_QC_ITEMS,
             # Куди повернути оператора після «Прив'язати папку»: рівно той
             # самий день і фільтр джерела, на яких він стоїть (аудит 05.09.26,
             # UX 1.6). Без цього прив'язка викидала його на список усіх днів.

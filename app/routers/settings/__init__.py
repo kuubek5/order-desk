@@ -31,6 +31,7 @@ from . import (
     connections,
     devices,
     feedback,
+    handout,
     materials,
     notifications,
     overview,
@@ -90,6 +91,7 @@ from .materials import (
 )
 from .notifications import api_notify_state, save_notification_prefs
 from .overview import check_path_status, check_settings_path, get_settings, post_settings
+from .handout import save_handout_qc
 from .sections import save_section_state, save_vyrobitok_pin
 from .update import check_update, install_update, update_install_status
 from .users import (
@@ -166,6 +168,7 @@ __all__ = [
     "save_feedback_settings",
     "test_feedback_push",
     # sections
+    "save_handout_qc",
     "save_section_state",
     "save_vyrobitok_pin",
 ]
@@ -191,6 +194,7 @@ for _module in (
     users,
     feedback,
     sections,
+    handout,
 ):
     router.routes.extend(_module.router.routes)
 del _module

@@ -103,7 +103,12 @@
                        оператор дійсно зібрав увесь лоток. Видачу вона НЕ робить:
                        рішення «тримаю коронку» і «віддав логісту» лишаються
                        окремими (§2, часткова видача — норма). #}
-                    {% if found_n < total_n %}
+                    {# З увімкненим QC-чеклистом групову кнопку ховаємо: чеклист
+                       звіряє КОНКРЕТНУ роботу в руках, і «усі знайдено» одним
+                       кліком просто обійшло б його. Вибір між швидкістю і
+                       звіркою робить власник у Налаштуваннях, а не оператор
+                       посеред видачі. #}
+                    {% if found_n < total_n and not handout_qc %}
                     <form method="post" action="/handout/mark-found-group" class="markall-form"
                           hx-post="/handout/mark-found-group" hx-target="#handout-list" hx-swap="outerHTML">
                         <input type="hidden" name="client_name" value="{{ group.client_name }}">
@@ -147,9 +152,14 @@
                     {% set is_found = order.status in ('знайдено при видачі', 'видано') %}
                     <div class="wrow {% if is_found %}found{% endif %}">
                         {% if not is_found %}
+                        {# `data-qc` вмикає діалог саме для цієї форми, а
+                           `data-qc-label` каже діалогу (він один на екран),
+                           про яку роботу він питає. #}
                         <form method="post" action="/orders/{{ order.id }}/mark-found"
                               hx-post="/orders/{{ order.id }}/mark-found"
-                              hx-target="#handout-list" hx-swap="outerHTML">
+                              hx-target="#handout-list" hx-swap="outerHTML"
+                              {% if handout_qc %}data-qc="1"
+                              data-qc-label="{{ order.work_order_no or '—' }} · {{ order.material_color or '' }}"{% endif %}>
                             <input type="hidden" name="source" value="{{ source }}">
                             <input type="hidden" name="day" value="{{ day_param }}">
                             <button type="submit" class="wcheck" title="Позначити знайденим">

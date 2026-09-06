@@ -1,0 +1,27 @@
+{# Діалог QC-чеклиста. Стоїть ПОЗА `#handout-list`, який HTMX свапає цілком:
+   усередині він зникав би разом зі списком просто в мить підтвердження.
+   Розмітка одна на екран, а не по три галочки в кожному з 50 рядків. #}
+<div class="qc-dialog" id="qc-dialog" hidden role="dialog" aria-modal="true"
+     aria-labelledby="qc-dialog-title">
+    <div class="qc-panel">
+        <h2 id="qc-dialog-title">Звір перед «знайдено»</h2>
+        <p class="qc-work" data-qc-work></p>
+        <ul class="qc-list">
+            {% for item in handout_qc_items %}
+            <li>
+                <label>
+                    <input type="checkbox" data-qc-item>
+                    <span>{{ item }}</span>
+                </label>
+            </li>
+            {% endfor %}
+        </ul>
+        <div class="qc-actions">
+            <button type="button" class="btn" data-qc-cancel>Скасувати</button>
+            {# Вимкнена, доки не відмічено всі три — саме в цьому весь сенс.
+               НЕ `.apex`: заливка зарезервована за прийняттям листа (§14), і
+               на видачі найгучнішою лишається «Видати». #}
+            <button type="button" class="btn qc-go" data-qc-confirm disabled>Знайдено</button>
+        </div>
+    </div>
+</div>

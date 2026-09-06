@@ -134,6 +134,7 @@ POST /settings/furnaces/{furnace_id}
 POST /settings/furnaces/{furnace_id}/delete
 POST /settings/google-oauth/disconnect
 POST /settings/google-oauth/start
+POST /settings/handout-qc
 POST /settings/imap
 POST /settings/machines
 POST /settings/machines/password

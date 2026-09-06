@@ -140,5 +140,6 @@
           hx-target="#handout-list"
           hx-swap="outerHTML"></span>
     {% include "_handout_cards.html" %}
+    {% if handout_qc %}{% include "_handout_qc.html" %}{% endif %}
 </main>
 {% endblock %}

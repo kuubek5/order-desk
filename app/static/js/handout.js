@@ -182,3 +182,89 @@ document.body.addEventListener("htmx:afterSettle", (event) => {
   restoreHandoutCollapsed();
   applyHandoutFilter();
 });
+// ── QC-чеклист перед «знайдено» (опційний, вимкнений за замовчуванням) ──
+//
+// Гейт свідомо клієнтський: три галочки — це зупинка ПОГЛЯДУ, а не дані
+// (app/services/handout_qc.py). Сервер лишається тим самим `mark-found`.
+//
+// Слухач стоїть у фазі ПЕРЕХОПЛЕННЯ і глушить подію: htmx слухає `submit` на
+// тілі документа, тож без `stopPropagation` запит пішов би паралельно з
+// діалогом — і галочка ставилась би до звірки, тобто гейта не було б узагалі.
+let qcForm = null;
+
+function qcDialog() {
+  return document.getElementById("qc-dialog");
+}
+
+function qcItems() {
+  const dialog = qcDialog();
+  return dialog ? Array.from(dialog.querySelectorAll("[data-qc-item]")) : [];
+}
+
+function qcReset() {
+  qcItems().forEach((box) => { box.checked = false; });
+  const confirm = qcDialog() && qcDialog().querySelector("[data-qc-confirm]");
+  if (confirm) confirm.disabled = true;
+}
+
+function qcClose() {
+  const dialog = qcDialog();
+  if (dialog) dialog.hidden = true;
+  qcForm = null;
+  qcReset();
+}
+
+function qcOpen(form) {
+  const dialog = qcDialog();
+  if (!dialog) return false;
+  qcForm = form;
+  qcReset();
+  const label = dialog.querySelector("[data-qc-work]");
+  if (label) label.textContent = form.dataset.qcLabel || "";
+  dialog.hidden = false;
+  const first = qcItems()[0];
+  if (first) first.focus();
+  return true;
+}
+
+document.addEventListener("submit", (event) => {
+  const form = event.target;
+  if (!form || form.dataset.qc !== "1") return;
+  // Другий прохід: діалог уже пройдено, пускаємо форму до htmx.
+  if (form.dataset.qcPassed === "1") {
+    delete form.dataset.qcPassed;
+    return;
+  }
+  // Діалога на сторінці немає (шаблон не вставлено) — не блокуємо роботу
+  // операторові через нашу ж помилку: хай іде звичайний клік.
+  if (!qcOpen(form)) return;
+  event.preventDefault();
+  event.stopPropagation();
+}, true);
+
+document.addEventListener("change", (event) => {
+  if (!event.target || !event.target.matches("[data-qc-item]")) return;
+  const confirm = qcDialog() && qcDialog().querySelector("[data-qc-confirm]");
+  if (confirm) confirm.disabled = qcItems().some((box) => !box.checked);
+});
+
+document.addEventListener("click", (event) => {
+  const dialog = qcDialog();
+  if (!dialog || dialog.hidden) return;
+  if (event.target.closest("[data-qc-cancel]") || event.target === dialog) {
+    qcClose();
+    return;
+  }
+  if (!event.target.closest("[data-qc-confirm]")) return;
+  if (qcItems().some((box) => !box.checked)) return;
+  const form = qcForm;
+  qcClose();
+  if (!form) return;
+  form.dataset.qcPassed = "1";
+  form.requestSubmit();
+});
+
+document.addEventListener("keydown", (event) => {
+  const dialog = qcDialog();
+  if (dialog && !dialog.hidden && event.key === "Escape") qcClose();
+});
