@@ -34,12 +34,15 @@ def _operator(db: Session) -> User:
     return user
 
 
-def _request(user_id: int | None, *, htmx: bool = False):
+def _request(user_id: int | None, *, htmx: bool = False, query: dict | None = None):
     """`headers` is part of the shape now: routes that answer HTMX with a
-    fragment and a full navigation with a redirect read HX-Request off it."""
+    fragment and a full navigation with a redirect read HX-Request off it.
+
+    `query` — бо один екран клієнта читає `return_to` й `saved` саме з рядка
+    запиту, і без нього перевірити повернення на видачу нічим."""
     session = {} if user_id is None else {"user_id": user_id}
     headers = {"HX-Request": "true"} if htmx else {}
-    return SimpleNamespace(session=session, query_params={}, headers=headers)
+    return SimpleNamespace(session=session, query_params=query or {}, headers=headers)
 
 
 def _order(client_name, **kwargs):
@@ -180,6 +183,101 @@ def test_get_client_detail_aggregates_matched_orders():
         context = clients_router_mod.get_client_detail(request=_request(operator.id), client_id=client.id, db=db)
 
     assert context["summary"].total_count == 2
+
+
+def test_get_client_detail_reuses_the_master_card_context():
+    """Один екран клієнта: /clients/{id} віддає ТОЙ САМИЙ контекст картки, що й
+    майстер (аудит 05.09.26, крок 2.3). Окрема сторінка `client_detail.html`
+    була другою копією того ж екрана й уже встигла розійтися — HTMX на
+    контактах з'явився лише в одній із них."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        operator = _operator(db)
+        client = Client(canonical_name="Басараб")
+        db.add(client)
+        db.commit()
+
+        context = clients_router_mod.get_client_detail(
+            request=_request(operator.id), client_id=client.id, db=db
+        )
+
+    assert context["single_client"] is True
+    # Ключі, які вміє лише картка майстра: якщо їх немає — екран знову
+    # розійшовся з майстром.
+    assert {"aliases", "units_total", "folder_names", "folder_suggestions"} <= set(context)
+
+
+def test_client_detail_keeps_the_handout_return_address():
+    """«Прив'язати папку» на видачі передає, куди повернутись, — картка мусить
+    донести це до форми (UX 1.6)."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        operator = _operator(db)
+        client = Client(canonical_name="Басараб")
+        db.add(client)
+        db.commit()
+
+        context = clients_router_mod.get_client_detail(
+            request=_request(operator.id, query={"return_to": "/handout?source=email&day=05.09.26"}),
+            client_id=client.id, db=db,
+        )
+    assert context["return_to"] == "/handout?source=email&day=05.09.26"
+
+
+def test_client_detail_refuses_an_external_return_address():
+    """Значення приходить із URL — чужий хост зробив би кнопку відкритим
+    редіректом, тож до шаблону він доїхати не має."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        operator = _operator(db)
+        client = Client(canonical_name="Басараб")
+        db.add(client)
+        db.commit()
+
+        for hostile in ("//evil.example", "https://evil.example/x", "javascript:alert(1)"):
+            context = clients_router_mod.get_client_detail(
+                request=_request(operator.id, query={"return_to": hostile}),
+                client_id=client.id, db=db,
+            )
+            assert context["return_to"] == ""
+
+
+def _render_pane(**context) -> str:
+    """Справжній рендер картки — саме в шаблоні живе правило «з видачі
+    постимо без HTMX», і зламати його контекстом неможливо помітити."""
+    from app.client_profile import summarize_client_orders
+    from app.routers.deps import templates as jinja
+
+    base = {
+        "client": SimpleNamespace(id=7, canonical_name="Басараб", phone=None, email=None, notes=None),
+        "summary": summarize_client_orders([]),
+        "units_total": 0,
+        "aliases": [],
+        "folder_names": ["Басараб Лаб"],
+        "bound_folder": None,
+        "folder_suggestions": ["Басараб Лаб"],
+    }
+    base.update(context)
+    return jinja.env.get_template("_client_pane.html").render(**base)
+
+
+def test_pane_binds_the_folder_over_htmx_on_the_master():
+    """На майстрі відповідь — фрагмент картки, тож список ліворуч не блимає."""
+    html = _render_pane()
+    assert 'hx-post="/clients/7/folder"' in html
+    assert 'name="return_to"' not in html
+
+
+def test_pane_posts_the_folder_plainly_when_it_must_return_to_the_handout():
+    """Прийшли з видачі — форма папки лишається ЗВИЧАЙНИМ POST з `return_to`:
+    HTMX віддав би фрагмент картки, і оператор застряг би тут замість свого
+    дня видачі (UX 1.6)."""
+    html = _render_pane(return_to="/handout?source=email&day=05.09.26")
+    assert 'hx-post="/clients/7/folder"' not in html
+    # Обидві форми папки (поле і кнопки-підказки) мусять нести адресу назад.
+    assert html.count('name="return_to"') == 2
+    # Контакти — інша дія, їх свап себе самої не заважає повернутись.
+    assert 'hx-target="#client-contacts"' in html
 
 
 # --- POST /clients/{id} -------------------------------------------------

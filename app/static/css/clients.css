@@ -129,6 +129,7 @@ main.clientsv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;fle
 .clientsv2 .cp-order:hover{opacity:1}
 .clientsv2 .cp-order:hover .cp-o-mat{color:var(--accent-c)}
 .clientsv2 .cp-o-day{flex:0 0 46px;color:var(--ink-3);font-size:var(--fs-0)}
+.clientsv2 .cp-o-no{flex:0 0 auto;color:var(--ink-2);font-size:var(--fs-0)}
 .clientsv2 .cp-o-mat{flex:1;min-width:0;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .clientsv2 .cp-o-qty{flex:0 0 auto;color:var(--ink-2);font-size:var(--fs-0)}
 .clientsv2 .cp-o-st{flex:0 0 auto;color:var(--ink-3);font-size:var(--fs-0)}
@@ -144,3 +145,19 @@ main.clientsv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;fle
   .clientsv2 .cl-pane{max-height:none}
   .clientsv2 .cp-kpis{grid-template-columns:repeat(2,1fr)}
 }
+
+/* Режим одного клієнта (/clients/{id}): та сама картка, лише без списку —
+   .cl-split лишається flex-рядком, тож панель просто займає всю ширину. */
+.clientsv2.cl-one .cl-bar{gap:14px}
+.clientsv2 .cl-back{color:var(--ink-2);text-decoration:none;font-size:var(--fs-2)}
+.clientsv2 .cl-back:hover{color:var(--accent-c);opacity:1}
+
+/* Банери стану — свої, бо .settings-* у v2a_screens.css прив'язані до
+   .worldv2 і на цьому екрані не діяли взагалі (помилка додавання клієнта
+   малювалась голим текстом). */
+.clientsv2 .settings-alert{border-radius:9px;padding:10px 13px;margin-bottom:12px;border:1px solid var(--line-2);background:var(--card-2);font-size:var(--fs-2)}
+.clientsv2 .settings-alert-error{border-color:rgba(var(--alarm-rgb), .4);background:rgba(var(--alarm-rgb), .08);color:var(--alarm-ink)}
+.clientsv2 .settings-success{border-radius:9px;padding:10px 13px;margin-bottom:12px;font-size:var(--fs-2);border:1px solid rgba(var(--accent-rgb), .3);background:rgba(var(--accent-base-rgb), .1);color:var(--accent-c)}
+.clientsv2 .settings-success p{margin:0}
+/* Підтвердження збереження контактів — усередині свапнутого фрагмента. */
+.clientsv2 .cp-saved{margin:0;font-size:var(--fs-1);color:var(--accent-c)}

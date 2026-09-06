@@ -221,6 +221,13 @@ def create_client(
 
 @router.get("/clients/{client_id}", response_class=HTMLResponse)
 def get_client_detail(request: Request, client_id: int, db: Session = Depends(get_db)):
+    """Один екран клієнта — та сама картка `_client_pane.html`, що й у майстрі,
+    лише на всю ширину (`single_client`).
+
+    Раніше тут була окрема повна сторінка `client_detail.html` з тими самими
+    даними в іншій верстці. Дві копії одного екрана неминуче розходяться: HTMX
+    для контактів встиг з'явитись лише в одній із них. Тому джерело одне —
+    партіал картки, а цей роут дає йому оболонку (аудит 05.09.26, крок 2.3)."""
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
@@ -229,29 +236,17 @@ def get_client_detail(request: Request, client_id: int, db: Session = Depends(ge
     if client is None:
         raise HTTPException(status_code=404, detail="клієнта не знайдено")
 
-    named_orders = db.scalars(select(Order).where(Order.client_name.isnot(None))).all()
-    matched_orders = find_matching_orders(client.canonical_name, named_orders)
-    summary = summarize_client_orders(matched_orders)
-
-    # Folder binding lives HERE, on the client, not on the handout screen: it is
-    # a property of the client that holds for every future day, so it is set once
-    # and the morning handout just reads it. Storage stays ClientNameAlias
-    # (keyed by the free-text sheet name Order.client_name carries) — Client is
-    # deliberately not FK-linked to Order, see the Client model docstring.
-    folder_names, bound_folder, folder_suggestions = client_folder_options(db, client.canonical_name)
-
     return templates.TemplateResponse(
         request,
-        "client_detail.html",
+        "clients.html",
         {
             "user": user,
-            "client": client,
-            "summary": summary,
+            "single_client": True,
             "saved": request.query_params.get("saved") is not None,
-            "folder_names": folder_names,
-            "bound_folder": bound_folder,
-            "folder_suggestions": folder_suggestions,
+            # Прийшли з видачі — картка показує «← До видачі», а форма папки
+            # робить звичайний POST, щоб сервер повернув оператора туди ж.
             "return_to": safe_return_to(request.query_params.get("return_to")),
+            **client_pane_context(db, client),
         },
     )
 

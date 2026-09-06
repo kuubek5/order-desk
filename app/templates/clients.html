@@ -10,6 +10,28 @@
 {% set topbar_active = 'clients' %}
 {% include "_topbar_nav.html" %}
 
+{% if single_client %}
+{# Один екран клієнта (/clients/{id}): ТА САМА картка `_client_pane.html`, що
+   й у майстрі, лише на всю ширину. Окремої верстки більше немає — дві копії
+   одного екрана вже встигли розійтися (аудит 05.09.26, крок 2.3). #}
+<main class="clientsv2 cl-one">
+    <div class="cl-bar">
+        {% if return_to %}
+        {# Прийшли з видачі — повертаємо ТУДИ ж, у той самий день (UX 1.6).
+           Інакше після прив'язки папки оператор шукав свій день заново. #}
+        <a href="{{ return_to }}" class="cl-back">← До видачі</a>
+        {% endif %}
+        <a href="/clients" class="cl-back">← До клієнтів</a>
+        <a href="/stats" class="cl-back">Статистика</a>
+    </div>
+
+    {% if saved %}<div class="settings-success"><p>Збережено</p></div>{% endif %}
+
+    <div class="cl-split">
+        {% include "_client_pane.html" %}
+    </div>
+</main>
+{% else %}
 {# «Майстер»: список ліворуч, картка праворуч. Налаштувати кілька сотень
    клієнтів — це послідовність дрібних HTMX-запитів, а не перезавантаження
    сторінки на кожного. Пошук і фільтр стану — форми GET, тож посилання на
@@ -85,4 +107,5 @@
     </div>
     {% endif %}
 </main>
+{% endif %}
 {% endblock %}

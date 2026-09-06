@@ -1,6 +1,10 @@
 {# Права картка «Майстра». Прилітає окремим HTMX-запитом, тож список ліворуч
    лишається на місці й не перемальовується — при 280 клієнтах повний рендер
    списку коштує нечіткий матч по всіх роботах (~0.8с). #}
+{# `return_to` приходить лише коли на картку перейшли з видачі. Тоді форми
+   папки свідомо БЕЗ hx-post: звичайний POST дає серверу редіректнути
+   оператора назад у ЙОГО день видачі, а HTMX-фрагмент лишив би його тут. #}
+{% set pane_htmx = not return_to %}
 <div class="cl-pane" id="client-pane">
     <div class="cp-id">
         <div class="cp-name">
@@ -22,8 +26,9 @@
     <section class="cp-sec">
         <div class="cp-lab">Папка робіт на диску</div>
         <form method="post" action="/clients/{{ client.id }}/folder"
-              hx-post="/clients/{{ client.id }}/folder" hx-target="#client-pane" hx-swap="outerHTML"
+              {% if pane_htmx %}hx-post="/clients/{{ client.id }}/folder" hx-target="#client-pane" hx-swap="outerHTML"{% endif %}
               class="cp-folder">
+            {% if return_to %}<input type="hidden" name="return_to" value="{{ return_to }}">{% endif %}
             <input type="text" name="export_folder_name" class="cp-input mono" list="export-folders"
                    value="{{ bound_folder or '' }}" placeholder="назва папки в export — порожнє поле відв'яже"
                    aria-label="Папка робіт на диску">
@@ -39,7 +44,8 @@
             <span class="cp-sugs-lab">Схоже на:</span>
             {% for name in folder_suggestions %}
             <form method="post" action="/clients/{{ client.id }}/folder"
-                  hx-post="/clients/{{ client.id }}/folder" hx-target="#client-pane" hx-swap="outerHTML">
+                  {% if pane_htmx %}hx-post="/clients/{{ client.id }}/folder" hx-target="#client-pane" hx-swap="outerHTML"{% endif %}>
+                {% if return_to %}<input type="hidden" name="return_to" value="{{ return_to }}">{% endif %}
                 <button type="submit" name="export_folder_name" value="{{ name }}" class="cp-sug mono">{{ name }}</button>
             </form>
             {% endfor %}
@@ -68,14 +74,8 @@
 
     <section class="cp-sec">
         <div class="cp-lab">Контакти й нотатки</div>
-        <form method="post" action="/clients/{{ client.id }}" class="cp-contacts">
-            <div class="cp-pair">
-                <input type="text" name="phone" class="cp-input" value="{{ client.phone or '' }}" placeholder="+380…" aria-label="Телефон">
-                <input type="email" name="email" class="cp-input" value="{{ client.email or '' }}" placeholder="пошта" aria-label="Email">
-            </div>
-            <textarea name="notes" class="cp-input cp-notes" rows="2" placeholder="нотатки" aria-label="Нотатки">{{ client.notes or '' }}</textarea>
-            <button type="submit" class="cp-save">Зберегти контакти</button>
-        </form>
+        {# Форма — окремий партіал, бо POST /clients/{id} свапає саме її. #}
+        {% include "_client_contacts.html" %}
     </section>
 
     {% if summary.recent_orders %}
@@ -85,6 +85,9 @@
             {% for order in summary.recent_orders[:6] %}
             <a class="cp-order" href="/orders/{{ order.id }}">
                 <span class="mono cp-o-day">{{ order.sheet_tab[:5] if order.sheet_tab else '—' }}</span>
+                {# Номер наряду був лише на старій окремій сторінці клієнта, а це
+                   те, чим оператор шукає роботу — тож переїхав сюди. #}
+                <span class="cp-o-no mono">{{ order.work_order_no or '—' }}</span>
                 <span class="cp-o-mat mono">{{ order.material_color or '—' }}</span>
                 <span class="cp-o-qty mono">{{ order.quantity or '—' }} од.</span>
                 <span class="cp-o-st">{{ order.status }}</span>
