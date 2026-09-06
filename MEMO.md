@@ -374,8 +374,7 @@ git worktree remove ..\CRM_Laba-audit
 ## 11. Повне код-ревʼю 07.09.26 і лад у гілках
 
 **Гілки.** `audit/2026-09-06` влито в master (`d30b90f`), 24 злиті локальні гілки й 6
-залишених agent-worktree прибрано, upstream master → `origin/master`. Лишились: `master` і
-(до кінця цього чату) worktree `../CRM_Laba-audit`. Віддалену `work-2026-08` GitHub не дає
+залишених agent-worktree прибрано, upstream master → `origin/master`. Лишилась лише `master` (worktree `../CRM_Laba-audit` видалено після мержу). Віддалену `work-2026-08` GitHub не дає
 видалити — **protected branch**: Settings → Branches → зняти правило, потім
 `git push origin --delete work-2026-08`.
 
