@@ -13,6 +13,7 @@ import shutil
 from pathlib import Path
 
 from app.client_matcher import match_client_name
+from app.safe_names import avoid_reserved_device_name
 
 _ILLEGAL_CHARS = re.compile(r'[\\/:*?"<>|]')
 _NO_MATERIAL_NAME = "без_матеріалу"
@@ -32,7 +33,11 @@ def sanitize_folder_name(name: str) -> str:
     # contains none of Windows' forbidden filename characters.
     if name in {".", ".."}:
         return "без_імені"
-    return name or "без_імені"
+    if not name:
+        return "без_імені"
+    # A client literally named "AUX" (or a material folder "PRN") cannot be
+    # created on Windows — same reserved-device rule as attachment filenames.
+    return avoid_reserved_device_name(name)
 
 
 def _contained_child(root: Path, name: str) -> Path:
@@ -167,6 +172,51 @@ def preview_export_target(
     }
 
 
+def _move_file(source: Path, destination: Path) -> None:
+    """shutil.move that never leaves a truncated file behind.
+
+    Across volumes (spool on C:, export on a Synology UNC share) shutil.move is
+    copy2 + unlink. A copy that dies halfway — network blip, full disk — leaves a
+    partial file at `destination` that no rollback list knows about, and the
+    morning handout would show it as real work. Delete the fragment, then let the
+    caller's rollback run.
+    """
+    try:
+        shutil.move(str(source), str(destination))
+    except Exception:
+        if destination.exists() and source.exists():
+            # Source still there → the copy died mid-flight; the leftover at the
+            # destination is a fragment, not the file. (If the source is already
+            # gone the move completed and the failure came from elsewhere — then
+            # the destination is the only copy and must NOT be touched.)
+            try:
+                destination.unlink()
+            except OSError:
+                pass
+        raise
+
+
+def undo_moves(moved: list[tuple[Path, Path]]) -> list[str]:
+    """Compensate already-completed moves after the DB commit that was supposed
+    to record them failed (files on disk, nothing in the database).
+
+    Takes the (source, destination) pairs that actually moved and puts each file
+    back at its original path. Returns human-readable errors instead of raising:
+    the caller is already handling a failure and must report BOTH problems, never
+    swallow this one silently (CLAUDE.md — a lost attachment has no paper trail).
+    """
+    errors: list[str] = []
+    for source, destination in reversed(moved):
+        try:
+            if not destination.exists() or source.exists():
+                continue
+            source.parent.mkdir(parents=True, exist_ok=True)
+            _move_file(destination, source)
+        except Exception as exc:  # noqa: BLE001 — reported, not raised
+            errors.append(f"{destination}: {exc}")
+    return errors
+
+
 def restore_attachments_to_spool(
     attachments_root: Path, uid: str, current_paths: list[Path]
 ) -> list[Path]:
@@ -189,13 +239,13 @@ def restore_attachments_to_spool(
     try:
         for source, destination in moves:
             if source.is_file():
-                shutil.move(str(source), str(destination))
+                _move_file(source, destination)
                 completed.append((source, destination))
     except Exception:
         for source, destination in reversed(completed):
             try:
                 if destination.exists():
-                    shutil.move(str(destination), str(source))
+                    _move_file(destination, source)
             except Exception:
                 pass
         raise
@@ -280,14 +330,14 @@ def save_attachments_to_export(
     completed: list[tuple[Path, Path]] = []
     try:
         for source, destination in moves:
-            shutil.move(str(source), str(destination))
+            _move_file(source, destination)
             completed.append((source, destination))
     except Exception:
         rollback_errors = []
         for source, destination in reversed(completed):
             try:
                 if destination.exists():
-                    shutil.move(str(destination), str(source))
+                    _move_file(destination, source)
             except Exception as rollback_error:
                 rollback_errors.append(str(rollback_error))
         if rollback_errors:

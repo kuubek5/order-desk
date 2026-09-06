@@ -45,7 +45,7 @@
                             </td>
                             <td>
                                 <form method="post" action="/settings/users/{{ operator.id }}/reset-password" class="users-reset-form">
-                                    <input type="password" name="new_password" class="login-input users-reset-input" placeholder="новий пароль">
+                                    <input type="password" name="new_password" class="login-input users-reset-input" placeholder="новий пароль" minlength="10">
                                     <button type="submit" class="link-button">Скинути</button>
                                 </form>
                             </td>
@@ -85,7 +85,7 @@
                         <label for="password">Пароль</label>
                         <div class="login-glow">
                             <div class="login-input-wrap">
-                                <input type="password" id="password" name="password" class="login-input" placeholder="пароль">
+                                <input type="password" id="password" name="password" class="login-input" placeholder="пароль" minlength="10">
                             </div>
                         </div>
                     </div>

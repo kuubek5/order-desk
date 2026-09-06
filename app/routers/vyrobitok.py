@@ -14,6 +14,7 @@
 заданий — розділ відкритий будь-якому оператору, що ввійшов.
 """
 
+import secrets
 import time
 from datetime import date
 
@@ -24,6 +25,7 @@ from starlette.requests import Request
 
 from app.business_day import business_today
 from app.routers.deps import get_current_user, login_redirect, get_db, templates
+from app.services.attempt_limit import block_message, pin_limiter
 from app.services.vyrobitok import (
     HUE,
     MATERIAL_COLS,
@@ -113,8 +115,24 @@ def post_vyrobitok_pin(
     if user is None:
         return login_redirect(request)
 
+    # Ключ ліміту — сесія браузера: розділ ховає зарплатні цифри від самих
+    # операторів, тож рахуємо спроби того, хто сидить за цим ПК, а не IP
+    # (він у всіх один — 127.0.0.1).
+    limiter_key = f"vyrobitok:{request.session.get('user_id')}"
+    wait = pin_limiter.retry_after(limiter_key)
+    if wait:
+        return templates.TemplateResponse(
+            request,
+            "vyrobitok.html",
+            {"user": user, "pin_required": True, "pin_error": block_message(wait)},
+            status_code=429,
+        )
+
     expected = get_setting(db, "vyrobitok_pin")
-    if expected and pin.strip() == expected.strip():
+    # compare_digest: рівний час порівняння незалежно від того, скільки перших
+    # цифр збіглося.
+    if expected and secrets.compare_digest(pin.strip(), expected.strip()):
+        pin_limiter.reset(limiter_key)
         request.session[_PIN_SESSION_KEY] = time.time() + _PIN_TTL_SECONDS
         y, m = _clamp_period(None, None)
         context = _grid_context(db, user, y, m)
@@ -122,10 +140,15 @@ def post_vyrobitok_pin(
         context["pin_protected"] = True
         return templates.TemplateResponse(request, "vyrobitok.html", context)
 
+    blocked = pin_limiter.register_failure(limiter_key)
     return templates.TemplateResponse(
         request,
         "vyrobitok.html",
-        {"user": user, "pin_required": True, "pin_error": "Невірний код"},
+        {
+            "user": user,
+            "pin_required": True,
+            "pin_error": block_message(blocked) if blocked else "Невірний код",
+        },
         status_code=400,
     )
 

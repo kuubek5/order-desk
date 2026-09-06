@@ -16,6 +16,7 @@ from app.mail_parser import guess_fields_from_text, guess_service_type
 from app.material_catalog import ensure_seeded as ensure_materials_seeded, load_alias_rows
 from app.material_classifier import AliasRow
 from app.sender_memory import is_auto_sender
+from app.safe_names import avoid_reserved_device_name
 from app.models import Attachment, EmailMessage, Order
 from app.settings_store import (
     get_imap_login,
@@ -154,7 +155,12 @@ def safe_attachment_filename(filename: str | None, index: int, content_type: str
     # which OS currently runs KuubMill.
     basename = re.split(r"[\\/]", filename)[-1].strip().rstrip(". ")
     basename = _UNSAFE_FILENAME_CHARS.sub("_", basename)
-    return basename if basename not in {"", ".", ".."} else fallback
+    if basename in {"", ".", ".."}:
+        return fallback
+    # "con.stl" is a legal MIME name but Windows refuses to create the file, and
+    # the resulting OSError leaves the whole letter pending forever (re-fetched
+    # on every sync). Same rule as export folder names — app/safe_names.py.
+    return avoid_reserved_device_name(basename)
 
 
 def unique_destination(directory: Path, filename: str) -> Path:

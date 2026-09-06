@@ -2,8 +2,12 @@
 authorization flow (no real network — the token exchange and the browser
 open are both mocked)."""
 
+import base64
+import hashlib
 import json
+import time
 from unittest.mock import MagicMock
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -66,6 +70,41 @@ class TestParseClientConfig:
             parse_client_config("garbage")
 
 
+_STATE = "state-fixed-for-tests"
+
+
+def _wire_loopback(monkeypatch, params, *, echo_state=True, opened=None):
+    """Fake loopback server + browser for the OAuth flow.
+
+    `params` is what the redirect delivers (None = the socket timed out with
+    nothing arriving). The flow now only accepts a request carrying the `state`
+    it generated, so the fake echoes it back; `echo_state=False` simulates a
+    stray GET from another page probing 127.0.0.1 ports.
+    """
+    fake_server = MagicMock()
+    fake_server.query_params = None
+
+    def handle_request():
+        if params is None:
+            fake_server.query_params = None
+            return
+        delivered = {key: list(value) for key, value in params.items()}
+        if echo_state:
+            delivered["state"] = [_STATE]
+        fake_server.query_params = delivered
+
+    fake_server.handle_request.side_effect = handle_request
+    monkeypatch.setattr("app.google_oauth._new_state", lambda: _STATE)
+    monkeypatch.setattr(
+        "app.google_oauth._run_local_server", lambda timeout_seconds: (fake_server, 54321)
+    )
+    monkeypatch.setattr(
+        "app.google_oauth.webbrowser.open",
+        lambda url: (opened.append(url) if opened is not None else None),
+    )
+    return fake_server
+
+
 class TestRunAuthorizationFlow:
     """The loopback flow: local server catches the redirect, then a token
     exchange POST. Both the browser open and the local HTTP server are mocked
@@ -77,14 +116,7 @@ class TestRunAuthorizationFlow:
         )
 
     def test_success_returns_refresh_token(self, monkeypatch):
-        fake_server = MagicMock()
-        fake_server.query_params = {"code": ["auth-code-123"]}
-
-        def fake_run_local_server(timeout_seconds):
-            return fake_server, 54321
-
-        monkeypatch.setattr("app.google_oauth._run_local_server", fake_run_local_server)
-        monkeypatch.setattr("app.google_oauth.webbrowser.open", lambda url: None)
+        fake_server = _wire_loopback(monkeypatch, {"code": ["auth-code-123"]})
 
         fake_response = MagicMock(status_code=200)
         fake_response.json.return_value = {"refresh_token": "rt-abc"}
@@ -104,28 +136,19 @@ class TestRunAuthorizationFlow:
         assert call.kwargs["data"]["client_id"] == "cid"
 
     def test_denied_consent_raises(self, monkeypatch):
-        fake_server = MagicMock()
-        fake_server.query_params = {"error": ["access_denied"]}
-        monkeypatch.setattr("app.google_oauth._run_local_server", lambda timeout_seconds: (fake_server, 1))
-        monkeypatch.setattr("app.google_oauth.webbrowser.open", lambda url: None)
+        _wire_loopback(monkeypatch, {"error": ["access_denied"]})
 
         with pytest.raises(OAuthFlowError, match="відхилив авторизацію"):
             run_authorization_flow(self._config())
 
     def test_timeout_with_no_code_raises(self, monkeypatch):
-        fake_server = MagicMock()
-        fake_server.query_params = None  # handle_request timed out, nothing arrived
-        monkeypatch.setattr("app.google_oauth._run_local_server", lambda timeout_seconds: (fake_server, 1))
-        monkeypatch.setattr("app.google_oauth.webbrowser.open", lambda url: None)
+        _wire_loopback(monkeypatch, None)  # handle_request timed out, nothing arrived
 
         with pytest.raises(OAuthFlowError, match="тайм-аут"):
-            run_authorization_flow(self._config())
+            run_authorization_flow(self._config(), timeout_seconds=0.05)
 
     def test_token_exchange_failure_raises(self, monkeypatch):
-        fake_server = MagicMock()
-        fake_server.query_params = {"code": ["auth-code-123"]}
-        monkeypatch.setattr("app.google_oauth._run_local_server", lambda timeout_seconds: (fake_server, 1))
-        monkeypatch.setattr("app.google_oauth.webbrowser.open", lambda url: None)
+        _wire_loopback(monkeypatch, {"code": ["auth-code-123"]})
 
         fake_response = MagicMock(status_code=400, text="invalid_grant")
         fake_session = MagicMock()
@@ -136,10 +159,7 @@ class TestRunAuthorizationFlow:
             run_authorization_flow(self._config())
 
     def test_missing_refresh_token_raises(self, monkeypatch):
-        fake_server = MagicMock()
-        fake_server.query_params = {"code": ["auth-code-123"]}
-        monkeypatch.setattr("app.google_oauth._run_local_server", lambda timeout_seconds: (fake_server, 1))
-        monkeypatch.setattr("app.google_oauth.webbrowser.open", lambda url: None)
+        _wire_loopback(monkeypatch, {"code": ["auth-code-123"]})
 
         fake_response = MagicMock(status_code=200)
         fake_response.json.return_value = {"access_token": "at-only"}  # no refresh_token
@@ -149,6 +169,83 @@ class TestRunAuthorizationFlow:
 
         with pytest.raises(OAuthFlowError, match="refresh token"):
             run_authorization_flow(self._config())
+
+    def test_stray_request_does_not_kill_the_flow(self, monkeypatch):
+        """A page in the admin's browser can probe 127.0.0.1 ports. Such a GET
+        used to eat our single handle_request() and the login died as a bare
+        "timeout"; now it is ignored and we keep waiting for OUR redirect."""
+        calls = {"n": 0}
+        fake_server = MagicMock()
+        fake_server.query_params = None
+
+        def handle_request():
+            calls["n"] += 1
+            if calls["n"] == 1:
+                fake_server.query_params = {"code": ["attacker-code"], "state": ["not-ours"]}
+            else:
+                fake_server.query_params = {"code": ["auth-code-123"], "state": [_STATE]}
+
+        fake_server.handle_request.side_effect = handle_request
+        monkeypatch.setattr("app.google_oauth._new_state", lambda: _STATE)
+        monkeypatch.setattr(
+            "app.google_oauth._run_local_server", lambda timeout_seconds: (fake_server, 54321)
+        )
+        monkeypatch.setattr("app.google_oauth.webbrowser.open", lambda url: None)
+
+        fake_response = MagicMock(status_code=200)
+        fake_response.json.return_value = {"refresh_token": "rt-abc"}
+        fake_session = MagicMock()
+        fake_session.post.return_value = fake_response
+        monkeypatch.setattr("app.google_oauth.new_legacy_session", lambda: fake_session)
+
+        token = run_authorization_flow(self._config(), timeout_seconds=5)
+
+        assert token == "rt-abc"
+        assert calls["n"] == 2
+        # the attacker's code was never exchanged
+        assert fake_session.post.call_args.kwargs["data"]["code"] == "auth-code-123"
+
+    def test_foreign_state_only_times_out(self, monkeypatch):
+        """A redirect that never carries our state is never accepted."""
+        _wire_loopback(monkeypatch, {"code": ["attacker-code"]}, echo_state=False)
+        fake_session = MagicMock()
+        monkeypatch.setattr("app.google_oauth.new_legacy_session", lambda: fake_session)
+
+        with pytest.raises(OAuthFlowError, match="тайм-аут"):
+            run_authorization_flow(self._config(), timeout_seconds=0.05)
+        fake_session.post.assert_not_called()
+
+    def test_consent_url_and_exchange_carry_pkce(self, monkeypatch):
+        """PKCE S256: the challenge goes to the consent screen, the verifier
+        only to the token exchange — an intercepted code is then worthless."""
+        opened: list[str] = []
+        _wire_loopback(monkeypatch, {"code": ["auth-code-123"]}, opened=opened)
+
+        fake_response = MagicMock(status_code=200)
+        fake_response.json.return_value = {"refresh_token": "rt-abc"}
+        fake_session = MagicMock()
+        fake_session.post.return_value = fake_response
+        monkeypatch.setattr("app.google_oauth.new_legacy_session", lambda: fake_session)
+
+        run_authorization_flow(self._config())
+
+        # The browser thread is a daemon; give it a moment to record the URL.
+        for _ in range(100):
+            if opened:
+                break
+            time.sleep(0.01)
+        assert opened, "consent URL was never opened"
+        query = parse_qs(urlparse(opened[0]).query)
+        assert query["state"] == [_STATE]
+        assert query["code_challenge_method"] == ["S256"]
+        challenge = query["code_challenge"][0]
+        assert "=" not in challenge  # base64url, unpadded
+
+        verifier = fake_session.post.call_args.kwargs["data"]["code_verifier"]
+        expected = base64.urlsafe_b64encode(
+            hashlib.sha256(verifier.encode("ascii")).digest()
+        ).decode("ascii").rstrip("=")
+        assert challenge == expected
 
     def test_server_closed_even_on_error(self, monkeypatch):
         """server_close() runs even if handle_request blows up — no leaked

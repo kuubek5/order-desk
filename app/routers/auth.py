@@ -31,10 +31,12 @@ from app.services.look_prefs import (
     apply_mail_look,
     apply_queue_look,
 )
+from app.services.attempt_limit import block_message, login_limiter
 from app.services.operators import (
     normalize_initial,
     user_count,
     validate_first_admin,
+    validate_password,
     validate_initial,
 )
 from app.settings_store import set_setting
@@ -161,16 +163,35 @@ async def login_submit(
 ):
     if user_count(db) == 0:
         return RedirectResponse("/setup", status_code=303)
+
+    # Лічильник у пам'яті процесу (app/services/attempt_limit.py). Слухач лише
+    # на loopback, тож реальний сценарій — не мережа, а хвилина біля покинутого
+    # ПК: без ліміту bcrypt дає ~10 спроб/с, чого досить для слабкого пароля.
+    limiter_key = f"{username.strip().lower()}|{getattr(request.client, 'host', '') or ''}"
+    wait = login_limiter.retry_after(limiter_key)
+    if wait:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"error": block_message(wait), "username": username.strip()},
+            status_code=429,
+        )
+
     user = db.scalar(select(User).where(User.username == username))
     if user is None or not user.is_active or not verify_password(password, user.password_hash):
+        blocked = login_limiter.register_failure(limiter_key)
         # Логін повертаємо в поле: стирати його після одруківки в ПАРОЛІ
         # означає змушувати набирати обидва заново щозміни. Setup цю саму
         # ввічливість уже має.
         return templates.TemplateResponse(
             request,
             "login.html",
-            {"error": "Невірний логін або пароль", "username": username.strip()},
+            {
+                "error": block_message(blocked) if blocked else "Невірний логін або пароль",
+                "username": username.strip(),
+            },
         )
+    login_limiter.reset(limiter_key)
     request.session.clear()
     request.session["user_id"] = user.id
     return RedirectResponse("/", status_code=303)
@@ -350,8 +371,8 @@ async def post_account_password(
     error = None
     if not verify_password(current_password, user.password_hash):
         error = "Поточний пароль невірний"
-    elif len(new_password) < 6:
-        error = "Новий пароль має бути не коротшим за 6 символів"
+    elif validate_password(new_password):
+        error = validate_password(new_password)
     elif new_password != confirm_password:
         error = "Паролі не збігаються"
 

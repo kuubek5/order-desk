@@ -14,6 +14,31 @@ from sqlalchemy.orm import Session
 from app.models import User
 
 
+# Одна межа довжини пароля на весь застосунок. До аудиту 05.09.26 їх було три:
+# перший адмін — 10 символів, «Кабінет» — 6, а адмінське створення/скидання
+# оператора — жодної (проходив пароль «1»). Три різні політики = політики нема.
+PASSWORD_MIN_LENGTH = 10
+
+# Роль зберігалась як вільний рядок: одруківка «aдмін» з латинською «a» давала
+# акаунт, що в списку виглядає адміном, а жоден гейт (role != "адмін") його не
+# пускає — і section_gate.non_admin_roles() підхоплював сміття в UI назавжди.
+ROLES = ("адмін", "оператор")
+
+
+def validate_password(password: str) -> str | None:
+    """Ukrainian error message if the password is too short, else None."""
+    if len(password or "") < PASSWORD_MIN_LENGTH:
+        return f"Пароль має містити щонайменше {PASSWORD_MIN_LENGTH} символів"
+    return None
+
+
+def validate_role(role: str) -> str | None:
+    """Ukrainian error message if the role is not one of ROLES, else None."""
+    if role not in ROLES:
+        return "невідома роль — оберіть «адмін» або «оператор»"
+    return None
+
+
 def user_count(db: Session) -> int:
     """Return the number of configured accounts without loading user records."""
     return db.scalar(select(func.count()).select_from(User)) or 0
@@ -33,8 +58,9 @@ def validate_first_admin(
     }
     if not values["username"] or not values["full_name"]:
         return None, "Вкажіть логін та ім’я адміністратора"
-    if len(password) < 10:
-        return None, "Пароль має містити щонайменше 10 символів"
+    password_error = validate_password(password)
+    if password_error:
+        return None, password_error
     if password != password_confirmation:
         return None, "Паролі не збігаються"
     return values, None

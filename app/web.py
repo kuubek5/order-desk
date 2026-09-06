@@ -728,10 +728,20 @@ app = FastAPI(
     title="KuubMill",
     lifespan=lifespan,
     dependencies=[Depends(_mark_route_entry)],
+    # KuubMill has no API clients — the schema only ever served as a free map of
+    # every route and form field to anyone who reached the port without logging
+    # in (audit 05.09.26, security M-5).
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET_KEY,
+    # SameSite=Strict IS this app's CSRF defence: it drops cross-site POSTs, and
+    # every mutation here is a POST. Loosening it to "lax" silently opens every
+    # HTMX mutation to any page in the operator's browser — tests/test_security_hardening.py
+    # guards this value on purpose.
     same_site="strict",
     https_only=False,  # Loopback-only HTTP; no network listener is opened.
     max_age=8 * 60 * 60,

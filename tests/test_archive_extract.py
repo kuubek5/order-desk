@@ -1,3 +1,4 @@
+import io
 import zipfile
 from pathlib import Path
 
@@ -180,3 +181,55 @@ def test_extract_keeps_archive_until_commit_and_survives_rollback(tmp_path):
         db.commit()
         assert extracted == 1
         assert not arc.exists()
+
+
+# ── Zip-бомба: віримо лише реально прочитаним байтам (аудит 05.09.26, H-3) ──
+class _LyingArchive:
+    """Архів, який у каталозі заявляє крихітний розмір, а віддає гігабайти —
+    класична zip-бомба. `file_size` пише архіватор, тож це просто метадані."""
+
+    def __init__(self, real_bytes: int):
+        self._real_bytes = real_bytes
+        self.closed = False
+
+    def open(self, member_name):
+        return io.BytesIO(b"\0" * self._real_bytes)
+
+    def close(self):
+        self.closed = True
+
+
+def test_declared_size_lie_does_not_get_written_to_disk(tmp_path, monkeypatch):
+    import app.archive_extract as archive_extract
+
+    monkeypatch.setattr(archive_extract, "_MAX_TOTAL_BYTES", 1024)
+    monkeypatch.setattr(archive_extract, "_CHUNK_BYTES", 256)
+    fake = _LyingArchive(real_bytes=8192)
+    monkeypatch.setattr(
+        archive_extract, "_open_archive", lambda path: (fake, [("bomb.stl", 10)])
+    )
+
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with pytest.raises(archive_extract.ArchiveExtractError, match="завеликий"):
+        archive_extract.extract_archive(tmp_path / "bomb.zip", dest)
+
+    # Ані цілого файлу, ані обрізка: розпакування або повне, або жодного.
+    assert list(dest.iterdir()) == []
+
+
+def test_honest_small_archive_still_extracts(tmp_path, monkeypatch):
+    """Запобіжник не має відкидати справжні (великі) STL — межа лишається 2 ГБ."""
+    import app.archive_extract as archive_extract
+
+    monkeypatch.setattr(archive_extract, "_MAX_TOTAL_BYTES", 1024)
+    fake = _LyingArchive(real_bytes=100)
+    monkeypatch.setattr(
+        archive_extract, "_open_archive", lambda path: (fake, [("crown.stl", 100)])
+    )
+
+    dest = tmp_path / "out"
+    dest.mkdir()
+    written = archive_extract.extract_archive(tmp_path / "ok.zip", dest)
+    assert [p.name for p in written] == ["crown.stl"]
+    assert written[0].stat().st_size == 100
