@@ -48,6 +48,24 @@
                 <i style="width:{{ card.percent }}%"></i>
             </div>
             {% endif %}
+            {# SLM-принтер каже про себе ТОЧНІ речі: скільки шарів з якої
+               кількості вже нанесено і о котрій обіцяє закінчити. Це не наша
+               оцінка з відсотка — машина рахує сама, тому й показуємо її
+               слова, а не перемножене «залишилось». Фаза («пише шар» /
+               «розрівнює порошок») пояснює, чому число шарів стоїть на місці
+               частину часу: інакше це читалось би як зависання. #}
+            {% if card.layers %}
+            <p class="mc-slm">
+                <span class="mc-slm-layers">шар <b class="mono">{{ card.layers[0] }}</b>
+                    з <b class="mono">{{ card.layers[1] }}</b></span>
+                {% if card.ends_at %}
+                <span class="mc-slm-ends">закінчить о <b class="mono">{{ card.ends_at.strftime('%H:%M') }}</b></span>
+                {% endif %}
+                {% if card.phase_text %}
+                <span class="mc-slm-phase">{{ card.phase_text }}</span>
+                {% endif %}
+            </p>
+            {% endif %}
             {% if card.sum3d_id %}
             <p class="mc-prog">
                 <span class="mono mc-sid">{{ card.sum3d_id }}</span>

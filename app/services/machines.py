@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
 from app.machine_portraits import portrait_version
+from app.machine_sisma import read_sisma, screen_is_sisma
 from app.machine_ocr import (
     missing_caption_digits,
     pick_milling_program,
@@ -180,6 +181,18 @@ class MachineState:
     # «заголовки є, але .iso серед них немає» — а це різні причини й різні
     # виправлення. Тримаємо кілька останніх, обрізаних: показуємо адміну.
     titles_seen: Optional[list[str]] = None
+    # ── SLM-принтер SISMA (окремий тип екрана, 06.09.26) ────────────────────
+    # У нього немає ні смуги RemiCORE, ні .iso в заголовку — зате він пише
+    # точні числа: шар N з M і власний прогноз кінця роботи. Поля окремі, а не
+    # втиснуті в percent/iso_name, бо це інші сутності: «шар 250 з 1049» це не
+    # відсоток фрезерування, а `ends_at` — не наша оцінка, а слово машини.
+    layer: Optional[int] = None
+    layers_total: Optional[int] = None
+    ends_at: Optional[datetime] = None
+    # Фаза лазера: True — пише шар, False — розрівнює порошок між шарами.
+    # Друк іде в ОБОХ випадках (див. app/machine_sisma).
+    lasing: Optional[bool] = None
+    is_sisma: bool = False
 
 
 _states: dict[str, MachineState] = {}
@@ -659,11 +672,19 @@ def poll_target(
     # Відсоток — з ТОГО САМОГО кадру. Стоїть тут (а не в grab), бо poll_target —
     # спільна лійка обох шляхів опитування: фонового (poll_all) і разового.
     # Саме розходження цих шляхів дало баг 0.6.13, повторювати його не будемо.
-    try:
-        percent = read_progress_percent(frame)
-    except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
-        logger.exception("Відсоток верстата %s не прочитано", target.host)
-        percent = None
+    # SISMA має власний екран і власного читача. Пробуємо його ПЕРШИМ і, якщо
+    # це справді SISMA, детектори смуги RemiCORE навіть не запускаємо: шукати
+    # синю смугу на чужому інтерфейсі — рівно той шлях, яким беруться числа з
+    # повітря (шматок шпалер уже одного разу став «смугою на 100%»).
+    sisma = read_sisma(frame) if screen_is_sisma(frame) else None
+    if sisma is not None:
+        percent = sisma.percent
+    else:
+        try:
+            percent = read_progress_percent(frame)
+        except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
+            logger.exception("Відсоток верстата %s не прочитано", target.host)
+            percent = None
     # ЗАВЖДИ пишемо результат СВІЖОГО кадру, навіть None. Інакше, коли програма
     # завершилась і смуга зникла з екрана, старий відсоток залипав назавжди —
     # робота показувала «85%», хоч давно готова (бойовий випадок 03.09.26).
@@ -678,11 +699,18 @@ def poll_target(
     # Екран підсумку — з того самого кадру й тією ж лійкою, що й відсоток.
     # Взаємно виключні за побудовою: на 285 бойових кадрах чотирьох верстатів
     # жоден не дав одночасно число і SUMMARY (перевірено 04.09.26).
-    try:
-        completed = screen_is_completed(frame)
-    except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
-        logger.exception("Екран верстата %s не розпізнано", target.host)
-        completed = False
+    if sisma is not None:
+        # У SISMA свій підсумок: робота завершена, коли шар останній. Шукати
+        # тут SUMMARY нового покоління RemiCORE нічого.
+        completed = bool(
+            sisma.layers_total and sisma.layer and sisma.layer >= sisma.layers_total
+        )
+    else:
+        try:
+            completed = screen_is_completed(frame)
+        except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
+            logger.exception("Екран верстата %s не розпізнано", target.host)
+            completed = False
 
     # Усе, що прочитали з ОДНОГО кадру, лягає в стан ОДНИМ кроком під локом.
     # Раніше поля писались по черзі, а між ними стояли дискове I/O і мережевий
@@ -708,6 +736,15 @@ def poll_target(
         state.percent = percent
         state.percent_at = now
         state.completed = completed
+        # Поля SISMA пишемо ЗАВЖДИ (навіть None): та сама причина, що з
+        # відсотком — інакше після завершення роботи на екрані залипли б
+        # старі шари й старий час кінця, і картка показувала б давно знятий
+        # друк як живий.
+        state.is_sisma = sisma is not None
+        state.layer = sisma.layer if sisma else None
+        state.layers_total = sisma.layers_total if sisma else None
+        state.ends_at = sisma.ends_at if sisma else None
+        state.lasing = sisma.lasing if sisma else None
         state.frame_at = now
         state.error = None
         state.frame_saved_at = saved_at
@@ -914,6 +951,45 @@ class MachineCard:
         """Програма йде: є відсоток і він ще не 100."""
         pct = self.percent
         return pct is not None and pct < 100
+
+    # ── SLM-принтер SISMA ───────────────────────────────────────────────
+    # Свіжість перевіряється так само, як для відсотка: протухлий кадр не дає
+    # ні шарів, ні часу кінця. Показати вчорашній «закінчить о 20:58» гірше,
+    # ніж не показати нічого — за цим числом планують зміну.
+
+    @property
+    def is_sisma(self) -> bool:
+        return bool(self.state and self.state.is_sisma and not (self.stale or self.has_problem))
+
+    @property
+    def layers(self) -> Optional[tuple[int, int]]:
+        """Шар N з M — точні числа з екрана, а не оцінка."""
+        if not self.is_sisma:
+            return None
+        if not (self.state.layer and self.state.layers_total):
+            return None
+        return (self.state.layer, self.state.layers_total)
+
+    @property
+    def ends_at(self) -> Optional[datetime]:
+        """Коли машина обіцяє закінчити — ЇЇ прогноз, не наш."""
+        return self.state.ends_at if self.is_sisma else None
+
+    @property
+    def lasing(self) -> Optional[bool]:
+        """True — пише шар, False — розрівнює порошок. Обидва = працює."""
+        return self.state.lasing if self.is_sisma else None
+
+    @property
+    def phase_text(self) -> str:
+        """Фаза словами. Порожньо, якщо фаза не прочиталась."""
+        if not self.is_sisma or self.layers is None:
+            return ""
+        if self.lasing is True:
+            return "пише шар"
+        if self.lasing is False:
+            return "розрівнює порошок"
+        return ""
 
     @property
     def sum3d_id(self) -> Optional[str]:

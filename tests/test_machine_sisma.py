@@ -110,3 +110,80 @@ def test_finish_time_is_the_same_on_both_working_frames(name):
     """Час завершення не має стрибати між фазами — інакше за ним не можна
     планувати зміну."""
     assert read_sisma(_frame(name)).ends_at == datetime(2026, 9, 6, 20, 58)
+
+
+def test_card_shows_layers_and_finish_time_only_while_fresh():
+    """Картка показує шари й час кінця лише зі СВІЖОГО кадру. Протухлий кадр
+    мовчить: «закінчить о 20:58» з учорашнього друку — саме те хибне число,
+    за яким планують зміну."""
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    from app.services import machines as service
+
+    now = datetime(2026, 9, 6, 17, 0)
+    state = service.MachineState(
+        target=SimpleNamespace(key="k", name="SISMA", host="h", port=8765),
+        frame_at=now,
+        percent=24,
+        percent_at=now,
+        is_sisma=True,
+        layer=250,
+        layers_total=1049,
+        ends_at=datetime(2026, 9, 6, 20, 58),
+        lasing=True,
+    )
+    card = service.MachineCard(target=state.target, state=state, now=now)
+    assert card.layers == (250, 1049)
+    assert card.ends_at == datetime(2026, 9, 6, 20, 58)
+    assert card.phase_text == "пише шар"
+
+    stale = service.MachineCard(
+        target=state.target, state=state, now=now + timedelta(hours=3)
+    )
+    assert stale.layers is None
+    assert stale.ends_at is None, "протухлий кадр не має обіцяти час завершення"
+
+
+def test_card_calls_recoating_a_phase_not_a_stop():
+    from types import SimpleNamespace
+
+    from app.services import machines as service
+
+    now = datetime(2026, 9, 6, 17, 0)
+    state = service.MachineState(
+        target=SimpleNamespace(key="k", name="SISMA", host="h", port=8765),
+        frame_at=now, percent=24, percent_at=now, is_sisma=True,
+        layer=253, layers_total=1049, lasing=False,
+    )
+    card = service.MachineCard(target=state.target, state=state, now=now)
+    assert card.phase_text == "розрівнює порошок"
+    assert card.is_running is True, "між шарами робота триває"
+
+
+def test_card_template_renders_the_layer_line():
+    """Роут-є-значить-готово тут не рахується: перевіряємо, що шаблон справді
+    малює шари, час і фазу — а не що властивість повертає число."""
+    from types import SimpleNamespace
+
+    from app.routers.deps import templates
+    from app.services import machines as service
+
+    now = datetime(2026, 9, 6, 17, 0)
+    state = service.MachineState(
+        target=SimpleNamespace(key="k", name="SISMA", host="192.168.1.27", port=8765,
+                               portrait_model="", machine_id=1),
+        frame_at=now, percent=24, percent_at=now, is_sisma=True,
+        layer=250, layers_total=1049, lasing=True,
+        ends_at=datetime(2026, 9, 6, 20, 58),
+    )
+    card = service.MachineCard(target=state.target, state=state, now=now)
+    html = templates.env.get_template("_machine_cards.html").render(
+        request=None, cards=[card], user=SimpleNamespace(role="адмін"),
+        calibration={"active": False},
+    )
+
+    assert "шар <b class=\"mono\">250</b>" in html
+    assert "1049" in html
+    assert "закінчить о <b class=\"mono\">20:58</b>" in html
+    assert "пише шар" in html

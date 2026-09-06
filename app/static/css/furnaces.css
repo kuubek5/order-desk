@@ -385,6 +385,15 @@ html[data-machine-art="none"] .ms-tile>*{text-shadow:none}
 body.machine-side-open .q2 .side-sec-machine .side-body{display:block;padding-top:11px}
 body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 
+/* Рядок SLM-принтера: шари, час завершення, фаза. Три різні за вагою речі,
+   тому й вигляд різний — числа шарів моноширинні й найпомітніші, час поруч,
+   фаза найтихіша: вона пояснює паузу, а не є новиною. */
+.mc-slm{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 8px;
+  font-size:var(--fs-1);color:var(--ink-2)}
+.mc-slm b{color:var(--ink-1)}
+.mc-slm-ends{color:var(--ink-2)}
+.mc-slm-phase{color:var(--ink-3)}
+
 .mc-prog{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:0 0 8px;
   font-size:var(--fs-1)}
 .mc-sid{color:var(--ink-3)}
