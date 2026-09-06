@@ -29,13 +29,16 @@ def test_admin_settings_renders_sheet_backup_section(tmp_path, monkeypatch):
                                     "disappeared_at": "2026-08-01T09:00:00"}}),
         encoding="utf-8",
     )
-    monkeypatch.setattr(S, "DB_PATH", str(dbfile))
+    # DB_PATH читає саме overview (get_settings), тому підміна цілить у нього:
+    # на пакеті вона була б тихим no-op.
+    monkeypatch.setattr(S.overview, "DB_PATH", str(dbfile))
 
     engine = create_engine("sqlite://", poolclass=StaticPool)
     Base.metadata.create_all(engine)
     with Session(engine, expire_on_commit=False) as db:
         admin = User(username="admin", password_hash="unused", full_name="Адмін", role="адмін")
-        db.add(admin); db.commit()
+        db.add(admin)
+        db.commit()
         resp = S.get_settings(request=SimpleNamespace(session={"user_id": admin.id}), db=db)
     body = resp.body.decode("utf-8")
     assert resp.status_code == 200

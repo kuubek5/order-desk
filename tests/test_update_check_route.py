@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
-from app.routers import settings as settings_router_mod
+# Див. коментар у test_update_install_route.py: патчимо модуль, не пакет.
+from app.routers.settings import update as settings_router_mod
 from app.db import Base
 from app.models import User
 from app.update_check import ReleaseInfo
@@ -88,8 +89,8 @@ def test_runs_tick_and_reports_newer_version(monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
-        with patch("app.routers.settings._update_check_tick") as tick, patch(
-            "app.routers.settings.get_known_update", return_value=_RELEASE
+        with patch("app.routers.settings.update._update_check_tick") as tick, patch(
+            "app.routers.settings.update.get_known_update", return_value=_RELEASE
         ):
             context = settings_router_mod.check_update(request=_request(admin.id), db=db)
     tick.assert_called_once()
@@ -104,8 +105,8 @@ def test_reports_up_to_date_when_no_release(monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
-        with patch("app.routers.settings._update_check_tick"), patch(
-            "app.routers.settings.get_known_update", return_value=None
+        with patch("app.routers.settings.update._update_check_tick"), patch(
+            "app.routers.settings.update.get_known_update", return_value=None
         ):
             context = settings_router_mod.check_update(request=_request(admin.id), db=db)
     assert context["release"] is None

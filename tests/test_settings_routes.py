@@ -13,6 +13,9 @@ from sqlalchemy.pool import StaticPool
 import app.web as web
 from app.settings_store import get_imap_login, get_imap_password
 from app.routers import settings as settings_router_mod
+# Приватні помічники IMAP і дедлайн самоперевірки живуть у модулі
+# connections; підміняти їх треба там, а не на пакеті (тихий no-op).
+from app.routers.settings import connections as settings_connections_mod
 from app.db import Base
 from app.google_oauth import OAuthFlowError
 from app.models import User
@@ -226,7 +229,7 @@ def test_test_imap_connection_reports_success_on_login(monkeypatch):
         set_setting(db, "imap_password", "app-password")
         db.commit()
 
-        with patch("app.routers.settings.MailBox") as mock_mailbox_cls:
+        with patch("app.routers.settings.connections.MailBox") as mock_mailbox_cls:
             mock_mailbox_cls.return_value.login.return_value = MagicMock()
             context = settings_router_mod.test_imap_connection(request=_request(admin.id), db=db)
 
@@ -244,7 +247,7 @@ def test_test_imap_connection_reports_safe_error_on_failed_login(monkeypatch):
         set_setting(db, "imap_password", "wrong-password")
         db.commit()
 
-        with patch("app.routers.settings.MailBox") as mock_mailbox_cls:
+        with patch("app.routers.settings.connections.MailBox") as mock_mailbox_cls:
             mock_mailbox_cls.return_value.login.side_effect = Exception(
                 "AUTHENTICATIONFAILED some raw server detail"
             )
@@ -296,15 +299,15 @@ def test_imap_error_reason_classifies_login_rejection_without_leaking_raw():
         command_result=("NO", [b"AUTHENTICATIONFAILED raw server detail"]),
         expected="OK",
     )
-    msg = settings_router_mod._imap_error_reason(exc)
+    msg = settings_connections_mod._imap_error_reason(exc)
     assert "ukr.net" in msg
     assert "пароль для програм" in msg
     assert "AUTHENTICATIONFAILED" not in msg
 
 
 def test_imap_error_reason_distinguishes_network_from_auth():
-    assert "інтернет" in settings_router_mod._imap_error_reason(TimeoutError())
-    assert "з'єднання" in settings_router_mod._imap_error_reason(ConnectionError("boom"))
+    assert "інтернет" in settings_connections_mod._imap_error_reason(TimeoutError())
+    assert "з'єднання" in settings_connections_mod._imap_error_reason(ConnectionError("boom"))
 
 
 def test_save_imap_settings_requires_admin():
@@ -325,7 +328,7 @@ def test_save_imap_settings_success_fires_toast_and_persists(monkeypatch):
         req = _imap_request(
             admin.id, {"imap_login": "user@ukr.net", "imap_password": "app-pw"}
         )
-        with patch("app.routers.settings.MailBox") as mock_mailbox_cls:
+        with patch("app.routers.settings.connections.MailBox") as mock_mailbox_cls:
             mock_mailbox_cls.return_value.login.return_value = MagicMock()
             resp = asyncio.run(settings_router_mod.save_imap_settings(request=req, db=db))
         assert resp.context["result"]["state"] == "success"
@@ -342,7 +345,7 @@ def test_save_imap_settings_error_surfaces_reason_toast(monkeypatch):
         req = _imap_request(
             admin.id, {"imap_login": "user@ukr.net", "imap_password": "bad"}
         )
-        with patch("app.routers.settings.MailBox") as mock_mailbox_cls:
+        with patch("app.routers.settings.connections.MailBox") as mock_mailbox_cls:
             mock_mailbox_cls.return_value.login.side_effect = Exception(
                 "AUTHENTICATIONFAILED raw server detail"
             )
@@ -364,7 +367,7 @@ def test_save_imap_settings_blank_password_keeps_saved(monkeypatch):
         req = _imap_request(
             admin.id, {"imap_login": "new@ukr.net", "imap_password": ""}
         )
-        with patch("app.routers.settings.MailBox") as mock_mailbox_cls:
+        with patch("app.routers.settings.connections.MailBox") as mock_mailbox_cls:
             mock_mailbox_cls.return_value.login.return_value = MagicMock()
             asyncio.run(settings_router_mod.save_imap_settings(request=req, db=db))
         assert get_imap_login(db) == "new@ukr.net"
@@ -428,7 +431,7 @@ def test_test_sheets_connection_reports_success_on_access(monkeypatch):
         set_setting(db, "google_service_account_json", '{"type": "service_account"}')
         db.commit()
 
-        with patch("app.routers.settings.open_spreadsheet") as mock_open:
+        with patch("app.routers.settings.connections.open_spreadsheet") as mock_open:
             mock_open.return_value.worksheets.return_value = [MagicMock()]
             context = settings_router_mod.test_sheets_connection(request=_request(admin.id), db=db)
 
@@ -446,7 +449,7 @@ def test_test_sheets_connection_reports_safe_error_on_failure(monkeypatch):
         set_setting(db, "google_service_account_json", '{"type": "service_account"}')
         db.commit()
 
-        with patch("app.routers.settings.open_spreadsheet") as mock_open:
+        with patch("app.routers.settings.connections.open_spreadsheet") as mock_open:
             mock_open.side_effect = Exception("PermissionDenied raw google detail")
             context = settings_router_mod.test_sheets_connection(request=_request(admin.id), db=db)
 
@@ -539,8 +542,8 @@ def test_start_google_oauth_success_saves_refresh_token_and_switches_mode(monkey
         set_setting(db, "google_oauth_client_json", '{"installed": {"client_id": "a", "client_secret": "b"}}')
         db.commit()
 
-        with patch("app.routers.settings.run_authorization_flow", return_value="rt-new-token") as mock_flow, \
-             patch("app.routers.settings.reset_sheets_cache") as mock_reset:
+        with patch("app.routers.settings.connections.run_authorization_flow", return_value="rt-new-token") as mock_flow, \
+             patch("app.routers.settings.connections.reset_sheets_cache") as mock_reset:
             context = settings_router_mod.start_google_oauth(request=_request(admin.id), db=db)
 
         mock_flow.assert_called_once()
@@ -562,7 +565,7 @@ def test_start_google_oauth_reports_flow_error_safely(monkeypatch):
         set_setting(db, "google_oauth_client_json", '{"installed": {"client_id": "a", "client_secret": "b"}}')
         db.commit()
 
-        with patch("app.routers.settings.run_authorization_flow", side_effect=OAuthFlowError("Google відхилив авторизацію: access_denied")):
+        with patch("app.routers.settings.connections.run_authorization_flow", side_effect=OAuthFlowError("Google відхилив авторизацію: access_denied")):
             context = settings_router_mod.start_google_oauth(request=_request(admin.id), db=db)
 
     assert context["result"]["state"] == "error"
@@ -579,7 +582,7 @@ def test_start_google_oauth_reports_safe_error_on_unexpected_exception(monkeypat
         set_setting(db, "google_oauth_client_json", '{"installed": {"client_id": "a", "client_secret": "b"}}')
         db.commit()
 
-        with patch("app.routers.settings.run_authorization_flow", side_effect=Exception("raw internal detail")):
+        with patch("app.routers.settings.connections.run_authorization_flow", side_effect=Exception("raw internal detail")):
             context = settings_router_mod.start_google_oauth(request=_request(admin.id), db=db)
 
     assert context["result"]["state"] == "error"
@@ -606,7 +609,7 @@ def test_disconnect_google_oauth_clears_token_and_resets_mode():
         set_setting(db, "google_oauth_refresh_token", "rt-old")
         db.commit()
 
-        with patch("app.routers.settings.reset_sheets_cache") as mock_reset:
+        with patch("app.routers.settings.connections.reset_sheets_cache") as mock_reset:
             resp = settings_router_mod.disconnect_google_oauth(request=_request(admin.id), db=db)
 
         mock_reset.assert_called_once()
@@ -695,13 +698,13 @@ def test_selfcheck_abandons_a_probe_that_exceeds_the_deadline(monkeypatch):
     import threading
 
     release = threading.Event()
-    monkeypatch.setattr(settings_router_mod, "SELFCHECK_STEP_DEADLINE_SECONDS", 0.2)
+    monkeypatch.setattr(settings_connections_mod, "SELFCHECK_STEP_DEADLINE_SECONDS", 0.2)
 
     def _hang(*args, **kwargs):
         release.wait(10)
         return {"state": "success", "message": "занадто пізно"}
 
-    monkeypatch.setattr(settings_router_mod, "_probe_imap_login", _hang)
+    monkeypatch.setattr(settings_connections_mod, "_probe_imap_login", _hang)
 
     engine = _database()
     try:

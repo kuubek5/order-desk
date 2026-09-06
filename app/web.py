@@ -961,7 +961,8 @@ app.include_router(vyrobitok_router)
 app.include_router(clients_router)
 
 
-# Налаштування (адмін) живуть в app/routers/settings.py.
+# Налаштування (адмін) живуть у пакеті app/routers/settings/ — по модулю на
+# тему; спільний router збирає __init__.py.
 app.include_router(settings_router)
 
 

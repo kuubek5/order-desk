@@ -16,7 +16,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.routers import settings as settings_router_mod
+# Патчі мусять цілити в МОДУЛЬ, де ім'я справді вживається: після розбиття
+# settings на пакет (крок 2.9) підміна на пакеті стала б тихим no-op.
+from app.routers.settings import update as settings_router_mod
 from app.db import Base
 from app.models import User
 from app.update_check import ReleaseInfo
@@ -87,7 +89,7 @@ def test_no_known_update_flashes_and_redirects_without_starting_thread():
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
         request = _request(admin.id)
-        with patch("app.routers.settings.get_known_update", return_value=None), patch("app.routers.settings.Thread") as mock_thread:
+        with patch("app.routers.settings.update.get_known_update", return_value=None), patch("app.routers.settings.update.Thread") as mock_thread:
             response = settings_router_mod.install_update(request=request, db=db)
     mock_thread.assert_not_called()
     assert response.status_code == 303
@@ -100,7 +102,7 @@ def test_known_update_starts_background_thread_and_flashes_success():
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
         request = _request(admin.id)
-        with patch("app.routers.settings.get_known_update", return_value=_RELEASE), patch("app.routers.settings.Thread") as mock_thread:
+        with patch("app.routers.settings.update.get_known_update", return_value=_RELEASE), patch("app.routers.settings.update.Thread") as mock_thread:
             response = settings_router_mod.install_update(request=request, db=db)
     mock_thread.assert_called_once()
     _, kwargs = mock_thread.call_args
@@ -115,13 +117,13 @@ def test_known_update_starts_background_thread_and_flashes_success():
 
 
 def test_install_in_background_download_failure_is_swallowed():
-    with patch("app.routers.settings.download_and_verify", side_effect=Exception("boom")):
+    with patch("app.routers.settings.update.download_and_verify", side_effect=Exception("boom")):
         settings_router_mod._install_update_in_background(_RELEASE)  # must not raise
 
 
 def test_install_in_background_calls_download_then_launch():
-    with patch("app.routers.settings.download_and_verify", return_value="C:/fake/installer.exe") as mock_download, patch(
-        "app.routers.settings.launch_silent_install"
+    with patch("app.routers.settings.update.download_and_verify", return_value="C:/fake/installer.exe") as mock_download, patch(
+        "app.routers.settings.update.launch_silent_install"
     ) as mock_launch:
         settings_router_mod._install_update_in_background(_RELEASE)
     # progress= — колбек для оверлею (04.09.26); реліз лишається єдиним позиційним.

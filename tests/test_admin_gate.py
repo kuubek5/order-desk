@@ -19,7 +19,13 @@ import pytest
 from app.routers import deps
 
 ROOT = Path(__file__).resolve().parents[1]
-GATED_MODULES = ["app/routers/settings.py", "app/routers/diag.py"]
+# Налаштування живуть у пакеті з тематичних модулів (аудит 05.09.26, крок 2.9).
+# Список збираємо глобом, а не руками: інакше новий модуль пакета проскочив би
+# повз сторожа мовчки — саме те, від чого цей тест і поставлено.
+GATED_MODULES = sorted(
+    path.relative_to(ROOT).as_posix()
+    for path in (ROOT / "app" / "routers" / "settings").glob("*.py")
+) + ["app/routers/diag.py"]
 
 # Роути, які СВІДОМО доступні не лише адміну. Кожен — з причиною.
 OPERATOR_ALLOWED = {
