@@ -37,7 +37,11 @@ def _materials(db: Session) -> dict[str, int]:
     return ids
 
 
-def _order(db, *, source, material_id, qty, day=5, mill_count=None, archived=False):
+def _order(db, *, source, material_id, qty, day=5, mill_count=None, archived=False,
+           sum3d="12-01-45"):
+    """sum3d за замовчуванням заповнений: лабораторний рядок без Sum3D ID у
+    виробіток не йде (роботу ще не взяли — див. _lab_row_counts), а більшість
+    тестів рахує саме взяті роботи."""
     o = Order(
         source=source,
         sheet_tab=AUG % day,
@@ -45,6 +49,7 @@ def _order(db, *, source, material_id, qty, day=5, mill_count=None, archived=Fal
         material_id=material_id,
         quantity=str(qty),
         mill_count=mill_count,
+        sum3d_id=sum3d,
         status="відфрезеровано",
     )
     if archived:
@@ -246,12 +251,12 @@ def test_month_settings_divisor_and_kurs():
 
 
 def _orow(row_number, *, work_order_no="", quantity="", material_color="", kind="",
-          technician_name="", mill_count=""):
+          technician_name="", mill_count="", sum3d_id=""):
     from app.parser import OrderRow
     return OrderRow(
         row_number=row_number, seq_no=str(row_number), work_order_no=work_order_no,
         quantity=quantity, material_color=material_color, kind=kind, due_time=None,
-        job_code="", technician_name=technician_name, cam_comment="", sum3d_id="",
+        job_code="", technician_name=technician_name, cam_comment="", sum3d_id=sum3d_id,
         calculated="", milled="", last_milled_date="", mill_count=mill_count,
     )
 
@@ -280,7 +285,8 @@ def test_catchup_resync_of_same_tab_does_not_double():
     from app.models import Order
     db = _db()  # ensure_seeded усередині sync_tab насіює каталог матеріалів
     rows = [
-        _orow(1, work_order_no="24001", quantity="5", material_color="mono a3", technician_name="Іван"),
+        _orow(1, work_order_no="24001", quantity="5", material_color="mono a3",
+              technician_name="Іван", sum3d_id="12-01-45"),
         _orow(50, material_color="4", kind="CADCAM Команда"),   # лаб СЛМ 4
         _orow(51, quantity="12", kind="CadCam Energy"),          # файловий СЛМ 12
     ]
@@ -377,3 +383,61 @@ def test_body_partial_renders():
     )
     assert 'id="vyrobitok-body"' in html
     assert "Разом одиниць" in html
+
+
+# ── Лабораторний рядок рахується лише з Sum3D ID ─────────────────────────────
+# Технік заводить рядок наперед. Сьогодні роботу не встигли — завтра її
+# заводять знову; без цієї умови та сама коронка лягла б у табель двічі.
+
+def test_lab_row_without_sum3d_is_not_counted():
+    db = _db()
+    mat = _materials(db)
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=30, sum3d=None)
+    _order(db, source="lab", material_id=mat["ПММА"], qty=11, sum3d="   ")
+    _order(db, source="lab", material_id=mat["Титан"], qty=3, sum3d="")
+    _order(db, source="lab", material_id=mat["Віск"], qty=6, sum3d=None)
+    totals = _totals(db)
+    assert (totals["lab_zr"], totals["lab_pmma"], totals["lab_ti"], totals["lab_wax"]) == (0, 0, 0, 0)
+
+    # Оператор узяв роботу — того ж дня вона рахується.
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=30, day=6, sum3d="12-01-45")
+    assert _totals(db)["lab_zr"] == 30
+
+
+def test_mail_row_counts_without_sum3d():
+    """Правило лише для лабораторії: клієнтську роботу заводять один раз."""
+    db = _db()
+    mat = _materials(db)
+    _order(db, source="email", material_id=mat["Цирконій"], qty=132, sum3d=None)
+    _order(db, source="sheet_client", material_id=mat["ПММА"], qty=56, sum3d="")
+    totals = _totals(db)
+    assert totals["mail_zr"] == 132 and totals["mail_pmma"] == 56
+
+
+def test_lab_work_carried_to_next_day_counts_once():
+    """Сценарій власника: рядок 5-го не зробився, 6-го його завели знову.
+    У табелі — одна робота, того дня, коли її взяли."""
+    db = _db()
+    mat = _materials(db)
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=12, day=5, sum3d=None)
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=12, day=6, sum3d="12-01-45")
+
+    grid = compute_month(db, 2026, 8)
+    day5 = next(r for r in grid.rows if r["dayn"] == 5)["cells"]["lab_zr"]
+    day6 = next(r for r in grid.rows if r["dayn"] == 6)["cells"]["lab_zr"]
+    assert day5["num"] == 0 and day6["num"] == 12
+    assert grid.totals["lab_zr"] == 12
+
+
+def test_day_with_only_untaken_lab_rows_shows_zero_not_stale_snapshot():
+    """День, де технік завів роботи, а оператор їх ще не взяв, лишається
+    «живим» — інакше він показав би старий знімок замість чесного нуля."""
+    db = _db()
+    mat = _materials(db)
+    taken = _order(db, source="lab", material_id=mat["Цирконій"], qty=30, sum3d="12-01-45")
+    assert _totals(db)["lab_zr"] == 30  # знімок записано
+
+    # Рядок перезавели без Sum3D (роботу зняли з прорахунку).
+    taken.sum3d_id = None
+    db.commit()
+    assert _totals(db)["lab_zr"] == 0

@@ -151,6 +151,21 @@ def _is_rework(mill_count: str | None) -> bool:
     return n is not None and n >= 2
 
 
+def _lab_row_counts(order) -> bool:
+    """Лабораторний рядок іде у виробіток лише коли в нього є Sum3D ID.
+
+    Технік заводить рядок наперед: сьогодні роботу не встигли, завтра її
+    заводять знову — і без цієї умови та сама коронка лягла б у табель двічі.
+    Sum3D ID ставить оператор, коли реально бере роботу в прорахунок, тож він і
+    є ознакою «робота цього дня справді пішла» (таблиця — головне джерело
+    Sum3D, див. CLAUDE.md §5). Клієнтських рядків (пошта) правило не стосується:
+    там повторного заведення нема, робота приходить листом один раз.
+    """
+    if order.source != "lab":
+        return True
+    return bool((order.sum3d_id or "").strip())
+
+
 def nf(value: float, decimals: int = 2) -> str:
     """Українське форматування числа: пробіл-роздільник тисяч, кома-десяткова."""
     text = f"{value:,.{decimals}f}"
@@ -215,7 +230,12 @@ def compute_month(
             continue
         if _is_rework(order.mill_count):
             continue
+        # День лишається «живим» навіть із рядків, які не рахуються: інакше
+        # день, де технік завів роботи, а оператор їх ще не взяв, вважався б
+        # мертвим і показував старий знімок замість чесного нуля.
         live_days.add(d)
+        if not _lab_row_counts(order):
+            continue
         material = order.material
         key = MATERIAL_KEY_BY_NAME.get(material.name) if material else None
         if key is None or key not in ORDER_MATERIALS:
