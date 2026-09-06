@@ -67,3 +67,72 @@ F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F14, F15, F16, F18, F19 — �
 |---|---|---|---|
 | 06.09.26 | аудит | Повний прохід: 52 GET × 2 ролі, скріншоти, консоль, кнопки «Перевірити», інвентар контролів, 2 код-ревʼю, pytest+ruff. Звіт `AUDIT.md`. | — |
 | 06.09.26 | F1–F19 | 17 виправлень з тестами у гілці `audit/2026-09-06` (див. AUDIT §6). Повний прогін: 2119 тестів зелені, ruff чистий. | `5415619` |
+
+## Повне код-ревʼю 07.09.26 (CODE_REVIEW.md) — що лишилось
+
+Зроблено в master (`dedecfc` + наступний коміт): 3 CRITICAL синку, 4 CRITICAL пошти, 2 CRITICAL
+домену, 1 CRITICAL пристроїв, CSRF/Origin, токен Telegram, proxy_headers, вікно undo, статистика,
+Виробіток-гонка, SISMA-кеш, лічильник верстатів, зображення зміни, STL-кеш, нічні тести,
+`release.yml` з тестами перед білдом. Нижче — черга. Джерела: `review_full_*.md`.
+
+### S2 — синк (HIGH)
+| # | Статус | Крок |
+|---|---|---|
+| S2.1 | ⬜ | `sync.py:608-655` — воскресіння з архіву через `_row_identity`, не через «наряд або клієнт»: наряд-less рядки зараз не воскресають ніколи. |
+| S2.2 | ⬜ | `sync.py:294-401` — identity наряд-less рядків зі змінного вмісту; знімок першої identity в Order або відмова переписувати при `moved > 0`. |
+| S2.3 | ⬜ | `sheet_writeback.py:516-520` — `issue_group_warm` одним читанням маркерів + одним `batch_update` (зараз ~4-5 запитів × N → 429 на 50 роботах). |
+| S2.4 | ⬜ | `sheet_backup.py:211` + `sheets.py:493-539` — знімок вкладок одним `get_all_values` під `_sync_lock` і `quota_is_tight()`; чанки прибрати (§14). |
+| S2.5 | ⬜ | `services/undo.py:116-230` — записи в таблицю через `submit_sheet_write` (пауза, теплий кеш, серіалізація). |
+| S2.6 | ⬜ | Гейт паузи на ЧИТАННІ: `sync_google_sheets`, `sync_hot_tab`, «Звірити видалення» (`queue.py:459`). |
+| S2.7 | ⬜ | MEDIUM-список: `_mark_full_sync` на порожньому прогоні; `_listing_is_trustworthy` від найновішої вкладки; `manual_add` під `_sync_lock`; email+row_number в `_order_identity`; СЛМ-евристика лише на перший імпорт; `held_mass_vanish` у SyncLog; `logger.exception` перед `_safe_failure`; `restore_order_row` через `call_with_retry`. |
+| S2.8 | ⬜ | Мертве: `app/main.py`, `app/sync_cli.py`, `SHEET_SYNC_HOT_INTERVAL_SECONDS`. |
+
+### M — пошта (HIGH)
+| # | Статус | Крок |
+|---|---|---|
+| M.1 | ⬜ | `mail_sync_service.py:121-133,211` — не віддавати `_sync_lock`, поки зомбі-потік живий (другий фетч у ту саму теку). |
+| M.2 | ⬜ | `mail_accept.py:153,178` — `_file_is_missing` замість `Path.exists()` (моргання UNC = файл лишається в спулі, лист «прийнято»). |
+| M.3 | ⬜ | Тека спулу `<uid_validity>_<uid>` з міграцією (зараз два різні листи ділять теку). |
+| M.4 | ⬜ | `routers/mail.py:221` — `attach_email_preview_tokens` не на поллі або з TTL-кешем (N+1 на шару кожні 15 с). |
+| M.5 | ⬜ | `settings/overview.py:329` — `analyze_spool` за кнопкою/кешем, не на кожному `/settings`. |
+| M.6 | ⬜ | `mail_parser.py:318` — `client_name_guess` лише для Fwd-листів. `mail_reader.py:224` — flush у циклі архівів. |
+| M.7 | ⬜ | MEDIUM: `_unaccept_email` бере лише `order_id is not None`; `staged_to_export` мертве (видалити); «Авто-прийняття» → «Авто-скачування»; `email.order_id` при частковому прийнятті; блокування двох операторів на одному листі; token-аліаси матеріалів не по вільному тексту; `времен\w*`; `_NOT_LETTER` з цифрами/@; `_stream_to_file` unlink на BaseException; три проходи по диску в одному рендері панелі; `can_edit` на `filter_email_manually`/`add_sender_auto`/`toggle_sender_auto`. |
+
+### K — ядро / безпека
+| # | Статус | Крок |
+|---|---|---|
+| K.1 | ⬜ ⚠ | `backup.py:58` — бекап із `Base.metadata.sorted_tables` (зараз 13 з 27 таблиць: без печей, верстатів, матеріалів, фільтрів, Виробітку) + тест «кожна таблиця або в бекапі, або в explicit-виключеннях». Відновлення — з чисткою цих таблиць. |
+| K.2 | ⬜ ⚠ | Підпис інсталятора Ed25519 ключем із `license.py:34` і перевірка перед `launch_silent_install` (ланцюг довіри зараз — TLS через проксі лабораторії). Потребує ключа у CI. |
+| K.3 | ⬜ ⚠ | `db.py:14` — `PRAGMA foreign_keys=ON` + `ondelete` там, де каскад свідомий; перевірити `restore_backup` і `delete_machine/furnace` під ним. Ризик: наявні висячі FK у бойовій базі. |
+| K.4 | ⬜ | Loopback послідовно: `POST /settings` (секрети), `/settings/imap`, `/settings/test-imap`, `settings/users.py` ×4 — через `require_settings_edit(loopback=True)`. |
+| K.5 | ⬜ | `machine_calibration_path` — адмінська або під `data_dir()` (зараз оператор може вказати довільну шару, куди пишуться JPEG). |
+| K.6 | ⬜ | `ActionLog` на мутації налаштувань (пароль IMAP, JSON, ліцензія, видалення верстата, відновлення бекапу). |
+| K.7 | ⬜ | Пул зʼєднань: розмір явно (`NullPool` для локального SQLite?) + заміряти; `deps.py` — 8 Jinja-глобалів по сесії на рендер. |
+| K.8 | ⬜ | `backup.restore`: перевіряти `format_version`, повторний пароль перед відновленням. Ротація `SESSION_SECRET_KEY` незалежно від ключа БД; інвалідація сесій при зміні пароля. |
+| K.9 | ⬜ | LOW-список у `review_full_core_security.md` (IDOR `/feedback/images`, rate-limit `/feedback`, `palette.COMMANDS` з `nav_payload`, `blocked_response` для HX, `vyrobitok_pin` хешем, PII в логах IMAP, docstring `license_gate`). |
+
+### D — пристрої
+| # | Статус | Крок |
+|---|---|---|
+| D.1 | ⬜ ⚠ | Go-агент: firewall-правило лише з IP CRM (мінімум) або TLS з pinned-сертифікатом; токен ≥ 20 символів + backoff; `/info` без токена; ACL на `agent.json`/`crm-setup.txt`; без `?token=`. |
+| D.2 | ⬜ | `furnace.py:397-436` — стан під `_states_lock` (як `machines.py:795-825`); широкий `except` у `grab()`/`read_panel`; `screen_is_sisma` під `except`. |
+| D.3 | ⬜ | `furnace_ocr.py` — «голосування трьох» задокументувати як два або вимагати ≥2; патерн `command` зі структурою. |
+| D.4 | ⬜ | `furnace_vnc.py:66-84` — тест/доказ закриття сокета при cancel; кап framebuffer. |
+| D.5 | ⬜ | `poll_target` (200 рядків) розбити; `_calib_signatures` ключ із текою; `resolve_frame` мертва `_HOST_RE`; `frame_path` через `_sanitize_key`; мертві `MachineConfigError`, `SismaReading.printing`, `config_error`. |
+| D.6 | ⬜ | SISMA-пайплайн на спільних хелперах `furnace_ocr`; `scripts/machine_collect_frames.py` з капом/дедлайном. |
+
+### T — тести / CI
+| # | Статус | Крок |
+|---|---|---|
+| T.1 | ⬜ | `release.yml`: імʼя інсталятора з тегу (6 літералів `KuubMill-Setup-X.exe`) + сторож у `test_version_sync`. |
+| T.2 | ⬜ | Lock-файл залежностей (`pip-compile`) — зараз майже все `>=`. |
+| T.3 | ⬜ | Сторож бізнес-дня сканує і `tests/` (падіння між 00:00 і 07:30 ловилось лише вночі). |
+| T.4 | ⬜ | 61 файл тестів на `conftest.db_session`; `pyproject.toml` (назва/версія); mypy — рахувати, не ігнорувати. |
+
+### U2 — фронтенд
+| # | Статус | Крок |
+|---|---|---|
+| U2.1 | ⬜ | `--mat-zr/pmma/ti/slm/wax` у `tokens.css` замість літералів у `furnaces.css` і `v2a_queue.css`. |
+| U2.2 | ⬜ | Шкала `--z-*` (22 значення в 15 файлах); один токен ширини контейнера (див. U.1). |
+| U2.3 | ⬜ | Одна палітра Ctrl+K замість `palette.js` + `settings_console.js`. |
+| U2.4 | ⬜ | SVG-спрайт для ~15 повторюваних іконок (`_topbar_nav` 22, `_mail_detail_panel` 18); `hx-indicator` там, де нема іншого фідбеку; `lookgear.js` один document-listener; `@media print` для паспорта/архіву. |

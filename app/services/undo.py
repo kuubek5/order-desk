@@ -11,6 +11,8 @@ import json
 
 from sqlalchemy.orm import Session
 
+from datetime import datetime
+
 from app.business_day import utc_now
 from app.models import ActionLog, Order, StatusEvent, User
 from app.services.sheet_writeback import (
@@ -160,7 +162,10 @@ def perform_undo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
     else:
         return UndoOutcome("Цей тип дії поки не скасовується", kind="error")
 
-    entry.undone_at = utc_now()
+    # Локальний час, як і ActionLog.created_at: вікно redo (5 хв) рахується від
+    # datetime.now(), і utc_now() тут робив щойно скасовану дію «старою на 3 год»
+    # (ревʼю 07.09.26).
+    entry.undone_at = datetime.now()
     log_action(
         db, order=order, operator=user, action_type="undo",
         field=entry.field, note=f"скасовано: {entry.note}",

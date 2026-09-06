@@ -9,7 +9,32 @@ permissions:
   contents: write
 
 jobs:
+  # Тести ПЕРЕД білдом: раніше release.yml і tests.yml стартували паралельно
+  # з того самого тегу, і провалений pytest не зупиняв публікацію інсталятора
+  # (код-ревʼю 07.09.26, tests/CI HIGH-2). Той самий набір, що в tests.yml.
+  tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint with ruff
+        run: python -m ruff check .
+
+      - name: Run tests
+        env:
+          DB_ENCRYPTION_KEY: "Un82ZLqj-Mb9wutrlh4s384pKBsG1WMn1GCYncpWgTw="
+        run: python -m pytest -q
+
   build-and-release:
+    needs: tests
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5

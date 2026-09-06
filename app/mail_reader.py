@@ -468,13 +468,16 @@ def redownload_missing_attachments(
     if not missing:
         return (0, 0)
     alive_names = {a.filename for a, gone in checked if not gone}
-    for attachment in missing:
-        session.delete(attachment)
-    # Рядки треба прибрати з сесії ДО повторного збереження, інакше
-    # unique_destination побачить на диску лише те, що є, а в базі — і старе.
-    session.flush()
 
     with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:
+        # Гейт нумерації — ДО видалення рядків: інакше «скачати наново» стирало б
+        # записи про STL клієнта й клало на їхнє місце чужі файли.
+        _refuse_stale_uid_namespace(mailbox, email_message)
+        for attachment in missing:
+            session.delete(attachment)
+        # Рядки треба прибрати з сесії ДО повторного збереження, інакше
+        # unique_destination побачить на диску лише те, що є, а в базі — і старе.
+        session.flush()
         full = list(mailbox.fetch(AND(uid=email_message.uid), mark_seen=False))
         if not full:
             raise RuntimeError("Лист більше недоступний на сервері")
@@ -487,6 +490,20 @@ def redownload_missing_attachments(
     return (len(missing), saved)
 
 
+def _refuse_stale_uid_namespace(mailbox, email_message: EmailMessage) -> None:
+    """Той самий гейт, що й у fetch_new_emails: після перестворення теки
+    провайдером uid належить ЧУЖОМУ листу, і ручне скачування причепило б до
+    цієї роботи файли стороннього клієнта (ревʼю 07.09.26, mail CRITICAL-1/2).
+    Порожній UIDVALIDITY з будь-якого боку = «не знаємо» → поводимось як раніше."""
+    current = _folder_uidvalidity(mailbox)
+    stored = (email_message.uid_validity or "").strip()
+    if current and stored and current != stored:
+        raise RuntimeError(
+            "Скриньку перенумеровано — на сервері під цим номером тепер інший лист. "
+            "Файли треба взяти з нового листа, а цей відхилити."
+        )
+
+
 def download_attachments_now(session: Session, email_message: EmailMessage, attachments_dir: Path) -> int:
     """Manually pull a "skipped" letter's attachments on demand (operator
     decided a non-whitelisted letter is relevant after all). Re-fetches the
@@ -497,6 +514,7 @@ def download_attachments_now(session: Session, email_message: EmailMessage, atta
     if not login or not password:
         raise RuntimeError("IMAP не налаштовано — задайте логін і пароль у Налаштуваннях")
     with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:
+        _refuse_stale_uid_namespace(mailbox, email_message)
         full = list(mailbox.fetch(AND(uid=email_message.uid), mark_seen=False))
         if not full:
             raise RuntimeError("Лист більше недоступний на сервері")

@@ -1501,6 +1501,10 @@ def delete_mail_filter(
     return RedirectResponse(_filters_return_url(return_to), status_code=303)
 
 
+# Статуси, з яких лист ще можна повернути в тріаж без втрати історії.
+UNACCEPT_ALLOWED_STATUSES = frozenset({"нове", "прийнято", "прораховано"})
+
+
 def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]:
     """Fully undo EVERY order accepted from this letter (a multi-colour letter
     can have several), returning it to the pre-accept "нове" state: move all
@@ -1516,6 +1520,19 @@ def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]
         legacy = db.get(Order, email.order_id)
         if legacy is not None:
             orders = [legacy]
+
+    # Відкат — лише поки робота на етапі прийняття. Відфрезеровану чи видану
+    # роботу «повернути в тріаж» означало б видалити її разом з історією
+    # (StatusEvent/Comment/ReworkRecord — cascade), а §5 вимагає точної історії
+    # «хто що зробив». Далі — лише «Видалити з черги» в паспорті роботи, з
+    # окремим підтвердженням (ревʼю 07.09.26, mail CRITICAL-4).
+    advanced = [o for o in orders if o.status not in UNACCEPT_ALLOWED_STATUSES]
+    if advanced:
+        labels = ", ".join(f"{o.work_order_no or o.client_name or o.id} ({o.status})" for o in advanced)
+        raise ValueError(
+            "Робота вже далі за прийняття — відкат неможливий: " + labels
+            + ". Якщо треба, видаліть її з черги в паспорті роботи."
+        )
 
     attachments = list(email.attachments)
     moved_pairs: list[tuple[Path, Path]] = []

@@ -1927,3 +1927,32 @@ def test_full_render_does_not_scan_sum3d(tmp_path, monkeypatch):
         ctx = queue_router_mod.get_queue(request=_request(user.id), db=db)
         assert scanned["n"] == 0, "повний рендер не має сканувати Sum3D"
         assert ctx["sum3d_projects"] is None
+
+
+def test_restore_refuses_when_the_work_is_already_milled(monkeypatch):
+    """Ревʼю 07.09.26 (mail CRITICAL-4). «Повернути в тріаж» видаляв роботу
+    незалежно від статусу — разом з історією (cascade). Далі за прийняття
+    відкат неможливий: робота і файли лишаються на місці."""
+    engine = _database()
+    moved = {}
+    monkeypatch.setattr(mail_router_mod, "restore_attachments_to_spool",
+        lambda root, uid, paths: moved.setdefault("call", (uid, paths)) or [],
+    )
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = Order(source="email", sheet_tab="15.08.26", row_number=81, status="відфрезеровано")
+        db.add(order)
+        db.flush()
+        email = EmailMessage(uid="a2", status="прийнято", order_id=order.id, attachments_status="ready")
+        db.add(email)
+        db.flush()
+        db.add(Attachment(email_message_id=email.id, filename="f.stl", saved_path="/export/Client/x/mono/f.stl"))
+        db.commit()
+        order_id = order.id
+
+        mail_router_mod.restore_email(request=_request(user.id), email_id=email.id, db=db)
+
+        db.refresh(email)
+        assert email.status == "прийнято"
+        assert db.get(Order, order_id) is not None
+        assert "call" not in moved  # файли не рухались

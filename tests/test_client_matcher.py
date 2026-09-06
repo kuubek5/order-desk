@@ -447,6 +447,25 @@ class TestMatcherPerformance:
         folders = [f"Клієнт {i:03d}" for i in range(50)]
         client_matcher.match_client_name("Кривовид", folders, {})
 
-        assert client_matcher._transliterations_cached.cache_info().misses == 0, (
+        # Одна транслітерація — самого імені з таблиці (дешевий відсів ганяє
+        # кожен її варіант, ревʼю 07.09.26); теки ж транслітеруватись не мають.
+        assert client_matcher._transliterations_cached.cache_info().misses <= 1, (
             "жодна з несхожих тек не мала дійти до транслітерації"
         )
+
+
+class TestPrefilterSurvivesTransliteration:
+    """Ревʼю 07.09.26 (mail CRITICAL-3). Дешевий відсів (>40 тек) ганяв
+    token_set_ratio по СИРІЙ кирилиці проти латинських тек і викидав правильну
+    теку ще до дорогого скорера — на бойових 262 клієнтах видача не знаходила
+    теку, а прийняття листа заводило нову."""
+
+    def test_cyrillic_sheet_name_finds_a_latin_folder_among_many(self):
+        noise = [f"client {i:03d} folder" for i in range(60)]
+        folders = noise + ["Mulyk Petro"]
+        result = match_client_name("Мулик Петро", folders, {})
+        assert result.matched_folder_name == "Mulyk Petro"
+
+    def test_small_lists_are_not_prefiltered_at_all(self):
+        result = match_client_name("Мулик Петро", ["Mulyk Petro", "інший"], {})
+        assert result.matched_folder_name == "Mulyk Petro"

@@ -304,7 +304,7 @@ def test_undo_last_only_sees_own_actions():
 
 def _run_redo_last(db, user):
     with patch.object(orders_router_mod, "await_on_writeback", new_callable=AsyncMock, return_value=None):
-        return asyncio.run(orders_router_mod.redo_last_action(request=_request(user.id), db=db))
+        return orders_router_mod.redo_last_action(request=_request(user.id), db=db)  # def, не async (ревʼю 07.09.26)
 
 
 def test_redo_last_reapplies_undone_action():

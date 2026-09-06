@@ -1,3 +1,4 @@
+import pytest
 import re
 from datetime import date, timedelta
 from types import SimpleNamespace
@@ -722,3 +723,50 @@ def test_unreadable_uidvalidity_falls_back_to_uid_dedup(monkeypatch, tmp_path):
         _patch_common(monkeypatch, mailbox())
         assert fetch_new_emails(session, tmp_path) == 0
         assert session.query(EmailMessage).count() == 1
+
+
+# --- ручне скачування й нумерація скриньки (ревʼю 07.09.26) -------------------
+
+def test_manual_download_refuses_a_stale_uid_namespace(monkeypatch, tmp_path):
+    """Після перестворення теки той самий uid — ЧУЖИЙ лист. fetch_new_emails це
+    ловить; ручне «Скачати вкладення» мусить теж, інакше файли стороннього
+    клієнта причепляться до цієї роботи."""
+    from app.mail_reader import download_attachments_now
+    from app.models import EmailMessage
+
+    _patch_common(
+        monkeypatch,
+        FakeMailbox(headers=[], full_by_uid={"5": _full_message("5")}, uidvalidity=200),
+    )
+    with _engine_session() as session:
+        email = EmailMessage(uid="5", uid_validity="100", status="нове", attachments_status="skipped")
+        session.add(email)
+        session.commit()
+        with pytest.raises(RuntimeError, match="перенумеровано"):
+            download_attachments_now(session, email, tmp_path)
+        assert email.attachments_status == "skipped"
+
+
+def test_redownload_refuses_a_stale_uid_namespace_before_deleting_rows(monkeypatch, tmp_path):
+    """«Скачати наново» видаляв рядки Attachment ДО фетчу — при зміні нумерації
+    STL клієнта замінялись чужими без сліду. Гейт стоїть перед видаленням."""
+    from app.mail_reader import redownload_missing_attachments
+    from app.models import Attachment, EmailMessage
+
+    _patch_common(
+        monkeypatch,
+        FakeMailbox(headers=[], full_by_uid={"5": _full_message("5")}, uidvalidity=200),
+    )
+    with _engine_session() as session:
+        email = EmailMessage(uid="5", uid_validity="100", status="нове", attachments_status="ready")
+        session.add(email)
+        session.flush()
+        session.add(Attachment(
+            email_message_id=email.id, filename="crown.stl",
+            saved_path=str(tmp_path / "5" / "crown.stl"),
+        ))
+        session.commit()
+        with pytest.raises(RuntimeError, match="перенумеровано"):
+            redownload_missing_attachments(session, email, tmp_path)
+        session.rollback()
+        assert session.query(Attachment).count() == 1

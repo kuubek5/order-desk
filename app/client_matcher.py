@@ -134,18 +134,28 @@ def _shortlist(sheet_name: str, folder_names: list[str]) -> list[str]:
     if len(folder_names) <= _PREFILTER_KEEP:
         return list(folder_names)
     normalized = {name: _normalize(name) for name in folder_names}
-    rough = process.extract(
-        _normalize(sheet_name),
-        normalized,
-        scorer=fuzz.token_set_ratio,
-        limit=_PREFILTER_KEEP,
-        score_cutoff=_PREFILTER_FLOOR,
-    )
-    picked = [key for _value, _score, key in rough]
+    # Кожен транслітерований варіант імені — окремий дешевий прохід, а результати
+    # обʼєднуються: «Мулик Петро» проти теки «Mulyk Petro» по сирій кирилиці
+    # давав ~0 і відсіювався ще ДО дорогого скорера, хоча той дає 100. На
+    # бойових 262 клієнтах (>40 тек) видача не знаходила теку, а прийняття
+    # листа заводило нову (ревʼю 07.09.26, mail CRITICAL-3).
+    picked: list[str] = []
+    seen: set[str] = set()
+    for variant in _transliterations(sheet_name):
+        rough = process.extract(
+            variant,
+            normalized,
+            scorer=fuzz.token_set_ratio,
+            limit=_PREFILTER_KEEP,
+            score_cutoff=_PREFILTER_FLOOR,
+        )
+        for _value, _score, key in rough:
+            if key not in seen:
+                seen.add(key)
+                picked.append(key)
     # Точні збіги мусять дійти до скорера, навіть якщо дешевий прохід їх не
     # підняв — на них тримається гілка «exact».
     target = _normalize(sheet_name)
-    seen = set(picked)
     picked += [n for n in folder_names if normalized[n] == target and n not in seen]
     return picked
 
