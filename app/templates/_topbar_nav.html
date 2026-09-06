@@ -79,14 +79,16 @@
                 {% if kids %}<button type="button" class="rail-sub-caret" data-subtoggle="{{ item.key }}" aria-label="Показати вкладки розділу «{{ item.title }}»" aria-expanded="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>{% endif %}
             </div>
             {% else %}
-            {# Окрема сторінка: перезавантаження, а не свап секції — тому
-               стрілка ↗. Активний пункт тут визначає шлях, а не #hash. #}
+            {# Окрема сторінка: перезавантаження, а не свап секції. Активний
+               пункт тут визначає шлях, а не #hash. Позначки ↗ біля таких
+               пунктів немає свідомо (прибрана 06.09.26): дрібний знак у стовпці
+               сигналів рейки читався як сміття, а «інша сторінка» і так видно
+               з перезавантаження. #}
             <div class="rail-head{% if kids %} has-subs{% endif %}"{% if kids %} data-subparent="{{ item.key }}"{% endif %}>
                 <a href="{{ item.href }}" class="rail-nav-item{% if spath == item.href %} is-active{% endif %}"{% if spath == item.href %} aria-current="page"{% endif %}>
                     {{ nav_icon(item.icon_key) }}
                     <span class="rail-label">{{ item.title }}</span>
                     {% if item.badge == 'sync_dot' %}{{ sync_dot(nav_sync) }}{% endif %}
-                    {% if not kids %}<svg class="rail-nav-out" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15 15 9M10 9h5v5"/></svg>{% endif %}
                 </a>
                 {% if kids %}<button type="button" class="rail-sub-caret" data-subtoggle="{{ item.key }}" aria-label="Показати вкладки розділу «{{ item.title }}»" aria-expanded="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>{% endif %}
             </div>
