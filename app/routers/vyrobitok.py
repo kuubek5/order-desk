@@ -26,11 +26,6 @@ from starlette.requests import Request
 from app.business_day import business_today
 from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.services.attempt_limit import block_message, pin_limiter
-from app.services.vyrobitok_backfill import (
-    pop_slm_backfill_flash,
-    slm_backfill_running,
-    start_slm_backfill,
-)
 from app.services.vyrobitok import (
     HUE,
     MATERIAL_COLS,
@@ -85,8 +80,6 @@ def _grid_context(db: Session, user, year: int, month: int, *, persist: bool = T
         "material_cols": MATERIAL_COLS,
         "opak_people": OPAK_PEOPLE,
         "hue": HUE,
-        # Кнопка добору СЛМ мусить знати, що прогін уже йде (фоновий потік).
-        "slm_backfill_running": slm_backfill_running(),
     }
 
 
@@ -111,11 +104,6 @@ def get_vyrobitok(
     context["pin_required"] = False
     # Кнопку «Замкнути» показуємо лише коли розділ реально під кодом.
     context["pin_protected"] = bool(get_setting(db, "vyrobitok_pin"))
-    # Підсумок фонового добору СЛМ: спершу той, що щойно завершився, інакше —
-    # повідомлення про запуск, покладене роутом у сесію.
-    context["flash"] = pop_slm_backfill_flash() or request.session.pop(
-        "vyrobitok_flash", None
-    )
     return templates.TemplateResponse(request, "vyrobitok.html", context)
 
 
@@ -163,47 +151,6 @@ def post_vyrobitok_pin(
         },
         status_code=400,
     )
-
-
-@router.post("/vyrobitok/slm-backfill")
-def post_vyrobitok_slm_backfill(
-    request: Request,
-    year: int = Form(...),
-    month: int = Form(...),
-    db: Session = Depends(get_db),
-):
-    """Добрати СЛМ за показаний місяць: перечитати його вкладки й записати
-    числа в колонки lab_slm/mail_slm.
-
-    Навіщо окрема дія. СЛМ у `Order` не потрапляє — його пише синк тим самим
-    проходом, що читає вкладку. Рутинний синк бачить лише сьогодні±1, тож дні,
-    чиї вкладки вийшли з вікна до появи цього коду на машині, лишились із
-    порожнім СЛМ. «Імпортувати всю історію» це лікує, але перечитує ВЕСЬ
-    документ із повною реконсиляцією черги; тут — один місяць і жодного запису
-    в `Order`. Деталі — app/services/vyrobitok_backfill.py.
-
-    Гейт той самий, що на розділ: увійшов і пройшов ПІН. Це читання таблиці й
-    запис у власні клітинки табеля, не налаштування.
-    """
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
-    if _pin_required(request, db):
-        return RedirectResponse("/vyrobitok", status_code=303)
-
-    y, m = _clamp_period(year, month)
-    if start_slm_backfill(y, m):
-        request.session["vyrobitok_flash"] = {
-            "kind": "info",
-            "message": "Добір СЛМ почато — читаю вкладки місяця. "
-            "Оновіть сторінку за хвилину.",
-        }
-    else:
-        request.session["vyrobitok_flash"] = {
-            "kind": "info",
-            "message": "Добір СЛМ уже виконується.",
-        }
-    return RedirectResponse(f"/vyrobitok?year={y}&month={m}", status_code=303)
 
 
 @router.post("/vyrobitok/lock")

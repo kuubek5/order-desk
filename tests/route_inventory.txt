@@ -192,4 +192,3 @@ POST /vyrobitok/cell
 POST /vyrobitok/lock
 POST /vyrobitok/pin
 POST /vyrobitok/settings
-POST /vyrobitok/slm-backfill
