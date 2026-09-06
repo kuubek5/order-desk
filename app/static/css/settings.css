@@ -1006,6 +1006,15 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 /* Селектор портрета-моделі під мініатюрою: вузький, моно-кегль. */
 .setv2 .fu-model-select{display:block;width:118px;height:28px;margin-top:4px;padding:0 6px;font-size:var(--fs-0);
   font-family:var(--font-mono);color:var(--ink-2)}
+/* Банер збору калібрувальних кадрів. Дубль правил із furnaces.css НАВМИСНЕ:
+   /settings свідомо не вантажить furnaces.css (є тест-сторож), а банер
+   переїхав сюди з екрана верстатів 06.09.26 — без цих правил він розсипався
+   в голий текст. Спокійний, не тривожний: це робочий процес, не помилка. */
+.setv2 .calib-banner{display:flex;align-items:center;gap:16px;justify-content:space-between;flex-wrap:wrap;margin:12px 0 0;padding:14px 18px;border:1px solid var(--control-edge,#5f7490);border-radius:14px;background:color-mix(in srgb,var(--accent,#f0b99a) 8%,transparent)}
+.setv2 .calib-banner .calib-text{min-width:260px;flex:1}
+.setv2 .calib-banner strong{display:block;margin-bottom:2px}
+.setv2 .calib-banner p{margin:0;color:var(--ink-2);font-size:var(--fs-2);line-height:1.5}
+.setv2 .calib-banner .btn{display:inline-flex;align-items:center;height:34px;white-space:nowrap}
 .setv2 .fu-add-row .fu-model-select{display:inline-block;width:auto;height:34px;margin-top:0;font-size:var(--fs-1)}
 .setv2 .fu-add .fu-add-row{grid-template-columns:1.2fr 1.2fr 84px 1.3fr 1.1fr auto auto}
 
