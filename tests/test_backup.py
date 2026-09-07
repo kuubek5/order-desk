@@ -204,3 +204,55 @@ def test_restore_aborts_when_the_result_does_not_match_the_manifest():
         restore_backup(db, json.dumps(envelope).encode("utf-8"), "pw-12345678")
     db.rollback()
     assert db.query(Order).count() == before
+
+
+def _database_with_foreign_keys():
+    """Та сама база, але з увімкненою перевіркою зовнішніх ключів.
+
+    Прод із K.5 працює саме так (`app/db.py::_configure_sqlite_connection`), а
+    решта тестів тут — без неї, тож цикл `orders ↔ email_messages` лишався
+    невидимим до живого прогону 07.09.26.
+    """
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+
+    @event.listens_for(engine, "connect")
+    def _fk_on(dbapi_connection, _record):  # pragma: no cover - тривіальний хук
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
+
+    Base.metadata.create_all(engine)
+    return engine
+
+
+def test_restore_survives_the_orders_email_cycle_with_foreign_keys_on():
+    """`orders.email_message_id` і `email_messages.order_id` дивляться одна на
+    одну — при перевірці по рядку жоден порядок вставки не проходить."""
+    from app.models import EmailMessage
+
+    db = Session(_database_with_foreign_keys())
+    _seed(db)
+    order = db.query(Order).first()
+    letter = EmailMessage(
+        uid="1",
+        uid_validity="2",
+        from_address="client@ukr.net",
+        subject="моно а3",
+        status="прийнято",
+        order_id=order.id,
+    )
+    db.add(letter)
+    db.commit()
+    order.source_email_id = letter.id
+    db.commit()
+
+    raw = create_backup(db, "pw-12345678")
+    restore_backup(db, raw, "pw-12345678")
+
+    assert db.query(EmailMessage).count() == 1
+    assert db.query(EmailMessage).first().order_id == order.id
+    assert db.query(Order).first().source_email_id == letter.id

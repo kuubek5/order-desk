@@ -27,7 +27,8 @@ from typing import Any
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import inspect as sa_inspect, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.business_day import utc_now
@@ -261,6 +262,17 @@ def restore_backup(session: Session, file_bytes: bytes, password: str) -> dict[s
 
     counts: dict[str, int] = {}
 
+    # `orders.email_message_id` і `email_messages.order_id` посилаються одна на
+    # одну, тож жоден порядок вставки не задовольнить перевірку зовнішніх
+    # ключів по рядку: перша ж таблиця пари посилається на ще порожню другу.
+    # Поки `foreign_keys=ON` не було (до K.5), це минало непоміченим; з ним
+    # відновлення падало IntegrityError на email_messages.
+    # `defer_foreign_keys` переносить перевірку на COMMIT — тобто на момент,
+    # коли обидві таблиці вже заповнені. Це не послаблення: биті посилання
+    # так само не пройдуть, лише пізніше й уже по цілій картині. SQLite сам
+    # скидає прапорець на кожному коміті, тож це діє рівно на цю транзакцію.
+    session.execute(text("PRAGMA defer_foreign_keys=ON"))
+
     for model in reversed(_TABLE_MODELS):
         session.query(model).delete()
 
@@ -296,5 +308,14 @@ def restore_backup(session: Session, file_bytes: bytes, password: str) -> dict[s
             "Відновлення скасовано — база не збіглася з копією: " + "; ".join(missing)
         )
 
-    session.commit()
+    # Перевірка зовнішніх ключів відкладена до цього коміту (див. вище). Биті
+    # посилання у файлі спливуть саме тут — і це має читатись як «копія
+    # непридатна», а не як 500 без пояснення.
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise BackupIncompleteError(
+            "Відновлення скасовано — у копії є посилання на записи, яких у ній немає."
+        ) from exc
     return counts

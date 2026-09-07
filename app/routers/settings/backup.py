@@ -8,7 +8,13 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 from starlette.requests import Request
-from app.backup import BackupFormatError, BackupPasswordError, create_backup, restore_backup
+from app.backup import (
+    BackupFormatError,
+    BackupIncompleteError,
+    BackupPasswordError,
+    create_backup,
+    restore_backup,
+)
 from app.config import DB_PATH
 from app.routers.deps import get_current_user, login_redirect, get_db, is_loopback_request
 from app.services.undo import log_action
@@ -106,6 +112,11 @@ async def import_backup(
         request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
         return RedirectResponse("/settings", status_code=303)
     except BackupFormatError as exc:
+        request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
+        return RedirectResponse("/settings", status_code=303)
+    except BackupIncompleteError as exc:
+        # Транзакцію вже відкочено — база лишилась така, як була. Адмінові
+        # треба побачити ЧОМУ копія не лягла, а не порожній 500.
         request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
         return RedirectResponse("/settings", status_code=303)
 
