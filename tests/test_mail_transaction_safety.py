@@ -449,8 +449,9 @@ def test_a_failed_rollback_of_the_spool_return_is_reported_not_swallowed(tmp_pat
 def test_imap_window_follows_the_working_day_not_the_calendar(tmp_path, monkeypatch):
     """LOW: о 00:05 нічна зміна ще веде вчорашній день.
 
-    `date.today()` о цій порі вже перекинувся, і вікно пошуку листів стрибало
-    на добу раніше — найстаріші листи випадали з нього посеред зміни."""
+    Календарна дата о цій порі вже перекинулась, і вікно пошуку листів
+    стрибало на добу раніше — найстаріші листи випадали з нього посеред
+    зміни."""
     from datetime import date as real_date
 
     from app import mail_reader
