@@ -36,9 +36,7 @@
                     <strong>Оновлення {{ update_health.from_version }} → {{ update_health.to_version }}: усе на місці.</strong>
                     <span class="settings-help">
                         Після оновлення перераховано всі таблиці бази.
-                        {% if update_health.totals %}
-                        Зараз: {% for name, n in update_health.totals.items() %}{{ n }} {{ {'orders': 'робіт', 'status_events': 'записів історії', 'clients': 'клієнтів', 'vyrobitok_cells': 'клітинок Виробітку', 'machines': 'верстатів', 'furnaces': 'печей'}.get(name, name) }}{% if not loop.last %} · {% endif %}{% endfor %}.
-                        {% endif %}
+                        {% if update_health.totals_text %}Зараз: {{ update_health.totals_text }}.{% endif %}
                     </span>
                     {% else %}
                     <strong>УВАГА. Після оновлення {{ update_health.from_version }} → {{ update_health.to_version }} рядків стало менше.</strong>

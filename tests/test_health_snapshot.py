@@ -122,3 +122,17 @@ def test_broken_snapshot_does_not_crash_the_start(db):
     set_setting(db, BEFORE_KEY, "{не json")
     db.commit()
     assert check_after_update(db) is None
+
+
+@pytest.mark.parametrize(
+    "n, expected",
+    [(1, "1 верстат"), (2, "2 верстати"), (5, "5 верстатів"), (11, "11 верстатів"), (21, "21 верстат")],
+)
+def test_totals_are_declined_properly(n, expected):
+    """«1 верстатів» на екрані читається як недбалість — оператор має вірити
+    числам, які йому показують після оновлення."""
+    report = compare(
+        {"version": "0.1", "tables": {"machines": n}},
+        {"version": "0.2", "tables": {"machines": n}},
+    )
+    assert report["totals_text"] == expected

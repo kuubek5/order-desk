@@ -56,6 +56,29 @@ SELF_PRUNING = frozenset({
 })
 
 
+# Опорні числа для екрана: таблиця → (одна, дві, пʼять). Оператор упізнає їх
+# очима, тому відмінок має бути правильний, а не «1 верстатів».
+_TOTALS_WORDS = {
+    "orders": ("робота", "роботи", "робіт"),
+    "status_events": ("запис історії", "записи історії", "записів історії"),
+    "clients": ("клієнт", "клієнти", "клієнтів"),
+    "vyrobitok_cells": ("клітинка Виробітку", "клітинки Виробітку", "клітинок Виробітку"),
+    "machines": ("верстат", "верстати", "верстатів"),
+    "furnaces": ("піч", "печі", "печей"),
+}
+
+
+def _plural(n: int, one: str, few: str, many: str) -> str:
+    if 11 <= n % 100 <= 14:
+        return many
+    tail = n % 10
+    if tail == 1:
+        return one
+    if 2 <= tail <= 4:
+        return few
+    return many
+
+
 def capture(db: Session) -> dict:
     """Скільки рядків у кожній таблиці просто зараз."""
     tables: dict[str, int] = {}
@@ -99,11 +122,12 @@ def compare(before: dict, after: dict) -> dict:
         "checked_at": after.get("at"),
         "lost": lost,
         # Кілька опорних чисел для екрана: їх оператор упізнає очима.
-        "totals": {
-            name: new.get(name, 0)
-            for name in ("orders", "status_events", "clients", "vyrobitok_cells", "machines", "furnaces")
+        "totals": {name: new.get(name, 0) for name in _TOTALS_WORDS if name in new},
+        "totals_text": " · ".join(
+            f"{new[name]} {_plural(new[name], *words)}"
+            for name, words in _TOTALS_WORDS.items()
             if name in new
-        },
+        ),
     }
 
 
