@@ -23,10 +23,16 @@ CLAUDE.md §7/§14 і рішення власника 05.09.26: адмініст
 метадані (оригінальна назва вкладки, коли знято, скільки рядків) і фіксує, коли
 вкладка ЗНИКЛА з Google — саме той сигнал, заради якого існує страховка.
 
-Читання йде через `app/sheets.read_all_values` (порядкові чанки), бо TLS-проксі
-лаби обрізає велику відповідь — звичайний get_all_values повертає короткий
-хвіст. Ширина обмежена колонкою AB (як у синку); дані таблиці закінчуються
-задовго до неї.
+Читання — ОДИН `get_all_values` на вкладку. Чанковий читач писався проти
+«проксі обрізає велику відповідь», але той діагноз виявився хибним (роботи
+зникали через сірі СЛМ-рядки, фікс 0.6.5), а ціна лишалась: десятки запитів на
+вкладку × десятки вкладок палили квоту читань і давали 429 живому синку.
+Запобіжник від обрізаного читання нікуди не дівся — він нижче, у звірці з
+попередньою копією за кількістю рядків.
+
+Прохід іде ПІД тим самим локом, що й синк таблиці (`sheet_sync_service`), і
+пропускається, коли квота читань уже на межі: страховка не має ставати
+причиною аварії, від якої страхує.
 """
 
 from __future__ import annotations
@@ -81,7 +87,7 @@ def _parse_tab_date(title: str) -> Optional[date]:
 
 def _row_has_work(row: list[str]) -> bool:
     """Робочий рядок несе наряд (кол. 1) або вид/ім'я клієнта (кол. 4) —
-    той самий критерій, що у app/sheets.read_all_values._has_work."""
+    той самий критерій, що і в парсері черги."""
     return (len(row) > 1 and row[1].strip() != "") or (len(row) > 4 and row[4].strip() != "")
 
 
@@ -145,6 +151,7 @@ class SnapshotResult:
     disappeared: int = 0      # вкладок, які зникли з Google цього проходу
     held_shrink: int = 0      # копій НЕ перезаписано через різке падіння рядків
     failed: int = 0           # вкладок, які не вдалося прочитати
+    deferred: int = 0         # вкладок, не прочитаних цього проходу через квоту
     error: Optional[str] = None   # фатальна причина (не налаштовано / нема доступу)
     tabs: list[str] = field(default_factory=list)  # оновлені (для логів/тостів)
 
@@ -173,117 +180,137 @@ def snapshot_all_tabs(
 
     # Імпорт тут, а не вгорі: тягне gspread/google-auth, і тримати модуль
     # знімків незалежним від них до першого реального проходу дешевше.
-    from app.sheets import call_with_retry, open_spreadsheet, read_all_values
+    from app.sheets import call_with_retry, open_spreadsheet, quota_is_tight
+    from app.sheet_sync_service import _sync_lock
 
-    try:
-        spreadsheet = open_spreadsheet(db)
-        worksheets = call_with_retry(spreadsheet.worksheets)
-    except Exception as exc:  # noqa: BLE001 — будь-який збій доступу = не наша аварія
-        result.error = f"Немає доступу до таблиці: {exc}"
-        logger.warning("Знімок вкладок: не вдалося відкрити таблицю: %s", exc)
+    # Знімок — страховка, і вона не має заважати живому синку: беремо той самий
+    # лок без очікування. Зайнято — просто наступного разу (авто-прохід ходить
+    # регулярно, а ручна кнопка чесно скаже «синк зараз працює»).
+    if not _sync_lock.acquire(blocking=False):
+        result.error = "Синхронізація таблиці зараз працює — знімок відкладено."
         return result
 
-    today = today or business_today()
-    recent_cutoff = today - _RESNAPSHOT_DELTA
+    try:
+        try:
+            spreadsheet = open_spreadsheet(db)
+            worksheets = call_with_retry(spreadsheet.worksheets)
+        except Exception as exc:  # noqa: BLE001 — будь-який збій доступу = не наша аварія
+            result.error = f"Немає доступу до таблиці: {exc}"
+            logger.warning("Знімок вкладок: не вдалося відкрити таблицю: %s", exc)
+            return result
 
-    with _lock:
-        folder = sheets_backup_dir(db_path)
-        folder.mkdir(parents=True, exist_ok=True)
-        manifest = _load_manifest(folder)
+        today = today or business_today()
+        recent_cutoff = today - _RESNAPSHOT_DELTA
 
-        present_isos: set[str] = set()
+        with _lock:
+            folder = sheets_backup_dir(db_path)
+            folder.mkdir(parents=True, exist_ok=True)
+            manifest = _load_manifest(folder)
 
-        for ws in worksheets:
-            title = ws.title
-            tab_date = _parse_tab_date(title)
-            if tab_date is None:
-                continue  # недатована вкладка — поза межами добово-місячного архіву
-            iso = _iso(tab_date)
-            present_isos.add(iso)
-            target = folder / f"{iso}.csv"
+            present_isos: set[str] = set()
 
-            is_recent = tab_date >= recent_cutoff
-            if target.exists() and not is_recent and not force:
-                result.skipped_cached += 1
-                continue  # старий день уже знято й він незмінний — не читаємо
+            for ws in worksheets:
+                title = ws.title
+                tab_date = _parse_tab_date(title)
+                if tab_date is None:
+                    continue  # недатована вкладка — поза межами добово-місячного архіву
+                iso = _iso(tab_date)
+                present_isos.add(iso)
+                target = folder / f"{iso}.csv"
 
-            try:
-                rows = read_all_values(ws)
-            except Exception as exc:  # noqa: BLE001
-                result.failed += 1
-                logger.warning("Знімок вкладки %s: помилка читання: %s", title, exc)
-                continue
+                is_recent = tab_date >= recent_cutoff
+                if target.exists() and not is_recent and not force:
+                    result.skipped_cached += 1
+                    continue  # старий день уже знято й він незмінний — не читаємо
 
-            if not _tab_has_data(rows):
-                result.skipped_empty += 1
-                continue  # порожню вкладку не зберігаємо (вимога власника)
+                # Квота читань спільна з синком. Дійшли до межі — цю вкладку
+                # пропускаємо: недознятий день дознімається наступним проходом, а
+                # 429 у синку коштує оператору живої черги.
+                if quota_is_tight():
+                    result.deferred += 1
+                    continue
 
-            rows = _trim_trailing_empty(rows)
-            data_rows = sum(1 for r in rows[HEADER_ROWS:] if _row_has_work(r))
+                try:
+                    rows = call_with_retry(ws.get_all_values)
+                except Exception as exc:  # noqa: BLE001
+                    result.failed += 1
+                    logger.warning("Знімок вкладки %s: помилка читання: %s", title, exc)
+                    continue
 
-            # ЗАПОБІЖНИК ВІД ОБРІЗАНОГО ЧИТАННЯ. TLS-проксі лаби іноді віддає
-            # КОРОТКУ, але валідну відповідь (100 рядків зі 120 — бойовий випадок,
-            # див. app/sheets.read_all_values). Рядки є, тож «порожньо» не ловить,
-            # і повна копія перезаписалась би обрізаною. Той самий принцип, що
-            # проти масового зникнення в синку: РІЗКЕ падіння (>5 рядків І >25%)
-            # проти вже збереженої копії — майже завжди погане читання, а не
-            # реальне видалення. Тримаємо стару, повнішу копію й голосно логуємо.
-            # Дрібні зміни (±кілька рядків) пишуться нормально; force теж не
-            # обходить це — обрізаний ручний знімок так само не має псувати копію.
-            prior = manifest.get(iso)
-            prior_rows = prior.get("rows") if isinstance(prior, dict) else None
-            if (
-                target.exists()
-                and isinstance(prior_rows, int)
-                and data_rows < prior_rows
-                and (prior_rows - data_rows) > _SHRINK_MIN_DROP
-                and data_rows < _SHRINK_RATIO * prior_rows
-            ):
-                result.held_shrink += 1
-                logger.warning(
-                    "Знімок вкладки %s: нове читання %d рядків проти збережених %d "
-                    "(різке падіння — схоже на обрізане читання), копію НЕ перезаписано",
-                    title, data_rows, prior_rows,
-                )
-                continue
+                if not _tab_has_data(rows):
+                    result.skipped_empty += 1
+                    continue  # порожню вкладку не зберігаємо (вимога власника)
 
-            _write_csv_atomic(target, _rows_to_csv_bytes(rows))
+                rows = _trim_trailing_empty(rows)
+                data_rows = sum(1 for r in rows[HEADER_ROWS:] if _row_has_work(r))
 
-            manifest[iso] = {
-                "tab": title,
-                "taken_at": datetime.now().isoformat(timespec="seconds"),
-                "rows": data_rows,
-                "last_present": datetime.now().isoformat(timespec="seconds"),
-            }
-            manifest[iso].pop("disappeared_at", None)
-            result.written += 1
-            result.tabs.append(title)
+                # ЗАПОБІЖНИК ВІД ОБРІЗАНОГО ЧИТАННЯ. TLS-проксі лаби іноді віддає
+                # КОРОТКУ, але валідну відповідь (100 рядків зі 120 — бойовий випадок,
+                # бойовий випадок 30.08.26). Рядки є, тож «порожньо» не ловить,
+                # і повна копія перезаписалась би обрізаною. Той самий принцип, що
+                # проти масового зникнення в синку: РІЗКЕ падіння (>5 рядків І >25%)
+                # проти вже збереженої копії — майже завжди погане читання, а не
+                # реальне видалення. Тримаємо стару, повнішу копію й голосно логуємо.
+                # Дрібні зміни (±кілька рядків) пишуться нормально; force теж не
+                # обходить це — обрізаний ручний знімок так само не має псувати копію.
+                prior = manifest.get(iso)
+                prior_rows = prior.get("rows") if isinstance(prior, dict) else None
+                if (
+                    target.exists()
+                    and isinstance(prior_rows, int)
+                    and data_rows < prior_rows
+                    and (prior_rows - data_rows) > _SHRINK_MIN_DROP
+                    and data_rows < _SHRINK_RATIO * prior_rows
+                ):
+                    result.held_shrink += 1
+                    logger.warning(
+                        "Знімок вкладки %s: нове читання %d рядків проти збережених %d "
+                        "(різке падіння — схоже на обрізане читання), копію НЕ перезаписано",
+                        title, data_rows, prior_rows,
+                    )
+                    continue
 
-        # Вкладки, що були в маніфесті, а тепер відсутні в Google → зафіксувати
-        # зникнення (знімок лишається — це і є страховка). Present-set беремо з
-        # дешевого worksheets(), без жодного зайвого читання вкладок.
-        now_iso = datetime.now().isoformat(timespec="seconds")
-        for iso, meta in manifest.items():
-            if not isinstance(meta, dict):
-                continue
-            if iso in present_isos:
-                continue
-            if not (folder / f"{iso}.csv").exists():
-                continue  # немає копії — нічого фіксувати
-            if not meta.get("disappeared_at"):
-                meta["disappeared_at"] = now_iso
-                result.disappeared += 1
+                _write_csv_atomic(target, _rows_to_csv_bytes(rows))
 
-        _save_manifest(folder, manifest)
+                manifest[iso] = {
+                    "tab": title,
+                    "taken_at": datetime.now().isoformat(timespec="seconds"),
+                    "rows": data_rows,
+                    "last_present": datetime.now().isoformat(timespec="seconds"),
+                }
+                manifest[iso].pop("disappeared_at", None)
+                result.written += 1
+                result.tabs.append(title)
 
-    if result.written or result.disappeared or result.held_shrink:
-        logger.info(
-            "Знімок вкладок: записано %d, порожніх пропущено %d, кеш %d, "
-            "зникло %d, притримано (обрізане?) %d, помилок %d",
-            result.written, result.skipped_empty, result.skipped_cached,
-            result.disappeared, result.held_shrink, result.failed,
-        )
-    return result
+            # Вкладки, що були в маніфесті, а тепер відсутні в Google → зафіксувати
+            # зникнення (знімок лишається — це і є страховка). Present-set беремо з
+            # дешевого worksheets(), без жодного зайвого читання вкладок.
+            now_iso = datetime.now().isoformat(timespec="seconds")
+            for iso, meta in manifest.items():
+                if not isinstance(meta, dict):
+                    continue
+                if iso in present_isos:
+                    continue
+                if not (folder / f"{iso}.csv").exists():
+                    continue  # немає копії — нічого фіксувати
+                if not meta.get("disappeared_at"):
+                    meta["disappeared_at"] = now_iso
+                    result.disappeared += 1
+
+            _save_manifest(folder, manifest)
+
+        if result.written or result.disappeared or result.held_shrink:
+            logger.info(
+                "Знімок вкладок: записано %d, порожніх пропущено %d, кеш %d, "
+                "зникло %d, притримано (обрізане?) %d, помилок %d",
+                result.written, result.skipped_empty, result.skipped_cached,
+                result.disappeared, result.held_shrink, result.failed,
+            )
+        return result
+    finally:
+        # Лок віддаємо ЗАВЖДИ: інакше один збій знімка зупинив би синк
+        # таблиці назавжди — страховка вбила б те, що страхує.
+        _sync_lock.release()
 
 
 from datetime import timedelta as _timedelta  # noqa: E402 — поряд з константою нижче

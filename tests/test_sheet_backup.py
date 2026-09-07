@@ -22,6 +22,12 @@ class _FakeWS:
         self.title = title
         self._rows = rows
 
+    def get_all_values(self):
+        # Знімок читає вкладку ОДНИМ викликом (S2.3/S2.4): чанковий читач
+        # прибрано, бо його діагноз («проксі обрізає») був хибний, а квоту
+        # він палив по-справжньому.
+        return self._rows
+
 
 class _FakeSpreadsheet:
     def __init__(self, sheets):
@@ -39,12 +45,10 @@ def patched(monkeypatch, tmp_path):
     def _open(db):
         return _FakeSpreadsheet(state["sheets"])
 
-    def _read(ws, chunk_rows=50):
-        return ws._rows
-
     monkeypatch.setattr("app.sheets.open_spreadsheet", _open, raising=True)
-    monkeypatch.setattr("app.sheets.read_all_values", _read, raising=True)
     monkeypatch.setattr("app.sheets.call_with_retry", lambda fn, **k: fn(), raising=True)
+    # Квота й лок синку мають власні тести; тут вони не мають нічого блокувати.
+    monkeypatch.setattr("app.sheets.quota_is_tight", lambda *a, **k: False, raising=True)
     monkeypatch.setattr(sb, "get_google_sheet_id", lambda db: "SHEET123")
     # db_path — саме ФАЙЛ; sheets_backup_dir бере .parent, тож так тека знімків
     # унікальна на кожен тест (інакше .parent = спільний tmp корінь).
@@ -203,3 +207,72 @@ def test_non_dated_tabs_ignored(patched):
     result = sb.snapshot_all_tabs(object(), dbp, today=date(2026, 7, 22))
     assert result.written == 1
     assert {s.tab for s in sb.list_snapshots(dbp)} == {"22.07.26"}
+
+
+# --- S2.4: знімок не змагається з живим синком -----------------------------
+
+
+def test_snapshot_defers_while_the_sheet_sync_holds_the_lock(patched):
+    """Знімок — страховка, і вона не має ставати причиною аварії, від якої
+    страхує: поки синк читає таблицю, знімок просто відкладається."""
+    from app.sheet_sync_service import _sync_lock
+
+    state, dbp = patched
+    state["sheets"] = [_FakeWS("22.07.26", _work_rows([24122]))]
+
+    assert _sync_lock.acquire(blocking=False)
+    try:
+        result = sb.snapshot_all_tabs(object(), dbp, today=date(2026, 7, 22))
+    finally:
+        _sync_lock.release()
+
+    assert not result.ok
+    assert "Синхронізація" in result.error
+    assert result.written == 0
+
+
+def test_snapshot_releases_the_lock_even_when_it_fails(patched, monkeypatch):
+    """Інакше один збій знімка зупинив би синк таблиці назавжди."""
+    from app.sheet_sync_service import _sync_lock
+
+    state, dbp = patched
+    state["sheets"] = [_FakeWS("22.07.26", _work_rows([24122]))]
+    monkeypatch.setattr(
+        "app.sheets.open_spreadsheet",
+        lambda db: (_ for _ in ()).throw(RuntimeError("немає доступу")),
+        raising=True,
+    )
+
+    result = sb.snapshot_all_tabs(object(), dbp, today=date(2026, 7, 22))
+
+    assert not result.ok
+    assert not _sync_lock.locked(), "лок мусить бути відданий"
+
+
+def test_snapshot_skips_tabs_when_the_read_quota_is_tight(patched, monkeypatch):
+    """Квота читань спільна з синком: недознятий день дознімається наступним
+    проходом, а 429 у синку коштує оператору живої черги."""
+    state, dbp = patched
+    state["sheets"] = [_FakeWS("22.07.26", _work_rows([24122]))]
+    monkeypatch.setattr("app.sheets.quota_is_tight", lambda *a, **k: True, raising=True)
+
+    result = sb.snapshot_all_tabs(object(), dbp, today=date(2026, 7, 22))
+
+    assert result.ok, "це не аварія — просто відкладено"
+    assert result.written == 0 and result.deferred == 1
+
+
+def test_snapshot_reads_each_tab_once(patched):
+    """Чанковий читач прибрано (S2.4): десятки запитів на вкладку × десятки
+    вкладок палили квоту, а від «обрізаного читання» захищає звірка з
+    попередньою копією, а не дрібні шматки."""
+    state, dbp = patched
+    ws = _FakeWS("22.07.26", _work_rows([24122, 24123]))
+    calls = []
+    original = ws.get_all_values
+    ws.get_all_values = lambda: (calls.append(1), original())[1]
+    state["sheets"] = [ws]
+
+    sb.snapshot_all_tabs(object(), dbp, today=date(2026, 7, 22))
+
+    assert calls == [1]
