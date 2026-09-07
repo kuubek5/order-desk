@@ -13,6 +13,7 @@ from threading import Lock, Thread
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import sync_control
 from app.business_day import business_today, utc_now
 from app.db import SessionLocal
 from app.models import Order, SyncLog
@@ -52,6 +53,18 @@ class SheetSyncConfigurationError(SheetSyncError):
 
 class SheetSyncBusyError(SheetSyncError):
     """Raised when another manual/background synchronization owns the lock."""
+
+
+class SheetSyncPausedError(SheetSyncError):
+    """Синк на паузі — читання таблиці зупинено так само, як і запис.
+
+    Пауза існує рівно для одного: «не чіпайте таблицю зараз» (адміністратор
+    щось у ній перебирає, техніки масово правлять день). Досі вона гальмувала
+    лише ЗАПИС, тож фонові тіки далі читали й далі рухали чергу — включно з
+    архівацією робіт за рядками, які саме перебирають. Тепер гейт стоїть у
+    самих функціях читання, а не в роутах: місць виклику багато, і кожне нове
+    інакше знову ходило б повз паузу.
+    """
 
 
 _sync_lock = Lock()
@@ -423,6 +436,16 @@ def sync_google_sheets(
     поріг захисту від масової архівації. Решта вкладок цього ж прогону лишаються
     під захистом.
     """
+    # Пауза зупиняє і ЧИТАННЯ, не лише запис: див. SheetSyncPausedError.
+    # Ручний виклик має сказати про це вголос, фоновий — просто нічого не
+    # робити (інакше кожні кілька хвилин у журнал сипався б однаковий рядок).
+    if sync_control.is_paused():
+        if trigger == "manual":
+            raise SheetSyncPausedError(
+                "Синхронізацію призупинено. Зніміть паузу, щоб синхронізувати."
+            )
+        return SheetSyncSummary()
+
     if trigger not in {"manual", "background"}:
         raise ValueError("unsupported sheet sync trigger")
     # A manual click waits out a hot-tab tick (~3s every 15s would otherwise
@@ -674,6 +697,10 @@ def sync_hot_tab(
     table; the full sync keeps owning audit logging. Each tab commits on its
     own (a failure on the second tab never rolls back the first). Returns a
     summary or None when skipped / no hot tab exists yet."""
+    # Пауза — це «не чіпайте таблицю зараз». Гарячий тік лише прискорює те, що
+    # повний синк зробить сам, тож на паузі він просто не ходить.
+    if sync_control.is_paused():
+        return None
     if not _sync_lock.acquire(blocking=False):
         return None
     # Гальмо квоти. «Турбо» (тік 5 с) × до 4 вкладок × 2 виклики ≈ 100 запитів

@@ -201,3 +201,49 @@ class TestSettingsSaveAndSyncAsksAboutPause:
                 asyncio.run(settings_overview_mod.post_settings(request=request, db=db))
 
             assert called == [1]
+
+
+# --- S2.6: пауза зупиняє і ЧИТАННЯ ------------------------------------------
+
+
+def test_manual_sync_on_pause_says_so_instead_of_reading(monkeypatch):
+    """Пауза означає «не чіпайте таблицю зараз». Досі вона гальмувала лише
+    запис, а читання йшло далі — і фоновий тік рухав чергу (аж до архівації
+    робіт) за рядками, які саме перебирає адміністратор."""
+    from app import sync_control
+    from app.sheet_sync_service import SheetSyncPausedError, sync_google_sheets
+
+    opened = []
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet",
+        lambda db=None: opened.append(1),
+        raising=False,
+    )
+    monkeypatch.setattr(sync_control, "is_paused", lambda: True)
+
+    with pytest.raises(SheetSyncPausedError):
+        sync_google_sheets(object(), trigger="manual")
+
+    assert opened == [], "на паузі таблиця не відкривається взагалі"
+
+
+def test_background_sync_on_pause_is_silent(monkeypatch):
+    """Фоновий тік мовчить: інакше кожні кілька хвилин у журнал сипався б
+    однаковий рядок «на паузі»."""
+    from app import sync_control
+    from app.sheet_sync_service import sync_google_sheets
+
+    monkeypatch.setattr(sync_control, "is_paused", lambda: True)
+
+    summary = sync_google_sheets(object(), trigger="background")
+
+    assert summary.tabs_processed == 0 and summary.tab_names == []
+
+
+def test_hot_tab_tick_skips_while_paused(monkeypatch):
+    from app import sync_control
+    from app.sheet_sync_service import sync_hot_tab
+
+    monkeypatch.setattr(sync_control, "is_paused", lambda: True)
+
+    assert sync_hot_tab(object()) is None
