@@ -25,29 +25,29 @@ F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F14, F15, F16, F18, F19 — �
 
 | # | Статус | Крок | Джерело |
 |---|---|---|---|
-| P.1 | ⬜ | `/?period=earlier`: сервер досі 1,5 с на 200 рядків — «решта (незаміряне)» 0,8–1,4 с. Профілювати: `attach_export_folder_uris`/`attach_job_code_folder_uris` і сортування йдуть по всіх 616 ДО зрізу. Перенести дорогі помічники після зрізу. | AUDIT 4.1 |
-| P.2 | ⬜ | `/clients/{id}/pane` вантажить усі роботи за весь час; обмежити SQL вікном або кандидатами імені. | review_backend MEDIUM, AUDIT 4.3 |
-| P.3 | ⬜ | `/search`, `/journal/sync` — пагінація (389 і 192 КБ). | AUDIT 4.4 |
+| P.1 | ✅ 07.09.26 | `/?period=earlier`: сервер досі 1,5 с на 200 рядків — «решта (незаміряне)» 0,8–1,4 с. Профілювати: `attach_export_folder_uris`/`attach_job_code_folder_uris` і сортування йдуть по всіх 616 ДО зрізу. Перенести дорогі помічники після зрізу. | AUDIT 4.1 |
+| P.2 | ✅ 07.09.26 | `/clients/{id}/pane` вантажить усі роботи за весь час; обмежити SQL вікном або кандидатами імені. | review_backend MEDIUM, AUDIT 4.3 |
+| P.3 | ✅ 07.09.26 | `/search`, `/journal/sync` — пагінація (389 і 192 КБ). | AUDIT 4.4 |
 | P.4 | ⬜ ⚠ | `POST /handout/confirm-alias` — сирота без UI. Видалити або привʼязати (підтвердження нечіткого збігу імені клієнта на видачі). | AUDIT 4.8 |
 | P.5 | ⬜ | «змінено після взяття» майже на кожному рядку тестової БД після бекфілу — перевірити на проді, чи не шумить діф після повного синку. | AUDIT 4.9 |
-| P.6 | ⬜ | `_settings_about.html`: два різні тексти «Доступне оновлення» (плита + `_update_check_result.html`) — звести в один партіал. | огляд |
+| P.6 | ✅ 07.09.26 | `_settings_about.html`: два різні тексти «Доступне оновлення» (плита + `_update_check_result.html`) — звести в один партіал. | огляд |
 
 ## Код-ревʼю MEDIUM (бекенд), у порядку болю
 
 | # | Статус | Крок |
 |---|---|---|
-| C.1 | ⬜ | `mail_accept.py`: ловити `Exception`, а не лише `OSError/ValueError` після переносу файлів; `moved_pairs` у списку виклику. |
-| C.2 | ⬜ | `reject_email`: не комітити «відхилено» поверх невдалого переносу файлів назад у спул. |
+| C.1 | ✅ 07.09.26 | `mail_accept.py`: ловити `Exception`, а не лише `OSError/ValueError` після переносу файлів; `moved_pairs` у списку виклику. |
+| C.2 | ✅ 07.09.26 | `reject_email`: не комітити «відхилено» поверх невдалого переносу файлів назад у спул. |
 | C.3 | ✅ 07.09.26 | Закрито кроком M.3: теки `<uid_validity>_<uid>`, старі імена визнає `folder_candidates`. |
 | C.4 | ✅ 07.09.26 | Закрито кроком K.4: loopback на `save_imap_settings`, `test_imap_connection`, `POST /settings` і чотири роути `settings/users.py`. |
-| C.5 | ⬜ | 10 ручних `admin + loopback` гейтів (backup/update/users/feedback) → `deps.require_admin(..., unauth="redirect")`. Ще ~20 `role != "адмін"` у queue/mail/machines. |
+| C.5 | ✅ 07.09.26 | 10 ручних `admin + loopback` гейтів (backup/update/users/feedback) → `deps.require_admin(..., unauth="redirect")`. Ще ~20 `role != "адмін"` у queue/mail/machines. |
 | C.6 | ✅ 07.09.26 | Закрито кроком D.2: стан печі під `_states_lock`, широкий `except` у `grab`/`read_panel`/`screen_is_sisma`. |
 | C.7 | ✅ 07.09.26 | Закрито кроком D.5: ключ кеша — тека РАЗОМ із верстатом. |
-| C.8 | ⬜ | `prune_readings` — `delete()` замість ORM по одному; `freeze_due_days` — фільтр по дню в SQL. |
-| C.9 | ⬜ | `settings_selfcheck._folder()` — використати `check_path_status(write_probe=True)`, інакше «доступна на запис» без проби запису. |
-| C.10 | ⬜ | `palette.COMMANDS` — другий реєстр екранів; сторож або спільне джерело з рейкою. |
-| C.11 | ⬜ | `queue.py` `/sheets/import-history`, `/sheets/reconcile-deletions`: докстрінг обіцяє loopback, коду немає. |
-| C.12 | ⬜ | LOW-список у `review_backend.md` (17 пунктів) — одним чатом-прибиранням. |
+| C.8 | ✅ 07.09.26 | `prune_readings` — `delete()` замість ORM по одному; `freeze_due_days` — фільтр по дню в SQL. |
+| C.9 | ✅ 07.09.26 | `settings_selfcheck._folder()` — використати `check_path_status(write_probe=True)`, інакше «доступна на запис» без проби запису. |
+| C.10 | ✅ 07.09.26 | `palette.COMMANDS` — другий реєстр екранів; сторож або спільне джерело з рейкою. |
+| C.11 | ✅ 07.09.26 | `queue.py` `/sheets/import-history`, `/sheets/reconcile-deletions`: докстрінг обіцяє loopback, коду немає. |
+| C.12 | ✅ 07.09.26 | LOW-список у `review_backend.md` (17 пунктів) — одним чатом-прибиранням. |
 
 ## UX / вигляд (лишилось)
 
@@ -58,7 +58,7 @@ F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F14, F15, F16, F18, F19 — �
 | U.3 | ⬜ | 403 для оператора за прямою адресою — шаблон замість голого JSON. |
 | U.4 | ⬜ | Бейдж «5/5» у рейці налаштувань — пояснити (title) або прибрати. |
 | U.5 | ⬜ | Рейка налаштувань під банером оновлення на 900 px — заголовок групи обрізається. |
-| U.6 | ⬜ | `settings.css`: 54 нові літеральні кольори без `var()` (review_frontend). |
+| U.6 | ✅ 07.09.26 | `settings.css`: 54 нові літеральні кольори без `var()` (review_frontend). |
 | U.7 | ⬜ | Виробіток: клавіатура PIN зʼявляється із затримкою ~1 с — прибрати анімацію-затримку або показати одразу. |
 
 ## Журнал просування
