@@ -98,3 +98,16 @@ def _fresh_sheets_quota_counter():
     reset_api_call_counter()
     yield
     reset_api_call_counter()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_sheet_erase_guard():
+    """Стеля стирань рядків теж живе на ПРОЦЕС (app/sheet_erase_guard).
+    Без скидання файл, який ганяє стирання, вичерпує вікно наступному, і той
+    падає з «спрацював запобіжник» без жодного стосунку до свого предмета.
+    """
+    from app import sheet_erase_guard
+
+    sheet_erase_guard.reset_for_tests()
+    yield
+    sheet_erase_guard.reset_for_tests()

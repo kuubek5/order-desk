@@ -362,3 +362,60 @@ class TestErasedRowLeavesATrace:
         assert cleared == [13]
         row_no, values = sheet_writer.take_last_erased(42)
         assert values == []
+
+
+class TestMassEraseGuard:
+    """B.7: звірка позиції захищає ОДНЕ стирання, стеля — від розгону.
+    Цикл у коді або повторний відкат стерли б десятки рядків спільної
+    таблиці, і кожне стирання окремо виглядало б законним."""
+
+    def _worksheet(self):
+        ws = MagicMock()
+        ws.id = 11
+        ws.cell.return_value = SimpleNamespace(value="24122")
+        ws.col_values.return_value = []
+        ws.get_values.return_value = []
+        return ws
+
+    def _lab_order(self):
+        return SimpleNamespace(
+            id=42, row_number=7, source="lab", work_order_no="24122",
+            client_name=None, sheet_tab="26.08.26",
+        )
+
+    def test_erase_is_blocked_once_the_hourly_ceiling_is_reached(self, monkeypatch):
+        import app.sheet_writer as sheet_writer
+        from app import sheet_erase_guard
+        from app.sheet_erase_guard import SheetEraseBlocked
+
+        cleared: list[int] = []
+        monkeypatch.setattr(
+            sheet_writer, "clear_placeholder_row", lambda ws, row: cleared.append(row)
+        )
+        ws = self._worksheet()
+
+        for _ in range(sheet_erase_guard.LIMIT):
+            assert sheet_writer.clear_order_row(ws, self._lab_order()) is True
+        assert len(cleared) == sheet_erase_guard.LIMIT
+
+        with pytest.raises(SheetEraseBlocked):
+            sheet_writer.clear_order_row(ws, self._lab_order())
+        # Рядок лишається в таблиці — безпечний бік відмови.
+        assert len(cleared) == sheet_erase_guard.LIMIT
+
+    def test_skipped_erases_do_not_eat_the_ceiling(self, monkeypatch):
+        """Непідтверджений рядок нічого не стирає, тож і стелю не витрачає —
+        інакше кілька відмов поспіль заблокували б законне стирання."""
+        import app.sheet_writer as sheet_writer
+        from app import sheet_erase_guard
+
+        monkeypatch.setattr(sheet_writer, "clear_placeholder_row", lambda ws, row: None)
+        ws = self._worksheet()
+        # Ні в збереженій позиції, ні однозначно в колонці нашого наряду нема.
+        ws.cell.return_value = SimpleNamespace(value="99999")
+        ws.col_values.return_value = ["99999"] * 20
+
+        for _ in range(sheet_erase_guard.LIMIT * 2):
+            assert sheet_writer.clear_order_row(ws, self._lab_order()) is False
+
+        assert sheet_erase_guard.recent_count() == 0

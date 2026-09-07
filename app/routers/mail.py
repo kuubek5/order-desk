@@ -90,6 +90,7 @@ from app.settings_store import (
     get_imap_login,
     get_mail_download_all,
 )
+from app.sheet_erase_guard import SheetEraseBlocked
 from app.sheet_writer import clear_order_row
 from app.sheets import get_worksheet_by_name, open_spreadsheet
 
@@ -1560,11 +1561,16 @@ def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]
                     # Через identity, не за збереженою позицією: стирання чистить
                     # A:K, тож влучання в сусідній рядок знищує чужу живу роботу
                     # (аудит 05.09.26, синк H-5).
-                    if not clear_order_row(worksheet, order):
-                        logger.warning(
-                            "Sheet row for email %s not confirmed — placeholder left as is",
-                            email.id,
-                        )
+                    try:
+                        if not clear_order_row(worksheet, order):
+                            logger.warning(
+                                "Sheet row for email %s not confirmed — placeholder left as is",
+                                email.id,
+                            )
+                    except SheetEraseBlocked as blocked:
+                        # Стеля стирань за годину: рядок лишається в таблиці,
+                        # відкат прийняття все одно доводиться до кінця.
+                        logger.error("Відкат листа %s: %s", email.id, blocked)
             except Exception:  # noqa: BLE001 — sheet cleanup must not block the undo
                 logger.exception("Could not blank sheet placeholder row for email %s", email.id)
 

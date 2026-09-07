@@ -10,6 +10,7 @@ from datetime import datetime
 
 import gspread
 
+from app import sheet_erase_guard
 from app.models import Order
 from app.parser import HEADER_ROWS
 from app.sheets import call_with_retry
@@ -161,7 +162,12 @@ def clear_order_row(worksheet: gspread.Worksheet, order: Order) -> bool:
     Повертає False, якщо стирання пропущено. Перед стиранням вміст рядка
     читається й лягає в журнал (`SheetRowErase`-рядок пише викликач): у
     спільній таблиці «зникло, і невідомо що там було» — найгірший результат,
-    тож ми завжди лишаємо слід, з якого рядок можна набрати назад."""
+    тож ми завжди лишаємо слід, з якого рядок можна набрати назад.
+
+    Кидає `SheetEraseBlocked`, коли спрацював запобіжник на кількість
+    стирань за годину (app/sheet_erase_guard.py) — окремо від False,
+    бо причина інша й у журнал має піти інший текст."""
+    sheet_erase_guard.check()
     col, expected = _identity_cell(order)
     if col is None or not expected:
         # Нема з чим звірити (наряд-less лабораторний рядок, клієнт без
@@ -179,6 +185,7 @@ def clear_order_row(worksheet: gspread.Worksheet, order: Order) -> bool:
         erased if erased else "не прочитано",
     )
     clear_placeholder_row(worksheet, row)
+    sheet_erase_guard.record()
     _LAST_ERASED[getattr(order, "id", 0)] = (row, erased)
     return True
 

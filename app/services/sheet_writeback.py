@@ -21,6 +21,7 @@ from app.business_day import business_today
 from app.db import SessionLocal
 from app.models import Comment, Order, SyncLog
 from app.parser import HEADER_ROWS
+from app.sheet_erase_guard import SheetEraseBlocked
 from app.sheet_writer import (
     append_manual_work_rows,
     append_order_comment,
@@ -418,7 +419,19 @@ def clear_sheet_row_background(order_id: int) -> None:
                 if worksheet is None:
                     logger.warning("Delete: sheet tab %s not found", sheet_tab)
                     return
-                if not clear_order_row(worksheet, order):
+                try:
+                    cleared = clear_order_row(worksheet, order)
+                except SheetEraseBlocked as blocked:
+                    # Запобіжник, а не збій таблиці: причина в журналі має бути
+                    # своя, інакше «стеля стирань» виглядатиме як «рядок не
+                    # підтверджено» і ніхто не зрозуміє, що спрацював захист.
+                    bg.add(SyncLog(
+                        direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
+                        message=f"order {order_id}: {blocked}",
+                    ))
+                    bg.commit()
+                    return
+                if not cleared:
                     bg.add(SyncLog(
                         direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
                         message=(
