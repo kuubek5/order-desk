@@ -91,6 +91,15 @@ def _stub_sheet(monkeypatch, sheet_id=42):
         writeback_service, "resolve_order_row",
         lambda worksheet, order: order.row_number + HEADER_ROWS,
     )
+    # Видача пише пакетно (S2.3): звірка позицій і запис полів — по одному
+    # виклику на вкладку. Підміняти треба саме їх, інакше стаб
+    # «підтверджує рядок» промахується повз реальний шлях (той самий клас
+    # пастки, що monkeypatch на перенесену функцію, CLAUDE.md §14).
+    monkeypatch.setattr(
+        writeback_service, "resolve_rows_bulk",
+        lambda worksheet, orders: {o.id: o.row_number + HEADER_ROWS for o in orders},
+    )
+    monkeypatch.setattr(writeback_service, "write_order_fields_bulk", lambda ws, plan: None)
     captured = {}
 
     def fake_clear(spreadsheet, rows):

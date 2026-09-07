@@ -24,6 +24,8 @@ from app.models import Comment, Order, SyncLog
 from app.parser import HEADER_ROWS
 from app.sheet_erase_guard import SheetEraseBlocked
 from app.sheet_writer import (
+    resolve_rows_bulk,
+    write_order_fields_bulk,
     append_manual_work_rows,
     append_order_comment,
     clear_order_row,
@@ -535,7 +537,12 @@ def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
     холодне відкриття таблиці (~40 с) плюс ~4 виклики на кожну з N робіт —
     «Видати 8 з 8» давало понад дві хвилини повністю замороженого застосунку
     (аудит 05.09.26, синк C-2). Тут таблиця відкривається один раз на теплому
-    потоці, а біла заливка всіх рядків клієнта йде однією пакетною правкою.
+    потоці.
+
+    Число запитів більше не залежить від розміру видачі (ревʼю 07.09.26,
+    S2.3): позиції всіх робіт вкладки звіряються пакетно, поля пишуться одним
+    `batch_update`, заливка знімається однією правкою. Раніше видача на 50
+    робіт давала сотні викликів і впиралась у 429 проксі лабораторії.
 
     `field_map`: id роботи → поля-маркери, які порахував роут (він же вже
     закомітив статуси). Повертає перший рядок помилки або None.
@@ -544,39 +551,79 @@ def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
         return None
     error: str | None = None
     with SessionLocal() as bg:
-        fill_rows: list[tuple[int, int]] = []
-        spreadsheet = None
+        # Роботи однієї видачі бувають із різних днів — групуємо по вкладках,
+        # бо і звірка позицій, і пакетний запис живуть у межах однієї вкладки.
+        by_tab: dict[str, list[tuple[Order, set[str]]]] = {}
         for order_id, fields in field_map.items():
             order = bg.get(Order, order_id)
             if order is None:
                 continue
-            error = write_sheet_fields(bg, order, set(fields)) or error
-            if (
-                order.source != "sheet_client"
-                or not order.sheet_tab
-                or order.row_number is None
-            ):
+            if order.source not in ("lab", "sheet_client") or not order.sheet_tab:
                 continue
+            by_tab.setdefault(order.sheet_tab, []).append((order, set(fields)))
+
+        fill_rows: list[tuple[int, int]] = []
+        spreadsheet = None
+        for sheet_tab, items in by_tab.items():
             try:
                 if spreadsheet is None:
                     spreadsheet = open_spreadsheet(db=bg)
-                worksheet = get_worksheet_by_name(spreadsheet, order.sheet_tab)
+                worksheet = get_worksheet_by_name(spreadsheet, sheet_tab)
                 if worksheet is None:
-                    continue
-                # Позицію звіряємо перед тим, як білити: після видалення рядка
-                # вище збережений row_number показує на чужу живу роботу, і
-                # «видано» знялось би не з того клієнта (синк H-5).
-                row = resolve_order_row(worksheet, order)
+                    raise RuntimeError(f"вкладку '{sheet_tab}' не знайдено")
+                rows = resolve_rows_bulk(worksheet, [order for order, _ in items])
+            except Exception as exc:  # noqa: BLE001 — статус «видано» лишається
+                logger.exception("Handout group: вкладка %s недоступна", sheet_tab)
+                error = error or str(exc)
+                for order, fields in items:
+                    bg.add(SyncLog(
+                        direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
+                        message=f"order {order.id}: {exc}",
+                    ))
+                continue
+
+            plan: list[tuple[Order, set[str], int]] = []
+            for order, fields in items:
+                row = rows.get(order.id)
                 if row is None:
+                    # Пропуск ≠ успіх — той самий контракт, що у
+                    # write_sheet_fields (S.8): оператор мусить бачити, що
+                    # саме цей запис у таблицю не дійшов.
+                    message = (
+                        "рядок у таблиці не підтверджено — не записано, спробуйте ще раз"
+                    )
+                    bg.add(SyncLog(
+                        direction="db_to_sheet", sheet_tab=sheet_tab, status="skipped",
+                        message=f"order {order.id}: {', '.join(sorted(fields))}: {message}",
+                    ))
                     error = error or (
-                        f"робота {order_id}: рядок у таблиці не підтверджено — "
+                        f"робота {order.id}: рядок у таблиці не підтверджено — "
                         "заливку не знято"
                     )
                     continue
-                fill_rows.append((worksheet.id, row))
-            except Exception as exc:  # noqa: BLE001 — статус «видано» лишається
-                logger.exception("Handout group fill lookup failed for order %s", order_id)
-                error = error or str(exc)
+                if fields:
+                    plan.append((order, fields, row))
+                if order.source == "sheet_client":
+                    fill_rows.append((worksheet.id, row))
+
+            if plan:
+                try:
+                    write_order_fields_bulk(worksheet, plan)
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("Handout group: пакетний запис вкладки %s", sheet_tab)
+                    error = error or str(exc)
+                    for order, fields, _ in plan:
+                        bg.add(SyncLog(
+                            direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
+                            message=f"order {order.id}: {exc}",
+                        ))
+                else:
+                    for order, fields, _ in plan:
+                        bg.add(SyncLog(
+                            direction="db_to_sheet", sheet_tab=sheet_tab, status="ok",
+                            message=f"order {order.id}: {', '.join(sorted(fields))}",
+                        ))
+
         if fill_rows and spreadsheet is not None:
             try:
                 clear_row_fills(spreadsheet, fill_rows)

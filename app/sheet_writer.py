@@ -153,6 +153,125 @@ def resolve_order_row(worksheet: gspread.Worksheet, order: Order) -> int | None:
     return _resolve_row(worksheet, order)
 
 
+def resolve_rows_bulk(
+    worksheet: gspread.Worksheet, orders: list[Order]
+) -> dict[int, int | None]:
+    """`_resolve_row` для ПАЧКИ робіт однієї вкладки — сталим числом запитів.
+
+    Поодинці кожна робота коштує читання клітинки, а при зсуві ще й читання
+    цілої колонки: видача клієнта на 50 робіт давала сотні викликів і впиралась
+    у 429 проксі лабораторії. Тут колонки-ідентифікатори (наряд і клієнт)
+    читаються по одному разу на всю пачку, а далі позиція кожної роботи
+    рахується в памʼяті.
+
+    Правила ті самі, що поодинці, і послаблювати їх не можна: збігається
+    збережена позиція — беремо її; не збігається — шукаємо в колонці, і лише
+    ЄДИНИЙ збіг вважається знайденим; читання колонки впало — `None`
+    (непідтверджений рядок гірший за пропущений запис).
+
+    Повертає {order.id: рядок або None}.
+    """
+    resolved: dict[int, int | None] = {}
+    by_column: dict[int, list[Order]] = {}
+    for order in orders:
+        col, expected = _identity_cell(order)
+        if col is None or not expected:
+            # Нема з чим звіряти — довіряємо збереженій позиції, як і поодинці.
+            resolved[order.id] = _sheet_row(order)
+            continue
+        by_column.setdefault(col, []).append(order)
+
+    for col, col_orders in by_column.items():
+        try:
+            values = call_with_retry(lambda col=col: worksheet.col_values(col))
+        except Exception:
+            logger.warning("Пакетна звірка позицій: колонку %s не прочитано", col)
+            for order in col_orders:
+                resolved[order.id] = None
+            continue
+
+        # Скільки разів кожне значення трапляється в колонці: повтор наряду або
+        # двоє однойменних клієнтів = неоднозначність, а не «знайшли».
+        positions: dict[str, list[int]] = {}
+        for idx, value in enumerate(values, start=1):
+            if isinstance(value, str) and value.strip():
+                positions.setdefault(value.strip().casefold(), []).append(idx)
+
+        for order in col_orders:
+            _, expected = _identity_cell(order)
+            key = expected.casefold()
+            stored = _sheet_row(order)
+            at_stored = values[stored - 1] if 0 < stored <= len(values) else ""
+            if isinstance(at_stored, str) and at_stored.strip().casefold() == key:
+                resolved[order.id] = stored
+                continue
+            hits = positions.get(key, [])
+            if len(hits) != 1:
+                resolved[order.id] = None
+                continue
+            order.row_number = hits[0] - HEADER_ROWS
+            resolved[order.id] = hits[0]
+    return resolved
+
+
+def write_order_fields_bulk(
+    worksheet: gspread.Worksheet, plan: list[tuple[Order, set[str], int]]
+) -> None:
+    """Записати поля багатьох робіт однієї вкладки ОДНИМ `batch_update`.
+
+    Позиції вже звірені викликачем (`resolve_rows_bulk`), тому тут лишається
+    друга дорога частина — збереження живих значень маркерів. Поодинці кожне
+    поле-маркер коштувало окремого читання клітинки; тут колонки «Прорахував»
+    і «Відфрезерував» читаються по разу на всю пачку.
+
+    Правило збереження те саме: маркер рахується з останнього знімка бази, а
+    персонал міг вписати щось у спільну таблицю після нього — живе значення
+    виграє й повертається в обʼєкт, а не затирається.
+    """
+    column_by_field = {
+        "cam_comment": COL_CAM_COMMENT,
+        "sum3d_id": COL_SUM3D_ID,
+        "calculated_raw": COL_CALCULATED,
+        "milled_raw": COL_MILLED,
+    }
+    marker_columns = {
+        field: column_by_field[field]
+        for _, fields, _ in plan
+        for field in fields
+        if field in STATUS_MARKER_FIELDS
+    }
+    live: dict[int, list] = {}
+    for col in set(marker_columns.values()):
+        try:
+            live[col] = call_with_retry(lambda col=col: worksheet.col_values(col))
+        except Exception:
+            # Не прочитали живі значення — НЕ пишемо маркери наосліп: чуже
+            # значення в спільній таблиці дорожче за пропущений маркер.
+            logger.warning("Пакетний запис: колонку маркерів %s не прочитано", col)
+            live[col] = None
+
+    updates: list[dict] = []
+    for order, fields, row in plan:
+        for field in fields:
+            col = column_by_field[field]
+            value = getattr(order, field) or ""
+            if field in STATUS_MARKER_FIELDS:
+                column = live.get(col)
+                if column is None:
+                    continue  # читання впало — маркер пропускаємо
+                at_row = column[row - 1] if 0 < row <= len(column) else ""
+                live_value = at_row.strip() if isinstance(at_row, str) else ""
+                if live_value:
+                    setattr(order, field, live_value)
+                    continue
+            updates.append(
+                {"range": gspread.utils.rowcol_to_a1(row, col), "values": [[value]]}
+            )
+    if updates:
+        # Ідемпотентно: повтор запише ті самі значення в ті самі клітинки.
+        call_with_retry(lambda: worksheet.batch_update(updates))
+
+
 def clear_order_row(worksheet: gspread.Worksheet, order: Order) -> bool:
     """Стерти рядок цієї роботи, СПЕРШУ підтвердивши, що він досі її.
 
