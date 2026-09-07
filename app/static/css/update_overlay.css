@@ -340,13 +340,27 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
    скролу. Вузькі колонки (№, наряд, к-сть, Sum3D-час, статус) дістають явну
    ширину; текстові (клієнт/колір/вид/технік) без ширини самі ділять залишок
    і обрізаються еліпсисом — так довгий Sum3D ID більше не розсуває таблицю. */
-.arch-sheet{width:100%;table-layout:fixed;border-collapse:collapse;background:var(--card)}
+/* Колонок стало одинадцять (додались шлях-ID, оператор і файли), і `fixed`
+   почав ділити ширину так, що колір із видом роботи ставали трьома крапками.
+   В архів заходять саме читати рядок цілком, тож текст важливіший за
+   відсутність скролу: розкладка `auto`, мінімальні ширини під зміст, а обгортка
+   й далі скролиться вбік (07.09.26). */
+.arch-sheet{width:100%;table-layout:auto;border-collapse:collapse;background:var(--card)}
+.arch-sheet th.c-mat,.arch-sheet td.c-mat{min-width:104px}
+.arch-sheet th.c-kind,.arch-sheet td.c-kind{min-width:132px}
+.arch-sheet th.c-who,.arch-sheet td.c-who{min-width:96px;max-width:130px}
+.arch-sheet .c-nar-v{color:var(--accent-c)}
+.arch-sheet .c-cl-v{color:var(--ink)}
+.arch-sheet th.c-kind,.arch-sheet td.c-kind{max-width:150px}
 .arch-sheet thead th{position:sticky;top:0;z-index:var(--z-base);background:var(--card-3);color:var(--accent-c);
   font-family:var(--font-mono);font-size:var(--fs-0);font-weight:500;text-transform:uppercase;letter-spacing:.03em;
   text-align:left;padding:8px 8px;border-bottom:1px solid var(--line-2);border-right:1px solid var(--line);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.arch-sheet tbody td{padding:7px 8px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);
-  font-size:var(--fs-2);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Щільніше, ніж у черзі: в архів заходять читати цілий день одним поглядом,
+   а не працювати з рядком. Менший крок і дрібніший шрифт дають ті самі
+   одинадцять колонок без горизонтального скролу (прохання власника). */
+.arch-sheet tbody td{padding:5px 7px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);
+  font-size:var(--fs-1);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .arch-sheet th:last-child,.arch-sheet td:last-child{border-right:0}
 .arch-sheet tbody tr:last-child td{border-bottom:0}
 .arch-sheet tbody tr{cursor:pointer;transition:background var(--ui-speed) ease}
@@ -354,12 +368,24 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
 .arch-sheet tbody tr:hover{background:rgba(var(--accent-base-rgb), .09)}
 .arch-sheet tbody tr:focus{outline:2px solid var(--accent-b);outline-offset:-2px}
 .arch-sheet .c-num,.arch-sheet .c-qty{text-align:right;color:var(--ink-3)}
-.arch-sheet th.c-num,.arch-sheet td.c-num{width:30px}
+.arch-sheet th.c-num,.arch-sheet td.c-num{width:26px}
 .arch-sheet th.c-date,.arch-sheet td.c-date{width:62px}
-.arch-sheet th.c-nar,.arch-sheet td.c-nar{width:58px}
-.arch-sheet th.c-qty,.arch-sheet td.c-qty{width:58px;color:var(--ink)}
-.arch-sheet th.c-sum,.arch-sheet td.c-sum{width:66px}
-.arch-sheet .c-nar{color:var(--accent-c)}
+.arch-sheet th.c-qty,.arch-sheet td.c-qty{width:44px;color:var(--ink)}
+/* Sum3D і оператор більше НЕ обрізаються: саме за ними впізнають роботу в
+   історії, а «19-36…» не впізнає ніхто. Ширина під повний вигляд «19-36-42».
+   Шлях-ID навпаки — довгий мережевий шлях, який цілим не влізе ніколи: він
+   лишається обрізаним, а повний лежить у title (прохання власника 07.09.26). */
+.arch-sheet th.c-sum,.arch-sheet td.c-sum{width:78px;max-width:78px;overflow:visible;text-overflow:clip}
+.arch-sheet th.c-oper,.arch-sheet td.c-oper{width:64px;max-width:64px;overflow:visible;text-overflow:clip;color:var(--ink-2)}
+/* Шлях-ID — довгий мережевий рядок; тримаємо його вузьким і з трьома
+   крапками (повний у title), інакше він з'їдає ширину в колір і вид
+   роботи — а їх читають, на відміну від шляху. */
+.arch-sheet th.c-path,.arch-sheet td.c-path{width:104px;max-width:104px;color:var(--ink-3)}
+.arch-sheet th.c-files,.arch-sheet td.c-files{width:42px;text-align:center}
+.arch-sheet .arch-files{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;color:var(--ink-3)}
+.arch-sheet .arch-files:hover{background:var(--raise);color:var(--accent-c)}
+.arch-sheet .arch-files svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linejoin:round}
+.arch-sheet .arch-nofiles{color:var(--ink-3);opacity:.5}
 .arch-sheet .c-date{color:var(--ink-2)}
 .arch-sheet .c-sum{color:var(--sig, var(--accent-c));font-size:var(--fs-1)}
 .arch-sheet .c-tech{color:var(--ink-2)}

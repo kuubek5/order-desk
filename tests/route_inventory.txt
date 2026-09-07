@@ -129,11 +129,9 @@ POST /orders/{order_id}/status
 POST /orders/{order_id}/sum3d-id
 POST /orders/{order_id}/unissue
 POST /orders/{order_id}/unmark-found
-POST /queue/views
-POST /queue/views/{view_id}/delete
-POST /queue/views/{view_id}/rename
 POST /settings
 POST /settings/backup/export
+POST /settings/backup/export-part
 POST /settings/backup/import
 POST /settings/check-path
 POST /settings/feedback

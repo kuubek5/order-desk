@@ -10,13 +10,18 @@
         <thead>
             <tr>
                 <th class="c-num">№</th>
-                <th class="c-nar">Наряд</th>
-                <th class="c-cl">Клієнт</th>
+                {# Одна колонка на обидва джерела — як у черзі: лабораторний
+                   рядок має наряд, клієнтський — імʼя. Дві окремі колонки
+                   означали, що половина кожної завжди порожня. #}
+                <th class="c-who">Наряд / клієнт</th>
                 <th class="c-qty">К-сть</th>
                 <th class="c-mat">Колір</th>
                 <th class="c-kind">Вид роботи</th>
-                <th class="c-sum">Час</th>
+                <th class="c-path">Шлях</th>
+                <th class="c-sum">Sum3D</th>
                 <th class="c-tech">Технік</th>
+                <th class="c-oper">Оператор</th>
+                <th class="c-files">Файли</th>
             </tr>
         </thead>
         <tbody>
@@ -28,13 +33,31 @@
                queue.js — той самий, що обробляє клік по [data-order-detail]. #}
             <tr data-order-detail="{{ order.id }}" tabindex="0">
                 <td class="c-num mono">{{ loop.index }}</td>
-                <td class="c-nar mono">{{ order.work_order_no or '—' }}</td>
-                <td class="c-cl">{{ order.client_name or '—' }}</td>
+                <td class="c-who">
+                    {%- if order.work_order_no %}<span class="mono c-nar-v">{{ order.work_order_no }}</span>
+                    {%- elif order.client_name %}<span class="c-cl-v">{{ order.client_name }}</span>
+                    {%- else %}—{% endif -%}
+                </td>
                 <td class="c-qty mono">{{ order.quantity or '' }}</td>
                 <td class="c-mat">{{ order.material_color or '' }}</td>
                 <td class="c-kind">{{ order.kind or '' }}</td>
+                {# Шлях-ID цілим не влізе ніколи (це довгий мережевий шлях), але
+                   в title лежить повний — наведення показує весь. #}
+                <td class="c-path mono" title="{{ order.job_code or '' }}">{{ order.job_code or '—' }}</td>
                 <td class="c-sum mono">{{ order.sum3d_id or '—' }}</td>
                 <td class="c-tech">{{ order.technician_name or '' }}</td>
+                <td class="c-oper mono">{{ order.calculated_raw or '—' }}</td>
+                <td class="c-files">
+                    {% if order.export_folder_uri or order.job_code_folder_uri %}
+                    {# Лише посилання на теку, без STL-прев'ю: воно тягне за собою
+                       three.js, а архів гортають рідко й заради інших питань.
+                       Тека відкривається — цього для «де лежали файли» досить. #}
+                    <a class="arch-files" href="{{ order.export_folder_uri or order.job_code_folder_uri }}"
+                       title="Відкрити папку з файлами" onclick="event.stopPropagation()">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+                    </a>
+                    {% else %}<span class="arch-nofiles">—</span>{% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>

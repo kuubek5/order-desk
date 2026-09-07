@@ -54,7 +54,56 @@
                             {% endif %}
                             Усередині лежить і порядок дій на новій машині.
                         </p>
-                        <a class="btn" href="/settings/backup/files.zip">Зібрати файли для переїзду</a>
+                        <a class="settings-secondary-button" href="/settings/backup/files.zip">Зібрати файли для переїзду</a>
+                    </div>
+
+                    {# ── Часткова копія ────────────────────────────────────
+                       Повна копія відповідає на «перенести все на інший ПК».
+                       Буденна ж біда дрібніша: видалили оператора, стерли
+                       перелік клієнтів. Заливати заради цього повну копію
+                       означає відкотити РАЗОМ із тим усі роботи, зроблені
+                       після неї, — вилікувати подряпину ампутацією.
+
+                       Тому набори, а не таблиці: людина думає «оператори», а
+                       не «users + user_roles». Відновлення такої копії заміщає
+                       ЛИШЕ обрані набори (app/backup_parts.py). #}
+                    <div class="stand-cell w3">
+                        <h3>Копія окремих наборів</h3>
+                        <p class="settings-help">
+                            Для точкової втрати: зберегти й повернути щось одне, не чіпаючи
+                            решти. Відновлення такої копії заміщає лише обрані набори —
+                            роботи, історія й налаштування лишаються як є.
+                        </p>
+                        <form method="post" action="/settings/backup/export-part" class="settings-backup-form">
+                            <div class="bkp-parts">
+                                {% for part in backup_parts %}
+                                <label class="bkp-part">
+                                    <input type="checkbox" name="parts" value="{{ part.key }}">
+                                    <span class="bkp-part-name">{{ part.label }}</span>
+                                    <span class="bkp-part-hint">{{ part.hint }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                            <div class="settings-field">
+                                <label for="part_password">Пароль копії</label>
+                                <div class="login-glow"><div class="login-input-wrap">
+                                    <input type="password" id="part_password" name="backup_password" class="login-input"
+                                           placeholder="щонайменше 8 символів" minlength="8" required>
+                                </div></div>
+                            </div>
+                            <div class="settings-field">
+                                <label for="part_password_confirm">Повторити пароль</label>
+                                <div class="login-glow"><div class="login-input-wrap">
+                                    <input type="password" id="part_password_confirm" name="backup_password_confirm" class="login-input"
+                                           placeholder="ще раз" minlength="8" required>
+                                </div></div>
+                            </div>
+                            <button type="submit" class="settings-secondary-button">Зберегти обрані набори</button>
+                        </form>
+                        <p class="settings-help" style="margin-top:10px;">
+                            Повертається тим самим «Відновити з бекапу» нижче — застосунок сам
+                            бачить, що копія часткова, і не чіпає нічого поза нею.
+                        </p>
                     </div>
 
                     {# Автоматичні місячні знімки БД (app/monthly_backup.py). Read-only

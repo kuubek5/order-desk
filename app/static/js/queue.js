@@ -1120,87 +1120,29 @@ if (document.readyState === "loading") {
 }
 
 
-/* ── Збережені вигляди черги (смуга фільтрів, #queue-views) ────────────────
-   Панель стоїть поза `#queue-rows`, тож 15-секундний полл рядків її не чіпає.
-   Але htmx свапає ЇЇ САМУ після кожного збереження / перейменування /
-   видалення, тому обробники делеговані на document: навішені на вузли вони
-   помирали б на першому ж свапі.
-
-   Уся серверна частина (застосувати вигляд) — звичайні посилання; тут лише
-   розкриття полів вводу, яких без JS довелось би тримати завжди розгорнутими. */
-function qvFocusInput(form) {
-  const input = form.querySelector("[data-qv-input]");
-  if (!input) return;
-  input.focus();
-  input.select();
-}
-
-function qvOpen(form, hideEl) {
-  if (hideEl) {
-    hideEl.hidden = true;
-    if (hideEl.hasAttribute("aria-expanded")) hideEl.setAttribute("aria-expanded", "true");
-  }
-  form.hidden = false;
-  qvFocusInput(form);
-}
-
-document.addEventListener("click", (event) => {
-  const target = event.target;
-  if (!target || !target.closest) return;
-
-  const rename = target.closest("[data-qv-rename]");
-  if (rename) {
-    const panel = rename.closest("#queue-views");
-    const id = rename.getAttribute("data-qv-rename");
-    const form = panel && panel.querySelector('[data-qv-form="' + id + '"]');
-    if (form) qvOpen(form, rename.closest(".qv"));
+/* ── Смуга днів: активний день завжди видно ────────────────────────────────
+   Стрічка стоїть у рядку фільтрів і на вузькому місці стискається, скролячись
+   усередині себе (CSS `.q2 .filters .date-strip`). Без цього при стисканні за
+   краєм лишався САМЕ обраний день — стрічка показувала сусідів, а не те, де
+   оператор зараз. Скрол робимо миттєвим і без прокрутки сторінки:
+   `scrollIntoView` тягнув би за собою всю сторінку вгору. */
+function centerActiveDay() {
+  const strip = document.querySelector(".date-strip");
+  if (!strip) return;
+  const active = strip.querySelector("a.is-active");
+  if (active) {
+    const offset = active.offsetLeft - (strip.clientWidth - active.offsetWidth) / 2;
+    strip.scrollLeft = Math.max(0, offset);
     return;
   }
+  // Дня ніхто не обирав — показуємо кінець стрічки: дні йдуть за
+  // зростанням, тож найсвіжіший праворуч, і потрібен саме він. Ліворуч у
+  // цей момент видно найстаріші дати — рівно те, що цікавить найменше.
+  strip.scrollLeft = strip.scrollWidth;
+}
 
-  const add = target.closest("[data-qv-add]");
-  if (add) {
-    const panel = add.closest("#queue-views");
-    const form = panel && panel.querySelector("[data-qv-newform]");
-    if (form) qvOpen(form, add);
-    return;
-  }
-
-  const cancel = target.closest("[data-qv-cancel]");
-  if (cancel) {
-    const form = cancel.closest(".qv-form");
-    if (!form) return;
-    const panel = form.closest("#queue-views");
-    form.hidden = true;
-    const id = form.getAttribute("data-qv-form");
-    // Форма перейменування повертає свою пігулку; форма створення — кнопку.
-    const back = id
-      ? panel && panel.querySelector('.qv[data-qv="' + id + '"]')
-      : panel && panel.querySelector("[data-qv-add]");
-    if (back) {
-      back.hidden = false;
-      if (back.hasAttribute("aria-expanded")) back.setAttribute("aria-expanded", "false");
-    }
-  }
-});
-
-/* Esc у полі назви = скасувати. Оператор не має шукати мишею хрестик, коли
-   передумав, — а Enter уже зайнятий сабмітом форми. */
-document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape") return;
-  const input = event.target && event.target.closest
-    ? event.target.closest(".qv-form [data-qv-input]")
-    : null;
-  if (!input) return;
-  const cancel = input.closest(".qv-form").querySelector("[data-qv-cancel]");
-  if (cancel) cancel.click();
-});
-
-/* Після свапу смуги сервер міг повернути форму розгорнутою (помилка збереження
-   — напр. назва зайнята). Курсор повертаємо в поле: інакше повідомлення видно,
-   а виправляти доводиться, спершу клікнувши мишею. */
-document.addEventListener("htmx:afterSettle", (event) => {
-  const panel = event.target;
-  if (!panel || panel.id !== "queue-views" || !panel.querySelector) return;
-  const form = panel.querySelector(".qv-form:not([hidden])");
-  if (form) qvFocusInput(form);
-});
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", centerActiveDay);
+} else {
+  centerActiveDay();
+}

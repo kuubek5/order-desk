@@ -93,7 +93,10 @@ KDF_ITERATIONS = 480_000
 # не розвʼязує). Щоб нову таблицю не забули, її відсутність тут валить
 # `tests/test_backup_covers_every_table.py` — там же список свідомих
 # винятків.
-_TABLE_MODELS = [
+# `list[Any]`, а не `list[type[Base]]`: перевірка типів не бачить
+# `__tablename__` на декларативному класі й сипала помилками на кожному
+# зверненні до нього — шум, який ховав справжні (07.09.26).
+_TABLE_MODELS: list[Any] = [
     # Батьки без залежностей.
     User,
     Client,
@@ -194,17 +197,28 @@ def _derive_key(password: str, salt: bytes, iterations: int = KDF_ITERATIONS) ->
     return base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
 
 
-def create_backup(session: Session, password: str) -> bytes:
+def create_backup(
+    session: Session, password: str, *, only_tables: list[str] | None = None
+) -> bytes:
     """Serialize every table plus decrypted settings, encrypt under `password`.
 
     Returns the full backup file's bytes (a small JSON envelope; the actual
     data sits inside `envelope["payload"]`, a Fernet token).
+
+    `only_tables` робить копію ЧАСТКОВОЮ: у файл ідуть лише названі таблиці, а
+    налаштування не йдуть узагалі. Це інший інструмент, ніж повна копія:
+    повна відповідає на «перенести все на новий ПК», часткова — на «повернути
+    те, що щойно зникло», не відкочуючи разом із ним усю роботу за день
+    (app/backup_parts.py).
     """
+    selected = None if only_tables is None else set(only_tables)
     tables: dict[str, list[dict[str, Any]]] = {}
     unreadable: list[str] = []
     for model in _TABLE_MODELS:
-        rows = session.query(model).all()
         table = model.__tablename__
+        if selected is not None and table not in selected:
+            continue
+        rows = session.query(model).all()
         dumped = [_row_to_dict(r) for r in rows]
         for column in _ENCRYPTED_COLUMNS.get(table, ()):
             for row_data in dumped:
@@ -229,8 +243,11 @@ def create_backup(session: Session, password: str) -> bytes:
     # Втрачається лише те, що вже нечитабельне на цій машині; його ІМЕНА (не
     # значення) кладемо в конверт, щоб на новому ПК було видно, які саме
     # налаштування доведеться ввести заново.
+    # Секрети їдуть лише в ПОВНІЙ копії. Часткова — це «поверни мені
+    # операторів»; тягнути в неї пароль пошти й ключ таблиці означало б робити
+    # з дрібної операції ще один файл, який страшно загубити.
     settings: dict[str, str] = {}
-    for row in session.query(AppSetting).all():
+    for row in (session.query(AppSetting).all() if selected is None else []):
         if row.value_encrypted is None:
             continue
         try:
@@ -247,7 +264,8 @@ def create_backup(session: Session, password: str) -> bytes:
     # шифром. Після відновлення ми звіряємо базу з ним: копія сама себе
     # перевіряє, і «відновилось, але половини нема» стає видно одразу.
     manifest = {name: len(rows) for name, rows in tables.items()}
-    manifest[AppSetting.__tablename__] = len(settings)
+    if selected is None:
+        manifest[AppSetting.__tablename__] = len(settings)
 
     payload = json.dumps(
         {"tables": tables, "settings": settings, "manifest": manifest},
@@ -267,6 +285,10 @@ def create_backup(session: Session, password: str) -> bytes:
         # ніколи значення). Видно ДО введення пароля — щоб на новому ПК одразу
         # було ясно, що саме доведеться ввести руками.
         "unreadable_settings": sorted(unreadable),
+        # Часткова копія мусить сама казати, що вона часткова: інакше екран
+        # відновлення обіцяв би замінити все, а замінив би дві таблиці — або
+        # навпаки, і людина дізналась би про це вже по наслідках.
+        "partial": selected is not None,
         "app": "order-desk",
         "created_at": utc_now().isoformat() + "Z",
         "kdf": "pbkdf2-sha256",
@@ -334,10 +356,24 @@ def restore_backup(session: Session, file_bytes: bytes, password: str) -> dict[s
     # скидає прапорець на кожному коміті, тож це діє рівно на цю транзакцію.
     session.execute(text("PRAGMA defer_foreign_keys=ON"))
 
-    for model in reversed(_TABLE_MODELS):
+    # Часткова копія заміщає ЛИШЕ свої таблиці. Це головна різниця між двома
+    # інструментами: повна відповідає на «перенести все», часткова — на
+    # «поверни те, що зникло», і не має права зачепити роботи, зроблені після
+    # неї. Тому і видалення, і вставка йдуть тільки по таблицях із файлу
+    # (07.09.26).
+    partial = bool(envelope.get("partial")) or (
+        # Старіший файл прапорця не має — впізнаємо частковість за складом:
+        # у повній копії таблиці всі.
+        set(tables) != {model.__tablename__ for model in _TABLE_MODELS}
+    )
+    touched = [model for model in _TABLE_MODELS if model.__tablename__ in tables]
+    if not partial:
+        touched = list(_TABLE_MODELS)
+
+    for model in reversed(touched):
         session.query(model).delete()
 
-    for model in _TABLE_MODELS:
+    for model in touched:
         table = model.__tablename__
         rows = tables.get(table, [])
         secret_columns = _ENCRYPTED_COLUMNS.get(table, ()) if file_version >= 3 else ()
@@ -355,10 +391,13 @@ def restore_backup(session: Session, file_bytes: bytes, password: str) -> dict[s
             session.add(_dict_to_row(model, row_data))
         counts[table] = len(rows)
 
-    session.query(AppSetting).delete()
-    for key_name, value in settings.items():
-        session.add(AppSetting(key=key_name, value_encrypted=encrypt_value(value)))
-    counts["app_settings"] = len(settings)
+    # Секрети переписує лише повна копія. Часткова їх не несе, і стерти
+    # налаштування, «відновлюючи операторів», було б найгіршим сюрпризом.
+    if not partial:
+        session.query(AppSetting).delete()
+        for key_name, value in settings.items():
+            session.add(AppSetting(key=key_name, value_encrypted=encrypt_value(value)))
+        counts["app_settings"] = len(settings)
 
     # Звірка з перелічником копії ДО коміту: не збіглось — нічого не міняємо.
     manifest = data.get("manifest") or {}

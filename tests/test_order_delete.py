@@ -7,6 +7,7 @@
 """
 
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -216,3 +217,24 @@ def test_dismiss_requires_login():
                 orders_router_mod.dismiss_sheet_change(request=_request(None), order_id=order.id, db=db)
             )
         assert exc.value.status_code == 401
+
+
+def test_the_delete_toast_names_the_way_back():
+    """Скасування видалення працювало завжди, але про нього не знав ніхто:
+    тост казав лише «видалено», а стрілка в шапці читається як навігація.
+    Підказка мусить стояти в тому самому повідомленні — саме тоді, коли
+    людина розуміє, що помилилась (прохання власника 07.09.26)."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db)
+        with patch.object(orders_router_mod, "clear_sheet_row_background"):
+            response = asyncio.run(orders_router_mod.delete_order(
+                request=_request(user.id, {"HX-Request": "true"}),
+                order_id=order.id, inline="1", db=db,
+            ))
+
+    trigger = json.loads(response.headers["HX-Trigger"])
+    message = trigger["toast"]["message"]
+    assert "видалено" in message.lower()
+    assert "Крок назад" in message

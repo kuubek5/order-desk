@@ -35,9 +35,17 @@
             </div>
         </div>
         <div class="head-actions">
+            {# Один вхід у пошук на весь застосунок. Поле лишається СПРАВЖНЬОЮ
+               формою на /search (без JS і при Ctrl+кліку працює як раніше), але
+               фокус відкриває палітру: у ній той самий пошук плюс переходи по
+               екранах, а останнім рядком — «показати все» на тому ж /search.
+               Доти вхідів було два — це поле й окремий пункт «Пошук» у рейці, —
+               і оператор щоразу обирав, куди клікнути (07.09.26). #}
             <form method="get" action="/search" class="search" role="search">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" class="duo"/><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
-                <input type="search" name="q" placeholder="Наряд, технік, шлях-ID…" aria-label="Пошук">
+                <input type="search" name="q" placeholder="Наряд, технік, клієнт, шлях-ID…" aria-label="Пошук"
+                       data-km-palette autocomplete="off">
+                <span class="search-kbd" aria-hidden="true">Ctrl K</span>
             </form>
             {% include "_status_legend.html" %}
             {# Моно-лоток захоплених Sum3D ID (Cam-work). Самополлиться; порожній

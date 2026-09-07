@@ -20,6 +20,7 @@ from app.services.handout_qc import qc_checklist_enabled
 from app.services.health_snapshot import last_report
 from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH
 from app.mail_spool import analyze_spool_cached
+from app.backup_parts import PARTS as BACKUP_PARTS
 from app.migration_files import summarize as migration_files_summary
 from app.services.section_gate import sections_admin
 from app.services.settings_nav import can_edit
@@ -383,6 +384,9 @@ def get_settings(
     # Скільки файлів поїде в архіві переїзду — видно ДО кліку, щоб не качати
     # порожній zip і не гадати, чи там щось є (app/migration_files.py).
     context["migration_files"] = migration_files_summary()
+    # Набори часткової копії — людські назви для груп таблиць; сам перелік
+    # живе в app/backup_parts.py, щоб екран і роут не розійшлись.
+    context["backup_parts"] = BACKUP_PARTS
     return templates.TemplateResponse(request, "settings.html", context)
 
 

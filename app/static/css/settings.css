@@ -1120,3 +1120,17 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .scon-health strong { font-size: var(--fs-2); }
 .scon-health ul { margin: 0; padding-left: 18px; }
 .scon-health li { font-size: var(--fs-1); }
+
+/* Набори часткової копії. Кожен рядок — одна річ і одне пояснення під нею:
+   вибір тут робиться раз на рік і в поганий день, тож підказка мусить стояти
+   поруч із галочкою, а не в довідці (07.09.26). */
+.setv2 .bkp-parts{display:flex;flex-direction:column;gap:2px;margin:0 0 14px}
+.setv2 .bkp-part{
+  display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:baseline;
+  padding:8px 10px;border:1px solid transparent;border-radius:var(--r-ctl);cursor:pointer;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease;
+}
+.setv2 .bkp-part:hover{background:var(--raise-3);border-color:var(--line)}
+.setv2 .bkp-part input{margin:0;accent-color:var(--accent)}
+.setv2 .bkp-part-name{color:var(--ink);font-size:var(--fs-2)}
+.setv2 .bkp-part-hint{grid-column:2;color:var(--ink-3);font-size:var(--fs-1);line-height:1.35}

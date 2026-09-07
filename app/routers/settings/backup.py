@@ -16,6 +16,7 @@ from app.backup import (
     restore_backup,
 )
 from app.config import DB_PATH
+from app.backup_parts import PARTS, parts_for_tables, tables_for
 from app.migration_files import build_zip as build_migration_zip
 from app.routers.deps import get_db, require_admin_or_redirect
 from app.services.undo import log_action
@@ -102,6 +103,54 @@ def export_backup(
     )
 
 
+@router.post("/settings/backup/export-part")
+def export_backup_part(
+    request: Request,
+    backup_password: str = Form(...),
+    backup_password_confirm: str = Form(...),
+    parts: list[str] = Form(default=[]),
+    db: Session = Depends(get_db),
+):
+    """Копія ОДНОГО-двох наборів: оператори, клієнти, матеріали, фільтри пошти,
+    пічки з верстатами, Виробіток (app/backup_parts.py).
+
+    Навіщо окремо від повної: буденна біда дрібна — видалили оператора, стерли
+    перелік клієнтів. Заливати заради цього повну копію означає відкотити РАЗОМ
+    із тим усі роботи, зроблені після неї.
+    """
+    user = require_admin_or_redirect(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    tables = tables_for(parts)
+    if not tables:
+        request.session["settings_flash"] = {
+            "kind": "error",
+            "message": "Оберіть хоча б один набір для збереження",
+        }
+        return RedirectResponse("/settings#backup", status_code=303)
+    if len(backup_password) < 8:
+        request.session["settings_flash"] = {
+            "kind": "error",
+            "message": "Пароль резервної копії має містити щонайменше 8 символів",
+        }
+        return RedirectResponse("/settings#backup", status_code=303)
+    if backup_password != backup_password_confirm:
+        request.session["settings_flash"] = {"kind": "error", "message": "Паролі не збігаються"}
+        return RedirectResponse("/settings#backup", status_code=303)
+
+    content = create_backup(db, backup_password, only_tables=tables)
+    chosen = "-".join(part.key for part in PARTS if part.key in set(parts))
+    filename = (
+        f"kuubmill-{chosen or 'part'}-{datetime.now().strftime('%Y%m%d-%H%M')}.json"
+    )
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/settings/backup/import", response_class=HTMLResponse)
 async def import_backup(
     request: Request,
@@ -154,11 +203,25 @@ async def import_backup(
     )
     db.commit()
 
-    request.session["settings_flash"] = {
-        "kind": "success",
-        "message": f"Відновлено: {counts.get('orders', 0)} робіт, {counts.get('clients', 0)} клієнтів, "
-        f"{counts.get('users', 0)} операторів. Увійдіть повторно, якщо змінилися облікові дані.",
-    }
+    # Що саме приїхало, кажемо НАБОРАМИ, а не таблицями: часткова копія
+    # операторів має відзвітувати «оператори», а не «users: 9». І окремо —
+    # що решта даних лишилась недоторканою: саме заради цього часткову копію
+    # й роблять.
+    restored_parts = parts_for_tables(list(counts))
+    if restored_parts and "orders" not in counts:
+        names = ", ".join(part.label.lower() for part in restored_parts)
+        rows = sum(counts.values())
+        message = (
+            f"Повернуто з часткової копії: {names} ({rows} рядків). "
+            "Решти даних це не торкнулось."
+        )
+    else:
+        message = (
+            f"Відновлено: {counts.get('orders', 0)} робіт, "
+            f"{counts.get('clients', 0)} клієнтів, {counts.get('users', 0)} операторів. "
+            "Увійдіть повторно, якщо змінилися облікові дані."
+        )
+    request.session["settings_flash"] = {"kind": "success", "message": message}
     return RedirectResponse("/settings", status_code=303)
 
 

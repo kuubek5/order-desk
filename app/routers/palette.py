@@ -139,6 +139,11 @@ def palette_search(
                 Order.sum3d_id.ilike(pattern, escape="\\"),
                 Order.job_code.ilike(pattern, escape="\\"),
                 Order.client_name.ilike(pattern, escape="\\"),
+                # Технік — поле, яке підказка в шапці обіцяла з самого початку
+                # («Наряд, технік, шлях-ID»), але шукати за ним не вміли ні
+                # палітра, ні сторінка пошуку. Питання «що сьогодні здав
+                # Дмитро» — щоденне (07.09.26).
+                Order.technician_name.ilike(pattern, escape="\\"),
             )
         )
         # Свіже зверху: оператор шукає майже завжди сьогоднішню роботу, а

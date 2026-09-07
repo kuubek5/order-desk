@@ -286,5 +286,18 @@
     if (btn) { event.preventDefault(); open(); }
   });
 
+  // Поле пошуку в шапці — той самий вхід. Фокус (миша АБО Tab) відкриває
+  // палітру й одразу віддає їй курсор: інакше оператор набирав би текст у
+  // полі, яке нічого не підказує, і мусив би тиснути Enter, щоб бодай щось
+  // побачити. Саме поле лишається робочою формою на /search — без JS воно
+  // працює як раніше.
+  document.addEventListener("focusin", function (event) {
+    var field = event.target;
+    if (!field || !field.matches || !field.matches("input[data-km-palette]")) return;
+    if (isOpen()) return;
+    field.blur();
+    open();
+  });
+
   window.KMPalette = { open: open, close: close, isOpen: isOpen };
 })();

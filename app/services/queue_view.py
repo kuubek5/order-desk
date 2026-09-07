@@ -18,7 +18,7 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from urllib.parse import parse_qs, urlencode
+from urllib.parse import urlencode
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -28,7 +28,7 @@ from app import perf
 from app import sync_control
 from app.business_day import business_today
 from app.mail_sync_service import is_mail_sync_running
-from app.models import EmailMessage, Order, SavedQueueView
+from app.models import EmailMessage, Order
 from app.order_folder import (
     attach_email_folder_availability,
     attach_email_preview_tokens,
@@ -583,12 +583,6 @@ def build_queue_view(
             "sort": sort,
             "sort_dir": sort_dir,
             "rows_qs": rows_qs,
-            # Той самий набір фільтрів у КАНОНІЧНІЙ формі — рівно те, що
-            # лягає у збережений вигляд. Порівнянням рядків смуга
-            # підсвічує вигляд, який зараз і застосований; окремий ключ,
-            # а не rows_qs, бо rows_qs несе й невалідний ?date, як його
-            # набрали в адресі.
-            "view_qs": normalize_view_query(rows_qs),
             "sync_speed": SYNC_SPEED_PRESETS,
             "sync_speed_active": sync_control.get_speed_preset(),
             "sync_screen_seconds": get_sync_speed()["screen"],
@@ -626,166 +620,4 @@ def build_queue_view(
 
     # Моно-лоток Sum3D — лише для повного рендера (у шапці, поза #queue-rows).
     context["sum3d_projects"] = _s3
-    # Збережені вигляди теж лише тут: смуга фільтрів стоїть ВИЩЕ
-    # `.worklayout`, полл рядків її не свапає — тягнути їх кожні 15 с
-    # означало б зайвий запит заради розмітки, якої в відповіді немає.
-    context["saved_views"] = saved_views(db, user)
     return QueueView("queue.html", context)
-
-
-# ── Збережені вигляди черги ────────────────────────────────────────────────
-#
-# Вигляд = ім'я + рядок GET-параметрів, який уже розуміє `build_queue_view`
-# вище. Свідомо НЕ окремий формат: черга фільтрується параметрами адреси, і
-# другий, паралельний опис фільтрів розійшовся б з ним на першій же правці —
-# збережені вигляди тихо почали б показувати не те. Тому застосування вигляду
-# — це просто перехід на `/?<query>`, без жодної нової гілки фільтрації.
-
-# Назва мусить влазити в пігулку смуги; довша ламала б перенос рядків.
-VIEW_NAME_MAX = 60
-# Смуга фільтрів і так розросталась на два-три рядки (скарга власника
-# 30.08.26) — стеля тримає її в межах одного-двох.
-MAX_SAVED_VIEWS = 12
-
-_PERIODS = ("today", "yesterday", "tomorrow", "earlier")
-
-
-class SavedViewError(ValueError):
-    """Причина відмови, яку видно операторові прямо в смузі фільтрів."""
-
-
-def normalize_view_query(raw: str) -> str:
-    """Звести рядок фільтрів до канонічного вигляду, викинувши все чуже.
-
-    Ключ, якого черга не знає (або вже не знає — фільтр прибрали), просто
-    зникає; значення поза допустимим набором падає в замовчування. Тому
-    вигляд, збережений півроку тому, відкриє чергу, а не 500-ту: правило
-    «невідоме значення тихо падає в замовчування» тут те саме, що в
-    `build_queue_view`.
-
-    Порядок ключів — рівно той, що в `rows_qs`. Це не косметика: рівність
-    рядків і є ознакою «цей вигляд зараз застосований», і смуга підсвічує
-    активний без жодного розбору параметрів у шаблоні.
-    """
-    values = parse_qs(raw or "")
-
-    def first(key: str) -> str:
-        got = values.get(key) or []
-        return got[0].strip() if got else ""
-
-    period = first("period")
-    if period not in _PERIODS:
-        period = "today"
-    ready = first("ready")
-    if ready not in READY_FILTERS:
-        ready = "all"
-    source = first("source")
-    if source not in SOURCE_FILTERS:
-        source = "all"
-
-    items: list[tuple[str, str]] = []
-    if first("overdue") == "1":
-        items.append(("overdue", "1"))
-    items += [("period", period), ("ready", ready), ("source", source)]
-    if first("mine") == "1":
-        items.append(("mine", "1"))
-    day = first("date")
-    if parse_sheet_tab(day) is not None:
-        page = first("date_page")
-        items.append(("date", day))
-        items.append(("date_page", page if page.isdigit() else "0"))
-    sort = first("sort")
-    if sort in QUEUE_SORT_FIELDS:
-        items.append(("sort", sort))
-        items.append(("dir", "desc" if first("dir") == "desc" else "asc"))
-    return urlencode(items)
-
-
-def saved_views(db: Session, user) -> list[SavedQueueView]:
-    """Вигляди ЦЬОГО оператора, у порядку смуги.
-
-    `user_id` в умові — не оптимізація, а сама приватність: іншого входу до
-    таблиці немає, тож фільтр тут і є гарантією, що чужий набір не покажеться.
-    """
-    return list(
-        db.scalars(
-            select(SavedQueueView)
-            .where(SavedQueueView.user_id == user.id)
-            .order_by(SavedQueueView.position, SavedQueueView.id)
-        ).all()
-    )
-
-
-def own_view(db: Session, user, view_id: int) -> SavedQueueView | None:
-    """Вигляд оператора за id — або None.
-
-    `user_id` знову В УМОВІ, а не перевіркою після вибірки: підставивши чужий
-    номер в адресу, оператор не має ні прочитати, ні перейменувати, ні
-    видалити чужий вигляд.
-    """
-    return db.scalars(
-        select(SavedQueueView).where(
-            SavedQueueView.id == view_id,
-            SavedQueueView.user_id == user.id,
-        )
-    ).first()
-
-
-def _clean_name(name: str) -> str:
-    """Назва без крайніх і подвійних пробілів, обрізана під ширину пігулки."""
-    return " ".join((name or "").split())[:VIEW_NAME_MAX]
-
-
-def save_view(db: Session, user, name: str, query: str) -> SavedQueueView:
-    """Зберегти поточний набір фільтрів під назвою."""
-    clean = _clean_name(name)
-    if not clean:
-        raise SavedViewError("Дай виглядові назву — інакше в смузі його не впізнати.")
-    existing = saved_views(db, user)
-    if len(existing) >= MAX_SAVED_VIEWS:
-        raise SavedViewError(
-            f"Більше {MAX_SAVED_VIEWS} виглядів у смугу не влізе — прибери зайвий."
-        )
-    if any(view.name.casefold() == clean.casefold() for view in existing):
-        raise SavedViewError(f"Вигляд «{clean}» уже збережено.")
-    view = SavedQueueView(
-        user_id=user.id,
-        name=clean,
-        query=normalize_view_query(query),
-        # Новий вигляд стає В КІНЕЦЬ смуги: жоден уже збережений не рухається
-        # (той самий урок, що зі шпильками «мої зараз»).
-        position=(existing[-1].position + 1) if existing else 0,
-        created_at=datetime.now(),
-    )
-    db.add(view)
-    db.commit()
-    return view
-
-
-def rename_view(db: Session, user, view_id: int, name: str) -> SavedQueueView:
-    """Перейменувати СВІЙ вигляд."""
-    view = own_view(db, user, view_id)
-    if view is None:
-        raise SavedViewError("Такого вигляду немає.")
-    clean = _clean_name(name)
-    if not clean:
-        raise SavedViewError("Порожня назва — вигляд лишився як був.")
-    clash = any(
-        other.id != view.id and other.name.casefold() == clean.casefold()
-        for other in saved_views(db, user)
-    )
-    if clash:
-        raise SavedViewError(f"Вигляд «{clean}» уже збережено.")
-    view.name = clean
-    db.commit()
-    return view
-
-
-def delete_view(db: Session, user, view_id: int) -> bool:
-    """Прибрати СВІЙ вигляд. False — такого вигляду в цього оператора немає."""
-    view = own_view(db, user, view_id)
-    if view is None:
-        return False
-    db.delete(view)
-    db.commit()
-    return True

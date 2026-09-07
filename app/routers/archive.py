@@ -30,6 +30,10 @@ from app.business_day import business_today
 from app.models import Order
 from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.services.formatting import uk_month_label
+from app.order_folder import (
+    attach_export_folder_uris,
+    attach_job_code_folder_uris,
+)
 from app.services.order_dates import order_date, parse_sheet_tab
 from app.services.queue import RETENTION_DAYS, order_is_archived
 
@@ -125,6 +129,20 @@ def _month_detail_ctx(year: int, mon: int, day_counts: dict, month_counts: dict)
     }
 
 
+
+def _with_folders(db: Session, orders: list[Order]) -> list[Order]:
+    """Іконка файлів у рядку архіву — та сама, що в черзі.
+
+    Архів — це «зазирнути в історію», і питання «а де лежали файли тієї
+    роботи» там таке саме буденне, як у черзі. Скан робиться на ОДИН день
+    (десятки рядків), а не на весь архів, тож мережева шара не страждає
+    (прохання власника 07.09.26).
+    """
+    attach_export_folder_uris(db, orders)
+    attach_job_code_folder_uris(db, orders)
+    return orders
+
+
 def _day_orders(archived: list[Order], selected_date: date) -> list[Order]:
     """Роботи дня В ПОРЯДКУ таблиці (за row_number) — «зазирнути в історію»:
     першочерговість рядків збережена так само, як у Google Таблиці. Рядки без
@@ -174,7 +192,7 @@ def get_archive(request: Request, month: str = "", date: str = "", db: Session =
         if selected_date is not None:
             base["selected_date"] = selected_date
             base["day_label"] = selected_date.strftime("%d.%m.%Y")
-            base["day_orders"] = _day_orders(archived, selected_date)
+            base["day_orders"] = _with_folders(db, _day_orders(archived, selected_date))
     return templates.TemplateResponse(request, "archive.html", base)
 
 
@@ -217,7 +235,7 @@ def get_archive_day(
         "user": user,
         "selected_date": selected_date,
         "day_label": selected_date.strftime("%d.%m.%Y"),
-        "day_orders": _day_orders(archived, selected_date),
+        "day_orders": _with_folders(db, _day_orders(archived, selected_date)),
     }
     return templates.TemplateResponse(request, "_arch_daylist.html", ctx)
 
