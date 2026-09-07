@@ -16,6 +16,7 @@ from app.backup import (
     restore_backup,
 )
 from app.config import DB_PATH
+from app.migration_files import build_zip as build_migration_zip
 from app.routers.deps import get_db, require_admin_or_redirect
 from app.services.undo import log_action
 from app.settings_store import (
@@ -33,6 +34,34 @@ from app.sheet_backup import (
 from .common import require_settings_edit
 
 router = APIRouter()
+
+
+@router.get("/settings/backup/files.zip")
+def export_migration_files(request: Request, db: Session = Depends(get_db)):
+    """Другий файл переїзду: теки з фото, яких копія бази свідомо не несе.
+
+    Копія везе рядки, а байти файлів — ні (див. коментар до
+    `ShiftNoteImage.pruned_at`: відсутнє фото й прибране автоприбиранням
+    мусять виглядати однаково, одним станом). Через це переїзд лишався
+    двоскладовим — файл копії плюс усна інструкція «скопіюй ще кілька тек».
+    Тепер це один архів, і порядок дій лежить усередині текстом
+    (app/migration_files.py).
+
+    Адмін + лише з цього ПК: читає теки саме цієї машини, як і решта дій
+    рівня машини.
+    """
+    user = require_admin_or_redirect(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M")
+    return Response(
+        content=build_migration_zip(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="kuubmill-files-{stamp}.zip"'
+        },
+    )
 
 
 @router.post("/settings/backup/export")

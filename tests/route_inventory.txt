@@ -45,6 +45,7 @@ GET /palette/commands
 GET /palette/search
 GET /search
 GET /settings
+GET /settings/backup/files.zip
 GET /settings/changelog
 GET /settings/feedback
 GET /settings/materials

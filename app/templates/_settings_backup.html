@@ -35,6 +35,26 @@
                             </div>
                             <button type="submit" class="login-submit settings-submit">Створити й завантажити бекап</button>
                         </form>
+
+                        {# Другий файл переїзду. Копія бази свідомо не несе
+                           байтів файлів (див. ShiftNoteImage.pruned_at), тож
+                           досі це була усна інструкція «скопіюй ще кілька
+                           тек». Тепер стоїть поруч із копією, бо питання одне.
+                           Числа видно ДО кліку: інакше незрозуміло, чи там
+                           узагалі щось є. #}
+                        {% set moving = migration_files | default([]) %}
+                        {% set moving_total = moving | sum(attribute='files') %}
+                        <p class="settings-help" style="margin-top:14px;">
+                            Копія несе рядки бази, але не самі файли.
+                            {% if moving_total %}
+                            Для переїзду на інший компʼютер потрібен ще архів із ними:
+                            {% for folder in moving %}{% if folder.files %}{{ folder.label }} — {{ folder.files }}{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}.
+                            {% else %}
+                            Таких файлів зараз немає — архів вийде порожній, і це нормально.
+                            {% endif %}
+                            Усередині лежить і порядок дій на новій машині.
+                        </p>
+                        <a class="btn" href="/settings/backup/files.zip">Зібрати файли для переїзду</a>
                     </div>
 
                     {# Автоматичні місячні знімки БД (app/monthly_backup.py). Read-only

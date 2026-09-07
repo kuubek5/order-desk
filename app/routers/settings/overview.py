@@ -20,6 +20,7 @@ from app.services.handout_qc import qc_checklist_enabled
 from app.services.health_snapshot import last_report
 from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH
 from app.mail_spool import analyze_spool_cached
+from app.migration_files import summarize as migration_files_summary
 from app.services.section_gate import sections_admin
 from app.services.settings_nav import can_edit
 from app.services.undo import log_action
@@ -379,6 +380,9 @@ def get_settings(
     # нього ж: жодного власного джерела правди — інакше плита й тіло
     # розділу показували б різні числа (урок смуги печей).
     context["slabs"] = build_slabs(db, context)
+    # Скільки файлів поїде в архіві переїзду — видно ДО кліку, щоб не качати
+    # порожній zip і не гадати, чи там щось є (app/migration_files.py).
+    context["migration_files"] = migration_files_summary()
     return templates.TemplateResponse(request, "settings.html", context)
 
 
