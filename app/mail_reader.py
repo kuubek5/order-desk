@@ -4,7 +4,7 @@ import logging
 import mimetypes
 import re
 import time
-from datetime import date, timedelta
+from datetime import timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -12,6 +12,7 @@ from imap_tools import AND, MailBox
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.business_day import business_today
 from app.mail_filters import apply_filters_to_email
 from app.mail_parser import guess_fields_from_text, guess_service_type
 from app.material_catalog import ensure_seeded as ensure_materials_seeded, load_alias_rows
@@ -611,7 +612,11 @@ def fetch_new_emails(session: Session, attachments_dir: Path) -> int:
     # the spool (not only whitelisted senders). Read once per sync.
     download_all = get_mail_download_all(session)
 
-    cutoff = date.today() - timedelta(days=IMAP_LOOKBACK_DAYS)
+    # Робоча доба, не календарна: о 00:05 нічна зміна ще веде вчорашній день, а
+    # `date.today()` уже перекинувся — вікно пошуку стрибало на добу раніше, і
+    # найстаріші листи випадали з нього просто посеред зміни (CLAUDE.md §14,
+    # ревʼю 07.09.26, LOW).
+    cutoff = business_today() - timedelta(days=IMAP_LOOKBACK_DAYS)
     created = 0
 
     with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password) as mailbox:

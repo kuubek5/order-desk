@@ -7,8 +7,11 @@
 Відкат прийняття (`restore_email`) — дзеркальний випадок.
 """
 
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -402,3 +405,94 @@ def test_rejecting_an_accepted_letter_is_refused_not_half_done(tmp_path, monkeyp
         db.refresh(email)
         assert email.status == "прийнято"                  # рішення не переписане
         assert db.scalars(select(Order)).all() != []       # робота на місці
+
+
+def test_a_failed_rollback_of_the_spool_return_is_reported_not_swallowed(tmp_path, monkeypatch):
+    """LOW: відкат `restore_attachments_to_spool` мовчав про власні помилки.
+
+    Файл, який не вдалося повернути, зависає між export і спулом: у базі його
+    вже немає, на диску ще є. Без повідомлення про це не знає ніхто."""
+    from pathlib import Path as _Path
+
+    from app import mail_export
+
+    spool = tmp_path / "spool" / "u9"
+    export_dir = tmp_path / "export" / "Клієнт"
+    export_dir.mkdir(parents=True)
+    first = export_dir / "a.stl"
+    second = export_dir / "b.stl"
+    first.write_bytes(b"A")
+    second.write_bytes(b"B")
+
+    real_move = mail_export._move_file
+    calls = {"n": 0}
+
+    def flaky_move(source: _Path, destination: _Path):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OSError("шара зникла")      # падаємо на другому файлі
+        if calls["n"] > 2:
+            raise OSError("і відкотити не вийшло")
+        return real_move(source, destination)
+
+    monkeypatch.setattr(mail_export, "_move_file", flaky_move)
+
+    with pytest.raises(OSError) as failed:
+        mail_export.restore_attachments_to_spool(
+            tmp_path / "spool", "u9", [first, second]
+        )
+
+    assert "відкат" in str(failed.value)       # сказано, що відкат теж не вдався
+    assert str(spool.parent) in str(spool.parent)
+
+
+def test_imap_window_follows_the_working_day_not_the_calendar(tmp_path, monkeypatch):
+    """LOW: о 00:05 нічна зміна ще веде вчорашній день.
+
+    `date.today()` о цій порі вже перекинувся, і вікно пошуку листів стрибало
+    на добу раніше — найстаріші листи випадали з нього посеред зміни."""
+    from datetime import date as real_date
+
+    from app import mail_reader
+
+    seen: dict = {}
+
+    class _Mailbox:
+        """Рівно стільки поштової скриньки, скільки треба, щоб дійти до запиту."""
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def login(self, *args, **kwargs):
+            return self
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def fetch(self, criteria, **kwargs):
+            return []
+
+        @property
+        def folder(self):
+            return SimpleNamespace(status=lambda *a, **k: {})
+
+    monkeypatch.setattr(mail_reader, "business_today", lambda: real_date(2026, 9, 6))
+    monkeypatch.setattr(mail_reader, "MailBox", _Mailbox)
+    monkeypatch.setattr(mail_reader, "_folder_uidvalidity", lambda box: "2")
+    monkeypatch.setattr(mail_reader, "get_imap_login", lambda db: "u")
+    monkeypatch.setattr(mail_reader, "get_imap_password", lambda db: "p")
+    monkeypatch.setattr(mail_reader, "get_mail_download_all", lambda db: False)
+    monkeypatch.setattr(mail_reader, "ensure_materials_seeded", lambda db: None)
+    monkeypatch.setattr(mail_reader, "load_alias_rows", lambda db: [])
+    monkeypatch.setattr(mail_reader, "AND", lambda **kw: seen.update(kw) or "query")
+
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        mail_reader.fetch_new_emails(db, tmp_path)
+
+    assert seen["date_gte"] == real_date(2026, 9, 6) - timedelta(
+        days=mail_reader.IMAP_LOOKBACK_DAYS
+    )

@@ -581,7 +581,22 @@ def fetch_email_link(
         handled = set(json.loads(email.handled_link_refs) if email.handled_link_refs else [])
         handled.add(ref)
         email.handled_link_refs = json.dumps(sorted(handled))
-    db.commit()
+    try:
+        db.commit()
+    except Exception as commit_error:  # noqa: BLE001 — файл уже на диску
+        # Файл скачано ДО коміту. Невдалий коміт відкочує рядок `Attachment`,
+        # і в спулі лишається файл, якого в базі немає: у тріажі його не
+        # видно, але «Відкрити папку» показує зайву коронку поруч зі
+        # справжніми (ревʼю 07.09.26, LOW).
+        db.rollback()
+        logger.exception("Link download commit failed for email %s", email.id)
+        if status == "done" and path is not None:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.error("Orphan link file left in spool: %s", path)
+        status, result_name = "error", None
+        message = f"не вдалося зберегти запис про файл: {commit_error}"
 
     # Auto-unpack a freshly downloaded archive (client packed the STL in a
     # .zip/.rar). Best-effort; the extracted files show on the next panel load,

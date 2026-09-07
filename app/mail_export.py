@@ -250,12 +250,21 @@ def restore_attachments_to_spool(
                 _move_file(source, destination)
                 completed.append((source, destination))
     except Exception:
+        # Дзеркало відкату в `save_attachments_to_export`: помилки самого
+        # відкату не ковтаємо. Файл, який не вдалося повернути, зависає між
+        # export і спулом — у базі його вже немає, на диску ще є, і без цього
+        # рядка про нього не дізнається ніхто (ревʼю 07.09.26, LOW).
+        rollback_errors = []
         for source, destination in reversed(completed):
             try:
                 if destination.exists():
                     _move_file(destination, source)
-            except Exception:
-                pass
+            except Exception as rollback_error:  # noqa: BLE001 — повідомляємо, не кидаємо
+                rollback_errors.append(f"{destination}: {rollback_error}")
+        if rollback_errors:
+            raise OSError(
+                "помилка повернення файлів і відкату: " + "; ".join(rollback_errors)
+            )
         raise
     return [destination for _, destination in moves]
 
