@@ -368,6 +368,7 @@ def create_manual_order(
     sum3d_id: list[str] = Form([]),
     job_code: list[str] = Form([]),
     technician_name: list[str] = Form([]),
+    opak: list[str] = Form([]),
     db: Session = Depends(get_db),
 ):
     """Форма ручного додавання: розібрати, віддати сервісу, повернути в чергу.
@@ -438,7 +439,7 @@ def create_manual_order(
         db, user=user, work_type=work_type, target_tab=wanted_tab,
         client_name=client_name, work_order_no=work_order_no, kind=kind,
         material_color=material_color, quantity=quantity, sum3d_id=sum3d_id,
-        job_code=job_code, technician_name=technician_name,
+        job_code=job_code, technician_name=technician_name, opak=opak,
         write_rows=_write_rows,
     )
     if result.error is not None:

@@ -684,7 +684,8 @@ _BLUE = {"red": 0.2901961, "green": 0.5254902, "blue": 0.9098039}
 
 def _row_value_map(work: dict) -> dict[int, str]:
     """1-indexed column → value for one work row. Quantity/material/вид|name are
-    always written; наряд/job/tech/Sum3D only when set (so a blank stays blank)."""
+    always written; наряд/job/tech/Sum3D/коментар only when set (so a blank stays
+    blank)."""
     cells = {
         COL_QUANTITY: work.get("quantity") or "",
         COL_MATERIAL_COLOR: work.get("material_color") or "",
@@ -695,6 +696,9 @@ def _row_value_map(work: dict) -> dict[int, str]:
         (COL_JOB_CODE, work.get("job_code")),
         (COL_TECHNICIAN, work.get("technician_name")),
         (COL_SUM3D_ID, work.get("sum3d_id")),
+        # Опак пишеться в коментар для CAM — так його вписують рукою, і так
+        # його рахують за зміну, дивлячись у одну колонку.
+        (COL_CAM_COMMENT, work.get("cam_comment")),
     ):
         if value:
             cells[col] = value

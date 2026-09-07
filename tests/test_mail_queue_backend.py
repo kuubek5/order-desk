@@ -279,7 +279,7 @@ def _empty_form():
     lists — merge overrides in per test."""
     return dict(
         client_name=[], work_order_no=[], kind=[], material_color=[],
-        quantity=[], sum3d_id=[], job_code=[], technician_name=[],
+        quantity=[], sum3d_id=[], job_code=[], technician_name=[], opak=[],
     )
 
 

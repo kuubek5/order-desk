@@ -12,6 +12,7 @@ from app.material_catalog import (
     material_id_by_name,
     resolve_material_id,
 )
+from app.services.opak import opak_units
 from app.models import Comment, Order, ReworkRecord, StatusEvent
 from app.parser import HEADER_ROWS, OrderRow
 from app.services.order_dates import parse_sheet_tab
@@ -110,6 +111,9 @@ def _fields(row: OrderRow) -> dict:
         "due_time": row.due_time,
         "technician_name": row.technician_name or None,
         "cam_comment": row.cam_comment or None,
+        # Опак живе в тексті коментаря; число виводимо щоразу заново, тож
+        # виправлений рукою коментар сам себе лікує (app/services/opak.py).
+        "opak_units": opak_units(row.cam_comment),
         "sum3d_id": row.sum3d_id or None,
         "calculated_raw": row.calculated or None,
         "milled_raw": row.milled or None,
@@ -141,7 +145,7 @@ TECHNICIAN_EDITED_FIELDS = {
 _ALL_ROW_FIELDS = (
     "work_order_no", "job_code", "quantity", "material_color", "kind",
     "due_time", "technician_name", "sum3d_id", "calculated_raw", "milled_raw",
-    "last_milled_date", "mill_count", "client_name",
+    "last_milled_date", "mill_count", "client_name", "opak_units",
 )
 
 

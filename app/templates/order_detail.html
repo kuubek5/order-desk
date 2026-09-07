@@ -51,6 +51,9 @@
         <div class="kv"><span>Вид роботи</span><b>{{ order.kind or '—' }}</b></div>
         <div class="kv"><span>Кількість</span><b>{{ order.quantity or '—' }}</b></div>
         <div class="kv"><span>Технік</span><b>{{ order.technician_name or '—' }}</b></div>
+        {# Опак показуємо лише коли він є: у більшості робіт його немає,
+           і порожній рядок «Опак —» був би шумом у кожному паспорті. #}
+        {% if order.opak_units %}<div class="kv"><span>Опак</span><b>{{ order.opak_units }}</b></div>{% endif %}
     </div>
 
     <div class="dsec">

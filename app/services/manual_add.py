@@ -29,6 +29,7 @@ from app.material_catalog import (
     material_id_by_name,
     resolve_material_id,
 )
+from app.services.opak import format_opak, opak_units
 from app.models import Order, StatusEvent, SyncLog, User
 from app.parser import HEADER_ROWS
 from app.services.order_dates import parse_sheet_tab
@@ -98,6 +99,7 @@ def _collect_works(
     sum3d_id: list[str],
     job_code: list[str],
     technician_name: list[str],
+    opak: list[str],
 ) -> tuple[list[dict], str | None]:
     """Паралельні списки з форми → список робіт (або текст помилки).
 
@@ -108,6 +110,7 @@ def _collect_works(
     row_count = max(
         len(client_name), len(work_order_no), len(kind), len(material_color),
         len(quantity), len(sum3d_id), len(job_code), len(technician_name),
+        len(opak),
     )
     if row_count == 0:
         return [], "Додайте хоча б одну роботу."
@@ -124,17 +127,19 @@ def _collect_works(
         row_sum3d = _at(sum3d_id, i)
         row_job = _at(job_code, i)
         row_tech = _at(technician_name, i)
+        row_opak = format_opak(_at(opak, i))
 
         if is_lab:
-            if not any((row_naryad, row_kind, row_material, row_job, row_tech, row_sum3d)):
+            if not any((row_naryad, row_kind, row_material, row_job, row_tech, row_sum3d, row_opak)):
                 continue  # empty lab row
             works.append({
                 "source": "lab", "work_order_no": row_naryad, "kind": row_kind,
                 "e_value": row_kind, "material_color": row_material, "quantity": row_qty,
                 "job_code": row_job, "technician_name": row_tech, "sum3d_id": row_sum3d,
+                "cam_comment": row_opak,
             })
         else:
-            if not any((row_client, row_material, row_qty, row_job, row_tech, row_sum3d)):
+            if not any((row_client, row_material, row_qty, row_job, row_tech, row_sum3d, row_opak)):
                 continue  # empty client row
             if not row_client:
                 return [], f"Рядок {i + 1}: вкажіть імʼя клієнта."
@@ -144,6 +149,7 @@ def _collect_works(
                 "source": "sheet_client", "client_name": row_client,
                 "e_value": row_client, "material_color": row_material, "quantity": row_qty,
                 "job_code": row_job, "technician_name": row_tech, "sum3d_id": row_sum3d,
+                "cam_comment": row_opak,
             })
 
     if not works:
@@ -183,6 +189,7 @@ def create_manual_batch(
     sum3d_id: list[str],
     job_code: list[str],
     technician_name: list[str],
+    opak: list[str],
     write_rows: Callable[..., object],
 ) -> ManualBatchResult:
     """Додати одну АБО кілька робіт руками й віддзеркалити їх у таблицю.
@@ -209,7 +216,7 @@ def create_manual_batch(
         is_lab=is_lab,
         client_name=client_name, work_order_no=work_order_no, kind=kind,
         material_color=material_color, quantity=quantity, sum3d_id=sum3d_id,
-        job_code=job_code, technician_name=technician_name,
+        job_code=job_code, technician_name=technician_name, opak=opak,
     )
     if error is not None:
         return ManualBatchResult(error=error)
@@ -253,6 +260,8 @@ def create_manual_batch(
                 material_color=work["material_color"] or None, quantity=work["quantity"] or None,
                 job_code=work["job_code"] or None, technician_name=work["technician_name"] or None,
                 sum3d_id=work["sum3d_id"] or None,
+                cam_comment=work.get("cam_comment") or None,
+                opak_units=opak_units(work.get("cam_comment")),
                 status=STATUS_ACCEPTED if work["sum3d_id"] else STATUS_NEW,
             )
         else:
@@ -261,7 +270,9 @@ def create_manual_batch(
                 client_name=work["client_name"], material_color=work["material_color"] or None,
                 quantity=work["quantity"] or None, job_code=work["job_code"] or None,
                 technician_name=work["technician_name"] or None,
-                sum3d_id=work["sum3d_id"] or None, status="нове",
+                sum3d_id=work["sum3d_id"] or None,
+                cam_comment=work.get("cam_comment") or None,
+                opak_units=opak_units(work.get("cam_comment")), status="нове",
             )
         order.material_id = resolve_material_id(order.material_color, alias_rows, name_by_id)
         db.add(order)

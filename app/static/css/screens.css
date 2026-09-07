@@ -624,6 +624,54 @@
   outline-offset: 2px;
 }
 
+/* Керування вікном тримається однією групою в правому куті: тло, розмір,
+   закриття. Раніше «розгорнути» стояло посеред шапки, окремо від ✕, і рука
+   щоразу шукала його заново. */
+.stl-panel-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.stl-panel-light {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--card-2);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: color var(--ui-speed) ease, border-color var(--ui-speed) ease;
+}
+.stl-panel-light svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+.stl-panel-light:hover { color: var(--ink); border-color: var(--control-edge); }
+.stl-panel-light[aria-pressed="true"] { color: var(--ink); border-color: var(--control-edge); }
+.stl-panel-light:focus-visible { outline: 2px solid var(--accent-b); outline-offset: 2px; }
+
+/* Шапка — ще й ручка вікна: за неї його тягнуть. Курсор про це й каже. */
+.stl-panel-head { cursor: grab; user-select: none; }
+.stl-panel.is-dragging .stl-panel-head { cursor: grabbing; }
+.stl-panel.is-dragging { transition: none; }   /* тягнеться за вказівником, без інерції */
+.stl-panel.is-max .stl-panel-head { cursor: default; }
+
+/* Світле тло: сіра модель на білому. Дрібний рельєф анатомії на теплій
+   темній сцені читається гірше, а звірка коронки йде саме по рельєфу.
+   Колір самої моделі ставить JS — тут лише сцена й обрамлення. */
+.stl-panel.is-light .stl-panel-stage {
+  background: radial-gradient(120% 120% at 50% 0, #ffffff, #e9edf2 78%);
+  border-color: #cdd4dc;
+}
+.stl-panel.is-light .stl-panel-status { color: #4a5561; }
+
 
 /* ── Здоровʼя синку: кружок у рейці + екран «Журнал синку» (крок 3.1) ──────
    screens.css підключений ПІСЛЯ rail.css, тож ці правила лягають зверху —

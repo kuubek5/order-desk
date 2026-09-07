@@ -54,21 +54,57 @@
   // заморозка, а збережений вибір повертається при новому відкритті.
   const SPEED_STORAGE_KEY = "stl-preview-spin-speed";
 
-  // Розмір панелі теж запам'ятовується, і дефолт тут — РОЗГОРНУТА (аудит
-  // 05.09.26, UX 1.5). STL-прев'ю — головний інструмент звірки на видачі
-  // (CLAUDE.md §2, §9.4): оператор відкриває його на кожну коронку і щоразу
-  // мусив тиснути «розгорнути». На 300×240 сусідні анатомії не розрізняються,
-  // тож маленька панель — це і зайвий клік, і ризик видати не ту роботу.
+  // Розмір панелі запам'ятовується між відкриттями. Дефолт — МІНІАТЮРА
+  // біля рядка (рішення власника 07.09.26): у черзі прев'ю відкривають
+  // мимохідь, «глянути, що це», і повний екран щоразу перекривав саму
+  // чергу. Розгортання лишається одним кліком і запам'ятовується — хто
+  // звіряє коронки на видачі, вмикає його раз і далі має великий кадр.
   const MAX_STORAGE_KEY = "stl-preview-max";
 
-  // Дефолт живе САМЕ ТУТ, а не в ядрі: панель видачі без збереженого
-  // вибору відкривається РОЗГОРНУТОЮ, галерея тріажу — вбудованою.
+  // Дефолт живе САМЕ ТУТ, а не в ядрі: у панелі він свій, у галереї тріажу
+  // свій.
   function loadMaxPreference() {
-    return Core.readBool(MAX_STORAGE_KEY, true);
+    return Core.readBool(MAX_STORAGE_KEY, false);
   }
 
   function saveMaxPreference(on) {
     Core.writeBool(MAX_STORAGE_KEY, on);
+  }
+
+  // Світле тло — окремий режим перегляду (прохання власника 07.09.26): сіра
+  // модель на білому. Темна тепла палітра гарна, але дрібний рельєф
+  // анатомії на ній читається гірше, а звірка йде саме по рельєфу. Вибір
+  // запамʼятовується, як і розмір.
+  const LIGHT_STORAGE_KEY = "stl-preview-light";
+  // Сірий пластик на білому: контраст дає тінь, а не колір.
+  const LIGHT_MODEL_COLOR = 0x9099a3;
+
+  function loadLightPreference() {
+    return Core.readBool(LIGHT_STORAGE_KEY, false);
+  }
+
+  function saveLightPreference(on) {
+    Core.writeBool(LIGHT_STORAGE_KEY, on);
+  }
+
+  // Місце вікна теж запамʼятовується (прохання власника 07.09.26). Оператор
+  // одного разу відсуває панель туди, де вона не перекриває потрібний
+  // стовпець, і далі вона там і зʼявляється — інакше кожне відкриття
+  // починалося б з того самого перетягування.
+  const POS_X_KEY = "stl-preview-x";
+  const POS_Y_KEY = "stl-preview-y";
+  // Межа свідомо широка: вікно міг посунути монітор більший за цей.
+  const POS_MAX = 20000;
+
+  function loadPanelPos() {
+    const x = Core.readNumber(POS_X_KEY, 0, POS_MAX);
+    const y = Core.readNumber(POS_Y_KEY, 0, POS_MAX);
+    return x === null || y === null ? null : { left: x, top: y };
+  }
+
+  function savePanelPos(left, top) {
+    Core.writeNumber(POS_X_KEY, Math.round(left));
+    Core.writeNumber(POS_Y_KEY, Math.round(top));
   }
 
   function loadSavedSpeed() {
@@ -165,7 +201,28 @@
       resizeRenderer();
     });
     state.maxBtnEl = maxBtn;
-    head.appendChild(maxBtn);
+
+    // Перемикач тла. Стоїть у тій самій групі, що «розгорнути» і «✕»:
+    // керування вікном тримається купи в правому куті, а не розповзається
+    // по всій шапці.
+    const lightBtn = document.createElement("button");
+    lightBtn.type = "button";
+    lightBtn.className = "stl-panel-light";
+    lightBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" stroke="none"/></svg>';
+    lightBtn.addEventListener("click", () => {
+      const on = state.panelEl.classList.toggle("is-light");
+      syncLightButton(on);
+      saveLightPreference(on);
+      applyModelColor(on);
+    });
+    state.lightBtnEl = lightBtn;
+
+    const tools = document.createElement("div");
+    tools.className = "stl-panel-tools";
+    tools.appendChild(lightBtn);
+    tools.appendChild(maxBtn);
+    head.appendChild(tools);
 
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
@@ -173,8 +230,9 @@
     closeBtn.setAttribute("aria-label", "Закрити");
     closeBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
     closeBtn.addEventListener("click", closePanel);
-    head.appendChild(closeBtn);
+    tools.appendChild(closeBtn);
     panel.appendChild(head);
+    attachPanelDrag(head, panel);
 
     const stage = document.createElement("div");
     stage.className = "stl-panel-stage";
@@ -302,6 +360,9 @@
     // Камера при цьому вертається в дефолтну позицію — нова модель
     // має починатись із зрозумілого ракурсу, а не з чужого зуму.
     Core.showGeometry(state, geometry);
+    // Ядро фарбує модель кольором теми; якщо панель у світлому режимі,
+    // перефарбовуємо одразу — інакше перший кадр блимає темним.
+    applyModelColor(state.panelEl.classList.contains("is-light"));
     setStatus(null);
     startRenderLoop();
   }
@@ -479,6 +540,18 @@
     selectFile(0);
   }
 
+  // Вікно, збережене під інший розмір екрана (інший монітор, згорнуте
+  // вікно браузера), не має лишитись за краєм — його довелося б діставати
+  // перезавантаженням сторінки. Тому збережене місце завжди підтискається
+  // під поточний екран.
+  function clampToViewport(left, top, pw, ph) {
+    const margin = 8;
+    return {
+      left: Math.max(margin, Math.min(left, window.innerWidth - pw - margin)),
+      top: Math.max(margin, Math.min(top, window.innerHeight - ph - margin)),
+    };
+  }
+
   function positionPanel(target) {
     ensurePanel();
     const panel = state.panelEl;
@@ -489,6 +562,16 @@
     const ph = panel.offsetHeight;
     panel.hidden = true;
     panel.style.visibility = "";
+
+    // Місце, яке оператор вибрав сам, важить більше за близькість до рядка:
+    // він відсував вікно рівно тому, що автопозиція перекривала потрібне.
+    const saved = loadPanelPos();
+    if (saved) {
+      const fit = clampToViewport(saved.left, saved.top, pw, ph);
+      panel.style.left = `${fit.left}px`;
+      panel.style.top = `${fit.top}px`;
+      return;
+    }
 
     const rect = target.getBoundingClientRect();
     const margin = 10;
@@ -503,6 +586,81 @@
 
     panel.style.left = `${left}px`;
     panel.style.top = `${top}px`;
+  }
+
+  function syncLightButton(on) {
+    if (!state.lightBtnEl) return;
+    const label = on ? "Темне тло" : "Світле тло";
+    state.lightBtnEl.setAttribute("aria-label", label);
+    state.lightBtnEl.title = label;
+    state.lightBtnEl.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+
+  // Колір самої моделі міняється тут, а не в ядрі: ядро кешує колір теми
+  // на весь документ, а це вибір ОДНІЄЇ панелі й лише на час перегляду.
+  function applyModelColor(light) {
+    if (!state.mesh || !state.mesh.material) return;
+    state.mesh.material.color.setHex(light ? LIGHT_MODEL_COLOR : Core.modelColor());
+    renderOnce();
+  }
+
+  // Перетягування за шапку. Вікно стоїть поверх черги, і саме той рядок,
+  // який оператор звіряє, воно й перекриває — «відсунь і подивись» тут
+  // цінніше за будь-яку автопозицію. Розгорнуте вікно не тягнеться: воно
+  // й так на весь екран.
+  function attachPanelDrag(handle, panel) {
+    let startX = 0;
+    let startY = 0;
+    let baseLeft = 0;
+    let baseTop = 0;
+    let moving = false;
+
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      // Кнопки шапки лишаються кнопками — тягнемо тільки за порожнє місце.
+      if (event.target.closest("button")) return;
+      if (panel.classList.contains("is-max")) return;
+      const rect = panel.getBoundingClientRect();
+      startX = event.clientX;
+      startY = event.clientY;
+      baseLeft = rect.left;
+      baseTop = rect.top;
+      moving = true;
+      panel.classList.add("is-dragging");
+      handle.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    });
+
+    handle.addEventListener("pointermove", (event) => {
+      if (!moving) return;
+      const width = panel.offsetWidth;
+      const height = panel.offsetHeight;
+      // Край завжди лишається в екрані: вікно, затягнуте за межу, довелося б
+      // діставати перезавантаженням сторінки.
+      const margin = 8;
+      const left = Math.max(margin, Math.min(
+        baseLeft + (event.clientX - startX), window.innerWidth - width - margin));
+      const top = Math.max(margin, Math.min(
+        baseTop + (event.clientY - startY), window.innerHeight - height - margin));
+      panel.style.left = left + "px";
+      panel.style.top = top + "px";
+    });
+
+    const stop = (event) => {
+      if (!moving) return;
+      moving = false;
+      panel.classList.remove("is-dragging");
+      // Памʼятаємо місце лише після СВІДОМОГО перетягування: автопозиція
+      // біля рядка щоразу інша, і записувати її означало б закріпити
+      // випадкове місце як вибір оператора.
+      const rect = panel.getBoundingClientRect();
+      savePanelPos(rect.left, rect.top);
+      if (event.pointerId !== undefined && handle.hasPointerCapture(event.pointerId)) {
+        handle.releasePointerCapture(event.pointerId);
+      }
+    };
+    handle.addEventListener("pointerup", stop);
+    handle.addEventListener("pointercancel", stop);
   }
 
   function syncMaxButton(on) {
@@ -553,6 +711,9 @@
     const wantMax = loadMaxPreference();
     state.panelEl.classList.toggle("is-max", wantMax);
     syncMaxButton(wantMax);
+    const wantLight = loadLightPreference();
+    state.panelEl.classList.toggle("is-light", wantLight);
+    syncLightButton(wantLight);
     positionPanel(triggerEl);
     state.panelEl.hidden = false;
     state.open = true;

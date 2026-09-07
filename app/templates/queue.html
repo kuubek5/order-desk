@@ -207,8 +207,16 @@
                         {# Common #}
                         <input type="text" name="material_color" placeholder="Матеріал / колір (mono a3…)" aria-label="Матеріал і колір" class="addwork-input">
                         <input type="text" name="quantity" placeholder="К-сть" aria-label="Кількість одиниць" class="addwork-input addwork-qty" inputmode="numeric">
-                        <input type="text" name="technician_name" placeholder="Технік" aria-label="Технік" class="addwork-input">
-                        <input type="text" name="job_code" placeholder="Шлях роботи (напр. 2026-07-21_00016-007)" aria-label="Шлях роботи" class="addwork-input mono">
+                        {# Технік і шлях роботи — суто лабораторні: клієнтський рядок
+                           пише адміністратор, і в нього цих даних просто немає. #}
+                        <input type="text" name="technician_name" placeholder="Технік" aria-label="Технік" class="addwork-input" data-addwork-lab hidden disabled>
+                        <input type="text" name="job_code" placeholder="Шлях роботи (напр. 2026-07-21_00016-007)" aria-label="Шлях роботи" class="addwork-input mono" data-addwork-lab hidden disabled>
+                        {# Опак — покриття цирконієвої коронки рідиною, тарифікується
+                           окремо. У таблиці він живе в колонці «Коментар для
+                           CAM-оператора», туди ж його й пише портал у вигляді «2 opaq»:
+                           щоб кількість за зміну рахувалась по одній колонці, як і
+                           рукописні рядки. #}
+                        <input type="text" name="opak" placeholder="Опак, к-сть" aria-label="Кількість опаків" class="addwork-input addwork-qty" inputmode="numeric">
                         <input type="text" name="sum3d_id" placeholder="Sum3D ID" aria-label="Sum3D ID" class="addwork-input addwork-qty mono">
                         <button type="button" class="addwork-removerow" data-addwork-removerow aria-label="Прибрати рядок" hidden>✕</button>
                     </div>

@@ -117,6 +117,12 @@ class Order(Base):
     due_time: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     technician_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     cam_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Скільки опаків у цій роботі. Опак тарифікується окремо, але власної
+    # колонки в таблиці не має — його пишуть у коментар для CAM («2 opaq»).
+    # Тут той самий факт лежить ЧИСЛОМ, щоб його можна було підсумувати, не
+    # розбираючи текст щоразу заново (app/services/opak.py). NULL = у рядку
+    # про опак не сказано нічого; 0 = сказано, що опаку немає.
+    opak_units: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     sum3d_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     calculated_raw: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     milled_raw: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
