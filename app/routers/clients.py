@@ -56,7 +56,7 @@ def client_pane_context(db: Session, client: Client, named_orders: list[Order] |
         ).all()
         wanted = matching_client_names(client.canonical_name, list(names))
         matched = (
-            db.scalars(select(Order).where(Order.client_name.in_(wanted))).all()
+            list(db.scalars(select(Order).where(Order.client_name.in_(wanted))).all())
             if wanted else []
         )
     else:
