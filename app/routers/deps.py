@@ -76,6 +76,13 @@ def get_current_user(request: Request, db: Session) -> User | None:
     if user is None or not user.is_active:
         request.session.clear()
         return None
+    # Покоління сесій: зміна пароля збільшує лічильник, і всі раніше видані
+    # сесії стають недійсними. Сесії, видані ДО появи поля, покоління не
+    # несуть — вважаємо їх нульовими, щоб оновлення не викинуло зміну з
+    # системи посеред дня (ревʼю 07.09.26, K.8).
+    if int(request.session.get("epoch", 0)) != int(getattr(user, "session_epoch", 0) or 0):
+        request.session.clear()
+        return None
     return user
 
 

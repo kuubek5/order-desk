@@ -71,12 +71,34 @@ def test_inactive_user_session_is_revoked():
 
 
 def test_active_user_session_remains_valid():
-    user = SimpleNamespace(is_active=True)
+    user = SimpleNamespace(is_active=True, session_epoch=0)
     request = SimpleNamespace(session={"user_id": 7})
     db = SimpleNamespace(get=lambda model, user_id: user)
 
     assert get_current_user(request, db) is user
     assert request.session == {"user_id": 7}
+
+
+def test_session_from_before_a_password_change_is_revoked():
+    """K.8: зміна пароля збільшує покоління сесій. Сесія, видана під старим
+    паролем, мусить перестати діяти — інакше «змінили пароль» не означає
+    «доступ закрито»."""
+    user = SimpleNamespace(is_active=True, session_epoch=2)
+    request = SimpleNamespace(session={"user_id": 7, "epoch": 1})
+    db = SimpleNamespace(get=lambda model, user_id: user)
+
+    assert get_current_user(request, db) is None
+    assert request.session == {}
+
+
+def test_session_issued_before_the_field_existed_still_works():
+    """Оновлення не має викидати зміну з системи посеред дня: сесія без
+    покоління читається як нульова."""
+    user = SimpleNamespace(is_active=True, session_epoch=0)
+    request = SimpleNamespace(session={"user_id": 7})
+    db = SimpleNamespace(get=lambda model, user_id: user)
+
+    assert get_current_user(request, db) is user
 
 
 def test_queue_sorts_earlier_deadline_first_for_same_day():

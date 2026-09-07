@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import os
+import secrets
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -96,6 +97,36 @@ MACHINE_CALIBRATION_PATH = os.environ.get(
     "MACHINE_CALIBRATION_PATH", str(DATA_DIR / "calibration_frames")
 )
 DB_ENCRYPTION_KEY = os.environ["DB_ENCRYPTION_KEY"]
-SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY") or hashlib.sha256(
-    ("order-desk-session:" + DB_ENCRYPTION_KEY).encode()
-).hexdigest()
+def _session_secret() -> str:
+    """Секрет підпису сесій — НЕЗАЛЕЖНИЙ від ключа шифрування бази.
+
+    Раніше він виводився з `DB_ENCRYPTION_KEY`, тобто змінити один означало
+    змінити обидва: ротація ключа бази викидала всіх із системи, а замінити
+    скомпрометований секрет сесій, не чіпаючи шифрування даних, було взагалі
+    неможливо (ревʼю 07.09.26, K.8).
+
+    Тепер це власний файл поруч із базою, створений один раз. Змінна оточення
+    `SESSION_SECRET_KEY` і далі має пріоритет — нею секрет і ротують. Якщо
+    файл не вдалося ні прочитати, ні створити (тека лише для читання), падати
+    не можна: повертаємось до старої похідної, і застосунок стартує.
+    """
+    from_env = os.environ.get("SESSION_SECRET_KEY")
+    if from_env:
+        return from_env
+    path = DATA_DIR / "session_secret.key"
+    try:
+        if path.is_file():
+            saved = path.read_text(encoding="utf-8").strip()
+            if saved:
+                return saved
+        value = secrets.token_hex(32)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value, encoding="utf-8")
+        return value
+    except OSError:
+        return hashlib.sha256(
+            ("order-desk-session:" + DB_ENCRYPTION_KEY).encode()
+        ).hexdigest()
+
+
+SESSION_SECRET_KEY = _session_secret()

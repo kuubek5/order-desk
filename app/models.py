@@ -23,6 +23,11 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    # Лічильник «покоління» сесій. Зміна пароля збільшує його, і кожна
+    # раніше видана сесія перестає діяти: інакше вкрадена або просто забута
+    # на чужому екрані сесія переживала зміну пароля, тобто саму дію, якою
+    # її й намагались обірвати (ревʼю 07.09.26, K.8).
+    session_epoch: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     full_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     role: Mapped[str] = mapped_column(String(50), default="оператор")
     # The 1-2 letter initial the operator writes in the sheet's "Прорахував"

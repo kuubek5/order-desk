@@ -150,6 +150,9 @@ async def reset_operator_password(
         return RedirectResponse(f"/settings?error={quote(password_error)}", status_code=303)
 
     target.password_hash = hash_password(new_password)
+    # Скидання пароля мусить вибити оператора з усіх відкритих сесій — інакше
+    # «змінили пароль» не означає «доступ закрито».
+    target.session_epoch = int(getattr(target, "session_epoch", 0) or 0) + 1
     db.commit()
 
     return RedirectResponse("/settings?saved=1", status_code=303)

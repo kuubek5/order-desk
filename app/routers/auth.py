@@ -204,6 +204,7 @@ async def setup_submit(
 
     request.session.clear()
     request.session["user_id"] = user.id
+    request.session["epoch"] = int(getattr(user, "session_epoch", 0) or 0)
     return RedirectResponse("/settings?welcome=1", status_code=303)
 
 
@@ -244,6 +245,7 @@ async def login_submit(
     login_limiter.reset(limiter_key)
     request.session.clear()
     request.session["user_id"] = user.id
+    request.session["epoch"] = int(getattr(user, "session_epoch", 0) or 0)
     return RedirectResponse("/", status_code=303)
 
 
@@ -442,6 +444,9 @@ async def post_account_password(
         return templates.TemplateResponse(request, "account.html", {"user": user, "error": error})
 
     user.password_hash = hash_password(new_password)
+    # Нове покоління: сесії, видані під старим паролем, більше не діють.
+    user.session_epoch = int(getattr(user, "session_epoch", 0) or 0) + 1
+    request.session["epoch"] = user.session_epoch
     db.commit()
 
     return templates.TemplateResponse(request, "account.html", {"user": user, "saved": "Пароль змінено"})
