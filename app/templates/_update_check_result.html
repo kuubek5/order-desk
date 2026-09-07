@@ -8,14 +8,7 @@
    back on, in which case silence would read as a false "up to date" (F7,
    аудит 06.09.26). #}
 {% if release %}
-<span class="check-pill check-pill-warning update-check-found" role="status">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-    <span>Доступне оновлення <strong>v{{ release.version }}</strong></span>
-    <form method="post" action="/settings/update/install" class="update-check-install" data-busy="{{ busy_operators() }}">
-        <button type="submit" class="settings-secondary-button">Встановити v{{ release.version }}</button>
-    </form>
-    {% if release.html_url %}<a href="{{ release.html_url }}" target="_blank" rel="noopener">Деталі релізу</a>{% endif %}
-</span>
+{% include "_update_available_pill.html" %}
 {% elif not reached %}
 <span class="check-pill check-pill-warning" role="status">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>

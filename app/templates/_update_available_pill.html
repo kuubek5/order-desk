@@ -1,0 +1,18 @@
+{# Плашка «є новіша версія» — ОДНА на застосунок.
+
+   Її показують двоє: розділ «Про застосунок» (одразу, з уже відомого релізу)
+   і відповідь на кнопку «Перевірити» (HTMX-фрагмент). Тексти й кнопка були
+   скопійовані в обидва місця, тож правка формулювання в одному лишала друге
+   зі старим (ревʼю 07.09.26, P.6).
+
+   Очікує змінну `release` — об'єкт релізу з `version` і необов'язковим
+   `html_url`. `busy_operators()` тут же, бо саме ця форма перезапускає
+   застосунок і має попередити, скільки людей зараз працює. #}
+<span class="check-pill check-pill-warning update-check-found" role="status">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+    <span>Доступне оновлення <strong>v{{ release.version }}</strong></span>
+    <form method="post" action="/settings/update/install" class="update-check-install" data-busy="{{ busy_operators() }}">
+        <button type="submit" class="settings-secondary-button">Встановити v{{ release.version }}</button>
+    </form>
+    {% if release.html_url %}<a href="{{ release.html_url }}" target="_blank" rel="noopener">Деталі релізу</a>{% endif %}
+</span>

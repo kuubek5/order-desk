@@ -35,14 +35,7 @@
                         <span id="update-check-result" class="settings-check-result" aria-live="polite">
                             {% set known = get_known_update() %}
                             {% if known %}
-                            <span class="check-pill check-pill-warning update-check-found" role="status">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
-                                <span>Доступне оновлення <strong>v{{ known.version }}</strong></span>
-                                <form method="post" action="/settings/update/install" class="update-check-install" data-busy="{{ busy_operators() }}">
-                                    <button type="submit" class="settings-secondary-button">Встановити v{{ known.version }}</button>
-                                </form>
-                                {% if known.html_url %}<a href="{{ known.html_url }}" target="_blank" rel="noopener">Деталі релізу</a>{% endif %}
-                            </span>
+                            {% with release = known %}{% include "_update_available_pill.html" %}{% endwith %}
                             {% endif %}
                         </span>
                         {% else %}
