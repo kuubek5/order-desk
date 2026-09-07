@@ -153,6 +153,21 @@ def _record_header_mismatch(tab: str, problems: list[str]) -> None:
             _header_mismatch.pop(tab, None)
 
 
+def _forget_header_mismatch_for_absent_tabs(existing_titles: set[str]) -> None:
+    """Забути скарги на вкладки, яких у таблиці вже немає.
+
+    Запис знімався лише при УСПІШНОМУ перечитуванні тієї самої вкладки. Якщо
+    її потім перейменували або прибрали, скарга лишалась у памʼяті процесу
+    назавжди — банер показував вкладку, якої не існує, і сховати його можна
+    було тільки перезапуском (ревʼю 07.09.26, LOW).
+    """
+    if not existing_titles:
+        return  # порожній листинг — не доказ, що вкладки зникли
+    with _mass_vanish_lock:
+        for tab in [t for t in _header_mismatch if t not in existing_titles]:
+            _header_mismatch.pop(tab, None)
+
+
 def _record_mass_vanish(tab: str, held: int) -> None:
     with _mass_vanish_lock:
         if held > 0:
@@ -492,6 +507,7 @@ def sync_google_sheets(
                 session, spreadsheet, business_today(),
                 effective_include or None, full_history=full_history,
             )
+            _forget_header_mismatch_for_absent_tabs(all_dated_titles)
         except Exception as exc:
             # Setup failure: nothing has been imported, so there is no partial
             # progress to preserve — surface it and record it like before.

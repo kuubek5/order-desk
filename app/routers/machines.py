@@ -9,6 +9,9 @@ app/furnace_vnc.py, який фізично не вміє слати ввід (�
 Доменна логіка — app/services/machines.py; тут лише HTTP.
 """
 
+import threading
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from sqlalchemy.orm import Session
@@ -107,13 +110,33 @@ def machines_cards(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request, "_machine_cards.html", _context(request, db, user))
 
 
+# Мінімальна пауза між ручними знімками. Кнопка «Оновити зараз» одразу йде в
+# мережу до КОЖНОГО верстата; без паузи затиснутий Enter на ній перетворював
+# застосунок на генератор запитів до цехових ПК, а кожен зайвий обхід ще й
+# відбирає потоки в планового опитування (ревʼю 07.09.26, LOW).
+MANUAL_REFRESH_COOLDOWN_SECONDS = 3.0
+_last_manual_refresh = 0.0
+_manual_refresh_lock = threading.Lock()
+
+
 @router.post("/machines/refresh", response_class=HTMLResponse)
 def machines_refresh(request: Request, db: Session = Depends(get_db)):
     """Зняти кадри просто зараз. Це ЧИТАННЯ, а не дія над верстатом."""
+    global _last_manual_refresh
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
-    poll_all(db)
+
+    now = time.monotonic()
+    with _manual_refresh_lock:
+        too_soon = now - _last_manual_refresh < MANUAL_REFRESH_COOLDOWN_SECONDS
+        if not too_soon:
+            _last_manual_refresh = now
+    # У паузі просто віддаємо поточні картки: екран однаково оновлюється, а
+    # верстати не отримують другого обходу за секунду. Пояснювати оператору
+    # нема чого — для нього це той самий свіжий стан.
+    if not too_soon:
+        poll_all(db)
     return templates.TemplateResponse(request, "_machine_cards.html", _context(request, db, user))
 
 

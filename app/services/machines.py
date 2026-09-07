@@ -470,6 +470,17 @@ def collect_calibration_frame_timed(
             if sum(1 for _ in folder.glob("*.png")) >= CALIBRATION_MAX_FRAMES:
                 victim = _most_redundant(known)
                 if victim is None:
+                    # Кап рахує ВСІ png, а виселяємо лише свої `d-*`. Тека,
+                    # набита кадрами `pct-*`, не давала звільнити місце — і
+                    # збір мовчки спинявся назавжди. Мовчати тут не можна:
+                    # на іншому кінці людина чекає кадрів, яких уже не буде
+                    # (ревʼю 07.09.26, LOW).
+                    logger.warning(
+                        "Калібрувальні кадри %s: тека повна (%s), але викидати нічого — "
+                        "у ній лише кадри за відсотком. Заберіть теку, інакше нові "
+                        "екрани не збережуться.",
+                        key, CALIBRATION_MAX_FRAMES,
+                    )
                     return
                 try:
                     (folder / victim).unlink()

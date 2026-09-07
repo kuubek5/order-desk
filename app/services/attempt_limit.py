@@ -48,10 +48,27 @@ class AttemptLimiter:
                 self._buckets.pop(key, None)
             return 0
 
+    def _forget_stale(self, now: float) -> None:
+        """Прибрати ключі, які давно нікого не цікавлять.
+
+        Ключ — це «логін + IP», тобто його вигадує той, хто стукає: перебір
+        неіснуючих логінів лишав по запису на кожну спробу, і словник ріс усе
+        життя процесу, ніколи не зменшуючись. Чистимо на записі невдачі —
+        єдиному місці, куди зростання і приходить (ревʼю 07.09.26, LOW).
+        """
+        cutoff = self.reset_after_seconds
+        stale = [
+            key for key, bucket in self._buckets.items()
+            if bucket.blocked_until <= now and now - bucket.last_failure > cutoff
+        ]
+        for key in stale:
+            self._buckets.pop(key, None)
+
     def register_failure(self, key: str) -> int:
         """Порахувати невдачу. Повертає секунди паузи (0 — паузи ще нема)."""
         now = time.monotonic()
         with self._lock:
+            self._forget_stale(now)
             bucket = self._buckets.get(key)
             if bucket is None or now - bucket.last_failure > self.reset_after_seconds:
                 bucket = _Bucket()
