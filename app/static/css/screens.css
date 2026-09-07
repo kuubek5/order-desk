@@ -726,3 +726,63 @@ body.rail-collapsed .rail-sync-dot {
   .sj-row .sj-restore, .sj-row .sj-restored { grid-column: 1 / -1; }
   .sj-row .sj-dir, .sj-row .sj-tab { grid-column: span 1; }
 }
+
+/* ── Друк: паспорт роботи й день архіву ─────────────────────────────────────
+   Лабораторія іноді друкує паспорт роботи (підкласти до лотка) і день архіву
+   (звірка з клієнтом). На папір їхала вся сторінка з темною рейкою і
+   службовими кнопками: чорний фон з'їдав картридж, а половина аркуша йшла під
+   навігацію (ревʼю 07.09.26, U2.4).
+
+   Правило одне: на папері лишається ЗМІСТ. Чорнило економимо явно — фон
+   білий, текст чорний, бо це той самий документ, який лягає в лоток поруч із
+   коронкою. */
+@media print {
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .topbar-user,
+  .rail-top,
+  .toast-stack,
+  .sysload,
+  .kbd-hint,
+  .look-gear,
+  .fu-strip,
+  form.sumrow button,
+  .status-opts,
+  .pass-actions,
+  .arch-actions {
+    display: none !important;
+  }
+  /* Головне поле займає весь аркуш: рейки на папері немає, тож відступ під
+     неї лишав би порожню колонку. */
+  .passport2,
+  .archv2,
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+    width: auto !important;
+  }
+  /* Картки на папері читаються межею, а не заливкою. */
+  .passport2 *,
+  .archv2 * {
+    background: transparent !important;
+    color: #000 !important;
+    box-shadow: none !important;
+  }
+  .passport2 .pcard,
+  .archv2 .acard,
+  table {
+    border: 1px solid #999 !important;
+  }
+  /* Рядок таблиці не розривається між аркушами: половина наряду на одній
+     сторінці, половина на іншій — гірше, ніж зайвий аркуш. */
+  tr, .pcard, .acard {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  a[href]::after {
+    content: "";
+  }
+}

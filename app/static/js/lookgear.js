@@ -323,20 +323,38 @@
       toggle.setAttribute("aria-expanded", String(open));
     }
 
-    // Клік повз панель і Esc закривають її — інакше вона накриває верх списку
-    // доти, доки оператор не здогадається клацнути по шестерні ще раз.
-    document.addEventListener("click", function (event) {
-      if (panel.hidden || root.contains(event.target)) return;
-      setOpen(false);
-    });
-    document.addEventListener("keydown", function (event) {
-      if (event.key !== "Escape" || panel.hidden) return;
-      setOpen(false);
-      toggle.focus();
-    });
+    // Закривання по кліку повз панель і по Esc живе НИЖЧЕ, одним слухачем на
+    // сторінку. Раніше кожна шестерня вішала свою пару на document, і на
+    // екрані з трьома шестернями кожен клік проходив шість обробників —
+    // рівно та дрібниця, з якої складається «інтерфейс підгальмовує»
+    // (ревʼю 07.09.26, U2.4).
+    gears.push({ root: root, panel: panel, toggle: toggle, setOpen: setOpen });
 
     render();
   }
 
+  var gears = [];
+
   document.querySelectorAll("[data-look-gear]").forEach(initGear);
+
+  // Клік повз панель і Esc закривають її — інакше вона накриває верх списку
+  // доти, доки оператор не здогадається клацнути по шестерні ще раз.
+  if (gears.length) {
+    document.addEventListener("click", function (event) {
+      for (var i = 0; i < gears.length; i++) {
+        var gear = gears[i];
+        if (gear.panel.hidden || gear.root.contains(event.target)) continue;
+        gear.setOpen(false);
+      }
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape") return;
+      for (var i = 0; i < gears.length; i++) {
+        var gear = gears[i];
+        if (gear.panel.hidden) continue;
+        gear.setOpen(false);
+        gear.toggle.focus();
+      }
+    });
+  }
 })();
