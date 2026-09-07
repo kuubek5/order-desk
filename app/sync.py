@@ -30,6 +30,18 @@ NON_QUEUE_KINDS = {"слм", "cлм", "елайнери", "моделі", "ск�
 logger = logging.getLogger(__name__)
 
 
+def _is_explicit_non_queue(row: OrderRow) -> bool:
+    """Явна ознака «не наша робота»: слово зі списку в матеріалі або виді.
+
+    Окремо від мʼякої евристики «клієнтський рядок без матеріалу» саме тому,
+    що ця ознака ТВЕРДА: людина написала «слм», і скільки б разів рядок не
+    перечитувався, він не наш.
+    """
+    material = (row.material_color or "").strip().lower()
+    kind = (row.kind or "").strip().lower()
+    return material in NON_QUEUE_KINDS or kind in NON_QUEUE_KINDS
+
+
 def _is_non_queue_row(row: OrderRow, row_fills: dict[int, str] | None) -> bool:
     """Чи це НЕ фрезерна робота (СЛМ / моделі / елайнери / сканування).
 
@@ -51,11 +63,10 @@ def _is_non_queue_row(row: OrderRow, row_fills: dict[int, str] | None) -> bool:
 
     ``row_fills`` лишається в підписі (сумісність викликів) — колір тепер
     керує лише «видано» для клієнтських рядків, не виключенням."""
-    material = (row.material_color or "").strip()
-    kind = (row.kind or "").strip()
-    quantity = (row.quantity or "").strip()
-    if material.lower() in NON_QUEUE_KINDS or kind.lower() in NON_QUEUE_KINDS:
+    if _is_explicit_non_queue(row):
         return True
+    material = (row.material_color or "").strip()
+    quantity = (row.quantity or "").strip()
     # Клієнтський рядок, у якого НЕМАЄ або матеріалу, або кількості. Фрезерна
     # робота завжди несе і те, і те (з чого фрезерувати + скільки одиниць).
     # СЛМ-блок у прод-таблиці має лише ім'я + одне з двох: або к-сть без
@@ -324,8 +335,16 @@ def _row_identity(row: OrderRow) -> tuple | None:
 
 
 def _order_identity(order: Order) -> tuple | None:
-    """`_row_identity` for an already-imported order — must stay in step with it."""
-    if order.source == "sheet_client":
+    """`_row_identity` for an already-imported order — must stay in step with it.
+
+    Поштова робота ("email") теж має рядок у таблиці — рядок-нотатку тієї
+    самої форми, що й наряд-less клієнтський: імʼя клієнта в колонці «вид»,
+    матеріал і к-сть (append_mail_placeholder_row). Без спільного ключа вона
+    зводилась із ним ЛИШЕ позиційно, і зсув рядків міг підставити під неї
+    чужу роботу — а `existing.source != source` перетворив би поштову роботу
+    на лабораторну, знищивши звʼязок з листом.
+    """
+    if order.source in ("sheet_client", "email"):
         client = (order.client_name or "").strip().casefold()
         if not client:
             return None
@@ -515,7 +534,21 @@ def sync_tab(
             lab_slm_units, mail_slm_units = slm_totals_from_rows(rows)
             store_slm_totals(session, slm_day, lab_slm_units, mail_slm_units)
 
-    rows = [row for row in rows if not _is_non_queue_row(row, row_fills)]
+    # Мʼяка ознака СЛМ («клієнтський рядок без матеріалу або кількості») діє
+    # лише на рядки, яких ми ще не знаємо. Інакше вона працює як міна: технік
+    # чистить матеріал, щоб виправити одруківку, — і вже імпортована робота
+    # цього ж тіка зникає з `rows`, а реконсиляція архівує її як «рядок
+    # прибрали». Наступним тіком матеріал уже вписаний, і робота повертається
+    # НОВОЮ, без історії, коментарів і Sum3D. Явне слово «слм» лишається
+    # твердим правилом у будь-який момент життя рядка.
+    rows = [
+        row for row in rows
+        if not _is_explicit_non_queue(row)
+        and (
+            not _is_non_queue_row(row, row_fills)
+            or existing_by_row.get(row.row_number) is not None
+        )
+    ]
 
     # Re-link orders whose row MOVED. Position alone is not a stable key: the
     # comment below used to assume a removed row is *cleared* (neighbours keep

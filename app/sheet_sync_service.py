@@ -105,19 +105,32 @@ _VANISHED_TAB_MIN_ORDERS = 5
 _VANISHED_TAB_MAX_SHARE = 0.25
 
 
-def _listing_is_trustworthy(all_dated_titles: set[str], today: date) -> bool:
+def _listing_is_trustworthy(
+    all_dated_titles: set[str], today: date, newest_known: date | None = None
+) -> bool:
     """Чи схожий список вкладок на справжній, а не на обрізану/кешовану відповідь.
 
-    Проксі лабораторії вже ловили на застарілих відповідях. Якщо в листингу
-    немає ані сьогоднішньої, ані вчорашньої вкладки — це не «лабораторія
-    видалила дні», а недостовірний листинг, і архівувати за ним не можна:
-    вкладка поза вікном today±1 більше ніколи не перечитується, тож день
-    зник би з черги назавжди (аудит 05.09.26, синк H-3).
+    Проксі лабораторії вже ловили на застарілих відповідях. Листинг, у якому
+    немає ані сьогоднішньої, ані вчорашньої вкладки, підозрілий: архівувати за
+    ним не можна, бо вкладка поза вікном today±1 більше ніколи не
+    перечитується, і день зник би з черги назавжди (аудит 05.09.26, синк H-3).
+
+    Але «немає сьогоднішньої» саме по собі ще не доказ збою: CRM можна
+    вимикати на дні, і в понеділок вранці найновіша вкладка законно з пʼятниці
+    (памʼятка про догін простою). Тому дивимось не лише на календар, а й на
+    НАЙНОВІШУ вкладку, яку ми вже бачили: листинг, що не дотягує навіть до
+    неї, — це справді відповідь із минулого. Дотягує — віримо, навіть якщо
+    сьогоднішньої вкладки ще ніхто не створив.
     """
-    recent = {
-        (today - timedelta(days=offset)).strftime("%d.%m.%y") for offset in (0, 1)
-    }
-    return bool(all_dated_titles & recent)
+    dates = {d for d in (_parse_tab_date(t) for t in all_dated_titles) if d is not None}
+    if not dates:
+        return False
+    newest_listed = max(dates)
+    if newest_listed >= today - timedelta(days=1):
+        return True
+    if newest_known is None:
+        return False
+    return newest_listed >= newest_known
 
 
 # Вкладки, чию структуру ми НЕ впізнали, і чому. Тримаємо в памʼяті поруч із
@@ -482,6 +495,10 @@ def sync_google_sheets(
         except Exception as exc:
             # Setup failure: nothing has been imported, so there is no partial
             # progress to preserve — surface it and record it like before.
+            # У журнал користувача йде САНІТИЗОВАНИЙ текст (у винятках Google
+            # трапляються ключі й токени), тож справжню причину зі стеком
+            # лишаємо в лозі — інакше діагностувати збій нема по чому.
+            logger.exception("Синк таблиці: збій підготовки")
             safe_error = _safe_failure(exc)
             _record_failure(session, None, safe_error, persist=trigger == "manual")
             raise safe_error from exc
@@ -536,7 +553,20 @@ def sync_google_sheets(
                 # Update the proactive banner state for this tab (set when the
                 # guard held a bulk deletion, cleared when it synced clean).
                 _record_mass_vanish(current_tab, result.held_mass_vanish)
+                if result.held_mass_vanish:
+                    # Банер живе в памʼяті процесу й зникає з рестартом. Слід у
+                    # журналі лишається: «того дня синк притримав N видалень» —
+                    # єдине, за чим потім можна відновити, що саме сталось.
+                    session.add(SyncLog(
+                        direction="sheet_to_db", sheet_tab=current_tab, status="skipped",
+                        message=(
+                            f"притримано масове зникнення: {result.held_mass_vanish} "
+                            "робіт не заархівовано — схоже на погане читання"
+                        ),
+                    ))
+                    session.commit()
             except Exception as exc:
+                logger.exception("Синк таблиці: збій на вкладці %s", current_tab)
                 safe_error = _safe_failure(exc)
                 _record_failure(session, current_tab, safe_error, persist=trigger == "manual")
                 raise safe_error from exc
@@ -556,7 +586,27 @@ def sync_google_sheets(
         # means "this day's records are gone" — mirror that here for
         # sheet-sourced orders only; email orders are stamped with a business
         # date, not a real tab, and are never touched.
-        if all_dated_titles and _listing_is_trustworthy(all_dated_titles, business_today()):
+        # Найновіша вкладка, яку ми вже імпортували: нею звіряємо, чи листинг
+        # не «з минулого» (див. _listing_is_trustworthy).
+        newest_known = max(
+            (
+                d
+                for d in (
+                    _parse_tab_date(t)
+                    for t in session.scalars(
+                        select(Order.sheet_tab).where(
+                            Order.source.in_(("lab", "sheet_client")),
+                            Order.sheet_tab.isnot(None),
+                        ).distinct()
+                    )
+                )
+                if d is not None
+            ),
+            default=None,
+        )
+        if all_dated_titles and _listing_is_trustworthy(
+            all_dated_titles, business_today(), newest_known
+        ):
             orphans = [
                 o
                 for o in session.scalars(
@@ -659,7 +709,11 @@ def sync_google_sheets(
         # рахується «скільки днів простою» при наступному ввімкненні.
         # Робоча дата, як і решта «сьогодні»: інакше о 00:30 штамп стрибав би
         # на наступний день і догін простою рахувався б від чужої дати.
-        _mark_full_sync(session, business_today())
+        # Прогін, який не прочитав ЖОДНОЇ вкладки, днем не вважається: інакше
+        # один порожній листинг (проксі віддав нічого) закривав би догін
+        # простою, і пропущені дні більше не перечитались би ніколи.
+        if summary.tabs_processed:
+            _mark_full_sync(session, business_today())
         session.commit()
         return summary
     finally:
@@ -759,6 +813,7 @@ def sync_hot_tab(
         return summary
     except Exception as exc:
         session.rollback()
+        logger.exception("Гарячий тік синку впав")
         raise _safe_failure(exc) from exc
     finally:
         _sync_lock.release()

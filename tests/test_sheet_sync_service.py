@@ -790,3 +790,61 @@ def test_force_reconcile_flag_reaches_only_the_confirmed_tab(monkeypatch):
         )
 
     assert seen == {current.title: True, yesterday.title: False}
+
+
+# --- S2.7: довіра до листингу й позначка «день синхронізовано» --------------
+
+
+def test_listing_without_today_is_trusted_when_it_reaches_what_we_already_saw():
+    """CRM можна вимикати на дні: у понеділок найновіша вкладка законно з
+    пʼятниці. Вимога «мусить бути сьогоднішня» робила такий листинг
+    недостовірним НАЗАВЖДИ, тобто вкладки, видалені за час простою, ніколи не
+    прибирались із черги."""
+    from datetime import date as _date
+
+    from app.sheet_sync_service import _listing_is_trustworthy
+
+    today = _date(2026, 9, 7)          # понеділок
+    listing = {"04.09.26", "03.09.26"}  # найновіша — пʼятниця
+
+    assert _listing_is_trustworthy(listing, today, newest_known=_date(2026, 9, 4))
+
+
+def test_listing_older_than_what_we_imported_is_not_trusted():
+    """А от листинг, що не дотягує навіть до вже імпортованої вкладки, — це
+    відповідь із минулого (кеш проксі), і архівувати за ним не можна."""
+    from datetime import date as _date
+
+    from app.sheet_sync_service import _listing_is_trustworthy
+
+    today = _date(2026, 9, 7)
+    listing = {"01.09.26"}
+
+    assert not _listing_is_trustworthy(listing, today, newest_known=_date(2026, 9, 4))
+
+
+def test_listing_with_today_is_trusted_regardless():
+    from datetime import date as _date
+
+    from app.sheet_sync_service import _listing_is_trustworthy
+
+    today = _date(2026, 9, 7)
+
+    assert _listing_is_trustworthy({"07.09.26"}, today, newest_known=None)
+    assert not _listing_is_trustworthy(set(), today, newest_known=None)
+
+
+def test_empty_run_does_not_count_as_a_synced_day(monkeypatch):
+    """Порожній прогін (проксі віддав нічого) не має закривати догін простою:
+    інакше пропущені дні більше не перечитались би ніколи."""
+    from app.sheet_sync_service import _last_full_sync_date
+
+    configured(monkeypatch)
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = []   # листинг порожній
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
+
+    with make_session() as session:
+        summary = sync_google_sheets(session, trigger="background")
+        assert summary.tabs_processed == 0
+        assert _last_full_sync_date(session) is None

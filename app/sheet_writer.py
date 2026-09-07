@@ -506,7 +506,11 @@ def restore_order_row(worksheet: gspread.Worksheet, order: Order) -> None:
     # colleague's work in a re-used row. Treating an unreadable row as "empty"
     # would invert exactly the guarantee this function exists for.
     try:
-        current = worksheet.get_values(f"A{row}:K{row}")
+        # Через call_with_retry, як і решта читань: між нами й Google стоїть
+        # TLS-проксі, який регулярно рве зʼєднання. Без повторів одне чхання
+        # мережі перетворювало скасування видалення на «не вдалося» —
+        # причому рядок при цьому був цілком вільний.
+        current = call_with_retry(lambda: worksheet.get_values(f"A{row}:K{row}"))
     except Exception as exc:
         raise RuntimeError(f"не вдалося перевірити, чи рядок {row} вільний: {exc}") from exc
     occupied = [c for c in (current[0] if current else []) if isinstance(c, str) and c.strip()]
@@ -554,7 +558,11 @@ def restore_erased_row(
     if not values or not any(v.strip() for v in values if isinstance(v, str)):
         raise ValueError("нема чого відновлювати: збережений вміст порожній")
     try:
-        current = worksheet.get_values(f"A{row}:K{row}")
+        # Через call_with_retry, як і решта читань: між нами й Google стоїть
+        # TLS-проксі, який регулярно рве зʼєднання. Без повторів одне чхання
+        # мережі перетворювало скасування видалення на «не вдалося» —
+        # причому рядок при цьому був цілком вільний.
+        current = call_with_retry(lambda: worksheet.get_values(f"A{row}:K{row}"))
     except Exception as exc:
         raise RuntimeError(f"не вдалося перевірити, чи рядок {row} вільний: {exc}") from exc
     occupied = [c for c in (current[0] if current else []) if isinstance(c, str) and c.strip()]

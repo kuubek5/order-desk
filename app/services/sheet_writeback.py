@@ -178,7 +178,43 @@ def append_manual_rows_warm(
     lab often works a day or two behind, so today's tab may not exist yet — the
     row goes into the last available day rather than failing. Returns
     (resolved_tab_title, 1-indexed sheet rows), or None if the document has no
-    dated tab at all."""
+    dated tab at all.
+
+    Дописування йде ПІД локом синку таблиці. Інакше вставка потрапляє між
+    читанням вкладки і реконсиляцією того ж тіка: синк уже прочитав рядки без
+    нової роботи, і його реконсиляція бачить роботу в базі без рядка в
+    таблиці. Від архівації її поки рятує 120-секундне вікно для щойно
+    створених — але це страховка на випадок, а не правило. Лок робить порядок
+    визначеним: або синк прочитав вкладку до вставки, або вже після неї.
+    """
+    from app.sheet_sync_service import _sync_lock
+
+    # Чекаємо, але не вічно: гарячий тік ~3 с, повний синк — десятки. Якщо за
+    # цей час лок не звільнився, роботу все одно дописуємо: втратити її гірше,
+    # ніж пережити рідкісну гонку, від якої лишається вікно для нових робіт.
+    got_lock = _sync_lock.acquire(timeout=_MANUAL_ADD_LOCK_WAIT_SECONDS)
+    if not got_lock:
+        logger.warning(
+            "Ручне додавання: синк тримає лок довше за %ss — дописуємо без нього",
+            _MANUAL_ADD_LOCK_WAIT_SECONDS,
+        )
+    try:
+        return _append_manual_rows(target_date, works, paint_blue, placement, target_tab)
+    finally:
+        if got_lock:
+            _sync_lock.release()
+
+
+# Скільки ручне додавання чекає на лок синку, перш ніж дописати без нього.
+_MANUAL_ADD_LOCK_WAIT_SECONDS = 45.0
+
+
+def _append_manual_rows(
+    target_date: date, works: list[dict], paint_blue: bool, placement: str,
+    target_tab: str,
+) -> tuple[str, list[int]] | None:
+    """Тіло `append_manual_rows_warm` — окремо, щоб лок був видимий одним
+    поглядом, а не губився серед вимірювань часу."""
     from time import perf_counter
 
     with SessionLocal() as s:

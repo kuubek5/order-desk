@@ -1630,3 +1630,76 @@ def test_looks_like_another_work_needs_evidence():
         material_color="цирконій A1", kind="каркас", quantity="4",
     )
     assert _looks_like_another_work(stranger, order) is True
+
+
+def test_clearing_a_material_does_not_drop_an_imported_client_work():
+    """S2.7: мʼяка ознака СЛМ («клієнтський рядок без матеріалу») працювала
+    як міна. Технік чистить матеріал, щоб виправити одруківку — уже
+    імпортована робота цього ж тіка зникає з рядків і архівується як
+    «рядок прибрали», а наступним тіком вертається НОВОЮ, без історії,
+    коментарів і Sum3D. Тепер ознака діє лише на незнайомі рядки."""
+    session = make_session()
+    session.add(Order(
+        source="sheet_client", sheet_tab="27.08.26", row_number=5,
+        client_name="Басараб", material_color="mono a3", quantity="1",
+        status="прораховано", sum3d_id="10-19-48",
+    ))
+    session.commit()
+    age_orders(session)
+    known = session.scalar(select(Order))
+
+    # Матеріал стерли на мить (виправляють одруківку).
+    sync_tab(session, "27.08.26", [make_client_row(row_number=5, material_color="")])
+    session.commit()
+
+    survivor = session.get(Order, known.id)
+    assert survivor.archived_at is None, "уже імпортована робота не має зникати"
+    assert survivor.sum3d_id == "10-19-48"
+
+
+def test_a_new_row_without_material_is_still_treated_as_slm():
+    """А от НЕЗНАЙОМИЙ клієнтський рядок без матеріалу — це СЛМ-блок, і в
+    чергу він не потрапляє (правило власника лишається)."""
+    session = make_session()
+
+    sync_tab(session, "27.08.26", [make_client_row(row_number=5, material_color="")])
+    session.commit()
+
+    assert session.scalars(select(Order)).all() == []
+
+
+def test_explicit_slm_word_wins_even_for_a_known_row():
+    """Явне слово «слм» — тверде правило в будь-який момент життя рядка."""
+    session = make_session()
+    session.add(Order(
+        source="sheet_client", sheet_tab="27.08.26", row_number=5,
+        client_name="Басараб", material_color="mono a3", quantity="1",
+        status="нове",
+    ))
+    session.commit()
+    age_orders(session)
+    known = session.scalar(select(Order))
+
+    sync_tab(session, "27.08.26", [make_client_row(row_number=5, material_color="слм")])
+    session.commit()
+
+    assert session.get(Order, known.id).archived_at is not None
+
+
+def test_mail_work_keeps_its_row_when_rows_shift():
+    """S2.7: поштова робота теж має рядок у таблиці — рядок-нотатку тієї самої
+    форми, що й наряд-less клієнтський. Без спільного ключа вона зводилась із
+    ним лише позиційно, і зсув рядків підставляв під неї чужу роботу — а
+    розбіжність source перетворила б поштову роботу на лабораторну, знищивши
+    звʼязок із листом."""
+    from app.sync import _order_identity, _row_identity
+
+    order = Order(
+        source="email", sheet_tab="27.08.26", row_number=5,
+        client_name="Басараб", material_color="mono a3", quantity="1",
+        status="прийнято",
+    )
+    row = make_client_row(row_number=5, kind="Басараб", material_color="mono a3",
+                          quantity="1")
+
+    assert _order_identity(order) == _row_identity(row)
