@@ -750,7 +750,14 @@ def poll_target(
     # це справді SISMA, детектори смуги RemiCORE навіть не запускаємо: шукати
     # синю смугу на чужому інтерфейсі — рівно той шлях, яким беруться числа з
     # повітря (шматок шпалер уже одного разу став «смугою на 100%»).
-    sisma = read_sisma(frame) if screen_is_sisma(frame) else None
+    # Розпізнавання екрана SISMA — теж робота з чужим кадром, і воно так само
+    # не має валити опитування, як і читання відсотка нижче: несподіваний
+    # екран означає «це не SISMA», а не «верстат зламався» (D.2).
+    try:
+        sisma = read_sisma(frame) if screen_is_sisma(frame) else None
+    except Exception:  # noqa: BLE001
+        logger.exception("Екран SISMA верстата %s не розпізнано", target.host)
+        sisma = None
     if sisma is not None:
         percent = sisma.percent
     else:

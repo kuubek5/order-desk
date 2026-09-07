@@ -880,3 +880,86 @@ def test_glued_digits_are_split_not_lost():
     reading = read_panel(_frame("live_glued_44"))
     assert reading.remaining_seconds == 9 * 3600 + 23 * 60 + 44
     assert reading.fields["remaining"].raw == "09:23:44"
+
+
+# --- D.2: збій пристрою не валить фоновий воркер ----------------------------
+
+
+def test_grab_survives_a_library_level_failure(monkeypatch):
+    """За кадром стоїть чужа бібліотека поверх чужого сокета: asyncvnc тягне
+    TripleDES зі старого місця cryptography (CLAUDE.md §14) і впаде
+    ImportError, щойно його приберуть. Ловити вузько означало б, що одна нова
+    версія залежності гасить фоновий воркер разом з УСІМА печами."""
+    def boom(*a, **k):
+        raise ImportError("cannot import name 'TripleDES'")
+
+    monkeypatch.setattr(service, "capture", boom)
+
+    image, error = service.grab(
+        service.FurnaceTarget(name="Бочка", host="192.168.1.76"), None
+    )
+
+    assert image is None
+    assert "ImportError" in error
+
+
+def test_unreadable_panel_leaves_the_number_empty_not_stale(monkeypatch, tmp_path):
+    """Кадр є, але табло не прочиталось (інша прошивка, чужий екран). Порожнє
+    поле чесніше за старе значення — і воркер лишається живим."""
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        service, "read_panel", lambda img: (_ for _ in ()).throw(ValueError("чужий екран"))
+    )
+
+    with Session(_database()) as db:
+        _add_furnace(db, name="Бочка", host="192.168.1.76")
+        state = service.poll_target(
+            db,
+            service.FurnaceTarget(name="Бочка", host="192.168.1.76"),
+            None,
+            frame=_frame("run"),
+        )
+
+    assert state.reading is None
+    assert state.error is None, "кадр же є — це не збій зв'язку"
+
+
+# --- D.3: голосування, а не «перший, хто прочитався» ------------------------
+
+
+def test_single_readable_signal_is_not_enough_for_a_status():
+    """Голосування має сенс лише тоді, коли згодні ДВА сигнали. Раніше, якщо
+    другий не читався, статус усе одно брався з першого — тобто голосування
+    вироджувалось у той самий один сигнал, від якого й захищає. Порожнє місце
+    чесніше за статус із повітря (те саме правило, що для температури)."""
+    frame = _frame("run")
+    # Затираємо ЗОНУ КНОПКИ повністю (ZONES["button"].rect) — лишається
+    # читабельним лише слово вгорі.
+    from app.furnace_ocr import ZONES
+
+    x0, y0, x1, y1 = ZONES["button"].rect
+    for x in range(x0, x1):
+        for y in range(y0, y1):
+            frame.putpixel((x, y), (255, 255, 255))
+
+    reading = read_panel(frame)
+
+    assert reading.signals.get("word") == STATUS_RUN
+    assert reading.signals.get("button") is None
+    assert reading.status == STATUS_UNKNOWN
+
+
+def test_command_needs_a_letter_and_a_digit():
+    """«........» і «0000» — типовий вигляд змазаного кропу, а не команда
+    рецепту. Справжня має і літеру, і цифру (T008.A990, C0)."""
+    import re
+
+    from app.furnace_ocr import ZONES
+
+    pattern = re.compile(ZONES["command"].pattern)
+
+    assert pattern.match("T008.A990")
+    assert pattern.match("C0")
+    assert not pattern.match("........")
+    assert not pattern.match("0000")
+    assert not pattern.match("AAAA")

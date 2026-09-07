@@ -374,6 +374,17 @@ def grab(
         return capture(target.host, target.port, password, **kwargs), None
     except FurnaceVncError as exc:
         return None, str(exc)
+    except Exception as exc:  # noqa: BLE001 — див. нижче
+        # ШИРОКО, і навмисно. Тут за кадром стоїть чужа бібліотека поверх
+        # чужого сокета: `asyncvnc` тягне TripleDES зі старого місця
+        # `cryptography` (CLAUDE.md §14) і впаде ImportError, щойно його
+        # приберуть; сокет уміє віддати OSError, а asyncio — CancelledError у
+        # вигляді, який FurnaceVncError не покриває. Кожен із цих випадків
+        # означає рівно те саме, що й недоступна піч: показати «немає кадру»
+        # і жити далі. Ловити вузько означало б, що одна нова версія
+        # залежності гасить ФОНОВИЙ ВОРКЕР цілком, разом з усіма печами.
+        logger.exception("Кадр печі %s не знято", target.host)
+        return None, f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
 
 
 def poll_target(
@@ -398,25 +409,34 @@ def poll_target(
     with _states_lock:
         state = _states.setdefault(target.key, FurnaceState(target=target))
         state.target = target
-    state.attempted_at = now
+        state.attempted_at = now
 
     image = frame
     if image is None and error is None:
         image, error = grab(target, password, timeout)
     if image is None:
         message = error or "Кадр не знято"
-        state.error = message
-        state.reading = None
+        with _states_lock:
+            state.error = message
+            state.reading = None
         last_error_row = state.error_stored_at
         if (
             last_error_row is None
             or (now - last_error_row).total_seconds() >= ERROR_DB_INTERVAL_SECONDS
         ):
             _store_error(db, target, message, now)
-            state.error_stored_at = now
+            with _states_lock:
+                state.error_stored_at = now
         return state
 
-    reading = read_panel(image)
+    try:
+        reading = read_panel(image)
+    except Exception:  # noqa: BLE001 — той самий контракт, що у верстатів
+        # Кадр є, але прочитати табло не вдалося (несподіваний екран, зміна
+        # прошивки). Це «немає числа», а не «піч зламалась»: порожнє поле
+        # чесніше за старе значення, і воркер лишається живим.
+        logger.exception("Табло печі %s не прочитано", target.host)
+        reading = None
     try:
         save_frame(target.key, image)
         state.frame_at = now
@@ -425,14 +445,23 @@ def poll_target(
         # одно живі, тому це не привід гасити піч на екрані.
         logger.exception("Кадр печі %s не збережено", target.host)
 
-    if _should_store(state, reading, now):
+    should_store = _should_store(state, reading, now) if reading is not None else False
+    if should_store:
         _store(db, target, reading, now)
-        state.stored_at = now
-        state.error_stored_at = None
 
-    state.reading = reading
-    state.captured_at = now
-    state.error = None
+    # Усе, що прочитали з ОДНОГО кадру, лягає в стан ОДНИМ кроком під локом —
+    # той самий висновок, що й у верстатів (`machines.poll_target`): між
+    # окремими присвоєннями стоять дискове I/O і запис у базу, і читач
+    # (віджет, /furnaces) міг зловити свіжу температуру в парі зі старим
+    # статусом. Плюс фоновий тік і ручне «Оновити» — це два потоки на один
+    # обʼєкт стану (ревʼю 07.09.26, D.2).
+    with _states_lock:
+        if should_store:
+            state.stored_at = now
+            state.error_stored_at = None
+        state.reading = reading
+        state.captured_at = now
+        state.error = None
     return state
 
 
