@@ -59,18 +59,33 @@ def find_matching_orders(
     if not canonical_name or not canonical_name.strip():
         return []
 
+    return [
+        order for order in orders
+        if order.client_name and name_matches(canonical_name, order.client_name, threshold)
+    ]
+
+
+def name_matches(canonical_name: str, candidate: str, threshold: float = MATCH_THRESHOLD) -> bool:
+    """Чи це те саме імʼя клієнта, з поправкою на одруківки, регістр і форму
+    Unicode.
+
+    Винесено окремо, щоб можна було відібрати спершу ІМЕНА, а вже потім тягнути
+    з бази роботи лише цих імен: різних написань сотні, а робіт десятки тисяч
+    (ревʼю 07.09.26, P.2)."""
     normalized_target = _normalize(canonical_name)
-    matches: list[Order] = []
-    for order in orders:
-        if not order.client_name:
-            continue
-        normalized_candidate = _normalize(order.client_name)
-        if normalized_candidate == normalized_target:
-            matches.append(order)
-            continue
-        if fuzz.ratio(normalized_target, normalized_candidate) >= threshold:
-            matches.append(order)
-    return matches
+    normalized_candidate = _normalize(candidate)
+    if normalized_candidate == normalized_target:
+        return True
+    return fuzz.ratio(normalized_target, normalized_candidate) >= threshold
+
+
+def matching_client_names(
+    canonical_name: str, names: list[str], threshold: float = MATCH_THRESHOLD
+) -> list[str]:
+    """Ті з написань у таблиці, які належать цьому клієнтові."""
+    if not canonical_name or not canonical_name.strip():
+        return []
+    return [name for name in names if name and name_matches(canonical_name, name, threshold)]
 
 
 def index_orders_by_name(orders: list[Order]) -> dict[str, list[Order]]:

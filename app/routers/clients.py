@@ -20,6 +20,7 @@ from app.client_profile import (
     count_matching_orders,
     find_matching_orders,
     index_orders_by_name,
+    matching_client_names,
     summarize_client_orders,
 )
 from app.models import Client, ClientNameAlias, Order
@@ -45,8 +46,21 @@ def client_pane_context(db: Session, client: Client, named_orders: list[Order] |
     that set here made /clients read the whole Order table TWICE per request. The
     standalone pane route has no such list, so it loads its own."""
     if named_orders is None:
-        named_orders = db.scalars(select(Order).where(Order.client_name.isnot(None))).all()
-    matched = find_matching_orders(client.canonical_name, named_orders)
+        # Спершу ІМЕНА, потім роботи цих імен. Раніше сюди їхала вся таблиця
+        # робіт за весь час (архів нічого не видаляє, ~92 роботи на день) — і
+        # так на кожен клік по клієнту. Різних написань сотні, тож звуження
+        # робиться в SQL, а нечітке порівняння лишається тільки для імен
+        # (ревʼю 07.09.26, P.2).
+        names = db.scalars(
+            select(Order.client_name).where(Order.client_name.isnot(None)).distinct()
+        ).all()
+        wanted = matching_client_names(client.canonical_name, list(names))
+        matched = (
+            db.scalars(select(Order).where(Order.client_name.in_(wanted))).all()
+            if wanted else []
+        )
+    else:
+        matched = find_matching_orders(client.canonical_name, named_orders)
     summary = summarize_client_orders(matched)
     folder_names, bound_folder, folder_suggestions = client_folder_options(db, client.canonical_name)
 
