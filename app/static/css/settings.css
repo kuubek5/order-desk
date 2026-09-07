@@ -88,7 +88,7 @@
 .settings-secondary-button:hover,
 .settings-secondary-button:focus-visible {
   color: var(--color-text);
-  border-color: rgba(230, 230, 240, 0.3);
+  border-color: var(--ghost-edge);
 }
 
 @media (max-width: 720px) {
@@ -218,9 +218,9 @@
 }
 
 .user-badge-inactive {
-  background-color: rgba(230, 230, 240, 0.08);
+  background-color: var(--ghost-fill);
   color: var(--color-text-muted);
-  border: 1px solid rgba(230, 230, 240, 0.2);
+  border: 1px solid var(--ghost-edge-soft);
 }
 
 .users-reset-form {
@@ -523,7 +523,7 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .setv2 .settings-check-result{font-size:var(--fs-1)}
 .setv2 .settings-check-result .ok,.setv2 .settings-check-result-ok{color:var(--accent-c)}
 .setv2 .settings-check-result .err,.setv2 .settings-check-result-error{color:var(--alarm)}
-.setv2 .check-spinner{width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.22);border-top-color:var(--accent-c);animation:setv2spin .7s linear infinite;display:none}
+.setv2 .check-spinner{width:13px;height:13px;border-radius:50%;border:2px solid var(--hairline);border-top-color:var(--accent-c);animation:setv2spin .7s linear infinite;display:none}
 .setv2 .check-spinner.htmx-request{display:inline-block}
 @keyframes setv2spin{to{transform:rotate(360deg)}}
 
@@ -585,7 +585,7 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
   border:solid var(--on-accent);border-width:0 2px 2px 0;transform:rotate(45deg)}
 
 /* Drag-and-drop file zone (backup restore). */
-.setv2 .dropzone{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;text-align:center;padding:22px 16px;border:1.5px dashed var(--line-2);border-radius:var(--r-card);background:rgba(255,255,255,.015);cursor:pointer;transition:border-color .15s ease,background .15s ease}
+.setv2 .dropzone{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;text-align:center;padding:22px 16px;border:1.5px dashed var(--line-2);border-radius:var(--r-card);background:var(--tint-faint);cursor:pointer;transition:border-color .15s ease,background .15s ease}
 .setv2 .dropzone:hover{border-color:var(--accent-b);background:rgba(var(--accent-base-rgb), .05)}
 .setv2 .dropzone.is-dragover{border-color:var(--accent);background:rgba(var(--accent-base-rgb), .1)}
 .setv2 .dropzone.has-file{border-style:solid;border-color:var(--accent-b);background:rgba(var(--accent-base-rgb), .06)}
@@ -659,11 +659,11 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .matlib-back:hover{color:var(--accent)}
 .matlib-flash{padding:10px 13px;border-radius:var(--r-ctl);margin-bottom:14px;font-size:var(--fs-2);border:1px solid var(--line)}
 .matlib-flash.is-ok{background:rgba(var(--accent-rgb), .10);border-color:rgba(var(--accent-rgb), .35);color:var(--ink)}
-.matlib-flash.is-error{background:rgba(244,114,110,.10);border-color:rgba(244,114,110,.4);color:var(--alarm)}
+.matlib-flash.is-error{background:rgba(var(--alarm-rgb),.10);border-color:rgba(var(--alarm-rgb),.4);color:var(--alarm)}
 .matlib-summary .panel-body{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .matlib-summary .dlabel{color:var(--ink-3);font-size:var(--fs-1);margin-right:8px}
 .matlib-summary .tnum{font-family:var(--font-mono);font-size:var(--fs-6);font-weight:700;color:var(--ink)}
-.matlib-summary .tnum.is-warn{color:#f0a24b}
+.matlib-summary .tnum.is-warn{color:var(--warn)}
 .matlib-summary .unit{color:var(--ink-3);font-size:var(--fs-2);margin-left:6px}
 .matlib-material{margin-bottom:12px}
 /* ── Кадр матеріалу в шапці картки ───────────────────────────────────────
@@ -693,11 +693,11 @@ main.setv2{max-width:960px;margin:0 auto;padding:18px 20px}
 .matlib-material:is(.mat-zr,.mat-pmma,.mat-ti,.mat-slm,.mat-wax) .card-head .meta{grid-column:2;align-self:start;margin:0}
 .matlib-material:is(.mat-zr,.mat-pmma,.mat-ti,.mat-slm,.mat-wax) .matlib-thumb{
   display:block;flex:0 0 auto;width:52px;height:52px;border-radius:10px;
-  background-color:#0d1117;background-image:var(--mat-art);
+  background-color:var(--bg);background-image:var(--mat-art);
   background-size:cover;background-position:center;
   /* Обідок кольором родини — той самий сигнал, що край рядка в черзі, тому
      родина впізнається однаково на обох екранах. */
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.08), 0 0 0 1px var(--matline, transparent)}
+  box-shadow:inset 0 0 0 1px var(--hairline-soft), 0 0 0 1px var(--matline, transparent)}
 /* --matline переїхав до update_overlay.css, до кадру тієї ж родини: колір і
    фото матеріалу тепер описані в одному місці й доступні будь-якому екрану
    (консоль /settings/materials теж їх бере). */
@@ -816,13 +816,13 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
    секції на черзі (furnaces.css), інший лише масштаб. */
 .masw{position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:6px;height:64px;
   padding:7px 9px;border-radius:calc(var(--r-card) - 3px);border:1px solid var(--line);overflow:hidden;
-  background:#0c1015 center 55%/cover no-repeat}
+  background:var(--art-well) center 55%/cover no-repeat}
 .masw::before{content:"";position:absolute;inset:0;
-  background:linear-gradient(178deg,rgba(8,11,15,.7),rgba(8,11,15,.25) 40%,rgba(6,8,11,.9))}
+  background:linear-gradient(178deg,var(--art-scrim-top),var(--art-scrim-mid) 40%,var(--art-scrim-bottom))}
 .masw[data-mart="dust"]{background-image:url("../img/machine-dust.jpg")}
 .masw[data-mart="burr"]{background-image:url("../img/machine-burr.jpg")}
 .masw[data-mart="flower"]{background-image:url("../img/machine-flower.jpg")}
-.masw[data-mart="titanium"]{background-image:url("../img/machine-titanium.jpg");background-color:#100d0a}
+.masw[data-mart="titanium"]{background-image:url("../img/machine-titanium.jpg");background-color:var(--art-well-warm)}
 .masw[data-mart="toolpath"]{background-image:url("../img/machine-toolpath.jpg")}
 .masw[data-mart="none"]{background:var(--card)}
 .masw[data-mart="none"]::before{display:none}
@@ -990,7 +990,7 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .setv2 .fu-col-photo{width:1%;white-space:nowrap;padding-right:6px}
 .setv2 .fu-photo-form{display:inline-block;vertical-align:middle;margin:0}
 .setv2 .fu-photo{position:relative;display:block;width:72px;height:48px;border-radius:7px;overflow:hidden;
-  border:1px solid var(--line-2);background:#0c1015;cursor:pointer}
+  border:1px solid var(--line-2);background:var(--art-well);cursor:pointer}
 .setv2 .fu-photo:hover{border-color:var(--accent)}
 .setv2 .fu-photo img{display:block;width:100%;height:100%;object-fit:cover}
 .setv2 .fu-photo.is-default{border-style:dashed}
