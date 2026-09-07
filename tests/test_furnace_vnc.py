@@ -8,6 +8,7 @@
 Стенд — tests/fake_vnc_server.py, справжній сокет на 127.0.0.1.
 """
 
+import time
 from pathlib import Path
 
 import pytest
@@ -126,3 +127,43 @@ def test_every_connection_is_closed_after_the_frame():
         for _ in range(5):
             capture("127.0.0.1", furnace.port, "DEKEMA")
         assert furnace.connections == 0
+
+
+# --- D.4: дедлайн справді закриває сокет; кадр має стелю --------------------
+
+
+def test_the_socket_is_closed_when_the_deadline_cancels_the_grab():
+    """Дедлайн скасовує корутину — і саме тут легко лишити напіввідкриту
+    сесію: піч тримає обмежене число, і через добу опитування вона перестане
+    пускати навіть оператора. Перевіряємо не намір, а факт: після таймауту
+    лічильник живих зʼєднань стенда мусить впасти в нуль."""
+    with _furnace("run", hang=True) as furnace:
+        with pytest.raises(FurnaceVncError):
+            capture("127.0.0.1", furnace.port, "DEKEMA", timeout=1.0)
+
+        deadline = time.time() + 5
+        while furnace.connections and time.time() < deadline:
+            time.sleep(0.05)
+        assert furnace.connections == 0, "скасований знімок лишив сокет відкритим"
+
+
+def test_an_absurdly_large_frame_is_refused_not_allocated():
+    """Скільки пікселів віддати, вирішує ЧУЖИЙ сервер. Зіпсована прошивка (чи
+    сервер, який оголосив екран 30000×30000) змусила б виділити гігабайти в
+    фоновому потоці — тобто повалила б застосунок, а не лише один знімок."""
+    import numpy as np
+
+    from app import furnace_vnc
+
+    huge = np.zeros((10, 10, 4), dtype="uint8")
+    huge_shape = (furnace_vnc.MAX_FRAME_PIXELS // 10 + 10, 10, 4)
+
+    class _Fake:
+        shape = huge_shape
+
+    with pytest.raises(FurnaceVncError) as exc:
+        furnace_vnc._refuse_oversized("10.0.0.9", _Fake())
+    assert "відхилено" in str(exc.value)
+
+    # Нормальний кадр проходить без зауважень.
+    furnace_vnc._refuse_oversized("10.0.0.9", huge)

@@ -670,3 +670,47 @@ def test_done_beats_percent_in_the_strip():
     )
     assert "✓" in html
     assert "100<u>%</u>" not in html
+
+
+# --- D.5: кеш підписів і шлях кадру ----------------------------------------
+
+
+def test_signature_cache_is_keyed_by_folder_not_only_by_machine(tmp_path, monkeypatch):
+    """Адмін може перенести теку кадрів у налаштуваннях. Підписи зі СТАРОЇ
+    теки лишались у памʼяті процесу під тим самим ключем верстата, і збір
+    вирішував «такий кадр уже є», дивлячись на файли, яких у новій теці
+    немає."""
+    from PIL import Image
+
+    from app.services import machines as svc
+
+    svc._calib_signatures.clear()
+    first = tmp_path / "стара"
+    second = tmp_path / "нова"
+    for folder in (first, second):
+        folder.mkdir()
+    Image.new("RGB", (40, 30), (10, 20, 30)).save(first / "d-1.png")
+
+    from_first = svc._known_signatures(first, "10.0.0.7")
+    from_second = svc._known_signatures(second, "10.0.0.7")
+
+    assert list(from_first) == ["d-1.png"]
+    assert from_second == {}, "нова тека порожня — кеш старої не має її підміняти"
+    svc._calib_signatures.clear()
+
+
+def test_frame_path_never_leaves_the_frames_folder(monkeypatch, tmp_path):
+    """Ключ приходить із налаштувань. Хоч адреса й перевірена, імʼя файлу не
+    місце для роздільників і «..»."""
+    from app.services import machines as svc
+
+    monkeypatch.setattr(svc, "frames_root", lambda: tmp_path)
+
+    path = svc.frame_path("../../etc/passwd")
+
+    # Роздільників у назві не лишається, тож файл фізично не може виїхати з
+    # теки кадрів. Крапки самі по собі нешкідливі — без «/» вони просто
+    # символи в імені.
+    assert path.parent == tmp_path
+    assert "/" not in path.name and "\\" not in path.name
+    assert path.resolve().parent == tmp_path.resolve()

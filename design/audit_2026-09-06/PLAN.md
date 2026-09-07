@@ -158,10 +158,10 @@ F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F14, F15, F16, F18, F19 — �
 | # | Статус | Крок |
 |---|---|---|
 | D.1 | ⬜ ⚠ | Go-агент: firewall-правило лише з IP CRM (мінімум) або TLS з pinned-сертифікатом; токен ≥ 20 символів + backoff; `/info` без токена; ACL на `agent.json`/`crm-setup.txt`; без `?token=`. |
-| D.2 | ⬜ | `furnace.py:397-436` — стан під `_states_lock` (як `machines.py:795-825`); широкий `except` у `grab()`/`read_panel`; `screen_is_sisma` під `except`. |
-| D.3 | ⬜ | `furnace_ocr.py` — «голосування трьох» задокументувати як два або вимагати ≥2; патерн `command` зі структурою. |
-| D.4 | ⬜ | `furnace_vnc.py:66-84` — тест/доказ закриття сокета при cancel; кап framebuffer. |
-| D.5 | ⬜ | `poll_target` (200 рядків) розбити; `_calib_signatures` ключ із текою; `resolve_frame` мертва `_HOST_RE`; `frame_path` через `_sanitize_key`; мертві `MachineConfigError`, `SismaReading.printing`, `config_error`. |
+| D.2 | ✅ 07.09.26 | `grab` і `read_panel` ловлять широко (asyncvnc може впасти ImportError на TripleDES — одна версія залежності гасила б воркер разом з усіма печами); `screen_is_sisma` теж під except; стан печі пишеться одним кроком під `_states_lock`. |
+| D.3 | ✅ 07.09.26 | Потрібні ДВА згодні сигнали, інакше «?» — раніше голосування вироджувалось в один. CLAUDE.md виправлено («голосування трьох» → двох плюс звірка третім). Шаблон «команди» вимагає літеру Й цифру: «........» і «0000» більше не команда. |
+| D.4 | ✅ 07.09.26 | Тест доводить ФАКТ закриття сокета після скасування по дедлайну (лічильник зʼєднань стенда падає в нуль). Кадр має стелю `MAX_FRAME_PIXELS` (4K): розмір оголошує чужий сервер, і 30000×30000 виділили б гігабайти у фоновому потоці. |
+| D.5 | ✅ 07.09.26 (частково) | `poll_target` розбито на `_grab_machine_frame` / `_record_machine_failure` / `_save_frame_if_due`. Кеш `_calib_signatures` ключується текою+верстатом. `frame_path` через `_sanitize_key`. `MachineConfigError` видалено. ЛИШЕНО СВІДОМО: `SismaReading.printing` — у ньому записане правило читання екрана («Emitting» без шару = суперечність), яке перевіряють тести; `config_error` живий (рендериться у `furnaces.html`), ревʼю помилилось. `resolve_frame`/`_HOST_RE` — `_HOST_RE` вживається в обох сервісах, не мертвий. |
 | D.6 | ⬜ | SISMA-пайплайн на спільних хелперах `furnace_ocr`; `scripts/machine_collect_frames.py` з капом/дедлайном. |
 
 ### T — тести / CI

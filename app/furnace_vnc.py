@@ -42,6 +42,15 @@ class FurnaceVncError(Exception):
     """Кадр не знято. Повідомлення призначене оператору, не логам."""
 
 
+# Стеля розміру кадру. Скільки пікселів віддати, вирішує ЧУЖИЙ сервер: піч і
+# ПК верстата стоять у мережі лабораторії, і зіпсована прошивка (чи просто
+# сервер, який оголосив екран 30000×30000) змусила б нас виділити гігабайти в
+# фоновому потоці — тобто повалила б застосунок, а не лише один знімок.
+# 4K із запасом покриває будь-яке реальне табло (піч — 800×600, ПК верстата —
+# 1920×1080); більше означає, що ми говоримо не з тим, з ким думали.
+MAX_FRAME_PIXELS = 3840 * 2160
+
+
 async def _grab(
     host: str, port: int, password: Optional[str], warmup: float = 0.0
 ) -> Image.Image:
@@ -60,7 +69,20 @@ async def _grab(
             # framebuffer завжди, тож для неї warmup лишається нульовим.
             await asyncio.sleep(warmup)
             pixels = await client.screenshot()
+    _refuse_oversized(host, pixels)
     return Image.fromarray(pixels).convert("RGB")
+
+
+def _refuse_oversized(host: str, pixels) -> None:
+    """Не перетворювати в зображення кадр, розмір якого назвав чужий сервер."""
+    shape = getattr(pixels, "shape", None)
+    if not shape or len(shape) < 2:
+        return
+    height, width = int(shape[0]), int(shape[1])
+    if height * width > MAX_FRAME_PIXELS:
+        raise FurnaceVncError(
+            f"Пристрій {host} оголосив кадр {width}×{height} — це не табло, кадр відхилено"
+        )
 
 
 async def capture_async(

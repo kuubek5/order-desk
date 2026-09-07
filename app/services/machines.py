@@ -107,10 +107,6 @@ COMPLETED_AFTER_SECONDS = 120.0
 MAX_OUTAGES = 10
 
 
-class MachineConfigError(Exception):
-    """Адресу верстата написано неправильно. Повідомлення — для оператора."""
-
-
 @dataclass(frozen=True)
 class MachineTarget:
     """Один верстат у налаштуваннях."""
@@ -312,7 +308,12 @@ def _known_signatures(folder: Path, key: str) -> dict[str, tuple[int, ...]]:
     витісненнями. Кадр, який не відкрився, просто пропускаємо — зіпсований
     файл не привід зупинити збір.
     """
-    known = _calib_signatures.get(key)
+    # Ключ кеша — тека РАЗОМ із ключем верстата. Адмін може перенести теку
+    # кадрів у налаштуваннях, і тоді підписи зі старої теки лишались би в
+    # памʼяті процесу під тим самим ключем: збір вирішував би «такий кадр уже
+    # є», дивлячись на файли, яких у новій теці немає (ревʼю 07.09.26, D.5).
+    cache_key = f"{folder}|{key}"
+    known = _calib_signatures.get(cache_key)
     if known is not None:
         return known
     known = {}
@@ -322,7 +323,7 @@ def _known_signatures(folder: Path, key: str) -> dict[str, tuple[int, ...]]:
                 known[png.name] = _frame_signature(frame)
         except Exception:  # noqa: BLE001 — битий файл не має валити збір
             logger.debug("Калібрувальний кадр %s не прочитався", png, exc_info=True)
-    _calib_signatures[key] = known
+    _calib_signatures[cache_key] = known
     return known
 
 
@@ -523,7 +524,13 @@ def collect_calibration_frame(
 
 
 def frame_path(key: str) -> Path:
-    return frames_root() / f"{key}.png"
+    """Шлях до кадру верстата.
+
+    Через `_sanitize_key`, як і решта шляхів: ключ приходить із налаштувань
+    (адреса верстата), і хоч вона й перевірена, імʼя файлу не місце для
+    роздільників і «..» — пасок безпеки коштує один виклик (D.5).
+    """
+    return frames_root() / f"{_sanitize_key(key)}.png"
 
 
 def save_frame(key: str, image: Image.Image) -> Path:
@@ -663,6 +670,82 @@ def _fetch_titles(host: str, port: int, token: str) -> list[str] | None:
         return None
 
 
+def _grab_machine_frame(
+    target: "MachineTarget", password: Optional[str]
+) -> tuple[Optional["Image.Image"], Optional[str]]:
+    """Кадр верстата (агент або VNC) без жодної роботи зі станом.
+
+    Винесено з `poll_target`, який розрісся до двохсот рядків і перестав
+    читатись одним поглядом (ревʼю 07.09.26, D.5). Поведінка та сама:
+    повертає (кадр, None) або (None, пояснення), ніколи не кидає — мережа
+    цеху вміє дивувати, а фоновий обхід має пережити будь-який верстат.
+    """
+    try:
+        if target.is_agent:
+            return _capture_http(target.host, target.port, target.agent_token), None
+        return capture(
+            target.host,
+            port=target.port,
+            password=target.password or password,
+            timeout=CAPTURE_TIMEOUT_SECONDS,
+            warmup=CAPTURE_WARMUP_SECONDS,
+        ), None
+    except FurnaceVncError as exc:
+        return None, str(exc)
+    except Exception as exc:  # noqa: BLE001 — мережа цеху вміє дивувати
+        return None, f"Знімок не вдався: {exc}"
+
+
+def _record_machine_failure(
+    state: "MachineState", target: "MachineTarget", error: str, now: datetime
+) -> None:
+    """Невдалий тік: лічильники під локом і ОДИН рядок у лог на обрив."""
+    with _states_lock:
+        state.error = error
+        state.error_at = now
+        state.fail_streak += 1
+        state.polls_failed += 1
+        streak = state.fail_streak
+        since = state.last_ok_at
+    # Пишемо в лог САМЕ ПЕРЕХІД, а не кожен невдалий тік: інакше мертвий
+    # верстат за ніч насипле 17 тисяч рядків. Один рядок на обрив дає
+    # відповідь на «як часто рветься» цифрами, а не відчуттям.
+    if streak == PROBLEM_AFTER_FAILURES:
+        with _states_lock:
+            state.outages.append([since or now, None, error])
+            del state.outages[:-MAX_OUTAGES]
+        logger.warning(
+            "Верстат %s: обрив зв'язку (остання відповідь %s) — %s",
+            target.name,
+            since.strftime("%H:%M:%S") if since else "невідомо",
+            error,
+        )
+    if streak >= PROBLEM_AFTER_FAILURES:
+        record_state(target.key, "off", now)
+
+
+def _save_frame_if_due(
+    state: "MachineState", target: "MachineTarget", frame: "Image.Image", now: datetime
+) -> Optional[datetime]:
+    """Кадр на диск не частіше ніж раз на FRAME_SAVE_INTERVAL_SECONDS.
+
+    Свіжість потрібна ВІДСОТКУ (він у памʼяті), а картинку дивляться оком.
+    Повертає час останнього збереження — новий або попередній.
+    """
+    due = (
+        state.frame_saved_at is None
+        or (now - state.frame_saved_at).total_seconds() >= FRAME_SAVE_INTERVAL_SECONDS
+    )
+    if not due:
+        return state.frame_saved_at
+    try:
+        save_frame(target.key, frame)
+        return now
+    except OSError:
+        logger.exception("Кадр верстата %s не збережено", target.host)
+        return state.frame_saved_at
+
+
 def poll_target(
     db: Session,
     target: MachineTarget,
@@ -688,60 +771,15 @@ def poll_target(
         state.target = target
 
     if frame is None and error is None:
-        try:
-            if target.is_agent:
-                frame = _capture_http(target.host, target.port, target.agent_token)
-            else:
-                frame = capture(
-                    target.host,
-                    port=target.port,
-                    password=target.password or password,
-                    timeout=CAPTURE_TIMEOUT_SECONDS,
-                    warmup=CAPTURE_WARMUP_SECONDS,
-                )
-        except FurnaceVncError as exc:
-            error = str(exc)
-        except Exception as exc:  # noqa: BLE001 — мережа цеху вміє дивувати
-            error = f"Знімок не вдався: {exc}"
+        frame, error = _grab_machine_frame(target, password)
 
     if error is not None:
-        with _states_lock:
-            state.error = error
-            state.error_at = now
-            state.fail_streak += 1
-            state.polls_failed += 1
-            streak = state.fail_streak
-            since = state.last_ok_at
-        # Пишемо в лог САМЕ ПЕРЕХІД, а не кожен невдалий тік: інакше мертвий
-        # верстат за ніч насипле 17 тисяч рядків. Один рядок на обрив дає
-        # відповідь на «як часто рветься» цифрами, а не відчуттям.
-        if streak == PROBLEM_AFTER_FAILURES:
-            with _states_lock:
-                state.outages.append([since or now, None, error])
-                del state.outages[:-MAX_OUTAGES]
-            logger.warning(
-                "Верстат %s: обрив зв'язку (остання відповідь %s) — %s",
-                target.name,
-                since.strftime("%H:%M:%S") if since else "невідомо",
-                error,
-            )
-        if streak >= PROBLEM_AFTER_FAILURES:
-            record_state(target.key, "off", now)
+        _record_machine_failure(state, target, error, now)
         return state
 
     # Диск чіпаємо не частіше ніж раз на FRAME_SAVE_INTERVAL_SECONDS: свіжість
     # потрібна ВІДСОТКУ (він у пам'яті), а картинку дивляться оком.
-    due = (
-        state.frame_saved_at is None
-        or (now - state.frame_saved_at).total_seconds() >= FRAME_SAVE_INTERVAL_SECONDS
-    )
-    saved_at = state.frame_saved_at
-    if due:
-        try:
-            save_frame(target.key, frame)
-            saved_at = now
-        except OSError:
-            logger.exception("Кадр верстата %s не збережено", target.host)
+    saved_at = _save_frame_if_due(state, target, frame, now)
 
     # Відсоток — з ТОГО САМОГО кадру. Стоїть тут (а не в grab), бо poll_target —
     # спільна лійка обох шляхів опитування: фонового (poll_all) і разового.
@@ -1619,7 +1657,6 @@ def reset_state_for_tests() -> None:
 __all__ = [
     "CAPTURE_TIMEOUT_SECONDS",
     "MachineCard",
-    "MachineConfigError",
     "MachineTarget",
     "MachineState",
     "POLL_INTERVAL_SECONDS",
