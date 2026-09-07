@@ -102,15 +102,78 @@ def test_known_update_starts_background_thread_and_flashes_success():
     with Session(engine, expire_on_commit=False) as db:
         admin = _admin(db)
         request = _request(admin.id)
-        with patch("app.routers.settings.update.get_known_update", return_value=_RELEASE), patch("app.routers.settings.update.Thread") as mock_thread:
+        with patch("app.routers.settings.update.get_known_update", return_value=_RELEASE), patch("app.routers.settings.update.Thread") as mock_thread, patch("app.routers.settings.update.snapshot_before_update") as mock_backup:
             response = settings_router_mod.install_update(request=request, db=db)
     mock_thread.assert_called_once()
     _, kwargs = mock_thread.call_args
     assert kwargs["args"] == (_RELEASE,)
     mock_thread.return_value.start.assert_called_once()
+    mock_backup.assert_called_once()
     assert response.status_code == 303
     assert response.headers["location"] == "/settings"
     assert request.session["settings_flash"]["kind"] == "success"
+
+
+# --- B.6: повна копія бази перед інсталятором -----------------------------
+
+
+def test_backup_is_taken_before_the_installer_thread_starts():
+    """Копія має бути ДО інсталятора: після нього база вже може бути змінена."""
+    engine = _database()
+    order = []
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        request = _request(admin.id)
+        with (
+            patch("app.routers.settings.update.get_known_update", return_value=_RELEASE),
+            patch(
+                "app.routers.settings.update.snapshot_before_update",
+                side_effect=lambda *a, **k: order.append("backup"),
+            ),
+            patch("app.routers.settings.update.Thread") as mock_thread,
+        ):
+            mock_thread.return_value.start.side_effect = lambda: order.append("install")
+            settings_router_mod.install_update(request=request, db=db)
+
+    assert order == ["backup", "install"]
+
+
+def test_backup_gets_the_release_version_in_the_name():
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        with (
+            patch("app.routers.settings.update.get_known_update", return_value=_RELEASE),
+            patch("app.routers.settings.update.snapshot_before_update") as mock_backup,
+            patch("app.routers.settings.update.Thread"),
+        ):
+            settings_router_mod.install_update(request=_request(admin.id), db=db)
+
+    args, _ = mock_backup.call_args
+    assert args[2] == "9.9.9"
+
+
+def test_failed_backup_still_installs_but_warns():
+    """Копія — страховка, а не умова: збій не має лишити ПК без оновлення,
+    але адмін мусить побачити, що копії нема."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        request = _request(admin.id)
+        with (
+            patch("app.routers.settings.update.get_known_update", return_value=_RELEASE),
+            patch(
+                "app.routers.settings.update.snapshot_before_update",
+                side_effect=OSError("диск повний"),
+            ),
+            patch("app.routers.settings.update.Thread") as mock_thread,
+        ):
+            settings_router_mod.install_update(request=request, db=db)
+
+    mock_thread.return_value.start.assert_called_once()
+    flash = request.session["settings_flash"]
+    assert flash["kind"] == "success"
+    assert "копію бази зняти не вдалося" in flash["message"]
 
 
 # --- _install_update_in_background: never raises out of the thread --------

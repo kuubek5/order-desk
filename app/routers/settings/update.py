@@ -7,6 +7,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 from app.__version__ import VERSION
+from app.config import DB_PATH
+from app.db import engine
+from app.pre_update_backup import snapshot_before_update
 from app.services.health_snapshot import remember_before_update
 from app.changelog import load_changelog
 from app.routers.deps import (
@@ -148,6 +151,18 @@ def install_update(request: Request, db: Session = Depends(get_db)):
         db.rollback()
         logger.exception("Не вдалося зняти знімок стану перед оновленням")
 
+    # Повна копія бази ПЕРЕД інсталятором (app/pre_update_backup.py): міграції
+    # схеми нової версії правлять живу базу, і без копії відкочуватись нема куди.
+    # Копіювання — VACUUM INTO на кілька мегабайт, це частки секунди, тому
+    # робиться синхронно: інсталятор не має стартувати раніше за копію.
+    # Збій копіювання не зриває оновлення, але адмін бачить про це попередження.
+    backup_warning = ""
+    try:
+        snapshot_before_update(engine, DB_PATH, release.version)
+    except Exception:  # noqa: BLE001
+        logger.exception("Не вдалося зняти копію бази перед оновленням")
+        backup_warning = " (копію бази зняти не вдалося — дивіться журнал)"
+
     try:
         Thread(
             target=_install_update_in_background,
@@ -165,6 +180,6 @@ def install_update(request: Request, db: Session = Depends(get_db)):
 
     request.session["settings_flash"] = {
         "kind": "success",
-        "message": "Оновлення встановлюється, застосунок автоматично перезапуститься за кілька секунд",
+        "message": "Оновлення встановлюється, застосунок автоматично перезапуститься за кілька секунд" + backup_warning,
     }
     return RedirectResponse("/settings", status_code=303)
