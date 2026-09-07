@@ -7,7 +7,7 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 from app.models import EmailMessage, Order
@@ -64,6 +64,27 @@ def api_notify_state(request: Request, db: Session = Depends(get_db)):
         # щойно щось передав. Той самий предикат, що й дошка/бейдж
         # (app/services/shift.py), щоб три місця не розходились.
         "shift": open_shift_note_count(db),
+        # «Можна брати»: технік доклав шлях до папки, оператор ще не взяв.
+        # Це СТАН готовності (§5), а не розмір черги — тому приріст означає
+        # рівно «зʼявилась робота, яку можна брати». Саме через це старий
+        # `new_orders` (розмір черги) не годився і був прибраний.
+        "ready": db.scalar(
+            select(func.count())
+            .select_from(Order)
+            .where(
+                Order.job_code.is_not(None),
+                Order.job_code != "",
+                or_(Order.sum3d_id.is_(None), Order.sum3d_id == ""),
+                Order.status != "видано",
+                Order.archived_at.is_(None),
+            )
+        ) or 0,
+        # Рядки, що зникли з таблиці. `archived_at` штампує лише синк, коли
+        # рядок не знайшовся (sync.py), і видалення з черги — retention його
+        # НЕ чіпає. Приріст = рядок прибрали, а не «робота постаріла».
+        "deleted": db.scalar(
+            select(func.count()).select_from(Order).where(Order.archived_at.is_not(None))
+        ) or 0,
         "update": release.version if release else None,
     }
 

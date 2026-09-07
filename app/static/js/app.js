@@ -478,8 +478,26 @@ const TOAST_LIFE = { error: 0, warning: 9000, info: 7000, success: 5000 };
 
 const TOAST_MAX = 3;
 
-function showToast(message, kind = "info", timeout, undoUrl) {
-  if (!message) return;
+// ── «Аврора»: три канали під три роди подій ─────────────────────────────
+// Вигляд «aurora» (Налаштування → Сповіщення) не просто перефарбовує тост, а
+// розводить повідомлення по трьох каналах — рішення власника 07.09.26:
+//   card  — подія прилетіла ЗЗОВНІ або дія не долетіла в таблицю;
+//   line  — підтвердження ВЛАСНОЇ дії (оператор дивиться на кнопку, яку
+//           щойно натиснув, тож досить рядка знизу на 2 с);
+//   edge  — СТАН збою: він триває, а не стався, тому липкий тост тут зайвий.
+// Вигляди «glass» і «card» лишились як були: там усе йде однією колонкою.
+const AURORA_EVENT_CHANNEL = {
+  offline: "edge",
+  sheet_error: "edge",
+  mail_error: "edge",
+  sheet_recovered: "edge",
+};
+// Скільки живе рядок-підтвердження. Окремо від TOAST_LIFE: рядок не несе
+// подробиць, його завдання — сказати «дійшло» і піти.
+const TOAST_LINE_LIFE = 2600;
+const TOAST_LINE_MAX = 2;
+
+function toastStackEl() {
   let stack = document.getElementById("toast-stack");
   if (!stack) {
     stack = document.createElement("div");
@@ -495,9 +513,159 @@ function showToast(message, kind = "info", timeout, undoUrl) {
     stack.dataset.toastStyle = "glass";
     document.body.appendChild(stack);
   }
+  return stack;
+}
+
+function toastStyleName() {
+  const stack = document.getElementById("toast-stack");
+  return (stack && stack.dataset.toastStyle) || "glass";
+}
+
+// Куди відправити це повідомлення. Явний opts.channel > канал події >
+// правило за важливістю. Помилка власної дії свідомо лишається КАРТКОЮ:
+// «у таблицю НЕ записано» — найдорожче повідомлення в системі, рядок унизу
+// його б поховав.
+function auroraChannel(kind, opts) {
+  if (toastStyleName() !== "aurora") return "card";
+  if (opts && opts.channel) return opts.channel;
+  if (opts && opts.event) return AURORA_EVENT_CHANNEL[opts.event] || "card";
+  return kind === "error" || kind === "warning" ? "card" : "line";
+}
+
+// Нижня стрічка. Один рядок, без подробиць, гасне сам; «Скасувати» лишається,
+// бо це єдина дія, яку з підтвердження власної дії справді хочуть.
+function showToastLine(message, kind, undoUrl) {
+  let zone = document.getElementById("toast-lines");
+  if (!zone) {
+    zone = document.createElement("div");
+    zone.id = "toast-lines";
+    zone.className = "toast-lines";
+    zone.setAttribute("role", "status");
+    zone.setAttribute("aria-live", "polite");
+    document.body.appendChild(zone);
+  }
+  const el = document.createElement("div");
+  el.className = "toast-line toast-line-" + kind + " toast-line-in";
+  el.innerHTML =
+    '<span class="tl-dot" aria-hidden="true"></span><span class="tl-text"></span>' +
+    (undoUrl ? '<button type="button" class="tl-undo">Скасувати</button>' : "") +
+    '<button type="button" class="tl-close" aria-label="Закрити">×</button>' +
+    '<i class="tl-thread" style="animation-duration:' + TOAST_LINE_LIFE + 'ms"></i>';
+  el.querySelector(".tl-text").textContent = String(message);
+
+  // Клас на <body> — щоб кнопка звернень (той самий нижній кут) піднялась над
+  // стрічкою. Явно, а не через CSS `body:has(.toast-line)`: той теж працює, але
+  // змусив би браузер перевіряти умову на кожній мутації під body, а черга
+  // підмінює сотні рядків кожні 15 с.
+  const syncBodyFlag = () => {
+    document.body.classList.toggle("has-toast-line", zone.children.length > 0);
+  };
+  const dismiss = () => {
+    el.classList.remove("toast-line-in");
+    el.classList.add("toast-line-out");
+    window.setTimeout(() => { el.remove(); syncBodyFlag(); }, 220);
+  };
+  el.querySelector(".tl-close").addEventListener("click", dismiss);
+  const undoBtn = undoUrl && el.querySelector(".tl-undo");
+  if (undoBtn) {
+    undoBtn.addEventListener("click", () => {
+      undoBtn.disabled = true;
+      dismiss();
+      if (window.htmx) {
+        window.htmx.ajax("POST", undoUrl, { source: document.body, swap: "none" });
+      }
+    });
+  }
+  zone.appendChild(el);
+  while (zone.children.length > TOAST_LINE_MAX) zone.firstChild.remove();
+  syncBodyFlag();
+  window.setTimeout(() => { if (el.parentNode) dismiss(); }, TOAST_LINE_LIFE);
+}
+
+// Світна кромка + чіп. Кромка живе, доки живий бодай один збій; чіп показує,
+// який саме, і віддає подробиці при наведенні. «Відновлено» гасить обидва.
+const auroraFaults = new Map();
+function showToastEdge(message, kind, event) {
+  let edge = document.getElementById("toast-edge");
+  let chip = document.getElementById("toast-chip");
+  if (!edge) {
+    edge = document.createElement("div");
+    edge.id = "toast-edge";
+    edge.className = "toast-edge";
+    document.body.appendChild(edge);
+  }
+  if (!chip) {
+    chip = document.createElement("div");
+    chip.id = "toast-chip";
+    chip.className = "toast-chip";
+    chip.setAttribute("role", "status");
+    chip.setAttribute("aria-live", "polite");
+    chip.setAttribute("tabindex", "0");
+    chip.innerHTML =
+      '<span class="tc-dot" aria-hidden="true"></span><span class="tc-name"></span>' +
+      '<span class="tc-more"></span><div class="toast-chip-detail"></div>';
+    document.body.appendChild(chip);
+  }
+
+  const recovered = kind === "success" || event === "sheet_recovered";
+  if (recovered) {
+    auroraFaults.clear();
+  } else {
+    auroraFaults.set(event || "fault", { message: String(message), at: new Date() });
+  }
+
+  const short = {
+    sheet_error: "Таблиця",
+    mail_error: "Пошта",
+    offline: "Зв'язок",
+  };
+  const keys = [...auroraFaults.keys()];
+  edge.classList.toggle("toast-edge-ok", recovered);
+  chip.classList.toggle("toast-chip-ok", recovered);
+  if (recovered) {
+    chip.querySelector(".tc-name").textContent = "Зв'язок відновлено";
+    chip.querySelector(".tc-more").textContent = "";
+    chip.querySelector(".toast-chip-detail").textContent = String(message);
+    edge.classList.add("is-on");
+    chip.classList.add("is-on");
+    document.body.classList.add("has-toast-chip");
+    window.setTimeout(() => {
+      // Гасимо лише якщо за цей час не прилетів новий збій.
+      if (!auroraFaults.size) {
+        edge.classList.remove("is-on");
+        chip.classList.remove("is-on");
+        document.body.classList.remove("has-toast-chip");
+      }
+    }, 2600);
+    return;
+  }
+  const first = keys[0];
+  const since = auroraFaults.get(first).at;
+  const hh = String(since.getHours()).padStart(2, "0");
+  const mm = String(since.getMinutes()).padStart(2, "0");
+  chip.querySelector(".tc-name").textContent =
+    (short[first] || "Збій") + (keys.length > 1 ? " +" + (keys.length - 1) : "");
+  chip.querySelector(".tc-more").textContent = "з " + hh + ":" + mm;
+  chip.querySelector(".toast-chip-detail").textContent = keys
+    .map((k) => auroraFaults.get(k).message)
+    .join(" · ");
+  edge.classList.add("is-on");
+  chip.classList.add("is-on");
+  // Клас на <body> зсуває верхні тости нижче чіпа. Явно, не через :has() —
+  // див. коментар у update_overlay.css біля .has-toast-line.
+  document.body.classList.add("has-toast-chip");
+}
+
+function showToast(message, kind = "info", timeout, undoUrl, opts) {
+  if (!message) return;
+  const stack = toastStackEl();
   // Стиль живе на контейнері, щоб перемикався одним атрибутом із налаштувань.
-  stack.classList.remove("toast-style-glass", "toast-style-card");
+  stack.classList.remove("toast-style-glass", "toast-style-card", "toast-style-aurora");
   stack.classList.add("toast-style-" + (stack.dataset.toastStyle || "glass"));
+
+  const channel = auroraChannel(kind, opts);
+  if (channel === "line") return showToastLine(message, kind, undoUrl);
+  if (channel === "edge") return showToastEdge(message, kind, opts && opts.event);
 
   const life = timeout === undefined ? (TOAST_LIFE[kind] ?? 7000) : timeout;
   const el = document.createElement("div");
@@ -509,8 +677,15 @@ function showToast(message, kind = "info", timeout, undoUrl) {
   const title = split ? split[1] : message;
   const rest = split ? split[2] : "";
 
+  // В «Аврорі» час життя показує кільце довкола іконки, а не смужка внизу:
+  // картка тоді не має «дна», яке з'їдає рух, і залишок видно біля глифа.
+  const ring =
+    toastStyleName() === "aurora" && life > 0
+      ? '<svg class="toast-ring" viewBox="0 0 40 40" aria-hidden="true">' +
+        '<circle class="tr-bg"/><circle class="tr-fg" style="animation-duration:' + life + 'ms"/></svg>'
+      : "";
   el.innerHTML =
-    '<div class="toast-ic"><svg viewBox="0 0 24 24">' +
+    '<div class="toast-ic">' + ring + '<svg class="toast-glyph" viewBox="0 0 24 24">' +
     (TOAST_ICONS[kind] || TOAST_ICONS.info) +
     '</svg></div><div class="toast-body"><div class="toast-title"></div>' +
     (rest ? '<div class="toast-text"></div>' : "") +
@@ -700,8 +875,11 @@ document.body.addEventListener("toast", (event) => {
   let prev = null;          // перший опит лише запам'ятовує базу, без тостів
   let offlineShown = false;
 
+  // Ключ події їде далі у showToast: у вигляді «Аврора» він вирішує канал
+  // (збої → кромка, решта → картка). Гейт лишається тут і тільки тут —
+  // вимкнена в Налаштуваннях подія не з'явиться в жодному каналі.
   function fire(event, message, kind) {
-    if (enabled.has(event)) showToast(message, kind);
+    if (enabled.has(event)) showToast(message, kind, undefined, undefined, { event });
   }
 
   function plural(n, one, few, many) {
@@ -780,6 +958,29 @@ document.body.addEventListener("toast", (event) => {
           "shift",
           n + " " + plural(n, "нова записка", "нові записки", "нових записок") +
             " передачі зміни. Відкрийте «Зміна».",
+          "warning"
+        );
+      }
+      // «Можна брати»: технік доклав шлях до папки. Рахуємо СТАН готовності
+      // (job_code є, Sum3D порожній), а не розмір черги — саме через розмір
+      // старий `new_orders` показував роботи, яких немає, і був прибраний.
+      if (s.ready > prev.ready) {
+        const n = s.ready - prev.ready;
+        fire(
+          "ready_to_take",
+          n + " " + plural(n, "роботу", "роботи", "робіт") + " можна брати — технік доклав шлях до папки.",
+          "info"
+        );
+      }
+      // Рядок зник із таблиці. archived_at ставить лише синк, коли рядка не
+      // знайшлось; retention чергу лише фільтрує за датою і нічого не штампує.
+      if (s.deleted > prev.deleted) {
+        const n = s.deleted - prev.deleted;
+        fire(
+          "row_deleted",
+          n + " " + plural(n, "рядок", "рядки", "рядків") + " " +
+            plural(n, "зник", "зникли", "зникло") + " з таблиці. " +
+            plural(n, "Робота перейшла", "Роботи перейшли", "Роботи перейшли") + " в Архів, файли на місці.",
           "warning"
         );
       }

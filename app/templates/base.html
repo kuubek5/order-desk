@@ -122,6 +122,18 @@
          data-notify-events="{{ _np.events | join(',') }}"
          data-notify-poll="{{ _np.poll_seconds | default(15) }}"
          aria-live="polite" aria-atomic="false"></div>
+    {% if _np.style == 'aurora' %}
+    {# Канали вигляду «Аврора»: нижня стрічка для підтверджень власних дій і
+       світна кромка з чіпом для стану збою. Обидва порожні, поки нема чого
+       показувати, тому нічого не займають. У виглядах «скляна» і «картка» їх
+       просто немає — там усе йде однією колонкою тостів, як раніше. #}
+    <div id="toast-lines" class="toast-lines" role="status" aria-live="polite"></div>
+    <div id="toast-edge" class="toast-edge" aria-hidden="true"></div>
+    <div id="toast-chip" class="toast-chip" role="status" aria-live="polite" tabindex="0">
+      <span class="tc-dot" aria-hidden="true"></span><span class="tc-name"></span>
+      <span class="tc-more"></span><div class="toast-chip-detail"></div>
+    </div>
+    {% endif %}
     {% if toast_flash %}
     {# One-shot outcome toast carried across a redirect via session flash
        (e.g. accept → queue). app.js loads deferred, so wait for it. #}

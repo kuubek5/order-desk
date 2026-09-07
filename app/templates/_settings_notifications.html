@@ -14,7 +14,10 @@
                     <div class="stand-cell w3"><h3>Вигляд</h3>
                     <div class="settings-field">
                         <div class="notify-styles">
-                            {% for val, name, hint in [('glass','Скляна','основна — розмиває фон, важливість ребром'),('card','Картка','допоміжна — щільна підкладка, без скла')] %}
+                            {# «Аврора» перша як основна; «Скляна» і «Картка»
+                               лишаються доступними без змін — це той самий
+                               вигляд, що працював до 08.09.26. #}
+                            {% for val, name, hint in [('aurora','Аврора','картка для подій ззовні, стрічка знизу для власних дій, кромка для збоїв'),('glass','Скляна','попередня основна — розмиває фон, важливість ребром'),('card','Картка','попередня допоміжна — щільна підкладка, без скла')] %}
                             <label class="notify-pick {% if notify_style == val %}is-on{% endif %}">
                                 <input type="radio" name="notify_style" value="{{ val }}" {% if notify_style == val %}checked{% endif %}>
                                 <span class="np-demo np-{{ val }}"><i></i><b>{{ name }}</b></span>

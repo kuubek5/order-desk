@@ -378,6 +378,44 @@ def test_every_stylesheet_has_balanced_braces():
     assert not broken, 'CSS з незбалансованими дужками:' + chr(10) + chr(10).join(broken)
 
 
+def test_every_stylesheet_has_balanced_comments():
+    """Коментарі в кожному .css відкриті й закриті парами.
+
+    Сусідній тест на дужки спершу ВИРІЗАЄ коментарі регуляркою, тому зайвий
+    `*/` для нього невидимий — а браузер на ньому спотикається і мовчки
+    викидає наступне правило. Саме так 08.09.26 загубилось правило, яке
+    піднімає кнопку звернень над нижньою стрічкою: файл виглядав цілим,
+    дужки сходились, тест був зелений, а стиль не застосовувався.
+    """
+    broken = []
+    for path in sorted(CSS_DIR.glob('*.css')):
+        text = path.read_text(encoding='utf-8')
+        i = 0
+        inside = False
+        while i < len(text) - 1:
+            pair = text[i:i + 2]
+            if inside:
+                # Усередині коментаря значення має лише закриття: «/*» там —
+                # звичайний текст (у tokens.css так лежить шлях «v2a/*.html»).
+                if pair == '*/':
+                    inside = False
+                    i += 2
+                    continue
+            elif pair == '/*':
+                inside = True
+                i += 2
+                continue
+            elif pair == '*/':
+                line = text.count(chr(10), 0, i) + 1
+                broken.append(f'{path.name}:{line}: «*/» без відкритого коментаря')
+                break
+            i += 1
+        else:
+            if inside:
+                broken.append(f'{path.name}: коментар не закрито до кінця файлу')
+    assert not broken, 'CSS зі зламаними коментарями:' + chr(10) + chr(10).join(broken)
+
+
 def test_backdrop_radar_keeps_its_motion():
     """Диск на фоні крутиться, а шкала пульсує.
 

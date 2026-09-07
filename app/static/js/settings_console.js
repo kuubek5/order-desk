@@ -255,15 +255,21 @@
 
   var previewBtn = main.querySelector("[data-notify-preview]");
   if (previewBtn) {
+    // Кожен приклад несе ключ події, бо у вигляді «Аврора» саме він визначає
+    // канал: збій іде в кромку, подія ззовні — карткою, підтвердження власної
+    // дії — нижньою стрічкою. Без ключа проба показувала б лише один канал із
+    // трьох і на неї не можна було б спертись під час налаштування.
     var SAMPLES = [
-      ["Google Таблиця не відповідає. Черга не оновлюється — перевірте зʼєднання.", "error"],
-      ["3 нові роботи у черзі.", "info"],
-      ["Синхронізація відновлена.", "success"],
+      ["2 роботи можна брати — технік доклав шлях до папки.", "info", "ready_to_take"],
+      ["Технік змінив роботу в таблиці. Позначені в черзі — перевірте перед фрезеруванням.", "warning", "sheet_changed"],
+      ["Статус → відфрезеровано · наряд 24122", "success", null],
+      ["Google Таблиця не відповідає. Черга не оновлюється — перевірте зʼєднання.", "error", "sheet_error"],
+      ["Синхронізація відновлена.", "success", "sheet_recovered"],
     ];
     var i = 0;
     previewBtn.addEventListener("click", function () {
       var s = SAMPLES[i++ % SAMPLES.length];
-      if (window.showToast) window.showToast(s[0], s[1]);
+      if (window.showToast) window.showToast(s[0], s[1], undefined, undefined, s[2] ? { event: s[2] } : undefined);
     });
   }
 

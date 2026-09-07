@@ -533,6 +533,23 @@ main.setv2.scon {
   -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
 }
 .np-card { background: var(--card-2); border: 1px solid var(--line-2); }
+/* «Аврора»: те саме скло, але межу малює обертовий конічний градієнт, а не
+   рівна лінія — у мініатюрі він стоїть, бо тут показуємо вигляд, не рух. */
+.np-aurora {
+  position: relative;
+  border-radius: 12px;
+  background: linear-gradient(157deg, rgba(255,255,255,.08), rgba(var(--accent-soft-rgb), .06) 45%, rgba(255,255,255,.02));
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.np-aurora::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: conic-gradient(from 210deg, var(--accent-b) 0deg, transparent 80deg, rgba(255,255,255,.3) 150deg, transparent 210deg, var(--accent-b) 300deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+/* ребро зайве: у «Аврорі» рівень несе рамка й кільце-таймер */
+.np-aurora i { display: none; }
 .np-hint { font-size:var(--fs-1); color: var(--ink-3); }
 
 /* мініатюра позиції: рамка «екрана» з крапкою в куті */

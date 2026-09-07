@@ -498,6 +498,164 @@ body:has(.detail-pane.open) .toast-stack[data-toast-pos="tr"]{right:420px}
   .toast-life{animation:none!important}
 }
 
+/* ── стиль: «Аврора» (08.09.26) ──────────────────────────────────────────
+   Третій вигляд поруч зі скляною й карткою; ті два не змінені й доступні
+   в налаштуваннях як раніше. Аврора — не просто інша заливка, а ТРИ канали
+   під три роди подій (рішення власника 07.09.26):
+
+     картка  — подія прилетіла ЗЗОВНІ (технік здав, рядок зник, нові листи)
+               або дія не долетіла в таблицю. Коштує уваги, тому має вагу.
+     стрічка — підтвердження ВЛАСНОЇ дії. Оператор і так дивиться на кнопку,
+               яку натиснув, тож рядок лише каже «дійшло» і гасне за 2 с.
+               Знизу на всю ширину: під час видачі центр екрана зайнятий
+               повноекранним STL, і накрити його = зупинити роботу.
+     кромка  — СТАН збою (таблиця/пошта/звʼязок). Це триває, а не сталося:
+               липкий тост займав би стек назавжди й виштовхував решту.
+
+   Розподіл між каналами робить app.js (AURORA_EVENT_CHANNEL + showToast).
+   Вимикання будь-якої події лишається тим самим прапорцем у Налаштуваннях —
+   канал на це не впливає. */
+.toast-style-aurora .toast{padding:14px 14px 14px 16px;border-radius:16px;isolation:isolate;
+  background:linear-gradient(157deg,rgba(255,255,255,.08),rgba(var(--accent-soft-rgb),.06) 45%,rgba(255,255,255,.02));
+  -webkit-backdrop-filter:blur(16px) saturate(1.35);backdrop-filter:blur(16px) saturate(1.35);
+  box-shadow:0 1px 3px rgba(0,0,0,.5),0 18px 44px -16px rgba(0,0,0,.9),inset 0 1px .5px rgba(255,255,255,.22)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .toast-style-aurora .toast{background:var(--card-2)}
+}
+/* Обертова рамка кольору рівня. @property дає анімований кут; там, де його
+   нема, конічний градієнт просто стоїть — рамка лишається, рух зникає. */
+@property --toast-ang{syntax:"<angle>";inherits:false;initial-value:0deg}
+.toast-style-aurora .toast::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;
+  background:conic-gradient(from var(--toast-ang),var(--toast-k,var(--accent-b)) 0deg,transparent 80deg,
+    rgba(255,255,255,.3) 150deg,transparent 210deg,var(--toast-k,var(--accent-b)) 300deg,transparent 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;animation:toastAurora 5s linear infinite;z-index:-1}
+@keyframes toastAurora{to{--toast-ang:360deg}}
+.toast-style-aurora .toast::after{content:"";position:absolute;width:180px;height:120px;left:-40px;top:-50px;
+  border-radius:50%;z-index:-2;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(var(--accent-soft-rgb),.22),transparent);filter:blur(18px)}
+.toast-style-aurora .toast-ic{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.06);position:relative}
+.toast-style-aurora .toast-ic svg.toast-glyph{width:17px;height:17px}
+/* Кільце-таймер замість смужки: показує, скільки лишилось, і не забирає
+   нижній край картки. Смужку в цьому стилі ховаємо. */
+.toast-style-aurora .toast-life{display:none}
+/* Селектор навмисно з .toast-ic: вище вже стоїть `.toast-ic svg{width:15px}`,
+   і без цього кільце вийшло б розміром з глиф. */
+.toast-ic .toast-ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.toast-ring circle{fill:none;stroke-width:2;r:18.5;cx:20;cy:20}
+.toast-ring .tr-bg{stroke:rgba(255,255,255,.1)}
+.toast-ring .tr-fg{stroke:var(--toast-k,var(--accent-b));stroke-linecap:round;stroke-dasharray:116;
+  stroke-dashoffset:0;animation:toastRing linear forwards}
+.toast:hover .toast-ring .tr-fg{animation-play-state:paused}
+@keyframes toastRing{to{stroke-dashoffset:116}}
+.toast-style-aurora .toast-title{font-size:var(--fs-3)}
+.toast-style-aurora .toast-close{top:10px;right:10px}
+/* Дія йде ПІД текстом, а не збоку від нього. Базовий .toast — це flex-рядок
+   (іконка | тіло | кнопка), і в ньому «Скасувати» затискала текст у вузьку
+   колонку: «У таблицю НЕ записано» переносило номер наряду на окремий рядок.
+   Сітка ставить кнопку в другий ряд під тілом, ширина тексту лишається цілою.
+   .toast-close тут не бере участі — він абсолютний. */
+.toast-style-aurora .toast{display:grid;grid-template-columns:40px minmax(0,1fr);
+  column-gap:13px;align-items:start}
+.toast-style-aurora .toast-ic{grid-column:1;grid-row:1}
+.toast-style-aurora .toast-body{grid-column:2;grid-row:1}
+.toast-style-aurora .toast-undo{grid-column:2;grid-row:2;justify-self:start;
+  align-self:start;margin:9px 0 0;
+  border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.05)}
+/* Колір рівня як одна змінна — далі його беруть і рамка, і кільце, і глиф. */
+.toast-style-aurora .toast-info{--toast-k:var(--accent-b)}
+.toast-style-aurora .toast-success{--toast-k:var(--accent-c)}
+.toast-style-aurora .toast-warning{--toast-k:var(--warn)}
+.toast-style-aurora .toast-error,.toast-style-aurora .toast-crit{--toast-k:var(--alarm)}
+.toast-style-aurora .toast-in{animation:toastAuroraIn .5s cubic-bezier(.34,1.3,.64,1) both}
+.toast-style-aurora .toast-out{animation:toastAuroraOut .26s ease-in forwards}
+@keyframes toastAuroraIn{from{opacity:0;transform:scale(.9) translateY(10px);filter:blur(8px)}
+  to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes toastAuroraOut{to{opacity:0;transform:scale(.95) translateY(6px);filter:blur(5px)}}
+
+/* ── канал: нижня стрічка (підтвердження власних дій) ── */
+.toast-lines{position:fixed;left:0;right:0;bottom:0;z-index:var(--z-toast);pointer-events:none;
+  display:flex;flex-direction:column}
+.toast-line{position:relative;pointer-events:auto;display:flex;align-items:center;gap:10px;
+  min-height:26px;padding:4px 16px;background:var(--bg-rail,var(--well));border-top:1px solid var(--line-2);
+  font-size:var(--fs-1);color:var(--ink);--toast-k:var(--accent-c)}
+.toast-line .tl-dot{width:6px;height:6px;border-radius:50%;flex:none;
+  background:var(--toast-k);box-shadow:0 0 8px var(--toast-k)}
+.toast-line .tl-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toast-line .tl-undo{background:none;border:0;color:var(--accent-b);font:inherit;font-weight:600;
+  cursor:pointer;padding:0 0 0 10px;border-left:1px solid var(--line-2);white-space:nowrap}
+.toast-line .tl-undo:hover{color:var(--accent-c)}
+.toast-line .tl-undo:disabled{opacity:.5;cursor:default}
+.toast-line .tl-close{margin-left:auto;background:none;border:0;color:var(--ink-3);font-size:var(--fs-3);
+  line-height:1;cursor:pointer;padding:1px 6px;border-radius:5px}
+.toast-line .tl-close:hover{color:var(--ink);background:rgba(255,255,255,.08)}
+.toast-line .tl-thread{position:absolute;left:0;bottom:0;height:1px;width:100%;transform-origin:left;
+  background:var(--toast-k);opacity:.7;animation:toastLife linear forwards}
+.toast-line:hover .tl-thread{animation-play-state:paused}
+.toast-line-success{--toast-k:var(--accent-c)}
+.toast-line-info{--toast-k:var(--accent-b)}
+.toast-line-warning{--toast-k:var(--warn)}
+.toast-line-error{--toast-k:var(--alarm)}
+/* Кнопка звернень стоїть у тому самому кутку (bottom:18px) і має нижчий
+   z-index, тож стрічка накривала її нижні 10 px — і клік по кнопці потрапляв
+   у хрестик стрічки. Поки стрічка висить, кнопка піднімається над нею.
+   Зсув саме через `bottom`, а не transform: transform у неї вже зайнятий
+   ховером, і два джерела перебивали б одне одного.
+   Сам перехід оголошено у feedback.css поруч з рештою її переходів: цей файл
+   вантажиться РАНІШЕ, тож голе `.fb-beacon{transition}` тут просто затерлося б
+   її власним рядком.
+   Клас на <body> вішає JS, хоча `body:has(.toast-line)` теж працює (перевірено
+   наживо 08.09.26). Причина не в підтримці, а в ціні: `body:has()` змушує
+   браузер перевіряти умову на КОЖНІЙ мутації під body, а черга підмінює
+   сотні рядків кожні 15 с. Стан і так відомий у showToastLine — беремо його
+   звідти й не платимо за інвалідацію на найгарячішому екрані. */
+body.has-toast-line .fb-beacon{bottom:52px}
+.toast-line-in{animation:toastLineIn .26s cubic-bezier(.16,1,.3,1) both}
+.toast-line-out{animation:toastLineOut .2s ease-in forwards}
+@keyframes toastLineIn{from{transform:translateY(100%)}to{transform:none}}
+@keyframes toastLineOut{to{transform:translateY(100%);opacity:0}}
+
+/* ── канал: світна кромка + чіп (стан збою) ── */
+.toast-edge{position:fixed;top:0;left:0;right:0;height:3px;z-index:var(--z-toast);pointer-events:none;
+  --toast-k:var(--alarm);transform:scaleX(0);transition:transform .45s cubic-bezier(.2,.9,.3,1);
+  background:linear-gradient(90deg,transparent,var(--toast-k) 30%,var(--toast-k) 70%,transparent);
+  box-shadow:0 0 14px var(--toast-k)}
+.toast-edge.is-on{transform:none}
+.toast-edge-ok{--toast-k:var(--accent-c)}
+/* Чіп по центру вгорі: середина шапки порожня на кожному екрані (заголовок
+   ліворуч, дії праворуч) — той самий довід, що й для позиції тостів «tc». */
+.toast-chip{position:fixed;top:7px;left:50%;transform:translateX(-50%);z-index:var(--z-toast);
+  display:none;align-items:center;gap:8px;--toast-k:var(--alarm);
+  font-size:var(--fs-1);font-weight:500;color:var(--ink);
+  border:1px solid rgba(var(--alarm-rgb),.5);background:var(--card-2);
+  border-radius:999px;padding:3px 11px 3px 9px;box-shadow:0 8px 22px -12px rgba(0,0,0,.9);cursor:default}
+.toast-chip.is-on{display:inline-flex}
+.toast-chip-ok{--toast-k:var(--accent-c);border-color:rgba(var(--accent-soft-rgb),.5)}
+.toast-chip .tc-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--toast-k);
+  box-shadow:0 0 8px var(--toast-k);animation:toastBreathe 1.6s ease-in-out infinite}
+.toast-chip-ok .tc-dot{animation:none}
+@keyframes toastBreathe{50%{opacity:.45}}
+.toast-chip .tc-more{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3)}
+.toast-chip-detail{position:absolute;top:28px;left:50%;transform:translateX(-50%) translateY(-4px);
+  min-width:260px;max-width:min(420px,calc(100vw - 40px));background:var(--card-2);border:1px solid var(--line-2);
+  border-radius:10px;padding:9px 12px;font-weight:400;color:var(--ink-2);line-height:1.45;
+  box-shadow:0 18px 44px -20px rgba(0,0,0,.95);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+.toast-chip:hover .toast-chip-detail,.toast-chip:focus-within .toast-chip-detail{opacity:1;pointer-events:auto;
+  transform:translateX(-50%)}
+/* Поки висить чіп, верхні тости відступають — інакше лягли б просто на нього.
+   Клас, а не :has(), з тієї ж причини, що й у кнопки звернень вище:
+   ціна інвалідації на екрані, який підмінює рядки кожні 15 с. */
+body.has-toast-chip .toast-stack[data-toast-pos="tc"]{padding-top:40px}
+
+@media (prefers-reduced-motion:reduce){
+  .toast-style-aurora .toast::before{animation:none!important}
+  .toast-ring .tr-fg,.toast-line .tl-thread{animation:none!important}
+  .toast-line-in,.toast-line-out{animation:none!important}
+  .toast-edge{transition:none!important}
+  .toast-chip .tc-dot{animation:none!important}
+}
+
 /* «Постійний клієнт» hint (sender memory) — card Лист pane + wizard step 1. */
 .sender-hint{display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-radius:9px;margin-bottom:14px;background:rgba(var(--accent-base-rgb), .09);border:1px solid rgba(var(--accent-rgb), .3);color:var(--accent-c)}
 .sender-hint svg{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
