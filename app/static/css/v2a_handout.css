@@ -122,7 +122,7 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 /* БЕЗ overflow:hidden і БЕЗ isolation на самому .hbar: усередині живе
    випадний список днів (.dayall-pop, до 210px униз), і перша версія з
    overflow різала його рамкою шапки — власник бачив це як «меню заходить
-   під малюнок». Фото і градієнт живуть на псевдоелементах із z-index:-1 і
+   під малюнок». Фото і градієнт живуть на псевдоелементах із z-index:var(--z-behind) і
    border-radius:inherit: кути фону лишаються заокругленими без обрізання
    вмісту, а попап вільно виходить за межі шапки. */
 .handoutv2 .hbar{position:relative;
@@ -133,7 +133,7 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
   background-color:#0d0f12;
   background-image:url("../img/handout-tray.jpg");
   background-size:auto 150%;background-position:left center;background-repeat:no-repeat}
-.handoutv2 .hbar::after{content:"";position:absolute;inset:0;z-index:-1;
+.handoutv2 .hbar::after{content:"";position:absolute;inset:0;z-index:var(--z-behind);
   border-radius:inherit;
   background:linear-gradient(90deg,
     rgba(13,15,18,.58) 0%, rgba(13,15,18,.52) 24%,
@@ -181,7 +181,7 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .dayall summary:hover{color:var(--ink);border-color:var(--line-2)}
 .handoutv2 .dayall[open] summary{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .4)}
 .handoutv2 .dayall-pop{
-  position:absolute;top:calc(100% + 6px);left:0;z-index:30;display:flex;flex-wrap:wrap;gap:4px;
+  position:absolute;top:calc(100% + 6px);left:0;z-index:var(--z-dropdown);display:flex;flex-wrap:wrap;gap:4px;
   width:290px;max-height:210px;overflow:auto;padding:9px;background:var(--card);
   border:1px solid var(--line-2);border-radius:var(--r-card);box-shadow:0 18px 40px -18px rgba(0,0,0,.8);
 }
@@ -437,7 +437,7 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
    Модалка навмисно вузька й без анімації входу: вона зупиняє руку оператора
    десятки разів за ранок, і рух тут читався б як затримка, а не як зворотний
    звʼязок (§8 — анімації функціональні, не декоративні). */
-.qc-dialog{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
+.qc-dialog{position:fixed;inset:0;z-index:var(--z-drawer);display:flex;align-items:center;justify-content:center;
   padding:24px;background:rgba(0,0,0,.55)}
 .qc-panel{width:min(420px,100%);background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
   padding:20px 22px;box-shadow:0 18px 48px rgba(0,0,0,.45)}

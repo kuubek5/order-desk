@@ -172,7 +172,7 @@
 
 .login-input-wrap {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-base);
   display: flex;
   align-items: center;
   background: var(--field);
@@ -310,7 +310,7 @@ body:has(.login-page) .app-backdrop .radar-hud { display: none; }
 .login-scene {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: var(--z-behind);
   pointer-events: none;
   overflow: hidden;
 }

@@ -12,7 +12,7 @@
    класи скоуплені під .update-overlay, щоб нічого не зачепити.
    ========================================================================== */
 .update-overlay{
-  position:fixed;inset:0;z-index:1000;
+  position:fixed;inset:0;z-index:var(--z-update);
   display:flex;align-items:center;justify-content:center;padding:24px;
   background:radial-gradient(120% 120% at 50% 30%, rgba(19,28,40,.94), rgba(8,11,16,.97));
   -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
@@ -35,7 +35,7 @@
 @keyframes updateGridDrift{from{background-position:0 0,0 0}to{background-position:34px 34px,34px 34px}}
 
 .update-card{
-  position:relative;z-index:1;
+  position:relative;z-index:var(--z-base);
   display:flex;flex-direction:column;align-items:center;gap:6px;
   width:min(420px,100%);padding:34px 30px 30px;text-align:center;
   border:1px solid var(--line-2);border-radius:16px;
@@ -174,15 +174,15 @@
    Віск переведено з троянди в бірюзу 29.08.26 на прохання. Тон навмисно
    зсунуто в ціан і притемнено проти акценту (--accent-b var(--accent-b)): бірюза
    акценту означає «моє зараз» і «пошта», і матеріал не має говорити тим
-   самим кольором. Від крижаного блакитного цирконію (#8fbfe0) відрізняється
+   самим кольором. Від крижаного блакитного цирконію (var(--mat-zr)) відрізняється
    насиченістю й тим, що зеленіший. Міняти — ТІЛЬКИ разом зі смугою
    матеріалу у v2a_queue.css: два кольори одного матеріалу = та сама
    розбіжність, від якої ця робота відштовхувалась. */
-.matpair.mat-zr .mp-k{color:#8fbfe0;background:rgba(143,191,224,.20)}
-.matpair.mat-pmma .mp-k{color:#d8b46a;background:rgba(216,180,106,.20)}
-.matpair.mat-ti .mp-k{color:#63c88b;background:rgba(79,180,119,.21)}
-.matpair.mat-slm .mp-k{color:#9aa7b4;background:rgba(154,167,180,.21)}
-.matpair.mat-wax .mp-k{color:#3fb6c9;background:rgba(63,182,201,.21)}
+.matpair.mat-zr .mp-k{color:var(--mat-zr);background:color-mix(in srgb, var(--mat-zr) 20%, transparent)}
+.matpair.mat-pmma .mp-k{color:var(--mat-pmma);background:color-mix(in srgb, var(--mat-pmma) 20%, transparent)}
+.matpair.mat-ti .mp-k{color:var(--mat-ti);background:color-mix(in srgb, var(--mat-ti) 21%, transparent)}
+.matpair.mat-slm .mp-k{color:var(--mat-slm);background:color-mix(in srgb, var(--mat-slm) 21%, transparent)}
+.matpair.mat-wax .mp-k{color:var(--mat-wax);background:color-mix(in srgb, var(--mat-wax) 21%, transparent)}
 .matpair.mat-other .mp-k{color:var(--ink-2);background:var(--card-3)}
 /* Кадр родини — поруч із її кольором, бо це той самий сигнал у двох формах.
    Оголошено ЗМІННОЮ на самому класі родини, а не картинкою на конкретному
@@ -194,11 +194,11 @@
    (--matline). Раніше колір жив окремо в settings.css, прив'язаний до розмітки
    старої бібліотеки, і консоль матеріалів до нього не дотягувалась. Два місця
    для однієї родини рано чи пізно розійшлися б. */
-.mat-zr  { --mat-art:url("../img/mat-zr.jpg");   --matline:#8fbfe0 }
-.mat-pmma{ --mat-art:url("../img/mat-pmma.jpg"); --matline:#d8b46a }
-.mat-ti  { --mat-art:url("../img/mat-ti.jpg");   --matline:#63c88b }
-.mat-slm { --mat-art:url("../img/mat-slm.jpg");  --matline:#9aa7b4 }
-.mat-wax { --mat-art:url("../img/mat-wax.jpg");  --matline:#3fb6c9 }
+.mat-zr  { --mat-art:url("../img/mat-zr.jpg");   --matline:var(--mat-zr) }
+.mat-pmma{ --mat-art:url("../img/mat-pmma.jpg"); --matline:var(--mat-pmma) }
+.mat-ti  { --mat-art:url("../img/mat-ti.jpg");   --matline:var(--mat-ti) }
+.mat-slm { --mat-art:url("../img/mat-slm.jpg");  --matline:var(--mat-slm) }
+.mat-wax { --mat-art:url("../img/mat-wax.jpg");  --matline:var(--mat-wax) }
 /* «Не визначено» лишається пунктиром: пунктир і Є повідомленням про
    невизначеність, суцільна межа тут збрехала б. */
 .matpair.mat-unknown .mp-k{
@@ -341,7 +341,7 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
    ширину; текстові (клієнт/колір/вид/технік) без ширини самі ділять залишок
    і обрізаються еліпсисом — так довгий Sum3D ID більше не розсуває таблицю. */
 .arch-sheet{width:100%;table-layout:fixed;border-collapse:collapse;background:var(--card)}
-.arch-sheet thead th{position:sticky;top:0;z-index:1;background:var(--card-3);color:var(--accent-c);
+.arch-sheet thead th{position:sticky;top:0;z-index:var(--z-base);background:var(--card-3);color:var(--accent-c);
   font-family:var(--font-mono);font-size:var(--fs-0);font-weight:500;text-transform:uppercase;letter-spacing:.03em;
   text-align:left;padding:8px 8px;border-bottom:1px solid var(--line-2);border-right:1px solid var(--line);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -380,7 +380,7 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
    Вигляд (скляна / картка) і позиція керуються з Налаштувань і приходять
    у data-атрибутах на .toast-stack (див. base.html + app.js). Рівень задає
    колір ребра й час життя; критичні не зникають самі. */
-.toast-stack{position:fixed;z-index:1200;display:flex;flex-direction:column;gap:10px;
+.toast-stack{position:fixed;z-index:var(--z-toast);display:flex;flex-direction:column;gap:10px;
   padding:18px;pointer-events:none;max-width:min(440px,calc(100vw - 36px))}
 .toast-stack>*{pointer-events:auto}
 /* позиції */
@@ -591,7 +591,7 @@ body:has(.detail-pane.open) .toast-stack[data-toast-pos="tr"]{right:420px}
 .dl-seg[data-state="all"]::after { transform: translateX(100%); }
 .dl-seg-glass {
   position: absolute;
-  z-index: -1;
+  z-index: var(--z-behind);
   inset: 0;
   border-radius: 11px;
   overflow: hidden;
@@ -599,7 +599,7 @@ body:has(.detail-pane.open) .toast-stack[data-toast-pos="tr"]{right:420px}
 }
 .dl-seg-opt {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-base);
   height: 100%;
   padding: 0 18px;
   border: 0;
@@ -628,7 +628,7 @@ body:has(.detail-pane.open) .toast-stack[data-toast-pos="tr"]{right:420px}
 /* Підказка для згорнутої rail. Живе на <body>, а не всередині rail: у rail
    `overflow-y:auto`, тому будь-який виступ убік обрізався б. Позицію ставить
    app.js за прямокутником пункту. */
-.rail-tip{position:fixed;z-index:1300;pointer-events:none;white-space:nowrap;
+.rail-tip{position:fixed;z-index:var(--z-tooltip);pointer-events:none;white-space:nowrap;
   padding:5px 10px;border-radius:7px;background:var(--card-2,var(--card-2));
   border:1px solid var(--line-2,var(--line-2));color:var(--ink,var(--ink));
   font-size:var(--fs-1);font-weight:500;opacity:0;transform:translateX(-6px);

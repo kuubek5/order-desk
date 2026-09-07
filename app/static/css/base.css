@@ -24,7 +24,7 @@ body {
 }
 
 /* Fixed full-viewport inline backdrop layer. Sits behind the darkening veil
-   (body::before, z-index:-1) and all content; inert and decorative. */
+   (body::before, z-index:var(--z-behind)) and all content; inert and decorative. */
 .app-backdrop {
   position: fixed;
   inset: 0;
@@ -96,7 +96,7 @@ body::before {
   content: "";
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: var(--z-behind);
   pointer-events: none;
   background: rgba(13, 17, 23, 0.35);
 }

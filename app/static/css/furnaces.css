@@ -179,7 +179,7 @@ main.furnaces{position:relative;min-height:100vh}
 @keyframes fu-breathe{0%,100%{opacity:.78}50%{opacity:1}}
 
 /* Вміст лягає поверх фону. */
-.furnaces > *:not(.fu-bg){position:relative;z-index:1}
+.furnaces > *:not(.fu-bg){position:relative;z-index:var(--z-base)}
 
 @media (prefers-reduced-motion:reduce){
   .furnaces .fu-bg i{animation:none}
@@ -210,7 +210,7 @@ main.furnaces{position:relative;min-height:100vh}
   background:linear-gradient(178deg,
     rgba(11,8,4,.80) 0%,rgba(11,8,4,.30) 24%,
     rgba(11,8,4,.30) 54%,rgba(9,6,3,.95) 100%)}
-.q2 .side-sec-furnace>*{position:relative;z-index:1}
+.q2 .side-sec-furnace>*{position:relative;z-index:var(--z-base)}
 .q2 .side-sec-furnace .side-head{text-shadow:0 1px 6px rgba(0,0,0,.75)}
 /* Іконка героя (варіант B): бурштин теми + drop-shadow, бо на фото svg не бере
    text-shadow шапки. Так усі 5 віджетів мають іконку — одна родина. */
@@ -235,7 +235,7 @@ main.furnaces{position:relative;min-height:100vh}
    зробив, тут лише страховка контрасту температури над світлим жаром. */
 .q2 .fu-tile::before{content:"";position:absolute;inset:0;z-index:0;
   background:linear-gradient(100deg,rgba(20,16,10,0) 0%,rgba(20,16,10,.14) 60%,rgba(20,16,10,.42) 100%)}
-.q2 .fu-tile>*{position:relative;z-index:1}
+.q2 .fu-tile>*{position:relative;z-index:var(--z-base)}
 .q2 .fu-tile:hover::before{background:linear-gradient(100deg,rgba(246,160,74,.05) 0%,rgba(20,16,10,.18) 60%,rgba(20,16,10,.42) 100%)}
 /* Стани: працює — повний жар і акцентна межа; вільна — свій шматок арту
    притишений (жару немає — картинка холоне разом з піччю); збій — тривожний
@@ -251,7 +251,7 @@ main.furnaces{position:relative;min-height:100vh}
 /* Іскри над жаром — тільки на .run (шаблон і не рендерить їх інакше).
    Негативні затримки, щоб політ уже йшов у момент появи плитки, а не
    стартував хором після кожного 30-секундного свапу секції. */
-.q2 .fu-sparks{position:absolute;inset:0;z-index:1;pointer-events:none}
+.q2 .fu-sparks{position:absolute;inset:0;z-index:var(--z-base);pointer-events:none}
 .q2 .fu-sparks i{position:absolute;bottom:12px;width:3px;height:3px;border-radius:50%;
   background:rgba(var(--accent-rgb), .95);filter:blur(.4px);opacity:0;
   animation:fu-spark-fly 3.8s linear infinite}
@@ -323,7 +323,7 @@ html[data-machine-art="none"] .q2 .side-sec-machine{background-image:none;backgr
 html[data-machine-art="titanium"] .q2 .side-sec-machine::after{
   background:linear-gradient(178deg,rgba(11,8,4,.82) 0%,rgba(11,8,4,.34) 22%,rgba(11,8,4,.34) 60%,rgba(9,6,3,.94) 100%)}
 html[data-machine-art="none"] .q2 .side-sec-machine::after{display:none}
-.q2 .side-sec-machine>*{position:relative;z-index:1}
+.q2 .side-sec-machine>*{position:relative;z-index:var(--z-base)}
 .q2 .side-sec-machine .side-head{text-shadow:0 1px 6px rgba(0,0,0,.75)}
 .q2 .side-sec-machine .side-body{border-top:0}
 html[data-machine-art="none"] .q2 .side-sec-machine .side-head,
@@ -344,7 +344,7 @@ html[data-machine-art="none"] .ms-tile>*{text-shadow:none}
 .ms-tile.is-idle::before,.ms-tile.is-wait::before{background:rgba(8,11,15,.5);backdrop-filter:saturate(.3) brightness(.8)}
 .ms-tile.is-offline::before{background:linear-gradient(100deg,rgba(46,13,8,.5),rgba(24,12,10,.8))}
 .ms-tile:hover::before{background:rgba(var(--accent-rgb), .08)}
-.ms-tile>*{position:relative;z-index:1}
+.ms-tile>*{position:relative;z-index:var(--z-base)}
 .ms-name{grid-area:name;font-size:var(--fs-0);font-weight:500;color:var(--ink-2);letter-spacing:.02em;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 4px rgba(0,0,0,.7)}
 /* Головне число — відсоток; на нього дивляться, щоб зрозуміти «чи скоро
@@ -649,7 +649,7 @@ body.sisma-open .sw-chev{transform:rotate(180deg)}
   mask-image:linear-gradient(90deg,transparent 0%,transparent 34%,rgba(0,0,0,.35) 56%,rgba(0,0,0,.8) 78%,#000 100%)}
 .sw-veil{position:absolute;inset:0;background:linear-gradient(90deg,
   var(--card) 0%,var(--card) 32%,rgba(0,0,0,.55) 50%,rgba(0,0,0,.38) 72%,rgba(0,0,0,.2) 100%)}
-.sw-id,.sw-cell,.sw-left,.sw-fresh{position:relative;z-index:1}
+.sw-id,.sw-cell,.sw-left,.sw-fresh{position:relative;z-index:var(--z-base)}
 .sw-id{display:flex;align-items:center;gap:9px;padding:15px 16px;min-width:186px;
   border-right:1px solid rgba(255,255,255,.07)}
 .sw-nm{font-size:var(--fs-1);font-weight:600;color:var(--ink)}

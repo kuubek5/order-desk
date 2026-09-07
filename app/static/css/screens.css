@@ -311,7 +311,7 @@
 
 .stl-panel {
   position: fixed;
-  z-index: 200;
+  z-index: var(--z-strip);
   width: 300px;
   display: flex;
   flex-direction: column;
@@ -586,7 +586,7 @@
 .stl-panel.is-max {
   inset: 24px;
   width: auto;
-  z-index: 210;
+  z-index: var(--z-strip-top);
 }
 .stl-panel.is-max .stl-panel-stage {
   height: auto;

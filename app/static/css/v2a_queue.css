@@ -65,7 +65,7 @@ main.q2{
    кнопки (кнопки стоять у правому верхньому куті, тож меню росте всередину). */
 .q2 .acthist{position:relative;display:inline-flex}
 .q2 .acthist.is-open .acthist-toggle{background:rgba(var(--accent-base-rgb), .16);border-color:rgba(var(--accent-rgb), .42);color:var(--accent-c)}
-.q2 .acthist-slot{position:absolute;top:calc(100% + 6px);right:0;z-index:40}
+.q2 .acthist-slot{position:absolute;top:calc(100% + 6px);right:0;z-index:var(--z-popover)}
 .q2 .acthist:not(.is-open) .acthist-slot{display:none}
 .q2 .acthist-menu{
   width:330px;background:var(--card);border:1px solid var(--line-2);border-radius:var(--r-card);
@@ -262,7 +262,7 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .tablewrap{overflow:auto;flex:1;min-height:0;max-height:calc(100vh - 250px);scrollbar-width:thin}
 .q2 table.qtable{border-collapse:separate;border-spacing:0;width:100%;min-width:1120px}
 .q2 table.qtable thead th{
-  position:sticky;top:0;z-index:2;background:var(--mid);border-bottom:1px solid var(--line-2);
+  position:sticky;top:0;z-index:var(--z-raised);background:var(--mid);border-bottom:1px solid var(--line-2);
   text-align:left;font-size:var(--fs-0);letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);
   font-weight:600;padding:9px 8px;white-space:normal;line-height:1.15;
 }
@@ -626,7 +626,7 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 .q2 .side-sec.spotlight:hover::before{opacity:1}
 .q2 .side-sec.spotlight:hover{border-color:rgba(var(--accent-rgb), .35);box-shadow:0 12px 32px -16px rgba(var(--accent-rgb), .45),var(--glow)}
 .q2 .side-sec.spotlight{transform:perspective(900px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg))}
-.q2 .side-head,.q2 .side-body{position:relative;z-index:1}
+.q2 .side-head,.q2 .side-body{position:relative;z-index:var(--z-base)}
 @media (prefers-reduced-motion:reduce){
   .q2 .side-sec.spotlight{transform:none}
   .q2 .side-sec::before{transition:none}
@@ -675,17 +675,17 @@ body.qside-collapsed .q2 .worklayout{gap:0}
   position:fixed;top:0;right:0;bottom:0;width:420px;max-width:92vw;
   background:var(--card);border-left:1px solid var(--line);box-shadow:var(--sh-pop);
   transform:translateX(105%);transition:transform var(--panel-duration) cubic-bezier(.16,.84,.32,1);
-  z-index:80;overflow-y:auto;scrollbar-width:thin;
+  z-index:var(--z-drawer);overflow-y:auto;scrollbar-width:thin;
 }
 .detail-pane.open{transform:translateX(0)}
-.detail-pane .detail-head{display:flex;align-items:flex-start;gap:10px;padding:15px 16px 13px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);z-index:1}
+.detail-pane .detail-head{display:flex;align-items:flex-start;gap:10px;padding:15px 16px 13px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);z-index:var(--z-base)}
 .detail-pane .detail-body{padding:0}
 .detail-pane .detail-body iframe{width:100%;border:0;min-height:calc(100vh - 60px);background:var(--card)}
 .detail-close{margin-left:auto;width:28px;height:28px;flex:0 0 28px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-2);border:1px solid var(--line-2);background:none;cursor:pointer}
 .detail-close:hover{color:var(--ink);background:var(--card-2)}
 .detail-close svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round}
 .detail-head .ord{font-family:var(--font-mono);font-size:var(--fs-5);font-weight:600;letter-spacing:-.01em;color:var(--ink)}
-.detail-backdrop{position:fixed;inset:0;background:rgba(5,8,12,.6);opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:70}
+.detail-backdrop{position:fixed;inset:0;background:rgba(5,8,12,.6);opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:var(--z-backdrop)}
 .detail-backdrop.open{opacity:1;pointer-events:auto}
 
 /* Бічна панель складається під таблицю ТАМ, ДЕ ПОЧИНАЄ КОШТУВАТИ КОЛОНОК,
@@ -736,10 +736,10 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 
    Цирконію рядка тут НЕМАЄ свідомо: він — більшість черги, і пофарбувати все
    означає не пофарбувати нічого. Його ключ лишається блакитним у маркуванні. */
-.q2 table.qtable tbody tr[data-mat="mat-ti"] > td:first-child{box-shadow:inset 3px 0 0 #63c88b}
-.q2 table.qtable tbody tr[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 #d8b46a}
-.q2 table.qtable tbody tr[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 #9aa7b4}
-.q2 table.qtable tbody tr[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #3fb6c9}
+.q2 table.qtable tbody tr[data-mat="mat-ti"] > td:first-child{box-shadow:inset 3px 0 0 var(--mat-ti)}
+.q2 table.qtable tbody tr[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 var(--mat-pmma)}
+.q2 table.qtable tbody tr[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 var(--mat-slm)}
+.q2 table.qtable tbody tr[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 var(--mat-wax)}
 
 /* ── Робочий набір «мої зараз» ────────────────────────────────────────────
    Третій канал рядка. Фон уже за станами, край — за матеріалом, тож мітка
@@ -784,7 +784,7 @@ body.qside-collapsed .q2 .worklayout{gap:0}
    дві лінії з щілиною між ними. */
 .q2 table.qtable tbody tr.queue-row-focus::after{
   content:"";position:absolute;left:0;right:0;top:0;bottom:-1px;
-  pointer-events:none;z-index:1;
+  pointer-events:none;z-index:var(--z-base);
   /* 2px і майже повна непрозорість. 1px на 55% читався на чистому рядку, але
      на рядках зі станом (прострочені — а це якраз минулі дні, де оператор
      шпилить найбільше) власний фон стану з'їдав тонку рамку: «прищепив чи
@@ -833,10 +833,10 @@ body.qside-collapsed .q2 .worklayout{gap:0}
    стрибок через сотні рядків, і оператор шукає рядок очима вручну, бо
    лишався тільки 2,4-секундний тінт, який на прострочених майже не читається.
    Порядок у файлі = каскад, тому дублюємо селектор нижче, а не переносимо. */
-.q2 table.qtable tbody tr.row-locate[data-mat="mat-ti"] > td:first-child{box-shadow:inset 3px 0 0 #63c88b,inset 2px 0 0 var(--accent-b)}
-.q2 table.qtable tbody tr.row-locate[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 #d8b46a,inset 2px 0 0 var(--accent-b)}
-.q2 table.qtable tbody tr.row-locate[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 #9aa7b4,inset 2px 0 0 var(--accent-b)}
-.q2 table.qtable tbody tr.row-locate[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 #3fb6c9,inset 2px 0 0 var(--accent-b)}
+.q2 table.qtable tbody tr.row-locate[data-mat="mat-ti"] > td:first-child{box-shadow:inset 3px 0 0 var(--mat-ti),inset 2px 0 0 var(--accent-b)}
+.q2 table.qtable tbody tr.row-locate[data-mat="mat-pmma"] > td:first-child{box-shadow:inset 3px 0 0 var(--mat-pmma),inset 2px 0 0 var(--accent-b)}
+.q2 table.qtable tbody tr.row-locate[data-mat="mat-slm"] > td:first-child{box-shadow:inset 3px 0 0 var(--mat-slm),inset 2px 0 0 var(--accent-b)}
+.q2 table.qtable tbody tr.row-locate[data-mat="mat-wax"] > td:first-child{box-shadow:inset 3px 0 0 var(--mat-wax),inset 2px 0 0 var(--accent-b)}
 
 /* ── Джерело роботи: пошта синя, клієнт фіолетовий ─────────────────────────
    Були два майже однакові сині: рядок пошти 8% і рядок клієнта 6%, тобто
@@ -864,7 +864,7 @@ body.qside-collapsed .q2 .worklayout{gap:0}
    сусідами, щоб рамка й заливка не пірнали під наступний рядок посеред руху,
    і вимикаємо перехоплення кліків: поки рядок летить, він проходить під
    курсором, і випадкове влучання по кошику коштувало б роботи. */
-.q2 table.qtable tbody tr.row-rising{position:relative;z-index:1;pointer-events:none;will-change:transform}
+.q2 table.qtable tbody tr.row-rising{position:relative;z-index:var(--z-base);pointer-events:none;will-change:transform}
 @media (prefers-reduced-motion:reduce){
   .q2 table.qtable tbody tr.row-rising{transition:none !important;transform:none !important}
 }
@@ -887,7 +887,7 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 .q2 .qlegend > summary:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
 
 .q2 .qlegend-pop{
-  position:absolute;right:0;top:calc(100% + 7px);z-index:40;width:min(340px,86vw);
+  position:absolute;right:0;top:calc(100% + 7px);z-index:var(--z-popover);width:min(340px,86vw);
   background:var(--card-2);border:1px solid var(--raise);border-radius:12px;
   box-shadow:var(--sh-pop);padding:14px 15px;display:flex;flex-direction:column;gap:15px;
 }
@@ -945,7 +945,7 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 .q2 .s3t-more svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.9;
   stroke-linecap:round;stroke-linejoin:round;transition:transform var(--ui-speed) ease}
 body.sum3d-panel-open .q2 .s3t-more svg{transform:rotate(180deg)}
-.q2 .s3t-panel{display:none;position:absolute;right:0;top:calc(100% + 7px);z-index:40;
+.q2 .s3t-panel{display:none;position:absolute;right:0;top:calc(100% + 7px);z-index:var(--z-popover);
   min-width:250px;background:var(--card-2);border:1px solid var(--line-2);border-radius:11px;
   box-shadow:var(--sh-pop);padding:8px;flex-direction:column;gap:3px}
 body.sum3d-panel-open .q2 .s3t-panel{display:flex}

@@ -27,7 +27,7 @@ main.clientsv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;fle
 .clientsv2 .cl-add summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;height:32px;padding:0 13px;border-radius:8px;border:1px solid rgba(var(--accent-rgb), .4);background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);font-size:var(--fs-2)}
 .clientsv2 .cl-add summary::-webkit-details-marker{display:none}
 .clientsv2 .cl-add summary:hover{background:rgba(var(--accent-base-rgb), .22)}
-.clientsv2 .cl-add-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:30;display:flex;gap:7px;width:320px;padding:10px;background:var(--card);border:1px solid var(--line-2);border-radius:var(--r-card);box-shadow:0 18px 40px -18px rgba(0,0,0,.8)}
+.clientsv2 .cl-add-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:var(--z-dropdown);display:flex;gap:7px;width:320px;padding:10px;background:var(--card);border:1px solid var(--line-2);border-radius:var(--r-card);box-shadow:0 18px 40px -18px rgba(0,0,0,.8)}
 
 .clientsv2 .cl-split{display:flex;gap:12px;flex:1;min-height:0;align-items:stretch}
 .clientsv2 .cl-list{

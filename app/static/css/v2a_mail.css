@@ -203,7 +203,7 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 /* «+N нових» — the only thing that grows the frozen list. Sticky at the top of
    the scroller so it stays reachable without hunting, quiet enough not to
    compete with the letters themselves. */
-.mailv2 .newmail-bar{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 12px;background:rgba(var(--accent-base-rgb), .13);border-bottom:1px solid rgba(var(--accent-rgb), .3);color:var(--accent-c);font-size:var(--fs-2);font-weight:500;text-decoration:none;cursor:pointer}
+.mailv2 .newmail-bar{position:sticky;top:0;z-index:var(--z-raised);display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 12px;background:rgba(var(--accent-base-rgb), .13);border-bottom:1px solid rgba(var(--accent-rgb), .3);color:var(--accent-c);font-size:var(--fs-2);font-weight:500;text-decoration:none;cursor:pointer}
 .mailv2 .newmail-bar:hover{background:rgba(var(--accent-base-rgb), .2)}
 .mailv2 .newmail-bar:focus-visible{outline:2px solid var(--accent-b);outline-offset:-2px}
 .mailv2 .newmail-bar .newmail-dot{width:6px;height:6px;border-radius:50%;background:var(--accent-b);flex:0 0 auto}
@@ -331,7 +331,7 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
    grows into a long scroll; #mail-detail is the scroll container, the tab strip
    sticks to its top and the action bar to its bottom. ---- */
 .mailv2 .mail-seg{display:flex;flex-direction:column}
-.mailv2 .seg-tabs{display:flex;gap:4px;padding:10px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card-2);z-index:2}
+.mailv2 .seg-tabs{display:flex;gap:4px;padding:10px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card-2);z-index:var(--z-raised)}
 .mailv2 .seg-tab{position:relative;appearance:none;-webkit-appearance:none;font-family:var(--font-head);font-size:var(--fs-2);font-weight:500;color:var(--ink-3);background:transparent;border:1px solid transparent;border-radius:9px;padding:7px 13px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .mailv2 .seg-tab:hover{background:rgba(255,255,255,.04);color:var(--ink-2)}
 .mailv2 .seg-tab.on{background:rgba(var(--accent-base-rgb), .14);color:var(--accent-c);border-color:rgba(var(--accent-rgb), .34);box-shadow:inset 0 0 14px -9px rgba(var(--accent-rgb), .95)}
@@ -344,7 +344,7 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 .mailv2 .seg-pane.on{display:block}
 @keyframes segPaneIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 .mailv2 .mail-metabar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:16px}
-.mailv2 .seg-stickybar{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:12px;padding:11px 16px 11px 20px;background:var(--card-3);border-top:1px solid var(--line-2)}
+.mailv2 .seg-stickybar{position:sticky;bottom:0;z-index:var(--z-raised);display:flex;align-items:center;gap:12px;padding:11px 16px 11px 20px;background:var(--card-3);border-top:1px solid var(--line-2)}
 .mailv2 .ssum{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-2);color:var(--ink-2);min-width:0}
 .mailv2 .ssum .ssum-client{color:var(--ink);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px}
 .mailv2 .ssum .ssum-sep{color:var(--ink-3)}
@@ -442,10 +442,10 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 /* Розгортання на весь екран (аудит 05.09.26, UX 1.5): та сама роль, що в
    панелі прев'ю на видачі, але тут дефолт — вбудований вигляд, бо в тріажі
    модель звіряють ПОРУЧ із формою прийняття. */
-.mailv2 .stl-gallery-max{position:absolute;top:8px;right:8px;z-index:2;display:grid;place-items:center;width:28px;height:28px;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--card-2);color:var(--ink-2);cursor:pointer;opacity:.75;transition:opacity var(--ui-speed) ease,color var(--ui-speed) ease}
+.mailv2 .stl-gallery-max{position:absolute;top:8px;right:8px;z-index:var(--z-raised);display:grid;place-items:center;width:28px;height:28px;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--card-2);color:var(--ink-2);cursor:pointer;opacity:.75;transition:opacity var(--ui-speed) ease,color var(--ui-speed) ease}
 .mailv2 .stl-gallery-max:hover{opacity:1;color:var(--ink)}
 .mailv2 .stl-gallery-max svg{width:15px;height:15px}
-.mailv2 .stl-gallery.is-max{position:fixed;inset:16px;z-index:60;padding:12px;border-radius:var(--r-card);border:1px solid var(--line-2);background:var(--card);box-shadow:0 24px 80px rgba(0,0,0,.55)}
+.mailv2 .stl-gallery.is-max{position:fixed;inset:16px;z-index:var(--z-lightbox);padding:12px;border-radius:var(--r-card);border:1px solid var(--line-2);background:var(--card);box-shadow:0 24px 80px rgba(0,0,0,.55)}
 .mailv2 .stl-gallery.is-max .stl-gallery-stage{height:auto}
 .mailv2 .stl-gallery.is-max .stl-gallery-files{max-height:none}
 .mailv2 .stl-gallery{display:flex;gap:12px;align-items:stretch}
