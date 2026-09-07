@@ -1482,3 +1482,151 @@ def test_rework_cleared_in_sheet_is_removed_from_crm():
         assert session.scalar(select(ReworkRecord)) is None
         order = session.scalar(select(Order))
         assert order.active_rework is None
+
+
+def test_pending_lab_work_returns_from_archive_too():
+    """S2.1: наряд-less лабораторний рядок (технік вніс роботу, наряд ще не
+    присвоїли) не має ні наряду, ні імені клієнта. Звірка воскресіння дивилась
+    рівно на ці два поля, тож для такої роботи обидві сторони були порожні й
+    жодна гілка не спрацьовувала: помилково заархівована pending-lab робота не
+    поверталась НІКОЛИ. Тепер звірка вміє і її identity."""
+    from datetime import datetime, timedelta
+
+    session = make_session()
+    order = Order(
+        source="lab", sheet_tab="27.08.26", row_number=7,
+        work_order_no="", technician_name="Оксана", material_color="моно A2",
+        kind="анатомія", quantity="2", status="нове",
+        archived_at=datetime.utcnow() - timedelta(hours=2),
+    )
+    session.add(order)
+    session.commit()
+
+    sync_tab(session, "27.08.26", [make_row(
+        row_number=7, work_order_no="", technician_name="Оксана",
+        material_color="моно A2", kind="анатомія", quantity="2",
+        job_code="", sum3d_id="", calculated="", milled="",
+    )])
+    session.commit()
+
+    revived = session.get(Order, order.id)
+    assert revived.archived_at is None, "pending-lab робота зі своєю ж роботою в таблиці має вертатись"
+
+
+def test_pending_lab_archived_minutes_ago_stays_archived():
+    """Той самий десятихвилинний запобіжник, що й для решти: свіжа архівація —
+    це хвіст видалення з CRM (фоновий бланкер ще не дочистив рядок), і
+    воскрешати її не можна."""
+    from datetime import datetime, timedelta
+
+    session = make_session()
+    order = Order(
+        source="lab", sheet_tab="27.08.26", row_number=7,
+        work_order_no="", technician_name="Оксана", material_color="моно A2",
+        kind="анатомія", quantity="2", status="нове",
+        archived_at=datetime.utcnow() - timedelta(minutes=2),
+    )
+    session.add(order)
+    session.commit()
+
+    sync_tab(session, "27.08.26", [make_row(
+        row_number=7, work_order_no="", technician_name="Оксана",
+        material_color="моно A2", kind="анатомія", quantity="2",
+        job_code="", sum3d_id="", calculated="", milled="",
+    )])
+    session.commit()
+
+    assert session.get(Order, order.id).archived_at is not None
+
+
+def test_shifted_rows_do_not_overwrite_a_work_with_a_stranger():
+    """S2.2: identity наряд-less рядка зроблена зі ЗМІННОГО вмісту (технік,
+    матеріал, вид, к-сть). Технік поправив матеріал — identity змінилась, і
+    рядок більше нічим не зводиться зі своєю роботою. Якщо тим самим тіком
+    рядок ще й зсунувся вгору (видалили рядок над ним), позиційний збіг веде
+    до ЧУЖОЇ роботи — і раніше вона мовчки переписувалась чужими даними.
+
+    Тепер такий рядок імпортується як новий, а чужа робота лишається собою:
+    зайва робота в черзі помітна й виправна, тихо підмінена — ні."""
+    session = make_session()
+    session.add_all([
+        # Рядок 1 — робота Марії, її з таблиці приберуть.
+        Order(source="lab", sheet_tab="27.08.26", row_number=1,
+              work_order_no="", technician_name="Марія",
+              material_color="моно A2", kind="анатомія", quantity="2",
+              status="нове"),
+        # Рядок 2 — робота Оксани, вона зсунеться на позицію 1.
+        Order(source="lab", sheet_tab="27.08.26", row_number=2,
+              work_order_no="", technician_name="Оксана",
+              material_color="цирконій A1", kind="каркас", quantity="4",
+              status="нове"),
+    ])
+    session.commit()
+    age_orders(session)
+    maria = session.scalar(select(Order).where(Order.technician_name == "Марія"))
+
+    # Рядок Марії видалено, рядок Оксани піднявся на 1 — І в ньому виправлено
+    # матеріал, тож identity рядка вже не та, що в роботі Оксани.
+    sync_tab(session, "27.08.26", [
+        make_row(row_number=1, work_order_no="", technician_name="Оксана",
+                 material_color="цирконій A2", kind="каркас", quantity="4",
+                 job_code="", sum3d_id="", calculated="", milled=""),
+    ])
+    session.commit()
+
+    stranger = session.get(Order, maria.id)
+    assert stranger.technician_name == "Марія", "чужий рядок не має переписувати роботу Марії"
+    assert stranger.material_color == "моно A2"
+
+
+def test_correcting_a_naryad_still_updates_the_same_work():
+    """Зворотний бік S2.2: виправлення наряду в тому ж рядку — щоденна річ, і
+    воно НЕ має плодити нову роботу. Ознака «чужа робота» вимагає, щоб не
+    збігалось нічого; при виправленні наряду технік/матеріал/вид/к-сть
+    лишаються на місці, тож пара тримається."""
+    session = make_session()
+    session.add(Order(
+        source="lab", sheet_tab="27.08.26", row_number=1,
+        work_order_no="24122", technician_name="Марія",
+        material_color="моно A2", kind="анатомія", quantity="2", status="нове",
+    ))
+    session.commit()
+    age_orders(session)
+
+    sync_tab(session, "27.08.26", [make_row(
+        row_number=1, work_order_no="24123", technician_name="Марія",
+        material_color="моно A2", kind="анатомія", quantity="2",
+    )])
+    session.commit()
+
+    orders = session.scalars(select(Order).where(Order.sheet_tab == "27.08.26")).all()
+    assert len(orders) == 1, "виправлення наряду не має плодити другу роботу"
+    assert orders[0].work_order_no == "24123"
+
+
+def test_looks_like_another_work_needs_evidence():
+    """Порожні поля нічого не стверджують: рядок, у якому технік ще не все
+    вписав, не має відбирати роботу в самого себе."""
+    from app.sync import _looks_like_another_work
+
+    order = Order(
+        source="lab", work_order_no="24122", technician_name="Марія",
+        material_color="моно A2", kind="анатомія", quantity="2",
+    )
+    # Порівнювати нема чого — доказів немає.
+    empty = make_row(technician_name="", material_color="", kind="", quantity="")
+    assert _looks_like_another_work(empty, order) is False
+
+    # Збігається бодай матеріал — та сама робота з правкою наряду.
+    same_material = make_row(
+        work_order_no="24123", technician_name="Оксана",
+        material_color="моно A2", kind="каркас", quantity="4",
+    )
+    assert _looks_like_another_work(same_material, order) is False
+
+    # Не збігається нічого — інша робота.
+    stranger = make_row(
+        work_order_no="", technician_name="Оксана",
+        material_color="цирконій A1", kind="каркас", quantity="4",
+    )
+    assert _looks_like_another_work(stranger, order) is True

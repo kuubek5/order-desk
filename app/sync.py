@@ -343,7 +343,37 @@ def _order_identity(order: Order) -> tuple | None:
             (order.kind or "").strip().casefold(), (order.quantity or "").strip())
 
 
-def _relink_moved_rows(existing_by_row: dict[int, Order], rows: list[OrderRow]) -> int:
+def _looks_like_another_work(row: OrderRow, order: Order) -> bool:
+    """Чи стоїть у рядку ЗОВСІМ інша робота, ніж та, що на цій позиції в базі.
+
+    Потрібно там, де пару дала лише позиція. Виправлення наряду й переїзд
+    рядка виглядають позиційно однаково, тому розрізняємо їх за рештою полів:
+    правлячи наряд, технік не переписує заразом технік/матеріал/вид/к-сть,
+    тож бодай одне з них збігається. Якщо не збігається НІЧОГО з того, що є
+    на обох сторонах — це не та сама робота.
+
+    Порівнюємо лише поля, заповнені з ОБОХ боків: порожнє поле нічого не
+    стверджує, і вважати його розбіжністю означало б рвати пари на кожному
+    рядку, де технік ще не все вписав. Нема жодного порівнюваного поля —
+    повертаємо False: без доказів рядок не відбираємо.
+    """
+    pairs = (
+        ((row.technician_name or "").strip().casefold(),
+         (order.technician_name or "").strip().casefold()),
+        ((row.material_color or "").strip().casefold(),
+         (order.material_color or "").strip().casefold()),
+        ((row.kind or "").strip().casefold(), (order.kind or "").strip().casefold()),
+        ((row.quantity or "").strip(), (order.quantity or "").strip()),
+    )
+    comparable = [(a, b) for a, b in pairs if a and b]
+    if not comparable:
+        return False
+    return all(a != b for a, b in comparable)
+
+
+def _relink_moved_rows(
+    existing_by_row: dict[int, Order], rows: list[OrderRow]
+) -> tuple[int, set[int]]:
     """Repoint orders whose row shifted, rewriting `existing_by_row` in place.
 
     Orders pair to sheet rows by IDENTITY (наряд / client+material+qty /
@@ -360,7 +390,11 @@ def _relink_moved_rows(existing_by_row: dict[int, Order], rows: list[OrderRow]) 
     position — which mixed duplicates up on exactly such an insert. Extra orders
     in a group (a duplicate deleted from the sheet) stay unpaired and are
     archived by the reconciliation; extra sheet rows (a new duplicate) are
-    created there. Returns how many orders were repositioned.
+    created there.
+
+    Повертає (скільки робіт переставлено, id тих, кого identity ЗВЕЛА з рядком).
+    Другий елемент потрібен викликачеві: після зсуву рядків позиційний збіг уже
+    не доказ, і пару без identity-підтвердження треба перевіряти окремо.
     """
     rows_by_key: dict[tuple, list[OrderRow]] = {}
     for row in rows:
@@ -377,6 +411,10 @@ def _relink_moved_rows(existing_by_row: dict[int, Order], rows: list[OrderRow]) 
     # Pair within each identity group by relative order; collect the orders that
     # actually need to move to a different row.
     movers: list[tuple[Order, int]] = []
+    # Кого паруванню за identity вдалося прив'язати до рядка — байдуже,
+    # зрушився він чи ні. Викликач за цим відрізняє «підтверджену пару» від
+    # «просто збіглася позиція» (див. гейт зсуву в sync_tab).
+    paired_ids: set[int] = set()
     for key, krows in rows_by_key.items():
         korders = orders_by_key.get(key)
         if not korders:
@@ -384,6 +422,8 @@ def _relink_moved_rows(existing_by_row: dict[int, Order], rows: list[OrderRow]) 
         krows_sorted = sorted(krows, key=lambda r: r.row_number)
         korders_sorted = sorted(korders, key=lambda o: o.row_number)
         for order, row in zip(korders_sorted, krows_sorted):
+            if order.id is not None:
+                paired_ids.add(order.id)
             if order.row_number != row.row_number:
                 movers.append((order, row.row_number))
 
@@ -398,7 +438,7 @@ def _relink_moved_rows(existing_by_row: dict[int, Order], rows: list[OrderRow]) 
     for order, new_row in movers:
         order.row_number = new_row
         existing_by_row[new_row] = order
-    return len(movers)
+    return len(movers), paired_ids
 
 
 def sync_tab(
@@ -496,13 +536,33 @@ def sync_tab(
     tab_orders = all_tab_orders
     matched_ids: set[int] = set()
 
-    moved = _relink_moved_rows(existing_by_row, rows)
+    moved, identity_paired = _relink_moved_rows(existing_by_row, rows)
     result.moved += moved
 
     for row in rows:
         # Position within the tab's data rows, after the identity re-link above
         # has corrected any rows that shifted.
         existing = existing_by_row.get(row.row_number)
+        if (
+            existing is not None
+            and existing.archived_at is None
+            and existing.id not in identity_paired
+            and _looks_like_another_work(row, existing)
+        ):
+            # Пара тільки позиційна (identity нічого не підтвердила), і в
+            # рядку немає НІЧОГО спільного з роботою: інший технік, інший
+            # матеріал, інший вид. Виправлення наряду так не виглядає — там
+            # решта полів лишається на місці. Так виглядає зсув рядків або
+            # переюзаний рядок, і саме тут наряд-less робота, у якій технік
+            # поправив матеріал, тихо переписувалась сусідньою.
+            # Рядок імпортуємо як новий, роботу не чіпаємо: зайва робота в
+            # черзі помітна й виправна, тихо підмінена — ні.
+            logger.warning(
+                "Рядок %s вкладки %s не має нічого спільного з роботою %s — "
+                "не переписуємо, імпортуємо як новий",
+                row.row_number, sheet_tab, existing.id,
+            )
+            existing = None
         if existing is not None and existing.id is not None:
             matched_ids.add(existing.id)
 
@@ -612,7 +672,19 @@ def sync_tab(
             else:
                 was = (existing.work_order_no or "").strip()
                 now_in_sheet = (fields.get("work_order_no") or "").strip()
-            if now_in_sheet and now_in_sheet == was:
+            # Наряд-less лабораторний рядок (технік вніс роботу, наряд ще не
+            # присвоїли) не має ні наряду, ні імені клієнта, тож обидва
+            # порівняння вище давали ""=="" і жодна гілка не спрацьовувала:
+            # помилково заархівована pending-lab робота не поверталась НІКОЛИ.
+            # `_row_identity` знає й такі рядки (ключ «labpending»), тому
+            # звірку доповнено ним. Порівняння за нарядом/клієнтом лишається
+            # як було: identity клієнтського рядка включає ще матеріал і
+            # к-сть, і правка матеріалу не має скасовувати воскресіння.
+            same_work = bool(now_in_sheet) and now_in_sheet == was
+            if not same_work:
+                row_key = _row_identity(row)
+                same_work = row_key is not None and row_key == _order_identity(existing)
+            if same_work:
                 # ТА САМА робота стоїть у таблиці, а замовлення в архіві. Так
                 # виглядає помилкова архівація (обірване читання, разовий збій
                 # кольорів): бойовий випадок 30.08.26 — синк одним тіком
