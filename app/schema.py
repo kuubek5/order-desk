@@ -125,6 +125,42 @@ def _already_present_error(exc: BaseException) -> bool:
     return "already exists" in message or "duplicate column name" in message
 
 
+def _decide_foreign_key_enforcement(db_file: Path) -> None:
+    """Увімкнути перевірку FK, якщо база чиста; інакше — вимкнути й сказати.
+
+    Ціна помилки несиметрична: без перевірки осиротілі рядки лягають мовчки, а
+    з перевіркою на вже брудній базі кожен наступний запис міг би впасти
+    IntegrityError посеред робочого дня. Тому вирішуємо ОДИН раз на старті, за
+    фактом, а не за припущенням (ревʼю 07.09.26, K.3).
+    """
+    from app.db import set_foreign_key_enforcement
+
+    if not db_file.is_file():
+        return
+    try:
+        # Звичайний connect, НЕ uri=True: шляхи бувають UNC (див. вище).
+        connection = sqlite3.connect(str(db_file))
+        try:
+            violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+        finally:
+            connection.close()
+    except sqlite3.Error:
+        logger.exception("Не вдалося перевірити зовнішні ключі — лишаємо як є")
+        return
+
+    if not violations:
+        set_foreign_key_enforcement(True)
+        return
+
+    set_foreign_key_enforcement(False)
+    tables = sorted({str(row[0]) for row in violations})
+    logger.error(
+        "У базі %s висячих посилань (таблиці: %s) — перевірку зовнішніх ключів "
+        "вимкнено, щоб не ламати роботу. Спершу почистіть дані.",
+        len(violations), ", ".join(tables),
+    )
+
+
 def ensure_schema(db_file: Path, backup_dir: Path) -> None:
     """Довести базу за `db_file` до поточної версії міграцій.
 
@@ -166,6 +202,7 @@ def ensure_schema(db_file: Path, backup_dir: Path) -> None:
             fresh_engine.dispose()
         command.stamp(config, "head")
         logger.info("Схему створено з моделей і проштамповано %s", head_revision)
+        _decide_foreign_key_enforcement(db_file)
         return
 
     if "alembic_version" not in _table_names(db_file):
@@ -226,3 +263,4 @@ def ensure_schema(db_file: Path, backup_dir: Path) -> None:
             "Запуск зупинено; копія бази: " + (str(backup) if backup else "не робилась")
         )
     logger.info("Схему оновлено: %s → %s", current_revision, head_revision)
+    _decide_foreign_key_enforcement(db_file)
