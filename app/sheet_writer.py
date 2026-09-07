@@ -414,6 +414,43 @@ def restore_order_row(worksheet: gspread.Worksheet, order: Order) -> None:
         call_with_retry(lambda: worksheet.batch_update(updates))
 
 
+def restore_erased_row(
+    worksheet: gspread.Worksheet, row: int, values: list[str]
+) -> None:
+    """Повернути в рядок `row` вміст A:K, знятий перед стиранням.
+
+    Це половина кнопки «Відновити рядок» у «Журналі синку»: роботи в базі вже
+    може не бути (її видалили — саме тому рядок і стерли), тож відновлюємо
+    ЗНАЧЕННЯ, а не поля обʼєкта, як `restore_order_row`.
+
+    Той самий запобіжник, що й там, і з тієї ж причини: звірка identity тут
+    неможлива (клітинка порожня за визначенням), тому єдине, що стоїть між
+    відновленням і затиранням чужої роботи — вимога, щоб рядок був ПОРОЖНІЙ.
+    Лабораторія переюзує звільнені рядки, тож зайнятий рядок = відмова, а не
+    «запишемо поверх». Збій читання теж відмова: непрочитаний рядок не можна
+    вважати вільним.
+
+    L/M/N не чіпаються — `clear_placeholder_row` їх не стирав.
+    """
+    if not values or not any(v.strip() for v in values if isinstance(v, str)):
+        raise ValueError("нема чого відновлювати: збережений вміст порожній")
+    try:
+        current = worksheet.get_values(f"A{row}:K{row}")
+    except Exception as exc:
+        raise RuntimeError(f"не вдалося перевірити, чи рядок {row} вільний: {exc}") from exc
+    occupied = [c for c in (current[0] if current else []) if isinstance(c, str) and c.strip()]
+    if occupied:
+        raise RowOccupiedError(f"рядок {row} уже зайнято")
+
+    trimmed = list(values[:11])
+    trimmed += [""] * (11 - len(trimmed))
+    # batch_update, а не `update`: у gspread 6 порядок аргументів `update`
+    # змінився, а тут той самий виклик, що вже вживає `restore_order_row`.
+    call_with_retry(
+        lambda: worksheet.batch_update([{"range": f"A{row}:K{row}", "values": [trimmed]}])
+    )
+
+
 def write_calculated(worksheet: gspread.Worksheet, order: Order, value: str) -> bool:
     """DIRECT overwrite of the main "Прорахував" cell (column М) — for the manual
     «Оператор» edit from the queue row. Unlike write_order_fields, which treats

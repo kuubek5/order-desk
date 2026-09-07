@@ -695,7 +695,9 @@ body.rail-collapsed .rail-sync-dot {
    в останній колонці воно переноситься, не ламаючи вирівнювання часу. */
 .sj-row {
   display: grid;
-  grid-template-columns: 5.5rem 6rem 9rem 6rem minmax(0, 1fr);
+  /* Остання колонка — дія «Відновити рядок»: auto, щоб порожня вона не
+     їла ширину повідомлення (кнопка є лише у стирань). */
+  grid-template-columns: 5.5rem 6rem 9rem 6rem minmax(0, 1fr) auto;
   gap: var(--space-2);
   align-items: baseline;
   padding: 4px 8px;
@@ -711,10 +713,16 @@ body.rail-collapsed .rail-sync-dot {
 .sj-row.is-skipped .sj-status { color: var(--warn); }
 .sj-row.is-error .sj-status { color: var(--alarm); }
 .sj-row.is-error { background: rgba(var(--alarm-rgb), .05); }
+/* Дія в рядку журналу: тиха, поки не потрібна. Стирання рядка трапляється
+   рідко, і кнопка не має перетягувати увагу зі змісту запису. */
+.sj-row .sj-restore { margin: 0; }
+.sj-row .sj-restore .link-button { font-size: var(--fs-0); white-space: nowrap; }
+.sj-row .sj-restored { color: var(--ink-3); font-size: var(--fs-0); white-space: nowrap; }
 
 @media (max-width: 900px) {
   .sj-row {
     grid-template-columns: 5rem 6rem minmax(0, 1fr);
   }
+  .sj-row .sj-restore, .sj-row .sj-restored { grid-column: 1 / -1; }
   .sj-row .sj-dir, .sj-row .sj-tab { grid-column: span 1; }
 }

@@ -59,6 +59,17 @@
     {% if groups %}
     {# Підсумок по показаному вікну, а не по всій базі: інакше цифра
        суперечила б списку під нею. #}
+    {% if restore_result %}
+    <p class="settings-help sj-restore-note" style="margin-top:12px;">
+        {% if restore_result == 'ok' %}Рядок повернуто в таблицю.
+        {% elif restore_result == 'occupied' %}Рядок уже зайнятий чужою роботою — нічого не переписано. Впишіть вміст вручну з тексту запису.
+        {% elif restore_result == 'already' %}Цей рядок уже відновлювали.
+        {% elif restore_result == 'nothing' %}У цьому записі немає збереженого вмісту рядка.
+        {% else %}Відновити не вдалося — подробиці в логах.
+        {% endif %}
+    </p>
+    {% endif %}
+
     <div class="sj-counts mono">
         <span class="sj-pill is-ok">успіх {{ counts.ok }}</span>
         <span class="sj-pill is-skipped">пропущено {{ counts.skipped }}</span>
@@ -76,6 +87,18 @@
                 <span class="sj-dir">{{ direction_labels.get(row.direction, row.direction) }}</span>
                 <span class="sj-tab mono">{{ row.sheet_tab or '' }}</span>
                 <span class="sj-msg">{{ row.message or '' }}</span>
+                {# Кнопка є лише там, де в журналі лежить сам вміст стертого
+                   рядка. Відновлений запис лишається в журналі, але вже без
+                   кнопки — повторне відновлення нічого не означає. #}
+                {% if row.erased_row and row.erased_values %}
+                    {% if row.erased_restored_at %}
+                    <span class="sj-restored mono">відновлено {{ row.erased_restored_at.strftime('%H:%M') }}</span>
+                    {% else %}
+                    <form method="post" action="/journal/sync/{{ row.id }}/restore-row" class="sj-restore">
+                        <button type="submit" class="link-button">Відновити рядок</button>
+                    </form>
+                    {% endif %}
+                {% endif %}
             </div>
             {% endfor %}
         </div>

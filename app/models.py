@@ -395,6 +395,14 @@ class SyncLog(Base):
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()
     )
+    # Слід стертого рядка таблиці — даними, а не всередині тексту `message`:
+    # з нього росте кнопка «Відновити рядок» у «Журналі синку». `erased_values`
+    # — JSON-масив значень A:K на мить до стирання.
+    erased_row: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    erased_values: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    erased_restored_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
 
 
 class AppSetting(Base):

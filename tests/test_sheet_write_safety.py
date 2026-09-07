@@ -419,3 +419,53 @@ class TestMassEraseGuard:
             assert sheet_writer.clear_order_row(ws, self._lab_order()) is False
 
         assert sheet_erase_guard.recent_count() == 0
+
+
+class TestRestoreErasedRow:
+    """Повернення стертого рядка за вмістом із журналу (B.8). Звірка identity
+    тут неможлива — клітинка порожня за визначенням, — тож єдиний запобіжник
+    той самий, що й у restore_order_row: рядок мусить бути ПОРОЖНІЙ."""
+
+    def _worksheet(self, current):
+        ws = MagicMock()
+        ws.id = 11
+        ws.get_values.return_value = current
+        return ws
+
+    def test_writes_the_saved_values_back(self):
+        from app.sheet_writer import restore_erased_row
+
+        ws = self._worksheet([[""] * 11])
+        restore_erased_row(ws, 13, ["1", "24122", "2", "моно а3"])
+
+        ws.batch_update.assert_called_once()
+        (payload,), _ = ws.batch_update.call_args
+        assert payload[0]["range"] == "A13:K13"
+        # Хвіст добивається порожніми: інакше в K лишився б старий вміст.
+        assert payload[0]["values"][0][:4] == ["1", "24122", "2", "моно а3"]
+        assert len(payload[0]["values"][0]) == 11
+
+    def test_occupied_row_is_never_overwritten(self):
+        from app.sheet_writer import RowOccupiedError, restore_erased_row
+
+        ws = self._worksheet([["", "99999", "", "цирконій"]])
+        with pytest.raises(RowOccupiedError):
+            restore_erased_row(ws, 13, ["1", "24122"])
+        ws.batch_update.assert_not_called()
+
+    def test_unreadable_row_refuses_instead_of_assuming_empty(self):
+        from app.sheet_writer import restore_erased_row
+
+        ws = MagicMock()
+        ws.get_values.side_effect = RuntimeError("проксі обірвав зʼєднання")
+        with pytest.raises(RuntimeError, match="чи рядок 13 вільний"):
+            restore_erased_row(ws, 13, ["1", "24122"])
+        ws.batch_update.assert_not_called()
+
+    def test_empty_saved_content_is_not_restorable(self):
+        from app.sheet_writer import restore_erased_row
+
+        ws = self._worksheet([[""] * 11])
+        with pytest.raises(ValueError):
+            restore_erased_row(ws, 13, ["", "  "])
+        ws.batch_update.assert_not_called()

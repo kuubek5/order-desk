@@ -18,10 +18,12 @@
 немає.
 """
 
+import json
+import logging
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
@@ -29,6 +31,10 @@ from starlette.requests import Request
 from app.models import SyncLog
 from app.routers.deps import get_current_user, get_db, login_redirect, templates
 from app.services.queue_view import live_sync_status
+from app.sheet_writer import RowOccupiedError, restore_erased_row
+from app.sheets import get_worksheet_by_name, open_spreadsheet
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -62,6 +68,7 @@ def get_sync_journal(
     direction: str = "",
     status: str = "",
     day: str = "",
+    restored: str = "",
     db: Session = Depends(get_db),
 ):
     """Стрічка `SyncLog`, згорнута по днях, з фільтром напрямку/статусу/дня."""
@@ -132,5 +139,64 @@ def get_sync_journal(
             # рейці. Тут він на місці: сторінка й існує заради питання «чи
             # синк узагалі живий».
             "sync_status": live_sync_status(db),
+            # Результат відновлення рядка після редиректу: банер угорі.
+            "restore_result": restored,
         },
     )
+
+
+@router.post("/journal/sync/{log_id}/restore-row")
+def restore_erased_sheet_row(
+    log_id: int, request: Request, db: Session = Depends(get_db)
+):
+    """Повернути в таблицю рядок, стертий при видаленні роботи.
+
+    Звичайний `def`, а не `async`: усередині синхронний похід у Google Sheets,
+    і на event loop йому не місце (CLAUDE.md §14) — FastAPI віднесе цей роут
+    у threadpool сам.
+
+    Відновлюємо ЗНАЧЕННЯ з журналу, а не поля роботи: роботи в базі вже нема,
+    її й видалили. Рядок мусить бути порожній — інакше `restore_erased_row`
+    відмовляється, бо лабораторія переюзує звільнені рядки.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+
+    entry = db.get(SyncLog, log_id)
+    if entry is None or not entry.erased_row or not entry.erased_values:
+        return RedirectResponse("/journal/sync?restored=nothing", status_code=303)
+    if entry.erased_restored_at is not None:
+        return RedirectResponse("/journal/sync?restored=already", status_code=303)
+
+    try:
+        values = json.loads(entry.erased_values)
+    except (TypeError, ValueError):
+        return RedirectResponse("/journal/sync?restored=nothing", status_code=303)
+
+    try:
+        worksheet = get_worksheet_by_name(open_spreadsheet(db=db), entry.sheet_tab or "")
+        if worksheet is None:
+            raise RuntimeError(f"вкладки {entry.sheet_tab} немає в таблиці")
+        restore_erased_row(worksheet, entry.erased_row, values)
+    except RowOccupiedError:
+        logger.warning("Відновлення рядка %s: рядок уже зайнято", entry.erased_row)
+        return RedirectResponse("/journal/sync?restored=occupied", status_code=303)
+    except Exception:
+        logger.exception("Не вдалося відновити рядок за записом журналу %s", log_id)
+        return RedirectResponse("/journal/sync?restored=error", status_code=303)
+
+    entry.erased_restored_at = datetime.now()
+    db.add(
+        SyncLog(
+            direction="db_to_sheet", sheet_tab=entry.sheet_tab, status="ok",
+            message=(
+                f"рядок {entry.erased_row} відновлено з журналу "
+                f"({user.full_name or user.username})"
+            ),
+        )
+    )
+    db.commit()
+    return RedirectResponse("/journal/sync?restored=ok", status_code=303)

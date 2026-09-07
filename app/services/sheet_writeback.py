@@ -12,6 +12,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from datetime import date, datetime
+import json
 import logging
 
 from sqlalchemy.orm import Session
@@ -446,14 +447,23 @@ def clear_sheet_row_background(order_id: int) -> None:
                 # рядок завжди можна набрати назад із «Журналу синку».
                 erased = take_last_erased(order_id)
                 detail = ""
+                erased_row = None
+                erased_values = None
                 if erased is not None:
                     row_no, values = erased
                     shown = " | ".join(v for v in values if v) or "порожній"
                     detail = f" (рядок {row_no}: {shown})"
+                    # Той самий вміст ще й даними: з нього росте кнопка
+                    # «Відновити рядок». Текст лишається для читання людиною.
+                    if any(v for v in values if isinstance(v, str) and v.strip()):
+                        erased_row = row_no
+                        erased_values = json.dumps(values, ensure_ascii=False)
                 bg.add(
                     SyncLog(
                         direction="db_to_sheet", sheet_tab=sheet_tab, status="ok",
                         message=f"видалено роботу {order_id}: рядок очищено{detail}",
+                        erased_row=erased_row,
+                        erased_values=erased_values,
                     )
                 )
                 bg.commit()

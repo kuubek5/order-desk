@@ -307,3 +307,105 @@ def test_rail_hides_the_dot_from_operators(active, _quiet_globals):
     html = _rail("оператор", active)
     assert "rail-sync-dot" not in html
     assert "/journal/sync" not in html
+
+
+class TestRestoreErasedRow:
+    """B.8: слід від стертого рядка вже був у журналі текстом — тепер із нього
+    росте дія. Найдорожча помилка тут — записати вміст у рядок, який лабораторія
+    вже переюзала: це затерло б чужу живу роботу, тобто рівно те, від чого весь
+    цей блок і будувався."""
+
+    def _erased_log(self, db, *, restored_at=None):
+        row = SyncLog(
+            direction="db_to_sheet", status="ok", sheet_tab="07.09.26",
+            message="видалено роботу 42: рядок очищено",
+            erased_row=13,
+            erased_values='["1", "24122", "2", "моно а3", "анатомія"]',
+            erased_restored_at=restored_at,
+        )
+        db.add(row)
+        db.commit()
+        return row
+
+    def test_operator_cannot_restore(self):
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            operator = _operator(db)
+            entry = self._erased_log(db)
+            with pytest.raises(HTTPException) as exc:
+                sj.restore_erased_sheet_row(entry.id, _request(operator.id), db)
+            assert exc.value.status_code == 403
+
+    def test_restores_values_and_marks_the_entry(self, monkeypatch):
+        engine = _database()
+        written: list = []
+        monkeypatch.setattr(sj, "open_spreadsheet", lambda db=None: object())
+        monkeypatch.setattr(sj, "get_worksheet_by_name", lambda ss, name: name)
+        monkeypatch.setattr(
+            sj, "restore_erased_row",
+            lambda ws, row, values: written.append((ws, row, values)),
+        )
+        with Session(engine, expire_on_commit=False) as db:
+            admin = _admin(db)
+            entry = self._erased_log(db)
+
+            response = sj.restore_erased_sheet_row(entry.id, _request(admin.id), db)
+
+            assert response.status_code == 303
+            assert response.headers["location"] == "/journal/sync?restored=ok"
+            assert written == [("07.09.26", 13, ["1", "24122", "2", "моно а3", "анатомія"])]
+            db.refresh(entry)
+            assert entry.erased_restored_at is not None
+            # Саме відновлення теж лишає слід у журналі.
+            messages = [r.message for r in db.query(SyncLog).all()]
+            assert any("рядок 13 відновлено" in (m or "") for m in messages)
+
+    def test_occupied_row_is_refused_and_not_marked(self, monkeypatch):
+        from app.sheet_writer import RowOccupiedError
+
+        engine = _database()
+        monkeypatch.setattr(sj, "open_spreadsheet", lambda db=None: object())
+        monkeypatch.setattr(sj, "get_worksheet_by_name", lambda ss, name: name)
+
+        def occupied(ws, row, values):
+            raise RowOccupiedError("рядок 13 уже зайнято")
+
+        monkeypatch.setattr(sj, "restore_erased_row", occupied)
+        with Session(engine, expire_on_commit=False) as db:
+            admin = _admin(db)
+            entry = self._erased_log(db)
+
+            response = sj.restore_erased_sheet_row(entry.id, _request(admin.id), db)
+
+            assert response.headers["location"] == "/journal/sync?restored=occupied"
+            db.refresh(entry)
+            # Не відновили — кнопка мусить лишитись.
+            assert entry.erased_restored_at is None
+
+    def test_second_restore_is_refused(self, monkeypatch):
+        engine = _database()
+        calls: list = []
+        monkeypatch.setattr(sj, "open_spreadsheet", lambda db=None: object())
+        monkeypatch.setattr(sj, "get_worksheet_by_name", lambda ss, name: name)
+        monkeypatch.setattr(
+            sj, "restore_erased_row", lambda ws, row, values: calls.append(row)
+        )
+        with Session(engine, expire_on_commit=False) as db:
+            admin = _admin(db)
+            entry = self._erased_log(db, restored_at=datetime(2026, 9, 7, 9, 0))
+
+            response = sj.restore_erased_sheet_row(entry.id, _request(admin.id), db)
+
+            assert response.headers["location"] == "/journal/sync?restored=already"
+            assert calls == []
+
+    def test_entry_without_saved_content_has_nothing_to_restore(self):
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            admin = _admin(db)
+            plain = _log(db, direction="db_to_sheet", status="ok",
+                         when=datetime(2026, 9, 7, 9, 0), message="звичайний запис")
+
+            response = sj.restore_erased_sheet_row(plain.id, _request(admin.id), db)
+
+            assert response.headers["location"] == "/journal/sync?restored=nothing"
