@@ -37,6 +37,8 @@ from app.machine_sisma import (  # noqa: E402
     _line_signature,
     SISMA_GLYPHS_PATH,
     ZONE_LASER,
+    ZONE_LASER_LABEL,
+    ZONE_REPORT,
     ZONE_SLICE,
     ZONE_TIMES,
     _glyphs,
@@ -47,8 +49,9 @@ from app.machine_sisma import (  # noqa: E402
     read_sisma,
 )
 
-ZONES = {"slice": ZONE_SLICE, "times": ZONE_TIMES, "laser": ZONE_LASER}
-INKS = {"dark": INK_DARK, "bold": INK_DARK, "status": INK_STATUS}
+ZONES = {"slice": ZONE_SLICE, "times": ZONE_TIMES, "laser": ZONE_LASER,
+         "label": ZONE_LASER_LABEL, "report": ZONE_REPORT}
+INKS = {"dark": INK_DARK, "bold": INK_DARK, "title": INK_DARK, "status": INK_STATUS}
 
 
 def _resolve_zone(value: str):

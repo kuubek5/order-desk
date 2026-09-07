@@ -232,3 +232,55 @@ def test_printer_stays_in_its_widget_even_without_a_link():
     assert card.is_sisma_machine is True, "лишається у своєму віджеті"
     assert card.is_sisma is False, "але даних з протухлого кадру не показуємо"
     assert card.layers is None and card.ends_at is None
+
+
+def test_open_window_does_not_hide_the_printer():
+    """Бойовий випадок 07.09.26: вікно «Workzone Report» накрило останню літеру
+    підпису `Laser Status` — від «s» лишилось 2 пікселі з 7. Правило «або весь
+    рядок, або нічого» відкидало розпізнавання цілком, і принтер випадав із
+    власного віджета РІВНО тоді, коли щойно закінчив друк.
+
+    Тепер екран упізнається за початком підпису."""
+    frame = _frame("sisma_report_dialog.png")
+
+    assert screen_is_sisma(frame) is True
+
+
+def test_report_window_means_the_print_is_finished():
+    """Ознака фінішу — вікно звіту, яке машина відкриває сама після останнього
+    шару. Через лічильник це не ловиться: 1049/1049 на екрані не буває."""
+    from app.machine_sisma import screen_is_report
+
+    assert screen_is_report(_frame("sisma_report_dialog.png")) is True
+    assert read_sisma(_frame("sisma_report_dialog.png")).finished is True
+
+    for name in ("sisma_printing_250.png", "sisma_idle.png", "sisma_recoating_253.png"):
+        assert screen_is_report(_frame(name)) is False, name
+        assert read_sisma(_frame(name)).finished is False, name
+
+
+def test_finished_frame_reports_no_layers_and_no_times():
+    """На екрані звіту чисел уже немає — і вигадувати їх ми не будемо."""
+    reading = read_sisma(_frame("sisma_report_dialog.png"))
+
+    assert reading.layer is None and reading.layers_total is None
+    assert reading.ends_at is None and reading.percent is None
+
+
+def test_prefix_rule_does_not_leak_into_numbers():
+    """Послаблення стосується ЛИШЕ впізнання екрана. Рядок із числами, який не
+    прочитався цілком, як мовчав, так і мовчить: половина прочитаного числа —
+    це вигадане число."""
+    from app.machine_sisma import _decode_line, _decode_prefix, _mask, _text_lines, _zone
+    from app.machine_sisma import INK_DARK, ZONE_SLICE, load_sisma_glyphs
+
+    frame = _frame("sisma_report_dialog.png")
+    dark = load_sisma_glyphs().get("dark", {})
+    zone = _zone(frame, ZONE_SLICE)
+    mask = _mask(zone, INK_DARK)
+    for y0, y1 in _text_lines(mask):
+        if _decode_prefix(mask, y0, y1, dark) and not _decode_line(mask, y0, y1, dark):
+            break
+    else:
+        return  # у цій зоні на цьому кадрі рядків немає — теж коректно
+    assert read_sisma(frame).layer is None

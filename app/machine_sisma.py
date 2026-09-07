@@ -69,6 +69,8 @@ SET_BOLD = "bold"
 # між двома словами. Слів усього два й вони відомі наперед, тож порівняння
 # цілого сліду і простіше, і суворіше.
 SET_WORDS = "words"
+# Заголовок вікна звіту — синій напівжирний, тобто знову інші пікселі.
+SET_TITLE = "title"
 
 # Зони пошуку — частками розміру кадру, а не пікселями: той самий екран на
 # іншій роздільності лишиться на своєму місці відносно країв. Зони навмисно
@@ -81,6 +83,29 @@ ZONE_SLICE = (0.68, 0.83, 1.00, 0.89)      # «Current slice: 250/1049»
 # край іконки.
 ZONE_TIMES = (0.355, 0.905, 0.635, 0.995)  # «Work started…» / «Previewed End…»
 ZONE_LASER = (0.00, 0.40, 0.17, 0.52)      # «Laser Status» + слово стану
+# Тільки САМ підпис «Laser Status», без нижньої частини поля. Потрібна окрема
+# зона, бо коли поверх екрана відкрито вікно (звіт після друку), його рамка
+# потрапляє в широку зону, зливається з підписом в одну пляму — і рядок не
+# ділиться на символи взагалі.
+ZONE_LASER_LABEL = (0.00, 0.40, 0.14, 0.47)
+# Заголовок вікна «Workzone Report». Воно вискакує САМО після нанесення
+# останнього шару (підтвердив власник 07.09.26) — це і є ознака завершення
+# друку. Лічильник шарів для цього не годиться: машина не показує 1049/1049,
+# а одразу скидається в підготовку (Slice: 1).
+ZONE_REPORT = (0.10, 0.17, 0.45, 0.24)
+
+# Впізнання екрана — за ПОЧАТКОМ підпису, а не за цілим рядком. Бойовий
+# випадок 07.09.26: вікно звіту накрило останню літеру, від «s» лишилось два
+# пікселі з семи — і правило «або весь рядок, або нічого» відкинуло
+# розпізнавання цілком. Принтер випав із власного віджета рівно тоді, коли
+# найцікавіший (щойно закінчив друк).
+#
+# Сім гліфів у цьому порядку не дає жоден інший екран цеху, тож послаблення
+# безпечне. Воно стосується ЛИШЕ впізнання екрана: числа (шари, час) як
+# читались цілими рядками, так і читаються — там половина прочитаного це
+# вигадане число.
+MARK_LASER = "LaserSt"
+MARK_REPORT = "WorkzoneRep"
 
 LABEL_SLICE = "Currentslice:"
 LABEL_STARTED = "Workstarted:"
@@ -106,6 +131,10 @@ class SismaReading:
     # каже лише ФАЗУ. Якби ми злили ці два поняття, оператор бачив би «стоїть»
     # щоразу, коли машина розрівнює порошок.
     lasing: Optional[bool] = None
+    # Друк завершено: на екрані саме вискочило вікно «Workzone Report».
+    # Окреме поле, а не «шар == усього»: до останнього шару лічильник не
+    # доходить, машина скидається в підготовку (див. screen_is_report).
+    finished: bool = False
     laser_word: str = ""                # що саме написано (для журналу)
     layer: Optional[int] = None
     layers_total: Optional[int] = None
@@ -224,6 +253,42 @@ def _decode_line(
     return "".join(text) if text else None
 
 
+def _decode_prefix(
+    mask: list[list[int]], y0: int, y1: int, templates: dict[int, dict[str, tuple]]
+) -> str:
+    """Скільки вдалось прочитати з початку рядка до першого незнайомого сліду.
+
+    Для ВПІЗНАННЯ екрана цього досить: підпис поля стоїть на початку рядка, і
+    те, що намальовано після нього (рамка чужого вікна, обрізана літера),
+    відповіді вже не міняє.
+    """
+    text = []
+    for _, bits in _glyphs(mask, y0, y1):
+        char = None
+        for candidate, ref in templates.get(len(bits), {}).items():
+            if ref == bits:
+                char = candidate
+                break
+        if char is None:
+            break
+        text.append(char)
+    return "".join(text)
+
+
+def _zone_starts_with(image: Image.Image, box, ink: int, templates, mark: str) -> bool:
+    """Чи є в зоні рядок, який ПОЧИНАЄТЬСЯ з `mark`."""
+    if not templates:
+        return False
+    zone = _zone(image, box)
+    if zone.width < 4 or zone.height < 4:
+        return False
+    mask = _mask(zone, ink)
+    return any(
+        _decode_prefix(mask, y0, y1, templates).startswith(mark)
+        for y0, y1 in _text_lines(mask)
+    )
+
+
 def _zone(image: Image.Image, box: tuple[float, float, float, float]) -> Image.Image:
     w, h = image.size
     return image.crop((int(w * box[0]), int(h * box[1]), int(w * box[2]), int(h * box[3])))
@@ -340,6 +405,7 @@ def _read_sisma(image: Image.Image) -> SismaReading:
         printing = None
 
     return SismaReading(
+        finished=screen_is_report(image),
         printing=printing,
         lasing=lasing,
         laser_word=laser_word,
@@ -354,15 +420,23 @@ def screen_is_sisma(image: Image.Image) -> bool:
     """Чи це взагалі екран SISMA — щоб не читати ним RemiCORE.
 
     Ознака — підпис `Laser Status` у лівій колонці: він є і в роботі, і в
-    простої, і його немає на жодному іншому екрані цеху.
+    простої, і його немає на жодному іншому екрані цеху. Звіряється ПОЧАТОК
+    підпису (див. MARK_LASER): вікно поверх екрана може відкусити останню
+    літеру, і колись через це принтер випав із власного віджета.
 
-    Читається набором `dark`, а не `status`: заголовок жирний і чорний, і при
-    порозі 200 його букви злипаються в кашу через згладжування.
+    Читається набором `bold`, а не `dark`: заголовок жирний, і в звичайному
+    наборі ті самі літери мають інші пікселі.
     """
     glyphs = load_sisma_glyphs().get(SET_BOLD, {})
-    if not glyphs:
-        return False
-    return any(
-        line.startswith("LaserStatus")
-        for line in _lines_in(image, ZONE_LASER, INK_DARK, glyphs)
-    )
+    return _zone_starts_with(image, ZONE_LASER_LABEL, INK_DARK, glyphs, MARK_LASER)
+
+
+def screen_is_report(image: Image.Image) -> bool:
+    """Вікно «Workzone Report» — машина щойно завершила друк.
+
+    Власник підтвердив 07.09.26: звіт вискакує САМ після нанесення останнього
+    шару. Це єдина надійна ознака фінішу в SISMA — лічильник шарів до кінця не
+    доходить, машина одразу скидається в підготовку.
+    """
+    glyphs = load_sisma_glyphs().get(SET_TITLE, {})
+    return _zone_starts_with(image, ZONE_REPORT, INK_DARK, glyphs, MARK_REPORT)

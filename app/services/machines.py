@@ -774,11 +774,12 @@ def poll_target(
     # Взаємно виключні за побудовою: на 285 бойових кадрах чотирьох верстатів
     # жоден не дав одночасно число і SUMMARY (перевірено 04.09.26).
     if sisma is not None:
-        # У SISMA свій підсумок: робота завершена, коли шар останній. Шукати
-        # тут SUMMARY нового покоління RemiCORE нічого.
-        completed = bool(
-            sisma.layers_total and sisma.layer and sisma.layer >= sisma.layers_total
-        )
+        # У SISMA свій підсумок — вікно «Workzone Report», яке машина відкриває
+        # САМА після останнього шару (підтвердив власник 07.09.26). Лічильник
+        # шарів для цього не годиться: 1049/1049 на екрані не буває, принтер
+        # одразу скидається в підготовку. Шукати тут SUMMARY нового покоління
+        # RemiCORE теж нічого — то інший верстат.
+        completed = sisma.finished
     else:
         try:
             completed = screen_is_completed(frame)
