@@ -929,9 +929,15 @@ async def no_store_html(request: Request, call_next):
 async def license_gate(request: Request, call_next):
     """Block the entire application — even /setup and /login — without a valid license.
 
-    Runs outermost (defined after, so registered last / wraps everything else,
-    see Starlette's LIFO middleware stack) and reads its own DB session rather
-    than depending on get_db, since dependency injection isn't available here.
+    НЕ найзовнішній, хоч так і було написано тут роками. `add_middleware`
+    вставляє в початок списку, тож фактичний порядок ззовні всередину:
+    ServerError → log_slow_requests → license_gate → no_store_html →
+    SessionMiddleware → router. Важливий наслідок: цей гейт працює ДО
+    SessionMiddleware, тобто `request.session` тут ще НЕ існує — не додавайте
+    сюди читання сесії (ревʼю 07.09.26, K.9).
+
+    Читає власну сесію БД, бо ін'єкція залежностей на рівні middleware
+    недоступна.
     """
     path = request.url.path
     if path in _LICENSE_EXEMPT_PATHS or path.startswith(_LICENSE_EXEMPT_PATH_PREFIXES):

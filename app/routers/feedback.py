@@ -22,6 +22,7 @@ from app.feedback_images import (
     save_image,
 )
 from app.models import Feedback, FeedbackImage, User
+from app.services.attempt_limit import feedback_limiter
 from app.routers.deps import get_current_user, login_redirect, get_db, templates, toast_response
 from app.services import feedback as feedback_service
 
@@ -79,6 +80,13 @@ def submit_feedback(
     db: Session = Depends(get_db),
 ):
     user = _require_user(request, db)
+    # Ключ — оператор, а не IP: IP тут в усіх один (127.0.0.1).
+    limiter_key = f"feedback:{user.id}"
+    if feedback_limiter.retry_after(limiter_key):
+        return toast_response(
+            "Забагато звернень підряд. Спробуйте за хвилину.", kind="error"
+        )
+    feedback_limiter.register_failure(limiter_key)
     try:
         feedback = feedback_service.create_feedback(
             db,
@@ -186,9 +194,18 @@ def reopen(request: Request, feedback_id: int, db: Session = Depends(get_db)):
 
 @router.get("/feedback/images/{image_id}")
 def get_feedback_image(request: Request, image_id: int, db: Session = Depends(get_db)):
-    if get_current_user(request, db) is None:
+    user = get_current_user(request, db)
+    if user is None:
         raise HTTPException(status_code=401, detail="потрібен вхід")
     image = db.get(FeedbackImage, image_id)
+    # Знімок екрана зі звернення показує ЧУЖИЙ робочий стіл: відкриті роботи,
+    # прізвища клієнтів, іноді пошту. «Будь-хто, хто увійшов» — не той рівень
+    # (ревʼю 07.09.26, K.9). Автор бачить своє, адмін — усе, бо саме він
+    # звернення й розбирає.
+    if image is not None and user.role != "адмін":
+        author_id = getattr(image.feedback, "author_id", None) if image.feedback else None
+        if author_id != user.id:
+            raise HTTPException(status_code=404, detail="файл не знайдено")
     path = resolve_image_file(image) if image is not None else None
     media_type = media_type_for(path) if path is not None else None
     if path is None or media_type is None:

@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 from app.services.section_gate import AUDIENCE_ALL, set_section_audience, set_section_state
+from app.auth import hash_password
 from app.routers.deps import get_db
 from app.settings_store import set_setting
 from .common import require_settings_admin
@@ -20,7 +21,11 @@ async def save_vyrobitok_pin(request: Request, db: Session = Depends(get_db)):
     require_settings_admin(request, db)
     form = await request.form()
     pin = (form.get("vyrobitok_pin") or "").strip()
-    set_setting(db, "vyrobitok_pin", pin)
+    # Зберігаємо ХЕШ, не сам код. Шифрування тут не рятує: сенс ПІНа —
+    # сховати зарплатні цифри від операторів, а вони мають доступ до тієї ж
+    # машини й тієї ж бази, тобто й до ключа розшифрування (ревʼю 07.09.26,
+    # K.9). Порожнє значення й далі означає «розділ відкритий».
+    set_setting(db, "vyrobitok_pin", hash_password(pin) if pin else "")
     db.commit()
     request.session["settings_flash"] = {
         "kind": "success",

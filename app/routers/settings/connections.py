@@ -107,9 +107,10 @@ def _probe_imap_login(login: str | None, password: str | None) -> dict:
         with MailBox(IMAP_HOST, timeout=IMAP_TIMEOUT_SECONDS).login(login, password):
             pass
     except Exception as exc:  # noqa: BLE001 — classified into a safe reason below
-        logger.warning(
-            "IMAP login probe failed for login %s: %s", login, type(exc).__name__
-        )
+        # БЕЗ логіна: адреса скриньки — персональні дані, а лог читають і
+        # копіюють у листи. Для діагностики вистачає типу помилки: він і
+        # відрізняє «невірний пароль» від «мережа недоступна» (K.9).
+        logger.warning("IMAP login probe failed: %s", type(exc).__name__)
         return {"state": "error", "message": _imap_error_reason(exc)}
     return {"state": "success", "message": "З'єднання з поштою успішне"}
 

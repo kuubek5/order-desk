@@ -26,6 +26,14 @@ def blocked_response(request: Request, db: Session, user, section: str) -> Respo
     if variant is None:
         return None
     meta = SECTIONS[section]
+    # HTMX-запит просить ФРАГМЕНТ. Віддати йому цілий документ означає
+    # вставити сторінку всередину слота — та сама шкода, яку вже виправили в
+    # login_redirect. Кажемо браузеру перейти на екран блокування цілком.
+    if request.headers.get("HX-Request"):
+        return Response(
+            status_code=204,
+            headers={"HX-Redirect": request.url.path},
+        )
     return templates.TemplateResponse(
         request,
         "section_blocked.html",

@@ -25,6 +25,7 @@ from starlette.requests import Request
 
 from app import sync_control
 from app.business_day import business_today
+from app.auth import verify_password
 from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.services.attempt_limit import block_message, pin_limiter
 from app.sheet_sync_service import SheetSyncError, sync_google_sheets
@@ -49,6 +50,21 @@ router = APIRouter()
 _PIN_SESSION_KEY = "vyrobitok_pin_until"
 # Скільки триває дозвіл після правильного коду. Година — за проханням власника.
 _PIN_TTL_SECONDS = 3600
+
+
+def _pin_matches(entered: str, stored: str) -> bool:
+    """Чи збігається введений код зі збереженим.
+
+    Нові коди лежать ХЕШЕМ. Старі — відкритим текстом (під шифруванням
+    налаштувань), і їх треба приймати далі: інакше оновлення замкнуло б розділ
+    для того, хто код і задавав. Відкритий шлях лишається з `compare_digest`,
+    щоб час порівняння не залежав від того, скільки перших цифр збіглося.
+    """
+    if not entered or not stored:
+        return False
+    if stored.startswith("$"):        # формат хеша passlib/bcrypt
+        return verify_password(entered, stored)
+    return secrets.compare_digest(entered, stored)
 
 
 def _pin_unlocked(request: Request) -> bool:
@@ -134,9 +150,7 @@ def post_vyrobitok_pin(
         )
 
     expected = get_setting(db, "vyrobitok_pin")
-    # compare_digest: рівний час порівняння незалежно від того, скільки перших
-    # цифр збіглося.
-    if expected and secrets.compare_digest(pin.strip(), expected.strip()):
+    if expected and _pin_matches(pin.strip(), expected.strip()):
         pin_limiter.reset(limiter_key)
         request.session[_PIN_SESSION_KEY] = time.time() + _PIN_TTL_SECONDS
         y, m = _clamp_period(None, None)
