@@ -51,6 +51,9 @@ for _stream in (sys.stdout, sys.stderr):
 
 DEFAULT_PORT = 8765
 DEFAULT_MINUTES = 20
+# Стеля збережених кадрів. Дедлайн за часом диск не береже: на швидкому
+# інтервалі година збору — це тисячі PNG (ревʼю 07.09.26, D.6).
+DEFAULT_MAX_FRAMES = 400
 POLL_SECONDS = 10.0
 """Частіше не треба: відсоток на 15-хвилинній програмі рухається повільно, а
 кожен знімок — це трафік з ПК верстата."""
@@ -85,6 +88,14 @@ def main() -> int:
         "--out", default="calibration_frames",
         help="куди складати кадри (типово calibration_frames/)",
     )
+    parser.add_argument(
+        "--max-frames", type=int, default=DEFAULT_MAX_FRAMES,
+        help=(
+            "стеля збережених кадрів (типово %(default)s). Дедлайн за часом сам "
+            "по собі диск не береже: на швидкому інтервалі година збору — це "
+            "тисячі PNG у теці, яку потім розбирати руками"
+        ),
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out) / args.host.replace(":", "-")
@@ -101,6 +112,9 @@ def main() -> int:
 
     try:
         while time.monotonic() < deadline:
+            if saved >= args.max_frames:
+                print(f"\nДосягнуто стелі кадрів ({args.max_frames}).")
+                break
             try:
                 frame = grab(args.host, args.port, args.token)
             except Exception as exc:  # noqa: BLE001 — збирач не має падати від блимання мережі
