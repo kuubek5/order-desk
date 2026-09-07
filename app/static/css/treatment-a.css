@@ -281,34 +281,15 @@
 }
 
 /* ============ ВИДАЧА ============
-   Тут контроли звуться інакше — не `.btn`, а `.issue-btn` / `.fbtn` /
+   Тут контроли звуться інакше — не `.btn`, а `.markall-btn` / `.fbtn` /
    `.wcheck` / `.card-collapse`. Без цього блоку екран видачі не отримав би
    трактування взагалі (перевірено пробою: кнопка лишалась сирою браузерною).
    Ті самі два дефекти, що й у черзі: межа з --line-2 (1.88:1) і фон,
    захардкоджений повз токени. */
 
-/* «Видати» — дія, що завершує клієнта. Геометрія за A, ієрархія НЕ змінена:
-   лишається тінтом, як зараз. Зробити її залитою за правилом apex
-   (заливка = коміт) — окреме рішення, не протягуємо його сюди мовчки. */
-.handoutv2 .issue-btn{
-  height: var(--ctl-h);
-  padding: 0 var(--btn-px);
-  border-radius: var(--ctl-r);
-  border: var(--ctl-bw) solid var(--pri-bd);
-  font-size: var(--ctl-fs);
-  font-weight: var(--ctl-fw);
-  letter-spacing: var(--ctl-ls);
-  transition:
-    background var(--t-fast) var(--ease-a),
-    border-color var(--t-fast) var(--ease-a),
-    transform var(--t-fast) var(--ease-a),
-    box-shadow var(--t-fast) var(--ease-a);
-}
-/* Був підйом на -1px при наведенні. У A рух іде вниз при натисканні, а не
-   вгору при наведенні: підйом обіцяє натискання, якого ще не сталося. */
-.handoutv2 .issue-btn:hover{ background: rgba(var(--accent-base-rgb), .26); border-color: var(--accent-c); transform: none; }
-.handoutv2 .issue-btn:active{ transform: translateY(var(--press-y)); box-shadow: var(--relief-a); }
-.handoutv2 .issue-btn:focus-visible{ outline: var(--focus-w) solid var(--accent-c); outline-offset: var(--focus-off); }
+/* Кнопки «Видати» на видачі більше немає (07.09.26): галочка «знайдено»
+   знімає синю заливку в таблиці, а це і є сигнал видачі. Лишилась
+   «Усі знайдено» — тепер вона і є головним контролом картки. */
 
 /* «Усі знайдено» — та сама геометрія, що й решта контролів видачі, але тиха:
    ієрархія «Видати гучніше» тримається кольором, а не розміром. */

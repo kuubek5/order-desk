@@ -67,15 +67,9 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 
 /* "Видати" stays fully legible on an otherwise dimmed done-card — it's the
    one still-actionable control there. */
-.handoutv2 .ccard.done .issue-form{opacity:1}
-.handoutv2 .issue-btn{height:34px;padding:0 16px;border-radius:var(--r-ctl);border:1px solid rgba(var(--accent-rgb), .42);
-  background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);font:inherit;font-size:var(--fs-2);font-weight:600;cursor:pointer;white-space:nowrap;
-  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,transform .12s ease}
-.handoutv2 .issue-btn:hover{background:rgba(var(--accent-base-rgb), .28);border-color:var(--accent);transform:translateY(-1px)}
-.handoutv2 .issue-btn:active{transform:translateY(0)}
-/* «Усі знайдено» — помічник, а не рішення: тому НЕ акцентна, а нейтральна.
-   Найгучнішою в картці лишається «Видати», бо саме вона закриває клієнта;
-   якби обидві були акцентні, оператор клацав би їх наосліп поспіль. */
+/* «Усі знайдено» — тепер єдина кнопка картки (кнопку «Видати» прибрано
+   07.09.26). Лишається нейтральною: вона робить те саме, що дванадцять
+   галочок поспіль, і не має виглядати як окреме рішення. */
 .handoutv2 .markall-btn{height:34px;padding:0 14px;border-radius:var(--r-ctl);border:1px solid var(--control-edge);
   background:var(--field);color:var(--ink-2);font:inherit;font-size:var(--fs-2);font-weight:600;cursor:pointer;white-space:nowrap;
   transition:background var(--ui-speed) ease,color var(--ui-speed) ease,border-color var(--ui-speed) ease}
@@ -146,7 +140,6 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
    коронка. Підкладка тонована під арт, тому не читається як чужа плашка. */
 .handoutv2 .hbar .daypick,
 .handoutv2 .hbar .hsrc,
-.handoutv2 .hbar .view-toggle{background:rgba(13,15,18,.6);backdrop-filter:blur(3px)}
 .handoutv2 .hbar .dayall summary,
 .handoutv2 .hbar .dayrest{background:rgba(13,15,18,.6);border-radius:999px;padding:2px 9px}
 /* Смужка прогресу на фото тонула — трек став видимим, а заповнення яскравим. */
@@ -274,6 +267,18 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 /* Compact one-line work rows (like the queue): check + ID + material + qty +
    day + status all on a single dense row, minimal padding. */
 .handoutv2 .works{display:flex;flex-direction:column}
+/* Плаский режим: ті самі рядки, але без карток — суцільним списком у
+   порядку рядків таблиці. Клієнт стає першою колонкою сталої ширини, щоб
+   очі йшли вниз по одній вертикалі, як по стовпцю в таблиці, а не
+   стрибали за різною довжиною імен. */
+.handoutv2 .flatlist{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);padding:4px 14px}
+.handoutv2 .flatrow{display:flex;align-items:center;gap:12px}
+.handoutv2 .flatrow+.flatrow{border-top:1px solid var(--card-2)}
+.handoutv2 .flatrow .wrow{flex:1;min-width:0;border-top:0}
+.handoutv2 .flatclient{
+  flex:0 0 190px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-2);color:var(--ink-2);
+}
 .handoutv2 .wrow{display:flex;align-items:center;gap:12px;padding:8px 0;min-height:38px}
 .handoutv2 .wrow+.wrow{border-top:1px solid var(--card-2)}
 /* Знайдено ≠ скасовано. Перекреслений Sum3D ID читався як «цього ID більше
@@ -305,29 +310,6 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .wfolder-t{font-size:var(--fs-0);color:var(--accent-c)}
 
 /* View switch: Рядки (compact list) ⇄ Плитки (preview tiles). */
-/* Перемикач вигляду — той самий сегментований контрол, що й .hsrc поруч:
-   одна капсула з сегментами всередині, а не двi окремі кнопки. Раніше він був
-   окремим блоком під стрічкою (свої межі, radius 8px, height 30px, margin
-   знизу) і після переїзду в .hbar стирчав чужим елементом біля сусіда. */
-.handoutv2 .view-toggle{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;margin:0}
-.handoutv2 .view-btn{
-  display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 12px;border-radius:999px;
-  border:0;background:none;color:var(--ink-2);font:inherit;font-size:var(--fs-2);cursor:pointer;
-  transition:color var(--ui-speed) ease,background var(--ui-speed) ease;
-}
-.handoutv2 .view-btn:hover{color:var(--ink);background:var(--raise)}
-.handoutv2 .view-btn.active{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .34)}
-.handoutv2 .view-btn:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
-
-/* Tile mode: same work markup, re-laid out as a grid of preview cards. */
-.handoutv2 .clients.as-tiles .works{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
-.handoutv2 .clients.as-tiles .wrow{flex-direction:column;align-items:stretch;gap:7px;padding:10px;border:1px solid var(--raise-2);border-radius:10px;background:var(--field)}
-.handoutv2 .clients.as-tiles .wrow+.wrow{border-top:1px solid var(--raise-2)}
-.handoutv2 .clients.as-tiles .wrow>form{align-self:flex-start}
-.handoutv2 .clients.as-tiles .wmain{flex-direction:column;align-items:flex-start;gap:5px}
-.handoutv2 .clients.as-tiles .wmain .top{flex:none}
-.handoutv2 .clients.as-tiles .wopen{width:100%}
-.handoutv2 .clients.as-tiles .wfolder{flex:1;justify-content:center;height:34px;font-size:var(--fs-1)}
 .handoutv2 .export-batches{display:flex;flex-direction:column;gap:8px}
 .handoutv2 .export-batch{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .handoutv2 .batch-time{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3)}

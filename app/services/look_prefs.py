@@ -22,7 +22,15 @@ QUEUE_DENSITIES = ("", "compact", "spacious")
 #: Вигляд колонки «Матеріал / Колір»: канон — маркування, "code" — техкод.
 QUEUE_MAT_STYLES = ("", "code")
 #: Розкладка видачі: канон — один стовпець карток, "nav" — плюс покажчик дня.
-HANDOUT_LAYOUTS = ("", "nav")
+#: "list" — той самий канон, названий уголос (див. коментар до HANDOUT_FLOWS):
+#: без власного слова покажчик вмикався б і вже не вимикався.
+HANDOUT_LAYOUTS = ("", "list", "nav")
+#: Порядок списку видачі: канон — картки по клієнтах, "sheet" — рядки
+#: таблиці підряд, як їх бачить той, хто веде видачу за самою таблицею.
+#: "clients" — той самий канон, названий уголос: порожнє поле у формі не
+#: доходить до сервера відрізнено від «поля не було» (обидва читаються як
+#: None), тож повернення до карток мусить мати власне слово.
+HANDOUT_FLOWS = ("", "clients", "sheet")
 
 
 @dataclass(frozen=True)
@@ -70,7 +78,22 @@ def apply_queue_look(
     user.queue_ui_step = step
 
 
-def apply_handout_look(user: User, *, layout: str) -> None:
-    if layout not in HANDOUT_LAYOUTS:
-        raise LookError("невідома розкладка видачі")
-    user.handout_layout = layout
+def apply_handout_look(
+    user: User, *, layout: str | None = None, flow: str | None = None
+) -> None:
+    """Вигляд видачі: розкладка екрана і порядок списку.
+
+    Кожне поле необовʼязкове, і None означає «не чіпати». У шапці стоять дві
+    незалежні кнопки-іконки, кожна шле лише СВОЄ значення; якби пропущене поле
+    означало «порожньо», клік по одній мовчки скидав би другу.
+    """
+    if layout is not None:
+        if layout not in HANDOUT_LAYOUTS:
+            raise LookError("невідома розкладка видачі")
+        user.handout_layout = "" if layout == "list" else layout
+    if flow is not None:
+        if flow not in HANDOUT_FLOWS:
+            raise LookError("невідомий порядок списку видачі")
+        # У базі канон лишається порожнім рядком — так його читають шаблони й
+        # дзеркало в сесії; "clients" це лише слово на дроті.
+        user.handout_flow = "" if flow == "clients" else flow

@@ -63,3 +63,5 @@ dev*.err.log
 # Демо-теки dev-сервера (STL-прев'ю на 8002)
 dev_export/
 dev_tech/
+
+dev_camwork/

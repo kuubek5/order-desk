@@ -1,11 +1,12 @@
 import pytest
 import re
-from datetime import date, timedelta
+from datetime import timedelta
 from types import SimpleNamespace
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from app.business_day import business_today
 from app.db import Base
 from app.mail_reader import (
     IMAP_LOOKBACK_DAYS,
@@ -163,7 +164,10 @@ def test_fetch_reads_recent_seen_mail_without_marking_seen(monkeypatch, tmp_path
         "limit": IMAP_MAX_MESSAGES,
         "headers_only": True,
     }
-    cutoff = date.today() - timedelta(days=IMAP_LOOKBACK_DAYS)
+    # Робоча доба, а не календарна: зміна працює за північ, і о 00:30
+    # «сьогодні» для пошти — це ще вчорашній день (business_today).
+    # З date.today() цей тест був зеленим удень і червоним уночі.
+    cutoff = business_today() - timedelta(days=IMAP_LOOKBACK_DAYS)
     assert f"{cutoff.day}-{cutoff.strftime('%b-%Y')}" in header_call[1]
 
     uid_call = next(c for c in mailbox.calls if c[0] == "fetch" and not c[2].get("headers_only"))

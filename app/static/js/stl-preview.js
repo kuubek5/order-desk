@@ -193,8 +193,8 @@
     maxBtn.innerHTML =
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
     maxBtn.addEventListener("click", () => {
-      const on = state.panelEl.classList.toggle("is-max");
-      syncMaxButton(on);
+      const on = !state.panelEl.classList.contains("is-max");
+      applyMaxState(on);
       // Свідомий вибір кнопкою — запам'ятовуємо. Вихід через Esc НЕ пишеться:
       // це разова дія «згорнути зараз», а не зміна звички.
       saveMaxPreference(on);
@@ -588,6 +588,29 @@
     panel.style.top = `${top}px`;
   }
 
+  // Розгорнутий стан задається в CSS через inset, а перетягування лишає
+  // інлайнові left/top — а інлайн сильніший за таблицю стилів. Тому вікно,
+  // яке хоч раз посунули, розгорталось не на весь екран, а в куток від
+  // місця, де його лишили. Прибираємо координати на час розгортання і
+  // повертаємо їх, коли згортаємо назад.
+  function applyMaxState(on) {
+    const panel = state.panelEl;
+    panel.classList.toggle("is-max", on);
+    // Слід від перетягнутого розгорнутого вікна (зафіксований розмір і
+    // відпущені межі) не має пережити перемикання: інакше наступне
+    // розгортання дало б вікно того ж розміру в тому ж кутку.
+    panel.classList.remove("is-max-free");
+    panel.style.width = "";
+    panel.style.height = "";
+    if (on) {
+      panel.style.left = "";
+      panel.style.top = "";
+    } else if (state.triggerEl) {
+      positionPanel(state.triggerEl);
+    }
+    syncMaxButton(on);
+  }
+
   function syncLightButton(on) {
     if (!state.lightBtnEl) return;
     const label = on ? "Темне тло" : "Світле тло";
@@ -619,8 +642,17 @@
       if (event.button !== 0) return;
       // Кнопки шапки лишаються кнопками — тягнемо тільки за порожнє місце.
       if (event.target.closest("button")) return;
-      if (panel.classList.contains("is-max")) return;
       const rect = panel.getBoundingClientRect();
+      // Розгорнуте вікно тримається на inset (24px з усіх боків), тобто
+      // РОЗТЯГНУТЕ між краями. Просто зсунути йому left означало б стискати
+      // його на ходу: правий край лишався б прибитим до екрана. Тому на час
+      // перетягування фіксуємо теперішній розмір і відпускаємо праву й
+      // нижню межі — вікно стає вільним прямокутником того самого розміру.
+      if (panel.classList.contains("is-max")) {
+        panel.style.width = `${rect.width}px`;
+        panel.style.height = `${rect.height}px`;
+        panel.classList.add("is-max-free");
+      }
       startX = event.clientX;
       startY = event.clientY;
       baseLeft = rect.left;
@@ -653,8 +685,12 @@
       // Памʼятаємо місце лише після СВІДОМОГО перетягування: автопозиція
       // біля рядка щоразу інша, і записувати її означало б закріпити
       // випадкове місце як вибір оператора.
-      const rect = panel.getBoundingClientRect();
-      savePanelPos(rect.left, rect.top);
+      // Місце розгорнутого вікна не запамʼятовуємо: воно живе в іншому
+      // масштабі, і згорнута панель поїхала б за ним у випадковий куток.
+      if (!panel.classList.contains("is-max")) {
+        const rect = panel.getBoundingClientRect();
+        savePanelPos(rect.left, rect.top);
+      }
       if (event.pointerId !== undefined && handle.hasPointerCapture(event.pointerId)) {
         handle.releasePointerCapture(event.pointerId);
       }
@@ -711,6 +747,15 @@
     const wantMax = loadMaxPreference();
     state.panelEl.classList.toggle("is-max", wantMax);
     syncMaxButton(wantMax);
+    // Розгорнутій панелі інлайнові координати з минулого перетягування
+    // тільки заважають — вона займає екран цілком.
+    state.panelEl.classList.remove("is-max-free");
+    state.panelEl.style.width = "";
+    state.panelEl.style.height = "";
+    if (wantMax) {
+      state.panelEl.style.left = "";
+      state.panelEl.style.top = "";
+    }
     const wantLight = loadLightPreference();
     state.panelEl.classList.toggle("is-light", wantLight);
     syncLightButton(wantLight);
@@ -789,8 +834,7 @@
     // і мусить шукати ту саму теку знову.
     if (event.key !== "Escape" || !state.open) return;
     if (state.panelEl && state.panelEl.classList.contains("is-max")) {
-      state.panelEl.classList.remove("is-max");
-      syncMaxButton(false);
+      applyMaxState(false);
       resizeRenderer();
       return;
     }

@@ -1,0 +1,110 @@
+{# Один рядок роботи на видачі: галочка «знайдено», матеріал/колір,
+   кількість, Sum3D і теки export із STL-прев'ю.
+
+   Винесено з _handout_cards.html, бо той самий рядок малюють ДВА режими —
+   картки по клієнтах і суцільний список у порядку таблиці. Дві копії цієї
+   розмітки розійшлися б на першій же правці, а рядок несе єдину дію
+   екрана: галочку, яка знімає синю заливку в таблиці.
+
+   Очікує: order, issued_by (мапа id → хто видав), source, day_param,
+   handout_qc, selected_day. #}
+{% set is_found = order.status in ('знайдено при видачі', 'видано') %}
+<div class="wrow {% if is_found %}found{% endif %}">
+    {% if not is_found %}
+    {# `data-qc` вмикає діалог саме для цієї форми, а
+       `data-qc-label` каже діалогу (він один на екран),
+       про яку роботу він питає. #}
+    <form method="post" action="/orders/{{ order.id }}/mark-found"
+          hx-post="/orders/{{ order.id }}/mark-found"
+          hx-target="#handout-list" hx-swap="outerHTML"
+          {% if handout_qc %}data-qc="1"
+          data-qc-label="{{ order.work_order_no or '—' }} · {{ order.material_color or '' }}"{% endif %}>
+        <input type="hidden" name="source" value="{{ source }}">
+        <input type="hidden" name="day" value="{{ day_param }}">
+        <button type="submit" class="wcheck" title="Позначити знайденим">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        </button>
+    </form>
+    {% elif order.status == 'знайдено при видачі' %}
+    <form method="post" action="/orders/{{ order.id }}/unmark-found"
+          hx-post="/orders/{{ order.id }}/unmark-found"
+          hx-target="#handout-list" hx-swap="outerHTML">
+        <input type="hidden" name="source" value="{{ source }}">
+        <input type="hidden" name="day" value="{{ day_param }}">
+        <button type="submit" class="wcheck done" title="Зняти відмітку «знайдено»">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        </button>
+    </form>
+    {% elif order.status == 'видано' and not order.issue_locked %}
+    {# Галочку «видано» МОЖНА зняти — домовленість власника
+       05.09.26. Клік повертає роботу в чергу видачі й ставить
+       замок, щоб наступний синк не позначив її виданою знову
+       з тієї самої порожньої клітинки.
+       Вигляд залежить від ДЖЕРЕЛА: звичайна галочка для
+       штатної видачі (зняте синє або кнопка в CRM), знак
+       питання — лише коли в тому ж читанні з'їхали рядки. #}
+    {% set doubtful = order.issued_source == 'shifted' %}
+    <form method="post" action="/orders/{{ order.id }}/unissue"
+          hx-post="/orders/{{ order.id }}/unissue"
+          hx-target="#handout-list" hx-swap="outerHTML">
+        <input type="hidden" name="source" value="{{ source }}">
+        <input type="hidden" name="day" value="{{ day_param }}">
+        {% if doubtful %}
+        <button type="submit" class="wcheck doubt"
+title="Позначено виданим за заливкою, але в тому ж читанні з'їхали рядки — колір міг опинитись навпроти чужої роботи. Натисніть, якщо роботу не видавали.">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17h.01"/><path d="M9.1 9a3 3 0 1 1 4.2 2.7c-.8.4-1.3 1.1-1.3 2"/></svg>
+        </button>
+        {% elif order.issued_source == 'sheet' %}
+        {# Синя галочка — видано ЗА ТАБЛИЦЕЮ (зняли заливку). Синій
+           навмисно перегукується з заливкою рядка, щоб джерело
+           читалось без слів. #}
+        <button type="submit" class="wcheck done from-sheet"
+title="Видано за таблицею (знято синю заливку). Натисніть, щоб повернути в чергу видачі.">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        </button>
+        {% else %}
+        {# Бурштинова галочка — видано В CRM, і видно ким. #}
+        <button type="submit" class="wcheck done from-crm"
+title="Видано в CRM{% if issued_by.get(order.id) %}: {{ issued_by[order.id] }}{% endif %}. Натисніть, щоб повернути в чергу видачі.">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        </button>
+        {% endif %}
+    </form>
+    {% else %}
+    <span class="wcheck static" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
+    {% endif %}
+    {# Матеріал, колір і кількість — це те, що оператор
+       очікує побачити в папці, тож вони ведуть рядок.
+       Sum3D ID стоїть тихо праворуч: це інструмент
+       ПЕРЕВІРКИ, до якого звертаються лише коли впізнання
+       викликало сумнів — як саме фрезерувалось і скільки.
+       Статус текстом не дублюємо: його несе відмітка. #}
+    <div class="wmain">
+        <div class="top">
+            {% include "_matpair.html" %}
+            <span class="wqty">{{ order.quantity or '—' }} <em>од.</em></span>
+            {% if not selected_day and order.sheet_tab %}<span class="wday">{{ order.sheet_tab[:5] }}</span>{% endif %}
+        </div>
+    </div>
+    <a href="/orders/{{ order.id }}" class="wsum mono" title="Паспорт роботи — перевірити, як фрезерувалось">
+        {{ order.sum3d_id or order.work_order_no or '—' }}
+    </a>
+    {% if order.export_matches %}
+    {# Per-row folder shortcuts: only the client's folders whose
+       material matches THIS work, each labelled with its creation
+       time so several same-material candidates are told apart. #}
+    <div class="wopen">
+        {% for entry in order.export_matches %}
+        <a href="{{ entry.folder_uri }}" class="wfolder" {% if entry.preview_token %}data-stl-preview-token="{{ entry.preview_token }}"{% endif %}
+           title="{{ entry.material_color_folder_name }} · {{ entry.created_at.strftime('%d.%m %H:%M') }} · {{ entry.files|length }} файл. — прев'ю / відкрити">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z" class="duo"/><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+            {# Партія з іншого дня, ніж сама робота (файли дозалили
+               раніше/пізніше) — тоді час без дати брехав би, що це
+               сьогоднішня тека. #}
+            <span class="wfolder-t mono">{% if entry.created_at.strftime('%d.%m.%y') != order.sheet_tab %}{{ entry.created_at.strftime('%d.%m') }} {% endif %}{{ entry.created_at.strftime('%H:%M') }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+

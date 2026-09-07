@@ -467,6 +467,7 @@ def ui_prefs(request: Request) -> dict:
         "queue_mat_style": "",
         "queue_step": 0,
         "handout_layout": "",
+        "handout_flow": "",
         # Віджет верстатів: "" = «Пил на сталі» / «Сегменти» (дефолт власника).
         "machine_art": "",
         "machine_strip": "",
@@ -501,6 +502,7 @@ def ui_prefs(request: Request) -> dict:
                         "queue_mat_style": user.queue_mat_style or "",
                         "queue_step": user.queue_ui_step or 0,
                         "handout_layout": user.handout_layout or "",
+                        "handout_flow": user.handout_flow or "",
                         "machine_art": user.ui_machine_art or "",
                         "machine_strip": user.ui_machine_strip or "",
                         "machine_card": user.ui_machine_card or "",

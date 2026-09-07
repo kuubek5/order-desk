@@ -661,7 +661,15 @@
 .stl-panel-head { cursor: grab; user-select: none; }
 .stl-panel.is-dragging .stl-panel-head { cursor: grabbing; }
 .stl-panel.is-dragging { transition: none; }   /* тягнеться за вказівником, без інерції */
-.stl-panel.is-max .stl-panel-head { cursor: default; }
+/* Розгорнуте вікно теж тягнеться — тільки-но його рушили, воно перестає
+   бути розтягнутим між краями і стає вільним прямокутником (розмір JS
+   фіксує на старті перетягування, інакше правий край лишався б прибитим
+   до екрана і вікно стискалось би на ходу). */
+.stl-panel.is-max.is-max-free {
+  inset: auto;
+  right: auto;
+  bottom: auto;
+}
 
 /* Світле тло: сіра модель на білому. Дрібний рельєф анатомії на теплій
    темній сцені читається гірше, а звірка коронки йде саме по рельєфу.

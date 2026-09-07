@@ -310,6 +310,22 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
         if group["is_current"]:
             current_marked = True
 
+    # Плаский режим: ті самі роботи, але суцільним списком у порядку рядків
+    # таблиці. Групи лишаються джерелом — так плаский список успадковує все,
+    # що вже пораховано на роботі (папки export, підписи «видано ким»), і не
+    # може розійтися з картками у складі чи фільтрі джерела. Клієнт при
+    # кожній роботі підписаний окремо: без картки навколо це єдине, що каже,
+    # чия це коронка.
+    flat_rows: list[dict] = []
+    for group in client_groups:
+        for order in group["orders"]:
+            flat_rows.append({
+                "order": order,
+                "client_name": group["client_name"],
+                "issued_by": group["issued_by"],
+            })
+    flat_rows.sort(key=lambda row: sheet_order_key(row["order"]))
+
     done_groups = sum(1 for g in client_groups if g["all_found"])
     # Рахунок ЗА ОБРАНИЙ ДЕНЬ — прохання власника: яке число видане, за те
     # число й рахуємо. Так і виходить: `eligible` вище вже звужено до дня, а
@@ -389,6 +405,10 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             # живе всередині нього, щоб оновлюватись разом із галочками), тому
             # їде контекстом, а не читається в шаблоні.
             "handout_layout": (user.handout_layout or "") if user else "",
+            # Порядок списку — теж з акаунта; потрібен саме фрагменту карток,
+            # бо він і вирішує, чим малювати список.
+            "handout_flow": (user.handout_flow or "") if user else "",
+            "flat_rows": flat_rows,
             "unbound_count": unbound_count,
             # QC-чеклист (опційний, вимкнений за замовчуванням). Їде і у
             # фрагмент карток теж: кнопки «знайдено» живуть саме там, і після

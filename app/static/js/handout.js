@@ -1,61 +1,8 @@
 // Видача (CLAUDE.md §9.4).
 //
-// Тут лише перемикач «Плитки / Рядки» і його відновлення. Головне: відмітка
-// «знайдено» підмінює список карток через HTMX, а клас режиму живе на самому
-// списку — тому після кожної підміни режим треба ставити наново, інакше
-// галочка мовчки скидала «Плитки» на «Рядки».
-
-// Handout view switch: "Рядки" (compact list, default) ⇄ "Плитки" (preview
-// tiles). Same markup, two CSS layouts (.clients / .clients.as-tiles). The
-// choice is remembered per-browser in localStorage so it survives navigation
-// and reloads. No-op on every other screen.
-const HANDOUT_VIEW_KEY = "handout-view";
-
-function applyHandoutView(mode) {
-  const root = document.querySelector("[data-view-root]");
-  if (!root) return;
-  const tiles = mode === "tiles";
-  root.classList.toggle("as-tiles", tiles);
-  // Селектор звужено до СВОГО перемикача. Поруч стоїть другий (розкладка
-  // екрана) з тим самим класом .view-btn, і широкий запит знімав з нього
-  // підсвітку на кожному відновленні — кнопка «Список + покажчик» виглядала
-  // невибраною, хоча розкладка була саме та.
-  document.querySelectorAll(".view-toggle .view-btn").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.viewMode === (tiles ? "tiles" : "rows"));
-  });
-}
-
-document.addEventListener("click", (event) => {
-  const btn = event.target.closest(".view-btn");
-  if (!btn) return;
-  // Кнопки РОЗКЛАДКИ мають той самий клас .view-btn, але не мають
-  // data-view-mode — і без цього рядка падали сюди ж, писали в localStorage
-  // "rows" і мовчки викидали оператора з «Плиток». А плитки на видачі — це
-  // STL-прев'ю, тобто головний інструмент звірки (§9.4): втратити його від
-  // кліку по сусідньому перемикачу означає зламати сам сенс екрана.
-  // Підсвітку від цієї ж колізії вже лікували в applyHandoutView, але лише в
-  // один бік — ось другий.
-  if (btn.hasAttribute("data-layout-set")) return;
-  const mode = btn.dataset.viewMode === "tiles" ? "tiles" : "rows";
-  // Через KMStore: префікс kuubmill:v1: і ковтання приватного режиму — там.
-  KMStore.set(HANDOUT_VIEW_KEY, mode);
-  applyHandoutView(mode);
-});
-
-function restoreHandoutView() {
-  if (!document.querySelector("[data-view-root]")) return;
-  const saved = KMStore.get(HANDOUT_VIEW_KEY) || "rows";
-  applyHandoutView(saved);
-}
-
-document.addEventListener("DOMContentLoaded", restoreHandoutView);
-
-// Відмітка «знайдено» підмінює список карток через HTMX, а `as-tiles` живе на
-// самому списку — без цього кожна галочка мовчки скидала «Плитки» на «Рядки».
-document.body.addEventListener("htmx:afterSwap", (event) => {
-  if (event.target && event.target.id === "handout-list") restoreHandoutView();
-});
-
+// Перемикач «Рядки / Плитки» звідси прибрано (07.09.26): плитками не
+// користувались, а два схожі перемикачі поспіль у шапці плутались між
+// собою — клік по сусідньому скидав режим.
 // ── Перемикач розкладки: «Список» ⇄ «Список + покажчик» ─────────────────
 // Вибір зберігається на АКАУНТІ (POST /account/look, scope=handout), а не в
 // localStorage: розкладка їде за оператором на будь-який браузер цього ПК і
@@ -68,7 +15,9 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
 document.addEventListener("click", (event) => {
   const btn = event.target.closest("[data-layout-set]");
   if (!btn) return;
-  const layout = btn.dataset.layoutSet === "nav" ? "nav" : "";
+  // "list" — канон уголос: порожнє значення сервер не відрізняє від
+  // «поля не було», і покажчик вмикався б назавжди.
+  const layout = btn.dataset.layoutSet === "nav" ? "nav" : "list";
   const body = new URLSearchParams({ scope: "handout", layout: layout });
   fetch("/account/look", {
     method: "POST",
@@ -304,4 +253,24 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     first.focus();
   }
+});
+
+// ── Перемикач порядку: картки по клієнтах ⇄ рядки в порядку таблиці ──────
+// Той самий шлях, що й розкладка: вибір живе на акаунті, тому їде за
+// оператором. Перезавантаження, а не свап: режим міняє структуру всього
+// списку, і підмінити половину означало б показати екран наполовину одним
+// виглядом, наполовину іншим.
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-flow-set]");
+  if (!btn) return;
+  const body = new URLSearchParams({
+    scope: "handout",
+    // Розкладку шлемо ту, що вже стоїть: сервер приймає обидва поля разом,
+    // і пропущене означало б «скинути в дефолт».
+    layout: document.body.dataset.handoutLayout || "",
+    flow: btn.dataset.flowSet || "",
+  });
+  fetch("/account/look", { method: "POST", body, credentials: "same-origin" })
+    .then(() => window.location.reload())
+    .catch(() => window.location.reload());
 });

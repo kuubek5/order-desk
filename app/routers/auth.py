@@ -383,7 +383,11 @@ async def post_account_look(
     density: str = Form(""),
     mat_style: str = Form(""),
     step: int = Form(0),
-    layout: str = Form(""),
+    # None = кнопка про це поле нічого не сказала. У шапці видачі дві
+    # незалежні кнопки-іконки, кожна шле лише своє — інакше клік по одній
+    # скидав би другу в дефолт.
+    layout: str | None = Form(None),
+    flow: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     """Зберегти вигляд списку (шестерня) — один роут на обидва екрани.
@@ -405,7 +409,7 @@ async def post_account_look(
                 user, density=density, row_pad=row_pad, mat_style=mat_style, step=step
             )
         elif scope == "handout":
-            apply_handout_look(user, layout=layout)
+            apply_handout_look(user, layout=layout, flow=flow)
         else:
             return Response(status_code=422)
     except LookError:

@@ -72,14 +72,19 @@
         </nav>
 
         {% if client_groups %}
-        {# «Рядки», а не «Черга»: поруч стоїть перемикач розкладки зі словом
-           «Список», і в побутовій мові «черга» та «список» — те саме, хоча це
-           різні осі (вигляд робіт усередині картки проти каркаса екрана).
-           У самому коді цей режим і зветься `rows` — шаблон розійшовся з ним. #}
-        <nav class="view-toggle" aria-label="Вигляд робіт">
-            <button type="button" class="view-btn active" data-view-mode="rows" title="Рядки — компактний список робіт клієнта">Рядки</button>
-            <button type="button" class="view-btn" data-view-mode="tiles" title="Плитки — з STL-прев'ю для звірки">Плитки</button>
-        </nav>
+        {# Порядок списку: картки по клієнтах ⇄ рядки в порядку таблиці.
+           Одна кнопка-іконка, як і розкладка поруч: це вибір «як я читаю
+           екран», а не робочий контрол дня. Вибір на акаунті — їде за
+           оператором, не за браузером. #}
+        <button type="button" class="layout-icon{% if _up.handout_flow == 'sheet' %} on{% endif %}"
+                data-flow-set="{% if _up.handout_flow == 'sheet' %}clients{% else %}sheet{% endif %}"
+                aria-pressed="{{ 'true' if _up.handout_flow == 'sheet' else 'false' }}"
+                title="{% if _up.handout_flow == 'sheet' %}Згрупувати роботи по клієнтах{% else %}Показати підряд, у порядку рядків таблиці{% endif %}"
+                aria-label="{% if _up.handout_flow == 'sheet' %}Згрупувати роботи по клієнтах{% else %}Показати підряд, у порядку рядків таблиці{% endif %}">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+            </svg>
+        </button>
         {# Розкладка екрана. Дві, бо саме дві мають сенс: звичний список і той
            самий список із покажчиком дня збоку. Вибір зберігається НА АКАУНТІ
            (як теми й шестерня черги), тому їде за оператором, а не за
@@ -93,7 +98,7 @@
            а помилковий клік по цій ще й перезавантажує сторінку. Це до того ж
            налаштування «раз і назавжди», а не робочий контрол дня. #}
         <button type="button" class="layout-icon{% if _up.handout_layout == 'nav' %} on{% endif %}"
-                data-layout-set="{% if _up.handout_layout == 'nav' %}{% else %}nav{% endif %}"
+                data-layout-set="{% if _up.handout_layout == 'nav' %}list{% else %}nav{% endif %}"
                 aria-pressed="{{ 'true' if _up.handout_layout == 'nav' else 'false' }}"
                 title="{% if _up.handout_layout == 'nav' %}Сховати покажчик дня{% else %}Показати покажчик дня збоку{% endif %}"
                 aria-label="{% if _up.handout_layout == 'nav' %}Сховати покажчик дня{% else %}Показати покажчик дня збоку{% endif %}">

@@ -36,6 +36,27 @@
     </aside>
     {% endif %}
 
+    {# Два режими одного списку. Картки по клієнтах — щоденний вигляд. Але
+       частину дня оператор веде видачу за самою таблицею, згори вниз, і
+       тоді картки заважають: у таблиці роботи одного клієнта стоять
+       врозкид, а картка їх зводить докупи й ламає збіг «рядок у рядок».
+       Плаский режим показує ТІ САМІ роботи в порядку рядків таблиці.
+       Порядок обох режимів однаковий (sheet_order_key), відрізняється лише
+       те, чи згорнуті роботи в картку. #}
+    {% if handout_flow == 'sheet' %}
+    <div class="flatlist">
+        {% for row in flat_rows %}
+        {% set order = row.order %}
+        {% set issued_by = row.issued_by %}
+        <div class="flatrow">
+            {# Клієнт підписаний при кожній роботі: без картки навколо це
+               єдине, що каже, чия це коронка. #}
+            <span class="flatclient" title="{{ row.client_name }}">{{ row.client_name }}</span>
+            {% include "_handout_work_row.html" %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
     <div class="clients" data-view-root>
         {% for group in client_groups %}
         {% set found_n = group.orders|selectattr('status', 'in', ['знайдено при видачі', 'видано'])|list|length %}
@@ -55,7 +76,7 @@
                  data-client="{{ group.client_name }}"
                  data-day="{{ selected_day or 'all' }}">
             <div class="card-head">
-                <button type="button" class="card-collapse" aria-expanded="{{ 'false' if group.all_issued else 'true' }}" title="Згорнути / розгорнути">
+                <button type="button" class="card-collapse" aria-expanded="{{ 'false' if group.all_found else 'true' }}" title="Згорнути / розгорнути">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                 </button>
                 <h2>
@@ -100,9 +121,10 @@
                        з'являється, щойно знайдено ХОЧ ОДНУ, і каже, скільки саме
                        піде зараз. Прогрес лишається поруч, доки картка не зібрана. #}
                     {# «Усі знайдено» — одна кнопка замість 12-50 галочок, коли
-                       оператор дійсно зібрав увесь лоток. Видачу вона НЕ робить:
-                       рішення «тримаю коронку» і «віддав логісту» лишаються
-                       окремими (§2, часткова видача — норма). #}
+                       оператор дійсно зібрав увесь лоток. Галочка И Є видачею:
+                       вона знімає синю заливку рядка в таблиці, а це і є той
+                       сигнал, за яким лабораторія живе. Окремої кнопки «Видати»
+                       немає — власник 07.09.26 сказав, що нею не користуються. #}
                     {# З увімкненим QC-чеклистом групову кнопку ховаємо: чеклист
                        звіряє КОНКРЕТНУ роботу в руках, і «усі знайдено» одним
                        кліком просто обійшло б його. Вибір між швидкістю і
@@ -126,135 +148,22 @@
                         <div class="track"><i style="width:{{ (found_n / total_n * 100)|round(0) if total_n else 0 }}%"></i></div>
                     </div>
                     {% endif %}
-                    {% if found_n %}
-                    {# Той самий HTMX-контракт, що й у галочки: підмінюємо лише
-                       список карток. Через повне перезавантаження видача клієнта
-                       кидала оператора на початок списку й скидала фільтр
-                       джерела — тобто ламала правило «порядок фіксується на
-                       початку дня», заради якого галочку вже полагодили. #}
-                    <form method="post" action="/handout/issue-group" class="issue-form"
-                          hx-post="/handout/issue-group" hx-target="#handout-list" hx-swap="outerHTML">
-                        <input type="hidden" name="client_name" value="{{ group.client_name }}">
-                        <input type="hidden" name="source" value="{{ source }}">
-                        <input type="hidden" name="day" value="{{ day_param }}">
-                        <button type="submit" class="issue-btn"
-                                title="{% if found_n < total_n %}Видати {{ found_n }} знайдених; решта {{ total_n - found_n }} лишиться в картці{% else %}Видати всі роботи клієнта{% endif %}">
-                            {% if found_n < total_n %}Видати {{ found_n }} з {{ total_n }}{% else %}Видати{% endif %}
-                        </button>
-                    </form>
-                    {% endif %}
                 </div>
             </div>
 
             <div class="cbody">
                 <div class="works">
                     {% for order in group.orders %}
-                    {% set is_found = order.status in ('знайдено при видачі', 'видано') %}
-                    <div class="wrow {% if is_found %}found{% endif %}">
-                        {% if not is_found %}
-                        {# `data-qc` вмикає діалог саме для цієї форми, а
-                           `data-qc-label` каже діалогу (він один на екран),
-                           про яку роботу він питає. #}
-                        <form method="post" action="/orders/{{ order.id }}/mark-found"
-                              hx-post="/orders/{{ order.id }}/mark-found"
-                              hx-target="#handout-list" hx-swap="outerHTML"
-                              {% if handout_qc %}data-qc="1"
-                              data-qc-label="{{ order.work_order_no or '—' }} · {{ order.material_color or '' }}"{% endif %}>
-                            <input type="hidden" name="source" value="{{ source }}">
-                            <input type="hidden" name="day" value="{{ day_param }}">
-                            <button type="submit" class="wcheck" title="Позначити знайденим">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                            </button>
-                        </form>
-                        {% elif order.status == 'знайдено при видачі' %}
-                        <form method="post" action="/orders/{{ order.id }}/unmark-found"
-                              hx-post="/orders/{{ order.id }}/unmark-found"
-                              hx-target="#handout-list" hx-swap="outerHTML">
-                            <input type="hidden" name="source" value="{{ source }}">
-                            <input type="hidden" name="day" value="{{ day_param }}">
-                            <button type="submit" class="wcheck done" title="Зняти відмітку «знайдено»">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                            </button>
-                        </form>
-                        {% elif order.status == 'видано' and not order.issue_locked %}
-                        {# Галочку «видано» МОЖНА зняти — домовленість власника
-                           05.09.26. Клік повертає роботу в чергу видачі й ставить
-                           замок, щоб наступний синк не позначив її виданою знову
-                           з тієї самої порожньої клітинки.
-                           Вигляд залежить від ДЖЕРЕЛА: звичайна галочка для
-                           штатної видачі (зняте синє або кнопка в CRM), знак
-                           питання — лише коли в тому ж читанні з'їхали рядки. #}
-                        {% set doubtful = order.issued_source == 'shifted' %}
-                        <form method="post" action="/orders/{{ order.id }}/unissue"
-                              hx-post="/orders/{{ order.id }}/unissue"
-                              hx-target="#handout-list" hx-swap="outerHTML">
-                            <input type="hidden" name="source" value="{{ source }}">
-                            <input type="hidden" name="day" value="{{ day_param }}">
-                            {% if doubtful %}
-                            <button type="submit" class="wcheck doubt"
-                                    title="Позначено виданим за заливкою, але в тому ж читанні з'їхали рядки — колір міг опинитись навпроти чужої роботи. Натисніть, якщо роботу не видавали.">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17h.01"/><path d="M9.1 9a3 3 0 1 1 4.2 2.7c-.8.4-1.3 1.1-1.3 2"/></svg>
-                            </button>
-                            {% elif order.issued_source == 'sheet' %}
-                            {# Синя галочка — видано ЗА ТАБЛИЦЕЮ (зняли заливку). Синій
-                               навмисно перегукується з заливкою рядка, щоб джерело
-                               читалось без слів. #}
-                            <button type="submit" class="wcheck done from-sheet"
-                                    title="Видано за таблицею (знято синю заливку). Натисніть, щоб повернути в чергу видачі.">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                            </button>
-                            {% else %}
-                            {# Бурштинова галочка — видано В CRM, і видно ким. #}
-                            <button type="submit" class="wcheck done from-crm"
-                                    title="Видано в CRM{% if group.issued_by.get(order.id) %}: {{ group.issued_by[order.id] }}{% endif %}. Натисніть, щоб повернути в чергу видачі.">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                            </button>
-                            {% endif %}
-                        </form>
-                        {% else %}
-                        <span class="wcheck static" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>
-                        {% endif %}
-                        {# Матеріал, колір і кількість — це те, що оператор
-                           очікує побачити в папці, тож вони ведуть рядок.
-                           Sum3D ID стоїть тихо праворуч: це інструмент
-                           ПЕРЕВІРКИ, до якого звертаються лише коли впізнання
-                           викликало сумнів — як саме фрезерувалось і скільки.
-                           Статус текстом не дублюємо: його несе відмітка. #}
-                        <div class="wmain">
-                            <div class="top">
-                                {% include "_matpair.html" %}
-                                <span class="wqty">{{ order.quantity or '—' }} <em>од.</em></span>
-                                {% if not selected_day and order.sheet_tab %}<span class="wday">{{ order.sheet_tab[:5] }}</span>{% endif %}
-                            </div>
-                        </div>
-                        <a href="/orders/{{ order.id }}" class="wsum mono" title="Паспорт роботи — перевірити, як фрезерувалось">
-                            {{ order.sum3d_id or order.work_order_no or '—' }}
-                        </a>
-                        {% if order.export_matches %}
-                        {# Per-row folder shortcuts: only the client's folders whose
-                           material matches THIS work, each labelled with its creation
-                           time so several same-material candidates are told apart. #}
-                        <div class="wopen">
-                            {% for entry in order.export_matches %}
-                            <a href="{{ entry.folder_uri }}" class="wfolder" {% if entry.preview_token %}data-stl-preview-token="{{ entry.preview_token }}"{% endif %}
-                               title="{{ entry.material_color_folder_name }} · {{ entry.created_at.strftime('%d.%m %H:%M') }} · {{ entry.files|length }} файл. — прев'ю / відкрити">
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z" class="duo"/><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
-                                {# Партія з іншого дня, ніж сама робота (файли дозалили
-                                   раніше/пізніше) — тоді час без дати брехав би, що це
-                                   сьогоднішня тека. #}
-                                <span class="wfolder-t mono">{% if entry.created_at.strftime('%d.%m.%y') != order.sheet_tab %}{{ entry.created_at.strftime('%d.%m') }} {% endif %}{{ entry.created_at.strftime('%H:%M') }}</span>
-                            </a>
-                            {% endfor %}
-                        </div>
-                        {% endif %}
-                    </div>
+                    {% set issued_by = group.issued_by %}
+                    {% include "_handout_work_row.html" %}
                     {% endfor %}
                 </div>
 
             </div>
         </section>
         {% endfor %}
-    </div>
+
+    {% endif %}    </div>
     {% else %}
     <div class="queue-empty">
         <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
