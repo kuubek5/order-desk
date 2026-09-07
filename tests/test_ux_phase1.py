@@ -7,6 +7,7 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -180,6 +181,22 @@ class TestArchiveRemembersWhereYouWere:
 class TestGlobalsForEveryScreen:
     """1.8/1.10: бейджі й лічильники, які мусять працювати на кожному екрані —
     той самий патерн, що shift_pending: власна сесія, збій → безпечний дефолт."""
+
+    @pytest.fixture(autouse=True)
+    def _no_stale_badge(self):
+        """Бейджі кешуються на дві секунди (`deps._cached_global`).
+
+        Без скидання ці тести перевіряють НЕ поведінку при збої бази, а те,
+        що встиг покласти в кеш попередній тест: якщо він відрендерив
+        сторінку менш ніж дві секунди тому, `busy_operators()` віддасть його
+        число й до підміненої `SessionLocal` навіть не дійде. На повільному
+        диску тести не встигали потрапити в одне вікно, на швидкому —
+        падають (07.09.26)."""
+        from app.routers import deps
+
+        deps.clear_global_badge_cache()
+        yield
+        deps.clear_global_badge_cache()
 
     def test_busy_operators_never_raises(self, monkeypatch):
         from app.routers import deps
