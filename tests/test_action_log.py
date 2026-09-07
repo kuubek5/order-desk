@@ -21,6 +21,7 @@ from app.services.undo import UNDOABLE_ACTION_TYPES, log_action
 from app.routers import orders as orders_router_mod
 from app.services import sheet_writeback as writeback_service
 from app.services import undo as undo_service
+from app import sync_control
 from app.db import Base
 from app.models import ActionLog, Order, User
 
@@ -52,6 +53,18 @@ def _writeback_uses_the_test_db(monkeypatch):
     )
     for name in ("write_sheet_fields", "write_calculated_cell", "write_rework_sum3d_fields"):
         monkeypatch.setattr(writeback_service, name, lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
+def _sync_is_running():
+    """Пауза синку — ГЛОБАЛЬНИЙ прапорець процесу (`sync_control._paused`), а
+    не стан бази. Роути скасування/повтору першими питають `is_paused()` і
+    мовчки виходять, тож тест, який лишив паузу ввімкненою, робить усі наступні
+    тести цього файлу «зеленими» на порожньому місці: нічого не сталось —
+    і перевірити нічого. Тримаємо прапорець знятим явно (07.09.26)."""
+    sync_control.set_paused(False)
+    yield
+    sync_control.set_paused(False)
 
 
 def _user(db, initial=None, username="op"):
@@ -552,14 +565,25 @@ def test_delete_redo_archives_again():
         user = _user(db)
         order = _order(db)
         _run_delete(db, user, order)
+        db.refresh(order)
+        # Проміжна перевірка, а не зайвий рядок: без неї «archived_at is None»
+        # нижче однаково зелене і коли скасування спрацювало, і коли ЖОДЕН із
+        # трьох кроків не виконався (роути мовчки виходять на паузі синку).
+        # Саме так падіння на CI виглядало як «зламався повтор», хоча не
+        # спрацював уже перший крок.
+        assert order.archived_at is not None                 # deleted
         with patch.object(undo_service, "restore_sheet_row", return_value=None):
             _run_undo_last(db, user)
         db.refresh(order)
-        assert order.archived_at is None
-        with patch.object(orders_router_mod, "clear_sheet_row_background"):
+        assert order.archived_at is None                     # undone
+        # Повтор кличе `clear_sheet_row_background` з `app.services.undo`, а не
+        # з роутера: підміна по `orders_router_mod` тут — тихий no-op, і тест
+        # ішов у справжній запис у таблицю (CLAUDE.md §14, пастка з переносом
+        # коду).
+        with patch.object(undo_service, "clear_sheet_row_background"):
             _run_redo_last(db, user)
         db.refresh(order)
-        assert order.archived_at is not None                # deleted again
+        assert order.archived_at is not None                 # deleted again
 
 
 def _recent_context(db, user, tab=""):
