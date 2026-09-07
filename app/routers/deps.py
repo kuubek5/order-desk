@@ -8,6 +8,8 @@
 import ipaddress
 import json
 import logging
+import threading
+import time
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -222,7 +224,36 @@ def changelog_md(text: str):
     return Markup(bolded)
 
 
-def notify_prefs() -> dict:
+# Бейджі рейки — Jinja-глобали, і кожен відкривав СВОЮ сесію на кожен рендер.
+# Один екран малює себе й кілька партіалів, тож на сторінку виходило під
+# десяток зайвих сесій до бази, яка лежить на мережевій шарі (ревʼю 07.09.26,
+# K.7). Значення тут спільні для всіх (не персональні), а рейку однаково
+# оновлює полл, тож дволітерна витримка непомітна оку й прибирає пачку.
+_GLOBALS_TTL_SECONDS = 2.0
+_globals_lock = threading.Lock()
+_globals_cache: dict[str, tuple[float, object]] = {}
+
+
+def _cached_global(key: str, compute):
+    """Порахувати значення бейджа не частіше, ніж раз на `_GLOBALS_TTL_SECONDS`."""
+    now = time.monotonic()
+    with _globals_lock:
+        hit = _globals_cache.get(key)
+        if hit is not None and hit[0] > now:
+            return hit[1]
+    value = compute()
+    with _globals_lock:
+        _globals_cache[key] = (now + _GLOBALS_TTL_SECONDS, value)
+    return value
+
+
+def clear_global_badge_cache() -> None:
+    """Скинути кеш бейджів (тести; дія, яка мусить одразу змінити цифру)."""
+    with _globals_lock:
+        _globals_cache.clear()
+
+
+def notify_prefs_uncached() -> dict:
     """Popup-notification preferences for base.html, on their own session.
 
     A Jinja global rather than per-route context: base.html needs these on
@@ -255,7 +286,7 @@ def notify_prefs() -> dict:
         }
 
 
-def shift_pending() -> int:
+def shift_pending_uncached() -> int:
     """Скільки записок передачі зміни ще на дошці — для бейджа в рейці.
 
     Jinja-глобал зі своєю сесією, а НЕ змінна контексту, і це принципово:
@@ -282,7 +313,7 @@ def shift_pending() -> int:
 BUSY_OPERATOR_WINDOW_MINUTES = 30
 
 
-def busy_operators() -> int:
+def busy_operators_uncached() -> int:
     """Скільки операторів щось робили за останні пів години.
 
     Потрібно для підтвердження «Встановити оновлення»: воно перезапускає
@@ -316,7 +347,7 @@ def busy_operators() -> int:
         return 0
 
 
-def sync_state() -> dict | None:
+def sync_state_uncached() -> dict | None:
     """Стан синку таблиці для рейки — Jinja-глобал зі своєю сесією.
 
     До аудиту 05.09.26 (UX 1.8) `_sync_indicator.html` жив лише в шапці Черги,
@@ -343,7 +374,7 @@ def sync_state() -> dict | None:
         return None
 
 
-def feedback_open_count() -> int:
+def feedback_open_count_uncached() -> int:
     """Скільки нових звернень зворотного зв'язку — для бейдра «Звернення» в рейці.
 
     Той самий патерн, що shift_pending: власна сесія, широкий except, бейдж не
@@ -517,6 +548,27 @@ def _timed_global(name: str, fn):
 
     return wrapper
 
+
+# Публічні імена лишаються тими самими — шаблони й тести кличуть їх як раніше,
+# просто тепер через спільну витримку (див. `_cached_global`).
+def notify_prefs() -> dict:
+    return _cached_global("notify_prefs", notify_prefs_uncached)
+
+
+def shift_pending() -> int:
+    return _cached_global("shift_pending", shift_pending_uncached)
+
+
+def busy_operators() -> int:
+    return _cached_global("busy_operators", busy_operators_uncached)
+
+
+def sync_state() -> dict | None:
+    return _cached_global("sync_state", sync_state_uncached)
+
+
+def feedback_open_count() -> int:
+    return _cached_global("feedback_open_count", feedback_open_count_uncached)
 
 templates.env.globals["perf_id"] = perf.current_request_id
 templates.env.globals["is_overdue"] = is_overdue

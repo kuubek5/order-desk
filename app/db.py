@@ -10,7 +10,22 @@ Base = declarative_base()
 
 db_file = Path(DB_PATH).expanduser().resolve()
 db_file.parent.mkdir(parents=True, exist_ok=True)
-engine = create_engine(URL.create("sqlite", database=str(db_file)), echo=False)
+# Пул заданий ЯВНО, а не мовчазним дефолтом. Причина не в тюнінгу, а в тому,
+# що дефолт уже одного разу вичерпався: фонові воркери (синк таблиці, пошта,
+# печі, верстати, write-back) тримають свої сесії, і при 5+10 з'єднань запит
+# оператора ставав у чергу за ними (памʼятка про пул, 25.08.26).
+#
+# NullPool тут НЕ підходить, хоч його й радять для локального SQLite: база
+# лабораторії лежить на мережевій шарі (UNC), і нове з'єднання на кожен запит
+# означало б SMB-рукостискання на кожен запит.
+engine = create_engine(
+    URL.create("sqlite", database=str(db_file)),
+    echo=False,
+    pool_size=10,
+    max_overflow=20,
+    pool_timeout=30,
+    pool_recycle=1800,
+)
 
 
 # Чи вмикати перевірку зовнішніх ключів на нових зʼєднаннях.
