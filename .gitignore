@@ -59,3 +59,7 @@ backups/
 # Логи dev-сервера (dev_restart.ps1)
 dev*.out.log
 dev*.err.log
+
+# Демо-теки dev-сервера (STL-прев'ю на 8002)
+dev_export/
+dev_tech/
