@@ -2,8 +2,8 @@
 structured OrderRow objects.
 
 Column positions and the header/data split (row 7 = first data row) were
-confirmed by eye against the test sheet's tab '27.07.26' via app/main.py —
-see CLAUDE.md section 3 and 13.
+confirmed by eye against the test sheet's tab '27.07.26' (разовим скриптом
+часів v0.1, який давно видалено) — see CLAUDE.md section 3 and 13.
 """
 
 from dataclasses import dataclass, field

@@ -242,8 +242,9 @@ def _sheet_sync_worker(stop_event: Event) -> None:
 
     Two-speed loop: the expensive full sync (worksheets listing + 3-day
     window) runs every SHEET_SYNC_INTERVAL_SECONDS; in between, the cheap
-    hot-tab read of today's tab runs every SHEET_SYNC_HOT_INTERVAL_SECONDS so
-    current-day edits land almost live. Both run on THIS one thread, sharing
+    hot-tab read of today's tab runs on the interval of the CURRENT speed
+    preset (`sync_control.get_speed_preset()["hot"]`, which the tray menu and
+    the queue's speed switch change), so current-day edits land almost live. Both run on THIS one thread, sharing
     its warm per-thread spreadsheet/worksheet cache (app/sheets.py)."""
     if stop_event.wait(SHEET_SYNC_INITIAL_DELAY_SECONDS):
         return

@@ -37,8 +37,11 @@ docker compose exec order-desk python -m app.create_user_cli <логін> <па�
 
 ## 5. Синхронізація (поки вручну, без планувальника)
 
+Таблиця синхронізується фоновим воркером застосунку і кнопкою «Синхронізувати»
+в черзі. Окремий CLI для таблиці видалено: він звіряв видалення проти
+ОСТАННЬОЇ вкладки замість потрібного дня і йшов повз міграції схеми.
+
 ```bash
-docker compose exec order-desk python -m app.sync_cli        # таблиця -> БД
 docker compose exec order-desk python -m app.mail_sync_cli   # пошта -> БД (тріаж)
 ```
 

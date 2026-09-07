@@ -95,11 +95,9 @@ MAIL_SYNC_INITIAL_DELAY_SECONDS = 10
 SHEET_SYNC_INTERVAL_SECONDS = 1 * 60
 SHEET_SYNC_INITIAL_DELAY_SECONDS = 10
 # Fast lane: between full syncs, re-read ONLY the current day's tab this often.
-# With the worker thread's spreadsheet/worksheet cache warm that's a single
-# ~3s API call, so today's technician edits reach the CRM within ~15-20s while
-# the expensive 3-tab full sync stays at the interval above. See
-# app/sheet_sync_service.py::sync_hot_tab.
-SHEET_SYNC_HOT_INTERVAL_SECONDS = 15
+# Інтервал гарячого тіку живе в пресетах швидкості (`SYNC_SPEED_PRESETS`,
+# ключ "hot") — саме їх читає цикл. Окрема константа тут лишалась мертвою і
+# розходилась із реальним значенням, тобто брехала тому, хто її читав.
 
 # Days operators are actually looking at right now (queue partial=rows polls
 # record them). The hot lane unions these with today/yesterday so "the open
