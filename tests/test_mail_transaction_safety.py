@@ -338,3 +338,67 @@ def test_a_busy_letter_does_not_block_another_one(tmp_path, monkeypatch):
             busy.release()
 
     assert result.ok, result.error
+
+
+def test_a_database_error_after_the_move_still_returns_files_to_the_spool(
+    tmp_path, monkeypatch
+):
+    """C.1: ловимо будь-який виняток, а не лише файловий.
+
+    Файли переїжджають ПЕРШИМИ, і аж потім ідуть записи в базу. Раніше
+    прийняття ловило тільки `OSError/ValueError`: помилка бази між переносом і
+    комітом вилітала 500-ю, `moved_pairs` помирали разом із кадром — і файли
+    лишались у export при листі «нове». Диск і база розходились назавжди.
+    """
+    engine = _database()
+    export_root, mail_root = _wire(monkeypatch, tmp_path)
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email, stl = _letter(db, mail_root / "u1")
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("несподівана помилка бази")
+
+        # Падає ПІСЛЯ фізичного переносу — це і є небезпечне вікно.
+        monkeypatch.setattr(mail_accept_svc, "remember_sender", boom)
+        response = _accept(db, user, email)
+
+        assert response.status_code == 303
+        assert "error=" in response.headers["location"]
+
+    assert stl.read_bytes() == b"STL"                      # файл повернувся в спул
+    assert [p for p in export_root.rglob("*") if p.is_file()] == []
+
+    with Session(engine) as db:
+        assert db.scalars(select(Order)).all() == []
+        assert db.scalar(select(EmailMessage)).status == "нове"
+        assert db.scalar(select(Attachment)).saved_path == str(stl)
+
+
+def test_rejecting_an_accepted_letter_is_refused_not_half_done(tmp_path, monkeypatch):
+    """C.2: «відхилено» описує лист, якого не брали в роботу.
+
+    Для вже прийнятого листа сам статус нічого не прибирає: робота лишається в
+    черзі, файли в export. База казала б «відхилено» про роботу, яку цех у цей
+    час фрезерує. Відкат уміє лише «Повернути в тріаж».
+    """
+    engine = _database()
+    _wire(monkeypatch, tmp_path)
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email, _stl = _letter(db, tmp_path / "spool" / "u1")
+        accepted = _accept(db, user, email)
+        assert accepted.status_code in (303, 204)
+        db.refresh(email)
+        assert email.status == "прийнято"
+
+        response = mail_router_mod.reject_email(
+            request=_request(user.id), email_id=email.id, db=db
+        )
+
+        assert response.status_code == 303
+        db.refresh(email)
+        assert email.status == "прийнято"                  # рішення не переписане
+        assert db.scalars(select(Order)).all() != []       # робота на місці

@@ -231,14 +231,33 @@ def _accept_letter_locked(
         remember_sender(db, email, new_order.client_name or "", None)
     else:
         try:
-            moved_pairs = _move_attachments(
+            # `moved_pairs` наповнює САМ `_move_attachments`, одразу після
+            # фізичного переносу: раніше пари верталися лише при успіху, тож
+            # падіння ПІСЛЯ переносу (запис у базу, `remember_sender`) лишало
+            # файли в export при листі «нове» — диск і база розходились
+            # назавжди, і компенсувати вже не було чим.
+            _move_attachments(
                 db, email, new_order, attachments,
                 folder_pick=folder_pick, folder_new=folder_new,
                 material_folder=material_folder,
+                moved_out=moved_pairs,
             )
-        except (OSError, ValueError) as exc:
+        except Exception as exc:  # noqa: BLE001 — файли могли поїхати, треба відкотити
+            # Не лише OSError/ValueError: усе між переносом і поверненням —
+            # робота з базою, і будь-яка її помилка мусить повернути файли в
+            # спул, а не спливти 500-ю зі слідами на диску (ревʼю 07.09.26, C.1).
             db.rollback()
-            return AcceptResult(error="Не вдалося зберегти вкладення: " + str(exc))
+            undo_errors = undo_moves(moved_pairs)
+            clear_export_cache()
+            logger.exception("Accept failed while moving files for email %s", email.id)
+            detail = str(exc)
+            if undo_errors:
+                logger.error("Could not return files to spool: %s", "; ".join(undo_errors))
+                detail += (
+                    ". УВАГА: частину файлів не вдалося повернути в лист — "
+                    + "; ".join(undo_errors)
+                )
+            return AcceptResult(error="Не вдалося зберегти вкладення: " + detail)
 
     # Частково чи повністю: якщо в листі лишились нерозібрані файли (інший
     # колір, який оператор ще не приймав), лишаємо «нове», щоб він тримався в
@@ -335,11 +354,17 @@ def _move_attachments(
     folder_pick: str,
     folder_new: str,
     material_folder: str,
+    moved_out: list[tuple[Path, Path]] | None = None,
 ) -> list[tuple[Path, Path]]:
     """Перенести файли партії в `export` і привʼязати їх до роботи.
 
     Повертає пари (звідки, куди) для КОЖНОГО фізично перенесеного файлу — без
     них невдалий коміт не мав би чим відкотити диск (аудит, пошта C-1).
+
+    `moved_out` — той самий перелік, але відданий викликачеві ОДРАЗУ після
+    переносу, ще до записів у базу. Повернене значення дістається лише тому,
+    хто дожив до кінця функції; список бачить і той, хто ловить виняток
+    посередині (ревʼю 07.09.26, C.1).
     """
     export_root = Path(get_export_folder_path(db))
     to_move = list(attachments)
@@ -360,6 +385,8 @@ def _move_attachments(
             material_folder_override=material_override,
         )
         moved_pairs = list(zip(old_paths, new_paths))
+        if moved_out is not None:
+            moved_out.extend(moved_pairs)
         # Файли переїхали — кеш обходу export більше не відповідає диску.
         clear_export_cache()
         for attachment, new_path in zip(to_move, new_paths):

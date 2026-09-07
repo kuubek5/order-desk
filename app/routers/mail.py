@@ -1096,6 +1096,29 @@ def reject_email(
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")
 
+    # «Відхилено» описує лист, якого НЕ брали в роботу: файли лежать у спулі,
+    # робіт немає. Для вже прийнятого листа сам по собі новий статус нічого не
+    # прибирає — робота лишається в черзі, файли в export, рядок-нотатка в
+    # таблиці, — і база починає казати «відхилено» про роботу, яку цех у цей
+    # час фрезерує. Відкат прийняття вміє рівно одна дія — «Повернути в
+    # тріаж» (`/mail/{id}/restore`): вона повертає файли, стирає рядок і
+    # видаляє роботу. Тому тут не «зробимо як зможемо», а відмова з підказкою
+    # (ревʼю 07.09.26, C.2).
+    has_orders = bool(
+        db.scalar(select(func.count()).select_from(Order).where(Order.source_email_id == email.id))
+        or email.order_id
+    )
+    if email.status == "прийнято" or has_orders:
+        message = (
+            "Лист уже прийнято в роботу. Спершу «Повернути в тріаж» — "
+            "воно поверне файли й прибере роботу, — і аж тоді відхиляйте."
+        )
+        request_headers = getattr(request, "headers", None) or {}
+        if request_headers.get("HX-Request") == "true":
+            return HTMLResponse(message, status_code=409)
+        request.session["toast_flash"] = {"kind": "error", "message": message}
+        return RedirectResponse(f"/mail?open={email.id}", status_code=303)
+
     email.status = "відхилено"
     db.commit()
 
