@@ -68,6 +68,7 @@ from app.services.undo import (
     perform_undo,
 )
 from app.sheet_writer import apply_status_markers
+from app.services.order_path import build_path as build_order_path
 from app.statuses import STATUSES, STATUS_ACCEPTED, STATUS_NEW
 
 logger = logging.getLogger(__name__)
@@ -932,6 +933,10 @@ def get_order_detail(
             "statuses": STATUSES,
             "read_only": read_only,
             "actions": actions,
+            # Одна стрічка замість двох: поява роботи + статуси + дії, за часом
+            # (app/services/order_path.py). Питання «коли прорахували і хто»
+            # раніше вимагало зіставляти два списки очима.
+            "order_path": build_order_path(order, list(actions)),
         },
     )
 

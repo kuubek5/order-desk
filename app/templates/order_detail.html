@@ -50,7 +50,6 @@
         <div class="kv"><span>Матеріал · колір</span><b>{% if order.material_color %}<span class="matchip {{ _mat.cls if _mat else '' }}">{% if _mat and _mat.cls not in ('mat-unknown', 'mat-other') %}<i class="matchip-thumb" aria-hidden="true"></i>{% endif %}{{ order.material_color }}</span>{% else %}—{% endif %}</b></div>
         <div class="kv"><span>Вид роботи</span><b>{{ order.kind or '—' }}</b></div>
         <div class="kv"><span>Кількість</span><b>{{ order.quantity or '—' }}</b></div>
-        <div class="kv"><span>Здати до</span><b>{{ order.due_time or '—' }}</b></div>
         <div class="kv"><span>Технік</span><b>{{ order.technician_name or '—' }}</b></div>
     </div>
 
@@ -116,18 +115,20 @@
         {% endif %}
     </div>
 
+    {# Одна стрічка замість двох. Статуси не знали, ХТО прорахував, журнал
+       дій знав, але жив нижче — зіставляти доводилось очима. Порядок і
+       підписи рахує app/services/order_path.py. #}
     <div class="dsec">
-        <div class="dlabel">Хронологія статусів</div>
-        {% if order.status_events %}
+        <div class="dlabel">Шлях роботи</div>
+        {% if order_path %}
         <div class="timeline">
-            {% for event in order.status_events|sort(attribute='occurred_at', reverse=True) %}
-            <div class="tl-item">
-                <span class="t mono">{{ event.occurred_at.strftime('%d.%m %H:%M') if event.occurred_at else '—' }}</span>
+            {% for step in order_path %}
+            <div class="tl-item tl-{{ step.kind }}">
+                <span class="t mono">{{ step.at.strftime('%d.%m %H:%M') if step.at else '—' }}</span>
                 <span class="body">
-                    <span class="label">{{ event.status }}</span>
-                    <span class="who">
-                        {% if event.operator %}{{ event.operator.full_name or event.operator.username }}{% elif event.actor %}{{ event.actor }}{% else %}система{% endif %}
-                    </span>
+                    <span class="label">{{ step.label }}</span>
+                    {% if step.detail %}<span class="mono">{{ step.detail }}</span>{% endif %}
+                    <span class="who">{{ step.who }}</span>
                 </span>
             </div>
             {% endfor %}

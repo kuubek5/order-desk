@@ -106,14 +106,26 @@
 /* Клітинка перед проміжком групи не потребує правої лінії — її роль виконує
    сам проміжок. */
 .vt th:has(+ .gap), .vt td:has(+ .gap) { border-right: 0; }
-.vt .day { font-family: var(--font-mono); color: var(--ink-3); text-align: right; padding-right: 10px; }
+/* Стовпець днів — колонка чисел, а не рядок тексту. Раніше все в клітинці
+   було одним потоком праворуч, тож день із «сб» і день із прихованою ⟳
+   зсували число на різну ширину, і колонка йшла драбинкою. Тепер кожна
+   частина має свою смугу сталої ширини: число, день тижня, замок, кнопка —
+   і остання лишається на місці, навіть коли її не видно (вихідний рядок її
+   не має взагалі). */
+.vt .day {
+  font-family: var(--font-mono); color: var(--ink-3);
+  display: grid; grid-template-columns: 2ch 2.4ch 8px 14px;
+  align-items: center; padding-right: 10px; text-align: left;
+}
+.vt .day .dn { text-align: right; }
+.vt .day .wd { padding-left: 4px; opacity: .75; }
 /* Клітинка дня несе три речі: число, крапку «день закрито» і ⟳ синку цього
    дня. Кнопка проявляється на наведення рядка — щоб ряд днів лишався спокійним
    стовпцем чисел, а не смугою іконок. */
 .vt .day { white-space: nowrap; }
-.vt .day .fz { color: var(--ink-4, var(--ink-3)); margin-left: 4px; opacity: .7; }
+.vt .day .fz { color: var(--ink-4, var(--ink-3)); opacity: .7; }
 .vt .day .daysync {
-  margin-left: 6px; padding: 0 3px; cursor: pointer; font-size: var(--fs-1);
+  padding: 0; cursor: pointer; font-size: var(--fs-1);
   line-height: 1; color: var(--ink-3); background: none; border: 0;
   opacity: 0; transition: opacity .12s ease, color .12s ease;
 }

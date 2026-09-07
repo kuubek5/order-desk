@@ -62,7 +62,7 @@
       {% for row in g.rows %}
       {% if row.is_off %}
       <tr class="off">
-        <td class="day">{{ row.dayn }} {{ row.weekend_short }}</td>
+        <td class="day"><span class="dn">{{ row.dayn }}</span><span class="wd">{{ row.weekend_short or '' }}</span></td>
         <td colspan="21"></td>
       </tr>
       {% else %}
@@ -70,8 +70,8 @@
         {# Клік по ⟳ перечитує вкладку цього дня й рахує його начисто — єдина
            дія, що знімає заморозку. Замок поруч = день уже закрито. #}
         <td class="day">
-          <span class="dn">{{ row.dayn }}{% if row.weekend_short %} {{ row.weekend_short }}{% endif %}</span>
-          {% if row.frozen %}<span class="fz" title="День закрито — число не перераховується">•</span>{% endif %}
+          <span class="dn">{{ row.dayn }}</span><span class="wd">{{ row.weekend_short or '' }}</span>
+          <span class="fz"{% if row.frozen %} title="День закрито — число не перераховується"{% endif %}>{% if row.frozen %}•{% endif %}</span>
           <button type="button" class="daysync" title="Перечитати вкладку {{ row.dayn }} і перерахувати день"
                   hx-post="/vyrobitok/day-sync" hx-target="#vyrobitok-body" hx-swap="outerHTML"
                   hx-vals='{"day": "{{ row.date }}"}' hx-indicator="this">⟳</button>
