@@ -20,6 +20,7 @@ backup password existed.
 
 import base64
 import json
+import logging
 import os
 from datetime import date, datetime
 from typing import Any
@@ -64,6 +65,8 @@ from app.models import (
     VyrobitokDay,
     VyrobitokMonth,
 )
+
+logger = logging.getLogger(__name__)
 
 # 2 — копія охоплює ВСІ таблиці (див. `_TABLE_MODELS`). У версії 1 їх було 13
 # із 29: переїзд на новий ПК привозив роботи й операторів, але лишав позаду
@@ -180,11 +183,31 @@ def create_backup(session: Session, password: str) -> bytes:
         rows = session.query(model).all()
         tables[model.__tablename__] = [_row_to_dict(r) for r in rows]
 
+    # Нечитабельне налаштування НЕ валить копію. Ключ шифрування прив'язаний до
+    # машини (DPAPI), і після переїзду теки чи перевстановлення Windows старі
+    # рядки перестають розшифровуватись — рівно тоді, коли копію й роблять, щоб
+    # перевезти дані. Досі перший же такий рядок давав 500, і людина лишалась
+    # без жодного способу забрати роботи (знайдено живим прогоном на стенді
+    # 07.09.26).
+    #
+    # Роботи, клієнти й історія від ключа не залежать і їдуть повністю.
+    # Втрачається лише те, що вже нечитабельне на цій машині; його ІМЕНА (не
+    # значення) кладемо в конверт, щоб на новому ПК було видно, які саме
+    # налаштування доведеться ввести заново.
     settings: dict[str, str] = {}
+    unreadable: list[str] = []
     for row in session.query(AppSetting).all():
         if row.value_encrypted is None:
             continue
-        settings[row.key] = decrypt_value(row.value_encrypted)
+        try:
+            settings[row.key] = decrypt_value(row.value_encrypted)
+        except InvalidToken:
+            unreadable.append(row.key)
+    if unreadable:
+        logger.warning(
+            "Копія: %s налаштувань не розшифровано (ключ цієї машини змінився): %s",
+            len(unreadable), ", ".join(sorted(unreadable)),
+        )
 
     # Перелік «таблиця → скільки рядків» їде ВСЕРЕДИНІ копії, під тим самим
     # шифром. Після відновлення ми звіряємо базу з ним: копія сама себе
@@ -206,6 +229,10 @@ def create_backup(session: Session, password: str) -> bytes:
         # Скільки чого всередині — видно ДО введення пароля (сам вміст
         # зашифрований). Це те, що показує екран перед відновленням.
         "manifest": manifest,
+        # Імена налаштувань, які ця машина вже не може прочитати (лише імена,
+        # ніколи значення). Видно ДО введення пароля — щоб на новому ПК одразу
+        # було ясно, що саме доведеться ввести руками.
+        "unreadable_settings": sorted(unreadable),
         "app": "order-desk",
         "created_at": utc_now().isoformat() + "Z",
         "kdf": "pbkdf2-sha256",

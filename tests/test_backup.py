@@ -256,3 +256,39 @@ def test_restore_survives_the_orders_email_cycle_with_foreign_keys_on():
     assert db.query(EmailMessage).count() == 1
     assert db.query(EmailMessage).first().order_id == order.id
     assert db.query(Order).first().source_email_id == letter.id
+
+
+def test_a_setting_this_machine_cannot_decrypt_does_not_kill_the_backup():
+    """Ключ шифрування прив'язаний до машини, і після переїзду теки старі рядки
+    перестають читатись — рівно тоді, коли копію й роблять, щоб перевезти дані.
+
+    Досі перше ж таке налаштування давало 500, і людина лишалась без жодного
+    способу забрати роботи. Знайдено живим прогоном на стенді 07.09.26.
+    """
+    import json
+
+    from cryptography.fernet import Fernet
+
+    db = Session(_database())
+    _seed(db)
+
+    # Рядок, зашифрований ЧУЖИМ ключем: на цій машині він нечитабельний.
+    broken = db.query(AppSetting).filter(AppSetting.key == "imap_password").one()
+    broken.value_encrypted = Fernet(Fernet.generate_key()).encrypt(b"secret").decode("ascii")
+    db.commit()
+
+    raw = create_backup(db, "pw-12345678")
+    envelope = json.loads(raw)
+
+    # Копія зроблена, роботи в ній усі.
+    assert envelope["manifest"]["orders"] == db.query(Order).count()
+    # Ім'я нечитабельного налаштування видно ДО пароля — щоб на новому ПК було
+    # ясно, що саме доведеться ввести руками. Значення, звісно, немає.
+    assert envelope["unreadable_settings"] == ["imap_password"]
+    assert "secret" not in raw.decode("utf-8")
+
+    # І така копія відновлюється: решта секретів на місці.
+    restore_backup(db, raw, "pw-12345678")
+    assert decrypt_value(
+        db.query(AppSetting).filter(AppSetting.key == "google_sheet_id").one().value_encrypted
+    ) == "1IIEkBnPoDcxgo3-41IdbJu6FZXNawYX9UNdoekFDPbs"
