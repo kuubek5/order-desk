@@ -16,7 +16,7 @@ from app.backup import (
     restore_backup,
 )
 from app.config import DB_PATH
-from app.routers.deps import get_current_user, login_redirect, get_db, is_loopback_request
+from app.routers.deps import get_db, require_admin_or_redirect
 from app.services.undo import log_action
 from app.settings_store import (
     set_sheet_backup_enabled,
@@ -47,13 +47,9 @@ def export_backup(
     admin sets here and now, independent of this machine's DPAPI key. See
     app/backup.py for why that independence is the whole point.
     """
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    user = require_admin_or_redirect(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
 
     if len(backup_password) < 8:
         request.session["settings_flash"] = {
@@ -90,13 +86,9 @@ async def import_backup(
     not merged. `confirm_replace` is a required checkbox in settings.html so
     that's a deliberate, informed click, not a misplaced file picker.
     """
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    user = require_admin_or_redirect(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
 
     if confirm_replace != "on":
         request.session["settings_flash"] = {

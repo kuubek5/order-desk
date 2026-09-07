@@ -14,9 +14,9 @@ from app.services.health_snapshot import remember_before_update
 from app.changelog import load_changelog
 from app.routers.deps import (
     get_current_user,
-    login_redirect,
     get_db,
-    is_loopback_request,
+    require_admin,
+    require_admin_or_redirect,
     templates,
 )
 from app.update_check import (
@@ -69,13 +69,7 @@ def check_update(request: Request, db: Session = Depends(get_db)):
     raw errors — fetch_latest_release swallows them and returns None, same as
     the background path.
     """
-    user = get_current_user(request, db)
-    if user is None:
-        raise HTTPException(status_code=401, detail="увійдіть в систему")
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    require_admin(request, db)
 
     reached = _update_check_tick()
     return templates.TemplateResponse(
@@ -109,13 +103,7 @@ def update_install_status(request: Request, db: Session = Depends(get_db)):
     Читає лише пам'ять процесу. Ті самі ворота, що й у /update/install: це
     той самий адмін на тому самому ПК, і чужому оку тут нічого робити.
     """
-    user = get_current_user(request, db)
-    if user is None:
-        raise HTTPException(status_code=401, detail="увійдіть в систему")
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    require_admin(request, db)
     return JSONResponse(install_state(), headers={"Cache-Control": "no-store"})
 
 
@@ -127,13 +115,9 @@ def install_update(request: Request, db: Session = Depends(get_db)):
     background thread — see _install_update_in_background above and
     launch_silent_install's docstring for the skipifsilent workaround.
     """
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    user = require_admin_or_redirect(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
 
     release = get_known_update()
     if release is None:

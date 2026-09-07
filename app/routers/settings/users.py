@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 from app.auth import hash_password
 from app.models import User
-from app.routers.deps import get_current_user, login_redirect, get_db, is_loopback_request
+from app.routers.deps import get_db, require_admin_or_redirect
 from app.services.operators import (
     normalize_initial,
     validate_initial,
@@ -21,13 +21,9 @@ router = APIRouter()
 
 @router.post("/settings/users", response_class=HTMLResponse)
 async def create_operator(request: Request, db: Session = Depends(get_db)):
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    user = require_admin_or_redirect(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
 
     form = await request.form()
     username = form.get("username", "").strip()
@@ -75,13 +71,9 @@ async def create_operator(request: Request, db: Session = Depends(get_db)):
 async def set_operator_initial(request: Request, user_id: int, db: Session = Depends(get_db)):
     """Assign/change/clear an operator's sheet letter (admin only). Empty clears
     it (that operator's Sum3D writes then leave "Прорахував" untouched)."""
-    admin = get_current_user(request, db)
-    if admin is None:
-        return login_redirect(request)
-    if admin.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    admin = require_admin_or_redirect(request, db)
+    if isinstance(admin, RedirectResponse):
+        return admin
 
     target = db.get(User, user_id)
     if target is None:
@@ -103,13 +95,9 @@ async def set_operator_initial(request: Request, user_id: int, db: Session = Dep
 async def toggle_operator_active(
     request: Request, user_id: int, db: Session = Depends(get_db)
 ):
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    user = require_admin_or_redirect(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
 
     target = db.get(User, user_id)
     if target is None:
@@ -129,13 +117,9 @@ async def toggle_operator_active(
 async def reset_operator_password(
     request: Request, user_id: int, db: Session = Depends(get_db)
 ):
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    user = require_admin_or_redirect(request, db)
+    if isinstance(user, RedirectResponse):
+        return user
 
     target = db.get(User, user_id)
     if target is None:

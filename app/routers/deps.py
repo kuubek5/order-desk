@@ -150,6 +150,28 @@ def require_admin(request: Request, db: Session, *, loopback: bool = True) -> Us
     return user
 
 
+def require_admin_or_redirect(request: Request, db: Session, *, loopback: bool = True):
+    """Те саме правило, але для роутів, які відповідають СТОРІНКОЮ.
+
+    Різниця лише в одному випадку — «не ввійшов»: форма в Налаштуваннях має
+    відвести людину на логін (303), а не віддати голий 401, який HTMX навіть
+    не покаже. Саме через цю дрібницю гейт десять разів переписували руками
+    замість `require_admin`, і копії почали розходитись (ревʼю 07.09.26, C.5).
+
+    Повертає або користувача, або готову відповідь-редірект — викликач мусить
+    її повернути:
+
+        user = require_admin_or_redirect(request, db)
+        if isinstance(user, RedirectResponse):
+            return user
+
+    Недостатньо прав — і далі 403: це вже не «зайдіть під собою», а відмова.
+    """
+    if get_current_user(request, db) is None:
+        return login_redirect(request)
+    return require_admin(request, db, loopback=loopback)
+
+
 def toast_response(message: str, *, kind: str = "success", triggers: dict | None = None) -> Response:
     """204 + an HX-Trigger toast — the reply for an HTMX action that changed
     something server-side but has nothing to swap into the page. Same

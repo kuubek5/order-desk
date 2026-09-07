@@ -1,10 +1,10 @@
 """Звʼязок із розробником: Telegram-бот для скарг і побажань."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
-from app.routers.deps import get_current_user, login_redirect, get_db, templates
+from app.routers.deps import get_db, require_admin_or_redirect, templates
 from app.settings_store import get_setting, set_setting
 from .common import require_settings_admin
 
@@ -18,11 +18,9 @@ router = APIRouter()
 
 @router.get("/settings/feedback", response_class=HTMLResponse)
 def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
-    if user.role != "адмін":
-        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    user = require_admin_or_redirect(request, db, loopback=False)
+    if isinstance(user, RedirectResponse):
+        return user
 
     flash = request.session.pop("feedback_settings_flash", None)
     return templates.TemplateResponse(
