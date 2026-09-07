@@ -3,9 +3,15 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "order-desk"
-version = "1.0.0"
-description = "Order management system for dental milling lab"
+# Назва й версія тут — довідкові: застосунок не ставиться як пакет (він їде
+# інсталятором), а єдине джерело версії — app/__version__.py, з якою звіряється
+# installer/KuubMill.iss (tests/test_version_sync.py). Раніше тут стояло
+# «order-desk 1.0.0» — і назва з часів до перейменування, і версія з повітря
+# (ревʼю 07.09.26, T.4). Щоб не заводити другого джерела правди, версія
+# позначена як динамічна.
+name = "kuubmill"
+dynamic = ["version"]
+description = "KuubMill — робоча черга фрезерного центру дентальної лабораторії"
 
 [tool.ruff]
 # Line length matches common IDE defaults and allows readable docstrings/comments
@@ -37,9 +43,6 @@ warn_unused_ignores = true
 
 # Warn about redundant casts
 warn_redundant_casts = true
-
-# Warn about unused variables
-warn_unused_variables = false
 
 # Report type errors as non-blocking warnings
 warn_return_any = false

@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from sqlalchemy import create_engine
@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import app.web as web
+from app.business_day import business_today
 from app.services.queue import RETENTION_DAYS, order_is_archived
 from app.routers import orders as orders_router_mod
 from app.routers import archive as archive_router_mod
@@ -47,7 +48,9 @@ def test_parse_archive_month():
 
 
 def test_order_is_archived_predicate():
-    today = date.today()
+    # Робоча доба, не календарна: продакшн порівнює саме з нею, і між 00:00 і
+    # 07:30 календарна дата дає інший день (T.3).
+    today = business_today()
     cutoff = today - timedelta(days=RETENTION_DAYS)
     old_tab = (today - timedelta(days=90)).strftime("%d.%m.%y")
 
@@ -63,7 +66,9 @@ def test_order_is_archived_predicate():
 
 
 def _seed(db):
-    today = date.today()
+    # Робоча доба, не календарна: продакшн порівнює саме з нею, і між 00:00 і
+    # 07:30 календарна дата дає інший день (T.3).
+    today = business_today()
     old = (today - timedelta(days=75))  # comfortably archived
     tab = old.strftime("%d.%m.%y")
     db.add_all([
@@ -153,7 +158,9 @@ def test_archive_search_empty_returns_latest_month(monkeypatch):
 def test_order_detail_read_only_for_archived_editable_for_active(monkeypatch):
     _capture(monkeypatch)
     engine = _database()
-    today = date.today()
+    # Робоча доба, не календарна: продакшн порівнює саме з нею, і між 00:00 і
+    # 07:30 календарна дата дає інший день (T.3).
+    today = business_today()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         old = today - timedelta(days=75)

@@ -44,6 +44,21 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
+      # Імʼя інсталятора будується з ТЕГУ, а не вписується руками. Шість
+      # літералів з версією в імені жили в цьому файлі й мовчки
+      # застарівали при кожному bump: реліз падав уже після збірки, на кроці
+      # «Verify installer exists» (ревʼю 07.09.26, T.1).
+      - name: Resolve installer name from the tag
+        id: ver
+        shell: powershell
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $installer = "dist-installer\KuubMill-Setup-$version.exe"
+          "version=$version"           | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "installer=$installer"       | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "checksum=$installer.sha256" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Tag $env:GITHUB_REF_NAME -> $installer"
+
       - name: Install Inno Setup
         run: choco install innosetup -y
 
@@ -54,7 +69,7 @@ jobs:
       - name: Verify installer exists
         shell: powershell
         run: |
-          $installerPath = "dist-installer\KuubMill-Setup-0.11.3.exe"
+          $installerPath = "${{ steps.ver.outputs.installer }}"
           if (-not (Test-Path $installerPath)) {
             Write-Error "Installer not found at $installerPath"
             exit 1
@@ -65,8 +80,8 @@ jobs:
       - name: Compute installer checksum
         shell: powershell
         run: |
-          $installerPath = "dist-installer\KuubMill-Setup-0.11.3.exe"
-          $checksumPath = "dist-installer\KuubMill-Setup-0.11.3.exe.sha256"
+          $installerPath = "${{ steps.ver.outputs.installer }}"
+          $checksumPath = "${{ steps.ver.outputs.checksum }}"
           $hash = (Get-FileHash -Algorithm SHA256 -Path $installerPath).Hash.ToLower()
           Set-Content -Path $checksumPath -Value $hash -NoNewline
           Write-Host "SHA256: $hash"
@@ -75,7 +90,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $installerPath = "dist-installer\KuubMill-Setup-0.11.3.exe"
+          $installerPath = "${{ steps.ver.outputs.installer }}"
           $installDir = "$env:LOCALAPPDATA\Programs\KuubMill"
           $exePath = "$installDir\KuubMill.exe"
 
@@ -204,6 +219,6 @@ jobs:
           token: ${{ secrets.RELEASES_REPO_TOKEN }}
           tag_name: ${{ github.ref_name }}
           files: |
-            dist-installer/KuubMill-Setup-0.11.3.exe
-            dist-installer/KuubMill-Setup-0.11.3.exe.sha256
+            ${{ steps.ver.outputs.installer }}
+            ${{ steps.ver.outputs.checksum }}
           fail_on_unmatched_files: true

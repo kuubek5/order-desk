@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
+from pathlib import Path
 
 import pytest
 
@@ -123,3 +124,64 @@ def test_retention_cutoff_is_the_same_day_source_everywhere():
         "на цих екранах дата береться календарна, а не робоча "
         "(business_today): " + ", ".join(offenders)
     )
+
+
+# Тести, яким КАЛЕНДАРНА дата справді потрібна — кожен із причиною. Решта
+# тестів мусить рахувати дати робочою добою, інакше вони поводяться інакше
+# між 00:00 і 07:30: падіння такого тесту видно лише вночі, і воно виглядає
+# як «плаваючий» тест, а не як помилка (ревʼю 07.09.26, T.3).
+CALENDAR_DATE_TESTS = {
+    # Сам сторож — він і шукає рядок «date.today()» у чужому коді.
+    "test_business_day.py": "сторож шукає цей рядок у тексті інших файлів",
+    # Рядок CHANGELOG пишеться календарною датою релізу, не робочою добою.
+    "test_bump_changelog.py": "звіряє дату в рядку CHANGELOG",
+    # Фільтр IMAP будується календарною датою — так його розуміє сервер пошти.
+    "test_mail_reader.py": "звіряє рядок SINCE у запиті до IMAP",
+    # Тест нічної зміни навмисно говорить про обидві дати.
+    "test_night_shift_day.py": "порівнює календарну добу з робочою — у цьому й суть",
+    # Регресія 0.7.3: прогрів видачі лишався на date.today(), поки екран уже
+    # жив робочою добою. Тест саме про цю розбіжність, тож обидві дати в ньому
+    # обовʼязкові.
+    "test_handout_routes.py": "перевіряє, що прогрів НЕ бере календарну дату",
+}
+
+
+def test_tests_themselves_use_the_business_day():
+    """Той самий сторож, але для тестів.
+
+    Тест, який будує дати через `date.today()`, між 00:00 і 07:30 працює з
+    іншим днем, ніж застосунок. Такий тест або мовчки проходить удень і падає
+    вночі, або — гірше — вночі проходить помилково. Обидва випадки виглядають
+    як «плаваючий тест», і саме тому їх довго не чіпають.
+    """
+    tests_dir = Path(__file__).resolve().parent
+    offenders: list[str] = []
+    for path in sorted(tests_dir.glob("test_*.py")):
+        if path.name in CALENDAR_DATE_TESTS:
+            continue
+        for number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            code = line.split("#", 1)[0]
+            if "date.today()" in code:
+                offenders.append(f"{path.name}:{number}")
+    assert not offenders, (
+        "тести рахують календарну дату замість робочої доби: "
+        + ", ".join(offenders)
+        + ". Використайте business_today() або додайте файл у CALENDAR_DATE_TESTS "
+        "з причиною."
+    )
+
+
+def test_the_calendar_date_allowlist_has_no_stale_entries():
+    """Виняток, який більше нікому не потрібен, мовчки послаблює сторожа."""
+    tests_dir = Path(__file__).resolve().parent
+    stale = []
+    for name in CALENDAR_DATE_TESTS:
+        path = tests_dir / name
+        if not path.is_file():
+            stale.append(f"{name} (файлу немає)")
+            continue
+        if "date.today()" not in path.read_text(encoding="utf-8"):
+            stale.append(f"{name} (більше не вживає date.today())")
+    assert not stale, "застарілі винятки: " + ", ".join(stale)

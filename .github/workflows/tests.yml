@@ -25,12 +25,35 @@ jobs:
       - name: Lint with ruff
         run: python -m ruff check .
 
-      - name: Type check with mypy (informational only)
-        # mypy currently reports 26 pre-existing type errors across 4 files.
-        # This check is informational only — not gating CI — to allow gradual
-        # type-checking adoption. A human should periodically review findings.
-        continue-on-error: true
-        run: python -m mypy app --ignore-missing-imports
+      # mypy тут — ХРАПОВИК, а не ворота. «Informational only» означало, що
+      # число помилок ніхто не читає: у коментарі стояло «26 у 4 файлах», а
+      # насправді їх було вже 212 у 41 (ревʼю 07.09.26, T.4). Тепер поточне
+      # число зафіксоване у .mypy-baseline: більше — крок падає, менше —
+      # просить оновити файл, щоб планка не сповзала назад.
+      - name: Type check with mypy (ratchet)
+        shell: bash
+        run: |
+          set +e
+          output="$(python -m mypy app --ignore-missing-imports)"
+          status=$?
+          echo "$output" | tail -20
+          found="$(echo "$output" | grep -oE 'Found [0-9]+ error' | grep -oE '[0-9]+' | head -1)"
+          if [ -z "$found" ]; then
+            if [ "$status" -ne 0 ]; then
+              echo "mypy не дав числа помилок і завершився з кодом $status"
+              exit 1
+            fi
+            found=0
+          fi
+          baseline="$(tr -d '[:space:]' < .mypy-baseline)"
+          echo "mypy: $found, планка: $baseline"
+          if [ "$found" -gt "$baseline" ]; then
+            echo "::error::Помилок типів побільшало: $found проти $baseline. Полагодьте нові або поясніть."
+            exit 1
+          fi
+          if [ "$found" -lt "$baseline" ]; then
+            echo "::notice::Помилок стало менше ($found). Оновіть .mypy-baseline, щоб планка не сповзла назад."
+          fi
 
       - name: Run tests with coverage
         # DB_ENCRYPTION_KEY only needs to be a valid Fernet key for the
