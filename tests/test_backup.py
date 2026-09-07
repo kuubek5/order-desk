@@ -1,10 +1,20 @@
 
+import base64
+from datetime import datetime
+
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.backup import BackupFormatError, BackupPasswordError, create_backup, restore_backup
+from app.backup import (
+    BackupFormatError,
+    BackupPasswordError,
+    _derive_key,
+    create_backup,
+    restore_backup,
+)
 from app.crypto import decrypt_value
 from app.db import Base
 from app.models import (
@@ -69,8 +79,10 @@ def test_create_backup_returns_valid_envelope():
 
     envelope = json.loads(raw)
     assert envelope["app"] == "order-desk"
-    # 2 — копія охоплює всі таблиці (ревʼю 07.09.26); файли версії 1 читаються.
-    assert envelope["format_version"] == 2
+    # 3 — паролі пічок і верстатів їдуть у копії відкрито (сам файл під
+    # паролем), щоб на новому ПК вони справді працювали; старіші файли
+    # читаються як були.
+    assert envelope["format_version"] == 3
     assert "salt" in envelope and "payload" in envelope
     # Перелічник видно ДО пароля: екран відновлення показує, що всередині.
     assert envelope["manifest"]["orders"] >= 1
@@ -292,3 +304,51 @@ def test_a_setting_this_machine_cannot_decrypt_does_not_kill_the_backup():
     assert decrypt_value(
         db.query(AppSetting).filter(AppSetting.key == "google_sheet_id").one().value_encrypted
     ) == "1IIEkBnPoDcxgo3-41IdbJu6FZXNawYX9UNdoekFDPbs"
+
+
+def test_device_passwords_survive_a_move_to_another_machine():
+    """Пароль печі й токен агента лежать колонками таблиць, зашифровані ключем
+    МАШИНИ. У копії формату 2 вони їхали як є — і на новому ПК не читались:
+    пічки з верстатами довелося б налаштовувати заново, тобто рівно те, від
+    чого копія й мала рятувати (знайдено прогоном переїзду 07.09.26).
+    """
+    import json
+
+    from app.crypto import encrypt_value
+    from app.models import Furnace, Machine
+
+    db = Session(_database())
+    _seed(db)
+    now = datetime(2026, 9, 7, 21, 0, 0)
+    db.add(Furnace(
+        name="Піч 1", host="192.168.1.11",
+        password_encrypted=encrypt_value("піч-пароль"), created_at=now,
+    ))
+    db.add(Machine(
+        name="350i", host="192.168.1.85",
+        password_encrypted=encrypt_value("верстат-пароль"),
+        agent_token_encrypted=encrypt_value("токен-агента"), created_at=now,
+    ))
+    db.commit()
+
+    raw = create_backup(db, "pw-12345678")
+
+    # Усередині копії — не ciphertext старої машини: інакше на новому ПК він
+    # мертвий. Сам файл зашифрований паролем, тож секрет назовні не витікає.
+    assert b"\xd0\xbf\xd1\x96\xd1\x87-\xd0\xbf\xd0\xb0\xd1\x80\xd0\xbe\xd0\xbb\xd1\x8c" not in raw
+    payload = json.loads(
+        Fernet(
+            _derive_key("pw-12345678", base64.b64decode(json.loads(raw)["salt"]))
+        ).decrypt(json.loads(raw)["payload"].encode("ascii"))
+    )
+    assert payload["tables"]["furnaces"][0]["password_encrypted"] == "піч-пароль"
+    assert payload["tables"]["machines"][0]["agent_token_encrypted"] == "токен-агента"
+
+    # А після відновлення вони знову зашифровані — ключем ЦІЄЇ машини.
+    restore_backup(db, raw, "pw-12345678")
+    furnace = db.query(Furnace).one()
+    machine = db.query(Machine).one()
+    assert furnace.password_encrypted != "піч-пароль"          # у базі не відкрито
+    assert decrypt_value(furnace.password_encrypted) == "піч-пароль"
+    assert decrypt_value(machine.password_encrypted) == "верстат-пароль"
+    assert decrypt_value(machine.agent_token_encrypted) == "токен-агента"

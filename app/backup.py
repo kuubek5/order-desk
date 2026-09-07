@@ -73,7 +73,15 @@ logger = logging.getLogger(__name__)
 # пічки, верстати з паролями, матеріали, фільтри пошти, журнал дій і ВЕСЬ
 # Виробіток (зарплатні цифри). Файли версії 1 читаються далі — просто в них
 # менше таблиць (ревʼю 07.09.26).
-FORMAT_VERSION = 2
+#
+# 3 — паролі пічок і верстатів та токен агента (`_ENCRYPTED_COLUMNS`) їдуть
+# усередині копії ВІДКРИТО, а не ciphertext'ом старої машини. У версії 2 вони
+# формально переносились, але на новому ПК не розшифровувались: пічки й
+# верстати довелося б налаштовувати заново — тобто рівно те, від чого копія
+# мала рятувати (знайдено прогоном «переїзд на інший компʼютер» 07.09.26).
+# Старі файли читаються як були: у них ці колонки лишаються недоторканими,
+# інакше вийшло б подвійне шифрування.
+FORMAT_VERSION = 3
 KDF_ITERATIONS = 480_000
 
 # Parent-first: safe insert order under foreign-key constraints. Restore
@@ -139,6 +147,20 @@ class BackupIncompleteError(Exception):
 
 _MODEL_BY_TABLE = {model.__tablename__: model for model in _TABLE_MODELS}
 
+# Секрети, які живуть не в `app_settings`, а колонками таблиць: паролі пічок і
+# верстатів та токен агента. Вони зашифровані ключем МАШИНИ, тому в копії їх
+# не можна везти як є — на новому ПК вони мертві, і саме пічки з верстатами
+# довелося б налаштовувати заново після переїзду (знайдено прогоном
+# «переїзд на інший компʼютер» 07.09.26).
+#
+# Усередині копії вони лежать відкрито, але сама копія зашифрована паролем
+# адміна, тож рівень захисту не падає — це та сама схема, що для `app_settings`
+# від самого початку.
+_ENCRYPTED_COLUMNS: dict[str, tuple[str, ...]] = {
+    "furnaces": ("password_encrypted",),
+    "machines": ("password_encrypted", "agent_token_encrypted"),
+}
+
 
 def _row_to_dict(obj: Any) -> dict[str, Any]:
     out: dict[str, Any] = {}
@@ -179,9 +201,22 @@ def create_backup(session: Session, password: str) -> bytes:
     data sits inside `envelope["payload"]`, a Fernet token).
     """
     tables: dict[str, list[dict[str, Any]]] = {}
+    unreadable: list[str] = []
     for model in _TABLE_MODELS:
         rows = session.query(model).all()
-        tables[model.__tablename__] = [_row_to_dict(r) for r in rows]
+        table = model.__tablename__
+        dumped = [_row_to_dict(r) for r in rows]
+        for column in _ENCRYPTED_COLUMNS.get(table, ()):
+            for row_data in dumped:
+                stored = row_data.get(column)
+                if not stored:
+                    continue
+                try:
+                    row_data[column] = decrypt_value(stored)
+                except InvalidToken:
+                    row_data[column] = None
+                    unreadable.append(f"{table}.{column}")
+        tables[table] = dumped
 
     # Нечитабельне налаштування НЕ валить копію. Ключ шифрування прив'язаний до
     # машини (DPAPI), і після переїзду теки чи перевстановлення Windows старі
@@ -195,7 +230,6 @@ def create_backup(session: Session, password: str) -> bytes:
     # значення) кладемо в конверт, щоб на новому ПК було видно, які саме
     # налаштування доведеться ввести заново.
     settings: dict[str, str] = {}
-    unreadable: list[str] = []
     for row in session.query(AppSetting).all():
         if row.value_encrypted is None:
             continue
@@ -304,10 +338,22 @@ def restore_backup(session: Session, file_bytes: bytes, password: str) -> dict[s
         session.query(model).delete()
 
     for model in _TABLE_MODELS:
-        rows = tables.get(model.__tablename__, [])
+        table = model.__tablename__
+        rows = tables.get(table, [])
+        secret_columns = _ENCRYPTED_COLUMNS.get(table, ()) if file_version >= 3 else ()
         for row_data in rows:
+            if secret_columns:
+                # У копії формату 3 ці колонки лежать відкрито (сам файл під
+                # паролем) — шифруємо їх ключем ЦІЄЇ машини, як і решту
+                # секретів. У старіших копіях там ciphertext чужої машини:
+                # чіпати його не можна, інакше вийде подвійне шифрування.
+                row_data = dict(row_data)
+                for column in secret_columns:
+                    value = row_data.get(column)
+                    if value:
+                        row_data[column] = encrypt_value(value)
             session.add(_dict_to_row(model, row_data))
-        counts[model.__tablename__] = len(rows)
+        counts[table] = len(rows)
 
     session.query(AppSetting).delete()
     for key_name, value in settings.items():
