@@ -225,17 +225,18 @@ def undo_moves(moved: list[tuple[Path, Path]]) -> list[str]:
 
 
 def restore_attachments_to_spool(
-    attachments_root: Path, uid: str, current_paths: list[Path]
+    attachments_root: Path, folder_name: str, current_paths: list[Path]
 ) -> list[Path]:
     """Move accepted files back from export to their original mail-spool folder
-    (attachments_root/<uid>/) — the inverse of save_attachments_to_export, used
+    (attachments_root/<folder_name>/, див. mail_spool.spool_folder_name) — the
+    inverse of save_attachments_to_export, used
     when an accepted email is un-accepted. Returns the new spool paths in input
     order (a still-missing source keeps its computed destination so the caller
     can repoint saved_path anyway). Unique-renames on name collision and rolls
     back a partial move, mirroring save_attachments_to_export."""
     if not current_paths:
         return []
-    spool_dir = _contained_child(attachments_root, uid)
+    spool_dir = _contained_child(attachments_root, folder_name)
     spool_dir.mkdir(parents=True, exist_ok=True)
     reserved: set[Path] = set()
     moves = [

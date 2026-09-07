@@ -18,6 +18,7 @@ from app.material_catalog import ensure_seeded as ensure_materials_seeded, load_
 from app.material_classifier import AliasRow
 from app.sender_memory import is_auto_sender
 from app.safe_names import avoid_reserved_device_name
+from app.mail_spool import spool_folder_name
 from app.models import Attachment, EmailMessage, Order
 from app.settings_store import (
     get_imap_login,
@@ -365,7 +366,12 @@ def _save_message_attachments(
     the «скачувати все» toggle on, one junk letter with a giant attachment
     would otherwise fill the workstation's disk. The letter itself still
     imports — only that one oversized file is left behind on the server."""
-    message_dir = attachments_dir / email_message.uid
+    # Тека — за складеним ключем листа, не за самим uid: uid унікальний лише в
+    # межах UIDVALIDITY, і після перестворення скриньки два різні листи
+    # ділили б одну теку (app/mail_spool.spool_folder_name).
+    message_dir = attachments_dir / spool_folder_name(
+        email_message.uid, email_message.uid_validity
+    )
     saved = 0
     for i, att in enumerate(msg.attachments, start=1):
         payload = att.payload or b""

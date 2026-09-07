@@ -158,3 +158,45 @@ def test_redact_hides_anything_after_the_login_command():
     assert redact("[Errno 11001] getaddrinfo failed") == "[Errno 11001] getaddrinfo failed"
     # Довгі полотна обрізаються, щоб один збій не залив лог.
     assert len(redact("x" * 5000)) == 300
+
+
+def test_next_sync_waits_while_the_abandoned_fetch_is_still_alive(monkeypatch, tmp_path):
+    """M.1: потік у Python не можна вбити, тож після таймауту він ДОСІ качає
+    вкладення в ту саму теку спулу. Лок ми віддаємо (інакше зависання
+    заблокувало б пошту назавжди), але другий фетч поверх зомбі дав би файли,
+    що зʼявляються й зникають під ногами приймання листа."""
+    import threading
+    import app.mail_sync_service as service
+    from app.mail_sync_service import MailSyncBusyError, MailSyncTimeoutError
+
+    service._reset_zombies_for_tests()
+    release = threading.Event()
+    calls = []
+
+    def hang(session, path):
+        calls.append(1)
+        release.wait(10)
+        return 0
+
+    monkeypatch.setattr(service, "fetch_new_emails", hang)
+    monkeypatch.setattr(service, "MAIL_SYNC_DEADLINE_SECONDS", 0.3)
+
+    with _session() as session:
+        with pytest.raises(MailSyncTimeoutError):
+            sync_mail(session, tmp_path)
+
+        with pytest.raises(MailSyncBusyError, match="ще не завершилась"):
+            sync_mail(session, tmp_path)
+        assert calls == [1], "другий фетч не має стартувати поверх зомбі"
+        # Лок при відмові не залипає.
+        assert service._sync_lock.acquire(blocking=False)
+        service._sync_lock.release()
+
+    release.set()
+    service._zombie_fetches[0].join(5)
+
+    # Зомбі домер — пошта працює далі без рестарту.
+    monkeypatch.setattr(service, "fetch_new_emails", lambda session, path: 3)
+    with _session() as session:
+        assert sync_mail(session, tmp_path) == 3
+    service._reset_zombies_for_tests()

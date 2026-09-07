@@ -53,6 +53,7 @@ from app.mail_sync_service import (
     MailSyncError,
     run_sync_owned_session,
 )
+from app.mail_spool import spool_folder_name
 from app.models import (
     Attachment,
     ClientSenderMemory,
@@ -1079,7 +1080,9 @@ def reject_email(
     if staged:
         try:
             new_paths = restore_attachments_to_spool(
-                Path(MAIL_ATTACHMENTS_PATH), email.uid, [Path(a.saved_path) for a in staged]
+                Path(MAIL_ATTACHMENTS_PATH),
+                spool_folder_name(email.uid, email.uid_validity),
+                [Path(a.saved_path) for a in staged],
             )
             # Файли переїхали — кеш обходу export більше не відповідає диску.
             clear_export_cache()
@@ -1540,7 +1543,9 @@ def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]
     if attachments:
         old_paths = [Path(a.saved_path) for a in attachments]
         new_paths = restore_attachments_to_spool(
-            Path(MAIL_ATTACHMENTS_PATH), email.uid, old_paths
+            Path(MAIL_ATTACHMENTS_PATH),
+            spool_folder_name(email.uid, email.uid_validity),
+            old_paths,
         )
         moved_pairs = list(zip(old_paths, new_paths))
         # Файли переїхали — кеш обходу export більше не відповідає диску.

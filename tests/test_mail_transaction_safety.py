@@ -239,3 +239,41 @@ def test_failed_unaccept_commit_returns_files_to_export(tmp_path, monkeypatch):
     with Session(engine) as db:
         assert db.scalar(select(Attachment)).saved_path == moved
         assert db.scalars(select(Order)).all() != []
+
+
+def test_network_blink_does_not_accept_a_letter_whose_files_stayed_in_the_spool(
+    tmp_path, monkeypatch
+):
+    """M.2: `Path.exists()` ковтає будь-яку OSError, тож коротке моргання
+    мережевої шари виглядає точно як видалений файл. Наслідок несиметричний:
+    файл не їде в export, а лист усе одно позначається «прийнято» — робота
+    тихо лишається в спулі назавжди. Тепер перевірка йде через
+    `_file_is_missing`, який вважає втратою лише чистий FileNotFoundError."""
+    engine = _database()
+    export_root, mail_root = _wire(monkeypatch, tmp_path)
+
+    blinked = {"n": 0}
+    real_stat = Path.stat
+
+    def flaky_stat(self, *a, **k):
+        # Перші звернення до файлу вкладення — «шара недоступна», далі норма.
+        if self.name == "crown.stl" and blinked["n"] < 1:
+            blinked["n"] += 1
+            raise OSError(64, "The specified network name is no longer available")
+        return real_stat(self, *a, **k)
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email, stl = _letter(db, mail_root / "u1")
+
+        # Після першого підняття OSError stat поводиться нормально, тож
+        # скасовувати підміну не треба (і не варто: undo зняв би й решту).
+        monkeypatch.setattr(Path, "stat", flaky_stat)
+        _accept(db, user, email)
+
+        db.refresh(email)
+        moved = list(export_root.rglob("crown.stl"))
+
+    assert blinked["n"] == 1, "тест мусить справді змоделювати моргання"
+    assert moved, "після моргання файл усе одно має переїхати в export"
+    assert email.status == "прийнято"

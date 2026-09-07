@@ -1,6 +1,8 @@
 """Mail-spool disk usage and a conservative, operator-triggered cleanup.
 
-`mail_attachments/<uid>/` accumulates one folder per imported letter. Accepted
+`mail_attachments/<uid_validity>_<uid>/` accumulates one folder per imported
+letter (теки, створені до складеного імені, звуться самим uid і читаються
+далі — див. `folder_candidates`). Accepted
 letters have their files MOVED into export (the spool folder is left empty),
 but rejected letters — and letters whose files nobody ever needed — keep theirs
 forever. With the «скачувати все» toggle on, that grows a lot faster.
@@ -33,6 +35,37 @@ from app.models import EmailMessage
 logger = logging.getLogger(__name__)
 
 DEFAULT_PRUNE_AFTER_DAYS = 30
+
+
+def spool_folder_name(uid: str, uid_validity: str | None) -> str:
+    """Імʼя теки спулу для листа: `<uid_validity>_<uid>`.
+
+    IMAP UID унікальний ЛИШЕ в межах поточного UIDVALIDITY (див. міграцію
+    0045, яка з тієї ж причини зробила унікальним складений ключ у базі).
+    Тека ж називалась самим uid — тож після перестворення скриньки два різні
+    листи діставали одну теку, і вкладення одного лягали поруч із вкладеннями
+    іншого. На видачі це «двійник, і невідомо, який справжній».
+
+    Порожній uid_validity (рядки, створені до 0045, і скриньки, які його не
+    віддають) лишає старе імʼя — теки з файлами не перейменовуються, бо на них
+    посилаються збережені шляхи вкладень; сумісність тут дешевша за міграцію
+    диска (див. `folder_candidates`).
+    """
+    validity = (uid_validity or "").strip()
+    return f"{validity}_{uid}" if validity else str(uid)
+
+
+def folder_candidates(uid: str, uid_validity: str | None) -> tuple[str, ...]:
+    """Усі імена теки, які можуть належати цьому листу: нове й старе.
+
+    Потрібно скрізь, де тека шукається за листом, а не навпаки: у листа, який
+    приїхав до переходу на складене імʼя, файли лежать у теці зі старою
+    назвою, і вважати її «нічиєю» не можна — прибиральник спулу видалив би
+    живі вкладення.
+    """
+    new = spool_folder_name(uid, uid_validity)
+    legacy = str(uid)
+    return (new,) if new == legacy else (new, legacy)
 
 
 @dataclass(frozen=True)
@@ -76,19 +109,23 @@ def analyze_spool(
         return SpoolReport(0, 0, 0, [])
 
     cutoff = (now or datetime.now()) - timedelta(days=older_than_days)
-    # uid -> [(status, received_at), ...]; the spool folder name IS the
-    # letter's uid, but uid ALONE is not unique — the real key is
-    # (uid, uid_validity) (app/models.py EmailMessage, migration 0045). After
-    # a UIDVALIDITY change two DB rows can share one uid, and a naive
-    # "last one wins" dict let a stale «відхилено» row shadow a live «нове»
-    # row with the same uid, wrongly marking a still-needed folder prunable.
-    # Aggregate per uid instead: a folder is prunable by status only if
-    # EVERY row sharing that uid agrees it's safe.
+    # ІМʼЯ ТЕКИ -> [(status, received_at), ...]. Нові теки звуться
+    # `<uid_validity>_<uid>`, старі — самим uid, і лист може володіти текою в
+    # будь-якому з двох форматів (`folder_candidates`), тож реєструємо обидва.
+    #
+    # Агрегуємо СПИСКОМ, а не «останній виграє»: після зміни UIDVALIDITY два
+    # рядки можуть ділити uid, і застарілий «відхилено» затінював би живий
+    # «нове», позначаючи потрібну теку прибираною. Тека прибирається за
+    # статусом лише коли ВСІ рядки, що на неї претендують, згодні.
     letters: dict[str, list[tuple[str, datetime | None]]] = {}
-    for uid, status, received_at in session.execute(
-        select(EmailMessage.uid, EmailMessage.status, EmailMessage.received_at)
+    for uid, uid_validity, status, received_at in session.execute(
+        select(
+            EmailMessage.uid, EmailMessage.uid_validity,
+            EmailMessage.status, EmailMessage.received_at,
+        )
     ).all():
-        letters.setdefault(uid, []).append((status, received_at))
+        for name in folder_candidates(uid, uid_validity):
+            letters.setdefault(name, []).append((status, received_at))
 
     total_bytes = 0
     total_dirs = 0

@@ -34,6 +34,7 @@ from app.material_catalog import (
     material_id_by_name,
     resolve_material_id,
 )
+from app.mail_reader import _file_is_missing
 from app.models import EmailMessage, Order, StatusEvent, SyncLog
 from app.parser import HEADER_ROWS
 from app.sender_memory import remember_sender
@@ -150,9 +151,14 @@ def accept_letter(
     # Часткове прийняття: рухаються лише файли, обрані для ЦЬОГО кольору.
     # «Нерозібрані» = ще не забрані попередньою партією (order_id is None).
     # Порожній вибір означає «усі, що лишились» — типовий однокольоровий лист.
+    # `_file_is_missing`, а не `Path.exists()`: exists() ковтає будь-яку
+    # OSError, тож коротке моргання мережевої шари (UNC) виглядає точно як
+    # видалений файл. Тут ціна помилки — файл не поїде в export, а лист
+    # позначиться прийнятим (див. `remaining` нижче), тобто робота тихо
+    # лишиться в спулі назавжди.
     unclaimed = [
         a for a in email.attachments
-        if a.order_id is None and Path(a.saved_path).exists()
+        if a.order_id is None and not _file_is_missing(a.saved_path)
     ]
     selected_ids = set(attachment_ids)
     attachments = [a for a in unclaimed if a.id in selected_ids] if selected_ids else unclaimed
@@ -177,7 +183,7 @@ def accept_letter(
     # тріажі; інакше лист прийнято повністю.
     remaining = [
         a for a in email.attachments
-        if a.order_id is None and Path(a.saved_path).exists()
+        if a.order_id is None and not _file_is_missing(a.saved_path)
     ]
     email.status = "нове" if remaining else "прийнято"
 

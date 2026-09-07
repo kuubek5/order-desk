@@ -28,6 +28,32 @@ class MailSyncTimeoutError(MailSyncError):
 
 _sync_lock = Lock()
 
+# Покинуті («зомбі») потоки фетчу: потік у Python не можна вбити, тож після
+# таймауту він живе далі й ДОСІ качає вкладення в ту саму теку спулу зі своєю
+# сесією. Лок ми віддаємо (інакше зависання заблокувало б пошту назавжди), але
+# новий фетч поки не пускаємо: два фетчі в одну теку — це файли, що зʼявляються
+# й зникають під ногами приймання листа, і дублі в дедупі за uid.
+# Список самоочищається: щойно зомбі домер, пошта працює далі без рестарту.
+_zombie_lock = Lock()
+_zombie_fetches: list[Thread] = []
+
+
+def _remember_zombie(worker: Thread) -> None:
+    with _zombie_lock:
+        _zombie_fetches.append(worker)
+
+
+def zombie_fetch_running() -> bool:
+    """Чи живий ще покинутий фетч. Побічно чистить список від домерлих."""
+    with _zombie_lock:
+        _zombie_fetches[:] = [t for t in _zombie_fetches if t.is_alive()]
+        return bool(_zombie_fetches)
+
+
+def _reset_zombies_for_tests() -> None:
+    with _zombie_lock:
+        _zombie_fetches.clear()
+
 
 def is_mail_sync_running() -> bool:
     """True while a mail (IMAP) sync currently holds the lock — the live
@@ -124,6 +150,9 @@ def _fetch_with_deadline(session: Session, attachments_dir: Path) -> int:
             "Mail sync exceeded %ss deadline — abandoning hung IMAP fetch",
             MAIL_SYNC_DEADLINE_SECONDS,
         )
+        # Потік лишається живим і далі пише в теку спулу — запамʼятовуємо його,
+        # щоб наступний тік не поліз туди ж (див. _zombie_fetches).
+        _remember_zombie(worker)
         raise MailSyncTimeoutError(
             "Пошта не відповіла вчасно (зависло зʼєднання з IMAP). "
             "Наступна перевірка запуститься автоматично."
@@ -172,6 +201,16 @@ def sync_mail(session: Session, attachments_dir: Path, *, trigger: str = "manual
     if not _sync_lock.acquire(blocking=False):
         raise MailSyncBusyError(
             "Синхронізація пошти вже виконується. Спробуйте трохи пізніше."
+        )
+
+    # Лок вільний, але попередній фетч міг зависнути й бути покинутим — він
+    # ДОСІ качає вкладення в ту саму теку. Другий фетч поверх нього дає файли,
+    # що зʼявляються й зникають під ногами приймання листа.
+    if zombie_fetch_running():
+        _sync_lock.release()
+        raise MailSyncBusyError(
+            "Попередня перевірка пошти ще не завершилась (зависло зʼєднання). "
+            "Наступна спроба буде автоматично."
         )
 
     try:

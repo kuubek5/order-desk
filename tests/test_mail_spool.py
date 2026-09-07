@@ -101,3 +101,44 @@ def test_prune_is_idempotent(tmp_path, db_session):
     _spool_dir(tmp_path, "3", ("junk.pdf", b"Y" * 20))
     assert prune_spool(db, tmp_path)[0] == 1
     assert prune_spool(db, tmp_path) == (0, 0)
+
+
+# --- M.3: тека спулу за складеним ключем ------------------------------------
+
+
+def test_folder_name_is_uidvalidity_and_uid():
+    """IMAP UID унікальний лише в межах UIDVALIDITY. Тека звалась самим uid,
+    тож після перестворення скриньки два РІЗНІ листи ділили одну теку, і
+    вкладення одного лягали поруч із вкладеннями іншого — на видачі це
+    «двійник, і невідомо, який справжній»."""
+    from app.mail_spool import spool_folder_name
+
+    assert spool_folder_name("42", "99887766") == "99887766_42"
+    # Скриньки, які не віддають UIDVALIDITY, і рядки до міграції 0045.
+    assert spool_folder_name("42", "") == "42"
+    assert spool_folder_name("42", None) == "42"
+
+
+def test_legacy_folder_is_still_owned_by_its_letter():
+    """Теки, створені до складеного імені, не перейменовуються (на них
+    посилаються збережені шляхи вкладень) — але й нічийними не стають."""
+    from app.mail_spool import folder_candidates
+
+    assert folder_candidates("42", "99887766") == ("99887766_42", "42")
+    assert folder_candidates("42", "") == ("42",)
+
+
+def test_prune_does_not_touch_a_legacy_folder_of_a_live_letter(tmp_path, db_session):
+    """Найдорожча помилка тут — прибрати теку живого листа: це видалення
+    файлів оператора."""
+    db = db_session
+    db.add(EmailMessage(
+        uid="42", uid_validity="99887766", status="нове",
+        received_at=datetime.now(),
+    ))
+    db.commit()
+    _spool_dir(tmp_path, "42", ("crown.stl", b"STL"))
+
+    report = analyze_spool(db, tmp_path)
+
+    assert report.prunable_dirs == []
