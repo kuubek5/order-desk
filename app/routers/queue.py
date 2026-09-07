@@ -259,10 +259,27 @@ def remove_queue_view(
     return _views_panel(request, db, user, current)
 
 
+# Скільки знайдених рядків малювати за раз. Пошук легко ловить сотні робіт
+# (наприклад «29» у номері наряду), і сторінка на сотню рядків важила під
+# 400 КБ — на цеховому ПК це помітна пауза заради списку, у якому дивляться
+# перші кілька рядків. «Показати ще» додає таку саму порцію.
+SEARCH_ROWS_PAGE = 50
+SEARCH_ROWS_MAX = 1000
+
+
+def clamp_search_limit(limit) -> int:
+    try:
+        value = int(limit) if limit not in (None, "") else SEARCH_ROWS_PAGE
+    except (TypeError, ValueError):
+        return SEARCH_ROWS_PAGE
+    return max(SEARCH_ROWS_PAGE, min(value, SEARCH_ROWS_MAX))
+
+
 @router.get("/search", response_class=HTMLResponse)
 def get_search(
     request: Request,
     q: str = "",
+    limit: str = "",
     db: Session = Depends(get_db),
 ):
     user = get_current_user(request, db)
@@ -272,33 +289,48 @@ def get_search(
     results = []
     query_term = (q or "").strip()
 
-    truncated = False
+    found_total = 0
+    shown_limit = clamp_search_limit(limit)
     if query_term:
-        # Search in client_name, work_order_no, job_code, sum3d_id
-        # Case-insensitive substring matching across all four fields
-        # Той самий N+1, що й на видачі: рядок пошуку рендерить маркування.
-        all_orders = db.scalars(
-            select(Order).options(selectinload(Order.material))
-        ).all()
+        # Пошук по чотирьох полях: клієнт, наряд, шлях-ID, Sum3D.
+        #
+        # Відбір іде у два кроки. Спершу з бази беруться ЛИШЕ ці чотири поля
+        # плюс id — рядків у базі тисячі, і матеріалізувати їх усі як обʼєкти
+        # ORM заради порівняння підрядка було найдорожчим тут. Потім повні
+        # роботи дочитуються лише для тих id, що потрапили на сторінку.
+        #
+        # Порівняння лишається в Python, а не стає SQL LIKE, свідомо: `lower()`
+        # у SQLite розуміє тільки латиницю, і «Середюк» перестав би знаходитись
+        # з малої літери — а це половина імен у таблиці (ревʼю 07.09.26, P.3).
         query_lower = query_term.lower()
-
-        for order in all_orders:
-            # Check if query appears in any of the four fields (case-insensitive)
+        matched_ids = [
+            row.id
+            for row in db.execute(
+                select(
+                    Order.id,
+                    Order.client_name,
+                    Order.work_order_no,
+                    Order.job_code,
+                    Order.sum3d_id,
+                ).order_by(Order.id.desc())
+            )
             if any(
-                (field and query_lower in (field or "").lower())
-                for field in [
-                    order.client_name,
-                    order.work_order_no,
-                    order.job_code,
-                    order.sum3d_id,
-                ]
-            ):
-                results.append(order)
-
-        # Cap results at 100 and flag if truncated
-        if len(results) > 100:
-            truncated = True
-            results = results[:100]
+                field and query_lower in field.lower()
+                for field in (row.client_name, row.work_order_no, row.job_code, row.sum3d_id)
+            )
+        ]
+        found_total = len(matched_ids)
+        page_ids = matched_ids[:shown_limit]
+        if page_ids:
+            by_id = {
+                order.id: order
+                for order in db.scalars(
+                    select(Order)
+                    .options(selectinload(Order.material))
+                    .where(Order.id.in_(page_ids))
+                )
+            }
+            results = [by_id[i] for i in page_ids if i in by_id]
 
         # Attach folder info for display
         attach_export_folder_uris(db, results)
@@ -311,7 +343,9 @@ def get_search(
             "query": query_term,
             "results": results,
             "focused_ids": focused_ids(db, user),
-            "truncated": truncated,
+            "found_total": found_total,
+            "more_count": max(0, found_total - len(results)),
+            "next_limit": shown_limit + SEARCH_ROWS_PAGE,
             "user": user,
             "statuses": STATUSES,
         },

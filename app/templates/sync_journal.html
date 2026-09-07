@@ -106,7 +106,11 @@
     {% endfor %}
 
     {% if truncated %}
-    <p class="settings-help" style="margin-top:12px;">Показано останні {{ limit }} записів. Уточніть фільтр (день, напрямок або статус), щоб побачити старіші.</p>
+    <p class="settings-help" style="margin-top:12px;">
+        Показано останні {{ limit }} записів.
+        <a href="/journal/sync?direction={{ selected_direction }}&status={{ selected_status }}&day={{ selected_day }}&limit={{ next_limit }}">Показати ще</a>
+        — або уточніть фільтр (день, напрямок, статус), щоб побачити старіші.
+    </p>
     {% endif %}
     {% else %}
     {# Порожньо ≠ добре: журнал міг просто ніколи не заповнюватись. Кажемо

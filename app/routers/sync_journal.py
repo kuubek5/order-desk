@@ -59,7 +59,19 @@ STATUS_LABELS: dict[str, str] = {
 
 # Скільки рядків показуємо за один раз. Журнал росте швидко (кожен запис у
 # таблицю — рядок), тож вікно жорстке, а «є ще» чесно написано на екрані.
-PAGE_LIMIT = 400
+# Сторінка зменшена з 400 до 150: чотириста записів важили ~200 КБ, а дивляться
+# зазвичай кілька останніх. «Показати ще» довантажує таку саму порцію
+# (ревʼю 07.09.26, P.3).
+PAGE_LIMIT = 150
+PAGE_LIMIT_MAX = 2000
+
+
+def clamp_journal_limit(limit) -> int:
+    try:
+        value = int(limit) if limit not in (None, "") else PAGE_LIMIT
+    except (TypeError, ValueError):
+        return PAGE_LIMIT
+    return max(PAGE_LIMIT, min(value, PAGE_LIMIT_MAX))
 
 
 @router.get("/journal/sync", response_class=HTMLResponse)
@@ -69,6 +81,7 @@ def get_sync_journal(
     status: str = "",
     day: str = "",
     restored: str = "",
+    limit: str = "",
     db: Session = Depends(get_db),
 ):
     """Стрічка `SyncLog`, згорнута по днях, з фільтром напрямку/статусу/дня."""
@@ -101,9 +114,10 @@ def get_sync_journal(
             )
             selected_day = day
 
-    entries = db.execute(query.limit(PAGE_LIMIT + 1)).scalars().all()
-    truncated = len(entries) > PAGE_LIMIT
-    entries = entries[:PAGE_LIMIT]
+    page_limit = clamp_journal_limit(limit)
+    entries = db.execute(query.limit(page_limit + 1)).scalars().all()
+    truncated = len(entries) > page_limit
+    entries = entries[:page_limit]
 
     # Групування по днях робить сервер, а не шаблон: у Jinja це вийшов би
     # цикл із памʼяттю про попередній рядок, який мовчки ламається на
@@ -129,7 +143,8 @@ def get_sync_journal(
             "groups": groups,
             "counts": counts,
             "truncated": truncated,
-            "limit": PAGE_LIMIT,
+            "limit": page_limit,
+            "next_limit": page_limit + PAGE_LIMIT,
             "direction_labels": DIRECTION_LABELS,
             "status_labels": STATUS_LABELS,
             "selected_direction": selected_direction,

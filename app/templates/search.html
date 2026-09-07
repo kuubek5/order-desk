@@ -28,8 +28,8 @@
             <div class="search-results">
                 {% if results %}
                     <div class="queue-summary">
-                        Знайдено: <strong>{{ results|length }}</strong> роботи
-                        {% if truncated %}<span class="text-muted"> (показано перші 100)</span>{% endif %}
+                        Знайдено: <strong>{{ found_total }}</strong> роботи
+                        {% if more_count %}<span class="text-muted"> · показано {{ results|length }}</span>{% endif %}
                     </div>
 
                     {# Той самий v2a-рядок, що й у черзі: обгортаємо в .q2, щоб
@@ -63,6 +63,16 @@
                         </table>
                     </div>
                     </div>
+                    {% if more_count %}
+                    {# Та сама сторінковість, що й у черзі: звичайне посилання з
+                       більшим limit — пошук відкривають з палітри, і зайвий
+                       HTMX-стан тут нічого не дає. #}
+                    <div class="qfoot">
+                        <a class="btn qmore" href="/search?q={{ query | urlencode }}&limit={{ next_limit }}">
+                            Показати ще <span class="text-muted">(ще {{ more_count }} нижче)</span>
+                        </a>
+                    </div>
+                    {% endif %}
                 {% else %}
                     <div class="card queue-empty">
                         <svg class="queue-empty-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8" class="duo"/>

@@ -201,20 +201,29 @@ def test_search_multiple_fields():
     assert len(context["results"]) >= 2
 
 
-def test_search_result_limit():
-    """Search results are capped at 100."""
+def test_search_shows_one_page_and_offers_the_rest():
+    """Сторінка пошуку — 50 рядків, але скільки знайдено, сказано чесно.
+
+    Сотня рядків важила під 400 КБ, а дивляться зазвичай перші кілька; решта
+    доступна через «Показати ще» з більшим `limit` (ревʼю 07.09.26, P.3)."""
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         operator = _operator(db)
-        # Create 105 orders with matching query
         for i in range(105):
             db.add(_order(client_name="Test Client", work_order_no=f"order_{i:03d}"))
         db.commit()
 
         context = queue_router_mod.get_search(request=_request(operator.id), q="Test", db=db)
 
-    # Should return exactly 100 (capped)
-    assert len(context["results"]) == 100
+        assert len(context["results"]) == queue_router_mod.SEARCH_ROWS_PAGE
+        assert context["found_total"] == 105          # знайдено — усе
+        assert context["more_count"] == 105 - queue_router_mod.SEARCH_ROWS_PAGE
+
+        wider = queue_router_mod.get_search(
+            request=_request(operator.id), q="Test",
+            limit=str(context["next_limit"]), db=db,
+        )
+        assert len(wider["results"]) == context["next_limit"]
 
 
 def test_search_whitespace_handling():
