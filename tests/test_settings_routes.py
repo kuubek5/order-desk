@@ -737,10 +737,13 @@ def test_selfcheck_reports_unconfigured_rather_than_crashing():
     # Either reason is honest here: get_export_folder_path falls back to a
     # default path that doesn't exist on a test machine, so "не задано" and
     # "не знайдено" are both correct outcomes for an unconfigured install.
-    assert results["export"]["detail"] in {
-        "шлях не задано",
-        "папку не знайдено за вказаним шляхом",
-    }
+    # Формулювання приходить із `check_path_status` — тієї самої проби, що й за
+    # кнопкою «Перевірити» біля поля шляху (C.9): два різні тексти про один і
+    # той самий стан збивали б з пантелику.
+    assert (
+        results["export"]["detail"] == "шлях не задано"
+        or "не знайдено" in results["export"]["detail"]
+    )
 
 
 def test_selfcheck_abandons_a_probe_that_exceeds_the_deadline(monkeypatch):
@@ -783,3 +786,44 @@ def test_selfcheck_rejects_operator():
         with pytest.raises(HTTPException) as exc:
             settings_router_mod.settings_selfcheck(request=_request(operator.id), db=db)
     assert exc.value.status_code == 403
+
+
+def test_selfcheck_export_row_actually_probes_writing(tmp_path, monkeypatch):
+    """C.9: рядок зветься «Папка export доступна на запис» — і мусить це
+    перевіряти, а не лише існування теки.
+
+    Тека, у яку не можна писати, для export — зламана функція: саме туди їдуть
+    вкладення прийнятих листів. Тека робіт техніків навпаки лише читається, і
+    проби запису там бути не повинно — це запис у довільну мережеву шару."""
+    from app.routers.settings import overview as overview_mod
+
+    folder = tmp_path / "export"
+    folder.mkdir()
+    probes: list[tuple[str, bool]] = []
+
+    def spy(path, *, write_probe=True):
+        probes.append((str(path), write_probe))
+        if write_probe:
+            return {"state": "warning", "message": "Папку знайдено, але немає прав на запис"}
+        return {"state": "success", "message": "Папку знайдено"}
+
+    monkeypatch.setattr(overview_mod, "check_path_status", spy)
+    monkeypatch.setattr(
+        settings_connections_mod, "get_export_folder_path", lambda _db: str(folder)
+    )
+    monkeypatch.setattr(
+        settings_connections_mod, "get_technician_files_path", lambda _db: str(folder)
+    )
+
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        messages = _drain(
+            settings_router_mod.settings_selfcheck(request=_request(admin.id), db=db)
+        )
+
+    results = {m["key"]: m for m in messages if "ok" in m}
+    assert results["export"]["ok"] is False            # без права запису — не «зелено»
+    assert "запис" in results["export"]["detail"]
+    assert (str(folder), True) in probes               # export пробували на запис
+    assert (str(folder), False) in probes              # теку техніків — ні

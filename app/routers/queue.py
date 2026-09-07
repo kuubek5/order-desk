@@ -23,7 +23,13 @@ from app.order_folder import (
     attach_export_folder_uris,
     attach_job_code_folder_uris,
 )
-from app.routers.deps import get_current_user, login_redirect, get_db, templates
+from app.routers.deps import (
+    get_current_user,
+    is_loopback_request,
+    login_redirect,
+    get_db,
+    templates,
+)
 from app.services.system_load import snapshot as system_load_snapshot
 from app.services.config_state import sheets_configured
 from app.services.order_dates import parse_sheet_tab
@@ -420,6 +426,8 @@ def import_sheet_history(request: Request, db: Session = Depends(get_db)):
         return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
     if start_background_import():
         request.session["sync_flash"] = {
@@ -450,6 +458,8 @@ def reconcile_sheet_deletions(request: Request, db: Session = Depends(get_db)):
         return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
     # Знімаємо поріг ЛИШЕ для вкладок, чиї видалення запобіжник зараз тримає —
     # саме їх показує банер і саме їх підтверджує оператор. Раніше сюди йшов

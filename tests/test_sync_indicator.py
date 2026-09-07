@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -236,3 +237,45 @@ def test_mass_vanish_banner_route_renders_and_gates():
     finally:
         with ss._mass_vanish_lock:
             ss._mass_vanish_pending.clear()
+
+
+# --- гейт «лише з цього ПК» ---------------------------------------------------
+
+
+def _remote_request(user_id: int):
+    """Той самий адмін, але запит прийшов не з цієї машини."""
+    return SimpleNamespace(
+        session={"user_id": user_id},
+        client=SimpleNamespace(host="192.168.88.50"),
+        headers={},
+    )
+
+
+def test_import_history_is_refused_from_another_machine(monkeypatch):
+    """Докстрінг роуту обіцяв «admin + loopback», а перевірки не було: маючи
+    сесію адміна, важкий повний імпорт можна було запустити з іншого ПК у
+    мережі лабораторії (ревʼю 07.09.26, C.11)."""
+    db = _db()
+    admin = _admin(db)
+    monkeypatch.setattr(
+        queue_router, "start_background_import",
+        lambda: pytest.fail("import must not start for a remote request"),
+    )
+
+    with pytest.raises(HTTPException) as refused:
+        queue_router.import_sheet_history(_remote_request(admin.id), db)
+    assert refused.value.status_code == 403
+
+
+def test_reconcile_deletions_is_refused_from_another_machine(monkeypatch):
+    """Ця дія знімає запобіжник масової архівації — тим паче не для чужого ПК."""
+    db = _db()
+    admin = _admin(db)
+    monkeypatch.setattr(
+        queue_router, "sync_google_sheets",
+        lambda *a, **k: pytest.fail("reconcile must not run for a remote request"),
+    )
+
+    with pytest.raises(HTTPException) as refused:
+        queue_router.reconcile_sheet_deletions(_remote_request(admin.id), db)
+    assert refused.value.status_code == 403

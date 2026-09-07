@@ -366,6 +366,10 @@ def settings_selfcheck(request: Request, db: Session = Depends(get_db)):
     import time as _time
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FTimeout
 
+    # Локальний імпорт: `overview` і `connections` збирає в один роутер
+    # `settings/__init__.py`, і імпорт на рівні модуля замкнув би коло.
+    from .overview import check_path_status
+
     require_settings_admin(request, db)
 
     sheets_ready = sheets_configured(db)
@@ -397,16 +401,29 @@ def settings_selfcheck(request: Request, db: Session = Depends(get_db)):
         res = _probe_imap_login(imap_login, imap_password)
         return res["state"] == "success", False, res["message"]
 
-    def _folder(path_str):
+    def _folder(path_str, *, needs_write: bool):
+        """Та сама проба, що й за кнопкою «Перевірити» біля поля шляху.
+
+        Тут була власна коротка перевірка (`exists` + `is_dir`), і рядок
+        «Папка export доступна на запис» ставав зеленим, жодного разу нічого
+        туди не записавши. Права на мережеву шару видно лише спробою: читання
+        може працювати, а збереження — ні, і дізнатись про це в момент
+        прийняття листа — найгірший варіант.
+
+        Для теки робіт техніків запис не потрібен — звідти лише читають, тож
+        пробу не робимо (ревʼю 07.09.26, C.9)."""
         p = (path_str or "").strip()
         if not p:
             return False, False, "шлях не задано"
-        pp = Path(p)
-        if not pp.exists():
-            return False, False, "папку не знайдено за вказаним шляхом"
-        if not pp.is_dir():
-            return False, False, "шлях вказує не на папку"
-        return True, False, "існує й доступна"
+        result = check_path_status(p, write_probe=needs_write)
+        state, message = result["state"], result["message"]
+        if state == "success":
+            return True, False, message
+        if state == "warning":
+            # Тека є, але писати нікуди. Для export це зламана функція, а не
+            # попередження: саме туди їдуть вкладення прийнятих листів.
+            return not needs_write, True, message
+        return False, False, message
 
     def _disk():
         usage = shutil.disk_usage(Path(DB_PATH).parent)
@@ -432,8 +449,8 @@ def settings_selfcheck(request: Request, db: Session = Depends(get_db)):
     steps = [
         ("sheets", "Доступ до Google Таблиці", _sheets),
         ("imap", "IMAP-зʼєднання зі скринькою", _imap),
-        ("export", "Папка export доступна на запис", lambda: _folder(export_path)),
-        ("technician", "Папка робіт техніків", lambda: _folder(technician_path)),
+        ("export", "Папка export доступна на запис", lambda: _folder(export_path, needs_write=True)),
+        ("technician", "Папка робіт техніків", lambda: _folder(technician_path, needs_write=False)),
         ("disk", "Місце на диску (потрібно ≥2 ГБ)", _disk),
         ("backup", "Резервна копія свіжа", _backup),
         ("update", "Наявність оновлення", _update),
