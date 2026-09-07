@@ -40,11 +40,20 @@ def parse_sheet_tab(sheet_tab: str | None) -> date | None:
 
 def order_date(order: Order) -> date:
     """Business date for both sheet and email sourced orders."""
-    sheet_date = parse_sheet_tab(order.sheet_tab)
+    return order_date_of(order.sheet_tab, order.created_at)
+
+
+def order_date_of(sheet_tab: str | None, created_at: datetime | None) -> date:
+    """Те саме, але з двох полів, а не з обʼєкта роботи.
+
+    Потрібно там, де дати рахують по ВСІХ живих роботах: тягнути заради двох
+    колонок повні рядки ORM — зайва памʼять і час на кожен прохід
+    (ревʼю 07.09.26, C.8)."""
+    sheet_date = parse_sheet_tab(sheet_tab)
     if sheet_date is not None:
         return sheet_date
-    if order.created_at is not None:
-        created_utc = order.created_at.replace(tzinfo=timezone.utc)
+    if created_at is not None:
+        created_utc = created_at.replace(tzinfo=timezone.utc)
         if BUSINESS_TIMEZONE is not None:
             # РОБОЧА дата, не календарна: лист, прийнятий о 00:30 нічною
             # зміною, належить її дню, інакше він падав би у «Завтра».

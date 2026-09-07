@@ -48,7 +48,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.business_day import business_now, business_today
 from app.models import Order, VyrobitokCell, VyrobitokDay, VyrobitokMonth
-from app.services.order_dates import order_date
+from app.services.order_dates import order_date, order_date_of
 from app.stats import parse_int_safe
 
 # Дні, які ЗАРАЗ пересинхронізовує оператор («⟳» у табелі). Фоновий
@@ -287,8 +287,13 @@ def freeze_due_days(db: Session, now: datetime | None = None) -> dict[str, int]:
     days: set[date] = set(
         db.scalars(select(VyrobitokCell.day).distinct()).all()
     )
-    for order in db.scalars(select(Order).where(Order.archived_at.is_(None))):
-        days.add(order_date(order))
+    # Дві колонки, а не повні рядки ORM: дата роботи рахується лише з
+    # `sheet_tab` і `created_at`, а живих робіт у базі тисячі — на кожному
+    # проході морозилки це була марна матеріалізація (ревʼю 07.09.26, C.8).
+    for sheet_tab, created_at in db.execute(
+        select(Order.sheet_tab, Order.created_at).where(Order.archived_at.is_(None))
+    ):
+        days.add(order_date_of(sheet_tab, created_at))
 
     rows = _day_rows(db, min(days), max(days)) if days else {}
     result = {"orders": 0, "slm": 0}

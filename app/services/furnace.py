@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Optional
 
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.orm import Session
 
 from app.config import FURNACE_FRAMES_PATH
@@ -507,14 +507,17 @@ def poll_all(
 def prune_readings(db: Session, now: Optional[datetime] = None) -> int:
     """Прибрати показання, старші за вікно зберігання."""
     cutoff = (now or datetime.now()) - timedelta(days=READINGS_RETENTION_DAYS)
-    rows = db.scalars(
-        select(FurnaceReading).where(FurnaceReading.captured_at < cutoff)
-    ).all()
-    for row in rows:
-        db.delete(row)
-    if rows:
+    # Одним DELETE, а не вибіркою в памʼять і видаленням по рядку: показання
+    # пишуться раз на хвилину на кожну піч, тож за вікно зберігання їх
+    # десятки тисяч, і кожне довелося б спершу перетворити на обʼєкт ORM
+    # (ревʼю 07.09.26, C.8). На рядок історії ніхто не посилається, тож
+    # каскади ORM тут не втрачаються.
+    removed = db.execute(
+        sa_delete(FurnaceReading).where(FurnaceReading.captured_at < cutoff)
+    ).rowcount or 0
+    if removed:
         db.commit()
-    return len(rows)
+    return removed
 
 
 # ── Стан для екрана ─────────────────────────────────────────────────────────
