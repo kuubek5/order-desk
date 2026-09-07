@@ -236,6 +236,12 @@ PREFERENCE_KEYS = {
     # звірки перед «знайдено», порожньо/не задано — один клік, як було.
     # Дефолт свідомо ВИМКНЕНО: це зміна процесу, рішення власника.
     "handout_qc_checklist",
+    # Звірка «після оновлення нічого не зникло» (app/services/health_snapshot.py):
+    # health_snapshot_before — JSON-знімок кількості рядків, знятий ПЕРЕД
+    # встановленням оновлення; health_snapshot_report — результат звірки після
+    # першого старту нової версії, який показує «Стан системи».
+    "health_snapshot_before",
+    "health_snapshot_report",
 }
 
 SETTING_KEYS = {field.key for field in SETTING_FIELDS} | PREFERENCE_KEYS

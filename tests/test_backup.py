@@ -69,8 +69,11 @@ def test_create_backup_returns_valid_envelope():
 
     envelope = json.loads(raw)
     assert envelope["app"] == "order-desk"
-    assert envelope["format_version"] == 1
+    # 2 — копія охоплює всі таблиці (ревʼю 07.09.26); файли версії 1 читаються.
+    assert envelope["format_version"] == 2
     assert "salt" in envelope and "payload" in envelope
+    # Перелічник видно ДО пароля: екран відновлення показує, що всередині.
+    assert envelope["manifest"]["orders"] >= 1
     # The payload must not leak the plaintext secret anywhere in the file.
     assert b"app-specific-password-123" not in raw
 
@@ -157,3 +160,47 @@ def test_restore_replaces_rather_than_merges():
     usernames = {u.username for u in target.query(User).all()}
     assert usernames == {"admin", "operator"}
     assert "stale-user" not in usernames
+
+
+def test_restore_refuses_a_backup_from_a_newer_format():
+    """Копія з майбутньої версії може нести таблиці, яких ця збірка не знає —
+    мовчки відновити її означало б тихо їх викинути (ревʼю 07.09.26)."""
+    import json
+
+    from app.backup import BackupFormatError
+
+    db = Session(_database())
+    _seed(db)
+    envelope = json.loads(create_backup(db, "pw-12345678"))
+    envelope["format_version"] = 99
+    with pytest.raises(BackupFormatError, match="новішою версією"):
+        restore_backup(db, json.dumps(envelope).encode("utf-8"), "pw-12345678")
+
+
+def test_restore_aborts_when_the_result_does_not_match_the_manifest():
+    """Копія несе власний перелік «скільки рядків у якій таблиці». Якщо після
+    вставки числа не збіглись — відкат, а не напівжива база."""
+    import json
+
+    from app.backup import BackupIncompleteError
+
+    db = Session(_database())
+    _seed(db)
+    raw = create_backup(db, "pw-12345678")
+    envelope = json.loads(raw)
+
+    # Підмінюємо перелічник усередині payload: імітуємо втрату рядків.
+    from app.backup import _derive_key
+    from cryptography.fernet import Fernet
+    import base64
+
+    key = _derive_key("pw-12345678", base64.b64decode(envelope["salt"]))
+    payload = json.loads(Fernet(key).decrypt(envelope["payload"].encode("ascii")))
+    payload["manifest"]["orders"] = payload["manifest"]["orders"] + 5
+    envelope["payload"] = Fernet(key).encrypt(json.dumps(payload).encode("utf-8")).decode("ascii")
+
+    before = db.query(Order).count()
+    with pytest.raises(BackupIncompleteError, match="orders"):
+        restore_backup(db, json.dumps(envelope).encode("utf-8"), "pw-12345678")
+    db.rollback()
+    assert db.query(Order).count() == before

@@ -1111,3 +1111,12 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .setv2 .sbk-help[open] .sbk-chevron{transform:rotate(90deg)}
 .setv2 .sbk-help ol{margin:12px 0 8px;padding-left:22px;color:var(--ink-2);font-size:var(--fs-1);line-height:1.75}
 .setv2 .sbk-help ol li{margin-bottom:4px}
+
+/* Звірка після оновлення («Стан системи»). Зелений рядок = перерахували всі
+   таблиці, нічого не зникло; червоний називає таблиці, де рядків поменшало. */
+.scon-health { margin: 12px 0; padding: 11px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card-2); display: grid; gap: 6px; }
+.scon-health.is-ok { border-color: rgba(var(--ok-rgb), .34); background: rgba(var(--ok-rgb), .07); }
+.scon-health.is-bad { border-color: rgba(var(--alarm-rgb), .45); background: rgba(var(--alarm-rgb), .09); }
+.scon-health strong { font-size: var(--fs-2); }
+.scon-health ul { margin: 0; padding-left: 18px; }
+.scon-health li { font-size: var(--fs-1); }

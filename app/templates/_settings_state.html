@@ -25,6 +25,33 @@
                     {% endfor %}
                 </div>
 
+                {# ── Звірка після оновлення ──────────────────────────────
+                   Застосунок рахує рядки в кожній таблиці ПЕРЕД встановленням
+                   оновлення і звіряє після першого старту нової версії.
+                   Показуємо результат, поки він є: зелений рядок заспокоює,
+                   червоний називає таблиці, де рядків стало менше. #}
+                {% if update_health %}
+                <div class="scon-health {% if update_health.ok %}is-ok{% else %}is-bad{% endif %}">
+                    {% if update_health.ok %}
+                    <strong>Оновлення {{ update_health.from_version }} → {{ update_health.to_version }}: усе на місці.</strong>
+                    <span class="settings-help">
+                        Після оновлення перераховано всі таблиці бази.
+                        {% if update_health.totals %}
+                        Зараз: {% for name, n in update_health.totals.items() %}{{ n }} {{ {'orders': 'робіт', 'status_events': 'записів історії', 'clients': 'клієнтів', 'vyrobitok_cells': 'клітинок Виробітку', 'machines': 'верстатів', 'furnaces': 'печей'}.get(name, name) }}{% if not loop.last %} · {% endif %}{% endfor %}.
+                        {% endif %}
+                    </span>
+                    {% else %}
+                    <strong>УВАГА. Після оновлення {{ update_health.from_version }} → {{ update_health.to_version }} рядків стало менше.</strong>
+                    <ul>
+                        {% for name, pair in update_health.lost.items() %}
+                        <li class="mono">{{ name }}: було {{ pair[0] }}, стало {{ pair[1] }}</li>
+                        {% endfor %}
+                    </ul>
+                    <span class="settings-help">Не працюй далі з базою: відновись із резервної копії («Резервна копія» нижче) і скажи розробнику.</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+
                 {% if can_edit(user, 'state') %}
                 <div class="scon-diag" data-selfcheck>
                     <div class="scon-diag-head">

@@ -5,6 +5,7 @@ a bulk overwrite of a row, so a lab/logist/technician's own edits elsewhere
 in that row are left untouched.
 """
 
+import logging
 from datetime import datetime
 
 import gspread
@@ -12,6 +13,9 @@ import gspread
 from app.models import Order
 from app.parser import HEADER_ROWS
 from app.sheets import call_with_retry
+
+logger = logging.getLogger(__name__)
+
 
 # 1-indexed gspread columns, matching the 0-indexed positions in app/parser.py
 # (idx11 -> col 12, idx12 -> col 13, idx13 -> col 14).
@@ -154,7 +158,10 @@ def clear_order_row(worksheet: gspread.Worksheet, order: Order) -> bool:
     Стирання не має «оптимістичного» варіанта: `clear_placeholder_row` чистить
     A:K цілком, тож влучання в сусідній рядок знищує чужу живу роботу у
     спільній таблиці без жодного сліду. Не підтвердили позицію — не стираємо.
-    Повертає False, якщо стирання пропущено."""
+    Повертає False, якщо стирання пропущено. Перед стиранням вміст рядка
+    читається й лягає в журнал (`SheetRowErase`-рядок пише викликач): у
+    спільній таблиці «зникло, і невідомо що там було» — найгірший результат,
+    тож ми завжди лишаємо слід, з якого рядок можна набрати назад."""
     col, expected = _identity_cell(order)
     if col is None or not expected:
         # Нема з чим звірити (наряд-less лабораторний рядок, клієнт без
@@ -165,7 +172,14 @@ def clear_order_row(worksheet: gspread.Worksheet, order: Order) -> bool:
     row = _resolve_row(worksheet, order)
     if row is None:
         return False
+    erased = read_row_values(worksheet, row)
+    logger.warning(
+        "Стираю рядок %s вкладки %s (робота %s). Вміст до стирання: %s",
+        row, getattr(order, "sheet_tab", "?"), getattr(order, "id", "?"),
+        erased if erased else "не прочитано",
+    )
     clear_placeholder_row(worksheet, row)
+    _LAST_ERASED[getattr(order, "id", 0)] = (row, erased)
     return True
 
 
@@ -217,6 +231,21 @@ def paint_row_fills(spreadsheet: gspread.Spreadsheet, rows: list[tuple[int, int]
     used when the operator un-marks an accidentally-found work so the sheet
     goes back to "pending" and the next sync doesn't read it as issued."""
     _set_row_fills(spreadsheet, rows, _BLUE)
+
+
+def read_row_values(worksheet: gspread.Worksheet, row: int) -> list[str]:
+    """Вміст A:K рядка — щоб було ЩО записати в журнал перед стиранням.
+
+    Помилка читання не має зривати саму дію: журнал це страховка, а не умова.
+    Тоді повертаємо порожній список, і викликач напише «вміст не прочитано».
+    """
+    a1 = f"A{row}:{gspread.utils.rowcol_to_a1(row, COL_CAM_COMMENT)}"
+    try:
+        values = call_with_retry(lambda: worksheet.get_values(a1)) or []
+    except Exception:  # noqa: BLE001 — журнал ніколи не блокує стирання
+        logger.warning("Не прочитали рядок %s перед стиранням", row, exc_info=True)
+        return []
+    return [str(v) for v in (values[0] if values else [])]
 
 
 def clear_placeholder_row(worksheet: gspread.Worksheet, row: int) -> None:
@@ -314,6 +343,17 @@ def write_rework_calculated(worksheet: gspread.Worksheet, order: Order, value: s
         return False
     call_with_retry(lambda: worksheet.update_cell(row, COL_REDO_CALCULATED, value or ""))
     return True
+
+
+# Останній стертий вміст на роботу — щоб викликач, у якого є сесія БД, поклав
+# його в «Журнал синку» одразу після стирання. Памʼять процесу, кілька рядків:
+# журнал у базі це вже робота викликача, тут лише передавальна ланка.
+_LAST_ERASED: dict[int, tuple[int, list[str]]] = {}
+
+
+def take_last_erased(order_id: int) -> tuple[int, list[str]] | None:
+    """Забрати (і прибрати) вміст рядка, стертого для цієї роботи."""
+    return _LAST_ERASED.pop(order_id, None)
 
 
 class RowOccupiedError(RuntimeError):

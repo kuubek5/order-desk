@@ -35,6 +35,7 @@ from app.config import (
 )
 from app.db import SessionLocal, db_file, engine
 from app.schema import ensure_schema
+from app.services.health_snapshot import check_after_update
 from app import perf
 from app.monthly_backup import ensure_monthly_snapshot
 from app.export_scanner import list_export_client_names_cached
@@ -729,6 +730,16 @@ async def lifespan(_: FastAPI):
         except Exception:
             db.rollback()
             logger.exception("Material catalog seed/backfill at startup failed")
+
+    # Перша дія після міграцій: звірити базу зі знімком, знятим перед
+    # встановленням оновлення. Мовчить, якщо оновлення не було.
+    with SessionLocal() as db:
+        try:
+            check_after_update(db)
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("Звірка стану після оновлення не виконалась")
 
     # Warm the sheet write-back worker's cache (open the spreadsheet once) so the
     # very first operator edit reflects in the sheet in ~3s instead of ~40s. Best

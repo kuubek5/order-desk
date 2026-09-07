@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 from app.__version__ import VERSION
+from app.services.health_snapshot import remember_before_update
 from app.changelog import load_changelog
 from app.routers.deps import (
     get_current_user,
@@ -135,6 +136,17 @@ def install_update(request: Request, db: Session = Depends(get_db)):
     if release is None:
         request.session["settings_flash"] = {"kind": "error", "message": "Оновлень немає"}
         return RedirectResponse("/settings", status_code=303)
+
+    # Знімок «скільки чого в базі» ПЕРЕД оновленням: після першого старту нової
+    # версії застосунок звірить числа й покаже на «Стані системи», чи нічого не
+    # зникло (app/services/health_snapshot.py). Збій знімка не має зривати
+    # оновлення — це страховка, а не умова.
+    try:
+        remember_before_update(db)
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.exception("Не вдалося зняти знімок стану перед оновленням")
 
     try:
         Thread(

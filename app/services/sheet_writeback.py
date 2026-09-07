@@ -30,6 +30,7 @@ from app.sheet_writer import (
     RowOccupiedError,
     resolve_order_row,
     restore_order_row,
+    take_last_erased,
     write_calculated,
     write_order_fields,
     write_rework_calculated,
@@ -427,10 +428,19 @@ def clear_sheet_row_background(order_id: int) -> None:
                     ))
                     bg.commit()
                     return
+                # У журнал іде ВМІСТ стертого рядка: у спільній таблиці
+                # «щось зникло, і невідомо що» — найгірший результат, а так
+                # рядок завжди можна набрати назад із «Журналу синку».
+                erased = take_last_erased(order_id)
+                detail = ""
+                if erased is not None:
+                    row_no, values = erased
+                    shown = " | ".join(v for v in values if v) or "порожній"
+                    detail = f" (рядок {row_no}: {shown})"
                 bg.add(
                     SyncLog(
                         direction="db_to_sheet", sheet_tab=sheet_tab, status="ok",
-                        message=f"видалено роботу {order_id}: рядок очищено",
+                        message=f"видалено роботу {order_id}: рядок очищено{detail}",
                     )
                 )
                 bg.commit()

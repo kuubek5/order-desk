@@ -312,3 +312,53 @@ class TestEmptyCellIsNotAConfirmation:
         ws = self._worksheet("", [])
         assert sheet_writer.clear_order_row(ws, order) is False
         assert cleared == []
+
+
+class TestErasedRowLeavesATrace:
+    """Ревʼю 07.09.26: у спільній таблиці «щось зникло, і невідомо що там було»
+    — найгірший результат. Перед стиранням вміст рядка читається й лягає в
+    журнал, щоб рядок можна було набрати назад."""
+
+    def _worksheet(self, cell_value, column_values, row_values=None):
+        ws = MagicMock()
+        ws.id = 11
+        ws.cell.return_value = SimpleNamespace(value=cell_value)
+        ws.col_values.return_value = column_values
+        ws.get_values.return_value = [row_values] if row_values else []
+        return ws
+
+    def _lab_order(self):
+        return SimpleNamespace(
+            id=42, row_number=7, source="lab", work_order_no="24122",
+            client_name=None, sheet_tab="26.08.26",
+        )
+
+    def test_row_content_is_captured_before_the_wipe(self, monkeypatch):
+        import app.sheet_writer as sheet_writer
+
+        monkeypatch.setattr(sheet_writer, "clear_placeholder_row", lambda ws, row: None)
+        ws = self._worksheet("24122", [], ["1", "24122", "2", "мono a3", "анатомія"])
+
+        assert sheet_writer.clear_order_row(ws, self._lab_order()) is True
+        row_no, values = sheet_writer.take_last_erased(42)
+        assert row_no == 13
+        assert "24122" in values
+        # Забрали — вдруге вже порожньо, щоб старий вміст не приліпився до
+        # наступного стирання.
+        assert sheet_writer.take_last_erased(42) is None
+
+    def test_unreadable_row_still_gets_erased(self, monkeypatch):
+        """Журнал — страховка, а не умова: збій читання не блокує стирання."""
+        import app.sheet_writer as sheet_writer
+
+        cleared = []
+        monkeypatch.setattr(
+            sheet_writer, "clear_placeholder_row", lambda ws, row: cleared.append(row)
+        )
+        ws = self._worksheet("24122", [])
+        ws.get_values.side_effect = RuntimeError("проксі обірвав зʼєднання")
+
+        assert sheet_writer.clear_order_row(ws, self._lab_order()) is True
+        assert cleared == [13]
+        row_no, values = sheet_writer.take_last_erased(42)
+        assert values == []

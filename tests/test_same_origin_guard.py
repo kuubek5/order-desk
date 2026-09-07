@@ -8,8 +8,65 @@ origin (host:port). Запити без Origin/Sec-Fetch-Site (curl, тести)
 
 from __future__ import annotations
 
+import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
+
 from app import web
+from app.db import Base
 from tests.asgi_client import MiniClient
+
+
+@pytest.fixture(autouse=True)
+def _empty_db(monkeypatch):
+    """Порожня база в памʼяті на кожен тест цього файлу.
+
+    Без неї тести проходили лише там, де поруч валяється справжній
+    kuubmill.db: на чистій машині (тобто в CI) `/login` падав із
+    `no such table: app_settings`. А порожньої бази замало: без ліцензії
+    застосунок відповідає редиректом на /license РАНІШЕ за origin-стіну, і
+    перевірка міряла б не те, що заявлено.
+    """
+    import app.models  # noqa: F401 — реєструє таблиці в Base.metadata
+    from app import license as license_module
+    from app.routers import deps
+    from app.settings_store import set_setting
+
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
+    Base.metadata.create_all(engine)
+
+    def session_factory():
+        return Session(engine, expire_on_commit=False)
+
+    monkeypatch.setattr(deps, "SessionLocal", session_factory)
+    monkeypatch.setattr(web, "SessionLocal", session_factory, raising=False)
+
+    private = Ed25519PrivateKey.generate()
+    monkeypatch.setattr(
+        license_module,
+        "_PUBLIC_KEY_BYTES",
+        private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw),
+    )
+    with session_factory() as db:
+        set_setting(
+            db,
+            "license_key",
+            license_module.encode_license_key(
+                {
+                    "machine_id": license_module.get_machine_id(),
+                    "customer": "tests",
+                    "issued_at": "2026-01-01T00:00:00",
+                    "expires_at": "2099-01-01T00:00:00",
+                },
+                private,
+            ),
+        )
+        db.commit()
 
 
 def _post(headers: dict | None = None):

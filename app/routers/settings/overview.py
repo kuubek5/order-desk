@@ -17,6 +17,7 @@ from app import sync_control
 from app.business_day import set_rollover
 from app.changelog import load_changelog
 from app.services.handout_qc import qc_checklist_enabled
+from app.services.health_snapshot import last_report
 from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH
 from app.mail_spool import analyze_spool
 from app.services.section_gate import sections_admin
@@ -329,6 +330,8 @@ def get_settings(
         "spool_report": (_spool_report := analyze_spool(db, Path(MAIL_ATTACHMENTS_PATH))),
         # "Стан системи" flow map — honest, cheap counts (one scalar each).
         # No export-folder scan here; that's the heavy walk we keep off page load.
+        # Звіт звірки після останнього оновлення (порожньо, поки оновлень не було).
+        "update_health": last_report(db),
         "state_nodes": [
             {
                 "n": db.scalar(

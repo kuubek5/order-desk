@@ -33,42 +33,86 @@ from sqlalchemy.orm import Session
 from app.business_day import utc_now
 from app.crypto import decrypt_value, encrypt_value
 from app.models import (
+    ActionLog,
     AppSetting,
     Attachment,
     Client,
     ClientNameAlias,
+    ClientSenderMemory,
     Comment,
     EmailMessage,
+    Feedback,
+    FeedbackImage,
+    Furnace,
+    FurnaceReading,
+    Machine,
+    MailFilterCategory,
+    MailFilterRule,
+    Material,
+    MaterialAlias,
     Order,
     OrderFocus,
     ReworkRecord,
+    SavedQueueView,
     ShiftNote,
     ShiftNoteImage,
     StatusEvent,
     SyncLog,
     User,
+    VyrobitokCell,
+    VyrobitokDay,
+    VyrobitokMonth,
 )
 
-FORMAT_VERSION = 1
+# 2 — копія охоплює ВСІ таблиці (див. `_TABLE_MODELS`). У версії 1 їх було 13
+# із 27: переїзд на новий ПК привозив роботи й операторів, але лишав позаду
+# пічки, верстати з паролями, матеріали, фільтри пошти, журнал дій і ВЕСЬ
+# Виробіток (зарплатні цифри). Файли версії 1 читаються далі — просто в них
+# менше таблиць (ревʼю 07.09.26).
+FORMAT_VERSION = 2
 KDF_ITERATIONS = 480_000
 
 # Parent-first: safe insert order under foreign-key constraints. Restore
 # deletes in the reverse of this list (children before parents) and
 # inserts in this order (parents before children).
+#
+# Список ПОВНИЙ і явний, а не зібраний з `Base.metadata`: порядок вставки
+# тримає саме людина (цикл orders ↔ email_messages автоматичний сортувальник
+# не розвʼязує). Щоб нову таблицю не забули, її відсутність тут валить
+# `tests/test_backup_covers_every_table.py` — там же список свідомих
+# винятків.
 _TABLE_MODELS = [
+    # Батьки без залежностей.
     User,
+    Client,
+    Material,
+    MaterialAlias,
+    MailFilterCategory,
+    MailFilterRule,
+    Furnace,
+    FurnaceReading,
+    Machine,
+    SyncLog,
+    ClientNameAlias,
+    ClientSenderMemory,
+    VyrobitokMonth,
+    VyrobitokCell,
+    VyrobitokDay,
+    # Роботи й усе, що на них посилається.
     Order,
     EmailMessage,
+    Attachment,
     StatusEvent,
+    ActionLog,
     Comment,
     ReworkRecord,
-    Attachment,
-    ClientNameAlias,
-    Client,
-    SyncLog,
     OrderFocus,
+    SavedQueueView,
+    # Зміна і звернення.
     ShiftNote,
     ShiftNoteImage,
+    Feedback,
+    FeedbackImage,
 ]
 
 
@@ -78,6 +122,18 @@ class BackupPasswordError(Exception):
 
 class BackupFormatError(Exception):
     """Not a recognizable KuubMill backup file."""
+
+
+class BackupIncompleteError(Exception):
+    """Відновлення поклало в базу не те, що лежало у файлі.
+
+    Копія несе власний перелік «скільки рядків у якій таблиці» (`manifest`).
+    Якщо після вставки числа не збіглись, ми НЕ лишаємо напівживу базу мовчки:
+    транзакція відкочується, і адмін бачить, чого саме бракує.
+    """
+
+
+_MODEL_BY_TABLE = {model.__tablename__: model for model in _TABLE_MODELS}
 
 
 def _row_to_dict(obj: Any) -> dict[str, Any]:
@@ -129,7 +185,16 @@ def create_backup(session: Session, password: str) -> bytes:
             continue
         settings[row.key] = decrypt_value(row.value_encrypted)
 
-    payload = json.dumps({"tables": tables, "settings": settings}, ensure_ascii=False).encode("utf-8")
+    # Перелік «таблиця → скільки рядків» їде ВСЕРЕДИНІ копії, під тим самим
+    # шифром. Після відновлення ми звіряємо базу з ним: копія сама себе
+    # перевіряє, і «відновилось, але половини нема» стає видно одразу.
+    manifest = {name: len(rows) for name, rows in tables.items()}
+    manifest[AppSetting.__tablename__] = len(settings)
+
+    payload = json.dumps(
+        {"tables": tables, "settings": settings, "manifest": manifest},
+        ensure_ascii=False,
+    ).encode("utf-8")
 
     salt = os.urandom(16)
     key = _derive_key(password, salt)
@@ -137,6 +202,9 @@ def create_backup(session: Session, password: str) -> bytes:
 
     envelope = {
         "format_version": FORMAT_VERSION,
+        # Скільки чого всередині — видно ДО введення пароля (сам вміст
+        # зашифрований). Це те, що показує екран перед відновленням.
+        "manifest": manifest,
         "app": "order-desk",
         "created_at": utc_now().isoformat() + "Z",
         "kdf": "pbkdf2-sha256",
@@ -164,6 +232,15 @@ def restore_backup(session: Session, file_bytes: bytes, password: str) -> dict[s
 
     if not isinstance(envelope, dict) or envelope.get("app") != "order-desk" or "payload" not in envelope or "salt" not in envelope:
         raise BackupFormatError("Файл резервної копії пошкоджений або це не бекап KuubMill.")
+
+    # Копія з МАЙБУТНЬОЇ версії формату може нести таблиці, яких ця збірка ще
+    # не знає: мовчки відновити її означало б тихо їх викинути.
+    file_version = envelope.get("format_version", 1)
+    if not isinstance(file_version, int) or file_version > FORMAT_VERSION:
+        raise BackupFormatError(
+            f"Копія зроблена новішою версією KuubMill (формат {file_version}, "
+            f"ця збірка розуміє {FORMAT_VERSION}). Онови застосунок і спробуй знову."
+        )
 
     iterations = envelope.get("kdf_iterations", KDF_ITERATIONS)
     try:
@@ -197,6 +274,27 @@ def restore_backup(session: Session, file_bytes: bytes, password: str) -> dict[s
     for key_name, value in settings.items():
         session.add(AppSetting(key=key_name, value_encrypted=encrypt_value(value)))
     counts["app_settings"] = len(settings)
+
+    # Звірка з перелічником копії ДО коміту: не збіглось — нічого не міняємо.
+    manifest = data.get("manifest") or {}
+    session.flush()
+    missing: list[str] = []
+    for table_name, expected in manifest.items():
+        model = _MODEL_BY_TABLE.get(table_name)
+        actual = (
+            session.query(AppSetting).count()
+            if table_name == AppSetting.__tablename__
+            else (session.query(model).count() if model is not None else None)
+        )
+        if actual is None:
+            missing.append(f"{table_name}: ця збірка такої таблиці не знає ({expected} рядків у копії)")
+        elif actual != expected:
+            missing.append(f"{table_name}: у копії {expected}, у базі {actual}")
+    if missing:
+        session.rollback()
+        raise BackupIncompleteError(
+            "Відновлення скасовано — база не збіглася з копією: " + "; ".join(missing)
+        )
 
     session.commit()
     return counts
