@@ -205,7 +205,13 @@ def _stream_to_file(response: requests.Response, dest_dir: Path, filename: str) 
                 if total > _MAX_BYTES:
                     raise LinkDownloadError("файл завеликий (понад ліміт)")
                 fh.write(chunk)
-    except LinkDownloadError:
+    except BaseException:
+        # BaseException, а не лише LinkDownloadError: обрив мережі
+        # (ChunkedEncodingError), таймаут або зупинка процесу посеред потоку
+        # лишали ОБРІЗАНИЙ файл у спулі. Рядка Attachment для нього не
+        # створюється, тож у базі його не видно — але він лежить поруч зі
+        # справжніми й їде в «Відкрити папку» як ще одна коронка
+        # (ревʼю 07.09.26, M.7).
         dest.unlink(missing_ok=True)
         raise
     if total == 0:

@@ -277,3 +277,64 @@ def test_network_blink_does_not_accept_a_letter_whose_files_stayed_in_the_spool(
     assert blinked["n"] == 1, "тест мусить справді змоделювати моргання"
     assert moved, "після моргання файл усе одно має переїхати в export"
     assert email.status == "прийнято"
+
+
+def test_two_operators_cannot_accept_the_same_letter_at_once(tmp_path, monkeypatch):
+    """M.7: операторів двоє (CLAUDE.md §1), а гейт `status != "нове"` стоїть у
+    роуті ДО виклику сервісу — між перевіркою і створенням роботи не було
+    нічого. Два кліки на одному листі давали дві роботи, два рядки в таблиці й
+    подвоєні файли в export. Лок саме на ЛИСТ: паралельне приймання РІЗНИХ
+    листів — нормальна робота вдвох."""
+    from app.services import mail_accept as svc
+
+    engine = _database()
+    _wire(monkeypatch, tmp_path)
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        email, _ = _letter(db, tmp_path / "spool" / "u1")
+
+        # Перший оператор «усередині» приймання цього листа.
+        busy = svc._letter_lock(email.id)
+        assert busy.acquire(blocking=False)
+        try:
+            result = svc.accept_letter(
+                db, user, email, client_name="Люмі-Дент", material_color="моно а3"
+            )
+        finally:
+            busy.release()
+
+    assert not result.ok
+    assert "інший оператор" in result.error
+
+
+def test_a_busy_letter_does_not_block_another_one(tmp_path, monkeypatch):
+    from app.services import mail_accept as svc
+
+    engine = _database()
+    _wire(monkeypatch, tmp_path)
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        first, _ = _letter(db, tmp_path / "spool" / "u1")
+        (tmp_path / "spool" / "u2").mkdir(parents=True)
+        stl = tmp_path / "spool" / "u2" / "bridge.stl"
+        stl.write_bytes(b"STL")
+        second = EmailMessage(uid="u2", status="нове", from_address="lumi@ukr.net",
+                              subject="моно а3", attachments_status="ready")
+        db.add(second)
+        db.flush()
+        db.add(Attachment(email_message_id=second.id, filename="bridge.stl",
+                          saved_path=str(stl)))
+        db.commit()
+
+        busy = svc._letter_lock(first.id)
+        assert busy.acquire(blocking=False)
+        try:
+            result = svc.accept_letter(
+                db, user, second, client_name="Люмі-Дент", material_color="моно а3"
+            )
+        finally:
+            busy.release()
+
+    assert result.ok, result.error

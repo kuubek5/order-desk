@@ -44,7 +44,10 @@ _PATTERNS = {
 # «емоційно» — «емо» (аудит 05.09.26, пошта M-9). Довші форми (моноліт,
 # монолит, emotions) стоять окремими альтернативами ПЕРЕД префіксом — саме щоб
 # нова межа не відрізала їх разом із хибними спрацюваннями.
-_NOT_LETTER = r"(?![^\W\d_])"
+# Межа назви матеріалу: далі не має йти ані літера, ані ЦИФРА. Раніше
+# цифри й @ межею не вважались, тож «emo123» і «emo@clinic.com» читались
+# як матеріал «emo» (ревʼю 07.09.26, M.7).
+_NOT_LETTER = r"(?![^\W_])"
 _MAT_FAMILY = (
     r"(?:цирконі[йяю]\w*|zircon\w*|пмма|pmma|титан\w*|titan\w*"
     r"|моноліт\w*|монолит\w*|monolight|monolit\w*"
@@ -324,7 +327,7 @@ def guess_fields_from_text(
     # text, leaving the guess blank for the operator rather than guessing wrong.
     if guesses["material_color_guess"] is None and material_alias_rows is not None:
         for candidate in (subject_clean, body):
-            category = classify_material(candidate, material_alias_rows)
+            category = classify_material(candidate, material_alias_rows, free_text=True)
             if category:
                 guesses["material_color_guess"] = category
                 break

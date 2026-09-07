@@ -161,3 +161,36 @@ def test_ordinary_words_are_not_materials(text):
 def test_real_material_wording_still_resolves(raw, expected):
     """Фільтр омонімів не сміє з'їдати справжні формулювання."""
     assert classify_material(raw) == expected
+
+
+# --- M.7: token-аліаси не працюють по вільному тексту листа -----------------
+
+
+def test_free_text_ignores_short_token_aliases():
+    """token-аліаси («500», «ti», «nat», «st») писались під КОРОТКУ клітинку
+    «Колір роботи», де окреме «500» справді означає матеріал. У вільному
+    тексті листа вони давали впевнено неправильний матеріал."""
+    assert classify_material("оплата 500 грн", free_text=True) is None
+    assert classify_material("Ti amo", free_text=True) is None
+    assert classify_material("замовлення на 800 гривень", free_text=True) is None
+    # Повнослівні аліаси («nature», «моно») лишаються ввімкненими й у вільному
+    # тексті — вимкнено саме КОРОТКІ токени, які без клітинки нічого не
+    # означають.
+
+
+def test_free_text_still_reads_unambiguous_words():
+    """«Циркон», «пмма», «титан» самі по собі однозначні — їх вимикати нема за що."""
+    assert classify_material("зробіть, будь ласка, з цирконію", free_text=True) == "Цирконій"
+    assert classify_material("це тимчасова коронка", free_text=True) == "ПММА"
+
+
+def test_cell_mode_keeps_token_aliases():
+    """У клітинці таблиці «500» і далі означає A1 опак (CLAUDE.md §3)."""
+    assert classify_material("500") == "Цирконій"
+
+
+def test_vremena_is_not_a_material_but_vremennaya_is():
+    r"""«времена змінились» — не ПММА; «временная коронка» — саме ПММА.
+    Різниця в одній «н», і широке «времен\w*» зʼїло б обидва."""
+    assert classify_material("времена змінились", free_text=True) is None
+    assert classify_material("временная коронка", free_text=True) == "ПММА"

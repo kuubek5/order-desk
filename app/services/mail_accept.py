@@ -17,6 +17,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Lock
 import logging
 
 from sqlalchemy.orm import Session
@@ -76,6 +77,27 @@ class AcceptResult:
         return self.error is None
 
 
+# Лист приймається В ОДНОМУ процесі, але операторів двоє (CLAUDE.md §1), і
+# нічого не заважало їм натиснути «Прийняти» на одному листі одночасно: гейт
+# `email.status != "нове"` стоїть у роуті ДО виклику, а між перевіркою і
+# створенням роботи немає нічого — виходило дві роботи на один лист, два рядки
+# в таблиці й подвоєні файли в export (ревʼю 07.09.26, M.7).
+#
+# Лок саме на ЛИСТ, а не глобальний: паралельне приймання РІЗНИХ листів —
+# нормальна робота вдвох, гальмувати її нема за що.
+_letter_locks_guard = Lock()
+_letter_locks: dict[int, Lock] = {}
+
+
+def _letter_lock(email_id: int) -> Lock:
+    with _letter_locks_guard:
+        lock = _letter_locks.get(email_id)
+        if lock is None:
+            lock = Lock()
+            _letter_locks[email_id] = lock
+        return lock
+
+
 def accept_letter(
     db: Session,
     user,
@@ -97,6 +119,41 @@ def accept_letter(
     поки в ньому лишаються нерозібрані файли, він тримається в тріажі зі
     статусом «нове».
     """
+    attachment_ids = list(attachment_ids or [])
+
+    lock = _letter_lock(email.id)
+    if not lock.acquire(blocking=False):
+        return AcceptResult(
+            error="Цей лист саме приймає інший оператор — оновіть сторінку за мить"
+        )
+    try:
+        return _accept_letter_locked(
+            db, user, email,
+            client_name=client_name, material_color=material_color, kind=kind,
+            quantity=quantity, folder_pick=folder_pick, folder_new=folder_new,
+            material_folder=material_folder, attachment_ids=attachment_ids,
+            accept_anyway=accept_anyway,
+        )
+    finally:
+        lock.release()
+
+
+def _accept_letter_locked(
+    db: Session,
+    user,
+    email: EmailMessage,
+    *,
+    client_name: str,
+    material_color: str = "",
+    kind: str = "",
+    quantity: str = "",
+    folder_pick: str = "",
+    folder_new: str = "",
+    material_folder: str = "",
+    attachment_ids: list[int] | None = None,
+    accept_anyway: bool = False,
+) -> AcceptResult:
+    """Тіло `accept_letter` під локом листа — див. коментар до `_letter_locks`."""
     attachment_ids = list(attachment_ids or [])
 
     if email.attachments_status == "pending":
@@ -143,7 +200,12 @@ def accept_letter(
     db.add(new_order)
     db.flush()
 
-    email.order_id = new_order.id
+    # Тільки ПЕРША робота листа. Багатокольоровий лист приймається партіями, і
+    # переписування на кожній лишало в листі памʼять лише про ОСТАННЮ; звʼязок
+    # з рештою тримає Order.source_email_id, а це поле лишається legacy-містком
+    # для листів до міграції 0012 (ревʼю 07.09.26, M.7).
+    if email.order_id is None:
+        email.order_id = new_order.id
     db.add(
         StatusEvent(order_id=new_order.id, operator_id=user.id, status="нове", actor=user.username)
     )
@@ -280,10 +342,7 @@ def _move_attachments(
     них невдалий коміт не мав би чим відкотити диск (аудит, пошта C-1).
     """
     export_root = Path(get_export_folder_path(db))
-    # Файли, вже викладені в export автоматично (довірений відправник), НЕ
-    # рухаємо вдруге — лише привʼязуємо до цієї роботи.
-    to_move = [a for a in attachments if not a.staged_to_export]
-    staged = [a for a in attachments if a.staged_to_export]
+    to_move = list(attachments)
     moved_pairs: list[tuple[Path, Path]] = []
     used_folder = None
 
@@ -308,14 +367,6 @@ def _move_attachments(
             attachment.order_id = new_order.id
         try:
             used_folder = new_paths[0].relative_to(export_root).parts[0] if new_paths else None
-        except (ValueError, IndexError):
-            used_folder = None
-
-    for attachment in staged:
-        attachment.order_id = new_order.id
-    if used_folder is None and staged:
-        try:
-            used_folder = Path(staged[0].saved_path).relative_to(export_root).parts[0]
         except (ValueError, IndexError):
             used_folder = None
 

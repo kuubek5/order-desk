@@ -1044,7 +1044,12 @@ def test_restore_accepted_email_unwinds_order_and_files(monkeypatch):
         email = EmailMessage(uid="a1", status="прийнято", order_id=order.id, attachments_status="ready")
         db.add(email)
         db.flush()
-        db.add(Attachment(email_message_id=email.id, filename="f.stl", saved_path="/export/Client/нова папка/mono/f.stl"))
+        # order_id проставляється при переміщенні в export — саме за ним
+        # відкат і відрізняє «файл виїжджав» від «лежить у спулі» (M.7).
+        db.add(Attachment(
+            email_message_id=email.id, filename="f.stl", order_id=order.id,
+            saved_path="/export/Client/нова папка/mono/f.stl",
+        ))
         db.commit()
         order_id = order.id
 

@@ -114,7 +114,10 @@ SEED_ALIASES: dict[str, list[tuple[str, str]]] = {
 # відміну від самих аліасів (SEED_ALIASES + міграція для наявних баз).
 _FALSE_FRIEND_RE = re.compile(
     r"\b(?:"
-    r"врем['’]?я|времен(?:и|ем|ах|у)"           # «нет времени», «зі часом» → не ПММА
+    # НЕ «времен\w*»: воно зʼїло б і «временная коронка» — а це якраз ПММА.
+    # Тут перелічені форми слова «время», у яких після «времен» іде одна «н»
+    # або голосна; «временн…» лишається матеріалом.
+    r"врем['’]?я|времен(?:и|ем|ах|у|а|ами)"     # «нет времени», «времена» → не ПММА
     r"|монопол\w*"                               # «монополія» → не «моно»
     r"|емоц\w*|эмоц\w*|emotional\w*"             # «емоційно» → не «емо»
     r"|temperatur\w*|attempt\w*|contemporar\w*|templat\w*"  # містять «temp»
@@ -169,10 +172,23 @@ def normalize_material(raw: str | None) -> str:
     return s
 
 
-def classify_material(raw: str | None, aliases: list[AliasRow] | None = None) -> str | None:
+def classify_material(
+    raw: str | None,
+    aliases: list[AliasRow] | None = None,
+    *,
+    free_text: bool = False,
+) -> str | None:
     """Return the material category name for a raw colour string, or None if it
     can't be resolved confidently. Pure: `aliases` defaults to the seed so it
-    works without a DB (tests, backfill dry-runs)."""
+    works without a DB (tests, backfill dry-runs).
+
+    ``free_text=True`` — коли на вхід іде ТЕКСТ ЛИСТА, а не клітинка «Колір
+    роботи». Тоді вимикаються `token`-аліаси: вони писались під коротку
+    клітинку, де окреме «500» чи «ti» справді означає матеріал, а у вільному
+    тексті дають «оплата 500 грн» → Цирконій, «Nature of the request» →
+    Цирконій, «Ti amo» → Титан (ревʼю 07.09.26, M.7). `contains`-аліаси
+    («циркон», «пмма», «титан») лишаються — вони самі по собі однозначні.
+    """
     normalized = _strip_false_friends(normalize_material(raw))
     if not normalized:
         return None
@@ -182,6 +198,8 @@ def classify_material(raw: str | None, aliases: list[AliasRow] | None = None) ->
     matched: set[str] = set()
     for row in rows:
         if row.match_type == "token":
+            if free_text:
+                continue
             if row.pattern in tokens:
                 matched.add(row.material)
         else:  # contains

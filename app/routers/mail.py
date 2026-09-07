@@ -387,13 +387,22 @@ def get_mail_detail(
     return templates.TemplateResponse(request, "mail_detail.html", context)
 
 
-def _email_partial_state(db: Session, email: EmailMessage) -> dict:
+def _email_partial_state(
+    db: Session, email: EmailMessage, on_disk: set[int] | None = None
+) -> dict:
     """Multi-colour partial-accept state for a letter: files not yet accepted
     (still in the spool) and how many order batches were already taken from it.
-    Drives the wizard's file picker and the «частково прийнято» badge."""
+    Drives the wizard's file picker and the «частково прийнято» badge.
+
+    ``on_disk`` — id вкладень, які вже перевірив ВИКЛИКАЧ. Один рендер панелі
+    робив кілька окремих проходів по диску над тими самими файлами, а по
+    мережевій шарі кожен `exists()` — це round-trip (ревʼю 07.09.26, M.7).
+    """
+    if on_disk is None:
+        on_disk = {a.id for a in email.attachments if Path(a.saved_path).exists()}
     unclaimed = [
         a for a in email.attachments
-        if a.order_id is None and Path(a.saved_path).exists()
+        if a.order_id is None and a.id in on_disk
     ]
     accepted_batches = db.scalar(
         select(func.count()).select_from(Order).where(Order.source_email_id == email.id)
@@ -411,6 +420,9 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
     material candidates and the whitelisted download links detected in the body.
     Reused by get_mail_detail (the fetch-link route renders just one row)."""
     attach_email_preview_tokens([email], mail_trusted_roots(db), mail_preview_roots(db))
+    # ОДИН прохід по диску на весь рендер панелі: далі і «зниклі файли», і
+    # стан часткового прийняття рахуються з цього набору.
+    on_disk = {a.id for a in email.attachments if Path(a.saved_path).exists()}
     seed = (email.material_color_guess or "") or (email.subject or "")
     # Recurring client? Sender memory beats every guess for the name prefill.
     sender_hint = lookup_sender(db, email)
@@ -436,19 +448,18 @@ def _mail_panel_context(db: Session, email: EmailMessage, user, **extra) -> dict
         # Any ZIP/RAR still sitting among the attachments (auto-unpack failed or
         # is off) → offer the manual «Розпакувати» reserve button.
         "has_archive": any(is_archive(a.filename) for a in email.attachments),
-        "staged_count": sum(1 for a in email.attachments if a.staged_to_export and a.order_id is None),
         # ПРАВДА ПРО ДИСК, а не про базу. Панель рахувала рядки Attachment і
         # писала «Усі файли на диску: 4» навіть тоді, коли теку зі спула хтось
         # видалив: «Відкрити папку» падало, STL не малювався, і зробити з цим
         # не можна було нічого. Тепер зниклі файли названі прямо, і для них є
         # кнопка повторного скачування.
         "missing_attachment_ids": {
-            a.id for a in email.attachments if not Path(a.saved_path).exists()
+            a.id for a in email.attachments if a.id not in on_disk
         },
         "link_flash": None,
         # Admin-editable category names for the card's «У фільтр» select.
         "filter_categories": _mail_filter_categories(db),
-        **_email_partial_state(db, email),
+        **_email_partial_state(db, email, on_disk),
     }
     context.update(extra)
     return context
@@ -922,10 +933,16 @@ def add_sender_auto(
     """Manually add an email to the trusted auto-download list without waiting
     for a first acceptance. Creates a sender-memory row (client name = the
     address until the first real accept fills it in) with auto on. Idempotent —
-    an existing key is just switched on."""
+    an existing key is just switched on.
+
+    Гейт той самий, що в решти роутів фільтрів: додати довіреного відправника
+    означає ввімкнути автоматичне скачування вкладень з цієї адреси, тобто
+    писати чужі файли на диск лабораторії (ревʼю 07.09.26, M.7)."""
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+    if not can_edit(user, "mail-filters"):
+        raise HTTPException(status_code=403, detail="недостатньо прав")
     key = (email_address or "").strip().lower()
     if key:
         row = db.scalar(select(ClientSenderMemory).where(ClientSenderMemory.sender_key == key))
@@ -947,12 +964,15 @@ def toggle_sender_auto(
     memory_id: int,
     db: Session = Depends(get_db),
 ):
-    """Flip a sender's trusted auto-accept flag (any operator). Trusting a
-    sender means their future letters are accepted automatically when the
-    guardrails pass; existing letters already in triage are untouched."""
+    """Flip a sender's trusted auto-download flag. Trusting a sender means
+    their future letters have attachments downloaded automatically; existing
+    letters already in triage are untouched. Same gate as the other filter
+    routes — це рішення про запис чужих файлів на диск."""
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+    if not can_edit(user, "mail-filters"):
+        raise HTTPException(status_code=403, detail="недостатньо прав")
     row = db.get(ClientSenderMemory, memory_id)
     if row is None:
         raise HTTPException(status_code=404, detail="sender not found")
@@ -1076,22 +1096,6 @@ def reject_email(
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")
 
-    staged = [a for a in email.attachments if a.staged_to_export and a.order_id is None]
-    if staged:
-        try:
-            new_paths = restore_attachments_to_spool(
-                Path(MAIL_ATTACHMENTS_PATH),
-                spool_folder_name(email.uid, email.uid_validity),
-                [Path(a.saved_path) for a in staged],
-            )
-            # Файли переїхали — кеш обходу export більше не відповідає диску.
-            clear_export_cache()
-            for attachment, new_path in zip(staged, new_paths):
-                attachment.saved_path = str(new_path)
-                attachment.staged_to_export = False
-        except (OSError, ValueError):
-            logger.exception("Could not return auto-staged files to spool for email %s", email.id)
-
     email.status = "відхилено"
     db.commit()
 
@@ -1196,10 +1200,13 @@ def filter_email_manually(
 ):
     """Manually move ONE letter to the «Відфільтровані» tab — no rule is
     created, nothing else is affected. The stamp has no rule FK, so the letter
-    reads "filtered by hand"; «↩» brings it back like any other."""
+    reads "filtered by hand"; «↩» brings it back like any other. Той самий
+    гейт, що й у решти роутів фільтрів."""
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+    if not can_edit(user, "mail-filters"):
+        raise HTTPException(status_code=403, detail="недостатньо прав")
 
     email = db.get(EmailMessage, email_id)
     if email is None:
@@ -1538,7 +1545,12 @@ def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]
             + ". Якщо треба, видаліть її з черги в паспорті роботи."
         )
 
-    attachments = list(email.attachments)
+    # Лише ті, що справді виїжджали в export (order_id проставляється при
+    # переміщенні). Раніше бралися ВСІ: файли, які нікуди не рухались,
+    # «поверталися» в ту саму теку й діставали суфікс « (2)» —
+    # crown.stl -> crown (2).stl, і кожен відкат частково прийнятого листа
+    # множив суфікс далі (ревʼю 07.09.26, M.7).
+    attachments = [a for a in email.attachments if a.order_id is not None]
     moved_pairs: list[tuple[Path, Path]] = []
     if attachments:
         old_paths = [Path(a.saved_path) for a in attachments]
@@ -1553,7 +1565,6 @@ def _unaccept_email(db: Session, email: EmailMessage) -> list[tuple[Path, Path]]
         for attachment, new_path in zip(attachments, new_paths):
             attachment.saved_path = str(new_path)
             attachment.order_id = None
-            attachment.staged_to_export = False
 
     spreadsheet = None
     for order in orders:
