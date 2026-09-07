@@ -2,10 +2,11 @@
 independent of the existing `period` filter (today/yesterday/tomorrow/earlier)
 in app/web.py::get_queue, combined via a separate `ready` query parameter.
 
-"Ready" means a folder was actually resolved on disk by
-`attach_job_code_folder_uris()` or `attach_export_folder_uris()`. Kept DB-free
-so callers can attach those transient attributes in one batched pass before
-filtering.
+«Готово» читається з КОЛОНКИ `Order.job_code` (технік вписав шлях), а не зі
+сканування диска: `_has_path` нижче не торкається файлової системи. Це важливо
+не як дрібниця стилю — саме тому іконки папок можна малювати вже після зрізу
+рядків, і фільтр від цього не зсувається (ревʼю 07.09.26, P.1). Модуль
+лишається без БД, щоб його можна було звати з будь-якого місця.
 """
 
 from app.models import EmailMessage, Order

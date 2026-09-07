@@ -300,11 +300,6 @@ def build_queue_view(
     #     іконки за мить і далі тримає кеш теплим кожні 15с.
     # Готовність (_has_path) від сканів не залежить, тож фільтр і лічильники
     # лишаються точними навіть на першому, «голому» рендері.
-    if partial == "rows":
-        with perf.span("share:export"):
-            attach_export_folder_uris(db, orders)
-        with perf.span("share:tech"):
-            attach_job_code_folder_uris(db, orders)
     perf.note_rows(len(orders))
 
     # Second, independent filter: readiness (has the technician dropped files yet?)
@@ -366,6 +361,19 @@ def build_queue_view(
     if rows_total > rows_limit:
         orders = orders[:rows_limit]
     rows_more = rows_total - len(orders)
+
+    # Іконки папок — ПІСЛЯ зрізу, і тільки для рядків, які поїдуть у HTML.
+    # Раніше вони рахувались на весь відфільтрований набір: у «Раніше» це 600+
+    # робіт замість двохсот показаних, тобто втричі більше звернень до
+    # мережевої шари заради того, чого ніхто не побачить (ревʼю 07.09.26, P.1).
+    # Фільтр і лічильники готовності від них не залежать — «готово» читається
+    # з колонки `job_code`, а не зі сканування диска, тож зріз нічого не
+    # спотворює.
+    if partial == "rows":
+        with perf.span("share:export"):
+            attach_export_folder_uris(db, orders)
+        with perf.span("share:tech"):
+            attach_job_code_folder_uris(db, orders)
 
     orders_lab = [o for o in orders if o.source != "email"]
     orders_email = [o for o in orders if o.source == "email"]
