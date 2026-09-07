@@ -22,6 +22,7 @@ from app.config import DB_PATH, MAIL_ATTACHMENTS_PATH
 from app.mail_spool import analyze_spool_cached
 from app.services.section_gate import sections_admin
 from app.services.settings_nav import can_edit
+from app.services.undo import log_action
 from app.services.settings_status import build_slabs
 from app.models import AppSetting, EmailMessage, MailFilterCategory, MailFilterRule, Order, User
 from app.monthly_backup import list_snapshots
@@ -386,6 +387,13 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+    # Ця форма пише СЕКРЕТИ (пароль IMAP, service-account JSON, шляхи до шар).
+    # Такі дії — лише за фізичним ПК, як і решта «керує самою машиною»
+    # (ревʼю 07.09.26, K.4). Права на КОЖНЕ поле лишаються польовими, нижче:
+    # роут і далі відкритий операторові, тож у сторожі гейтів він лишається
+    # у списку винятків — тут додано саме loopback, не роль.
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
     is_admin = user.role == "адмін"
 
     form = await request.form()
@@ -395,6 +403,7 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
     # поле — тому кожне поле звіряється з правами на ЙОГО розділ
     # (`app/services/settings_nav.py`), а не з роллю напряму. Ключ без розділу
     # (нове поле, яке забули підписати) лишається адмінським.
+    touched: list[str] = []
     for field in SETTING_FIELDS:
         allowed = (
             is_admin
@@ -427,6 +436,15 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
         # можливим саме тому, що поле в формі Є — просто його стерли руками.
         if value or field.key in CLEARABLE_SETTING_KEYS:
             set_setting(db, field.key, value)
+            touched.append(field.key)
+    if touched:
+        # У журнал іде перелік КЛЮЧІВ, ніколи значень: серед них пароль IMAP і
+        # service-account JSON, а розшифровані секрети не залишають
+        # settings_store (ревʼю 07.09.26, K.6).
+        log_action(
+            db, order=None, operator=user, action_type="settings",
+            field="settings", note="змінено налаштування: " + ", ".join(sorted(touched)),
+        )
     db.commit()
 
     # Межа робочого дня живе в памʼяті процесу (business_today() кличеться на

@@ -26,6 +26,7 @@ from app.settings_store import (
     set_setting,
 )
 from app.crypto import encrypt_value
+from app.services.undo import log_action
 from app.services.furnace import FurnaceConfigError, validate_address
 from .common import require_settings_edit
 
@@ -187,12 +188,16 @@ def delete_furnace(request: Request, furnace_id: int, db: Session = Depends(get_
     """Прибрати пічку з переліку. Її показання лишаються в історії — рядки
     підписані адресою, і чистити їх разом із записом означало б втратити те,
     що вже сталося."""
-    require_settings_edit(request, db, "furnaces")
+    user = require_settings_edit(request, db, "furnaces")
     furnace = db.get(Furnace, furnace_id)
     if furnace is None:
         raise HTTPException(status_code=404, detail="пічку не знайдено")
     name = furnace.name
     db.delete(furnace)
+    log_action(
+        db, order=None, operator=user, action_type="settings",
+        field="furnace.delete", note=f"видалено піч «{name}»",
+    )
     db.commit()
     request.session["settings_flash"] = {
         "kind": "success",
@@ -292,7 +297,16 @@ def save_machine_calibration_path(
     стирається, а не ігнорується: «прибрати свою теку» — окреме бажання, і без
     стирання оператор не мав би як його висловити.
     """
-    require_settings_edit(request, db, "machines")
+    user = require_settings_edit(request, db, "machines")
+    # «Обладнання» оператор редагує нарівні з адміном (рішення власника
+    # 06.09.26) — але НЕ це поле: воно вказує, куди застосунок сотнями пише
+    # JPEG, тобто це запис у довільну мережеву шару, а не налаштування
+    # верстата. Той самий виняток, що й для write-проби шляху (CLAUDE.md §14).
+    if user.role != "адмін":
+        raise HTTPException(
+            status_code=403,
+            detail="теку кадрів змінює адміністратор — це запис у довільну теку",
+        )
     clean = path.strip().strip('"')
     if clean:
         set_setting(db, "machine_calibration_path", clean)
@@ -300,6 +314,11 @@ def save_machine_calibration_path(
     else:
         set_setting(db, "machine_calibration_path", "")
         message = "Теку кадрів повернуто на типову."
+    log_action(
+        db, order=None, operator=user, action_type="settings",
+        field="machine_calibration_path",
+        note=f"тека кадрів верстатів: {clean or 'типова'}",
+    )
     db.commit()
     request.session["settings_flash"] = {"kind": "success", "message": message}
     return RedirectResponse("/settings#machines", status_code=303)
@@ -430,13 +449,19 @@ def delete_machine_portrait(request: Request, machine_id: int, db: Session = Dep
 
 @router.post("/settings/machines/{machine_id}/delete")
 def delete_machine(request: Request, machine_id: int, db: Session = Depends(get_db)):
-    require_settings_edit(request, db, "machines")
+    user = require_settings_edit(request, db, "machines")
     machine = db.get(Machine, machine_id)
     if machine is None:
         raise HTTPException(status_code=404, detail="верстат не знайдено")
     name = machine.name
     delete_portrait(machine.id)
     db.delete(machine)
+    # Слід у журналі дій: видалення обладнання не має бути єдиною подією, про
+    # яку невідомо, хто її зробив (ревʼю 07.09.26, K.6).
+    log_action(
+        db, order=None, operator=user, action_type="settings",
+        field="machine.delete", note=f"видалено верстат «{name}»",
+    )
     db.commit()
     request.session["settings_flash"] = {
         "kind": "success",

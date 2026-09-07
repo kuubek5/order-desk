@@ -11,6 +11,7 @@ from starlette.requests import Request
 from app.backup import BackupFormatError, BackupPasswordError, create_backup, restore_backup
 from app.config import DB_PATH
 from app.routers.deps import get_current_user, login_redirect, get_db, is_loopback_request
+from app.services.undo import log_action
 from app.settings_store import (
     set_sheet_backup_enabled,
     set_sheet_backup_interval_hours,
@@ -107,6 +108,19 @@ async def import_backup(
     except BackupFormatError as exc:
         request.session["settings_flash"] = {"kind": "error", "message": str(exc)}
         return RedirectResponse("/settings", status_code=303)
+
+    # Слід у журналі — вже у ВІДНОВЛЕНІЙ базі: відновлення заміщує все, і без
+    # запису «хто і коли залив копію» новий стан виглядав би так, ніби він був
+    # тут завжди (ревʼю 07.09.26, K.6).
+    log_action(
+        db, order=None, operator=None, action_type="settings",
+        field="backup.restore",
+        note=(
+            f"відновлено з копії: {counts.get('orders', 0)} робіт, "
+            f"{counts.get('clients', 0)} клієнтів, {counts.get('users', 0)} операторів"
+        ),
+    )
+    db.commit()
 
     request.session["settings_flash"] = {
         "kind": "success",

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 from app.auth import hash_password
 from app.models import User
-from app.routers.deps import get_current_user, login_redirect, get_db
+from app.routers.deps import get_current_user, login_redirect, get_db, is_loopback_request
 from app.services.operators import (
     normalize_initial,
     validate_initial,
@@ -26,6 +26,8 @@ async def create_operator(request: Request, db: Session = Depends(get_db)):
         return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
     form = await request.form()
     username = form.get("username", "").strip()
@@ -78,6 +80,8 @@ async def set_operator_initial(request: Request, user_id: int, db: Session = Dep
         return login_redirect(request)
     if admin.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
     target = db.get(User, user_id)
     if target is None:
@@ -104,6 +108,8 @@ async def toggle_operator_active(
         return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
     target = db.get(User, user_id)
     if target is None:
@@ -128,6 +134,8 @@ async def reset_operator_password(
         return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
     target = db.get(User, user_id)
     if target is None:

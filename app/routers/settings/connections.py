@@ -22,6 +22,7 @@ from app.google_oauth import OAuthFlowError, parse_client_config, run_authorizat
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
 from app.monthly_backup import list_snapshots
 from app.routers.deps import get_current_user, get_db, is_loopback_request, templates
+from app.services.undo import log_action
 from app.services.config_state import (
     imap_configured,
     sheets_access_error_message,
@@ -125,6 +126,8 @@ async def save_imap_settings(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="увійдіть в систему")
     if not can_edit(user, "imap"):
         raise HTTPException(status_code=403, detail="розділ доступний лише адміністратору")
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
     form = await request.form()
     login = (form.get("imap_login") or "").strip()
@@ -132,10 +135,20 @@ async def save_imap_settings(request: Request, db: Session = Depends(get_db)):
     # Empty password means "keep the saved one" — the field renders blank on
     # purpose (placeholder "•••• збережено"), so a save that only edits the login
     # must not wipe the stored password.
+    changed = []
     if login:
         set_setting(db, "imap_login", login)
+        changed.append("логін")
     if password:
         set_setting(db, "imap_password", password)
+        changed.append("пароль")
+    if changed:
+        # У журнал іде ФАКТ зміни й ЩО саме змінили, ніколи значення:
+        # розшифровані секрети не залишають settings_store (ревʼю 07.09.26, K.6).
+        log_action(
+            db, order=None, operator=user, action_type="settings",
+            field="imap", note="змінено доступ до пошти: " + ", ".join(changed),
+        )
     db.commit()
 
     result = _probe_imap_login(get_imap_login(db), get_imap_password(db))
@@ -161,6 +174,8 @@ def test_imap_connection(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="увійдіть в систему")
     if not can_edit(user, "imap"):
         raise HTTPException(status_code=403, detail="розділ доступний лише адміністратору")
+    if not is_loopback_request(request):
+        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
 
     result = _probe_imap_login(get_imap_login(db), get_imap_password(db))
     toast_kind = "success" if result["state"] == "success" else "error"

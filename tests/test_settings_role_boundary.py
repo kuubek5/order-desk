@@ -364,3 +364,58 @@ def test_plain_post_still_redirects_for_no_js():
 
     assert response.status_code == 303
     assert response.headers["location"] == "/settings?saved=1"
+
+
+# --- K.4: секрети й керування людьми — лише за фізичним ПК -----------------
+
+
+def test_post_settings_refuses_a_remote_request():
+    """Ця форма пише СЕКРЕТИ (пароль IMAP, service-account JSON, шляхи до
+    мережевих шар). Решта дій, що «керують самою машиною», давно під
+    loopback-гейтом; ця лишалась без нього."""
+    import asyncio
+
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(settings_router_mod.post_settings(
+                request=_form_request(admin.id, {"action": "save"}, host="192.168.1.50"),
+                db=db,
+            ))
+    assert exc.value.status_code == 403
+    assert "цьому комп" in exc.value.detail
+
+
+def test_post_settings_still_works_from_the_machine_itself():
+    """Гейт не має ламати звичайне збереження."""
+    import asyncio
+
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        response = asyncio.run(settings_router_mod.post_settings(
+            request=_form_request(admin.id, {"action": "save"}), db=db
+        ))
+    assert response.status_code in (200, 204, 303)
+
+
+@pytest.mark.parametrize("route", ["create_operator", "toggle_operator_active"])
+def test_user_management_refuses_a_remote_request(route):
+    """Створити оператора чи вимкнути його — дія над доступом до системи."""
+    import asyncio
+
+    from app.routers.settings import users as users_mod
+
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        admin = _admin(db)
+        request = _form_request(admin.id, {"username": "x", "password": "y"},
+                                host="192.168.1.50")
+        fn = getattr(users_mod, route)
+        with pytest.raises(HTTPException) as exc:
+            if route == "create_operator":
+                asyncio.run(fn(request=request, db=db))
+            else:
+                asyncio.run(fn(request=request, user_id=admin.id, db=db))
+    assert exc.value.status_code == 403
