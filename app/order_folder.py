@@ -242,6 +242,23 @@ def attach_email_folder_availability(
         )
 
 
+# Кеш токенів прев'ю на лист. Обхід шляхів кожного вкладення — це
+# `resolve(strict=True)` і перевірка на симлінк на КОЖНУ ланку шляху, тобто
+# десятки round-trip'ів по мережевій шарі на один лист. Тріаж перемальовується
+# поллом кожні 15 с, тож без кешу екран пошти сам по собі тримав шару зайнятою
+# (ревʼю 07.09.26, M.4). Тека листа змінюється лише коли файли фізично
+# переїжджають (приймання / відкат), і там кеш скидається явно.
+_PREVIEW_TOKEN_TTL_SECONDS = 60.0
+_preview_token_lock = threading.Lock()
+_preview_token_cache: dict[int, tuple[float, str | None]] = {}
+
+
+def clear_email_preview_token_cache() -> None:
+    """Скинути кеш токенів: файли листів переїхали."""
+    with _preview_token_lock:
+        _preview_token_cache.clear()
+
+
 def attach_email_preview_tokens(
     emails: list[EmailMessage], trusted_roots: list[Path], preview_roots: dict[str, str | None]
 ) -> None:
@@ -252,12 +269,35 @@ def attach_email_preview_tokens(
     `trusted_roots` decides WHICH folder (mail_attachments pre-accept, export
     post-accept) actually holds the files; `preview_roots` is the root_key ->
     path map build_preview_token needs to encode that folder into a token.
+
+    Результат кешується на `_PREVIEW_TOKEN_TTL_SECONDS`: див. коментар вище.
+    Кеш — це прискорення, а не джерело правди: протухлий токен просто
+    перерахується, а недійсний однаково перевіряється роутом прев'ю.
     """
+    now = time.monotonic()
+    with _preview_token_lock:
+        fresh = {
+            email_id: token
+            for email_id, (expires_at, token) in _preview_token_cache.items()
+            if expires_at > now
+        }
+
+    computed: dict[int, str | None] = {}
     for email in emails:
+        if email.id is not None and email.id in fresh:
+            email.stl_preview_token = fresh[email.id]
+            continue
         folder = resolve_email_attachment_folder(email.attachments, trusted_roots)
-        email.stl_preview_token = (
-            build_preview_token(folder, preview_roots) if folder is not None else None
-        )
+        token = build_preview_token(folder, preview_roots) if folder is not None else None
+        email.stl_preview_token = token
+        if email.id is not None:
+            computed[email.id] = token
+
+    if computed:
+        expires_at = now + _PREVIEW_TOKEN_TTL_SECONDS
+        with _preview_token_lock:
+            for email_id, token in computed.items():
+                _preview_token_cache[email_id] = (expires_at, token)
 
 
 def pick_existing_attachment_folder(attachments: list[Attachment]) -> Path | None:

@@ -233,3 +233,48 @@ def test_honest_small_archive_still_extracts(tmp_path, monkeypatch):
     written = archive_extract.extract_archive(tmp_path / "ok.zip", dest)
     assert [p.name for p in written] == ["crown.stl"]
     assert written[0].stat().st_size == 100
+
+
+def test_second_archive_does_not_overwrite_files_of_the_first(tmp_path):
+    """M.6: набір зайнятих імен існує проти ПОВТОРНОГО розпакування того
+    самого архіву. Два різні архіви в одному листі законно несуть однакові
+    імена, і пропустити другий означало б тихо втратити коронку — оператор
+    отримав би на видачі одну замість двох. Колізію розводить
+    unique_destination, тож на диску лишаються обидві."""
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+
+    from app.db import Base
+    from app.models import Attachment, EmailMessage
+    from app.mail_reader import extract_archive_attachments
+
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    first = spool / "part1.zip"
+    second = spool / "part2.zip"
+    _make_zip(first, {"crown.stl": b"FIRST"})
+    _make_zip(second, {"crown.stl": b"SECOND"})
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        email = EmailMessage(uid="u1", status="нове")
+        db.add(email)
+        db.flush()
+        for arc in (first, second):
+            db.add(Attachment(
+                email_message_id=email.id, filename=arc.name,
+                saved_path=str(arc), size_bytes=arc.stat().st_size,
+            ))
+        db.commit()
+
+        extracted, errors = extract_archive_attachments(db, email)
+        db.commit()
+
+        assert errors == []
+        assert extracted == 2, "обидві коронки мають вижити"
+        names = sorted(a.filename for a in db.scalars(select(Attachment)))
+        assert len(names) == 2 and names[0] != names[1]
+        payloads = sorted(p.read_bytes() for p in spool.glob("*.stl"))
+        assert payloads == [b"FIRST", b"SECOND"]

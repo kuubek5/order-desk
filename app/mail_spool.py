@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from threading import Lock
+from time import monotonic
 import logging
 from pathlib import Path
 import shutil
@@ -93,6 +95,40 @@ def _dir_size(path: Path) -> int:
         except OSError:
             continue
     return total
+
+
+# Кеш звіту про спул. `analyze_spool` рахує РОЗМІР кожної теки — тобто
+# обходить весь спул із stat() на кожен файл, по мережевій шарі. Це робилось
+# на КОЖНОМУ відкритті /settings, хоча цифра змінюється хіба після приймання
+# листа чи прибирання (ревʼю 07.09.26, M.5). Тепер результат живе кілька
+# хвилин; кнопка «Прибрати» скидає його явно, щоб адмін одразу бачив ефект.
+_REPORT_TTL_SECONDS = 300.0
+_report_lock = Lock()
+_report_cache: dict[str, tuple[float, "SpoolReport"]] = {}
+
+
+def clear_spool_report_cache() -> None:
+    with _report_lock:
+        _report_cache.clear()
+
+
+def analyze_spool_cached(
+    session: Session, spool_root: Path, *, older_than_days: int = DEFAULT_PRUNE_AFTER_DAYS
+) -> "SpoolReport":
+    """`analyze_spool` із коротким кешем — для екранів, які просто показують
+    цифру. Рішення про видалення приймається на свіжому звіті (`prune_spool`
+    рахує сам), тож застаріла на кілька хвилин цифра нічим не ризикує."""
+    key = f"{spool_root}|{older_than_days}"
+    now = monotonic()
+    with _report_lock:
+        cached = _report_cache.get(key)
+        if cached and cached[0] > now:
+            return cached[1]
+
+    report = analyze_spool(session, spool_root, older_than_days=older_than_days)
+    with _report_lock:
+        _report_cache[key] = (now + _REPORT_TTL_SECONDS, report)
+    return report
 
 
 def analyze_spool(
@@ -181,4 +217,7 @@ def prune_spool(
         freed += size
     if removed:
         logger.info("Mail spool cleanup removed %s folder(s), freed %s bytes", removed, freed)
+    # Цифра на екрані мусить одразу показати ефект кнопки, а не висіти
+    # застарілою до кінця TTL.
+    clear_spool_report_cache()
     return removed, freed

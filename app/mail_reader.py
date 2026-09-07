@@ -216,13 +216,22 @@ def extract_archive_attachments(
     extracted_total = 0
     errors: list[str] = []
     archives_to_unlink: list[Path] = []
+    # Імена, зайняті ДО розпакування — рахуються ОДИН раз, а не на кожен архів
+    # (у циклі це був той самий набір: нові рядки лише `session.add`-нуті й у
+    # колекції ще не зʼявляються).
+    #
+    # І вони свідомо НЕ поповнюються тим, що розпакували зараз. Цей набір існує
+    # проти повторного розпакування того самого архіву; два РІЗНІ архіви в
+    # одному листі законно несуть однакові імена («crown.stl» у part1 і part2),
+    # і пропустити другий означало б тихо втратити коронку. Колізію імен
+    # розводить `unique_destination` — обидва файли лишаються на диску.
+    existing = frozenset(a.filename for a in email_message.attachments)
     for attachment in list(email_message.attachments):
         if not is_archive(attachment.filename):
             continue
         archive_path = Path(attachment.saved_path)
         if not archive_path.is_file():
             continue
-        existing = frozenset(a.filename for a in email_message.attachments)
         try:
             written = extract_archive(archive_path, archive_path.parent, existing)
         except ArchiveExtractError as exc:

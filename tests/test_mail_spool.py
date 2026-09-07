@@ -142,3 +142,51 @@ def test_prune_does_not_touch_a_legacy_folder_of_a_live_letter(tmp_path, db_sess
     report = analyze_spool(db, tmp_path)
 
     assert report.prunable_dirs == []
+
+
+# --- M.5: звіт про спул не рахується на кожному відкритті налаштувань -------
+
+
+def test_report_is_cached_between_renders(tmp_path, db_session, monkeypatch):
+    """`analyze_spool` рахує розмір КОЖНОЇ теки, тобто обходить весь спул зі
+    stat() на кожен файл по мережевій шарі. Це робилось на кожному відкритті
+    /settings, хоча цифра змінюється хіба після приймання листа чи
+    прибирання."""
+    from app import mail_spool
+
+    mail_spool.clear_spool_report_cache()
+    _letter(db_session, "1", "нове")
+    _spool_dir(tmp_path, "1", ("crown.stl", b"X" * 100))
+
+    calls = []
+    real = mail_spool.analyze_spool
+    monkeypatch.setattr(
+        mail_spool, "analyze_spool",
+        lambda *a, **k: (calls.append(1), real(*a, **k))[1],
+    )
+
+    first = mail_spool.analyze_spool_cached(db_session, tmp_path)
+    second = mail_spool.analyze_spool_cached(db_session, tmp_path)
+
+    assert calls == [1]
+    assert second.total_bytes == first.total_bytes
+    mail_spool.clear_spool_report_cache()
+
+
+def test_cleanup_button_refreshes_the_number(tmp_path, db_session, monkeypatch):
+    """Цифра на екрані мусить одразу показати ефект кнопки, а не висіти
+    застарілою до кінця TTL."""
+    from app import mail_spool
+
+    mail_spool.clear_spool_report_cache()
+    _letter(db_session, "3", "відхилено", days_ago=90)
+    _spool_dir(tmp_path, "3", ("junk.pdf", b"Y" * 2000))
+
+    before = mail_spool.analyze_spool_cached(db_session, tmp_path)
+    assert before.total_bytes > 0
+
+    prune_spool(db_session, tmp_path)
+    after = mail_spool.analyze_spool_cached(db_session, tmp_path)
+
+    assert after.total_bytes == 0
+    mail_spool.clear_spool_report_cache()

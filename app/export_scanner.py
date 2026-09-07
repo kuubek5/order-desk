@@ -322,6 +322,15 @@ def scan_export_folder_cached(root: Path) -> list[ExportEntry]:
 
 
 def clear_export_cache() -> None:
-    """Скинути кеш — після переміщення файлів у/з export."""
+    """Скинути кеш — після переміщення файлів у/з export.
+
+    Заразом скидаємо кеш токенів прев'ю листів: він теж описує, ДЕ зараз
+    лежать файли, і після переїзду бреше так само. Тримати два скидання в
+    одному місці надійніше, ніж пам'ятати про друге на кожному новому виклику
+    (імпорт локальний — інакше цикл модулів).
+    """
     with _cache_lock:
         _cache.clear()
+    from app.order_folder import clear_email_preview_token_cache
+
+    clear_email_preview_token_cache()

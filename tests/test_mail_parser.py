@@ -357,3 +357,32 @@ def test_material_family_needs_a_word_boundary_on_the_right(text):
 )
 def test_material_family_still_recognises_real_wording(text, expected):
     assert guess_material_color_family(text) == expected
+
+
+# --- M.6: здогад про клієнта лише для пересланих ----------------------------
+
+
+def test_quoted_from_line_in_a_plain_letter_does_not_become_the_client():
+    """У звичайному листі рядок «From:» цілком може бути цитатою попереднього
+    листування або підписом. Здогад показував оператору ЧУЖЕ імʼя, і виглядав
+    він так само впевнено, як правильний. Порожнє поле чесніше."""
+    result = guess_fields_from_text(
+        "pmma a2\nдобрий день, як домовлялись\nFrom: Адмін <admin@lab.ua>",
+        subject="pmma a2",
+        body="добрий день, як домовлялись\nFrom: Адмін <admin@lab.ua>",
+    )
+
+    assert result["client_name_guess"] is None
+
+
+def test_forward_marker_in_the_body_is_enough():
+    """Тему могли переписати руками — тоді пересилання видно лише по
+    службовому роздільнику в тілі."""
+    result = guess_fields_from_text(
+        "pmma a2",
+        subject="pmma a2",
+        body="---------- Переслане повідомлення ----------\n"
+             "From: Стоматологія Люмі <lumi@ukr.net>",
+    )
+
+    assert result["client_name_guess"] == "Стоматологія Люмі"

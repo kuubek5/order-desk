@@ -457,3 +457,78 @@ def test_tech_listing_single_flight(tmp_path):
         of._scan_tech_root = original
 
     assert scans["n"] == 1, f"мало бути 1 скан на всіх, а було {scans['n']}"
+
+
+# --- M.4: кеш токенів прев'ю листів ----------------------------------------
+
+
+class _FakeEmail:
+    def __init__(self, email_id, attachments):
+        self.id = email_id
+        self.attachments = attachments
+        self.stl_preview_token = None
+
+
+def _mail_folder(tmp_path, name="42"):
+    folder = tmp_path / "spool" / name
+    folder.mkdir(parents=True)
+    (folder / "crown.stl").write_bytes(b"STL")
+    return folder
+
+
+def test_preview_tokens_are_computed_once_per_ttl(tmp_path, monkeypatch):
+    """Обхід шляхів вкладення — це resolve() і перевірка на симлінк на КОЖНУ
+    ланку, тобто десятки round-trip'ів по мережевій шарі на лист. Тріаж
+    перемальовується поллом кожні 15 с, тож без кешу екран пошти сам тримав
+    шару зайнятою."""
+    from app import order_folder
+
+    order_folder.clear_email_preview_token_cache()
+    folder = _mail_folder(tmp_path)
+    email = _FakeEmail(1, [_FakeAttachment(str(folder / "crown.stl"))])
+
+    calls = []
+    real = order_folder.resolve_email_attachment_folder
+    monkeypatch.setattr(
+        order_folder, "resolve_email_attachment_folder",
+        lambda attachments, roots: (calls.append(1), real(attachments, roots))[1],
+    )
+    roots = [tmp_path / "spool"]
+    preview_roots = {"mail": str(tmp_path / "spool")}
+
+    order_folder.attach_email_preview_tokens([email], roots, preview_roots)
+    first = email.stl_preview_token
+    email.stl_preview_token = None
+    order_folder.attach_email_preview_tokens([email], roots, preview_roots)
+
+    assert calls == [1], "другий рендер має брати токен із кешу"
+    assert email.stl_preview_token == first
+    order_folder.clear_email_preview_token_cache()
+
+
+def test_moving_files_drops_the_cached_token(tmp_path, monkeypatch):
+    """Кеш описує, ДЕ зараз лежать файли, тож після переїзду він бреше.
+    Скидання висить на тому самому clear_export_cache, що й кеш обходу
+    export — щоб не памʼятати про друге на кожному новому виклику."""
+    from app import order_folder
+    from app.export_scanner import clear_export_cache
+
+    order_folder.clear_email_preview_token_cache()
+    folder = _mail_folder(tmp_path)
+    email = _FakeEmail(1, [_FakeAttachment(str(folder / "crown.stl"))])
+
+    calls = []
+    real = order_folder.resolve_email_attachment_folder
+    monkeypatch.setattr(
+        order_folder, "resolve_email_attachment_folder",
+        lambda attachments, roots: (calls.append(1), real(attachments, roots))[1],
+    )
+    roots = [tmp_path / "spool"]
+    preview_roots = {"mail": str(tmp_path / "spool")}
+
+    order_folder.attach_email_preview_tokens([email], roots, preview_roots)
+    clear_export_cache()
+    order_folder.attach_email_preview_tokens([email], roots, preview_roots)
+
+    assert calls == [1, 1], "після переїзду файлів токен перераховується"
+    order_folder.clear_email_preview_token_cache()

@@ -95,6 +95,23 @@ def guess_material_color_family(text: str | None) -> str | None:
     return re.sub(r"\s+", " ", match.group(0)).strip() or None
 
 
+# Ознаки пересланого листа: тема з Fwd/Пересл або службовий роздільник, який
+# додають поштові клієнти перед цитованим листом.
+_FORWARD_SUBJECT_RE = re.compile(r"^\s*(fwd?|перес[ыи]л|пересл)", re.IGNORECASE)
+_FORWARD_BODY_RE = re.compile(
+    r"(-{2,}\s*(forwarded message|переслане повідомлення|пересланное сообщение)"
+    r"|begin forwarded message)",
+    re.IGNORECASE,
+)
+
+
+def looks_forwarded(subject: str | None, body: str | None) -> bool:
+    """Чи це переслане листування, а не звичайний лист."""
+    if subject and _FORWARD_SUBJECT_RE.search(subject):
+        return True
+    return bool(body and _FORWARD_BODY_RE.search(body))
+
+
 def guess_client_from_forward(body: str | None) -> str | None:
     """Original sender name/address from a forwarded message's quoted headers,
     or None when the body carries no "From:/Від:" line."""
@@ -315,7 +332,15 @@ def guess_fields_from_text(
     # Client: forwarded mail hides the real sender in the quoted body's
     # "From:/Від:" header — pull it so the card isn't left blank (the wizard's
     # from_address fallback only helps for non-forwarded mail).
-    guesses["client_name_guess"] = guess_client_from_forward(body)
+    #
+    # ЛИШЕ для пересланих. У звичайному листі рядок «From:/Від:» цілком може
+    # бути цитатою попереднього листування або підписом — і тоді здогад про
+    # клієнта показував оператору ЧУЖЕ імʼя, яке виглядає так само впевнено,
+    # як правильне. Порожнє поле чесніше: його оператор заповнить сам
+    # (ревʼю 07.09.26, M.6).
+    guesses["client_name_guess"] = (
+        guess_client_from_forward(body) if looks_forwarded(subject, body) else None
+    )
 
     return guesses
 
