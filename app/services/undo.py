@@ -18,9 +18,10 @@ from app.models import ActionLog, Order, StatusEvent, User
 from app.services.sheet_writeback import (
     clear_sheet_row_background,
     restore_sheet_row,
-    write_calculated_cell,
-    write_rework_sum3d_fields,
-    write_sheet_fields,
+    submit_sheet_write,
+    write_calculated_cell_warm,
+    write_rework_sum3d_fields_warm,
+    write_sheet_fields_warm,
 )
 
 # How long after an action "Скасувати" stays valid. The toast lives ~15s, but a
@@ -29,6 +30,23 @@ from app.services.sheet_writeback import (
 UNDO_WINDOW_SECONDS = 5 * 60
 
 UNDOABLE_ACTION_TYPES = ("sum3d", "status", "operator", "cam_comment", "delete")
+
+
+def _run_sheet_call(sheet_call) -> str | None:
+    """Виконати відкладений запис у таблицю на воркері write-back і дочекатись.
+
+    Скасування — синхронний роут (звичайний `def`, тобто threadpool), тож
+    чекати тут можна: оператор має побачити в тості, чи таблиця оновилась.
+    Важливо ІНШЕ — що запис іде через `submit_sheet_write`, єдину точку входу
+    в пул: там і пауза синку, і теплий кеш таблиці, і серіалізація з рештою
+    записів. Раніше скасування писало повз пул: на паузі писало все одно,
+    платило ~40 с холодного відкриття і могло розминутись у порядку з уже
+    поставленими в чергу правками тієї ж роботи.
+    """
+    if sheet_call is None:
+        return None
+    fn, args = sheet_call
+    return submit_sheet_write(fn, *args).result()
 
 
 @dataclass(frozen=True)
@@ -113,9 +131,13 @@ def perform_undo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
             rework = order.active_rework
             restored = (rework.sum3d_id if rework else None) or ""
             restored_letter = (rework.calculated_raw if rework else None)
-            sync_error = write_rework_sum3d_fields(db, order, restored, letter=restored_letter)
+            sheet_call = (
+                write_rework_sum3d_fields_warm, (order.id, restored, restored_letter)
+            )
         else:
-            sync_error = write_sheet_fields(db, order, {"sum3d_id", "calculated_raw"})
+            sheet_call = (
+                write_sheet_fields_warm, (order.id, {"sum3d_id", "calculated_raw"})
+            )
             db.add(StatusEvent(
                 order_id=order.id, operator_id=user.id, status=order.status,
                 actor=user.username, note="скасовано (Sum3D)",
@@ -128,17 +150,17 @@ def perform_undo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
             order_id=order.id, operator_id=user.id, status=order.status,
             actor=user.username, note="скасовано (статус)",
         ))
-        sync_error = None
+        sheet_call = None
     elif entry.action_type == "operator":
         if (order.calculated_raw or "") != (entry.new_value or ""):
             return UndoOutcome("Не можна скасувати — оператора вже змінили", kind="error")
         order.calculated_raw = entry.old_value or ""
-        sync_error = write_calculated_cell(db, order, order.calculated_raw)
+        sheet_call = (write_calculated_cell_warm, (order.id, order.calculated_raw))
     elif entry.action_type == "cam_comment":
         if (order.cam_comment or "") != (entry.new_value or ""):
             return UndoOutcome("Не можна скасувати — коментар уже змінили", kind="error")
         order.cam_comment = entry.old_value or None
-        sync_error = write_sheet_fields(db, order, {"cam_comment"})
+        sheet_call = (write_sheet_fields_warm, (order.id, {"cam_comment"}))
     elif entry.action_type == "delete":
         if order.archived_at is None:
             return UndoOutcome("Робота вже повернута в чергу", kind="info")
@@ -154,7 +176,7 @@ def perform_undo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
                 "Не вдалося відновити рядок у таблиці: " + restore_error, kind="error"
             )
         order.archived_at = None
-        sync_error = None
+        sheet_call = None
         db.add(StatusEvent(
             order_id=order.id, operator_id=user.id, status=order.status,
             actor=user.username, note="відновлено з видалення",
@@ -171,6 +193,12 @@ def perform_undo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
         field=entry.field, note=f"скасовано: {entry.note}",
     )
     db.commit()
+
+    # Запис у таблицю — ПІСЛЯ коміту й на воркері write-back: він шанує паузу
+    # синку, тримає теплий кеш відкритої таблиці (холодне відкриття ~40 с через
+    # проксі лабораторії) і серіалізує записи, щоб дві правки не лягли в іншому
+    # порядку. Warm-функції читають значення з БД, тому коміт мусить бути раніше.
+    sync_error = _run_sheet_call(sheet_call)
 
     if sync_error:
         return UndoOutcome(
@@ -207,9 +235,13 @@ def perform_redo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
             rework = order.active_rework
             restored = (rework.sum3d_id if rework else None) or ""
             restored_letter = (rework.calculated_raw if rework else None)
-            sync_error = write_rework_sum3d_fields(db, order, restored, letter=restored_letter)
+            sheet_call = (
+                write_rework_sum3d_fields_warm, (order.id, restored, restored_letter)
+            )
         else:
-            sync_error = write_sheet_fields(db, order, {"sum3d_id", "calculated_raw"})
+            sheet_call = (
+                write_sheet_fields_warm, (order.id, {"sum3d_id", "calculated_raw"})
+            )
             db.add(StatusEvent(
                 order_id=order.id, operator_id=user.id, status=order.status,
                 actor=user.username, note="повторено (Sum3D)",
@@ -222,24 +254,24 @@ def perform_redo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
             order_id=order.id, operator_id=user.id, status=order.status,
             actor=user.username, note="повторено (статус)",
         ))
-        sync_error = None
+        sheet_call = None
     elif entry.action_type == "operator":
         if (order.calculated_raw or "") != (entry.old_value or ""):
             return UndoOutcome("Не можна повторити — оператора вже змінили", kind="error")
         order.calculated_raw = entry.new_value or ""
-        sync_error = write_calculated_cell(db, order, order.calculated_raw)
+        sheet_call = (write_calculated_cell_warm, (order.id, order.calculated_raw))
     elif entry.action_type == "cam_comment":
         if (order.cam_comment or "") != (entry.old_value or ""):
             return UndoOutcome("Не можна повторити — коментар уже змінили", kind="error")
         order.cam_comment = entry.new_value or None
-        sync_error = write_sheet_fields(db, order, {"cam_comment"})
+        sheet_call = (write_sheet_fields_warm, (order.id, {"cam_comment"}))
     elif entry.action_type == "delete":
         if order.archived_at is not None:
             return UndoOutcome("Робота вже видалена", kind="info")
         order.archived_at = utc_now()
         if order.source in ("lab", "sheet_client") and order.sheet_tab and order.row_number:
             clear_sheet_row_background(order.id)
-        sync_error = None
+        sheet_call = None
         db.add(StatusEvent(
             order_id=order.id, operator_id=user.id, status=order.status,
             actor=user.username, note="видалено з черги (повторно)",
@@ -253,6 +285,8 @@ def perform_redo(db: Session, user: User, entry: ActionLog) -> UndoOutcome:
         field=entry.field, note=f"повторено: {entry.note}",
     )
     db.commit()
+
+    sync_error = _run_sheet_call(sheet_call)
 
     if sync_error:
         return UndoOutcome(

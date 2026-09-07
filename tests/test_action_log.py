@@ -7,6 +7,8 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from starlette.datastructures import Headers
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
@@ -23,10 +25,33 @@ from app.db import Base
 from app.models import ActionLog, Order, User
 
 
+_LAST_ENGINE = None
+
+
 def _database():
-    engine = create_engine("sqlite://", poolclass=StaticPool)
+    global _LAST_ENGINE
+    # check_same_thread=False: запис у таблицю тепер іде на воркері write-back
+    # (S2.5), тобто в ІНШОМУ потоці, а він читає ту саму тестову базу.
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
+    _LAST_ENGINE = engine
     return engine
+
+
+@pytest.fixture(autouse=True)
+def _writeback_uses_the_test_db(monkeypatch):
+    """Скасування пише в таблицю через воркер write-back (S2.5), а той відкриває
+    ВЛАСНУ сесію: без цієї підміни warm-функції ходили б у бойову базу
+    (`no such table: orders` у тестах). Самі виклики до Google глушимо —
+    їхня поведінка має власні тести."""
+    monkeypatch.setattr(
+        writeback_service, "SessionLocal",
+        lambda: Session(_LAST_ENGINE, expire_on_commit=False),
+    )
+    for name in ("write_sheet_fields", "write_calculated_cell", "write_rework_sum3d_fields"):
+        monkeypatch.setattr(writeback_service, name, lambda *a, **k: None)
 
 
 def _user(db, initial=None, username="op"):
@@ -729,3 +754,59 @@ def test_action_toast_header_is_latin1_safe():
     header.encode("latin-1")   # must not raise
     assert "undoUrl" not in header
     assert "/actions/7/undo" not in header
+
+
+def test_undo_writes_to_the_sheet_through_the_writeback_pool():
+    """S2.5: скасування писало в таблицю ПОВЗ пул — тобто писало навіть на
+    паузі синку, платило ~40 с холодного відкриття таблиці й могло розминутись
+    у порядку з уже поставленими в чергу правками тієї ж роботи. Тепер усі
+    записи скасування йдуть через submit_sheet_write, як і решта."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, cam_comment="було")
+        log_action(db, order=order, operator=user, action_type="cam_comment",
+                   field="cam_comment", old="було", new="стало",
+                   note="коментар")
+        order.cam_comment = "стало"
+        db.commit()
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "cam_comment"))
+
+        submitted = []
+        real_submit = web._sheet_writeback_pool.submit
+
+        def spy(fn, *a, **kw):
+            submitted.append(fn)
+            return real_submit(fn, *a, **kw)
+
+        with patch.object(web._sheet_writeback_pool, "submit", side_effect=spy):
+            outcome = undo_service.perform_undo(db, user, entry)
+
+        assert outcome.kind == "success"
+        assert submitted, "запис у таблицю мусить іти через пул write-back"
+        assert order.cam_comment == "було"
+
+
+def test_undo_commits_before_the_sheet_write_reads_the_value():
+    """Warm-функції читають значення з БД у власній сесії — отже коміт мусить
+    статись РАНІШЕ за запис. Інакше в таблицю поїхало б старе значення."""
+    engine = _database()
+    seen = {}
+
+    def fake_write(db, order, fields):
+        seen["cam_comment"] = order.cam_comment
+        return None
+
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        order = _order(db, cam_comment="стало")
+        log_action(db, order=order, operator=user, action_type="cam_comment",
+                   field="cam_comment", old="було", new="стало",
+                   note="коментар")
+        db.commit()
+        entry = db.scalar(select(ActionLog).where(ActionLog.action_type == "cam_comment"))
+
+        with patch.object(writeback_service, "write_sheet_fields", side_effect=fake_write):
+            undo_service.perform_undo(db, user, entry)
+
+    assert seen["cam_comment"] == "було", "воркер має бачити вже відкочене значення"
