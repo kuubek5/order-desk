@@ -38,11 +38,11 @@ F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F14, F15, F16, F18, F19 — �
 |---|---|---|
 | C.1 | ⬜ | `mail_accept.py`: ловити `Exception`, а не лише `OSError/ValueError` після переносу файлів; `moved_pairs` у списку виклику. |
 | C.2 | ⬜ | `reject_email`: не комітити «відхилено» поверх невдалого переносу файлів назад у спул. |
-| C.3 | ⬜ | Тека спулу `mail_attachments/<uid>` без `uid_validity` — після зміни скриньки два листи ділять теку. |
-| C.4 | ⬜ | Loopback на `save_imap_settings`, `test_imap_connection`, `POST /settings` (секрети) — як у сусідніх роутах. |
+| C.3 | ✅ 07.09.26 | Закрито кроком M.3: теки `<uid_validity>_<uid>`, старі імена визнає `folder_candidates`. |
+| C.4 | ✅ 07.09.26 | Закрито кроком K.4: loopback на `save_imap_settings`, `test_imap_connection`, `POST /settings` і чотири роути `settings/users.py`. |
 | C.5 | ⬜ | 10 ручних `admin + loopback` гейтів (backup/update/users/feedback) → `deps.require_admin(..., unauth="redirect")`. Ще ~20 `role != "адмін"` у queue/mail/machines. |
-| C.6 | ⬜ | `furnace.poll_target` пише стан поза `_states_lock`; `grab()`/`read_panel` без широкого `except` — одна піч валить тік усіх. Те саме `screen_is_sisma` у machines. |
-| C.7 | ⬜ | `_calib_signatures` ключ без теки — після зміни теки калібрування старі сигнатури глушать нові кадри. |
+| C.6 | ✅ 07.09.26 | Закрито кроком D.2: стан печі під `_states_lock`, широкий `except` у `grab`/`read_panel`/`screen_is_sisma`. |
+| C.7 | ✅ 07.09.26 | Закрито кроком D.5: ключ кеша — тека РАЗОМ із верстатом. |
 | C.8 | ⬜ | `prune_readings` — `delete()` замість ORM по одному; `freeze_due_days` — фільтр по дню в SQL. |
 | C.9 | ⬜ | `settings_selfcheck._folder()` — використати `check_path_status(write_probe=True)`, інакше «доступна на запис» без проби запису. |
 | C.10 | ⬜ | `palette.COMMANDS` — другий реєстр екранів; сторож або спільне джерело з рейкою. |
