@@ -784,9 +784,14 @@ MACHINE_READING_HEARTBEAT_SECONDS = 60
 MACHINE_ERROR_DB_INTERVAL_SECONDS = 15 * 60
 MACHINE_READINGS_RETENTION_DAYS = 30
 
-# Останній записаний рядок на верстат: (час, ключ події). У памʼяті процесу —
-# як і `stored_at` у печей: це стан опитувача, а не дані.
-_stored: dict[str, tuple[datetime, tuple]] = {}
+# Останній записаний рядок на верстат: (час, ключ події, чи то була помилка).
+# У памʼяті процесу — як і `stored_at` у печей: це стан опитувача, а не дані.
+#
+# Третє поле потрібне, щоб відрізнити ПЕРШУ невдачу від сотої. Момент, коли
+# верстат перестав відповідати, — це подія, і вона мусить лягти в базу тим
+# самим кадром; далі однакові «не відповів» ідуть рідко, щоб мертвий ПК за
+# добу не дав тисячі однакових рядків.
+_stored: dict[str, tuple[datetime, tuple, bool]] = {}
 _stored_lock = Lock()
 
 
@@ -805,7 +810,11 @@ def _should_store_machine(state: "MachineState", now: datetime) -> bool:
         previous = _stored.get(state.target.key)
     if previous is None:
         return True
-    stored_at, event = previous
+    stored_at, event, was_error = previous
+    # Верстат ПОВЕРНУВСЯ після невдач — це теж подія, і чекати хвилини на неї
+    # не треба: саме за цим переходом і рахується, скільки він простояв.
+    if was_error:
+        return True
     if event != _reading_event_key(state):
         return True
     return (now - stored_at).total_seconds() >= MACHINE_READING_HEARTBEAT_SECONDS
@@ -839,7 +848,7 @@ def _store_machine_reading(
     )
     db.commit()
     with _stored_lock:
-        _stored[state.target.key] = (now, _reading_event_key(state))
+        _stored[state.target.key] = (now, _reading_event_key(state), bool(error))
 
 
 def prune_machine_readings(db: Session, now: Optional[datetime] = None) -> int:
@@ -883,11 +892,16 @@ def poll_target(
 
     if error is not None:
         _record_machine_failure(state, target, error, now)
-        # Слід невдачі — рідше, ніж кадри: раз на 15 хв, як у печей. Інакше
-        # мертвий ПК за добу дав би тисячі однакових рядків «не відповів».
+        # ПЕРША невдача — негайно: момент, коли верстат перестав відповідати,
+        # це подія, і саме за нею потім рахують простій. Раніше вона тонула
+        # до 15 хвилин, бо загальний дротель не відрізняв першу невдачу від
+        # сотої (знайдено самоперевіркою 08.09.26).
+        # Повторні однакові «не відповів» — рідко, інакше мертвий ПК за добу
+        # дав би тисячі однакових рядків.
         with _stored_lock:
             previous = _stored.get(target.key)
-        if previous is None or (now - previous[0]).total_seconds() >= MACHINE_ERROR_DB_INTERVAL_SECONDS:
+        first_failure = previous is None or not previous[2]
+        if first_failure or (now - previous[0]).total_seconds() >= MACHINE_ERROR_DB_INTERVAL_SECONDS:
             try:
                 _store_machine_reading(db, state, now, error=error)
             except Exception:  # noqa: BLE001

@@ -46,7 +46,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Iterable, Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import CamBlank
@@ -294,6 +294,10 @@ class SyncBlanksResult:
     appeared: int = 0
     vanished: int = 0
     present: int = 0
+    # Скільки рядків цей прохід записав як ВЖЕ ЗАМОВЛЕНІ, бо вони лежали в
+    # теці ще до вмикання стеження. Ненульове буває рівно один раз — на
+    # першому проході (див. sync_blanks).
+    baseline: int = 0
 
 
 def sync_blanks(db: Session, root: Path | str, *, now: Optional[datetime] = None) -> SyncBlanksResult:
@@ -310,6 +314,23 @@ def sync_blanks(db: Session, root: Path | str, *, now: Optional[datetime] = None
     now = now or datetime.now()
     found = scan_blanks(root)
     result = SyncBlanksResult(present=len(found))
+
+    # ПЕРШИЙ прохід — це база відліку, а не вантаж замовлень.
+    #
+    # У теці лежать диски, накопичені РОКАМИ (номери доходили до 891 у групі,
+    # старі не прибирали). Якби ми порахували їх як «щойно взяті», перше ж
+    # натискання «Перечитати теку» дало б комірниці замовлення на десятки
+    # тисяч дисків — перевірено: 900 файлів перетворювались на рядок
+    # «Mono a2 12(300)+18(300)+25(300)». Фіча була б непридатна з першої
+    # секунди, а надісланий такий список — ще й соромно.
+    #
+    # Тому все, що вже лежить у теці на момент вмикання, одразу позначаємо
+    # замовленим. Узятим рахується лише те, що зʼявилось ПІСЛЯ.
+    #
+    # Умова саме «таблиця порожня», а не «немає живих рядків»: після повної
+    # підчистки теки всі рядки стають зниклими, але база відліку вже є, і
+    # другий раз її ставити не можна.
+    is_first_run = not db.scalar(select(func.count()).select_from(CamBlank))
 
     # Ключ у НИЖНЬОМУ регістрі. Windows не розрізняє регістр у назвах, тож
     # перейменування `12-Mono-A2-x1` → `12-mono-a2-x1` це ТОЙ САМИЙ файл.
@@ -340,13 +361,18 @@ def sync_blanks(db: Session, root: Path | str, *, now: Optional[datetime] = None
                 serial=item.parsed.serial,
                 height_mismatch=item.height_mismatch,
                 first_seen_at=now,
+                # База відліку: те, що вже лежало, замовляти не треба.
+                ordered_at=now if is_first_run else None,
             )
         )
-        result.appeared += 1
+        if is_first_run:
+            result.baseline += 1
+        else:
+            result.appeared += 1
         # Перший прохід на робочому ПК може принести десятки тисяч рядків.
         # Однією транзакцією це тримало б базу зайнятою кілька секунд, а
         # поруч щохвилини пишуть покази верстатів і печей.
-        if result.appeared % _COMMIT_EVERY == 0:
+        if (result.appeared + result.baseline) % _COMMIT_EVERY == 0:
             db.commit()
 
     for key, row in alive.items():
@@ -354,7 +380,7 @@ def sync_blanks(db: Session, root: Path | str, *, now: Optional[datetime] = None
             row.gone_at = now
             result.vanished += 1
 
-    if result.appeared or result.vanished:
+    if result.appeared or result.vanished or result.baseline:
         db.commit()
     return result
 

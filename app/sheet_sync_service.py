@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from collections import Counter
 import json
 import logging
 import re
@@ -271,6 +272,26 @@ def _run_background_import() -> None:
             _import_flash = flash
 
 
+# Імена полів Order → колонки таблиці, як їх називає оператор. Без цього
+# у звірці світилось би «material_color», а людина шукає «Колір роботи».
+_FIELD_LABELS = {
+    "work_order_no": "наряд",
+    "job_code": "номер роботи",
+    "quantity": "кількість",
+    "material_color": "колір",
+    "kind": "вид роботи",
+    "due_time": "здати до",
+    "technician_name": "технік",
+    "cam_comment": "коментар",
+    "sum3d_id": "Sum3D",
+    "calculated_raw": "прорахував",
+    "milled_raw": "відфрезерував",
+    "last_milled_date": "дата фрезерування",
+    "mill_count": "який раз",
+    "client_name": "клієнт",
+}
+
+
 @dataclass
 class SheetSyncSummary:
     tabs_processed: int = 0
@@ -290,6 +311,10 @@ class SheetSyncSummary:
     compared_fields: int = 0
     differed_fields: int = 0
     skipped_non_queue: int = 0
+    # Яка колонка розходиться найчастіше. Коли розбіжність зʼявляється,
+    # перше питання оператора — «а в чому саме», і відповідь у нас уже є:
+    # порівняння й так іде по кожному полю окремо.
+    differed_by_field: Counter = field(default_factory=Counter)
     # False, якщо бодай на одній вкладці цього проходу щось законно рухалось
     # (зсув рядків, ручне додавання, притримане масове зникнення). Тоді
     # розбіжність нормальна, і вердикт треба відкласти, а не бити на сполох.
@@ -316,7 +341,11 @@ class SheetSyncSummary:
             return f"звірка відкладена: цього проходу рядки рухались ({rows} звірено{skipped})"
         differed = self.compared_rows - self.agreed_rows
         word = pluralize_uk(differed, "розбіжність", "розбіжності", "розбіжностей")
-        return f"звірено {rows}, {word}: {differed}{skipped}"
+        where = ""
+        if differed and self.differed_by_field:
+            field_name, count = self.differed_by_field.most_common(1)[0]
+            where = f", найчастіше {_FIELD_LABELS.get(field_name, field_name)} ({count})"
+        return f"звірено {rows}, {word}: {differed}{where}{skipped}"
 
 
 def _parse_tab_date(title: str) -> date | None:
@@ -638,6 +667,7 @@ def sync_google_sheets(
             summary.compared_fields += result.compared_fields
             summary.differed_fields += result.differed_fields
             summary.skipped_non_queue += result.skipped_non_queue
+            summary.differed_by_field.update(result.differed_by_field)
             if not result.verdict_is_trustworthy():
                 summary.verdict_trustworthy = False
 
@@ -885,6 +915,7 @@ def sync_hot_tab(
             summary.compared_fields += result.compared_fields
             summary.differed_fields += result.differed_fields
             summary.skipped_non_queue += result.skipped_non_queue
+            summary.differed_by_field.update(result.differed_by_field)
             if not result.verdict_is_trustworthy():
                 summary.verdict_trustworthy = False
         if summary.tabs_processed == 0:

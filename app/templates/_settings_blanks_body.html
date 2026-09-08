@@ -9,6 +9,11 @@
     {% if blanks_error %}
     <p class="settings-help stand-danger-note">{{ blanks_error }}</p>
     {% endif %}
+    {% if blanks_note %}
+    {# Перше читання ставить базу відліку. Мовчати про це не можна: оператор
+       натиснув би кнопку, побачив порожній список і вирішив, що не працює. #}
+    <p class="settings-help stand-note">{{ blanks_note }}</p>
+    {% endif %}
 
     <div class="scon-actionbar">
         <button type="button" class="settings-secondary-button"

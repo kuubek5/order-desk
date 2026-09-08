@@ -168,3 +168,34 @@ def test_prune_drops_only_rows_past_the_window():
     assert removed == 1
     left = db.scalars(select(MachineReading)).all()
     assert [row.captured_at for row in left] == [fresh]
+
+
+def test_the_moment_a_machine_stops_answering_is_recorded_at_once():
+    """Падіння верстата — це ПОДІЯ, а не потік.
+
+    Знайдено самоперевіркою 08.09.26: загальний дротель на 15 хвилин не
+    відрізняв першу невдачу від сотої, тож момент, коли верстат перестав
+    відповідати, тонув до чверті години. А саме за цим моментом потім
+    рахують простій.
+    """
+    now = datetime(2026, 9, 8, 18, 0, 0)
+    state = make_state()
+    machines_service._stored[state.target.key] = (now, ("iso", None, None), False)
+
+    previous = machines_service._stored[state.target.key]
+    first_failure = not previous[2]
+    assert first_failure is True, "перша невдача після успіху мусить писатись негайно"
+
+    # А ось повторна невдача через 5 секунд — уже ні.
+    machines_service._stored[state.target.key] = (now, ("iso", None, None), True)
+    previous = machines_service._stored[state.target.key]
+    assert previous[2] is True
+    assert (now + timedelta(seconds=5) - previous[0]).total_seconds() < machines_service.MACHINE_ERROR_DB_INTERVAL_SECONDS
+
+
+def test_a_machine_coming_back_is_stored_without_waiting_a_minute():
+    """Повернення після невдач — теж подія: за переходом рахують простій."""
+    now = datetime(2026, 9, 8, 18, 0, 0)
+    state = make_state()
+    machines_service._stored[state.target.key] = (now, machines_service._reading_event_key(state), True)
+    assert machines_service._should_store_machine(state, now + timedelta(seconds=2)) is True

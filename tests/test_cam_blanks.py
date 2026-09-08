@@ -50,6 +50,18 @@ def make_tree(root, files: dict[str, list[str]]):
             (directory / name).write_text("", encoding="utf-8")
 
 
+def seed_baseline(db, root):
+    """Поставити базу відліку.
+
+    Перший прохід по теці — це БАЗА, а не вантаж замовлень: у теці лежать
+    диски, накопичені роками. Тести, які перевіряють ПОЯВУ нового диска,
+    мусять спершу базу поставити, інакше вони міряли б саме її.
+    """
+    make_tree(root, {"zr/10": ["10-baseline-a0-x1.blk"]})
+    result = sync_blanks(db, root)
+    assert (result.baseline, result.appeared) == (1, 0)
+
+
 # ── розбір назви ────────────────────────────────────────────────────────────
 
 
@@ -107,6 +119,7 @@ def test_height_in_the_name_must_match_its_folder(tmp_path):
 
 
 def test_new_file_appears_once_and_is_not_counted_again(db, tmp_path):
+    seed_baseline(db, tmp_path)
     make_tree(tmp_path, {"zr/12": ["12-monolith-a2-x14.blk"]})
     first = sync_blanks(db, tmp_path)
     assert (first.appeared, first.vanished) == (1, 0)
@@ -119,13 +132,15 @@ def test_new_file_appears_once_and_is_not_counted_again(db, tmp_path):
 def test_removed_file_is_marked_gone_but_the_row_survives(db, tmp_path):
     """Рядок лишається: диск усе одно взяли, і замовити його треба, навіть
     якщо файл уже прибрали."""
+    seed_baseline(db, tmp_path)
     make_tree(tmp_path, {"zr/12": ["12-monolith-a2-x14.blk"]})
     sync_blanks(db, tmp_path)
     (tmp_path / "zr/12/12-monolith-a2-x14.blk").unlink()
 
     result = sync_blanks(db, tmp_path)
     assert (result.appeared, result.vanished) == (0, 1)
-    row = db.scalars(select(CamBlank)).one()
+    # База відліку теж лежить у таблиці — беремо саме той рядок, що зник.
+    row = db.scalars(select(CamBlank).where(CamBlank.file_name.like("%x14%"))).one()
     assert row.gone_at is not None
 
 
@@ -136,6 +151,7 @@ def test_same_name_after_a_cleanup_counts_as_a_new_disc(db, tmp_path):
     повторюються. Порівняння самих назв дало б «уже бачив» і новий диск не
     потрапив би в замовлення — саме тоді, коли на список уже покладаються.
     """
+    seed_baseline(db, tmp_path)
     path = tmp_path / "zr/12/12-monolith-a2-x1.blk"
     make_tree(tmp_path, {"zr/12": ["12-monolith-a2-x1.blk"]})
     sync_blanks(db, tmp_path)
@@ -154,9 +170,11 @@ def test_same_name_after_a_cleanup_counts_as_a_new_disc(db, tmp_path):
 
 
 def test_unparsed_file_is_still_recorded_as_a_taken_disc(db, tmp_path):
+    seed_baseline(db, tmp_path)
     make_tree(tmp_path, {"zr/12": ["чудернацька назва.blk"]})
     sync_blanks(db, tmp_path)
-    row = db.scalars(select(CamBlank)).one()
+    # Незамовлені = все, крім бази відліку.
+    row = pending_blanks(db)[0]
     assert row.height is None and row.brand is None
     assert row.file_name == "чудернацька назва.blk"
     assert len(pending_blanks(db)) == 1
@@ -169,6 +187,7 @@ def test_window_runs_from_the_order_mark_not_from_the_business_day(db, tmp_path)
     """Комірниця йде о 18:00, далі бере нічна зміна, а у вихідні її немає
     взагалі. Тому межа — позначка «замовлено», і вона переживає і ніч, і
     вихідні, і забутий день, без жодної календарної логіки."""
+    seed_baseline(db, tmp_path)
     make_tree(tmp_path, {"zr/12": ["12-monolith-a2-x1.blk"]})
     sync_blanks(db, tmp_path, now=datetime(2026, 9, 4, 23, 40))   # пʼятниця, ніч
     assert len(pending_blanks(db)) == 1
@@ -288,6 +307,7 @@ def test_case_rename_is_not_a_new_disc(db, tmp_path):
     """
     import os
 
+    seed_baseline(db, tmp_path)
     make_tree(tmp_path, {"zr/12": ["12-Mono-A2-x1.blk"]})
     sync_blanks(db, tmp_path)
     os.rename(tmp_path / "zr/12/12-Mono-A2-x1.blk", tmp_path / "zr/12/12-mono-a2-x1.blk")
@@ -300,11 +320,12 @@ def test_case_rename_is_not_a_new_disc(db, tmp_path):
 def test_absurdly_long_name_is_cut_to_the_column_width(db, tmp_path):
     """SQLite довжину не перевіряє й мовчки проковтне будь-що, але
     180-символьний «колір» у таблиці на екрані — це вже зламана верстка."""
+    seed_baseline(db, tmp_path)
     long_shade = "дужедовгийколір" * 12
     make_tree(tmp_path, {"zr/12": [f"12-monolith-{long_shade}-x1.blk"]})
     sync_blanks(db, tmp_path)
 
-    row = db.scalars(select(CamBlank)).one()
+    row = pending_blanks(db)[0]
     assert len(row.shade) <= 60
     assert len(row.file_name) <= 200
     assert len(row.rel_path) <= 400
@@ -312,6 +333,7 @@ def test_absurdly_long_name_is_cut_to_the_column_width(db, tmp_path):
 
 def test_odd_characters_in_names_do_not_break_the_scan(db, tmp_path):
     """Дужки, апострофи, кирилиця, тире — усе це реальні назви з цеху."""
+    seed_baseline(db, tmp_path)
     make_tree(tmp_path, {"zr/12": [
         "12-mono-a2-x1.blk",
         "12-mono-a2 (копия)-x2.blk",
@@ -330,3 +352,50 @@ def test_a_file_where_the_root_should_be_is_not_a_crash(tmp_path):
     fake.write_text("x", encoding="utf-8")
     assert scan_blanks(fake) == []
     assert probe_blanks(fake).exists is False
+
+
+def test_first_run_is_a_baseline_not_an_order_for_everything(db, tmp_path):
+    """НАЙВАЖЛИВІШИЙ тест впровадження.
+
+    У теці лежать диски, накопичені роками — номери доходили до 891 у групі,
+    старі не прибирали. Якби перший прохід порахував їх як «щойно взяті»,
+    перше ж натискання «Перечитати теку» дало б комірниці замовлення на
+    десятки тисяч дисків. Перевірено до фіксу: 900 файлів перетворювались на
+    рядок «Mono a2 12(300)+18(300)+25(300)».
+    """
+    make_tree(tmp_path, {
+        "zr/12": [f"12-monolith-a2-x{i}.blk" for i in range(1, 31)],
+        "zr/18": [f"18-emotions-a3-x{i}.blk" for i in range(1, 21)],
+    })
+    first = sync_blanks(db, tmp_path)
+    assert first.baseline == 50
+    assert first.appeared == 0
+    assert pending_blanks(db) == [], "старі диски не мають потрапляти в замовлення"
+    assert order_text(pending_blanks(db)) == ""
+
+    # А ось диск, створений ПІСЛЯ вмикання, — це вже взятий диск.
+    make_tree(tmp_path, {"zr/12": ["12-monolith-a2-x31.blk"]})
+    second = sync_blanks(db, tmp_path)
+    assert (second.baseline, second.appeared) == (0, 1)
+    assert len(pending_blanks(db)) == 1
+
+
+def test_baseline_is_set_once_even_after_the_folder_is_emptied(db, tmp_path):
+    """Умова саме «таблиця порожня», а не «немає живих рядків».
+
+    Після повної підчистки теки всі рядки стають зниклими, але база відліку
+    вже стоїть. Якби її ставили вдруге, диски, створені після підчистки,
+    мовчки випали б із замовлення.
+    """
+    import shutil
+
+    make_tree(tmp_path, {"zr/12": ["12-monolith-a2-x1.blk"]})
+    assert sync_blanks(db, tmp_path).baseline == 1
+
+    shutil.rmtree(tmp_path / "zr")
+    sync_blanks(db, tmp_path)          # усе зникло
+
+    make_tree(tmp_path, {"zr/12": ["12-monolith-a2-x1.blk"]})
+    again = sync_blanks(db, tmp_path)
+    assert (again.baseline, again.appeared) == (0, 1)
+    assert len(pending_blanks(db)) == 1

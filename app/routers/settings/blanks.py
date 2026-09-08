@@ -72,13 +72,15 @@ def blanks_context(db: Session, *, error: str | None = None) -> dict:
         "blanks_error": error,
         # Проба заповнюється лише своїм роутом; на звичайному рендері її нема.
         "blanks_probe": None,
+        "blanks_note": None,
     }
 
 
-def _body(request: Request, db: Session, *, error: str | None = None, probe=None) -> HTMLResponse:
+def _body(request: Request, db: Session, *, error: str | None = None, probe=None, note: str | None = None) -> HTMLResponse:
     user = get_current_user(request, db)
     ctx = blanks_context(db, error=error)
     ctx["blanks_probe"] = probe
+    ctx["blanks_note"] = note
     return templates.TemplateResponse(
         request,
         "_settings_blanks_body.html",
@@ -115,10 +117,19 @@ def rescan_blanks(request: Request, db: Session = Depends(get_db)):
     if not path:
         return _body(request, db, error="Спершу задайте шлях до теки заготовок.")
     try:
-        sync_blanks(db, path)
+        result = sync_blanks(db, path)
     except OSError as exc:
         return _body(request, db, error=f"Теку не вдалось прочитати: {exc}")
-    return _body(request, db)
+    # Перший прохід — база відліку. Без цього повідомлення оператор натисне
+    # кнопку, побачить порожній список і вирішить, що не працює.
+    note = None
+    if result.baseline:
+        note = (
+            f"Перше читання: {result.baseline} наявних дисків узято за точку "
+            "відліку — вони вже були в теці, тож замовляти їх не треба. "
+            "У список потраплятиме лише те, що зʼявиться далі."
+        )
+    return _body(request, db, note=note)
 
 
 @router.post("/settings/blanks/ordered")
