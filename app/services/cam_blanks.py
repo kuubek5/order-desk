@@ -59,12 +59,63 @@ BLANK_EXT = ".blk"
 # По скільки рядків комітити на великому першому проході.
 _COMMIT_EVERY = 500
 
-# `12-monolith-a2-x14` → висота 12, виробник monolith, колір a2, номер 14.
-# Колір може містити дефіси й пробіли («прозора», «a3 5»), тому він жадібний
-# до останнього блоку `-x<цифри>`. Номер ЗАВЖДИ останній і завжди з `x`.
-_NAME_RE = re.compile(
+# ── ДВА формати назв, і обидва справжні ────────────────────────────────────
+#
+# Формат A (чекали спочатку): `12-monolith-a2-x14` — висота, виробник, колір,
+# номер. Так виглядали зразки, на яких фічу писали.
+#
+# Формат B (що НАСПРАВДІ пише CAM на робочому ПК, перевірено 08.09.26):
+#
+#   zr25_25-a1-x29                 матеріал zr, висота 25, колір a1, № 29
+#   pmma25_25-a3-x261              матеріал pmma, висота 25, колір a3, № 261
+#   D98_zr25_25-a2-x54             те саме плюс префікс діаметра диска
+#   crco20_20-hpp-x18              матеріал crco, висота 20, колір hpp, № 18
+#   pmmac25_25-pmmaProzrach-281    номер БЕЗ `x`
+#   crco25_TRINIA_IVORY-X03        велика `X`, у голові немає висоти
+#
+# Жодна з цих назв старою регуляркою не розбиралась — тобто на робочому ПК
+# розбір не влучав У ЖОДЕН файл із 19 тисяч. Диски рахувались (тотожність іде
+# за шляхом, не за назвою), але замовлення для комірниці виходило не списком
+# «Mono a2 25(3)», а купою сирих імен файлів. Фіча працювала наполовину, і
+# видно це стало лише на справжніх назвах.
+#
+# Розбираємо СПРАВА, бо саме хвіст стабільний: останній блок — номер, перед
+# ним — колір, решта — голова з матеріалом і висотою. Голова змінюється від
+# машини до машини, хвіст — ні.
+_NAME_A_RE = re.compile(
     r"^(?P<height>\d{1,3})\s*-\s*(?P<brand>[^-]+?)\s*-\s*(?P<shade>.+?)\s*-\s*[xX](?P<serial>\d+)$"
 )
+_NAME_B_RE = re.compile(
+    r"^(?P<head>.+?)\s*-\s*(?P<shade>[^-]+?)\s*-\s*[xX]?(?P<serial>\d+)$"
+)
+# Голова формату B: `zr25_25`, `D98_zr25_25`, `crco25_TRINIA_IVORY`.
+# Висота — останнє число після `_`.
+_HEAD_HEIGHT_RE = re.compile(r"_(?P<height>\d{1,3})$")
+_CODE_LETTERS_RE = re.compile(r"^(?P<code>[A-Za-zА-Яа-яІіЇїЄєҐґ]+)")
+
+
+def _head_code(head: str) -> Optional[str]:
+    """Код матеріалу з голови назви.
+
+    Беремо сегмент ПЕРЕД хвостовою висотою, а не перший: у `D98_zr25_25`
+    перший сегмент — це діаметр диска (98 мм), і матеріалом він не є. Перший
+    підхід повертав тут «d», що в замовленні комірниці виглядало б як окремий
+    неіснуючий матеріал.
+
+    Голова без хвостової висоти (`crco25_TRINIA_IVORY`) — беремо перший
+    сегмент: іншого орієнтира немає.
+    """
+    parts = [p for p in head.split("_") if p]
+    if not parts:
+        return None
+    # `zr25_25` → сегменти [zr25, 25]; беремо передостанній, якщо останній —
+    # це висота, інакше перший.
+    if len(parts) >= 2 and parts[-1].isdigit():
+        candidate = parts[-2]
+    else:
+        candidate = parts[0]
+    match = _CODE_LETTERS_RE.match(candidate)
+    return match.group("code") if match else None
 
 
 @dataclass(frozen=True)
@@ -79,29 +130,59 @@ class ParsedBlank:
 
 
 def parse_blank_name(name: str) -> ParsedBlank:
-    """`12-monolith-a2-x14` → ParsedBlank(12, 'monolith', 'a2', 14).
+    """Назва файлу → висота, матеріал, колір, номер. Розуміє обидва формати.
 
     Не розібралось — повертаємо порожній ParsedBlank, а не None: викликач
     однаково мусить порахувати файл, просто без структурованих полів.
+
+    `brand` для формату B — це КОД МАТЕРІАЛУ з назви (`zr`, `pmma`, `crco`,
+    `ti`), бо виробника ці назви не несуть узагалі. Для комірниці рядок
+    «Zr a2 25(3)» усе одно кращий за сире імʼя файлу, а справжній виробник
+    видно з теки матеріалу.
     """
     stem = name[: -len(BLANK_EXT)] if name.lower().endswith(BLANK_EXT) else name
-    match = _NAME_RE.match(stem.strip())
+    stem = stem.strip()
+
+    match = _NAME_A_RE.match(stem)
+    if match is not None:
+        try:
+            height = int(match.group("height"))
+            serial = int(match.group("serial"))
+        except ValueError:  # pragma: no cover — регулярка вже гарантує цифри
+            return ParsedBlank()
+        return ParsedBlank(
+            height=height,
+            brand=_clip(match.group("brand")),
+            shade=_clip(match.group("shade")),
+            serial=serial,
+        )
+
+    match = _NAME_B_RE.match(stem)
     if match is None:
         return ParsedBlank()
     try:
-        height = int(match.group("height"))
         serial = int(match.group("serial"))
-    except ValueError:  # pragma: no cover — регулярка вже гарантує цифри
+    except ValueError:  # pragma: no cover
         return ParsedBlank()
-    # Обрізаємо під ширину колонок. SQLite довжину не перевіряє й мовчки
-    # проковтне будь-що, але 180-символьний «колір» у таблиці на екрані —
-    # це вже зламана верстка, а на строгішій базі був би збій запису.
+    head = match.group("head").strip()
+    height_match = _HEAD_HEIGHT_RE.search(head)
     return ParsedBlank(
-        height=height,
-        brand=(match.group("brand").strip().lower() or None) and match.group("brand").strip().lower()[:60],
-        shade=(match.group("shade").strip().lower() or None) and match.group("shade").strip().lower()[:60],
+        height=int(height_match.group("height")) if height_match else None,
+        brand=_clip(_head_code(head)),
+        shade=_clip(match.group("shade")),
         serial=serial,
     )
+
+
+def _clip(value: Optional[str]) -> Optional[str]:
+    """Обрізати під ширину колонки й звести регістр.
+
+    SQLite довжину не перевіряє й мовчки проковтне будь-що, але 180-символьний
+    «колір» у таблиці на екрані — це вже зламана верстка, а на строгішій базі
+    був би збій запису.
+    """
+    cleaned = (value or "").strip().lower()
+    return cleaned[:60] or None
 
 
 @dataclass(frozen=True)
@@ -445,6 +526,65 @@ def mark_ordered(db: Session, *, now: Optional[datetime] = None) -> int:
     if rows:
         db.commit()
     return len(rows)
+
+
+def undo_last_order(db: Session) -> int:
+    """Скасувати ОСТАННЄ «Замовлено». Повертає, скільки дисків повернулось.
+
+    Навіщо. Кнопка «Замовлено» починає нове вікно й миттєво спорожняє список —
+    а натиснути її випадково легко (натиснуто помилково 08.09.26). Без відкату
+    диски, взяті з архіву, зникають із замовлення НАЗАВЖДИ: рядки лишаються, але
+    вже позначені замовленими, і комірниця їх не побачить. Це втрата роботи,
+    зробленої за день, від одного зайвого кліку.
+
+    ЯК ВІДРІЗНЯЄМО ПАЧКУ. Усі рядки одного натискання ділять точний час
+    `ordered_at` — його ставить один виклик `mark_ordered`. Тому відкат бере
+    найбільший такий час і чистить рівно його.
+
+    ЧОМУ ЦЕ НЕ ЧІПАЄ ТОЧКУ ВІДЛІКУ. Перший прохід теж проставляє `ordered_at`
+    (інакше 19 тисяч давніх дисків потрапили б у перше ж замовлення), і
+    скасувати ЙОГО означало б вивалити комірниці всю історію теки. Такі рядки
+    видно за ознакою: у них `ordered_at` дорівнює `first_seen_at`, бо їх
+    проставили в ту саму мить, коли вперше побачили. Пачка справжнього
+    замовлення завжди пізніша за появу диска. Тому умова `ordered_at !=
+    first_seen_at` і є захистом, а не косметикою.
+    """
+    last = db.scalar(
+        select(func.max(CamBlank.ordered_at)).where(
+            CamBlank.ordered_at.is_not(None),
+            CamBlank.ordered_at != CamBlank.first_seen_at,
+        )
+    )
+    if last is None:
+        return 0
+    rows = list(
+        db.scalars(
+            select(CamBlank).where(
+                CamBlank.ordered_at == last,
+                CamBlank.ordered_at != CamBlank.first_seen_at,
+            )
+        ).all()
+    )
+    for row in rows:
+        row.ordered_at = None
+    if rows:
+        db.commit()
+    return len(rows)
+
+
+def last_order_at(db: Session) -> Optional[datetime]:
+    """Коли натискали «Замовлено» востаннє. None — жодного разу.
+
+    Потрібне екрану: кнопку скасування показуємо лише тоді, коли є що
+    скасовувати, і підписуємо часом — щоб не скасувати позавчорашнє замовлення,
+    думаючи, що прибираєш свій випадковий клік.
+    """
+    return db.scalar(
+        select(func.max(CamBlank.ordered_at)).where(
+            CamBlank.ordered_at.is_not(None),
+            CamBlank.ordered_at != CamBlank.first_seen_at,
+        )
+    )
 
 
 # ── Текст для комірниці ─────────────────────────────────────────────────────

@@ -18,6 +18,8 @@ from starlette.requests import Request
 from app.models import CamBlank
 from app.routers.deps import get_current_user, get_db, templates
 from app.services.cam_blanks import (
+    undo_last_order,
+    last_order_at,
     mark_ordered,
     pileup_note,
     probe_blanks,
@@ -75,6 +77,9 @@ def blanks_context(db: Session, *, error: str | None = None) -> dict:
         "blanks_note": None,
         # Підказка «схоже, забули замовити» — рахується з самого списку.
         "blanks_pileup": pileup_note(pending),
+        # Коли натискали «Замовлено» востаннє. None — жодного разу, і тоді
+        # кнопки скасування немає: скасовувати нічого.
+        "blanks_last_order_at": last_order_at(db),
     }
 
 
@@ -145,6 +150,27 @@ def blanks_ordered(request: Request, db: Session = Depends(get_db)):
     require_settings_edit(request, db, SECTION)
     mark_ordered(db)
     return _body(request, db)
+
+
+@router.post("/settings/blanks/undo-order")
+def blanks_undo_order(request: Request, db: Session = Depends(get_db)):
+    """Скасувати останнє «Замовлено».
+
+    Кнопка «Замовлено» миттєво спорожняє список, і натиснути її випадково
+    легко. Без відкату денна робота зникає з замовлення від одного зайвого
+    кліку — рядки лишаються, але комірниця їх уже не побачить.
+
+    Точку відліку (перший прохід теки) відкат не чіпає: інакше в замовлення
+    вивалилась би вся історія теки. Деталі — в `undo_last_order`.
+    """
+    require_settings_edit(request, db, SECTION)
+    restored = undo_last_order(db)
+    note = (
+        f"Замовлення скасовано, повернуто дисків: {restored}."
+        if restored
+        else "Скасовувати нема чого — замовлень ще не було."
+    )
+    return _body(request, db, note=note)
 
 
 @router.post("/settings/blanks/probe")

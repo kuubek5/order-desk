@@ -23,7 +23,9 @@ from sqlalchemy.pool import StaticPool
 from app.db import Base
 from app.models import CamBlank
 from app.services.cam_blanks import (
+    last_order_at,
     order_text,
+    undo_last_order,
     mark_ordered,
     parse_blank_name,
     pending_blanks,
@@ -452,3 +454,136 @@ def test_pileup_hint_is_a_hint_not_a_block(db, tmp_path):
     assert pileup_note(rows) is not None
     assert len(rows) == 60
     assert order_text(rows), "текст для комірниці не обрізається"
+
+
+# ── Скасування випадкового «Замовлено» ──────────────────────────────────────
+# Кнопка миттєво спорожняє список, і натиснути її випадково легко — саме так і
+# сталось на робочому ПК 08.09.26. Без відкату денна робота зникає з замовлення
+# від одного зайвого кліку: рядки лишаються, але вже позначені замовленими, і
+# комірниця їх не побачить.
+
+
+class TestUndoOrder:
+    def test_undo_returns_the_discs_to_the_list(self, db):
+        now = datetime(2026, 9, 8, 17, 0)
+        db.add_all([
+            CamBlank(rel_path="a", brand="monolith", shade="a2", height=18, first_seen_at=now),
+            CamBlank(rel_path="b", brand="monolith", shade="a2", height=25, first_seen_at=now),
+        ])
+        db.commit()
+
+        assert mark_ordered(db, now=datetime(2026, 9, 8, 18, 0)) == 2
+        assert pending_blanks(db) == []
+
+        assert undo_last_order(db) == 2
+        assert len(pending_blanks(db)) == 2
+
+    def test_undo_never_touches_the_baseline(self, db):
+        """ГОЛОВНЕ. Перший прохід теки теж проставляє `ordered_at` — інакше 19
+        тисяч давніх дисків потрапили б у перше ж замовлення. Скасувати ЙОГО
+        означало б вивалити комірниці всю історію теки."""
+        now = datetime(2026, 9, 8, 12, 0)
+        # Рядки точки відліку: ordered_at дорівнює first_seen_at.
+        db.add_all([
+            CamBlank(rel_path=f"old{i}", brand="monolith", shade="a2", height=18,
+                     first_seen_at=now, ordered_at=now)
+            for i in range(5)
+        ])
+        db.commit()
+
+        assert undo_last_order(db) == 0, "відкат зачепив точку відліку"
+        assert pending_blanks(db) == []
+
+    def test_undo_takes_only_the_last_batch(self, db):
+        """Два замовлення поспіль — відкат повертає лише останнє."""
+        seen = datetime(2026, 9, 8, 9, 0)
+        db.add(CamBlank(rel_path="a", brand="monolith", shade="a2", height=18, first_seen_at=seen))
+        db.commit()
+        mark_ordered(db, now=datetime(2026, 9, 8, 12, 0))
+
+        db.add(CamBlank(rel_path="b", brand="monolith", shade="a2", height=25, first_seen_at=seen))
+        db.commit()
+        mark_ordered(db, now=datetime(2026, 9, 8, 18, 0))
+
+        assert undo_last_order(db) == 1
+        returned = [r.rel_path for r in pending_blanks(db)]
+        assert returned == ["b"], "відкат зачепив попереднє замовлення"
+
+    def test_nothing_to_undo_is_not_an_error(self, db):
+        assert undo_last_order(db) == 0
+        assert last_order_at(db) is None
+
+    def test_last_order_at_ignores_the_baseline(self, db):
+        """Кнопка скасування показується за цим значенням. Якби точка відліку
+        сюди потрапляла, кнопка висіла б на чистій системі й пропонувала
+        скасувати те, чого не було."""
+        now = datetime(2026, 9, 8, 12, 0)
+        db.add(CamBlank(rel_path="old", brand="monolith", shade="a2", height=18,
+                        first_seen_at=now, ordered_at=now))
+        db.commit()
+
+        assert last_order_at(db) is None
+
+
+# ── Справжні назви з робочого ПК ────────────────────────────────────────────
+# Зразки, на яких фічу писали, мали вигляд `12-monolith-a2-x14`. CAM на
+# робочому ПК пише ІНАКШЕ, і 08.09.26 виявилось, що розбір не влучає в жоден
+# файл із 19 тисяч. Диски рахувались (тотожність іде за шляхом, не за назвою),
+# але замовлення для комірниці виходило купою сирих імен замість списку.
+#
+# Ці назви взяті з робочої машини як є. Вони тут не «приклад», а контракт:
+# якщо розбір знову перестане їх розуміти, фіча тихо працюватиме наполовину.
+
+
+class TestRealNamesFromTheShop:
+    def test_zirconium(self):
+        p = parse_blank_name("zr25_25-a1-x29.blk")
+        assert (p.height, p.brand, p.shade, p.serial) == (25, "zr", "a1", 29)
+
+    def test_zirconium_with_a_disc_diameter_prefix(self):
+        """`D98_` — це діаметр диска, не матеріал. Перший підхід брав звідси
+        «d» і показував би комірниці неіснуючий матеріал."""
+        p = parse_blank_name("D98_zr25_25-a2-x54.blk")
+        assert (p.height, p.brand, p.shade, p.serial) == (25, "zr", "a2", 54)
+
+    def test_pmma(self):
+        p = parse_blank_name("pmma25_25-a3-x261.blk")
+        assert (p.height, p.brand, p.shade, p.serial) == (25, "pmma", "a3", 261)
+
+    def test_cobalt_chrome(self):
+        p = parse_blank_name("crco20_20-hpp-x18.blk")
+        assert (p.height, p.brand, p.shade, p.serial) == (20, "crco", "hpp", 18)
+
+    def test_serial_without_the_x(self):
+        """Не всі назви мають `x` перед номером — стара регулярка вимагала."""
+        p = parse_blank_name("pmmac25_25-pmmaProzrach-281.blk")
+        assert (p.height, p.shade, p.serial) == (25, "pmmaprozrach", 281)
+
+    def test_the_old_format_still_parses(self):
+        """Формат зразків нікуди не дівся — на іншій машині CAM може писати
+        саме так."""
+        p = parse_blank_name("12-monolith-a2-x14.blk")
+        assert (p.height, p.brand, p.shade, p.serial) == (12, "monolith", "a2", 14)
+
+    def test_a_template_file_stays_unparsed_and_that_is_fine(self):
+        """`D98_ti26` не має ні кольору, ні номера — це шаблон, а не диск.
+        Він однаково рахується як узятий файл, просто без полів."""
+        p = parse_blank_name("D98_ti26.blk")
+        assert p.serial is None
+
+    def test_the_order_line_is_readable_by_a_human(self):
+        """Головне, заради чого все: комірниця має побачити список, а не імена
+        файлів."""
+        rows = [
+            CamBlank(rel_path=n, file_name=n, **{
+                k: v for k, v in zip(
+                    ("height", "brand", "shade", "serial"),
+                    (lambda p: (p.height, p.brand, p.shade, p.serial))(parse_blank_name(n)),
+                )
+            })
+            for n in ("zr25_25-a2-x1.blk", "zr25_25-a2-x2.blk", "pmma25_20-a3-x7.blk")
+        ]
+        text = order_text(rows)
+        assert "Zr a2 25(2)" in text
+        assert "Pmma a3 20" in text
+        assert ".blk" not in text, "у замовлення потрапили сирі імена файлів"

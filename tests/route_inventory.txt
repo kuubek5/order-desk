@@ -138,6 +138,7 @@ POST /settings/blanks/ordered
 POST /settings/blanks/path
 POST /settings/blanks/probe
 POST /settings/blanks/rescan
+POST /settings/blanks/undo-order
 POST /settings/check-path
 POST /settings/feedback
 POST /settings/feedback/bind
