@@ -529,9 +529,26 @@ if (-not $healthy) {
 
         W "запускаю відкатний інсталятор $rollbackInstaller"
         $rollbackLog = Join-Path $logDir 'update-rollback.log'
-        Start-Process -FilePath $rollbackInstaller -NoNewWindow -Wait `
+        Start-Process -FilePath $rollbackInstaller -NoNewWindow `
             -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$rollbackLog"
-        Start-Sleep -Seconds 3
+        # ТА САМА пастка, що й на встановленні вище, і забути її тут — гірше:
+        # Inno породжує дочірній *.tmp і батьківський setup.exe виходить ОДРАЗУ.
+        # `-Wait` дочекався б лише батька, тобто ми запустили б застосунок
+        # посеред заміни його ж файлів — і відкат, покликаний рятувати, добив
+        # би встановлення остаточно. Чекаємо, поки зникнуть УСІ процеси з таким
+        # іменем, як і на прямому шляху.
+        #
+        # Тест із фальшивим .cmd цього не ловить: .cmd виходить синхронно, тож
+        # різниці між `-Wait` і очікуванням за іменем не видно. Знайдено
+        # звірянням із прямим шляхом, не запуском (08.09.26).
+        $rollbackStem = [System.IO.Path]::GetFileNameWithoutExtension($rollbackInstaller)
+        $rollbackDeadline = (Get-Date).AddMinutes(3)
+        Start-Sleep -Seconds 2
+        while ((Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -like ($rollbackStem + '*') }).Count -gt 0 -and (Get-Date) -lt $rollbackDeadline) {
+            Start-Sleep -Seconds 1
+        }
+        W "відкатний інсталятор завершився"
+        Start-Sleep -Seconds 2
         Start-Process -FilePath $exe -ArgumentList '--open-browser'
 
         $back = $false

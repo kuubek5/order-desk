@@ -636,3 +636,35 @@ def test_watchdog_receives_the_rollback_material(tmp_path, monkeypatch):
     joined = " ".join(str(a) for a in args)
     assert "old.exe" in joined, "інсталятор для відкату не переданий сторожу"
     assert "snap.db" in joined, "знімок бази не переданий сторожу"
+
+
+def test_rollback_waits_for_the_forked_installer_like_the_install_path_does():
+    """Inno породжує дочірній *.tmp, а батьківський setup.exe виходить ОДРАЗУ.
+
+    Прямий шлях встановлення це знає й чекає, поки зникнуть усі процеси з
+    іменем інсталятора. У відкаті цього спершу не було: `-Wait` дочекався б
+    лише батька, тобто застосунок стартував би посеред заміни власних файлів —
+    і відкат, покликаний рятувати, добив би встановлення.
+
+    Тест із фальшивим `.cmd` цього НЕ ловить: `.cmd` виходить синхронно, тож
+    різниці між `-Wait` і очікуванням за іменем не видно. Тому сторож
+    структурний — звіряє, що обидва шляхи чекають однаково (08.09.26).
+    """
+    script = update_check._WATCHDOG_SCRIPT
+    # Обидва шляхи мусять мати свій цикл очікування за іменем процесу.
+    waits = script.count("-like ($")
+    assert waits >= 2, (
+        "у відкаті немає очікування дочірнього процесу інсталятора — "
+        "застосунок стартує посеред заміни власних файлів"
+    )
+    # Коментарі відкидаємо: у них слово `-Wait` є навмисно, як пояснення чому
+    # ми ним НЕ користуємось.
+    code = chr(10).join(
+        line for line in script.splitlines() if not line.strip().startswith("#")
+    )
+    launch = code[code.index("$rollbackInstaller -NoNewWindow"):]
+    launch = launch[: launch.index("$rollbackStem")]
+    assert "-Wait" not in launch, (
+        "відкат покладається на -Wait, а він чекає лише батьківський процес"
+    )
+    assert "rollbackStem" in code
