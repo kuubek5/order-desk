@@ -227,8 +227,16 @@ document.querySelectorAll(".login-toggle-password").forEach((button) => {
     if (login) login.focus();
   }
 
+  // Enter розпізнаємо і за `key`, і за `code`. Одного `key` замало: на частині
+  // розкладок і при синтетичних подіях він приходить порожнім, а Enter на
+  // цифровому блоці дає `code: "NumpadEnter"` — оператор натисне саме його,
+  // якщо працює з цифрової клавіатури.
+  function isEnter(e) {
+    return e.key === "Enter" || e.code === "Enter" || e.code === "NumpadEnter";
+  }
+
   document.addEventListener("keydown", function (e) {
-    if (e.altKey && e.key === "Enter") {
+    if (e.altKey && isEnter(e)) {
       e.preventDefault();
       if (open) collapse(); else expand(false);
     }
