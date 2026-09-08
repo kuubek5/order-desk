@@ -746,3 +746,182 @@ def test_frame_path_never_leaves_the_frames_folder(monkeypatch, tmp_path):
     assert path.parent == tmp_path
     assert "/" not in path.name and "\\" not in path.name
     assert path.resolve().parent == tmp_path.resolve()
+
+
+# ── Обрив: винен порт агента чи ПК/мережа ──────────────────────────────────
+# «Мовчить на порту 8765» — це дві різні поломки з різним лікуванням, і
+# оператор їх не розрізняв: RustDesk до того самого ПК працював, і виглядало,
+# ніби CRM вигадує обрив (скарга 08.09.26). RustDesk нічого не доводить — він
+# ВИХІДНИЙ і йде через свій сервер, а не через локальний порт.
+
+
+def _wait_for_probes(timeout=3.0):
+    """Перевірка досяжності свідомо асинхронна (див. _start_reachability_probe),
+    тож тест мусить дочекатись її, а не спати навмання."""
+    import threading
+
+    for thread in list(threading.enumerate()):
+        if thread.name.startswith("reach-probe-"):
+            thread.join(timeout)
+            assert not thread.is_alive(), "перевірка досяжності не завершилась"
+
+
+def test_a_refusal_proves_the_pc_is_alive(monkeypatch):
+    """RST може надіслати лише той, хто ОТРИМАВ пакет. Відмова — така сама
+    відповідь, як і згода, і саме цим перевірка корисна."""
+    import socket
+
+    def refuse(address, timeout=None):
+        raise ConnectionRefusedError(10061, "refused")
+
+    monkeypatch.setattr(socket, "create_connection", refuse)
+    assert service.host_answers_at_all("10.0.0.9") is True
+
+
+def test_silence_on_every_probe_port_is_not_called_a_verdict(monkeypatch):
+    """Мовчання на всіх портах НЕ доводить, що ПК недосяжний: брандмауер у
+    профілі «Загальнодоступна» глушить 445 і 3389 так само, як 8765. Текст
+    мусить називати обидва пояснення, а не вибирати одне навмання."""
+    import socket
+
+    def silence(address, timeout=None):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(socket, "create_connection", silence)
+    assert service.host_answers_at_all("10.0.0.9") is False
+
+    note = service.reachability_note("10.0.0.9", 8765)
+    assert "недосяжний" in note and "брандмауер закриває все" in note
+
+
+def test_outage_blames_the_agent_port_when_the_pc_answers(monkeypatch, tmp_path):
+    """ПК озвався іншим портом — отже він у мережі, і мовчить саме 8765.
+    Це той висновок, по якому йдуть у брандмауер, а не шукають кабель."""
+    service.reset_state_for_tests()
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    monkeypatch.setattr(service, "host_answers_at_all", lambda host, *a, **k: True)
+    target = service.MachineTarget(name="Sisma", host="10.0.0.9", port=8765, agent_token="t")
+    silent = service.msg_host_silent(target.host, target.port)
+
+    for _ in range(service.PROBLEM_AFTER_FAILURES):
+        state = service.poll_target(None, target, None, error=silent)
+    _wait_for_probes()
+
+    card = service.MachineCard(target=target, state=state, now=datetime.now())
+    assert card.has_problem
+    assert "мовчить саме порт 8765" in card.problem_text
+    # Вирок їде разом із причиною обриву — історію в картці читають без лога.
+    assert "мовчить саме порт" in state.outages[-1][2]
+
+
+def test_a_dead_agent_is_not_probed_at_all(monkeypatch, tmp_path):
+    """ПК відповів відмовою — він СВІДОМО живий, перевіряти нема чого."""
+    service.reset_state_for_tests()
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    probes = []
+    monkeypatch.setattr(service, "host_answers_at_all", lambda host, *a, **k: probes.append(host))
+    target = service.MachineTarget(name="Sisma", host="10.0.0.9", port=8765, agent_token="t")
+    refused = service.msg_agent_not_listening(target.host, target.port)
+
+    for _ in range(service.PROBLEM_AFTER_FAILURES):
+        state = service.poll_target(None, target, None, error=refused)
+    _wait_for_probes()
+
+    assert probes == []
+    assert state.reach_note is None
+
+
+def test_the_probe_runs_once_per_outage_not_every_tick(monkeypatch, tmp_path):
+    """Обрив триває годинами, тік — 5 с. Стук у мережу платиться РАЗ."""
+    service.reset_state_for_tests()
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    probes = []
+
+    def probe(host, *a, **k):
+        probes.append(host)
+        return True
+
+    monkeypatch.setattr(service, "host_answers_at_all", probe)
+    target = service.MachineTarget(name="Sisma", host="10.0.0.9", port=8765, agent_token="t")
+    silent = service.msg_host_silent(target.host, target.port)
+
+    for _ in range(service.PROBLEM_AFTER_FAILURES + 20):
+        service.poll_target(None, target, None, error=silent)
+    _wait_for_probes()
+
+    assert probes == ["10.0.0.9"]
+
+
+def test_the_probe_never_blocks_the_serial_poll(monkeypatch, tmp_path):
+    """poll_target іде ПОСЛІДОВНО для всіх верстатів (див. poll_all), тож
+    повільний стук затримав би кожен наступний верстат у списку. Ту саму ваду
+    проєкт уже виправляв на читанні заголовків вікон."""
+    import time
+
+    service.reset_state_for_tests()
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+
+    def slow(host, *a, **k):
+        time.sleep(1.0)
+        return True
+
+    monkeypatch.setattr(service, "host_answers_at_all", slow)
+    target = service.MachineTarget(name="Sisma", host="10.0.0.9", port=8765, agent_token="t")
+    silent = service.msg_host_silent(target.host, target.port)
+
+    started = time.monotonic()
+    for _ in range(service.PROBLEM_AFTER_FAILURES):
+        service.poll_target(None, target, None, error=silent)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.5, f"опитування чекало на перевірку досяжності ({elapsed:.2f} с)"
+    _wait_for_probes()
+
+
+def test_a_verdict_that_arrives_after_recovery_is_dropped(monkeypatch, tmp_path):
+    """Стук триває секунди, і за цей час зв'язок міг повернутись. Вішати
+    «винен брандмауер» на верстат, який уже відповідає, не можна."""
+    import threading
+
+    service.reset_state_for_tests()
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    released = threading.Event()
+
+    def slow(host, *a, **k):
+        released.wait(3.0)
+        return True
+
+    monkeypatch.setattr(service, "host_answers_at_all", slow)
+    target = service.MachineTarget(name="Sisma", host="10.0.0.9", port=8765, agent_token="t")
+    silent = service.msg_host_silent(target.host, target.port)
+
+    for _ in range(service.PROBLEM_AFTER_FAILURES):
+        service.poll_target(None, target, None, error=silent)
+
+    # Верстат відповів РАНІШЕ, ніж стук завершився.
+    frame = Image.new("RGB", (200, 120), "black")
+    state = service.poll_target(None, target, None, frame=frame)
+    released.set()
+    _wait_for_probes()
+
+    assert state.reach_note is None, "вирок пристав до вже живого верстата"
+
+
+def test_recovery_clears_the_verdict(monkeypatch, tmp_path):
+    """Зв'язок повернувся — вирок про брандмауер більше не правда."""
+    service.reset_state_for_tests()
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    monkeypatch.setattr(service, "host_answers_at_all", lambda host, *a, **k: True)
+    target = service.MachineTarget(name="Sisma", host="10.0.0.9", port=8765, agent_token="t")
+
+    for _ in range(service.PROBLEM_AFTER_FAILURES):
+        state = service.poll_target(
+            None, target, None, error=service.msg_host_silent("10.0.0.9", 8765)
+        )
+    _wait_for_probes()
+    assert state.reach_note
+
+    frame = Image.new("RGB", (200, 120), "black")
+    state = service.poll_target(None, target, None, frame=frame)
+
+    assert state.reach_note is None

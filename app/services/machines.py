@@ -172,6 +172,9 @@ class MachineState:
     completed: bool = False
     # Скільки опитувань поспіль не вдалось. Нуль = останнє було успішним.
     fail_streak: int = 0
+    # Вирок перевірки досяжності, знятий У МОМЕНТ обриву: винен порт чи мережа.
+    # Живе, доки триває обрив; успішний тік його прибирає (див. poll_target).
+    reach_note: Optional[str] = None
     # Коли верстат востаннє ВІДПОВІВ — для тривалості обриву в логу.
     last_ok_at: Optional[datetime] = None
     # Історія обривів: (початок, кінець або None якщо триває, причина).
@@ -601,6 +604,99 @@ def resolve_frame(key: str) -> Optional[Path]:
 # ── Опитування ──────────────────────────────────────────────────────────────
 
 
+# Три різні поломки — три різні тексти, і різниця між ними вирішальна для
+# того, куди йти руками. Тексти зібрані у функції, а не розсипані рядками, бо
+# їх треба не лише показати, а й ВПІЗНАТИ пізніше: за «мовчить» ми добудовуємо
+# перевірку досяжності, за «не слухає» — ні (там уже й так відомо, що ПК живий).
+# Порівняння точне, за рівністю, а не за шматком фрази.
+
+
+def msg_host_silent(host: str, port: int) -> str:
+    """SYN пішов, за AGENT_TIMEOUT не прийшло НІЧОГО. Пакет викинули: або
+    брандмауер на ПК, або мережа по дорозі, або ПК недосяжний."""
+    return f"ПК {host} мовчить на порту {port} — вимкнено або порт закрито брандмауером"
+
+
+def msg_agent_not_listening(host: str, port: int) -> str:
+    """RST у відповідь. ПК ЖИВИЙ і сам сказав «нема кому слухати» — помер агент."""
+    return f"ПК {host} працює, але на порту {port} ніхто не слухає — агент не запущено"
+
+
+def msg_host_no_answer(host: str) -> str:
+    """Мережевий рівень не довіз пакет (немає маршруту, ARP не резолвиться)."""
+    return f"ПК {host} не відповідає в мережі — вимкнено, спить або кабель"
+
+
+# ── Чи живий сам ПК, коли агентський порт мовчить ───────────────────────────
+# Навіщо. «Мовчить на порту 8765» покриває дві РІЗНІ поломки з різним
+# лікуванням: (а) ПК у мережі, але вхідні на 8765 викидає брандмауер — типово
+# після того, як Windows перевизначила мережу з «Приватної» на
+# «Загальнодоступну», і правило порту перестало діяти; (б) ПК недосяжний
+# узагалі. Оператор їх не розрізняє й бачить «мережа моргнула», хоча RustDesk
+# до того самого ПК працює — і працює законно, бо він ВИХІДНИЙ і йде через свій
+# сервер, а не через локальний порт (скарга 08.09.26).
+#
+# Як розрізняємо. Стукаємо в кілька портів, які Windows тримає майже завжди.
+# Відповідь БУДЬ-ЯКА — і згода, і відмова — доводить, що ПК живий: RST може
+# надіслати лише той, хто отримав пакет. Мовчання на всіх — недосяжний.
+# Порти не «зламуємо»: одразу закриваємо сокет, нічого не шлемо й не читаємо.
+_REACH_PROBE_PORTS = (445, 135, 3389)
+# Локальна мережа відповідає за мілісекунди; секунда — це вже з запасом.
+# Загальна стеля 3 × 1 с, і платимо її РАЗ на обрив, не щотіку.
+_REACH_PROBE_TIMEOUT_SECONDS = 1.0
+
+
+def host_answers_at_all(
+    host: str,
+    ports: tuple[int, ...] = _REACH_PROBE_PORTS,
+    timeout: float = _REACH_PROBE_TIMEOUT_SECONDS,
+) -> Optional[bool]:
+    """True — ПК озвався хоч на одному порту (згодою або відмовою), False —
+    не озвався на жодному, None — перевірка не відбулась (немає портів).
+
+    Відмова (`ConnectionRefusedError`) — така сама відповідь, як і згода:
+    її надсилає САМ ПК, отже він у мережі. Саме цим перевірка й корисна.
+    """
+    import socket
+
+    if not ports:
+        return None
+    for probe in ports:
+        try:
+            with socket.create_connection((host, probe), timeout=timeout):
+                return True
+        except ConnectionRefusedError:
+            return True
+        except OSError as exc:
+            # 10061 — те саме «відмовлено», якщо прилетіло не тим класом.
+            if getattr(exc, "errno", None) == 10061:
+                return True
+            continue
+    return False
+
+
+def reachability_note(host: str, port: int) -> Optional[str]:
+    """Один рядок для журналу й плитки: винен порт чи мережа. None — не змогли
+    сказати нічого певного, і тоді краще мовчати, ніж вгадувати."""
+    answered = host_answers_at_all(host)
+    if answered is True:
+        return (
+            f"ПК {host} у мережі озивається — отже мовчить саме порт {port}: "
+            "брандмауер або профіль мережі на ПК верстата"
+        )
+    if answered is False:
+        # ЧЕСНО про межу цієї перевірки. Мовчання на всіх портах НЕ доводить,
+        # що ПК недосяжний: брандмауер у профілі «Загальнодоступна» глушить і
+        # 445, і 3389 так само, як 8765. Тобто тут два поясненння, і вибрати
+        # між ними ми не можемо. Вигадати одне — гірше, ніж чесно назвати
+        # обидва: правило §14 («хибне число гірше за жодне») діє й для слів.
+        return (
+            f"ПК {host} не озвався і на інших портах — або він недосяжний, "
+            "або брандмауер закриває все; перевірте Test-NetConnection з цього ПК"
+        )
+    return None
+
+
 def _capture_http(host: str, port: int, token: str) -> Image.Image:
     """Кадр екрана через HTTP-агент (Go kmill-agent): GET /capture з токеном.
 
@@ -621,9 +717,7 @@ def _capture_http(host: str, port: int, token: str) -> Image.Image:
             url, headers={"X-Agent-Token": token}, timeout=AGENT_TIMEOUT, stream=True
         )
     except requests.exceptions.ConnectTimeout as exc:
-        raise RuntimeError(
-            f"ПК {host} мовчить на порту {port} — вимкнено або порт закрито брандмауером"
-        ) from exc
+        raise RuntimeError(msg_host_silent(host, port)) from exc
     except requests.exceptions.ReadTimeout as exc:
         raise RuntimeError(f"агент {host}:{port} не віддав кадр за {AGENT_TIMEOUT[1]:.0f} с") from exc
     except requests.exceptions.ConnectionError as exc:
@@ -634,12 +728,8 @@ def _capture_http(host: str, port: int, token: str) -> Image.Image:
         # кабель). Обидва повідомлення раніше починались з «ПК вимкнено» і
         # змазували саме цю різницю (04.09.26, нічне випадання одного верстата).
         if _is_refused(exc):
-            raise RuntimeError(
-                f"ПК {host} працює, але на порту {port} ніхто не слухає — агент не запущено"
-            ) from exc
-        raise RuntimeError(
-            f"ПК {host} не відповідає в мережі — вимкнено, спить або кабель"
-        ) from exc
+            raise RuntimeError(msg_agent_not_listening(host, port)) from exc
+        raise RuntimeError(msg_host_no_answer(host)) from exc
     with resp:
         if resp.status_code == 403:
             raise RuntimeError("агент відхилив токен (403) — звір токен у налаштуваннях")
@@ -729,6 +819,43 @@ def _grab_machine_frame(
         return None, f"Знімок не вдався: {exc}"
 
 
+def _start_reachability_probe(state: "MachineState", target: "MachineTarget") -> None:
+    """Перевірити досяжність ПК ОКРЕМИМ потоком і покласти вирок у стан.
+
+    Чому не тут-таки, рядком вище. `poll_target` виконується ПОСЛІДОВНО для
+    всіх верстатів, уже після паралельного збору кадрів (див. `poll_all`):
+    три секунди стуку затримали б кожен наступний верстат у списку. Цю саму
+    ваду проєкт уже виправляв на читанні заголовків вікон — повторювати її
+    не будемо.
+
+    Вирок потрібен не «зараз», а «до наступного погляду оператора»: тік іде
+    раз на 5 с, і плитка підхопить його на наступному. Потік один на обрив,
+    демонський — застосунок не мусить його чекати при виході.
+    """
+
+    def run() -> None:
+        try:
+            note = reachability_note(target.host, target.port)
+        except Exception:  # noqa: BLE001 — діагностика не має валити полінг
+            logger.debug("Перевірка досяжності %s не вдалась", target.host, exc_info=True)
+            return
+        if not note:
+            return
+        with _states_lock:
+            # Поки ми стукали, зв'язок міг повернутись. Тоді вирок уже не
+            # правда, і чіпляти його на живий верстат не можна.
+            if state.fail_streak < PROBLEM_AFTER_FAILURES:
+                return
+            state.reach_note = note
+            if state.outages and state.outages[-1][1] is None:
+                state.outages[-1][2] = f"{state.outages[-1][2]}; {note}"
+        logger.warning("Верстат %s: %s", target.name, note)
+
+    threading.Thread(
+        target=run, name=f"reach-probe-{target.key}", daemon=True
+    ).start()
+
+
 def _record_machine_failure(
     state: "MachineState", target: "MachineTarget", error: str, now: datetime
 ) -> None:
@@ -744,6 +871,10 @@ def _record_machine_failure(
     # верстат за ніч насипле 17 тисяч рядків. Один рядок на обрив дає
     # відповідь на «як часто рветься» цифрами, а не відчуттям.
     if streak == PROBLEM_AFTER_FAILURES:
+        # Момент обриву — ЄДИНИЙ, коли варто заплатити зайвим стуком у мережу:
+        # тут ще видно, живий ПК чи ні, а через хвилину це вже історія. Раз на
+        # обрив, не щотіку. Тільки для «мовчання» — коли ПК відповів відмовою,
+        # ми й так знаємо, що він живий, і перевіряти нема чого.
         with _states_lock:
             state.outages.append([since or now, None, error])
             del state.outages[:-MAX_OUTAGES]
@@ -753,6 +884,8 @@ def _record_machine_failure(
             since.strftime("%H:%M:%S") if since else "невідомо",
             error,
         )
+        if error in (msg_host_silent(target.host, target.port), msg_host_no_answer(target.host)):
+            _start_reachability_probe(state, target)
     if streak >= PROBLEM_AFTER_FAILURES:
         record_state(target.key, "off", now)
 
@@ -1001,6 +1134,7 @@ def poll_target(
         if state.outages and state.outages[-1][1] is None:
             state.outages[-1][1] = now
         state.fail_streak = 0
+        state.reach_note = None
         state.last_ok_at = now
         state.polls_ok += 1
         if percent != state.percent or state.percent_changed_at is None:
@@ -1240,7 +1374,10 @@ class MachineCard:
             return ""
         text = self.state.error
         # Адреса в тексті причини зайва — вона вже є в назві й налаштуваннях.
-        return text.split(": ", 1)[-1] if text.startswith("Піч ") else text
+        text = text.split(": ", 1)[-1] if text.startswith("Піч ") else text
+        # Вирок досяжності — на ту саму плитку: «мовчить порт» і «мовчить ПК»
+        # виглядають однаково, а йти по них треба в різні місця.
+        return f"{text}. {self.state.reach_note}" if self.state.reach_note else text
 
     @property
     def stale(self) -> bool:
