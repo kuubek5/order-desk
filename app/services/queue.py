@@ -10,6 +10,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.business_day import utc_to_business
 from app.models import Order, ReworkRecord, SyncLog
 from app.services.formatting import pluralize_uk
 from app.services.order_dates import order_date, parse_sheet_tab
@@ -209,7 +210,13 @@ def queue_sync_summary(db: Session) -> str:
     )
     if last_sync is None:
         return "Ще не синхронізовано"
-    time_label = last_sync.occurred_at.strftime("%H:%M") if last_sync.occurred_at else "—"
+    # `occurred_at` лежить у базі за Гринвічем (server_default на SQLite) —
+    # показуємо київський, інакше о 20:17 підпис каже «17:15» і виглядає, ніби
+    # синк три години мовчить (08.09.26).
+    time_label = (
+        utc_to_business(last_sync.occurred_at).strftime("%H:%M")
+        if last_sync.occurred_at else "—"
+    )
     if last_sync.status == "error":
         return f"Помилка синхронізації ({time_label})"
     return f"Синхронізовано {time_label}"

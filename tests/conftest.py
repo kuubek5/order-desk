@@ -113,6 +113,19 @@ def _fresh_sheet_erase_guard():
     sheet_erase_guard.reset_for_tests()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_absent_tab_streaks():
+    """Лічильник «вкладки немає в листингу N читань поспіль» — теж на ПРОЦЕС
+    (app/sheet_sync_service). Без скидання один тест «набиває» три читання
+    наступному, і той архівує вкладку з першого тіку.
+    """
+    from app.sheet_sync_service import _reset_absent_streaks_for_tests
+
+    _reset_absent_streaks_for_tests()
+    yield
+    _reset_absent_streaks_for_tests()
+
+
 def run_route(result):
     """Викликати роут, не знаючи, синхронний він чи асинхронний.
 

@@ -21,13 +21,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.__version__ import VERSION
+from app.business_day import utc_now, utc_to_business
 from app.models import SyncLog
 from app.services import furnace as furnace_service
 from app.services import machines as machines_service
@@ -106,7 +107,9 @@ def _last_sync_log(db: Session) -> Optional[SyncLog]:
     row = db.scalars(select(SyncLog).order_by(SyncLog.id.desc()).limit(1)).first()
     if row is None or row.occurred_at is None:
         return None
-    age = datetime.now() - row.occurred_at
+    # `occurred_at` — UTC (server_default на SQLite); локальний `now()` робив
+    # запис на 3 год старшим, ніж він є.
+    age = utc_now() - row.occurred_at
     if age > timedelta(hours=SYNC_LOG_FRESH_HOURS):
         return None
     return row
@@ -185,7 +188,10 @@ def _slab_sheets(db: Session, ctx: dict) -> Slab:
         meters.append(
             Meter(
                 k="Останній запис",
-                v=last.occurred_at.strftime("%H:%M") if last.occurred_at else "—",
+                v=(
+                    utc_to_business(last.occurred_at).strftime("%H:%M")
+                    if last.occurred_at else "—"
+                ),
                 s=(last.sheet_tab or last.direction or "").strip() or (last.status or ""),
                 tone=TONE_OK if ok else TONE_WARN,
             )

@@ -12,10 +12,12 @@ import pytest
 
 from app.business_day import (
     DEFAULT_ROLLOVER,
+    business_to_utc,
     business_today,
     get_rollover,
     parse_rollover,
     set_rollover,
+    utc_to_business,
 )
 
 
@@ -185,3 +187,16 @@ def test_the_calendar_date_allowlist_has_no_stale_entries():
         if "date.today()" not in path.read_text(encoding="utf-8"):
             stale.append(f"{name} (більше не вживає date.today())")
     assert not stale, "застарілі винятки: " + ", ".join(stale)
+
+
+def test_utc_from_the_db_is_shown_in_kyiv_time():
+    """`SyncLog.occurred_at` лежить за Гринвічем (server_default на SQLite).
+    08.09.26 о 20:17 підпис черги казав «Синхронізовано 17:15», і три години
+    «мовчання» синку виглядали як збій. Показуємо київський час."""
+    stored = datetime(2026, 9, 8, 17, 15)          # UTC, літній час (+3)
+    assert utc_to_business(stored) == datetime(2026, 9, 8, 20, 15)
+    assert business_to_utc(datetime(2026, 9, 8, 20, 15)) == stored
+    # Зима (+2) — зсув не зашитий числом.
+    assert utc_to_business(datetime(2026, 1, 10, 6, 0)) == datetime(2026, 1, 10, 8, 0)
+    # Межа доби для фільтра журналу: «08.09 за Києвом» починається о 21:00 UTC 07.09.
+    assert business_to_utc(datetime(2026, 9, 8)) == datetime(2026, 9, 7, 21, 0)

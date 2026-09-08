@@ -107,6 +107,42 @@ def mass_vanish_pending() -> dict[str, int]:
 _VANISHED_TAB_MIN_ORDERS = 5
 _VANISHED_TAB_MAX_SHARE = 0.25
 
+# Скільки листингів ПОСПІЛЬ мають не містити вкладку, перш ніж її роботи підуть
+# в Архів. Разовий листинг без вкладки — не видалення, а звична поведінка
+# проксі лабораторії (кешована/обрізана відповідь). Три тіки — три хвилини
+# затримки для справжнього видалення старого дня і жодного шансу для разового
+# збою переписати базу (08.09.26: один такий листинг забрав в Архів робочий
+# день). Живе в памʼяті процесу, як і банер: після рестарту рахуємо заново.
+_ABSENT_LISTINGS_BEFORE_ARCHIVE = 3
+_absent_lock = Lock()
+_absent_streak: dict[str, int] = {}
+
+
+def _note_absent_listing(absent_tabs: set[str]) -> dict[str, int]:
+    """Оновити лічильники «вкладки немає в листингу» і повернути їх зріз.
+
+    Рахуються лише вкладки, відсутні САМЕ ЗАРАЗ і з активними роботами; усе,
+    чого в `absent_tabs` нема, скидається — так «поспіль» означає поспіль.
+    """
+    with _absent_lock:
+        for tab in list(_absent_streak):
+            if tab not in absent_tabs:
+                _absent_streak.pop(tab)
+        for tab in absent_tabs:
+            _absent_streak[tab] = _absent_streak.get(tab, 0) + 1
+        return dict(_absent_streak)
+
+
+def absent_tab_streaks() -> dict[str, int]:
+    """Вкладки, яких зараз бракує в листингу → скільки читань поспіль."""
+    with _absent_lock:
+        return dict(_absent_streak)
+
+
+def _reset_absent_streaks_for_tests() -> None:
+    with _absent_lock:
+        _absent_streak.clear()
+
 
 def _listing_is_trustworthy(
     all_dated_titles: set[str], today: date, newest_known: date | None = None
@@ -716,6 +752,7 @@ def sync_google_sheets(
                 # from the listing proves nothing.
                 if _parse_tab_date(o.sheet_tab) is not None
             ]
+            confirmed: set[str] = set()
             if orphans:
                 # Той самий запобіжник, що й у порядкового синку (sync.py:811),
                 # якого ця гілка не мала зовсім: неповний листинг вкладок (проксі
@@ -730,11 +767,34 @@ def sync_google_sheets(
                         Order.archived_at.is_(None),
                     )
                 ) or 0
-                gone_tabs = sorted({o.sheet_tab for o in orphans})
-                mass = len(orphans) > _VANISHED_TAB_MIN_ORDERS and (
-                    len(orphans) > _VANISHED_TAB_MAX_SHARE * active_total
-                )
+                orphans_by_tab: dict[str, int] = {}
+                for o in orphans:
+                    orphans_by_tab[o.sheet_tab] = orphans_by_tab.get(o.sheet_tab, 0) + 1
+                gone_tabs = sorted(orphans_by_tab)
                 confirmed = {tab for tab in gone_tabs if tab in forced_tabs}
+                # Частка від УСІХ активних робіт не ловить зникнення ОДНОГО
+                # дня: черга тримає 30 днів, день ≈ 10 % від неї, а поріг 25 %.
+                # 08.09.26 листинг без сьогоднішньої вкладки (але з наперед
+                # створеними 09.09–14.09) пройшов перевірку довіри вище — і
+                # ~100 робіт дня пішли в Архів за один тік як «дрібниця».
+                # Вкладку робочого вікна (вчора/сьогодні/завтра) ніхто не
+                # видаляє свідомо, тож її зникнення з більш ніж
+                # _VANISHED_TAB_MIN_ORDERS роботами — завжди «тримати й
+                # питати», незалежно від частки.
+                work_today = business_today()
+                window_lo = work_today - timedelta(days=1)
+                window_hi = work_today + timedelta(days=1)
+                window_tab_gone = any(
+                    count > _VANISHED_TAB_MIN_ORDERS
+                    and (tab_date := _parse_tab_date(tab)) is not None
+                    and window_lo <= tab_date <= window_hi
+                    for tab, count in orphans_by_tab.items()
+                    if tab not in confirmed
+                )
+                mass = window_tab_gone or (
+                    len(orphans) > _VANISHED_TAB_MIN_ORDERS
+                    and len(orphans) > _VANISHED_TAB_MAX_SHARE * active_total
+                )
                 if mass and not confirmed:
                     # Тримаємо: пишемо слід, піднімаємо банер по кожній вкладці
                     # і НЕ архівуємо. Наступний чистий тік зніме це сам, а
@@ -745,9 +805,15 @@ def sync_google_sheets(
                             status="error",
                             message=(
                                 f"притримано архівацію {len(orphans)} робіт зі зниклих "
-                                f"вкладок ({', '.join(gone_tabs)}): це понад "
-                                f"{int(_VANISHED_TAB_MAX_SHARE * 100)}% активних робіт — "
-                                "схоже на неповний листинг вкладок, а не на видалення"
+                                f"вкладок ({', '.join(gone_tabs)}): "
+                                + (
+                                    "вкладка робочого дня (вчора/сьогодні/завтра) "
+                                    "сама не зникає"
+                                    if window_tab_gone
+                                    else f"це понад {int(_VANISHED_TAB_MAX_SHARE * 100)}% "
+                                    "активних робіт"
+                                )
+                                + " — схоже на неповний листинг вкладок, а не на видалення"
                             ),
                         )
                     )
@@ -758,6 +824,43 @@ def sync_google_sheets(
                     # Підтверджено — архівуємо ЛИШЕ підтверджені вкладки.
                     orphans = [o for o in orphans if o.sheet_tab in confirmed]
                     gone_tabs = sorted(confirmed)
+            # ОДИН листинг без вкладки — ще не видалення. Проксі лабораторії
+            # віддає кешовані/обрізані відповіді; разова така відповідь не має
+            # права переписати базу. Вкладка мусить бути відсутня в
+            # _ABSENT_LISTINGS_BEFORE_ARCHIVE читаннях ПОСПІЛЬ (лічильник
+            # скидається, щойно вона зʼявилась). Підтверджені оператором
+            # («Звірити видалення») ідуть одразу — це його свідоме рішення.
+            pending_tabs = {o.sheet_tab for o in orphans} - confirmed
+            streaks = _note_absent_listing(pending_tabs)
+            waiting = {
+                tab for tab in pending_tabs
+                if streaks.get(tab, 0) < _ABSENT_LISTINGS_BEFORE_ARCHIVE
+            }
+            if waiting:
+                for tab in sorted(waiting):
+                    if streaks.get(tab) != 1:
+                        continue
+                    count = sum(1 for o in orphans if o.sheet_tab == tab)
+                    # У файловий лог — САМ листинг через %r: невидимий пробіл
+                    # у назві вкладки видно лише так.
+                    logger.warning(
+                        "Синк: вкладки %r немає в листингу (%d активних робіт); "
+                        "листинг: %r",
+                        tab, count, sorted(all_dated_titles),
+                    )
+                    session.add(
+                        SyncLog(
+                            direction="sheet_to_db",
+                            sheet_tab=tab,
+                            status="skipped",
+                            message=(
+                                f"вкладка зникла з листингу ({count} робіт) — в Архів "
+                                f"лише після {_ABSENT_LISTINGS_BEFORE_ARCHIVE} читань "
+                                "поспіль без неї"
+                            ),
+                        )
+                    )
+                orphans = [o for o in orphans if o.sheet_tab not in waiting]
             if orphans:
                 # Слід у журналі — ПЕРЕД архівацією: якщо коміт не дійде, у
                 # SyncLog все одно лишиться, які саме дні зникли з листингу.
@@ -782,6 +885,10 @@ def sync_google_sheets(
                     summary.deleted += 1
                 for tab in gone_tabs:
                     _record_mass_vanish(tab, 0)
+                # Лічильник відсутності виконав своє — не висить після архівації.
+                with _absent_lock:
+                    for tab in gone_tabs:
+                        _absent_streak.pop(tab, None)
 
         # Результат звірки — у памʼять процесу, щоб плита в Налаштуваннях
         # показувала ОСТАННЮ звірку, а не рахувала її заново на кожен рендер.

@@ -82,7 +82,7 @@
         <div class="sj-list">
             {% for row in group.rows %}
             <div class="sj-row is-{{ row.status }}">
-                <span class="sj-time mono">{{ row.occurred_at.strftime('%H:%M:%S') if row.occurred_at else '—' }}</span>
+                <span class="sj-time mono">{{ (row.occurred_at | kyiv).strftime('%H:%M:%S') if row.occurred_at else '—' }}</span>
                 <span class="sj-status">{{ status_labels.get(row.status, row.status) }}</span>
                 <span class="sj-dir">{{ direction_labels.get(row.direction, row.direction) }}</span>
                 <span class="sj-tab mono">{{ row.sheet_tab or '' }}</span>

@@ -98,3 +98,33 @@ def utc_now() -> datetime:
     Одна функція замість п'ятнадцяти викликів — і міняти буде що одне місце.
     """
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def utc_to_business(moment: datetime) -> datetime:
+    """Наївний UTC з бази (`server_default=func.now()` на SQLite) → наївний
+    київський час для ПОКАЗУ.
+
+    Журнал синку й підпис «Синхронізовано HH:MM» показували час за Гринвічем:
+    о 20:17 у цеху віджет казав «17:15», і три години «мовчання» синку
+    виглядали як збій, якого не було (08.09.26). Порівняння в базі лишаються в
+    UTC — це лише для очей.
+    """
+    if BUSINESS_TIMEZONE is None:
+        # Без бази IANA — хоч місцевий час машини: краще за Гринвіч у цеху.
+        return moment.replace(tzinfo=timezone.utc).astimezone().replace(tzinfo=None)
+    return (
+        moment.replace(tzinfo=timezone.utc)
+        .astimezone(BUSINESS_TIMEZONE)
+        .replace(tzinfo=None)
+    )
+
+
+def business_to_utc(moment: datetime) -> datetime:
+    """Зворотне до `utc_to_business`: межа дня з фільтра журналу → UTC для WHERE."""
+    if BUSINESS_TIMEZONE is None:
+        return moment.astimezone(timezone.utc).replace(tzinfo=None)
+    return (
+        moment.replace(tzinfo=BUSINESS_TIMEZONE)
+        .astimezone(timezone.utc)
+        .replace(tzinfo=None)
+    )

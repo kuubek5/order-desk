@@ -11,7 +11,9 @@ from app.business_day import business_today
 from app.db import Base
 from app.models import Order, SyncLog
 from app.sheet_sync_service import (
+    _ABSENT_LISTINGS_BEFORE_ARCHIVE,
     SheetSyncBusyError,
+    absent_tab_streaks,
     mass_vanish_pending,
     SheetSyncConfigurationError,
     SheetSyncError,
@@ -182,6 +184,20 @@ def test_orders_from_deleted_tabs_are_archived(monkeypatch):
         # must survive active: non-dated sheet_tab was never a real sheet tab
         session.add(Order(source="lab", sheet_tab="Підсумок", row_number=2, status="нове"))
         session.commit()
+
+        # Разовий листинг без вкладки — ще не видалення (проксі віддає кешовані
+        # відповіді): перші два читання лише рахують, у журналі — «skipped».
+        for _ in range(2):
+            early = sync_google_sheets(session)
+            assert early.deleted == 0
+            assert session.scalars(
+                select(Order).where(Order.archived_at.isnot(None))
+            ).all() == []
+        early_logs = session.scalars(select(SyncLog)).all()
+        assert sum(
+            1 for log in early_logs
+            if log.status == "skipped" and "зникла з листингу" in (log.message or "")
+        ) == 1, "слід про зниклу вкладку пишеться ОДИН раз, не на кожен тік"
 
         result = sync_google_sheets(session)
 
@@ -849,3 +865,107 @@ def test_empty_run_does_not_count_as_a_synced_day(monkeypatch):
         summary = sync_google_sheets(session, trigger="background")
         assert summary.tabs_processed == 0
         assert _last_full_sync_date(session) is None
+
+
+# --- 08.09.26: один листинг без сьогоднішньої вкладки забрав день в Архів ----
+
+
+def test_listing_without_todays_tab_but_with_future_tabs_holds_the_day(monkeypatch):
+    """Бойовий випадок 08.09.26. Лабораторія створює вкладки наперед
+    (09.09–14.09), тож листинг БЕЗ сьогоднішньої вкладки все одно «дотягує до
+    вчора» і проходить перевірку довіри. Далі ~100 робіт дня — це менше за 25 %
+    від 30-денної черги, і поріг масового зникнення їх не ловив: день ішов в
+    Архів за один тік, а черга показувала «Сьогодні 0».
+
+    Вкладку робочого вікна ніхто не видаляє свідомо: більше за
+    _VANISHED_TAB_MIN_ORDERS робіт у ній — тримати й питати, не архівувати."""
+    from app.sheet_sync_service import _VANISHED_TAB_MIN_ORDERS
+
+    configured(monkeypatch)
+    today = business_today()
+    listing = [
+        worksheet(today - timedelta(days=1), "201"),
+        worksheet(today + timedelta(days=1), "202"),
+        worksheet(today + timedelta(days=6), "203"),
+    ]
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = listing
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
+
+    today_tab = today.strftime("%d.%m.%y")
+    with make_session() as session:
+        _many_orphans(session, today_tab, count=_VANISHED_TAB_MIN_ORDERS + 1)
+        # Довга черга: день — лише ~10 % активних робіт, частка 25 % не ловить.
+        for i in range(60):
+            session.add(Order(source="lab", sheet_tab="seed", row_number=i + 1,
+                              work_order_no=f"7{i:03d}", status="нове"))
+        session.commit()
+
+        for _ in range(_ABSENT_LISTINGS_BEFORE_ARCHIVE + 1):
+            result = sync_google_sheets(session)
+            assert result.deleted == 0
+
+        assert session.scalars(
+            select(Order).where(Order.archived_at.isnot(None))
+        ).all() == []
+        # Банер: саме сьогоднішня вкладка, і «Звірити видалення» цілиться в неї.
+        assert mass_vanish_pending().get(today_tab) == _VANISHED_TAB_MIN_ORDERS + 1
+        logs = [log.message or "" for log in session.scalars(select(SyncLog)).all()]
+        assert any("притримано архівацію" in message for message in logs)
+
+
+def test_tab_that_reappears_resets_the_absent_streak(monkeypatch):
+    """Лічильник рахує читання ПОСПІЛЬ: вкладка, що зникла й повернулась,
+    починає з нуля. Інакше три розрізнені збої проксі за день складались би
+    в «видалення»."""
+    configured(monkeypatch)
+    today = business_today()
+    current = worksheet(today, "200")
+    gone_day = today - timedelta(days=3)
+    old = worksheet(gone_day, "199")
+    spreadsheet = Mock()
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
+
+    gone_tab = gone_day.strftime("%d.%m.%y")
+    with make_session() as session:
+        # Дрібна вкладка: нижче порога масового зникнення, тож єдиний захист —
+        # лічильник читань.
+        _many_orphans(session, gone_tab, count=2)
+
+        spreadsheet.worksheets.return_value = [current]          # нема (1)
+        assert sync_google_sheets(session).deleted == 0
+        spreadsheet.worksheets.return_value = [old, current]     # є → скидання
+        assert sync_google_sheets(session).deleted == 0
+        assert absent_tab_streaks() == {}
+        spreadsheet.worksheets.return_value = [current]          # нема (1)
+        assert sync_google_sheets(session).deleted == 0
+        spreadsheet.worksheets.return_value = [current]          # нема (2)
+        assert sync_google_sheets(session).deleted == 0
+        assert absent_tab_streaks() == {gone_tab: 2}
+        spreadsheet.worksheets.return_value = [current]          # нема (3)
+        assert sync_google_sheets(session).deleted == 2
+        # Після архівації лічильник не висить.
+        assert absent_tab_streaks() == {}
+        archived_tabs = set(session.scalars(
+            select(Order.sheet_tab).where(Order.archived_at.isnot(None))
+        ).all())
+        assert archived_tabs == {gone_tab}
+
+
+def test_confirmed_tab_is_archived_without_waiting(monkeypatch):
+    """«Звірити видалення» — свідоме рішення оператора: лічильник читань його
+    не затримує."""
+    configured(monkeypatch)
+    today = business_today()
+    current = worksheet(today, "200")
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [current]
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
+
+    gone_tab = (today - timedelta(days=3)).strftime("%d.%m.%y")
+    with make_session() as session:
+        _many_orphans(session, gone_tab, count=2)
+        result = sync_google_sheets(
+            session, trigger="manual", force_reconcile_tabs={gone_tab}
+        )
+        assert result.deleted == 2

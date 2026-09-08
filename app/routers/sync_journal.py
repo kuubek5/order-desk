@@ -22,6 +22,8 @@ import json
 import logging
 from datetime import datetime, timedelta
 
+from app.business_day import business_to_utc, utc_to_business
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
@@ -108,9 +110,11 @@ def get_sync_journal(
         except ValueError:
             pass
         else:
+            # Межі дня — київські, а в базі `occurred_at` за Гринвічем: інакше
+            # вечірні записи (після 21:00 UTC) випадали в «наступний день».
             query = query.where(
-                SyncLog.occurred_at >= picked,
-                SyncLog.occurred_at < picked + timedelta(days=1),
+                SyncLog.occurred_at >= business_to_utc(picked),
+                SyncLog.occurred_at < business_to_utc(picked + timedelta(days=1)),
             )
             selected_day = day
 
@@ -125,7 +129,7 @@ def get_sync_journal(
     # не спрацювати).
     groups: list[dict] = []
     for entry in entries:
-        key = entry.occurred_at.date() if entry.occurred_at else None
+        key = utc_to_business(entry.occurred_at).date() if entry.occurred_at else None
         if not groups or groups[-1]["day"] != key:
             groups.append({"day": key, "rows": []})
         groups[-1]["rows"].append(entry)

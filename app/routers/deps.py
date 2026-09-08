@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app import perf
-from app.business_day import utc_now
+from app.business_day import utc_now, utc_to_business
 from app.__version__ import VERSION
 from app.db import SessionLocal
 from app.material_class import (
@@ -646,6 +646,10 @@ templates.env.globals["load_metrics"] = load_metrics
 templates.env.globals["is_rush_comment"] = is_rush_comment
 templates.env.globals["static_ver"] = static_ver
 templates.env.filters["changelog_md"] = changelog_md
+# Наївний UTC із бази (server_default на SQLite) → київський час для показу.
+# Журнал синку показував Гринвіч, і о 20:17 «останній запис 17:15» читався
+# як три години мовчання синку (08.09.26).
+templates.env.filters["kyiv"] = utc_to_business
 # Available in every template without every route threading it through its
 # own context dict — same rationale as static_ver above. Reads the
 # in-memory "last known result" (see app/update_check.py::get_known_update),
