@@ -797,25 +797,51 @@ main.setv2.scon {
 }
 
 /* ── Заготовки: диски з теки CAM ─────────────────────────────────────────
-   Готовий текст замовлення показуємо МОНОШИРИННИМ і в тому вигляді, у якому
-   він піде комірниці: оператор має бачити рівно те, що скопіює, а не гарну
-   переверстку. Рядки короткі («Mono a3 12+25(2)»), тож перенос не потрібен. */
-.blanks-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+   Кнопки, поля й заголовки беруть класи решти налаштувань — тут лише те,
+   чого в них немає: блок готового тексту, список помилок розкладання й
+   власний скрол таблиці. */
+
+/* Готовий текст замовлення показуємо МОНОШИРИННИМ і рівно в тому вигляді, у
+   якому він піде комірниці: оператор має бачити те, що скопіює, а не гарну
+   переверстку. Рядки короткі («Mono a3 12+25(2)»), тож переносу не треба. */
 .blanks-text {
   margin: 0 0 12px;
-  padding: 10px 12px;
+  padding: 11px 13px;
   border-radius: var(--r-ctl);
   background: var(--well);
   border: 1px solid var(--line);
   font-family: var(--font-mono);
   font-size: var(--fs-2);
   color: var(--ink);
-  line-height: 1.55;
-  white-space: pre-wrap;
+  line-height: 1.6;
+  white-space: pre;
   overflow-x: auto;
 }
-.blanks-mismatch { margin: 0; padding-left: 18px; font-size: var(--fs-2); color: var(--ink-2); }
-.blanks-mismatch li { margin: 3px 0; }
+/* Звіт проби — інша річ: у ньому довгі шляхи Windows, і горизонтальний
+   скрол ховав би саме те, заради чого його читають. Тут переносимо, і
+   переносимо ПО СИМВОЛУ, бо в шляху немає пробілів. */
+.blanks-text.is-report {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.blanks-mismatch {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--fs-2);
+  color: var(--ink-2);
+}
+.blanks-mismatch li { margin: 4px 0; }
+.blanks-mismatch .mono { color: var(--ink); }
+/* Сім колонок із назвами файлів переростають панель. Скрол живе В КОНТЕЙНЕРІ
+   таблиці: горизонтальний скрол усієї сторінки налаштувань — це вже
+   зламаний екран. */
+.blanks-table-wrap {
+  overflow-x: auto;
+  border-radius: var(--r-ctl);
+}
+.blanks-table { min-width: 620px; }
 /* Рядок диска, який лежить не у своїй теці. Підсвітка тепла, не тривожна:
    це помилка розкладання, а не аварія — її треба помітити, а не злякатись. */
 .blanks-table tr.is-mismatch td { background: rgba(var(--warn-rgb), .10); }

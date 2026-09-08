@@ -17,24 +17,39 @@
             <div class="box">
                 {{ slab('Заготовки', 'Диски, взяті з архіву. CRM читає теку CAM і складає замовлення для комірниці — обходити шухляди більше не треба.', slabs['blanks']) }}
 
-                <div class="settings-field">
-                    <form method="post" action="/settings/blanks/path"
-                          hx-post="/settings/blanks/path" hx-target="#blanks-body" hx-swap="outerHTML">
-                        <label for="cam_blanks_path">Шлях до теки заготовок</label>
-                        <input type="text" id="cam_blanks_path" name="cam_blanks_path"
-                               value="{{ blanks_path or '' }}"
-                               placeholder="C:\sum\dental\cam-bl"
-                               {% if not can_edit(user, 'blanks') %}disabled{% endif %}>
-                        <p class="settings-help">
-                            Усередині — тека матеріалу (<code>zr</code>, <code>pmma</code>),
-                            в ній тека висоти (<code>12</code>, <code>18</code>…), у ній файли
-                            <code>.blk</code>. Порожнє поле вимикає стеження.
-                        </p>
-                        {% if can_edit(user, 'blanks') %}
-                        <button type="submit" class="btn">Зберегти шлях</button>
-                        {% endif %}
-                    </form>
-                </div>
+                <form method="post" action="/settings/blanks/path"
+                      hx-post="/settings/blanks/path" hx-target="#blanks-body" hx-swap="outerHTML">
+                    <div class="stand-cells">
+                        <div class="stand-cell w6">
+                            <h3>Тека заготовок</h3>
+                            <div class="settings-field">
+                                <label for="cam_blanks_path">Шлях до теки з дисками</label>
+                                <p class="settings-help">
+                                    Усередині — тека матеріалу (<code>zr</code>, <code>pmma</code>),
+                                    в ній тека висоти (<code>12</code>, <code>18</code>…), у ній
+                                    файли <code>.blk</code>. Порожнє поле вимикає стеження.
+                                </p>
+                                <div class="login-glow">
+                                    <div class="login-input-wrap">
+                                        <input type="text"
+                                               id="cam_blanks_path"
+                                               name="cam_blanks_path"
+                                               class="login-input"
+                                               value="{{ blanks_path or '' }}"
+                                               placeholder="C:\sum\dental\cam-bl"
+                                               {% if not can_edit(user, 'blanks') %}disabled{% endif %}>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if can_edit(user, 'blanks') %}
+                    <div class="scon-actionbar">
+                        <button type="submit" class="settings-secondary-button">Зберегти шлях</button>
+                    </div>
+                    {% endif %}
+                </form>
 
                 {% include "_settings_blanks_body.html" %}
             </div>

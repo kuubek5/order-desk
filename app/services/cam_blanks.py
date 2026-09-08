@@ -35,9 +35,10 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from time import monotonic
 from typing import Iterable, Optional
 
 from sqlalchemy import select
@@ -160,6 +161,121 @@ def scan_blanks(root: Path | str) -> list[FoundBlank]:
                     )
                 )
     return found
+
+
+# ── Проба теки: подивитись, нічого не записавши ─────────────────────────────
+# Перед тим як вмикати стеження на робочому ПК, треба переконатись, що
+# розбір назв узагалі влучає в реальні файли. Проба НІЧОГО не пише в базу:
+# вона читає теку й повертає звіт, який можна прочитати очима і переслати.
+#
+# Це також єдине місце, де ми МІРЯЄМО ціну проходу. Обіцянка «буде дешево»
+# без числа нічого не варта, а тека може виявитись більшою, ніж ми думали.
+
+
+@dataclass
+class BlanksProbe:
+    """Звіт проби: що знайшли, що зрозуміли, і що не зрозуміли."""
+
+    root: str = ""
+    exists: bool = False
+    error: str = ""
+    files: int = 0
+    parsed: int = 0
+    unparsed: int = 0
+    mismatched: int = 0
+    material_dirs: list = field(default_factory=list)
+    height_dirs: list = field(default_factory=list)
+    brands: list = field(default_factory=list)
+    shades: list = field(default_factory=list)
+    # Саме це найцінніше для діагностики: назви, які розбір НЕ зрозумів.
+    unparsed_samples: list = field(default_factory=list)
+    mismatch_samples: list = field(default_factory=list)
+    sample_names: list = field(default_factory=list)
+    elapsed_ms: int = 0
+
+    def as_text(self) -> str:
+        """Звіт одним шматком тексту — щоб скопіювати й переслати."""
+        if self.error:
+            return f"Тека: {self.root}\nПОМИЛКА: {self.error}"
+        if not self.exists:
+            return f"Тека: {self.root}\nНЕ ЗНАЙДЕНА (перевірте шлях)"
+        lines = [
+            f"Тека: {self.root}",
+            f"Файлів .blk: {self.files} · розібрано {self.parsed} · НЕ розібрано {self.unparsed}",
+            f"Прохід: {self.elapsed_ms} мс",
+            f"Теки матеріалів ({len(self.material_dirs)}): {', '.join(self.material_dirs) or '—'}",
+            f"Теки висот ({len(self.height_dirs)}): {', '.join(self.height_dirs) or '—'}",
+            f"Виробники ({len(self.brands)}): {', '.join(self.brands) or '—'}",
+            f"Кольори ({len(self.shades)}): {', '.join(self.shades) or '—'}",
+        ]
+        if self.mismatched:
+            lines.append(f"Висота ≠ тека: {self.mismatched}")
+            lines.extend(f"  ! {name}" for name in self.mismatch_samples)
+        if self.unparsed:
+            lines.append("НЕ РОЗІБРАНІ назви:")
+            lines.extend(f"  ? {name}" for name in self.unparsed_samples)
+        if self.sample_names:
+            lines.append("Приклади розібраних:")
+            lines.extend(f"  · {name}" for name in self.sample_names)
+        return "\n".join(lines)
+
+
+# Скільки прикладів показувати. Звіт має лишатись читабельним і на теці з
+# десятками тисяч файлів — переслати простирадло на 50 тис. рядків не вийде.
+PROBE_SAMPLES = 25
+
+
+def probe_blanks(root: Path | str) -> BlanksProbe:
+    """Прочитати теку й описати, що з неї вийшло. У базу НЕ пише."""
+    started = monotonic()
+    probe = BlanksProbe(root=str(root))
+    base = Path(root)
+    if not str(root).strip():
+        probe.error = "шлях не задано"
+        return probe
+    try:
+        probe.exists = base.is_dir()
+    except OSError as exc:
+        probe.error = str(exc)
+        return probe
+    if not probe.exists:
+        return probe
+
+    try:
+        found = scan_blanks(base)
+    except OSError as exc:  # pragma: no cover — scan_blanks уже ковтає OSError
+        probe.error = str(exc)
+        return probe
+
+    materials, heights, brands, shades = set(), set(), set(), set()
+    for item in found:
+        probe.files += 1
+        materials.add(item.material_dir)
+        heights.add(item.height_dir)
+        if item.parsed.height is None or not item.parsed.brand:
+            probe.unparsed += 1
+            if len(probe.unparsed_samples) < PROBE_SAMPLES:
+                probe.unparsed_samples.append(item.rel_path)
+            continue
+        probe.parsed += 1
+        brands.add(item.parsed.brand)
+        if item.parsed.shade:
+            shades.add(item.parsed.shade)
+        if item.height_mismatch:
+            probe.mismatched += 1
+            if len(probe.mismatch_samples) < PROBE_SAMPLES:
+                probe.mismatch_samples.append(
+                    f"{item.rel_path} (тека {item.height_dir}, назва {item.parsed.height})"
+                )
+        elif len(probe.sample_names) < PROBE_SAMPLES:
+            probe.sample_names.append(item.rel_path)
+
+    probe.material_dirs = sorted(materials)
+    probe.height_dirs = sorted(heights, key=lambda x: (len(x), x))
+    probe.brands = sorted(brands)
+    probe.shades = sorted(shades)
+    probe.elapsed_ms = int((monotonic() - started) * 1000)
+    return probe
 
 
 @dataclass

@@ -19,6 +19,7 @@ from app.models import CamBlank
 from app.routers.deps import get_current_user, get_db, templates
 from app.services.cam_blanks import (
     mark_ordered,
+    probe_blanks,
     order_text,
     pending_blanks,
     sync_blanks,
@@ -69,12 +70,15 @@ def blanks_context(db: Session, *, error: str | None = None) -> dict:
         "blanks_mismatched": mismatched,
         "blanks_mismatched_rows": mismatched_rows,
         "blanks_error": error,
+        # Проба заповнюється лише своїм роутом; на звичайному рендері її нема.
+        "blanks_probe": None,
     }
 
 
-def _body(request: Request, db: Session, *, error: str | None = None) -> HTMLResponse:
+def _body(request: Request, db: Session, *, error: str | None = None, probe=None) -> HTMLResponse:
     user = get_current_user(request, db)
     ctx = blanks_context(db, error=error)
+    ctx["blanks_probe"] = probe
     return templates.TemplateResponse(
         request,
         "_settings_blanks_body.html",
@@ -128,3 +132,22 @@ def blanks_ordered(request: Request, db: Session = Depends(get_db)):
     require_settings_edit(request, db, SECTION)
     mark_ordered(db)
     return _body(request, db)
+
+
+@router.post("/settings/blanks/probe")
+def probe_blanks_folder(request: Request, db: Session = Depends(get_db)):
+    """Подивитись на теку, НІЧОГО не записавши.
+
+    Потрібно рівно для одного: перед вмиканням стеження на робочому ПК
+    переконатись, що розбір назв влучає в реальні файли — і мати звіт, який
+    можна скопіювати й переслати. Проба не створює й не міняє жодного рядка,
+    тож помилковий шлях нічого не псує.
+
+    Звичайний `def`: це похід у файлову систему, і на event loop його пускати
+    не можна.
+    """
+    require_settings_edit(request, db, SECTION)
+    path = (get_setting(db, "cam_blanks_path") or "").strip()
+    if not path:
+        return _body(request, db, error="Спершу задайте шлях до теки заготовок.")
+    return _body(request, db, probe=probe_blanks(path))

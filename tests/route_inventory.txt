@@ -136,6 +136,7 @@ POST /settings/backup/export-part
 POST /settings/backup/import
 POST /settings/blanks/ordered
 POST /settings/blanks/path
+POST /settings/blanks/probe
 POST /settings/blanks/rescan
 POST /settings/check-path
 POST /settings/feedback

@@ -213,3 +213,62 @@ def test_order_text_shows_unparsed_files_instead_of_hiding_them():
     text = order_text(rows)
     assert "Mono a2 18" in text
     assert "дивна.blk" in text, "нерозібраний файл — теж узятий диск, ховати не можна"
+
+
+# ── проба теки (діагностика перед впровадженням) ────────────────────────────
+# Проба існує рівно для одного: перед вмиканням на робочому ПК побачити, чи
+# розбір влучає в реальні файли цеху, і мати звіт, який можна переслати.
+
+
+def test_probe_reads_without_writing_anything(db, tmp_path):
+    """Головна властивість: у базу НЕ пише. Помилковий шлях або дивна тека
+    нічого не псують, тому пробою безпечно тицяти наосліп."""
+    make_tree(tmp_path, {"zr/12": ["12-monolith-a2-x14.blk"]})
+    from app.services.cam_blanks import probe_blanks
+
+    probe = probe_blanks(tmp_path)
+    assert probe.files == 1
+    assert db.scalars(select(CamBlank)).all() == [], "проба не має нічого записувати"
+
+
+def test_probe_names_what_it_did_not_understand(db, tmp_path):
+    """Найцінніше в звіті — саме нерозібрані назви: за ними видно, чого
+    читачеві бракує на реальних даних."""
+    from app.services.cam_blanks import probe_blanks
+
+    make_tree(tmp_path, {
+        "zr/12": ["12-monolith-a2-x14.blk", "щось не те.blk"],
+        "zr/18": ["14-monolith-a1-x3.blk"],
+    })
+    probe = probe_blanks(tmp_path)
+    assert (probe.files, probe.parsed, probe.unparsed) == (3, 2, 1)
+    assert probe.unparsed_samples == ["zr/12/щось не те.blk"]
+    assert probe.mismatched == 1
+    assert "тека 18, назва 14" in probe.mismatch_samples[0]
+
+    text = probe.as_text()
+    assert "НЕ РОЗІБРАНІ назви" in text
+    assert "щось не те.blk" in text
+    assert "Виробники" in text and "monolith" in text
+
+
+def test_probe_says_plainly_when_the_folder_is_not_there(tmp_path):
+    from app.services.cam_blanks import probe_blanks
+
+    probe = probe_blanks(tmp_path / "немає")
+    assert probe.exists is False
+    assert "НЕ ЗНАЙДЕНА" in probe.as_text()
+
+    empty = probe_blanks("")
+    assert "шлях не задано" in empty.as_text()
+
+
+def test_probe_caps_its_samples_so_a_huge_folder_stays_readable(tmp_path):
+    """На теці з десятками тисяч файлів звіт має лишатись таким, щоб його
+    можна було прочитати очима й переслати повідомленням."""
+    from app.services.cam_blanks import PROBE_SAMPLES, probe_blanks
+
+    make_tree(tmp_path, {"zr/12": [f"дивна-{i}.blk" for i in range(PROBE_SAMPLES + 20)]})
+    probe = probe_blanks(tmp_path)
+    assert probe.unparsed == PROBE_SAMPLES + 20
+    assert len(probe.unparsed_samples) == PROBE_SAMPLES

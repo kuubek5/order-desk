@@ -1,39 +1,69 @@
-{# Список і дії. Окремим файлом, бо його свапають кнопки «Перечитати» й
-   «Замовлено» — решта розділу (форма шляху) при цьому не перемальовується. #}
+{# Список і дії. Окремим файлом, бо його свапають кнопки «Перечитати»,
+   «Перевірити читання» й «Замовлено» — форма шляху при цьому не
+   перемальовується, і введений шлях не зникає з поля.
+
+   Класи тут ті самі, що в решті налаштувань (`settings-secondary-button`,
+   `scon-actionbar`, `settings-field`): свій набір кнопок виглядав би чужим
+   на екрані, де сусідні розділи вже мають один вигляд. #}
 <div id="blanks-body">
     {% if blanks_error %}
-    <p class="settings-help settings-help-alarm">{{ blanks_error }}</p>
+    <p class="settings-help stand-danger-note">{{ blanks_error }}</p>
     {% endif %}
 
+    <div class="scon-actionbar">
+        <button type="button" class="settings-secondary-button"
+                hx-post="/settings/blanks/rescan" hx-target="#blanks-body" hx-swap="outerHTML">
+            Перечитати теку
+        </button>
+        {# Проба нічого не записує — саме тому нею безпечно перевіряти новий
+           шлях на робочому ПК до того, як вмикати стеження. Тому й вигляд
+           тихіший: це проба, а не збереження. #}
+        <button type="button" class="settings-secondary-button settings-check-button"
+                hx-post="/settings/blanks/probe" hx-target="#blanks-body" hx-swap="outerHTML"
+                title="Прочитати теку й показати звіт, нічого не записуючи">
+            Перевірити читання
+        </button>
+        {% if blanks_pending %}
+        <button type="button" class="settings-secondary-button" data-copy="{{ blanks_text }}"
+                title="Скопіювати текст для комірниці">
+            Скопіювати для комірниці
+        </button>
+        {% if can_edit(user, 'blanks') %}
+        <button type="button" class="login-submit settings-submit"
+                hx-post="/settings/blanks/ordered" hx-target="#blanks-body" hx-swap="outerHTML"
+                title="Позначити, що це вже замовлено — відлік почнеться заново">
+            Замовлено ({{ blanks_pending|length }})
+        </button>
+        {% endif %}
+        {% endif %}
+    </div>
+
+    {% if blanks_probe %}
+    {# Звіт проби. Головне тут — НЕ РОЗІБРАНІ назви: саме вони кажуть, чи
+       розбір влучає в реальні файли цеху. Текст цілим шматком, щоб його можна
+       було скопіювати й переслати на діагностику. #}
     <div class="settings-field">
-        <div class="blanks-actions">
-            <button type="button" class="btn"
-                    hx-post="/settings/blanks/rescan" hx-target="#blanks-body" hx-swap="outerHTML">
-                Перечитати теку
-            </button>
-            {% if blanks_pending %}
-            <button type="button" class="btn" data-copy="{{ blanks_text }}"
-                    title="Скопіювати текст для комірниці">
-                Скопіювати для комірниці
-            </button>
-            {% if can_edit(user, 'blanks') %}
-            <button type="button" class="btn"
-                    hx-post="/settings/blanks/ordered" hx-target="#blanks-body" hx-swap="outerHTML"
-                    title="Позначити, що це вже замовлено — список почнеться заново">
-                Замовлено ({{ blanks_pending|length }})
-            </button>
-            {% endif %}
-            {% endif %}
+        <h3>Що бачить читач</h3>
+        <p class="settings-help">
+            Теку прочитано, у базу нічого не записано. Якщо тут є не розібрані
+            назви — скопіюйте звіт і надішліть його: за ним видно, що саме
+            треба навчити читати.
+        </p>
+        <pre class="blanks-text is-report">{{ blanks_probe.as_text() }}</pre>
+        <div class="settings-check-row">
+            <button type="button" class="settings-secondary-button"
+                    data-copy="{{ blanks_probe.as_text() }}">Скопіювати звіт</button>
         </div>
     </div>
+    {% endif %}
 
     {% if blanks_mismatched_rows %}
     {# Диск лежить не у своїй теці. Показуємо ЗАВЖДИ, незалежно від того, чи
        його вже замовили: він лишається не на місці, поки його не переклали.
-       Лічильник без цього списку був би числом без адреси — оператор бачив
-       би «1 не на місці» і мусив шукати руками по всій теці. #}
+       Лічильник без цього списку був би числом без адреси — оператор бачив би
+       «1 не на місці» і мусив шукати руками по всій теці. #}
     <div class="settings-field">
-        <h4>Не на місці</h4>
+        <h3>Не на місці</h3>
         <p class="settings-help">
             Висота в назві не збігається з текою. Так бути не повинно: якщо
             тека 12, диск має починатися з 12.
@@ -48,31 +78,36 @@
 
     {% if blanks_pending %}
     <div class="settings-field">
-        <h4>До замовлення</h4>
+        <h3>До замовлення</h3>
         <p class="settings-help">
             Узято після останнього замовлення. Відлік іде від кнопки «Замовлено»,
             тому нічна зміна й вихідні враховані самі.
         </p>
         <pre class="blanks-text">{{ blanks_text }}</pre>
 
-        <table class="fu-table blanks-table">
-            <thead>
-                <tr><th>Коли</th><th>Матеріал</th><th>Виробник</th><th>Колір</th><th>Висота</th><th>№</th><th>Файл</th></tr>
-            </thead>
-            <tbody>
-                {% for row in blanks_pending %}
-                <tr{% if row.height_mismatch %} class="is-mismatch" title="Висота в назві не збігається з текою — диск лежить не там"{% endif %}>
-                    <td class="mono">{{ row.first_seen_at.strftime('%d.%m %H:%M') }}</td>
-                    <td>{{ row.material_dir }}</td>
-                    <td>{{ row.brand or '—' }}</td>
-                    <td>{{ row.shade or '—' }}</td>
-                    <td class="mono">{{ row.height if row.height is not none else row.height_dir }}</td>
-                    <td class="mono">{{ row.serial if row.serial is not none else '—' }}</td>
-                    <td class="mono">{{ row.file_name }}{% if row.gone_at %} <span class="dim">(файл прибрано)</span>{% endif %}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        {# Таблиця скролиться У СВОЄМУ контейнері: сім колонок із назвами
+           файлів легко переростають панель, а горизонтальний скрол усієї
+           сторінки налаштувань — це вже зламаний екран. #}
+        <div class="blanks-table-wrap">
+            <table class="fu-table blanks-table">
+                <thead>
+                    <tr><th>Коли</th><th>Матеріал</th><th>Виробник</th><th>Колір</th><th>Висота</th><th>№</th><th>Файл</th></tr>
+                </thead>
+                <tbody>
+                    {% for row in blanks_pending %}
+                    <tr{% if row.height_mismatch %} class="is-mismatch" title="Висота в назві не збігається з текою — диск лежить не там"{% endif %}>
+                        <td class="mono">{{ row.first_seen_at.strftime('%d.%m %H:%M') }}</td>
+                        <td>{{ row.material_dir }}</td>
+                        <td>{{ row.brand or '—' }}</td>
+                        <td>{{ row.shade or '—' }}</td>
+                        <td class="mono">{{ row.height if row.height is not none else row.height_dir }}</td>
+                        <td class="mono">{{ row.serial if row.serial is not none else '—' }}</td>
+                        <td class="mono">{{ row.file_name }}{% if row.gone_at %} <span class="dim">(файл прибрано)</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
     {% elif blanks_path %}
     <p class="settings-help">Після останнього замовлення нових дисків не брали.</p>
