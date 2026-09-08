@@ -288,12 +288,21 @@ def get_setting(session: Session, key: str) -> Optional[str]:
         # напр. переїзд теки даних або нова інсталяція). Розшифрувати
         # неможливо, тож поводимось як «не задано»: застосунок працює далі,
         # а не падає в 500 на кожному роуті. Секрет доведеться ввести заново.
-        logger.warning(
-            "Не вдалося розшифрувати налаштування «%s» — ключ шифрування "
-            "змінився; вважаю значення незаданим",
-            key,
-        )
+        # Попередження — ОДИН раз на ключ за процес: get_setting кличуть на
+        # кожен запит, і лог Kuubek-PC 07–08.09.26 став тисячами однакових
+        # рядків, за якими не видно справжніх подій.
+        if key not in _unreadable_warned:
+            _unreadable_warned.add(key)
+            logger.warning(
+                "Не вдалося розшифрувати налаштування «%s» — ключ шифрування "
+                "змінився; вважаю значення незаданим (далі не повторюю)",
+                key,
+            )
         return None
+
+
+# Ключі, про які вже попереджено в цьому процесі (див. get_setting).
+_unreadable_warned: set[str] = set()
 
 
 def setting_unreadable(session: Session, key: str) -> bool:
@@ -326,6 +335,9 @@ def set_setting(session: Session, key: str, value: str) -> None:
         session.add(AppSetting(key=key, value_encrypted=encrypted))
     else:
         row.value_encrypted = encrypted
+    # Значення перезаписано поточним ключем — наступний збій розшифрування
+    # буде новою подією, про яку варто попередити знову.
+    _unreadable_warned.discard(key)
 
 
 _SHEET_URL_ID_RE = re.compile(r"/spreadsheets/d/([A-Za-z0-9_-]{20,})")
