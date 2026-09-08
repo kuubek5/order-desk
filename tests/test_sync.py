@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -1167,31 +1169,48 @@ def test_duplicate_row_numbers_do_not_hide_an_order_from_deletion():
     assert active == [], f"обидва мали піти в архів, лишилось: {[o.work_order_no for o in active]}"
 
 
-def test_recently_imported_then_deleted_still_stuck_within_grace():
-    """Reproduce Rома's 'delete from sheet, stays in CRM, manual sync no help':
-    a наряд imported seconds ago and then deleted is inside the 120s deletion
-    grace, so reconciliation skips it — and a manual sync within that window
-    keeps skipping. Demonstrates the grace is the blocker for sheet-native
-    works the operator deleted deliberately."""
+def test_recently_imported_then_deleted_goes_to_archive_on_the_next_read():
+    """Помилка адміністратора не має жити в черзі зайвих хвилин.
+
+    Власник, 09.09.26: «адміністратор помилково вводить наряд, помічає й
+    видаляє — а ми його помилку візьмемо в роботу». Раніше щойно імпортована
+    робота була всередині 120-секундної відстрочки, і фоновий синк тримав її
+    ще кілька хвилин після того, як рядок уже зник.
+
+    Відстрочка лишається, але з ТОЧНИМ ключем: захищена лише робота, створена
+    ПІСЛЯ знімка рядків (`rows_read_at`) — саме її відсутність у знімку нічого
+    не доводить. Робота, ІМПОРТОВАНА з цього ж знімка, доведено видалена."""
     session = make_session()
-    # Fresh import — created_at is NOW (within grace).
+    imported_at = utc_now()
     sync_tab(session, "26.08.26", [make_row(row_number=1, work_order_no="28700")],
              raw_row_count=10)
     session.commit()
 
-    # Deleted in the sheet moments later; operator hits sync.
-    sync_tab(session, "26.08.26", [], raw_row_count=6)
-    session.commit()
-
-    order = session.scalar(select(Order))
-    # Background sync keeps the grace, so a just-imported+deleted order survives.
-    assert order.archived_at is None
-
-    # A MANUAL sync bypasses the grace (deletion_grace_seconds=0) — the operator
-    # deleted the row and asked to reconcile now.
-    sync_tab(session, "26.08.26", [], raw_row_count=6, deletion_grace_seconds=0)
+    # Наступне читання таблиці — рядка вже немає. Робота старша за знімок.
+    sync_tab(session, "26.08.26", [], raw_row_count=6,
+             rows_read_at=imported_at + timedelta(seconds=1))
     session.commit()
     assert session.scalar(select(Order)).archived_at is not None
+
+
+def test_order_created_after_the_snapshot_survives_reconciliation():
+    """Другий бік тієї ж мітки: гонка «додати роботу руками».
+
+    Ручне додавання спершу пише рядок у таблицю й лише потім комітить роботу.
+    Тік, який зняв знімок РАНІШЕ за той запис, рядка не побачить — і без
+    захисту заархівував би щойно створену роботу, а наступний тік завів би її
+    заново, без історії й Sum3D. Тому мітка порівнюється саме з `created_at`."""
+    session = make_session()
+    snapshot_at = utc_now()
+    session.add(Order(
+        source="lab", sheet_tab="26.08.26", row_number=1, work_order_no="28701",
+        status="нове", created_at=snapshot_at + timedelta(seconds=2),
+    ))
+    session.commit()
+
+    sync_tab(session, "26.08.26", [], raw_row_count=6, rows_read_at=snapshot_at)
+    session.commit()
+    assert session.scalar(select(Order)).archived_at is None
 
 
 def test_empty_sheet_sum3d_clears_the_db_value_so_work_is_takeable_again():

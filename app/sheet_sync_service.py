@@ -734,6 +734,13 @@ def sync_google_sheets(
         for worksheet in worksheets:
             current_tab = canonical_tab_title(worksheet.title)
             try:
+                # Момент ЗНІМКА рядків — ДО виклику, не після. Рядка, якого в
+                # цьому знімку немає, у таблиці справді немає; а робота,
+                # створена ПІСЛЯ цієї мітки, могла дописати свій рядок уже
+                # після читання, і її відсутність нічого не доводить. Саме ця
+                # мітка (а не «дві хвилини від створення») тепер вирішує, кого
+                # реконсиляція видалень не чіпає.
+                read_at = utc_now()
                 raw = call_with_retry(worksheet.get_all_values)
                 # Структура вкладки — ПЕРЕД імпортом. Вставлена колонка зсуває
                 # кожен індекс: «Ім'я техніка» читалось би як Sum3D, усі роботи
@@ -768,6 +775,7 @@ def sync_google_sheets(
                     # immediately — the operator's deliberate click isn't the
                     # background poll the read/write grace guards against.
                     deletion_grace_seconds=0 if trigger == "manual" else 120,
+                    rows_read_at=read_at,
                     # Оператор підтвердив масове видалення («звірити видалення»)
                     # — обходить поріг захисту від масової архівації, але ЛИШЕ
                     # на тих вкладках, які він підтвердив. Раніше прапорець був
@@ -1101,6 +1109,7 @@ def sync_hot_tab(
             worksheet = get_worksheet_by_name(spreadsheet, tab_title)
             if worksheet is None:
                 continue  # tab not created yet (early morning) — skip
+            read_at = utc_now()  # див. коментар у повному синку
             raw = call_with_retry(worksheet.get_all_values)
             # Та сама звірка структури, що й у повному синку: гаряча смуга
             # читає ті самі вкладки кожні 15 с, і без перевірки саме вона
@@ -1117,6 +1126,7 @@ def sync_hot_tab(
             row_fills = fetch_row_fills(worksheet)
             result = sync_tab(
                 session, tab_title, rows, row_fills=row_fills, raw_row_count=len(raw),
+                rows_read_at=read_at,
             )
             session.commit()
             summary.tabs_processed += 1

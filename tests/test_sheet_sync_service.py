@@ -123,11 +123,14 @@ def test_later_sync_uses_yesterday_today_tomorrow_only(monkeypatch):
         old.get_all_values.assert_not_called()
 
 
-def test_manual_sync_archives_a_just_created_row_deleted_from_the_sheet(monkeypatch):
+def test_sync_archives_a_just_created_row_deleted_from_the_sheet(monkeypatch):
     """Rома's report: add a наряд in the sheet, it appears in the CRM, delete it
-    in the sheet — but it stays, and manual sync doesn't help. Cause: the just-
-    imported order was inside the 120s deletion grace, and every manual sync in
-    that window skipped it. A manual sync now reconciles immediately."""
+    in the sheet — but it stays. Спершу це полагодили лише для РУЧНОГО синку;
+    у фоні робота висіла ще 3-5 хв (120 с відстрочки + такт), і саме в цьому
+    вікні оператор устигав узяти в роботу помилку адміністратора (власник,
+    09.09.26). Тепер відстрочка міряється від ЗНІМКА рядків (`rows_read_at`), а
+    не від годинника, тож обидва синки прибирають видалений рядок з першого ж
+    читання."""
     configured(monkeypatch)
     today = business_today()
     empty = worksheet(today)
@@ -149,12 +152,9 @@ def test_manual_sync_archives_a_just_created_row_deleted_from_the_sheet(monkeypa
         ))
         session.commit()
 
-        # Background run keeps the grace — the fresh order survives.
+        # Фоновий прогін: робота старша за знімок рядків, отже її видалення
+        # доведене — архівуємо одразу, не чекаючи двох хвилин.
         sync_google_sheets(session, trigger="background")
-        assert session.scalar(select(Order)).archived_at is None
-
-        # Manual run reconciles now.
-        sync_google_sheets(session, trigger="manual")
         assert session.scalar(select(Order)).archived_at is not None
 
 

@@ -2,7 +2,7 @@ from collections import Counter
 import dataclasses
 from dataclasses import dataclass
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import select
@@ -566,6 +566,7 @@ def sync_tab(
     row_fills: dict[int, str] | None = None,
     raw_row_count: int | None = None,
     deletion_grace_seconds: float = 120,
+    rows_read_at: datetime | None = None,
     force_reconcile: bool = False,
 ) -> SyncResult:
     """Import a tab's rows. ``row_fills`` (row_number -> 'blue'/'grey'/'')
@@ -1105,7 +1106,29 @@ def sync_tab(
     # This was the "delete from sheet, stays in CRM, manual sync no help" report:
     # a just-imported наряд deleted seconds later sat inside the grace, and every
     # manual sync in that window skipped it.
-    grace_cutoff = utc_now() - timedelta(seconds=deletion_grace_seconds)
+    #
+    # ``rows_read_at`` РОБИТЬ ВІКНО ТОЧНИМ, і саме воно тепер працює у фоні.
+    # Захищати треба РІВНО одне: роботу, яка зʼявилась ПІСЛЯ того, як ми зняли
+    # знімок рядків, — тільки її відсутність у знімку нічого не доводить. Дві
+    # хвилини за годинником накривали й геть інший випадок: рядок, ІМПОРТОВАНИЙ
+    # із цього ж знімка й видалений адміністратором одразу після помилки. Його
+    # відсутність доведена, а черга тримала його ще кілька хвилин — і рівно в
+    # цьому вікні оператор брав у роботу чужу помилку (скарга власника
+    # 09.09.26). Вікно тепер дорівнює тривалості самого читання, а не двом
+    # хвилинам після нього.
+    #
+    # Без `rows_read_at` (старі виклики, тести) лишається поведінка за
+    # годинником — щоб виклик, який не знає часу читання, не втратив захисту
+    # взагалі.
+    # None = захисту немає взагалі (ручний синк без часу читання: оператор
+    # щойно видалив рядок і натиснув «синхронізувати», він хоче результат
+    # ЗАРАЗ).
+    if rows_read_at is not None:
+        grace_cutoff = rows_read_at
+    elif deletion_grace_seconds > 0:
+        grace_cutoff = utc_now() - timedelta(seconds=deletion_grace_seconds)
+    else:
+        grace_cutoff = None
     if had_raw_rows:
         # ЗАПОБІЖНИК ВІД МАСОВОЇ АРХІВАЦІЇ. Техніки чистять рядки по одному-два;
         # коли за один тік «зникає» чверть вкладки — це майже напевно не
@@ -1148,7 +1171,7 @@ def sync_tab(
                 if order.source not in ("lab", "sheet_client"):
                     continue
                 if (
-                    deletion_grace_seconds > 0
+                    grace_cutoff is not None
                     and order.created_at is not None
                     and order.created_at > grace_cutoff
                 ):
