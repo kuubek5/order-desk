@@ -73,8 +73,20 @@ def _record(session: Session, *, error: str | None) -> None:
 
 
 def _verify_sqlite(path: Path) -> None:
-    """`PRAGMA quick_check` на копії. Кидає, якщо файл не читається як база."""
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    """`PRAGMA quick_check` на копії. Кидає, якщо файл не читається як база.
+
+    `immutable=1`, а не просто `mode=ro`. Знайдено заміром на живих мережевих
+    шарах 08.09.26: з `mode=ro` SQLite вважає, що база може змінитись, і
+    заводить поруч супутні файли `-wal` і `-shm`. У теці дзеркала вони лишались
+    назавжди — сміття поруч із кожним знімком, а головне пастка на відновленні:
+    випадковий `-wal` біля `.db` змушує SQLite вважати базу незавершеною.
+
+    Окремо неприємно, що це відбувалось саме НА МЕРЕЖЕВІЙ ШАРІ, де WAL і не
+    працює як слід. `immutable=1` каже «файл не змінюється»: SQLite читає його
+    напряму, без блокувань і без супутніх файлів — рівно те, що потрібно для
+    перевірки готового знімка.
+    """
+    conn = sqlite3.connect(f"file:{path}?immutable=1", uri=True)
     try:
         result = conn.execute("PRAGMA quick_check").fetchone()
     finally:

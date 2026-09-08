@@ -9,6 +9,7 @@ from starlette.requests import Request
 from app.__version__ import VERSION
 from app.config import DB_PATH
 from app.db import engine
+from app.backup_mirror import mirror_snapshot
 from app.pre_update_backup import snapshot_before_update
 from app.services.health_snapshot import remember_before_update
 from app.changelog import load_changelog
@@ -151,7 +152,20 @@ def install_update(request: Request, db: Session = Depends(get_db)):
     # Збій копіювання не зриває оновлення, але адмін бачить про це попередження.
     backup_warning = ""
     try:
-        snapshot_before_update(engine, DB_PATH, release.version)
+        snapshot = snapshot_before_update(engine, DB_PATH, release.version)
+        # Ця копія — єдине, з чого відкочуватись, якщо нова версія не піде. Тому
+        # вона їде і в дзеркало на іншому носії: лежати поруч із базою, яку вона
+        # страхує, для копії найгірша з можливих адрес (аудит 08.09.26).
+        #
+        # Раніше я відклав це, боячись подовжити очікування оператора. Заміряно
+        # на робочій машині: база 577 КБ, знімок ~0,5 МБ, запис на мережеву шару
+        # — частки секунди. Побоювання не підтвердилось.
+        #
+        # `mirror_snapshot` не кидає: недоступна шара не має перетворювати вдалу
+        # локальну копію на збій оновлення.
+        mirror_error = mirror_snapshot(db, snapshot, subdir="pre-update")
+        if mirror_error:
+            backup_warning = " (другу копію бази зробити не вдалося — дивіться Налаштування)"
     except Exception:  # noqa: BLE001
         logger.exception("Не вдалося зняти копію бази перед оновленням")
         backup_warning = " (копію бази зняти не вдалося — дивіться журнал)"

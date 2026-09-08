@@ -106,3 +106,47 @@ def test_success_clears_previous_error(db_session, tmp_path):
     set_setting(db_session, MIRROR_DIR_KEY, str(tmp_path / "mirror"))
     assert mirror_snapshot(db_session, snapshot) is None
     assert mirror_status(db_session)["last_error"] == ""
+
+
+def test_verification_leaves_no_side_files(db_session, tmp_path):
+    """Перевірка копії не має лишати біля неї `-wal` і `-shm`.
+
+    Знайдено заміром на живих мережевих шарах 08.09.26. З `mode=ro` SQLite
+    вважає, що база може змінитись, і заводить супутні файли — у теці дзеркала
+    вони лишались назавжди. Це не лише сміття: випадковий `-wal` біля `.db`
+    змушує SQLite вважати базу незавершеною, тобто ламає саме те відновлення,
+    заради якого копія й існує.
+    """
+    source = _make_db(tmp_path / "kuubmill-2026-08.db")
+    # База в режимі WAL — саме такий випадок і створював супутні файли.
+    conn = sqlite3.connect(source)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("INSERT INTO t (v) VALUES ('ще робота')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    target = tmp_path / "mirror"
+    set_setting(db_session, MIRROR_DIR_KEY, str(target))
+
+    assert mirror_snapshot(db_session, source, subdir="pre-update") is None
+
+    folder = target / "pre-update"
+    leftovers = sorted(p.name for p in folder.iterdir() if p.suffix != ".db")
+    assert leftovers == [], f"перевірка лишила сміття поруч із копією: {leftovers}"
+    assert (folder / source.name).exists()
+
+
+def test_pre_update_snapshot_is_mirrored_too():
+    """Копія перед оновленням — єдине, з чого відкочуватись, якщо нова версія
+    не піде. Лежати поруч із базою, яку вона страхує, для неї найгірша адреса."""
+    import inspect
+
+    from app.routers.settings import update as update_router
+
+    source = inspect.getsource(update_router.install_update)
+    assert "mirror_snapshot" in source, (
+        "знімок перед оновленням не дзеркалиться — при смерті диска зникне "
+        "разом із базою"
+    )
