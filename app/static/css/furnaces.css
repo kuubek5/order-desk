@@ -425,6 +425,20 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 .q2 .mstrip{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px;padding:6px 10px;
   border:1px solid var(--line);border-radius:var(--r-card);background:var(--card)}
 .q2 .mstrip[hidden]{display:none}
+
+/* Заморожений віджет верстатів. Ознака ВІКУ, не помилки: фонові полли мовчать
+   про свої збої свідомо, тож стрічка з мертвим поллом виглядає живою і показує
+   стан годинної давнини (09.09.26: «готово» над верстатом, що фрезерував).
+   Число лишаємо видимим — воно було правдою, — але гасимо колір і кажемо
+   словом, що воно вже не поточне. */
+.wstale{display:none;font-size:var(--fs-0);font-weight:600;letter-spacing:.02em;
+  padding:1px 7px;border-radius:5px;white-space:nowrap;
+  background:rgba(var(--warn-rgb), .13);color:var(--warn);border:1px solid rgba(var(--warn-rgb), .28)}
+.q2 .mstrip.is-stale .wstale,
+.q2 .side-sec-machine.is-stale .wstale{display:inline-flex;align-items:center}
+.q2 .mstrip.is-stale .mch,
+.q2 .mstrip.is-stale .mstrip-ticker,
+.q2 .side-sec-machine.is-stale .ms-tiles{opacity:.42;filter:grayscale(1)}
 .q2 .mstrip-label{font-size:var(--fs-0);color:var(--ink-3);text-decoration:none;margin-right:4px;
   letter-spacing:.06em;text-transform:uppercase}
 .q2 .mstrip-label:hover{color:var(--ink-2)}

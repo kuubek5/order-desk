@@ -19,13 +19,18 @@
          style="order:{{ side_order_index(request, 'machine') }}"
          id="machine-side"
          hx-get="/machines/side"
-         hx-trigger="every 10s[!document.hidden]"
+         hx-trigger="every 10s[!document.hidden], visibilitychange[!document.hidden] from:document"
          hx-target="this"
          hx-swap="outerHTML"
          hx-disinherit="*">
     <button class="side-head" type="button" data-machine-side-toggle>
         <svg class="side-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>
         Верстати
+        {# Ознака ЗАМОРОЖЕНОЇ секції — та сама, що в стрічці, і з тієї ж
+           причини (див. коментар у _machine_strip.html). Стоїть у ШАПЦІ, щоб
+           читалась і згорнутою: заморожене «готово» під згорнутим віджетом
+           так само відправляє оператора до верстата даремно. #}
+        <span class="wstale" role="status">дані застаріли</span>
         {% if machine_summary.broken %}
         <span class="side-count err">{{ machine_summary.broken }} без зв'язку</span>
         {% elif machine_cards %}

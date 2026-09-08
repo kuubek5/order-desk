@@ -18,7 +18,7 @@
      class="mstrip{% if not _shown %} is-empty{% endif %}"
      data-variant="{{ _mstrip }}"
      hx-get="/machines/strip"
-     hx-trigger="every 10s[!document.hidden]"
+     hx-trigger="every 10s[!document.hidden], visibilitychange[!document.hidden] from:document"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*"
@@ -26,6 +26,14 @@
      aria-label="Верстати">
 {% if _shown %}
     <a class="mstrip-label" href="/machines">Верстати</a>
+    {# Ознака ЗАМОРОЖЕНОЇ стрічки. Полл ходить сам, а помилка полла свідомо
+       мовчить (див. htmx:responseError в app.js: фонові полли не мають права
+       нічого показувати). Через це стрічка, чий запит перестав удаватись,
+       далі виглядає живою і показує стан годинної давнини — саме так «готово»
+       від давно знятої роботи висіло над верстатом, який фрезерував
+       (09.09.26). Само число не викидаємо: воно було правдою, — але кажемо,
+       що воно вже не поточне. #}
+    <span class="wstale" role="status">дані застаріли</span>
     {% if _mstrip == 'ticker' %}
     <span class="mstrip-ticker">
         {%- for card in machine_cards -%}

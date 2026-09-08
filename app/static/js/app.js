@@ -388,6 +388,61 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
   if (event.target && event.target.id === "sisma-strip") syncSismaToggles();
 });
 
+// ── Заморожені віджети верстатів ──────────────────────────────────────────
+// Фонові полли мовчать про свої помилки свідомо (див. htmx:responseError
+// нижче): інакше одна протухла сесія викидала б оператора зі сторінки посеред
+// видачі. Ціна цього рішення — віджет, чий запит перестав удаватись, лишається
+// на екрані ЖИВИМ на вигляд і показує стан годинної давнини. 09.09.26 так і
+// вийшло: над верстатом, який фрезерував 50 %, висіло «готово» від попередньої,
+// давно знятої роботи — сервер у ту саму хвилину читав кадр правильно.
+//
+// Тому не «показати помилку», а «позначити вік»: єдина ознака ловить будь-яку
+// причину заморозки — 401, 500, обрив мережі, зупинений таймер, — бо дивиться
+// не на причину, а на те, коли віджет востаннє ОНОВИВСЯ.
+const WIDGET_FRESH_IDS = ["machine-strip", "machine-side"];
+// Полл ходить кожні 10 с. 35 — три пропущені такти поспіль: одиничний промах
+// (перезапуск застосунку, миттєвий 500) не має малювати тривогу.
+const WIDGET_STALE_MS = 35000;
+// Скільки не чіпаємо віджет після повернення на вкладку. У прихованій вкладці
+// полл СВІДОМО не ходить (`[!document.hidden]`), тож без цієї відстрочки
+// повернення до черги завжди починалось би зі спалаху «дані застаріли».
+const WIDGET_GRACE_MS = 15000;
+const widgetFreshAt = {};
+let widgetGraceUntil = 0;
+WIDGET_FRESH_IDS.forEach((id) => { widgetFreshAt[id] = Date.now(); });
+
+// Мітку ставимо на УСПІШНІЙ відповіді, а не на свапі: outerHTML міняє сам
+// елемент, і прив'язка часу до вузла губилась би разом з ним.
+//
+// Віджет упізнаємо за `detail.target`, а НЕ за `detail.elt`. Обидва віджети
+// свапаються через outerHTML, тобто елемент, який зробив запит, на момент
+// події вже вилучено з DOM — і htmx віддає в `elt` найближчого живого предка
+// (`main.q2` для стрічки, `aside.side-panel` для секції). Перевірка по `elt.id`
+// мовчки не спрацьовувала жодного разу: полли йшли, 200 приходили, а мітка
+// свіжості стояла на місці й віджет через 35 с оголошував себе застарілим
+// посеред здорової сторінки (спіймано наживо на дев-сервері).
+document.body.addEventListener("htmx:afterRequest", (event) => {
+  const detail = event.detail || {};
+  const node = detail.target || detail.elt;
+  const id = node && node.id;
+  if (id && Object.prototype.hasOwnProperty.call(widgetFreshAt, id) && detail.successful) {
+    widgetFreshAt[id] = Date.now();
+  }
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) widgetGraceUntil = Date.now() + WIDGET_GRACE_MS;
+});
+
+setInterval(() => {
+  if (document.hidden || Date.now() < widgetGraceUntil) return;
+  WIDGET_FRESH_IDS.forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle("is-stale", Date.now() - widgetFreshAt[id] > WIDGET_STALE_MS);
+  });
+}, 5000);
+
 // ── Вкладки розділу в рейці налаштувань ───────────────────────────────────
 // Частина розділів має всередині вкладки («Копії таблиці» в Google Таблиці,
 // «Скачування вкладень» у Пошті, «Сповіщення» в кабінеті). У рейці вони

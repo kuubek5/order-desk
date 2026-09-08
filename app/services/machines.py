@@ -1124,6 +1124,7 @@ def poll_target(
     # роботи. Плюс фоновий тік і ручне «Оновити» — це два потоки на один
     # об'єкт стану (знайдено рев'ю 04.09.26).
     with _states_lock:
+        was_completed = state.completed
         if state.fail_streak >= PROBLEM_AFTER_FAILURES:
             gap = (now - state.last_ok_at).total_seconds() if state.last_ok_at else None
             logger.warning(
@@ -1155,6 +1156,21 @@ def poll_target(
         state.frame_at = now
         state.error = None
         state.frame_saved_at = saved_at
+
+    # ПЕРЕХІД у «завершено» і назад — у лог. Стан сам по собі видно на екрані, а
+    # от момент, коли верстат почав вважатись завершеним, не видно ніде: 09.09.26
+    # над працюючим верстатом висіло «готово», і щоб відповісти на просте
+    # питання «а сервер узагалі колись так думав», довелось порівнювати кадри
+    # руками. Подія рідкісна (кілька разів на день на верстат), тож глушник їй
+    # не потрібен, а без відсотка поруч рядок не відповідав би на друге питання
+    # — яким саме сигналом це вирішено.
+    if completed != was_completed:
+        logger.info(
+            "Верстат %s: екран підсумку %s (відсоток %s)",
+            target.name,
+            "зʼявився" if completed else "зник",
+            percent if percent is not None else "—",
+        )
 
     record_state(
         target.key,
