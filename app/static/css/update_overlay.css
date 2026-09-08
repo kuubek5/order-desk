@@ -391,10 +391,10 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
    Тон приглушений і теплий: це не помилка й не тривога — це факт історії,
    який має читатись з першого погляду, але не кричати на весь екран. */
 .arch-sheet tbody tr.is-gone td{color:var(--ink-3)}
-.arch-sheet tbody tr.is-gone{background:rgba(var(--warn-base-rgb, var(--accent-base-rgb)), .06)}
-.arch-sheet tbody tr.is-gone:hover{background:rgba(var(--warn-base-rgb, var(--accent-base-rgb)), .12)}
-.arch-sheet .arch-gone-tag{display:inline-block;margin-left:6px;padding:0 5px;border-radius:var(--r-chip, 6px);
-  border:1px solid var(--line-2);background:var(--card-3);color:var(--ink-3);
+.arch-sheet tbody tr.is-gone{background:rgba(var(--warn-rgb), .07)}
+.arch-sheet tbody tr.is-gone:hover{background:rgba(var(--warn-rgb), .14)}
+.arch-sheet .arch-gone-tag{display:inline-block;margin-left:6px;padding:0 5px;border-radius:6px;
+  border:1px solid rgba(var(--warn-rgb), .42);background:rgba(var(--warn-rgb), .10);color:var(--warn-ink);
   font-family:var(--font-mono);font-size:var(--fs-0);line-height:1.6;vertical-align:baseline}
 /* Клієнтський рядок без імені — теж робота, і в історії вона має бути
    впізнаваною, а не прочерком поруч із іменами сусідів. */
