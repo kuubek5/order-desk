@@ -49,7 +49,7 @@ from PIL import Image
 # одного алгоритму розійшлись би при першій же правці (урок міграції 0026 про
 # два переліки печей). Специфічне для верстата тут одне: підпис двоколірний,
 # тому крамп попередньо нормалізується в маску.
-from app.furnace_ocr import _bitmap, _match_digit, _segments
+from app.furnace_ocr import _bitmap, _cache_only_success, _match_digit, _segments
 from app.runtime import resource_path
 
 logger = logging.getLogger(__name__)
@@ -111,30 +111,8 @@ MAX_BAR_CANDIDATES = 40
 SEED_ROW_STEP = 2
 
 
-def _cache_only_success(load):
-    """Кеш, який запамʼятовує лише НЕПОРОЖНІЙ результат.
-
-    Замість `lru_cache`. Різниця принципова: обидва завантажувачі еталонів
-    свідомо гасять помилку читання й повертають `{}` — а `lru_cache` закріпив
-    би цю порожнечу до кінця життя процесу. Один транзієнтний збій диска чи
-    мережевої теки тихо й НАЗАВЖДИ вимикав би читання підпису й розпізнавання
-    екрана, і причину довелось би шукати як «раптом перестало» (рев'ю
-    04.09.26). Тепер невдача просто не кешується — наступний виклик спробує
-    ще раз.
-    """
-    box: dict[str, object] = {}
-
-    @wraps(load)
-    def wrapper():
-        if "value" in box:
-            return box["value"]
-        value = load()
-        if value:
-            box["value"] = value
-        return value
-
-    wrapper.cache_clear = box.clear  # type: ignore[attr-defined]
-    return wrapper
+# `_cache_only_success` живе в app/furnace_ocr.py — там, куди вже йде
+# залежність цього модуля (див. імпорт вище). Одна реалізація на два екрани.
 
 
 def _is_blue(px: tuple[int, int, int]) -> bool:

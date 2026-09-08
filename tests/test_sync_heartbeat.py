@@ -336,3 +336,130 @@ def test_queue_sync_status_reports_not_configured_for_both_when_fresh(isolated_h
 
     assert result["mail"]["label"] == "не налаштовано"
     assert result["sheet"]["label"] == "не налаштовано"
+
+
+# ── Вік останнього УСПІХУ, а не спроби ────────────────────────────────────
+# Аудит 08.09.26. Під час тривалого збою «остання спроба» оновлюється щохвилини
+# і сама по собі виглядає як життя. Операторові ж треба знати інше: коли пошта
+# востаннє реально приходила. Це число не показувалось ніде.
+
+
+def test_success_moves_the_success_mark():
+    from app.sync_heartbeat import heartbeats, record_heartbeat
+
+    heartbeats["mail"] = SyncHeartbeat()
+    record_heartbeat("mail", status="ok")
+    assert heartbeats["mail"].last_success_at is not None
+
+
+def test_error_does_not_erase_the_previous_success():
+    """Незмінність цієї мітки і є доказом того, що збій триває."""
+    from app.sync_heartbeat import heartbeats, record_heartbeat
+
+    heartbeats["mail"] = SyncHeartbeat()
+    record_heartbeat("mail", status="ok")
+    was = heartbeats["mail"].last_success_at
+
+    record_heartbeat("mail", status="error", error_message="IMAP не відповідає")
+
+    assert heartbeats["mail"].last_success_at == was
+    # `>=`, а не `>`: два виклики поспіль можуть влучити в ту саму мікросекунду.
+    # Суть тесту не в цьому, а в тому, що мітка успіху НЕ зрушила.
+    assert heartbeats["mail"].last_attempt_at >= was
+
+
+def test_skipped_keeps_both_marks():
+    from app.sync_heartbeat import heartbeats, record_heartbeat
+
+    heartbeats["mail"] = SyncHeartbeat()
+    record_heartbeat("mail", status="ok")
+    was = heartbeats["mail"].last_success_at
+
+    record_heartbeat("mail", status="skipped")
+
+    assert heartbeats["mail"].last_success_at == was
+
+
+def test_error_state_carries_the_reason_to_the_screen():
+    """Раніше `error_message` осідав у пульсі й нікуди далі не йшов — оператор
+    бачив значок помилки без жодного натяку, що сталось."""
+    from datetime import datetime, timedelta
+
+    from app.sync_heartbeat import heartbeat_status
+
+    now = datetime(2026, 9, 8, 10, 0, 0)
+    hb = SyncHeartbeat(
+        last_attempt_at=now - timedelta(seconds=5),
+        last_success_at=now - timedelta(minutes=40),
+        status="error",
+        error_message="IMAP не відповідає",
+    )
+
+    result = heartbeat_status(hb, configured=True, interval_seconds=120, now=now)
+
+    assert result["state"] == "error"
+    assert result["detail"] == "IMAP не відповідає"
+    assert "успіх" in result["success"]
+
+
+# ── /health доповідає про стан, а не про відкритий порт ────────────────────
+# Аудит 08.09.26. Раніше проба повертала готовий словник, нічого не торкаючись,
+# і сторож після оновлення (app/update_check.py) рапортував успіх навіть тоді,
+# коли база недоступна, а фонові процеси мертві.
+
+
+def _health():
+    from starlette.responses import Response
+
+    import app.web as web
+
+    response = Response()
+    body = web.health(response)
+    return response, body
+
+
+def test_health_is_green_when_everything_answers():
+    from app.sync_heartbeat import heartbeats, record_heartbeat
+
+    for key in ("mail", "sheet"):
+        heartbeats[key] = SyncHeartbeat()
+        record_heartbeat(key, status="ok")
+
+    response, body = _health()
+
+    assert body["status"] == "ok"
+    assert body["checks"]["db"] == "ok"
+    assert response.status_code != 503
+
+
+def test_health_reports_degraded_when_a_worker_went_silent():
+    from datetime import datetime, timedelta
+
+    from app.sync_heartbeat import heartbeats
+
+    heartbeats["mail"] = SyncHeartbeat(
+        last_attempt_at=datetime.now() - timedelta(hours=3), status="ok"
+    )
+    heartbeats["sheet"] = SyncHeartbeat(last_attempt_at=datetime.now(), status="ok")
+
+    response, body = _health()
+
+    assert body["status"] == "degraded"
+    assert response.status_code == 503, (
+        "сторож оновлення читає саме код відповіді — без 503 він рапортує "
+        "«встановлено» на застосунку, який не працює"
+    )
+    assert body["checks"]["mail"].startswith("stale")
+
+
+def test_health_does_not_cry_before_the_first_tick():
+    """Щойно запущений застосунок — це не поломка."""
+    from app.sync_heartbeat import heartbeats
+
+    heartbeats["mail"] = SyncHeartbeat()
+    heartbeats["sheet"] = SyncHeartbeat()
+
+    response, body = _health()
+
+    assert body["status"] == "ok"
+    assert body["checks"]["mail"] == "starting"

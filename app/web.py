@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 import logging
+from datetime import datetime
 import os
 import time
 from uuid import uuid4
@@ -19,6 +20,7 @@ from fastapi import (
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 from urllib.parse import urlsplit
 
@@ -45,9 +47,14 @@ from app.sync_control import (
     MAIL_SYNC_INITIAL_DELAY_SECONDS,
     MAIL_SYNC_INTERVAL_SECONDS,
     SHEET_SYNC_INITIAL_DELAY_SECONDS,
+    SHEET_SYNC_INTERVAL_SECONDS,
     hot_extra_days as _hot_extra_days,
 )
-from app.sync_heartbeat import record_heartbeat as _record_sync_heartbeat
+from app.sync_heartbeat import (
+    STALE_HEARTBEAT_MULTIPLIER,
+    heartbeats as sync_heartbeats,
+    record_heartbeat as _record_sync_heartbeat,
+)
 from app.services.config_state import (
     imap_configured as _imap_configured,
     sheets_configured as _sheets_configured,
@@ -1023,13 +1030,59 @@ app.mount("/static", StaticFiles(directory=str(resource_path("app/static"))), na
 
 
 @app.get("/health", include_in_schema=False)
-async def health() -> dict[str, str]:
-    """Process-level probe without exposing configuration or mutating the DB.
+def health(response: Response) -> dict:
+    """Чи застосунок ПРАЦЮЄ, а не лише чи відповідає порт.
 
-    Reports the running build version so support and the update watchdog's
-    post-relaunch check can confirm *which* build answered, not merely that
-    one did — the version is not a secret and needs no auth here."""
-    return {"status": "ok", "version": VERSION}
+    Раніше повертав `{"status": "ok", "version": ...}`, не торкаючись нічого.
+    Наслідок: сторож після оновлення (`app/update_check.py`) пінгував відкритий
+    порт і рапортував успіх навіть тоді, коли база була недоступна, а всі
+    фонові процеси мертві (аудит 08.09.26).
+
+    Тепер перевіряє те, від чого залежить робота цеху:
+
+      * база відповідає на запит;
+      * фонові синки не мовчать довше за свій дозволений інтервал.
+
+    503 при проблемі — щоб сторож оновлення міг ВІДКОТИТИ, а не рапортувати
+    «встановлено» на застосунку, який не працює.
+
+    Звичайний `def`, не `async`: тепер тут є звернення до бази, а синхронний
+    код на event loop блокує застосунок для всіх (див.
+    tests/test_event_loop_hygiene.py). Секретів не віддає — лише версію,
+    ознаки живості й вік мовчання.
+    """
+    checks: dict[str, str] = {}
+    healthy = True
+
+    try:
+        with SessionLocal() as db:
+            db.execute(sa_text("SELECT 1"))
+        checks["db"] = "ok"
+    except Exception as exc:  # noqa: BLE001 — проба не має падати, вона доповідає
+        checks["db"] = f"error: {type(exc).__name__}"
+        healthy = False
+
+    now = datetime.now()
+    for key, interval in (
+        ("mail", MAIL_SYNC_INTERVAL_SECONDS),
+        ("sheet", SHEET_SYNC_INTERVAL_SECONDS),
+    ):
+        hb = sync_heartbeats.get(key)
+        if hb is None or hb.last_attempt_at is None:
+            # Ще не було жодного тіку — це не поломка, а щойно запущений
+            # застосунок. Мовчимо, а не червонимо.
+            checks[key] = "starting"
+            continue
+        age = (now - hb.last_attempt_at).total_seconds()
+        if age > interval * STALE_HEARTBEAT_MULTIPLIER:
+            checks[key] = f"stale: {int(age)}s"
+            healthy = False
+        else:
+            checks[key] = "ok"
+
+    if not healthy:
+        response.status_code = 503
+    return {"status": "ok" if healthy else "degraded", "version": VERSION, "checks": checks}
 
 
 # Вхід, ліцензія і кабінет оператора живуть в app/routers/auth.py.

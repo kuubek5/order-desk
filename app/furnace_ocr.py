@@ -33,7 +33,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import wraps
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -157,6 +157,38 @@ STATUS_UNKNOWN = "?"
 # пікселі з 187, тобто 12% — і пройшла як упевнений збіг. Табло показувало
 # 138, застосунок показав 133.
 #
+def _cache_only_success(load):
+    """Кеш, який запамʼятовує лише НЕПОРОЖНІЙ результат.
+
+    Замість `lru_cache`. Різниця принципова: завантажувачі еталонів свідомо
+    гасять помилку читання й повертають `{}` — а `lru_cache` закріпив би цю
+    порожнечу до кінця життя процесу. Один транзієнтний збій диска чи мережевої
+    теки тихо й НАЗАВЖДИ вимикав би читання чисел, і причину шукали б як
+    «раптом перестало» (ревʼю 04.09.26 — верстати; аудит 08.09.26 — печі, де
+    того ж виправлення бракувало).
+
+    Живе тут, а не в `app/machine_ocr.py`, бо саме сюди йде наявна залежність:
+    верстати вже імпортують примітиви розпізнавання з печей, і зворотний
+    імпорт дав би цикл.
+    """
+    box: dict[str, object] = {}
+
+    @wraps(load)
+    def wrapper():
+        if "value" in box:
+            return box["value"]
+        value = load()
+        if value:
+            box["value"] = value
+        return value
+
+    def cache_clear() -> None:
+        box.pop("value", None)
+
+    wrapper.cache_clear = cache_clear  # type: ignore[attr-defined]
+    return wrapper
+
+
 # Вигадане число тут гірше за порожнє поле: за температурою судять, чи піч
 # вийшла на режим. Тому — рівно нуль розбіжностей.
 #
@@ -168,7 +200,13 @@ STATUS_UNKNOWN = "?"
 _MAX_MISMATCH_PIXELS = 0
 
 
-@lru_cache(maxsize=1)
+# Той самий кеш, що на верстатах (`app/machine_ocr._cache_only_success`), а не
+# `lru_cache`. Різниця принципова: завантажувач нижче свідомо гасить відсутність
+# файлу й повертає `{}` — а `lru_cache` закріпив би цю порожнечу до кінця життя
+# процесу. Один транзієнтний збій диска тихо й НАЗАВЖДИ вимикав би всі числа на
+# печах, і причину шукали б як «раптом перестало». На верстатах це вже
+# виправлено 04.09.26, на печі виправлення не перенесли (аудит 08.09.26).
+@_cache_only_success
 def load_glyphs() -> dict[int, dict[str, list[list[str]]]]:
     """Еталони цифр: висота шрифту → цифра → список бітмап-варіантів."""
     path = Path(resource_path(GLYPHS_PATH))
@@ -197,6 +235,12 @@ class Field:
     unknown: int = 0
     segments: int = 0
     raw: str = ""
+    # Крайній символ торкався межі зони, тобто був обрізаний рамкою кропа.
+    # Окреме поле, а не просто «text=None»: причини порожнього поля різні
+    # (незнайоме накреслення / не той шаблон / обрізано), і в діагностиці їх
+    # треба розрізняти. Заразом це робить перевірку спостережуваною в тестах,
+    # не вимагаючи малювати справжні еталонні цифри.
+    clipped: bool = False
 
 
 @dataclass
@@ -353,6 +397,27 @@ def _match_digit(bitmap: list[str], glyphs: dict) -> Optional[str]:
     return best_digit
 
 
+def accept_reading(raw: str, pattern: str, *, unknown: int, clipped: bool) -> bool:
+    """Чи можна показувати прочитане число операторові.
+
+    Три незалежні причини відмовити, і будь-якої досить:
+
+    * `unknown` — хоч один символ не збігся з еталоном піксель-у-піксель;
+    * `clipped` — крайній символ торкався межі зони, тобто був обрізаний
+      рамкою кропа, і число неповне;
+    * `pattern` — рядок не тієї форми, якої мусить бути (пошкоджена цифра
+      іноді розсипається на уламки, що проходять як розділовий знак).
+
+    Винесено з `read_zone` окремою функцією навмисно: саме тут живе правило
+    §14 «краще порожньо, ніж правдоподібно й хибно», і воно має бути покрите
+    тестом прямо, а не через малювання синтетичних цифр, які все одно не
+    збігаються з еталонами (аудит 08.09.26).
+    """
+    if unknown or clipped:
+        return False
+    return bool(re.match(pattern, raw))
+
+
 def read_zone(panel: Image.Image, name: str) -> Field:
     """Прочитати одну зону як рядок цифр і роздільників."""
     zone = ZONES[name]
@@ -381,8 +446,31 @@ def read_zone(panel: Image.Image, name: str) -> Field:
         else:
             out.append(digit)
     raw = "".join(out)
-    text = None if unknown or not re.match(zone.pattern, raw) else raw
-    return Field(text=text, unknown=unknown, segments=len(boxes), raw=raw)
+
+    # Символ, що торкається краю зони, — обрізаний рамкою кропа, і прочитане
+    # число тоді неповне. Піксельна звірка з еталонами тут безсила за
+    # означенням: вона перевіряє ті цифри, що ПОТРАПИЛИ в кадр, і нічого не
+    # знає про ту, що лишилась за межею.
+    #
+    # Для температури це найнебезпечніший випадок з усіх: шаблон `^\d{1,4}$`
+    # приймає будь-яку довжину, а перевірка «не більше 2000» пропускає
+    # результат. Тобто «1350» з обрізаною лівою цифрою ставало «350» —
+    # правдоподібним, але хибним числом на табло. Це прямо порушує правило
+    # §14: цифра або збігається з еталоном, або поле ПОРОЖНЄ (аудит 08.09.26).
+    #
+    # Годинники так не ламаються — їхній шаблон фіксованої довжини ловить
+    # нестачу сам, — але правило однакове для всіх зон: краще порожньо.
+    clipped = bool(boxes) and (boxes[0][0] <= 0 or boxes[-1][2] >= crop.size[0])
+    if clipped:
+        logger.warning(
+            "Зона «%s»: символ торкається краю (%s) — читання відкинуто як неповне",
+            zone.title, raw or "?",
+        )
+
+    text = raw if accept_reading(raw, zone.pattern, unknown=unknown, clipped=clipped) else None
+    return Field(
+        text=text, unknown=unknown, segments=len(boxes), raw=raw, clipped=clipped
+    )
 
 
 def _dominant(

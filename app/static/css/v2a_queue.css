@@ -662,6 +662,13 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 .q2 .kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:var(--queue-density-kv-pad,6px) 0;font-size:var(--fs-1);color:var(--ink-2)}
 .q2 .kv+.kv{border-top:1px solid var(--card-2)}
 .q2 .kv b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:var(--fs-1)}
+/* Коли підсистема востаннє СПРАЦЮВАЛА — тихіше за сам стан: це довідка, а не
+   сигнал. Під час збою саме вона відповідає на питання «а коли працювало». */
+.q2 .kv .kv-since{color:var(--ink-3,var(--ink-2));font-weight:400}
+/* Причина збою окремим рядком під станом: значок помилки без пояснення
+   змушував іти в журнал, щоб дізнатись очевидне. */
+.q2 .kv-detail{padding-top:0;border-top:0}
+.q2 .kv-detail b{font-family:inherit;font-weight:400;color:var(--ink-2);font-size:var(--fs-2);text-align:right}
 .q2 .maillist{display:flex;flex-direction:column;gap:2px}
 .q2 .mailrow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:8px 9px;border-radius:9px;text-align:left;width:100%;text-decoration:none;transition:background var(--ui-speed) ease}
 .q2 .mailrow:hover{background:var(--card-2);opacity:1}

@@ -963,3 +963,89 @@ def test_command_needs_a_letter_and_a_digit():
     assert not pattern.match("........")
     assert not pattern.match("0000")
     assert not pattern.match("AAAA")
+
+
+# ── Обрізана цифра — порожнє поле, а не правдоподібне число ────────────────
+# Аудит 08.09.26. Піксельна звірка з еталонами перевіряє ті цифри, що ПОТРАПИЛИ
+# в кадр, і нічого не знає про ту, що лишилась за межею зони. Для температури це
+# найнебезпечніше: шаблон ^\d{1,4}$ приймає будь-яку довжину, а межа «не більше
+# 2000» пропускає результат — «1350» з обрізаною лівою цифрою стало б «350».
+# Правило §14: краще порожньо, ніж правдоподібно й хибно.
+#
+# ВАЖЛИВО про межі цього захисту. Він ловить символ, ОБРІЗАНИЙ рамкою — тобто
+# випадок, коли частина цифри ще видна. Цифру, що лишилась ПОВНІСТЮ за межею,
+# не ловить ніщо: вона не лишає в кадрі жодного сліду. Єдиний спосіб виключити
+# цей випадок — переконатись на живому кадрі, що зона `temp` вміщає ЧОТИРИ
+# цифри. Її калібрували на показанні «759», тобто на трьох; цирконій спікається
+# при 1450-1530 °C. Це відкрите питання до власника, не до коду.
+
+
+def _panel_with_ink_at(x_positions, zone_key="temp"):
+    """Панель, де чорнило стоїть у заданих колонках зони.
+
+    Навмисно НЕ малюємо еталонних цифр: перевіряємо саме геометрію обрізання,
+    і вона не має залежати від того, чи впізнався символ.
+    """
+    from PIL import Image
+
+    from app.furnace_ocr import ZONES
+
+    panel = Image.new("RGB", (800, 600), (0, 0, 0))
+    left, top, right, bottom = ZONES[zone_key].rect
+    for x in x_positions:
+        for y in range(top + 3, top + 12):
+            panel.putpixel((left + x, y), (255, 40, 40))
+    return panel
+
+
+def test_ink_touching_the_left_edge_marks_the_field_clipped():
+    from app.furnace_ocr import read_zone
+
+    field = read_zone(_panel_with_ink_at([0, 1, 2]), "temp")
+
+    assert field.clipped is True
+
+
+def test_ink_touching_the_right_edge_marks_the_field_clipped():
+    from app.furnace_ocr import ZONES, read_zone
+
+    left, top, right, bottom = ZONES["temp"].rect
+    width = right - left
+    field = read_zone(_panel_with_ink_at([width - 2, width - 1]), "temp")
+
+    assert field.clipped is True
+
+
+def test_ink_well_inside_the_zone_is_not_clipped():
+    """Запобіжник не має спрацьовувати на нормальному показанні."""
+    from app.furnace_ocr import read_zone
+
+    field = read_zone(_panel_with_ink_at([10, 11, 12]), "temp")
+
+    assert field.clipped is False
+
+
+def test_a_clipped_reading_is_never_shown():
+    """Саме правило §14, покрите прямо, а не через синтетичні цифри.
+
+    «1350» з обрізаною лівою цифрою читається як бездоганне «350»: усі символи
+    збіглися з еталонами, шаблон ^\d{1,4}$ приймає три цифри, межа 2000
+    пропускає. Єдине, що відрізняє цей випадок від справжнього показання, —
+    ознака обрізання.
+    """
+    from app.furnace_ocr import accept_reading
+
+    assert accept_reading("350", r"^\d{1,4}$", unknown=0, clipped=False) is True
+    assert accept_reading("350", r"^\d{1,4}$", unknown=0, clipped=True) is False
+
+
+def test_an_unrecognised_glyph_is_never_shown():
+    from app.furnace_ocr import accept_reading
+
+    assert accept_reading("35?", r"^\d{1,4}$", unknown=1, clipped=False) is False
+
+
+def test_a_reading_of_the_wrong_shape_is_never_shown():
+    from app.furnace_ocr import accept_reading
+
+    assert accept_reading("35.0", r"^\d{1,4}$", unknown=0, clipped=False) is False

@@ -44,8 +44,21 @@ class SyncHeartbeat:
     """
 
     last_attempt_at: datetime | None = None
+    # Коли підсистема востаннє СПРАЦЮВАЛА, а не просто спробувала. Різниця
+    # видима саме тоді, коли вона потрібна: під час тривалого збою «спроба»
+    # оновлюється щохвилини і виглядає як життя, а оператор не бачить, коли
+    # пошта востаннє реально приходила. Аудит 08.09.26: «остання успішна
+    # перевірка» ніде не показувалась.
+    last_success_at: datetime | None = None
     status: str = "unknown"  # "unknown" | "ok" | "error" | "skipped"
     error_message: str | None = None
+
+    def success_age_seconds(self, now: datetime | None = None) -> float | None:
+        """Скільки секунд минуло від останнього успіху, або None, якщо його
+        ще не було в цьому запуску."""
+        if self.last_success_at is None:
+            return None
+        return ((now or datetime.now()) - self.last_success_at).total_seconds()
 
 
 # Keyed by sync type. Only the matching background worker thread ever writes
@@ -73,14 +86,23 @@ def record_heartbeat(key: str, *, status: str, error_message: str | None = None)
     without overwriting a previously recorded real outcome with a false error.
     """
     now = datetime.now()
+    previous = heartbeats[key]
     if status == "skipped":
-        previous = heartbeats[key]
         heartbeats[key] = SyncHeartbeat(
-            last_attempt_at=now, status=previous.status, error_message=previous.error_message
+            last_attempt_at=now,
+            last_success_at=previous.last_success_at,
+            status=previous.status,
+            error_message=previous.error_message,
         )
     else:
         heartbeats[key] = SyncHeartbeat(
-            last_attempt_at=now, status=status, error_message=error_message
+            last_attempt_at=now,
+            # Успіх пересуває мітку, збій — НІ: саме її незмінність і показує,
+            # скільки триває збій. Затирати її поточним часом означало б
+            # стерти єдиний доказ того, що підсистема давно не працює.
+            last_success_at=now if status == "ok" else previous.last_success_at,
+            status=status,
+            error_message=error_message,
         )
 
 
@@ -105,14 +127,36 @@ def heartbeat_status(
         return {"state": "neutral", "label": "очікує першої перевірки"}
 
     age_seconds = max(0.0, (now - heartbeat.last_attempt_at).total_seconds())
+
+    # Коли підсистема востаннє СПРАЦЮВАЛА. Під час тривалого збою «спроба»
+    # оновлюється щохвилини і сама по собі виглядає як життя — а операторові
+    # треба знати інше: коли пошта востаннє реально приходила. Раніше це
+    # число не показувалось ніде (аудит 08.09.26).
+    if heartbeat.last_success_at is None:
+        success = "успіху ще не було" if heartbeat.status == "error" else ""
+    else:
+        success = f"успіх {relative_time_uk(heartbeat.last_success_at, now)}"
+
     if age_seconds > interval_seconds * STALE_HEARTBEAT_MULTIPLIER:
-        return {"state": "warning", "label": "⚠ немає відповіді від фонового процесу"}
+        return {
+            "state": "warning",
+            "label": "⚠ немає відповіді від фонового процесу",
+            "success": success,
+        }
 
     relative = relative_time_uk(heartbeat.last_attempt_at, now)
     if heartbeat.status == "error":
-        return {"state": "error", "label": f"⚠ помилка · {relative}"}
+        # Причина збою теж доїжджає в інтерфейс. Раніше `error_message` осідав
+        # у пульсі й нікуди далі не йшов: оператор бачив значок помилки без
+        # жодного натяку, що саме сталося.
+        return {
+            "state": "error",
+            "label": f"⚠ помилка · {relative}",
+            "detail": heartbeat.error_message or "",
+            "success": success,
+        }
     if heartbeat.status == "ok":
-        return {"state": "success", "label": f"✓ {relative}"}
+        return {"state": "success", "label": f"✓ {relative}", "success": success}
     # "skipped" with no prior real outcome yet (busy on the very first tick
     # this process ever attempted) — rare, but still an honest "unknown".
     return {"state": "neutral", "label": "очікує результату"}

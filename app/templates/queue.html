@@ -285,8 +285,25 @@
                             <p>Точковий запис Sum3D ID, статусів і коментарів — ручні значення в таблиці не перезаписуються.</p>
                         </span>
                     </div>
-                    <div class="kv"><span>Пошта</span><b>{{ sync_status.mail.label }}</b></div>
-                    <div class="kv"><span>Таблиця</span><b>{{ sync_status.sheet.label }}</b></div>
+                    {# Поруч зі станом — коли підсистема востаннє СПРАЦЮВАЛА.
+                       Під час тривалого збою «спроба» оновлюється щохвилини і
+                       виглядає як життя; операторові ж треба знати, коли пошта
+                       востаннє реально приходила (аудит 08.09.26). Причина
+                       збою теж тут: раніше значок помилки не пояснював нічого. #}
+                    <div class="kv">
+                        <span>Пошта</span>
+                        <b>{{ sync_status.mail.label }}{% if sync_status.mail.success %} <span class="kv-since">· {{ sync_status.mail.success }}</span>{% endif %}</b>
+                    </div>
+                    {% if sync_status.mail.detail %}
+                    <div class="kv kv-detail"><span></span><b>{{ sync_status.mail.detail }}</b></div>
+                    {% endif %}
+                    <div class="kv">
+                        <span>Таблиця</span>
+                        <b>{{ sync_status.sheet.label }}{% if sync_status.sheet.success %} <span class="kv-since">· {{ sync_status.sheet.success }}</span>{% endif %}</b>
+                    </div>
+                    {% if sync_status.sheet.detail %}
+                    <div class="kv kv-detail"><span></span><b>{{ sync_status.sheet.detail }}</b></div>
+                    {% endif %}
                     <div class="ss-row">
                         <span class="ss-label">Оновлення</span>
                         {% include "_sync_speed_seg.html" %}
