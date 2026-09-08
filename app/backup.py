@@ -47,6 +47,7 @@ from app.models import (
     FeedbackImage,
     Furnace,
     FurnaceReading,
+    CamBlank,
     MachineReading,
     Machine,
     MailFilterCategory,
@@ -113,6 +114,10 @@ _TABLE_MODELS: list[Any] = [
     # містить ініціали людини, не час. Переїзд на новий ПК без неї знищив би
     # рівно ті дані, заради яких її й завели.
     MachineReading,
+    # Заготовки: історія взятих дисків. У копію входить, бо це журнал
+    # замовлень комірниці — переїзд на новий ПК без неї почав би відлік
+    # «взято після останнього замовлення» з нуля.
+    CamBlank,
     Machine,
     SyncLog,
     ClientNameAlias,

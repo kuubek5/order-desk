@@ -795,3 +795,29 @@ main.setv2.scon {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ── Заготовки: диски з теки CAM ─────────────────────────────────────────
+   Готовий текст замовлення показуємо МОНОШИРИННИМ і в тому вигляді, у якому
+   він піде комірниці: оператор має бачити рівно те, що скопіює, а не гарну
+   переверстку. Рядки короткі («Mono a3 12+25(2)»), тож перенос не потрібен. */
+.blanks-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.blanks-text {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-ctl);
+  background: var(--well);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+  color: var(--ink);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+.blanks-mismatch { margin: 0; padding-left: 18px; font-size: var(--fs-2); color: var(--ink-2); }
+.blanks-mismatch li { margin: 3px 0; }
+/* Рядок диска, який лежить не у своїй теці. Підсвітка тепла, не тривожна:
+   це помилка розкладання, а не аварія — її треба помітити, а не злякатись. */
+.blanks-table tr.is-mismatch td { background: rgba(var(--warn-rgb), .10); }
+.blanks-table tr.is-mismatch td:first-child { box-shadow: inset 2px 0 0 var(--warn); }
+.blanks-table .dim { color: var(--ink-3); }

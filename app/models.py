@@ -1025,6 +1025,60 @@ class MachineReading(Base):
     error: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
 
 
+class CamBlank(Base):
+    """Один диск-заготовка, побачений у теці CAM.
+
+    Коли оператор створює новий диск, CAM кладе файл у
+    `<корінь>/<матеріал>/<висота>/<висота>-<виробник>-<колір>-x<номер>`.
+    Створення диска майже завжди означає «взяв новий з архіву», тож ці рядки
+    і є замовленням для комірниці — без жодного ручного вводу.
+
+    РЯДОК ОПИСУЄ ПРИСУТНІСТЬ, А НЕ НАЗВУ. Порядковий номер свій на кожну
+    групу (матеріал + колір + висота) і після підчистки теки починається з
+    малого, тобто назви ГАРАНТОВАНО повторюються. Якби ми звіряли самі назви,
+    то після першої ж підчистки нові диски виглядали б як давно бачені. Тому
+    тут є `first_seen_at` і `gone_at`: назва, що виникла ЗНОВУ після зникнення
+    свого файлу, — це новий диск, а не старий.
+
+    Та сама форма дає ще одне: список «взяте з часу останнього замовлення»
+    береться з рядків, а не з вмісту теки, тож пізніше видалення файлу нічого
+    в історії не стирає.
+
+    Розібрані поля можуть бути порожні. Формат назви — конвенція, не примус
+    («оператор — це людина»), і нерозібраний файл усе одно лишається взятим
+    диском. Тихо викидати його не можна ніколи.
+
+    Час локальний і БЕЗ серверного дефолту — з тієї ж причини, що в ShiftNote.
+    """
+
+    __tablename__ = "cam_blanks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Шлях відносно кореня теки заготовок — стабільний ключ присутності.
+    rel_path: Mapped[str] = mapped_column(String(400), index=True)
+    material_dir: Mapped[str] = mapped_column(String(60), default="", server_default="")
+    height_dir: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    file_name: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    height: Mapped[Optional[int]] = mapped_column(nullable=True)
+    brand: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    shade: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+    serial: Mapped[Optional[int]] = mapped_column(nullable=True)
+    # Висота в назві не збіглася з текою — помилка розкладання. Показуємо.
+    height_mismatch: Mapped[bool] = mapped_column(default=False, server_default="0")
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    # Файл зник із теки: диск дороблено або теку підчистили.
+    gone_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    # Коли диск потрапив у замовлення комірниці. NULL = ще не замовлено.
+    # Вікно рахується ВІД цієї позначки, а не від робочої доби: комірниця
+    # йде о 18:00, а нічна зміна далі бере диски з архіву — межа 07:30
+    # відрізала б саме її.
+    ordered_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True, index=True
+    )
+
+
 class VyrobitokMonth(Base):
     """Місячні налаштування табеля «Виробіток»: курс валюти й склад зміни.
 

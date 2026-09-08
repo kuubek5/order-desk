@@ -102,6 +102,8 @@ from app.services.machines import (
     poll_all as _poll_machines,
     prune_machine_readings as _prune_machine_readings,
 )
+from app.services.cam_blanks import sync_blanks as _sync_cam_blanks
+from app.settings_store import get_setting
 from app.services.journal_prune import prune_journals
 from app.shift_images import prune_shift_images
 from app.routers.deps import templates
@@ -566,6 +568,43 @@ def _machine_worker(stop_event: Event) -> None:
         stop_event.wait(MACHINE_POLL_INTERVAL_SECONDS)
 
 
+# ── Заготовки CAM ───────────────────────────────────────────────────────────
+# Тека дисків: `<матеріал>/<висота>/*.blk`. Створення диска = «взяв новий з
+# архіву», тобто це готове замовлення для комірниці.
+#
+# Раз на пʼять хвилин, і цього з головою: диски зʼявляються нуль-десять разів
+# на день. Читаємо ЛИШЕ імена — ні вмісту, ні розміру, ні дати файлу (дата
+# файлу тут не джерело правди, її зсувають копіювання й антивірус).
+BLANKS_INITIAL_DELAY_SECONDS = 25.0
+BLANKS_POLL_INTERVAL_SECONDS = 5 * 60
+
+
+def _blanks_tick(db: Session) -> None:
+    """Один прохід. Шлях не заданий — не робимо нічого й не скаржимось:
+    порожнє поле це штатне «стеження вимкнене»."""
+    path = (get_setting(db, "cam_blanks_path") or "").strip()
+    if not path:
+        return
+    result = _sync_cam_blanks(db, path)
+    if result.appeared or result.vanished:
+        logger.info(
+            "Заготовки: зʼявилось %d, зникло %d, у теці %d",
+            result.appeared, result.vanished, result.present,
+        )
+
+
+def _blanks_worker(stop_event: Event) -> None:
+    if stop_event.wait(BLANKS_INITIAL_DELAY_SECONDS):
+        return
+    while not stop_event.is_set():
+        try:
+            with SessionLocal() as db:
+                _blanks_tick(db)
+        except Exception:
+            logger.exception("Неочікуваний збій читання теки заготовок")
+        stop_event.wait(BLANKS_POLL_INTERVAL_SECONDS)
+
+
 SYSTEM_LOAD_INITIAL_DELAY_SECONDS = 3.0
 SYSTEM_LOAD_INTERVAL_SECONDS = 3.0
 
@@ -804,6 +843,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("order-desk-machines", _machine_worker),
         _BackgroundWorker("kuubmill-feedback-retry", _feedback_push_retry_worker),
         _BackgroundWorker("kuubmill-system-load", _system_load_worker),
+        _BackgroundWorker("kuubmill-cam-blanks", _blanks_worker),
         _BackgroundWorker("kuubmill-vyrobitok-freeze", _vyrobitok_freeze_worker),
     ]
     for w in workers:

@@ -74,6 +74,7 @@
         {% if can_see(user, 'mail-filters') %}{% include "_settings_mail_filters.html" %}{% endif %}
         {% if can_see(user, 'furnaces') %}{% include "_settings_furnace.html" %}{% endif %}
         {% if can_see(user, 'machines') %}{% include "_settings_machines.html" %}{% endif %}
+        {% if can_see(user, 'blanks') %}{% include "_settings_blanks.html" %}{% endif %}
         {% if can_see(user, 'handout') %}{% include "_settings_handout.html" %}{% endif %}
         {% if can_see(user, 'update') %}{% include "_settings_about.html" %}{% endif %}
     </div>

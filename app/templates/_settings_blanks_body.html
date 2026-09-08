@@ -1,0 +1,82 @@
+{# Список і дії. Окремим файлом, бо його свапають кнопки «Перечитати» й
+   «Замовлено» — решта розділу (форма шляху) при цьому не перемальовується. #}
+<div id="blanks-body">
+    {% if blanks_error %}
+    <p class="settings-help settings-help-alarm">{{ blanks_error }}</p>
+    {% endif %}
+
+    <div class="settings-field">
+        <div class="blanks-actions">
+            <button type="button" class="btn"
+                    hx-post="/settings/blanks/rescan" hx-target="#blanks-body" hx-swap="outerHTML">
+                Перечитати теку
+            </button>
+            {% if blanks_pending %}
+            <button type="button" class="btn" data-copy="{{ blanks_text }}"
+                    title="Скопіювати текст для комірниці">
+                Скопіювати для комірниці
+            </button>
+            {% if can_edit(user, 'blanks') %}
+            <button type="button" class="btn"
+                    hx-post="/settings/blanks/ordered" hx-target="#blanks-body" hx-swap="outerHTML"
+                    title="Позначити, що це вже замовлено — список почнеться заново">
+                Замовлено ({{ blanks_pending|length }})
+            </button>
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
+
+    {% if blanks_mismatched_rows %}
+    {# Диск лежить не у своїй теці. Показуємо ЗАВЖДИ, незалежно від того, чи
+       його вже замовили: він лишається не на місці, поки його не переклали.
+       Лічильник без цього списку був би числом без адреси — оператор бачив
+       би «1 не на місці» і мусив шукати руками по всій теці. #}
+    <div class="settings-field">
+        <h4>Не на місці</h4>
+        <p class="settings-help">
+            Висота в назві не збігається з текою. Так бути не повинно: якщо
+            тека 12, диск має починатися з 12.
+        </p>
+        <ul class="blanks-mismatch">
+            {% for row in blanks_mismatched_rows %}
+            <li><span class="mono">{{ row.rel_path }}</span> — у теці {{ row.height_dir }}, у назві {{ row.height }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if blanks_pending %}
+    <div class="settings-field">
+        <h4>До замовлення</h4>
+        <p class="settings-help">
+            Узято після останнього замовлення. Відлік іде від кнопки «Замовлено»,
+            тому нічна зміна й вихідні враховані самі.
+        </p>
+        <pre class="blanks-text">{{ blanks_text }}</pre>
+
+        <table class="fu-table blanks-table">
+            <thead>
+                <tr><th>Коли</th><th>Матеріал</th><th>Виробник</th><th>Колір</th><th>Висота</th><th>№</th><th>Файл</th></tr>
+            </thead>
+            <tbody>
+                {% for row in blanks_pending %}
+                <tr{% if row.height_mismatch %} class="is-mismatch" title="Висота в назві не збігається з текою — диск лежить не там"{% endif %}>
+                    <td class="mono">{{ row.first_seen_at.strftime('%d.%m %H:%M') }}</td>
+                    <td>{{ row.material_dir }}</td>
+                    <td>{{ row.brand or '—' }}</td>
+                    <td>{{ row.shade or '—' }}</td>
+                    <td class="mono">{{ row.height if row.height is not none else row.height_dir }}</td>
+                    <td class="mono">{{ row.serial if row.serial is not none else '—' }}</td>
+                    <td class="mono">{{ row.file_name }}{% if row.gone_at %} <span class="dim">(файл прибрано)</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% elif blanks_path %}
+    <p class="settings-help">Після останнього замовлення нових дисків не брали.</p>
+    {% else %}
+    <p class="settings-help">Задайте шлях до теки — і список зʼявиться сам.</p>
+    {% endif %}
+</div>

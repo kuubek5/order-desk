@@ -281,6 +281,8 @@ NAV_SNAPSHOT = {
     "materials": ("sources", "усі", "усі"),
     "furnaces": ("equipment", "усі", "усі"),
     "machines": ("equipment", "усі", "усі"),
+    # Заготовки додано 08.09.26: тека дисків CAM і замовлення комірниці.
+    "blanks": ("equipment", "усі", "усі"),
     "operators": ("people", "адмін", "адмін"),
     "sections": ("people", "адмін", "адмін"),
     "handout": ("workflow", "адмін", "адмін"),

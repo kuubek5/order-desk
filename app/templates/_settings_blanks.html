@@ -1,0 +1,41 @@
+{% from "_settings_slab.html" import slab %}
+        {# ── Заготовки ────────────────────────────────────────────────────
+           Диски, взяті з архіву. Коли оператор створює новий диск у CAM, той
+           кладе файл у `<матеріал>/<висота>/*.blk` — тобто замовлення для
+           комірниці вже існує на диску як побічний слід роботи. Раніше його
+           складали обходом шухляд і писали у Viber (~10 хв щодня).
+
+           Вікно рахується від кнопки «Замовлено», а НЕ від робочої доби:
+           комірниця йде о 18:00, далі диски бере нічна зміна, а у вихідні
+           комірниці немає взагалі — межа 07:30 відрізала б саме це.
+
+           CRM цю теку тільки ЧИТАЄ. #}
+        <div class="wizard-step scon-sec stand-sec" data-sec="blanks">
+            <div class="num" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="7" rx="8" ry="3" class="duo"/><ellipse cx="12" cy="7" rx="8" ry="3"/><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+            </div>
+            <div class="box">
+                {{ slab('Заготовки', 'Диски, взяті з архіву. CRM читає теку CAM і складає замовлення для комірниці — обходити шухляди більше не треба.', slabs['blanks']) }}
+
+                <div class="settings-field">
+                    <form method="post" action="/settings/blanks/path"
+                          hx-post="/settings/blanks/path" hx-target="#blanks-body" hx-swap="outerHTML">
+                        <label for="cam_blanks_path">Шлях до теки заготовок</label>
+                        <input type="text" id="cam_blanks_path" name="cam_blanks_path"
+                               value="{{ blanks_path or '' }}"
+                               placeholder="C:\sum\dental\cam-bl"
+                               {% if not can_edit(user, 'blanks') %}disabled{% endif %}>
+                        <p class="settings-help">
+                            Усередині — тека матеріалу (<code>zr</code>, <code>pmma</code>),
+                            в ній тека висоти (<code>12</code>, <code>18</code>…), у ній файли
+                            <code>.blk</code>. Порожнє поле вимикає стеження.
+                        </p>
+                        {% if can_edit(user, 'blanks') %}
+                        <button type="submit" class="btn">Зберегти шлях</button>
+                        {% endif %}
+                    </form>
+                </div>
+
+                {% include "_settings_blanks_body.html" %}
+            </div>
+        </div>

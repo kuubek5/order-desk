@@ -161,6 +161,18 @@ SETTING_FIELDS = [
         label="Папка для другої копії бази",
         help_text="Інший диск або мережева шара — не той носій, де лежить база",
     ),
+    # Тека заготовок CAM: `<корінь>/<матеріал>/<висота>/*.blk`. Звідти CRM
+    # бачить, які диски взяли з архіву, і складає замовлення комірниці — ту
+    # саму роботу, яку робили обходом шухляд. Читання-лише.
+    # operator_editable: це шлях на конкретній машині, а не секрет — той
+    # самий довід, що для export і Cam-work.
+    SettingField(
+        key="cam_blanks_path",
+        section="blanks",
+        label="Шлях до теки заготовок (диски CAM)",
+        help_text="Усередині — тека матеріалу, в ній тека висоти, у ній файли .blk",
+        operator_editable=True,
+    ),
 ]
 
 OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operator_editable}
@@ -191,6 +203,7 @@ CLEARABLE_SETTING_KEYS = {
     "day_rollover_time",
     "machine_calibration_path",
     "backup_mirror_dir",
+    "cam_blanks_path",
 }
 
 # Non-secret preference keys stored in the same AppSetting table but NOT part of

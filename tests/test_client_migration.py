@@ -108,6 +108,7 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
             "vyrobitok_months", "vyrobitok_cells", "vyrobitok_days",
             "saved_queue_views",
             "machine_readings",
+            "cam_blanks",
         }
         assert tables_before - tables_after == set()
     finally:
