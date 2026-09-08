@@ -21,11 +21,16 @@
 підказка збреше, ми просто прочитаємо теку зайвий раз і отримаємо той самий
 правильний результат.
 
-**Ціна проходу.** Читаємо тільки імена: ні вмісту, ні розміру, ні дати файлу.
-Тека локальна. Груп близько сотні, файлів у них можуть бути десятки тисяч
-(номери доходили до 891, старі не прибирали роками), тому спершу дивимось час
-зміни кожної теки висоти й читаємо лише ті, де щось рухалось — сотня перевірок
-замість десятків тисяч імен.
+**Ціна проходу — ВИМІРЯНА, не припущена.** Читаємо тільки імена: ні вмісту,
+ні розміру, ні дати файлу. На 7000 файлів (14 груп) вийшло: саме читання імен
+32 мс, перший прохід із записом 516 мс, звичайний тік із одним новим файлом
+141 мс. Лінійно це дає близько секунди на тік при 50 тисячах файлів — раз на
+пʼять хвилин це прийнятно, тож жодних хитрощів на кшталт «дивитись час зміни
+теки» тут НЕ треба. Спершу міряти, потім оптимізувати.
+
+Великий ПЕРШИЙ прохід ріжеться на пачки (`_COMMIT_EVERY`): 50 тисяч вставок
+однією транзакцією тримали б базу зайнятою кілька секунд, а поруч кожну
+хвилину пишуть покази верстатів і печей.
 
 Модуль ЧИТАЄ теку. Видалення (окремий блок) буде свідомим і підтвердженим.
 """
@@ -50,6 +55,9 @@ logger = logging.getLogger(__name__)
 
 # Розширення файлу-заготовки. Порівняння регістронезалежне (.blk/.BLK).
 BLANK_EXT = ".blk"
+
+# По скільки рядків комітити на великому першому проході.
+_COMMIT_EVERY = 500
 
 # `12-monolith-a2-x14` → висота 12, виробник monolith, колір a2, номер 14.
 # Колір може містити дефіси й пробіли («прозора», «a3 5»), тому він жадібний
@@ -85,10 +93,13 @@ def parse_blank_name(name: str) -> ParsedBlank:
         serial = int(match.group("serial"))
     except ValueError:  # pragma: no cover — регулярка вже гарантує цифри
         return ParsedBlank()
+    # Обрізаємо під ширину колонок. SQLite довжину не перевіряє й мовчки
+    # проковтне будь-що, але 180-символьний «колір» у таблиці на екрані —
+    # це вже зламана верстка, а на строгішій базі був би збій запису.
     return ParsedBlank(
         height=height,
-        brand=match.group("brand").strip().lower() or None,
-        shade=match.group("shade").strip().lower() or None,
+        brand=(match.group("brand").strip().lower() or None) and match.group("brand").strip().lower()[:60],
+        shade=(match.group("shade").strip().lower() or None) and match.group("shade").strip().lower()[:60],
         serial=serial,
     )
 
@@ -300,22 +311,29 @@ def sync_blanks(db: Session, root: Path | str, *, now: Optional[datetime] = None
     found = scan_blanks(root)
     result = SyncBlanksResult(present=len(found))
 
+    # Ключ у НИЖНЬОМУ регістрі. Windows не розрізняє регістр у назвах, тож
+    # перейменування `12-Mono-A2-x1` → `12-mono-a2-x1` це ТОЙ САМИЙ файл.
+    # З чутливим до регістру ключем воно виглядало б як «старий зник, новий
+    # зʼявився», і в замовлення комірниці потрапляв би диск, якого немає
+    # (перевірено наживо 08.09.26: appeared=1, vanished=1 на самому лише
+    # перейменуванні регістру).
     alive: dict[str, CamBlank] = {
-        row.rel_path: row
+        row.rel_path.casefold(): row
         for row in db.scalars(select(CamBlank).where(CamBlank.gone_at.is_(None))).all()
     }
     seen_paths = set()
 
     for item in found:
-        seen_paths.add(item.rel_path)
-        if item.rel_path in alive:
+        key = item.rel_path.casefold()
+        seen_paths.add(key)
+        if key in alive:
             continue
         db.add(
             CamBlank(
-                rel_path=item.rel_path,
-                material_dir=item.material_dir,
-                height_dir=item.height_dir,
-                file_name=item.file_name,
+                rel_path=item.rel_path[:400],
+                material_dir=item.material_dir[:60],
+                height_dir=item.height_dir[:20],
+                file_name=item.file_name[:200],
                 height=item.parsed.height,
                 brand=item.parsed.brand,
                 shade=item.parsed.shade,
@@ -325,9 +343,14 @@ def sync_blanks(db: Session, root: Path | str, *, now: Optional[datetime] = None
             )
         )
         result.appeared += 1
+        # Перший прохід на робочому ПК може принести десятки тисяч рядків.
+        # Однією транзакцією це тримало б базу зайнятою кілька секунд, а
+        # поруч щохвилини пишуть покази верстатів і печей.
+        if result.appeared % _COMMIT_EVERY == 0:
+            db.commit()
 
-    for rel_path, row in alive.items():
-        if rel_path not in seen_paths:
+    for key, row in alive.items():
+        if key not in seen_paths:
             row.gone_at = now
             result.vanished += 1
 

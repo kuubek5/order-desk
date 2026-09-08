@@ -272,3 +272,61 @@ def test_probe_caps_its_samples_so_a_huge_folder_stays_readable(tmp_path):
     probe = probe_blanks(tmp_path)
     assert probe.unparsed == PROBE_SAMPLES + 20
     assert len(probe.unparsed_samples) == PROBE_SAMPLES
+
+
+# ── стійкість до того, що робить справжній Windows ──────────────────────────
+# Кожен випадок нижче перевірено наживо перед тим, як писати тест: три з
+# чотирьох виявились безпечними самі, а один був справжньою вадою.
+
+
+def test_case_rename_is_not_a_new_disc(db, tmp_path):
+    """Windows не розрізняє регістр — наш ключ мусить так само.
+
+    Знайдено живою пробою 08.09.26: перейменування `12-Mono-A2-x1` на
+    `12-mono-a2-x1` давало appeared=1 і vanished=1, тобто в замовлення
+    комірниці потрапляв би диск, якого фізично немає.
+    """
+    import os
+
+    make_tree(tmp_path, {"zr/12": ["12-Mono-A2-x1.blk"]})
+    sync_blanks(db, tmp_path)
+    os.rename(tmp_path / "zr/12/12-Mono-A2-x1.blk", tmp_path / "zr/12/12-mono-a2-x1.blk")
+
+    result = sync_blanks(db, tmp_path)
+    assert (result.appeared, result.vanished) == (0, 0), "зміна регістру — це той самий файл"
+    assert len(pending_blanks(db)) == 1
+
+
+def test_absurdly_long_name_is_cut_to_the_column_width(db, tmp_path):
+    """SQLite довжину не перевіряє й мовчки проковтне будь-що, але
+    180-символьний «колір» у таблиці на екрані — це вже зламана верстка."""
+    long_shade = "дужедовгийколір" * 12
+    make_tree(tmp_path, {"zr/12": [f"12-monolith-{long_shade}-x1.blk"]})
+    sync_blanks(db, tmp_path)
+
+    row = db.scalars(select(CamBlank)).one()
+    assert len(row.shade) <= 60
+    assert len(row.file_name) <= 200
+    assert len(row.rel_path) <= 400
+
+
+def test_odd_characters_in_names_do_not_break_the_scan(db, tmp_path):
+    """Дужки, апострофи, кирилиця, тире — усе це реальні назви з цеху."""
+    make_tree(tmp_path, {"zr/12": [
+        "12-mono-a2-x1.blk",
+        "12-mono-a2 (копия)-x2.blk",
+        "12-mono-a'2-x3.blk",
+        "тест — тире.blk",
+    ]})
+    result = sync_blanks(db, tmp_path)
+    assert result.appeared == 4, "жоден файл не має губитись через символи в назві"
+
+
+def test_a_file_where_the_root_should_be_is_not_a_crash(tmp_path):
+    """Оператор може вписати шлях до ФАЙЛУ замість теки. Це не аварія."""
+    from app.services.cam_blanks import probe_blanks
+
+    fake = tmp_path / "не-тека.txt"
+    fake.write_text("x", encoding="utf-8")
+    assert scan_blanks(fake) == []
+    assert probe_blanks(fake).exists is False
