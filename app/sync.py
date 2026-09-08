@@ -423,6 +423,29 @@ def _order_identity(order: Order) -> tuple | None:
             (order.kind or "").strip().casefold(), (order.quantity or "").strip())
 
 
+def _both_nameless_and_alike(row: OrderRow, order: Order) -> bool:
+    """Рядок і робота, яким нема чим назватись, але вони збігаються по суті.
+
+    «Нема чим назватись» = ні наряду, ні імені клієнта, ні техніка з обох
+    боків. Тоді єдине, що лишається, — матеріал і кількість; обидва мусять
+    бути НЕПОРОЖНІ, інакше зійшлися б два порожні рядки.
+    """
+    if (row.work_order_no or "").strip() or (order.work_order_no or "").strip():
+        return False
+    if (row.kind or "").strip() or (order.client_name or "").strip():
+        return False
+    if (row.technician_name or "").strip() or (order.technician_name or "").strip():
+        return False
+    material = (row.material_color or "").strip().casefold()
+    quantity = (row.quantity or "").strip()
+    if not material or not quantity:
+        return False
+    return (
+        material == (order.material_color or "").strip().casefold()
+        and quantity == (order.quantity or "").strip()
+    )
+
+
 def _looks_like_another_work(row: OrderRow, order: Order) -> bool:
     """Чи стоїть у рядку ЗОВСІМ інша робота, ніж та, що на цій позиції в базі.
 
@@ -761,7 +784,15 @@ def sync_tab(
         # unambiguous row-reuse (correcting a наряд never turns a lab row into a
         # client row), so reset to the new shape. Cheap self-heal for rows the
         # 0.3.6–0.3.9 resurrect bug already corrupted, on the next sync.
-        if existing.source != source:
+        # ЛИШЕ для живої роботи — як і сказано в абзаці вище. Для архівної це
+        # скидання спрацьовувало ЗАРАНО: воно стирає матеріал і кількість, а
+        # саме ними гілка воскресіння нижче впізнає роботу, якій нема чим
+        # назватись. Виходило, що робота без імені, заведена колись як
+        # лабораторна або поштова, не поверталась із архіву НІКОЛИ — навіть
+        # після 0.13.5, де ключ уже вмів обходитись без імені. Архівну роботу
+        # приводить до нового вигляду сама гілка воскресіння, коли бачить, що
+        # в рядку справді інша робота.
+        if existing.archived_at is None and existing.source != source:
             _reset_order_for_new_work(existing, source=source, status=status)
             changed = True
 
@@ -799,6 +830,23 @@ def sync_tab(
             if not same_work:
                 row_key = _row_identity(row)
                 same_work = row_key is not None and row_key == _order_identity(existing)
+            if not same_work:
+                # ОСТАННІЙ рубіж: рядок і робота, у яких НЕМА ЧИМ назватись —
+                # ні наряду, ні імені клієнта, ні техніка. Ключі вище на таких
+                # не сходяться навіть після 0.13.5: у роботи, заведеної колись
+                # як лабораторна (`source == "lab"`), `_order_identity` іде
+                # лабораторною гілкою й повертає None, бо там немає ні наряду,
+                # ні техніка. Виходить те саме, що й раніше: рядок у таблиці
+                # цілий, синк каже «unchanged», робота вічно в архіві й повз
+                # виробіток.
+                #
+                # Порівнюємо тим, що в такому рядку взагалі є: матеріалом і
+                # кількістю. Це вужче, ніж здається, — ми ВЖЕ зіставлені
+                # позиційно, і питання стоїть лише «та сама це робота чи інша»,
+                # а не «яку з усіх обрати». Обидві сторони мусять бути
+                # безіменними: щойно в рядка з'явиться наряд або клієнт,
+                # спрацює гілка «в рядок вписано іншу роботу» нижче.
+                same_work = _both_nameless_and_alike(row, existing)
             if same_work:
                 # ТА САМА робота стоїть у таблиці, а замовлення в архіві. Так
                 # виглядає помилкова архівація (обірване читання, разовий збій
@@ -815,6 +863,16 @@ def sync_tab(
                 archived_for = utc_now() - existing.archived_at
                 if archived_for > timedelta(minutes=10):
                     existing.archived_at = None
+                    # Робота, заведена колись ЛАБОРАТОРНОЮ, а тепер безіменна
+                    # в рядку без наряду й техніка, — за правилом самої
+                    # таблиці клієнтська (див. OrderRow.is_client_row). Без
+                    # цього рядка вона повернулась би, але її одиниці лягли б
+                    # у колонку «Лабораторія» замість «Пошта».
+                    # Поштову (`email`) НЕ чіпаємо: там за source тримається
+                    # зв'язок із листом і вкладеннями, і його втрата дорожча
+                    # за колонку.
+                    if is_client and existing.source == "lab":
+                        existing.source = source
                     session.add(
                         StatusEvent(
                             order_id=existing.id, status=existing.status, actor="sync",

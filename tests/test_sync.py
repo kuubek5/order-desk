@@ -1976,3 +1976,97 @@ def test_two_nameless_rows_that_look_alike_fall_back_to_position():
         by_row = {o.row_number: o for o in session.scalars(select(Order))}
         assert by_row[1].sum3d_id == "09-26-21"
         assert by_row[2].sum3d_id == "10-00-00"
+
+
+def test_a_nameless_work_returns_from_the_archive_whatever_its_source_was():
+    """0.13.5 повертав лише роботи з джерелом «клієнт із таблиці». Робота, яку
+    колись завели лабораторною (технік був, потім його стерли) або поштовою,
+    лишалась в архіві й далі: `_order_identity` для лабораторної гілки віддає
+    None, бо там немає ні наряду, ні техніка. Симптом той самий і невидимий —
+    рядок у таблиці цілий, синк каже «unchanged», виробіток не рахує.
+    """
+    from datetime import timedelta
+
+    row = _client_row("6", "pmma a2", sum3d="09-26-21")
+    for source in ("sheet_client", "lab", "email"):
+        with make_session() as session:
+            session.add(Order(
+                source=source, sheet_tab="03.09.26", row_number=1, quantity="6",
+                material_color="pmma a2", status="відфрезеровано",
+                archived_at=utc_now() - timedelta(days=1),
+                created_at=utc_now() - timedelta(days=5),
+            ))
+            session.commit()
+
+            sync_tab(session, "03.09.26", [row])
+
+            orders = session.scalars(select(Order)).all()
+            assert len(orders) == 1, f"{source}: дубля бути не має"
+            assert orders[0].archived_at is None, f"{source}: лишилась в архіві"
+
+
+def test_a_revived_nameless_lab_work_moves_to_the_mail_column():
+    """Рядок без наряду й техніка — клієнтський за правилом самої таблиці.
+    Якби джерело лишилось «lab», одиниці лягли б у колонку «Лабораторія»."""
+    from datetime import timedelta
+
+    with make_session() as session:
+        session.add(Order(
+            source="lab", sheet_tab="03.09.26", row_number=1, quantity="6",
+            material_color="pmma a2", status="відфрезеровано",
+            archived_at=utc_now() - timedelta(days=1),
+            created_at=utc_now() - timedelta(days=5),
+        ))
+        session.commit()
+
+        sync_tab(session, "03.09.26", [_client_row("6", "pmma a2", sum3d="09-26-21")])
+
+        assert session.scalar(select(Order)).source == "sheet_client"
+
+
+def test_a_revived_mail_work_keeps_its_source():
+    """За `source == "email"` тримається звʼязок із листом і вкладеннями —
+    його втрата дорожча за колонку в табелі."""
+    from datetime import timedelta
+
+    with make_session() as session:
+        session.add(Order(
+            source="email", sheet_tab="03.09.26", row_number=1, quantity="6",
+            material_color="pmma a2", status="відфрезеровано",
+            archived_at=utc_now() - timedelta(days=1),
+            created_at=utc_now() - timedelta(days=5),
+        ))
+        session.commit()
+
+        sync_tab(session, "03.09.26", [_client_row("6", "pmma a2", sum3d="09-26-21")])
+
+        order = session.scalar(select(Order))
+        assert order.archived_at is None
+        assert order.source == "email"
+
+
+def test_a_live_order_whose_row_changed_kind_is_still_reset():
+    """Скидання при зміні типу лишилось для ЖИВИХ робіт: воно й далі лікує
+    гібрид «клієнтська робота з нарядом» на наступному синку.
+
+    Матеріал і к-сть навмисно ті самі: інакше спрацював би інший, старший
+    захист — «у рядку зовсім інша робота» — і рядок імпортувався б як нова
+    робота, не чіпаючи стару.
+    """
+    with make_session() as session:
+        session.add(Order(
+            source="lab", sheet_tab="03.09.26", row_number=1, work_order_no="24122",
+            quantity="2", material_color="mono a3", status="нове",
+            technician_name="Денис",
+        ))
+        session.commit()
+
+        sync_tab(session, "03.09.26", [_client_row("2", "mono a3", name="Басараб")])
+
+        orders = session.scalars(select(Order)).all()
+        assert len(orders) == 1, "рядок той самий — другої роботи бути не має"
+        order = orders[0]
+        assert order.source == "sheet_client"
+        assert order.work_order_no is None
+        assert order.technician_name is None
+        assert order.client_name == "Басараб"
