@@ -66,6 +66,54 @@ def validate_first_admin(
     return values, None
 
 
+def validate_self_registration(
+    db: Session,
+    username: str,
+    full_name: str,
+    password: str,
+    password_confirmation: str,
+) -> tuple[dict[str, str] | None, str | None]:
+    """Правила для оператора, який заводить собі акаунт САМ на сторінці входу.
+
+    Рішення власника 08.09.26: форма прихована за Alt+Enter, а створений акаунт
+    працює ОДРАЗУ, без схвалення. Я показав, що комбінація клавіш не є захистом
+    (хто її знає, той зареєструється, а після виходу в мережу сторінку входу
+    бачитиме кожен у цеху) — власник обрав саме цей варіант заради зручності.
+
+    Тому тут не «захист», а гігієна, яка від рішення не залежить:
+
+    * роль ЗАВЖДИ «оператор». Адміном себе не призначить ніхто — адмінські дії
+      (шляхи, паролі пристроїв, оновлення, копії) лишаються за наявним адміном;
+    * імʼя обовʼязкове й показується в історії дій, тож «хто це зробив» не стає
+      анонімним;
+    * зайнятий логін віддає ту саму помилку, що й будь-яка інша, і НЕ
+      підтверджує, що такий користувач існує.
+    """
+    values = {
+        "username": username.strip(),
+        "full_name": full_name.strip(),
+        "password": password,
+    }
+    if not values["username"] or not values["full_name"]:
+        return None, "Вкажіть логін та ваше ім'я"
+    password_error = validate_password(password)
+    if password_error:
+        return None, password_error
+    if password != password_confirmation:
+        return None, "Паролі не збігаються"
+
+    taken = db.scalar(
+        select(func.count()).select_from(User).where(
+            func.lower(User.username) == values["username"].lower()
+        )
+    )
+    if taken:
+        # Формулювання навмисно НЕ каже «такий користувач уже є»: сторінка
+        # входу відкрита всім, і підтверджувати чужі логіни їй нема чого.
+        return None, "Цей логін не підходить — оберіть інший"
+    return values, None
+
+
 def normalize_initial(raw: str) -> str | None:
     """A sheet initial normalized: trimmed, upper-cased (Р/К/СТ), or None if
     blank. Length is validated separately by validate_initial."""

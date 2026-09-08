@@ -611,3 +611,190 @@ body:has(.login-page) .app-backdrop .radar-hud { display: none; }
 }
 .err-retry:hover { color: var(--accent-c); border-color: var(--accent-b); }
 .err-retry:focus-visible { outline: 2px solid var(--accent-b); outline-offset: 2px; }
+
+/* Кеглі — токенами шкали (--fs-0..--fs-7), а не літералами: у проєкті це
+   правило-храповик (tests/test_type_scale.py). Найдрібніші підписи табло
+   тут ідуть на --fs-0 (11px) — трохи більші за макет, зате в одній шкалі
+   з рештою застосунку, а різнобій кеглів був саме тим, від чого шкалу й
+   заводили.
+
+   ═══ Реєстрація оператора ═════════════════════════════════════════════════
+   Прихована за Alt+Enter (рішення власника 08.09.26). Розмітку будує
+   login.js, тому на звичайному завантаженні цих класів на сторінці немає
+   взагалі — не «сховано стилем», а фізично відсутнє.
+
+   Вигляд «панель верстата» — обрано власником із трьох макетів. Ідея: плашка
+   вдає пульт самого верстата, який оператор і так бачить щодня. Смуга стану
+   згори, поля-табло, фізична кнопка з ходом при натисканні.
+
+   Поява — «спікання»: кнопка виходить із печі, жар від темного червоного до
+   бурштину, напис проступає, коли метал охолов. Кольори — рівно ті, що на
+   табло печей (--alarm → --warn → --accent), тому послідовність упізнавана. */
+
+.login-reg-slot { margin-top: var(--space-3); }
+
+/* ── кнопка, що «спікається» ─────────────────────────────────────────── */
+.reg-reveal {
+  width: 100%;
+  height: 38px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: var(--fs-0);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  cursor: pointer;
+  /* Стартовий стан — холодний метал у печі. Далі кроки задає login.js:
+     тримати шкалу в JS, а не в @keyframes, дозволяє поважати
+     prefers-reduced-motion одним `if`, без дублювання анімації. */
+  border: 1px solid #5c2a12;
+  background: #2a1208;
+  color: transparent;
+}
+.reg-reveal:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── панель: пульт верстата ──────────────────────────────────────────── */
+.reg-panel {
+  margin-top: var(--space-2);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #171208;
+  border: 1px solid #3d2f18;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 10px 24px -18px #000;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity .44s ease, transform .44s ease, filter .6s ease;
+}
+.reg-panel.is-on { opacity: 1; transform: none; }
+
+.reg-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  background: linear-gradient(180deg, var(--card-3), #1d1509);
+  border-bottom: 1px solid #3d2f18;
+  font-family: var(--font-mono);
+  font-size: var(--fs-0);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.reg-bar .reg-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 8px var(--ok);
+  animation: reg-blip 2.2s ease-in-out infinite;
+}
+@keyframes reg-blip { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.reg-bar b { margin-left: auto; color: var(--ok); font-weight: 500; }
+/* Хрестик — у смузі стану, а не окремим рядом: пульт має один заголовок. */
+.reg-bar .reg-close {
+  background: none;
+  border: 0;
+  color: var(--ink-3);
+  cursor: pointer;
+  padding: 0 0 0 8px;
+  font-size: var(--fs-2);
+  line-height: 1;
+}
+.reg-bar .reg-close:hover { color: var(--ink); }
+
+.reg-body { padding: 13px 12px 14px; }
+
+.reg-field { margin-bottom: 10px; }
+.reg-field label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-0);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 4px;
+}
+/* Втоплене табло. Ліва риска — курсор пульта; вона ж підсвічується у фокусі,
+   тож активне поле видно навіть боковим зором. */
+.reg-lcd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 9px;
+  border-radius: 5px;
+  background: #0d0a05;
+  border: 1px solid #4a3a1e;
+  box-shadow: inset 0 2px 5px -2px #000, inset 0 0 14px -8px rgba(255, 180, 84, .5);
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+.reg-lcd::before {
+  content: "";
+  width: 2px;
+  height: 15px;
+  background: var(--accent-d);
+  flex: none;
+  transition: background .18s ease, box-shadow .18s ease;
+}
+.reg-lcd input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--accent-c);
+  font-family: var(--font-mono);
+  font-size: var(--fs-1);
+}
+.reg-lcd input:focus { outline: none; }
+.reg-lcd input::placeholder { color: #6b5a38; }
+.reg-lcd:focus-within {
+  border-color: var(--accent-d);
+  box-shadow: inset 0 2px 5px -2px #000, 0 0 0 1px rgba(255, 180, 84, .16),
+              inset 0 0 16px -6px rgba(255, 180, 84, .7);
+}
+.reg-lcd:focus-within::before {
+  background: var(--accent);
+  box-shadow: 0 0 7px var(--accent);
+}
+
+.reg-submit {
+  margin-top: 12px;
+  width: 100%;
+  height: 38px;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: var(--fs-2);
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--accent-c);
+  background: linear-gradient(180deg, #33260f, #211809);
+  border: 1px solid #6b5220;
+  /* Нижня грань — «хід» кнопки: при натисканні вона просідає на 2px, і палець
+     відчуває натискання так само, як на справжньому пульті. */
+  box-shadow: inset 0 1px 0 rgba(255, 214, 140, .22), 0 3px 0 #120d05;
+  transition: transform .07s ease, box-shadow .07s ease;
+}
+.reg-submit:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 1px 0 rgba(255, 214, 140, .22), 0 1px 0 #120d05;
+}
+
+.reg-error {
+  margin: 0 0 10px;
+  font-size: var(--fs-1);
+  color: var(--alarm-ink);
+  background: rgba(var(--alarm-rgb), .1);
+  border: 1px solid rgba(var(--alarm-rgb), .3);
+  border-radius: 6px;
+  padding: 7px 9px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reg-panel, .reg-bar .reg-dot, .reg-submit { transition: none; animation: none; }
+}

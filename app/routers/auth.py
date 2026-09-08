@@ -34,11 +34,13 @@ from app.services.look_prefs import (
     apply_queue_look,
 )
 from app.services.attempt_limit import block_message, login_limiter
+from app.services.undo import log_action
 from app.services.operators import (
     normalize_initial,
     user_count,
     validate_first_admin,
     validate_password,
+    validate_self_registration,
     validate_initial,
 )
 from app.settings_store import (
@@ -242,6 +244,108 @@ async def login_submit(
                 "username": username.strip(),
             },
         )
+    login_limiter.reset(limiter_key)
+    request.session.clear()
+    request.session["user_id"] = user.id
+    request.session["epoch"] = int(getattr(user, "session_epoch", 0) or 0)
+    return RedirectResponse("/", status_code=303)
+
+
+@router.post("/register", response_class=HTMLResponse)
+async def register_submit(
+    request: Request,
+    username: str = Form(""),
+    full_name: str = Form(""),
+    password: str = Form(""),
+    password_confirmation: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Оператор заводить собі акаунт САМ зі сторінки входу.
+
+    Форма прихована за Alt+Enter і на звичайному завантаженні її немає — це
+    рішення власника 08.09.26. Я показав, що комбінація клавіш не є захистом:
+    хто її знає, той зареєструється, а після виходу в мережу (ROADMAP хід 17)
+    сторінку входу бачитиме кожен у цеховій мережі. Власник обрав зручність
+    свідомо, і цей роут реалізує саме те, що він просив.
+
+    Що НЕ залежить від того рішення й тому зроблено тут:
+
+    * роль завжди «оператор» — адміном себе не призначить ніхто;
+    * той самий обмежувач спроб, що й на вході: інакше форма стала б способом
+      перебирати логіни, обходячи ліміт;
+    * реєстрація лишає видимий слід (`ActionLog`), щоб «хто і коли завівся» не
+      треба було вишукувати в базі. Це не гальмо, а журнал.
+
+    Перший користувач сюди не потрапляє: поки в базі нуль, працює /setup, який
+    робить АДМІНА. Реєстрація не має створювати лабораторію без господаря.
+    """
+    if user_count(db) == 0:
+        return RedirectResponse("/setup", status_code=303)
+
+    limiter_key = f"register|{getattr(request.client, 'host', '') or ''}"
+    wait = login_limiter.retry_after(limiter_key)
+    if wait:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {"register_error": block_message(wait), "register_open": True},
+            status_code=429,
+        )
+
+    values, error = validate_self_registration(
+        db, username, full_name, password, password_confirmation
+    )
+    if error is not None:
+        login_limiter.register_failure(limiter_key)
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "register_error": error,
+                "register_open": True,
+                "register_username": username.strip(),
+                "register_full_name": full_name.strip(),
+            },
+            status_code=400,
+        )
+
+    assert values is not None
+    user = User(
+        username=values["username"],
+        full_name=values["full_name"],
+        password_hash=hash_password(values["password"]),
+        role="оператор",
+        is_active=True,
+    )
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        # Двоє натиснули «Зареєструватись» з тим самим логіном одночасно —
+        # перевірка вище пройшла в обох, унікальність ловить база.
+        db.rollback()
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "register_error": "Цей логін не підходить — оберіть інший",
+                "register_open": True,
+                "register_full_name": full_name.strip(),
+            },
+            status_code=400,
+        )
+    db.refresh(user)
+
+    log_action(
+        db, order=None, operator=user, action_type="create",
+        note=f"зареєструвався сам: {user.full_name} ({user.username})",
+    )
+    db.commit()
+    logger.warning(
+        "Самореєстрація оператора: %s (%s) з %s",
+        user.username, user.full_name, getattr(request.client, "host", "?"),
+    )
+
     login_limiter.reset(limiter_key)
     request.session.clear()
     request.session["user_id"] = user.id

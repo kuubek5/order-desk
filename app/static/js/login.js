@@ -97,3 +97,145 @@ document.querySelectorAll(".login-toggle-password").forEach((button) => {
     eyeOffIcon.toggleAttribute("hidden", !isHidden);
   });
 });
+
+/* ═══ Реєстрація оператора: Alt+Enter ═══════════════════════════════════════
+   Рішення власника 08.09.26: на звичайному завантаженні реєстрації немає,
+   Alt+Enter показує кнопку, кнопка розкриває форму.
+
+   РОЗМІТКУ БУДУЄМО ТУТ, а не в шаблоні. Причина не в зручності: поки форми
+   немає в DOM, її немає й для клавіші Tab, і для читача екрана — тобто
+   «прихованість» справжня, а не косметична. Атрибут hidden дав би те саме для
+   ока, але лишив би форму у вихідному коді сторінки.
+
+   Що це НЕ є: захистом. Комбінацію знає той, хто знає, і після виходу в
+   мережу сторінку входу бачитиме кожен у цеху. Власникові це показано, він
+   обрав зручність свідомо (ROADMAP хід 17, RESILIENCE_PLAN). Захист живе на
+   сервері: роль завжди «оператор», обмежувач спроб, слід у журналі дій.
+
+   Вигляд — «панель верстата», поява — «спікання». Обидва обрані з макетів. */
+(function () {
+  "use strict";
+
+  var slot = document.getElementById("reg-slot");
+  if (!slot) return;
+
+  var REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var open = false;
+
+  // Шкала спікання: та сама послідовність кольорів, що на табло печей —
+  // від темного жару через помаранчевий до бурштину, потім охолодження.
+  // Тримаємо в JS, а не в @keyframes: так одна перевірка вимикає всю анімацію
+  // для того, хто просив менше руху.
+  var HEAT = [
+    ["#3d1a0b", "transparent", "0 0 14px -6px rgba(255,80,40,.5)"],
+    ["#7a2a10", "transparent", "0 0 22px -4px rgba(255,107,82,.75)"],
+    ["#c25a18", "rgba(255,216,148,.35)", "0 0 30px -2px rgba(255,138,61,.9)"],
+    ["#ffb454", "#ffd894", "0 0 26px -6px rgba(255,180,84,.85)"],
+    ["#a8752b", "#ffd894", "0 0 14px -10px rgba(255,180,84,.5)"]
+  ];
+
+  function field(name, label, type, placeholder, value) {
+    return '<div class="reg-field">' +
+      '<label for="reg-' + name + '">' + label + '</label>' +
+      '<div class="reg-lcd">' +
+      '<input type="' + type + '" id="reg-' + name + '" name="' + name + '"' +
+      ' placeholder="' + placeholder + '" value="' + (value || "") + '"' +
+      ' autocomplete="' + (type === "password" ? "new-password" : name === "username" ? "username" : "name") + '"' +
+      ' required>' +
+      '</div></div>';
+  }
+
+  function buildPanel() {
+    var panel = document.createElement("div");
+    panel.className = "reg-panel";
+    var err = slot.dataset.error || "";
+    panel.innerHTML =
+      '<div class="reg-bar">' +
+        '<span class="reg-dot" aria-hidden="true"></span>Реєстрація<b>готово</b>' +
+        '<button type="button" class="reg-close" aria-label="Сховати реєстрацію">&#10005;</button>' +
+      '</div>' +
+      '<div class="reg-body">' +
+        (err ? '<p class="reg-error" role="alert">' + err + '</p>' : "") +
+        '<form method="post" action="/register">' +
+          field("full_name", "Ваше імʼя", "text", "Іван Петренко", slot.dataset.fullName) +
+          field("username", "Логін", "text", "імʼя.прізвище", slot.dataset.username) +
+          field("password", "Пароль", "password", "••••••••", "") +
+          field("password_confirmation", "Пароль ще раз", "password", "••••••••", "") +
+          '<button type="submit" class="reg-submit">Зареєструватись</button>' +
+        '</form>' +
+      '</div>';
+    panel.querySelector(".reg-close").addEventListener("click", collapse);
+    return panel;
+  }
+
+  function showPanel() {
+    if (slot.querySelector(".reg-panel")) return;
+    // Кнопка ховається: у панелі є власна шапка «Реєстрація», і два заголовки
+    // поспіль читались би як два різні блоки. Кнопка зробила свою роботу.
+    var reveal = slot.querySelector(".reg-reveal");
+    if (reveal) reveal.remove();
+    var panel = buildPanel();
+    // Проступає крізь теплове марево — та сама ідіома, що й у появі кнопки.
+    if (!REDUCED) panel.style.filter = "blur(7px) saturate(1.6)";
+    slot.appendChild(panel);
+    requestAnimationFrame(function () {
+      panel.classList.add("is-on");
+      panel.style.filter = "none";
+      var first = panel.querySelector("input");
+      if (first) first.focus();
+    });
+  }
+
+  function expand(instant) {
+    if (open) return;
+    open = true;
+    slot.innerHTML = "";
+
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "reg-reveal";
+    btn.textContent = "Реєстрація";
+    slot.appendChild(btn);
+    btn.addEventListener("click", showPanel);
+
+    if (REDUCED || instant) {
+      btn.style.background = "linear-gradient(180deg,#a8752b,#1d0f06)";
+      btn.style.borderColor = "#a8752b";
+      btn.style.color = "#ffd894";
+      if (instant) showPanel();
+      return;
+    }
+
+    var i = 0;
+    (function heat() {
+      if (i >= HEAT.length) { btn.focus(); return; }
+      var s = HEAT[i++];
+      btn.style.transition =
+        "background .32s ease, color .32s ease, box-shadow .32s ease, border-color .32s ease";
+      btn.style.background = "linear-gradient(180deg," + s[0] + ",#1d0f06)";
+      btn.style.borderColor = s[0];
+      btn.style.color = s[1];
+      btn.style.boxShadow = s[2];
+      setTimeout(heat, 290);
+    })();
+  }
+
+  function collapse() {
+    open = false;
+    slot.innerHTML = "";
+    var login = document.getElementById("username");
+    if (login) login.focus();
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.altKey && e.key === "Enter") {
+      e.preventDefault();
+      if (open) collapse(); else expand(false);
+    }
+  });
+
+  // Сервер перемалював сторінку через помилку у формі — розгортаємо ОДРАЗУ,
+  // без анімації: людина вже тут, і повторний показ жару читався б як
+  // «щось почалось заново», а не «виправте поле».
+  if (slot.dataset.open) expand(true);
+})();
