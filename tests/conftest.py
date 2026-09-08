@@ -126,6 +126,19 @@ def _fresh_absent_tab_streaks():
     _reset_absent_streaks_for_tests()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_log_throttle():
+    """Глушник повторів у лозі (app/log_throttle) теж на ПРОЦЕС: без скидання
+    тест, який перевіряє попередження, не побачить його через те, що інший
+    файл уже «витратив» годинне вікно.
+    """
+    from app import log_throttle
+
+    log_throttle.reset_for_tests()
+    yield
+    log_throttle.reset_for_tests()
+
+
 def run_route(result):
     """Викликати роут, не знаючи, синхронний він чи асинхронний.
 

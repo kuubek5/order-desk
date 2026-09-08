@@ -39,6 +39,7 @@ from typing import Callable, Optional
 
 from PIL import Image
 
+from app import log_throttle
 from app.runtime import resource_path
 
 # Рідне розділення панелі Lasal. Зони нижче — піксельні координати В ЦІЙ
@@ -462,10 +463,19 @@ def read_zone(panel: Image.Image, name: str) -> Field:
     # нестачу сам, — але правило однакове для всіх зон: краще порожньо.
     clipped = bool(boxes) and (boxes[0][0] <= 0 or boxes[-1][2] >= crop.size[0])
     if clipped:
-        logger.warning(
-            "Зона «%s»: символ торкається краю (%s) — читання відкинуто як неповне",
-            zone.title, raw or "?",
-        )
+        # Зона, обведена затісно, обрізає символ на КОЖНОМУ кадрі, а кадр
+        # знімається раз на 6 с: 600 однакових рядків за годину (08.09.26,
+        # зона «Команда»). Подія від цього не менш важлива — вона означає, що
+        # зону треба переобвести, — тож не замовкаємо назовсім, а нагадуємо
+        # раз на годину й показуємо, скільки кадрів відкинуто відтоді.
+        skipped = log_throttle.due(f"furnace.clipped:{zone.title}:{raw}")
+        if skipped is not None:
+            logger.warning(
+                "Зона «%s»: символ торкається краю (%s) — читання відкинуто як "
+                "неповне; зону треба переобвести ширше%s",
+                zone.title, raw or "?",
+                f" (від минулого разу ще {skipped} кадрів)" if skipped else "",
+            )
 
     text = raw if accept_reading(raw, zone.pattern, unknown=unknown, clipped=clipped) else None
     return Field(

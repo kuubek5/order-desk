@@ -33,6 +33,7 @@ from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, selectinload
 
+from app import log_throttle
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
 from app.machine_portraits import portrait_version
 from app.machine_sisma import read_sisma, screen_is_sisma
@@ -487,12 +488,18 @@ def collect_calibration_frame_timed(
                     # збір мовчки спинявся назавжди. Мовчати тут не можна:
                     # на іншому кінці людина чекає кадрів, яких уже не буде
                     # (ревʼю 07.09.26, LOW).
-                    logger.warning(
-                        "Калібрувальні кадри %s: тека повна (%s), але викидати нічого — "
-                        "у ній лише кадри за відсотком. Заберіть теку, інакше нові "
-                        "екрани не збережуться.",
-                        key, CALIBRATION_MAX_FRAMES,
-                    )
+                    # Стан тримається, доки людина не забере теку, а прохід
+                    # сюди — раз на 15 с: без глушника це 240 однакових рядків
+                    # на годину на кожен верстат.
+                    skipped = log_throttle.due(f"machines.calib_full:{key}")
+                    if skipped is not None:
+                        logger.warning(
+                            "Калібрувальні кадри %s: тека повна (%s), але викидати нічого — "
+                            "у ній лише кадри за відсотком. Заберіть теку, інакше нові "
+                            "екрани не збережуться.%s",
+                            key, CALIBRATION_MAX_FRAMES,
+                            f" (від минулого разу ще {skipped})" if skipped else "",
+                        )
                     return
                 try:
                     (folder / victim).unlink()
@@ -509,6 +516,9 @@ def collect_calibration_frame_timed(
             frame.save(tmp, format="PNG")
             tmp.replace(target)
             known[target.name] = signature
+            # Місце знайшлось — попередній «тека повна» більше не діє, і
+            # наступна така подія буде новою, про яку скажемо одразу.
+            log_throttle.clear(f"machines.calib_full:{key}")
     except Exception:  # noqa: BLE001 — збір не має валити опитування
         logger.debug("Калібрувальний кадр верстата %s не збережено", key, exc_info=True)
 
