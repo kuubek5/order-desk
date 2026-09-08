@@ -572,6 +572,69 @@ def undo_last_order(db: Session) -> int:
     return len(rows)
 
 
+@dataclass(frozen=True)
+class PastOrder:
+    """Одне натискання «Замовлено» — як воно виглядало.
+
+    Окремої таблиці під це немає й не треба: усі диски одного натискання
+    ділять точний `ordered_at`, тож історія ВИВОДИТЬСЯ з наявних рядків.
+    Заводити таблицю означало б тримати ту саму правду у двох місцях і
+    ризикувати, що вони розійдуться.
+    """
+
+    ordered_at: datetime
+    count: int
+    text: str
+    is_latest: bool = False
+
+
+def order_history(db: Session, *, limit: int = 12) -> list[PastOrder]:
+    """Минулі замовлення, найновіші згори.
+
+    Навіщо. Кнопка «Замовлено» досі була дією без сліду: натиснув — список
+    спорожнів, і що саме пішло комірниці, вже ніде не подивитись. Питання
+    «а ми замовляли цирконій цього тижня?» не мало відповіді в застосунку.
+    Тепер має, і заразом видно, ЩО саме поверне скасування.
+
+    Точка відліку (перший прохід теки) сюди не потрапляє: у її рядків
+    `ordered_at` дорівнює `first_seen_at`, і показувати «замовлення на 19 133
+    диски», якого не було, — брехня.
+    """
+    stamps = list(
+        db.scalars(
+            select(CamBlank.ordered_at)
+            .where(
+                CamBlank.ordered_at.is_not(None),
+                CamBlank.ordered_at != CamBlank.first_seen_at,
+            )
+            .group_by(CamBlank.ordered_at)
+            .order_by(CamBlank.ordered_at.desc())
+            .limit(limit)
+        ).all()
+    )
+    history: list[PastOrder] = []
+    for index, stamp in enumerate(stamps):
+        rows = list(
+            db.scalars(
+                select(CamBlank)
+                .where(CamBlank.ordered_at == stamp)
+                .order_by(CamBlank.material_dir, CamBlank.height, CamBlank.file_name)
+            ).all()
+        )
+        history.append(
+            PastOrder(
+                ordered_at=stamp,
+                count=len(rows),
+                text=order_text(rows),
+                # Скасувати можна лише НАЙНОВІШЕ. Відкат старішого повернув би
+                # у поточний список диски, замовлені тижні тому, і комірниця
+                # отримала б їх удруге.
+                is_latest=index == 0,
+            )
+        )
+    return history
+
+
 def last_order_at(db: Session) -> Optional[datetime]:
     """Коли натискали «Замовлено» востаннє. None — жодного разу.
 

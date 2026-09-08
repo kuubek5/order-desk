@@ -20,6 +20,7 @@ from app.routers.deps import get_current_user, get_db, templates
 from app.services.cam_blanks import (
     undo_last_order,
     last_order_at,
+    order_history,
     mark_ordered,
     pileup_note,
     probe_blanks,
@@ -80,6 +81,9 @@ def blanks_context(db: Session, *, error: str | None = None) -> dict:
         # Коли натискали «Замовлено» востаннє. None — жодного разу, і тоді
         # кнопки скасування немає: скасовувати нічого.
         "blanks_last_order_at": last_order_at(db),
+        # Історія натискань «Замовлено». Виводиться з наявних рядків, окремої
+        # таблиці немає — див. `order_history`.
+        "blanks_history": order_history(db),
     }
 
 

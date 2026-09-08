@@ -24,6 +24,7 @@ from app.db import Base
 from app.models import CamBlank
 from app.services.cam_blanks import (
     last_order_at,
+    order_history,
     order_text,
     undo_last_order,
     mark_ordered,
@@ -587,3 +588,72 @@ class TestRealNamesFromTheShop:
         assert "Zr a2 25(2)" in text
         assert "Pmma a3 20" in text
         assert ".blk" not in text, "у замовлення потрапили сирі імена файлів"
+
+
+# ── Історія замовлень ───────────────────────────────────────────────────────
+# «Замовлено» було дією без сліду: натиснув — список спорожнів, і що саме
+# пішло комірниці, вже ніде не подивитись. Окремої таблиці під це не заводимо:
+# усі диски одного натискання ділять точний `ordered_at`, тож історія
+# ВИВОДИТЬСЯ з наявних рядків. Дві таблиці з тією самою правдою обовʼязково
+# розійшлись би.
+
+
+class TestOrderHistory:
+    def test_each_press_is_one_entry(self, db):
+        seen = datetime(2026, 9, 8, 9, 0)
+        db.add(CamBlank(rel_path="a", brand="zr", shade="a2", height=25, first_seen_at=seen))
+        db.commit()
+        mark_ordered(db, now=datetime(2026, 9, 8, 12, 0))
+
+        db.add_all([
+            CamBlank(rel_path="b", brand="zr", shade="a2", height=25, first_seen_at=seen),
+            CamBlank(rel_path="c", brand="pmma", shade="a3", height=20, first_seen_at=seen),
+        ])
+        db.commit()
+        mark_ordered(db, now=datetime(2026, 9, 8, 18, 0))
+
+        history = order_history(db)
+
+        assert [h.count for h in history] == [2, 1], "новіше замовлення має бути згори"
+        assert history[0].ordered_at == datetime(2026, 9, 8, 18, 0)
+
+    def test_only_the_newest_can_be_undone(self, db):
+        """Відкат старішого повернув би в поточний список диски, замовлені
+        тижні тому, і комірниця отримала б їх удруге."""
+        seen = datetime(2026, 9, 8, 9, 0)
+        for path, when in (("a", 12), ("b", 18)):
+            db.add(CamBlank(rel_path=path, brand="zr", shade="a2", height=25, first_seen_at=seen))
+            db.commit()
+            mark_ordered(db, now=datetime(2026, 9, 8, when, 0))
+
+        history = order_history(db)
+
+        assert history[0].is_latest is True
+        assert all(h.is_latest is False for h in history[1:])
+
+    def test_the_baseline_is_not_an_order(self, db):
+        """Перший прохід теки позначає замовленими ВСІ наявні диски — інакше
+        19 тисяч давніх потрапили б у перше ж замовлення. Показувати це як
+        «замовлення на 19 133 диски» було б брехнею."""
+        now = datetime(2026, 9, 8, 12, 0)
+        db.add_all([
+            CamBlank(rel_path=f"old{i}", brand="zr", shade="a2", height=25,
+                     first_seen_at=now, ordered_at=now)
+            for i in range(4)
+        ])
+        db.commit()
+
+        assert order_history(db) == []
+
+    def test_entry_carries_the_text_that_was_sent(self, db):
+        """Щоб можна було переслати той самий список ще раз, не збираючи його
+        заново."""
+        seen = datetime(2026, 9, 8, 9, 0)
+        db.add_all([
+            CamBlank(rel_path="a", brand="zr", shade="a2", height=25, first_seen_at=seen),
+            CamBlank(rel_path="b", brand="zr", shade="a2", height=25, first_seen_at=seen),
+        ])
+        db.commit()
+        mark_ordered(db, now=datetime(2026, 9, 8, 18, 0))
+
+        assert "Zr a2 25(2)" in order_history(db)[0].text

@@ -50,14 +50,49 @@
            не скасував позавчорашнє замовлення, думаючи, що прибирає свій щойно
            зроблений клік. Точку відліку (перший прохід теки) відкат не чіпає —
            інакше в замовлення вивалилась би вся історія теки. #}
-        {% if blanks_last_order_at and can_edit(user, 'blanks') %}
-        <button type="button" class="settings-secondary-button"
-                hx-post="/settings/blanks/undo-order" hx-target="#blanks-body" hx-swap="outerHTML"
-                title="Повернути диски останнього замовлення назад у список">
-            Скасувати замовлення від {{ blanks_last_order_at.strftime('%H:%M') }}
-        </button>
-        {% endif %}
     </div>
+
+    {# ── Історія замовлень ────────────────────────────────────────────────
+       Досі «Замовлено» було дією без сліду: натиснув — список спорожнів, і що
+       саме пішло комірниці, вже ніде не подивитись. Питання «а ми замовляли
+       цирконій цього тижня?» не мало відповіді в застосунку.
+
+       Скасувати можна лише НАЙНОВІШЕ замовлення: відкат старішого повернув би
+       у поточний список диски, замовлені тижні тому, і комірниця отримала б їх
+       удруге. Тому кнопка стоїть рівно на першому рядку. #}
+    {% if blanks_history %}
+    <div class="settings-field blanks-history">
+        <h3>Історія замовлень</h3>
+        <ul class="blanks-history-list">
+            {% for order in blanks_history %}
+            <li class="blanks-history-row{% if order.is_latest %} is-latest{% endif %}">
+                <div class="bh-head">
+                    <span class="bh-when mono">{{ order.ordered_at.strftime('%d.%m %H:%M') }}</span>
+                    <span class="bh-count">{{ order.count }}
+                        {{- ' диск' if order.count % 10 == 1 and order.count % 100 != 11
+                            else (' диски' if order.count % 10 in [2,3,4] and order.count % 100 not in [12,13,14]
+                            else ' дисків') }}</span>
+                    <span class="bh-actions">
+                        <button type="button" class="settings-secondary-button bh-mini"
+                                data-copy="{{ order.text }}" title="Скопіювати цей список ще раз">
+                            Скопіювати
+                        </button>
+                        {% if order.is_latest and can_edit(user, 'blanks') %}
+                        <button type="button" class="settings-secondary-button bh-mini bh-undo"
+                                hx-post="/settings/blanks/undo-order"
+                                hx-target="#blanks-body" hx-swap="outerHTML"
+                                title="Повернути ці диски назад у список — якщо натиснули «Замовлено» помилково">
+                            Скасувати
+                        </button>
+                        {% endif %}
+                    </span>
+                </div>
+                <pre class="bh-text">{{ order.text }}</pre>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
 
     {% if blanks_probe %}
     {# Звіт проби. Головне тут — НЕ РОЗІБРАНІ назви: саме вони кажуть, чи
