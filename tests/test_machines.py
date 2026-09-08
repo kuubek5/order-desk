@@ -80,6 +80,38 @@ def test_dead_machine_stays_on_screen_with_its_reason(monkeypatch, tmp_path):
         assert "не відповів" in cards[0].problem_text
 
 
+def test_a_dead_machine_does_not_hold_the_whole_tick(monkeypatch, tmp_path):
+    """Пул рятував від послідовного обходу, але результати забирались гуртом —
+    тобто тік усе одно тривав стільки, скільки мовчав найдовший ПК: 20 с
+    замість 5. Живі верстати старіли через вимкнений сусідній. Тепер на весь
+    тік один строк, а хто не встиг — буде спитаний наступним разом."""
+    import threading
+    import time
+
+    release = threading.Event()
+
+    def _capture(host, *_args, **_kwargs):
+        if host == "192.168.1.86":
+            release.wait(30)  # вимкнений ПК тримає сокет до свого дедлайну
+            raise service.FurnaceVncError("ПК верстата не відповів")
+        return _frame()
+
+    monkeypatch.setattr(service, "capture", _capture)
+
+    with Session(_database()) as db:
+        _add_machine(db, name="живий", host="192.168.1.85")
+        _add_machine(db, name="вимкнений", host="192.168.1.86")
+        started = time.monotonic()
+        try:
+            states = service.poll_all(db, deadline=1.5)
+        finally:
+            release.set()
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 5.0, "мертвий верстат затримав тік"
+    assert [state.target.host for state in states] == ["192.168.1.85"]
+
+
 def test_snapshot_shows_all_configured_even_before_first_frame():
     """Щойно доданий верстат видно одразу — з «чекаємо перший кадр», а не
     порожнім екраном (у печей це відкрили пізніше і переробляли)."""

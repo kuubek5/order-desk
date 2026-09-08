@@ -495,3 +495,111 @@ def test_tab_partials_are_included_by_their_host():
         if f'include "{partial}"' not in html:
             missing.append(f"{partial}: немає include у {host}")
     assert not missing, chr(10).join(missing)
+
+
+# ── Мережева стійкість: дедлайн запиту й сон поллів ─────────────────────────
+# Привід — аудит 08.09.26. Обидві діри тихі: нічого не падає, просто застосунок
+# «тримається» за мережу там, де не мусить.
+
+
+def test_htmx_requests_have_a_deadline():
+    """У HTMX-запиту мусить бути власний дедлайн, і провал по ньому — чутний.
+
+    За замовчуванням htmx лишає `xhr.timeout` нулем: обірваний Wi-Fi не
+    повертає керування хвилинами (чекаємо TCP-таймаут ОС), а кнопка весь цей
+    час мовчить — помилки формально ще немає. З другим оператором по мережі це
+    щоденна ситуація, тому дедлайн має бути заданий явно.
+
+    Верхня межа тут не прискіпливість: 10 с уже вдесятеро більше за будь-який
+    наш звичайний запит, а все, що довше ЗА ПРИРОДОЮ (перевірки звʼязку,
+    скачування вкладень, знімок з обладнання), має власний виняток."""
+    js = (STATIC_JS / "app.js").read_text(encoding="utf-8")
+
+    assign = re.search(r"htmx\.config\.timeout\s*=\s*(\w+)", js)
+    assert assign, (
+        "app.js більше не задає htmx.config.timeout — HTMX-запит знову висить "
+        "до таймауту ОС, а кнопка про це мовчить."
+    )
+    name = assign.group(1)
+    if name.isdigit():
+        value = int(name)
+    else:
+        const = re.search(r"const\s+" + re.escape(name) + r"\s*=\s*(\d+)", js)
+        assert const, f"htmx.config.timeout = {name}, але сталої {name} у файлі немає"
+        value = int(const.group(1))
+    assert 1000 <= value <= 30000, (
+        f"дедлайн HTMX-запиту {value} мс — поза здоровим діапазоном 1–30 с"
+    )
+
+    # Виняток для довгих роутів мусить існувати РАЗОМ із дедлайном: без нього
+    # перевірка IMAP чи скачування вкладення обірветься на 10-й секунді.
+    assert "HTMX_SLOW_PATHS" in js and "htmx:configRequest" in js, (
+        "зник перелік довгих роутів (HTMX_SLOW_PATHS) або обробник "
+        "htmx:configRequest, який його застосовує — законно довгі дії "
+        "рубатиме загальний дедлайн"
+    )
+
+    # htmx кидає на дедлайн ОКРЕМУ подію — не responseError і не sendError.
+    # Без обробника спрацьований дедлайн виглядає як мовчазна кнопка, тобто
+    # рівно та пастка, від якої лікували тости на 5xx.
+    assert 'addEventListener("htmx:timeout"' in js, (
+        "немає обробника htmx:timeout — дію, зрізану дедлайном, оператор "
+        "побачить як кнопку, що нічого не зробила"
+    )
+
+
+# Періодичні полли, яким гейт за видимістю ЗАБОРОНЕНО — з причиною.
+POLLS_ALWAYS_AWAKE = {
+    "handout.html": (
+        "пульс видачі мусить бити саме тоді, коли вкладку сховали: оператор "
+        "пішов фарбувати рядки в Google Таблиці, а синк тим часом має далі "
+        "перечитувати цей день"
+    ),
+}
+
+
+def test_periodic_polls_sleep_while_the_tab_is_hidden():
+    """`every Ns` без `[!document.hidden]` — це нічна довбня по серверу.
+
+    Залишений на ніч браузер із відкритою чергою ходить у мережеву шару і
+    тримає синк теплим заради нікого — а Google-квота спільна на всіх. Гейт
+    нічого не втрачає: таймер лишається живим, і перший же тік після
+    повернення до вкладки перемальовує вміст.
+
+    Свідомі винятки — у POLLS_ALWAYS_AWAKE, з причиною."""
+    offenders = []
+    for path in sorted(TEMPLATES_DIR.glob("*.html")):
+        for trigger in re.findall(r'hx-trigger="([^"]*)"', path.read_text(encoding="utf-8")):
+            if not re.search(r"\bevery\s", trigger):
+                continue
+            if "!document.hidden" in trigger:
+                continue
+            if path.name in POLLS_ALWAYS_AWAKE:
+                continue
+            offenders.append(f"{path.name}: {trigger}")
+    assert not offenders, (
+        "Періодичні полли без гейта за видимістю вкладки:" + chr(10)
+        + chr(10).join(offenders) + chr(10)
+        + "Додай `[!document.hidden]` до `every Ns`, а якщо полл мусить бити "
+        "й у схованій вкладці — внеси його в POLLS_ALWAYS_AWAKE з причиною."
+    )
+
+
+def test_deliberately_awake_polls_still_exist():
+    """Знімок винятків не повинен протухати мовчки.
+
+    Виняток без полла — це або перейменований файл, або полл, який давно
+    прибрали; у першому випадку сторож вище перестане його бачити, у другому
+    список бреше про поведінку застосунку."""
+    stale = []
+    for name in POLLS_ALWAYS_AWAKE:
+        path = TEMPLATES_DIR / name
+        if not path.exists():
+            stale.append(f"{name}: шаблону немає")
+            continue
+        triggers = re.findall(r'hx-trigger="([^"]*)"', path.read_text(encoding="utf-8"))
+        if not any(re.search(r"\bevery\s", t) for t in triggers):
+            stale.append(f"{name}: періодичного полла більше немає")
+    assert not stale, (
+        "POLLS_ALWAYS_AWAKE розійшовся з розміткою:" + chr(10) + chr(10).join(stale)
+    )

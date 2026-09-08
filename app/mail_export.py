@@ -8,6 +8,7 @@ operator-confirmed client name/material, not an unreviewed guess.
 """
 
 from datetime import date
+import hashlib
 import re
 import shutil
 from pathlib import Path
@@ -18,6 +19,20 @@ from app.safe_names import avoid_reserved_device_name
 
 _ILLEGAL_CHARS = re.compile(r'[\\/:*?"<>|]')
 _NO_MATERIAL_NAME = "без_матеріалу"
+
+# Гранична довжина ОДНОГО сегмента шляху. Дерево export має рівно три рівні
+# (клієнт/дата/матеріал — CLAUDE.md §4, глибина зашита в app/export_scanner.py),
+# і два з них приходять із тексту листа, тобто з довільного рядка. Збірка не
+# `longPathAware`, тож шлях понад 260 символів Windows просто не створює.
+# Найгірше не саме падіння, а його невидимість: `scan_export_client` ковтає
+# `OSError` мовчки, тому тека не зʼявляється на видачі взагалі — коронка на
+# диску лежить, а оператор її не бачить і сліду в логах немає.
+# 60 × 3 сегменти ≈ 180 символів, решта ліміту — на корінь шари й імʼя файлу.
+_MAX_SEGMENT_LEN = 60
+# Хвіст-розрізнювач. Дві клініки з однаковим довгим початком назви (мережа,
+# різні філії) після простого обрізання отримали б ОДНУ теку, і їхні роботи
+# перемішалися б в одному лотку.
+_DISCRIMINATOR_LEN = 6
 
 
 def _batch_base_name(today: date) -> str:
@@ -34,6 +49,35 @@ def _batch_base_name(today: date) -> str:
     return today.strftime("%d.%m.%y")
 
 
+def _shorten_segment(name: str) -> str:
+    """Обрізає задовгий сегмент, не втрачаючи його унікальності.
+
+    Ріжемо по СИМВОЛАХ, а не по байтах: у кирилиці символ важить два байти, і
+    байтове обрізання лишило б у назві половину літери — биту UTF-8, яку потім
+    не зіставиш ні з чим. Якщо близько до межі є пробіл, ріжемо по ньому: у
+    теці лишається ціле слово, а не огризок, і оператор упізнає клієнта.
+
+    До хвоста додаємо короткий відбиток ПОВНОГО імені. Він мусить бути
+    детермінований (`hashlib`, а не вбудований `hash()` з рандомним seed),
+    інакше та сама клініка щозапуску діставала б нову теку, а історія її
+    замовлень розсипалася б по export.
+    """
+    if len(name) <= _MAX_SEGMENT_LEN:
+        return name
+    digest = hashlib.blake2s(
+        name.encode("utf-8"), digest_size=_DISCRIMINATOR_LEN // 2
+    ).hexdigest()
+    head_len = _MAX_SEGMENT_LEN - _DISCRIMINATOR_LEN - 1  # 1 — роздільник "~"
+    head = name[:head_len]
+    space = head.rfind(" ")
+    if space >= head_len // 2:
+        head = head[:space]
+    # Windows мовчки відкидає кінцеві крапки й пробіли: створивши теку
+    # "Клініка .~ab12cd", ми потім шукали б її під іншим імʼям, ніж на диску.
+    head = head.rstrip(" .")
+    return f"{head}~{digest}"
+
+
 def sanitize_folder_name(name: str) -> str:
     name = _ILLEGAL_CHARS.sub("_", name).strip()
     # A dot-only component is meaningful to the filesystem even though it
@@ -42,6 +86,12 @@ def sanitize_folder_name(name: str) -> str:
         return "без_імені"
     if not name:
         return "без_імені"
+    # Обрізаємо ПІСЛЯ заміни заборонених символів (щоб відбиток рахувався від
+    # остаточного тексту) і ДО перевірки device-імен: результат коротший за
+    # межу, тож повторна санітизація нічого не змінить. Ідемпотентність тут
+    # обовʼязкова — `_contained_child` санітизує вже санітизоване імʼя, і
+    # «обрізання обрізаного» відводило б шлях від реальної теки.
+    name = _shorten_segment(name)
     # A client literally named "AUX" (or a material folder "PRN") cannot be
     # created on Windows — same reserved-device rule as attachment filenames.
     return avoid_reserved_device_name(name)

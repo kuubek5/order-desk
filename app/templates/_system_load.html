@@ -8,7 +8,7 @@
 <div id="system-load"
      class="sysload-row{% set _mm = load_metrics(request) %}{% if not _mm %} is-empty{% endif %}"
      hx-get="/system/load"
-     hx-trigger="every 4s"
+     hx-trigger="every 4s[!document.hidden]"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*">

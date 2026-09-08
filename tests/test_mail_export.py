@@ -412,6 +412,99 @@ def test_undo_moves_reports_failures_instead_of_swallowing(tmp_path, monkeypatch
     assert len(errors) == 1 and "шара недоступна" in errors[0]
 
 
+# ── Задовгі імена сегментів (аудит стійкості 08.09.26) ───────────────────
+#
+# Шлях export/<клієнт>/<дата>/<матеріал>/<файл> має рівно три рівні, а клієнт
+# і матеріал приходять із тексту листа. Без ліміту довжини шлях перевалює за
+# 260 символів, Windows його не створює, а `scan_export_client` ковтає OSError
+# мовчки — тека просто НЕ ВИДНА на видачі, без помилки й сліду.
+
+LONG_CLIENT = "Стоматологічна клініка Преміум Дентал Люкс Центр Імплантології Київ філія №7"
+LONG_MATERIAL = "цирконій монолітний багатошаровий преміум відтінок А3.5 партія 2026 весна"
+
+
+def test_sanitize_folder_name_caps_segment_length():
+    from app.mail_export import _MAX_SEGMENT_LEN
+
+    for source in (LONG_CLIENT, LONG_MATERIAL, "A" * 500):
+        assert len(sanitize_folder_name(source)) <= _MAX_SEGMENT_LEN, source
+
+
+def test_sanitize_folder_name_keeps_short_names_untouched():
+    """Ліміт не має чіпати звичайні назви — інакше зламалося б зіставлення
+    з уже наявними теками на шарі."""
+    assert sanitize_folder_name("Литвиненко Олег") == "Литвиненко Олег"
+    assert sanitize_folder_name("моно а3") == "моно а3"
+
+
+def test_long_cyrillic_name_is_cut_by_characters_not_bytes():
+    """Кириличний символ — два байти. Байтове обрізання лишило б половину
+    літери; перевіряємо, що обрізана голова — цілий префікс оригіналу."""
+    from app.mail_export import _MAX_SEGMENT_LEN
+
+    result = sanitize_folder_name(LONG_CLIENT)
+    assert len(result) <= _MAX_SEGMENT_LEN
+    head = result.split("~")[0]
+    assert LONG_CLIENT.startswith(head)
+    assert result.encode("utf-8").decode("utf-8") == result  # жодного биття
+    assert "�" not in result
+
+
+def test_two_different_long_names_do_not_collapse_into_one_folder():
+    """Мережа клінік: назви збігаються на перших 60+ символах. Без
+    розрізнювача роботи двох філій лягли б в одну теку."""
+    from app.mail_export import _MAX_SEGMENT_LEN
+
+    first = "Мережа Стоматологічних Клінік Дентал Плюс Україна відділення Львів"
+    second = "Мережа Стоматологічних Клінік Дентал Плюс Україна відділення Луцьк"
+    one, two = sanitize_folder_name(first), sanitize_folder_name(second)
+    assert one != two
+    assert max(len(one), len(two)) <= _MAX_SEGMENT_LEN
+
+
+def test_long_name_sanitizes_to_the_same_folder_every_time():
+    """`_contained_child` санітизує вже санітизоване імʼя, а розрізнювач має
+    бути детермінований між запусками — інакше клієнт щоразу діставав би нову
+    теку й історія його замовлень розсипалась би."""
+    once = sanitize_folder_name(LONG_CLIENT)
+    assert sanitize_folder_name(once) == once
+
+
+def test_long_names_land_in_a_real_folder_on_disk(tmp_path):
+    """Наскрізна перевірка: обрізані сегменти реально створюються, файл
+    доїжджає, глибина дерева лишається три рівні."""
+    from app.mail_export import _MAX_SEGMENT_LEN
+
+    export_root = tmp_path / "export"
+    src = tmp_path / "crown.stl"
+    src.write_bytes(b"data")
+
+    [new_path] = save_attachments_to_export(
+        export_root, LONG_CLIENT, LONG_MATERIAL, [src]
+    )
+
+    assert new_path.is_file()
+    client, batch, material, filename = new_path.parts[-4:]
+    assert filename == "crown.stl"
+    assert batch == BATCH
+    assert max(len(client), len(material)) <= _MAX_SEGMENT_LEN
+    assert new_path.is_relative_to(export_root.resolve())
+
+
+def test_very_long_dot_name_still_cannot_escape_export_root(tmp_path):
+    """Обрізання не сміє відкрити шлях за корінь: голова, зрізана до крапок,
+    не має перетворитись на «..»."""
+    export_root = tmp_path / "export"
+    src = tmp_path / "incoming.stl"
+    src.write_bytes(b"data")
+
+    [new_path] = save_attachments_to_export(export_root, "." * 300, "моно", [src])
+
+    assert new_path.is_relative_to(export_root.resolve())
+    client = new_path.parts[-4]
+    assert client not in {".", ".."}
+
+
 def test_undo_moves_skips_a_file_that_never_moved(tmp_path):
     """Якщо файл уже на місці — нічого не робимо (ідемпотентність)."""
     from app.mail_export import undo_moves

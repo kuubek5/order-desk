@@ -18,7 +18,7 @@
    and is the ONLY thing that grows this list. #}
 <div id="mail-list-rows"
      {% if view == 'pending' %}hx-get="/mail?view=pending&service={{ service }}&partial=list&since={{ list_watermark }}"
-     hx-trigger="every 15s"
+     hx-trigger="every 15s[!document.hidden]"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*"{% endif %}>

@@ -19,7 +19,7 @@
          style="order:{{ side_order_index(request, 'machine') }}"
          id="machine-side"
          hx-get="/machines/side"
-         hx-trigger="every 10s"
+         hx-trigger="every 10s[!document.hidden]"
          hx-target="this"
          hx-swap="outerHTML"
          hx-disinherit="*">

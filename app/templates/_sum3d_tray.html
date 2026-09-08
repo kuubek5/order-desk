@@ -17,7 +17,7 @@
    6 разів за 6 секунд замість одного разу на 15. Клік по «▾ N» мусив влучити
    між замінами, тож панель відкривалась «з десятого разу» (скарга 04.09.26). #}
 <span class="sum3d-tray" hx-get="/sum3d/tray"
-      hx-trigger="{% if tray_initial %}load, {% endif %}every 15s" hx-swap="outerHTML"
+      hx-trigger="{% if tray_initial %}load, {% endif %}every 15s[!document.hidden]" hx-swap="outerHTML"
       {% if not sum3d_projects %}data-empty="1"{% endif %}>
   {% if sum3d_projects %}
   {% set _top = sum3d_projects[0] %}

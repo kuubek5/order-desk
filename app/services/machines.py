@@ -21,7 +21,7 @@ import logging
 import os
 import time
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from app.services.device_poll import DevicePoller
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -58,6 +58,16 @@ logger = logging.getLogger(__name__)
 POLL_INTERVAL_SECONDS = 5.0
 # Мовчазний верстат (ПК вимкнено) тримає той самий дедлайн знімка, що й піч.
 CAPTURE_TIMEOUT_SECONDS = 20.0
+# Спільний строк на ВЕСЬ тік — той самий висновок, що на печах. Дедлайн вище
+# стосується одного верстата, а тік чекав останнього: один вимкнений ПК
+# розтягував прохід з 5 до 20 с, і живі верстати оновлювались учетверо рідше
+# через мертвий. Тепер беремо те, що встигло; хто не відповів — лишається зі
+# своїм попереднім станом (нічого не вигадуємо) і буде спитаний наступним тіком.
+TICK_DEADLINE_SECONDS = 10.0
+
+# Постійний пул знімків верстатів — один на застосунок. Шістнадцять потоків:
+# верстатів до десяти, тож жоден живий не чекає в черзі за мертвим.
+_POLLER = DevicePoller("machine-capture", max_workers=16)
 # «Заголовки ще ніхто не читав» — саме як окреме значення, а не None: None уже
 # зайнято під «читали, агент не відповів», і плутати їх не можна.
 _NOT_FETCHED = object()
@@ -925,11 +935,19 @@ def poll_target(
     return state
 
 
-def poll_all(db: Session, now: Optional[datetime] = None) -> list[MachineState]:
+def poll_all(
+    db: Session,
+    now: Optional[datetime] = None,
+    deadline: Optional[float] = None,
+) -> list[MachineState]:
     """Знімки всіх верстатів ПАРАЛЕЛЬНО — той самий урок, що з печами:
     мовчазний ПК тримає дедлайн 20 с, і послідовний обхід десяти верстатів
     означав би, що живі старіють через мертві. Сесія БД лишається на цьому
-    потоці — у знімальні потоки йде лише мережа."""
+    потоці — у знімальні потоки йде лише мережа.
+
+    `deadline` — СПІЛЬНИЙ строк на весь тік (TICK_DEADLINE_SECONDS). Повертає
+    лише ті верстати, що встигли: паралельність без спільного строку все одно
+    впиралась у найповільнішого, бо результат забирався одним махом."""
     now = now or datetime.now()
     targets = configured_targets(db)
     if not targets:
@@ -968,17 +986,39 @@ def poll_all(db: Session, now: Optional[datetime] = None) -> list[MachineState]:
             titles = _fetch_titles(target.host, target.port, target.agent_token)
         return target, image, None, titles
 
-    results = []
     # Усі верстати ПАРАЛЕЛЬНО: при десяти й пулі на вісім виходило два заходи,
-    # і мовчазний ПК у першому старив живі з другого.
-    with ThreadPoolExecutor(max_workers=min(16, len(targets))) as pool:
-        for target, image, error, titles in pool.map(grab, targets):
-            results.append(
-                poll_target(
-                    db, target, shared, now=now, frame=image, error=error, titles=titles
-                )
-            )
-    return results
+    # і мовчазний ПК у першому старив живі з другого. Але й пул сам по собі не
+    # рятує: `pool.map` (і вихід з `with`) чекають на ОСТАННІЙ результат. Тому
+    # спільний строк на весь тік — у `DevicePoller`. Там же друге правило, без
+    # якого перше створює нову проблему: ПОСТІЙНИЙ пул замість нового на кожен
+    # тік, і один знімок на верстат одночасно. Кинутий знімок не зникає — його
+    # потік доживає власні 20 с, а тік іде раз на 5 с; без цих правил на кожен
+    # мертвий ПК висіло б чотири покинуті потоки, і всі вони затримували б
+    # вимкнення застосунку (див. докстрінг device_poll).
+    by_key = {target.key: target for target in targets}
+    results: dict[str, tuple] = _POLLER.gather(
+        by_key,
+        lambda key: grab(by_key[key]),
+        deadline=deadline or TICK_DEADLINE_SECONDS,
+    )
+    grabbed: dict[str, tuple] = {
+        key: (target, image, error, titles)
+        for key, (target, image, error, titles) in results.items()
+    }
+    # Порядок — як у налаштуваннях, а не як пощастило з потоками.
+    return [
+        poll_target(
+            db,
+            target,
+            shared,
+            now=now,
+            frame=grabbed[target.key][1],
+            error=grabbed[target.key][2],
+            titles=grabbed[target.key][3],
+        )
+        for target in targets
+        if target.key in grabbed
+    ]
 
 
 # ── Картки для екранів ──────────────────────────────────────────────────────

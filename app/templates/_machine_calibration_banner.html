@@ -10,7 +10,7 @@
 {% if calibration and calibration.active %}
 <div class="calib-banner"
      hx-get="/machines/calibration/banner"
-     hx-trigger="every 30s"
+     hx-trigger="every 30s[!document.hidden]"
      hx-swap="outerHTML">
     <div class="calib-text">
         <strong>Збір калібрувальних кадрів</strong>
@@ -38,5 +38,5 @@
 {# Порожньо, але з поллом: інакше блок, який щойно став неактуальним, більше
    ніколи б не повернувся без перезавантаження сторінки. #}
 <div class="calib-banner-idle" hx-get="/machines/calibration/banner"
-     hx-trigger="every 30s" hx-swap="outerHTML"></div>
+     hx-trigger="every 30s[!document.hidden]" hx-swap="outerHTML"></div>
 {% endif %}

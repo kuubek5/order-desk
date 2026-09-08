@@ -10,7 +10,7 @@
             із відкритою дошкою не бачив її до ручного F5. Додано полл.
             Умова в тригері обов'язкова — усередині дошки живе <details> з
             текстовим полем редагування, і свап затер би недописане. #}
-         hx-trigger="refresh-shift from:body, every 60s[!document.querySelector('#shift-board .sh-edit[open]')]"
+         hx-trigger="refresh-shift from:body, every 60s[!document.hidden&&!document.querySelector('#shift-board .sh-edit[open]')]"
          hx-target="this"
          hx-swap="outerHTML"
          hx-disinherit="*">

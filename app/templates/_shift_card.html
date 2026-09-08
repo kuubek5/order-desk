@@ -11,7 +11,7 @@
 <section id="shift-card"
          class="sh-card{% if not shift_open_notes %} is-empty{% endif %}"
          hx-get="/shift/card"
-         hx-trigger="every 60s, refresh-shift from:body"
+         hx-trigger="every 60s[!document.hidden], refresh-shift from:body"
          hx-target="this"
          hx-swap="outerHTML"
          hx-disinherit="*"

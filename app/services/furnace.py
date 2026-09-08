@@ -7,9 +7,10 @@ HTTP живе в app/routers/furnace.py, знімок кадру — в app/furn
 Три рішення, які варто пам'ятати:
 
 1. **Кадр і рядок у базі — різні частоти.** Картинка оновлюється кожні кілька
-   секунд, щоб екран був живим; рядок пишеться лише на зміну (або раз на
-   хвилину як «я живий»). Без цього одна піч давала б ~17 тис. рядків на добу
-   про те, що нічого не змінилось.
+   секунд, щоб екран був живим; рядок пишеться на подію (зміна статусу),
+   на зміну температури не частіше підлоги (10 с) і раз на хвилину як «я
+   живий». Без цього одна піч давала б ~17 тис. рядків на добу про те, що
+   нічого не змінилось.
 
 2. **Кадр на диску — один на піч, перезаписується.** Історія картинок нікому
    не потрібна: числа лежать у базі. Запис атомарний (тимчасовий файл +
@@ -25,7 +26,7 @@ import logging
 import os
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from app.services.device_poll import DevicePoller
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -57,9 +58,16 @@ logger = logging.getLogger(__name__)
 # екран печей стоїть відкритим цілий день, а кожен кадр — це повний
 # framebuffer 800×600 по мережі цеху.
 POLL_INTERVAL_SECONDS = 6.0
-# Не частіше цього в базу не пишемо навіть при змінах — секундний тик «срок»
-# інакше писав би рядок на кожен кадр.
+# Раз на стільки пишемо рядок «я живий» навіть коли нічого не змінилось —
+# інакше в історії була б дірка, з якої не видно, чи ми взагалі опитували піч.
 MIN_DB_INTERVAL_SECONDS = 60.0
+# Підлога між ДВОМА записами однієї печі. Температура на розігріві повзе
+# щокадру, тож «пишемо на будь-яку зміну» = рядок раз на 6 с = 14 400 рядків
+# на добу з печі; чотири печі за вікно зберігання (30 днів) — близько 1,7 млн.
+# Для графіка розігріву точка раз на 10 с надлишкова й так. Зміна СТАТУСУ цю
+# підлогу обходить: це подія (закладка, старт, кінець програми), а не шум, і
+# спізнитись на неї не можна.
+MIN_CHANGE_INTERVAL_SECONDS = 10.0
 # Помилки (піч вимкнена на ніч) записуємо рідко: інакше вимкнена на вихідні
 # піч дала б тисячі однакових рядків.
 ERROR_DB_INTERVAL_SECONDS = 15 * 60.0
@@ -69,6 +77,20 @@ READINGS_RETENTION_DAYS = 30
 # більший за «інтервал + дедлайн знімка» (6 + 20 с), інакше кожна недоступна
 # піч блимала б «стоїть» просто тому, що знімок довго не відповідав.
 STALE_AFTER_SECONDS = 90.0
+# Скільки тік чекає на ВСІ печі разом. Дедлайн знімка (20 с) стосується однієї
+# печі, а `pool.map` віддавав результат лише коли договорила остання: вночі,
+# коли печі вимкнені, одна мовчазна розтягувала тік з 6 до 20 с — тобто живі
+# сусіди оновлювались утричі рідше через мертву. Спільний строк розриває цей
+# звʼязок: беремо те, що встигло, решту лишаємо наступному тіку. Піч, яка не
+# встигла, лишається зі СВОЇМ попереднім станом — жодного вигаданого числа з
+# цього не береться, а якщо мовчання затягнеться, плитка сама зізнається
+# «опитування стало» (STALE_AFTER_SECONDS).
+TICK_DEADLINE_SECONDS = 10.0
+
+# Постійний пул знімків печей — один на застосунок, не новий на кожен тік.
+# Шість потоків: більше за кількість печей у лабораторії, тож жива піч ніколи
+# не чекає в черзі. Причина саме такої форми — у докстрінгу device_poll.
+_POLLER = DevicePoller("furnace-capture", max_workers=6)
 
 _HOST_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -306,20 +328,31 @@ def eye_crop(key: str, name: str) -> Optional[Image.Image]:
 
 
 def _should_store(state: FurnaceState, reading: PanelReading, now: datetime) -> bool:
-    """Чи писати рядок у базу. «Зміна або раз на хвилину» — див. модульний
-    докстрінг."""
+    """Чи писати рядок у базу. «Подія — негайно, решта — не частіше підлоги,
+    і раз на хвилину я живий» (див. модульний докстрінг).
+
+    Порядок перевірок тут — не косметика. Спершу події (статус, поява/зникнення
+    залишку), і лише потім час: подія мусить лягти в базу тим самим кадром, на
+    якому її побачили, інакше момент старту програми в історії з'їде на десяток
+    секунд. А от температура сама по собі — потік, а не подія: без підлоги вона
+    писала б рядок на КОЖЕН кадр (раз на 6 с), і за місяць база пухла на мільйони
+    рядків ні про що.
+    """
     if state.stored_at is None:
-        return True
-    if (now - state.stored_at).total_seconds() >= MIN_DB_INTERVAL_SECONDS:
         return True
     previous = state.reading
     if previous is None:
         return True
-    return (
-        previous.status != reading.status
-        or previous.temp_c != reading.temp_c
-        or (previous.remaining_seconds is None) != (reading.remaining_seconds is None)
-    )
+    if previous.status != reading.status:
+        return True
+    if (previous.remaining_seconds is None) != (reading.remaining_seconds is None):
+        return True
+    since = (now - state.stored_at).total_seconds()
+    if since >= MIN_DB_INTERVAL_SECONDS:
+        return True
+    if since < MIN_CHANGE_INTERVAL_SECONDS:
+        return False
+    return previous.temp_c != reading.temp_c
 
 
 def _store(db: Session, target: FurnaceTarget, reading: PanelReading, now: datetime) -> None:
@@ -469,6 +502,7 @@ def poll_all(
     db: Session,
     now: Optional[datetime] = None,
     timeout: Optional[float] = None,
+    deadline: Optional[float] = None,
 ) -> list[FurnaceState]:
     """Опитати всі печі. Знімки — паралельно, запис у базу — послідовно.
 
@@ -481,6 +515,10 @@ def poll_all(
     `timeout=None` лишає фоновий тік на дефолті `capture` (20 с). Ручна кнопка
     «Оновити зараз» (app/routers/furnace.py furnaces_refresh) передає власний,
     коротший — там на відповідь чекає людина, а не тихий воркер.
+
+    `deadline` — СПІЛЬНИЙ строк на весь тік (TICK_DEADLINE_SECONDS). Повертає
+    лише ті печі, що встигли відповісти: мертвий пристрій не має гальмувати
+    живі, а те, що не долетіло, спитаємо наступним тіком.
     """
     targets = configured_targets(db)
     if not targets:
@@ -494,13 +532,34 @@ def poll_all(
         return [
             poll_target(db, targets[0], password_for(targets[0]), now=now, timeout=timeout)
         ]
-    with ThreadPoolExecutor(max_workers=min(len(targets), 6)) as pool:
-        grabbed = list(
-            pool.map(lambda target: grab(target, password_for(target), timeout), targets)
-        )
+    # Не `pool.map` і не `with`: обидва чекають на ОСТАННЮ піч. Спільний строк
+    # на весь тік — у `DevicePoller`, і там же друге, менш очевидне правило:
+    # ПОСТІЙНИЙ пул замість нового на кожен тік, і один знімок на піч
+    # одночасно.
+    #
+    # Чому це не дрібниця. Кинути повільний знімок недосить: потік, у якому він
+    # живе, доживає до власних 20 с. При тіку раз на 6 с це ~3 покинуті потоки
+    # на кожну мертву піч, тобто 13 на чотири — і кожен тримає сокет. Гірше:
+    # `ThreadPoolExecutor` чекає на свої потоки при виході, тож стагнуючий
+    # знімок затримував би вимкнення застосунку далеко за дозволені 10 с.
+    by_key = {target.key: target for target in targets}
+    grabbed: dict[str, tuple[Optional[Image.Image], Optional[str]]] = _POLLER.gather(
+        by_key,
+        lambda key: grab(by_key[key], password_for(by_key[key]), timeout),
+        deadline=deadline or TICK_DEADLINE_SECONDS,
+    )
+    # Порядок — як у налаштуваннях, а не як пощастило з потоками.
     return [
-        poll_target(db, target, password_for(target), now=now, frame=frame, error=error)
-        for target, (frame, error) in zip(targets, grabbed)
+        poll_target(
+            db,
+            target,
+            password_for(target),
+            now=now,
+            frame=grabbed[target.key][0],
+            error=grabbed[target.key][1],
+        )
+        for target in targets
+        if target.key in grabbed
     ]
 
 

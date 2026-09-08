@@ -39,7 +39,7 @@
        вже без правок. #}
     <div id="machine-cards"
          hx-get="/machines/cards"
-         hx-trigger="every {{ poll_seconds }}s[!document.querySelector('#machine-cards details[open]')]"
+         hx-trigger="every {{ poll_seconds }}s[!document.hidden&&!document.querySelector('#machine-cards details[open]')]"
          hx-swap="innerHTML">
         {% include "_machine_cards.html" %}
     </div>

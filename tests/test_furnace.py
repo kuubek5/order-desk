@@ -18,6 +18,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db import Base
 from app.furnace_ocr import (
+    PanelReading,
     STATUS_RUN,
     STATUS_UNKNOWN,
     STATUS_WAIT,
@@ -241,6 +242,66 @@ def test_status_change_writes_immediately(monkeypatch, tmp_path):
         service.poll_target(db, _target(), password="x", now=start + timedelta(seconds=6))
         rows = db.query(FurnaceReading).order_by(FurnaceReading.id).all()
         assert [row.status for row in rows] == [STATUS_RUN, STATUS_WAIT]
+
+
+def _reading_source(monkeypatch, readings):
+    """Підмінити читання табло списком заготовлених показань.
+
+    Еталонних кадрів лише два (RUN 759 і WAIT 40), а тут перевіряється саме
+    поведінка на ПОВЗУЧІЙ температурі — з картинок її не зібрати.
+    """
+    monkeypatch.setattr(service, "capture", lambda *a, **k: _frame("run"))
+    supply = iter(readings)
+    monkeypatch.setattr(service, "read_panel", lambda image: next(supply))
+
+
+def test_crawling_temperature_does_not_write_a_row_on_every_frame(monkeypatch, tmp_path):
+    """Розігрів рухає температуру щокадру, а кадр знімається раз на 6 с.
+
+    «Пишемо на будь-яку зміну» означало 14 400 рядків на добу з однієї печі й
+    близько 1,7 млн з чотирьох за вікно зберігання — база про те, що піч
+    гріється, як і мала. Між записами однієї печі стоїть підлога.
+    """
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    _reading_source(
+        monkeypatch,
+        [PanelReading(status=STATUS_RUN, temp_c=temp, remaining_seconds=3600)
+         for temp in (700, 701, 702, 703)],
+    )
+    start = datetime(2026, 8, 29, 9, 0, 0)
+
+    with Session(_database()) as db:
+        service.poll_target(db, _target(), password="x", now=start)
+        assert db.query(FurnaceReading).count() == 1
+        # Наступні два кадри — в межах підлоги, хоч температура й змінилась.
+        service.poll_target(db, _target(), password="x", now=start + timedelta(seconds=6))
+        assert db.query(FurnaceReading).count() == 1
+        # Підлога позаду — зміну записуємо.
+        service.poll_target(db, _target(), password="x", now=start + timedelta(seconds=12))
+        assert db.query(FurnaceReading).count() == 2
+        temps = [row.temp_c for row in db.query(FurnaceReading).order_by(FurnaceReading.id)]
+        assert temps == [700, 702]
+
+
+def test_status_change_is_written_even_inside_the_floor(monkeypatch, tmp_path):
+    """Підлога стримує шум, але не події. Старт програми має лягти в базу тим
+    самим кадром, на якому його побачили, інакше момент закладки в історії
+    з'їде на десяток секунд."""
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    _reading_source(
+        monkeypatch,
+        [
+            PanelReading(status=STATUS_WAIT, temp_c=40),
+            PanelReading(status=STATUS_RUN, temp_c=40, remaining_seconds=3600),
+        ],
+    )
+    start = datetime(2026, 8, 29, 9, 0, 0)
+
+    with Session(_database()) as db:
+        service.poll_target(db, _target(), password="x", now=start)
+        service.poll_target(db, _target(), password="x", now=start + timedelta(seconds=3))
+        rows = db.query(FurnaceReading).order_by(FurnaceReading.id).all()
+        assert [row.status for row in rows] == [STATUS_WAIT, STATUS_RUN]
 
 
 def test_unreachable_furnace_is_a_state_not_a_crash(monkeypatch, tmp_path):
@@ -495,6 +556,41 @@ def test_poll_all_grabs_frames_in_parallel(monkeypatch, tmp_path):
         states = service.poll_all(db)
         assert len(states) == 3
         assert all(state.status == STATUS_RUN for state in states)
+
+
+def test_a_silent_furnace_does_not_hold_the_whole_tick(monkeypatch, tmp_path):
+    """Паралельні знімки самі по собі не рятують: забирати їх треба теж не
+    гуртом. Вимкнена на ніч піч мовчить до свого дедлайну (20 с), і поки тік
+    чекав ОСТАННЮ, живі печі на екрані оновлювались утричі рідше за інтервал.
+    Спільний строк на весь тік: беремо те, що встигло, решту — наступним тіком.
+    """
+    import threading
+    import time
+
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    release = threading.Event()
+
+    def _capture(host, *_args, **_kwargs):
+        if host == "192.168.1.61":
+            release.wait(30)  # мовчазний сокет: тримає потік до свого дедлайну
+            raise FurnaceVncError("Піч 192.168.1.61 недоступна")
+        return _frame("run")
+
+    monkeypatch.setattr(service, "capture", _capture)
+
+    with Session(_database()) as db:
+        _add_furnace(db, name="жива", host="192.168.1.76")
+        _add_furnace(db, name="мовчазна", host="192.168.1.61")
+        started = time.monotonic()
+        try:
+            states = service.poll_all(db, deadline=1.5)
+        finally:
+            release.set()  # відпустити потік, щоб він не дожив до кінця прогону
+        elapsed = time.monotonic() - started
+
+    assert elapsed < 5.0, "мертва піч затримала тік"
+    # Мовчазна не потрапила в результат — і жодного вигаданого стану для неї.
+    assert [state.target.host for state in states] == ["192.168.1.76"]
 
 
 def test_state_properties_survive_the_furnace_vanishing_mid_read(monkeypatch, tmp_path):

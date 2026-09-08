@@ -101,6 +101,7 @@ from app.services.machines import (
     is_configured as _machines_configured,
     poll_all as _poll_machines,
 )
+from app.services.journal_prune import prune_journals
 from app.shift_images import prune_shift_images
 from app.routers.deps import templates
 from app.services.order_dates import parse_sheet_tab as _parse_sheet_tab
@@ -386,6 +387,26 @@ def _shift_images_prune_tick() -> None:
             db.close()
     except Exception:
         logger.exception("Прибирання скріншотів зміни не вдалось")
+
+    # Журнали — тим самим тіком, а не окремим воркером: це те саме прибирання
+    # за розкладом, просто інших таблиць, і зайвий фоновий потік коштував би
+    # більше, ніж дає. Окремий try, бо збій одного прибирання не має скасувати
+    # інше.
+    #
+    # `sync_logs` і `action_log` роками були оголошені такими, що чистяться
+    # самі (`health_snapshot.SELF_PRUNING`), не маючи прибиральника взагалі.
+    # Гірше за ріст було друге: SELF_PRUNING означає «зменшення тут нормальне»,
+    # тож справжня втрата даних у цих таблицях не підняла б тривоги після
+    # оновлення (аудит 08.09.26).
+    try:
+        with SessionLocal() as db:
+            removed = prune_journals(db)
+            if any(removed.values()):
+                db.commit()
+            else:
+                db.rollback()
+    except Exception:
+        logger.exception("Прибирання журналів не вдалось")
 
 
 def _shift_images_prune_worker(stop_event: Event) -> None:

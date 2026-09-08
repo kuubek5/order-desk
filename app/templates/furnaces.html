@@ -49,7 +49,7 @@
        (скарга 05.09.26): новий розгортний блок потрапляє під неї без правок. #}
     <div id="furnace-cards"
          hx-get="/furnaces/cards"
-         hx-trigger="every {{ poll_seconds }}s[!document.querySelector('#furnace-cards details[open]')]"
+         hx-trigger="every {{ poll_seconds }}s[!document.hidden&&!document.querySelector('#furnace-cards details[open]')]"
          hx-swap="innerHTML">
         {% include "_furnace_cards.html" %}
     </div>

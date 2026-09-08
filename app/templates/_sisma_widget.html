@@ -18,7 +18,7 @@
 <div id="sisma-strip"
      class="sw-wrap{% if not sisma_cards %} is-empty{% endif %}"
      hx-get="/machines/sisma"
-     hx-trigger="every 15s"
+     hx-trigger="every 15s[!document.hidden]"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*"

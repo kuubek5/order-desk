@@ -125,7 +125,7 @@
        тому банер зʼявляється/зникає НАЖИВО, а не лише при перезавантаженні. Поза
        #queue-rows — 15с-полл черги його не чіпає. #}
     <div id="mass-vanish-slot"
-         hx-get="/sheets/mass-vanish" hx-trigger="every 15s" hx-target="this" hx-swap="innerHTML">
+         hx-get="/sheets/mass-vanish" hx-trigger="every 15s[!document.hidden]" hx-target="this" hx-swap="innerHTML">
         {% include "_mass_vanish_banner.html" %}
     </div>
 

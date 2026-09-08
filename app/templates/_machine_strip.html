@@ -18,7 +18,7 @@
      class="mstrip{% if not _shown %} is-empty{% endif %}"
      data-variant="{{ _mstrip }}"
      hx-get="/machines/strip"
-     hx-trigger="every 10s"
+     hx-trigger="every 10s[!document.hidden]"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*"
