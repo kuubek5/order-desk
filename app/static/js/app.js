@@ -585,6 +585,11 @@ function showToastLine(message, kind, undoUrl) {
 // Світна кромка + чіп. Кромка живе, доки живий бодай один збій; чіп показує,
 // який саме, і віддає подробиці при наведенні. «Відновлено» гасить обидва.
 const auroraFaults = new Map();
+// Один таймер гасіння на всю кромку. Без нього кожне «відновлено» лишало по
+// власному таймеру, і СТАРИЙ гасив зелене підтвердження раніше, ніж мало
+// згаснути нове: у послідовності збій → відновлено → збій → відновлено
+// зелений чіп зникав за секунду замість 2.6 (перевірено наживо 08.09.26).
+let _auroraHideTimer = null;
 function showToastEdge(message, kind, event) {
   let edge = document.getElementById("toast-edge");
   let chip = document.getElementById("toast-chip");
@@ -629,7 +634,8 @@ function showToastEdge(message, kind, event) {
     edge.classList.add("is-on");
     chip.classList.add("is-on");
     document.body.classList.add("has-toast-chip");
-    window.setTimeout(() => {
+    window.clearTimeout(_auroraHideTimer);
+    _auroraHideTimer = window.setTimeout(() => {
       // Гасимо лише якщо за цей час не прилетів новий збій.
       if (!auroraFaults.size) {
         edge.classList.remove("is-on");
@@ -639,6 +645,10 @@ function showToastEdge(message, kind, event) {
     }, 2600);
     return;
   }
+  // Збій не гасне сам — знімаємо чужий таймер гасіння, якщо він лишився
+  // від попереднього «відновлено».
+  window.clearTimeout(_auroraHideTimer);
+  _auroraHideTimer = null;
   const first = keys[0];
   const since = auroraFaults.get(first).at;
   const hh = String(since.getHours()).padStart(2, "0");
