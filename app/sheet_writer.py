@@ -807,6 +807,26 @@ def append_manual_work_rows(
             raise RuntimeError(f"клієнтська зона не вміщає {n} рядків")
 
     rows = list(range(first, last + 1))
+
+    # ПЕРЕВІРОЧНЕ ЧИТАННЯ перед записом. Позиція блока вибрана з ОДНОГО читання
+    # вище, а між ним і записом минає час: у таблицю в цю мить пише технік
+    # руками, і його рядок ляже саме туди, куди ми зібрались писати. Тоді наш
+    # batch_update мовчки затер би живу клієнтську роботу — без сліду, бо
+    # заміщені значення ніде не збереглись (аудит 08.09.26).
+    #
+    # Ціна — один додатковий запит на ручне додавання, а їх кілька на день.
+    # Ціна помилки — зникла коронка, знайдена аж на видачі.
+    #
+    # Помилка читання НЕ пропускає запис: неперевірений рядок гірший за
+    # пропущений запис — те саме правило, що на `_resolve_row` (CLAUDE.md §14).
+    guard_rows = call_with_retry(lambda: worksheet.get(f"B{first}:E{last}"))
+    for offset, row in enumerate(guard_rows or []):
+        if _row_is_occupied(row):
+            raise RuntimeError(
+                f"рядок {first + offset} у таблиці вже зайнятий — хтось писав "
+                "у цю вкладку одночасно з вами. Спробуйте ще раз."
+            )
+
     # Values + blue fill in ONE spreadsheets.batchUpdate — one fewer proxy
     # round-trip than a separate values write + format. Blue paints only A:K,
     # so the green ID/mill columns (L/M/N) are never overwritten.

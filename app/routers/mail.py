@@ -52,6 +52,7 @@ from app.mail_sync_service import (
     MailSyncBusyError,
     MailSyncError,
     run_sync_owned_session,
+    zombie_fetch_blocks_files,
 )
 from app.mail_spool import spool_folder_name
 from app.models import (
@@ -536,6 +537,14 @@ def fetch_email_link(
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
+    # Покинутий фетч ще качає в теку цього листа своєю сесією. Чіпати ті самі
+    # файли зараз означає подвійні вкладення «(2)», а для приймання — рядки з
+    # мертвими шляхами (аудит 08.09.26). Фоновий синк цей гейт мав, ручні
+    # кнопки — ні.
+    busy = zombie_fetch_blocks_files()
+    if busy:
+        raise HTTPException(status_code=409, detail=busy)
+
 
     email = db.get(EmailMessage, email_id)
     if email is None:
@@ -851,6 +860,14 @@ def download_email_attachments(
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
+    # Покинутий фетч ще качає в теку цього листа своєю сесією. Чіпати ті самі
+    # файли зараз означає подвійні вкладення «(2)», а для приймання — рядки з
+    # мертвими шляхами (аудит 08.09.26). Фоновий синк цей гейт мав, ручні
+    # кнопки — ні.
+    busy = zombie_fetch_blocks_files()
+    if busy:
+        raise HTTPException(status_code=409, detail=busy)
+
     email = db.get(EmailMessage, email_id)
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")
@@ -882,6 +899,14 @@ def redownload_email_attachments(
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
+    # Покинутий фетч ще качає в теку цього листа своєю сесією. Чіпати ті самі
+    # файли зараз означає подвійні вкладення «(2)», а для приймання — рядки з
+    # мертвими шляхами (аудит 08.09.26). Фоновий синк цей гейт мав, ручні
+    # кнопки — ні.
+    busy = zombie_fetch_blocks_files()
+    if busy:
+        raise HTTPException(status_code=409, detail=busy)
+
     email = db.get(EmailMessage, email_id)
     if email is None:
         raise HTTPException(status_code=404, detail="email not found")
@@ -1021,6 +1046,14 @@ def accept_email(
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
+    # Покинутий фетч ще качає в теку цього листа своєю сесією. Чіпати ті самі
+    # файли зараз означає подвійні вкладення «(2)», а для приймання — рядки з
+    # мертвими шляхами (аудит 08.09.26). Фоновий синк цей гейт мав, ручні
+    # кнопки — ні.
+    busy = zombie_fetch_blocks_files()
+    if busy:
+        raise HTTPException(status_code=409, detail=busy)
+
 
     email = db.get(EmailMessage, email_id)
     if email is None:

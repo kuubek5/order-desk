@@ -278,3 +278,44 @@ def test_second_archive_does_not_overwrite_files_of_the_first(tmp_path):
         assert len(names) == 2 and names[0] != names[1]
         payloads = sorted(p.read_bytes() for p in spool.glob("*.stl"))
         assert payloads == [b"FIRST", b"SECOND"]
+
+
+def test_extracted_files_are_registered_for_cleanup(tmp_path):
+    """Збій ПІСЛЯ вдалого розпакування не має лишати файли-сироти.
+
+    Аудит 08.09.26: розпаковані файли не потрапляли в перелік «створене цим
+    прогоном» (`session.info["mail_sync_created_paths"]`), яким фаза 2 синку
+    прибирає диск при відкаті. Виняток на кшталт `path.stat()` на шарі, що
+    моргнула, відкочував рядки в базі — а файли лишались. Лист при цьому вже
+    `ready`, тож повторного розпакування не буде, і в спулі назавжди лежать STL
+    без жодного рядка в базі.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+
+    from app.mail_reader import extract_archive_attachments
+    from app.models import Attachment, Base, EmailMessage
+
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    arc = spool / "work.zip"
+    _make_zip(arc, {"crown.stl": b"CROWN"})
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    with Session(engine, expire_on_commit=False) as db:
+        email = EmailMessage(uid="u1", status="нове")
+        db.add(email)
+        db.flush()
+        db.add(Attachment(
+            email_message_id=email.id, filename="work.zip",
+            saved_path=str(arc), size_bytes=arc.stat().st_size,
+        ))
+        db.commit()
+
+        extract_archive_attachments(db, email)
+
+        registered = db.info.get("mail_sync_created_paths") or []
+        assert registered, "розпаковані файли не зареєстровані для прибирання"
+        assert any(p.name == "crown.stl" for p in registered)

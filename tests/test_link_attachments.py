@@ -253,3 +253,27 @@ def test_redirect_loop_stops_instead_of_hanging(tmp_path):
     with pytest.raises(LinkDownloadError):
         download_link(link, tmp_path, session=session)
     assert len(session.calls) <= 7
+
+
+# ── Сторінка входу — не файл ───────────────────────────────────────────────
+# Аудит 08.09.26. Гілка Drive перевіряла content-type, пряме скачування —
+# ні. Сторінка входу обмінника зберігалась ЯК ФАЙЛ: отримувала рядок
+# вкладення, лист ставав «готовий», а серверний гейт «не приймати лист із
+# нескачаними файлами» вважав файл скачаним. Гейт обходився не зламом, а
+# хибним успіхом — оператор брав у роботу лист, де замість коронки лежить HTML.
+
+
+def test_direct_download_refuses_a_web_page(tmp_path):
+    resp = _Resp(
+        "https://dl.ukr.net/x/big.stl",
+        headers={"content-type": "text/html; charset=utf-8"},
+        chunks=["<!doctype html><title>Вхід</title>".encode("utf-8")],
+    )
+    link = LinkAttachment(kind="ukrnet", url="https://dl.ukr.net/x/big.stl", display="…")
+
+    with pytest.raises(LinkDownloadError) as err:
+        download_link(link, tmp_path, session=_Session([resp]))
+
+    assert "сторінка" in str(err.value).lower()
+    # І головне: на диску нічого не лишилось, тож рядок вкладення не зʼявиться.
+    assert not list(tmp_path.iterdir())

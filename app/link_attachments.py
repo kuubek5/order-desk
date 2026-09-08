@@ -260,6 +260,18 @@ def _download_direct(
     existing_names: frozenset[str],
 ) -> Path | None:
     response = _get_checked(session, url, timeout=timeout)
+    # Та сама перевірка, що й у гілці Drive вище. Без неї сторінка входу
+    # обмінника зберігалась ЯК ФАЙЛ: отримувала рядок вкладення, лист ставав
+    # «готовий», посилання йшло в опрацьовані, а серверний гейт «не приймати
+    # лист із нескачаними файлами» вважав його скачаним. Тобто гейт обходився
+    # не зламом, а хибним успіхом — і оператор брав у роботу лист, у якому
+    # замість коронки лежить HTML (аудит 08.09.26).
+    if "text/html" in (response.headers.get("content-type") or "").lower():
+        response.close()
+        raise LinkDownloadError(
+            "за посиланням прийшла веб-сторінка, а не файл — "
+            "можливо, потрібен вхід або доступ закритий"
+        )
     filename = (
         _filename_from_content_disposition(response.headers.get("content-disposition"))
         or Path(urlsplit(url).path).name

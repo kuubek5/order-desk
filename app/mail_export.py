@@ -289,6 +289,7 @@ def save_attachments_to_export(
     client_folder_override: str | None = None,
     material_folder_override: str | None = None,
     today: date | None = None,
+    moved_out: list[tuple[Path, Path]] | None = None,
 ) -> list[Path]:
     """Moves each file in attachment_paths into export_root/<client>/<date>/<material>/.
 
@@ -305,6 +306,19 @@ def save_attachments_to_export(
     Returns the new paths in the same order as attachment_paths. Raises on
     filesystem errors (permission denied, unreachable network path, ...) —
     callers decide whether that should block acceptance or just be logged.
+
+    `moved_out` — перелік файлів, які ЗАРАЗ фізично лежать в export. Він
+    наповнюється одразу після кожного переносу і чиститься від тих, кого
+    вдалося повернути. Викликач бачить його і тоді, коли ця функція кинула.
+
+    Навіщо. Внутрішній відкат нижче повертає файли в спул — але якщо шара
+    впала посеред переносу, він падає теж, і частина файлів лишається в export
+    БЕЗ жодного сліду назовні. Раніше викликач дізнавався про перенесені файли
+    лише з ПОВЕРНЕНОГО значення, тобто тільки при успіху: його власний
+    `undo_moves` отримував порожній список, база відкочувалась у «лист не
+    прийнято», а `saved_path` вказував у спул, де файлів уже не було. При
+    повторному прийнятті ці вкладення тихо випадали зі списку — лист ставав
+    «прийнято» без двох коронок (аудит 08.09.26).
     """
     if not attachment_paths:
         return []
@@ -345,16 +359,31 @@ def save_attachments_to_export(
         for source in attachment_paths
     ]
     completed: list[tuple[Path, Path]] = []
+
+    def _remember(pair: tuple[Path, Path]) -> None:
+        completed.append(pair)
+        if moved_out is not None:
+            moved_out.append(pair)
+
+    def _forget(pair: tuple[Path, Path]) -> None:
+        """Файл повернувся у спул — його більше немає в export."""
+        if moved_out is not None and pair in moved_out:
+            moved_out.remove(pair)
+
     try:
         for source, destination in moves:
             _move_file(source, destination)
-            completed.append((source, destination))
+            _remember((source, destination))
     except Exception:
         rollback_errors = []
         for source, destination in reversed(completed):
             try:
                 if destination.exists():
                     _move_file(destination, source)
+                # Знімаємо з переліку і тоді, коли файла в призначенні вже
+                # немає: в export його однаково нема, а зайвий запис змусив би
+                # викликача «повертати» неіснуючий файл.
+                _forget((source, destination))
             except Exception as rollback_error:
                 rollback_errors.append(str(rollback_error))
         if rollback_errors:

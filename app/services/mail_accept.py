@@ -257,6 +257,15 @@ def _accept_letter_locked(
                     ". УВАГА: частину файлів не вдалося повернути в лист — "
                     + "; ".join(undo_errors)
                 )
+                # Слід у БАЗІ, не лише в тексті помилки й лозі. Текст побачить
+                # той, хто саме зараз дивиться на екран, і він зникне з першим
+                # оновленням сторінки; лог у зібраному застосунку не читає
+                # ніхто. А стан тут найгірший з можливих: частина коронок
+                # фізично лежить в export, база каже «лист не прийнято», і
+                # `saved_path` вказує у спул, де їх уже немає. При повторному
+                # прийнятті вони тихо випадуть зі списку — лист стане
+                # «прийнято» без цих робіт (аудит 08.09.26).
+                _record_stranded_files(db, email, moved_pairs, undo_errors)
             return AcceptResult(error="Не вдалося зберегти вкладення: " + detail)
 
     # Частково чи повністю: якщо в листі лишились нерозібрані файли (інший
@@ -345,6 +354,38 @@ def _resolve_target_tab(db: Session, email: EmailMessage):
     return target_tab, worksheet
 
 
+def _record_stranded_files(
+    db: Session,
+    email: EmailMessage,
+    moved_pairs: list[tuple[Path, Path]],
+    undo_errors: list[str],
+) -> None:
+    """Записати в журнал синку, які файли лишились в export після невдалого
+    відкату.
+
+    Окремою транзакцією ПІСЛЯ `db.rollback()`: основна відкочена навмисно (лист
+    не прийнято), а цей слід має пережити відкат — інакше єдиним свідченням
+    лишиться рядок у лозі, якого ніхто не читає.
+
+    Сам запис не має права завалити відповідь операторові: він і так бачить
+    помилку, і друга помилка поверх першої нічого не додасть.
+    """
+    try:
+        stranded = "; ".join(str(dest) for _, dest in moved_pairs) or "(перелік порожній)"
+        db.add(SyncLog(
+            direction="mail_to_disk",
+            status="error",
+            message=(
+                f"лист {email.id}: файли лишились в export після невдалого "
+                f"повернення — {stranded}. Причини: {'; '.join(undo_errors)}"
+            ),
+        ))
+        db.commit()
+    except Exception:  # noqa: BLE001 — слід важливий, але не важливіший за відповідь
+        db.rollback()
+        logger.exception("Не вдалося записати слід про застряглі файли листа %s", email.id)
+
+
 def _move_attachments(
     db: Session,
     email: EmailMessage,
@@ -376,6 +417,12 @@ def _move_attachments(
             folder_pick, folder_new, material_folder
         )
         old_paths = [Path(a.saved_path) for a in to_move]
+        # `moved_out` іде ВСЕРЕДИНУ: перенос наповнює його одразу після кожного
+        # файлу, тож викликач бачить перелік і тоді, коли ця функція кинула
+        # посеред переносу. Раніше список наповнювався ТУТ, після повернення —
+        # тобто лише при успіху, і при падінні всередині `undo_moves` у
+        # викликача отримував порожньо, а файли лишались в export без сліду
+        # (аудит 08.09.26).
         new_paths = save_attachments_to_export(
             export_root,
             new_order.client_name or "",
@@ -383,10 +430,9 @@ def _move_attachments(
             old_paths,
             client_folder_override=client_override,
             material_folder_override=material_override,
+            moved_out=moved_out,
         )
         moved_pairs = list(zip(old_paths, new_paths))
-        if moved_out is not None:
-            moved_out.extend(moved_pairs)
         # Файли переїхали — кеш обходу export більше не відповідає диску.
         clear_export_cache()
         for attachment, new_path in zip(to_move, new_paths):

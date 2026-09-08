@@ -364,19 +364,43 @@ class TestStatusMarkers:
         assert order.calculated_raw == "Іван 09:04"
 
 
+def _scan_then_free(rows):
+    """Аркуш-двійник, який відповідає на ДВА читання, а не на одне.
+
+    Аудит 08.09.26 додав перевірочне читання цільового блока безпосередньо
+    перед записом: позиція вибирається з одного читання, а між ним і записом
+    у таблицю може встигнути написати технік руками — і `batch_update` мовчки
+    затер би живу клієнтську роботу без жодного сліду.
+
+    Тому перше читання — скан зайнятості (повертає `rows`), друге — перевірка
+    цільових рядків (порожньо = вільні). Тестам, яким треба показати ЗАЙНЯТИЙ
+    цільовий рядок, досить задати власний side_effect.
+    """
+    answers = iter([rows])
+
+    def _get(_range):
+        try:
+            return next(answers)
+        except StopIteration:
+            return []
+
+    return _get
+
+
+
 class TestAppendMailPlaceholderRow:
     def test_writes_to_start_row_when_immediately_free(self):
         """No pre-existing data in the scan window: the very first row
         (start_row) is used."""
         fake_ws = MagicMock()
-        fake_ws.get.return_value = []
+        fake_ws.get.side_effect = _scan_then_free([])
 
         row_number = append_mail_placeholder_row(
             fake_ws, "Вова", "5", "емо а3", start_row=60
         )
 
         assert row_number == 60
-        fake_ws.get.assert_called_once_with("B60:E260")
+        assert fake_ws.get.call_args_list[0][0][0] == ("B60:E260")
         fake_ws.spreadsheet.batch_update.assert_called_once()
         assert _written(fake_ws) == {
             (60, 3): "5",       # Кількість
@@ -389,14 +413,14 @@ class TestAppendMailPlaceholderRow:
         Вид роботи (existing manual notes or unrelated data) — the scan
         must not touch them and instead land on the first free row after."""
         fake_ws = MagicMock()
-        fake_ws.get.return_value = [
+        fake_ws.get.side_effect = _scan_then_free([
             ["24567", "2", "pmma a2", "Клієнт А"],  # row 60: наряд filled
             ["", "3", "mono a3", "Клієнт Б"],  # row 61: кількість+вид filled
             ["", "", "", "Клієнт В"],  # row 62: вид filled
             ["24999", "", "", ""],  # row 63: наряд filled
             ["", "1", "", ""],  # row 64: кількість filled
             ["", "", "", "Клієнт Г"],  # row 65: вид filled
-        ]
+        ])
 
         row_number = append_mail_placeholder_row(
             fake_ws, "Вова", "5", "емо а3", start_row=60
@@ -414,7 +438,7 @@ class TestAppendMailPlaceholderRow:
         Номер наряду, Кількість, Вид роботи are — so a row with just a
         material value is still fair game."""
         fake_ws = MagicMock()
-        fake_ws.get.return_value = [["", "", "залишок матеріалу", ""]]
+        fake_ws.get.side_effect = _scan_then_free([["", "", "залишок матеріалу", ""]])
 
         row_number = append_mail_placeholder_row(
             fake_ws, "Клієнт", "1", "титан", start_row=60
@@ -424,7 +448,7 @@ class TestAppendMailPlaceholderRow:
 
     def test_raises_when_no_free_row_within_search_window(self):
         fake_ws = MagicMock()
-        fake_ws.get.return_value = [["24000", "1", "", "X"] for _ in range(201)]
+        fake_ws.get.side_effect = _scan_then_free([["24000", "1", "", "X"] for _ in range(201)])
 
         with pytest.raises(RuntimeError, match="заповнена"):
             append_mail_placeholder_row(fake_ws, "Клієнт", "1", "титан", start_row=60)
@@ -433,14 +457,14 @@ class TestAppendMailPlaceholderRow:
 
     def test_custom_start_row_is_respected(self):
         fake_ws = MagicMock()
-        fake_ws.get.return_value = []
+        fake_ws.get.side_effect = _scan_then_free([])
 
         row_number = append_mail_placeholder_row(
             fake_ws, "Клієнт", "2", "пмма", start_row=100
         )
 
         assert row_number == 100
-        fake_ws.get.assert_called_once_with("B100:E300")
+        assert fake_ws.get.call_args_list[0][0][0] == ("B100:E300")
 
 
 class TestManualPlacement:
@@ -453,12 +477,12 @@ class TestManualPlacement:
         gap — even if rows 61/62 are empty, a filled row 63 pushes the new row
         to 64 (immediately under the last record)."""
         fake_ws = MagicMock()
-        fake_ws.get.return_value = [
+        fake_ws.get.side_effect = _scan_then_free([
             ["", "33", "sfsd", "43423"],  # row 60 filled
             [],                            # row 61 empty
             [],                            # row 62 empty
             ["4434", "55", "herher", ""],  # row 63 filled
-        ]
+        ])
 
         row_number = append_manual_work_row(
             fake_ws, e_value="Вова", quantity="5", material_color="емо а3",
@@ -466,11 +490,11 @@ class TestManualPlacement:
         )
 
         assert row_number == 64  # directly under the last record, no gap-filling
-        fake_ws.get.assert_called_once_with("B60:E260")
+        assert fake_ws.get.call_args_list[0][0][0] == ("B60:E260")
 
     def test_client_empty_window_uses_start_row(self):
         fake_ws = MagicMock()
-        fake_ws.get.return_value = []
+        fake_ws.get.side_effect = _scan_then_free([])
 
         row_number = append_manual_work_row(
             fake_ws, e_value="Клієнт", quantity="1", material_color="титан",
@@ -484,7 +508,7 @@ class TestManualPlacement:
         fake_ws = MagicMock()
         # B7:E59 = 53 rows; наряд filled in the first 24 (rows 7..30).
         rows = [["24000", "1", "", "анатомія"]] * 24 + [[]] * 29
-        fake_ws.get.return_value = rows
+        fake_ws.get.side_effect = _scan_then_free(rows)
 
         row_number = append_manual_work_row(
             fake_ws, work_order_no="99001", e_value="анатомія",
@@ -493,7 +517,7 @@ class TestManualPlacement:
         )
 
         assert row_number == 32  # last lab 30, gap 31, write 32
-        fake_ws.get.assert_called_once_with("B7:E59")
+        assert fake_ws.get.call_args_list[0][0][0] == ("B7:E59")
         assert _blue_range(fake_ws) is None  # lab rows never painted blue
         written = _written(fake_ws)
         assert written[(32, 2)] == "99001"  # наряд col B
@@ -509,7 +533,7 @@ class TestManualPlacement:
         rows.append([])                               # row 30 — separator
         rows.append(["", "", "TEST2", "TEST"])        # row 31 — no наряд
         rows.extend([[]] * 28)                        # rows 32..59
-        fake_ws.get.return_value = rows
+        fake_ws.get.side_effect = _scan_then_free(rows)
 
         row_number = append_manual_work_row(
             fake_ws, e_value="анатомія", quantity="1",
@@ -522,7 +546,7 @@ class TestManualPlacement:
         """Blue fill covers A:K only — columns L/M/N (ID, Прорахував,
         Відфрезерував) keep their own green styling (endColumnIndex 11 = A:K)."""
         fake_ws = MagicMock()
-        fake_ws.get.return_value = []
+        fake_ws.get.side_effect = _scan_then_free([])
 
         row = append_manual_work_row(
             fake_ws, e_value="Клієнт", quantity="1", material_color="Ti",
@@ -535,7 +559,7 @@ class TestManualPlacement:
 
     def test_lab_empty_table_uses_first_lab_row(self):
         fake_ws = MagicMock()
-        fake_ws.get.return_value = []
+        fake_ws.get.side_effect = _scan_then_free([])
 
         row_number = append_manual_work_row(
             fake_ws, work_order_no="1", e_value="вид", quantity="1",
@@ -546,7 +570,7 @@ class TestManualPlacement:
     def test_lab_region_full_raises(self):
         fake_ws = MagicMock()
         # every row 7..59 has наряд → no gap-room before the client region
-        fake_ws.get.return_value = [["24000"]] * 53
+        fake_ws.get.side_effect = _scan_then_free([["24000"]] * 53)
 
         with pytest.raises(RuntimeError, match="лабораторна зона заповнена"):
             append_manual_work_row(
@@ -562,7 +586,7 @@ class TestAppendManualWorkRows:
 
     def test_client_block_is_contiguous_and_one_call(self):
         fake_ws = MagicMock()
-        fake_ws.get.return_value = [["", "1", "x", "Наявний"]]  # row 60 filled
+        fake_ws.get.side_effect = _scan_then_free([["", "1", "x", "Наявний"]])# row 60 filled
 
         rows = append_manual_work_rows(
             fake_ws,
@@ -586,7 +610,7 @@ class TestAppendManualWorkRows:
 
     def test_lab_block_gap_then_contiguous_no_blue(self):
         fake_ws = MagicMock()
-        fake_ws.get.return_value = [["24000"]] * 24  # lab rows 7..30
+        fake_ws.get.side_effect = _scan_then_free([["24000"]] * 24)# lab rows 7..30
 
         rows = append_manual_work_rows(
             fake_ws,
@@ -920,3 +944,58 @@ class TestRestoreGuardAndCalculatedSkip:
         fake_ws.cell.return_value = SimpleNamespace(value="24122")
         assert write_calculated(fake_ws, self._order(), "St") is True
         fake_ws.update_cell.assert_called_once()
+
+
+class TestManualAddDoesNotOverwriteALiveRow:
+    """Перевірочне читання перед записом (аудит 08.09.26).
+
+    Позиція блока вибирається з одного читання. Між ним і записом у ту саму
+    вкладку пише технік руками — і його рядок лягає туди, куди ми зібрались
+    писати. Раніше `batch_update` мовчки затирав живу клієнтську роботу, і
+    відновити її не було з чого: заміщені значення ніде не збереглись.
+    """
+
+    def test_write_is_refused_when_the_target_row_got_taken(self):
+        fake_ws = MagicMock()
+        # Перше читання: зона порожня, беремо рядок 60. Друге (перевірочне):
+        # рядок уже зайнятий — хтось написав у цю мить.
+        fake_ws.get.side_effect = [[], [["24999", "2", "цирконій", "анатомія"]]]
+
+        with pytest.raises(RuntimeError) as err:
+            append_manual_work_rows(
+                fake_ws,
+                [{"quantity": "1", "material_color": "мono a3", "e_value": "Клієнт"}],
+                start_row=60,
+            )
+
+        assert "зайнятий" in str(err.value)
+        fake_ws.spreadsheet.batch_update.assert_not_called()
+
+    def test_free_target_still_writes(self):
+        """Перевірка не має заважати нормальному додаванню."""
+        fake_ws = MagicMock()
+        fake_ws.get.side_effect = _scan_then_free([])
+
+        rows = append_manual_work_rows(
+            fake_ws,
+            [{"quantity": "1", "material_color": "mono a3", "e_value": "Клієнт"}],
+            start_row=60,
+        )
+
+        assert rows == [60]
+        fake_ws.spreadsheet.batch_update.assert_called_once()
+
+    def test_a_failed_check_read_blocks_the_write(self):
+        """Неперевірений рядок гірший за пропущений запис — те саме правило,
+        що на `_resolve_row` (CLAUDE.md §14)."""
+        fake_ws = MagicMock()
+        fake_ws.get.side_effect = [[], OSError("шара недоступна")]
+
+        with pytest.raises(Exception):
+            append_manual_work_rows(
+                fake_ws,
+                [{"quantity": "1", "material_color": "mono a3", "e_value": "Клієнт"}],
+                start_row=60,
+            )
+
+        fake_ws.spreadsheet.batch_update.assert_not_called()

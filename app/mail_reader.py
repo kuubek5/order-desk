@@ -238,7 +238,16 @@ def extract_archive_attachments(
         except ArchiveExtractError as exc:
             errors.append(f"{attachment.filename}: {exc}")
             continue
+        # Розпаковані файли — у той самий перелік «створене цим прогоном», яким
+        # уже користується фаза 2 синку. Без цього збій ПІСЛЯ вдалого
+        # розпакування (напр. `path.stat()` на шарі, що моргнула) відкочував
+        # рядки в базі, але лишав файли на диску — а лист уже `ready`, тож
+        # повторного розпакування не буде, і в спулі назавжди лежать STL без
+        # жодного рядка (аудит 08.09.26). `session.info` тут єдина правильна
+        # адреса: перелік переживає rollback, бо не є частиною транзакції.
+        created_paths = session.info.setdefault("mail_sync_created_paths", [])
         for path in written:
+            created_paths.append(path)
             session.add(
                 Attachment(
                     email_message_id=email_message.id,

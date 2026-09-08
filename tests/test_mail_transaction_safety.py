@@ -497,3 +497,149 @@ def test_imap_window_follows_the_working_day_not_the_calendar(tmp_path, monkeypa
     assert seen["date_gte"] == real_date(2026, 9, 6) - timedelta(
         days=mail_reader.IMAP_LOOKBACK_DAYS
     )
+
+
+# ── Шара впала посеред переносу: жодної коронки не губимо ──────────────────
+# Аудит 08.09.26. Внутрішній відкат `save_attachments_to_export` повертає файли
+# в спул — але якщо шара досі лежить, він падає теж. Раніше викликач дізнавався
+# про перенесені файли лише з ПОВЕРНЕНОГО значення, тобто тільки при успіху:
+# його `undo_moves` отримував порожній список, база відкочувалась у «лист не
+# прийнято», а `saved_path` вказував у спул, де файлів уже не було. При
+# повторному прийнятті ці вкладення тихо випадали зі списку.
+
+
+class TestPartialMoveIsVisible:
+    def test_moved_out_is_filled_even_when_the_move_raises_midway(self, tmp_path):
+        """Головне: викликач бачить, ЩО саме поїхало, навіть коли функція кинула."""
+        from app import mail_export
+
+        spool = tmp_path / "spool"
+        spool.mkdir()
+        sources = []
+        for i in range(3):
+            f = spool / f"crown-{i}.stl"
+            f.write_text("stl", encoding="utf-8")
+            sources.append(f)
+
+        export_root = tmp_path / "export"
+        export_root.mkdir()
+
+        real_move = mail_export._move_file
+        calls = {"n": 0}
+
+        def flaky_move(src, dst):
+            calls["n"] += 1
+            if calls["n"] == 3:      # третій файл — шара відпала
+                raise OSError("мережеве імʼя більше недоступне")
+            return real_move(src, dst)
+
+        mail_export._move_file = flaky_move
+        moved_out: list = []
+        try:
+            with pytest.raises(Exception):
+                mail_export.save_attachments_to_export(
+                    export_root, "Іваненко", "mono a3", sources, moved_out=moved_out,
+                )
+        finally:
+            mail_export._move_file = real_move
+
+        # Відкат теж ішов через flaky_move, але після третього виклику він уже
+        # не кидає — файли повернулись, і перелік порожній.
+        assert all(src.exists() for src in sources[:2]), "файли не повернулись у спул"
+        assert moved_out == [], f"у export лишились сліди: {moved_out}"
+
+    def test_moved_out_keeps_what_the_rollback_could_not_return(self, tmp_path):
+        """Коли відкат теж падає — перелік застряглих файлів НЕ порожній.
+
+        Саме він потім іде в `undo_moves` викликача і в слід у базі. Порожній
+        перелік означав би «нічого не поїхало», що є неправдою.
+        """
+        from app import mail_export
+
+        spool = tmp_path / "spool"
+        spool.mkdir()
+        sources = []
+        for i in range(3):
+            f = spool / f"crown-{i}.stl"
+            f.write_text("stl", encoding="utf-8")
+            sources.append(f)
+
+        export_root = tmp_path / "export"
+        export_root.mkdir()
+
+        real_move = mail_export._move_file
+        state = {"n": 0}
+
+        def dying_share(src, dst):
+            state["n"] += 1
+            if state["n"] >= 3:      # перенос третього І весь відкат падають
+                raise OSError("мережеве імʼя більше недоступне")
+            return real_move(src, dst)
+
+        mail_export._move_file = dying_share
+        moved_out: list = []
+        try:
+            with pytest.raises(Exception):
+                mail_export.save_attachments_to_export(
+                    export_root, "Іваненко", "mono a3", sources, moved_out=moved_out,
+                )
+        finally:
+            mail_export._move_file = real_move
+
+        assert moved_out, (
+            "перелік застряглих файлів порожній — викликач вважатиме, що нічого "
+            "не поїхало, і дві коронки зникнуть тихо"
+        )
+        assert all(dest.exists() for _, dest in moved_out)
+
+
+# ── Ручні кнопки листа не працюють поверх покинутого фетчу ─────────────────
+# Аудит 08.09.26. Гейт `zombie_fetch_running` мав лише фоновий синк. «Скачати
+# файли», «Скачати наново», «Забрати за посиланням» і «Прийняти» працювали з
+# тим самим листом, поки покинутий фетч качав у ту саму теку своєю сесією:
+# подвійні вкладення «(2)», а для приймання — рядки з мертвими шляхами.
+
+
+class TestZombieFetchGate:
+    ROUTES = (
+        "fetch_email_link",
+        "download_email_attachments",
+        "redownload_email_attachments",
+        "accept_email",
+    )
+
+    def test_every_file_touching_route_asks_the_gate(self):
+        """Сторож проти найлегшої регресії — додати п'ятий роут і забути гейт."""
+        import inspect
+
+        from app.routers import mail as mail_router
+
+        for name in self.ROUTES:
+            source = inspect.getsource(getattr(mail_router, name))
+            assert "zombie_fetch_blocks_files()" in source, (
+                f"{name} чіпає файли листа без перевірки покинутого фетчу"
+            )
+
+    def test_gate_is_silent_when_no_zombie_is_running(self):
+        from app.mail_sync_service import _reset_zombies_for_tests, zombie_fetch_blocks_files
+
+        _reset_zombies_for_tests()
+        assert zombie_fetch_blocks_files() is None
+
+    def test_gate_speaks_while_a_zombie_is_alive(self):
+        import threading
+
+        from app import mail_sync_service
+
+        mail_sync_service._reset_zombies_for_tests()
+        stop = threading.Event()
+        zombie = threading.Thread(target=stop.wait, daemon=True)
+        zombie.start()
+        with mail_sync_service._zombie_lock:
+            mail_sync_service._zombie_fetches.append(zombie)
+        try:
+            assert mail_sync_service.zombie_fetch_blocks_files() is not None
+        finally:
+            stop.set()
+            zombie.join(timeout=2)
+            mail_sync_service._reset_zombies_for_tests()
