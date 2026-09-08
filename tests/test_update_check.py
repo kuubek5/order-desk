@@ -526,3 +526,113 @@ def test_agent_workflow_publishes_prerelease():
     assert create_line is not None, "зник крок публікації агента — перевір workflow"
     start = workflow.index(create_line)
     assert "--prerelease" in workflow[start : start + 400]
+
+
+# ── Відкат після невдалого оновлення ───────────────────────────────────────
+# Досі, якщо нова версія не піднімалась, сторож просто виходив: лабораторія
+# лишалась зі зламаним оновленням до приїзду людини з ноутбуком (аудит
+# 08.09.26). Перевірено на робочій машині запуском справжнього скрипта по
+# фальшивому порту й фальшивому процесу — прод не чіпали.
+
+
+def test_watchdog_script_is_written_with_a_bom(tmp_path, monkeypatch):
+    """utf-8-SIG, не просто utf-8. Найдорожча знахідка цієї перевірки.
+
+    Застосунок запускає `powershell`, а це Windows PowerShell 5.1. БЕЗ BOM він
+    читає файл у системному кодуванні (cp1251), а не в UTF-8: кириличні
+    коментарі перетворюються на сміття, яке ламає РОЗБІР скрипта цілком.
+    Сторож не запускається, лог порожній, оновлення висить без сліду.
+
+    Доти скрипт випадково жив, бо був суто латинським. Перша ж українська
+    літера в коментарі його вбила — спіймано запуском на робочій машині ще до
+    того, як це потрапило в цех.
+    """
+    monkeypatch.setattr(update_check, "is_frozen", lambda: True)
+    monkeypatch.setattr(update_check, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(update_check.subprocess, "Popen", lambda *a, **k: None)
+
+    update_check.launch_silent_install(tmp_path / "KuubMill-Setup-9.9.9.exe")
+
+    written = (tmp_path / "update-watchdog.ps1").read_bytes()
+    assert written[:3] == b"\xef\xbb\xbf", (
+        "скрипт сторожа без BOM — Windows PowerShell 5.1 прочитає кирилицю як "
+        "cp1251 і не зможе його розібрати"
+    )
+
+
+def test_watchdog_script_parses_under_windows_powershell():
+    """Скрипт мусить розбиратись саме тим інтерпретатором, який його запускає.
+
+    `pwsh` 7 читає UTF-8 за замовчуванням і помилки не бачить — тому перевіряти
+    треба `powershell.exe` (5.1), інакше тест дає хибний спокій.
+    """
+    import shutil as _shutil
+    import subprocess
+    import tempfile
+
+    if _shutil.which("powershell") is None:
+        pytest.skip("Windows PowerShell недоступний")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        script = Path(tmp) / "watchdog.ps1"
+        script.write_text(update_check._WATCHDOG_SCRIPT, encoding="utf-8-sig")
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             f"$e=$null; $t=$null; "
+             f"[void][System.Management.Automation.Language.Parser]::ParseFile("
+             f"'{script}', [ref]$t, [ref]$e); "
+             f"if ($e) {{ $e[0].Message; exit 1 }} else {{ exit 0 }}"],
+            capture_output=True, text=True, timeout=60,
+        )
+    assert result.returncode == 0, f"скрипт не розбирається: {result.stdout}{result.stderr}"
+
+
+def test_rollback_installer_is_found_for_the_current_version(tmp_path):
+    """Відкочуватись треба на версію, яка ЗАРАЗ стоїть — отже потрібен саме її
+    інсталятор. Тека `updates` не чиститься, тож він там лежить."""
+    (tmp_path / "KuubMill-Setup-0.11.6.exe").write_bytes(b"x")
+    (tmp_path / "KuubMill-Setup-0.11.5.exe").write_bytes(b"x")
+
+    found = update_check.find_rollback_installer("0.11.6", updates_dir=tmp_path)
+    assert found is not None and found.name == "KuubMill-Setup-0.11.6.exe"
+
+
+def test_no_rollback_installer_is_not_an_error(tmp_path):
+    """Версію, поставлену РУКАМИ, відкотити нічим — інсталятор у теку не
+    потрапляв. Це нормальний стан, а не збій: сторож просто голосно запише."""
+    assert update_check.find_rollback_installer("0.11.8", updates_dir=tmp_path) is None
+
+
+def test_the_newest_snapshot_wins(tmp_path):
+    from app.pre_update_backup import pre_update_dir
+
+    db = tmp_path / "kuubmill.db"
+    folder = pre_update_dir(db)
+    folder.mkdir(parents=True, exist_ok=True)
+    for stamp in ("20260907-100000", "20260907-213104", "20260906-090000"):
+        (folder / f"kuubmill-pre-0.11.6-{stamp}.db").write_bytes(b"x")
+
+    found = update_check.find_pre_update_snapshot("0.11.6", db)
+    assert found is not None and "213104" in found.name
+
+
+def test_watchdog_receives_the_rollback_material(tmp_path, monkeypatch):
+    """Чим відкочуватись, рахує ЗАСТОСУНОК, поки живий: після встановлення
+    сторож уже не має способу дізнатись, яка версія була до нього."""
+    captured = {}
+
+    monkeypatch.setattr(update_check, "is_frozen", lambda: True)
+    monkeypatch.setattr(update_check, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(update_check, "find_rollback_installer", lambda v: Path("C:/old.exe"))
+    monkeypatch.setattr(update_check, "find_pre_update_snapshot", lambda v, db: Path("C:/snap.db"))
+    monkeypatch.setattr(
+        update_check.subprocess, "Popen",
+        lambda args, **k: captured.setdefault("args", args),
+    )
+
+    update_check.launch_silent_install(tmp_path / "KuubMill-Setup-9.9.9.exe")
+
+    args = captured["args"]
+    joined = " ".join(str(a) for a in args)
+    assert "old.exe" in joined, "інсталятор для відкату не переданий сторожу"
+    assert "snap.db" in joined, "знімок бази не переданий сторожу"

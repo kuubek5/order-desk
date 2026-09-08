@@ -27,6 +27,12 @@ from threading import Event, Lock
 import requests
 
 from app.__version__ import VERSION
+from app.config import DB_PATH
+from app.pre_update_backup import (
+    SNAPSHOT_PREFIX as PRE_UPDATE_PREFIX,
+    _safe_version,
+    pre_update_dir,
+)
 from app.runtime import data_dir, is_frozen
 
 logger = logging.getLogger(__name__)
@@ -422,12 +428,27 @@ def _strip_mark_of_the_web(path: Path) -> None:
 
 
 _WATCHDOG_SCRIPT = r"""
-$logDir = Join-Path $env:LOCALAPPDATA 'KuubMill\logs'
+# Тека логів — теж параметром (останній аргумент), з тим самим бойовим
+# значенням за замовчуванням. Причина та сама, що в $healthUrl: перевірка
+# відкату на робочій машині інакше дописує свої рядки в БОЙОВИЙ лог сторожа й
+# змішує тест із діагностикою справжніх оновлень (08.09.26).
+$logDir = if ($args[7]) { $args[7] } else { Join-Path $env:LOCALAPPDATA 'KuubMill\logs' }
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir 'update-watchdog.log'
 function W($m) { "$(Get-Date -Format o) $m" | Out-File -FilePath $log -Append -Encoding utf8 }
 $exe = $args[0]
 $installer = $args[1]
+# Чим відкочуватись, якщо нова версія не піде. Порожні рядки = нічим (перша
+# установка або теку `updates` почистили) — тоді сторож просто голосно запише.
+$rollbackInstaller = $args[2]
+$snapshot = $args[3]
+$dbPath = $args[4]
+# Куди стукати й що зупиняти. Параметрами, а не константами, СВІДОМО: інакше
+# перевірити відкат неможливо — тест на робочій машині зупиняв би живий
+# застосунок і стукав у його ж порт. З параметрами тест ганяє той самий скрипт
+# по фальшивому порту й фальшивому імені процесу, не торкаючись нічого.
+$healthUrl = if ($args[5]) { $args[5] } else { 'http://127.0.0.1:8000/health' }
+$procName  = if ($args[6]) { $args[6] } else { 'KuubMill' }
 $installerStem = [System.IO.Path]::GetFileNameWithoutExtension($installer)
 $installerLog = Join-Path $logDir 'update-installer.log'
 W "watchdog start; exe=$exe installer=$installer"
@@ -460,17 +481,107 @@ while ((Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessNam
 }
 W "installer finished; relaunching with health retries"
 Start-Sleep -Seconds 2
+$healthy = $false
 for ($i = 0; $i -lt 20; $i++) {
-    if (-not (Get-Process -Name KuubMill -ErrorAction SilentlyContinue)) {
+    if (-not (Get-Process -Name $procName -ErrorAction SilentlyContinue)) {
         W "launch attempt $i"
         Start-Process -FilePath $exe -ArgumentList '--open-browser'
     }
     Start-Sleep -Seconds 4
-    $c = (& curl.exe -s -o NUL -w '%{http_code}' --max-time 3 --noproxy '*' http://127.0.0.1:8000/health 2>$null)
-    if ($c -eq '200') { W 'health 200, done'; break }
+    $c = (& curl.exe -s -o NUL -w '%{http_code}' --max-time 3 --noproxy '*' $healthUrl 2>$null)
+    if ($c -eq '200') { W 'health 200, done'; $healthy = $true; break }
+    if ($c -eq '503') { W "health 503 (degraded) attempt $i" }
+}
+
+# ── ВІДКАТ ────────────────────────────────────────────────────────────────
+# Досі, якщо застосунок не піднявся, сторож просто виходив: лабораторія
+# лишалась зі зламаним оновленням до приїзду людини з ноутбуком. Тепер він
+# повертає попередню версію сам (аудит 08.09.26).
+#
+# «Не піднявся» — це і мовчання, і 503: /health тепер перевіряє базу й фонові
+# процеси, тож 503 означає «стартувало, але не працює». Для цеху обидва
+# випадки однаково погані.
+#
+# Відкат робиться ЛИШЕ коли є чим: інсталятор попередньої версії й знімок бази
+# перед оновленням. Немає — краще лишити як є й голосно записати, ніж
+# зіпсувати ще й те, що лишилось.
+if (-not $healthy) {
+    W "FAILED: застосунок не відповів 200 за 20 спроб — відкочуюсь"
+    if ($rollbackInstaller -and (Test-Path $rollbackInstaller)) {
+        Stop-Process -Name $procName -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
+
+        # База ПЕРШОЮ: інсталятор може стартувати застосунок сам, і той не має
+        # побачити базу, вже змінену міграціями нової версії.
+        if ($snapshot -and (Test-Path $snapshot) -and $dbPath) {
+            $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+            # Зламану базу НЕ видаляємо, а відсовуємо: якщо відкат сам піде не
+            # так, це єдиний слід того, що сталося.
+            foreach ($suffix in @('', '-wal', '-shm')) {
+                $live = "$dbPath$suffix"
+                if (Test-Path $live) { Move-Item $live "$live.failed-$stamp" -Force -ErrorAction SilentlyContinue }
+            }
+            Copy-Item $snapshot $dbPath -Force
+            W "база відкочена зі знімка $snapshot (зламану збережено як *.failed-$stamp)"
+        } else {
+            W "знімка бази немає — відкочую лише застосунок"
+        }
+
+        W "запускаю відкатний інсталятор $rollbackInstaller"
+        $rollbackLog = Join-Path $logDir 'update-rollback.log'
+        Start-Process -FilePath $rollbackInstaller -NoNewWindow -Wait `
+            -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$rollbackLog"
+        Start-Sleep -Seconds 3
+        Start-Process -FilePath $exe -ArgumentList '--open-browser'
+
+        $back = $false
+        for ($j = 0; $j -lt 15; $j++) {
+            Start-Sleep -Seconds 4
+            $c = (& curl.exe -s -o NUL -w '%{http_code}' --max-time 3 --noproxy '*' $healthUrl 2>$null)
+            if ($c -eq '200') { W 'ВІДКАТ УСПІШНИЙ: стара версія працює'; $back = $true; break }
+        }
+        if (-not $back) { W 'ВІДКАТ НЕ ДОПОМІГ — потрібна людина' }
+    } else {
+        W "відкочувати нічим: інсталятора попередньої версії немає ($rollbackInstaller)"
+    }
 }
 W 'watchdog end'
 """
+
+
+def find_rollback_installer(version: str, updates_dir: Path | None = None) -> Path | None:
+    """Інсталятор ПОТОЧНОЇ версії — те, чим відкочуватись, якщо нова не піде.
+
+    Тека `updates` не чиститься, тож інсталятори всіх версій, які колись
+    ставили на цю машину, там лежать. Це не задум, а побічний ефект — але саме
+    він робить відкат можливим взагалі, тож чистити її тепер треба обережно
+    (лишати хоча б поточну версію).
+
+    None означає «відкочувати нічим»: перша установка, або теку почистили.
+    Тоді сторож відкотить лише базу — це теж рятує від найчастішого випадку
+    (міграція зіпсувала дані), просто не від «новий застосунок не стартує».
+    """
+    folder = updates_dir or _updates_dir()
+    candidate = folder / f"KuubMill-Setup-{version}.exe"
+    return candidate if candidate.is_file() else None
+
+
+def find_pre_update_snapshot(version: str, db_path: str | Path) -> Path | None:
+    """Найсвіжіший знімок бази, знятий перед оновленням на `version`.
+
+    Потрібен окремо від інсталятора: навіть коли старий застосунок повернеться
+    на місце, база вже пройшла міграції нової версії, і стара схема їй чужа.
+    Відкат без бази лишив би застосунок, який не стартує з іншої причини.
+    """
+    folder = pre_update_dir(db_path)
+    try:
+        matches = sorted(
+            folder.glob(f"{PRE_UPDATE_PREFIX}{_safe_version(version)}-*.db"),
+            key=lambda p: p.name,
+        )
+    except OSError:
+        return None
+    return matches[-1] if matches else None
 
 
 def launch_silent_install(installer_path: Path) -> None:
@@ -531,7 +642,17 @@ def launch_silent_install(installer_path: Path) -> None:
     )
 
     watchdog_path = data_dir() / "update-watchdog.ps1"
-    watchdog_path.write_text(_WATCHDOG_SCRIPT, encoding="utf-8")
+    # utf-8-SIG, тобто з BOM. Не косметика: застосунок запускає `powershell`,
+    # а це Windows PowerShell 5.1, і БЕЗ BOM він читає файл у системному
+    # кодуванні (cp1251), а не в UTF-8. Кириличні коментарі перетворюються на
+    # сміття, яке ламає РОЗБІР скрипта цілком — сторож не запускається, лог
+    # порожній, оновлення висить без жодного сліду.
+    #
+    # Доти скрипт випадково жив: він був суто латинським. Перша ж українська
+    # літера в коментарі його вбила — знайдено запуском на робочій машині
+    # 08.09.26, до того як це потрапило в цех. Сторож — `test_watchdog_script_
+    # parses_under_windows_powershell`.
+    watchdog_path.write_text(_WATCHDOG_SCRIPT, encoding="utf-8-sig")
     subprocess.Popen(
         [
             "powershell",
@@ -544,6 +665,13 @@ def launch_silent_install(installer_path: Path) -> None:
             str(watchdog_path),
             str(exe_path),
             str(installer_path),
+            # Чим відкочуватись. Рахуємо ТУТ, поки застосунок ще живий і знає
+            # свою версію: сторож після встановлення вже не має способу
+            # дізнатись, яка версія була до нього. Порожній рядок = нічим, і
+            # сторож це коректно переживе.
+            str(find_rollback_installer(VERSION) or ""),
+            str(find_pre_update_snapshot(VERSION, DB_PATH) or ""),
+            str(DB_PATH),
         ],
         creationflags=spawn_flags,
         close_fds=True,
