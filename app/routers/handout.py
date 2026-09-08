@@ -48,6 +48,8 @@ from app.services.handout import (
     ISSUE_GROUP_ISSUED,
     ISSUE_GROUP_NOTHING_FOUND,
     MARK_GROUP_DONE,
+    NAMELESS_CLIENT_KEY,
+    handout_group_key,
     handout_day_totals,
     HANDOUT_ALL_DAYS,
     entries_for_material,
@@ -117,7 +119,7 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
 
     groups: dict[str, list[Order]] = {}
     for order in eligible:
-        groups.setdefault(order.client_name, []).append(order)
+        groups.setdefault(handout_group_key(order), []).append(order)
 
     # ХТО видав — для галочки «видано в CRM». Один запит на всі роботи екрана
     # (не по одному на рядок: на видачі їх десятки). Для «видано за таблицею»
@@ -168,6 +170,8 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     def _client_id_for(name: str) -> int | None:
         """Exact fold first, then the same fuzzy matcher — the sheet spells one
         lab several ways and they must all reach the one card."""
+        if name == NAMELESS_CLIENT_KEY:
+            return None      # картки клієнта в групи без імені немає
         folded = (name or "").strip().casefold()
         if folded in clients_by_name:
             return clients_by_name[folded]
@@ -282,6 +286,12 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             {
                 "issued_by": issued_by,
                 "client_name": client_name,
+                # ПІДПИС окремо від КЛЮЧА: ключ їде у форми й повертається в
+                # дії, а на екрані має стояти людське слово. Робота без імені
+                # так і підписана — це підказка дописати клієнта в таблицю.
+                "client_label": (
+                    "Без імені" if client_name == NAMELESS_CLIENT_KEY else client_name
+                ),
                 "orders": group_orders,
                 "match": match,
                 "export_entries": export_entries,
@@ -333,6 +343,7 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             flat_rows.append({
                 "order": order,
                 "client_name": group["client_name"],
+                "client_label": group["client_label"],
                 "issued_by": group["issued_by"],
             })
     flat_rows.sort(key=lambda row: sheet_order_key(row["order"]))

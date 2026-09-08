@@ -1346,3 +1346,50 @@ def test_handout_tells_the_sync_which_day_is_open(monkeypatch):
     # Порожній `day` = «останній день»: саме його синк і має тримати гарячим.
     assert seen, "видача не повідомила синку, який день відкритий"
     assert seen[-1] is not None
+
+
+def test_a_nameless_work_gets_its_own_group_labelled_for_the_operator(monkeypatch):
+    """Робота без імені клієнта тепер на видачі (рішення власника 09.09.26).
+
+    Доти вона випадала з екрана зовсім: була в черзі й у виробітку, а там, де
+    коронку фізично шукають у лотку, її не було. Ім'я не вигадуємо — група
+    підписана «Без імені», і це підказка дописати клієнта в таблицю.
+    """
+    from app.services.handout import NAMELESS_CLIENT_KEY
+
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(_client_order(client_name="Basarab", status="нове", row_number=61))
+        db.add(_client_order(client_name=None, status="нове", row_number=62))
+        db.commit()
+
+        ctx = _get_handout_context(monkeypatch, db, user.id)
+
+    by_key = {g["client_name"]: g for g in ctx["client_groups"]}
+    assert NAMELESS_CLIENT_KEY in by_key, "робота без імені мусить бути на екрані"
+    nameless = by_key[NAMELESS_CLIENT_KEY]
+    # На екрані — людське слово, у формі — ключ (див. _handout_cards.html).
+    assert nameless["client_label"] == "Без імені"
+    assert by_key["Basarab"]["client_label"] == "Basarab"
+    assert [o.row_number for o in nameless["orders"]] == [62]
+    # Картки клієнта в неї немає — прив'язувати теку нема до чого.
+    assert nameless["client_id"] is None
+    assert nameless["match"].matched_folder_name is None
+
+
+def test_the_nameless_group_keeps_the_sheet_order_of_the_day(monkeypatch):
+    """Правило видачі №1: порядок списку — порядок таблиці. Нова група не має
+    стрибати в початок чи кінець, вона стоїть там, де її рядок."""
+    engine = _database()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(_client_order(client_name="Aaa", status="нове", row_number=10))
+        db.add(_client_order(client_name=None, status="нове", row_number=20))
+        db.add(_client_order(client_name="Zzz", status="нове", row_number=30))
+        db.commit()
+
+        ctx = _get_handout_context(monkeypatch, db, user.id)
+
+    labels = [g["client_label"] for g in ctx["client_groups"]]
+    assert labels == ["Aaa", "Без імені", "Zzz"]

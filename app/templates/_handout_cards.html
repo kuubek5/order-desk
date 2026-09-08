@@ -25,9 +25,9 @@
             <a class="dni{% if g.all_found %} done{% elif g.is_current %} cur{% endif %}"
                href="#handout-client-{{ g.position }}"
                {% if g.is_current %}aria-current="true"{% endif %}
-               title="{{ g.client_name }} — {{ nfound }} з {{ ntotal }} знайдено">
+               title="{{ g.client_label }} — {{ nfound }} з {{ ntotal }} знайдено">
                 <span class="dni-n mono">{{ g.position }}</span>
-                <span class="dni-name">{{ g.client_name }}</span>
+                <span class="dni-name">{{ g.client_label }}</span>
                 <span class="dni-count mono">{{ nfound }}/{{ ntotal }}</span>
                 <span class="dni-bar" aria-hidden="true"><i style="width:{{ (nfound / ntotal * 100)|round(0) if ntotal else 0 }}%"></i></span>
             </a>
@@ -51,7 +51,7 @@
         <div class="flatrow">
             {# Клієнт підписаний при кожній роботі: без картки навколо це
                єдине, що каже, чия це коронка. #}
-            <span class="flatclient" title="{{ row.client_name }}">{{ row.client_name }}</span>
+            <span class="flatclient" title="{{ row.client_label }}">{{ row.client_label }}</span>
             {% include "_handout_work_row.html" %}
         </div>
         {% endfor %}
@@ -81,7 +81,7 @@
                 </button>
                 <h2>
                     {% if group.all_found %}<span class="doneicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span>{% endif %}
-                    {{ group.client_name }}
+                    {{ group.client_label }}
                     {# Знак питання, а не галочка: таблиця каже «видано», але в
                        історії CRM ніхто цього не робив. Найчастіша причина —
                        видалили рядок вище, і заливка з'їхала. #}

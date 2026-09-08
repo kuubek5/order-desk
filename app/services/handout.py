@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.business_day import business_today
@@ -72,6 +72,35 @@ def entries_for_material(material_color: str | None, entries: list, work_day=Non
     return [e for e in matched if e.created_at.date() == chosen]
 
 
+# Ключ групи для робіт БЕЗ імені клієнта.
+#
+# Навіщо сигнальний рядок, а не порожній/None. Група на цьому екрані
+# ідентифікується саме іменем: воно їде у форму, повертається в
+# `mark_group_found`/`issue_group` і там перескладає групу запитом. `NULL` у
+# SQL не дорівнює нічому, включно з собою, тож `client_name == None` не знайшов
+# би жодного рядка — кнопки мовчки нічого не робили б. Тому ключ явний, а
+# запити його перекладають назад у `IS NULL` (див. `_group_criterion`).
+#
+# Самі роботи без імені сюди потрапили свідомо (рішення власника 09.09.26):
+# доти вони випадали з видачі зовсім — були в черзі й у виробітку, а на екрані,
+# де їх фізично шукають у лотку, не показувались. Ім'я їм не вигадуємо: група
+# так і зветься «Без імені», і це підказка оператору дописати клієнта в
+# таблицю, а не привід сховати роботу.
+NAMELESS_CLIENT_KEY = "__без-імені__"
+
+
+def handout_group_key(order: Order) -> str:
+    """Під яким ключем робота лягає в групу видачі."""
+    return (order.client_name or "").strip() or NAMELESS_CLIENT_KEY
+
+
+def _group_criterion(client_name: str):
+    """Умова «роботи цієї групи» — з перекладом сигнального ключа в IS NULL."""
+    if client_name == NAMELESS_CLIENT_KEY:
+        return or_(Order.client_name.is_(None), Order.client_name == "")
+    return Order.client_name == client_name
+
+
 def handout_eligible_orders(db: Session, today: date) -> list[Order]:
     """Невидані клієнтські роботи — те, що показує видача.
 
@@ -89,7 +118,11 @@ def handout_eligible_orders(db: Session, today: date) -> list[Order]:
         select(Order)
         .options(selectinload(Order.material))
         .where(
-            Order.client_name.is_not(None),
+            # Клієнтські роботи — і ті, у яких оператор ще не вписав ім'я:
+            # доти вони випадали з видачі зовсім (рішення власника 09.09.26).
+            # Лабораторні (`source == "lab"`) сюди не входять і не входили:
+            # їх не видають клієнтам, вони йдуть назад у лабораторію.
+            or_(Order.client_name.is_not(None), Order.source == "sheet_client"),
             # «видано» БІЛЬШЕ НЕ ЗНИМАЄ клієнта зі списку (рішення власника
             # 05.09.26). Раніше тут стояло `Order.status != "видано"`, і через
             # це збій 01.09.26 лишався невидимим: заливка з'їхала разом із
@@ -201,7 +234,17 @@ def handout_client_matches(db: Session, client_names, folder_names: list[str]) -
         a.sheet_name: a.export_folder_name
         for a in db.scalars(select(ClientNameAlias).where(ClientNameAlias.confirmed.is_(True))).all()
     }
-    return {name: match_client_name(name, folder_names, aliases) for name in client_names}
+    # Групі без імені зіставляти нема чого: теку в `export` шукають ЗА ІМЕНЕМ
+    # клієнта. Порожній результат чесніший за здогад — інакше нечіткий
+    # матчер підібрав би їй першу-ліпшу схожу теку.
+    return {
+        name: (
+            match_client_name("", [], {})
+            if name == NAMELESS_CLIENT_KEY
+            else match_client_name(name, folder_names, aliases)
+        )
+        for name in client_names
+    }
 
 
 def matched_folders(matches: dict) -> dict[str, str]:
@@ -329,7 +372,7 @@ def mark_group_found(db: Session, user, client_name: str, day: str) -> MarkGroup
     """
     today = business_today()
     candidates = db.scalars(
-        select(Order).where(Order.client_name == client_name, Order.status != STATUS_ISSUED)
+        select(Order).where(_group_criterion(client_name), Order.status != STATUS_ISSUED)
     ).all()
     group_orders = [
         o for o in candidates
@@ -378,7 +421,7 @@ def issue_group(db: Session, user, client_name: str, day: str) -> IssueGroupResu
     """
     today = business_today()
     candidates = db.scalars(
-        select(Order).where(Order.client_name == client_name, Order.status != "видано")
+        select(Order).where(_group_criterion(client_name), Order.status != "видано")
     ).all()
     group_orders = [
         o for o in candidates

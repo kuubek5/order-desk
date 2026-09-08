@@ -292,3 +292,85 @@ class TestBatchedFillWrite:
         writeback_service.submit_sheet_write(lambda: None).result(timeout=10)
 
         assert opens == []
+
+
+# ── Роботи БЕЗ імені клієнта на видачі ─────────────────────────────────────
+# Рішення власника 09.09.26. Доти вони випадали з видачі зовсім: були в черзі
+# й у виробітку, а на екрані, де коронку фізично шукають у лотку, не
+# показувались. Ім'я їм не вигадуємо — група так і зветься «Без імені».
+
+
+class TestNamelessGroup:
+    def test_a_nameless_work_is_eligible_for_handout(self):
+        from app.services.handout import handout_eligible_orders
+
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            db.add_all([
+                _order(client_name="Basarab", row_number=60),
+                _order(client_name=None, row_number=61),
+                # Лабораторна робота на видачу не йде — і не йшла.
+                Order(source="lab", sheet_tab=YESTERDAY, row_number=62,
+                      work_order_no="29267", quantity="2", status="відфрезеровано"),
+            ])
+            db.commit()
+
+            eligible = handout_eligible_orders(db, business_today())
+
+        assert sorted(o.row_number for o in eligible) == [60, 61]
+
+    def test_the_group_key_separates_nameless_from_named(self):
+        from app.services.handout import NAMELESS_CLIENT_KEY, handout_group_key
+
+        assert handout_group_key(_order(client_name="Basarab")) == "Basarab"
+        assert handout_group_key(_order(client_name=None)) == NAMELESS_CLIENT_KEY
+        # Порожній рядок — те саме, що відсутнє ім'я: у таблиці це одна й та
+        # сама порожня клітинка.
+        assert handout_group_key(_order(client_name="   ")) == NAMELESS_CLIENT_KEY
+
+    def test_marking_the_nameless_group_touches_only_nameless_works(self):
+        """Ключ групи — сигнальний рядок, а в базі там NULL. Якби запит шукав
+        `client_name == '__без-імені__'`, кнопка мовчки не робила б нічого;
+        якби шукав усе підряд — позначила б чужих клієнтів."""
+        from app.services.handout import NAMELESS_CLIENT_KEY
+
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            db.add_all([
+                _order(client_name=None, row_number=60),
+                _order(client_name=None, row_number=61),
+                _order(client_name="Basarab", row_number=62),
+            ])
+            db.commit()
+
+            result = mark_group_found(
+                db, user, client_name=NAMELESS_CLIENT_KEY, day=YESTERDAY
+            )
+
+            assert result.outcome == MARK_GROUP_DONE
+            assert result.count == 2
+            by_row = {o.row_number: o.status for o in db.scalars(select(Order))}
+            assert by_row[60] == "знайдено при видачі"
+            assert by_row[61] == "знайдено при видачі"
+            assert by_row[62] == "відфрезеровано", "чужий клієнт не зачеплений"
+
+    def test_the_nameless_group_of_another_day_is_not_touched(self):
+        """День звужує групу так само, як у іменованих: інакше одна кнопка
+        закрила б безіменні роботи за весь тиждень."""
+        from app.services.handout import NAMELESS_CLIENT_KEY
+
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            db.add_all([
+                _order(client_name=None, row_number=60, sheet_tab=YESTERDAY),
+                _order(client_name=None, row_number=61, sheet_tab=BEFORE),
+            ])
+            db.commit()
+
+            mark_group_found(db, user, client_name=NAMELESS_CLIENT_KEY, day=YESTERDAY)
+
+            by_row = {o.row_number: o.status for o in db.scalars(select(Order))}
+            assert by_row[60] == "знайдено при видачі"
+            assert by_row[61] == "відфрезеровано"
