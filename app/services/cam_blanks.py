@@ -614,6 +614,11 @@ def order_history(db: Session, *, limit: int = 12) -> list[PastOrder]:
     )
     history: list[PastOrder] = []
     for index, stamp in enumerate(stamps):
+        # Умова у вибірці вище вже відсікає NULL, але типізатор про це не знає:
+        # колонка оголошена нульовою. Пропуск замість `assert` — щоб дивний
+        # рядок у базі не валив увесь екран налаштувань.
+        if stamp is None:  # pragma: no cover — відсічено запитом вище
+            continue
         rows = list(
             db.scalars(
                 select(CamBlank)
