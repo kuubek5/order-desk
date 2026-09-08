@@ -581,8 +581,16 @@ body:has(.detail-pane.open) .toast-stack[data-toast-pos="tr"]{right:420px}
 .toast-style-aurora .toast-success{--toast-k:var(--accent-c)}
 .toast-style-aurora .toast-warning{--toast-k:var(--warn)}
 .toast-style-aurora .toast-error,.toast-style-aurora .toast-crit{--toast-k:var(--alarm)}
-.toast-style-aurora .toast-in{animation:toastAuroraIn .5s cubic-bezier(.34,1.3,.64,1) both}
-.toast-style-aurora .toast-out{animation:toastAuroraOut .26s ease-in forwards}
+/* `.toast-stack` у селекторі не для краси: анімації входу/виходу вище
+   прив'язані до ПОЗИЦІЇ (`.toast-stack[data-toast-pos="tc"] .toast-in`), а це
+   специфічність 0,3,0 проти 0,2,0 у самої «Аврори». Порядок у файлі тут не
+   рятує — позиція вигравала завжди, і вибрана «Аврора» показувала картку зі
+   звичайним висуванням замість власного появлення (знайдено 09.09.26: у
+   браузері на картці стояла анімація `toastInT`, а не `toastAuroraIn`).
+   Додатковий клас зрівнює специфічність, і тоді вирішує порядок — а він тут
+   уже правильний. */
+.toast-stack.toast-style-aurora .toast-in{animation:toastAuroraIn .5s cubic-bezier(.34,1.3,.64,1) both}
+.toast-stack.toast-style-aurora .toast-out{animation:toastAuroraOut .26s ease-in forwards}
 @keyframes toastAuroraIn{from{opacity:0;transform:scale(.9) translateY(10px);filter:blur(8px)}
   to{opacity:1;transform:none;filter:blur(0)}}
 @keyframes toastAuroraOut{to{opacity:0;transform:scale(.95) translateY(6px);filter:blur(5px)}}
