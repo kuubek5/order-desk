@@ -445,6 +445,7 @@ def test_sync_hot_tab_returns_none_when_todays_tab_missing(monkeypatch):
     configured(monkeypatch)
     reset_sheets_cache()
     spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = []  # запасний пошук за назвою нічого не знайде
     spreadsheet.worksheet.side_effect = gspread.WorksheetNotFound("no tab")
     monkeypatch.setattr(
         "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
@@ -468,6 +469,7 @@ def test_sync_hot_tab_picks_up_edit_and_deletion(monkeypatch):
         ["2", "801", "1", "пмма A3", "коронка", "x"],
     ]
     spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = []  # запасний пошук за назвою нічого не знайде
 
     def only_today(name):
         if name == two_rows.title:
@@ -517,6 +519,7 @@ def test_sync_hot_tab_includes_extra_viewed_days(monkeypatch):
     old_ws = worksheet(old_day, "900")
     by_name = {old_ws.title: old_ws}
     spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = []  # запасний пошук за назвою нічого не знайде
 
     def by_title(name):
         if name in by_name:
@@ -969,3 +972,104 @@ def test_confirmed_tab_is_archived_without_waiting(monkeypatch):
             session, trigger="manual", force_reconcile_tabs={gone_tab}
         )
         assert result.deleted == 2
+
+
+# --- 08.09.26, справжня причина: вкладка « 08.09.26» з пробілом на початку ---
+
+
+def test_tab_named_with_a_leading_space_is_still_todays_tab(monkeypatch):
+    """Бойовий випадок 08.09.26: вкладку в Google Таблиці назвали « 08.09.26».
+    Шаблон `дд.мм.рр` її не впізнавав, синк вважав вкладку недатованою й НЕ
+    читав; черга стояла «Сьогодні 0», Архів порожній, журнал мовчав. Тепер
+    назва нормалізується, роботи лягають під канонічний sheet_tab, а в журналі
+    лишається слід про дивну назву."""
+    configured(monkeypatch)
+    today = business_today()
+    odd = worksheet(today, "200")
+    odd.title = " " + today.strftime("%d.%m.%y")
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [odd]
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
+
+    with make_session() as session:
+        result = sync_google_sheets(session)
+
+        assert result.created == 1
+        order = session.scalar(select(Order).where(Order.work_order_no == "200"))
+        assert order is not None
+        assert order.sheet_tab == today.strftime("%d.%m.%y")
+        logs = [log.message or "" for log in session.scalars(select(SyncLog)).all()]
+        assert any("зайві пробіли" in message for message in logs)
+        # Сьогоднішня вкладка знайдена — запису «немає серед датованих» бути не має.
+        assert not any("немає серед датованих" in message for message in logs)
+
+        # Другий прохід не дублює ні роботу, ні попередження.
+        second = sync_google_sheets(session)
+        assert second.created == 0
+        odd_notes = [
+            log for log in session.scalars(select(SyncLog)).all()
+            if "зайві пробіли" in (log.message or "")
+        ]
+        assert len(odd_notes) == 1
+
+
+def test_missing_todays_tab_is_reported_once_per_listing(monkeypatch):
+    """Синк, який мовчки не бачить сьогоднішню вкладку, — це те, що 08.09.26
+    коштувало вечора діагностики. Тепер відсутність сьогоднішньої вкладки серед
+    датованих лишає запис із самим листингом (через %r видно невидимі символи),
+    але один на листинг, не щохвилини."""
+    configured(monkeypatch)
+    today = business_today()
+    yesterday = worksheet(today - timedelta(days=1), "201")
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [yesterday, Mock(title="Легенда")]
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
+
+    with make_session() as session:
+        sync_google_sheets(session)
+        sync_google_sheets(session)
+        notes = [
+            log for log in session.scalars(select(SyncLog)).all()
+            if "немає серед датованих" in (log.message or "")
+        ]
+        assert len(notes) == 1
+        assert notes[0].sheet_tab == today.strftime("%d.%m.%y")
+        assert "'Легенда'" in (notes[0].message or "")
+
+        # Листинг змінився (вкладку створили, але з пробілом) — нова відповідь,
+        # новий запис із новим листингом... а точніше, вкладку тепер ВПІЗНАНО,
+        # тож запису «немає» більше не буде.
+        odd = worksheet(today, "202")
+        odd.title = today.strftime("%d.%m.%y") + " "
+        spreadsheet.worksheets.return_value = [yesterday, odd]
+        result = sync_google_sheets(session)
+        assert result.created == 1
+        notes_after = [
+            log for log in session.scalars(select(SyncLog)).all()
+            if "немає серед датованих" in (log.message or "")
+        ]
+        assert len(notes_after) == 1
+
+
+def test_worksheet_lookup_falls_back_to_the_canonical_title():
+    """Запис у таблицю шукає вкладку за канонічною назвою «08.09.26», а в
+    документі вона « 08.09.26». Точний пошук промахується — тоді один листинг
+    і збіг за нормалізованою назвою, інакше Sum3D/галочки не доїхали б."""
+    from app.sheets import get_worksheet_by_name
+
+    reset_sheets_cache()
+    odd = Mock()
+    odd.title = " 08.09.26"
+    spreadsheet = Mock()
+    spreadsheet.worksheet.side_effect = gspread.WorksheetNotFound("08.09.26")
+    spreadsheet.worksheets.return_value = [Mock(title="Легенда"), odd]
+
+    assert get_worksheet_by_name(spreadsheet, "08.09.26") is odd
+    # Кешовано: другий виклик не ходить у Google.
+    spreadsheet.worksheets.reset_mock()
+    assert get_worksheet_by_name(spreadsheet, "08.09.26") is odd
+    spreadsheet.worksheets.assert_not_called()
+
+    reset_sheets_cache()
+    spreadsheet.worksheets.return_value = [Mock(title="Легенда")]
+    assert get_worksheet_by_name(spreadsheet, "08.09.26") is None

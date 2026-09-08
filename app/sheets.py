@@ -533,9 +533,11 @@ def latest_worksheet_on_or_before(
     # виклик не переживав ані 429, ані обрив проксі — і, головне, не
     # потрапляв у лічильник квоти, тобто гальмо гарячої смуги його не
     # бачило (аудит 05.09.26, синк LOW).
+    from app.business_day import canonical_tab_title
+
     for ws in call_with_retry(spreadsheet.worksheets):
         try:
-            tab_date = datetime.strptime(ws.title, "%d.%m.%y").date()
+            tab_date = datetime.strptime(canonical_tab_title(ws.title), "%d.%m.%y").date()
         except ValueError:
             continue
         if tab_date > target:
@@ -563,6 +565,19 @@ def get_worksheet_by_name(spreadsheet: gspread.Spreadsheet, name: str) -> gsprea
         # once (not transient) and it's handled below; only 429/5xx/SSL retry.
         worksheet = call_with_retry(lambda: spreadsheet.worksheet(name))
     except gspread.WorksheetNotFound:
-        return None
+        # Точної назви немає — можливо, вкладку назвали з зайвим пробілом
+        # (« 08.09.26», 08.09.26). Синк читає її як «08.09.26», і запис у
+        # таблицю мусить знайти ту саму вкладку, інакше Sum3D/галочки не
+        # доїдуть. Один додатковий листинг лише на промах, не на кожен виклик.
+        from app.business_day import canonical_tab_title
+
+        wanted = canonical_tab_title(name)
+        worksheet = None
+        for candidate in call_with_retry(spreadsheet.worksheets):
+            if canonical_tab_title(candidate.title) == wanted:
+                worksheet = candidate
+                break
+        if worksheet is None:
+            return None
     cache[name] = worksheet
     return worksheet

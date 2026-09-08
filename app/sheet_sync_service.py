@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import sync_control
-from app.business_day import business_today, utc_now
+from app.business_day import business_today, canonical_tab_title, utc_now
 from app.db import SessionLocal
 from app.models import Order, SyncLog
 from app.parser import header_mismatches, parse_rows
@@ -140,8 +140,13 @@ def absent_tab_streaks() -> dict[str, int]:
 
 
 def _reset_absent_streaks_for_tests() -> None:
+    """Скинути ВЕСЬ процесний стан листингу: лічильники відсутності, попереджені
+    дивні назви, останній листинг без сьогоднішньої вкладки."""
+    global _missing_today_reported
     with _absent_lock:
         _absent_streak.clear()
+    _odd_titles_warned.clear()
+    _missing_today_reported = None
 
 
 def _listing_is_trustworthy(
@@ -391,6 +396,7 @@ def _parse_tab_date(title: str) -> date | None:
     вважати «зниклою вкладкою». Якби він тлумачив дату інакше за решту екранів,
     робота могла б жити на дні, якого черга не показує.
     """
+    title = canonical_tab_title(title)
     if not _DATE_TAB_RE.fullmatch(title):
         return None
     return parse_sheet_tab(title)
@@ -463,19 +469,87 @@ def _worksheets_to_sync(
 
     dated = []
     all_dated_titles: set[str] = set()
+    raw_titles: list[str] = []
     for worksheet in call_with_retry(spreadsheet.worksheets):
+        raw_titles.append(worksheet.title)
         tab_date = _parse_tab_date(worksheet.title)
         if tab_date is None:
             continue
-        all_dated_titles.add(worksheet.title)
+        # Канонічна назва («08.09.26», а не « 08.09.26»): саме вона стає
+        # `Order.sheet_tab` і ключем у всіх порівняннях.
+        title = canonical_tab_title(worksheet.title)
+        if title != worksheet.title:
+            _warn_odd_tab_title(session, worksheet.title, title)
+        all_dated_titles.add(title)
         if (
             full_history
             or (first_day <= tab_date <= last_day)
-            or worksheet.title in include_tabs
+            or title in include_tabs
         ):
-            dated.append((tab_date, worksheet.title, worksheet))
+            dated.append((tab_date, title, worksheet))
     dated.sort(key=lambda item: (item[0], item[1]))
+    _report_missing_today(session, today, all_dated_titles, raw_titles)
     return [item[2] for item in dated], all_dated_titles
+
+
+# Назви вкладок, про які вже попереджено в цьому процесі, і останній листинг
+# без сьогоднішньої вкладки — щоб журнал не повторював одне й те саме щохвилини.
+_odd_titles_warned: set[str] = set()
+_missing_today_reported: tuple[str, ...] | None = None
+
+
+def _warn_odd_tab_title(session: Session, raw: str, canonical: str) -> None:
+    """Вкладка з «майже датою» в назві — один запис у журнал на процес."""
+    if raw in _odd_titles_warned:
+        return
+    _odd_titles_warned.add(raw)
+    logger.warning("Синк: вкладку %r читаю як %s — у назві зайві символи", raw, canonical)
+    session.add(
+        SyncLog(
+            direction="sheet_to_db",
+            sheet_tab=canonical,
+            status="skipped",
+            message=(
+                f"назва вкладки {raw!r} містить зайві пробіли — читаю її як "
+                f"{canonical}; краще перейменувати в таблиці"
+            ),
+        )
+    )
+
+
+def _report_missing_today(
+    session: Session, today: date, dated_titles: set[str], raw_titles: list[str]
+) -> None:
+    """Сьогоднішньої вкладки немає серед датованих — сказати про це ВГОЛОС.
+
+    08.09.26 день стояв «Сьогодні 0» без жодного сліду: синк мовчки не читав
+    вкладку, яку не впізнав. Тепер журнал показує сам листинг (через %r —
+    невидимий символ у назві видно лише так). Один запис на кожен НОВИЙ
+    листинг, не щохвилини: лабораторія законно створює вкладку пізніше.
+    """
+    global _missing_today_reported
+    if not raw_titles or tab_name_for(today) in dated_titles:
+        _missing_today_reported = None
+        return
+    snapshot = tuple(raw_titles)
+    if snapshot == _missing_today_reported:
+        return
+    _missing_today_reported = snapshot
+    logger.warning(
+        "Синк: вкладки за сьогодні (%s) немає серед датованих; листинг: %r",
+        tab_name_for(today), raw_titles,
+    )
+    session.add(
+        SyncLog(
+            direction="sheet_to_db",
+            sheet_tab=tab_name_for(today),
+            status="skipped",
+            message=(
+                f"вкладки за сьогодні ({tab_name_for(today)}) немає серед датованих; "
+                f"у таблиці є: {raw_titles!r}"
+            ),
+        )
+    )
 
 
 def _configuration(session: Session) -> tuple[str, str]:
@@ -624,7 +698,7 @@ def sync_google_sheets(
             raise safe_error from exc
 
         for worksheet in worksheets:
-            current_tab = worksheet.title
+            current_tab = canonical_tab_title(worksheet.title)
             try:
                 raw = call_with_retry(worksheet.get_all_values)
                 # Структура вкладки — ПЕРЕД імпортом. Вставлена колонка зсуває

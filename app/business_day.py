@@ -119,6 +119,22 @@ def utc_to_business(moment: datetime) -> datetime:
     )
 
 
+def canonical_tab_title(title: str | None) -> str:
+    """Назва вкладки таблиці без «сміття» навколо: пробіли, нерозривні
+    пробіли, невидимі символи зі скопійованої назви.
+
+    08.09.26 вкладку в Google Таблиці назвали « 08.09.26» (пробіл на початку).
+    Шаблон `дд.мм.рр` її не впізнав, синк вважав вкладку недатованою й ніколи
+    не читав — робочий день стояв «Сьогодні 0» без жодного запису в журналі.
+    Усе, що порівнює назву вкладки з датою, іде через цю функцію.
+    """
+    text = title or ""
+    # NBSP, вузький NBSP, zero-width space, BOM, word joiner.
+    for junk in ("\u00a0", "\u202f", "\u200b", "\ufeff", "\u2060"):
+        text = text.replace(junk, " ")
+    return " ".join(text.split())
+
+
 def business_to_utc(moment: datetime) -> datetime:
     """Зворотне до `utc_to_business`: межа дня з фільтра журналу → UTC для WHERE."""
     if BUSINESS_TIMEZONE is None:

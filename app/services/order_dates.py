@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 # BUSINESS_TIMEZONE живе в app.business_day (нижчий рівень); тут лише
 # ре-експорт, щоб наявні імпорти `from app.services.order_dates import
 # BUSINESS_TIMEZONE` не ламались.
-from app.business_day import BUSINESS_TIMEZONE, business_date_of
+from app.business_day import BUSINESS_TIMEZONE, business_date_of, canonical_tab_title
 from app.models import Order
 
 
@@ -27,6 +27,9 @@ _TAB_YEARS_AHEAD = 5
 
 
 def parse_sheet_tab(sheet_tab: str | None) -> date | None:
+    # Зайві/невидимі пробіли в назві вкладки — не інша дата (08.09.26:
+    # « 08.09.26» з пробілом на початку лишила день без імпорту).
+    sheet_tab = canonical_tab_title(sheet_tab)
     if not sheet_tab:
         return None
     try:
