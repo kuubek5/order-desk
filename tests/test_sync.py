@@ -2070,3 +2070,128 @@ def test_a_live_order_whose_row_changed_kind_is_still_reset():
         assert order.work_order_no is None
         assert order.technician_name is None
         assert order.client_name == "Басараб"
+
+
+def test_an_archived_nameless_lab_work_is_relinked_when_rows_shift():
+    """Сценарний прогін 09.09.26: рядки над роботою видалили, її позиція
+    зсунулась на один угору. Архівна лабораторна робота без наряду й техніка
+    не мала ключа, тож не перезчіплювалась: синк створював їй ДУБЛЬ на новій
+    позиції, а стара лишалась в архіві — потенційне подвійне фрезерування,
+    щойно її хтось поверне."""
+    from datetime import timedelta
+
+    with make_session() as session:
+        session.add(Order(
+            source="lab", sheet_tab="03.09.26", row_number=8, quantity="6",
+            material_color="pmma a2", sum3d_id="09-26-21", status="відфрезеровано",
+            archived_at=utc_now() - timedelta(days=1),
+            created_at=utc_now() - timedelta(days=5),
+        ))
+        session.commit()
+
+        # Тепер той самий рядок стоїть на позиції 7
+        result = sync_tab(session, "03.09.26", [
+            _client_row("6", "pmma a2", sum3d="09-26-21", row_number=7),
+        ])
+
+        orders = session.scalars(select(Order)).all()
+        assert len(orders) == 1, "дубля на новій позиції бути не має"
+        assert result.created == 0
+        assert orders[0].archived_at is None
+        assert orders[0].row_number == 7
+
+
+def test_an_archived_nameless_work_evicted_from_the_row_map_is_adopted_not_duplicated():
+    """Справжній зсув: рядки над роботою видалили, ВСЕ посунулось угору, і на
+    її старому рядку 8 тепер стоїть жива сусідня робота. Позиційна мапа тримає
+    одну роботу на рядок (найновішу), тож архівна з мапи випадає — і зчіплення
+    за ключем її не бачило: рядок 7 отримував дубль, стара лишалась в архіві
+    (сценарний прогін 09.09.26)."""
+    from datetime import timedelta
+
+    with make_session() as session:
+        session.add(Order(                     # архівна, старий рядок 8
+            source="lab", sheet_tab="03.09.26", row_number=8, quantity="6",
+            material_color="pmma a2", sum3d_id="09-26-21", status="відфрезеровано",
+            archived_at=utc_now() - timedelta(days=1),
+            created_at=utc_now() - timedelta(days=5),
+        ))
+        session.add(Order(                     # жива сусідка, тепер теж на 8
+            source="sheet_client", sheet_tab="03.09.26", row_number=8, quantity="1",
+            material_color="emo a1", client_name="Pavlenko", sum3d_id="10-12-25",
+            status="відфрезеровано", created_at=utc_now() - timedelta(days=5),
+        ))
+        session.commit()
+
+        result = sync_tab(session, "03.09.26", [
+            _client_row("6", "pmma a2", sum3d="09-26-21", row_number=7),
+            _client_row("1", "emo a1", name="Pavlenko", sum3d="10-12-25", row_number=8),
+        ])
+
+        orders = {o.sum3d_id: o for o in session.scalars(select(Order))}
+        assert len(orders) == 2, "дубля бути не має"
+        assert result.created == 0
+        ours = orders["09-26-21"]
+        assert ours.archived_at is None, "повернулась з архіву"
+        assert ours.row_number == 7, "перезчеплена на новий рядок"
+        assert orders["10-12-25"].archived_at is None
+
+
+def test_a_work_that_had_a_name_when_archived_returns_to_a_now_nameless_row():
+    """Найімовірніший шлях у життя цієї вади (рев'ю 09.09.26): у рядка БУЛО
+    ім'я — техніка чи клієнта, — його стерли, стара версія перестала розбирати
+    рядок, реконсиляція забрала роботу в архів. Робота досі несе старе ім'я, а
+    рядок порожній. Вимагати порожнього імені з обох боків означало не
+    повертати рівно такі."""
+    from datetime import timedelta
+
+    for stale in ({"technician_name": "Вася", "source": "lab"},
+                  {"client_name": "Басараб", "source": "sheet_client"}):
+        with make_session() as session:
+            session.add(Order(
+                sheet_tab="03.09.26", row_number=1, quantity="6",
+                material_color="pmma a2", sum3d_id="09-26-21", status="відфрезеровано",
+                archived_at=utc_now() - timedelta(days=1),
+                created_at=utc_now() - timedelta(days=5), **stale,
+            ))
+            session.commit()
+
+            result = sync_tab(session, "03.09.26", [
+                _client_row("6", "pmma a2", sum3d="09-26-21", row_number=1),
+            ])
+
+            orders = session.scalars(select(Order)).all()
+            assert len(orders) == 1, f"{stale}: дубля бути не має"
+            assert result.created == 0
+            assert orders[0].archived_at is None, f"{stale}: лишилась в архіві"
+
+
+def test_a_named_when_archived_work_is_adopted_after_a_row_shift():
+    """Те саме, але ще й зі зсувом рядків: архівна робота під старим номером
+    рядка, на якому тепер жива сусідка."""
+    from datetime import timedelta
+
+    with make_session() as session:
+        session.add(Order(
+            source="lab", sheet_tab="03.09.26", row_number=8, quantity="6",
+            material_color="pmma a2", sum3d_id="09-26-21", technician_name="Вася",
+            status="відфрезеровано",
+            archived_at=utc_now() - timedelta(days=1),
+            created_at=utc_now() - timedelta(days=5),
+        ))
+        session.add(Order(
+            source="sheet_client", sheet_tab="03.09.26", row_number=8, quantity="1",
+            material_color="emo a1", client_name="Pavlenko", sum3d_id="10-12-25",
+            status="відфрезеровано", created_at=utc_now() - timedelta(days=5),
+        ))
+        session.commit()
+
+        result = sync_tab(session, "03.09.26", [
+            _client_row("6", "pmma a2", sum3d="09-26-21", row_number=7),
+            _client_row("1", "emo a1", name="Pavlenko", sum3d="10-12-25", row_number=8),
+        ])
+
+        orders = {o.sum3d_id: o for o in session.scalars(select(Order))}
+        assert len(orders) == 2 and result.created == 0
+        assert orders["09-26-21"].archived_at is None
+        assert orders["09-26-21"].row_number == 7

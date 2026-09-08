@@ -3,6 +3,7 @@ import dataclasses
 from dataclasses import dataclass
 import logging
 from datetime import timedelta
+from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -418,6 +419,16 @@ def _order_identity(order: Order) -> tuple | None:
         return ("lab", naryad.casefold())
     tech = (order.technician_name or "").strip().casefold()
     if not tech:
+        # Лабораторна за джерелом, але без наряду й без техніка — за правилом
+        # таблиці це клієнтський рядок без імені (технік був і його стерли).
+        # Без ключа така робота не перезчіплюється при зсуві рядків: синк
+        # створював їй дубль, а стара лишалась в архіві (сценарний прогін
+        # 09.09.26). Ключ той самий, що дає `_row_identity` безіменному
+        # клієнтському рядку, — інакше їм не зійтись.
+        material = (order.material_color or "").strip().casefold()
+        quantity = (order.quantity or "").strip()
+        if material and quantity:
+            return ("client", "", material, quantity)
         return None
     return ("labpending", tech, (order.material_color or "").strip().casefold(),
             (order.kind or "").strip().casefold(), (order.quantity or "").strip())
@@ -432,9 +443,13 @@ def _both_nameless_and_alike(row: OrderRow, order: Order) -> bool:
     """
     if (row.work_order_no or "").strip() or (order.work_order_no or "").strip():
         return False
-    if (row.kind or "").strip() or (order.client_name or "").strip():
-        return False
-    if (row.technician_name or "").strip() or (order.technician_name or "").strip():
+    # Безіменним мусить бути РЯДОК — це він не має чим назватись. Робота ж
+    # може нести застаріле ім'я з часів, коли її архівували: техніка звільнили,
+    # клієнта стерли, рядок став безіменним, стара версія перестала його
+    # розбирати, і реконсиляція забрала роботу в архів. Вимагати порожнього
+    # імені ще й від роботи означало не повертати рівно ті, що постраждали
+    # найімовірнішим шляхом (рев'ю 09.09.26).
+    if (row.kind or "").strip() or (row.technician_name or "").strip():
         return False
     material = (row.material_color or "").strip().casefold()
     quantity = (row.quantity or "").strip()
@@ -660,6 +675,31 @@ def sync_tab(
     moved, identity_paired = _relink_moved_rows(existing_by_row, rows)
     result.moved += moved
 
+    # Архівні роботи, ВИТІСНЕНІ з позиційної мапи: на їхньому старому рядку
+    # тепер стоїть жива робота (рядки над ними видалили, і все зсунулось вгору).
+    # Мапа тримає одну роботу на рядок — найновішу, — тож зчіплювання за
+    # ключем цих просто не бачило: рядок отримував ДУБЛЬ, а стара лишалась в
+    # архіві назавжди (сценарний прогін 09.09.26). Тримаємо їх окремо, за
+    # ключем, і лише ОДНОЗНАЧНІ: дві архівні з однаковим ключем — жодної.
+    in_map = {id(o) for o in existing_by_row.values()}
+    evicted_archived: dict[tuple, Optional[Order]] = {}
+    for candidate in all_tab_orders:
+        if candidate.archived_at is None or id(candidate) in in_map:
+            continue
+        keys = [_order_identity(candidate)]
+        # Той самий випадок, що в `_both_nameless_and_alike`: робота мала ім'я,
+        # коли її архівували, а рядок тепер безіменний. Реєструємо її ще й під
+        # безіменним ключем, щоб безіменний рядок міг її знайти.
+        if not (candidate.work_order_no or "").strip():
+            material = (candidate.material_color or "").strip().casefold()
+            quantity = (candidate.quantity or "").strip()
+            if material and quantity:
+                keys.append(("client", "", material, quantity))
+        # Один і той самий ключ із двох виводів (лабораторна гілка без наряду
+        # й техніка дає безіменний ключ сама) — це ОДНА робота, не дві.
+        for key in dict.fromkeys(k for k in keys if k is not None):
+            evicted_archived[key] = None if key in evicted_archived else candidate
+
     for row in rows:
         # Position within the tab's data rows, after the identity re-link above
         # has corrected any rows that shifted.
@@ -684,6 +724,18 @@ def sync_tab(
                 row.row_number, sheet_tab, existing.id,
             )
             existing = None
+        if existing is None:
+            # Позиція нічого не дала — можливо, ця робота ЛЕЖИТЬ В АРХІВІ під
+            # старим номером рядка. Віддаємо її гілці воскресіння нижче, а не
+            # створюємо нову: та сама робота двічі — це подвійне фрезерування.
+            row_key = _row_identity(row)
+            if row_key is not None:
+                adopted = evicted_archived.get(row_key)
+                if adopted is not None:
+                    evicted_archived[row_key] = None  # використана — вдруге не віддаємо
+                    adopted.row_number = row.row_number
+                    existing = adopted
+                    result.moved += 1
         if existing is not None and existing.id is not None:
             matched_ids.add(existing.id)
 
