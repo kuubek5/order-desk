@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from app.business_day import utc_now
 from app.db import Base
 from app.models import Comment, Order, ReworkRecord
 from app.parser import OrderRow
@@ -1933,3 +1934,45 @@ def test_filling_in_the_name_later_updates_the_work_and_does_not_double_it():
         assert len(orders) == 1
         assert orders[0].id == first_id, "робота та сама, з історією"
         assert orders[0].client_name == "Басараб"
+
+
+def test_a_nameless_work_comes_back_from_the_archive():
+    """Бойовий випадок 03.09.26. Робота без імені клієнта опинилась в архіві
+    (рядок колись мав імʼя, його стерли — і на старій версії рядок перестав
+    розбиратись, а реконсиляція заархівувала роботу). Рядок у таблиці цілий,
+    але жодна з двох гілок воскресіння не спрацьовувала: обидві питають імʼя, а
+    його немає. Робота лежала в архіві, у виробіток не йшла (в таблиці 102, в
+    CRM 96), і кнопка «перерахувати день» зарадити не могла — синк бачив рядок
+    як «unchanged».
+    """
+    from datetime import timedelta
+
+    row = _client_row("6", "pmma a2", sum3d="09-26-21")
+    with make_session() as session:
+        sync_tab(session, "03.09.26", [row])
+        order = session.scalar(select(Order))
+        order.archived_at = utc_now() - timedelta(days=1)
+        order.created_at = utc_now() - timedelta(days=5)
+        session.commit()
+
+        sync_tab(session, "03.09.26", [row])
+
+        orders = session.scalars(select(Order)).all()
+        assert len(orders) == 1, "воскресіння не має плодити другу роботу на рядок"
+        assert orders[0].archived_at is None, "рядок у таблиці цілий — робота має жити"
+
+
+def test_two_nameless_rows_that_look_alike_fall_back_to_position():
+    """Ключ без імені — це матеріал + кількість, і він може бути неоднозначним.
+    Тоді зіставлення мусить відкотитись до позиції, а не склеїти дві роботи."""
+    rows = [
+        _client_row("6", "pmma a2", sum3d="09-26-21", row_number=1),
+        _client_row("6", "pmma a2", sum3d="10-00-00", row_number=2),
+    ]
+    with make_session() as session:
+        result = sync_tab(session, "03.09.26", rows)
+
+        assert result.created == 2
+        by_row = {o.row_number: o for o in session.scalars(select(Order))}
+        assert by_row[1].sum3d_id == "09-26-21"
+        assert by_row[2].sum3d_id == "10-00-00"

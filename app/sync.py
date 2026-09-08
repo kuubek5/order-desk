@@ -355,10 +355,24 @@ def _row_identity(row: OrderRow) -> tuple | None:
     """
     if row.is_client_row:
         client = (row.kind or "").strip().casefold()
+        material = (row.material_color or "").strip().casefold()
+        quantity = (row.quantity or "").strip()
         if not client:
-            return None
-        return ("client", client, (row.material_color or "").strip().casefold(),
-                (row.quantity or "").strip())
+            # Клієнтський рядок БЕЗ імені (оператор не встиг його вписати) —
+            # теж робота, і в неї теж мусить бути ключ. Без нього вона могла
+            # зіставитись ЛИШЕ позиційно, а головне — НІКОЛИ не поверталась із
+            # архіву: обидві гілки воскресіння нижче питають імʼя, і на
+            # порожньому не спрацьовує жодна. Робота лежала в архіві при
+            # цілому рядку в таблиці, не потрапляла у виробіток, і кнопка
+            # «перерахувати день» не могла зарадити (бойовий випадок 03.09.26:
+            # 6 одиниць pmma a2 не рахувались, у таблиці 102, в CRM 96).
+            # Ключем стає те, що в рядку є: матеріал + кількість. Пара
+            # однакових таких рядків дасть неоднозначність — і `_relink_moved_rows`
+            # тоді сам відкотиться до позиції, як і для решти ключів.
+            if not material or not quantity:
+                return None
+            return ("client", "", material, quantity)
+        return ("client", client, material, quantity)
     naryad = (row.work_order_no or "").strip()
     if naryad:
         return ("lab", naryad.casefold())
@@ -388,10 +402,15 @@ def _order_identity(order: Order) -> tuple | None:
     """
     if order.source in ("sheet_client", "email"):
         client = (order.client_name or "").strip().casefold()
+        material = (order.material_color or "").strip().casefold()
+        quantity = (order.quantity or "").strip()
         if not client:
-            return None
-        return ("client", client, (order.material_color or "").strip().casefold(),
-                (order.quantity or "").strip())
+            # Дзеркало `_row_identity`: робота без імені клієнта теж має ключ,
+            # інакше вона не впізнає СВІЙ рядок і лишається в архіві навічно.
+            if not material or not quantity:
+                return None
+            return ("client", "", material, quantity)
+        return ("client", client, material, quantity)
     if order.source != "lab":
         return None
     naryad = (order.work_order_no or "").strip()
