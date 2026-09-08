@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.business_day import utc_now
+from app.manual_add_flag import manual_add_running
 from app.material_catalog import (
     ensure_seeded,
     load_alias_rows,
@@ -99,6 +100,11 @@ class SyncResult:
     # like a bad read OR a real bulk delete — indistinguishable). Surfaced to
     # the operator as a banner offering «Звірити видалення» (force_reconcile).
     held_mass_vanish: int = 0
+    # Скільки нових робіт цього проходу НЕ створено, бо саме зараз оператор
+    # додає роботу руками (app/manual_add_flag.py). Не помилка й не втрата:
+    # наступний прохід за хвилину створить те, що справді нове. Лічильник
+    # потрібен, щоб «синк нічого не створив» мало видиму причину.
+    skipped_manual_add: int = 0
 
 
 def _fields(row: OrderRow) -> dict:
@@ -661,6 +667,23 @@ def sync_tab(
             issued_source = None
 
         if existing is None:
+            # «Рядок є в таблиці, роботи в базі немає» звучить як «створити», але
+            # означає це не завжди. Ручне додавання робиться в два кроки — спершу
+            # рядок у таблицю, потім робота в базу, — і між ними є щілина. Якщо
+            # ми зараз саме в ній, створення дасть ДРУГУ копію тієї самої роботи,
+            # і коронку прорахують і фрезерують двічі (аудит 08.09.26).
+            #
+            # Тому: доки позначка висить, нових робіт не створюємо. Усе решта
+            # цього проходу — оновлення полів, статуси, архівація — іде як
+            # завжди. Наступний прохід через хвилину побачить роботу вже в базі.
+            # Позначка сама протухає, тож зависнути тут неможливо.
+            if manual_add_running():
+                logger.info(
+                    "Синк: рядок %s:%s пропущено — ручне додавання в польоті",
+                    sheet_tab, row.row_number,
+                )
+                result.skipped_manual_add += 1
+                continue
             order = Order(source=source, sheet_tab=sheet_tab, row_number=row.row_number,
                           status=status, issued_source=issued_source, **fields)
             order.material_id = resolve_material_id(order.material_color, alias_rows, name_to_id)

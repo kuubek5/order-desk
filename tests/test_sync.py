@@ -1703,3 +1703,66 @@ def test_mail_work_keeps_its_row_when_rows_shift():
                           quantity="1")
 
     assert _order_identity(order) == _row_identity(row)
+
+
+# ── Синк не створює копію роботи, яку саме зараз додають руками ────────────
+# Ручне додавання: спершу рядок у Google Таблицю, потім робота в базу. Між цими
+# кроками щілина в частки секунди. Синк, влучивши в неї, бачить рядок 61, не
+# знаходить його в базі й СТВОРЮЄ свою копію — коронку фрезерують двічі
+# (аудит 08.09.26). Позначка `manual_add_in_flight` закриває саме цю щілину.
+
+
+class TestManualAddRace:
+    def test_no_duplicate_is_created_while_a_manual_add_is_in_flight(self):
+        from app.manual_add_flag import _reset_for_tests, manual_add_in_flight
+
+        _reset_for_tests()
+        session = make_session()
+        row = make_row(row_number=61, work_order_no="28777")
+
+        # Оператор уже дописав рядок у таблицю, але ще не закомітив роботу.
+        with manual_add_in_flight():
+            result = sync_tab(session, "26.08.26", [row], raw_row_count=6)
+            session.commit()
+
+        assert result.created == 0, "синк створив копію роботи, яку ще дописують"
+        assert result.skipped_manual_add == 1
+        assert session.scalars(select(Order)).all() == []
+        _reset_for_tests()
+
+    def test_the_next_pass_creates_it_normally(self):
+        """Пропуск — це відстрочка на один прохід, а не втрата роботи."""
+        from app.manual_add_flag import _reset_for_tests
+
+        _reset_for_tests()
+        session = make_session()
+        row = make_row(row_number=61, work_order_no="28777")
+
+        result = sync_tab(session, "26.08.26", [row], raw_row_count=6)
+        session.commit()
+
+        assert result.created == 1
+        assert result.skipped_manual_add == 0
+        _reset_for_tests()
+
+    def test_everything_else_still_runs_during_a_manual_add(self):
+        """Синк НЕ зупиняється цілком: пропускається рівно створення нових
+        робіт, а оновлення наявних іде як завжди."""
+        from app.manual_add_flag import _reset_for_tests, manual_add_in_flight
+
+        _reset_for_tests()
+        session = make_session()
+        session.add(Order(
+            source="lab", sheet_tab="26.08.26", row_number=1,
+            work_order_no="24122", quantity="1", status="нове",
+        ))
+        session.commit()
+
+        with manual_add_in_flight():
+            result = sync_tab(session, "26.08.26", [make_row(quantity="9")], raw_row_count=6)
+            session.commit()
+
+        order = session.scalars(select(Order)).one()
+        assert order.quantity == "9", "оновлення наявної роботи не має пропускатись"
+        assert result.skipped_manual_add == 0
+        _reset_for_tests()

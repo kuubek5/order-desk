@@ -47,6 +47,7 @@ from app.services.manual_add import (
     normalize_work_type,
 )
 from app.services.queue import RETENTION_DAYS, order_is_archived
+from app.manual_add_flag import manual_add_in_flight
 from app.services.sheet_writeback import (
     append_comment_background,
     append_manual_rows_warm,
@@ -435,13 +436,18 @@ def create_manual_order(
             paint_blue=paint_blue, placement=placement, target_tab=target_tab,
         ).result(timeout=120)
 
-    result = create_manual_batch(
-        db, user=user, work_type=work_type, target_tab=wanted_tab,
-        client_name=client_name, work_order_no=work_order_no, kind=kind,
-        material_color=material_color, quantity=quantity, sum3d_id=sum3d_id,
-        job_code=job_code, technician_name=technician_name, opak=opak,
-        write_rows=_write_rows,
-    )
+    # Позначка «зараз додаю» на ОБИДВА кроки: запис у таблицю і коміт у базу.
+    # Між ними є щілина, і фоновий синк, влучивши в неї, створює свою копію тієї
+    # самої роботи — коронку фрезерують двічі. Позначка сама протухає, тож
+    # забути її зняти не страшно (app/manual_add_flag.py, аудит 08.09.26).
+    with manual_add_in_flight():
+        result = create_manual_batch(
+            db, user=user, work_type=work_type, target_tab=wanted_tab,
+            client_name=client_name, work_order_no=work_order_no, kind=kind,
+            material_color=material_color, quantity=quantity, sum3d_id=sum3d_id,
+            job_code=job_code, technician_name=technician_name, opak=opak,
+            write_rows=_write_rows,
+        )
     if result.error is not None:
         return _back(result.error)
 
