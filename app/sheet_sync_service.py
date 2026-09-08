@@ -33,6 +33,7 @@ from app.sheets import (
     quota_is_tight,
     tab_name_for,
 )
+from app.services.formatting import pluralize_uk
 from app.services.order_dates import parse_sheet_tab
 from app.sync import sync_tab
 from app.sync_heartbeat import record_agreement
@@ -302,23 +303,20 @@ class SheetSyncSummary:
         """
         if not self.compared_rows:
             return "звірка: нема що звіряти"
+        rows = (
+            f"{self.compared_rows} "
+            + pluralize_uk(self.compared_rows, "рядок", "рядки", "рядків")
+        )
         skipped = (
             f", пропущено {self.skipped_non_queue} нефрезерних"
             if self.skipped_non_queue
             else ""
         )
         if not self.verdict_trustworthy:
-            return (
-                f"звірка відкладена: цього проходу рядки рухались "
-                f"({self.compared_rows} звірено{skipped})"
-            )
+            return f"звірка відкладена: цього проходу рядки рухались ({rows} звірено{skipped})"
         differed = self.compared_rows - self.agreed_rows
-        if differed:
-            return (
-                f"звірено {self.compared_rows} рядків, розбіжностей "
-                f"{differed}{skipped}"
-            )
-        return f"звірено {self.compared_rows} рядків, розбіжностей 0{skipped}"
+        word = pluralize_uk(differed, "розбіжність", "розбіжності", "розбіжностей")
+        return f"звірено {rows}, {word}: {differed}{skipped}"
 
 
 def _parse_tab_date(title: str) -> date | None:

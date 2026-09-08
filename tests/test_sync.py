@@ -1866,13 +1866,17 @@ def test_agreement_line_never_claims_zero_when_it_did_not_look():
     assert "нема що звіряти" in nothing.agreement_line()
 
     clean = SheetSyncSummary(compared_rows=40, agreed_rows=40)
-    assert clean.agreement_line() == "звірено 40 рядків, розбіжностей 0"
+    assert clean.agreement_line() == "звірено 40 рядків, розбіжностей: 0"
 
     with_skips = SheetSyncSummary(compared_rows=40, agreed_rows=40, skipped_non_queue=7)
     assert "пропущено 7 нефрезерних" in with_skips.agreement_line()
 
+    # Відмінювання йде через спільний pluralize_uk: «21 рядок», не «21 рядків».
+    one = SheetSyncSummary(compared_rows=1, agreed_rows=1)
+    assert one.agreement_line() == "звірено 1 рядок, розбіжностей: 0"
+
     dirty = SheetSyncSummary(compared_rows=40, agreed_rows=38)
-    assert "розбіжностей 2" in dirty.agreement_line()
+    assert "розбіжності: 2" in dirty.agreement_line()
 
     moving = SheetSyncSummary(compared_rows=40, agreed_rows=38, verdict_trustworthy=False)
     line = moving.agreement_line()
