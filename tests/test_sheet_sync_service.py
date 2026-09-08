@@ -1073,3 +1073,41 @@ def test_worksheet_lookup_falls_back_to_the_canonical_title():
     reset_sheets_cache()
     spreadsheet.worksheets.return_value = [Mock(title="Легенда")]
     assert get_worksheet_by_name(spreadsheet, "08.09.26") is None
+
+
+def test_a_row_with_sum3d_that_did_not_import_leaves_a_trace(monkeypatch):
+    """Мовчазна втрата рядка помітна лише тому, хто рахує руками: у таблиці 102
+    одиниці, в CRM 96 (08.09.26). Рядок із Sum3D — це слід операторської
+    роботи, і якщо він не став роботою, у журналі має лишитись номер рядка."""
+    configured(monkeypatch)
+    today = business_today()
+    tab = Mock()
+    tab.title = today.strftime("%d.%m.%y")
+    lost = [""] * 14
+    lost[11] = "09-26-21"          # лише Sum3D: ні матеріалу, ні кількості
+    good = [""] * 14
+    good[1], good[2], good[3] = "24122", "2", "mono a2"
+    tab.get_all_values.return_value = ([[]] * 6) + [good, lost]
+    spreadsheet = Mock()
+    spreadsheet.worksheets.return_value = [tab]
+    monkeypatch.setattr("app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet)
+
+    with make_session() as session:
+        sync_google_sheets(session)
+
+        notes = [
+            log for log in session.scalars(select(SyncLog)).all()
+            if "не потрапили в CRM" in (log.message or "")
+        ]
+        assert len(notes) == 1
+        # Номер рядка — САМЕ як у Google Таблиці (дані з 7-го), інакше оператор
+        # шукатиме не той рядок.
+        assert "рядки таблиці 8" in notes[0].message
+
+        # Доки рядок висить у вкладці, кожен тік писав би те саме.
+        sync_google_sheets(session)
+        again = [
+            log for log in session.scalars(select(SyncLog)).all()
+            if "не потрапили в CRM" in (log.message or "")
+        ]
+        assert len(again) == 1

@@ -1882,3 +1882,54 @@ def test_agreement_line_never_claims_zero_when_it_did_not_look():
     line = moving.agreement_line()
     assert "відкладена" in line
     assert "розбіжностей" not in line, "не можна казати про розбіжності, коли ми їх не довіряємо"
+
+
+# ── Робота без імені клієнта доходить до черги ─────────────────────────────
+# 08.09.26: у таблиці 102 одиниці, в CRM 96. Рядок «6 · pmma a2» з Sum3D і
+# порожнім іменем не ставав роботою взагалі — ані в черзі, ані в обліку.
+
+
+def _client_row(quantity, material, name="", sum3d="", row_number=1):
+    from app.parser import OrderRow
+
+    return OrderRow(
+        row_number=row_number, seq_no="", work_order_no="", quantity=quantity,
+        material_color=material, kind=name, due_time=None, job_code="",
+        technician_name="", cam_comment="", sum3d_id=sum3d, calculated="",
+        milled="", last_milled_date="", mill_count="",
+    )
+
+
+def test_a_nameless_row_becomes_a_real_work():
+    with make_session() as session:
+        result = sync_tab(session, "08.09.26", [
+            _client_row("6", "pmma a2", sum3d="09-26-21"),
+        ])
+
+        assert result.created == 1
+        order = session.scalar(select(Order))
+        assert order.quantity == "6"
+        assert order.material_color == "pmma a2"
+        assert order.source == "sheet_client"
+        assert not order.client_name, "ім'я вигадувати не можна — воно порожнє"
+        assert order.archived_at is None, "робота має бути в активній черзі"
+
+
+def test_filling_in_the_name_later_updates_the_work_and_does_not_double_it():
+    """ПЕРЕХІД, а не стан. Оператор дописує клієнта в той самий рядок — і це
+    має бути та сама робота, а не друга поруч: інакше коронку прорахують і
+    відфрезерують двічі."""
+    with make_session() as session:
+        sync_tab(session, "08.09.26", [_client_row("6", "pmma a2", sum3d="09-26-21")])
+        first = session.scalar(select(Order))
+        first_id = first.id
+
+        result = sync_tab(session, "08.09.26", [
+            _client_row("6", "pmma a2", name="Басараб", sum3d="09-26-21"),
+        ])
+
+        assert result.created == 0, "друга робота на той самий рядок = подвійне фрезерування"
+        orders = session.scalars(select(Order)).all()
+        assert len(orders) == 1
+        assert orders[0].id == first_id, "робота та сама, з історією"
+        assert orders[0].client_name == "Басараб"

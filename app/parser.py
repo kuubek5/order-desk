@@ -118,12 +118,25 @@ class OrderRow:
         (admins went home / forgot). The technician column is the discriminator
         the lab confirmed: filled → lab, empty → client. Such a row is caught by
         is_pending_lab_row and imported as a наряд-less lab work, not a fake
-        client named after its "вид"."""
+        client named after its "вид".
+
+        Імені може НЕ БУТИ — і рядок від цього не перестає бути роботою.
+        Оператор вписує клієнта рукою й іноді просто не встигає: у бойовій
+        вкладці 08.09.26 стояв рядок «6 · pmma a2» з проставленим Sum3D ID і
+        порожньою колонкою імені. Правило «ім'я обов'язкове» викидало його ще
+        в parse_rows — не в чергу, не в облік, і БЕЗ ЖОДНОГО сліду: у таблиці
+        102 одиниці, в CRM 96, і різницю ніде не видно. Тому рядок, що несе і
+        матеріал, і кількість, — робота незалежно від імені; за неї відповідає
+        та сама пара, якою ми відрізняємо фрезерування від СЛМ
+        (`sync._is_non_queue_row`). Клієнт лишається порожнім — вигадувати
+        ім'я не можна, а порожнє поле оператор бачить і виправить."""
         if self.work_order_no:
             return False
         if self.technician_name:
             return False
-        return bool(self.kind and (self.material_color or self.quantity))
+        if self.kind:
+            return bool(self.material_color or self.quantity)
+        return bool(self.material_color and self.quantity)
 
     @property
     def is_pending_lab_row(self) -> bool:
@@ -140,6 +153,16 @@ class OrderRow:
             return False
         return bool(self.technician_name and (self.kind or self.material_color or self.quantity))
 
+    @property
+    def is_work_row(self) -> bool:
+        """Чи цей рядок узагалі стає роботою в CRM.
+
+        ОДИН предикат на дві потреби: за ним `parse_rows` вирішує, що взяти, і
+        за ним же `unimported_work_rows` рахує, що втрачено. Розійдуться —
+        сторож почне мовчати саме тоді, коли він найпотрібніший.
+        """
+        return not self.is_empty or self.is_client_row or self.is_pending_lab_row
+
 
 def _cell(row: list, idx: int) -> str:
     return row[idx].strip() if idx < len(row) else ""
@@ -154,7 +177,8 @@ def _due_time(row: list) -> Optional[str]:
     return None
 
 
-def parse_rows(raw_rows: list[list[str]]) -> list[OrderRow]:
+def _read_rows(raw_rows: list[list[str]]) -> list[OrderRow]:
+    """Кожен рядок даних як OrderRow, БЕЗ відбору. Відбір — у викликах."""
     data_rows = raw_rows[HEADER_ROWS:]
     parsed = []
     for i, row in enumerate(data_rows, start=1):
@@ -183,6 +207,30 @@ def parse_rows(raw_rows: list[list[str]]) -> list[OrderRow]:
             redo_calculated=_cell(row, 23),
             redo_milled=_cell(row, 24),
         )
-        if not order.is_empty or order.is_client_row or order.is_pending_lab_row:
-            parsed.append(order)
+        parsed.append(order)
     return parsed
+
+
+def parse_rows(raw_rows: list[list[str]]) -> list[OrderRow]:
+    return [row for row in _read_rows(raw_rows) if row.is_work_row]
+
+
+def unimported_work_rows(raw_rows: list[list[str]]) -> list[OrderRow]:
+    """Рядки, які CRM НЕ взяла, хоч у них є слід операторської роботи.
+
+    Навіщо. Втрата рядка при імпорті мовчазна за побудовою: у таблиці 102
+    одиниці, в черзі 96, і різницю ніде не видно — ані в журналі, ані на
+    екрані (бойовий випадок 08.09.26, рядок «6 · pmma a2» без імені клієнта).
+    Помітити її може лише той, хто рахує руками.
+
+    Ознака навмисне ВУЗЬКА: Sum3D ID або номер роботи. Їх не набирають
+    випадково — перший вписує оператор, коли бере роботу в прорахунок, другий
+    з'являється, коли технік кладе файли на сервер. Кількість чи матеріал самі
+    по собі сюди не годяться: ними рясніють і підсумкові, і чернеткові рядки,
+    і сторож перетворився б на постійний шум, який перестають читати.
+    """
+    return [
+        row
+        for row in _read_rows(raw_rows)
+        if not row.is_work_row and (row.sum3d_id or row.job_code)
+    ]

@@ -15,10 +15,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import sync_control
+from app import log_throttle
 from app.business_day import business_today, canonical_tab_title, utc_now
 from app.db import SessionLocal
 from app.models import Order, SyncLog
-from app.parser import header_mismatches, parse_rows
+from app.parser import HEADER_ROWS, header_mismatches, parse_rows, unimported_work_rows
 from app.sheet_colors import fetch_row_fills
 from app.settings_store import (
     get_google_service_account_json,
@@ -517,6 +518,39 @@ def _warn_odd_tab_title(session: Session, raw: str, canonical: str) -> None:
     )
 
 
+def _report_unimported_rows(session: Session, tab: str, raw: list[list[str]]) -> None:
+    """Рядок з Sum3D ID, який не став роботою, — це втрачена робота. Сказати.
+
+    Мовчазна втрата рядка помітна лише тому, хто рахує руками: у таблиці 102
+    одиниці, у CRM 96 (08.09.26). Тепер вона лишає слід із номерами рядків, і
+    на неї можна дивитись, а не здогадуватись. Через глушник: доки рядок
+    висить у вкладці, кожен тік писав би те саме.
+    """
+    lost = unimported_work_rows(raw)
+    if not lost:
+        log_throttle.clear(f"sync.unimported:{tab}")
+        return
+    numbers = ", ".join(str(row.row_number + HEADER_ROWS) for row in lost[:10])
+    if log_throttle.due(f"sync.unimported:{tab}:{numbers}") is None:
+        return
+    logger.warning(
+        "Синк %s: %d рядків із Sum3D не стали роботою (рядки таблиці %s)",
+        tab, len(lost), numbers,
+    )
+    session.add(
+        SyncLog(
+            direction="sheet_to_db",
+            sheet_tab=tab,
+            status="skipped",
+            message=(
+                f"{len(lost)} рядків із Sum3D ID не потрапили в CRM "
+                f"(рядки таблиці {numbers}) — бракує матеріалу, кількості або "
+                "імені; допишіть у таблиці, і робота зайде"
+            ),
+        )
+    )
+
+
 def _report_missing_today(
     session: Session, today: date, dated_titles: set[str], raw_titles: list[str]
 ) -> None:
@@ -723,6 +757,7 @@ def sync_google_sheets(
                     session.commit()
                     continue
                 rows = parse_rows(raw)
+                _report_unimported_rows(session, current_tab, raw)
                 # Read fill colours (best-effort) so client rows whose blue was
                 # cleared flip to "видано" and grey SLM rows are filtered out.
                 row_fills = fetch_row_fills(worksheet)

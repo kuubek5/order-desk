@@ -331,3 +331,100 @@ class TestPendingLabRows:
         result = parse_rows(raw_rows)
         assert result[0].is_client_row is True
         assert result[0].is_pending_lab_row is False
+
+
+# ── Робота без імені клієнта ───────────────────────────────────────────────
+# Бойовий випадок 08.09.26: у таблиці 102 одиниці, в CRM 96. Різниця — один
+# рядок «6 · pmma a2» з проставленим Sum3D ID і порожньою колонкою імені.
+# Правило «ім'я обов'язкове» викидало його ще тут, мовчки й безслідно.
+
+
+def _sheet_row(quantity="", material="", kind="", sum3d="", technician="", naryad=""):
+    row = [""] * 14
+    row[1], row[2], row[3], row[4] = naryad, quantity, material, kind
+    row[9], row[11] = technician, sum3d
+    return row
+
+
+def _parse(*rows):
+    from app.parser import HEADER_ROWS, parse_rows
+
+    return parse_rows([[]] * HEADER_ROWS + list(rows))
+
+
+def test_a_row_with_material_and_quantity_is_work_even_without_a_name():
+    parsed = _parse(_sheet_row(quantity="6", material="pmma a2", sum3d="09-26-21"))
+
+    assert len(parsed) == 1, "робота з матеріалом і кількістю не має зникати"
+    assert parsed[0].quantity == "6"
+    assert parsed[0].kind == "", "ім'я лишається порожнім — вигадувати його не можна"
+
+
+def test_the_units_of_a_nameless_row_reach_the_crm():
+    """Саме те, що рахував власник руками: 22 в таблиці — 22 в CRM."""
+    parsed = _parse(
+        _sheet_row(quantity="10", material="mono a2", kind="Тертычный"),
+        _sheet_row(quantity="6", material="pmma a2"),
+        _sheet_row(quantity="6", material="Katana UTML A1", kind="Vivcharyk"),
+    )
+
+    assert sum(int(row.quantity) for row in parsed) == 22
+
+
+def test_half_filled_and_summary_rows_are_still_ignored():
+    """Впустити роботу без імені — не привід впускати сміття. Потрібні ОБИДВА:
+    матеріал і кількість."""
+    parsed = _parse(
+        _sheet_row(quantity="274"),                    # підсумок стовпця
+        _sheet_row(material="mono a3"),                # матеріал без кількості
+        _sheet_row(),                                  # порожній
+        _sheet_row(quantity="5"),                      # СЛМ: сама кількість
+    )
+
+    assert parsed == []
+
+
+def test_a_row_with_a_sum3d_id_that_did_not_become_work_is_reported():
+    """Сторож проти мовчазної втрати: рядок із Sum3D — це слід операторської
+    роботи, і якщо він не став роботою, про це має бути видно."""
+    from app.parser import HEADER_ROWS, unimported_work_rows
+
+    raw = [[]] * HEADER_ROWS + [
+        _sheet_row(quantity="10", material="mono a2", kind="Тертычный"),
+        _sheet_row(sum3d="09-26-21"),                        # лише Sum3D
+        _sheet_row(quantity="7", naryad="24122", material="mono a3"),
+    ]
+
+    lost = unimported_work_rows(raw)
+
+    assert [row.row_number for row in lost] == [2]
+
+
+def test_the_guard_stays_quiet_on_rows_nobody_touched():
+    """Ознака навмисне вузька: кількість чи матеріал самі по собі — це
+    чернетки й підсумки, і сторож на них перетворився б на шум."""
+    from app.parser import HEADER_ROWS, unimported_work_rows
+
+    raw = [[]] * HEADER_ROWS + [
+        _sheet_row(quantity="274"),
+        _sheet_row(material="mono a3"),
+        _sheet_row(),
+    ]
+
+    assert unimported_work_rows(raw) == []
+
+
+def test_the_guard_and_the_importer_share_one_predicate():
+    """Розійдуться — сторож почне мовчати саме тоді, коли він найпотрібніший."""
+    from app.parser import HEADER_ROWS, _read_rows, parse_rows
+
+    raw = [[]] * HEADER_ROWS + [
+        _sheet_row(quantity="6", material="pmma a2", sum3d="09-26-21"),
+        _sheet_row(sum3d="10-00-00"),
+        _sheet_row(quantity="10", material="mono a2", kind="Тертычный"),
+    ]
+
+    taken = {row.row_number for row in parse_rows(raw)}
+    all_rows = {row.row_number for row in _read_rows(raw) if row.is_work_row}
+
+    assert taken == all_rows
