@@ -12,6 +12,7 @@
 
 import logging
 import time
+from copy import copy as _shallow_copy
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException
@@ -208,6 +209,16 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     for client_name, group_orders in groups.items():
         match = matches[client_name]
         export_entries = scanned.get(client_name, [])
+        # ВАЖЛИВО: `export_entries` приходять із КЕШУ сканера і роздаються всім
+        # запитам. Дописувати поля прямо в них означало ділити змінюваний стан
+        # між запитами й операторами — а на видачі це ще й гонка з фоновим
+        # прогрівом, який може підмінити список посеред рендера. Тому копія:
+        # запис у кеші лишається чистим описом теки, а похідні поля живуть у
+        # копії цього рендера (аудит 08.09.26).
+        # `copy`, а не `dataclasses.replace`: поверхневої копії досить (ми лише
+        # дописуємо два поля), і вона працює з будь-яким обʼєктом, включно з
+        # підробками в тестах.
+        export_entries = [_shallow_copy(entry) for entry in export_entries]
         entries.extend(export_entries)
         for entry in export_entries:
             entry.folder_uri = folder_to_file_uri(entry.folder_path)
@@ -505,7 +516,16 @@ def handout_back_url(source: str, day: str) -> str:
 
 
 @router.post("/orders/{order_id}/mark-found")
-async def mark_found(
+# Роути видачі — звичайні `def`, НЕ `async def`. Це не стиль, а умова роботи
+# застосунку. FastAPI виконує `async def` прямо в event loop, а `def` віддає в
+# threadpool. Ці чотири обробники не мають жодного `await`, зате перебудовують
+# екран видачі, а той послідовно ходить по МЕРЕЖЕВІЙ шарі (`Path.resolve()` на
+# кожен запис export і на кожного клієнта). Поки вони були асинхронними, кожна
+# галочка «знайдено» блокувала весь застосунок на час обходу шари — при мертвій
+# шарі це десятки звернень по 20-60 с, і замерзали ОБИДВА оператори одночасно
+# (аудит 08.09.26). `issue_handout_group` лишається `async`: там `await`
+# справжній. Сторож — tests/test_event_loop_hygiene.py, він перевіряє ВСІ роути.
+def mark_found(
     request: Request,
     order_id: int,
     source: str = Form("all"),
@@ -542,7 +562,7 @@ async def mark_found(
 
 
 @router.post("/orders/{order_id}/unmark-found")
-async def unmark_found(
+def unmark_found(
     request: Request,
     order_id: int,
     source: str = Form("all"),
@@ -661,7 +681,7 @@ def handout_pulse(
 
 
 @router.post("/orders/{order_id}/unissue")
-async def unissue_order(
+def unissue_order(
     request: Request,
     order_id: int,
     source: str = Form("all"),
@@ -715,7 +735,7 @@ async def unissue_order(
 
 
 @router.post("/handout/mark-found-group")
-async def mark_found_group(
+def mark_found_group(
     request: Request,
     client_name: str = Form(...),
     source: str = Form("all"),

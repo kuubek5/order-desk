@@ -111,3 +111,25 @@ def _fresh_sheet_erase_guard():
     sheet_erase_guard.reset_for_tests()
     yield
     sheet_erase_guard.reset_for_tests()
+
+
+def run_route(result):
+    """Викликати роут, не знаючи, синхронний він чи асинхронний.
+
+    Тести кличуть обробники напряму, а не через HTTP-клієнт (httpx у venv
+    немає). Раніше вони робили `asyncio.run(route(...))` — і це прив'язувало
+    ТЕСТ до того, чи оголошений роут як `async def`. Коли аудит 08.09.26 зняв
+    `async` з чотирьох роутів видачі (вони блокували event loop, бо не мали
+    жодного `await`, зате ходили по мережевій шарі), одинадцять тестів
+    попадали з «a coroutine was expected» — при повністю правильній правці.
+
+    Обгортка прибирає цю крихкість: `run_route(route(...))` працює однаково для
+    обох видів, і майбутня зміна асинхронності роута більше не тягне за собою
+    правку тестів.
+    """
+    import asyncio
+    import inspect
+
+    if inspect.iscoroutine(result):
+        return asyncio.run(result)
+    return result

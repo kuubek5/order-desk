@@ -15,6 +15,8 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+
+from conftest import run_route
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -195,7 +197,7 @@ class TestRoute:
     def test_requires_authentication(self):
         engine = _database()
         with Session(engine) as db, pytest.raises(HTTPException) as exc:
-            asyncio.run(handout_router_mod.mark_found_group(
+            run_route(handout_router_mod.mark_found_group(
                 request=_request(None), client_name="X", db=db,
             ))
         assert exc.value.status_code == 401
@@ -206,7 +208,7 @@ class TestRoute:
             handout_router_mod, "clear_group_fills_background",
             lambda ids: calls.append(list(ids)),
         )
-        asyncio.run(handout_router_mod.mark_found_group(
+        run_route(handout_router_mod.mark_found_group(
             request=_request(user.id), client_name="Basarab",
             source="all", day="", db=db,
         ))
@@ -253,7 +255,10 @@ class TestBatchedFillWrite:
 
         opens = []
         cleared = []
-        monkeypatch.setattr(writeback_service, "SessionLocal", sessionmaker(bind=engine))
+        monkeypatch.setattr(
+            writeback_service, "writeback_session",
+            sessionmaker(bind=engine, autoflush=False, expire_on_commit=False),
+        )
         monkeypatch.setattr(
             writeback_service, "open_spreadsheet",
             lambda db=None: opens.append(1) or object(),

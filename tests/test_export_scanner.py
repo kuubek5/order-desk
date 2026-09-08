@@ -1,5 +1,6 @@
 """Tests for app/export_scanner.py — scanning the physical export folder tree."""
 
+import time
 from datetime import datetime, timedelta
 
 from app.export_scanner import scan_export_folder, ExportEntry
@@ -553,3 +554,93 @@ class TestScanExportClientLatest:
     def test_a_missing_client_folder_is_not_an_error(self, tmp_path):
         from app import export_scanner
         assert export_scanner.scan_export_client_latest(tmp_path, "нікого", count=3) == []
+
+
+# ── Порожній результат від мертвої шари не затирає живий кеш ───────────────
+# Аудит 08.09.26. Мережева тека, що відпала, віддає не помилку, а порожній
+# список — і сканер записував цю порожнечу в кеш як правильну відповідь на
+# 180 с. На екрані видачі всі клієнти ставали «не прив'язані», прев'ю STL
+# зникало. Той самий поріг, що в синку таблиці: >5 і >25%.
+
+
+def _reset_cache():
+    from app import export_scanner
+
+    with export_scanner._cache_lock:
+        export_scanner._cache.clear()
+        export_scanner._refreshing.clear()
+    export_scanner._producer_locks.clear()
+
+
+def test_sudden_empty_result_does_not_overwrite_a_populated_cache():
+    from app import export_scanner
+
+    _reset_cache()
+    key = ("names", "тест")
+    full = [f"клієнт-{i}" for i in range(40)]
+
+    assert export_scanner._cached(key, lambda: full) == full
+    # Шара відпала: обхід повертає порожньо. Кеш має лишитись попереднім.
+    export_scanner._store(key, [])
+
+    with export_scanner._cache_lock:
+        assert export_scanner._cache[key][1] == full
+
+
+def test_a_real_small_drop_is_accepted():
+    """Запобіжник не має заважати нормальній роботі: пішло кілька клієнтів —
+    це буденність, а не обрив."""
+    from app import export_scanner
+
+    _reset_cache()
+    key = ("names", "тест")
+    full = [f"клієнт-{i}" for i in range(40)]
+    export_scanner._cached(key, lambda: full)
+
+    export_scanner._store(key, full[:37])  # -3, у межах порога
+
+    with export_scanner._cache_lock:
+        assert len(export_scanner._cache[key][1]) == 37
+
+
+def test_first_warm_of_a_genuinely_empty_folder_is_cached():
+    """Порожнеча поверх порожнечі — не подія."""
+    from app import export_scanner
+
+    _reset_cache()
+    key = ("names", "порожньо")
+    assert export_scanner._cached(key, lambda: []) == []
+    with export_scanner._cache_lock:
+        assert export_scanner._cache[key][1] == []
+
+
+def test_concurrent_misses_scan_the_share_once():
+    """Двоє операторів плюс грійник давали ТРИ паралельні обходи по 16 потоків.
+    Тепер обхід один, решта чекають на його результат."""
+    import threading
+
+    from app import export_scanner
+
+    _reset_cache()
+    key = ("names", "конкурентно")
+    calls = []
+    started = threading.Event()
+
+    def slow_producer():
+        calls.append(1)
+        started.set()
+        time.sleep(0.2)
+        return ["один", "два"]
+
+    results = []
+    threads = [
+        threading.Thread(target=lambda: results.append(export_scanner._cached(key, slow_producer)))
+        for _ in range(4)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=5)
+
+    assert len(calls) == 1, f"шару обійшли {len(calls)} разів замість одного"
+    assert all(r == ["один", "два"] for r in results)

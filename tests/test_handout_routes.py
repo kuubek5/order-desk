@@ -10,6 +10,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from conftest import run_route
 from fastapi import HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -84,7 +86,10 @@ def _stub_sheet(monkeypatch, sheet_id=42):
     monkeypatch.setattr(writeback_service, "open_spreadsheet", lambda db=None: object())
     monkeypatch.setattr(writeback_service, "get_worksheet_by_name", lambda ss, name: fake_ws)
     # Воркер відкриває власну сесію в іншому потоці — прив'язуємо до тестової БД.
-    monkeypatch.setattr(writeback_service, "SessionLocal", sessionmaker(bind=_LAST_ENGINE))
+    monkeypatch.setattr(
+        writeback_service, "writeback_session",
+        sessionmaker(bind=_LAST_ENGINE, autoflush=False, expire_on_commit=False),
+    )
     # Звірку позиції рядка перевіряють окремі тести (test_sheet_write_safety);
     # тут вона завжди підтверджує збережений рядок.
     monkeypatch.setattr(
@@ -113,7 +118,7 @@ def test_requires_authentication():
     engine = _database()
     with Session(engine) as db, pytest.raises(HTTPException) as exc:
         import asyncio
-        asyncio.run(handout_router_mod.issue_handout_group(request=_request(None), client_name="X", day="", db=db))
+        run_route(handout_router_mod.issue_handout_group(request=_request(None), client_name="X", day="", db=db))
     assert exc.value.status_code == 401
 
 
@@ -131,7 +136,7 @@ def test_issues_nothing_when_no_work_is_marked_found(monkeypatch):
 
         import asyncio
         request = _request(user.id)
-        asyncio.run(
+        run_route(
             handout_router_mod.issue_handout_group(request=request, client_name="Basarab", day="", db=db)
         )
         assert db.scalar(select(Order)).status == "нове"
@@ -152,7 +157,7 @@ def test_issues_only_found_works_and_leaves_the_rest(monkeypatch):
         db.commit()
 
         import asyncio
-        asyncio.run(
+        run_route(
             handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
 
@@ -176,7 +181,7 @@ def test_issues_group_and_clears_blue_fill(monkeypatch):
         db.commit()
 
         import asyncio
-        resp = asyncio.run(
+        resp = run_route(
             handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
         assert resp.status_code == 303
@@ -205,7 +210,7 @@ def test_already_issued_orders_are_left_alone_but_still_pass(monkeypatch):
         db.commit()
 
         import asyncio
-        resp = asyncio.run(
+        resp = run_route(
             handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
         assert resp.status_code == 303
@@ -229,7 +234,7 @@ def test_lab_orders_in_group_are_not_sent_to_clear_row_fills(monkeypatch):
         db.commit()
 
         import asyncio
-        asyncio.run(
+        run_route(
             handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
         assert "rows" not in captured or captured["rows"] == []
@@ -252,7 +257,7 @@ def test_sheet_failure_still_marks_issued_and_flashes_error(monkeypatch):
 
         request = _request(user.id)
         import asyncio
-        resp = asyncio.run(handout_router_mod.issue_handout_group(request=request, client_name="Basarab", day="", db=db))
+        resp = run_route(handout_router_mod.issue_handout_group(request=request, client_name="Basarab", day="", db=db))
         assert resp.status_code == 303
         assert db.scalar(select(Order)).status == "видано"
         assert request.session["handout_flash"]["kind"] == "error"
@@ -276,7 +281,7 @@ def test_issued_group_STAYS_on_the_handout_listing(monkeypatch):
         db.commit()
 
         import asyncio
-        asyncio.run(
+        run_route(
             handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
 
@@ -406,7 +411,7 @@ def test_issue_group_with_day_only_closes_that_day(monkeypatch):
         db.commit()
 
         import asyncio
-        resp = asyncio.run(
+        resp = run_route(
             handout_router_mod.issue_handout_group(
                 request=_request(user.id), client_name="Basarab", day=YESTERDAY, db=db
             )
@@ -472,7 +477,7 @@ def test_mark_found_clears_blue_and_keeps_day(monkeypatch):
         _inline_fill_background(monkeypatch, db)
 
         import asyncio
-        resp = asyncio.run(
+        resp = run_route(
             handout_router_mod.mark_found(
                 request=_request(user.id), order_id=order.id,
                 source="all", day=YESTERDAY, db=db,
@@ -505,7 +510,7 @@ def test_unmark_found_reverts_and_repaints_blue(monkeypatch):
         _inline_fill_background(monkeypatch, db)
 
         import asyncio
-        resp = asyncio.run(
+        resp = run_route(
             handout_router_mod.unmark_found(
                 request=_request(user.id), order_id=order.id,
                 source="email", day=YESTERDAY, db=db,
@@ -538,7 +543,7 @@ def test_unmark_found_restores_the_real_previous_status(monkeypatch):
         _inline_fill_background(monkeypatch, db)
 
         import asyncio
-        asyncio.run(
+        run_route(
             handout_router_mod.unmark_found(
                 request=_request(user.id), order_id=order.id,
                 source="all", day=YESTERDAY, db=db,
@@ -560,7 +565,7 @@ def test_unmark_found_ignores_already_issued(monkeypatch):
         order = db.scalar(select(Order))
 
         import asyncio
-        resp = asyncio.run(
+        resp = run_route(
             handout_router_mod.unmark_found(
                 request=_request(user.id), order_id=order.id,
                 source="all", day="", db=db,
@@ -587,7 +592,7 @@ def test_mark_found_lab_order_skips_sheet_fill(monkeypatch):
         order = db.scalar(select(Order))
 
         import asyncio
-        resp = asyncio.run(
+        resp = run_route(
             handout_router_mod.mark_found(
                 request=_request(user.id), order_id=order.id,
                 source="all", day=YESTERDAY, db=db,
@@ -1106,7 +1111,7 @@ class TestMarkFoundIsInstant:
             order = db.scalar(select(Order))
 
             import asyncio
-            asyncio.run(
+            run_route(
                 handout_router_mod.mark_found(
                     request=_request(user.id), order_id=order.id,
                     source="all", day=YESTERDAY, db=db,
@@ -1133,7 +1138,7 @@ class TestMarkFoundIsInstant:
             )
 
             import asyncio
-            asyncio.run(
+            run_route(
                 handout_router_mod.mark_found(
                     request=_request(user.id), order_id=order.id,
                     source="all", day=YESTERDAY, db=db,
@@ -1168,7 +1173,7 @@ class TestScrollStaysPut:
             order = db.scalar(select(Order))
 
             import asyncio
-            resp = asyncio.run(
+            resp = run_route(
                 handout_router_mod.mark_found(
                     request=_request(user.id, headers={"HX-Request": "true"}),
                     order_id=order.id, source="all", day=YESTERDAY, db=db,
@@ -1192,7 +1197,7 @@ class TestScrollStaysPut:
             order = db.scalar(select(Order))
 
             import asyncio
-            resp = asyncio.run(
+            resp = run_route(
                 handout_router_mod.mark_found(
                     request=_request(user.id), order_id=order.id,
                     source="all", day=YESTERDAY, db=db,

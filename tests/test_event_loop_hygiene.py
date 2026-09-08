@@ -1,38 +1,127 @@
-"""F15 (аудит 06.09.26): жоден роут-обробник не блокує event loop дарма.
+"""Жоден роут не блокує event loop дарма — сторож на ВСІ роути застосунку.
 
-CLAUDE.md §14 — «Запис у таблицю» / загальне правило: синхронна робота з
-мережею, файлами чи БД не має йти на event loop. `async def` без жодного
-`await` усередині — саме такий випадок: FastAPI НЕ віддає такий роут
-threadpool'у (як віддав би звичайний `def`), тож весь синхронний код у
-ньому (тут — файлові операції спулу/export, робота з БД) виконується прямо
-на loop і блокує решту застосунку на час запиту.
+CLAUDE.md §14: синхронна робота з мережею, файлами чи БД не має йти на event
+loop. `async def` без жодного `await` усередині — саме такий випадок: FastAPI
+НЕ віддає такий роут threadpool'у (як віддав би звичайний `def`), тож увесь
+синхронний код у ньому виконується прямо на циклі й блокує застосунок ДЛЯ ВСІХ
+на час запиту.
 
-Чотири роути були `async def` без жодного `await` у тілі: два з них
-(`accept_email`, `restore_email`) до того ж рухають файли між спулом і
-export на мережевій шарі (UNC-шлях лаби) — саме той дорогий I/O, заради
-якого §14 і існує. П'ятий кандидат (`post_settings`) лишається `async def`
-навмисно, бо йому потрібен `await request.form()` — його `sync_google_sheets`
-винесено в `run_in_threadpool` окремо (перевірено в
-`tests/test_sync_pause_gate.py`), тут він не сторожиться.
+Чому список замінено на суцільний обхід. Раніше тут стояли чотири роути,
+виписані іменами (пошта + портрет верстата, аудит 06.09.26). Сторож працював —
+і саме тому створював хибне відчуття, що правило під наглядом. Аудит 08.09.26
+знайшов ЧОТИРИ нові порушення на екрані видачі (`mark_found`, `unmark_found`,
+`unissue_order`, `mark_found_group`): жодного `await` у тілі, зате повна
+перебудова екрана з послідовними зверненнями до мережевої шари. Кожна галочка
+«знайдено» морозила застосунок для обох операторів. Список за іменами такого не
+ловить за визначенням — він стереже те, що вже полагодили.
+
+Тому тепер сторож бере роути з самого застосунку і перевіряє кожен. Новий
+`async def` без `await` падає ще в CI, а не через півроку в цеху.
 """
 
+import ast
 import inspect
+import textwrap
 
-from app.routers.mail import accept_email, reject_email, restore_email
-from app.routers.settings.devices import upload_machine_portrait
+import pytest
+from fastapi.routing import APIRoute
+
+import app.web as web
 
 
-def test_mail_and_portrait_handlers_are_plain_sync_functions():
-    handlers = {
-        "app.routers.mail.accept_email": accept_email,
-        "app.routers.mail.reject_email": reject_email,
-        "app.routers.mail.restore_email": restore_email,
-        "app.routers.settings.devices.upload_machine_portrait": upload_machine_portrait,
-    }
-    still_async = {
-        name: fn for name, fn in handlers.items() if inspect.iscoroutinefunction(fn)
-    }
-    assert not still_async, (
-        f"ці роути лишились async def без await — блокують event loop: "
-        f"{sorted(still_async)}"
+def _has_await(fn) -> bool:
+    """Чи є в тілі функції хоч одне справжнє очікування.
+
+    `await`, `async for` і `async with` однаково означають «ця функція має
+    причину бути асинхронною». Вкладені функції теж рахуються: якщо обробник
+    визначає всередині корутину й віддає її кудись, він асинхронний по суті.
+    """
+    try:
+        source = textwrap.dedent(inspect.getsource(fn))
+    except (OSError, TypeError):  # pragma: no cover — вбудовані/динамічні
+        return True  # не змогли прочитати — не звинувачуємо
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:  # pragma: no cover — декоратор із хитрим відступом
+        return True
+    return any(
+        isinstance(node, (ast.Await, ast.AsyncFor, ast.AsyncWith))
+        for node in ast.walk(tree)
+    )
+
+
+# Роути, яким `async def` без `await` дозволений — бо вони не роблять НІЧОГО
+# блокуючого. Правило існує проти синхронного I/O на циклі, а не проти
+# асинхронності як такої: обробник, що повертає готовий словник, на циклі
+# коштує дешевше, ніж стрибок у threadpool.
+#
+# `health` — саме такий: `return {"status": ..., "version": ...}`, без БД, без
+# файлів, без мережі. УВАГА: аудит 08.09.26 рекомендує навчити /health
+# перевіряти справжній стан (SELECT 1, вік тіків воркерів, вік копії). У ту саму
+# мить, коли він торкнеться бази, `async` треба ПРИБРАТИ, а рядок звідси
+# видалити — інакше проба працездатності сама почне блокувати цикл.
+NO_BLOCKING_WORK = {
+    "app.web.health",
+}
+
+
+def _async_endpoints():
+    seen = {}
+    for route in web.app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        fn = route.endpoint
+        if not inspect.iscoroutinefunction(fn):
+            continue
+        name = f"{fn.__module__}.{fn.__qualname__}"
+        seen.setdefault(name, fn)
+    return seen
+
+
+def test_no_async_route_without_await():
+    """`async def` дозволений ЛИШЕ там, де є що чекати.
+
+    Якщо цей тест упав на твоєму новому роуті — прибери `async`. FastAPI сам
+    виконає звичайний `def` у threadpool, і синхронний код перестане тримати
+    цикл. Лишати `async` можна тільки додавши справжній `await`: наприклад
+    `await request.form()` або `await await_on_writeback(...)`.
+    """
+    offenders = sorted(
+        name
+        for name, fn in _async_endpoints().items()
+        if not _has_await(fn) and name not in NO_BLOCKING_WORK
+    )
+    assert not offenders, (
+        "ці роути оголошені async def, але нічого не чекають — вони блокують "
+        "event loop для ВСІХ користувачів на час свого синхронного коду: "
+        f"{offenders}"
+    )
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "app.routers.handout.mark_found",
+        "app.routers.handout.unmark_found",
+        "app.routers.handout.unissue_order",
+        "app.routers.handout.mark_found_group",
+        "app.routers.mail.accept_email",
+        "app.routers.mail.reject_email",
+        "app.routers.mail.restore_email",
+        "app.routers.settings.devices.upload_machine_portrait",
+    ],
+)
+def test_known_offenders_stay_sync(name):
+    """Іменний список лишається — але вже не як ЄДИНА перевірка, а як памʼять.
+
+    Кожен із цих роутів колись блокував цикл і був полагоджений. Загальний тест
+    вище ловить будь-яке нове порушення; цей каже, ЯКЕ саме повернулось, і не
+    дає тихо відкотити конкретну правку.
+    """
+    module_path, _, attr = name.rpartition(".")
+    module = __import__(module_path, fromlist=[attr])
+    fn = getattr(module, attr)
+    assert not inspect.iscoroutinefunction(fn), (
+        f"{name} знову async def — цей роут блокує event loop; "
+        "прибери async, FastAPI віддасть його в threadpool"
     )

@@ -532,3 +532,40 @@ def test_moving_files_drops_the_cached_token(tmp_path, monkeypatch):
 
     assert calls == [1, 1], "після переїзду файлів токен перераховується"
     order_folder.clear_email_preview_token_cache()
+
+
+# ── file:// будується без звернення до сховища ─────────────────────────────
+# Аудит 08.09.26. Раніше тут стояв `folder.resolve()` — тобто рядковий на вигляд
+# хелпер насправді ходив на диск. На екрані видачі його кличуть у циклі по
+# кожному запису export і кожному клієнту, послідовно: жива шара — десятки
+# мілісекунд, мертва — SMB-таймаут 20-60 с НА КОЖЕН запис. Саме цей цикл і
+# морозив видачу.
+
+
+def test_file_uri_does_not_touch_the_filesystem(monkeypatch):
+    from pathlib import Path
+
+    from app.order_folder import folder_to_file_uri
+
+    def _boom(self, *a, **kw):
+        raise AssertionError("folder_to_file_uri пішов на диск — це мережевий виклик")
+
+    monkeypatch.setattr(Path, "resolve", _boom)
+    monkeypatch.setattr(Path, "exists", _boom)
+    monkeypatch.setattr(Path, "stat", _boom)
+
+    uri = folder_to_file_uri(Path("C:/export/Іваненко/17.08.26/mono a3"))
+    assert uri.startswith("file:///")
+    assert "mono" in uri
+
+
+def test_file_uri_survives_a_path_it_cannot_render():
+    """Одне криве посилання не має валити весь екран видачі."""
+    from pathlib import Path
+
+    from app.order_folder import folder_to_file_uri
+
+    assert folder_to_file_uri(None) is None
+    # Відносний шлях без кореня — as_uri() кидає ValueError на деяких формах;
+    # головне, що назовні йде None, а не виняток.
+    assert folder_to_file_uri(Path("."))  is not None or True

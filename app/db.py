@@ -57,7 +57,16 @@ def _configure_sqlite_connection(dbapi_connection, _connection_record) -> None:
     cursor = dbapi_connection.cursor()
     try:
         cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA busy_timeout=5000")
+        # 15 с, не 5. Скільки чекати чужого блокування, перш ніж віддати
+        # «database is locked». Поки оператор один, різниці немає. З двома —
+        # це різниця між «сторінка відкрилась на секунду пізніше» і «помилка
+        # замість екрана видачі вранці»: воркер запису може тримати
+        # блокування, поки говорить з Google, а холодне відкриття таблиці на
+        # цій машині міряли до 40 с. Головний фікс тієї ж проблеми —
+        # autoflush=False у `app/services/sheet_writeback.writeback_session`,
+        # який прибирає більшість таких перекриттів; цей поріг лишається
+        # страховкою на решту (аудит 08.09.26).
+        cursor.execute("PRAGMA busy_timeout=15000")
         cursor.execute(f"PRAGMA foreign_keys={'ON' if _fk_enforced else 'OFF'}")
     finally:
         cursor.close()

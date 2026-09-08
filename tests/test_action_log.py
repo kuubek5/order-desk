@@ -47,9 +47,15 @@ def _writeback_uses_the_test_db(monkeypatch):
     ВЛАСНУ сесію: без цієї підміни warm-функції ходили б у бойову базу
     (`no such table: orders` у тестах). Самі виклики до Google глушимо —
     їхня поведінка має власні тести."""
+    # Підміняємо саме `writeback_session` — єдину точку, через яку модуль
+    # тепер бере сесію. Раніше тут стояв `SessionLocal`; аудит 08.09.26 замінив
+    # його на фабрику з autoflush=False (щоб незавершений запис не тягнувся
+    # крізь мережевий виклик і не тримав блокування бази), і підміна старого
+    # імені впала б AttributeError. Autoflush тут теж вимкнено — тест має
+    # повторювати бойову поведінку, а не м'якшу.
     monkeypatch.setattr(
-        writeback_service, "SessionLocal",
-        lambda: Session(_LAST_ENGINE, expire_on_commit=False),
+        writeback_service, "writeback_session",
+        lambda: Session(_LAST_ENGINE, autoflush=False, expire_on_commit=False),
     )
     for name in ("write_sheet_fields", "write_calculated_cell", "write_rework_sum3d_fields"):
         monkeypatch.setattr(writeback_service, name, lambda *a, **k: None)

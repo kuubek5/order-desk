@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app import sync_control
 from app.business_day import business_today
-from app.db import SessionLocal
+from app.db import engine
 from app.models import Comment, Order, SyncLog
 from app.parser import HEADER_ROWS
 from app.sheet_erase_guard import SheetEraseBlocked
@@ -51,6 +51,50 @@ logger = logging.getLogger(__name__)
 # cache and costs just the ~3s batch_update. It also serialises writes, so two
 # quick edits to the same cell can't land out of order.
 sheet_writeback_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sheet-writeback")
+
+
+def writeback_session() -> Session:
+    """Сесія для воркерів запису — з ВИМКНЕНИМ autoflush.
+
+    Найтонша знахідка аудиту 08.09.26, і сьогодні вона невидима, бо оператор
+    один. Функції в цьому модулі тримають сесію відкритою через мережеві
+    виклики до Google: холодне відкриття таблиці міряли до 40 с. Поки в сесії
+    нічого не чекає на запис, це нешкідливо — SQLite бере блокування лише на
+    сам запис. Але сюди по дорозі додаються рядки `SyncLog`, і при autoflush
+    БУДЬ-ЯКИЙ наступний SELECT через цю ж сесію змиває їх у базу, тобто
+    відкриває `BEGIN IMMEDIATE` — і блокування запису тримається весь час, що
+    ми говоримо з Google.
+
+    Другий оператор у цю мить отримає `database is locked`: очікування
+    блокування — 15 с (app/db.py), а мережевий виклик буває довшим. Тобто
+    ранкова видача вдвох ламалась би саме тут.
+
+    `autoflush=False` знімає невидимий тригер: тепер запис у базу відбувається
+    ЛИШЕ там, де ми його написали явно (`bg.commit()`), і жоден із них не
+    потрапляє всередину мережевого виклику. Другий бік того самого рішення —
+    `_log_sync()` нижче: він комітить рядок журналу одразу, не даючи йому
+    дочекатись мережі.
+    """
+    return Session(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+def _log_sync(session: Session, row: SyncLog) -> None:
+    """Додати рядок журналу синку і ОДРАЗУ закомітити.
+
+    Журнал — не частина транзакції роботи: він описує спробу, а не змінює її.
+    Тримати його незакомічений до кінця функції означало б тягнути незавершений
+    запис через мережеві виклики (див. `writeback_session`): при autoflush
+    перший же SELECT змив би його в базу вже ПІД ЧАС розмови з Google і тримав
+    би блокування запису весь цей час. Помилка запису в журнал не має валити
+    саму операцію, тому вона гаситься.
+    """
+    try:
+        session.add(row)
+        session.commit()
+    except Exception:  # noqa: BLE001 — журнал не важливіший за саму дію
+        session.rollback()
+        logger.warning("Не вдалося записати рядок журналу синку", exc_info=True)
+
 
 
 
@@ -91,7 +135,7 @@ def warm_sheet_writeback() -> None:
     оператора долетіла за ~3с, а не за ~40с. Best effort — мовчки пропускає,
     якщо таблиця не налаштована або недоступна."""
     try:
-        with SessionLocal() as warm_db:
+        with writeback_session() as warm_db:
             ss = open_spreadsheet(db=warm_db)
             # Also cache today's worksheet on this thread: a manual client
             # add (create_manual_order) runs its append here, and the
@@ -217,7 +261,7 @@ def _append_manual_rows(
     поглядом, а не губився серед вимірювань часу."""
     from time import perf_counter
 
-    with SessionLocal() as s:
+    with writeback_session() as s:
         t0 = perf_counter()
         spreadsheet = open_spreadsheet(db=s)
         t_open = perf_counter()
@@ -280,7 +324,7 @@ def write_sheet_fields_warm(order_id: int, fields: set[str]) -> str | None:
     """`write_sheet_fields` на воркері: власна сесія (сесії SQLAlchemy не
     потоко-безпечні), значення читаються з БД, тож викликач мусить спершу
     закомітити свої зміни."""
-    with SessionLocal() as bg:
+    with writeback_session() as bg:
         order = bg.get(Order, order_id)
         if order is None:
             return None
@@ -291,7 +335,7 @@ def write_sheet_fields_warm(order_id: int, fields: set[str]) -> str | None:
 
 def write_calculated_cell_warm(order_id: int, value: str) -> str | None:
     """`write_calculated_cell` на воркері — див. `write_sheet_fields_warm`."""
-    with SessionLocal() as bg:
+    with writeback_session() as bg:
         order = bg.get(Order, order_id)
         if order is None:
             return None
@@ -304,7 +348,7 @@ def write_rework_sum3d_fields_warm(
     order_id: int, value: str, letter: str | None = None
 ) -> str | None:
     """`write_rework_sum3d_fields` на воркері — див. `write_sheet_fields_warm`."""
-    with SessionLocal() as bg:
+    with writeback_session() as bg:
         order = bg.get(Order, order_id)
         if order is None:
             return None
@@ -321,7 +365,7 @@ def write_sheet_fields_background(order_id: int, fields: set[str]) -> None:
     source of truth."""
     def worker() -> None:
         try:
-            with SessionLocal() as bg:
+            with writeback_session() as bg:
                 order = bg.get(Order, order_id)
                 if order is not None:
                     write_sheet_fields(bg, order, fields)
@@ -345,7 +389,7 @@ def append_comment_background(order_id: int, comment_id: int, line: str) -> None
     запит комітить коментар одразу, а таблиця наздоганяє."""
     def worker() -> None:
         try:
-            with SessionLocal() as bg:
+            with writeback_session() as bg:
                 order = bg.get(Order, order_id)
                 comment = bg.get(Comment, comment_id)
                 if order is None or order.sheet_tab is None or order.source != "lab":
@@ -357,12 +401,12 @@ def append_comment_background(order_id: int, comment_id: int, line: str) -> None
                     order.cam_comment = append_order_comment(worksheet, order, line)
                     if comment is not None:
                         comment.synced_at = datetime.now()
-                    bg.add(SyncLog(
+                    _log_sync(bg, SyncLog(
                         direction="db_to_sheet", sheet_tab=order.sheet_tab,
                         status="ok", message=f"order {order_id}: comment",
                     ))
                 except Exception as exc:  # noqa: BLE001 — не валимо, лишаємо слід у SyncLog
-                    bg.add(SyncLog(
+                    _log_sync(bg, SyncLog(
                         direction="db_to_sheet", sheet_tab=order.sheet_tab,
                         status="error", message=f"order {order_id}: comment: {exc}",
                     ))
@@ -417,7 +461,7 @@ def set_client_row_fill_background(order_id: int, *, blue: bool) -> None:
     write_sheet_fields_background)."""
     def worker() -> None:
         try:
-            with SessionLocal() as bg:
+            with writeback_session() as bg:
                 order = bg.get(Order, order_id)
                 if order is None:
                     return
@@ -449,7 +493,7 @@ def clear_sheet_row_background(order_id: int) -> None:
     """
     def worker() -> None:
         try:
-            with SessionLocal() as bg:
+            with writeback_session() as bg:
                 order = bg.get(Order, order_id)
                 if order is None or not order.sheet_tab or order.row_number is None:
                     return
@@ -464,14 +508,14 @@ def clear_sheet_row_background(order_id: int) -> None:
                     # Запобіжник, а не збій таблиці: причина в журналі має бути
                     # своя, інакше «стеля стирань» виглядатиме як «рядок не
                     # підтверджено» і ніхто не зрозуміє, що спрацював захист.
-                    bg.add(SyncLog(
+                    _log_sync(bg, SyncLog(
                         direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
                         message=f"order {order_id}: {blocked}",
                     ))
                     bg.commit()
                     return
                 if not cleared:
-                    bg.add(SyncLog(
+                    _log_sync(bg, SyncLog(
                         direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
                         message=(
                             f"order {order_id}: рядок не підтверджено — "
@@ -529,7 +573,7 @@ def clear_group_fills_background(order_ids: list[int]) -> None:
 
     def worker() -> None:
         try:
-            with SessionLocal() as bg:
+            with writeback_session() as bg:
                 fill_rows: list[tuple[int, int]] = []
                 spreadsheet = None
                 for order_id in order_ids:
@@ -586,7 +630,7 @@ def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
     if not field_map:
         return None
     error: str | None = None
-    with SessionLocal() as bg:
+    with writeback_session() as bg:
         # Роботи однієї видачі бувають із різних днів — групуємо по вкладках,
         # бо і звірка позицій, і пакетний запис живуть у межах однієї вкладки.
         by_tab: dict[str, list[tuple[Order, set[str]]]] = {}
@@ -612,7 +656,7 @@ def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
                 logger.exception("Handout group: вкладка %s недоступна", sheet_tab)
                 error = error or str(exc)
                 for order, fields in items:
-                    bg.add(SyncLog(
+                    _log_sync(bg, SyncLog(
                         direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
                         message=f"order {order.id}: {exc}",
                     ))
@@ -628,7 +672,7 @@ def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
                     message = (
                         "рядок у таблиці не підтверджено — не записано, спробуйте ще раз"
                     )
-                    bg.add(SyncLog(
+                    _log_sync(bg, SyncLog(
                         direction="db_to_sheet", sheet_tab=sheet_tab, status="skipped",
                         message=f"order {order.id}: {', '.join(sorted(fields))}: {message}",
                     ))
@@ -649,13 +693,13 @@ def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
                     logger.exception("Handout group: пакетний запис вкладки %s", sheet_tab)
                     error = error or str(exc)
                     for order, fields, _ in plan:
-                        bg.add(SyncLog(
+                        _log_sync(bg, SyncLog(
                             direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
                             message=f"order {order.id}: {exc}",
                         ))
                 else:
                     for order, fields, _ in plan:
-                        bg.add(SyncLog(
+                        _log_sync(bg, SyncLog(
                             direction="db_to_sheet", sheet_tab=sheet_tab, status="ok",
                             message=f"order {order.id}: {', '.join(sorted(fields))}",
                         ))
@@ -737,7 +781,7 @@ def restore_sheet_row_warm(order_id: int) -> str | None:
     Uses its own session (SQLAlchemy sessions are not thread-safe) and reads the
     order's values, which the caller has already committed. Returns an error
     string, or None on success; never raises."""
-    with SessionLocal() as bg:
+    with writeback_session() as bg:
         order = bg.get(Order, order_id)
         if order is None:
             return "роботи більше немає"
@@ -753,7 +797,7 @@ def restore_sheet_row_warm(order_id: int) -> str | None:
                 # The sync reads the blue fill as the pending/issued flag, so a
                 # restore that skipped it would silently flip the work to «видано».
                 paint_row_fills(spreadsheet, [(worksheet.id, order.row_number + HEADER_ROWS)])
-            bg.add(SyncLog(
+            _log_sync(bg, SyncLog(
                 direction="db_to_sheet", sheet_tab=order.sheet_tab, status="ok",
                 message=f"order {order.id}: рядок відновлено",
             ))
@@ -761,7 +805,7 @@ def restore_sheet_row_warm(order_id: int) -> str | None:
             return None
         except RowOccupiedError as exc:
             bg.rollback()
-            bg.add(SyncLog(
+            _log_sync(bg, SyncLog(
                 direction="db_to_sheet", sheet_tab=order.sheet_tab, status="error",
                 message=f"order {order.id}: {exc}",
             ))
@@ -770,7 +814,7 @@ def restore_sheet_row_warm(order_id: int) -> str | None:
         except Exception as exc:  # noqa: BLE001 — reported to the operator, never raised
             error = str(exc)
             bg.rollback()
-            bg.add(SyncLog(
+            _log_sync(bg, SyncLog(
                 direction="db_to_sheet", sheet_tab=order.sheet_tab, status="error",
                 message=f"order {order.id}: restore: {error}",
             ))

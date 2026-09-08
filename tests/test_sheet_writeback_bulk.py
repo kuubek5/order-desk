@@ -128,8 +128,10 @@ def test_write_order_fields_bulk_skips_markers_when_live_read_fails():
 def db_factory(monkeypatch):
     engine = create_engine("sqlite://", poolclass=StaticPool)
     Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(wb, "SessionLocal", factory)
+    # autoflush=False — як у бойовій `writeback_session`: незавершений запис
+    # не має тягнутись крізь мережевий виклик і тримати блокування бази.
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    monkeypatch.setattr(wb, "writeback_session", factory)
     monkeypatch.setattr(wb, "open_spreadsheet", lambda db=None: SimpleNamespace())
     monkeypatch.setattr(wb, "clear_row_fills", lambda ss, rows: None)
     return factory

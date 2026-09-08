@@ -316,10 +316,30 @@ def folder_to_file_uri(folder: Path | None) -> str | None:
 
     Uses Path.as_uri() (which handles backslashes, spaces, and non-ASCII
     characters correctly) instead of hand-building the string in a template.
+
+    БЕЗ звернення до диска. Раніше тут стояв `folder.resolve()`, і це був не
+    рядковий хелпер, а мережевий виклик: на екрані видачі його кличуть у циклі
+    по кожному запису export і по кожному клієнту, послідовно. Поки шара жива,
+    це десятки мілісекунд; коли вона відпала, `resolve()` чекає SMB-таймаут
+    (20-60 с) — і так на кожен запис. Саме цей цикл морозив видачу (аудит
+    08.09.26).
+
+    `resolve()` тут ніколи й не був потрібен по суті: шлях приходить із нашого
+    ж сканера вже абсолютним, а посилання відкриває Провідник на боці клієнта.
+    `absolute()` дає ту саму форму без доступу до сховища. Симлінки й `..` не
+    розгортаються — у теках export їх не буває, а ціна розгортання надто
+    висока.
+
+    Непридатний шлях (порожній, дивний диск) віддає None, а не кидає: одне
+    криве посилання не має валити весь екран видачі.
     """
     if folder is None:
         return None
-    return folder.resolve().as_uri()
+    try:
+        return Path(folder).absolute().as_uri()
+    except (ValueError, OSError):
+        logger.debug("Не вдалося зробити file:// з %s", folder, exc_info=True)
+        return None
 
 
 def attach_export_folder_uris(db: Session, orders: list[Order]) -> None:

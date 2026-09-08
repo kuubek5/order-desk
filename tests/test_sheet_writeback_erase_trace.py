@@ -22,8 +22,8 @@ from app.services import sheet_writeback as wb
 def db_factory(monkeypatch):
     engine = create_engine("sqlite://", poolclass=StaticPool)
     Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
-    monkeypatch.setattr(wb, "SessionLocal", factory)
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    monkeypatch.setattr(wb, "writeback_session", factory)
     # Воркер має відпрацювати ТУТ, а не в пулі: тест перевіряє його результат.
     monkeypatch.setattr(wb, "submit_sheet_write", lambda fn: fn())
     monkeypatch.setattr(wb, "open_spreadsheet", lambda db=None: object())

@@ -47,4 +47,7 @@ def test_sqlite_engine_enables_wal_and_busy_timeout():
         busy_timeout = connection.exec_driver_sql("PRAGMA busy_timeout").scalar_one()
 
     assert journal_mode.lower() == "wal"
-    assert busy_timeout == 5000
+    # 15 с, не 5: воркер запису може тримати блокування, поки говорить з
+    # Google, а з двома операторами коротший поріг означав би «database is
+    # locked» замість екрана видачі (аудит 08.09.26).
+    assert busy_timeout == 15000

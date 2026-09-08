@@ -66,7 +66,10 @@ class TestWritesLeaveTheEventLoop:
     def test_sum3d_write_runs_on_the_writeback_worker(self, monkeypatch):
         engine = _engine()
         Base.metadata.create_all(engine)
-        monkeypatch.setattr(writeback, "SessionLocal", sessionmaker(bind=engine))
+        monkeypatch.setattr(
+            writeback, "writeback_session",
+            sessionmaker(bind=engine, autoflush=False, expire_on_commit=False),
+        )
 
         threads: list[str] = []
 
@@ -469,3 +472,56 @@ class TestRestoreErasedRow:
         with pytest.raises(ValueError):
             restore_erased_row(ws, 13, ["", "  "])
         ws.batch_update.assert_not_called()
+
+
+# ── Сесія воркера не тримає блокування бази крізь мережевий виклик ─────────
+# Аудит 08.09.26. Функції write-back тримають сесію відкритою через розмову з
+# Google (холодне відкриття таблиці — до 40 с). Поки в сесії немає незавершених
+# записів, це нешкідливо. Але сюди по дорозі лягають рядки SyncLog, і при
+# autoflush перший же SELECT змиває їх у базу — тобто відкриває BEGIN IMMEDIATE
+# і тримає блокування запису весь час мережевого виклику. Другий оператор у цю
+# мить отримає «database is locked» замість екрана видачі.
+
+
+def test_writeback_session_has_autoflush_off():
+    """Головний інваріант: запис у базу відбувається ЛИШЕ там, де ми написали
+    `commit()`, і жоден із них не потрапляє всередину мережевого виклику."""
+    from app.services.sheet_writeback import writeback_session
+
+    with writeback_session() as session:
+        assert session.autoflush is False, (
+            "autoflush увімкнено — будь-який SELECT усередині розмови з Google "
+            "змиє незавершені SyncLog у базу й триматиме блокування запису"
+        )
+
+
+def test_module_takes_every_session_from_the_single_factory():
+    """Одна точка входу, а не дванадцять `SessionLocal()`.
+
+    Якщо десь у модулі знову зʼявиться сесія в обхід фабрики, вона прийде з
+    увімкненим autoflush — і поверне проблему рівно там, де її не шукатимуть.
+    """
+    import inspect
+
+    from app.services import sheet_writeback
+
+    source = inspect.getsource(sheet_writeback)
+    assert "SessionLocal(" not in source, (
+        "сесія в обхід writeback_session() — вона прийде з autoflush=True"
+    )
+
+
+def test_sync_log_rows_are_committed_immediately():
+    """Рядок журналу комітиться одразу, а не чекає кінця функції.
+
+    Журнал описує спробу, а не змінює роботу, тож тримати його незакомічений
+    крізь мережу немає причин — зате є наслідок (блокування бази).
+    """
+    import inspect
+
+    from app.services import sheet_writeback
+
+    source = inspect.getsource(sheet_writeback)
+    assert "bg.add(SyncLog(" not in source, (
+        "SyncLog додається без негайного коміту — використовуй _log_sync()"
+    )

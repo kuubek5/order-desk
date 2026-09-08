@@ -239,7 +239,10 @@ _cache_lock = threading.Lock()
 _refreshing: set[tuple] = set()
 
 
-_counters = {"hit": 0, "stale": 0, "miss": 0}
+_counters = {"hit": 0, "stale": 0, "miss": 0, "kept": 0}
+# Локи «один обхід на ключ». Ключів мало (теки клієнтів), тож словник не
+# чиститься — його розмір обмежений складом сховища, не трафіком.
+_producer_locks: dict[tuple, threading.Lock] = {}
 """Скільки звернень до сховища кеш прийняв на себе, а скільки пропустив.
 
 Це ВИМІРЮВАЛЬНИЙ прилад, а не оптимізація. Бойова скарга 03.09.26: видача
@@ -254,6 +257,48 @@ def cache_counters() -> dict[str, int]:
     стосується саме цього рендера, а не всього часу роботи процесу."""
     with _cache_lock:
         return dict(_counters)
+
+
+def _is_mass_vanish(previous, value) -> bool:
+    """Чи схоже нове значення на «шара відпала», а не на «тек справді не стало».
+
+    Той самий поріг, що на синку таблиці (CLAUDE.md §14): падіння БІЛЬШЕ НІЖ на
+    5 позицій І більше ніж на чверть. Причина та сама: мережева тека, що
+    відпала, віддає не помилку, а порожній список — і сканер записував цю
+    порожнечу в кеш як правильну відповідь на 180 с. На екрані видачі всі
+    клієнти ставали «не прив'язані», а прев'ю STL зникало (аудит 08.09.26).
+
+    Порожнеча поверх порожнечі — не подія: перший прогрів на живій, але ще
+    порожній теці має закешуватись нормально.
+    """
+    try:
+        was, now_len = len(previous), len(value)
+    except TypeError:  # pragma: no cover — на випадок нескінченних ітераторів
+        return False
+    if was == 0:
+        return False
+    lost = was - now_len
+    return lost > 5 and lost > was * 0.25
+
+
+def _store(key: tuple, value):
+    """Покласти результат у кеш, якщо він не схожий на обрив звʼязку.
+
+    Підозріле значення НЕ затирає попереднє: краще показати трохи застарілий
+    список тек, ніж порожній. Штамп часу теж не оновлюємо — інакше наступний
+    прохід вважав би дані свіжими й не спробував би ще раз.
+    """
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit is not None and _is_mass_vanish(hit[1], value):
+            _counters["kept"] += 1
+            logger.warning(
+                "Сканер export: різке падіння (%d → %d) для %s — схоже на "
+                "недоступну шару, лишаю попередній результат",
+                len(hit[1]), len(value), key,
+            )
+            return
+        _cache[key] = (time.monotonic(), value)
 
 
 def _cached(key: tuple, producer):
@@ -274,10 +319,26 @@ def _cached(key: tuple, producer):
                 ).start()
             return value            # протухле краще за очікування
         _counters["miss"] += 1
-    value = producer()
-    with _cache_lock:
-        _cache[key] = (time.monotonic(), value)
-    return value
+        # Один обхід на ключ, а не по одному на кожного, хто спитав. Двоє
+        # операторів плюс фоновий грійник давали ТРИ паралельні обходи шари по
+        # 16 потоків кожен. Той самий прийом уже стоїть у app/order_folder.py
+        # (`_scan_lock_for`) — тут його бракувало (аудит 08.09.26).
+        lock = _producer_locks.setdefault(key, threading.Lock())
+
+    with lock:
+        # Поки чекали на лок, попередник міг уже все порахувати.
+        with _cache_lock:
+            hit = _cache.get(key)
+            if hit is not None and time.monotonic() - hit[0] < _CACHE_TTL_SECONDS:
+                _counters["hit"] += 1
+                return hit[1]
+        value = producer()
+        _store(key, value)
+        with _cache_lock:
+            fresh = _cache.get(key)
+        # Якщо запобіжник відкинув наше значення, віддаємо те, що лишилось у
+        # кеші: показати трохи старе краще, ніж порожнє.
+        return fresh[1] if fresh is not None else value
 
 
 def _background_refresh(key: tuple, producer) -> None:
@@ -289,8 +350,7 @@ def _background_refresh(key: tuple, producer) -> None:
     finally:
         with _cache_lock:
             _refreshing.discard(key)
-    with _cache_lock:
-        _cache[key] = (time.monotonic(), value)
+    _store(key, value)
 
 
 def list_export_client_names_cached(root: Path) -> list[str]:

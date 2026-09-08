@@ -210,6 +210,25 @@ def call_with_retry(
     raise AssertionError("unreachable")  # pragma: no cover
 
 
+# Дедлайн на КОЖЕН запит до Google: (зʼєднатись, дочекатись відповіді).
+#
+# Навіщо. gspread будує сесію без тайм-ауту, а `requests` без нього чекає
+# ВІЧНО. Обрив, при якому інший бік не надіслав RST (а саме так рве зʼєднання
+# TLS-проксі цеху), лишає потік у read() назавжди: `_sync_lock` не
+# звільняється, гарячі тіки повертають None, ручний синк відповідає «вже
+# виконується», а пульс через три хвилини каже «немає відповіді» — і жоден
+# перезапуск воркера цього не лікує, бо воркер живий, він чекає. Той самий
+# обрив вішає ЄДИНИЙ потік пулу запису, тобто всі галочки операторів висять
+# вічно (аудит 08.09.26).
+#
+# 60 с на читання — не «швидко», а «скінченно»: холодне відкриття таблиці на
+# цій машині міряли до 40 с (див. _LeanHTTPClient), тож менший дедлайн різав
+# би нормальну роботу. `requests.exceptions.Timeout` уже вважається
+# тимчасовою помилкою (`is_transient_sheet_error`), тож спрацювання дедлайну
+# лягає в наявний ланцюг повторів, а не вилітає нагору.
+SHEETS_TIMEOUT_SECONDS = (10, 60)
+
+
 class _LegacyRenegotiationAdapter(HTTPAdapter):
     """Works around local TLS-inspecting security software.
 
@@ -219,6 +238,11 @@ class _LegacyRenegotiationAdapter(HTTPAdapter):
     normally pins to. Building the context via ssl.create_default_context()
     picks up the Windows store, and cert_verify() is overridden so requests
     doesn't override that trust with the certifi path.
+
+    Тут же живе дедлайн запиту (див. SHEETS_TIMEOUT_SECONDS). Саме в адаптері,
+    а не в кожному виклику: через нього проходить УСЕ, що йде по https з наших
+    сесій — і виклики gspread, і оновлення токена, і скачування за посиланням,
+    — тож жоден новий виклик не може випадково лишитись без дедлайну.
     """
 
     def init_poolmanager(self, *args, **kwargs):
@@ -229,6 +253,13 @@ class _LegacyRenegotiationAdapter(HTTPAdapter):
 
     def cert_verify(self, conn, url, verify, cert):
         conn.cert_reqs = "CERT_REQUIRED"
+
+    def send(self, request, *args, **kwargs):
+        # Свій тайм-аут викликача поважаємо; підставляємо лише там, де його
+        # немає — а немає його майже скрізь, бо gspread його не передає.
+        if kwargs.get("timeout") is None:
+            kwargs["timeout"] = SHEETS_TIMEOUT_SECONDS
+        return super().send(request, *args, **kwargs)
 
 
 def new_legacy_session() -> requests.Session:
