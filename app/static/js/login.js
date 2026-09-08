@@ -157,7 +157,6 @@ document.querySelectorAll(".login-toggle-password").forEach((button) => {
       '<div class="reg-body">' +
         (err ? '<p class="reg-error" role="alert">' + err + '</p>' : "") +
         '<form method="post" action="/register">' +
-          field("full_name", "Ваше імʼя", "text", "Іван Петренко", slot.dataset.fullName) +
           field("username", "Логін", "text", "імʼя.прізвище", slot.dataset.username) +
           field("password", "Пароль", "password", "••••••••", "") +
           field("password_confirmation", "Пароль ще раз", "password", "••••••••", "") +

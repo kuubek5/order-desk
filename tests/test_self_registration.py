@@ -103,14 +103,34 @@ class TestRules:
         assert values is None
         assert error == "Паролі не збігаються"
 
-    def test_name_is_required(self, db_session):
-        """Імʼя показується в історії дій — без нього «хто це зробив» стає
-        анонімним."""
+    def test_name_defaults_to_the_login(self, db_session):
+        """Імені у формі більше немає (рішення власника 08.09.26): оператор
+        вводить лише логін. Але порожнім `full_name` бути не може — з нього
+        ростуть історія дій, список операторів і підказки. Тому воно дорівнює
+        логіну, а адмін за потреби виправить у Налаштуваннях."""
         _existing_admin(db_session)
         values, error = validate_self_registration(
             db_session, "новий", "", "long-password", "long-password"
         )
+        assert error is None
+        assert values["full_name"] == "новий"
+
+    def test_a_given_name_is_still_respected(self, db_session):
+        """Форма його не шле, але CLI й майбутня форма можуть — не ігноруємо."""
+        _existing_admin(db_session)
+        values, error = validate_self_registration(
+            db_session, "новий", "Новий Оператор", "long-password", "long-password"
+        )
+        assert error is None
+        assert values["full_name"] == "Новий Оператор"
+
+    def test_login_is_still_required(self, db_session):
+        _existing_admin(db_session)
+        values, error = validate_self_registration(
+            db_session, "", "", "long-password", "long-password"
+        )
         assert values is None
+        assert error == "Вкажіть логін"
 
 
 class TestRoute:
@@ -162,7 +182,6 @@ class TestRoute:
         ctx = response.context
         assert ctx["register_open"] is True
         assert ctx["register_username"] == "ivan.petrenko"
-        assert ctx["register_full_name"] == "Іван Петренко"
         assert ctx["register_error"]
 
 
@@ -187,3 +206,15 @@ class TestFrontEnd:
         js = (Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "login.js").read_text(encoding="utf-8")
         assert "altKey" in js and 'key === "Enter"' in js
         assert "reg-slot" in js
+
+
+def test_the_form_asks_only_for_a_login():
+    """Поля імені у формі немає — рішення власника 08.09.26."""
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parents[1] / "app" / "static" / "js" / "login.js").read_text(encoding="utf-8")
+    block = js[js.index("function buildPanel"):js.index("function showPanel")]
+    assert '"username"' in block
+    assert "full_name" not in block, (
+        "поле імені повернулось у форму реєстрації — власник просив лише логін"
+    )

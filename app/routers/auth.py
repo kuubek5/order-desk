@@ -336,9 +336,17 @@ async def register_submit(
         )
     db.refresh(user)
 
+    # Імені у формі немає, тож зазвичай воно дорівнює логіну — і тоді писати
+    # «логін (логін)» безглуздо. Якщо ім'я таки відрізняється (завели через
+    # CLI, потім виправив адмін), показуємо обидва.
+    who = (
+        user.username
+        if user.full_name == user.username
+        else f"{user.full_name} ({user.username})"
+    )
     log_action(
         db, order=None, operator=user, action_type="create",
-        note=f"зареєструвався сам: {user.full_name} ({user.username})",
+        note=f"зареєструвався сам: {who}",
     )
     db.commit()
     logger.warning(
