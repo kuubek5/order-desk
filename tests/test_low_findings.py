@@ -24,7 +24,11 @@ def test_stale_login_attempts_do_not_pile_up_forever():
         limiter.register_failure(f"привид-{i}@10.0.0.1")
     assert len(limiter._buckets) == 50
 
-    time.sleep(0.06)                       # спроби «застаріли»
+    # Запас навмисно ВЕЛИКИЙ. Було 0.06 проти вікна 0.05 — десять мілісекунд,
+    # і тест плавав: під навантаженням повного прогону він падав приблизно
+    # через раз, а окремо завжди проходив. Крихкий тест гірший за відсутній:
+    # він привчає не вірити червоному. П'ятикратний запас перевіряє те саме.
+    time.sleep(0.25)                       # спроби «застаріли»
     limiter.register_failure("хтось-живий@10.0.0.1")
 
     assert len(limiter._buckets) == 1      # лишився тільки свіжий ключ
@@ -39,7 +43,7 @@ def test_a_blocked_key_survives_the_cleanup():
     blocked_for = limiter.register_failure("зловмисник@10.0.0.2")
     assert blocked_for > 0
 
-    time.sleep(0.06)
+    time.sleep(0.25)                       # той самий запас, що вище
     limiter.register_failure("інший@10.0.0.3")
 
     assert limiter.retry_after("зловмисник@10.0.0.2") > 0
