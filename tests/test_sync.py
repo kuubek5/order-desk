@@ -2195,3 +2195,40 @@ def test_a_named_when_archived_work_is_adopted_after_a_row_shift():
         assert len(orders) == 2 and result.created == 0
         assert orders["09-26-21"].archived_at is None
         assert orders["09-26-21"].row_number == 7
+
+
+def test_two_archived_look_alike_works_are_not_guessed_between():
+    """Рев'ю 09.09.26: дві архівні безіменні роботи з однаковим матеріалом і
+    кількістю під старими рядками. Зіставити безіменний рядок з однією з них
+    означало б угадувати — і половину разів угадувати не ту. Тому синк
+    свідомо НЕ вгадує: рядок імпортується як нова робота, а обидві старі
+    лишаються в Архіві, де їх видно з міткою «зникла». Це не втрата даних —
+    ніщо не стерто, — а відмова від хибного зіставлення."""
+    from datetime import timedelta
+
+    with make_session() as session:
+        for old_row in (8, 9):
+            session.add(Order(
+                source="lab", sheet_tab="03.09.26", row_number=old_row, quantity="6",
+                material_color="pmma a2", status="відфрезеровано",
+                archived_at=utc_now() - timedelta(days=1),
+                created_at=utc_now() - timedelta(days=5),
+            ))
+        # Живі сусідки тепер на 8 і 9 — обидві архівні витіснені з мапи
+        for old_row, name, s3 in ((8, "Pavlenko", "10-12-25"), (9, "Estedent", "12-34-39")):
+            session.add(Order(
+                source="sheet_client", sheet_tab="03.09.26", row_number=old_row, quantity="1",
+                material_color="emo a1", client_name=name, sum3d_id=s3,
+                status="відфрезеровано", created_at=utc_now() - timedelta(days=5),
+            ))
+        session.commit()
+
+        result = sync_tab(session, "03.09.26", [
+            _client_row("6", "pmma a2", sum3d="09-26-21", row_number=7),
+            _client_row("1", "emo a1", name="Pavlenko", sum3d="10-12-25", row_number=8),
+            _client_row("1", "emo a1", name="Estedent", sum3d="12-34-39", row_number=9),
+        ])
+
+        assert result.created == 1, "неоднозначність → нова робота, без угадування"
+        archived = [o for o in session.scalars(select(Order)) if o.archived_at is not None]
+        assert len(archived) == 2, "старі не стерто — вони лишились в Архіві"
