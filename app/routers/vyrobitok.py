@@ -34,6 +34,7 @@ from app.services.vyrobitok import (
     HUE,
     MATERIAL_COLS,
     OPAK_PEOPLE,
+    clear_day_overrides,
     compute_month,
     resync_guard,
     save_month_settings,
@@ -190,6 +191,10 @@ def post_vyrobitok_day_sync(
 
     Двостороння: якщо рядок із тієї вкладки в таблиці вже видалили, робота піде
     в архів так само, як при звичайному ручному синку того дня.
+
+    «Начисто» означає і скидання ручних правок авто-колонок дня
+    (`clear_day_overrides`): правка стоїть ПОВЕРХ auto_value, тож без цього
+    свіже число лишалось би невидимим і кнопка виглядала б мовчазною.
     """
     user = get_current_user(request, db)
     if user is None:
@@ -218,15 +223,28 @@ def post_vyrobitok_day_sync(
     # Розморожуємо ДО синку: інакше запис СЛМ упреться в заморозку й тихо
     # пропустить число, заради якого синк і запускали.
     error: str | None = None
+    cleared = 0
     with resync_guard(d):
         unfreeze_day(db, d)
         try:
             sync_google_sheets(db, trigger="manual", include_tabs={tab_name_for(d)})
         except SheetSyncError as exc:
             error = str(exc)
+        else:
+            # Правки поверх авто-колонок стираємо ЛИШЕ після успішного читання:
+            # інакше свіже число сховалось би під старим ручним і кнопка
+            # виглядала б мовчазною (рішення власника 09.09.26), а на впалому
+            # синку оператор втратив би і правку, і перерахунок — обидва числа
+            # разом. Ручні колонки не чіпаємо ніколи: там авто немає.
+            cleared = clear_day_overrides(db, d)
 
     context = _grid_context(db, user, d.year, d.month)
     context["day_sync_error"] = error
+    if error is None and cleared:
+        context["day_sync_note"] = (
+            f"День {d.strftime('%d.%m')} перераховано начисто; "
+            f"ручних правок скинуто: {cleared}."
+        )
     return templates.TemplateResponse(request, "_vyrobitok_body.html", context)
 
 

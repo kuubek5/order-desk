@@ -721,3 +721,82 @@ def test_background_freeze_skips_a_day_under_manual_resync():
     with svc.resync_guard(day):
         assert day in svc._RESYNC_DAYS
     assert day not in svc._RESYNC_DAYS
+
+
+def test_day_sync_route_drops_manual_edits_of_auto_columns(monkeypatch):
+    """Скарга власника 09.09.26: правиш число руками, тиснеш «синк дня» — і в
+    рядку нічого не міняється; єдиний спосіб побачити свіже — стерти клітинку
+    геть. Причина: правка лежить ПОВЕРХ auto_value, а синк писав лише auto.
+    «Синк дня» = «перерахувати начисто», тож він скидає правки авто-колонок
+    (і каже, скільки), а ручні колонки (диски/підкови/опаки) не чіпає — там
+    авто немає взагалі."""
+    from app.routers import vyrobitok as vr
+
+    db = _db()
+    mat = _materials(db)
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=30, day=5)
+    set_cell(db, date(2026, 8, 5), "lab_zr", 11)     # правка авто-колонки
+    set_cell(db, date(2026, 8, 5), "mail_slm", 5)    # правка поверх числа синку
+    set_cell(db, date(2026, 8, 5), "disks", 9)       # ручна колонка — недоторканна
+
+    def fake_sync(session, *, trigger, include_tabs=None, **kw):
+        from app.services.vyrobitok import store_slm_totals
+        store_slm_totals(session, date(2026, 8, 5), lab_units=0, mail_units=70)
+        session.commit()
+    monkeypatch.setattr(vr, "sync_google_sheets", fake_sync)
+    monkeypatch.setattr(vr, "get_current_user", lambda r, db: object())
+    monkeypatch.setattr(vr, "_pin_required", lambda r, db: False)
+
+    resp = vr.post_vyrobitok_day_sync(_req({}), day="2026-08-05", db=db)
+    assert resp.status_code == 200
+    assert "скинуто: 2" in resp.context["day_sync_note"]
+
+    grid = compute_month(db, 2026, 8)
+    row = next(r for r in grid.rows if r["dayn"] == 5)
+    assert row["cells"]["lab_zr"]["num"] == 30       # авто з Orders, не 11
+    assert row["cells"]["lab_zr"]["edited"] is False
+    assert row["cells"]["mail_slm"]["num"] == 70     # свіже число синку, не 5
+    assert row["cells"]["disks"]["num"] == 9         # ручну колонку не чіпали
+
+
+def test_day_sync_without_manual_edits_says_nothing(monkeypatch):
+    """Банер лише коли справді щось скинули — інакше кожен синк лишав би
+    смугу тексту над таблицею."""
+    from app.routers import vyrobitok as vr
+
+    db = _db()
+    _materials(db)
+    monkeypatch.setattr(vr, "sync_google_sheets", lambda *a, **kw: None)
+    monkeypatch.setattr(vr, "get_current_user", lambda r, db: object())
+    monkeypatch.setattr(vr, "_pin_required", lambda r, db: False)
+
+    resp = vr.post_vyrobitok_day_sync(_req({}), day="2026-08-05", db=db)
+    assert resp.context.get("day_sync_note") is None
+
+
+def test_failed_day_sync_keeps_manual_edits(monkeypatch):
+    """Перехід, а не стан: коли читання вкладки падає, скидати правку не можна
+    — оператор лишився б і без свого числа, і без перерахунку. Тому скидання
+    стоїть у гілці `else` після успішного синку."""
+    from app.routers import vyrobitok as vr
+    from app.sheet_sync_service import SheetSyncError
+
+    db = _db()
+    mat = _materials(db)
+    _order(db, source="lab", material_id=mat["Цирконій"], qty=30, day=5)
+    set_cell(db, date(2026, 8, 5), "lab_zr", 11)
+
+    def boom(*a, **kw):
+        raise SheetSyncError("немає зв'язку з Google")
+    monkeypatch.setattr(vr, "sync_google_sheets", boom)
+    monkeypatch.setattr(vr, "get_current_user", lambda r, db: object())
+    monkeypatch.setattr(vr, "_pin_required", lambda r, db: False)
+
+    resp = vr.post_vyrobitok_day_sync(_req({}), day="2026-08-05", db=db)
+    assert "зв'язку" in resp.context["day_sync_error"]
+    assert resp.context.get("day_sync_note") is None
+
+    grid = compute_month(db, 2026, 8)
+    row = next(r for r in grid.rows if r["dayn"] == 5)
+    assert row["cells"]["lab_zr"]["num"] == 11       # правка ціла
+    assert row["cells"]["lab_zr"]["edited"] is True

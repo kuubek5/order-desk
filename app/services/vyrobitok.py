@@ -711,3 +711,29 @@ def save_month_settings(
         row.rate_override = rate_override.strip() or None
     db.commit()
     return row
+
+
+def clear_day_overrides(db: Session, day: date) -> int:
+    """Стерти ручні правки авто-колонок дня. Повертає, скільки їх було.
+
+    «Синк цього дня» означає «перерахувати начисто»: він знімає заморозку й
+    перечитує вкладку, тож ручне число, яке лишалось поверх auto_value, ховало
+    б свіжий результат — оператор тиснув кнопку й бачив те саме число (доти
+    єдиним способом побачити авто було стерти клітинку руками).
+
+    Чіпаємо ЛИШЕ SNAPSHOT_COLS: у ручних колонок (підкови, диски, опаки) авто
+    немає взагалі, там override — саме значення, і синк його стерти не має
+    права.
+    """
+    cells = db.scalars(
+        select(VyrobitokCell).where(
+            VyrobitokCell.day == day,
+            VyrobitokCell.col_key.in_(sorted(SNAPSHOT_COLS)),
+            VyrobitokCell.override_value.is_not(None),
+        )
+    ).all()
+    for cell in cells:
+        cell.override_value = None
+    if cells:
+        db.commit()
+    return len(cells)

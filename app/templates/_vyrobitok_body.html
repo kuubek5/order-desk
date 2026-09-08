@@ -7,6 +7,9 @@
 {% if day_sync_error %}
 <p class="vt-flash error">Синхронізація дня не вдалась: {{ day_sync_error }}</p>
 {% endif %}
+{% if day_sync_note %}
+<p class="vt-flash">{{ day_sync_note }}</p>
+{% endif %}
 {% set g = grid %}
 {% set m = g.money %}
 
@@ -68,11 +71,13 @@
       {% else %}
       <tr class="{% if row.is_today %}today{% endif %}">
         {# Клік по ⟳ перечитує вкладку цього дня й рахує його начисто — єдина
-           дія, що знімає заморозку. Замок поруч = день уже закрито. #}
+           дія, що знімає заморозку І скидає ручні правки авто-колонок дня
+           (інакше свіже число лишалось би під старим ручним). Замок поруч =
+           день уже закрито. #}
         <td class="day">
           <span class="dn">{{ row.dayn }}</span><span class="wd">{{ row.weekend_short or '' }}</span>
           <span class="fz"{% if row.frozen %} title="День закрито — число не перераховується"{% endif %}>{% if row.frozen %}•{% endif %}</span>
-          <button type="button" class="daysync" title="Перечитати вкладку {{ row.dayn }} і перерахувати день"
+          <button type="button" class="daysync" title="Перечитати вкладку {{ row.dayn }} і перерахувати день начисто (ручні правки цього дня скидаються)"
                   hx-post="/vyrobitok/day-sync" hx-target="#vyrobitok-body" hx-swap="outerHTML"
                   hx-vals='{"day": "{{ row.date }}"}' hx-indicator="this">⟳</button>
         </td>
