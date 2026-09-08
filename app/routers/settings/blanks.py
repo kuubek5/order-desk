@@ -19,6 +19,7 @@ from app.models import CamBlank
 from app.routers.deps import get_current_user, get_db, templates
 from app.services.cam_blanks import (
     mark_ordered,
+    pileup_note,
     probe_blanks,
     order_text,
     pending_blanks,
@@ -73,6 +74,8 @@ def blanks_context(db: Session, *, error: str | None = None) -> dict:
         # Проба заповнюється лише своїм роутом; на звичайному рендері її нема.
         "blanks_probe": None,
         "blanks_note": None,
+        # Підказка «схоже, забули замовити» — рахується з самого списку.
+        "blanks_pileup": pileup_note(pending),
     }
 
 

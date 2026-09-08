@@ -399,3 +399,56 @@ def test_baseline_is_set_once_even_after_the_folder_is_emptied(db, tmp_path):
     again = sync_blanks(db, tmp_path)
     assert (again.baseline, again.appeared) == (0, 1)
     assert len(pending_blanks(db)) == 1
+
+
+# ── «схоже, забули замовити» ────────────────────────────────────────────────
+
+
+def test_pileup_hint_stays_quiet_for_a_normal_long_weekend(db, tmp_path):
+    """Поріг за КІЛЬКІСТЮ, а не за часом — і саме тому мовчить у понеділок.
+
+    Часовий поріг здавався природнішим, але давав би хибну тривогу щопонеділка:
+    комірниця не працює у вихідні, оператори працюють, тож найстаршому диску
+    законно 72 години. Хибний сигнал гірший за жодного.
+    """
+    from app.services.cam_blanks import BLANKS_PILEUP, pileup_note
+
+    seed_baseline(db, tmp_path)
+    # довгі вихідні: три доби по десять дисків
+    names = [f"12-monolith-a2-x{i}.blk" for i in range(100, 130)]
+    make_tree(tmp_path, {"zr/12": names})
+    sync_blanks(db, tmp_path, now=datetime(2026, 9, 5, 19, 0))   # пʼятниця ввечері
+
+    rows = pending_blanks(db)
+    assert len(rows) == 30 < BLANKS_PILEUP
+    assert pileup_note(rows) is None, "за звичайні вихідні підказка не спрацьовує"
+
+
+def test_pileup_hint_names_the_number_and_the_oldest_date(db, tmp_path):
+    from app.services.cam_blanks import BLANKS_PILEUP, pileup_note
+
+    seed_baseline(db, tmp_path)
+    make_tree(tmp_path, {"zr/12": [f"12-monolith-a2-x{i}.blk" for i in range(200, 260)]})
+    sync_blanks(db, tmp_path, now=datetime(2026, 9, 1, 10, 0))
+
+    rows = pending_blanks(db)
+    assert len(rows) >= BLANKS_PILEUP
+    note = pileup_note(rows)
+    assert note is not None
+    assert "01.09" in note, "оператор має бачити, з якої дати тягнеться список"
+    assert str(len(rows)) in note
+
+
+def test_pileup_hint_is_a_hint_not_a_block(db, tmp_path):
+    """Список і текст лишаються ПОВНИМИ: обрізати їх означало б тихо
+    загубити частину замовлення."""
+    from app.services.cam_blanks import pileup_note
+
+    seed_baseline(db, tmp_path)
+    make_tree(tmp_path, {"zr/12": [f"12-monolith-a2-x{i}.blk" for i in range(300, 360)]})
+    sync_blanks(db, tmp_path)
+
+    rows = pending_blanks(db)
+    assert pileup_note(rows) is not None
+    assert len(rows) == 60
+    assert order_text(rows), "текст для комірниці не обрізається"
