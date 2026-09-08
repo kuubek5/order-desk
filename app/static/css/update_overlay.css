@@ -386,6 +386,19 @@ a.cal-cell:hover{outline:2px solid var(--accent-b);outline-offset:-1px}
 .arch-sheet .arch-files:hover{background:var(--raise);color:var(--accent-c)}
 .arch-sheet .arch-files svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linejoin:round}
 .arch-sheet .arch-nofiles{color:var(--ink-3);opacity:.5}
+/* Рядок, якого більше немає в Google Таблиці. Архів показує день ЦІЛКОМ
+   (зміна 08.09.26), тож зникнення стало ознакою рядка, а не умовою показу.
+   Тон приглушений і теплий: це не помилка й не тривога — це факт історії,
+   який має читатись з першого погляду, але не кричати на весь екран. */
+.arch-sheet tbody tr.is-gone td{color:var(--ink-3)}
+.arch-sheet tbody tr.is-gone{background:rgba(var(--warn-base-rgb, var(--accent-base-rgb)), .06)}
+.arch-sheet tbody tr.is-gone:hover{background:rgba(var(--warn-base-rgb, var(--accent-base-rgb)), .12)}
+.arch-sheet .arch-gone-tag{display:inline-block;margin-left:6px;padding:0 5px;border-radius:var(--r-chip, 6px);
+  border:1px solid var(--line-2);background:var(--card-3);color:var(--ink-3);
+  font-family:var(--font-mono);font-size:var(--fs-0);line-height:1.6;vertical-align:baseline}
+/* Клієнтський рядок без імені — теж робота, і в історії вона має бути
+   впізнаваною, а не прочерком поруч із іменами сусідів. */
+.arch-sheet .c-noname{color:var(--ink-3);font-style:italic}
 .arch-sheet .c-date{color:var(--ink-2)}
 .arch-sheet .c-sum{color:var(--sig, var(--accent-c));font-size:var(--fs-1)}
 .arch-sheet .c-tech{color:var(--ink-2)}

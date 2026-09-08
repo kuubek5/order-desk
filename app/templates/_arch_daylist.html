@@ -3,7 +3,9 @@
 {% if day_orders %}
 <div class="arch-dl-head">
     <h3 class="mono">{{ day_label }}</h3>
-    <span class="cnt"><b class="mono">{{ day_orders|length }}</b> робіт · порядок як у таблиці</span>
+    {% set gone = gone_ids or [] %}
+    {% set gone_here = day_orders | selectattr('id', 'in', gone) | list | length %}
+    <span class="cnt"><b class="mono">{{ day_orders|length }}</b> робіт · порядок як у таблиці{% if gone_here %} · <b class="mono">{{ gone_here }}</b> зникло з таблиці{% endif %}</span>
 </div>
 <div class="arch-sheet-wrap">
     <table class="arch-sheet">
@@ -31,12 +33,16 @@
                зламало б сітку таблиці для читалки (зникли б заголовки колонок).
                Активацію з клавіатури (Enter/Пробіл) робить спільний слухач у
                queue.js — той самий, що обробляє клік по [data-order-detail]. #}
-            <tr data-order-detail="{{ order.id }}" tabindex="0">
+            {# Рядок, який ЗНИК із таблиці, — окремий сигнал, а не умова
+               потрапляння на екран: Архів показує день цілком, а зникнення
+               позначається тут (зміна 08.09.26). #}
+            <tr data-order-detail="{{ order.id }}" tabindex="0"{% if order.id in gone %} class="is-gone" title="Рядка більше немає в Google Таблиці"{% endif %}>
                 <td class="c-num mono">{{ loop.index }}</td>
                 <td class="c-who">
                     {%- if order.work_order_no %}<span class="mono c-nar-v">{{ order.work_order_no }}</span>
                     {%- elif order.client_name %}<span class="c-cl-v">{{ order.client_name }}</span>
-                    {%- else %}—{% endif -%}
+                    {%- else %}<span class="c-noname">без імені</span>{% endif -%}
+                    {%- if order.id in gone %} <span class="arch-gone-tag">зникла</span>{% endif -%}
                 </td>
                 <td class="c-qty mono">{{ order.quantity or '' }}</td>
                 <td class="c-mat">{{ order.material_color or '' }}</td>

@@ -81,21 +81,28 @@ def _seed(db):
     return old
 
 
-def test_archive_shell_excludes_active_and_opens_latest_month(monkeypatch):
-    """Оболонка: ліва рейка місяців + уже розкритий найсвіжіший місяць."""
+def test_archive_holds_the_whole_history_not_only_what_fell_out(monkeypatch):
+    """Архів показує ВСЮ історію, а не лише те, що випало з черги.
+
+    Доти екран, названий «Архів» і збудований як календар по днях, показував
+    за 3 вересня 10 робіт із 74 — решта ще жили в черзі. На питання «що було
+    того дня» він відповідав уламком, і це читалось як втрата даних
+    (зауваження власника 08.09.26).
+    """
     _capture(monkeypatch)
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         old = _seed(db)
         ctx = archive_router_mod.get_archive(request=_request(user.id), db=db)
-    assert ctx["archive_total"] == 2  # the active order is excluded
-    ym = f"{old.year:04d}-{old.month:02d}"
+
+    assert ctx["archive_total"] == 3, "жива робота теж належить історії"
     months = {m["ym"]: m["count"] for m in ctx["months"]}
-    assert months.get(ym) == 2
-    # Найсвіжіший місяць уже розкритий у праву панель (не порожній екран).
-    assert ctx["active_ym"] == ym
-    assert ctx["month_total"] == 2
+    assert months.get(f"{old.year:04d}-{old.month:02d}") == 2
+    today = business_today()
+    assert months.get(f"{today.year:04d}-{today.month:02d}") == 1
+    # Розкритий найсвіжіший місяць — там, де оператор працює.
+    assert ctx["active_ym"] == f"{today.year:04d}-{today.month:02d}"
 
 
 def test_archive_detail_partial_builds_calendar(monkeypatch):
@@ -147,12 +154,14 @@ def test_archive_search_empty_returns_latest_month(monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        old = _seed(db)
+        _seed(db)
         ctx = archive_router_mod.get_archive_search(
             request=_request(user.id), q="   ", db=db
         )
-    assert ctx["month_total"] == 2
-    assert ctx["month_ym"] == f"{old.year:04d}-{old.month:02d}"
+    # Найсвіжіший місяць — поточний: у ньому жива робота, і історія її містить.
+    today = business_today()
+    assert ctx["month_total"] == 1
+    assert ctx["month_ym"] == f"{today.year:04d}-{today.month:02d}"
 
 
 def test_order_detail_read_only_for_archived_editable_for_active(monkeypatch):
@@ -174,3 +183,57 @@ def test_order_detail_read_only_for_archived_editable_for_active(monkeypatch):
 
     assert arch_ctx["read_only"] is True
     assert act_ctx["read_only"] is False
+
+
+def test_a_day_shows_every_work_and_marks_only_the_vanished_ones(monkeypatch):
+    """Головне, заради чого Архів переробили: день показується ЦІЛКОМ.
+
+    Раніше сюди потрапляли лише роботи поза робочим вікном, і за 3 вересня
+    оператор бачив 10 рядків із 74 — решта жили в черзі. Виглядало як втрата
+    історії. Тепер день повний, а «зникла з таблиці» — окрема ознака рядка,
+    а не умова потрапляння на екран.
+    """
+    _capture(monkeypatch)
+    engine = _database()
+    today = business_today()
+    tab = today.strftime("%d.%m.%y")
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add_all([
+            Order(source="lab", sheet_tab=tab, row_number=1, work_order_no="111"),
+            Order(source="lab", sheet_tab=tab, row_number=2, work_order_no="222",
+                  archived_at=datetime.utcnow()),
+            Order(source="sheet_client", sheet_tab=tab, row_number=3, quantity="6",
+                  material_color="pmma a2"),
+        ])
+        db.commit()
+        gone_id = db.query(Order).filter(Order.work_order_no == "222").one().id
+
+        ctx = archive_router_mod.get_archive_day(
+            request=_request(user.id), date_param=tab, db=db
+        )
+
+    # Усі три роботи дня, у порядку таблиці — включно з живими.
+    assert [o.row_number for o in ctx["day_orders"]] == [1, 2, 3]
+    # Позначена лише та, чий рядок зник із таблиці.
+    assert ctx["gone_ids"] == {gone_id}
+
+
+def test_a_work_still_in_the_queue_is_not_marked_as_vanished(monkeypatch):
+    """Ознака має означати ЗНИКНЕННЯ рядка, а не вік роботи: інакше через
+    місяць увесь архів був би червоним, і мітка перестала б щось значити."""
+    _capture(monkeypatch)
+    engine = _database()
+    aged = (business_today() - timedelta(days=75))
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user(db)
+        db.add(Order(source="lab", sheet_tab=aged.strftime("%d.%m.%y"),
+                     row_number=1, work_order_no="777"))
+        db.commit()
+
+        ctx = archive_router_mod.get_archive_day(
+            request=_request(user.id), date_param=aged.strftime("%d.%m.%y"), db=db
+        )
+
+    assert len(ctx["day_orders"]) == 1, "стара робота лишається в історії"
+    assert ctx["gone_ids"] == set(), "вік — не зникнення"

@@ -17,7 +17,7 @@
 
 import calendar
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -26,7 +26,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
-from app.business_day import business_today
 from app.models import Order
 from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.services.formatting import uk_month_label
@@ -35,7 +34,6 @@ from app.order_folder import (
     attach_job_code_folder_uris,
 )
 from app.services.order_dates import order_date, parse_sheet_tab
-from app.services.queue import RETENTION_DAYS, order_is_archived
 
 router = APIRouter()
 
@@ -56,25 +54,39 @@ def parse_archive_month(value: str) -> tuple[int, int] | None:
     return None
 
 
-def _load_archived(db: Session) -> tuple[list[Order], dict, dict]:
-    """Всі заarchived-роботи + подобові й помісячні лічильники (один прохід).
+def _load_history(db: Session) -> tuple[list[Order], dict, dict, set[int]]:
+    """УСЯ історія робіт + подобові й помісячні лічильники (один прохід).
 
-    Межа архіву — від `business_today()`, ТА САМА, що в черзі (queue.py). З
-    календарною добою вони розходились би щоночі до межі зміни — рівно коли
-    нічний оператор працює (тому саме business_today, не календарний today).
+    Раніше сюди потрапляли лише роботи ПОЗА робочим вікном — тобто зниклі з
+    таблиці або старші за `RETENTION_DAYS`. Виходило, що екран, названий
+    «Архів» і збудований як календар по днях, показував за 3 вересня 10 робіт
+    із 74: решта ще жили в черзі. Людина природно читає це як «історія дня», і
+    побачити там уламок замість дня — це не тонкість, це хибна відповідь на
+    питання «що було того дня» (зауваження власника 08.09.26). На ту саму
+    граблю за той вечір наступив і я, вирішивши, що день поїхав в архів цілком.
+
+    Тому Архів = вся історія, а ознака «випала з черги» лишається ОКРЕМИМ
+    сигналом на рядку (`gone_ids`), а не умовою потрапляння на екран. Черга від
+    цього не змінюється: вона й далі показує робоче вікно, і `order_is_archived`
+    лишається її точним доповнювачем для картки роботи.
+
+    Межа робочого вікна (`RETENTION_DAYS`) лишається у черзі; тут вона більше
+    не вирішує, що показати, — на екрані весь час уся історія.
     """
-    today = business_today()
-    cutoff = today - timedelta(days=RETENTION_DAYS)
-    all_orders = db.scalars(select(Order).options(selectinload(Order.material))).all()
-    archived = [o for o in all_orders if order_is_archived(o, cutoff)]
+    orders = list(db.scalars(select(Order).options(selectinload(Order.material))).all())
 
     day_counts: dict[tuple[int, int, int], int] = defaultdict(int)
     month_counts: dict[tuple[int, int], int] = defaultdict(int)
-    for order in archived:
+    for order in orders:
         d = order_date(order)
         day_counts[(d.year, d.month, d.day)] += 1
         month_counts[(d.year, d.month)] += 1
-    return archived, day_counts, month_counts
+    # «Випала з черги» — це саме ЗНИКНЕННЯ рядка з таблиці, а не вік роботи:
+    # вік минає сам собою й нічого не означає, а зниклий рядок — подія, яку
+    # оператор має бачити. `order_is_archived` тут лишається для сумісності
+    # думки: вона відповідає на інше питання (чи робота поза робочим вікном).
+    gone_ids = {o.id for o in orders if o.archived_at is not None}
+    return orders, day_counts, month_counts, gone_ids
 
 
 def _months_rail(day_counts: dict, month_counts: dict) -> list[dict]:
@@ -143,12 +155,12 @@ def _with_folders(db: Session, orders: list[Order]) -> list[Order]:
     return orders
 
 
-def _day_orders(archived: list[Order], selected_date: date) -> list[Order]:
+def _day_orders(orders: list[Order], selected_date: date) -> list[Order]:
     """Роботи дня В ПОРЯДКУ таблиці (за row_number) — «зазирнути в історію»:
     першочерговість рядків збережена так само, як у Google Таблиці. Рядки без
     row_number (пошта) ідуть у кінець, стабільно за id."""
     return sorted(
-        (o for o in archived if order_date(o) == selected_date),
+        (o for o in orders if order_date(o) == selected_date),
         key=lambda o: (o.row_number is None, o.row_number or 0, o.id),
     )
 
@@ -173,14 +185,15 @@ def get_archive(request: Request, month: str = "", date: str = "", db: Session =
     if user is None:
         return login_redirect(request)
 
-    archived, day_counts, month_counts = _load_archived(db)
+    history, day_counts, month_counts, gone_ids = _load_history(db)
     months = _months_rail(day_counts, month_counts)
 
     base = {
         "page_title": "Архів",
         "user": user,
-        "archive_total": len(archived),
+        "archive_total": len(history),
         "months": months,
+        "gone_ids": gone_ids,
     }
     if months:
         known = {m["ym"] for m in months}
@@ -192,7 +205,7 @@ def get_archive(request: Request, month: str = "", date: str = "", db: Session =
         if selected_date is not None:
             base["selected_date"] = selected_date
             base["day_label"] = selected_date.strftime("%d.%m.%Y")
-            base["day_orders"] = _with_folders(db, _day_orders(archived, selected_date))
+            base["day_orders"] = _with_folders(db, _day_orders(history, selected_date))
     return templates.TemplateResponse(request, "archive.html", base)
 
 
@@ -210,7 +223,7 @@ def get_archive_detail(
     parsed = parse_archive_month(month)
     if parsed is None:
         return _archive_notice("Місяць не розпізнано — оберіть його в списку ліворуч.")
-    _, day_counts, month_counts = _load_archived(db)
+    _, day_counts, month_counts, _ = _load_history(db)
     year, mon = parsed
     ctx = {"user": user, **_month_detail_ctx(year, mon, day_counts, month_counts)}
     return templates.TemplateResponse(request, "_arch_detail.html", ctx)
@@ -230,12 +243,13 @@ def get_archive_day(
     selected_date = parse_sheet_tab(date_param) if date_param else None
     if selected_date is None:
         return _archive_notice("Дату не розпізнано — оберіть день у календарі.")
-    archived, _, _ = _load_archived(db)
+    history, _, _, gone_ids = _load_history(db)
     ctx = {
         "user": user,
         "selected_date": selected_date,
         "day_label": selected_date.strftime("%d.%m.%Y"),
-        "day_orders": _with_folders(db, _day_orders(archived, selected_date)),
+        "day_orders": _with_folders(db, _day_orders(history, selected_date)),
+        "gone_ids": gone_ids,
     }
     return templates.TemplateResponse(request, "_arch_daylist.html", ctx)
 
@@ -255,7 +269,7 @@ def get_archive_search(
     if user is None:
         return login_redirect(request)
 
-    archived, day_counts, month_counts = _load_archived(db)
+    history, day_counts, month_counts, gone_ids = _load_history(db)
     needle = q.strip().lower()
 
     if not needle:
@@ -279,7 +293,7 @@ def get_archive_search(
         return any(f and needle in str(f).lower() for f in fields)
 
     matches = sorted(
-        (o for o in archived if hit(o)),
+        (o for o in history if hit(o)),
         key=lambda o: (order_date(o), o.work_order_no or o.client_name or ""),
         reverse=True,
     )
@@ -295,6 +309,7 @@ def get_archive_search(
             "user": user,
             "query": q.strip(),
             "results": results,
+            "gone_ids": gone_ids,
             "result_total": len(matches),
             "truncated": truncated,
         },

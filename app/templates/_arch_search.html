@@ -25,7 +25,9 @@
                 {% for r in results %}
                 {# Див. _arch_daylist.html: рядок лишається <tr>, Enter/Пробіл
                    ловить спільний слухач [data-order-detail] у queue.js. #}
-                <tr data-order-detail="{{ r.order.id }}" tabindex="0">
+                {# Та сама ознака, що в списку дня: рядок, якого вже немає в
+                   Google Таблиці, видно й у результатах пошуку. #}
+                <tr data-order-detail="{{ r.order.id }}" tabindex="0"{% if r.order.id in (gone_ids or []) %} class="is-gone" title="Рядка більше немає в Google Таблиці"{% endif %}>
                     <td class="c-date mono">{{ r.date_label }}</td>
                     <td class="c-nar mono">{{ r.order.work_order_no or '—' }}</td>
                     <td class="c-cl">{{ r.order.client_name or '—' }}</td>
