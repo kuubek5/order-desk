@@ -26,10 +26,11 @@ from app.services.device_poll import DevicePoller
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, cast
 
 from PIL import Image
 from sqlalchemy import delete as sa_delete, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, selectinload
 
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
@@ -855,9 +856,14 @@ def prune_machine_readings(db: Session, now: Optional[datetime] = None) -> int:
     """Прибрати показання, старші за вікно зберігання. Одним DELETE — на рядок
     історії ніхто не посилається, тож каскади ORM тут не втрачаються."""
     cutoff = (now or datetime.now()) - timedelta(days=MACHINE_READINGS_RETENTION_DAYS)
-    removed = db.execute(
-        sa_delete(MachineReading).where(MachineReading.captured_at < cutoff)
-    ).rowcount or 0
+    # Див. journal_prune: `rowcount` живе в `CursorResult`, а не в `Result`.
+    deleted = cast(
+        "CursorResult[Any]",
+        db.execute(
+            sa_delete(MachineReading).where(MachineReading.captured_at < cutoff)
+        ),
+    )
+    removed = deleted.rowcount or 0
     if removed:
         db.commit()
     return removed
@@ -900,8 +906,12 @@ def poll_target(
         # дав би тисячі однакових рядків.
         with _stored_lock:
             previous = _stored.get(target.key)
-        first_failure = previous is None or not previous[2]
-        if first_failure or (now - previous[0]).total_seconds() >= MACHINE_ERROR_DB_INTERVAL_SECONDS:
+        if previous is None or not previous[2]:
+            store_failure = True
+        else:
+            since = (now - previous[0]).total_seconds()
+            store_failure = since >= MACHINE_ERROR_DB_INTERVAL_SECONDS
+        if store_failure:
             try:
                 _store_machine_reading(db, state, now, error=error)
             except Exception:  # noqa: BLE001

@@ -44,6 +44,7 @@ from __future__ import annotations
 import logging
 import threading
 from time import monotonic
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class manual_add_in_flight:
             _expires_at = max(_expires_at, monotonic() + _TTL_SECONDS)
         return self
 
-    def __exit__(self, *exc_info) -> bool:
+    def __exit__(self, *exc_info) -> Literal[False]:
         global _in_flight
         with _lock:
             _in_flight = max(0, _in_flight - 1)

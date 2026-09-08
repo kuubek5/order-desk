@@ -37,6 +37,10 @@ from typing import Callable, Hashable, Iterable, TypeVar
 
 logger = logging.getLogger(__name__)
 
+# Ключ пристрою. `Hashable` як тип ключа з'їдав конкретний рядок: виклик
+# із `dict[str, Target]` отримував назад `dict[Hashable, ...]`, і кожне
+# наступне звертання за ключем ставало помилкою типів у викликача.
+K = TypeVar("K", bound=Hashable)
 T = TypeVar("T")
 
 
@@ -57,11 +61,11 @@ class DevicePoller:
 
     def gather(
         self,
-        keys: Iterable[Hashable],
-        job: Callable[[Hashable], T],
+        keys: Iterable[K],
+        job: Callable[[K], T],
         *,
         deadline: float,
-    ) -> dict[Hashable, T]:
+    ) -> dict[K, T]:
         """Зібрати результати за `deadline` секунд. Хто не встиг — того немає.
 
         Повертає лише те, що ЗАВЕРШИЛОСЬ вчасно. Пристрій, чий знімок не
@@ -72,7 +76,7 @@ class DevicePoller:
         keys = list(keys)
         with self._lock:
             self._forget_finished()
-            fresh: dict[Hashable, Future] = {}
+            fresh: dict[K, Future] = {}
             for key in keys:
                 if key in self._in_flight:
                     # Попередній знімок цього пристрою ще висить у мертвому
@@ -84,7 +88,7 @@ class DevicePoller:
                 self._in_flight[key] = future
                 fresh[key] = future
 
-        done: dict[Hashable, T] = {}
+        done: dict[K, T] = {}
         if not fresh:
             return done
         try:

@@ -13,6 +13,7 @@ import logging
 import os
 import threading
 import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +235,7 @@ def scan_export_client_latest(
 # триває 2-7с на бойовому сховищі) і не міняє того, коли дані оновлюються:
 # приймання листа скидає кеш явно, а не за таймером.
 _CACHE_TTL_SECONDS = 180.0
-_cache: dict[tuple, tuple[float, object]] = {}
+_cache: dict[tuple, tuple[float, Any]] = {}
 _cache_lock = threading.Lock()
 _refreshing: set[tuple] = set()
 

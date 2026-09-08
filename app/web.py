@@ -403,8 +403,8 @@ def _shift_images_prune_tick() -> None:
     # оновлення (аудит 08.09.26).
     try:
         with SessionLocal() as db:
-            removed = prune_journals(db)
-            if any(removed.values()):
+            removed_journals = prune_journals(db)
+            if any(removed_journals.values()):
                 db.commit()
             else:
                 db.rollback()

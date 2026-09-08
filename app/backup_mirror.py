@@ -145,7 +145,7 @@ def mirror_snapshot(session: Session, snapshot: Path, *, subdir: str = "") -> st
         message = f"{type(exc).__name__}: {exc}"
         logger.warning("Дзеркалення знімка %s не вдалося: %s", snapshot.name, message)
         try:
-            tmp.unlink(missing_ok=True)  # type: ignore[possibly-undefined]
+            tmp.unlink(missing_ok=True)
         except Exception:  # noqa: BLE001 — прибирання найкращим зусиллям
             pass
         _record(session, error=message)

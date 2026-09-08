@@ -26,8 +26,10 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
+from typing import Any, cast
 
 from sqlalchemy import delete
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from app.business_day import utc_now
@@ -66,13 +68,19 @@ def prune_journals(
     sync_cutoff = (utc_now() if now is None else now) - timedelta(days=sync_days)
     action_cutoff = local_now - timedelta(days=action_days)
 
+    # `Session.execute` оголошений як загальний `Result`, у якого немає
+    # `rowcount`; DELETE завжди віддає `CursorResult`, де він є.
+    sync_deleted = cast(
+        "CursorResult[Any]",
+        db.execute(delete(SyncLog).where(SyncLog.occurred_at < sync_cutoff)),
+    )
+    action_deleted = cast(
+        "CursorResult[Any]",
+        db.execute(delete(ActionLog).where(ActionLog.created_at < action_cutoff)),
+    )
     removed = {
-        "sync_logs": db.execute(
-            delete(SyncLog).where(SyncLog.occurred_at < sync_cutoff)
-        ).rowcount or 0,
-        "action_log": db.execute(
-            delete(ActionLog).where(ActionLog.created_at < action_cutoff)
-        ).rowcount or 0,
+        "sync_logs": sync_deleted.rowcount or 0,
+        "action_log": action_deleted.rowcount or 0,
     }
     if any(removed.values()):
         logger.info(

@@ -14,6 +14,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -184,7 +185,7 @@ def sync_status_pair(db: Session, now: datetime) -> dict[str, dict[str, str]]:
 # Тримається поруч із heartbeat і з тієї ж причини: це стан ПРОЦЕСУ, а не
 # рядок у базі. Писати кожен тік у БД означало б рядок кожні 15 секунд заради
 # числа, яке цікаве лише поточне.
-_agreement: dict[str, object] = {}
+_agreement: dict[str, Any] = {}
 
 
 def record_agreement(line: str, *, rows: int, differed: int, trustworthy: bool) -> None:
@@ -201,7 +202,7 @@ def record_agreement(line: str, *, rows: int, differed: int, trustworthy: bool) 
     )
 
 
-def last_agreement() -> dict[str, object] | None:
+def last_agreement() -> dict[str, Any] | None:
     """Останній підсумок звірки, або None — якщо синк ще не проходив.
 
     None означає саме «ще не звіряли», і плита має показати це сірим, а не
