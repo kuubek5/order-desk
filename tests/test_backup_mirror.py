@@ -7,7 +7,6 @@
 import sqlite3
 from pathlib import Path
 
-import pytest
 
 from app.backup_mirror import (
     MIRROR_DIR_KEY,

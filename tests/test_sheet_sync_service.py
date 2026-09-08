@@ -1,5 +1,4 @@
 from datetime import date, datetime, timedelta
-from types import SimpleNamespace
 from app.sync import SyncResult
 from unittest.mock import Mock
 

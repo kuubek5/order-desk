@@ -117,7 +117,6 @@ def _stub_sheet(monkeypatch, sheet_id=42):
 def test_requires_authentication():
     engine = _database()
     with Session(engine) as db, pytest.raises(HTTPException) as exc:
-        import asyncio
         run_route(handout_router_mod.issue_handout_group(request=_request(None), client_name="X", day="", db=db))
     assert exc.value.status_code == 401
 
@@ -134,7 +133,6 @@ def test_issues_nothing_when_no_work_is_marked_found(monkeypatch):
         db.add(_client_order(status="нове"))
         db.commit()
 
-        import asyncio
         request = _request(user.id)
         run_route(
             handout_router_mod.issue_handout_group(request=request, client_name="Basarab", day="", db=db)
@@ -156,7 +154,6 @@ def test_issues_only_found_works_and_leaves_the_rest(monkeypatch):
         db.add_all([found, waiting])
         db.commit()
 
-        import asyncio
         run_route(
             handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
@@ -180,7 +177,6 @@ def test_issues_group_and_clears_blue_fill(monkeypatch):
         db.add_all([o1, o2])
         db.commit()
 
-        import asyncio
         resp = run_route(
             handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
@@ -209,7 +205,6 @@ def test_already_issued_orders_are_left_alone_but_still_pass(monkeypatch):
         db.add(_client_order(status="видано"))
         db.commit()
 
-        import asyncio
         resp = run_route(
             handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
@@ -233,7 +228,6 @@ def test_lab_orders_in_group_are_not_sent_to_clear_row_fills(monkeypatch):
         db.add(lab_order)
         db.commit()
 
-        import asyncio
         run_route(
             handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
@@ -256,7 +250,6 @@ def test_sheet_failure_still_marks_issued_and_flashes_error(monkeypatch):
         db.commit()
 
         request = _request(user.id)
-        import asyncio
         resp = run_route(handout_router_mod.issue_handout_group(request=request, client_name="Basarab", day="", db=db))
         assert resp.status_code == 303
         assert db.scalar(select(Order)).status == "видано"
@@ -280,7 +273,6 @@ def test_issued_group_STAYS_on_the_handout_listing(monkeypatch):
         db.add(_client_order())
         db.commit()
 
-        import asyncio
         run_route(
             handout_router_mod.issue_handout_group(request=_request(user.id), client_name="Basarab", day="", db=db)
         )
@@ -410,7 +402,6 @@ def test_issue_group_with_day_only_closes_that_day(monkeypatch):
         db.add_all([o_new, o_old])
         db.commit()
 
-        import asyncio
         resp = run_route(
             handout_router_mod.issue_handout_group(
                 request=_request(user.id), client_name="Basarab", day=YESTERDAY, db=db
@@ -476,7 +467,6 @@ def test_mark_found_clears_blue_and_keeps_day(monkeypatch):
         order = db.scalar(select(Order))
         _inline_fill_background(monkeypatch, db)
 
-        import asyncio
         resp = run_route(
             handout_router_mod.mark_found(
                 request=_request(user.id), order_id=order.id,
@@ -509,7 +499,6 @@ def test_unmark_found_reverts_and_repaints_blue(monkeypatch):
         order = db.scalar(select(Order))
         _inline_fill_background(monkeypatch, db)
 
-        import asyncio
         resp = run_route(
             handout_router_mod.unmark_found(
                 request=_request(user.id), order_id=order.id,
@@ -542,7 +531,6 @@ def test_unmark_found_restores_the_real_previous_status(monkeypatch):
         db.commit()
         _inline_fill_background(monkeypatch, db)
 
-        import asyncio
         run_route(
             handout_router_mod.unmark_found(
                 request=_request(user.id), order_id=order.id,
@@ -564,7 +552,6 @@ def test_unmark_found_ignores_already_issued(monkeypatch):
         db.commit()
         order = db.scalar(select(Order))
 
-        import asyncio
         resp = run_route(
             handout_router_mod.unmark_found(
                 request=_request(user.id), order_id=order.id,
@@ -591,7 +578,6 @@ def test_mark_found_lab_order_skips_sheet_fill(monkeypatch):
         db.commit()
         order = db.scalar(select(Order))
 
-        import asyncio
         resp = run_route(
             handout_router_mod.mark_found(
                 request=_request(user.id), order_id=order.id,
@@ -1110,7 +1096,6 @@ class TestMarkFoundIsInstant:
             db.commit()
             order = db.scalar(select(Order))
 
-            import asyncio
             run_route(
                 handout_router_mod.mark_found(
                     request=_request(user.id), order_id=order.id,
@@ -1137,7 +1122,6 @@ class TestMarkFoundIsInstant:
                 ),
             )
 
-            import asyncio
             run_route(
                 handout_router_mod.mark_found(
                     request=_request(user.id), order_id=order.id,
@@ -1172,7 +1156,6 @@ class TestScrollStaysPut:
             db.commit()
             order = db.scalar(select(Order))
 
-            import asyncio
             resp = run_route(
                 handout_router_mod.mark_found(
                     request=_request(user.id, headers={"HX-Request": "true"}),
@@ -1196,7 +1179,6 @@ class TestScrollStaysPut:
             db.commit()
             order = db.scalar(select(Order))
 
-            import asyncio
             resp = run_route(
                 handout_router_mod.mark_found(
                     request=_request(user.id), order_id=order.id,

@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -8,6 +8,22 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.business_day import business_today
+import app.web as web
+from app.link_attachments import LinkDownloadError
+from app.services.queue import known_order_dates
+from app.routers import mail as mail_router_mod
+from app.services import mail_accept as mail_accept_svc
+from app.routers import orders as orders_router_mod
+from app.services import manual_add as manual_add_svc
+from app.routers import queue as queue_router_mod
+from app.services import queue_view
+from app import sync_control
+from app.services import config_state
+from app.routers import stl as stl_router_mod
+from app.services import sheet_writeback as writeback_service
+from app.db import Base
+from app.models import Attachment, EmailMessage, Order, User
+from app.parser import HEADER_ROWS
 
 # Вкладка «свіжий день у межах вікна черги». Рахується від СЬОГОДНІ, а не
 # вписана руками. Раніше в цих тестах стояло жорстке RECENT_TAB — і 08.09.26
@@ -25,22 +41,6 @@ def _recent_day(days_ago: int):
 
 def _recent_tab(days_ago: int) -> str:
     return _recent_day(days_ago).strftime("%d.%m.%y")
-import app.web as web
-from app.link_attachments import LinkDownloadError
-from app.services.queue import known_order_dates
-from app.routers import mail as mail_router_mod
-from app.services import mail_accept as mail_accept_svc
-from app.routers import orders as orders_router_mod
-from app.services import manual_add as manual_add_svc
-from app.routers import queue as queue_router_mod
-from app.services import queue_view
-from app import sync_control
-from app.services import config_state
-from app.routers import stl as stl_router_mod
-from app.services import sheet_writeback as writeback_service
-from app.db import Base
-from app.models import Attachment, EmailMessage, Order, User
-from app.parser import HEADER_ROWS
 
 
 def _database():

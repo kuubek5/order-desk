@@ -13,7 +13,7 @@
    комірниці немає взагалі.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytest
 from sqlalchemy import create_engine, select

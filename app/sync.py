@@ -1,5 +1,6 @@
 from collections import Counter
-from dataclasses import dataclass, field
+import dataclasses
+from dataclasses import dataclass
 import logging
 from datetime import timedelta
 
@@ -120,7 +121,7 @@ class SyncResult:
     compared_fields: int = 0
     differed_fields: int = 0
     # Яка колонка розходиться найчастіше. Ключ — імʼя поля Order.
-    differed_by_field: Counter = field(default_factory=Counter)
+    differed_by_field: Counter = dataclasses.field(default_factory=Counter)
     # Рядки, які CRM свідомо не бере (СЛМ, моделі, елайнери, порожні). Без
     # цього числа звірка бреше: оператор нарахує у вкладці 47 рядків, побачить
     # «звірено 40» і більше цифрі не повірить.

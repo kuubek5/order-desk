@@ -10,7 +10,6 @@
 після цієї кнопки не з'являється в жодної роботи.
 """
 
-import asyncio
 from datetime import timedelta
 from types import SimpleNamespace
 

@@ -19,7 +19,6 @@ from sqlalchemy import select
 from app.auth import verify_password
 from app.models import ActionLog, User
 from app.routers.auth import register_submit
-from app.services import attempt_limit
 from app.services.operators import validate_self_registration
 
 

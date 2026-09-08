@@ -9,7 +9,7 @@
 підтвердженим: це запис у теку, якою володіє CAM.
 """
 
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -26,7 +26,6 @@ from app.services.cam_blanks import (
     sync_blanks,
 )
 from app.services.settings_nav import can_edit
-from app.services.settings_status import build_slab
 from app.settings_store import get_setting, set_setting
 from .common import require_settings_edit
 

@@ -23,8 +23,6 @@ from app.routers import settings as settings_router_mod
 from app.routers import deps
 from app.db import Base
 from app.models import Order, User
-ROOT = Path(__file__).resolve().parents[1]
-
 from app.settings_store import (
     DEFAULT_NOTIFY_POSITION,
     DEFAULT_NOTIFY_STYLE,
@@ -36,6 +34,9 @@ from app.settings_store import (
     set_notify_prefs,
     set_setting,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _database():
