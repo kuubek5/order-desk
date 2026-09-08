@@ -35,6 +35,7 @@ from app.sheets import (
 )
 from app.services.order_dates import parse_sheet_tab
 from app.sync import sync_tab
+from app.sync_heartbeat import record_agreement
 
 
 logger = logging.getLogger(__name__)
@@ -278,6 +279,46 @@ class SheetSyncSummary:
     deleted: int = 0
     rows_seen: int = 0
     tab_names: list[str] = field(default_factory=list)
+
+    # ── Звірка «таблиця = база» (08.09.26) ──────────────────────────────
+    # Оператор звіряв чергу з таблицею очима, бо система не мала способу
+    # сказати «збігається». Ці лічильники знімаються ДО запису (див.
+    # app/sync.SyncResult), тож вони кажуть саме те, що він перевіряв.
+    compared_rows: int = 0
+    agreed_rows: int = 0
+    compared_fields: int = 0
+    differed_fields: int = 0
+    skipped_non_queue: int = 0
+    # False, якщо бодай на одній вкладці цього проходу щось законно рухалось
+    # (зсув рядків, ручне додавання, притримане масове зникнення). Тоді
+    # розбіжність нормальна, і вердикт треба відкласти, а не бити на сполох.
+    verdict_trustworthy: bool = True
+
+    def agreement_line(self) -> str:
+        """Один рядок для журналу й екрана — або чесне «не звірено».
+
+        Ніколи не каже «розбіжностей 0», коли цього проходу щось рухалось:
+        краще промовчати, ніж дати цифру, якій оператор потім не повірить.
+        """
+        if not self.compared_rows:
+            return "звірка: нема що звіряти"
+        skipped = (
+            f", пропущено {self.skipped_non_queue} нефрезерних"
+            if self.skipped_non_queue
+            else ""
+        )
+        if not self.verdict_trustworthy:
+            return (
+                f"звірка відкладена: цього проходу рядки рухались "
+                f"({self.compared_rows} звірено{skipped})"
+            )
+        differed = self.compared_rows - self.agreed_rows
+        if differed:
+            return (
+                f"звірено {self.compared_rows} рядків, розбіжностей "
+                f"{differed}{skipped}"
+            )
+        return f"звірено {self.compared_rows} рядків, розбіжностей 0{skipped}"
 
 
 def _parse_tab_date(title: str) -> date | None:
@@ -594,6 +635,13 @@ def sync_google_sheets(
             summary.updated += result.updated
             summary.unchanged += result.unchanged
             summary.deleted += result.deleted
+            summary.compared_rows += result.compared_rows
+            summary.agreed_rows += result.agreed_rows
+            summary.compared_fields += result.compared_fields
+            summary.differed_fields += result.differed_fields
+            summary.skipped_non_queue += result.skipped_non_queue
+            if not result.verdict_is_trustworthy():
+                summary.verdict_trustworthy = False
 
         # Orders orphaned by a WHOLE tab deleted from the sheet: the per-tab
         # reconciliation above only sees rows inside tabs that still exist, so
@@ -707,6 +755,16 @@ def sync_google_sheets(
                 for tab in gone_tabs:
                     _record_mass_vanish(tab, 0)
 
+        # Результат звірки — у памʼять процесу, щоб плита в Налаштуваннях
+        # показувала ОСТАННЮ звірку, а не рахувала її заново на кожен рендер.
+        if summary.compared_rows:
+            record_agreement(
+                summary.agreement_line(),
+                rows=summary.compared_rows,
+                differed=summary.compared_rows - summary.agreed_rows,
+                trustworthy=summary.verdict_trustworthy,
+            )
+
         if trigger == "manual" or summary.created or summary.updated or summary.deleted:
             session.add(
                 SyncLog(
@@ -716,7 +774,7 @@ def sync_google_sheets(
                         f"trigger {trigger}; tabs {summary.tabs_processed}; "
                         f"rows {summary.rows_seen}; created {summary.created}; "
                         f"updated {summary.updated}; unchanged {summary.unchanged}; "
-                        f"deleted {summary.deleted}"
+                        f"deleted {summary.deleted}; {summary.agreement_line()}"
                     ),
                 )
             )
@@ -824,6 +882,13 @@ def sync_hot_tab(
             summary.updated += result.updated
             summary.unchanged += result.unchanged
             summary.deleted += result.deleted
+            summary.compared_rows += result.compared_rows
+            summary.agreed_rows += result.agreed_rows
+            summary.compared_fields += result.compared_fields
+            summary.differed_fields += result.differed_fields
+            summary.skipped_non_queue += result.skipped_non_queue
+            if not result.verdict_is_trustworthy():
+                summary.verdict_trustworthy = False
         if summary.tabs_processed == 0:
             return None
         return summary
@@ -847,6 +912,9 @@ def summary_message(summary: "SheetSyncSummary") -> str:
         f"Нових робіт: {summary.created}, оновлено: {summary.updated}, "
         f"без змін: {summary.unchanged}."
     )
+    # Звірка йде ОДРАЗУ за підсумком: заради неї оператор і відкриває таблицю
+    # поруч. Формулювання одне на журнал, тост і плиту в налаштуваннях.
+    message += f" {summary.agreement_line().capitalize()}."
     if summary.deleted:
         message += f" Видалено (немає в таблиці): {summary.deleted}."
     return message

@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 import logging
 from datetime import timedelta
 
@@ -105,6 +106,36 @@ class SyncResult:
     # наступний прохід за хвилину створить те, що справді нове. Лічильник
     # потрібен, щоб «синк нічого не створив» мало видиму причину.
     skipped_manual_add: int = 0
+
+    # ── Звірка «таблиця = база» (08.09.26) ──────────────────────────────────
+    # Оператор місяцями звіряє чергу з таблицею очима, бо іншого способу
+    # переконатись, що вони збігаються, не існувало: усе, що було в коді,
+    # рахувало КІЛЬКОСТІ або наявність рядка і слугувало запобіжником на
+    # записі, а не звітом. Тут ми рахуємо те саме, що він робить очима.
+    #
+    # ВАЖЛИВО: тальку знімаємо ДО циклу запису нижче. Після нього значення
+    # рівні за побудовою, і лічильник міряв би порожнечу.
+    compared_rows: int = 0        # пар «рядок ↔ робота», які справді звірили
+    agreed_rows: int = 0          # з них ті, де ЖОДНЕ поле не розійшлось
+    compared_fields: int = 0
+    differed_fields: int = 0
+    # Яка колонка розходиться найчастіше. Ключ — імʼя поля Order.
+    differed_by_field: Counter = field(default_factory=Counter)
+    # Рядки, які CRM свідомо не бере (СЛМ, моделі, елайнери, порожні). Без
+    # цього числа звірка бреше: оператор нарахує у вкладці 47 рядків, побачить
+    # «звірено 40» і більше цифрі не повірить.
+    skipped_non_queue: int = 0
+
+    def verdict_is_trustworthy(self) -> bool:
+        """Чи можна взагалі казати «розбіжностей нуль» за цей прохід.
+
+        Ні — коли в цю мить щось законно рухалось: зсув рядків робить пари
+        менш надійними, ручне додавання лишає рядок без роботи, притримане
+        масове зникнення означає, що ми свідомо не дивились. Різниця тоді
+        нормальна й зникне наступним тіком, тож вердикт краще відкласти, ніж
+        показати тривогу на порожньому місці.
+        """
+        return not (self.moved or self.skipped_manual_add or self.held_mass_vanish)
 
 
 def _fields(row: OrderRow) -> dict:
@@ -551,6 +582,7 @@ def sync_tab(
     # прибрали». Наступним тіком матеріал уже вписаний, і робота повертається
     # НОВОЮ, без історії, коментарів і Sum3D. Явне слово «слм» лишається
     # твердим правилом у будь-який момент життя рядка.
+    rows_before_filter = len(rows)
     rows = [
         row for row in rows
         if not _is_explicit_non_queue(row)
@@ -559,6 +591,9 @@ def sync_tab(
             or existing_by_row.get(row.row_number) is not None
         )
     ]
+    # Скільки рядків вкладки CRM свідомо не бере. Без цього числа звірка нижче
+    # бреше: у вкладці 47 рядків, у звірці 40, і різниця виглядає як втрата.
+    result.skipped_non_queue = rows_before_filter - len(rows)
 
     # Re-link orders whose row MOVED. Position alone is not a stable key: the
     # comment below used to assume a removed row is *cleared* (neighbours keep
@@ -785,6 +820,26 @@ def sync_tab(
                     )
                 )
                 changed = True
+
+        # ── Звірка ДО запису ────────────────────────────────────────────
+        # Саме тут обидві сторони ще різні: нижче цикл перезапише поля, і
+        # після нього будь-яке порівняння дало б рівність за побудовою.
+        # Рахуємо те саме, що оператор робить очима, звіряючи чергу з
+        # таблицею. `opak_units` пропускаємо: воно не читається з колонки, а
+        # виводиться з тексту коментаря, тож порівнювати його з таблицею —
+        # порівнювати ні з чим.
+        row_agreed = True
+        for cmp_field, cmp_value in fields.items():
+            if cmp_field == "opak_units":
+                continue
+            result.compared_fields += 1
+            if getattr(existing, cmp_field) != cmp_value:
+                result.differed_fields += 1
+                result.differed_by_field[cmp_field] += 1
+                row_agreed = False
+        result.compared_rows += 1
+        if row_agreed:
+            result.agreed_rows += 1
 
         sheet_comment = _new_sheet_comment(existing.cam_comment, row.cam_comment)
         edited: list[str] = []

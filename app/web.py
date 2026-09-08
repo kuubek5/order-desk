@@ -100,6 +100,7 @@ from app.services.machines import (
     POLL_INTERVAL_SECONDS as MACHINE_POLL_INTERVAL_SECONDS,
     is_configured as _machines_configured,
     poll_all as _poll_machines,
+    prune_machine_readings as _prune_machine_readings,
 )
 from app.services.journal_prune import prune_journals
 from app.shift_images import prune_shift_images
@@ -542,16 +543,24 @@ def _furnace_worker(stop_event: Event) -> None:
 # по VNC (app/furnace_vnc.py фізично не вміє слати ввід). Кадри рідші за
 # пічні: framebuffer 1080p учетверо більший, а верстатів — до десяти.
 MACHINE_INITIAL_DELAY_SECONDS = 15.0
+# Прибирання старої історії показань — раз на добу, як у печей.
+MACHINE_PRUNE_INTERVAL_SECONDS = 24 * 60 * 60
 
 
 def _machine_worker(stop_event: Event) -> None:
     if stop_event.wait(MACHINE_INITIAL_DELAY_SECONDS):
         return
+    next_prune = 0.0
     while not stop_event.is_set():
         try:
             with SessionLocal() as db:
                 if _machines_configured(db):
                     _poll_machines(db)
+                # Чистимо навіть коли верстатів зараз немає: історія могла
+                # лишитись від попередньої конфігурації і має старіти так само.
+                if monotonic() >= next_prune:
+                    _prune_machine_readings(db)
+                    next_prune = monotonic() + MACHINE_PRUNE_INTERVAL_SECONDS
         except Exception:
             logger.exception("Неочікуваний збій опитування верстатів")
         stop_event.wait(MACHINE_POLL_INTERVAL_SECONDS)

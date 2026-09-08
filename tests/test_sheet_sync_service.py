@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
+from app.sync import SyncResult
 from unittest.mock import Mock
 
 import gspread
@@ -779,8 +780,9 @@ def test_force_reconcile_flag_reaches_only_the_confirmed_tab(monkeypatch):
 
     def fake_sync_tab(session, tab, rows, **kwargs):
         seen[tab] = kwargs["force_reconcile"]
-        return SimpleNamespace(created=0, updated=0, unchanged=0, deleted=0,
-                               held_mass_vanish=0)
+        # Справжній SyncResult, а не саморобний namespace: підсумок синку
+        # читає з нього і лічильники звірки, і будь-що, що додадуть пізніше.
+        return SyncResult()
 
     monkeypatch.setattr("app.sheet_sync_service.sync_tab", fake_sync_tab)
 

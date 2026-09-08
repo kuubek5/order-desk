@@ -31,6 +31,7 @@ from app.__version__ import VERSION
 from app.models import SyncLog
 from app.services import furnace as furnace_service
 from app.services import machines as machines_service
+from app.sync_heartbeat import last_agreement
 
 TONE_OK = "ok"
 TONE_WARN = "warn"
@@ -198,6 +199,27 @@ def _slab_sheets(db: Session, ctx: dict) -> Slab:
             tone=TONE_OK if ((ctx.get("values_set") or {}).get("google_service_account_json") or (ctx.get("values_set") or {}).get("google_oauth_refresh_token")) else TONE_WARN,
         )
     )
+    # Звірка «таблиця = база». Зелений ставимо ЛИШЕ коли прохід був
+    # достовірний і розбіжностей нуль — «ще не звіряли» лишається сірим, як і
+    # решта невідомого в цьому файлі.
+    agreement = last_agreement()
+    if agreement is None:
+        meters.append(
+            Meter(k="Звірка з базою", v="ще не було", s="після першого синку", tone=TONE_NONE)
+        )
+    else:
+        differed = int(agreement.get("differed") or 0)
+        rows = int(agreement.get("rows") or 0)
+        if not agreement.get("trustworthy"):
+            a_tone, a_value, a_sub = TONE_NONE, "відкладена", "рядки саме рухались"
+        elif differed:
+            a_tone, a_value = TONE_WARN, f"{differed} " + _pl(differed, "розбіжність", "розбіжності", "розбіжностей")
+            a_sub = f"звірено {rows} " + _pl(rows, "рядок", "рядки", "рядків")
+        else:
+            a_tone, a_value = TONE_OK, "збігається"
+            a_sub = f"звірено {rows} " + _pl(rows, "рядок", "рядки", "рядків")
+        meters.append(Meter(k="Звірка з базою", v=a_value, s=a_sub, tone=a_tone))
+
     total = ctx.get("sheet_snapshot_total") or 0
     meters.append(
         Meter(

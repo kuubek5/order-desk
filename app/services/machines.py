@@ -21,6 +21,7 @@ import logging
 import os
 import time
 import threading
+from threading import Lock
 from app.services.device_poll import DevicePoller
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -28,7 +29,7 @@ from pathlib import Path
 from typing import Optional
 
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
@@ -40,7 +41,7 @@ from app.machine_ocr import (
     read_progress_percent,
     screen_is_completed,
 )
-from app.models import Machine, Order, ReworkRecord
+from app.models import Machine, MachineReading, Order, ReworkRecord
 from app.services.furnace import (  # ті самі правила адреси й формат тривалості
     _HOST_RE,
     span_text,
@@ -767,6 +768,92 @@ def _save_frame_if_due(
         return state.frame_saved_at
 
 
+# ── Історія показань (08.09.26) ─────────────────────────────────────────────
+# Досі все, що агент читав з екрана, жило лише в памʼяті процесу і зникало на
+# рестарті — на відміну від печей, у яких історія є з самого початку. Через це
+# на питання «скільки насправді фрезерувалась робота» відповіді не існувало:
+# подій «у фрезеруванні» в базі нуль за всю історію, а колонка «Відфрезерував»
+# у таблиці містить ініціали людини, а не час.
+#
+# Політика запису — та сама, що на печах: ПОДІЯ лягає в базу тим самим кадром,
+# на якому її побачили (інакше момент старту програми зʼїде на десяток секунд),
+# решта — не частіше підлоги, плюс «я живий» раз на хвилину. Відсоток сам по
+# собі це потік, а не подія: без підлоги він писав би рядок на кожен кадр.
+MACHINE_READING_FLOOR_SECONDS = 30
+MACHINE_READING_HEARTBEAT_SECONDS = 60
+MACHINE_ERROR_DB_INTERVAL_SECONDS = 15 * 60
+MACHINE_READINGS_RETENTION_DAYS = 30
+
+# Останній записаний рядок на верстат: (час, ключ події). У памʼяті процесу —
+# як і `stored_at` у печей: це стан опитувача, а не дані.
+_stored: dict[str, tuple[datetime, tuple]] = {}
+_stored_lock = Lock()
+
+
+def _reading_event_key(state: "MachineState") -> tuple:
+    """Те, зміна чого мусить лягти в базу НЕГАЙНО.
+
+    Програма (`iso_name`) — головне: її зміна це межа роботи, тобто справжній
+    старт і кінець фрезерування. Шар SLM теж подія: у SISMA немає ні смуги, ні
+    .iso, і шар — єдиний його рух. Відсоток сюди НЕ входить свідомо.
+    """
+    return (state.iso_name, state.layer, state.layers_total)
+
+
+def _should_store_machine(state: "MachineState", now: datetime) -> bool:
+    with _stored_lock:
+        previous = _stored.get(state.target.key)
+    if previous is None:
+        return True
+    stored_at, event = previous
+    if event != _reading_event_key(state):
+        return True
+    return (now - stored_at).total_seconds() >= MACHINE_READING_HEARTBEAT_SECONDS
+
+
+def _store_machine_reading(
+    db: Session, state: "MachineState", now: datetime, *, error: Optional[str] = None
+) -> None:
+    """Один рядок історії. Помилку теж пишемо: мовчання не відрізнити від
+    справності, і слід «пробували, верстат сказав ось це» цінніший за порожнечу.
+
+    Без сесії просто нічого не пишемо: `poll_target` законно кличуть і без БД
+    (разовий знімок, тести), і кадр на екрані важливіший за рядок історії.
+    """
+    if db is None:
+        return
+    db.add(
+        MachineReading(
+            # Ключ, а не гола адреса: два верстати за одним хостом на різних
+            # портах інакше зливали б історію в одну (як у печей).
+            host=state.target.key,
+            captured_at=now,
+            percent=None if error else state.percent,
+            iso_name=None if error else state.iso_name,
+            sum3d_id=None if error else state.sum3d_id,
+            program_at=None if error else state.program_at,
+            layer=None if error else state.layer,
+            layers_total=None if error else state.layers_total,
+            error=error[:300] if error else None,
+        )
+    )
+    db.commit()
+    with _stored_lock:
+        _stored[state.target.key] = (now, _reading_event_key(state))
+
+
+def prune_machine_readings(db: Session, now: Optional[datetime] = None) -> int:
+    """Прибрати показання, старші за вікно зберігання. Одним DELETE — на рядок
+    історії ніхто не посилається, тож каскади ORM тут не втрачаються."""
+    cutoff = (now or datetime.now()) - timedelta(days=MACHINE_READINGS_RETENTION_DAYS)
+    removed = db.execute(
+        sa_delete(MachineReading).where(MachineReading.captured_at < cutoff)
+    ).rowcount or 0
+    if removed:
+        db.commit()
+    return removed
+
+
 def poll_target(
     db: Session,
     target: MachineTarget,
@@ -796,6 +883,16 @@ def poll_target(
 
     if error is not None:
         _record_machine_failure(state, target, error, now)
+        # Слід невдачі — рідше, ніж кадри: раз на 15 хв, як у печей. Інакше
+        # мертвий ПК за добу дав би тисячі однакових рядків «не відповів».
+        with _stored_lock:
+            previous = _stored.get(target.key)
+        if previous is None or (now - previous[0]).total_seconds() >= MACHINE_ERROR_DB_INTERVAL_SECONDS:
+            try:
+                _store_machine_reading(db, state, now, error=error)
+            except Exception:  # noqa: BLE001
+                logger.exception("Не вдалось записати показання верстата %s", target.key)
+                db.rollback()
         return state
 
     # Диск чіпаємо не частіше ніж раз на FRAME_SAVE_INTERVAL_SECONDS: свіжість
@@ -932,6 +1029,15 @@ def poll_target(
         else:
             with _states_lock:
                 state.titles_seen = None
+
+    # Історія: подія — цим же кадром, решта — раз на хвилину. Збій запису не
+    # має валити опитування: кадр на екрані важливіший за рядок історії.
+    if _should_store_machine(state, now):
+        try:
+            _store_machine_reading(db, state, now)
+        except Exception:  # noqa: BLE001
+            logger.exception("Не вдалось записати показання верстата %s", target.key)
+            db.rollback()
     return state
 
 

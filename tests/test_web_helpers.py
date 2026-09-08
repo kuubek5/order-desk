@@ -710,3 +710,32 @@ def test_is_rush_comment_finds_the_written_urgency_signal():
     assert is_rush_comment("покрити опаком") is False
     assert is_rush_comment("") is False
     assert is_rush_comment(None) is False
+
+
+def test_rush_signal_catches_the_forms_technicians_actually_write():
+    """Перелік був у знахідному відмінку і мовчав на кожній третій заявці.
+
+    Усе, що нижче — справжні коментарі з бази (08.09.26). Жоден із них не
+    давав позначки в черзі: 13 із 35 коментарів зі словом «швидк» були
+    невидимі, бо техніки пишуть не «на швидку», а «швидка» чи «швидко».
+    """
+    from app.services.queue import is_rush_comment
+
+    for comment in (
+        "швидка? (робота за 24/06)",
+        "швидка (робота за 14/07)",
+        "одна робота 184 [швидко]",
+        "(робота за 24/08)швидка плс",
+        "швидко плс (робота за 20.07)",
+        "швидка, погоджено (робота за 20.07)",
+        "погоджен, швидка (робота за 27/08)",
+        "швидка (робота за 26/08)",
+    ):
+        assert is_rush_comment(comment) is True, comment
+
+    # Стара форма мусить лишитись робочою — корінь її покриває.
+    assert is_rush_comment("на швидку") is True
+    assert is_rush_comment("на швидке") is True
+
+    # І далі не плутаємо блокер із терміновістю.
+    assert is_rush_comment("чекаємо відповідь від клієнта") is False

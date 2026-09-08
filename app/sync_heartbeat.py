@@ -178,3 +178,33 @@ def sync_status_pair(db: Session, now: datetime) -> dict[str, dict[str, str]]:
             now=now,
         ),
     }
+
+
+# ── Остання звірка «таблиця = база» (08.09.26) ─────────────────────────────
+# Тримається поруч із heartbeat і з тієї ж причини: це стан ПРОЦЕСУ, а не
+# рядок у базі. Писати кожен тік у БД означало б рядок кожні 15 секунд заради
+# числа, яке цікаве лише поточне.
+_agreement: dict[str, object] = {}
+
+
+def record_agreement(line: str, *, rows: int, differed: int, trustworthy: bool) -> None:
+    """Запамʼятати підсумок звірки останнього проходу синку."""
+    _agreement.clear()
+    _agreement.update(
+        {
+            "line": line,
+            "rows": rows,
+            "differed": differed,
+            "trustworthy": trustworthy,
+            "at": datetime.now(),
+        }
+    )
+
+
+def last_agreement() -> dict[str, object] | None:
+    """Останній підсумок звірки, або None — якщо синк ще не проходив.
+
+    None означає саме «ще не звіряли», і плита має показати це сірим, а не
+    зеленим: невідоме ніколи не зелене (settings_status, правило вгорі файлу).
+    """
+    return dict(_agreement) if _agreement else None

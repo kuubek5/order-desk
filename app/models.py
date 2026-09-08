@@ -978,6 +978,53 @@ class Machine(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
 
 
+class MachineReading(Base):
+    """Один знімок екрана верстата: що показував RemiCORE у цю секунду.
+
+    Дзеркалить `FurnaceReading` навмисно: те саме «залізо з екраном за
+    мережею», та сама політика запису (подія — негайно, потік — з підлогою,
+    раз на хвилину «я живий»), та сама причина писати рядок навіть тоді, коли
+    кадр не знявся — мовчання не відрізнити від справності.
+
+    НАВІЩО взагалі: агент уже читає і відсоток, і назву .iso-програми з
+    зашитим у неї часом запуску, але все це жило лише в памʼяті процесу і
+    зникало на рестарті. Через це на питання «скільки насправді фрезерувалась
+    ця робота» в системі не було відповіді: подій «у фрезеруванні» в базі нуль
+    за всю історію, а колонка «Відфрезерував» у таблиці містить ініціали
+    людини, а не час. Зміна `iso_name` — це межа програми, тобто справжній
+    старт і кінець роботи.
+
+    Порожні `percent` / `layer` — нормальний стан, а не збій: тут, як і на
+    печах, хибне число гірше за жодне.
+
+    Час локальний і БЕЗ серверного дефолту: на SQLite він пише за Гринвічем,
+    тобто -3 години, а цей час оператор звіряє з годинником на стіні. (Літера
+    в літеру назву дефолту тут не пишемо: сторож tests/test_timestamp_hygiene
+    рахує згадки текстом, і цитата в докстрінгу виглядала б як нова колонка.)
+    """
+
+    __tablename__ = "machine_readings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    host: Mapped[str] = mapped_column(String(60), index=True)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    # Відсоток виконання зі смуги RemiCORE. NULL = не прочитався.
+    percent: Mapped[Optional[int]] = mapped_column(nullable=True)
+    # Назва .iso-програми із заголовка вікна і витягнутий з неї Sum3D ID
+    # (хвіст HH-MM-SS) — ключ до рядка черги.
+    iso_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    sum3d_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    program_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    # SLM-принтер SISMA: у нього немає ні смуги, ні .iso — зате є шар N з M.
+    layer: Mapped[Optional[int]] = mapped_column(nullable=True)
+    layers_total: Mapped[Optional[int]] = mapped_column(nullable=True)
+    # Кадр не знявся (верстат вимкнено, мережа, токен). Решта полів порожня, а
+    # рядок лишається слідом, що ми пробували і що саме сказав верстат.
+    error: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+
+
 class VyrobitokMonth(Base):
     """Місячні налаштування табеля «Виробіток»: курс валюти й склад зміни.
 

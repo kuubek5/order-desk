@@ -1766,3 +1766,115 @@ class TestManualAddRace:
         assert order.quantity == "9", "оновлення наявної роботи не має пропускатись"
         assert result.skipped_manual_add == 0
         _reset_for_tests()
+
+
+# ── Звірка «таблиця = база» (08.09.26) ──────────────────────────────────────
+# Оператор місяцями звіряв чергу з таблицею очима, бо система не мала способу
+# сказати «збігається». Ці тести стережуть саме те, чим така цифра може
+# збрехати — а брехлива цифра тут гірша за її відсутність.
+
+
+def test_second_sync_of_unchanged_tab_reports_full_agreement():
+    """Найважливіший випадок: нічого не мінялось — має бути «розбіжностей 0».
+
+    Перший прохід створює роботи (порівнювати ще нема з чим), другий бачить
+    ті самі рядки й мусить підтвердити збіг по кожному полю.
+    """
+    session = make_session()
+    rows = [make_row(row_number=1), make_row(row_number=2, work_order_no="24123")]
+
+    first = sync_tab(session, "01.08.26", rows)
+    assert first.created == 2
+    # Створення — це не звірка: порівнювати новий рядок нема з чим.
+    assert first.compared_rows == 0
+
+    second = sync_tab(session, "01.08.26", rows)
+    assert second.compared_rows == 2
+    assert second.agreed_rows == 2
+    assert second.differed_fields == 0
+    assert second.verdict_is_trustworthy() is True
+
+
+def test_a_changed_cell_is_counted_as_one_disagreement():
+    """Одна виправлена клітинка — рівно одна розбіжність, у своїй колонці."""
+    session = make_session()
+    sync_tab(session, "01.08.26", [make_row()])
+
+    result = sync_tab(session, "01.08.26", [make_row(material_color="моно A3")])
+    assert result.compared_rows == 1
+    assert result.agreed_rows == 0
+    assert result.differed_fields == 1
+    assert result.differed_by_field["material_color"] == 1
+
+
+def test_agreement_is_measured_before_the_write_not_after():
+    """Пастка, заради якої лічильник стоїть саме перед циклом запису.
+
+    Після запису значення рівні за побудовою. Якби звірку зняли після нього,
+    вона показувала б «0 розбіжностей» НАВІТЬ на щойно зміненому рядку — і
+    оператор довіряв би числу, яке нічого не міряє.
+    """
+    session = make_session()
+    sync_tab(session, "01.08.26", [make_row()])
+
+    changed = sync_tab(session, "01.08.26", [make_row(quantity="9", kind="вкладка")])
+    assert changed.differed_fields == 2, "звірка знялась після запису — вона порожня"
+
+    # А наступний прохід тими самими рядками вже мусить бути чистим.
+    assert sync_tab(session, "01.08.26", [make_row(quantity="9", kind="вкладка")]).differed_fields == 0
+
+
+def test_non_queue_rows_are_counted_separately_not_silently_dropped():
+    """Без цього числа звірка бреше.
+
+    CRM свідомо не бере СЛМ. Якщо їх просто не рахувати, оператор нарахує у
+    вкладці 3 рядки, побачить «звірено 2» і більше цифрі не повірить.
+    """
+    session = make_session()
+    rows = [
+        make_row(row_number=1),
+        make_row(row_number=2, work_order_no="24123"),
+        make_row(row_number=3, work_order_no="24124", material_color="слм"),
+    ]
+    first = sync_tab(session, "01.08.26", rows)
+    assert first.skipped_non_queue == 1
+
+    second = sync_tab(session, "01.08.26", rows)
+    assert second.compared_rows == 2
+    assert second.skipped_non_queue == 1
+
+
+def test_verdict_is_withheld_while_rows_are_moving():
+    """Зсув рядків робить пари менш надійними — вердикт відкладається.
+
+    Різниця в такий момент нормальна й зникне наступним тіком, тож казати про
+    неї «розбіжність» означало б бити на сполох на порожньому місці.
+    """
+    from app.sync import SyncResult
+
+    assert SyncResult().verdict_is_trustworthy() is True
+    assert SyncResult(moved=1).verdict_is_trustworthy() is False
+    assert SyncResult(skipped_manual_add=1).verdict_is_trustworthy() is False
+    assert SyncResult(held_mass_vanish=3).verdict_is_trustworthy() is False
+
+
+def test_agreement_line_never_claims_zero_when_it_did_not_look():
+    """Формулювання для журналу й екрана. Головне — чого воно НЕ каже."""
+    from app.sheet_sync_service import SheetSyncSummary
+
+    nothing = SheetSyncSummary()
+    assert "нема що звіряти" in nothing.agreement_line()
+
+    clean = SheetSyncSummary(compared_rows=40, agreed_rows=40)
+    assert clean.agreement_line() == "звірено 40 рядків, розбіжностей 0"
+
+    with_skips = SheetSyncSummary(compared_rows=40, agreed_rows=40, skipped_non_queue=7)
+    assert "пропущено 7 нефрезерних" in with_skips.agreement_line()
+
+    dirty = SheetSyncSummary(compared_rows=40, agreed_rows=38)
+    assert "розбіжностей 2" in dirty.agreement_line()
+
+    moving = SheetSyncSummary(compared_rows=40, agreed_rows=38, verdict_trustworthy=False)
+    line = moving.agreement_line()
+    assert "відкладена" in line
+    assert "розбіжностей" not in line, "не можна казати про розбіжності, коли ми їх не довіряємо"

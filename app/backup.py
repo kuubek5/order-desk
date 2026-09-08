@@ -47,6 +47,7 @@ from app.models import (
     FeedbackImage,
     Furnace,
     FurnaceReading,
+    MachineReading,
     Machine,
     MailFilterCategory,
     MailFilterRule,
@@ -106,6 +107,12 @@ _TABLE_MODELS: list[Any] = [
     MailFilterRule,
     Furnace,
     FurnaceReading,
+    # Історія показань верстатів. У копію входить із тієї ж причини, що й
+    # пічна: це ЄДИНИЙ у системі запис про те, що і коли фрезерувалось —
+    # подій «у фрезеруванні» в базі нуль, а колонка «Відфрезерував» у таблиці
+    # містить ініціали людини, не час. Переїзд на новий ПК без неї знищив би
+    # рівно ті дані, заради яких її й завели.
+    MachineReading,
     Machine,
     SyncLog,
     ClientNameAlias,
