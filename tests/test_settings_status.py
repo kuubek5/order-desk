@@ -17,6 +17,7 @@ from app.services.settings_status import (
     TONE_NONE,
     TONE_OK,
     TONE_WARN,
+    _slab_backup,
     _slab_imap,
     _slab_machines,
     _slab_operators,
@@ -172,3 +173,47 @@ def test_machines_empty_list_is_grey(monkeypatch, db_session):
     slab = _slab_machines(db_session, _ctx())
     assert slab.tone == TONE_NONE
     assert slab.meters == []
+
+
+# ── Резервна копія: тон від ДРУГОЇ копії, не від кількості файлів ──────────
+# Аудит 08.09.26. Плита зеленіла від того, що в теці лежать знімки. Але вони
+# лежать там і тоді, коли копіювання давно падає, а головне — лежать на тому
+# самому диску, що й база: у сценарії «диск помер» їх немає разом із нею.
+
+
+def _backup_ctx(*, snaps: int = 3, mirror: dict | None = None) -> dict:
+    return {
+        "monthly_snapshots": [{"name": f"kuubmill-2026-0{i}.db", "size_mb": 1.0} for i in range(1, snaps + 1)],
+        "backup_mirror": mirror if mirror is not None else {"dir": "", "last_ok": "", "last_error": ""},
+    }
+
+
+def test_backup_is_not_green_when_every_copy_sits_on_the_db_disk():
+    slab = _slab_backup(_backup_ctx())
+    assert slab.tone == TONE_WARN
+
+
+def test_backup_is_not_green_when_the_second_copy_keeps_failing():
+    slab = _slab_backup(
+        _backup_ctx(mirror={"dir": r"\srvackup", "last_ok": "2026-08-01T10:00:00", "last_error": "OSError: шара недоступна"})
+    )
+    assert slab.tone == TONE_WARN
+
+
+def test_backup_is_not_green_before_the_second_copy_ever_ran():
+    slab = _slab_backup(_backup_ctx(mirror={"dir": r"\srvackup", "last_ok": "", "last_error": ""}))
+    assert slab.tone == TONE_WARN
+
+
+def test_backup_goes_green_only_with_a_confirmed_off_disk_copy():
+    slab = _slab_backup(
+        _backup_ctx(mirror={"dir": r"\srvackup", "last_ok": "2026-09-08T07:30:00", "last_error": ""})
+    )
+    assert slab.tone == TONE_OK
+
+
+def test_backup_without_any_snapshot_stays_warning():
+    slab = _slab_backup(
+        _backup_ctx(snaps=0, mirror={"dir": r"\srvackup", "last_ok": "2026-09-08T07:30:00", "last_error": ""})
+    )
+    assert slab.tone == TONE_WARN

@@ -37,6 +37,7 @@ from app.db import SessionLocal, db_file, engine
 from app.schema import ensure_schema
 from app.services.health_snapshot import check_after_update
 from app import perf
+from app.backup_mirror import mirror_snapshot
 from app.monthly_backup import ensure_monthly_snapshot
 from app.export_scanner import list_export_client_names_cached
 from app import sync_control
@@ -301,6 +302,12 @@ def _monthly_backup_tick() -> None:
         created = ensure_monthly_snapshot(engine, DB_PATH)
         if created is not None:
             logger.info("Monthly backup written: %s", created.name)
+            # Друга копія на іншому носії. Окремий try не потрібен —
+            # mirror_snapshot не кидає, — але окрема сесія потрібна: цей тік
+            # своєї не має. Порожній шлях дзеркала = миттєвий вихід.
+            with SessionLocal() as db:
+                mirror_snapshot(db, created, subdir="monthly")
+                db.commit()
     except Exception:
         logger.exception("Monthly DB snapshot failed")
 

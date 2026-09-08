@@ -27,6 +27,7 @@ from app.services.settings_nav import can_edit
 from app.services.undo import log_action
 from app.services.settings_status import build_slabs
 from app.models import AppSetting, EmailMessage, MailFilterCategory, MailFilterRule, Order, User
+from app.backup_mirror import mirror_status
 from app.monthly_backup import list_snapshots
 from app.routers.deps import (
     get_current_user,
@@ -272,6 +273,11 @@ def get_settings(
             }
             for p in list_snapshots(DB_PATH)
         ],
+        # Друга копія на іншому носії (app/backup_mirror.py). Порожній шлях =
+        # вимкнено. Плита розділу фарбується саме звідси, а не з кількості
+        # файлів: файли можуть лежати з минулого року, поки копіювання давно
+        # падає (аудит 08.09.26).
+        "backup_mirror": mirror_status(db),
         # Сирі знімки вкладок Google-таблиці (app/sheet_backup.py).
         "sheet_backup_enabled": get_sheet_backup_enabled(db),
         "sheet_backup_interval_hours": get_sheet_backup_interval_hours(db),

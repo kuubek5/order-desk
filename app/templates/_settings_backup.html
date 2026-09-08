@@ -130,6 +130,31 @@
                         {% else %}
                         <p class="monthly-backups-empty">Перша копія зʼявиться на початку наступного місяця.</p>
                         {% endif %}
+
+                        {# Друга копія на іншому носії. Знімки вище лежать поруч із
+                           самою базою, тож смерть диска чи шифрувальник забирають
+                           їх РАЗОМ із базою — відновлювати нема з чого (аудит
+                           08.09.26). Порожнє поле = вимкнено, усе працює як раніше. #}
+                        <form method="post" action="/settings" class="settings-backup-form backup-mirror-form">
+                            <label for="backup_mirror_dir">Друга копія на іншому носії</label>
+                            <p class="settings-help">
+                                Знімки вище лежать на тому самому диску, що й база. Вкажіть
+                                інший диск або мережеву папку — копія автоматично ляже ще й туди.
+                                Порожнє поле вимикає.
+                            </p>
+                            <input type="text" id="backup_mirror_dir" name="backup_mirror_dir"
+                                   class="mono" autocomplete="off" spellcheck="false"
+                                   placeholder="\\server\backup\kuubmill  або  D:\kuubmill-backup"
+                                   value="{{ backup_mirror.dir if backup_mirror else '' }}">
+                            {% if backup_mirror and backup_mirror.last_error %}
+                            <p class="settings-help settings-help-error">
+                                Остання спроба не вдалася: {{ backup_mirror.last_error }}
+                            </p>
+                            {% elif backup_mirror and backup_mirror.last_ok %}
+                            <p class="settings-help">Остання копія: {{ backup_mirror.last_ok }}</p>
+                            {% endif %}
+                            <button type="submit" class="btn">Зберегти</button>
+                        </form>
                     </div>
                 </div>
 

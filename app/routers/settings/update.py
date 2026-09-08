@@ -22,6 +22,7 @@ from app.routers.deps import (
 from app.update_check import (
     _update_check_tick,
     download_and_verify,
+    get_check_problem,
     get_known_update,
     human_update_error,
     install_state,
@@ -75,7 +76,15 @@ def check_update(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(
         request,
         "_update_check_result.html",
-        {"release": get_known_update(), "current_version": VERSION, "reached": reached},
+        {
+            "release": get_known_update(),
+            "current_version": VERSION,
+            "reached": reached,
+            # «Відповіли, але відповідь безглузда» — окремий стан від «немає
+            # звʼязку». Без нього нерозбірний тег малювався зеленим «у вас
+            # найновіша версія» (аудит 08.09.26).
+            "problem": get_check_problem(),
+        },
     )
 
 

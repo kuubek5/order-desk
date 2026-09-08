@@ -326,20 +326,54 @@ def _slab_sections(ctx: dict) -> Slab:
 
 
 def _slab_backup(ctx: dict) -> Slab:
+    """Тон беремо з ДРУГОЇ копії, а не з кількості знімків.
+
+    Раніше плита зеленіла від того, що в теці лежать файли. Але файли лежать
+    там з минулого року й тоді, коли копіювання давно падає, — тобто зелений
+    показував «колись працювало», а не «працює». Гірше: усі знімки лежать на
+    тому самому диску, що й база, тож у найважливішому сценарії (диск помер)
+    їх немає разом із нею. Тому головне питання плити тепер — «чи є копія
+    ПОЗА цим диском» (аудит 08.09.26, правило §14: колір лише з
+    підтвердженого сигналу).
+    """
     snaps = ctx.get("monthly_snapshots") or []
     total = len(snaps)
     size = round(sum(float(s.get("size_mb") or 0) for s in snaps), 1)
-    if total:
-        tone, label = TONE_OK, f"{total} {_pl(total, 'знімок', 'знімки', 'знімків')}"
-    else:
+
+    mirror = ctx.get("backup_mirror") or {}
+    mirror_on = bool(mirror.get("dir"))
+    mirror_error = (mirror.get("last_error") or "").strip()
+    mirror_ok = (mirror.get("last_ok") or "").strip()
+
+    if not total:
         tone, label = TONE_WARN, "жодного знімка"
+    elif not mirror_on:
+        # Не помилка, а незакритий ризик: копії є, але всі на диску бази.
+        tone, label = TONE_WARN, "лише на диску бази"
+    elif mirror_error:
+        tone, label = TONE_WARN, "друга копія не вдалася"
+    elif mirror_ok:
+        tone, label = TONE_OK, f"{total} {_pl(total, 'знімок', 'знімки', 'знімків')} + друга копія"
+    else:
+        # Дзеркало щойно ввімкнули, першої копії ще не було.
+        tone, label = TONE_WARN, "друга копія ще не робилась"
+
+    if not mirror_on:
+        mirror_meter = Meter(k="Друга копія", v="вимкнено", s="усе на диску бази", tone=TONE_WARN)
+    elif mirror_error:
+        mirror_meter = Meter(k="Друга копія", v="збій", s=mirror_error[:60], tone=TONE_WARN)
+    elif mirror_ok:
+        mirror_meter = Meter(k="Друга копія", v=mirror_ok[:10], s="останній успіх", tone=TONE_OK)
+    else:
+        mirror_meter = Meter(k="Друга копія", v="очікує", s="ще не робилась", tone=TONE_WARN)
+
     return Slab(
         tone=tone,
         label=label,
         meters=[
             Meter(k="Місячних знімків", v=str(total), s="автоматичних", tone=TONE_OK if total else TONE_WARN),
             Meter(k="Разом", v=f"{size} МБ", s="на диску"),
-            Meter(k="Ручна копія", v="з паролем", s="переносна, шифрована"),
+            mirror_meter,
         ],
     )
 

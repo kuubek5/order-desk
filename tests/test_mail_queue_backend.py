@@ -8,6 +8,23 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.business_day import business_today
+
+# Вкладка «свіжий день у межах вікна черги». Рахується від СЬОГОДНІ, а не
+# вписана руками. Раніше в цих тестах стояло жорстке RECENT_TAB — і 08.09.26
+# воно САМЕ випало за RETENTION_DAYS=30 (app/services/queue.py): роботи стали
+# архівними, чотири тести почервоніли без жодної правки коду. Дата в тесті, що
+# мусить лишатися «недавньою», зобов'язана рахуватись від сьогодні.
+RECENT_DAY = business_today() - timedelta(days=3)
+RECENT_TAB = RECENT_DAY.strftime("%d.%m.%y")
+
+
+def _recent_day(days_ago: int):
+    """Сусідній день у тому ж вікні — теж від сьогодні, не з календаря."""
+    return business_today() - timedelta(days=days_ago)
+
+
+def _recent_tab(days_ago: int) -> str:
+    return _recent_day(days_ago).strftime("%d.%m.%y")
 import app.web as web
 from app.link_attachments import LinkDownloadError
 from app.services.queue import known_order_dates
@@ -178,12 +195,12 @@ def test_queue_records_viewed_day_for_hot_lane(tmp_path, monkeypatch):
     sync_control._viewed_days.clear()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        db.add(Order(source="lab", sheet_tab="08.08.26", row_number=1, status="нове"))
+        db.add(Order(source="lab", sheet_tab=RECENT_TAB, row_number=1, status="нове"))
         db.commit()
 
-        _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26")
+        _call_get_queue(db, user, monkeypatch, tmp_path, date_param=RECENT_TAB)
 
-    assert date(2026, 8, 8) in web._hot_extra_days()
+    assert RECENT_DAY in web._hot_extra_days()
     sync_control._viewed_days.clear()
     assert web._hot_extra_days() == set()
 
@@ -546,10 +563,10 @@ def test_known_order_dates_derived_from_distinct_sheet_tabs(tmp_path):
     with Session(engine, expire_on_commit=False) as db:
         db.add_all(
             [
-                Order(source="lab", sheet_tab="08.08.26", row_number=1),
-                Order(source="lab", sheet_tab="08.08.26", row_number=2),  # duplicate tab
-                Order(source="lab", sheet_tab="05.08.26", row_number=3),
-                Order(source="email", sheet_tab="09.08.26"),
+                Order(source="lab", sheet_tab=RECENT_TAB, row_number=1),
+                Order(source="lab", sheet_tab=RECENT_TAB, row_number=2),  # duplicate tab
+                Order(source="lab", sheet_tab=_recent_tab(6), row_number=3),
+                Order(source="email", sheet_tab=_recent_tab(2)),
                 Order(source="email", sheet_tab=None),  # unpriced mail order, no tab yet
             ]
         )
@@ -557,22 +574,22 @@ def test_known_order_dates_derived_from_distinct_sheet_tabs(tmp_path):
 
         known = known_order_dates(db)
 
-        assert known == [date(2026, 8, 5), date(2026, 8, 8), date(2026, 8, 9)]
+        assert known == [_recent_day(6), RECENT_DAY, _recent_day(2)]
 
 
 def test_date_filter_returns_exactly_that_days_orders(tmp_path, monkeypatch):
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        matching = Order(source="lab", sheet_tab="08.08.26", client_name="Іванов")
-        other_day = Order(source="lab", sheet_tab="09.08.26", client_name="Петренко")
+        matching = Order(source="lab", sheet_tab=RECENT_TAB, client_name="Іванов")
+        other_day = Order(source="lab", sheet_tab=_recent_tab(2), client_name="Петренко")
         db.add_all([matching, other_day])
         db.commit()
 
-        context = _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26")
+        context = _call_get_queue(db, user, monkeypatch, tmp_path, date_param=RECENT_TAB)
 
         assert [o.id for o in context["orders"]] == [matching.id]
-        assert context["selected_date"] == date(2026, 8, 8)
+        assert context["selected_date"] == RECENT_DAY
 
 
 def test_date_filter_bypasses_period_bucket_entirely(tmp_path, monkeypatch):
@@ -602,21 +619,21 @@ def test_date_filter_composes_with_source_and_ready_like_period_does(tmp_path, m
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
-        lab_order = Order(source="lab", sheet_tab="08.08.26", client_name="Іванов")
-        email_order = Order(source="email", sheet_tab="08.08.26", client_name="Петренко")
+        lab_order = Order(source="lab", sheet_tab=RECENT_TAB, client_name="Іванов")
+        email_order = Order(source="email", sheet_tab=RECENT_TAB, client_name="Петренко")
         db.add_all([lab_order, email_order])
         db.commit()
 
-        all_sources = _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26")
+        all_sources = _call_get_queue(db, user, monkeypatch, tmp_path, date_param=RECENT_TAB)
         assert {o.id for o in all_sources["orders"]} == {lab_order.id, email_order.id}
 
         lab_only = _call_get_queue(
-            db, user, monkeypatch, tmp_path, date_param="08.08.26", source="lab"
+            db, user, monkeypatch, tmp_path, date_param=RECENT_TAB, source="lab"
         )
         assert [o.id for o in lab_only["orders"]] == [lab_order.id]
 
         client_only = _call_get_queue(
-            db, user, monkeypatch, tmp_path, date_param="08.08.26", source="client"
+            db, user, monkeypatch, tmp_path, date_param=RECENT_TAB, source="client"
         )
         assert [o.id for o in client_only["orders"]] == [email_order.id]
 
@@ -1780,15 +1797,15 @@ def test_total_units_reflects_source_filter(monkeypatch, tmp_path):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add_all([
-            Order(source="lab", sheet_tab="08.08.26", row_number=1,
+            Order(source="lab", sheet_tab=RECENT_TAB, row_number=1,
                   work_order_no="1", quantity="5", status="нове"),
-            Order(source="sheet_client", sheet_tab="08.08.26", row_number=60,
+            Order(source="sheet_client", sheet_tab=RECENT_TAB, row_number=60,
                   client_name="Неда", quantity="4", status="нове"),
         ])
         db.commit()
 
-        both = _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26", source="all")
-        lab = _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26", source="lab")
+        both = _call_get_queue(db, user, monkeypatch, tmp_path, date_param=RECENT_TAB, source="all")
+        lab = _call_get_queue(db, user, monkeypatch, tmp_path, date_param=RECENT_TAB, source="lab")
         assert both["total_units"] == 9
         assert lab["total_units"] == 5
 
@@ -1800,18 +1817,18 @@ def test_neutral_view_puts_lab_above_client(monkeypatch, tmp_path):
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         db.add_all([
-            Order(source="sheet_client", sheet_tab="08.08.26", row_number=60,
+            Order(source="sheet_client", sheet_tab=RECENT_TAB, row_number=60,
                   client_name="Неда", quantity="1", status="нове"),
-            Order(source="lab", sheet_tab="08.08.26", row_number=1,
+            Order(source="lab", sheet_tab=RECENT_TAB, row_number=1,
                   work_order_no="24000", quantity="1", status="нове"),
-            Order(source="sheet_client", sheet_tab="08.08.26", row_number=61,
+            Order(source="sheet_client", sheet_tab=RECENT_TAB, row_number=61,
                   client_name="Басараб", quantity="1", status="нове"),
-            Order(source="lab", sheet_tab="08.08.26", row_number=2,
+            Order(source="lab", sheet_tab=RECENT_TAB, row_number=2,
                   work_order_no="24001", quantity="1", status="нове"),
         ])
         db.commit()
 
-        ctx = _call_get_queue(db, user, monkeypatch, tmp_path, date_param="08.08.26")
+        ctx = _call_get_queue(db, user, monkeypatch, tmp_path, date_param=RECENT_TAB)
         sources = [o.source for o in ctx["orders"]]
         # every lab before every non-lab
         last_lab = max(i for i, s in enumerate(sources) if s == "lab")

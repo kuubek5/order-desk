@@ -121,7 +121,18 @@ jobs:
           $repo = 'kuubek5/order-desk-releases'
           gh release view agent-latest --repo $repo 2>$null
           if ($LASTEXITCODE -ne 0) {
+            # --prerelease ОБОВ'ЯЗКОВИЙ, це не косметика. GitHub віддає
+            # /releases/latest як найновіший НЕ-prerelease за датою створення, а
+            # KuubMill саме звідти дізнається про оновлення (app/update_check.py).
+            # Звичайний реліз `agent-latest`, створений пізніше за останній
+            # KuubMill-реліз, став би «найновішим», його тег не читається як
+            # версія — і всі встановлені машини назавжди бачили б «у вас
+            # найновіша версія» без жодної помилки (аудит 08.09.26).
+            # Пряме посилання на асет у Налаштуваннях → Верстати від цього не
+            # страждає: воно веде на файл за тегом, а prerelease так само
+            # завантажується.
             gh release create agent-latest --repo $repo --title "Агент верстата" `
+              --prerelease `
               --notes "Інсталятор агента для ПК верстата. Посилання стале — оновлюється автоматично."
           }
           gh release upload agent-latest $stable --repo $repo --clobber

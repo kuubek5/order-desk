@@ -162,10 +162,21 @@ def is_newer_version(candidate: str, current: str) -> bool:
     return candidate_tuple > current_tuple
 
 
-def _find_asset_url(assets: list[dict], *, suffixes: tuple[str, ...]) -> str | None:
+# Ім'я асета інсталятора ПОЧИНАЄТЬСЯ з цього; повне ім'я несе версію
+# (`KuubMill-Setup-0.11.8.exe`). Раніше асет обирався за самим розширенням
+# `.exe` — «перший .exe у списку», — і це працювало лише тому, що в релізі
+# лежав рівно один. Той самий репозиторій релізів приймає і службові збірки
+# (інсталятор агента верстата, `KMillAgent-Setup.exe`), тож «перший .exe» —
+# не ідентифікація, а збіг. Аудит 08.09.26.
+INSTALLER_ASSET_PREFIX = "kuubmill-setup"
+
+
+def _find_asset_url(
+    assets: list[dict], *, suffixes: tuple[str, ...], prefix: str = INSTALLER_ASSET_PREFIX
+) -> str | None:
     for asset in assets:
-        name = str(asset.get("name") or "")
-        if name.lower().endswith(suffixes):
+        name = str(asset.get("name") or "").lower()
+        if name.startswith(prefix) and name.endswith(suffixes):
             return asset.get("browser_download_url")
     return None
 
@@ -189,28 +200,61 @@ def _fetch_release_payload() -> dict | None:
         return None
 
 
-def _release_from_payload(payload: dict) -> ReleaseInfo | None:
-    """Interpret an already-fetched release payload: return a ReleaseInfo only
-    if it is a real, parseable, strictly newer version with a usable installer
-    asset; None otherwise (not newer, or no .exe). Pure/no network."""
+def _release_from_payload(payload: dict) -> tuple[ReleaseInfo | None, str | None]:
+    """Interpret an already-fetched release payload.
+
+    Повертає `(реліз, проблема)`. Реліз — лише якщо це справжня, розбірна,
+    строго новіша версія з придатним інсталятором. Проблема — людський текст,
+    коли GitHub відповів, але відповідь НЕ ПІДДАЄТЬСЯ тлумаченню.
+
+    Навіщо друге значення. Раніше функція повертала просто None і на «немає
+    нічого новішого», і на «тег не читається як версія». Екран показує на None
+    заспокійливе «у вас найновіша версія» — тобто нерозбірний тег виглядав як
+    підтвердження, що все гаразд. Це не теорія: складання агента верстата
+    публікує службовий реліз `agent-latest` у ТОЙ САМИЙ репозиторій, GitHub
+    віддає найновіший за датою створення, і один такий реліз мовчки вимкнув би
+    оновлення на всіх машинах назавжди (аудит 08.09.26). Тепер такий випадок
+    доходить до людини як попередження, а не як зелена галочка.
+
+    Чисто, без мережі."""
     tag_name = str(payload.get("tag_name") or "").strip()
     version = tag_name[1:] if tag_name.startswith("v") else tag_name
+
+    if _parse_semver(version) is None:
+        logger.error(
+            "Найновіший реліз GitHub має тег «%s», який не читається як версія — "
+            "перевірку оновлень не виконано",
+            tag_name or "(порожній)",
+        )
+        return None, (
+            f"Найновіший реліз має тег «{tag_name or '?'}», який не читається як "
+            "номер версії. Перевірку оновлень не виконано."
+        )
+
     if not is_newer_version(version, VERSION):
-        return None
+        return None, None
 
     assets = payload.get("assets") or []
     installer_url = _find_asset_url(assets, suffixes=(".exe",))
     if not installer_url:
-        logger.warning("Latest GitHub release %s has no .exe installer asset", tag_name)
-        return None
+        logger.error(
+            "Реліз %s не має інсталятора %s*.exe", tag_name, INSTALLER_ASSET_PREFIX
+        )
+        return None, (
+            f"У релізі {tag_name} немає інсталятора KuubMill. "
+            "Оновлення не встановити."
+        )
     checksum_url = _find_asset_url(assets, suffixes=(".sha256", ".sha256.txt"))
 
-    return ReleaseInfo(
-        version=version,
-        html_url=str(payload.get("html_url") or ""),
-        installer_url=installer_url,
-        checksum_url=checksum_url,
-        notes=str(payload.get("body") or ""),
+    return (
+        ReleaseInfo(
+            version=version,
+            html_url=str(payload.get("html_url") or ""),
+            installer_url=installer_url,
+            checksum_url=checksum_url,
+            notes=str(payload.get("body") or ""),
+        ),
+        None,
     )
 
 
@@ -225,7 +269,8 @@ def fetch_latest_release() -> ReleaseInfo | None:
     payload = _fetch_release_payload()
     if payload is None:
         return None
-    return _release_from_payload(payload)
+    release, _problem = _release_from_payload(payload)
+    return release
 
 
 # Last background-check result, read by web.py/templates without ever
@@ -235,9 +280,24 @@ def fetch_latest_release() -> ReleaseInfo | None:
 # assignment is atomic under the GIL, so no lock is needed.
 _latest_known_release: ReleaseInfo | None = None
 
+# Чому GitHub відповів, але відповідь не вдалося витлумачити. Живе поруч із
+# `_latest_known_release` і за тими самими правилами: пише лише воркер, читають
+# усі. None = остання витлумачена відповідь була нормальною.
+_last_check_problem: str | None = None
+
 
 def get_known_update() -> ReleaseInfo | None:
     return _latest_known_release
+
+
+def get_check_problem() -> str | None:
+    """Текст проблеми останньої ВИТЛУМАЧЕНОЇ перевірки, або None.
+
+    Це не про звʼязок: обрив мережі описує `reached` у виклику. Це про випадок
+    «GitHub відповів, а відповідь безглузда» — нерозбірний тег або реліз без
+    інсталятора. Мовчати про таке не можна, бо мовчання екран малює зеленим.
+    """
+    return _last_check_problem
 
 
 def _update_check_tick() -> bool:
@@ -252,11 +312,11 @@ def _update_check_tick() -> bool:
     the last successful tick already found. The slot is only overwritten when
     we actually have a fresh answer from GitHub.
     """
-    global _latest_known_release
+    global _latest_known_release, _last_check_problem
     payload = _fetch_release_payload()
     if payload is None:
         return False
-    _latest_known_release = _release_from_payload(payload)
+    _latest_known_release, _last_check_problem = _release_from_payload(payload)
     return True
 
 

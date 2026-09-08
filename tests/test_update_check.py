@@ -423,3 +423,106 @@ def test_update_check_sends_no_authorization_header():
 
     # No auth header passed by our code (session defaults carry none either).
     assert not (captured.get("headers") or {}).get("Authorization")
+
+
+# ── Службовий реліз агента верстата не має вимикати оновлення ──────────────
+# Аудит 08.09.26. Складання агента (.github/workflows/agent-build.yml) публікує
+# `KMillAgent-Setup.exe` під тегом `agent-latest` у ТОЙ САМИЙ репозиторій
+# релізів. GitHub віддає /releases/latest як найновіший за датою створення, тож
+# один такий реліз здатен стати «найновішим» для KuubMill. Далі раніше все
+# ламалось мовчки: тег не читався як версія → None → екран малював зелене «у вас
+# найновіша версія», а асет обирався як «перший .exe у списку» → міг виявитись
+# інсталятором агента. Обидві гілки тепер під сторожем.
+
+
+def _agent_release_payload() -> dict:
+    """Те, що GitHub віддасть, якщо `agent-latest` виявиться найновішим."""
+    return {
+        "tag_name": "agent-latest",
+        "html_url": "https://github.com/kuubek5/order-desk-releases/releases/tag/agent-latest",
+        "assets": [
+            {
+                "name": "KMillAgent-Setup.exe",
+                "browser_download_url": "https://example/KMillAgent-Setup.exe",
+            }
+        ],
+        "body": "Інсталятор агента для ПК верстата.",
+    }
+
+
+def test_unparseable_tag_reports_problem_instead_of_up_to_date():
+    release, problem = update_check._release_from_payload(_agent_release_payload())
+    assert release is None
+    assert problem is not None
+    assert "agent-latest" in problem
+
+
+def test_tick_stores_problem_for_unparseable_tag():
+    response = MagicMock()
+    response.json.return_value = _agent_release_payload()
+    response.raise_for_status.return_value = None
+    with patch("app.update_check._http_get", return_value=response):
+        assert _update_check_tick() is True
+    assert update_check.get_known_update() is None
+    # Головне: мовчання тут читалося б на екрані як «у вас найновіша версія».
+    assert update_check.get_check_problem() is not None
+
+
+def test_successful_check_clears_previous_problem():
+    update_check._last_check_problem = "стара проблема"
+    response = MagicMock()
+    response.json.return_value = _release_payload("v0.0.1")
+    response.raise_for_status.return_value = None
+    with patch("app.update_check._http_get", return_value=response):
+        assert _update_check_tick() is True
+    assert update_check.get_check_problem() is None
+
+
+def test_installer_asset_chosen_by_name_not_by_extension():
+    """Реліз KuubMill, у якому поруч лежить чужий .exe і він ПЕРШИЙ у списку."""
+    payload = _release_payload("v9.9.9")
+    payload["assets"] = [
+        {
+            "name": "KMillAgent-Setup.exe",
+            "browser_download_url": "https://example/agent.exe",
+        }
+    ] + payload["assets"]
+    response = MagicMock()
+    response.json.return_value = payload
+    response.raise_for_status.return_value = None
+    with patch("app.update_check._http_get", return_value=response):
+        result = fetch_latest_release()
+    assert result is not None
+    assert result.installer_url == "https://example/installer.exe"
+
+
+def test_newer_release_without_kuubmill_installer_reports_problem():
+    payload = _release_payload("v9.9.9")
+    payload["assets"] = [
+        {
+            "name": "KMillAgent-Setup.exe",
+            "browser_download_url": "https://example/agent.exe",
+        }
+    ]
+    release, problem = update_check._release_from_payload(payload)
+    assert release is None
+    assert problem is not None
+
+
+def test_agent_workflow_publishes_prerelease():
+    """Корінь проблеми — у файлі складання, не в Python.
+
+    GitHub виключає prerelease з /releases/latest, тож саме цей прапорець не дає
+    службовому релізу агента стати «найновішою версією KuubMill». Правка в
+    update_check.py — друга лінія оборони, ця — перша.
+    """
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "agent-build.yml"
+    ).read_text(encoding="utf-8")
+    create_line = next(
+        (line for line in workflow.splitlines() if "gh release create agent-latest" in line),
+        None,
+    )
+    assert create_line is not None, "зник крок публікації агента — перевір workflow"
+    start = workflow.index(create_line)
+    assert "--prerelease" in workflow[start : start + 400]

@@ -151,6 +151,16 @@ SETTING_FIELDS = [
         help_text="Звідки CRM ловить нові проєкти й підказує Sum3D ID",
         operator_editable=True,
     ),
+    # Друга копія бази на ІНШОМУ носії (app/backup_mirror.py). Свідомо БЕЗ
+    # section і БЕЗ operator_editable: усі три механізми копій пишуть поруч із
+    # базою, тож смерть диска забирає базу і всі копії разом, а вибір другого
+    # носія — рішення власника, не оператора. Порожньо = дзеркало вимкнене
+    # (ключ є в CLEARABLE_SETTING_KEYS, тож його можна прибрати з екрана).
+    SettingField(
+        key="backup_mirror_dir",
+        label="Папка для другої копії бази",
+        help_text="Інший диск або мережева шара — не той носій, де лежить база",
+    ),
 ]
 
 OPERATOR_EDITABLE_KEYS = {field.key for field in SETTING_FIELDS if field.operator_editable}
@@ -180,6 +190,7 @@ CLEARABLE_SETTING_KEYS = {
     "sum3d_projects_path",
     "day_rollover_time",
     "machine_calibration_path",
+    "backup_mirror_dir",
 }
 
 # Non-secret preference keys stored in the same AppSetting table but NOT part of
@@ -236,6 +247,12 @@ PREFERENCE_KEYS = {
     # звірки перед «знайдено», порожньо/не задано — один клік, як було.
     # Дефолт свідомо ВИМКНЕНО: це зміна процесу, рішення власника.
     "handout_qc_checklist",
+    # Результат дзеркалення знімків бази (app/backup_mirror.py). Не поле форми,
+    # а штамп: коли друга копія востаннє СПРАЦЮВАЛА і чим скінчилась остання
+    # спроба. Саме звідси фарбується плита «Резервна копія» — з підтвердженого
+    # сигналу, а не з кількості файлів у теці (аудит 08.09.26).
+    "backup_mirror_last_ok",
+    "backup_mirror_last_error",
     # Звірка «після оновлення нічого не зникло» (app/services/health_snapshot.py):
     # health_snapshot_before — JSON-знімок кількості рядків, знятий ПЕРЕД
     # встановленням оновлення; health_snapshot_report — результат звірки після
