@@ -214,7 +214,7 @@ def _sheet_sync_tick(db: Session) -> None:
     _record_sync_heartbeat("sheet", status="ok")
 
 
-def _sheet_hot_tick(db: Session) -> None:
+def _sheet_hot_tick(db: Session, *, neighbours: bool = True) -> None:
     """One fast-lane attempt at the current day's tab (sync_hot_tab). Errors
     are logged but do NOT flip the heartbeat to error: this runs every ~15s,
     and a transient proxy blip here would flap the UI state that the full
@@ -222,7 +222,11 @@ def _sheet_hot_tick(db: Session) -> None:
     if not _sheets_configured(db):
         return
     try:
-        summary = sync_hot_tab(db, extra_days=_hot_extra_days())
+        summary = sync_hot_tab(
+            db,
+            extra_days=_hot_extra_days() if neighbours else None,
+            neighbours=neighbours,
+        )
     except SheetSyncError as exc:
         logger.warning("Hot-tab sheet sync failed: %s", exc)
         return
@@ -262,6 +266,11 @@ def _sheet_sync_worker(stop_event: Event) -> None:
         return
 
     next_full = 0.0  # first iteration always does a full sync
+    # Сусідні гарячі вкладки (вчора + переглянуті дні) читаються РІДШЕ за
+    # сьогоднішню: нова робота зʼявляється тільки в сьогоднішній, а сусідні
+    # потрібні видачі, де секунди нічого не вирішують. Перший тік — широкий,
+    # щоб після старту застосунку картина була повною одразу.
+    next_wide = 0.0
     while not stop_event.is_set():
         speed = get_sync_speed()  # live: the UI switch changes the next tick
         # Paused: touch the sheet in neither direction. Keep looping (cheaply)
@@ -269,6 +278,7 @@ def _sheet_sync_worker(stop_event: Event) -> None:
         # the first thing after a pause is a complete re-read of the table.
         if sync_control.is_paused():
             next_full = 0.0
+            next_wide = 0.0
             # Пульс мусить показувати «мовчимо свідомо», а не «немає
             # відповіді»: без цього рядка через 3 хв паузи бічна панель писала
             # «⚠ немає відповіді від фонового процесу», хоча процес живий і
@@ -284,8 +294,14 @@ def _sheet_sync_worker(stop_event: Event) -> None:
                 if run_full:
                     _sheet_sync_tick(db)
                     next_full = monotonic() + speed["full"]
+                    # Повний синк уже перечитав і сусідні вкладки — вузький тік
+                    # одразу після нього був би подвійною роботою.
+                    next_wide = monotonic() + speed.get("wide", speed["hot"])
                 else:
-                    _sheet_hot_tick(db)
+                    wide = monotonic() >= next_wide
+                    _sheet_hot_tick(db, neighbours=wide)
+                    if wide:
+                        next_wide = monotonic() + speed.get("wide", speed["hot"])
         except Exception:
             logger.exception("Unexpected background sheet sync failure")
             _record_sync_heartbeat(

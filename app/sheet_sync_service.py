@@ -1056,6 +1056,7 @@ def sync_hot_tab(
     *,
     today: date | None = None,
     extra_days: set[date] | None = None,
+    neighbours: bool = True,
 ) -> SheetSyncSummary | None:
     """Fast lane: re-read only the operationally "hot" tabs — today's and
     yesterday's, plus ``extra_days`` (the days operators are viewing right now,
@@ -1099,10 +1100,17 @@ def sync_hot_tab(
         _configuration(session)
         spreadsheet = open_spreadsheet(db=session)
         base_day = today or business_today()
-        hot_days = [base_day, base_day - timedelta(days=1)]
-        for extra in sorted(extra_days or ()):
-            if extra not in hot_days:
-                hot_days.append(extra)
+        # `neighbours=False` — вузький тік: ТІЛЬКИ сьогоднішня вкладка.
+        # Нова робота зʼявляється лише в ній, а вчора й переглянуті дні
+        # потрібні видачі, де секунди нічого не вирішують. Один тік коштує
+        # 2 запити замість 8, і саме на цій різниці «Турбо» перестає впиратись
+        # у гальмо квоти (див. SYNC_SPEED_PRESETS, ключ "wide").
+        hot_days = [base_day]
+        if neighbours:
+            hot_days.append(base_day - timedelta(days=1))
+            for extra in sorted(extra_days or ()):
+                if extra not in hot_days:
+                    hot_days.append(extra)
         summary = SheetSyncSummary()
         for day in hot_days:
             tab_title = tab_name_for(day)

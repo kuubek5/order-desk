@@ -50,6 +50,15 @@ def set_paused(value: bool) -> None:
 # "hot"    — seconds between hot-tab reads (one ~3s API call per tab through
 #            the lab proxy, so 5s is the physical floor — see the sizing
 #            discussion in CLAUDE.md's proxy notes);
+# "wide"   — seconds between reads of the NEIGHBOURING hot tabs (yesterday and
+#            the days operators are viewing). Нова робота зʼявляється ТІЛЬКИ в
+#            сьогоднішній вкладці, а сусідні потрібні видачі, де секунди нічого
+#            не вирішують. До 09.09.26 такт був один на всіх, і кожен тік читав
+#            до 4 вкладок по 2 запити — до 8 запитів на тік. На «Звичайно» це
+#            ~39 запитів/хв при гальмі 45, а «Турбо» впиралось у гальмо й
+#            ПРОПУСКАЛО тіки, тобто обіцяних 5 с не давало. Розділений такт
+#            лишає сьогоднішню вкладку на «hot», решту зсуває на «wide», і в ту
+#            саму квоту Турбо нарешті означає 5 секунд;
 # "screen" — seconds between the queue's local partial=rows polls;
 # "full"   — seconds between expensive full syncs (listing + 3-day window).
 #            Turbo stretches it: the hot lane already covers the tabs being
@@ -57,9 +66,9 @@ def set_paused(value: bool) -> None:
 # Held in process memory only: an operational knob, not a credential — after a
 # restart the app wakes up in "normal", which is the right default.
 SYNC_SPEED_PRESETS = {
-    "turbo": {"hot": 5, "screen": 5, "full": 120, "label": "Турбо", "hint": "5с"},
-    "normal": {"hot": 15, "screen": 15, "full": 60, "label": "Звичайно", "hint": "15с"},
-    "eco": {"hot": 60, "screen": 30, "full": 60, "label": "Економ", "hint": "60с"},
+    "turbo": {"hot": 5, "wide": 30, "screen": 5, "full": 120, "label": "Турбо", "hint": "5с"},
+    "normal": {"hot": 15, "wide": 30, "screen": 15, "full": 60, "label": "Звичайно", "hint": "15с"},
+    "eco": {"hot": 60, "wide": 60, "screen": 30, "full": 60, "label": "Економ", "hint": "60с"},
 }
 
 _speed_preset = "normal"

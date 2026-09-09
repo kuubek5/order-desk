@@ -425,6 +425,36 @@ def test_sync_hot_tab_reads_today_and_yesterday_by_name(monkeypatch):
     reset_sheets_cache()
 
 
+def test_narrow_hot_tick_reads_only_todays_tab(monkeypatch):
+    """Вузький тік — тільки сьогоднішня вкладка, і це головна економія квоти.
+
+    Нова робота зʼявляється ТІЛЬКИ в сьогоднішній вкладці; вчора й переглянуті
+    дні потрібні видачі, де секунди нічого не вирішують. До 09.09.26 такт був
+    один на всіх: до 4 вкладок по 2 запити = до 8 запитів на тік, ~39/хв на
+    «Звичайно» при гальмі 45 — а «Турбо» впиралось у гальмо й пропускало тіки,
+    тобто обіцяних 5 с не давало ніколи."""
+    configured(monkeypatch)
+    reset_sheets_cache()
+    today = business_today()
+    today_ws = worksheet(today, "800")
+    yesterday_ws = worksheet(today - timedelta(days=1), "801")
+    by_name = {today_ws.title: today_ws, yesterday_ws.title: yesterday_ws}
+    spreadsheet = Mock()
+    spreadsheet.worksheet.side_effect = lambda name: by_name[name]
+    monkeypatch.setattr(
+        "app.sheet_sync_service.open_spreadsheet", lambda db: spreadsheet
+    )
+
+    with make_session() as session:
+        summary = sync_hot_tab(session, neighbours=False)
+
+        assert summary is not None
+        assert summary.tab_names == [today_ws.title]
+        assert spreadsheet.worksheet.call_count == 1, "сусідні вкладки не чіпаємо"
+        yesterday_ws.get_all_values.assert_not_called()
+    reset_sheets_cache()
+
+
 def test_sync_hot_tab_skips_quietly_when_lock_busy(monkeypatch):
     configured(monkeypatch)
     reset_sheets_cache()
@@ -1111,3 +1141,19 @@ def test_a_row_with_sum3d_that_did_not_import_leaves_a_trace(monkeypatch):
             if "не потрапили в CRM" in (log.message or "")
         ]
         assert len(again) == 1
+
+
+def test_every_speed_preset_reads_neighbours_no_faster_than_today():
+    """Розділений такт має сенс лише в один бік.
+
+    Сьогоднішня вкладка — та, де зʼявляється нова робота, тож вона читається
+    НЕ РІДШЕ за сусідні. Якщо «wide» колись стане меншим за «hot», широкий тік
+    ітиме щоразу, розділення тихо зникне, а квота повернеться до ~39 запитів/хв
+    при гальмі 45 — тобто «Турбо» знову перестане означати 5 секунд, і ніхто
+    цього не помітить.
+    """
+    from app.sync_control import SYNC_SPEED_PRESETS
+
+    for name, preset in SYNC_SPEED_PRESETS.items():
+        assert "wide" in preset, f"пресет {name} без такту сусідніх вкладок"
+        assert preset["wide"] >= preset["hot"], name
