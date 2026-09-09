@@ -240,38 +240,9 @@
     if (e.key === "Escape" && pal.isOpen()) pal.close();
   });
 
-  // ── розділ «Спливаючі сповіщення» ───────────────────────
-  // Підсвітка обраної картки без перезавантаження + приклад тоста поточного
-  // (збереженого) стилю, щоб не вибирати наосліп.
-  main.querySelectorAll('.notify-pick input[type="radio"]').forEach(function (input) {
-    input.addEventListener("change", function () {
-      var group = input.closest(".notify-styles, .notify-pos");
-      if (!group) return;
-      group.querySelectorAll(".notify-pick").forEach(function (p) {
-        p.classList.toggle("is-on", p.contains(input) && input.checked);
-      });
-    });
-  });
-
-  var previewBtn = main.querySelector("[data-notify-preview]");
-  if (previewBtn) {
-    // Кожен приклад несе ключ події, бо у вигляді «Аврора» саме він визначає
-    // канал: збій іде в кромку, подія ззовні — карткою, підтвердження власної
-    // дії — нижньою стрічкою. Без ключа проба показувала б лише один канал із
-    // трьох і на неї не можна було б спертись під час налаштування.
-    var SAMPLES = [
-      ["2 роботи можна брати — технік доклав шлях до папки.", "info", "ready_to_take"],
-      ["Технік змінив роботу в таблиці. Позначені в черзі — перевірте перед фрезеруванням.", "warning", "sheet_changed"],
-      ["Статус → відфрезеровано · наряд 24122", "success", null],
-      ["Google Таблиця не відповідає. Черга не оновлюється — перевірте зʼєднання.", "error", "sheet_error"],
-      ["Синхронізація відновлена.", "success", "sheet_recovered"],
-    ];
-    var i = 0;
-    previewBtn.addEventListener("click", function () {
-      var s = SAMPLES[i++ % SAMPLES.length];
-      if (window.showToast) window.showToast(s[0], s[1], undefined, undefined, s[2] ? { event: s[2] } : undefined);
-    });
-  }
+  // Розділ «Спливаючі сповіщення» тут більше не обслуговується: він живе
+  // в кабінеті (/account, вкладка «Сповіщення»), який цього файлу не
+  // вантажить, — обробник лежав тут мертвим. Тепер він у notify_prefs.js.
 
   // ── copy-to-clipboard (service-account address) ──────────
   document.querySelectorAll("[data-copy-target]").forEach(function (btn) {

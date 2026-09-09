@@ -512,7 +512,17 @@ main.setv2.scon {
   transition: border-color var(--ui-speed) ease, background-color var(--ui-speed) ease;
 }
 .notify-pick:hover { border-color: var(--control-edge); }
-.notify-pick.is-on { border-color: var(--accent-b); background: rgba(var(--accent-base-rgb), 0.07); }
+/* Обраний варіант підсвічується і КЛАСОМ (ставить сервер на рендері), і
+   станом самого радіо. Другий селектор — не прикраса: клас лишається на
+   тому варіанті, що прийшов з бази, тож без нього клік по сусідньому
+   нічого не малює, поки сторінку не збережуть і не перезавантажать.
+   Саме так вибір і виглядав мертвим на /account. */
+.notify-pick.is-on,
+.notify-pick:has(input:checked) { border-color: var(--accent-b); background: rgba(var(--accent-base-rgb), 0.07); }
+/* Клас із сервера мовчить, щойно в групі обрано інше — дві підсвітки
+   одночасно читались би як «обидва обрані». */
+.notify-styles:has(input:checked) .notify-pick.is-on:not(:has(input:checked)),
+.notify-pos:has(input:checked) .notify-pick.is-on:not(:has(input:checked)) { border-color: var(--line); background: none; }
 .notify-pick input { position: absolute; opacity: 0; pointer-events: none; }
 .notify-pick:focus-within { outline: 2px solid var(--accent-b); outline-offset: 2px; }
 /* мініатюра стилю: ребро + підпис */
