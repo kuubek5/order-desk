@@ -274,3 +274,41 @@ document.addEventListener("click", (event) => {
     .then(() => window.location.reload())
     .catch(() => window.location.reload());
 });
+
+// ── Галочка «знайдено» відгукується ОДРАЗУ ──────────────────────────────
+// Клік по галочці свапає весь `#handout-list`, і до 09.09.26 оператор бачив
+// результат лише коли приходила відповідь — на бойових замірах 0.7-2.1 с.
+// Найдорожче в тій відповіді (нечітке зіставлення клієнтів із теками) тепер
+// кешується, але навіть 0.2 с на екрані, де галочки клацають підряд, читаються
+// як гальмо.
+//
+// Тому малюємо стан ДО відповіді. Це не обман: сервер приймає клік завжди
+// (робота існує, статус змінюється), а якщо запит таки впав — свапу не буде,
+// і ми повертаємо рядок як був. Мовчазно «залипла» галочка тут гірша за
+// секунду очікування: оператор пішов би до наступної коронки з думкою, що ця
+// вже позначена.
+function handoutRowForm(detail) {
+  const form = detail && detail.elt;
+  if (!form || !form.matches || !form.matches("form")) return null;
+  const path = (detail.requestConfig && detail.requestConfig.path) || "";
+  if (!/\/orders\/\d+\/(un)?mark-found$/.test(path)) return null;
+  const row = form.closest(".wrow");
+  return row ? { row, marking: path.endsWith("/mark-found") } : null;
+}
+
+document.body.addEventListener("htmx:beforeRequest", (event) => {
+  const hit = handoutRowForm(event.detail);
+  if (!hit) return;
+  // Запамʼятовуємо, що було, — щоб було чим відкотитись на помилці.
+  hit.row.dataset.foundWas = hit.row.classList.contains("found") ? "1" : "0";
+  hit.row.classList.toggle("found", hit.marking);
+});
+
+["htmx:responseError", "htmx:sendError", "htmx:timeout"].forEach((name) => {
+  document.body.addEventListener(name, (event) => {
+    const hit = handoutRowForm(event.detail);
+    if (!hit) return;
+    hit.row.classList.toggle("found", hit.row.dataset.foundWas === "1");
+    delete hit.row.dataset.foundWas;
+  });
+});

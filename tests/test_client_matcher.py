@@ -469,3 +469,56 @@ class TestPrefilterSurvivesTransliteration:
     def test_small_lists_are_not_prefiltered_at_all(self):
         result = match_client_name("Мулик Петро", ["Mulyk Petro", "інший"], {})
         assert result.matched_folder_name == "Mulyk Petro"
+
+
+def test_matching_the_same_client_twice_does_not_rescore(monkeypatch):
+    """Найдорожче на видачі — саме це зіставлення (заміри 09.09.26:
+    `match:clients` 0.46-1.08 с у кожному запиті, більше за все інше разом).
+    Платили за нього щоразу заново: кожна галочка «знайдено» перебудовує екран
+    і перезіставляє тих самих клієнтів із тими самими теками."""
+    from app import client_matcher
+
+    client_matcher._match_cache.clear()
+    calls = []
+    real = client_matcher.match_client_name
+    monkeypatch.setattr(
+        client_matcher, "match_client_name",
+        lambda *a, **kw: (calls.append(a[0]), real(*a, **kw))[1],
+    )
+
+    folders = ["Іваненко Петро", "Мулик Петро", "Omax Clinic"]
+    key = client_matcher.matcher_cache_key(folders, {})
+    first = client_matcher.match_client_name_cached("Іваненко Петро", folders, {}, key)
+    second = client_matcher.match_client_name_cached("Іваненко Петро", folders, {}, key)
+
+    assert first.matched_folder_name == second.matched_folder_name == "Іваненко Петро"
+    assert calls == ["Іваненко Петро"], "друге зіставлення мало прийти з кешу"
+
+
+def test_a_new_export_folder_invalidates_the_cached_match(monkeypatch):
+    """Кеш, який переживає зміну входу, показував би вчорашнє зіставлення й
+    відправляв оператора до чужої теки. Ключ описує ВЕСЬ вхід, тому нова тека
+    в `export` і щойно підтверджений псевдонім самі роблять старе недосяжним."""
+    from app import client_matcher
+
+    client_matcher._match_cache.clear()
+    folders = ["Omax Clinic"]
+    name = "Іваненко Петро"
+
+    before = client_matcher.match_client_name_cached(
+        name, folders, {}, client_matcher.matcher_cache_key(folders, {})
+    )
+    assert before.matched_folder_name is None, "теки ще немає — зіставляти нема з чим"
+
+    grown = folders + [name]
+    after = client_matcher.match_client_name_cached(
+        name, grown, {}, client_matcher.matcher_cache_key(grown, {})
+    )
+    assert after.matched_folder_name == name, "нова тека мусить бути помічена одразу"
+
+    aliases = {name: "Omax Clinic"}
+    aliased = client_matcher.match_client_name_cached(
+        name, grown, aliases, client_matcher.matcher_cache_key(grown, aliases)
+    )
+    assert aliased.matched_folder_name == "Omax Clinic"
+    assert aliased.is_confirmed_alias is True

@@ -16,7 +16,11 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.business_day import business_today
-from app.client_matcher import match_client_name
+from app.client_matcher import (
+    match_client_name,
+    match_client_name_cached,
+    matcher_cache_key,
+)
 from app.export_scanner import scan_export_client_cached, scan_export_client_latest_cached
 from app.material_match import materials_match
 from app.services.clients import quantity_units
@@ -237,11 +241,18 @@ def handout_client_matches(db: Session, client_names, folder_names: list[str]) -
     # Групі без імені зіставляти нема чого: теку в `export` шукають ЗА ІМЕНЕМ
     # клієнта. Порожній результат чесніший за здогад — інакше нечіткий
     # матчер підібрав би їй першу-ліпшу схожу теку.
+    #
+    # Через кеш, а не напряму: на бойових замірах 09.09.26 саме це зіставлення
+    # було найдорожчим на видачі (`match:clients` 0.46-1.08 с у кожному
+    # запиті), і платили за нього щоразу заново — кожна галочка «знайдено»
+    # перебудовує екран і перезіставляє тих самих клієнтів із тими самими
+    # теками. Відбиток входу рахуємо ОДИН раз на виклик, а не на клієнта.
+    key = matcher_cache_key(folder_names, aliases)
     return {
         name: (
             match_client_name("", [], {})
             if name == NAMELESS_CLIENT_KEY
-            else match_client_name(name, folder_names, aliases)
+            else match_client_name_cached(name, folder_names, aliases, key)
         )
         for name in client_names
     }
