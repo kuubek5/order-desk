@@ -225,13 +225,11 @@ def find_progress_bar(image: Image.Image, masks: "_FrameMasks | None" = None) ->
     import numpy as np
 
     m = masks or _FrameMasks(image)
-    rgb = m.image
     width, height = m.width, m.height
     if width < 80 or height < 60:
         return None
 
     top = int(height * BOTTOM_BAND)
-    px = rgb.load()
     # Ті самі три предикати (`_is_blue` / `_is_unfilled` / `_is_dark`), лише
     # застосовані до всього кадру одразу. Попіксельний обхід нижньої смуги
     # коштував 25-43 мс на кадр, і платив за нього не лише читач: процес
