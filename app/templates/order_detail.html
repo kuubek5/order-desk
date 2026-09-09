@@ -15,6 +15,11 @@
   'проблема': ('var(--alarm)', false),
   'переробка': ('var(--warn)', false)
 } %}
+{# Тека роботи має два корені: пошта лежить в `export`, лабораторія — у теці
+   техніків за `job_code`. Права панель однакова для обох, тож джерело
+   вибирається один раз тут, а не в п'яти місцях розмітки. #}
+{% set _folder_uri = order.export_folder_uri or order.job_code_folder_uri %}
+{% set _stl_token = order.export_folder_preview_token or order.job_code_folder_preview_token %}
 <main class="passport2">
     {% if error %}
     <div class="settings-alert settings-alert-error">{{ error }}</div>
@@ -32,97 +37,159 @@
     {% endif %}
 
     <div class="p2-head">
-        <div>
+        <div class="p2-ident">
             <span class="ord mono">{% if order.source == 'email' %}{{ order.client_name or ('#' ~ order.id) }}{% else %}{{ order.work_order_no or ('#' ~ order.id) }}{% endif %}</span>
             {% if order.source == 'email' %}<span class="src">пошта</span>{% endif %}
-            {% if order.source != 'email' and order.client_name %}<div class="client">{{ order.client_name }}</div>{% endif %}
+            {# Клієнт і технік — це «чия робота» і «хто здав»; у шапці вони
+               відповідають на це одразу, а нижче лишається тільки те, що
+               описує саму роботу (матеріал, вид, кількість). #}
+            <div class="p2-sub">
+                {% if order.source != 'email' and order.client_name %}<span class="client">{{ order.client_name }}</span>{% endif %}
+                {% if order.technician_name %}<span class="tech">технік: {{ order.technician_name }}</span>{% endif %}
+            </div>
         </div>
         <span class="status-now status-badge status-{{ order.status|replace(' ', '-')|lower }}">{{ order.status }}</span>
     </div>
 
-    <div class="dsec">
-        <div class="dlabel">Паспорт роботи</div>
-        {# Кадр родини поруч зі значенням: у паспорті оператор дивиться на ОДНУ
-           роботу, і матеріал тут доти був самим текстом. Клас родини бере той
-           самий `material_badge`, що й маркування в черзі, тому фото не може
-           розійтись із символом. Кадру немає — мітка просто не рендериться. #}
-        {%- set _mat = material_badge(order) -%}
-        <div class="kv"><span>Матеріал · колір</span><b>{% if order.material_color %}<span class="matchip {{ _mat.cls if _mat else '' }}">{% if _mat and _mat.cls not in ('mat-unknown', 'mat-other') %}<i class="matchip-thumb" aria-hidden="true"></i>{% endif %}{{ order.material_color }}</span>{% else %}—{% endif %}</b></div>
-        <div class="kv"><span>Вид роботи</span><b>{{ order.kind or '—' }}</b></div>
-        <div class="kv"><span>Кількість</span><b>{{ order.quantity or '—' }}</b></div>
-        <div class="kv"><span>Технік</span><b>{{ order.technician_name or '—' }}</b></div>
-        {# Опак показуємо лише коли він є: у більшості робіт його немає,
-           і порожній рядок «Опак —» був би шумом у кожному паспорті. #}
-        {% if order.opak_units %}<div class="kv"><span>Опак</span><b>{{ order.opak_units }}</b></div>{% endif %}
+    {# Дві панелі замість одного стовпця. Зліва — те, чим керують (порядок
+       узгоджений з власником: статус вище за Sum3D, і міняти його лише на
+       прохання); справа — те, на що дивляться. Форми й адреси тут ті самі,
+       що були в стовпці: змінилась розкладка, не роути. #}
+    <div class="p2-grid{% if not _stl_token %} p2-grid-flat{% endif %}">
+        <section class="p2-left" aria-label="Дії над роботою">
+            <div class="dsec">
+                <div class="dlabel">Статус</div>
+                {% if read_only %}
+                <span class="status-now status-badge status-{{ order.status|replace(' ', '-')|lower }}">{{ order.status }}</span>
+                {% else %}
+                <form class="status-opts" hx-post="/orders/{{ order.id }}/status" hx-swap="none">
+                    {% for s in statuses %}
+                    {% set _c = _dot.get(s, ('#8fa3bb', false)) %}
+                    <button type="submit" name="status" value="{{ s }}" class="sbtn{% if s == 'проблема' %} alarm{% elif s == 'переробка' %} warn{% endif %}" aria-pressed="{{ 'true' if s == order.status else 'false' }}">
+                        <span class="sdot" aria-hidden="true" style="{% if _c[1] %}background:transparent;box-shadow:inset 0 0 0 1.6px {{ _c[0] }}{% else %}background:{{ _c[0] }}{% endif %}"></span>{{ s }}
+                    </button>
+                    {% endfor %}
+                </form>
+                <div class="p2-toast" id="p2-status-toast" role="status" aria-live="polite">Збережено</div>
+                {% endif %}
+            </div>
+
+            <div class="dsec">
+                <div class="dlabel">Sum3D ID</div>
+                {% if read_only %}
+                <div class="pathrow">
+                    <span class="p mono">{{ order.sum3d_id or '—' }}</span>
+                    {% if order.sum3d_id %}
+                    <button type="button" class="iconbtn copy-button" data-copy="{{ order.sum3d_id }}" title="Копіювати Sum3D ID">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" class="duo"/><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>
+                    </button>
+                    {% endif %}
+                </div>
+                {% else %}
+                <form class="sumrow" hx-post="/orders/{{ order.id }}/sum3d-id" hx-swap="none">
+                    <input class="suminput mono" type="text" name="sum3d_id" inputmode="numeric" placeholder="Ще не прораховано" value="{{ order.sum3d_id or '' }}">
+                    <button class="btn primary" type="submit">Зберегти</button>
+                </form>
+                {% endif %}
+            </div>
+
+            <div class="dsec">
+                <div class="dlabel">Шлях-ID</div>
+                <div class="pathrow">
+                    <span class="p mono">{{ order.job_code or '—' }}</span>
+                    {% if order.job_code %}
+                    <button type="button" class="iconbtn copy-button" data-copy="{{ order.job_code }}" title="Копіювати шлях-ID для Sum3D">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" class="duo"/><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="dsec">
+                <div class="dlabel">Паспорт роботи</div>
+                {# Кадр родини поруч зі значенням: у паспорті оператор дивиться на ОДНУ
+                   роботу, і матеріал тут доти був самим текстом. Клас родини бере той
+                   самий `material_badge`, що й маркування в черзі, тому фото не може
+                   розійтись із символом. Кадру немає — мітка просто не рендериться. #}
+                {%- set _mat = material_badge(order) -%}
+                <div class="kv"><span>Матеріал · колір</span><b>{% if order.material_color %}<span class="matchip {{ _mat.cls if _mat else '' }}">{% if _mat and _mat.cls not in ('mat-unknown', 'mat-other') %}<i class="matchip-thumb" aria-hidden="true"></i>{% endif %}{{ order.material_color }}</span>{% else %}—{% endif %}</b></div>
+                <div class="kv"><span>Вид роботи</span><b>{{ order.kind or '—' }}</b></div>
+                <div class="kv"><span>Кількість</span><b>{{ order.quantity or '—' }}</b></div>
+                {# Опак показуємо лише коли він є: у більшості робіт його немає,
+                   і порожній рядок «Опак —» був би шумом у кожному паспорті. #}
+                {% if order.opak_units %}<div class="kv"><span>Опак</span><b>{{ order.opak_units }}</b></div>{% endif %}
+            </div>
+
+            <div class="dsec">
+                <div class="dlabel">Коментар для CAM-оператора</div>
+                {% if order.cam_comment %}
+                <div class="camtext{% if is_rush_comment(order.cam_comment) %} rush{% elif '!!' in order.cam_comment %} attn{% endif %}">{{ order.cam_comment }}</div>
+                {% else %}
+                <div class="camtext empty-cam">Коментаря немає</div>
+                {% endif %}
+            </div>
+        </section>
+
+        {# Права панель — те, на що дивляться. STL більше не за іконкою: звірка
+           форми з моделлю і є причиною, з якої паспорт відкривають очима.
+           Ключ фулскріна свій (`data-stl-max-key`), бо спільний із тріажем
+           відкривав би паспорт розгорнутим поверх статусу й поля Sum3D. #}
+        <aside class="p2-right" aria-label="Файли роботи">
+            {% if _stl_token %}
+            <div class="dsec stl-gallery-sec">
+                <div class="dlabel">Перегляд STL</div>
+                <div class="stl-gallery" data-stl-gallery-token="{{ _stl_token }}" data-stl-max-key="stl-passport-max">
+                    <div class="stl-gallery-stage">
+                        <canvas class="stl-gallery-canvas"></canvas>
+                        <div class="stl-gallery-status">Завантаження прев'ю…</div>
+                        <button type="button" class="stl-gallery-max" aria-pressed="false"
+                                aria-label="Розгорнути на весь екран" title="Розгорнути на весь екран">
+                            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="stl-gallery-files" role="list" aria-label="STL-файли роботи"></div>
+                </div>
+            </div>
+            {% else %}
+            {# Теки немає — кажемо це словами, а не порожнім полотном: мертвий
+               сірий прямокутник читається як «прев'ю зламалось». #}
+            <div class="dsec">
+                <div class="dlabel">Перегляд STL</div>
+                <div class="p2-nostl">
+                    {% if order.job_code %}Теку з файлами не знайдено — перевірте, чи технік поклав роботу на місце.{% else %}Технік ще не здав роботу — файлів немає.{% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if _folder_uri %}
+            <div class="p2-filesbar">
+                <a href="{{ _folder_uri }}" class="btn">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" class="duo"/><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                    Відкрити теку
+                </a>
+            </div>
+            {% endif %}
+        </aside>
     </div>
 
-    <div class="dsec">
-        <div class="dlabel">Коментар для CAM-оператора</div>
-        {% if order.cam_comment %}
-        <div class="camtext{% if is_rush_comment(order.cam_comment) %} rush{% elif '!!' in order.cam_comment %} attn{% endif %}">{{ order.cam_comment }}</div>
-        {% else %}
-        <div class="camtext empty-cam">Коментаря немає</div>
+    {# Вкладки під панелями: те, що читають рідше за дію, але читають цілком.
+       Хронологія — ОДИН потік подій (app/services/order_path.py): поява
+       роботи, статуси і дії операторів разом, з іменем і часом. Окремого
+       «Журналу дій» більше немає — він і був другою половиною цієї стрічки,
+       і зіставляти їх доводилось очима. #}
+    <div class="p2-tabs" role="tablist" aria-label="Історія роботи">
+        <button type="button" class="p2-tab" role="tab" data-tab="timeline" aria-selected="true">Хронологія</button>
+        <button type="button" class="p2-tab" role="tab" data-tab="comments" aria-selected="false">Коментарі{% if order.comments %} <span class="n mono">{{ order.comments|length }}</span>{% endif %}</button>
+        <button type="button" class="p2-tab" role="tab" data-tab="rework" aria-selected="false">Переробки{% if order.rework_records %} <span class="n mono">{{ order.rework_records|length }}</span>{% endif %}</button>
+        {% if not read_only %}
+        <button type="button" class="p2-tab danger" role="tab" data-tab="danger" aria-selected="false">Небезпечне</button>
         {% endif %}
     </div>
 
-    <div class="dsec">
-        <div class="dlabel">Шлях-ID</div>
-        <div class="pathrow">
-            <span class="p mono">{{ order.job_code or '—' }}</span>
-            {% if order.job_code %}
-            <button type="button" class="iconbtn copy-button" data-copy="{{ order.job_code }}" title="Копіювати шлях-ID для Sum3D">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" class="duo"/><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>
-            </button>
-            {% endif %}
-            {% if order.export_folder_uri %}
-            <a href="{{ order.export_folder_uri }}" class="iconbtn" {% if order.export_folder_preview_token %}data-stl-preview-token="{{ order.export_folder_preview_token }}"{% endif %} title="Відкрити папку в export">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" class="duo"/><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-            </a>
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="dsec">
-        <div class="dlabel">Sum3D ID</div>
-        {% if read_only %}
-        <div class="pathrow">
-            <span class="p mono">{{ order.sum3d_id or '—' }}</span>
-            {% if order.sum3d_id %}
-            <button type="button" class="iconbtn copy-button" data-copy="{{ order.sum3d_id }}" title="Копіювати Sum3D ID">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" class="duo"/><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/></svg>
-            </button>
-            {% endif %}
-        </div>
-        {% else %}
-        <form class="sumrow" hx-post="/orders/{{ order.id }}/sum3d-id" hx-swap="none">
-            <input class="suminput mono" type="text" name="sum3d_id" inputmode="numeric" placeholder="Ще не прораховано" value="{{ order.sum3d_id or '' }}">
-            <button class="btn primary" type="submit">Зберегти</button>
-        </form>
-        {% endif %}
-    </div>
-
-    <div class="dsec">
-        <div class="dlabel">Статус</div>
-        {% if read_only %}
-        <span class="status-now status-badge status-{{ order.status|replace(' ', '-')|lower }}">{{ order.status }}</span>
-        {% else %}
-        <form class="status-opts" hx-post="/orders/{{ order.id }}/status" hx-swap="none">
-            {% for s in statuses %}
-            {% set _c = _dot.get(s, ('#8fa3bb', false)) %}
-            <button type="submit" name="status" value="{{ s }}" class="sbtn{% if s == 'проблема' %} alarm{% elif s == 'переробка' %} warn{% endif %}" aria-pressed="{{ 'true' if s == order.status else 'false' }}">
-                <span class="sdot" aria-hidden="true" style="{% if _c[1] %}background:transparent;box-shadow:inset 0 0 0 1.6px {{ _c[0] }}{% else %}background:{{ _c[0] }}{% endif %}"></span>{{ s }}
-            </button>
-            {% endfor %}
-        </form>
-        <div class="p2-toast" id="p2-status-toast" role="status" aria-live="polite">Збережено</div>
-        {% endif %}
-    </div>
-
-    {# Одна стрічка замість двох. Статуси не знали, ХТО прорахував, журнал
-       дій знав, але жив нижче — зіставляти доводилось очима. Порядок і
-       підписи рахує app/services/order_path.py. #}
-    <div class="dsec">
-        <div class="dlabel">Шлях роботи</div>
+    <div class="p2-tabpane" role="tabpanel" data-tab="timeline">
         {% if order_path %}
         <div class="timeline">
             {% for step in order_path %}
@@ -141,29 +208,7 @@
         {% endif %}
     </div>
 
-    <div class="dsec">
-        <div class="dlabel">Журнал дій</div>
-        {% if actions %}
-        <div class="timeline">
-            {% for a in actions %}
-            <div class="tl-item{% if a.undone_at %} tl-undone{% endif %}">
-                <span class="t mono">{{ a.created_at.strftime('%d.%m %H:%M') if a.created_at else '—' }}</span>
-                <span class="body">
-                    <span class="label">{{ a.note or a.action_type }}</span>
-                    <span class="who">
-                        {% if a.operator %}{{ a.operator.full_name or a.operator.username }}{% else %}система{% endif %}{% if a.undone_at %} · скасовано{% endif %}
-                    </span>
-                </span>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p class="text-muted">поки немає дій</p>
-        {% endif %}
-    </div>
-
-    <div class="p2-card">
-        <h3>Коментарі</h3>
+    <div class="p2-tabpane" role="tabpanel" data-tab="comments" hidden>
         {% if not read_only %}
         <form method="post" action="/orders/{{ order.id }}/comments" class="comment-form">
             <textarea id="comment-text" name="text" class="comment-input" rows="3" maxlength="2000" placeholder="Напишіть зауваження для CAM-оператора…" required></textarea>
@@ -194,8 +239,7 @@
         {% endif %}
     </div>
 
-    <div class="p2-card">
-        <h3>Історія переробок</h3>
+    <div class="p2-tabpane" role="tabpanel" data-tab="rework" hidden>
         {% if order.rework_records %}
         {% if order.sum3d_id %}
         <div class="rework-prev-calc">
@@ -228,27 +272,50 @@
     </div>
 
     {# Видалення = архівація + очищення рядка в таблиці. Історія й коментарі
-       зберігаються, роботу видно в «Архіві». Для архівних приховано. #}
+       зберігаються, роботу видно в «Архіві». Стоїть в окремій вкладці, щоб не
+       ділити площину зі щоденними кнопками; своє підтвердження в нього вже є
+       (єдиний виняток із правила «один клік»). Для архівних приховано. #}
     {% if not read_only %}
-    <div class="p2-card p2-danger">
-        <h3>Видалити роботу</h3>
-        <p class="text-muted">
-            Робота зникне з черги й перейде в «Архів» — історія та коментарі збережуться.
-            {% if order.sheet_tab and order.source in ('lab', 'sheet_client') %}
-            Рядок у Google Таблиці буде <strong>очищено</strong> (не видалено — щоб не зсунулись інші роботи).
-            {% endif %}
-        </p>
-        <button type="button" class="settings-backup-danger p2-delete"
-                hx-post="/orders/{{ order.id }}/delete"
-                hx-confirm="Видалити цю роботу з черги? Її буде переміщено в «Архів», а рядок у таблиці очищено."
-                hx-indicator="#p2-delete-spinner">Видалити з черги</button>
-        <span class="check-spinner htmx-indicator" id="p2-delete-spinner" aria-hidden="true"></span>
+    <div class="p2-tabpane" role="tabpanel" data-tab="danger" hidden>
+        <div class="p2-card p2-danger">
+            <h3>Видалити роботу</h3>
+            <p class="text-muted">
+                Робота зникне з черги й перейде в «Архів» — історія та коментарі збережуться.
+                {% if order.sheet_tab and order.source in ('lab', 'sheet_client') %}
+                Рядок у Google Таблиці буде <strong>очищено</strong> (не видалено — щоб не зсунулись інші роботи).
+                {% endif %}
+            </p>
+            <button type="button" class="settings-backup-danger p2-delete"
+                    hx-post="/orders/{{ order.id }}/delete"
+                    hx-confirm="Видалити цю роботу з черги? Її буде переміщено в «Архів», а рядок у таблиці очищено."
+                    hx-indicator="#p2-delete-spinner">Видалити з черги</button>
+            <span class="check-spinner htmx-indicator" id="p2-delete-spinner" aria-hidden="true"></span>
+        </div>
     </div>
     {% endif %}
 </main>
 
 <script>
 (function(){
+  // ── Вкладки під панелями ──────────────────────────────────────────────
+  // Делегований listener, а не по слухачу на кнопку: «Небезпечне» для
+  // архівної роботи не рендериться взагалі, і прив'язка по одній кнопці
+  // тихо ламалась би саме на цьому випадку.
+  var tabs = document.querySelector(".passport2 .p2-tabs");
+  if (tabs) {
+    var panes = document.querySelectorAll(".passport2 .p2-tabpane");
+    tabs.addEventListener("click", function (e) {
+      var btn = e.target.closest(".p2-tab");
+      if (!btn || !tabs.contains(btn)) return;
+      var name = btn.dataset.tab;
+      tabs.querySelectorAll(".p2-tab").forEach(function (b) {
+        b.setAttribute("aria-selected", b === btn ? "true" : "false");
+      });
+      panes.forEach(function (p) { p.hidden = p.dataset.tab !== name; });
+    });
+  }
+
+  // ── Фідбек збереження ─────────────────────────────────────────────────
   // Паспорт відкривається у slide-over черги, тому «оновіть сторінку» тут
   // означало F5 усієї черги — тобто втрату скролу, фільтрів і дня. Замість
   // прохання перезавантажуємо сам паспорт, коли хронологія справді змінилась.

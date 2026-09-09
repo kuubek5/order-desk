@@ -23,10 +23,14 @@ from app.models import ActionLog, Order
 ACTION_LABELS: dict[str, str] = {
     "sum3d": "прораховано в Sum3D",
     "operator": "оператор у таблиці",
+    "cam_comment": "коментар для CAM",
     "delete": "видалено з черги",
     "undo": "скасовано дію",
     "redo": "повторено дію",
 }
+# `status` і `create` навмисно НЕ тут: перший завжди пишеться разом зі
+# StatusEvent, другий — разом із появою роботи, і обидві події вже в стрічці.
+# Взяти їх сюди означало б показати ту саму подію двома рядками поспіль.
 
 
 @dataclass(frozen=True)
@@ -58,7 +62,7 @@ def _detail(action: ActionLog) -> str:
     Показувати його як є означає вивалити в стрічку рядок, у якому оператор
     шукає очима один номер, або підпис, що нічого не додає до назви події.
     """
-    if action.action_type in ("sum3d", "operator"):
+    if action.action_type in ("sum3d", "operator", "cam_comment"):
         raw = (action.new_value or "").strip()
         if raw.startswith("{"):
             try:
