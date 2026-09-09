@@ -447,8 +447,25 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
    number put it under the header's first letter while the wide "Кількість"
    label extended right, so the count looked shifted off its header. Centring
    both lines the number up under the middle of the label. */
-.q2 th.col-qty{text-align:center}
-.q2 th.col-qty .th-sort{justify-content:center}
+/* Кількість — числова колонка: цифри стоять по центру, і заголовок мусить
+   стояти там само. Селектор навмисно повторює `table.qtable thead`: правило
+   `.q2 table.qtable thead th` вище задає всій шапці `text-align:left` і
+   специфічніше за просте `.q2 th.col-qty` — тому центрування було написане,
+   але ніколи не діяло, і на широкому екрані підпис відходив від цифр на три
+   десятки пікселів. `display:flex` замість `inline-flex` дає посиланню всю
+   ширину комірки, інакше воно тулиться до лівого краю, і центрування
+   всередині нього нічого не міняє. */
+.q2 table.qtable thead th.col-qty{text-align:center}
+.q2 table.qtable thead th.col-qty .th-sort{display:flex;justify-content:center}
+/* Стрілка сортування входить у центровану групу «підпис + стрілка», через що
+   сам підпис зсувається вліво на її ширину — 8px, помітних поруч із колонкою
+   цифр. Компенсуємо відступом ЗЛІВА рівно на стрілку з її проміжком
+   (12px + gap:5px), і тоді по центру опиняється слово. Відступ тільки коли
+   стрілка є (`:has`): у неактивній колонці її немає, і постійний padding
+   зсунув би підпис у інший бік. Абсолютне позиціювання стрілки тут не
+   годиться — заміряно, вона впритул торкається підпису (зазор −0.9px) і на
+   вужчому екрані наїхала б. */
+.q2 table.qtable thead th.col-qty .th-sort:has(.th-sort-icon){padding-left:17px}
 .q2 td.quantity{font-family:var(--font-mono);font-size:var(--fs-2);text-align:center;color:var(--ink)}
 .q2 td.src-tab{white-space:nowrap}
 .q2 .src-tab-link{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-2);text-decoration:none;
