@@ -36,6 +36,12 @@ _PUBLIC_KEY_BYTES = bytes.fromhex(
 )
 
 
+# За скільки днів до кінця починати попереджати. Живе тут, а не в роутері:
+# читають її двоє — пігулка на екрані ліцензії й смуга над чергою, — і дві
+# копії розійшлися б мовчки.
+LICENSE_EXPIRY_WARNING_DAYS = 30
+
+
 @dataclass
 class LicenseStatus:
     valid: bool

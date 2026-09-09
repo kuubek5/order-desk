@@ -1015,3 +1015,21 @@
   background: var(--card-3);
   border-color: var(--line-2);
 }
+
+/* ── Смуга «ліцензія спливає» ─────────────────────────────────────────
+   З'являється за 30 днів до кінця і тільки тоді. Тон теплий, не тривожний:
+   поки лишається місяць, це «варто подбати», а не збій. Останній тиждень —
+   червоний, бо тоді це вже про зупинку цеху. Висота мінімальна: смуга
+   з'їдає рядки черги, заради яких екран і відкривають. */
+.licstrip{display:flex;align-items:center;gap:10px;margin:0 0 8px;padding:7px 12px;
+  border:1px solid rgba(var(--warn-rgb), .4);border-radius:var(--r-card);
+  background:rgba(var(--warn-rgb), .09);color:var(--ink);text-decoration:none;
+  font-size:var(--fs-1);transition:background var(--ui-speed) ease}
+.licstrip:hover{background:rgba(var(--warn-rgb), .16)}
+.licstrip b{font-weight:600}
+.licstrip-dot{width:7px;height:7px;border-radius:50%;background:var(--warn);flex:0 0 7px}
+.licstrip-date{color:var(--ink-3)}
+.licstrip-cta{margin-left:auto;color:var(--accent-c);font-weight:500}
+.licstrip-bad{border-color:rgba(var(--alarm-rgb), .45);background:rgba(var(--alarm-rgb), .10)}
+.licstrip-bad:hover{background:rgba(var(--alarm-rgb), .17)}
+.licstrip-bad .licstrip-dot{background:var(--alarm)}

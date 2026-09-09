@@ -18,6 +18,7 @@ from starlette.requests import Request
 from app.auth import hash_password, verify_password
 from app.business_day import business_today
 from app.license import (
+    LICENSE_EXPIRY_WARNING_DAYS,
     REASON_NOT_ACTIVATED,
     get_license_status,
     get_machine_id,
@@ -62,8 +63,8 @@ FIRST_ADMIN_LOCK = Lock()
 
 # Термін і стан ліцензії читаються з однієї пігулки в шапці паспорта, тому
 # її текст рахується тут, а не в шаблоні: Jinja не має «сьогодні», а межа
-# доби в застосунку робоча (business_today), не календарна.
-LICENSE_EXPIRY_WARNING_DAYS = 30
+# доби в застосунку робоча (business_today), не календарна. Сам поріг живе
+# в app/license.py — його читає ще й смуга над чергою.
 
 
 def _license_pill(status) -> dict:

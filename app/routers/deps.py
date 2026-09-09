@@ -19,9 +19,10 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app import perf
-from app.business_day import utc_now, utc_to_business
+from app.business_day import business_today, utc_now, utc_to_business
 from app.__version__ import VERSION
 from app.db import SessionLocal
+from app.license import LICENSE_EXPIRY_WARNING_DAYS, get_license_status
 from app.material_class import (
     material_badge,
     material_families,
@@ -580,10 +581,53 @@ def _timed_global(name: str, fn):
     return wrapper
 
 
+def license_notice_uncached() -> dict | None:
+    """Скільки лишилось ліцензії — для смуги над чергою.
+
+    Jinja-глобал, а не контекст роуту: черга віддається з десятка різних
+    гілок (фільтри, періоди, HTMX-фрагменти), і протягнути поле крізь усі
+    означало б забути його в одній.
+
+    Повертає None у трьох випадках: ліцензія безстрокова, до кінця більше за
+    поріг, або її взагалі нема — останнє не наша турбота, бо без валідної
+    ліцензії `license_gate` не пускає далі за екран активації, і черги ніхто
+    не побачить. Виняток гаситься: попередження не має права покласти екран,
+    заради якого оператор і відкрив застосунок.
+    """
+    try:
+        db = SessionLocal()
+        try:
+            status = get_license_status(db)
+        finally:
+            db.close()
+    except Exception:
+        # Широкий except тут свідомий (див. докстрінг), але МОВЧАЗНИЙ він бути
+        # не має: саме він з'їв NameError від забутого імпорту, і смуга просто
+        # не з'являлась — без сліду ні в лозі, ні на екрані.
+        logger.exception("Не вдалося порахувати термін ліцензії для смуги над чергою")
+        return None
+    if not status.valid or status.expires_at is None:
+        return None
+    days = (status.expires_at.date() - business_today()).days
+    if days > LICENSE_EXPIRY_WARNING_DAYS:
+        return None
+    # Останній тиждень — червоним: тоді це вже не «варто подбати», а «завтра
+    # цех стане». Межа доби робоча (business_today), як і скрізь у застосунку.
+    return {
+        "days": days,
+        "date": status.expires_at.strftime("%d.%m.%Y"),
+        "tone": "bad" if days <= 7 else "warn",
+    }
+
+
 # Публічні імена лишаються тими самими — шаблони й тести кличуть їх як раніше,
 # просто тепер через спільну витримку (див. `_cached_global`).
 def notify_prefs() -> dict:
     return _cached_global("notify_prefs", notify_prefs_uncached)
+
+
+def license_notice() -> dict | None:
+    return _cached_global("license_notice", license_notice_uncached)
 
 
 def shift_pending() -> int:
@@ -655,6 +699,7 @@ templates.env.filters["kyiv"] = utc_to_business
 # in-memory "last known result" (see app/update_check.py::get_known_update),
 # never touches the network from a request-handling thread.
 templates.env.globals["get_known_update"] = get_known_update
+templates.env.globals["license_notice"] = license_notice
 # Product version, available in every template (rail foot, settings "about")
 # without threading it through each route's context — same rationale as the
 # globals above. Single source of truth is app/__version__.py.

@@ -46,6 +46,23 @@
             </div>
         </dl>
         {% else %}
+        {# Дата спливу показується і в НЕактивному стані: «сплив» без «коли»
+           лишає оператора без єдиного факту, який у нього спитає власник,
+           видаючи новий ключ. Для «ще не активовано» дати просто немає. #}
+        {% if status and status.expires_at %}
+        <dl class="lic-facts">
+            <div class="lic-fact">
+                <dt>Термін сплив</dt>
+                <dd class="mono">{{ status.expires_at.strftime('%d.%m.%Y') }}</dd>
+            </div>
+            {% if status.customer %}
+            <div class="lic-fact">
+                <dt>Ключ виданий</dt>
+                <dd>{{ status.customer }}</dd>
+            </div>
+            {% endif %}
+        </dl>
+        {% endif %}
         <p class="login-subtitle lic-lede">Введіть ліцензійний ключ, виданий власником KuubMill для цього комп'ютера.</p>
         {% endif %}
 
