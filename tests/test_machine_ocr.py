@@ -788,3 +788,37 @@ def test_wallpaper_blob_is_not_a_finished_machine():
     assert bar is not None and bar.container_width < 100
     # А ось назовні число не виходить: підпису немає, контейнер вузький.
     assert read_progress_percent(image) is None
+
+
+def test_masks_agree_with_the_pixel_predicates():
+    """Векторні маски й попіксельні предикати — ОДНЕ правило, не два.
+
+    Читачі кадру працюють масками (інакше розбір 1920×1200 коштував 200+ мс і
+    з'їдав процесор, за яким стояли черга, видача й синк). Але ті самі
+    предикати лишились і поштучними — ними користується діагностика кадру
+    (`scripts/machine_explain_frame.py`). Дві форми одного правила розійдуться
+    на першій же правці порогу, і розбіжність буде мовчазною: діагностика
+    скаже «трек», читач — «фон». Тому звіряємо їх на справжньому кадрі.
+    """
+    from app.machine_ocr import (
+        _FrameMasks, _ng_is_bg, _ng_is_fill, _ng_is_track,
+        _is_blue, _is_dark, _is_unfilled,
+    )
+
+    # Смуга прогресу плаского UI з усіма трьома кольорами в одному рядку.
+    image = _newgen("newgen_progress_30.png").crop((1150, 900, 1850, 960))
+    masks = _FrameMasks(image)
+    px = image.convert("RGB").load()
+    width, height = image.size
+
+    checks = (
+        (masks.ng_fill, _ng_is_fill), (masks.ng_track, _ng_is_track),
+        (masks.ng_bg, _ng_is_bg), (masks.blue, _is_blue),
+        (masks.white, _is_unfilled), (masks.dark, _is_dark),
+    )
+    for mask, predicate in checks:
+        for y in range(0, height, 7):
+            for x in range(0, width, 11):
+                assert bool(mask[y, x]) is bool(predicate(px[x, y])), (
+                    f"{predicate.__name__} розійшовся з маскою в ({x}, {y}): {px[x, y]}"
+                )

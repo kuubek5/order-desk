@@ -216,19 +216,31 @@ def _is_border_column(px, x: int, band: list[int], height: int = 10**9) -> bool:
     return dark >= len(rows) * BORDER_DARK_SHARE
 
 
-def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
+def find_progress_bar(image: Image.Image, masks: "_FrameMasks | None" = None) -> Optional[ProgressBar]:
     """Знайти смугу прогресу й порахувати відсоток. None — якщо не впевнені.
 
     Позиція смуги НЕ зашита: інші верстати можуть мати інший макет і
     роздільність, тому вона щоразу шукається за формою й кольором.
     """
-    rgb = image.convert("RGB")
-    width, height = rgb.size
+    import numpy as np
+
+    m = masks or _FrameMasks(image)
+    rgb = m.image
+    width, height = m.width, m.height
     if width < 80 or height < 60:
         return None
 
     top = int(height * BOTTOM_BAND)
     px = rgb.load()
+    # Ті самі три предикати (`_is_blue` / `_is_unfilled` / `_is_dark`), лише
+    # застосовані до всього кадру одразу. Попіксельний обхід нижньої смуги
+    # коштував 25-43 мс на кадр, і платив за нього не лише читач: процес
+    # опитує сім верстатів кожні 5 с, тож ці мілісекунди — постійне
+    # навантаження, за яким у черзі стоять і видача, і синк (заміри 09.09.26).
+    # Відповіді НЕ міняються — звірено на 490 бойових кадрах.
+    blue_mask = m.blue
+    white_mask = m.white
+    dark_mask = m.dark
 
     # 1) Найдовший СУЦІЛЬНИЙ пробіг синього в нижній частині кадру — це і є
     #    заливка смуги. Саме пробіг, а не «розмах синього в рядку»: розмах
@@ -240,16 +252,19 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
     # дозволяє опитувати верстати частіше без зростання навантаження.
     runs: list[tuple[int, int, int, int]] = []  # (довжина, y, x0, x1)
     for y in range(top, height, SEED_ROW_STEP):
-        run_start: Optional[int] = None
-        for x in range(width + 1):
-            blue = x < width and _is_blue(px[x, y])
-            if blue and run_start is None:
-                run_start = x
-            elif not blue and run_start is not None:
-                length = x - run_start
-                if length >= MIN_FILL_WIDTH:
-                    runs.append((length, y, run_start, x - 1))
-                run_start = None
+        idx = np.flatnonzero(blue_mask[y])
+        if idx.size == 0:
+            continue
+        # Пробіг тут СУЦІЛЬНИЙ — жодного допуску на дірку, на відміну від
+        # плаского UI: розрив означає новий пробіг.
+        breaks = np.flatnonzero(np.diff(idx) > 1)
+        starts = np.concatenate(([0], breaks + 1))
+        ends = np.concatenate((breaks, [idx.size - 1]))
+        for i, j in zip(starts, ends):
+            x_start = int(idx[i])
+            x_end = int(idx[j])
+            if x_end - x_start + 1 >= MIN_FILL_WIDTH:
+                runs.append((x_end - x_start + 1, y, x_start, x_end))
     if not runs:
         return None
 
@@ -258,15 +273,11 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
     #    заввишки 2px; відкидати лише її й здаватись не можна, інакше справжня
     #    смуга нижче так і не розглядається (бойовий випадок 03.09.26).
     def band_of(left: int, y_seed: int) -> list[int]:
-        def in_band(y: int) -> bool:
-            return 0 <= y < height and _is_blue(px[left, y])
-
-        y_top = y_seed
-        while in_band(y_top - 1):
-            y_top -= 1
-        y_bot = y_seed
-        while in_band(y_bot + 1):
-            y_bot += 1
+        column = blue_mask[:, left]
+        above = np.flatnonzero(~column[:y_seed])
+        y_top = int(above[-1]) + 1 if above.size else 0
+        below = np.flatnonzero(~column[y_seed + 1:])
+        y_bot = y_seed + int(below[0]) if below.size else height - 1
         return list(range(y_top, y_bot + 1))
 
     band: list[int] = []
@@ -291,9 +302,13 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
             break
         tried += 1
         candidate = band_of(x0, y_seed)
-        if MIN_BAR_HEIGHT <= len(candidate) <= MAX_BAR_HEIGHT and _is_solid_fill(
-            px, x0, x1, candidate
-        ):
+        # Та сама умова, що в `_is_solid_fill`: колонка вважається заливкою,
+        # коли синя і вгорі, і внизу смуги, і таких мусить бути ≥90%.
+        solid = False
+        if candidate:
+            cols = blue_mask[candidate[0], x0:x1 + 1] & blue_mask[candidate[-1], x0:x1 + 1]
+            solid = int(cols.sum()) >= (x1 - x0 + 1) * 0.9
+        if MIN_BAR_HEIGHT <= len(candidate) <= MAX_BAR_HEIGHT and solid:
             band, left, fill_right = candidate, x0, x1
             break
         rejected.append((x0, x1, candidate[0], candidate[-1]) if candidate
@@ -311,20 +326,35 @@ def find_progress_bar(image: Image.Image) -> Optional[ProgressBar]:
     last_white = fill_right
     gap = 0
     hit_border = False
+    # Ті самі чотири предикати, порахований наперед на ВЕСЬ рядок. Раніше цей
+    # прохід читав по ~40 пікселів на коженx (рамка дивиться всю висоту смуги,
+    # край — теж), тобто десятки тисяч звернень на кадр. Логіка проходу
+    # лишається послідовною: він має спинятись на рамці, а не «зібрати все».
+    _band = np.array(band, dtype=np.intp)
+    _rows = np.array([y for y in (band[0] - 1, *band, band[-1] + 1)
+                      if 0 <= y < height], dtype=np.intp)
+    if len(band) >= 3:
+        _is_border = (dark_mask[_rows].sum(axis=0) >= len(_rows) * BORDER_DARK_SHARE).tolist()
+        _is_edge = (~(blue_mask[_band] | white_mask[_band]).any(axis=0)).tolist()
+    else:
+        _is_border = [False] * width
+        _is_edge = [False] * width
+    _fill_col = (blue_mask[band[0]] & blue_mask[band[-1]]).tolist()
+    _blue_mid = blue_mask[y_mid].tolist()
+    _white_mid = white_mask[y_mid].tolist()
     for x in range(fill_right + 1, width):
-        if _is_border_column(px, x, band, height) or _is_edge_column(px, x, band):
+        if _is_border[x] or _is_edge[x]:
             hit_border = True
             break
-        p = px[x, y_mid]
-        if _is_fill_column(px, x, band):
+        if _fill_col[x]:
             # Заливка — це колонка, синя ВГОРІ І ВНИЗУ смуги. Літери підпису
             # займають лише середину, тож так вони не подовжують заливку.
             last_blue = x
             gap = 0
-        elif _is_unfilled(p):
+        elif _white_mid[x]:
             last_white = x
             gap = 0
-        elif _is_blue(p):
+        elif _blue_mid[x]:
             # Синє лише в середині — це ПІДПИС на порожній частині. RemiCORE
             # малює його тим самим темно-синім, що й заливку, і на низькому
             # відсотку скан по середньому рядку хапав його як заливку: «18%»
@@ -374,10 +404,14 @@ LOW_MIN_TRACK_WIDTH = 40
 LOW_MIN_CONTAINER = 80
 
 
-def _find_bar_by_track(image: Image.Image) -> Optional[ProgressBar]:
-    source = image.convert("RGB")
+def _find_bar_by_track(image: Image.Image, masks: "_FrameMasks | None" = None) -> Optional[ProgressBar]:
+    import numpy as np
+
+    m = masks or _FrameMasks(image)
+    source = m.image
     px = source.load()
-    width, height = source.size
+    width, height = m.width, m.height
+    white_mask = m.white
     start_y = int(height * BOTTOM_BAND)
 
     # Кандидатів БАГАТО, і найдовший — не наш: на портретному RemiCORE
@@ -386,19 +420,17 @@ def _find_bar_by_track(image: Image.Image) -> Optional[ProgressBar]:
     # пройде перевірки форми й рамок — так само, як головний детектор.
     runs: list[tuple[int, int, int, int]] = []
     for y in range(start_y, height, SEED_ROW_STEP):
-        run = 0
-        start = 0
-        for x in range(width):
-            if _is_unfilled(px[x, y]):
-                if run == 0:
-                    start = x
-                run += 1
-            else:
-                if run >= LOW_MIN_TRACK_WIDTH:
-                    runs.append((run, start, x - 1, y))
-                run = 0
-        if run >= LOW_MIN_TRACK_WIDTH:
-            runs.append((run, start, width - 1, y))
+        idx = np.flatnonzero(white_mask[y])
+        if idx.size == 0:
+            continue
+        breaks = np.flatnonzero(np.diff(idx) > 1)
+        starts = np.concatenate(([0], breaks + 1))
+        ends = np.concatenate((breaks, [idx.size - 1]))
+        for i, j in zip(starts, ends):
+            x_start = int(idx[i])
+            x_end = int(idx[j])
+            if x_end - x_start + 1 >= LOW_MIN_TRACK_WIDTH:
+                runs.append((x_end - x_start + 1, x_start, x_end, y))
     runs.sort(key=lambda r: -r[0])
 
     for _, w0, w1, y in runs[:MAX_BAR_CANDIDATES]:
@@ -406,12 +438,11 @@ def _find_bar_by_track(image: Image.Image) -> Optional[ProgressBar]:
         # стоїть по центру, і колонка крізь літеру дає обрізану висоту смуги
         # (9 замість 24), через що підпис потім не читається взагалі.
         xm = max(w0, w1 - 2)
-        top = y
-        while top > 0 and _is_unfilled(px[xm, top - 1]):
-            top -= 1
-        bottom = y
-        while bottom + 1 < height and _is_unfilled(px[xm, bottom + 1]):
-            bottom += 1
+        column = white_mask[:, xm]
+        above = np.flatnonzero(~column[:y])
+        top = int(above[-1]) + 1 if above.size else 0
+        below = np.flatnonzero(~column[y + 1:])
+        bottom = y + int(below[0]) if below.size else height - 1
         band = list(range(top, bottom + 1))
         if not (MIN_BAR_HEIGHT <= len(band) <= MAX_BAR_HEIGHT):
             continue
@@ -459,13 +490,16 @@ def read_progress_percent(image: Image.Image) -> Optional[int]:
     повертається геометрія — рівно та поведінка, що була дотепер. Тобто новий
     сигнал може лише виправити число, але не зіпсувати.
     """
-    bar = find_progress_bar(image)
+    # Маски кадру рахуються ОДИН раз на всі три детектори: вони йдуть підряд по
+    # одному й тому ж кадру, і кожен будував собі площини заново.
+    masks = _FrameMasks(image)
+    bar = find_progress_bar(image, masks)
     if bar is None:
         # ПОРЯДОК ВАЖЛИВИЙ. Спершу нове покоління (окремий, добре захищений
         # детектор), і лише потім зачіпка за білий трек: інакше fallback
         # перехоплював плаский UI й віддавав 0% замість справжніх 0..30
         # (спіймано на бойових кадрах .81, 04.09.26).
-        newgen = find_newgen_progress(image)
+        newgen = find_newgen_progress(image, masks)
         if newgen is not None:
             return newgen.percent
         # Дуже низький відсоток на RemiCORE: заливка завузька, щоб бути
@@ -473,7 +507,7 @@ def read_progress_percent(image: Image.Image) -> Optional[int]:
         # Цей шлях довіряємо ЛИШЕ з підтвердженням підпису: зачіпка за біле
         # знаходить і чужі світлі панелі інтерфейсу (на .85 така дала «0%»),
         # а справжня смуга ЗАВЖДИ має написане число. Немає числа — мовчимо.
-        low = _find_bar_by_track(image)
+        low = _find_bar_by_track(image, masks)
         if low is None:
             return None
         low_caption = read_caption_percent(image, low)
@@ -792,15 +826,87 @@ NG_ROW_STEP = 3
 NG_EDGE_SLACK = 3
 
 
-def find_newgen_progress(image: Image.Image) -> Optional[ProgressBar]:
+class _FrameMasks:
+    """Маски кадру, пораховані ОДИН раз і роздані всім читачам.
+
+    Три детектори підряд (`find_progress_bar` → `find_newgen_progress` →
+    `_find_bar_by_track`) працюють по одному й тому ж кадру, і кожен будував
+    собі площини заново — на 1920×1200 це втричі по кілька мілісекунд плюс
+    втричі памʼять. Тут вони рахуються лінькувато (тільки те, що справді
+    попросили) і живуть рівно стільки, скільки триває розбір кадру.
+    """
+
+    __slots__ = ("image", "width", "height", "_planes", "_cache")
+
+    def __init__(self, image: Image.Image):
+        self.image = image.convert("RGB")
+        self.width, self.height = self.image.size
+        self._planes = None
+        self._cache: dict = {}
+
+    @property
+    def planes(self):
+        if self._planes is None:
+            self._planes = _rgb_planes(self.image)
+        return self._planes
+
+    def _mask(self, name: str, build):
+        got = self._cache.get(name)
+        if got is None:
+            got = self._cache[name] = build(*self.planes)
+        return got
+
+    @property
+    def blue(self):
+        return self._mask("blue", lambda r, g, b: (b >= 90) & ((b - r) >= 40) & ((b - g) >= 40) & (g <= 140))
+
+    @property
+    def white(self):
+        return self._mask("white", lambda r, g, b: (r >= 250) & (g >= 250) & (b >= 250))
+
+    @property
+    def dark(self):
+        import numpy as np
+
+        return self._mask("dark", lambda r, g, b: np.maximum(np.maximum(r, g), b) <= 180)
+
+    @property
+    def ng_fill(self):
+        return self._mask("ng_fill", lambda r, g, b: (b >= 140) & ((b - r) >= 80) & (b > g))
+
+    @property
+    def ng_track(self):
+        return self._mask("ng_track", lambda r, g, b: (abs(r - g) <= 10) & (abs(g - b) <= 10) & (r >= 76) & (r <= 110))
+
+    @property
+    def ng_bg(self):
+        return self._mask("ng_bg", lambda r, g, b: (r <= 80) & (g <= 80) & (b <= 80) & (abs(r - g) <= 12) & (abs(g - b) <= 12))
+
+
+def _rgb_planes(image: Image.Image):
+    """Кадр як три площини int16 — r, g, b.
+
+    int16, а не uint8, свідомо: усі три ознаки нижче рахують РІЗНИЦІ каналів
+    (`b - r >= 80`), а на uint8 віднімання переповнюється по колу й дає
+    правдоподібне сміття замість відʼємного числа.
+    """
+    import numpy as np
+
+    arr = np.asarray(image.convert("RGB"), dtype=np.int16)
+    return arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
+
+
+def find_newgen_progress(image: Image.Image, masks: "_FrameMasks | None" = None) -> Optional[ProgressBar]:
     """Смуга прогресу плаского UI нового покоління. None — якщо не впевнені."""
-    source = image.convert("RGB")
-    px = source.load()
-    width, height = source.size
+    import numpy as np
+
+    m = masks or _FrameMasks(image)
+    width, height = m.width, m.height
+    fill_mask, track_mask, bg_mask = m.ng_fill, m.ng_track, m.ng_bg
+    belongs_mask = fill_mask | track_mask
 
     def belongs(x: int, y: int) -> bool:
-        p = px[x, y]
-        return _ng_is_fill(p) or _ng_is_track(p)
+        return bool(belongs_mask[y, x])
 
     # Пробіги збираємо ВСІ, а не найдовший. Три уроки з бойових кадрів 150i
     # (04.09.26), кожен коштував ітерації:
@@ -812,28 +918,27 @@ def find_newgen_progress(image: Image.Image) -> Optional[ProgressBar]:
     #  • один елемент дає пробіг на КОЖНОМУ своєму рядку, тож роздільник
     #    займав усі 40 слотів. Рахуємо РІЗНІ області (той самий урок, що з
     #    вікном G-коду на RemiCORE).
+    #
+    # Пробіг рахується від ПЕРШОГО до ОСТАННЬОГО свого пікселя включно, разом
+    # із проковтнутими дірками (у попіксельній версії `run += gap + 1` давало
+    # рівно `last - start + 1`). Розрив на дірці ширшій за NG_EDGE_SLACK: між
+    # сусідніми належними пікселями тоді стоїть більше ніж slack порожніх,
+    # тобто відстань між їхніми індексами більша за slack + 1.
     runs: list[tuple[int, int, int, int]] = []
-    for y in range(height // 3, height, NG_ROW_STEP):
-        run = 0
-        start = 0
-        gap = 0
-        last = 0
-        for x in range(width):
-            if belongs(x, y):
-                if run == 0:
-                    start = x
-                run += gap + 1
-                gap = 0
-                last = x
-            elif run:
-                gap += 1
-                if gap > NG_EDGE_SLACK:
-                    if run >= NG_MIN_WIDTH:
-                        runs.append((run, start, last, y))
-                    run = 0
-                    gap = 0
-        if run >= NG_MIN_WIDTH:
-            runs.append((run, start, last, y))
+    rows = range(height // 3, height, NG_ROW_STEP)
+    for y in rows:
+        idx = np.flatnonzero(belongs_mask[y])
+        if idx.size == 0:
+            continue
+        breaks = np.flatnonzero(np.diff(idx) > NG_EDGE_SLACK + 1)
+        starts = np.concatenate(([0], breaks + 1))
+        ends = np.concatenate((breaks, [idx.size - 1]))
+        for i, j in zip(starts, ends):
+            start = int(idx[i])
+            last = int(idx[j])
+            run = last - start + 1
+            if run >= NG_MIN_WIDTH:
+                runs.append((run, start, last, y))
     runs.sort(key=lambda r: -r[0])
 
     seen: set[tuple[int, int]] = set()
@@ -847,12 +952,11 @@ def find_newgen_progress(image: Image.Image) -> Optional[ProgressBar]:
 
         # Висота смуги — саме те, що відрізняє її від великих синіх кнопок.
         x_probe = (x0 + x1) // 2
-        top = y
-        while top > 0 and belongs(x_probe, top - 1):
-            top -= 1
-        bottom = y
-        while bottom + 1 < height and belongs(x_probe, bottom + 1):
-            bottom += 1
+        column = belongs_mask[:, x_probe]
+        above = np.flatnonzero(~column[:y])
+        top = int(above[-1]) + 1 if above.size else 0
+        below = np.flatnonzero(~column[y + 1:])
+        bottom = y + int(below[0]) if below.size else height - 1
         if not (NG_MIN_HEIGHT <= bottom - top + 1 <= NG_MAX_HEIGHT):
             continue
 
@@ -864,15 +968,16 @@ def find_newgen_progress(image: Image.Image) -> Optional[ProgressBar]:
         y_probe = (top + bottom) // 2
         if x0 <= NG_EDGE_SLACK or x1 + NG_EDGE_SLACK + 1 >= width:
             continue
-        left_bg = any(_ng_is_bg(px[x0 - 1 - k, y_probe]) for k in range(NG_EDGE_SLACK + 1))
-        right_bg = any(_ng_is_bg(px[x1 + 1 + k, y_probe]) for k in range(NG_EDGE_SLACK + 1))
+        left_bg = bool(bg_mask[y_probe, x0 - 1 - NG_EDGE_SLACK:x0].any())
+        right_bg = bool(bg_mask[y_probe, x1 + 1:x1 + NG_EDGE_SLACK + 2].any())
         if not (left_bg and right_bg):
             continue
 
         # Заливка — суцільний ПРЕФІКС зліва.
-        fill = 0
-        while x0 + fill <= x1 and _ng_is_fill(px[x0 + fill, y_probe]):
-            fill += 1
+        # Заливка — суцільний ПРЕФІКС зліва: довжина до першої не-заливки.
+        prefix = fill_mask[y_probe, x0:x1 + 1]
+        stop = np.flatnonzero(~prefix)
+        fill = int(stop[0]) if stop.size else int(prefix.size)
         percent = round(fill * 100 / length)
         if percent < 0 or percent > 100:
             continue
@@ -930,26 +1035,26 @@ def _title_mask(image: Image.Image) -> Optional[tuple[int, int, list[int]]]:
     width, height = image.size
     if width < 400 or height < 200:
         return None
-    px = image.convert("RGB").load()
+    import numpy as np
+
     cx = width // 2
     y0, y1 = int(height * SUMMARY_BAND[0]), int(height * SUMMARY_BAND[1])
     x0, x1 = max(0, cx - SUMMARY_HALF_WIDTH), min(width, cx + SUMMARY_HALF_WIDTH)
-    xs: list[int] = []
-    ys: list[int] = []
-    for y in range(y0, y1):
-        for x in range(x0, x1):
-            p = px[x, y]
-            if min(p[0], p[1], p[2]) >= SUMMARY_INK:
-                xs.append(x)
-                ys.append(y)
-    if not xs:
+    # Ріжемо ДО перетворення, а не після. Заголовок займає ~400×70 px, а кадр —
+    # 1920×1200: переганяти в масив увесь кадр заради смуги в 1 % його площі
+    # коштувало 16 мс, і платилось це двічі за опитування (SUMMARY + перевірка).
+    r, g, b = _rgb_planes(image.crop((x0, y0, x1, y1)))
+    # Чорнило заголовка — світлий піксель у всіх трьох каналах (той самий
+    # предикат `min(p) >= SUMMARY_INK`, лише на всю смугу одразу).
+    ink = np.minimum(np.minimum(r, g), b) >= SUMMARY_INK
+    if not ink.any():
         return None
-    bx0, bx1, by0, by1 = min(xs), max(xs), min(ys), max(ys)
-    bits = [
-        1 if min(px[x, y][0], px[x, y][1], px[x, y][2]) >= SUMMARY_INK else 0
-        for y in range(by0, by1 + 1)
-        for x in range(bx0, bx1 + 1)
-    ]
+    rows = np.flatnonzero(ink.any(axis=1))
+    cols = np.flatnonzero(ink.any(axis=0))
+    by0, by1 = y0 + int(rows[0]), y0 + int(rows[-1])
+    bx0, bx1 = x0 + int(cols[0]), x0 + int(cols[-1])
+    box = ink[rows[0]:rows[-1] + 1, cols[0]:cols[-1] + 1]
+    bits = box.astype(np.uint8).ravel().tolist()
     return bx1 - bx0 + 1, by1 - by0 + 1, bits
 
 
@@ -962,10 +1067,14 @@ def _screen_title_is(image: Image.Image, key: str) -> bool:
     «JOBS» (71×20) не має шансу зійтись ані з «SUMMARY» (143×20), ані з
     «VALIDATE JOBS» (214×20).
     """
+    return _title_matches(_title_mask(image), key)
+
+
+def _title_matches(got, key: str) -> bool:
+    """Порівняння вже знятої маски заголовка з еталоном `key`."""
     tpl = load_screen_templates().get(key)
     if not tpl:
         return False
-    got = _title_mask(image)
     if got is None:
         return False
     w, h, bits = got
@@ -976,6 +1085,17 @@ def _screen_title_is(image: Image.Image, key: str) -> bool:
     mismatch = sum(1 for a, b in zip(bits, want) if a != b)
     ink = max(1, sum(want))
     return mismatch <= ink * SUMMARY_MAX_MISMATCH
+
+
+def screen_states(image: Image.Image) -> tuple[bool, bool]:
+    """(завершено, перевіряє) — обидва екрани за ОДИН розбір заголовка.
+
+    Опитування питає обидва про той самий кадр, а маска заголовка в них спільна.
+    Двома окремими викликами вона будувалась двічі — на кадрі 1920×1200 це
+    зайві мілісекунди на кожному тіку кожного верстата.
+    """
+    got = _title_mask(image)
+    return _title_matches(got, "summary"), _title_matches(got, "validate")
 
 
 def screen_is_completed(image: Image.Image) -> bool:

@@ -41,8 +41,7 @@ from app.machine_ocr import (
     missing_caption_digits,
     pick_milling_program,
     read_progress_percent,
-    screen_is_completed,
-    screen_is_validating,
+    screen_states,
 )
 from app.models import Machine, MachineReading, Order, ReworkRecord
 from app.services.furnace import (  # ті самі правила адреси й формат тривалості
@@ -1115,24 +1114,23 @@ def poll_target(
         # одразу скидається в підготовку. Шукати тут SUMMARY нового покоління
         # RemiCORE теж нічого — то інший верстат.
         completed = sisma.finished
+        validating = False
     else:
+        # ОДИН розбір заголовка на обидва екрани: маска в них спільна, а кадр
+        # 1920×1200 переганяти в масив двічі — зайва робота на кожному тіку
+        # кожного верстата.
+        #
+        # Екран перевірки програми: число з нього НЕ беремо свідомо. Внизу там
+        # своя смуга на всю ширину кадру, і вона рахує перевірку, а не
+        # фрезерування — показати її як прогрес означало б сказати «робота на
+        # 56 %», коли робота ще не почалась. Сьогодні жоден із трьох читачів ту
+        # смугу й не бачить (біла доріжка, висота 70 px), але правило має стояти
+        # в коді, а не триматись на тому, що детектор поки що мовчить.
         try:
-            completed = screen_is_completed(frame)
+            completed, validating = screen_states(frame)
         except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
             logger.exception("Екран верстата %s не розпізнано", target.host)
-            completed = False
-
-    # Екран перевірки програми. Число з нього НЕ беремо свідомо: внизу там своя
-    # смуга на всю ширину кадру, і вона рахує перевірку, а не фрезерування —
-    # показати її як прогрес означало б сказати «робота на 56 %», коли робота
-    # ще не почалась. Сьогодні жоден із трьох читачів ту смугу й не бачить
-    # (біла доріжка, висота 70 px), але правило має стояти в коді, а не
-    # триматись на тому, що детектор поки що мовчить.
-    try:
-        validating = screen_is_validating(frame)
-    except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
-        logger.exception("Екран перевірки верстата %s не розпізнано", target.host)
-        validating = False
+            completed = validating = False
     if validating:
         percent = None
 
