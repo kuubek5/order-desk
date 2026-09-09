@@ -44,22 +44,12 @@
 
   // Дефолт живе САМЕ ТУТ, а не в ядрі: тріаж без збереженого вибору
   // відкривається вбудованим, панель видачі — розгорнутою.
-  //
-  // Ключ на екран, а не один на всіх: паспорт роботи (order_detail.html) теж
-  // тримає галерею, і зі спільним ключем розгорнутий колись тріаж відкривав
-  // би паспорт одразу на весь екран — поверх статусу й поля Sum3D, заради
-  // яких паспорт і відкривають. Атрибут `data-stl-max-key` необовʼязковий:
-  // без нього все лишається як було.
-  function storageKey(root) {
-    return root.dataset.stlMaxKey || MAX_STORAGE_KEY;
+  function loadMaxPreference() {
+    return Core.readBool(MAX_STORAGE_KEY, false);
   }
 
-  function loadMaxPreference(root) {
-    return Core.readBool(storageKey(root), false);
-  }
-
-  function saveMaxPreference(root, on) {
-    Core.writeBool(storageKey(root), on);
+  function saveMaxPreference(on) {
+    Core.writeBool(MAX_STORAGE_KEY, on);
   }
 
   function setupGallery(root) {
@@ -203,9 +193,9 @@
       maxBtn.addEventListener("click", () => {
         const on = !root.classList.contains("is-max");
         applyMax(on);
-        saveMaxPreference(root, on);
+        saveMaxPreference(on);
       });
-      applyMax(loadMaxPreference(root));
+      applyMax(loadMaxPreference());
     }
     // Esc виходить із фулскріна, але вибір НЕ переписує: це разове «згорнути
     // зараз», а не зміна звички (той самий контракт, що в stl-preview.js).

@@ -922,14 +922,6 @@ def get_order_detail(
         order, business_today() - timedelta(days=RETENTION_DAYS)
     )
 
-    # Тека роботи й STL-токен для правої панелі паспорта. Досі паспорт читав
-    # `order.export_folder_uri`, якого тут ніхто не виставляв (це transient
-    # з attach_*, а не колонка), тож іконка теки в паспорті не рендерилась
-    # НІКОЛИ — Jinja мовчки бачила Undefined. Обидва корені, як в архіві
-    # (_with_folders): пошта живе в export, лабораторія — у теці техніків.
-    attach_export_folder_uris(db, [order])
-    attach_job_code_folder_uris(db, [order])
-
     # Laconic action journal for THIS work (Sum3D/status/undo), newest first —
     # one line per operator action, the "хто що зробив" record.
     actions = db.execute(
