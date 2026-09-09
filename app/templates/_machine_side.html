@@ -44,7 +44,7 @@
         {% if machine_cards %}
         <div class="ms-tiles">
             {% for card in machine_cards %}
-            <a class="ms-tile{% if card.has_problem %} is-offline{% elif card.is_completed %} is-done{% elif card.percent is none %}{% if card.has_frame %} is-idle{% else %} is-wait{% endif %}{% endif %}{% if card.is_running %} is-run{% endif %}"
+            <a class="ms-tile{% if card.has_problem %} is-offline{% elif card.is_completed %} is-done{% elif card.percent is none %}{% if card.is_validating %} is-check{% elif card.has_frame %} is-idle{% else %} is-wait{% endif %}{% endif %}{% if card.is_running %} is-run{% endif %}"
                href="/machines" title="{{ card.target.name }} — {{ card.target.host }}{% if card.is_completed %} — програма завершена{% endif %}">
                 <span class="ms-name">{{ card.target.name }}</span>
                 {% if card.has_problem %}
@@ -91,6 +91,13 @@
                    «готово» у комірці числа стан уже й називає. #}
                 <span class="ms-note">програма завершена · зняти</span>
                 {% endif %}
+                {% elif card.is_validating %}
+                {# Верстат перевіряє програму перед стартом. Не «стоїть» і не
+                   прогрес: у того екрана є власна смуга з власним відсотком,
+                   але вона рахує ПЕРЕВІРКУ. Показати її як прогрес означало б
+                   сказати «робота на 56 %», коли робота ще не почалась. #}
+                <span class="ms-pct is-check">перевірка</span>
+                <span class="ms-note">перевіряє програму перед стартом</span>
                 {% elif card.has_frame and card.has_program %}
                 {# Програма завантажена (є .iso у заголовку), але смугу відсотка
                    не видно — чесно «запуск», а не брехливе «не йде».

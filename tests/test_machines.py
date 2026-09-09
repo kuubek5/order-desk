@@ -687,6 +687,36 @@ def test_almost_done_is_not_done():
     assert _card_at(99, 3600).is_running is True
 
 
+def test_validating_is_a_state_of_the_fresh_frame_only():
+    """«Перевірка» живе за тим самим правилом, що відсоток і «готово».
+
+    Протухлий кадр і обрив звʼязку її не дають: сказати «перевіряє», коли
+    верстата не чути пʼять хвилин, — та сама неправда, що показати старий
+    відсоток як поточний.
+    """
+    from types import SimpleNamespace
+
+    now = datetime(2026, 9, 9, 3, 0)
+    target = SimpleNamespace(key="k", name="250i", host="h", port=8765,
+                             portrait_model="", machine_id=1)
+
+    fresh = service.MachineState(target=target, frame_at=now, validating=True)
+    assert service.MachineCard(target=target, state=fresh, now=now).is_validating is True
+
+    stale = service.MachineState(
+        target=target,
+        frame_at=now - timedelta(seconds=service.STALE_AFTER_SECONDS + 1),
+        validating=True,
+    )
+    assert service.MachineCard(target=target, state=stale, now=now).is_validating is False
+
+    broken = service.MachineState(
+        target=target, frame_at=now, validating=True,
+        fail_streak=service.PROBLEM_AFTER_FAILURES, error="немає звʼязку",
+    )
+    assert service.MachineCard(target=target, state=broken, now=now).is_validating is False
+
+
 def test_done_beats_percent_in_the_strip():
     """У чіпі стрічки «готово» мусить бути СТАРШИМ за число: верстат, що стоїть
     на сотні, оператору треба знімати, а не читати «100%»."""

@@ -953,9 +953,16 @@ def _title_mask(image: Image.Image) -> Optional[tuple[int, int, list[int]]]:
     return bx1 - bx0 + 1, by1 - by0 + 1, bits
 
 
-def screen_is_completed(image: Image.Image) -> bool:
-    """Чи це екран SUMMARY — тобто програма щойно завершилась."""
-    tpl = load_screen_templates().get("summary")
+def _screen_title_is(image: Image.Image, key: str) -> bool:
+    """Чи заголовок кадру збігається з еталоном `key`.
+
+    Один рушій на всі екрани: еталони знімаються тією ж `_title_mask`
+    (`scripts/machine_screens.py learn`), тож розійтись знімку й звірці нема як.
+    Габарити маски відсіюють чужий заголовок ще до порівняння бітів — саме тому
+    «JOBS» (71×20) не має шансу зійтись ані з «SUMMARY» (143×20), ані з
+    «VALIDATE JOBS» (214×20).
+    """
+    tpl = load_screen_templates().get(key)
     if not tpl:
         return False
     got = _title_mask(image)
@@ -969,3 +976,23 @@ def screen_is_completed(image: Image.Image) -> bool:
     mismatch = sum(1 for a, b in zip(bits, want) if a != b)
     ink = max(1, sum(want))
     return mismatch <= ink * SUMMARY_MAX_MISMATCH
+
+
+def screen_is_completed(image: Image.Image) -> bool:
+    """Чи це екран SUMMARY — тобто програма щойно завершилась."""
+    return _screen_title_is(image, "summary")
+
+
+def screen_is_validating(image: Image.Image) -> bool:
+    """Чи це екран VALIDATE JOBS — верстат ПЕРЕВІРЯЄ програму перед стартом.
+
+    Окремий стан, а не «нема числа», і тим паче не прогрес. Внизу того екрана
+    є власна смуга із власним відсотком (біла доріжка на всю ширину кадру), і
+    вона рахує ПЕРЕВІРКУ, а не фрезерування. Показати її як прогрес програми
+    означало б сказати оператору «робота на 56 %», коли робота ще не почалась —
+    це та сама категорія брехні, що й хибне число зі стороннього елемента.
+
+    Тому екран називаємо словом: «перевірка». Стан короткий (секунди), але
+    чесний — на відміну від «—», яке в цьому інтерфейсі означає «стоїть».
+    """
+    return _screen_title_is(image, "validate")

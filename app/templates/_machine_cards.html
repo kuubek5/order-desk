@@ -33,6 +33,12 @@
                 <span class="fu-pill is-done">готово · зняти</span>
                 {% elif card.percent is not none %}
                 <span class="mc-bigpct mc-pct" aria-label="Виконано {{ card.percent }} відсотків">{{ card.percent }}<u>%</u></span>
+                {% elif card.is_validating %}
+                {# Екран VALIDATE JOBS: верстат перевіряє програму перед
+                   стартом. Своя смуга з власним відсотком там є, але вона
+                   рахує ПЕРЕВІРКУ, не фрезерування — числа звідти не беремо
+                   свідомо, беремо слово. #}
+                <span class="fu-pill is-run">перевірка програми</span>
                 {% elif card.has_frame and not card.stale %}
                 <span class="fu-pill is-run">на зв'язку</span>
                 {% elif card.has_frame %}

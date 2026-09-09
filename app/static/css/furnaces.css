@@ -370,6 +370,17 @@ html[data-machine-art="none"] .ms-tile>*{text-shadow:none}
 .mch.done i{color:var(--ok);font-weight:600}
 .mch.done{border-color:rgba(var(--ok-rgb), .35)}
 .mch-done{font-weight:700;font-family:inherit;font-size:var(--fs-2);line-height:1}
+/* «перевірка» — верстат перевіряє програму перед стартом (екран VALIDATE
+   JOBS). Свідомо ТИХІШЕ за «готово» й за відсоток: це не дія для оператора і
+   не результат, а короткий проміжний стан. Той самий кегль, що в «запуск» —
+   обидва слова стоять у комірці числа й мусять мірятись однаково. У стрічці
+   замість слова стоїть «⋯»: чіп розрахований під двоцифрове число, і слово
+   налазило б на назву верстата (той самий урок, що з «готово», 04.09.26). */
+.ms-pct.is-check{font-family:inherit;font-size:var(--fs-0);font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;
+  color:var(--ink-3);text-shadow:none}
+.mch.check i{color:var(--ink-3)}
+.mch-check{font-weight:700;font-family:inherit;font-size:var(--fs-2);line-height:1}
 /* «+2» — скільки ще робіт у тому самому проєкті Sum3D. Тихо, дрібно: це
    уточнення до назви, а не самостійне число. */
 .ms-more{font-weight:600;color:var(--accent-c);font-size:var(--fs-0)}

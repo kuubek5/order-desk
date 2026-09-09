@@ -42,6 +42,7 @@ from app.machine_ocr import (
     pick_milling_program,
     read_progress_percent,
     screen_is_completed,
+    screen_is_validating,
 )
 from app.models import Machine, MachineReading, Order, ReworkRecord
 from app.services.furnace import (  # ті самі правила адреси й формат тривалості
@@ -170,6 +171,10 @@ class MachineState:
     # без цього прапорця завершений верстат виглядав так само, як зупинений
     # («—»), — а для цеху це різні речі: завершений треба розвантажити.
     completed: bool = False
+    # Верстат ПЕРЕВІРЯЄ програму перед стартом (екран VALIDATE JOBS). Окремий
+    # стан від «стоїть»: смуга внизу того екрана рахує перевірку, а не
+    # фрезерування, тож числа звідти ми не беремо — беремо слово.
+    validating: bool = False
     # Скільки опитувань поспіль не вдалось. Нуль = останнє було успішним.
     fail_streak: int = 0
     # Вирок перевірки досяжності, знятий У МОМЕНТ обриву: винен порт чи мережа.
@@ -1117,6 +1122,20 @@ def poll_target(
             logger.exception("Екран верстата %s не розпізнано", target.host)
             completed = False
 
+    # Екран перевірки програми. Число з нього НЕ беремо свідомо: внизу там своя
+    # смуга на всю ширину кадру, і вона рахує перевірку, а не фрезерування —
+    # показати її як прогрес означало б сказати «робота на 56 %», коли робота
+    # ще не почалась. Сьогодні жоден із трьох читачів ту смугу й не бачить
+    # (біла доріжка, висота 70 px), але правило має стояти в коді, а не
+    # триматись на тому, що детектор поки що мовчить.
+    try:
+        validating = screen_is_validating(frame)
+    except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
+        logger.exception("Екран перевірки верстата %s не розпізнано", target.host)
+        validating = False
+    if validating:
+        percent = None
+
     # Усе, що прочитали з ОДНОГО кадру, лягає в стан ОДНИМ кроком під локом.
     # Раніше поля писались по черзі, а між ними стояли дискове I/O і мережевий
     # виклик — і читач (віджет, /machines, milling_now) міг зловити свіжий
@@ -1143,6 +1162,7 @@ def poll_target(
         state.percent = percent
         state.percent_at = now
         state.completed = completed
+        state.validating = validating
         # Поля SISMA пишемо ЗАВЖДИ (навіть None): та сама причина, що з
         # відсотком — інакше після завершення роботи на екрані залипли б
         # старі шари й старий час кінця, і картка показувала б давно знятий
@@ -1587,6 +1607,19 @@ class MachineCard:
             return False
         held = (self.now - self.state.percent_changed_at).total_seconds()
         return held >= COMPLETED_AFTER_SECONDS
+
+    @property
+    def is_validating(self) -> bool:
+        """Верстат перевіряє програму перед стартом (екран VALIDATE JOBS).
+
+        Читається зі СВІЖОГО кадру, як і решта станів: «перевіряє» з
+        протухлого кадру — та сама неправда, що й старий відсоток. Стоїть
+        НИЖЧЕ за «завершено» й за відсоток у всіх трьох віджетах: перевірка
+        триває секунди, а завершена або жива програма — те, заради чого на
+        плитку дивляться."""
+        if not self.state or self.stale or self.has_problem:
+            return False
+        return self.state.validating
 
     @property
     def has_program(self) -> bool:

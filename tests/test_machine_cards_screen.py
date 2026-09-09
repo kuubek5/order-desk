@@ -69,6 +69,39 @@ def test_screen_default_is_portrait_grid_by_model():
     assert "mc-shot" not in html
 
 
+def test_validating_machine_says_so_on_every_surface():
+    """«Перевірка програми» мусить доїхати до HTML, а не лишитись у моделі.
+
+    Три поверхні показують той самий стан і мають не розійтись: екран
+    «Верстати», секція в бічній панелі й стрічка над чергою. У стрічці замість
+    слова стоїть «⋯» — чіп розрахований під двоцифрове число (той самий урок,
+    що з «готово»).
+    """
+    t = MachineTarget(name="250i Tolik", host="10.0.0.9", port=8765)
+    card = MachineCard(
+        target=t,
+        state=MachineState(target=t, frame_at=NOW, validating=True),
+        now=NOW,
+    )
+
+    screen = templates.env.get_template("_machine_cards.html").render(
+        request=_request(), cards=[card], user=SimpleNamespace(role="адмін")
+    )
+    assert "перевірка програми" in screen
+
+    side = templates.env.get_template("_machine_side.html").render(
+        request=_request(), machine_cards=[card],
+        machine_summary={"total": 1, "running": 0, "broken": 0},
+    )
+    assert "перевірка" in side and "is-check" in side
+
+    strip = templates.env.get_template("_machine_strip.html").render(
+        request=_request(), machine_cards=[card],
+        machine_summary={"total": 1, "running": 0, "broken": 0},
+    )
+    assert "mch-check" in strip and "перевіряє програму перед стартом" in strip
+
+
 def test_screen_frame_mode_keeps_old_markup():
     html = _render_screen("frame")
     assert 'class="fu-grid"' in html and "mc-grid" not in html

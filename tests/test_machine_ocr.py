@@ -677,6 +677,45 @@ def test_summary_screen_is_recognized_as_completed():
     assert read_progress_percent(image) is None
 
 
+def test_validate_jobs_screen_is_recognized_and_gives_no_percent():
+    """Екран перевірки програми — стан, а не прогрес.
+
+    Реальний кадр .58 (08.09.26): «VALIDATE JOBS», лог перевірки і власна
+    смуга внизу на всю ширину кадру — біла доріжка, заливка на 56 %, підпис
+    «56%» ЗОВНІ смуги. Цей відсоток рахує ПЕРЕВІРКУ, а не фрезерування, тож
+    показати його як прогрес означало б сказати оператору «робота на 56 %»,
+    коли робота ще не почалась. Читачі числа мовчать, і це правильно; екран
+    натомість називається словом.
+    """
+    from app.machine_ocr import (
+        read_progress_percent, screen_is_completed, screen_is_validating,
+    )
+
+    image = _newgen("newgen_validate_56.png")
+    assert screen_is_validating(image) is True
+    assert screen_is_completed(image) is False
+    assert read_progress_percent(image) is None
+
+
+def test_validate_detector_is_silent_on_every_other_screen():
+    """Заголовок «VALIDATE JOBS» (214×20) не сміє зійтись ні з чим іншим.
+
+    Габарити маски відсікають чужий заголовок ще до порівняння бітів, тож
+    «JOBS» (71×20) і «SUMMARY» (143×20) не мають шансу. Перевірено на всіх 470
+    зібраних кадрах шести верстатів: рівно ОДИН кадр читається як перевірка —
+    саме той, де вона й була.
+    """
+    from app.machine_ocr import screen_is_validating
+
+    for name in (
+        "remicore_bar_100.png", "remicore_caption_72.png", "remicore_caption_57.png",
+        "remicore_low_18.png", "remicore_portrait_8.png", "remicore_titan_14.png",
+        "newgen_progress_0.png", "newgen_progress_30.png", "newgen_150i_38.png",
+        "newgen_summary_done.png",
+    ):
+        assert screen_is_validating(_newgen(name)) is False, name
+
+
 def test_summary_detector_is_silent_on_every_other_screen():
     """Жоден інший бойовий кадр не має читатись як «завершено».
 
