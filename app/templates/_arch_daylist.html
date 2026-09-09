@@ -50,7 +50,10 @@
                 {# Шлях-ID цілим не влізе ніколи (це довгий мережевий шлях), але
                    в title лежить повний — наведення показує весь. #}
                 <td class="c-path mono" title="{{ order.job_code or '' }}">{{ order.job_code or '—' }}</td>
-                <td class="c-sum mono">{{ order.sum3d_id or '—' }}</td>
+                {# У кількох робіт тут не один ID, а кілька рядків (перефрезерування)
+                   або фраза оператора — title дає повне значення без наведення на
+                   рядок, як і в шляху поруч. #}
+                <td class="c-sum mono" title="{{ order.sum3d_id or '' }}">{{ order.sum3d_id or '—' }}</td>
                 <td class="c-tech">{{ order.technician_name or '' }}</td>
                 <td class="c-oper mono">{{ order.calculated_raw or '—' }}</td>
                 <td class="c-files">
