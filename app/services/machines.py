@@ -17,6 +17,7 @@
 не вміє слати ввід (перевірено стендом tests/fake_vnc_server.py).
 """
 
+import json
 import logging
 import os
 import time
@@ -34,6 +35,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, selectinload
 
 from app import log_throttle
+from app.services import machine_link
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
 from app.machine_portraits import portrait_version
 from app.machine_sisma import read_sisma, screen_is_sisma
@@ -43,7 +45,7 @@ from app.machine_ocr import (
     read_progress_percent,
     screen_states,
 )
-from app.models import Machine, MachineReading, Order, ReworkRecord
+from app.models import Machine, MachineLinkEvent, MachineReading, Order, ReworkRecord
 from app.services.furnace import (  # ті самі правила адреси й формат тривалості
     _HOST_RE,
     span_text,
@@ -137,6 +139,8 @@ class MachineTarget:
     portrait_model: str = ""
     # Ручний режим калібрування: відкладати кадри за часом (див. Machine).
     collect_calibration: bool = False
+    # Детальний журнал зв'язку саме для цього верстата (див. Machine.diagnose_link).
+    diagnose_link: bool = False
 
     @property
     def key(self) -> str:
@@ -188,6 +192,34 @@ class MachineState:
     outages: list = field(default_factory=list)
     polls_ok: int = 0
     polls_failed: int = 0
+    # ── Журнал обривів у БД (09.09.26) ──────────────────────────────────────
+    # id відкритого рядка `machine_link_events`. Тримаємо саме id, а не
+    # шукаємо рядок запитом: закриття обриву тоді коштує один UPDATE, а не
+    # SELECT на кожному тіку мертвого верстата.
+    link_event_id: Optional[int] = None
+    # Той самий id, але він переживає закриття обриву. Стук іде окремим
+    # потоком і цілком може завершитись УЖЕ ПІСЛЯ того, як зв'язок повернувся
+    # і рядок закрито. Без окремого поля такий вирок губився б зовсім: на
+    # плитку його чіпляти не можна (він уже не правда), а для розбору «а що
+    # там було» це доказ, і місце йому в журналі — з міткою `probe_late`.
+    link_last_event_id: Optional[int] = None
+    # Скільки невдалих тіків минуло з початку цього обриву.
+    link_failed_polls: int = 0
+    # Вирок стуку вже дописаний у рядок. Без цього кожен наступний тік
+    # переписував би той самий UPDATE до кінця обриву.
+    link_probe_saved: bool = False
+    # Покрокові відповіді портів (детальний режим) і мітка «вирок спізнився».
+    reach_probe: Optional[list] = None
+    reach_late: bool = False
+    # Вирок стуку ДЛЯ ЖУРНАЛУ — окремо від `reach_note`, який малює плитка.
+    # Поля мусять бути різні: спізнілий вирок на плитку не йде (він уже не
+    # правда), але в журнал іде з міткою. Спільне поле означало б вибирати
+    # між «збрехати на плитці» і «викинути доказ».
+    link_probe_note: Optional[str] = None
+    # Як мінявся текст помилки за цей обрив: [(час, текст)], лише різні
+    # тексти й лише в детальному режимі. Обрізаний — мертвий ПК не має права
+    # рознести памʼять, а змін тексту за обрив одиниці.
+    link_errors: list = field(default_factory=list)
     # Коли кадр востаннє лягав на диск (аналізуємо частіше, ніж пишемо).
     frame_saved_at: Optional[datetime] = None
     # Що саме фрезерується: ім'я .iso із заголовка вікна RemiCORE і витягнутий
@@ -248,6 +280,7 @@ def target_of(machine: Machine) -> MachineTarget:
         name=machine.name, host=machine.host, port=machine.port,
         password=password, agent_token=agent_token,
         collect_calibration=bool(getattr(machine, "collect_calibration", False)),
+        diagnose_link=bool(getattr(machine, "diagnose_link", False)),
         machine_id=machine.id,
         portrait_model=getattr(machine, "portrait_model", "") or "",
     )
@@ -682,7 +715,17 @@ def host_answers_at_all(
 def reachability_note(host: str, port: int) -> Optional[str]:
     """Один рядок для журналу й плитки: винен порт чи мережа. None — не змогли
     сказати нічого певного, і тоді краще мовчати, ніж вгадувати."""
-    answered = host_answers_at_all(host)
+    return _note_from_answer(host_answers_at_all(host), host, port)
+
+
+def _note_from_answer(answered: Optional[bool], host: str, port: int) -> Optional[str]:
+    """Текст вироку з готової відповіді «ПК озвався / ні / не питали».
+
+    Відділено від самого стуку, бо детальний режим стукає покроково
+    (`machine_link.probe_ports`) і виводить відповідь із тих самих проб —
+    інакше довелось би стукати вдруге заради тексту, тобто отримати про той
+    самий момент дві окремі правди.
+    """
     if answered is True:
         return (
             f"ПК {host} у мережі озивається — отже мовчить саме порт {port}: "
@@ -823,7 +866,9 @@ def _grab_machine_frame(
         return None, f"Знімок не вдався: {exc}"
 
 
-def _start_reachability_probe(state: "MachineState", target: "MachineTarget") -> None:
+def _start_reachability_probe(
+    state: "MachineState", target: "MachineTarget", cause: str = ""
+) -> None:
     """Перевірити досяжність ПК ОКРЕМИМ потоком і покласти вирок у стан.
 
     Чому не тут-таки, рядком вище. `poll_target` виконується ПОСЛІДОВНО для
@@ -838,42 +883,95 @@ def _start_reachability_probe(state: "MachineState", target: "MachineTarget") ->
     """
 
     def run() -> None:
+        rows = None
         try:
-            note = reachability_note(target.host, target.port)
+            if target.diagnose_link:
+                # Детальний режим: стукаємо ОДИН раз і з нього ж виводимо
+                # вирок. Викликати ще й host_answers_at_all означало б
+                # постукати двічі — три зайві секунди й друга, окрема правда
+                # про той самий момент.
+                rows = machine_link.probe_ports(
+                    target.host, _REACH_PROBE_PORTS, _REACH_PROBE_TIMEOUT_SECONDS
+                )
+                # Вирок словами доречний ЛИШЕ там, де ми не знали, чи живий
+                # ПК. У детальному режимі ми стукаємо й тоді, коли ПК уже
+                # відповів відмовою, — і текст «мовчить саме порт, винен
+                # брандмауер» там просто неправда: агент помер, і порт тут ні
+                # до чого (побачено живим прогоном 09.09.26). Проби лишаються
+                # доказом самі по собі, без підпису.
+                note = (
+                    _note_from_answer(
+                        machine_link.answered_from_probe(rows), target.host, target.port
+                    )
+                    if not cause or machine_link.needs_probe(cause)
+                    else None
+                )
+            else:
+                note = reachability_note(target.host, target.port)
         except Exception:  # noqa: BLE001 — діагностика не має валити полінг
             logger.debug("Перевірка досяжності %s не вдалась", target.host, exc_info=True)
             return
-        if not note:
+        if not note and not rows:
             return
         with _states_lock:
             # Поки ми стукали, зв'язок міг повернутись. Тоді вирок уже не
-            # правда, і чіпляти його на живий верстат не можна.
-            if state.fail_streak < PROBLEM_AFTER_FAILURES:
+            # правда, і чіпляти його на ЖИВИЙ верстат не можна. Але й
+            # викидати шкода: у журнал він іде з міткою «спізнився» — для
+            # розбору «а що там було» це все одно доказ (09.09.26).
+            late = state.fail_streak < PROBLEM_AFTER_FAILURES
+            state.reach_probe = rows
+            state.reach_late = late
+            state.link_probe_note = note
+            state.link_probe_saved = False
+            if late:
                 return
             state.reach_note = note
-            if state.outages and state.outages[-1][1] is None:
+            if note and state.outages and state.outages[-1][1] is None:
                 state.outages[-1][2] = f"{state.outages[-1][2]}; {note}"
-        logger.warning("Верстат %s: %s", target.name, note)
+        if note:
+            logger.warning("Верстат %s: %s", target.name, note)
 
     threading.Thread(
         target=run, name=f"reach-probe-{target.key}", daemon=True
     ).start()
 
 
+# Скільки РІЗНИХ текстів помилки тримаємо за один обрив. Змін тексту за обрив
+# одиниці (наприклад «мовчить» → «не відповідає в мережі», коли ПК зник із
+# мережі остаточно), але мертвий за ніч верстат не має права рознести памʼять.
+MAX_LINK_ERROR_TRAIL = 12
+
+
 def _record_machine_failure(
     state: "MachineState", target: "MachineTarget", error: str, now: datetime
-) -> None:
-    """Невдалий тік: лічильники під локом і ОДИН рядок у лог на обрив."""
+) -> Optional[dict]:
+    """Невдалий тік: лічильники під локом і ОДИН рядок у лог на обрив.
+
+    Повертає опис НОВОГО обриву, коли він щойно почався, — щоб `poll_target`
+    записав рядок журналу власною сесією. Сама сесія сюди не заходить
+    свідомо: ця функція викликається і без БД (разовий знімок, тести), а
+    кадр на екрані важливіший за рядок історії.
+    """
     with _states_lock:
         state.error = error
         state.error_at = now
         state.fail_streak += 1
         state.polls_failed += 1
+        state.link_failed_polls += 1
         streak = state.fail_streak
         since = state.last_ok_at
+        # Слід того, як мінявся текст за обрив. Пишемо лише ЗМІНИ: сто тіків
+        # з тим самим текстом нічого не додають, а перехід «мовчить» →
+        # «не відповідає в мережі» посеред обриву — це вже інша поломка.
+        if target.diagnose_link and (
+            not state.link_errors or state.link_errors[-1][1] != error
+        ):
+            state.link_errors.append((now, error))
+            del state.link_errors[:-MAX_LINK_ERROR_TRAIL]
     # Пишемо в лог САМЕ ПЕРЕХІД, а не кожен невдалий тік: інакше мертвий
     # верстат за ніч насипле 17 тисяч рядків. Один рядок на обрив дає
     # відповідь на «як часто рветься» цифрами, а не відчуттям.
+    opened: Optional[dict] = None
     if streak == PROBLEM_AFTER_FAILURES:
         # Момент обриву — ЄДИНИЙ, коли варто заплатити зайвим стуком у мережу:
         # тут ще видно, живий ПК чи ні, а через хвилину це вже історія. Раз на
@@ -888,10 +986,24 @@ def _record_machine_failure(
             since.strftime("%H:%M:%S") if since else "невідомо",
             error,
         )
-        if error in (msg_host_silent(target.host, target.port), msg_host_no_answer(target.host)):
-            _start_reachability_probe(state, target)
+        # Клас поломки — через machine_link, а не порівнянням рядків тут.
+        # Порівняння за РІВНІСТЮ, яке стояло на цьому місці, не збігалось
+        # ніколи: обидва шляхи опитування віддають текст із префіксом
+        # «Знімок не вдався: », тож стук у порти не робився в цеху жодного
+        # разу, а тести лишались зелені, бо годують poll_target голим
+        # повідомленням (знайдено 09.09.26).
+        cause = machine_link.classify(error, target.host, target.port)
+        opened = {
+            "cause": cause,
+            "error": error,
+            "started_at": since,
+            "detected_at": now,
+        }
+        if machine_link.needs_probe(cause) or target.diagnose_link:
+            _start_reachability_probe(state, target, cause)
     if streak >= PROBLEM_AFTER_FAILURES:
         record_state(target.key, "off", now)
+    return opened
 
 
 def _save_frame_if_due(
@@ -999,6 +1111,183 @@ def _store_machine_reading(
         _stored[state.target.key] = (now, _reading_event_key(state), bool(error))
 
 
+# ── Журнал обривів зв'язку (09.09.26) ───────────────────────────────────────
+# Рядок пишеться на ПЕРЕХІД: рівно двічі на обрив, скільки б той не тривав.
+# Показання (`machine_readings`) на це питання не відповідають: там перша
+# невдача негайно, далі однакові раз на 15 хвилин, тож обрив на дві хвилини не
+# лишає між двома рядками ЖОДНОГО сліду — а саме короткі обриви й невловимі.
+#
+# Скільки днів тримаємо. Обривів на порядки менше за показання, а закономірність
+# («щодня о 03:20», «щоразу разом з усіма») видно лише на довгому вікні.
+MACHINE_LINK_RETENTION_DAYS = 90
+
+# Скільки днів відкритий рядок ще вважається ТИМ САМИМ обривом після рестарту.
+#
+# Навіщо взагалі. Стан верстата живе в памʼяті процесу, тож рестарт застосунку
+# посеред обриву стирає знання про те, що обрив уже відкрито, — і наступна ж
+# третя невдача заводила НОВИЙ рядок. У цеху KuubMill перезапускається на
+# авто-оновленні, а мертвий верстат може стояти вихідні: за прогоном 09.09.26
+# один безперервний обрив дав ШІСТЬ рядків. Завищеною при цьому стає рівно та
+# цифра, заради якої екран і відкривають, — «скільки разів рвалось».
+#
+# Тому відкритий рядок того самого верстата ПІДХОПЛЮЄМО, а не дублюємо:
+# відкритий = «відновлення ми не бачили», і якщо верстат лежить і зараз, це
+# той самий обрив. Стеля потрібна, щоб не приписати верстату місячний простій
+# за час, коли застосунок узагалі не працював і не спостерігав.
+MACHINE_LINK_ADOPT_DAYS = 7
+
+
+def _open_link_event(
+    db: Optional[Session],
+    state: "MachineState",
+    target: "MachineTarget",
+    opened: dict,
+) -> None:
+    """Рядок «обрив почався». id лягає в стан — закриття потім коштує один
+    UPDATE, а не пошук рядка запитом на кожному тіку мертвого верстата."""
+    # Без сесії просто нічого не пишемо: `poll_target` законно кличуть і без
+    # БД (разовий знімок, тести), і кадр на екрані важливіший за рядок журналу.
+    if db is None:
+        return
+    try:
+        # Уже відкритий рядок цього верстата — це той самий обрив, який ми
+        # просто перестали пам'ятати (рестарт). Підхоплюємо його замість
+        # другого рядка; текст помилки оновлюємо — за час обриву він міг
+        # стати іншим («мовчить» → «немає в мережі»), і актуальний корисніший.
+        existing = db.scalars(
+            select(MachineLinkEvent)
+            .where(
+                MachineLinkEvent.host == target.key,
+                MachineLinkEvent.ended_at.is_(None),
+                MachineLinkEvent.detected_at
+                >= opened["detected_at"] - timedelta(days=MACHINE_LINK_ADOPT_DAYS),
+            )
+            .order_by(MachineLinkEvent.detected_at.desc())
+            .limit(1)
+        ).first()
+        if existing is not None:
+            existing.error = (opened["error"] or "")[:300]
+            existing.cause = opened["cause"]
+            existing.deep = bool(target.diagnose_link)
+            db.commit()
+            with _states_lock:
+                state.link_event_id = existing.id
+                state.link_last_event_id = existing.id
+                state.link_probe_saved = False
+            return
+        event = MachineLinkEvent(
+            host=target.key,
+            name=target.name[:120],
+            started_at=opened["started_at"],
+            detected_at=opened["detected_at"],
+            error=(opened["error"] or "")[:300],
+            cause=opened["cause"],
+            deep=bool(target.diagnose_link),
+        )
+        db.add(event)
+        db.commit()
+        with _states_lock:
+            state.link_event_id = event.id
+            state.link_last_event_id = event.id
+            state.link_probe_saved = False
+    except Exception:  # noqa: BLE001
+        logger.exception("Не вдалось відкрити журнал обриву %s", target.key)
+        db.rollback()
+
+
+def _flush_link_probe(
+    db: Optional[Session], state: "MachineState", target: "MachineTarget"
+) -> None:
+    """Дописати вирок стуку в уже відкритий рядок обриву.
+
+    Стук іде окремим потоком і закінчується через кілька секунд ПІСЛЯ того, як
+    рядок записано. Замість другої сесії БД у тому потоці (правило «сесія на
+    одному потоці») результат забирає наступний тік опитування — він і так
+    приходить раз на 5 с і вже має сесію.
+    """
+    with _states_lock:
+        # Саме `link_last_event_id`, а не `link_event_id`: дописати вирок треба
+        # й у вже закритий рядок, коли стук завершився після відновлення.
+        event_id = state.link_last_event_id
+        if event_id is None or state.link_probe_saved:
+            return
+        note = state.link_probe_note
+        rows = state.reach_probe
+        late = state.reach_late
+        if note is None and rows is None:
+            return          # стук ще не завершився
+        state.link_probe_saved = True
+    if db is None:
+        return
+    try:
+        event = db.get(MachineLinkEvent, event_id)
+        if event is None:
+            return
+        event.probe_json = machine_link.dump_probe(rows)
+        event.probe_verdict = note[:300] if note else None
+        event.probe_late = bool(late)
+        db.commit()
+        with _states_lock:
+            # Прибираємо ПІСЛЯ запису, а не до нього: доки вирок не в базі,
+            # він єдиний існує в памʼяті, і зайве прибирання його втрачало.
+            state.reach_probe = None
+            state.reach_late = False
+            state.link_probe_note = None
+    except Exception:  # noqa: BLE001
+        logger.exception("Не вдалось дописати вирок стуку %s", target.key)
+        db.rollback()
+
+
+def _close_link_event(
+    db: Optional[Session], target: "MachineTarget", now: datetime, closing: tuple
+) -> None:
+    """Рядок «обрив скінчився»: час відновлення, скільки тіків не вдалось і
+    (у детальному режимі) як мінявся текст помилки за цей час.
+
+    Вирок стуку сюди НЕ пишеться: він приходить з іншого потоку і власним
+    шляхом (`_flush_link_probe`), який викликається одразу після закриття. Два
+    місця запису того самого поля рано чи пізно розійшлись би.
+    """
+    event_id, failed_polls, trail = closing
+    if db is None:
+        return
+    try:
+        event = db.get(MachineLinkEvent, event_id)
+        if event is None:
+            return
+        event.ended_at = now
+        event.failed_polls = failed_polls
+        if trail:
+            event.error_trail = json.dumps(
+                [
+                    {"at": at.strftime("%d.%m %H:%M:%S"), "error": text[:300]}
+                    for at, text in trail
+                ],
+                ensure_ascii=False,
+            )
+        db.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("Не вдалось закрити журнал обриву %s", target.key)
+        db.rollback()
+
+
+def prune_machine_link_events(db: Session, now: Optional[datetime] = None) -> int:
+    """Прибрати обриви, старші за вікно зберігання. Відкриті рядки (обрив
+    триває або застосунок перезапустили посеред нього) прибираються за тим
+    самим часом виявлення — інакше вічно відкритий рядок жив би завжди."""
+    cutoff = (now or datetime.now()) - timedelta(days=MACHINE_LINK_RETENTION_DAYS)
+    deleted = cast(
+        "CursorResult[Any]",
+        db.execute(
+            sa_delete(MachineLinkEvent).where(MachineLinkEvent.detected_at < cutoff)
+        ),
+    )
+    removed = deleted.rowcount or 0
+    if removed:
+        db.commit()
+    return removed
+
+
 def prune_machine_readings(db: Session, now: Optional[datetime] = None) -> int:
     """Прибрати показання, старші за вікно зберігання. Одним DELETE — на рядок
     історії ніхто не посилається, тож каскади ORM тут не втрачаються."""
@@ -1044,7 +1333,16 @@ def poll_target(
         frame, error = _grab_machine_frame(target, password)
 
     if error is not None:
-        _record_machine_failure(state, target, error, now)
+        opened = _record_machine_failure(state, target, error, now)
+        if opened is not None:
+            _open_link_event(db, state, target, opened)
+        else:
+            # Вирок стуку приїжджає з ІНШОГО потоку через кілька секунд після
+            # початку обриву — тобто вже після того, як рядок записано. Тік,
+            # що йде слідом, і дописує його: одним UPDATE, один раз на обрив
+            # (`link_probe_saved`). Своєї сесії БД потік стуку не відкриває
+            # свідомо — сесія лишається на потоці опитування.
+            _flush_link_probe(db, state, target)
         # ПЕРША невдача — негайно: момент, коли верстат перестав відповідати,
         # це подія, і саме за нею потім рахують простій. Раніше вона тонула
         # до 15 хвилин, бо загальний дротель не відрізняв першу невдачу від
@@ -1153,6 +1451,16 @@ def poll_target(
             state.outages[-1][1] = now
         state.fail_streak = 0
         state.reach_note = None
+        # Зняти обрив зі стану ТУТ, під тим самим локом, що й решта полів, а
+        # закрити рядок у базі — після виходу з лока: під локом ходити в БД
+        # не можна, це затримало б кожного читача стану.
+        closing = (state.link_event_id, state.link_failed_polls, list(state.link_errors))
+        state.link_event_id = None
+        state.link_failed_polls = 0
+        state.link_errors = []
+        # Поля стуку тут НЕ чистимо. Саме це й губило спізнілий вирок: тік,
+        # який мав його записати, спершу затирав його власним прибиранням.
+        # Їх чистить `_flush_link_probe` — після того, як запише.
         state.last_ok_at = now
         state.polls_ok += 1
         if percent != state.percent or state.percent_changed_at is None:
@@ -1174,6 +1482,14 @@ def poll_target(
         state.frame_at = now
         state.error = None
         state.frame_saved_at = saved_at
+
+    if closing[0] is not None:
+        _close_link_event(db, target, now, closing)
+    # Стук міг завершитись УЖЕ ПІСЛЯ відновлення — тоді рядок уже закритий, а
+    # вирок ще ні в кого. Дозаписуємо його тим самим шляхом, з міткою
+    # «спізнився»: на екрані вона чесно каже, що вирок описує момент ПІСЛЯ
+    # обриву, а не сам обрив.
+    _flush_link_probe(db, state, target)
 
     # ПЕРЕХІД у «завершено» і назад — у лог. Стан сам по собі видно на екрані, а
     # от момент, коли верстат почав вважатись завершеним, не видно ніде: 09.09.26

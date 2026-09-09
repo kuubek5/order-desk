@@ -19,7 +19,7 @@
                 {% if machines %}
                 <table class="fu-table">
                     <thead>
-                        <tr><th title="Портрет для картки на екрані «Верстати»: модель або своє фото">Портрет</th><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th title="Збирати кадри для калібрування читача відсотка">Калібр.</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
+                        <tr><th title="Портрет для картки на екрані «Верстати»: модель або своє фото">Портрет</th><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th title="Збирати кадри для калібрування читача відсотка">Калібр.</th><th title="Детальний журнал зв'язку: на кожному обриві стукати в порти ПК і зберігати покроковий доказ">Діагн.</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
                     </thead>
                     <tbody>
                     {% for machine in machines %}
@@ -77,6 +77,17 @@
                                скачай кадри (кнопка на екрані «Верстати») і вимкни. #}
                             <input form="machine-{{ machine.id }}" type="checkbox" name="collect_calibration" value="1" {% if machine.collect_calibration %}checked{% endif %}
                                    aria-label="Збирати калібрувальні кадри верстата {{ machine.name }}">
+                        </td>
+                        <td class="fu-col-mid">
+                            {# Детальний журнал зв'язку саме для цього верстата. Обриви
+                               пишуться в журнал завжди й для всіх — це дешево. Галочка
+                               вмикає дороге: стук у порти ПК на КОЖНОМУ обриві (навіть
+                               коли й так зрозуміло, що ПК живий), покроковий результат
+                               кожного порту з часом і слід того, як мінявся текст
+                               помилки. Ставиться поштучно, бо рветься зазвичай один
+                               верстат, а платити зайвим стуком за всі десять нема за що. #}
+                            <input form="machine-{{ machine.id }}" type="checkbox" name="diagnose_link" value="1" {% if machine.diagnose_link %}checked{% endif %}
+                                   aria-label="Детальний журнал зв'язку верстата {{ machine.name }}">
                         </td>
                         <td>
                             <input form="machine-{{ machine.id }}" class="login-input mono" type="password" name="agent_token"

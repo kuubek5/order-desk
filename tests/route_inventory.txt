@@ -31,6 +31,7 @@ GET /machines
 GET /machines/calibration.zip
 GET /machines/calibration/banner
 GET /machines/cards
+GET /machines/diag
 GET /machines/portrait/{machine_id}.jpg
 GET /machines/side
 GET /machines/sisma

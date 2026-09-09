@@ -13,6 +13,10 @@
 main.furnaces{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px}
 
 .furnaces .fu-bar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+/* Кілька дій у шапці екрана (кнопка + посилання) — одним рядком, щоб
+   flex-розкладка самої смуги лишалась «заголовок ліворуч, дії праворуч». */
+.furnaces .fu-bar-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.furnaces .fu-bar-acts .btn{text-decoration:none}
 .furnaces .fu-bar h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:700;letter-spacing:var(--ls-head);margin:0}
 .furnaces .fu-sub{margin:3px 0 0;color:var(--ink-3);font-size:var(--fs-2)}
 

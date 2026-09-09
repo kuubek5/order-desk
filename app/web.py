@@ -100,6 +100,7 @@ from app.services.machines import (
     POLL_INTERVAL_SECONDS as MACHINE_POLL_INTERVAL_SECONDS,
     is_configured as _machines_configured,
     poll_all as _poll_machines,
+    prune_machine_link_events as _prune_machine_link_events,
     prune_machine_readings as _prune_machine_readings,
 )
 from app.services.cam_blanks import sync_blanks as _sync_cam_blanks
@@ -578,6 +579,10 @@ def _machine_worker(stop_event: Event) -> None:
                 # лишитись від попередньої конфігурації і має старіти так само.
                 if monotonic() >= next_prune:
                     _prune_machine_readings(db)
+                    # Журнал обривів має власне, довше вікно (закономірність
+                    # «щодня о тій самій порі» видно лише на довгому), але
+                    # прибирається тим самим добовим проходом.
+                    _prune_machine_link_events(db)
                     next_prune = monotonic() + MACHINE_PRUNE_INTERVAL_SECONDS
         except Exception:
             logger.exception("Неочікуваний збій опитування верстатів")

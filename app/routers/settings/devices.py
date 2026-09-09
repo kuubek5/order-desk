@@ -359,6 +359,7 @@ def update_machine(
     password: str = Form(""),
     agent_token: str = Form(""),
     collect_calibration: str = Form(""),
+    diagnose_link: str = Form(""),
     portrait_model: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -400,6 +401,10 @@ def update_machine(
     elif agent_token.strip():
         machine.agent_token_encrypted = encrypt_value(agent_token.strip())
     machine.collect_calibration = collect_calibration == "1"
+    # Галочка в тій самій формі, що й решта полів верстата, тож «поля не
+    # прийшло» тут означає рівно «знято» — форма шле всі свої поля завжди
+    # (той самий контракт, що в collect_calibration вище).
+    machine.diagnose_link = diagnose_link == "1"
     # Невідомий ключ = «авто» (здогад за назвою), а не помилка: форма шле лише
     # свої чотири варіанти, чужий може прийти хіба зі старої вкладки.
     machine.portrait_model = portrait_model if portrait_model in machines_service.MACHINE_MODEL_KEYS else ""

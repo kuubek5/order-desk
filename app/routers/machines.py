@@ -11,6 +11,7 @@ app/furnace_vnc.py, який фізично не вміє слати ввід (�
 
 import threading
 import time
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, Response
@@ -18,6 +19,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.machine_portraits import portrait_path
+from app.services import machine_link
 from app.settings_store import get_machine_calibration_path
 from app.routers.deps import get_current_user, login_redirect, get_db, is_loopback_request, templates
 from app.services.machines import (
@@ -54,6 +56,69 @@ def machines_page(request: Request, db: Session = Depends(get_db)):
     if user is None:
         return login_redirect(request)
     return templates.TemplateResponse(request, "machines.html", _context(request, db, user))
+
+
+# Оголошено ВИЩЕ за адреси з `{key}` — те саме правило, що з паролем печей:
+# FastAPI бере перший збіг, і літерал, який стоїть нижче за шаблон, ризикує
+# бути зʼїденим як ідентифікатор.
+#
+# Вікна: доба (комірка = година) і 7/30 днів (комірка = день). Одна смуга на
+# верстат, вирівняні по часу — і питання «рвалось у всіх одразу чи в одного»
+# читається оком, без жодного запиту. Одночасно = мережа чи живлення,
+# поодинці = той конкретний ПК; без цього розрізнення шукають не там.
+_DIAG_WINDOWS = {1: 24, 7: 7, 30: 30}
+
+
+@router.get("/machines/diag", response_class=HTMLResponse)
+def machines_diag(request: Request, days: int = 1, db: Session = Depends(get_db)):
+    """Журнал обривів зв'язку: смуга «коли», підсумок «хто» і розбір «чому»."""
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+
+    days = days if days in _DIAG_WINDOWS else 1
+    cells = _DIAG_WINDOWS[days]
+    # Час у журналі локальний (як у показаннях обладнання) — межі рахуємо тим
+    # самим годинником, інакше комірки зʼїхали б на три години.
+    now = datetime.now()
+    if days == 1:
+        # Рівно по годинах: смуга доби, у якій «03:00» це справді третя година.
+        end = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        step = timedelta(hours=1)
+    else:
+        end = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        step = timedelta(days=1)
+    edges = [end - step * (cells - i) for i in range(cells + 1)]
+
+    views = machine_link.load_outages(db, since=edges[0])
+    summaries = machine_link.summarize(views)
+    # Верстати, що НЕ рвались, теж мають бути в таблиці: порожня смуга — це
+    # відповідь («цей тримає»), а відсутній рядок читався б як «його нема».
+    known = {s.host for s in summaries}
+    for target in configured_targets(db):
+        if target.key not in known:
+            summaries.append(
+                machine_link.MachineSummary(
+                    host=target.key, name=target.name, deep=target.diagnose_link
+                )
+            )
+    machine_link.bucket_grid(views, summaries, edges=edges)
+
+    return templates.TemplateResponse(
+        request,
+        "machines_diag.html",
+        {
+            "request": request,
+            "user": user,
+            "topbar_active": "machines",
+            "days": days,
+            "edges": edges,
+            "step_hours": days == 1,
+            "views": views,
+            "summaries": summaries,
+            "probe_words": machine_link.PROBE_WORDS,
+        },
+    )
 
 
 @router.get("/machines/side", response_class=HTMLResponse)

@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Зв'язок з верстатами — KuubMill{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/furnaces.css?v={{ static_ver('css/furnaces.css') }}">
+<link rel="stylesheet" href="/static/css/machine_diag.css?v={{ static_ver('css/machine_diag.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'machines' %}
+{% include "_topbar_nav.html" %}
+
+{# Журнал обривів зв'язку. Екран відкривають з одним питанням — «чому воно
+   рветься» — і відповідь має три шари, у цьому порядку:
+     1) смуга: КОЛИ рвалось і чи в усіх одночасно (мережа) чи в одного (той ПК);
+     2) підсумок: ХТО рветься найчастіше;
+     3) розбір: ЧОМУ саме цей обрив, із доказом і кроками руками.
+   Полла тут немає свідомо: це не робочий екран, а розбір після факту, і
+   смуга, що перемальовується під рукою, тільки заважала б читати. #}
+<main class="furnaces mdiag">
+    <div class="fu-bar">
+        <div>
+            <h1>Зв'язок з верстатами</h1>
+            <p class="fu-sub">
+                Обрив фіксується після {{ 3 }} невдалих опитувань поспіль · журнал зберігається 90 днів
+            </p>
+        </div>
+        <div class="mdiag-windows" role="group" aria-label="Вікно журналу">
+            {% for value, label in [(1, 'Доба'), (7, '7 днів'), (30, '30 днів')] %}
+            <a class="mdiag-win{% if days == value %} on{% endif %}" href="/machines/diag?days={{ value }}">{{ label }}</a>
+            {% endfor %}
+            <a class="mdiag-win" href="/machines">До карток</a>
+        </div>
+    </div>
+
+    {# ── Смуга ───────────────────────────────────────────────────────────── #}
+    <section class="mdiag-sec">
+        <h2>Коли рвалось</h2>
+        {% if summaries %}
+        <div class="mdiag-gridwrap">
+            <table class="mdiag-grid">
+                <tbody>
+                    {% for s in summaries %}
+                    <tr>
+                        <th scope="row">
+                            {{ s.name }}
+                            {% if s.deep %}<span class="mdiag-deep" title="Детальний журнал зв'язку увімкнено">детально</span>{% endif %}
+                        </th>
+                        <td>
+                            <div class="mdiag-bar">
+                                {% for n in s.cells %}
+                                {# Порожня комірка — теж відповідь («тут тримав»),
+                                   тому малюємо всі, а не лише ті, де рвалось. #}
+                                <span class="cell{% if n %} hit{% endif %}{% if n > 2 %} hot{% endif %}"
+                                      title="{{ n }}"></span>
+                                {% endfor %}
+                            </div>
+                        </td>
+                        <td class="mdiag-num">
+                            {% if s.outages %}<b class="mono">{{ s.outages }}</b>{% else %}<span class="mdiag-none">—</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="mdiag-axis">
+                <span>{{ edges[0].strftime('%d.%m %H:%M') }}</span>
+                <span>{{ edges[-1].strftime('%d.%m %H:%M') }}</span>
+            </div>
+        </div>
+        <p class="mdiag-hint">
+            Клітинка = {% if step_hours %}година{% else %}доба{% endif %}. Обрив
+            зараховується за часом виявлення, а не розмазується по тривалості:
+            питання тут — «коли рвалось», і довгий нічний обрив не має
+            зафарбувати пів доби так, ніби рвалось увесь час.
+            <b>Стовпчик, зафарбований у всіх рядках одразу</b>, — це мережа або
+            живлення, а не окремий ПК.
+        </p>
+        {% else %}
+        <p class="mdiag-none">Верстатів у переліку немає.</p>
+        {% endif %}
+    </section>
+
+    {# ── Підсумок ────────────────────────────────────────────────────────── #}
+    <section class="mdiag-sec">
+        <h2>Хто рветься</h2>
+        <table class="mdiag-sum">
+            <thead>
+                <tr>
+                    <th>Верстат</th><th>Обривів</th><th>Сумарно без зв'язку</th>
+                    <th>Найдовший</th><th>Останній</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in summaries %}
+                <tr>
+                    <td>{{ s.name }}{% if s.open_now %} <span class="mdiag-open">триває</span>{% endif %}</td>
+                    <td class="mono">{{ s.outages or '—' }}</td>
+                    <td class="mono">{{ (s.downtime_seconds // 60) ~ ' хв' if s.downtime_seconds else '—' }}</td>
+                    <td class="mono">{{ (s.longest_seconds // 60) ~ ' хв' if s.longest_seconds else '—' }}</td>
+                    <td class="mono">{{ s.last_at.strftime('%d.%m %H:%M') if s.last_at else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    {# ── Розбір ──────────────────────────────────────────────────────────── #}
+    <section class="mdiag-sec">
+        <h2>Чому рвалось</h2>
+        {% if not views %}
+        <p class="mdiag-none">
+            За це вікно обривів не було. Якщо зв'язок усе одно моргає — візьміть
+            вікно ширше або ввімкніть «Детальний журнал зв'язку» на потрібному
+            верстаті в Налаштуваннях → Обладнання.
+        </p>
+        {% endif %}
+        {% for v in views %}
+        {% set ex = v.explanation %}
+        <article class="mdiag-case">
+            <header>
+                <span class="mdiag-when mono">{{ v.detected_at.strftime('%d.%m %H:%M:%S') }}</span>
+                <span class="mdiag-who">{{ v.name }}</span>
+                <span class="mdiag-dur mono">
+                    {%- if v.is_open %}триває{% else %}{{ v.seconds // 60 }} хв {{ v.seconds % 60 }} с{% endif -%}
+                </span>
+            </header>
+            <h3>{{ ex.headline }}</h3>
+
+            {% if ex.proof %}
+            <ul class="mdiag-proof">
+                {% for line in ex.proof %}<li>{{ line }}</li>{% endfor %}
+            </ul>
+            {% endif %}
+
+            {# Що доказ НЕ доводить. Стоїть окремим блоком і НЕ ховається: саме
+               тут живе різниця між «знаємо» і «здається», і зʼїхавши в дрібний
+               сірий текст, вона читалась би як примітка. #}
+            {% if ex.doubt %}
+            <ul class="mdiag-doubt">
+                {% for line in ex.doubt %}<li>{{ line }}</li>{% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if ex.probe_rows %}
+            <table class="mdiag-probe">
+                <caption>Відповіді портів у момент обриву</caption>
+                <tbody>
+                    {% for row in ex.probe_rows %}
+                    <tr class="p-{{ row.result }}">
+                        <td class="mono">{{ row.port }}</td>
+                        <td>{{ probe_words.get(row.result, row.result) }}{% if row.detail %} · {{ row.detail }}{% endif %}</td>
+                        <td class="mono">{{ row.ms }} мс</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+
+            {% if ex.actions %}
+            <ol class="mdiag-actions">
+                {% for step in ex.actions %}<li>{{ step }}</li>{% endfor %}
+            </ol>
+            {% endif %}
+
+            <details class="mdiag-raw">
+                <summary>Сирі дані</summary>
+                <dl>
+                    <dt>Текст помилки</dt><dd class="mono">{{ v.error }}</dd>
+                    <dt>Остання відповідь до обриву</dt>
+                    <dd class="mono">{{ v.started_at.strftime('%d.%m %H:%M:%S') if v.started_at else 'не відповідав жодного разу з моменту запуску' }}</dd>
+                    <dt>Невдалих опитувань</dt><dd class="mono">{{ v.failed_polls or '—' }}</dd>
+                    <dt>Клас</dt><dd class="mono">{{ v.cause }}</dd>
+                </dl>
+                {% if v.trail %}
+                <p class="mdiag-trailhead">Як мінявся текст помилки за цей обрив:</p>
+                <ul class="mdiag-trail">
+                    {% for item in v.trail %}
+                    <li><span class="mono">{{ item.at }}</span> {{ item.error }}</li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </details>
+        </article>
+        {% endfor %}
+    </section>
+</main>
+{% endblock %}

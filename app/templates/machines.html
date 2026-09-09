@@ -20,9 +20,14 @@
             <h1>Верстати</h1>
             <p class="fu-sub">Тільки перегляд · кадр раз на {{ poll_seconds }} с</p>
         </div>
-        <form hx-post="/machines/refresh" hx-target="#machine-cards" hx-swap="innerHTML">
-            <button type="submit" class="btn">Оновити зараз</button>
-        </form>
+        <div class="fu-bar-acts">
+            {# Журнал обривів — не тут, а окремим екраном: це розбір після
+               факту, а цей екран дивляться, щоб побачити верстат зараз. #}
+            <a class="btn" href="/machines/diag">Журнал зв'язку</a>
+            <form hx-post="/machines/refresh" hx-target="#machine-cards" hx-swap="innerHTML">
+                <button type="submit" class="btn">Оновити зараз</button>
+            </form>
+        </div>
     </div>
 
     {# Банер калібрування ЖИВЕ В НАЛАШТУВАННЯХ (розділ «Верстати»), а не тут.

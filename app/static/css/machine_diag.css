@@ -1,0 +1,116 @@
+/* machine_diag.css — журнал обривів зв'язку з верстатами (/machines/diag).
+   Підключається ЛИШЕ цим екраном (block extra_head), як furnaces.css: у
+   base.html його немає, тож у спільний каскад він не втручається. Усе скоуплено
+   під `.mdiag` — імена тут короткі, і без скоупу вони рано чи пізно зіткнулись
+   би з чужим екраном (CSS у проєкті глобальний). */
+
+.mdiag .mdiag-windows{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.mdiag .mdiag-win{
+  display:inline-flex;align-items:center;height:32px;padding:0 13px;border-radius:999px;
+  border:1px solid var(--line);background:var(--field);color:var(--ink-2);
+  font-size:var(--fs-2);font-weight:500;text-decoration:none;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.mdiag .mdiag-win:hover{color:var(--ink);border-color:var(--line-2);opacity:1}
+.mdiag .mdiag-win.on{background:rgba(var(--accent-base-rgb), .16);border-color:rgba(var(--accent-rgb), .42);color:var(--accent-c)}
+
+.mdiag .mdiag-sec{margin:22px 0 0}
+.mdiag .mdiag-sec > h2{font-family:var(--font-head);font-size:var(--fs-4);font-weight:600;margin:0 0 12px;letter-spacing:-.005em}
+.mdiag .mdiag-none{color:var(--ink-3);font-size:var(--fs-2)}
+.mdiag .mono{font-family:var(--font-mono);font-variant-ligatures:none}
+
+/* ── Смуга ──────────────────────────────────────────────────────────────────
+   Рядок на верстат, комірки вирівняні по часу між рядками. Саме це
+   вирівнювання і є змістом: зафарбований стовпчик у ВСІХ рядках означає
+   мережу або живлення, а не окремий ПК. Тому ширина комірок однакова й
+   тягнеться (1fr), а не задана в пікселях. */
+.mdiag .mdiag-gridwrap{overflow-x:auto;scrollbar-width:thin}
+.mdiag .mdiag-grid{width:100%;min-width:520px;border-collapse:collapse}
+.mdiag .mdiag-grid th[scope="row"]{
+  text-align:left;font-weight:500;font-size:var(--fs-2);color:var(--ink-2);
+  padding:5px 12px 5px 0;white-space:nowrap;
+}
+.mdiag .mdiag-grid td{padding:5px 0}
+.mdiag .mdiag-num{width:44px;text-align:right;padding-left:12px !important;font-size:var(--fs-1);color:var(--ink-2)}
+.mdiag .mdiag-bar{display:flex;gap:2px;width:100%}
+.mdiag .mdiag-bar .cell{
+  flex:1 1 0;min-width:4px;height:20px;border-radius:3px;
+  background:var(--card-2);box-shadow:inset 0 0 0 1px var(--line);
+}
+/* Три рівні, не градієнт: питання дискретне («рвалось / рвалось часто»), а
+   плавна шкала на двадцяти комірках читається як шум. */
+.mdiag .mdiag-bar .cell.hit{background:rgba(var(--warn-rgb), .55);box-shadow:inset 0 0 0 1px rgba(var(--warn-rgb), .7)}
+.mdiag .mdiag-bar .cell.hot{background:rgba(var(--alarm-rgb), .7);box-shadow:inset 0 0 0 1px rgba(var(--alarm-rgb), .85)}
+.mdiag .mdiag-axis{display:flex;justify-content:space-between;margin-top:6px;font-family:var(--font-mono);font-size:var(--fs-0);color:var(--ink-3)}
+.mdiag .mdiag-hint{margin:10px 0 0;font-size:var(--fs-1);color:var(--ink-3);line-height:1.5;max-width:74ch}
+.mdiag .mdiag-deep{
+  margin-left:7px;font-family:var(--font-mono);font-size:var(--fs-0);letter-spacing:.06em;
+  padding:1px 6px;border-radius:4px;border:1px solid rgba(var(--accent-rgb), .32);
+  color:var(--accent-c);background:rgba(var(--accent-base-rgb), .1);
+}
+
+/* ── Підсумок ─────────────────────────────────────────────────────────────── */
+.mdiag .mdiag-sum{width:100%;border-collapse:collapse;font-size:var(--fs-2)}
+.mdiag .mdiag-sum th{
+  text-align:left;font-size:var(--fs-0);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding:0 12px 8px 0;border-bottom:1px solid var(--line);
+}
+.mdiag .mdiag-sum td{padding:9px 12px 9px 0;border-bottom:1px solid var(--card-2);color:var(--ink-2)}
+.mdiag .mdiag-sum td:first-child{color:var(--ink)}
+.mdiag .mdiag-open{
+  margin-left:6px;font-size:var(--fs-0);padding:1px 7px;border-radius:999px;
+  border:1px solid rgba(var(--alarm-rgb), .4);background:rgba(var(--alarm-rgb), .14);color:var(--alarm);
+}
+
+/* ── Розбір ───────────────────────────────────────────────────────────────── */
+.mdiag .mdiag-case{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
+  box-shadow:var(--glow);padding:15px 18px;margin-bottom:12px;
+}
+.mdiag .mdiag-case > header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin-bottom:6px}
+.mdiag .mdiag-when{font-size:var(--fs-1);color:var(--ink-3)}
+.mdiag .mdiag-who{font-size:var(--fs-2);color:var(--ink);font-weight:500}
+.mdiag .mdiag-dur{margin-left:auto;font-size:var(--fs-1);color:var(--ink-2)}
+.mdiag .mdiag-case > h3{font-family:var(--font-head);font-size:var(--fs-3);font-weight:600;margin:0 0 10px;letter-spacing:-.005em}
+.mdiag .mdiag-proof,.mdiag .mdiag-doubt,.mdiag .mdiag-actions{margin:0 0 10px;padding-left:20px;line-height:1.55;font-size:var(--fs-2)}
+.mdiag .mdiag-proof{color:var(--ink)}
+.mdiag .mdiag-proof li{margin-bottom:5px}
+/* «Чого це НЕ доводить» — окремим кольором і НЕ дрібним шрифтом: саме тут
+   різниця між «знаємо» і «здається», і в сірій примітці вона б загубилась. */
+.mdiag .mdiag-doubt{
+  color:var(--ink-2);border-left:2px solid rgba(var(--warn-rgb), .5);
+  padding:8px 0 8px 18px;margin-left:2px;list-style-position:outside;
+}
+.mdiag .mdiag-doubt li{margin-bottom:5px}
+.mdiag .mdiag-actions{color:var(--ink-2)}
+.mdiag .mdiag-actions li{margin-bottom:5px}
+.mdiag .mdiag-actions li::marker{color:var(--accent-c);font-weight:600}
+
+.mdiag .mdiag-probe{border-collapse:collapse;margin:0 0 12px;font-size:var(--fs-1)}
+.mdiag .mdiag-probe caption{
+  text-align:left;font-size:var(--fs-0);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:600;padding-bottom:6px;
+}
+.mdiag .mdiag-probe td{padding:4px 16px 4px 0;color:var(--ink-2);border-bottom:1px solid var(--card-2)}
+.mdiag .mdiag-probe td:first-child{color:var(--ink);width:54px}
+/* Відмова — це ВІДПОВІДЬ, а не поломка: її шле сам ПК, отже він живий. Тому
+   вона зелена нарівні з «відкрито», а не червона, як інстинктивно хочеться. */
+.mdiag .mdiag-probe tr.p-open td,
+.mdiag .mdiag-probe tr.p-refused td{color:var(--accent-c)}
+.mdiag .mdiag-probe tr.p-silent td,
+.mdiag .mdiag-probe tr.p-error td{color:var(--ink-3)}
+
+.mdiag .mdiag-raw{font-size:var(--fs-1);color:var(--ink-3)}
+.mdiag .mdiag-raw summary{cursor:pointer;color:var(--ink-2)}
+.mdiag .mdiag-raw summary:hover{color:var(--ink)}
+.mdiag .mdiag-raw dl{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:10px 0 0}
+.mdiag .mdiag-raw dt{color:var(--ink-3)}
+.mdiag .mdiag-raw dd{margin:0;color:var(--ink-2);word-break:break-word}
+.mdiag .mdiag-trailhead{margin:12px 0 4px;color:var(--ink-3)}
+.mdiag .mdiag-trail{margin:0;padding-left:18px;line-height:1.5}
+.mdiag .mdiag-trail li{margin-bottom:3px;color:var(--ink-2)}
+
+@media (max-width:720px){
+  .mdiag .mdiag-case > header{gap:6px}
+  .mdiag .mdiag-dur{margin-left:0}
+}
