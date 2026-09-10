@@ -163,6 +163,27 @@ def answered_from_probe(rows: list[dict[str, Any]]) -> Optional[bool]:
     return False
 
 
+def answered_from_verdict(
+    verdict: Optional[str], host: str, port: int
+) -> Optional[bool]:
+    """Та сама відповідь «ПК озвався / ні», але з вироку звичайного режиму.
+
+    Вирок будує `machines._note_from_answer`, і звіряємо ми з тим самим
+    будівником, а не з копією рядка тут: зміниться формулювання — зміниться
+    в обох місцях разом. За входженням, не за рівністю (урок `classify`).
+    Не впізнали — None: вгадувати відповідь з чужого тексту не будемо.
+    """
+    if not verdict:
+        return None
+    from app.services import machines as _m
+
+    for answer in (True, False):
+        note = _m._note_from_answer(answer, host, port)
+        if note and note in verdict:
+            return answer
+    return None
+
+
 def dump_probe(rows: Optional[list[dict[str, Any]]]) -> Optional[str]:
     if not rows:
         return None
@@ -237,6 +258,16 @@ def explain(
     """
     rows = load_probe(probe_json)
     answered = answered_from_probe(rows)
+    # Звичайний режим теж стукає в сусідні порти — лише не зберігає покрокових
+    # рядків, від стуку лишається тільки вирок. Досі відповідь бралась ЛИШЕ з
+    # рядків, і на кожному звичайному обриві розбір сам собі суперечив: «ПК у
+    # мережі озивається» (вирок) — і рядком нижче «стук не робився, чи живий
+    # ПК — невідомо», а поради про профіль мережі губились (10.09.26, 150i і
+    # 250i). Спізнілий вирок описує момент ПІСЛЯ обриву — доказом не береться.
+    from_verdict = False
+    if answered is None and not probe_late:
+        answered = answered_from_verdict(probe_verdict, host, port)
+        from_verdict = answered is not None
     proof: list[str] = []
     doubt: list[str] = []
     actions: list[str] = []
@@ -348,7 +379,9 @@ def explain(
         proof.append(strip_wrap(error) or "Причина не розпізнана.")
         actions.append("Показати цей текст розробнику — клас поломки новий.")
 
-    if probe_verdict and probe_verdict not in " ".join(proof):
+    # Вирок, з якого вже виведено відповідь, свій факт сказав рядком вище —
+    # удруге тими ж словами він лише подовжує картку.
+    if probe_verdict and not from_verdict and probe_verdict not in " ".join(proof):
         proof.append(probe_verdict)
     if probe_late:
         doubt.append(
@@ -400,9 +433,19 @@ class OutageView:
 
     @property
     def seconds(self) -> Optional[int]:
+        """Скільки верстат був без зв'язку: від ОСТАННЬОЇ відповіді, а не від
+        моменту, коли ми обрив визнали.
+
+        Визнаємо його лише на третій невдачі поспіль (PROBLEM_AFTER_FAILURES),
+        тобто через 15-25 с після того, як верстат замовк. Відлік від
+        `detected_at` мовчки скидав ці секунди з кожного обриву (10.09.26:
+        150i замовк о 08:52:28, а екран рахував з 08:52:51). Невідома остання
+        відповідь (обрив із самого старту) — тоді лишається лише `detected_at`.
+        """
         if self.ended_at is None:
             return None
-        return max(0, int((self.ended_at - self.detected_at).total_seconds()))
+        start = self.started_at or self.detected_at
+        return max(0, int((self.ended_at - start).total_seconds()))
 
 
 def view_of(event: Any) -> OutageView:

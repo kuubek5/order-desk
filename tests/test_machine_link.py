@@ -351,6 +351,62 @@ def test_no_probe_at_all_admits_it_and_offers_the_checkbox():
     assert "невідомо" in doubt and "Детальний журнал" in doubt
 
 
+def test_plain_mode_verdict_is_the_answer_not_a_contradiction():
+    """10.09.26, 150i і 250i: звичайний режим стукав і записав вирок «ПК
+    озивається», а розбір, не знайшовши покрокових рядків, писав поруч «стук
+    не робився, чи живий ПК — невідомо» і губив пораду про профіль мережі."""
+    host, port = "192.168.1.82", 8765
+    verdict = service._note_from_answer(True, host, port)
+    ex = machine_link.explain(
+        cause=machine_link.CAUSE_PORT_SILENT, error="", host=host, port=port,
+        probe_verdict=verdict,
+    )
+    assert "невідомо" not in " ".join(ex.doubt)
+    assert any("профіль мережі" in step for step in ex.actions)
+    assert verdict not in ex.proof, "той самий факт удруге іншими словами"
+
+
+def test_plain_mode_silent_verdict_names_both_explanations():
+    host, port = "192.168.1.82", 8765
+    ex = machine_link.explain(
+        cause=machine_link.CAUSE_PORT_SILENT, error="", host=host, port=port,
+        probe_verdict=service._note_from_answer(False, host, port),
+    )
+    assert "НЕ доводить" in " ".join(ex.doubt)
+
+
+def test_a_late_plain_verdict_is_not_taken_as_proof():
+    """Стук, що завершився після відновлення, описує вже живий ПК."""
+    host, port = "192.168.1.82", 8765
+    ex = machine_link.explain(
+        cause=machine_link.CAUSE_PORT_SILENT, error="", host=host, port=port,
+        probe_verdict=service._note_from_answer(True, host, port), probe_late=True,
+    )
+    assert not any("профіль мережі" in step for step in ex.actions)
+    assert "невідомо" in " ".join(ex.doubt)
+
+
+def test_an_unknown_verdict_text_is_not_guessed():
+    assert machine_link.answered_from_verdict("щось зовсім інше", "10.0.0.9", 8765) is None
+    assert machine_link.answered_from_verdict(None, "10.0.0.9", 8765) is None
+
+
+def test_outage_length_counts_from_the_last_answer_not_from_detection():
+    """Обрив визнаємо на третій невдачі, через 15-25 с після того, як верстат
+    замовк. Ці секунди — теж обрив (10.09.26: 08:52:28 → виявлено 08:52:51)."""
+    last_ok = datetime(2026, 9, 10, 8, 52, 28)
+    event = MachineLinkEvent(
+        id=1, host="192.168.1.82-8765", name="150i-Olejka",
+        started_at=last_ok, detected_at=last_ok + timedelta(seconds=23),
+        ended_at=last_ok + timedelta(seconds=23 + 137),
+        error="", cause=machine_link.CAUSE_PORT_SILENT, failed_polls=16,
+    )
+    assert machine_link.view_of(event).seconds == 160
+
+    event.started_at = None
+    assert machine_link.view_of(event).seconds == 137
+
+
 def test_refused_probe_counts_as_an_answer():
     """Відмова — така сама відповідь, як згода: її шле сам ПК."""
     rows = [
