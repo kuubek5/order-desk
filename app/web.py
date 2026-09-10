@@ -515,8 +515,12 @@ def _sheet_backup_worker(stop_event: Event) -> None:
 
 
 def _telegram_inbound_worker(stop_event: Event) -> None:
-    from app.services.telegram_bot import inbound_worker
+    from app.routers.settings.connections import collect_support_report
+    from app.services.telegram_bot import inbound_worker, set_report_builder
 
+    # Кнопка «🩺 Стан системи» власника: звіт збирають проби з роутера
+    # налаштувань, а сервіс бота роутери не імпортує — тож даємо йому функцію.
+    set_report_builder(collect_support_report)
     inbound_worker(stop_event)
 
 

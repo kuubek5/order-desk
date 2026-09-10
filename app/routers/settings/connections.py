@@ -398,6 +398,22 @@ def settings_selfcheck(request: Request, db: Session = Depends(get_db)):
     )
 
 
+def collect_support_report(db: Session) -> tuple[str, list]:
+    """Самоперевірка + звіт для розробника: (текст звіту, наслідки проб).
+
+    Одне місце для двох входів — кнопки «Звіт для розробника» і кнопки
+    «🩺 Стан системи» в Telegram-боті власника (його реєструє web.py через
+    `telegram_bot.set_report_builder`: сервіс бота не імпортує роутери).
+    Проби ходять у мережу й на диск — викликати НЕ з event loop."""
+    from .overview import check_path_status
+
+    steps = build_selfcheck_steps(
+        db, check_path=check_path_status, probe_imap=_probe_imap_login
+    )
+    results = list(run_selfcheck_steps(steps))
+    return build_support_report(db, selfcheck_results=results), results
+
+
 @router.get("/settings/report.txt")
 def settings_support_report(request: Request, db: Session = Depends(get_db)):
     """«Звіт для розробника» одним текстовим файлом.
@@ -414,15 +430,9 @@ def settings_support_report(request: Request, db: Session = Depends(get_db)):
 
     Тільки читає. Лише адмін і лише з цього ПК — як решта дій у налаштуваннях.
     """
-    from .overview import check_path_status
-
     require_settings_admin(request, db)
 
-    steps = build_selfcheck_steps(
-        db, check_path=check_path_status, probe_imap=_probe_imap_login
-    )
-    results = list(run_selfcheck_steps(steps))
-    text = build_support_report(db, selfcheck_results=results)
+    text, results = collect_support_report(db)
     name = support_report_filename()
     logger.info("Зібрано звіт для розробника (%d проб)", len(results))
     return Response(

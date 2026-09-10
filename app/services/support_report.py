@@ -289,10 +289,13 @@ def _read_log_lines() -> list[str]:
     return data.splitlines()
 
 
-def _section_log_errors(lines: list[str]) -> list[str]:
-    out = _head(f"помилки в лозі (за {LOG_ERROR_HOURS} год)")
-    if not lines:
-        return out + [f"  файл лога не знайдено: {_log_path()}"]
+def recent_errors(lines: Optional[list[str]] = None) -> list[str]:
+    """Рядки ERROR/CRITICAL лога за останні LOG_ERROR_HOURS год.
+
+    Спільне для розділу звіту й короткого підсумку в Telegram-боті — щоб
+    «помилок 3» у повідомленні й у файлі рахувались однаково."""
+    if lines is None:
+        lines = _read_log_lines()
     cutoff = datetime.now() - timedelta(hours=LOG_ERROR_HOURS)
     hits: list[str] = []
     for line in lines:
@@ -306,6 +309,14 @@ def _section_log_errors(lines: list[str]) -> list[str]:
             continue
         if when >= cutoff:
             hits.append(line)
+    return hits
+
+
+def _section_log_errors(lines: list[str]) -> list[str]:
+    out = _head(f"помилки в лозі (за {LOG_ERROR_HOURS} год)")
+    if not lines:
+        return out + [f"  файл лога не знайдено: {_log_path()}"]
+    hits = recent_errors(lines)
     if not hits:
         return out + ["  помилок немає"]
     for line in hits[-LOG_ERROR_LINES:]:

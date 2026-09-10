@@ -953,3 +953,111 @@ def test_handout_day_counts_like_the_handout_header():
     assert (stats.units, stats.units_done) == (7, 3)
     assert "Клієнтів видано: <b>1</b> з 3" in text and "Ще чекає: <b>2 роботи</b>" in text
     assert "раніших" not in text  # старий хвіст свідомо не показуємо
+
+
+# ── «🩺 Стан системи» ───────────────────────────────────────────────────────
+# Власник тисне кнопку (або пише «звіт») — у фоні збирається той самий «Звіт
+# для розробника» і приходить двома новими повідомленнями: підсумок + файл.
+
+
+class _Result:
+    def __init__(self, name, ok, warn=False, detail=""):
+        self.name, self.ok, self.warn, self.detail = name, ok, warn, detail
+
+
+def _run_report(monkeypatch, db, update):
+    """handle_update + дочекатись фонового потоку звіту. Повертає (дії, що пішло в API)."""
+    import threading as _th
+
+    calls = []
+
+    class FakeResp:
+        status_code = 200
+
+        def json(self):
+            return {"ok": True, "result": {"message_id": 1}}
+
+    class FakeSession:
+        def post(self, url, json=None, data=None, files=None, timeout=None):
+            calls.append((url.rsplit("/", 1)[-1], json or data, files))
+            return FakeResp()
+
+        def close(self):
+            pass
+
+    factory_engine = db.get_bind()
+    monkeypatch.setattr(bot, "_session_factory", lambda: (lambda: Session(factory_engine)))
+    monkeypatch.setattr(tg, "_new_session", lambda: FakeSession())
+    monkeypatch.setattr(
+        "app.services.support_report.recent_errors", lambda lines=None: ["2026-09-11 10:00:01 ERROR app: зламалось"]
+    )
+    bot.set_report_builder(lambda _db: ("ЗВІТ\nрядок", [_Result("Google", False, detail="немає доступу"), _Result("Пошта", True)]))
+    try:
+        actions = bot.handle_update(db, update)
+        for t in _th.enumerate():
+            if t.name == "kuubmill-tg-report":
+                t.join(timeout=10)
+    finally:
+        bot.set_report_builder(None)
+    return actions, calls
+
+
+def _threaded_session():
+    """Сесія на базі, яку можна читати й з фонового потоку звіту."""
+    from tests.conftest import make_memory_engine
+
+    return Session(make_memory_engine(check_same_thread=False))
+
+
+def test_owner_gets_a_summary_and_the_full_report_as_a_file(monkeypatch):
+    with _threaded_session() as db:
+        _enable_bot(db)
+        actions, calls = _run_report(monkeypatch, db, _press(CHAT, bot.REPORT_CALLBACK))
+    assert [a.method for a in actions] == ["answerCallbackQuery"]
+    assert "Збираю звіт" in actions[0].payload["text"]
+    methods = [c[0] for c in calls]
+    assert methods == ["sendMessage", "sendDocument"]
+    summary = calls[0][1]["text"]
+    assert "Самоперевірка: 1 з 2" in summary and "Google — немає доступу" in summary
+    assert "Помилок у лозі за добу: 1" in summary
+    filename, content, _ = calls[1][2]["document"]
+    assert filename.startswith("kuubmill-zvit_") and content == "ЗВІТ\nрядок".encode("utf-8")
+    assert calls[1][1]["chat_id"] == CHAT
+
+
+def test_owner_can_ask_for_the_report_with_a_word(monkeypatch):
+    with _threaded_session() as db:
+        _enable_bot(db)
+        actions, calls = _run_report(monkeypatch, db, _message(CHAT, "звіт"))
+    assert "Збираю звіт" in actions[0].payload["text"]
+    assert [c[0] for c in calls] == ["sendMessage", "sendDocument"]
+
+
+def test_member_and_warehouse_never_get_the_report(monkeypatch):
+    """У звіті стан усього ПК і лог — лише власнику, навіть з підробленою кнопкою."""
+    from app.models import TelegramMember
+
+    with _threaded_session() as db:
+        _enable_bot(db)
+        db.add(TelegramMember(chat_id="700", joined_at=T0))
+        db.add(TelegramMember(chat_id="900", joined_at=T0, role=bot.ROLE_WAREHOUSE))
+        db.commit()
+        for chat in ("700", "900"):
+            actions, calls = _run_report(monkeypatch, db, _press(chat, bot.REPORT_CALLBACK))
+            assert [a.method for a in actions] == ["answerCallbackQuery"]
+            assert "text" not in actions[0].payload
+            assert calls == []
+        buttons = [b["callback_data"] for row in bot.keyboard("home", admin=False)["inline_keyboard"] for b in row]
+        assert bot.REPORT_CALLBACK not in buttons
+        assert bot.REPORT_CALLBACK in [b["callback_data"] for row in bot.keyboard("home")["inline_keyboard"] for b in row]
+
+
+def test_second_press_while_building_does_not_start_another(monkeypatch):
+    bot.set_report_builder(lambda _db: ("x", []))
+    assert bot._report_lock.acquire(blocking=False)
+    try:
+        assert bot.start_report(CHAT) is False
+    finally:
+        bot._report_lock.release()
+        bot.set_report_builder(None)
+    assert bot.start_report(CHAT) is None, "без зареєстрованого збирача — чесне «недоступно»"

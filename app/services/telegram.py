@@ -223,6 +223,31 @@ def api_call(
     return ApiResult(False, resp.status_code, None, f"HTTP {resp.status_code} {detail}".strip())
 
 
+def send_document(
+    session, token: str, chat_id: str, filename: str, content: bytes, caption: str | None = None
+) -> ApiResult:
+    """Файл одним повідомленням (sendDocument, multipart). Не піднімає
+    винятків; текст помилки — без токена, як у `api_call`."""
+    url = _API.format(token=token, method="sendDocument")
+    data = {"chat_id": chat_id}
+    if caption:
+        data["caption"] = caption[:_CAPTION_LIMIT]
+    try:
+        resp = session.post(
+            url, data=data, files={"document": (filename, content, "text/plain")}, timeout=_TIMEOUT
+        )
+    except Exception as exc:  # noqa: BLE001
+        return ApiResult(False, None, None, _net_error(exc, token))
+    try:
+        body = resp.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    if resp.status_code == 200 and body.get("ok"):
+        return ApiResult(True, 200, body.get("result"), None)
+    detail = str(body.get("description", "") or "").replace(token, "***")
+    return ApiResult(False, resp.status_code, None, f"HTTP {resp.status_code} {detail}".strip())
+
+
 def discover_chat_id(db: Session) -> tuple[str | None, str | None]:
     """Знайти chat_id останнього приватного чату, що написав боту (getUpdates).
 

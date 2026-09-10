@@ -663,6 +663,9 @@ def keyboard(view: str, notify: bool = True, admin: bool = True) -> dict:
         rows = [
             [button("🔥 Пічки", "furnaces"), button("⚙️ Верстати", "machines"), button("🖨 Sisma", "sisma")],
             [button("🧾 Роботи", "orders"), button("📦 Видача", "handout")],
+            # Не вид, а дія: звіт збирається у фоні й приходить НОВИМИ
+            # повідомленнями (підсумок + файл), меню лишається на місці.
+            [{"text": "🩺 Стан системи", "callback_data": REPORT_CALLBACK}],
         ]
     else:
         rows = [[button("🔥 Пічки", "furnaces"), button("🖨 Sisma", "sisma")]]
@@ -885,6 +888,135 @@ WAREHOUSE_WELCOME = (
 WAREHOUSE_ONLY = f"{KMILL_PREFIX}: цей чат лише для замовлень дисків — меню тут немає."
 
 
+# ── «🩺 Стан системи»: звіт власнику ───────────────────────────────────────
+# Кнопка в меню власника (або текст /report, «звіт»). Звіт — той самий, що
+# «Звіт для розробника» в налаштуваннях: самоперевірка, налаштування без
+# секретів, база, журнали, помилки й хвіст лога. Приходить двома НОВИМИ
+# повідомленнями: короткий підсумок (що не так) і повний звіт файлом.
+#
+# Збирається у ФОНОВОМУ потоці: проби ходять у мережу й на диск (Google,
+# пошта, теки) і можуть тривати десятки секунд, а слухач меню за цей час не
+# має замовкати. Один звіт за раз — повторне натискання лише каже «уже
+# збираю». Будувати звіт сервіс бота сам не вміє (проби живуть у роутері
+# налаштувань), тому його реєструє web.py: `set_report_builder`.
+
+REPORT_CALLBACK = "r:report"
+_REPORT_COMMANDS = ("/report", "/zvit", "/звіт", "звіт", "стан", "стан системи")
+_report_builder: Optional[Callable[[Session], tuple[str, list]]] = None
+_report_lock = threading.Lock()
+# Скільки провалених/сумнівних проб і рядків помилок показати в підсумку —
+# решта у файлі. Повідомлення має читатись з екрана блокування.
+REPORT_SUMMARY_ITEMS = 6
+
+
+def set_report_builder(builder: Optional[Callable[[Session], tuple[str, list]]]) -> None:
+    global _report_builder
+    _report_builder = builder
+
+
+def _is_report_command(text: str) -> bool:
+    word = (text or "").strip().lower()
+    return word.split("@", 1)[0] in _REPORT_COMMANDS
+
+
+def _report_ack(started: Optional[bool]) -> str:
+    if started is None:
+        return "Звіт недоступний у цій збірці"
+    if started:
+        return "🩺 Збираю звіт — до хвилини, прийде окремими повідомленнями"
+    return "Звіт уже збирається — зачекайте"
+
+
+def start_report(chat_id: str) -> Optional[bool]:
+    """Запустити звіт у фоні. True — запущено, False — уже йде, None —
+    будувати нема чим (не зареєстровано)."""
+    if _report_builder is None:
+        return None
+    if not _report_lock.acquire(blocking=False):
+        return False
+    thread = threading.Thread(target=_report_job, args=(chat_id,), name="kuubmill-tg-report", daemon=True)
+    try:
+        thread.start()
+    except Exception:  # noqa: BLE001
+        _report_lock.release()
+        raise
+    return True
+
+
+def report_summary(results: list, errors: list[str], now: Optional[datetime] = None) -> str:
+    """Короткий підсумок звіту для Telegram (parse_mode=HTML)."""
+    from app.__version__ import VERSION
+
+    now = now or datetime.now()
+    lines = [f"<b>{KMILL_PREFIX}</b> · 🩺 Стан системи · {now:%d.%m %H:%M}", f"Версія {_e(VERSION)}"]
+    if results:
+        passed = sum(1 for r in results if r.ok)
+        bad = [r for r in results if not r.ok]
+        warn = [r for r in results if r.ok and r.warn]
+        mark = "✅" if not bad else "❌"
+        lines.append(f"{mark} Самоперевірка: {passed} з {len(results)}")
+        for r in (bad + warn)[:REPORT_SUMMARY_ITEMS]:
+            icon = "❌" if not r.ok else "⚠️"
+            lines.append(f"{icon} {_e(r.name)} — {_e((r.detail or '')[:160])}")
+    if errors:
+        lines.append(f"❗ Помилок у лозі за добу: {len(errors)}")
+        for line in errors[-3:]:
+            lines.append(f"• <code>{_e(line[:200])}</code>")
+    else:
+        lines.append("✅ Помилок у лозі за добу немає")
+    lines.append("Повний звіт — файлом нижче.")
+    return "\n".join(lines)
+
+
+def _report_job(chat_id: str) -> None:
+    from app.services.support_report import recent_errors, report_filename
+
+    session = None
+    token: Optional[str] = None
+    try:
+        SessionLocal = _session_factory()
+        with SessionLocal() as db:
+            token = telegram.get_bot_token(db)
+            builder = _report_builder
+            if not token or builder is None:
+                return
+            text, results = builder(db)
+        summary = report_summary(results, recent_errors())
+        session = telegram._new_session()
+        sent = telegram.api_call(
+            session, token, "sendMessage",
+            {"chat_id": chat_id, "text": summary, "parse_mode": "HTML", "disable_web_page_preview": True},
+        )
+        if not sent.ok:
+            _log_throttled("report", "telegram-бот: підсумок звіту не надіслано: %s", sent.error)
+        doc = telegram.send_document(
+            session, token, chat_id, report_filename(), text.encode("utf-8"),
+            caption="Звіт KuubMill — секретів у файлі немає",
+        )
+        if not doc.ok:
+            _log_throttled("report-doc", "telegram-бот: файл звіту не надіслано: %s", doc.error)
+    except Exception:  # noqa: BLE001 — фоновий потік не має падати мовчки й валити застосунок
+        logger.exception("telegram-бот: не вдалось зібрати звіт стану системи")
+        # Мовчазна кнопка гірша за зламану: власник мусить знати, що звіту не буде.
+        if token:
+            try:
+                if session is None:
+                    session = telegram._new_session()
+                telegram.api_call(session, token, "sendMessage", {
+                    "chat_id": chat_id,
+                    "text": f"{KMILL_PREFIX}: звіт зібрати не вдалось — причина в лозі KuubMill.",
+                })
+            except Exception:  # noqa: BLE001
+                pass
+    finally:
+        if session is not None:
+            try:
+                session.close()
+            except Exception:  # noqa: BLE001
+                pass
+        _report_lock.release()
+
+
 @dataclass
 class Action:
     """Один виклик Bot API, який треба зробити у відповідь на оновлення."""
@@ -960,6 +1092,11 @@ def handle_update(
             # Складу кнопок не шлемо; стара кнопка (людина була учасником до
             # того, як їй дали роль складу) нічого не відкриває.
             return [answer]
+        if data == REPORT_CALLBACK:
+            # Звіт — лише власнику: у ньому стан усього ПК, лог і журнали.
+            if who.is_owner:
+                answer.payload["text"] = _report_ack(start_report(update_chat))
+            return [answer]
         message = query.get("message") or {}
         kind, _, view = data.partition(":")
         # Вид, закритий для ролі, не відкривається навіть підробленою
@@ -1014,6 +1151,8 @@ def handle_update(
             member.name = _display_name(sender) or member.name
             member.username = sender.get("username") or member.username
             db.commit()
+    if who.is_owner and _is_report_command(message.get("text") or ""):
+        return [Action("sendMessage", {"chat_id": update_chat, "text": _report_ack(start_report(update_chat))})]
     if who.is_warehouse:
         # Склад меню не має: на команду — одне коротке пояснення без жодних
         # даних цеху, на звичайний текст («прийнято», «ок» у відповідь на
