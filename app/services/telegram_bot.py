@@ -691,15 +691,27 @@ OWNER_NOTIFY_KEY = "telegram_owner_notify"
 INVITE_TTL = timedelta(hours=24)
 
 
+# Склад: учасник, який отримує ЛИШЕ замовлення дисків (екран «Нові диски»).
+# Меню пічок, верстатів, Sisma й робіт йому недоступне, сповіщення печей не
+# йдуть — рішення власника 10.09.26.
+ROLE_WAREHOUSE = "warehouse"
+MEMBER_ROLES = ("", ROLE_WAREHOUSE)
+
+
 @dataclass(frozen=True)
 class Recipient:
     chat_id: str
     notify: bool
     member_id: Optional[int] = None  # None — власник
+    role: str = ""
 
     @property
     def is_owner(self) -> bool:
         return self.member_id is None
+
+    @property
+    def is_warehouse(self) -> bool:
+        return self.role == ROLE_WAREHOUSE
 
 
 def owner_notify(db: Session) -> bool:
@@ -712,8 +724,34 @@ def recipients(db: Session) -> list[Recipient]:
     out = [Recipient(owner, owner_notify(db))] if owner else []
     for member in db.scalars(select(TelegramMember).order_by(TelegramMember.id)):
         if member.chat_id != owner:
-            out.append(Recipient(member.chat_id, bool(member.notify), member.id))
+            out.append(Recipient(member.chat_id, bool(member.notify), member.id, member.role or ""))
     return out
+
+
+def warehouse_members(db: Session) -> list[TelegramMember]:
+    """Хто отримує замовлення дисків. Власник сюди не входить ніколи."""
+    owner = telegram.get_chat_id(db)
+    return [
+        member
+        for member in db.scalars(
+            select(TelegramMember)
+            .where(TelegramMember.role == ROLE_WAREHOUSE)
+            .order_by(TelegramMember.id)
+        )
+        if member.chat_id != owner
+    ]
+
+
+def warehouse_blocker(db: Session) -> Optional[str]:
+    """Чому «Надіслати на склад» зараз неможливе. None — можна.
+
+    Текст іде просто під кнопку: оператор мусить знати, чому кнопка
+    сіра, і що «Замовлено без відправки» при цьому працює."""
+    if not bot_enabled(db):
+        return "Telegram-бот вимкнено або не налаштовано — надіслати на склад не вийде."
+    if not warehouse_members(db):
+        return "Склад не підключено до бота — адмін запрошує його в Налаштуваннях зворотного зв'язку."
+    return None
 
 
 def find_recipient(db: Session, chat_id: Optional[str]) -> Optional[Recipient]:
@@ -738,6 +776,7 @@ def new_invite(
     label: str = "",
     created_by_id: Optional[int] = None,
     now: Optional[datetime] = None,
+    role: str = "",
 ) -> TelegramInvite:
     """Одноразове запрошення. 128 біт випадковості: код не вгадати, а
     Telegram пропускає в `start` лише [A-Za-z0-9_-] до 64 символів —
@@ -746,6 +785,7 @@ def new_invite(
     invite = TelegramInvite(
         code=secrets.token_urlsafe(16),
         label=(label or "").strip()[:120],
+        role=role if role in MEMBER_ROLES else "",
         created_at=now,
         expires_at=now + INVITE_TTL,
         created_by_id=created_by_id,
@@ -820,6 +860,7 @@ def redeem_invite(
             name=_display_name(sender),
             username=(sender.get("username") or None),
             label=invite.label,
+            role=invite.role or "",
             notify=True,
             joined_at=now,
             invited_by_id=invite.created_by_id,
@@ -836,6 +877,12 @@ def redeem_invite(
 # Повідомлення, старші за це, не отримують відповіді: ПК цеху стояв уночі,
 # Рома тричі писав /start — вранці на нього не має впасти три меню.
 STALE_MESSAGE_SECONDS = 10 * 60
+
+WAREHOUSE_WELCOME = (
+    f"{KMILL_PREFIX}: доступ відкрито. Сюди приходитимуть замовлення дисків "
+    "на склад — більше нічого."
+)
+WAREHOUSE_ONLY = f"{KMILL_PREFIX}: цей чат лише для замовлень дисків — меню тут немає."
 
 
 @dataclass
@@ -909,6 +956,10 @@ def handle_update(
             return []
         data = str(query.get("data") or "")
         answer = Action("answerCallbackQuery", {"callback_query_id": query.get("id")})
+        if who.is_warehouse:
+            # Складу кнопок не шлемо; стара кнопка (людина була учасником до
+            # того, як їй дали роль складу) нічого не відкриває.
+            return [answer]
         message = query.get("message") or {}
         kind, _, view = data.partition(":")
         # Вид, закритий для ролі, не відкривається навіть підробленою
@@ -946,6 +997,8 @@ def handle_update(
             return []  # невідомий, використаний чи прострочений код — мовчання
         _notify_owner_of_join(db, member, local_now)
         db.commit()
+        if member.role == ROLE_WAREHOUSE:
+            return [Action("sendMessage", {"chat_id": update_chat, "text": WAREHOUSE_WELCOME})]
         lead = "Доступ до бота KuubMill відкрито. Кнопки нижче; 🔔 вимикає сповіщення."
         return [
             Action(
@@ -961,6 +1014,13 @@ def handle_update(
             member.name = _display_name(sender) or member.name
             member.username = sender.get("username") or member.username
             db.commit()
+    if who.is_warehouse:
+        # Склад меню не має: на команду — одне коротке пояснення без жодних
+        # даних цеху, на звичайний текст («прийнято», «ок» у відповідь на
+        # замовлення) — мовчання, щоб бот не відповідав на кожне «ок».
+        if (message.get("text") or "").lstrip().startswith("/"):
+            return [Action("sendMessage", {"chat_id": update_chat, "text": WAREHOUSE_ONLY})]
+        return []
     # Будь-який текст (зокрема /start і /menu) — головне меню новим
     # повідомленням. Окремих команд не заводимо: меню — це і є інтерфейс.
     return [
@@ -979,6 +1039,8 @@ def _notify_owner_of_join(db: Session, member: TelegramMember, now: datetime) ->
         return
     who = _e(member_title(member))
     extra = f" (@{_e(member.username)})" if member.username else ""
+    if member.role == ROLE_WAREHOUSE:
+        extra += " — як склад, отримуватиме замовлення дисків"
     enqueue(
         db,
         dedup_key=f"join:{member.chat_id}:{now:%Y%m%d%H%M%S}",
@@ -1136,7 +1198,8 @@ def broadcast(
     повтор іде лише тому, кому не дійшло. Повертає, скільки рядків лягло."""
     queued = 0
     for recipient in recipients(db):
-        if not recipient.notify:
+        # Складу — лише замовлення дисків, сповіщення печей і Sisma не йдуть.
+        if not recipient.notify or recipient.is_warehouse:
             continue
         if enqueue(
             db,
@@ -1149,6 +1212,107 @@ def broadcast(
         ):
             queued += 1
     return queued
+
+
+# ── Замовлення дисків на склад ─────────────────────────────────────────────
+# Екран «Нові диски»: «Надіслати на склад» = рядок черги кожному учаснику з
+# роллю складу. Скасування замовлення не шле нового повідомлення, а РЕДАГУЄ
+# те саме (закреслене + «скасовано HH:MM») — інакше в чаті складу лишилось
+# би «замовлення», яке треба пам'ятати, що скасоване (рішення власника).
+
+DISC_ORDER_KIND = "disc_order"
+DISC_ORDER_CANCEL_KIND = "disc_order_cancel"
+KEEP_KINDS = (DISC_ORDER_KIND, DISC_ORDER_CANCEL_KIND)
+# Замовлення, що не дійшло за три доби, уже не новина: склад за цей час
+# отримав наступне, а оператор бачить «не дійшло» в історії.
+DISC_ORDER_TTL = timedelta(days=3)
+
+
+def _disc_order_key(order_id: int, chat_id: str) -> str:
+    return f"disc-order:{order_id}@{chat_id}"
+
+
+def queue_disc_order(db: Session, *, order_id: int, text: str, now: datetime) -> int:
+    """Поставити замовлення в чергу кожному складу. Повертає скільки рядків.
+    Нічого не комітить."""
+    queued = 0
+    for member in warehouse_members(db):
+        if enqueue(
+            db,
+            dedup_key=_disc_order_key(order_id, member.chat_id),
+            kind=DISC_ORDER_KIND,
+            text=text,
+            now=now,
+            ttl=DISC_ORDER_TTL,
+            chat_id=member.chat_id,
+        ):
+            queued += 1
+    return queued
+
+
+def disc_order_rows(db: Session, order_ids: list[int]) -> dict[int, list[TelegramOutbox]]:
+    """Рядки черги (оригінали) замовлень — для стану доставки в історії."""
+    if not order_ids:
+        return {}
+    wanted = set(order_ids)
+    out: dict[int, list[TelegramOutbox]] = {}
+    for row in db.scalars(
+        select(TelegramOutbox)
+        .where(TelegramOutbox.kind == DISC_ORDER_KIND)
+        .order_by(TelegramOutbox.id)
+    ):
+        head = row.dedup_key.split("@", 1)[0]
+        try:
+            order_id = int(head.rsplit(":", 1)[1])
+        except (IndexError, ValueError):
+            continue
+        if order_id in wanted:
+            out.setdefault(order_id, []).append(row)
+    return out
+
+
+def queue_disc_order_cancel(
+    db: Session, *, order_id: int, text: str, now: datetime
+) -> int:
+    """Скасування: кожне ВЖЕ надіслане (чи ще в дорозі) повідомлення складу
+    редагується на `text`. Недоставлений оригінал списується — інакше склад
+    отримав би замовлення вже після скасування. Нічого не комітить.
+
+    Гонка «відправник саме зараз шле оригінал»: списання тоді не встигає, але
+    рядок редагування все одно лягає — і відправник виправить повідомлення,
+    щойно у оригіналу з'явиться `message_id` (див. `flush_outbox`)."""
+    queued = 0
+    for original in disc_order_rows(db, [order_id]).get(order_id, []):
+        if original.sent_at is None and original.gave_up_at is None:
+            _give_up(original, now, "замовлення скасовано до відправки")
+        exists = db.scalar(
+            select(TelegramOutbox.id).where(TelegramOutbox.edit_of_id == original.id)
+        )
+        if exists is not None:
+            continue
+        db.add(
+            TelegramOutbox(
+                dedup_key=f"disc-order-cancel:{order_id}@{original.chat_id}:{original.id}"[:200],
+                kind=DISC_ORDER_CANCEL_KIND,
+                text=text,
+                created_at=now,
+                expires_at=now + DISC_ORDER_TTL,
+                attempts=0,
+                chat_id=original.chat_id,
+                edit_of_id=original.id,
+            )
+        )
+        queued += 1
+    return queued
+
+
+# Відправник спить OUT_TICK_SECONDS між тіками. Замовлення, на яке оператор
+# щойно натиснув, не має чекати 15 секунд — кнопка будить відправника.
+_outbound_wake = threading.Event()
+
+
+def wake_outbound() -> None:
+    _outbound_wake.set()
 
 
 def _dedup_key(transition: Transition) -> str:
@@ -1237,14 +1401,35 @@ def _hopeless(result: ApiResult) -> bool:
     return result.status == 400 and "chat not found" in text
 
 
+def _message_id(result: ApiResult) -> Optional[int]:
+    """Id повідомлення з відповіді sendMessage — для пізнішого редагування."""
+    body = result.result
+    if isinstance(body, dict) and isinstance(body.get("message_id"), int):
+        return body["message_id"]
+    return None
+
+
+def _unchanged(result: ApiResult) -> bool:
+    """editMessageText з тим самим текстом Telegram відхиляє 400-кою
+    «message is not modified». Для нас це успіх: повідомлення вже таке."""
+    return result.status == 400 and "not modified" in (result.error or "").lower()
+
+
+# Редагування чекає, поки дійде оригінал, — але не вічно.
+EDIT_WAIT = timedelta(seconds=30)
+
+
 def flush_outbox(
     db: Session,
     send: Callable[[str, str], ApiResult],
     now: Optional[datetime] = None,
+    edit: Optional[Callable[[str, int, str], ApiResult]] = None,
 ) -> int:
-    """Донести все, що чекає. `send(chat_id, text)` — один sendMessage.
-    Комітить після КОЖНОГО рядка: падіння посеред пачки не має відправити
-    вже відправлене вдруге. Повертає скільки відправлено."""
+    """Донести все, що чекає. `send(chat_id, text)` — один sendMessage;
+    `edit(chat_id, message_id, text)` — один editMessageText для рядків, що
+    редагують уже надіслане (`edit_of_id`). Без `edit` такі рядки лишаються
+    чекати. Комітить після КОЖНОГО рядка: падіння посеред пачки не має
+    відправити вже відправлене вдруге. Повертає скільки відправлено."""
     now = now or datetime.now()
     owner = telegram.get_chat_id(db)
     allowed = {r.chat_id for r in recipients(db)}
@@ -1281,17 +1466,43 @@ def flush_outbox(
             _give_up(row, now, "адресата прибрано")
             db.commit()
             continue
-        result = send(chat, row.text)
+        if row.edit_of_id is not None:
+            if edit is None:
+                continue
+            original = db.get(TelegramOutbox, row.edit_of_id)
+            if original is None:
+                _give_up(row, now, "оригіналу вже немає в черзі")
+                db.commit()
+                continue
+            if original.message_id is None:
+                if original.sent_at is None and original.gave_up_at is None:
+                    # Оригінал ще в дорозі — редагувати нема чого. Спробуємо,
+                    # щойно дійде; попереду за id він і піде першим.
+                    row.next_attempt_at = now + EDIT_WAIT
+                    db.commit()
+                    continue
+                _give_up(row, now, "оригінал не надіслано — редагувати нічого")
+                db.commit()
+                continue
+            result = edit(chat, original.message_id, row.text)
+            if _unchanged(result):
+                result = ApiResult(True, result.status, None, None)
+        else:
+            result = send(chat, row.text)
         row.attempts = (row.attempts or 0) + 1
         if result.ok:
             row.sent_at = now
             row.last_error = None
             row.next_attempt_at = None
+            if row.edit_of_id is None:
+                row.message_id = _message_id(result)
             sent += 1
             db.commit()
             continue
         row.last_error = (result.error or "невідома помилка")[:300]
-        if _hopeless(result):
+        # Редагування, на яке Telegram відповів 400 («message to edit not
+        # found», «message can't be edited»), повтором не виправиться.
+        if _hopeless(result) or (row.edit_of_id is not None and result.status == 400):
             _give_up(row, now, "не доставити")
             db.commit()
             continue
@@ -1303,11 +1514,18 @@ def flush_outbox(
 
 
 def prune_outbox(db: Session, now: Optional[datetime] = None) -> int:
+    """Прибрати старі відправлені й списані рядки.
+
+    Замовлення дисків НЕ прибираються: з них читається стан доставки в
+    історії замовлень («надіслано 17:48» / «не дійшло»), а `message_id` —
+    потрібен, щоб скасувати БУДЬ-ЯКЕ замовлення, навіть місячної давності,
+    редагуванням того самого повідомлення складу. Їх одне-два на день."""
     now = now or datetime.now()
     cutoff = now - timedelta(days=OUTBOX_KEEP_DAYS)
     result = db.execute(
         delete(TelegramOutbox).where(
-            (TelegramOutbox.sent_at < cutoff) | (TelegramOutbox.gave_up_at < cutoff)
+            (TelegramOutbox.sent_at < cutoff) | (TelegramOutbox.gave_up_at < cutoff),
+            TelegramOutbox.kind.not_in(KEEP_KINDS),
         )
     )
     db.commit()
@@ -1526,8 +1744,24 @@ def outbound_tick(db: Session, *, flush_feedback: bool, now: Optional[datetime] 
                 },
             )
 
+        def edit(chat: str, message_id: int, text: str) -> ApiResult:
+            if not session_box:
+                session_box.append(telegram._new_session())
+            return telegram.api_call(
+                session_box[0],
+                token,
+                "editMessageText",
+                {
+                    "chat_id": chat,
+                    "message_id": message_id,
+                    "text": text,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": True,
+                },
+            )
+
         try:
-            flush_outbox(db, send, now)
+            flush_outbox(db, send, now, edit=edit)
         except Exception:  # noqa: BLE001
             db.rollback()
             logger.exception("telegram-бот: збій відправки черги")
@@ -1557,6 +1791,7 @@ def outbound_worker(stop_event: threading.Event) -> None:
     if stop_event.wait(20):
         return
     while not stop_event.is_set():
+        _outbound_wake.clear()
         mono = time.monotonic()
         flush_feedback = mono - started >= FEEDBACK_INITIAL_DELAY_SECONDS and (
             last_feedback is None or mono - last_feedback >= FEEDBACK_FLUSH_SECONDS
@@ -1571,7 +1806,13 @@ def outbound_worker(stop_event: threading.Event) -> None:
             logger.exception("telegram: збій тіку відправника")
         if flush_feedback:
             last_feedback = mono
-        stop_event.wait(OUT_TICK_SECONDS)
+        # Сон до наступного тіку, але з пробудженням: «Надіслати на склад»
+        # будить відправника, і замовлення йде за секунду, а не за 15.
+        # Скидається НА ПОЧАТКУ тіку (нижче в циклі): пробудження, що прийшло
+        # під час тіку, не губиться — сон одразу закінчиться.
+        for _ in range(OUT_TICK_SECONDS):
+            if stop_event.wait(1) or _outbound_wake.is_set():
+                break
 
 
 def reset_for_tests() -> None:

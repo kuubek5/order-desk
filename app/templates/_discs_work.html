@@ -1,0 +1,127 @@
+{# Робоча зона «Нових дисків»: ліворуч незамовлені диски по змінах, праворуч
+   кошик замовлення на склад. Свапається цілком після замовлення, скасування
+   й перечитування теки, а на подію `dz-work-refresh` (скасування з тоста)
+   перечитує себе сама. discs.js додає до кожного такого запиту зняті
+   галочки (`off`) і недописане (`note`) — оновлення не має їх губити.
+
+   Рядок диска: галочка · час · мітка матеріалу · позиція · файл · позначка
+   проблеми. Галочка зміни — уся зміна. Порядок — свіжі згори, як і в мокапі. #}
+{% from "_discs_macros.html" import discs_word, plural, pos, mcls, plane %}
+{% import "_discs_live.html" as live with context %}
+<div id="dz-work" class="dz-va" hx-get="/discs/work" hx-trigger="dz-work-refresh from:body" hx-swap="outerHTML">
+    <div class="dz-feed" aria-label="Незамовлені диски">
+        {% if error %}<p class="dz-note is-alarm" role="alert">{{ error }}</p>{% endif %}
+        {% if notice %}<p class="dz-note" role="status">{{ notice }}</p>{% endif %}
+        {% if pileup %}<p class="dz-note">{{ pileup }}</p>{% endif %}
+
+        {% for g in shift_groups %}
+        {% set on_count = g.rows|rejectattr('id', 'in', off_ids)|list|length %}
+        <section class="dz-shift" data-dz-shiftbox="{{ g.shift.key }}">
+            <label class="dz-shift-head">
+                <input type="checkbox" data-dz-shift="{{ g.shift.key }}"
+                       {% if on_count == g.rows|length %}checked{% endif %}
+                       {% if 0 < on_count < g.rows|length %}data-mixed{% endif %}
+                       aria-label="Уся {{ g.shift.title|lower }} {{ g.shift.when }}">
+                <b>{{ g.shift.title }}</b>
+                <span class="dz-mono dz-dim">{{ g.shift.when }} · {{ g.shift.span }}</span>
+                {% if g.live %}<span class="dz-pill dz-live">іде · до {{ g.shift.end.strftime('%H:%M') }}</span>{% endif %}
+                <span class="dz-sp"></span>
+                <span class="dz-dim">{{ discs_word(g.rows|length) }}</span>
+            </label>
+            {% for row in g.rows %}
+            {% set p = disc_pos(row) %}
+            {% set off = row.id in off_ids %}
+            {% set file = bare(row.file_name or row.rel_path) %}
+            <label class="dz-disc {{ mcls(p.group) }}{% if off %} is-off{% endif %}{% if needs_look(row) %} is-warn{% endif %}">
+                <input type="checkbox" data-dz-id="{{ row.id }}" {% if not off %}checked{% endif %}>
+                <span class="dz-t dz-mono">{{ row.first_seen_at.strftime('%H:%M') }}</span>
+                <span class="dz-mattag"><span class="dz-matdot" aria-hidden="true"></span>{{ p.tag }}</span>
+                <span class="dz-disc-main">
+                    {% if p.raw %}<span class="dz-dim">—</span>{% else %}{{ pos(p) }}{% endif %}
+                    <span class="dz-fn" title="{{ file }}">{{ file }}</span>
+                </span>
+                {% if p.raw %}<span class="dz-pill dz-alarm">назву не розібрано</span>
+                {% elif row.height_mismatch %}<span class="dz-pill dz-alarm" title="Висота в назві не збігається з текою — диск лежить не там">у теці {{ row.height_dir }}</span>
+                {% else %}<span></span>{% endif %}
+            </label>
+            {% endfor %}
+        </section>
+        {% else %}
+        <p class="dz-empty-feed">
+            {% if has_path %}Усе замовлено — нових дисків після останнього замовлення не брали.
+            {% else %}Шлях до теки CAM не задано — натисніть «Шлях…» унизу, і список зʼявиться сам.{% endif %}
+        </p>
+        {% endfor %}
+    </div>
+
+    {# Кошик — лише складання замовлення. Порядок зверху вниз: що замовити →
+       що вийде → дописати → одна головна дія. Історія — внизу, у вкладці. #}
+    <aside class="dz-basket" aria-label="Замовлення на склад">
+        <div class="dz-bk-head">
+            <h2>Замовлення на склад</h2>
+            <span class="dz-sp"></span>
+            <span class="dz-rchip{% if not warehouse_names %} is-off{% endif %}" tabindex="0"
+                  title="{% if warehouse_names %}Отримувач у Telegram: {{ warehouse_names|join(', ') }}. {% else %}Склад ще не підключено до бота. {% endif %}Склад отримує лише замовлення дисків — сповіщення про печі й верстати туди не йдуть. Змінюється в налаштуваннях бота.">
+                {{ plane() }} Склад
+            </span>
+        </div>
+
+        {% if scopes %}
+        <div class="dz-seg" role="group" aria-label="Що замовити">
+            {% for sc in scopes %}
+            <button type="button" data-dz-scope="{{ sc.ids|join(',') }}" aria-pressed="false">
+                {{ sc.label }}<span class="n">{{ sc.ids|length }}</span><small>{{ sc.sub }}</small>
+            </button>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {{ live.sum() }}
+
+        <div class="dz-ord" aria-label="Замовлення">
+            {{ live.groups() }}
+            <section class="dz-og dz-m-extra">
+                <div class="dz-og-h"><span class="dz-matdot" aria-hidden="true"></span>Дописати<span class="n">піде після дисків</span></div>
+                <textarea id="dz-note" rows="2" maxlength="1500" data-dz-note
+                          placeholder="Напр.: 6*2.5 zr (х2)" aria-label="Дописати до замовлення">{{ note }}</textarea>
+                {# Шаблон фрез від власника (disc_orders.BURS_TEMPLATE). Згорнутий
+                   за замовчуванням і компактний: група — одним рядком «6* zr:
+                   2.5 · 1.0 …» (власник, 10.09.26: 13 повних чипів займали пів
+                   кошика). Чип дописує ПОВНИЙ рядок «6*2.5 zr», повторний клік —
+                   «(х2)», «(х3)»… #}
+                <details class="dz-burs">
+                    <summary>+ Фрези</summary>
+                    <div class="dz-burs-body" role="group" aria-label="Фрези — дописати одним кліком">
+                        {% for row in burs %}
+                        <div class="dz-burs-row">
+                            {% if row.label %}<span class="dz-burs-lab">{{ row.label }}</span>{% endif %}
+                            {% for chip, line in row.chips %}<button type="button" data-dz-quick="{{ line }}" title="Дописати «{{ line }}»">{{ chip }}</button>{% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </details>
+                {% if recent_notes %}
+                <div class="dz-quick"><span>Недавнє:</span>
+                    {% for line in recent_notes %}<button type="button" data-dz-quick="{{ line }}">+ {{ line }}</button>{% endfor %}
+                </div>
+                {% endif %}
+            </section>
+        </div>
+
+        <details class="dz-plain" id="dz-prev">
+            <summary>Як побачить склад у Telegram</summary>
+            <div class="dz-tgb">
+                <div class="dz-tgb-h">KuubMill</div>
+                {{ live.preview() }}
+                <div class="dz-tgb-t">{{ live_now.strftime('%H:%M') }}</div>
+            </div>
+        </details>
+
+        {{ live.acts() }}
+
+        {% include "_discs_last.html" %}
+    </aside>
+</div>
+{% if oob %}
+<span class="dz-pill dz-mute dz-mono" id="dz-lastpill" hx-swap-oob="true">{% if last_order_at %}останнє замовлення {{ last_order_at.strftime('%d.%m %H:%M') }}{% else %}замовлень ще не було{% endif %}</span>
+{% endif %}

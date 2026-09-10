@@ -28,7 +28,6 @@ from fastapi import APIRouter
 
 from . import (
     backup,
-    blanks,
     connections,
     devices,
     feedback,
@@ -39,11 +38,6 @@ from . import (
     sections,
     update,
     users,
-)
-from .blanks import (
-    blanks_ordered,
-    rescan_blanks,
-    save_blanks_path,
 )
 from .backup import (
     _iso_to_tab_name,
@@ -148,10 +142,6 @@ __all__ = [
     "update_machine",
     "upload_machine_portrait",
     # notifications
-    # blanks
-    "save_blanks_path",
-    "rescan_blanks",
-    "blanks_ordered",
     "api_notify_state",
     "save_notification_prefs",
     # backup
@@ -195,7 +185,6 @@ router = APIRouter()
 # перестала б бачити плаский список. Префіксів і тегів тут усе одно немає.
 for _module in (
     overview,
-    blanks,
     connections,
     materials,
     devices,

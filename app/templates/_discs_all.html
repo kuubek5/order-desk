@@ -1,0 +1,77 @@
+{# Вкладка «Усі створені диски»: графік по днях (стек — цирконій знизу, ПММА
+   зверху), список по днях по три з «Показати ще». Фільтри й пошук живуть у
+   формі #dz-filter у шапці вкладок — вона НЕ свапається, тож поле пошуку не
+   губить курсор. Клік по стовпчику — лише цей день (discs.js ставить `day` у
+   формі й шле її). Точки відліку тут немає — вона не замовлення. #}
+{% from "_discs_macros.html" import discs_word, plural, pos, mcls %}
+{% set j = journal %}
+<div id="dz-all" class="dz-all">
+    <div class="dz-chart">
+        <div class="dz-chart-top">
+            <span class="dz-lg"><i class="z" aria-hidden="true"></i>Цирконій</span>
+            <span class="dz-lg"><i class="p" aria-hidden="true"></i>ПММА · PEEK</span>
+            {% if j.has_other %}<span class="dz-lg"><i class="o" aria-hidden="true"></i>Інше</span>{% endif %}
+            <span class="dz-sp"></span>
+            <span>
+            {% if jf.day %}
+                Показано лише {{ j.picked.weekday ~ ' ' ~ j.picked.day.strftime('%d.%m') if j.picked else jf.day }} ·
+                <button type="button" class="dz-btn dz-sm dz-ghost" data-dz-day="">усі дні</button>
+            {% elif j.total %}
+                {{ discs_word(j.total) }} з {{ j.since.strftime('%d.%m') }} · {{ j.waiting }} чекають замовлення · клік по стовпчику — лише цей день
+            {% endif %}
+            </span>
+        </div>
+        <div class="dz-bars" role="list" aria-label="Скільки дисків створено по днях">
+            {% for b in j.bars %}
+            <button type="button" role="listitem" class="dz-col{% if j.picked and j.picked.key == b.key %} is-on{% endif %}"
+                    data-dz-day="{{ b.key }}"
+                    data-tip="{{ b.weekday }} {{ b.day.strftime('%d.%m') }}|{{ b.total }}|{{ b.zr }}|{{ b.pmma }}|{{ b.other }}"
+                    aria-label="{{ b.weekday }} {{ b.day.strftime('%d.%m') }}: {{ discs_word(b.total) }}, цирконій {{ b.zr }}, ПММА {{ b.pmma }}{% if b.other %}, інше {{ b.other }}{% endif %}">
+                <span class="dz-plot">
+                    <span class="dz-bv">{{ b.total }}</span>
+                    <span class="dz-stack">
+                        {%- if b.other %}<span class="o" style="height:{{ j.px(b.other) }}px"></span>{% endif -%}
+                        {%- if b.pmma %}<span class="p" style="height:{{ j.px(b.pmma) }}px"></span>{% endif -%}
+                        {%- if b.zr %}<span class="z" style="height:{{ j.px(b.zr) }}px"></span>{% endif -%}
+                    </span>
+                </span>
+                <span class="dz-bd"><b>{{ b.weekday }}</b>{{ b.day.strftime('%d.%m') }}</span>
+            </button>
+            {% else %}
+            <span class="dz-dim">{% if j.total %}Нічого не знайдено.{% else %}Нових дисків ще не було — тут зʼявиться кожен, щойно CAM створить його в теці.{% endif %}</span>
+            {% endfor %}
+        </div>
+        <div class="dz-tip" data-dz-tip hidden></div>
+    </div>
+
+    <div class="dz-dl">
+        {% for g in j.days %}
+        <div class="dz-dl-day">
+            <b>{{ g.weekday }} {{ g.day.strftime('%d.%m') }}</b><span class="dz-dim">{{ discs_word(g.rows|length) }}</span>
+            <span class="dz-sp"></span>
+            <span class="dz-dim dz-mono dz-small">{% for tag, n in g.split %}{{ tag }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+        </div>
+        {% for item in g.rows %}
+        <div class="dz-dl-row {{ mcls(item.pos.group) }}">
+            <span class="dz-mono dz-dim">{{ item.row.first_seen_at.strftime('%H:%M') }}</span>
+            <span class="dz-mattag"><span class="dz-matdot" aria-hidden="true"></span>{{ item.pos.tag }}</span>
+            {{ pos(item.pos, 1, item.warn) }}
+            <span class="dz-fn" title="{{ item.file }}">{{ item.file }}</span>
+            {% if item.ordered_at %}
+            <span class="dz-pill dz-mute">замовлено {{ item.ordered_at.strftime('%d.%m %H:%M') }}</span>
+            {% else %}
+            <span class="dz-pill dz-wait">чекає замовлення</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        {% if j.total %}<div class="dz-empty">Нічого не знайдено — змініть фільтр чи пошук.</div>{% endif %}
+        {% endfor %}
+    </div>
+    {% if j.more_days %}
+    <div class="dz-more">
+        <button type="button" class="dz-btn dz-sm" data-dz-more>Показати ще {{ plural([j.more_days, 3]|min, 'день', 'дні', 'днів') }}</button>
+    </div>
+    {% endif %}
+</div>
+{% if oob %}<span class="n" id="dz-n-discs" hx-swap-oob="true">{{ j.total }}</span>{% endif %}

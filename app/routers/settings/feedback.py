@@ -161,11 +161,23 @@ def _flash(request: Request, kind: str, message: str) -> RedirectResponse:
 
 
 @router.post("/settings/feedback/invite")
-def create_bot_invite(request: Request, label: str = Form(""), db: Session = Depends(get_db)):
+def create_bot_invite(
+    request: Request,
+    label: str = Form(""),
+    warehouse: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """`warehouse` — запрошення для складу: людина прийде одразу з роллю
+    «лише замовлення дисків» і навіть привітання не принесе їй меню пічок."""
     user = require_settings_admin(request, db)
     from app.services import telegram_bot
 
-    telegram_bot.new_invite(db, label=label, created_by_id=getattr(user, "id", None))
+    telegram_bot.new_invite(
+        db,
+        label=label,
+        created_by_id=getattr(user, "id", None),
+        role=telegram_bot.ROLE_WAREHOUSE if warehouse else "",
+    )
     db.commit()
     if telegram_bot.bot_username(db, fetch=True) is None:
         return _flash(
@@ -221,3 +233,26 @@ def toggle_bot_member_notify(request: Request, member_id: int, db: Session = Dep
     db.commit()
     state = "увімкнено" if member.notify else "вимкнено"
     return _flash(request, "success", f"{telegram_bot.member_title(member)}: сповіщення {state}.")
+
+
+@router.post("/settings/feedback/member/{member_id}/warehouse")
+def toggle_bot_member_warehouse(request: Request, member_id: int, db: Session = Depends(get_db)):
+    """Зробити учасника складом (лише замовлення дисків з екрана «Нові
+    диски») або повернути звичайним учасником."""
+    require_settings_admin(request, db)
+    from app.models import TelegramMember
+    from app.services import telegram_bot
+
+    member = db.get(TelegramMember, member_id)
+    if member is None:
+        return _flash(request, "error", "Такого учасника вже немає.")
+    to_warehouse = member.role != telegram_bot.ROLE_WAREHOUSE
+    member.role = telegram_bot.ROLE_WAREHOUSE if to_warehouse else ""
+    db.commit()
+    title = telegram_bot.member_title(member)
+    if to_warehouse:
+        return _flash(
+            request, "success",
+            f"{title}: тепер склад — отримує лише замовлення дисків, без меню й сповіщень печей.",
+        )
+    return _flash(request, "success", f"{title}: знову звичайний учасник — меню пічок і Sisma.")

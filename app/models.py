@@ -1166,12 +1166,62 @@ class CamBlank(Base):
     gone_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True
     )
-    # Коли диск потрапив у замовлення комірниці. NULL = ще не замовлено.
-    # Вікно рахується ВІД цієї позначки, а не від робочої доби: комірниця
-    # йде о 18:00, а нічна зміна далі бере диски з архіву — межа 07:30
-    # відрізала б саме її.
+    # Коли диск потрапив у замовлення на склад. NULL = ще не замовлено.
+    # Вікно рахується ВІД цієї позначки, а не від робочої доби: склад
+    # закривається о 18:00, а нічна зміна далі бере диски з архіву — межа
+    # 07:30 відрізала б саме її.
+    #
+    # Точка відліку (перше читання теки) теж має `ordered_at`, рівний
+    # `first_seen_at`, але БЕЗ `order_id`: це не замовлення, а «уже лежало».
     ordered_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True, index=True
+    )
+    # Замовлення, у якому диск пішов на склад. Скасування замовлення обнуляє
+    # і це поле, і `ordered_at` — диск знову «чекає».
+    order_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("cam_blank_orders.id"), nullable=True, index=True
+    )
+
+
+class CamBlankOrder(Base):
+    """Одне замовлення дисків на склад — натискання «Надіслати на склад» або
+    «Замовлено без відправки».
+
+    Раніше окремої таблиці не було: історія виводилась із пачок `ordered_at`
+    у рядках дисків. З екраном «Нові диски» (10.09.26) цього забракло: у
+    замовленні є дописане від руки (фрези, полірувальні диски), є спосіб
+    відправки, а скасоване замовлення ЛИШАЄТЬСЯ в історії закресленим, хоча
+    його диски вже повернулись у «чекають». Жодне з цього з рядків дисків не
+    виводиться.
+
+    `text` — знімок того, що пішло на склад (рядки + дописане), `disc_count`
+    і `label` — теж знімки: після скасування диски відчеплені, а запис має
+    й далі казати, скільки їх було і з яких змін. У записів, перенесених
+    міграцією 0060 зі старих пачок, `text` і `label` порожні — екран
+    складає їх із прив'язаних дисків, а скасування фіксує знімок.
+
+    Час локальний і без серверного дефолту — як у ShiftNote.
+    """
+
+    __tablename__ = "cam_blank_orders"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    created_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    # "telegram" — надіслано на склад ботом; "manual" — позначено замовленим
+    # без відправки (замовили телефоном) і всі записи зі старих пачок.
+    via: Mapped[str] = mapped_column(String(20), default="manual", server_default="manual")
+    note: Mapped[str] = mapped_column(Text, default="", server_default="")
+    text: Mapped[str] = mapped_column(Text, default="", server_default="")
+    disc_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    label: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    cancelled_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
     )
 
 
@@ -1331,6 +1381,15 @@ class TelegramOutbox(Base):
     # Кому. Рядок на кожного адресата: один недосяжний учасник не тримає
     # чергу решти. NULL — власник (рядки, створені до появи учасників).
     chat_id: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    # Id повідомлення, яке Telegram повернув на sendMessage. Потрібен, щоб
+    # потім РЕДАГУВАТИ те саме повідомлення (скасоване замовлення дисків
+    # закреслюється у складу, а не приходить новим).
+    message_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Цей рядок — не нове повідомлення, а редагування рядка `edit_of_id`
+    # (editMessageText з його `message_id`). Без FK свідомо: черга чиститься
+    # за віком, і посилання на прибраний рядок має означати «редагувати нема
+    # чого», а не збій вставки.
+    edit_of_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
 
 
 class TelegramWatch(Base):
@@ -1381,6 +1440,9 @@ class TelegramMember(Base):
     label: Mapped[str] = mapped_column(String(120), default="")
     # Сповіщення про пічки/Sisma. Людина вимикає їх сама кнопкою 🔔 у боті.
     notify: Mapped[bool] = mapped_column(default=True)
+    # "" — звичайний учасник (меню пічок і Sisma, сповіщення). "warehouse" —
+    # склад: отримує ЛИШЕ замовлення дисків, меню й сповіщень не має.
+    role: Mapped[str] = mapped_column(String(20), default="", server_default="")
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
     invited_by_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id"), nullable=True
@@ -1402,6 +1464,9 @@ class TelegramInvite(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(64), unique=True)
     label: Mapped[str] = mapped_column(String(120), default="")
+    # Роль, з якою людина прийде (`TelegramMember.role`). Складу роль треба
+    # дати ДО першого входу: інакше привітання принесло б меню пічок.
+    role: Mapped[str] = mapped_column(String(20), default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
     created_by_id: Mapped[Optional[int]] = mapped_column(

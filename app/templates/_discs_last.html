@@ -1,0 +1,28 @@
+{# Щойно зроблене замовлення — одним рядком під кнопками, зі «Скасувати» під
+   рукою (FRESH_WINDOW, 30 хв). «Надіслано на склад HH:MM» пишеться, коли
+   Telegram ПРИЙНЯВ повідомлення; поки воно в дорозі, рядок сам опитує
+   /discs/last кожні 3 с і замовкає, щойно стан остаточний. #}
+{% from "_discs_macros.html" import discs_word, check %}
+{% if fresh and not fresh.cancelled %}
+{% set d = fresh.delivery %}
+<div id="dz-last" class="dz-last{% if d.state in ('failed', 'partial') %} is-bad{% elif d.state == 'queued' %} is-wait{% endif %}"
+     {% if d.state == 'queued' %}hx-get="/discs/last" hx-trigger="every 3s [!document.hidden]" hx-swap="outerHTML"{% endif %}
+     role="status">
+    {% if d.state == 'sent' %}{{ check() }}
+    <span>Надіслано на склад {{ d.at.strftime('%H:%M') }}</span>
+    {% elif d.state == 'queued' %}<span class="dz-spin" aria-hidden="true"></span>
+    <span>Надсилаю на склад…</span>
+    {% elif d.state == 'manual' %}{{ check() }}
+    <span>Позначено замовленим {{ fresh.created_at.strftime('%H:%M') }}</span>
+    {% else %}<span class="dz-warn-dot" aria-hidden="true"></span>
+    <span title="{{ d.error }}">{{ 'До складу дійшло не всім' if d.state == 'partial' else 'До складу НЕ дійшло' }} — скопіюйте текст і надішліть інакше</span>
+    {% endif %}
+    <span>· {{ discs_word(fresh.count) if fresh.count else 'лише дописане' }}{% if fresh.has_note and fresh.count %} + дописане{% endif %}</span>
+    <span class="dz-sp"></span>
+    <button type="button" class="dz-btn dz-sm dz-ghost"
+            hx-post="/discs/orders/{{ fresh.id }}/cancel" hx-target="#dz-work" hx-swap="outerHTML"
+            title="Повернути ці диски в список{% if fresh.via == 'telegram' %} і закреслити повідомлення складу{% endif %}">Скасувати</button>
+</div>
+{% else %}
+<div id="dz-last" hidden></div>
+{% endif %}

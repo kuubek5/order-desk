@@ -126,7 +126,7 @@ def test_registry_covers_every_operator_screen():
     адміна; `/account` теж, бо це власний кабінет (зачинивши його, людину
     позбавили б способу змінити свій пароль)."""
     assert set(sg.SECTIONS) == {
-        "queue", "mail", "handout", "shift", "furnaces", "machines",
+        "queue", "mail", "handout", "shift", "furnaces", "machines", "discs",
         "clients", "archive", "journal", "stats", "vyrobitok", "settings",
     }
     for key, meta in sg.SECTIONS.items():

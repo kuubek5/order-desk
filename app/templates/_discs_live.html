@@ -1,0 +1,67 @@
+{# Жива частина кошика «Нові диски»: підсумок, групи замовлення, прев'ю
+   Telegram і кнопки дій. Кожен блок має свій id — discs.js на кожну зміну
+   галочок чи дописаного бере цей фрагмент (POST /discs/basket) і міняє блоки
+   за id. Поле дописування й розгорнуте прев'ю при цьому НЕ перемальовуються:
+   курсор посеред слова не губиться, розгорнуте лишається розгорнутим.
+
+   У _discs_work.html блоки вставляються макросами на свої місця; окремим
+   фрагментом (render_all) — підряд, розкладає їх JS. #}
+{% from "_discs_macros.html" import discs_word, plural, pos, mcls, plane %}
+
+{% macro sum() -%}
+<div class="dz-sumline" id="dz-live-sum">
+    <b>{{ live_count }}</b>{{ discs_word(live_count)|replace(live_count ~ ' ', '', 1) }}
+    · {{ plural(live_positions, 'позиція', 'позиції', 'позицій') }}{% if live_note %} + дописане{% endif %}
+    {% if live_left %}· <span class="dz-dim">{{ live_left }} лишиться в списку</span>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro groups() -%}
+<div class="dz-ogroups" id="dz-live-groups">
+    {% for g in live_groups %}
+    <section class="dz-og {{ mcls(g.group) }}">
+        <div class="dz-og-h"><span class="dz-matdot" aria-hidden="true"></span>{{ g.title }}<span class="n">{{ discs_word(g.count) }}</span></div>
+        {% for line in g.lines %}
+        <div class="dz-or"{% if line.warn %} title="Диск потребує погляду — див. позначку в списку"{% endif %}>{{ pos(line.pos, line.count, line.warn) }}</div>
+        {% endfor %}
+    </section>
+    {% else %}
+    <div class="dz-og-empty">Дисків не вибрано — позначте їх у списку ліворуч.</div>
+    {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro preview() -%}
+<pre id="dz-live-preview">{{ live_preview|safe }}</pre>
+{%- endmacro %}
+
+{% macro acts() -%}
+{% set can = live_count or live_note %}
+{% set what = ([discs_word(live_count)] if live_count else []) + (['дописане'] if live_note else []) %}
+<div class="dz-acts" id="dz-live-acts">
+    <button type="button" class="dz-btn dz-main dz-big" data-dz-order
+            hx-post="/discs/order" hx-vals='{"via": "telegram"}'
+            hx-target="#dz-work" hx-swap="outerHTML"
+            {% if not can or send_blocker %}disabled{% endif %}
+            title="Надіслати на склад у Telegram і одразу позначити замовленим">
+        {{ plane() }} Надіслати на склад{% if what %} <span class="cnt">· {{ what|join(' + ') }}</span>{% endif %}
+    </button>
+    {% if send_blocker %}<p class="dz-hint">{{ send_blocker }} «Замовлено без відправки» працює.</p>{% endif %}
+    <div class="dz-acts-2">
+        <button type="button" class="dz-btn" data-dz-copy data-copy-text="{{ live_text }}"
+                {% if not can %}disabled{% endif %}>Скопіювати текст</button>
+        <button type="button" class="dz-btn" data-dz-order
+                hx-post="/discs/order" hx-vals='{"via": "manual"}'
+                hx-target="#dz-work" hx-swap="outerHTML"
+                {% if not can %}disabled{% endif %}
+                title="Позначити замовленим без відправки — якщо замовили телефоном">Замовлено без відправки</button>
+    </div>
+</div>
+{%- endmacro %}
+
+{% if render_all is not defined or render_all %}{% if live_count is defined %}
+{{ sum() }}
+{{ groups() }}
+{{ preview() }}
+{{ acts() }}
+{% endif %}{% endif %}

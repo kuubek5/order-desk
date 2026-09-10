@@ -23,7 +23,6 @@ from app.mail_spool import analyze_spool_cached
 from app.backup_parts import PARTS as BACKUP_PARTS
 from app.migration_files import summarize as migration_files_summary
 from app.services.section_gate import sections_admin
-from .blanks import blanks_context
 from app.services.settings_nav import can_edit
 from app.services.undo import log_action
 from app.services.settings_status import build_slabs
@@ -266,11 +265,6 @@ def get_settings(
         "notify_position": get_notify_position(db),
         "notify_events": get_notify_events(db),
         "notify_all": NOTIFY_EVENTS,
-        # Заготовки: шлях, список до замовлення й готовий текст комірниці.
-        # Тека тут НЕ читається — свіжість дає фоновий воркер або кнопка
-        # «Перечитати»; похід у файлову систему з рендера налаштувань це
-        # рівно те, від чого страждала видача.
-        **blanks_context(db),
         "paths_set": paths_set,
         "operators_exist": operators_exist,
         # Чи заданий ПІН розділу «Виробіток» (значення не показуємо — лише

@@ -1,0 +1,63 @@
+{# Вкладка «Історія замовлень». Рівні колонки: час · скільки (+ дописане) ·
+   зміни · стан · дії. «Скопіювати» і «Скасувати» — на КОЖНОМУ рядку:
+   скасувати можна будь-яке замовлення (рішення власника 10.09.26).
+   Скасований запис лишається тут закресленим. Клік по рядку розгортає текст
+   (discs.js; розгорнуте переживає оновлення списку).
+
+   Перечитується сам на подію `dz-changed` (після замовлення чи скасування). #}
+{% from "_discs_macros.html" import discs_word, plane %}
+<div id="dz-orders" class="dz-orders" hx-get="/discs/orders?limit={{ orders_limit }}" hx-trigger="dz-changed from:body" hx-swap="outerHTML">
+    {% for o in orders %}
+    {% set d = o.delivery %}
+    <div class="dz-ol-row{% if o.cancelled %} is-cx{% endif %}" data-dz-orow="{{ o.id }}">
+        <button type="button" class="dz-ol-tog" data-dz-otog="{{ o.id }}" aria-expanded="false"
+                aria-controls="dz-otext-{{ o.id }}" title="Показати текст замовлення">›</button>
+        <span class="dz-ol-at dz-mono">{{ o.created_at.strftime('%d.%m %H:%M') }}</span>
+        <span class="dz-ol-what">{{ discs_word(o.count) if o.count else 'лише дописане' }}{% if o.has_note and o.count %}<span class="dz-tagn">+ дописане</span>{% endif %}</span>
+        <span class="dz-ol-lab" title="{{ o.label }}">{{ o.label }}</span>
+        {% if o.cancelled %}
+        <span class="dz-pill dz-cx" title="Скасовано {{ o.cancelled_at.strftime('%d.%m.%y %H:%M') }}">скасовано {{ o.cancelled_at.strftime('%H:%M') if o.cancelled_at.date() == o.created_at.date() else o.cancelled_at.strftime('%d.%m %H:%M') }}</span>
+        {% elif d.state == 'manual' %}
+        <span class="dz-pill dz-mute">без Telegram</span>
+        {% elif d.state == 'sent' %}
+        <span class="dz-pill dz-tgp">{{ plane() }} надіслано {{ d.at.strftime('%H:%M') }}</span>
+        {% elif d.state == 'queued' %}
+        <span class="dz-pill dz-tgp is-wait" title="Повідомлення в черзі — Telegram його ще не прийняв">{{ plane() }} у дорозі</span>
+        {% else %}
+        <span class="dz-pill dz-alarm" title="{{ d.error }}">{{ 'дійшло не всім' if d.state == 'partial' else 'не дійшло' }}</span>
+        {% endif %}
+        <span class="dz-ol-act">
+            <button type="button" class="dz-btn dz-sm" data-dz-copy data-copy-text="{{ o.text }}">Скопіювати</button>
+            {% if not o.cancelled %}
+            <button type="button" class="dz-btn dz-sm dz-ghost"
+                    hx-post="/discs/orders/{{ o.id }}/cancel" hx-target="#dz-work" hx-swap="outerHTML"
+                    title="Повернути диски цього замовлення в список{% if o.via == 'telegram' %} і закреслити повідомлення складу{% endif %}">Скасувати</button>
+            {% endif %}
+        </span>
+    </div>
+    {# pre-wrap: жодного зайвого пробілу чи переводу рядка між тегами — усе
+       видно на екрані, тому пробіли шаблону зрізані `-`. #}
+    <div class="dz-ol-text" id="dz-otext-{{ o.id }}" hidden>
+        {%- for line in o.text.split('\n') -%}
+        {%- if not loop.first %}{{ '\n' }}{% endif -%}
+        {%- if line.startswith('pmma') -%}<span class="dz-hl-pmma">{{ line }}</span>{%- else -%}{{ line }}{%- endif -%}
+        {%- endfor -%}
+        <span class="dz-ol-note">
+            {%- if o.by %}Замовив(ла): {{ o.by }}. {% endif -%}
+            {%- if o.cancelled -%}
+                {%- if o.cancelled_by %}Скасував(ла): {{ o.cancelled_by }}. {% endif -%}
+                {%- if d.cancel == 'edited' %}У Telegram повідомлення складу закреслено. {% elif d.cancel == 'pending' %}Закреслення в Telegram у дорозі. {% elif d.cancel == 'withdrawn' %}До складу не дійшло — відкликано до відправки. {% elif d.cancel == 'failed' %}Закреслити в Telegram не вдалось — повідомте склад. {% endif -%}
+                {%- if o.count %}Диски повернулись у список.{% endif -%}
+            {%- elif d.error %}{{ d.error }}{% endif -%}
+        </span></div>
+    {% else %}
+    <div class="dz-empty">Замовлень ще не було. Перше зʼявиться тут, щойно натиснете «Надіслати на склад» чи «Замовлено без відправки».</div>
+    {% endfor %}
+    {% if orders_total > orders|length %}
+    <div class="dz-more">
+        <button type="button" class="dz-btn dz-sm" hx-get="/discs/orders?limit={{ orders_limit + 30 }}"
+                hx-target="#dz-orders" hx-swap="outerHTML">Показати ще {{ [orders_total - orders|length, 30]|min }}</button>
+    </div>
+    {% endif %}
+</div>
+{% if oob %}<span class="n" id="dz-n-orders" hx-swap-oob="true">{{ orders_total }}</span>{% endif %}

@@ -135,7 +135,7 @@
                        сторонньому бот мовчить, і «попроситись» у нього нема як. #}
                     <div class="stand-cell w6 stand-members" id="bot-members">
                         <h3>Учасники бота</h3>
-                        <p class="settings-help">Хто, крім вас, бачить меню й отримує сповіщення. Створіть посилання, надішліть людині будь-яким месенджером — вона відкриває його, тисне <b>Start</b>, і вона в боті. Посилання одноразове й діє 24 год; вам прийде повідомлення, хто саме приєднався. Сповіщення кожен вмикає й вимикає сам кнопкою 🔔 у боті. Учасники бачать лише пічки й Sisma; роботи, видача, верстати й звернення зворотного зв'язку — лише вам.</p>
+                        <p class="settings-help">Хто, крім вас, бачить меню й отримує сповіщення. Створіть посилання, надішліть людині будь-яким месенджером — вона відкриває його, тисне <b>Start</b>, і вона в боті. Посилання одноразове й діє 24 год; вам прийде повідомлення, хто саме приєднався. Сповіщення кожен вмикає й вимикає сам кнопкою 🔔 у боті. Учасники бачать лише пічки й Sisma; роботи, видача, верстати й звернення зворотного зв'язку — лише вам. <b>📦 Склад</b> — окрема роль: отримує лише замовлення дисків, які оператор надсилає з екрана «Нові диски», без меню й сповіщень.</p>
                         {% if not bot_enabled %}<p class="stand-note">Бот зараз вимкнено — посилання спрацює, коли його ввімкнете вище.</p>{% endif %}
 
                         <div class="stand-drow">
@@ -144,14 +144,19 @@
                                 <p>chat <span class="mono">{{ chat_id or '—' }}</span> · сповіщення: {{ 'так' if owner_notify else 'ні' }}</p>
                             </div>
                         </div>
-                        {% for row in members %}{% set m = row.m %}
+                        {% for row in members %}{% set m = row.m %}{% set is_wh = m.role == 'warehouse' %}
                         <div class="stand-drow">
                             <div class="stand-dtext">
-                                <b>{{ row.title }}</b>
-                                <p>{% if m.label and m.name %}{{ m.name }} · {% endif %}{% if m.username %}@{{ m.username }} · {% endif %}з {{ m.joined_at.strftime('%d.%m.%y') }}{% if m.last_seen_at %} · останній запит <span class="mono">{{ m.last_seen_at.strftime('%d.%m %H:%M') }}</span>{% endif %}</p>
+                                <b>{{ row.title }}{% if is_wh %} · 📦 склад{% endif %}</b>
+                                <p>{% if m.label and m.name %}{{ m.name }} · {% endif %}{% if m.username %}@{{ m.username }} · {% endif %}з {{ m.joined_at.strftime('%d.%m.%y') }}{% if m.last_seen_at %} · останній запит <span class="mono">{{ m.last_seen_at.strftime('%d.%m %H:%M') }}</span>{% endif %}{% if is_wh %} · отримує лише замовлення дисків з екрана «Нові диски»{% endif %}</p>
                             </div>
+                            {% if not is_wh %}
                             <form method="post" action="/settings/feedback/member/{{ m.id }}/notify">
                                 <button type="submit" class="settings-secondary-button" title="Перемкнути сповіщення цій людині">{{ '🔔 сповіщення: так' if m.notify else '🔕 сповіщення: ні' }}</button>
+                            </form>
+                            {% endif %}
+                            <form method="post" action="/settings/feedback/member/{{ m.id }}/warehouse">
+                                <button type="submit" class="settings-secondary-button" title="{{ 'Повернути звичайним учасником: меню пічок і Sisma, сповіщення' if is_wh else 'Зробити складом: лише замовлення дисків, без меню й сповіщень печей' }}">{{ 'Зняти роль складу' if is_wh else '📦 Зробити складом' }}</button>
                             </form>
                             <form method="post" action="/settings/feedback/member/{{ m.id }}/remove">
                                 <button type="submit" class="settings-secondary-button">Прибрати</button>
@@ -161,7 +166,7 @@
                         {% for row in invites %}{% set i = row.i %}
                         <div class="stand-drow">
                             <div class="stand-dtext">
-                                <b>Запрошення{% if i.label %} для «{{ i.label }}»{% endif %} — ще не використане</b>
+                                <b>Запрошення{% if i.label %} для «{{ i.label }}»{% endif %}{% if i.role == 'warehouse' %} · 📦 склад{% endif %} — ще не використане</b>
                                 <p>{% if row.link %}<span class="mono stand-members-link">{{ row.link }}</span>{% else %}посилання з'явиться, щойно бот відповість{% endif %} · діє до <span class="mono">{{ i.expires_at.strftime('%d.%m %H:%M') }}</span></p>
                             </div>
                             {% if row.link %}<button type="button" class="settings-secondary-button" data-copy="{{ row.link }}" title="Скопіювати посилання">Скопіювати</button>{% endif %}
@@ -176,6 +181,9 @@
                                 <input class="login-input" type="text" name="label" maxlength="120"
                                        placeholder="Для кого (напр. «Оля, логіст») — необов'язково" autocomplete="off">
                             </div></div>
+                            <label class="stand-members-role" title="Склад отримує лише замовлення дисків з екрана «Нові диски» — без меню пічок, верстатів і сповіщень">
+                                <input type="checkbox" name="warehouse" value="1"> 📦 склад
+                            </label>
                             <button type="submit" class="settings-secondary-button">Створити посилання</button>
                         </form>
                     </div>

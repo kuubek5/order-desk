@@ -1,0 +1,18 @@
+{# Звіт «Перевірити читання»: теку прочитано, у базу НІЧОГО не записано.
+   Головне тут — НЕ РОЗІБРАНІ назви: саме вони кажуть, чи розбір влучає в
+   реальні файли цеху. Текст цілим шматком, щоб його скопіювати й переслати. #}
+{% if probe %}
+<section class="dz-probe" aria-label="Що бачить читач">
+    <div class="dz-probe-head">
+        <b>Що бачить читач</b>
+        <span class="dz-dim">теку прочитано, у базу нічого не записано</span>
+        <span class="dz-sp"></span>
+        <button type="button" class="dz-btn dz-sm" data-dz-copy data-copy-text="{{ probe.as_text() }}" data-dz-copy-what="звіт">Скопіювати звіт</button>
+        <button type="button" class="dz-btn dz-sm dz-ghost" data-dz-probe-close>Закрити</button>
+    </div>
+    <pre>{{ probe.as_text() }}</pre>
+    {% if probe.unparsed %}<p class="dz-hint">Є не розібрані назви — скопіюйте звіт і надішліть: за ним видно, що саме треба навчити читати.</p>{% endif %}
+</section>
+{% else %}
+<p class="dz-note is-alarm">Шлях до теки не задано — перевіряти нічого.</p>
+{% endif %}

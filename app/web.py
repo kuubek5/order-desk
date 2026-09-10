@@ -38,7 +38,7 @@ from app.config import (
 from app.db import SessionLocal, db_file, engine
 from app.schema import ensure_schema
 from app.services.health_snapshot import check_after_update
-from app import perf
+from app import log_throttle, perf
 from app.backup_mirror import mirror_snapshot
 from app.monthly_backup import ensure_monthly_snapshot
 from app.export_scanner import list_export_client_names_cached
@@ -84,6 +84,7 @@ from app.routers.stats import router as stats_router
 from app.routers.vyrobitok import router as vyrobitok_router
 from app.routers.stl import router as stl_router
 from app.routers.shift import router as shift_router
+from app.routers.discs import router as discs_router
 from app.routers.furnace import router as furnace_router
 from app.routers.machines import router as machines_router
 from app.routers.feedback import router as feedback_router
@@ -600,9 +601,9 @@ def _machine_worker(stop_event: Event) -> None:
         stop_event.wait(MACHINE_POLL_INTERVAL_SECONDS)
 
 
-# ── Заготовки CAM ───────────────────────────────────────────────────────────
+# ── Нові диски (тека CAM) ───────────────────────────────────────────────────
 # Тека дисків: `<матеріал>/<висота>/*.blk`. Створення диска = «взяв новий з
-# архіву», тобто це готове замовлення для комірниці.
+# архіву», тобто це готове замовлення на склад (екран «Нові диски»).
 #
 # Раз на пʼять хвилин, і цього з головою: диски зʼявляються нуль-десять разів
 # на день. Читаємо ЛИШЕ імена — ні вмісту, ні розміру, ні дати файлу (дата
@@ -618,6 +619,17 @@ def _blanks_tick(db: Session) -> None:
     if not path:
         return
     result = _sync_cam_blanks(db, path)
+    if result.missing:
+        # Раз на годину, не на кожен тік: тека може лежати недоступною
+        # цілий день, і лог не має цим захлинутись (app/log_throttle.py).
+        skipped = log_throttle.due("cam-blanks-missing")
+        if skipped is not None:
+            logger.warning(
+                "Нові диски: теки %s немає або вона недоступна — прохід пропущено "
+                "(ще %d разів відтоді)", path, skipped,
+            )
+        return
+    log_throttle.clear("cam-blanks-missing")
     if result.appeared or result.vanished:
         logger.info(
             "Заготовки: зʼявилось %d, зникло %d, у теці %d",
@@ -1244,6 +1256,9 @@ app.include_router(shift_router)
 app.include_router(furnace_router)
 # Верстати — живі кадри екранів RemiCORE, дзеркало пічного модуля.
 app.include_router(machines_router)
+# «Нові диски» — узяті з архіву диски й замовлення на склад (замінив
+# розділ налаштувань «Заготовки», 10.09.26).
+app.include_router(discs_router)
 # Форма зворотного зв'язку — приймання звернень + адмін-стрічка «Вхідні».
 app.include_router(feedback_router)
 # Діагностика швидкодії. Middleware вимірювання пропускає /diag/, щоб екран

@@ -1,7 +1,11 @@
-"""Заготовки з теки CAM: що взяли з архіву і що замовити комірниці.
+"""Нові диски з теки CAM: що взяли з архіву і що замовити на складі.
+
+Екран — «Нові диски» (`app/routers/discs.py`); замовлення як записи —
+`app/services/disc_orders.py`. Тут — читання теки, розбір назв, формат
+рядка замовлення й розкладка по змінах.
 
 **Навіщо.** Щодня до 17:30 оператор обходив шухляди, дивився, чого бракує, і
-писав комірниці у Viber — близько десяти хвилин, кожен день. Але коли він
+писав на склад у Viber — близько десяти хвилин, кожен день. Але коли він
 створює новий диск у CAM, той сам кладе файл у
 `<корінь>/<матеріал>/<висота>/<висота>-<виробник>-<колір>-x<номер>`. Створення
 диска майже завжди означає «взяв новий з архіву». Тобто замовлення вже існує
@@ -41,7 +45,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from time import monotonic
 from typing import Iterable, Optional
@@ -389,6 +393,31 @@ class SyncBlanksResult:
     baseline: int = 0
     # Незамовлені рядки, чиї поля переписано новішим розбором назви.
     reparsed: int = 0
+    # Теки за шляхом немає (або вона недоступна) — прохід нічого не змінив.
+    missing: bool = False
+
+
+@dataclass
+class LastScan:
+    """Останній прохід теки в ЦЬОМУ процесі — для смуги внизу екрана.
+
+    Зелена крапка там ставиться лише з підтвердження (CLAUDE.md §14, плити):
+    «шлях заповнено» — не сигнал, «прохід щойно побачив теку» — сигнал. У
+    памʼяті, а не в базі: після рестарту крапка сіра, доки воркер не пройде
+    теку (25 с), — і це правда.
+    """
+
+    at: Optional[datetime] = None
+    ok: bool = False
+    present: int = 0
+    root: str = ""
+
+
+_last_scan = LastScan()
+
+
+def last_scan() -> LastScan:
+    return _last_scan
 
 
 def sync_blanks(db: Session, root: Path | str, *, now: Optional[datetime] = None) -> SyncBlanksResult:
@@ -401,10 +430,25 @@ def sync_blanks(db: Session, root: Path | str, *, now: Optional[datetime] = None
 
     «Живий» = рядок із порожнім `gone_at`. Саме тому повторена назва після
     підчистки дає новий рядок: старий уже позначений як зниклий.
+
+    Теки НЕМАЄ — прохід не робить нічого. Раніше відсутня тека читалась як
+    порожня: усі живі рядки ставали зниклими, а коли тека поверталась
+    (помилка в шляху, виправлена за хвилину), кожен її файл зʼявлявся
+    «новим» — і в список до замовлення падали всі 19 тисяч дисків точки
+    відліку. Відсутня тека і порожня тека — різні речі.
     """
+    global _last_scan
     now = now or datetime.now()
+    try:
+        exists = Path(root).is_dir()
+    except OSError:
+        exists = False
+    if not exists:
+        _last_scan = LastScan(at=now, ok=False, present=0, root=str(root))
+        return SyncBlanksResult(missing=True)
     found = scan_blanks(root)
     result = SyncBlanksResult(present=len(found))
+    _last_scan = LastScan(at=now, ok=True, present=len(found), root=str(root))
 
     # ПЕРШИЙ прохід — це база відліку, а не вантаж замовлень.
     #
@@ -501,13 +545,25 @@ def _refresh_parsed(row: CamBlank, item: FoundBlank) -> bool:
     return changed
 
 
-def pending_blanks(db: Session) -> list[CamBlank]:
-    """Диски, взяті ПІСЛЯ останнього замовлення — те, що треба замовити.
+def real_disc_clause():
+    """SQL-умова «це взятий диск, а не точка відліку».
 
-    Вікно рахується від позначки «замовлено», а НЕ від робочої доби. Причина
-    в цеху: комірниця йде о 18:00, далі нічна зміна бере диски з архіву, а у
-    вихідні комірниці немає взагалі — межа 07:30 відрізала б саме це.
-    Позначка ж переживає і вихідні, і забутий день без календарної логіки.
+    Перше читання теки ставить `ordered_at = first_seen_at` усьому, що вже
+    лежало (див. `sync_blanks`) — роки історії, які ніхто не брав сьогодні.
+    Такі рядки не показуються ніде: ні в «Усіх створених дисках», ні в
+    графіку, ні в лічильниках (рішення власника 10.09.26). Одна функція на всі
+    місця — розійдуться, і лічильник вкладки перестане сходитись зі списком.
+    """
+    return CamBlank.ordered_at.is_(None) | (CamBlank.ordered_at != CamBlank.first_seen_at)
+
+
+def pending_blanks(db: Session) -> list[CamBlank]:
+    """Диски, ще не замовлені на склад, — те, що лежить у лівій колонці.
+
+    Вікно рахується від позначки «замовлено», а НЕ від робочої доби: склад
+    закривається о 18:00, далі нічна зміна бере диски з архіву, а у вихідні
+    склад не працює взагалі — межа 07:30 відрізала б саме це. Позначка ж
+    переживає і вихідні, і забутий день без календарної логіки.
 
     Зниклі файли тут лишаються: диск усе одно взяли, і замовити його треба,
     навіть якщо його вже дороблено.
@@ -521,11 +577,11 @@ def pending_blanks(db: Session) -> list[CamBlank]:
     )
 
 
-# Скільки незамовлених дисків уже виглядає як «забули натиснути «Замовлено».
+# Скільки незамовлених дисків уже виглядає як «забули замовити».
 #
 # Поріг за КІЛЬКІСТЮ, а не за часом, і це принципово. Часовий поріг здавався
 # природнішим («найстаршому вже дві доби»), але він давав би хибну тривогу
-# КОЖНОГО ПОНЕДІЛКА: комірниця не працює у вихідні, а оператори працюють, тож
+# КОЖНОГО ПОНЕДІЛКА: склад не працює у вихідні, а оператори працюють, тож
 # у понеділок найстаршому диску законно 72 години. Правило «хибний сигнал
 # гірший за жодного» тут вирішує на користь кількості.
 #
@@ -540,7 +596,7 @@ def pileup_note(rows: list[CamBlank]) -> Optional[str]:
 
     Не тривога й не блокування: оператор міг просто не замовляти три дні.
     Просто називаємо число й найстаршу дату, щоб рішення було зрячим — а не
-    щоб оператор випадково скопіював комірниці простирадло на сотню рядків.
+    щоб на склад випадково пішло простирадло на сотню рядків.
     """
     if len(rows) < BLANKS_PILEUP:
         return None
@@ -548,184 +604,44 @@ def pileup_note(rows: list[CamBlank]) -> Optional[str]:
     return (
         f"У списку {len(rows)} дисків, найстарішого взято {oldest:%d.%m}. "
         "Це більше, ніж набирається навіть за довгі вихідні — схоже, "
-        "«Замовлено» давно не натискали."
+        "замовлення давно не робили."
     )
 
 
-def mark_ordered(
-    db: Session,
-    *,
-    ids: Optional[Iterable[int]] = None,
-    now: Optional[datetime] = None,
-) -> int:
-    """Позначити незамовлене як замовлене. Повертає скільки саме.
-
-    `ids` — лише ці диски (те, що позначено галочками на екрані); решта
-    лишається в списку до наступного разу. Так замовляють частинами: цирконій
-    сьогодні, ПММА завтра, «вчорашнє вже замовили телефоном» (10.09.26). До
-    того кнопка брала весь список, хоч галочки на екрані й стояли — і
-    частина, яку не збирались замовляти, зникала зі списку разом з рештою.
-
-    Порожній `ids` — НЕ «усе»: не позначено нічого, то й не замовлено нічого.
-    `None` (жоден аргумент) — усе незамовлене, як і раніше.
-
-    Одне натискання = один час `ordered_at`, тож часткове замовлення — окрема
-    пачка в історії, і `undo_last_order` повертає рівно її.
-    """
-    now = now or datetime.now()
-    rows = pending_blanks(db)
-    if ids is not None:
-        wanted = set(ids)
-        rows = [row for row in rows if row.id in wanted]
-    for row in rows:
-        row.ordered_at = now
-    if rows:
-        db.commit()
-    return len(rows)
-
-
-def undo_last_order(db: Session) -> int:
-    """Скасувати ОСТАННЄ «Замовлено». Повертає, скільки дисків повернулось.
-
-    Навіщо. Кнопка «Замовлено» починає нове вікно й миттєво спорожняє список —
-    а натиснути її випадково легко (натиснуто помилково 08.09.26). Без відкату
-    диски, взяті з архіву, зникають із замовлення НАЗАВЖДИ: рядки лишаються, але
-    вже позначені замовленими, і комірниця їх не побачить. Це втрата роботи,
-    зробленої за день, від одного зайвого кліку.
-
-    ЯК ВІДРІЗНЯЄМО ПАЧКУ. Усі рядки одного натискання ділять точний час
-    `ordered_at` — його ставить один виклик `mark_ordered`. Тому відкат бере
-    найбільший такий час і чистить рівно його.
-
-    ЧОМУ ЦЕ НЕ ЧІПАЄ ТОЧКУ ВІДЛІКУ. Перший прохід теж проставляє `ordered_at`
-    (інакше 19 тисяч давніх дисків потрапили б у перше ж замовлення), і
-    скасувати ЙОГО означало б вивалити комірниці всю історію теки. Такі рядки
-    видно за ознакою: у них `ordered_at` дорівнює `first_seen_at`, бо їх
-    проставили в ту саму мить, коли вперше побачили. Пачка справжнього
-    замовлення завжди пізніша за появу диска. Тому умова `ordered_at !=
-    first_seen_at` і є захистом, а не косметикою.
-    """
-    last = db.scalar(
-        select(func.max(CamBlank.ordered_at)).where(
-            CamBlank.ordered_at.is_not(None),
-            CamBlank.ordered_at != CamBlank.first_seen_at,
-        )
-    )
-    if last is None:
-        return 0
-    rows = list(
-        db.scalars(
-            select(CamBlank).where(
-                CamBlank.ordered_at == last,
-                CamBlank.ordered_at != CamBlank.first_seen_at,
-            )
-        ).all()
-    )
-    for row in rows:
-        row.ordered_at = None
-    if rows:
-        db.commit()
-    return len(rows)
-
-
-@dataclass(frozen=True)
-class PastOrder:
-    """Одне натискання «Замовлено» — як воно виглядало.
-
-    Окремої таблиці під це немає й не треба: усі диски одного натискання
-    ділять точний `ordered_at`, тож історія ВИВОДИТЬСЯ з наявних рядків.
-    Заводити таблицю означало б тримати ту саму правду у двох місцях і
-    ризикувати, що вони розійдуться.
-    """
-
-    ordered_at: datetime
-    count: int
-    text: str
-    is_latest: bool = False
-
-
-def order_history(db: Session, *, limit: int = 30) -> list[PastOrder]:
-    """Минулі замовлення, найновіші згори.
-
-    30, а не 12 (10.09.26): історія тепер згорнута під списком і місця на
-    екрані не забирає, а питають її саме про давнє — «коли замовляли?».
-
-    Навіщо. Кнопка «Замовлено» досі була дією без сліду: натиснув — список
-    спорожнів, і що саме пішло комірниці, вже ніде не подивитись. Питання
-    «а ми замовляли цирконій цього тижня?» не мало відповіді в застосунку.
-    Тепер має, і заразом видно, ЩО саме поверне скасування.
-
-    Точка відліку (перший прохід теки) сюди не потрапляє: у її рядків
-    `ordered_at` дорівнює `first_seen_at`, і показувати «замовлення на 19 133
-    диски», якого не було, — брехня.
-    """
-    stamps = list(
-        db.scalars(
-            select(CamBlank.ordered_at)
-            .where(
-                CamBlank.ordered_at.is_not(None),
-                CamBlank.ordered_at != CamBlank.first_seen_at,
-            )
-            .group_by(CamBlank.ordered_at)
-            .order_by(CamBlank.ordered_at.desc())
-            .limit(limit)
-        ).all()
-    )
-    history: list[PastOrder] = []
-    for index, stamp in enumerate(stamps):
-        # Умова у вибірці вище вже відсікає NULL, але типізатор про це не знає:
-        # колонка оголошена нульовою. Пропуск замість `assert` — щоб дивний
-        # рядок у базі не валив увесь екран налаштувань.
-        if stamp is None:  # pragma: no cover — відсічено запитом вище
-            continue
-        rows = list(
-            db.scalars(
-                select(CamBlank)
-                .where(CamBlank.ordered_at == stamp)
-                .order_by(CamBlank.material_dir, CamBlank.height, CamBlank.file_name)
-            ).all()
-        )
-        history.append(
-            PastOrder(
-                ordered_at=stamp,
-                count=len(rows),
-                text=order_text(rows),
-                # Скасувати можна лише НАЙНОВІШЕ. Відкат старішого повернув би
-                # у поточний список диски, замовлені тижні тому, і комірниця
-                # отримала б їх удруге.
-                is_latest=index == 0,
-            )
-        )
-    return history
-
-
-def last_order_at(db: Session) -> Optional[datetime]:
-    """Коли натискали «Замовлено» востаннє. None — жодного разу.
-
-    Потрібне екрану: кнопку скасування показуємо лише тоді, коли є що
-    скасовувати, і підписуємо часом — щоб не скасувати позавчорашнє замовлення,
-    думаючи, що прибираєш свій випадковий клік.
-    """
-    return db.scalar(
-        select(func.max(CamBlank.ordered_at)).where(
-            CamBlank.ordered_at.is_not(None),
-            CamBlank.ordered_at != CamBlank.first_seen_at,
-        )
-    )
-
-
-# ── Текст для комірниці ─────────────────────────────────────────────────────
-# Формат задав власник 10.09.26:
+# ── Позиція диска: mono-a2-25(х2) ───────────────────────────────────────────
+# Формат задав власник 10.09.26 (бриф «Нові диски»):
 #
-#   mono a3 18
-#   emo a2 16
-#   zr a2 25(2)
+#   mono-a3-18
+#   mono-a2-25(х2)
 #
-# Рядок = виробник, колір, висота — ОДНА позиція на рядок, малими літерами;
-# кількість у дужках лише коли однакових дисків більше одного. Раніше висоти
-# склеювались через «+» в один рядок («Mono a2 18+25»): тоді з нього не можна
-# було вибрати, що саме копіювати, — а тепер список копіюється вибірково.
-# Свіжі позиції згори, як і таблиця під списком.
+#   pmma-a2-20
+#
+# Виробник-колір-висота через дефіс, малими; кількість у дужках кириличною
+# «х» і лише коли однакових дисків більше одного. Групи матеріалів —
+# цирконій, потім ПММА·PEEK, потім решта, — розділені порожнім рядком.
+# Той самий текст на екрані, у буфері й у Telegram: склад читає рівно те,
+# що бачив оператор. Нерозібраний файл іде сирою назвою без `.blk`.
+#
+# До 10.09.26 формат був «mono a3 18(2)» — через пробіл і без групування.
+
+# КИРИЛИЧНА «х» (U+0445), не латинська x: так пише власник, і так склад
+# звик читати. Окремою константою, щоб її не «виправили» при правці рядка.
+COUNT_MARK = "х"
+
+MATERIAL_ZR = "zr"
+MATERIAL_PMMA = "pmma"
+# Мітка в рядку й заголовок групи. Решта матеріалів (CoCr, титан…) іде
+# групою з назвою своєї теки — вгадувати їй людську назву не беремось.
+_GROUP_META = {
+    MATERIAL_ZR: ("ZR", "Цирконій"),
+    MATERIAL_PMMA: ("PMMA", "ПММА · PEEK"),
+}
+_GROUP_ORDER = (MATERIAL_ZR, MATERIAL_PMMA)
+
+
+def bare_name(name: str) -> str:
+    """Назва файлу без `.blk` — так її показуємо скрізь (рішення власника)."""
+    return name[: -len(BLANK_EXT)] if name.lower().endswith(BLANK_EXT) else name
 
 
 def _brand_label(brand: Optional[str]) -> str:
@@ -747,45 +663,6 @@ def shade_label(shade: Optional[str]) -> str:
     return re.sub(r"^([a-d])(\d)-(\d)$", r"\1\2.\3", cleaned)
 
 
-@dataclass(frozen=True)
-class OrderLine:
-    """Один рядок замовлення — те, що оператор бачить із галочкою і копіює."""
-
-    text: str
-    count: int
-    # Коли брали диски цього рядка, найсвіжіші першими.
-    taken: tuple[datetime, ...]
-    # Позиція БЕЗ кількості («zr a2 25»). Той самий диск, узятий у два різні
-    # дні, стоїть двома рядками (по дню кожен), а в буфер має піти одним —
-    # екран зводить їх саме за цим ключем.
-    item: str = ""
-    # Тека матеріалу (`ZR`, `PMMA-PEEK`) — для фільтра «сховати матеріал».
-    material: str = ""
-    # Диски цього рядка. «Замовлено» позначає рівно те, що відмічено
-    # галочками, а галочка стоїть на рядку, не на диску.
-    ids: tuple[int, ...] = ()
-
-
-@dataclass(frozen=True)
-class OrderDay:
-    """Дисків, узятих за один календарний день, — з рядками замовлення."""
-
-    day: date
-    lines: tuple[OrderLine, ...]
-    count: int
-
-    @property
-    def key(self) -> str:
-        return self.day.strftime("%d.%m.%y")
-
-    @property
-    def weekday(self) -> str:
-        return _WEEKDAYS_UK[self.day.weekday()]
-
-
-_WEEKDAYS_UK = ("пн", "вт", "ср", "чт", "пт", "сб", "нд")
-
-
 def _line_fields(row: CamBlank) -> tuple[Optional[int], Optional[str], Optional[str]]:
     """Висота, виробник, колір — з НАЗВИ файлу поточним розбором.
 
@@ -801,69 +678,285 @@ def _line_fields(row: CamBlank) -> tuple[Optional[int], Optional[str], Optional[
     return row.height, row.brand, row.shade
 
 
-def order_lines(rows: Iterable[CamBlank]) -> list[OrderLine]:
-    """Рядки замовлення, свіжі згори.
+def material_group(row: CamBlank) -> str:
+    """Група матеріалу диска: `zr`, `pmma` або `dir:<тека>` для решти.
 
-    Нерозібрані файли не ховаємо: вони теж узяті диски. Кожен іде окремим
-    рядком сирою назвою, щоб оператор вирішив сам.
+    Головна ознака — ТЕКА матеріалу (`ZR`, `PMMA-PEEK`): її ставить CAM, а
+    не людина. Код у назві (`zr25_25`, `pmma25_25`) — запасний, коли тека
+    порожня.
     """
-    groups: dict[str, list[datetime]] = {}
-    materials: dict[str, str] = {}
-    ids: dict[str, list[int]] = {}
+    folder = (row.material_dir or "").strip()
+    probe = folder.casefold()
+    if not probe:
+        _, brand, _ = _line_fields(row)
+        probe = (row.brand or brand or "").casefold()
+    if probe.startswith(("zr", "zir", "цир")):
+        return MATERIAL_ZR
+    if "pmma" in probe or "peek" in probe or probe.startswith("пмма"):
+        return MATERIAL_PMMA
+    return f"dir:{folder.casefold()}" if folder else "dir:"
+
+
+def group_meta(group: str, folder: str = "") -> tuple[str, str]:
+    """(мітка, заголовок) групи матеріалу."""
+    if group in _GROUP_META:
+        return _GROUP_META[group]
+    name = folder.strip() or group.partition(":")[2] or "—"
+    return name.upper()[:8], name
+
+
+def _natural(text: str) -> tuple:
+    """`a3` < `a3.5` < `a10`: числа порівнюються як числа."""
+    parts = re.split(r"(\d+)", text or "")
+    return tuple(int(p) if i % 2 else p for i, p in enumerate(parts))
+
+
+@dataclass(frozen=True)
+class DiscPos:
+    """Позиція диска в замовленні — `mono-a2-25` або сира назва файлу."""
+
+    key: str
+    raw: bool
+    brand: str = ""
+    shade: str = ""
+    height: Optional[int] = None
+    group: str = ""
+    tag: str = ""
+    title: str = ""
+
+    @property
+    def sort_key(self) -> tuple:
+        # Розібрані — за виробником, кольором, висотою; сирі — у кінці групи.
+        if self.raw:
+            return (1, (), (), 0, self.key.casefold())
+        return (0, self.brand, _natural(self.shade), self.height or 0, "")
+
+
+def disc_position(row: CamBlank) -> DiscPos:
+    height, brand, shade = _line_fields(row)
+    group = material_group(row)
+    tag, title = group_meta(group, row.material_dir or "")
+    if height is None or not brand:
+        name = row.file_name or row.rel_path.rsplit("/", 1)[-1]
+        return DiscPos(key=bare_name(name), raw=True, group=group, tag=tag, title=title)
+    brand_l, shade_l = _brand_label(brand), shade_label(shade)
+    key = "-".join(p for p in (brand_l, shade_l, str(height)) if p)
+    return DiscPos(
+        key=key, raw=False, brand=brand_l, shade=shade_l, height=height,
+        group=group, tag=tag, title=title,
+    )
+
+
+def disc_needs_look(row: CamBlank) -> bool:
+    """Диск просить погляду: назву не розібрано або висота ≠ тека."""
+    height, brand, _ = _line_fields(row)
+    return height is None or not brand or bool(row.height_mismatch)
+
+
+@dataclass(frozen=True)
+class OrderLine:
+    """Одна позиція замовлення: `mono-a2-25(х2)`."""
+
+    pos: DiscPos
+    count: int
+    ids: tuple[int, ...]
+    # Хоч один диск позиції просить погляду (див. `disc_needs_look`).
+    warn: bool = False
+
+    @property
+    def text(self) -> str:
+        return with_count(self.pos.key, self.count)
+
+
+def with_count(key: str, count: int) -> str:
+    return f"{key}({COUNT_MARK}{count})" if count > 1 else key
+
+
+@dataclass(frozen=True)
+class OrderGroup:
+    """Позиції одного матеріалу — блок замовлення між порожніми рядками."""
+
+    group: str
+    tag: str
+    title: str
+    lines: tuple[OrderLine, ...]
+
+    @property
+    def count(self) -> int:
+        return sum(line.count for line in self.lines)
+
+
+def order_groups(rows: Iterable[CamBlank]) -> list[OrderGroup]:
+    """Диски → групи матеріалів → позиції. Цирконій, ПММА, далі решта."""
+    by_group: dict[str, dict[str, list[CamBlank]]] = {}
+    positions: dict[tuple[str, str], DiscPos] = {}
     for row in rows:
-        height, brand, shade = _line_fields(row)
-        if height is None or not brand:
-            text = row.file_name or row.rel_path
-        else:
-            text = " ".join(p for p in (_brand_label(brand), shade_label(shade), str(height)) if p)
-        groups.setdefault(text, []).append(row.first_seen_at)
-        materials.setdefault(text, (row.material_dir or "").strip())
-        ids.setdefault(text, []).append(row.id)
+        pos = disc_position(row)
+        by_group.setdefault(pos.group, {}).setdefault(pos.key, []).append(row)
+        positions.setdefault((pos.group, pos.key), pos)
 
-    lines = []
-    for text, stamps in groups.items():
-        taken = tuple(sorted((s for s in stamps if s is not None), reverse=True))
-        count = len(stamps)
-        lines.append(OrderLine(
-            text=f"{text}({count})" if count > 1 else text,
-            count=count,
-            taken=taken,
-            item=text,
-            material=materials[text],
-            ids=tuple(ids[text]),
-        ))
-    # Свіжі згори; нічия — за текстом, щоб порядок не стрибав між рендерами.
-    lines.sort(key=lambda line: line.text)
-    lines.sort(key=lambda line: line.taken[0] if line.taken else datetime.min, reverse=True)
-    return lines
+    def group_rank(group: str) -> tuple:
+        if group in _GROUP_ORDER:
+            return (_GROUP_ORDER.index(group), "")
+        return (len(_GROUP_ORDER), group)
+
+    groups = []
+    for group in sorted(by_group, key=group_rank):
+        lines = []
+        for key, discs in by_group[group].items():
+            lines.append(OrderLine(
+                pos=positions[(group, key)],
+                count=len(discs),
+                ids=tuple(sorted(row.id for row in discs if row.id is not None)),
+                warn=any(disc_needs_look(row) for row in discs),
+            ))
+        lines.sort(key=lambda line: line.pos.sort_key)
+        first = lines[0].pos
+        groups.append(OrderGroup(group=group, tag=first.tag, title=first.title, lines=tuple(lines)))
+    return groups
 
 
-def order_text(rows: Iterable[CamBlank]) -> str:
-    """Готовий текст замовлення — той, що йде в буфер обміну."""
-    return "\n".join(line.text for line in order_lines(rows))
+def order_text(rows: Iterable[CamBlank], note: str = "") -> str:
+    """Готовий текст замовлення — у буфер, у Telegram і в історію.
 
-
-def order_days(rows: Iterable[CamBlank]) -> list[OrderDay]:
-    """Рядки замовлення, розкладені по днях, коли диски взяли. Свіжі дні згори.
-
-    Навіщо (власник, 10.09.26): знімати галочки зручніше цілим днем — «вчорашнє
-    вже замовили телефоном». День КАЛЕНДАРНИЙ, не робоча доба: поруч із рядком
-    стоїть час, і заголовок дня мусить з ним сходитись — нічний диск о 01:09
-    лежить у наступному дні, як і написано на годиннику.
+    Групи матеріалів розділені порожнім рядком; дописане від руки — окремим
+    блоком у кінці. Замовлення може складатися лише з дописаного.
     """
-    by_day: dict[date, list[CamBlank]] = {}
-    for row in rows:
-        by_day.setdefault(row.first_seen_at.date(), []).append(row)
-    return [
-        OrderDay(day=day, lines=tuple(order_lines(day_rows)), count=len(day_rows))
-        for day, day_rows in sorted(by_day.items(), reverse=True)
-    ]
+    blocks = ["\n".join(line.text for line in group.lines) for group in order_groups(rows)]
+    extra = (note or "").strip()
+    if extra:
+        blocks.append(extra)
+    return "\n\n".join(blocks)
 
 
-def material_counts(rows: Iterable[CamBlank]) -> list[tuple[str, int]]:
-    """Теки матеріалів серед узятих дисків і скільки в кожній — для фільтра."""
-    counts: dict[str, int] = {}
+def order_positions(rows: Iterable[CamBlank]) -> int:
+    """Скільки позицій (рядків) дасть замовлення з цих дисків."""
+    return sum(len(group.lines) for group in order_groups(rows))
+
+
+# ── Зміни ───────────────────────────────────────────────────────────────────
+# Незамовлене розкладено по змінах, а не по календарних днях (бриф «Нові
+# диски»): денна 07:30–18:00, нічна 18:00–07:30. Межі підтвердив власник
+# 10.09.26 — 18:00 це закриття складу, 07:30 — початок денної зміни. Нічний
+# диск о 01:09 належить нічній зміні, що почалась учора о 18:00.
+
+DAY_SHIFT_START = time(7, 30)
+NIGHT_SHIFT_START = time(18, 0)
+WEEKDAYS_UK = ("пн", "вт", "ср", "чт", "пт", "сб", "нд")
+
+
+@dataclass(frozen=True)
+class Shift:
+    kind: str  # "day" | "night"
+    start: datetime
+    end: datetime
+
+    @property
+    def key(self) -> str:
+        return f"{self.kind[0]}{self.start:%Y%m%d}"
+
+    @property
+    def title(self) -> str:
+        return "Денна зміна" if self.kind == "day" else "Нічна зміна"
+
+    @property
+    def span(self) -> str:
+        return "07:30–18:00" if self.kind == "day" else "18:00–07:30"
+
+    @property
+    def when(self) -> str:
+        """`чт 10.09` для денної, `ср 09.09 → чт 10.09` для нічної."""
+        head = f"{WEEKDAYS_UK[self.start.weekday()]} {self.start:%d.%m}"
+        if self.kind == "day":
+            return head
+        return f"{head} → {WEEKDAYS_UK[self.end.weekday()]} {self.end:%d.%m}"
+
+    @property
+    def short(self) -> str:
+        """Підпис у колонці історії: `денна 10.09`, `нічна 09.09→10.09`."""
+        if self.kind == "day":
+            return f"денна {self.start:%d.%m}"
+        return f"нічна {self.start:%d.%m}→{self.end:%d.%m}"
+
+
+def shift_of(moment: datetime) -> Shift:
+    day = moment.date()
+    clock = moment.time()
+    if clock < DAY_SHIFT_START:
+        start_day = day - timedelta(days=1)
+        return Shift(
+            "night",
+            datetime.combine(start_day, NIGHT_SHIFT_START),
+            datetime.combine(day, DAY_SHIFT_START),
+        )
+    if clock >= NIGHT_SHIFT_START:
+        return Shift(
+            "night",
+            datetime.combine(day, NIGHT_SHIFT_START),
+            datetime.combine(day + timedelta(days=1), DAY_SHIFT_START),
+        )
+    return Shift(
+        "day",
+        datetime.combine(day, DAY_SHIFT_START),
+        datetime.combine(day, NIGHT_SHIFT_START),
+    )
+
+
+@dataclass(frozen=True)
+class ShiftGroup:
+    shift: Shift
+    rows: tuple[CamBlank, ...]
+    live: bool = False
+
+
+def shift_groups(rows: Iterable[CamBlank], *, now: Optional[datetime] = None) -> list[ShiftGroup]:
+    """Диски по змінах; свіжа зміна згори, у зміні свіжі диски згори."""
+    now = now or datetime.now()
+    by_key: dict[str, list[CamBlank]] = {}
+    shifts: dict[str, Shift] = {}
     for row in rows:
-        name = (row.material_dir or "").strip()
-        counts[name] = counts.get(name, 0) + 1
-    return sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
+        shift = shift_of(row.first_seen_at)
+        by_key.setdefault(shift.key, []).append(row)
+        shifts.setdefault(shift.key, shift)
+    groups = []
+    for key, discs in by_key.items():
+        shift = shifts[key]
+        discs.sort(key=lambda row: (row.first_seen_at, row.id), reverse=True)
+        groups.append(ShiftGroup(shift=shift, rows=tuple(discs), live=shift.start <= now < shift.end))
+    groups.sort(key=lambda group: group.shift.start, reverse=True)
+    return groups
+
+
+def shifts_label(rows: Iterable[CamBlank]) -> str:
+    """З яких змін диски замовлення — підпис у колонці історії.
+
+    Дві зміни пишемо обидві; більше (вихідні, забуте замовлення) — числом і
+    межами, інакше колонка перетворилась би на абзац.
+    """
+    shifts: dict[str, Shift] = {}
+    for row in rows:
+        shift = shift_of(row.first_seen_at)
+        shifts.setdefault(shift.key, shift)
+    ordered = sorted(shifts.values(), key=lambda shift: shift.start)
+    if not ordered:
+        return ""
+    if len(ordered) <= 2:
+        return " + ".join(shift.short for shift in ordered)
+    first, last = ordered[0], ordered[-1]
+    n = len(ordered)
+    word = "зміни" if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14) else "змін"
+    return f"{n} {word} · {first.start:%d.%m}–{last.start:%d.%m}"
+
+
+# ── Усі створені диски (журнал) ────────────────────────────────────────────
+
+
+def real_discs(db: Session) -> list[CamBlank]:
+    """Усі взяті диски без точки відліку, свіжі першими."""
+    return list(
+        db.scalars(
+            select(CamBlank)
+            .where(real_disc_clause())
+            .order_by(CamBlank.first_seen_at.desc(), CamBlank.id.desc())
+        ).all()
+    )

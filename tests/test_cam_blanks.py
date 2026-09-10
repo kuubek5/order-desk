@@ -1,4 +1,4 @@
-"""Заготовки з теки CAM: замовлення комірниці без ручного вводу.
+"""Нові диски з теки CAM: замовлення на склад без ручного вводу.
 
 Головне, що стережуть ці тести, — три речі, на яких така фіча ламається тихо:
 
@@ -9,8 +9,10 @@
 2. **Нерозібрана назва.** Формат — конвенція, не примус. Файл, який не
    розібрався, усе одно взятий диск; тихо викинути його не можна.
 3. **Вікно замовлення.** Рахується від позначки «замовлено», а не від
-   робочої доби: комірниця йде о 18:00, далі бере нічна зміна, а у вихідні
-   комірниці немає взагалі.
+   робочої доби: склад закривається о 18:00, далі бере нічна зміна, а у
+   вихідні склад не працює взагалі.
+
+Замовлення як записи (створення, скасування, історія) — tests/test_disc_orders.py.
 """
 
 from datetime import datetime
@@ -23,19 +25,18 @@ from sqlalchemy.pool import StaticPool
 from app.db import Base
 from app.models import CamBlank
 from app.services.cam_blanks import (
-    last_order_at,
-    material_counts,
-    order_days,
-    order_history,
-    order_lines,
+    COUNT_MARK,
+    order_groups,
     order_text,
-    undo_last_order,
-    mark_ordered,
     parse_blank_name,
     pending_blanks,
     scan_blanks,
+    shift_groups,
+    shift_of,
+    shifts_label,
     sync_blanks,
 )
+from app.services.disc_orders import create_order
 
 
 @pytest.fixture
@@ -161,7 +162,8 @@ def test_same_name_after_a_cleanup_counts_as_a_new_disc(db, tmp_path):
     path = tmp_path / "zr/12/12-monolith-a2-x1.blk"
     make_tree(tmp_path, {"zr/12": ["12-monolith-a2-x1.blk"]})
     sync_blanks(db, tmp_path)
-    mark_ordered(db)
+    create_order(db, ids=[r.id for r in pending_blanks(db)])
+    db.commit()
 
     # Підчистка теки.
     path.unlink()
@@ -198,7 +200,9 @@ def test_window_runs_from_the_order_mark_not_from_the_business_day(db, tmp_path)
     sync_blanks(db, tmp_path, now=datetime(2026, 9, 4, 23, 40))   # пʼятниця, ніч
     assert len(pending_blanks(db)) == 1
 
-    assert mark_ordered(db, now=datetime(2026, 9, 4, 17, 30)) == 1
+    order = create_order(db, ids=[r.id for r in pending_blanks(db)], now=datetime(2026, 9, 4, 17, 30))
+    db.commit()
+    assert order is not None and order.disc_count == 1
     assert pending_blanks(db) == []
 
     # Вихідні: оператори працюють, комірниці немає.
@@ -209,75 +213,153 @@ def test_window_runs_from_the_order_mark_not_from_the_business_day(db, tmp_path)
     assert pending[0].file_name == "18-emotions-a3-x2.blk"
 
 
-# ── текст для комірниці ─────────────────────────────────────────────────────
+# ── текст для складу: mono-a2-25(х2) ────────────────────────────────────────
 
 
-def test_order_text_matches_the_shape_the_storekeeper_reads():
-    """Формат задав власник 10.09.26: «mono a3 18» — одна позиція на рядок,
-    малими літерами, кількість у дужках лише коли більше однієї."""
-    now = datetime(2026, 9, 8, 17, 30)
+def _disc(path, brand, shade, height, folder, when=datetime(2026, 9, 8, 17, 30), **extra):
+    return CamBlank(rel_path=path, brand=brand, shade=shade, height=height,
+                    material_dir=folder, first_seen_at=when, **extra)
+
+
+def test_order_text_matches_the_shape_the_owner_reads():
+    """Формат задав власник 10.09.26 (бриф «Нові диски»): виробник-колір-висота
+    через дефіс, малими; кількість — у дужках КИРИЛИЧНОЮ «х» і лише коли
+    дисків більше одного; цирконій, порожній рядок, ПММА."""
     rows = [
-        CamBlank(rel_path="a", brand="monolith", shade="a2", height=18, first_seen_at=now),
-        CamBlank(rel_path="b", brand="monolith", shade="a2", height=25, first_seen_at=now),
-        CamBlank(rel_path="c", brand="emotions", shade="a1", height=20, first_seen_at=now),
-        CamBlank(rel_path="d", brand="pmma", shade="прозора", height=20, first_seen_at=now),
-        CamBlank(rel_path="e", brand="pmma", shade="прозора", height=20, first_seen_at=now),
-        CamBlank(rel_path="f", brand="monolith", shade="a3-5", height=20, first_seen_at=now),
+        _disc("a", "monolith", "a2", 18, "ZR"),
+        _disc("b", "monolith", "a2", 25, "ZR"),
+        _disc("b2", "monolith", "a2", 25, "ZR"),
+        _disc("c", "emotions", "a1", 20, "ZR"),
+        _disc("d", "pmma", "a2", 20, "PMMA-PEEK"),
+        _disc("f", "monolith", "a3-5", 20, "ZR"),
     ]
-    lines = order_text(rows).splitlines()
-    assert sorted(lines) == sorted([
-        "mono a2 18", "mono a2 25", "emo a1 20", "pmma прозора 20(2)", "mono a3.5 20",
-    ])
+    assert order_text(rows) == (
+        "emo-a1-20\n"
+        "mono-a2-18\n"
+        f"mono-a2-25({COUNT_MARK}2)\n"
+        "mono-a3.5-20\n"
+        "\n"
+        "pmma-a2-20"
+    )
 
 
-def test_order_lines_put_the_freshest_on_top_and_carry_their_dates():
-    """Свіжі згори (як і таблиця під списком), і в кожного рядка — коли саме
-    брали його диски: це видно поруч із галочкою, але в буфер не йде."""
-    early, mid, late = (datetime(2026, 9, 8, h, 0) for h in (9, 12, 18))
+def test_the_count_mark_is_the_cyrillic_letter():
+    """Латинська x у «(x2)» виглядає так само, але це не те, що пише власник
+    і що звик читати склад. Константа — щоб її не «виправили» при правці."""
+    assert COUNT_MARK == "х"
+    rows = [_disc("a", "zr", "a2", 25, "ZR"), _disc("b", "zr", "a2", 25, "ZR")]
+    assert order_text(rows) == "zr-a2-25(х2)"
+
+
+def test_shade_sorts_like_a_human_reads_it():
+    rows = [_disc(p, "monolith", s, 14, "ZR") for p, s in (("1", "b1"), ("2", "a3-5"), ("3", "a3"), ("4", "a1"))]
+    assert order_text(rows).splitlines() == ["mono-a1-14", "mono-a3-14", "mono-a3.5-14", "mono-b1-14"]
+
+
+def test_note_goes_last_as_its_own_block():
+    """Дописане від руки (фрези) — окремим блоком після дисків; замовлення
+    може складатися лише з нього."""
+    rows = [_disc("a", "zr", "a2", 25, "ZR")]
+    assert order_text(rows, "  6*2.5 zr (х2)  ") == "zr-a2-25\n\n6*2.5 zr (х2)"
+    assert order_text([], "полірувальні диски") == "полірувальні диски"
+    assert order_text([]) == ""
+
+
+def test_groups_keep_zirconium_first_then_pmma_then_the_rest():
     rows = [
-        CamBlank(rel_path="a", brand="zr", shade="a2", height=25, first_seen_at=early),
-        CamBlank(rel_path="b", brand="monolith", shade="a3", height=18, first_seen_at=mid),
-        CamBlank(rel_path="c", brand="zr", shade="a2", height=25, first_seen_at=late),
+        _disc("c", "crco", "hpp", 20, "CRCO"),
+        _disc("p", "pmma", "a1", 16, "PMMA-PEEK"),
+        _disc("z", "zr", "a2", 25, "ZR"),
     ]
-    lines = order_lines(rows)
-    assert [line.text for line in lines] == ["zr a2 25(2)", "mono a3 18"]
-    assert lines[0].taken == (late, early)
-    assert "18:00" not in order_text(rows), "дати в текст для комірниці не йдуть"
-
-
-def test_order_days_split_by_calendar_day_freshest_first():
-    """Галочка на весь день (власник, 10.09.26). День календарний: нічний
-    диск о 01:09 — уже наступний день, як і написано поруч на годиннику.
-    Та сама позиція з двох днів — по рядку в кожному дні, з ключем `item`,
-    за яким екран зводить їх в один рядок буфера."""
-    rows = [
-        CamBlank(rel_path="a", brand="zr", shade="a2", height=25, material_dir="ZR",
-                 first_seen_at=datetime(2026, 9, 8, 22, 12)),
-        CamBlank(rel_path="b", brand="zr", shade="a2", height=25, material_dir="ZR",
-                 first_seen_at=datetime(2026, 9, 9, 1, 9)),
-        CamBlank(rel_path="c", brand="pmma", shade="a1", height=16, material_dir="PMMA-PEEK",
-                 first_seen_at=datetime(2026, 9, 9, 2, 7)),
-    ]
-    days = order_days(rows)
-
-    assert [d.key for d in days] == ["09.09.26", "08.09.26"]
-    assert days[0].weekday == "ср" and days[0].count == 2
-    assert [(ln.text, ln.item, ln.material) for ln in days[0].lines] == [
-        ("pmma a1 16", "pmma a1 16", "PMMA-PEEK"), ("zr a2 25", "zr a2 25", "ZR"),
-    ]
-    assert [ln.item for ln in days[1].lines] == ["zr a2 25"]
-    assert material_counts(rows) == [("ZR", 2), ("PMMA-PEEK", 1)]
+    groups = order_groups(rows)
+    assert [g.group for g in groups] == ["zr", "pmma", "dir:crco"]
+    assert [g.title for g in groups] == ["Цирконій", "ПММА · PEEK", "CRCO"]
 
 
 def test_order_text_shows_unparsed_files_instead_of_hiding_them():
+    """Нерозібраний файл — теж узятий диск; іде сирою назвою без `.blk`, а
+    рядок позначений як той, що просить погляду."""
     now = datetime(2026, 9, 8, 17, 30)
     rows = [
-        CamBlank(rel_path="a", brand="monolith", shade="a2", height=18, first_seen_at=now),
-        CamBlank(rel_path="zr/12/дивна.blk", file_name="дивна.blk", first_seen_at=now),
+        _disc("a", "monolith", "a2", 18, "ZR"),
+        CamBlank(rel_path="ZR/12/дивна.blk", file_name="дивна.blk", material_dir="ZR", first_seen_at=now),
     ]
     text = order_text(rows)
-    assert "mono a2 18" in text
-    assert "дивна.blk" in text, "нерозібраний файл — теж узятий диск, ховати не можна"
+    assert text == "mono-a2-18\nдивна"
+    raw = [line for g in order_groups(rows) for line in g.lines if line.pos.raw]
+    assert raw and raw[0].warn
+
+
+def test_the_same_position_from_two_shifts_is_one_line():
+    """Той самий диск, узятий удень і вночі, — одна позиція з кількістю."""
+    rows = [
+        _disc("a", "zr", "a2", 25, "ZR", datetime(2026, 9, 8, 22, 12)),
+        _disc("b", "zr", "a2", 25, "ZR", datetime(2026, 9, 9, 10, 0)),
+    ]
+    lines = [line for g in order_groups(rows) for line in g.lines]
+    assert len(lines) == 1 and lines[0].count == 2
+    assert "22:12" not in order_text(rows), "час у текст для складу не йде"
+
+
+# ── зміни: денна 07:30–18:00, нічна 18:00–07:30 ─────────────────────────────
+
+
+def test_night_disc_after_midnight_belongs_to_yesterdays_night_shift():
+    shift = shift_of(datetime(2026, 9, 10, 1, 9))
+    assert shift.kind == "night"
+    assert (shift.start, shift.end) == (datetime(2026, 9, 9, 18, 0), datetime(2026, 9, 10, 7, 30))
+    assert shift.short == "нічна 09.09→10.09"
+    assert shift.when == "ср 09.09 → чт 10.09"
+
+
+def test_shift_borders_are_0730_and_1800():
+    assert shift_of(datetime(2026, 9, 10, 7, 29)).kind == "night"
+    assert shift_of(datetime(2026, 9, 10, 7, 30)).kind == "day"
+    assert shift_of(datetime(2026, 9, 10, 17, 59)).kind == "day"
+    assert shift_of(datetime(2026, 9, 10, 18, 0)).kind == "night"
+    assert shift_of(datetime(2026, 9, 10, 12, 0)).short == "денна 10.09"
+
+
+def test_shift_groups_are_freshest_first_and_know_the_live_one():
+    rows = [
+        _disc("a", "zr", "a2", 25, "ZR", datetime(2026, 9, 9, 21, 40)),
+        _disc("b", "zr", "a2", 25, "ZR", datetime(2026, 9, 10, 8, 14)),
+        _disc("c", "zr", "a3", 18, "ZR", datetime(2026, 9, 10, 15, 26)),
+    ]
+    groups = shift_groups(rows, now=datetime(2026, 9, 10, 16, 40))
+    assert [g.shift.key for g in groups] == ["d20260910", "n20260909"]
+    assert [r.rel_path for r in groups[0].rows] == ["c", "b"], "у зміні свіжі згори"
+    assert groups[0].live and not groups[1].live
+
+
+def test_shifts_label_names_two_and_counts_more():
+    two = [
+        _disc("a", "zr", "a2", 25, "ZR", datetime(2026, 9, 9, 21, 0)),
+        _disc("b", "zr", "a2", 25, "ZR", datetime(2026, 9, 10, 9, 0)),
+    ]
+    assert shifts_label(two) == "нічна 09.09→10.09 + денна 10.09"
+    many = two + [_disc("c", "zr", "a2", 25, "ZR", datetime(2026, 9, 7, 9, 0))]
+    assert shifts_label(many) == "3 зміни · 07.09–10.09"
+
+
+# ── тека, якої немає ────────────────────────────────────────────────────────
+
+
+def test_missing_folder_changes_nothing(db, tmp_path):
+    """Відсутня тека — не порожня тека. Раніше помилка в шляху, виправлена за
+    хвилину, робила всі 19 тисяч дисків точки відліку «новими»: прохід без
+    теки позначав їх зниклими, а коли тека поверталась — кожен файл
+    зʼявлявся знову, уже як узятий диск."""
+    make_tree(tmp_path, {"zr/12": [f"12-monolith-a2-x{i}.blk" for i in range(1, 6)]})
+    assert sync_blanks(db, tmp_path).baseline == 5
+
+    gone = sync_blanks(db, tmp_path / "немає")
+    assert gone.missing and gone.vanished == 0
+    assert db.scalar(select(CamBlank).where(CamBlank.gone_at.is_not(None))) is None
+
+    back = sync_blanks(db, tmp_path)
+    assert (back.appeared, back.vanished) == (0, 0)
+    assert pending_blanks(db) == []
 
 
 # ── проба теки (діагностика перед впровадженням) ────────────────────────────
@@ -500,75 +582,6 @@ def test_pileup_hint_is_a_hint_not_a_block(db, tmp_path):
     assert order_text(rows), "текст для комірниці не обрізається"
 
 
-# ── Скасування випадкового «Замовлено» ──────────────────────────────────────
-# Кнопка миттєво спорожняє список, і натиснути її випадково легко — саме так і
-# сталось на робочому ПК 08.09.26. Без відкату денна робота зникає з замовлення
-# від одного зайвого кліку: рядки лишаються, але вже позначені замовленими, і
-# комірниця їх не побачить.
-
-
-class TestUndoOrder:
-    def test_undo_returns_the_discs_to_the_list(self, db):
-        now = datetime(2026, 9, 8, 17, 0)
-        db.add_all([
-            CamBlank(rel_path="a", brand="monolith", shade="a2", height=18, first_seen_at=now),
-            CamBlank(rel_path="b", brand="monolith", shade="a2", height=25, first_seen_at=now),
-        ])
-        db.commit()
-
-        assert mark_ordered(db, now=datetime(2026, 9, 8, 18, 0)) == 2
-        assert pending_blanks(db) == []
-
-        assert undo_last_order(db) == 2
-        assert len(pending_blanks(db)) == 2
-
-    def test_undo_never_touches_the_baseline(self, db):
-        """ГОЛОВНЕ. Перший прохід теки теж проставляє `ordered_at` — інакше 19
-        тисяч давніх дисків потрапили б у перше ж замовлення. Скасувати ЙОГО
-        означало б вивалити комірниці всю історію теки."""
-        now = datetime(2026, 9, 8, 12, 0)
-        # Рядки точки відліку: ordered_at дорівнює first_seen_at.
-        db.add_all([
-            CamBlank(rel_path=f"old{i}", brand="monolith", shade="a2", height=18,
-                     first_seen_at=now, ordered_at=now)
-            for i in range(5)
-        ])
-        db.commit()
-
-        assert undo_last_order(db) == 0, "відкат зачепив точку відліку"
-        assert pending_blanks(db) == []
-
-    def test_undo_takes_only_the_last_batch(self, db):
-        """Два замовлення поспіль — відкат повертає лише останнє."""
-        seen = datetime(2026, 9, 8, 9, 0)
-        db.add(CamBlank(rel_path="a", brand="monolith", shade="a2", height=18, first_seen_at=seen))
-        db.commit()
-        mark_ordered(db, now=datetime(2026, 9, 8, 12, 0))
-
-        db.add(CamBlank(rel_path="b", brand="monolith", shade="a2", height=25, first_seen_at=seen))
-        db.commit()
-        mark_ordered(db, now=datetime(2026, 9, 8, 18, 0))
-
-        assert undo_last_order(db) == 1
-        returned = [r.rel_path for r in pending_blanks(db)]
-        assert returned == ["b"], "відкат зачепив попереднє замовлення"
-
-    def test_nothing_to_undo_is_not_an_error(self, db):
-        assert undo_last_order(db) == 0
-        assert last_order_at(db) is None
-
-    def test_last_order_at_ignores_the_baseline(self, db):
-        """Кнопка скасування показується за цим значенням. Якби точка відліку
-        сюди потрапляла, кнопка висіла б на чистій системі й пропонувала
-        скасувати те, чого не було."""
-        now = datetime(2026, 9, 8, 12, 0)
-        db.add(CamBlank(rel_path="old", brand="monolith", shade="a2", height=18,
-                        first_seen_at=now, ordered_at=now))
-        db.commit()
-
-        assert last_order_at(db) is None
-
-
 # ── Справжні назви з робочого ПК ────────────────────────────────────────────
 # Зразки, на яких фічу писали, мали вигляд `12-monolith-a2-x14`. CAM на
 # робочому ПК пише ІНАКШЕ, і 08.09.26 виявилось, що розбір не влучає в жоден
@@ -628,8 +641,8 @@ class TestRealNamesFromTheShop:
             for n in ("zr25_25-a2-x1.blk", "zr25_25-a2-x2.blk", "pmma25_20-a3-x7.blk")
         ]
         text = order_text(rows)
-        assert "zr a2 25(2)" in text
-        assert "pmma a3 20" in text
+        assert f"zr-a2-25({COUNT_MARK}2)" in text
+        assert "pmma-a3-20" in text
         assert ".blk" not in text, "у замовлення потрапили сирі імена файлів"
 
     # Формат C — назви зі скріну робочого ПК 10.09.26. До цього розбору вони
@@ -654,7 +667,7 @@ class TestRealNamesFromTheShop:
                  "zr14_14-Emotions-A3-x843PRO.blk")
         rows = [CamBlank(rel_path=n, file_name=n, first_seen_at=datetime(2026, 9, 8, 9, i))
                 for i, n in enumerate(names)]
-        assert sorted(order_text(rows).splitlines()) == ["emo a1 18", "emo a3 14", "mono a3.5 20"]
+        assert sorted(order_text(rows).splitlines()) == ["emo-a1-18", "emo-a3-14", "mono-a3.5-20"]
 
     def test_history_rows_saved_by_the_old_parser_are_read_from_the_name(self):
         """Поля в базі пише розбір, що був у момент появи диска. Замовлені до
@@ -662,7 +675,7 @@ class TestRealNamesFromTheShop:
         n = "zr14_14-Monolith-A3-5-x40.blk"
         row = CamBlank(rel_path=n, file_name=n, brand="zr", shade="5", height=None,
                        first_seen_at=datetime(2026, 9, 8, 21, 24))
-        assert order_text([row]) == "mono a3.5 14"
+        assert order_text([row]) == "mono-a3.5-14"
 
 
 def test_sync_rereads_pending_rows_saved_by_the_old_parser(db, tmp_path):
@@ -682,72 +695,3 @@ def test_sync_rereads_pending_rows_saved_by_the_old_parser(db, tmp_path):
     db.refresh(row)
     assert (row.brand, row.shade, row.height) == ("monolith", "a3-5", 14)
     assert sync_blanks(db, tmp_path).reparsed == 0, "другий прохід нічого не переписує"
-
-
-# ── Історія замовлень ───────────────────────────────────────────────────────
-# «Замовлено» було дією без сліду: натиснув — список спорожнів, і що саме
-# пішло комірниці, вже ніде не подивитись. Окремої таблиці під це не заводимо:
-# усі диски одного натискання ділять точний `ordered_at`, тож історія
-# ВИВОДИТЬСЯ з наявних рядків. Дві таблиці з тією самою правдою обовʼязково
-# розійшлись би.
-
-
-class TestOrderHistory:
-    def test_each_press_is_one_entry(self, db):
-        seen = datetime(2026, 9, 8, 9, 0)
-        db.add(CamBlank(rel_path="a", brand="zr", shade="a2", height=25, first_seen_at=seen))
-        db.commit()
-        mark_ordered(db, now=datetime(2026, 9, 8, 12, 0))
-
-        db.add_all([
-            CamBlank(rel_path="b", brand="zr", shade="a2", height=25, first_seen_at=seen),
-            CamBlank(rel_path="c", brand="pmma", shade="a3", height=20, first_seen_at=seen),
-        ])
-        db.commit()
-        mark_ordered(db, now=datetime(2026, 9, 8, 18, 0))
-
-        history = order_history(db)
-
-        assert [h.count for h in history] == [2, 1], "новіше замовлення має бути згори"
-        assert history[0].ordered_at == datetime(2026, 9, 8, 18, 0)
-
-    def test_only_the_newest_can_be_undone(self, db):
-        """Відкат старішого повернув би в поточний список диски, замовлені
-        тижні тому, і комірниця отримала б їх удруге."""
-        seen = datetime(2026, 9, 8, 9, 0)
-        for path, when in (("a", 12), ("b", 18)):
-            db.add(CamBlank(rel_path=path, brand="zr", shade="a2", height=25, first_seen_at=seen))
-            db.commit()
-            mark_ordered(db, now=datetime(2026, 9, 8, when, 0))
-
-        history = order_history(db)
-
-        assert history[0].is_latest is True
-        assert all(h.is_latest is False for h in history[1:])
-
-    def test_the_baseline_is_not_an_order(self, db):
-        """Перший прохід теки позначає замовленими ВСІ наявні диски — інакше
-        19 тисяч давніх потрапили б у перше ж замовлення. Показувати це як
-        «замовлення на 19 133 диски» було б брехнею."""
-        now = datetime(2026, 9, 8, 12, 0)
-        db.add_all([
-            CamBlank(rel_path=f"old{i}", brand="zr", shade="a2", height=25,
-                     first_seen_at=now, ordered_at=now)
-            for i in range(4)
-        ])
-        db.commit()
-
-        assert order_history(db) == []
-
-    def test_entry_carries_the_text_that_was_sent(self, db):
-        """Щоб можна було переслати той самий список ще раз, не збираючи його
-        заново."""
-        seen = datetime(2026, 9, 8, 9, 0)
-        db.add_all([
-            CamBlank(rel_path="a", brand="zr", shade="a2", height=25, first_seen_at=seen),
-            CamBlank(rel_path="b", brand="zr", shade="a2", height=25, first_seen_at=seen),
-        ])
-        db.commit()
-        mark_ordered(db, now=datetime(2026, 9, 8, 18, 0))
-
-        assert "zr a2 25(2)" in order_history(db)[0].text

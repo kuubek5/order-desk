@@ -1,0 +1,794 @@
+<title>Нові диски</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Тема KuubMill за замовчуванням — «Amber Forge» (theme-forge.css):
+   теплий графіт із бурштином. Макет має виглядати як екран застосунку. */
+:root{
+  --bg:#14100a; --bg-2:#0f0b06; --panel:#1b150c; --panel-2:#221a0e; --panel-3:#2a2013;
+  --line:#2c2214; --line-2:#45361d;
+  --text:#f2e8d8; --text-2:#e6d4b2; --muted:#a89578;
+  --accent:#ffb454; --accent-b:#ffc670; --accent-well:#2a1c08; --accent-rgb:255,180,84;
+  --on-accent:#2a1a04; --ok:#a8e08a; --ok-rgb:168,224,138;
+  /* Проблема диска (не на місці / не розібрано) — колір тривоги теми,
+     бо помаранчевий належить ПММА і «увага» в ньому загубилась би. */
+  --alarm:#ff6b52; --alarm-rgb:255,107,82; --alarm-ink:#ffc4b6;
+  /* Матеріали, текст: цирконій — крижаний (--mat-zr у tokens.css),
+     ПММА — помаранчевий (рішення власника 10.09.26). */
+  --zr:#8fbfe0; --pmma:#ff9a4a;
+  /* Ті самі матеріали як ЗАЛИВКА стовпчиків — темніші кроки, перевірені
+     validate_palette на тлі #1b150c (смуга L, хрома, розрізнення при
+     дальтонізмі — PASS). Світлі текстові кольори як заливка не проходять. */
+  --zr-fill:#3d8fcc; --pmma-fill:#d9681e;
+  --font:'Golos Text',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+  --r:12px; --r-s:8px;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--text); font:14px/1.5 var(--font);
+  background-image:
+    linear-gradient(rgba(255,180,84,.045) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,180,84,.045) 1px,transparent 1px);
+  background-size:24px 24px;
+}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;margin:0;flex:none;cursor:pointer}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.dim{color:var(--muted)}
+code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);padding:1px 6px;border-radius:5px;color:var(--text-2)}
+
+.page{max-width:1280px;margin:0 auto;padding:28px 24px 64px;display:flex;flex-direction:column;gap:18px}
+.eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+h1{font-size:28px;font-weight:800;letter-spacing:-.02em;margin:4px 0 6px;text-wrap:balance}
+.lede{margin:0;max-width:78ch;color:var(--text-2)}
+.changes{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0;padding:0;list-style:none}
+.changes li{font-size:12.5px;padding:3px 10px;border:1px solid var(--line-2);border-radius:99px;color:var(--text-2);background:var(--panel)}
+.changes li b{color:var(--accent);font-weight:600}
+
+/* ── Рамка екрана ── */
+.mock{border:1px solid var(--line-2);border-radius:16px;background:rgba(20,16,10,.92);overflow:hidden}
+.mock-bar{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--bg-2);flex-wrap:wrap}
+.mock-bar h2{margin:0;font-size:20px;font-weight:800;letter-spacing:-.01em}
+.mock-bar .sp{flex:1}
+.mock-body{padding:18px;display:flex;flex-direction:column;gap:22px}
+.folder{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 18px;border-top:1px solid var(--line);background:var(--bg-2);font-size:12.5px;color:var(--muted)}
+.folder .sp{flex:1}
+.okdot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(var(--ok-rgb),.15)}
+
+/* ── Кнопки, пігулки ── */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:9px;border:1px solid var(--line-2);
+  background:var(--panel-2);cursor:pointer;font-size:13px;font-weight:500;white-space:nowrap;transition:border-color .15s,background .15s}
+.btn:hover{border-color:var(--text-2)}
+.btn.sm{padding:4px 9px;font-size:12px;border-radius:7px}
+.btn.ghost{background:transparent}
+.btn.apex{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700}
+.btn.apex:hover{background:var(--accent-b)}
+.btn.tg{border-color:#2f5d8a;background:#10233a;color:#9fd0ff}
+.btn.tg:hover{border-color:#6fb3f2}
+.btn[disabled]{opacity:.4;cursor:not-allowed}
+.soon{font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:1px 5px;border-radius:4px;background:rgba(159,208,255,.14);color:#9fd0ff}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;border-radius:99px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.pill.live{background:rgba(var(--accent-rgb),.12);color:var(--accent)}
+.pill.live::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2s ease-in-out infinite}
+.pill.alarm{background:rgba(var(--alarm-rgb),.14);color:var(--alarm-ink)}
+.pill.mute{background:var(--panel-3);color:var(--muted)}
+.pill.wait{box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.55);color:var(--accent)}
+@keyframes pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.pill.live::before{animation:none}}
+
+/* Матеріал: мітка + колір тексту позиції. ПММА — помаранчевий. */
+.mattag{display:inline-flex;align-items:center;gap:6px;font:600 11px var(--mono);letter-spacing:.04em;color:var(--mc)}
+.matdot{width:9px;height:9px;border-radius:3px;background:var(--mc);flex:none}
+.m-zr{--mc:var(--zr)}
+.m-pmma{--mc:var(--pmma)}
+.m-pmma .ln,.hl-pmma{color:var(--pmma)}
+
+/* ── Сегменти ── */
+.seg{display:flex;flex-wrap:wrap;gap:4px;padding:4px;border:1px solid var(--line);border-radius:11px;background:var(--bg-2)}
+.seg button{flex:1 1 auto;padding:6px 10px;border:0;border-radius:8px;background:transparent;cursor:pointer;font-size:12.5px;color:var(--text-2);text-align:left;line-height:1.3}
+.seg button small{display:block;font-size:11px;color:var(--muted)}
+.seg button:hover{background:var(--panel-2)}
+.seg button[aria-pressed=true]{background:var(--panel-3);color:var(--text);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.5)}
+.seg button .n{font-family:var(--mono);color:var(--accent);margin-left:4px}
+.seg.tight button{flex:0 0 auto;padding:4px 10px}
+
+/* ── Позиція диска: mono-a2-25(х2) — одним рядком, частини підфарбовані.
+   У буфер іде рівно цей текст. ── */
+.pos{display:inline-flex;align-items:baseline;font:600 14.5px var(--mono);white-space:nowrap}
+.pos .br{color:var(--text-2);font-weight:500}
+.pos i{font-style:normal;color:var(--line-2);padding:0 1px}
+.pos .sh{color:var(--mc);font-weight:700}
+.pos .hh{color:var(--text);font-weight:700}
+.pos .ct{margin-left:6px;color:var(--accent);font-weight:700;font-size:.92em}
+.m-pmma .pos .br,.m-pmma .pos .hh{color:var(--pmma)}
+.m-pmma .pos .br{opacity:.8}
+.pos.raw{color:var(--alarm-ink);font-weight:500}
+.pos.w::after{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--alarm);margin-left:8px;align-self:center}
+
+/* ── Замовлення на склад ── */
+.ord{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-s);padding:12px;display:flex;flex-direction:column;gap:14px}
+.og-h{display:flex;align-items:center;gap:8px;padding:0 8px 7px;margin-bottom:4px;border-bottom:1px dashed var(--line-2);
+  font:600 11px var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--mc)}
+.og-h .n{margin-left:auto;font:500 12px var(--font);letter-spacing:0;text-transform:none;color:var(--muted)}
+.or{display:flex;align-items:center;padding:5px 8px;border-radius:7px}
+.or:hover{background:var(--panel-2)}
+.plain summary{cursor:pointer;font-size:12px;color:var(--muted);padding:0 8px;list-style:none}
+.plain summary::-webkit-details-marker{display:none}
+.plain summary::before{content:"›";display:inline-block;margin-right:6px;transition:transform .15s}
+.plain[open] summary::before{transform:rotate(90deg)}
+.plain pre{margin:8px 0 0;padding:8px 10px;background:var(--panel);border-radius:6px;font:12.5px/1.5 var(--mono);color:var(--text-2);white-space:pre-wrap}
+.og-empty{padding:2px 8px;color:var(--muted);font-size:13px}
+.sumline{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--text-2)}
+.sumline b{font:700 22px var(--mono);color:var(--text)}
+[hidden]{display:none!important}
+
+/* ═════ Кошик ═════ */
+.va{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px;align-items:start}
+.feed{display:flex;flex-direction:column;gap:14px}
+.shift{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);overflow:hidden}
+.shift-head{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--panel-2);border-bottom:1px solid var(--line);cursor:pointer;flex-wrap:wrap}
+.shift-head b{font-size:14.5px}
+.shift-head .sp{flex:1}
+.disc{display:grid;grid-template-columns:auto 44px 52px minmax(0,1fr) auto;align-items:center;gap:10px;padding:7px 14px;border-top:1px solid var(--line);cursor:pointer}
+.disc:first-of-type{border-top:0}
+.disc:hover{background:var(--panel-2)}
+.disc .fn{font:12px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.disc.off .pos,.disc.off .t{opacity:.45;text-decoration:line-through;text-decoration-color:rgba(255,255,255,.35)}
+.disc.w{box-shadow:inset 3px 0 0 var(--alarm)}
+/* Кошик — лише складання замовлення. Порядок зверху вниз: що замовити →
+   що вийде → дописати → одна головна дія. Історія живе внизу, у вкладці. */
+.basket{position:sticky;top:12px;display:flex;flex-direction:column;gap:14px;padding:16px;border:1px solid var(--line-2);border-radius:var(--r);background:var(--panel)}
+.bk-head{display:flex;align-items:center;gap:10px}
+.bk-head h3{margin:0;font-size:16px;font-weight:700}
+.bk-head .sp{flex:1}
+.rchip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;background:rgba(159,208,255,.1);color:#9fd0ff;font-size:12px;font-weight:600;cursor:help;white-space:nowrap}
+
+/* Дописане — остання група в самій картці замовлення. */
+.m-extra{--mc:var(--text-2)}
+.m-extra textarea{display:block;width:100%;background:transparent;border:1px dashed var(--line-2);border-radius:7px;padding:7px 9px;
+  color:var(--text);font:600 14px/1.55 var(--mono);resize:vertical;min-height:40px}
+.m-extra textarea::placeholder{color:var(--muted);font-weight:400}
+.m-extra textarea:focus{outline:none;border-style:solid;border-color:rgba(var(--accent-rgb),.6)}
+.quick{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-top:7px;font-size:11.5px;color:var(--muted);white-space:nowrap}
+.quick button{flex:none;border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:2px 9px;font:11.5px var(--mono);color:var(--text-2);cursor:pointer}
+.quick button:hover{border-color:var(--accent);color:var(--accent)}
+
+/* Дії: одна головна на всю ширину, дві другорядні рівним рядком під нею. */
+.acts{display:flex;flex-direction:column;gap:8px}
+.acts .btn{justify-content:center}
+.btn.big{width:100%;padding:11px 14px;font-size:14.5px;border-radius:10px}
+.btn.big .cnt{font-weight:500;opacity:.75}
+.acts-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.last{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;font-size:12.5px;color:var(--text-2);
+  background:rgba(var(--ok-rgb),.07);border:1px solid rgba(var(--ok-rgb),.25)}
+.last .sp{flex:1}
+.last svg{color:var(--ok)}
+
+/* ═════ Усі створені диски ═════ */
+.dh{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);overflow:hidden}
+.dh-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.dh-head .sp{flex:1}
+.tabs{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:11px;background:var(--bg-2)}
+.tabs button{border:0;background:transparent;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;color:var(--muted)}
+.tabs button:hover{color:var(--text-2)}
+.tabs button[aria-selected=true]{background:var(--panel-3);color:var(--text);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.5)}
+.tabs .n{font:500 12px var(--mono);color:var(--accent);margin-left:6px}
+
+/* Історія замовлень — рівні колонки, дії завжди на місці. */
+.ol-row{display:grid;grid-template-columns:22px 96px 210px minmax(0,1fr) 150px 196px;align-items:center;gap:12px;padding:8px 16px;border-top:1px solid var(--line);cursor:pointer}
+.ol-row:first-child{border-top:0}
+.ol-row:hover{background:var(--panel-2)}
+.ol-tog{color:var(--muted);text-align:center;transition:transform .15s}
+.ol-row.open .ol-tog{transform:rotate(90deg)}
+.ol-at{font:600 13px var(--mono)}
+.ol-what{font-size:13px;white-space:nowrap}
+.tagn{font-size:12px;color:var(--accent);margin-left:4px}
+.ol-lab{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ol-row .pill{justify-self:start}
+.ol-act{display:flex;gap:6px;justify-content:flex-end}
+.ol-row.cx .ol-at,.ol-row.cx .ol-what{text-decoration:line-through;text-decoration-color:rgba(255,255,255,.35);opacity:.6}
+.ol-row.fresh{box-shadow:inset 3px 0 0 var(--accent)}
+.ol-text{margin:0 16px 12px 50px;padding:10px 12px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;font:13px/1.55 var(--mono);color:var(--text-2);white-space:pre-wrap}
+.ol-note{display:block;margin-top:8px;font:12px var(--font);color:var(--muted)}
+.dh-q{background:var(--bg-2);border:1px solid var(--line-2);border-radius:9px;padding:6px 10px;color:var(--text);font:13px var(--mono);width:210px}
+.dh-q::placeholder{color:var(--muted);font-family:var(--font)}
+.dh-q:focus{outline:none;border-color:rgba(var(--accent-rgb),.6)}
+
+.chart{position:relative;padding:14px 16px 10px;border-bottom:1px solid var(--line);background:var(--bg-2)}
+.chart-top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:8px;font-size:12px;color:var(--muted)}
+.chart-top .sp{flex:1}
+.lg{display:inline-flex;align-items:center;gap:6px;color:var(--text-2)}
+.lg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.bars{display:flex;align-items:stretch;gap:10px;overflow-x:auto;padding-bottom:2px}
+.bar-col{flex:1 0 58px;max-width:110px;display:flex;flex-direction:column;align-items:center;gap:4px;border:0;background:transparent;cursor:pointer;padding:4px 2px;border-radius:8px}
+.bar-col:hover{background:var(--panel)}
+.bar-col.on{background:var(--panel-2);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.5)}
+.plot{height:118px;width:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;border-bottom:1px solid var(--line-2)}
+.bv{font:700 12px var(--mono);color:var(--text-2)}
+.stack{width:30px;display:flex;flex-direction:column;gap:2px}
+.stack span{display:block;min-height:3px}
+.stack span:first-child{border-radius:4px 4px 0 0}
+.stack .sz{background:var(--zr-fill)}
+.stack .sp_{background:var(--pmma-fill)}
+.bd{font:500 11.5px var(--mono);color:var(--muted);white-space:nowrap}
+.bd b{font-family:var(--font);font-weight:600;color:var(--text-2);margin-right:3px}
+.tip{position:absolute;pointer-events:none;background:var(--panel-3);border:1px solid var(--line-2);border-radius:8px;padding:6px 9px;font-size:12px;line-height:1.45;white-space:nowrap;box-shadow:0 8px 20px rgba(0,0,0,.45);transform:translate(-50%,-100%)}
+.tip b{font-family:var(--mono)}
+
+.dl{display:flex;flex-direction:column}
+.dl-day{display:flex;align-items:center;gap:10px;padding:9px 16px;background:var(--panel-2);border-top:1px solid var(--line);font-size:13px;position:sticky;top:0}
+.dl-day:first-child{border-top:0}
+.dl-day b{font-weight:700}
+.dl-day .sp{flex:1}
+.dl-row{display:grid;grid-template-columns:44px 52px minmax(150px,auto) minmax(0,1fr) auto;align-items:center;gap:12px;padding:6px 16px;border-top:1px solid var(--line)}
+.dl-row:hover{background:var(--panel-2)}
+.dl-row .fn{font:12px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dl-more{display:flex;justify-content:center;padding:12px;border-top:1px solid var(--line)}
+.dl-empty{padding:18px 16px;color:var(--muted)}
+
+/* ── Telegram: як виглядатиме повідомлення ── */
+.tgb{margin-top:8px;max-width:94%;background:#182533;border-radius:12px 12px 12px 4px;padding:8px 11px 6px;color:#e9f0f7}
+.tgb-h{font-weight:700;color:#6ab3f3;font-size:12.5px;margin-bottom:3px}
+.tgb pre{margin:0;font:13px/1.5 var(--mono);white-space:pre-wrap;color:inherit}
+.tgb pre b{font-family:var(--font)}
+.tgb-t{text-align:right;font-size:11px;color:#7f98ad;margin-top:2px}
+.pill.tgp{background:rgba(159,208,255,.12);color:#9fd0ff}
+.pill.cx{background:rgba(var(--alarm-rgb),.12);color:var(--alarm-ink)}
+
+/* ── Тост ── */
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:11px;
+  background:var(--panel-3);border:1px solid var(--line-2);box-shadow:0 12px 32px rgba(0,0,0,.45);font-size:13.5px;z-index:9;max-width:min(92vw,560px)}
+
+@media (max-width:980px){
+  .va{grid-template-columns:1fr}
+  .basket{position:static}
+  .dl-row{grid-template-columns:44px 52px minmax(0,1fr) auto}
+  .dl-row .fn{display:none}
+  .ol-row{grid-template-columns:22px 96px minmax(0,1fr) auto}
+  .ol-lab,.ol-row .pill{display:none}
+}
+</style>
+
+<div class="page">
+  <header>
+    <div class="eyebrow">KuubMill · Нові диски · макет, варіант A</div>
+    <h1>Нові диски</h1>
+    <p class="lede">Ліворуч — кожен узятий диск із часом, розкладені по змінах. Праворуч — замовлення на склад і кнопки.
+      Нижче — дві вкладки: історія замовлень і всі створені диски з графіком по днях. Дані — вигаданий приклад на четвер 10.09, 16:40.
+      Усе натискається: галочки, дописування, «Надіслати на склад», «Скасувати» в історії, фільтри й пошук.
+      Telegram тут імітований — повідомлення нікуди не йде.</p>
+    <ul class="changes" aria-label="Правки цієї версії">
+      <li><b>Правка</b> · одна головна кнопка на всю ширину, дві другорядні рівним рядком</li>
+      <li><b>Правка</b> · дописане — прямо в картці замовлення</li>
+      <li><b>Правка</b> · історія замовлень — унизу, вкладкою поруч з усіма дисками</li>
+    </ul>
+  </header>
+
+  <div class="mock">
+    <div class="mock-bar">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--accent)"><ellipse cx="12" cy="7" rx="8" ry="3"/><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
+      <h2>Нові диски</h2>
+      <span class="sp"></span>
+      <span class="pill mute mono" id="lastOrder"></span>
+    </div>
+    <div class="mock-body">
+      <div id="va" class="va"></div>
+
+      <section class="dh" aria-label="Історія">
+        <div class="dh-head">
+          <div class="tabs" role="tablist">
+            <button role="tab" data-tab="orders" aria-selected="true">Історія замовлень<span class="n" id="nOrders"></span></button>
+            <button role="tab" data-tab="discs" aria-selected="false">Усі створені диски<span class="n" id="nDiscs"></span></button>
+          </div>
+          <span class="sp"></span>
+          <div id="dhFilters" style="display:flex;gap:8px;flex-wrap:wrap" hidden></div>
+          <input class="dh-q" id="dhQ" type="search" placeholder="Пошук: a3, 18, x74…" aria-label="Пошук диска" hidden>
+        </div>
+        <div id="tabOrders"></div>
+        <div id="tabDiscs" hidden>
+          <div class="chart" id="dhChart"></div>
+          <div class="dl" id="dhList"></div>
+        </div>
+      </section>
+    </div>
+    <footer class="folder">
+      <span class="okdot" aria-hidden="true"></span>
+      <span>Тека CAM <code>C:\sum\dental\cam-bl</code></span>
+      <span>· перечитано 16:38</span>
+      <span class="sp"></span>
+      <button class="btn sm ghost" data-mockonly="Перечитати теку">Перечитати</button>
+      <button class="btn sm ghost" data-mockonly="Перевірити читання">Перевірити читання</button>
+      <button class="btn sm ghost" data-mockonly="Шлях до теки">Шлях…</button>
+    </footer>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* ── Помічники ── */
+const NOW = new Date(2026, 8, 10, 16, 40);
+const WD = ['нд','пн','вт','ср','чт','пт','сб'];
+const pad = n => String(n).padStart(2,'0');
+const dm  = d => pad(d.getDate())+'.'+pad(d.getMonth()+1);
+const hm  = d => pad(d.getHours())+':'+pad(d.getMinutes());
+// Кожна дія в макеті — на хвилину пізніше, щоб часи в історії розрізнялись.
+let clock = 0;
+const stamp = () => { const t = new Date(NOW.getTime() + clock++ * 60000); return `${dm(t)} ${hm(t)}`; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const plural = (n, a, b, c) => n + ' ' + (n%10===1 && n%100!==11 ? a : (n%10>=2 && n%10<=4 && (n%100<12||n%100>14)) ? b : c);
+const discs = n => plural(n, 'диск', 'диски', 'дисків');
+const isMismatch = d => d.hDir && d.hDir !== d.h;
+// Формат файлу не показуємо — назва читається легше без «.blk».
+const bare = name => name.replace(/\.blk$/i, '');
+// Позиція в замовленні: mono-a2-25, кількість — «(х2)» (кирилична «х», як пише власник).
+const posKey = d => d.raw ? bare(d.file) : `${d.brand}-${d.shade}-${d.h}`;
+const withCount = (key, n) => n > 1 ? `${key}(х${n})` : key;
+const PLANE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>';
+
+/* ── Дані прикладу ── */
+const DISCS = [
+  {id:1, t:[9,18,22], mat:'ZR', brand:'mono', shade:'a3', h:18, file:'mono_a3_18-x112.blk'},
+  {id:2, t:[9,19,5],  mat:'ZR', brand:'mono', shade:'a2', h:14, file:'mono_a2_14-x87.blk'},
+  {id:3, t:[9,21,40], mat:'ZR', brand:'emo',  shade:'a1', h:16, file:'Emotions_A1_16-x5.blk'},
+  {id:4, t:[9,23,12], mat:'PMMA-PEEK', brand:'pmma', shade:'a2', h:20, file:'pmma_a2_20-x31.blk'},
+  {id:5, t:[10,1,9],  mat:'ZR', brand:'mono', shade:'a3', h:18, file:'mono_a3_18-x113.blk'},
+  {id:6, t:[10,3,30], mat:'ZR', brand:'mono', shade:'b1', h:12, file:'mono_b1_12-x40.blk'},
+  {id:7, t:[10,8,14], mat:'ZR', brand:'mono', shade:'a3.5', h:14, file:'mono_a3-5_14-x61.blk'},
+  {id:8, t:[10,8,52], mat:'ZR', brand:'mono', shade:'a2', h:25, file:'mono_a2_25-x19.blk'},
+  {id:9, t:[10,9,37], mat:'ZR', brand:'mono', shade:'a2', h:25, file:'mono_a2_25-x20.blk'},
+  {id:10,t:[10,10,5], mat:'PMMA-PEEK', brand:'pmma', shade:'a3', h:16, file:'pmma_a3_16-x8.blk'},
+  {id:11,t:[10,11,48],mat:'ZR', brand:'emo',  shade:'a2', h:18, file:'Emotions_A2_18-x14.blk'},
+  {id:12,t:[10,12,30],mat:'ZR', brand:'mono', shade:'a3', h:18, file:'mono_a3_18-x114.blk'},
+  {id:13,t:[10,14,2], mat:'PMMA-PEEK', brand:'pmma', shade:'a2', h:20, file:'pmma_a2_20-x32.blk'},
+  {id:14,t:[10,15,26],mat:'ZR', brand:'mono', shade:'a3', h:14, hDir:16, file:'zr16_14-Monolith-A3-x74.blk'},
+  {id:15,t:[10,16,10],mat:'ZR', raw:true, file:'Disc_98mm_new.blk'},
+];
+// Три минулі замовлення. `note` — дописане від руки (фрези тощо).
+const HISTORY = [
+  {at:'09.09 17:48', label:'денна 09.09', note:'фрези 2.0 (х2)',
+   lines:'emo-a1-18\nmono-a2-14(х2)\nmono-a3-16\nmono-a3-18(х3)\nmono-b1-14\n\npmma-a2-20(х2)\npmma-a3-25',
+   from:new Date(2026,8,8,17,55), to:new Date(2026,8,9,17,48)},
+  {at:'08.09 17:55', label:'денна 08.09', note:'',
+   lines:'emo-a2-20\nmono-a1-12\nmono-a2-18(х2)\nmono-a3-14\nmono-a3.5-16\n\npmma-a1-16\npmma-a2-20(х2)',
+   from:new Date(2026,8,7,8,10), to:new Date(2026,8,8,17,55)},
+  {at:'07.09 08:10', label:'вихідні 05–07.09', note:'фрези 1.0 (х3)\nполірувальні диски',
+   lines:'emo-a1-16(х2)\nemo-a2-18\nmono-a2-14(х3)\nmono-a2-25\nmono-a3-18(х4)\nmono-b1-12\n\npmma-a2-20(х3)\npmma-a3-16\npmma-a3-25',
+   from:new Date(2026,8,5,7,40), to:new Date(2026,8,7,8,10)},
+];
+const MAT = {
+  'ZR':        {tag:'ZR',   name:'Цирконій',    cls:'m-zr'},
+  'PMMA-PEEK': {tag:'PMMA', name:'ПММА · PEEK', cls:'m-pmma'},
+};
+const MAT_ORDER = ['ZR','PMMA-PEEK'];
+
+/* Межі змін: денна 07:30–18:00, нічна 18:00–07:30 (склад закривається о 18:00). */
+const SHIFTS = [];
+function shiftFor(at){
+  const m = at.getHours()*60 + at.getMinutes();
+  const base = new Date(at.getFullYear(), at.getMonth(), at.getDate());
+  let kind = 'day';
+  if (m < 450){ base.setDate(base.getDate()-1); kind = 'night'; }
+  else if (m >= 1080) kind = 'night';
+  const k = kind[0] + base.getDate() + '.' + (base.getMonth()+1);
+  let s = SHIFTS.find(x => x.k === k);
+  if (!s){
+    const start = new Date(base), end = new Date(base);
+    if (kind === 'day'){ start.setHours(7,30); end.setHours(18,0); }
+    else { start.setHours(18,0); end.setDate(end.getDate()+1); end.setHours(7,30); }
+    s = {k, kind, start, end, discs:[], live: NOW < end,
+      title: kind === 'day' ? 'Денна зміна' : 'Нічна зміна',
+      sub: kind === 'day'
+        ? `${WD[start.getDay()]} ${dm(start)} · 07:30–18:00`
+        : `${WD[start.getDay()]} ${dm(start)} → ${WD[end.getDay()]} ${dm(end)} · 18:00–07:30`,
+      short: kind === 'day' ? `денна ${dm(start)}` : `нічна ${dm(start)}→${dm(end)}`};
+    SHIFTS.push(s);
+  }
+  return s;
+}
+
+/* Усі диски (свіжі + старіші з минулих замовлень) і замовлення.
+   Диск знає своє замовлення (`orderId`); скасування замовлення просто
+   обнуляє його — і диск знову «чекає», хай навіть це було тиждень тому. */
+const ALL = [];
+const ORDERS = [];
+const fullText = (list, note) => [orderText(list), (note || '').trim()].filter(Boolean).join('\n\n');
+DISCS.forEach(d => { d.at = new Date(2026, 8, d.t[0], d.t[1], d.t[2]); d.orderId = null; ALL.push(d); });
+(function buildOld(){
+  let serial = 201;
+  HISTORY.forEach((w, wi) => {
+    const items = [];
+    w.lines.split('\n').forEach(line => {
+      const m = line.match(/^(\w+)-([a-d][\d.]+)-(\d+)(?:\(х(\d+)\))?$/);
+      if (m) for (let i = 0; i < (+m[4] || 1); i++) items.push({brand:m[1], shade:m[2], h:+m[3]});
+    });
+    const span = w.to - w.from, n = items.length, ids = [];
+    items.forEach((it, i) => {
+      const at = new Date(w.from.getTime() + span * (((i * 7) % n) + 0.5) / n); at.setSeconds(0, 0);
+      const prefix = it.brand === 'emo' ? 'Emotions_' + it.shade.toUpperCase() : it.brand + '_' + it.shade;
+      const d = {id:`o${wi}-${i}`, at, mat: it.brand === 'pmma' ? 'PMMA-PEEK' : 'ZR', ...it,
+        file: `${prefix.replace('.', '-')}_${it.h}-x${serial++}.blk`, orderId: 'h' + wi};
+      ALL.push(d); ids.push(d.id);
+    });
+    ORDERS.push({id:'h' + wi, at:w.at, label:w.label, note:w.note, ids, via:null, cancelled:null,
+      text: [w.lines, w.note].filter(Boolean).join('\n\n')});
+  });
+})();
+ALL.forEach(d => { d.key = posKey(d); d.sh = shiftFor(d.at); d.sh.discs.push(d); });
+SHIFTS.sort((a,b) => b.start - a.start);
+const pending = () => ALL.filter(d => !d.orderId);
+const orderOf = d => d.orderId ? ORDERS.find(o => o.id === d.orderId) : null;
+
+/* Рядки замовлення, згруповані за матеріалом (порожній рядок між групами). */
+function cmpLine(a, b){
+  if (a.raw !== b.raw) return a.raw ? 1 : -1;
+  if (a.raw) return a.key.localeCompare(b.key);
+  const A = a.ds[0], B = b.ds[0];
+  return A.brand.localeCompare(B.brand) || A.shade.localeCompare(B.shade, undefined, {numeric:true}) || A.h - B.h;
+}
+function groupLines(list){
+  const byMat = new Map();
+  for (const d of list){
+    if (!byMat.has(d.mat)) byMat.set(d.mat, new Map());
+    const m = byMat.get(d.mat);
+    if (!m.has(d.key)) m.set(d.key, []);
+    m.get(d.key).push(d);
+  }
+  return [...byMat.keys()].sort((a,b) => MAT_ORDER.indexOf(a) - MAT_ORDER.indexOf(b)).map(mat => {
+    const lines = [...byMat.get(mat)].map(([key, ds]) => ({
+      key, ds, n: ds.length, raw: !!ds[0].raw, warn: ds.some(isMismatch) || !!ds[0].raw,
+      text: withCount(key, ds.length) }));
+    lines.sort(cmpLine);
+    return {mat, lines, n: lines.reduce((s,l) => s + l.n, 0)};
+  });
+}
+function orderText(list){ return groupLines(list).map(g => g.lines.map(l => l.text).join('\n')).join('\n\n'); }
+
+/* Позиція одним рядком mono-a2-25(х2): частини лише підфарбовані. */
+function posHtml(d, n = 1, warn = false){
+  if (d.raw) return `<span class="pos raw${warn ? ' w' : ''}">${esc(bare(d.file))}${n > 1 ? `<span class="ct">(х${n})</span>` : ''}</span>`;
+  return `<span class="pos${warn ? ' w' : ''}"><span class="br">${esc(d.brand)}</span><i>-</i><span class="sh">${esc(d.shade)}</span><i>-</i><span class="hh">${d.h}</span>${n > 1 ? `<span class="ct">(х${n})</span>` : ''}</span>`;
+}
+
+/* ── Тост і буфер ── */
+let toastTimer;
+function toast(html, undo){
+  const t = document.getElementById('toast');
+  t.innerHTML = html + (undo ? ' <button class="btn sm" id="toastUndo">Скасувати</button>' : '');
+  t.hidden = false;
+  if (undo) document.getElementById('toastUndo').onclick = () => { t.hidden = true; undo(); };
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 5000);
+}
+async function copyText(text){
+  const msg = `Скопійовано ${plural(text.split('\n').filter(Boolean).length,'рядок','рядки','рядків')} замовлення`;
+  try { await navigator.clipboard.writeText(text); toast(msg); }
+  catch (e){
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (_){}
+    ta.remove();
+    toast(ok ? msg : 'Браузер не дав доступу до буфера — у застосунку це працює');
+  }
+}
+document.addEventListener('click', e => {
+  const c = e.target.closest('[data-copytext]'); if (c){ copyText(c.dataset.copytext); return; }
+  const m = e.target.closest('[data-mockonly]'); if (m){ toast(`«${m.dataset.mockonly}» — у справжньому застосунку`); }
+});
+
+/* ═════ Кошик ═════ */
+const A = {sel: new Set(pending().map(d => d.id)), note: '', lastId: null, previewOpen: false};
+const chosenNow = () => pending().filter(d => A.sel.has(d.id));
+
+const CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+function sumHtml(chosen){
+  const note = A.note.trim();
+  const pendN = pending().length;
+  const lines = groupLines(chosen).reduce((s, g) => s + g.lines.length, 0);
+  return `<div class="sumline"><b>${chosen.length}</b>${discs(chosen.length).replace(/^\d+ /, '')} · ${plural(lines,'позиція','позиції','позицій')}${note ? ' + дописане' : ''}${pendN - chosen.length ? ` · <span class="dim">${pendN - chosen.length} лишиться в списку</span>` : ''}</div>`;
+}
+function groupsHtml(chosen){
+  if (!chosen.length) return '<div class="og-empty">Дисків не вибрано — позначте їх у списку ліворуч.</div>';
+  return groupLines(chosen).map(g =>
+    `<section class="og ${MAT[g.mat].cls}">
+      <div class="og-h"><span class="matdot"></span>${MAT[g.mat].name}<span class="n">${discs(g.n)}</span></div>
+      ${g.lines.map(l => `<div class="or"${l.warn ? ' title="Диск потребує погляду — див. позначку в списку"' : ''}>${posHtml(l.ds[0], l.n, l.warn)}</div>`).join('')}
+    </section>`).join('');
+}
+const previewText = chosen => `<b>Замовлення дисків · ${dm(NOW)}</b>\n\n${esc(fullText(chosen, A.note)) || '—'}`;
+function actsHtml(chosen){
+  const note = A.note.trim();
+  const dis = chosen.length || note ? '' : 'disabled';
+  const what = [chosen.length ? discs(chosen.length) : '', note ? 'дописане' : ''].filter(Boolean).join(' + ');
+  return `<button class="btn apex big" data-act="send" ${dis} title="Надіслати на склад у Telegram і одразу позначити замовленим">${PLANE} Надіслати на склад${what ? ` <span class="cnt">· ${what}</span>` : ''}</button>
+    <div class="acts-2">
+      <button class="btn" data-act="copy" ${dis}>Скопіювати текст</button>
+      <button class="btn" data-act="order" ${dis} title="Позначити замовленим без відправки — якщо замовили телефоном">Замовлено без відправки</button>
+    </div>`;
+}
+// Щойно зроблене замовлення — одним рядком під кнопками, зі «Скасувати» під рукою.
+function lastHtml(){
+  const o = ORDERS.find(x => x.id === A.lastId && !x.cancelled);
+  if (!o) return '';
+  return `<div class="last">${CHECK}${o.via ? `Надіслано на склад ${o.via}` : `Позначено замовленим ${o.at.slice(6)}`} · ${o.ids.length ? discs(o.ids.length) : 'лише дописане'}${o.note && o.ids.length ? ' + дописане' : ''}
+    <span class="sp"></span><button class="btn sm ghost" data-cancel="${o.id}">Скасувати</button></div>`;
+}
+function quickHtml(){
+  const seen = [];
+  ORDERS.forEach(o => (o.note || '').split('\n').map(s => s.trim()).filter(Boolean).forEach(l => { if (!seen.includes(l)) seen.push(l); }));
+  if (!seen.length) return '';
+  return `<div class="quick"><span>Недавнє:</span>${seen.slice(0, 5).map(l => `<button type="button" data-quick="${esc(l)}">+ ${esc(l)}</button>`).join('')}</div>`;
+}
+const histText = text => text.split('\n').map(l => /^pmma\b/.test(l) ? `<span class="hl-pmma">${esc(l)}</span>` : esc(l)).join('\n');
+
+function renderA(){
+  const el = document.getElementById('va');
+  const pend = pending();
+  const chosen = chosenNow();
+  const shifts = SHIFTS.map(s => ({s, ds: s.discs.filter(d => !d.orderId).sort((a,b) => b.at - a.at)})).filter(x => x.ds.length);
+  const same = ids => ids.length === chosen.length && ids.every(id => A.sel.has(id));
+  const oldest = pend.reduce((m, d) => !m || d.at < m ? d.at : m, null);
+  // Порядок кнопок (власник, 10.09.26): усе незамовлене → денні → нічні.
+  const byKind = kind => shifts.filter(x => x.s.kind === kind)
+    .map(x => ({k: x.s.k, label: x.s.title, sub: x.s.sub.split(' · ')[0], ids: x.ds.map(d => d.id)}));
+  const scopes = [
+    {k: 'all', label: 'Усе незамовлене', sub: oldest ? `з ${dm(oldest)} ${hm(oldest)}` : '—', ids: pend.map(d => d.id)},
+    ...byKind('day'),
+    ...byKind('night'),
+  ];
+
+  el.innerHTML = `
+  <div class="feed">
+    ${shifts.map(({s, ds}) => {
+      const all = ds.every(d => A.sel.has(d.id)), some = ds.some(d => A.sel.has(d.id));
+      return `<section class="shift">
+        <label class="shift-head">
+          <input type="checkbox" data-shift="${s.k}" ${all ? 'checked' : ''} ${!all && some ? 'data-mixed' : ''}>
+          <b>${s.title}</b><span class="mono dim">${s.sub}</span>
+          ${s.live ? '<span class="pill live">іде · до 18:00</span>' : ''}
+          <span class="sp"></span><span class="dim">${discs(ds.length)}</span>
+        </label>
+        ${ds.map(d => `
+        <label class="disc ${MAT[d.mat].cls}${A.sel.has(d.id) ? '' : ' off'}${d.raw || isMismatch(d) ? ' w' : ''}">
+          <input type="checkbox" data-id="${d.id}" ${A.sel.has(d.id) ? 'checked' : ''}>
+          <span class="t mono dim">${hm(d.at)}</span>
+          <span class="mattag"><span class="matdot"></span>${MAT[d.mat].tag}</span>
+          <span style="display:flex;align-items:center;gap:12px;min-width:0">
+            ${d.raw ? '<span class="dim">—</span>' : posHtml(d)}
+            <span class="fn" title="${esc(bare(d.file))}">${esc(bare(d.file))}</span>
+          </span>
+          ${d.raw ? '<span class="pill alarm">назву не розібрано</span>' : isMismatch(d) ? `<span class="pill alarm">у теці ${d.hDir}</span>` : '<span></span>'}
+        </label>`).join('')}
+      </section>`;
+    }).join('') || '<p class="dim">Усе замовлено — нових дисків після останнього замовлення не брали.</p>'}
+  </div>
+  <aside class="basket">
+    <div class="bk-head">
+      <h3>Замовлення на склад</h3><span class="sp"></span>
+      <span class="rchip" title="Отримувач у Telegram. Отримує лише замовлення дисків — сповіщення про печі й верстати сюди не йдуть. Змінюється в налаштуваннях бота.">${PLANE} Склад</span>
+    </div>
+    <div class="seg" role="group" aria-label="Що замовити">
+      ${scopes.map(sc => `<button data-scope="${sc.k}" aria-pressed="${same(sc.ids) && sc.ids.length ? 'true' : 'false'}">${sc.label}<span class="n">${sc.ids.length}</span><small>${sc.sub}</small></button>`).join('')}
+    </div>
+    <div id="aSum">${sumHtml(chosen)}</div>
+    <div class="ord" aria-label="Замовлення">
+      <div id="aGroups" style="display:flex;flex-direction:column;gap:14px">${groupsHtml(chosen)}</div>
+      <section class="og m-extra">
+        <div class="og-h"><span class="matdot"></span>Дописати<span class="n">піде після дисків</span></div>
+        <textarea id="aNote" rows="2" placeholder="Напр.: фрези 2.0 (х3)" aria-label="Дописати до замовлення">${esc(A.note)}</textarea>
+        ${quickHtml()}
+      </section>
+    </div>
+    <details class="plain" id="aPrev"${A.previewOpen ? ' open' : ''}><summary>Як побачить склад у Telegram</summary>
+      <div class="tgb"><div class="tgb-h">KuubMill</div><pre id="aPrevText">${previewText(chosen)}</pre><div class="tgb-t">${hm(NOW)}</div></div>
+    </details>
+    <div class="acts" id="aActs">${actsHtml(chosen)}</div>
+    <div id="aLast">${lastHtml()}</div>
+  </aside>`;
+  el.querySelectorAll('[data-mixed]').forEach(i => i.indeterminate = true);
+}
+// Дописування не перемальовує кошик цілком — поле не втрачає курсор посеред слова.
+function paintOrder(){
+  const chosen = chosenNow();
+  document.getElementById('aSum').innerHTML = sumHtml(chosen);
+  document.getElementById('aGroups').innerHTML = groupsHtml(chosen);
+  document.getElementById('aPrevText').innerHTML = previewText(chosen);
+  document.getElementById('aActs').innerHTML = actsHtml(chosen);
+}
+function lastOrderPill(){
+  const o = ORDERS.find(x => !x.cancelled);
+  document.getElementById('lastOrder').textContent = o ? `останнє замовлення ${o.at}` : 'замовлень ще не було';
+}
+
+/* ═════ Історія замовлень (вкладка внизу) ═════ */
+const OPEN = new Set();
+function renderOrders(){
+  document.getElementById('nOrders').textContent = ORDERS.length;
+  document.getElementById('tabOrders').innerHTML = ORDERS.map(o => {
+    const n = o.ids.length, open = OPEN.has(o.id);
+    const status = o.cancelled ? `<span class="pill cx">скасовано ${o.cancelled.slice(6)}</span>`
+      : o.via ? `<span class="pill tgp">${PLANE} надіслано ${o.via}</span>`
+      : '<span class="pill mute">без Telegram</span>';
+    return `<div class="ol-row${o.cancelled ? ' cx' : ''}${o.id === A.lastId && !o.cancelled ? ' fresh' : ''}${open ? ' open' : ''}" data-otog="${o.id}" title="Показати текст замовлення">
+        <span class="ol-tog" aria-hidden="true">›</span>
+        <span class="ol-at">${o.at}</span>
+        <span class="ol-what">${n ? discs(n) : 'лише дописане'}${o.note && n ? '<span class="tagn">+ дописане</span>' : ''}</span>
+        <span class="ol-lab">${esc(o.label)}</span>
+        ${status}
+        <span class="ol-act"><button class="btn sm" data-copytext="${esc(o.text)}">Скопіювати</button>${o.cancelled ? '' : `<button class="btn sm ghost" data-cancel="${o.id}">Скасувати</button>`}</span>
+      </div>${open ? `<div class="ol-text">${histText(o.text)}${o.cancelled ? `<span class="ol-note">${o.via ? 'У Telegram повідомлення складу закреслено з позначкою «скасовано». ' : ''}${n ? 'Диски повернулись у список.' : ''}</span>` : ''}</div>` : ''}`;
+  }).join('');
+}
+function renderAll(){ renderA(); renderOrders(); renderD(); lastOrderPill(); }
+
+function makeOrder(via){
+  const chosen = chosenNow();
+  const note = A.note.trim();
+  if (!chosen.length && !note) return;
+  const at = stamp();
+  const o = {id: 'n' + ORDERS.length + '-' + clock, at, note, ids: chosen.map(d => d.id),
+    label: chosen.length ? [...new Set(chosen.map(d => d.sh.short))].join(' + ') : 'лише дописане',
+    text: fullText(chosen, note), via: via === 'send' ? at.slice(6) : null, cancelled: null};
+  ORDERS.unshift(o);
+  chosen.forEach(d => d.orderId = o.id);
+  A.note = ''; A.lastId = o.id;
+  A.sel = new Set(pending().map(d => d.id));
+  renderAll();
+  const what = [chosen.length ? discs(chosen.length) : '', note ? 'дописане' : ''].filter(Boolean).join(' + ');
+  toast(via === 'send' ? `${PLANE} Надіслано на склад у Telegram (${what}) — позначено замовленим` : `Позначено замовленим (${what}), без відправки`, () => cancelOrder(o.id));
+}
+function cancelOrder(id){
+  const o = ORDERS.find(x => x.id === id); if (!o || o.cancelled) return;
+  o.cancelled = stamp();
+  ALL.filter(d => d.orderId === id).forEach(d => { d.orderId = null; A.sel.add(d.id); });
+  renderAll();
+  toast(`Замовлення ${o.at} скасовано${o.ids.length ? ` — ${discs(o.ids.length)} знову в списку` : ''}${o.via ? '. У Telegram повідомлення складу закреслено' : ''}`);
+}
+
+const va = document.getElementById('va');
+va.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.id){
+    const d = ALL.find(x => String(x.id) === t.dataset.id);
+    t.checked ? A.sel.add(d.id) : A.sel.delete(d.id);
+  } else if (t.dataset.shift){
+    SHIFTS.find(x => x.k === t.dataset.shift).discs.filter(d => !d.orderId)
+      .forEach(d => t.checked ? A.sel.add(d.id) : A.sel.delete(d.id));
+  } else return;  // поле дописування теж шле change — кошик не перемальовуємо
+  renderA();
+});
+va.addEventListener('input', e => { if (e.target.id === 'aNote'){ A.note = e.target.value; paintOrder(); } });
+va.addEventListener('toggle', e => { if (e.target.id === 'aPrev') A.previewOpen = e.target.open; }, true);
+va.addEventListener('click', e => {
+  const cx = e.target.closest('[data-cancel]'); if (cx){ cancelOrder(cx.dataset.cancel); return; }
+  const q = e.target.closest('[data-quick]');
+  if (q){
+    const line = q.dataset.quick;
+    A.note = A.note.trim() ? A.note.replace(/\s+$/, '') + '\n' + line : line;
+    document.getElementById('aNote').value = A.note; paintOrder(); return;
+  }
+  const sc = e.target.closest('[data-scope]');
+  if (sc){
+    A.sel = new Set(pending().filter(d => sc.dataset.scope === 'all' || d.sh.k === sc.dataset.scope).map(d => d.id));
+    renderA(); return;
+  }
+  const act = e.target.closest('[data-act]'); if (!act) return;
+  if (act.dataset.act === 'copy') copyText(fullText(chosenNow(), A.note));
+  if (act.dataset.act === 'order') makeOrder('order');
+  if (act.dataset.act === 'send') makeOrder('send');
+});
+
+/* ═════ Усі створені диски ═════
+   Журнал кожного диска, який CRM побачила в теці: коли створено, що це,
+   файл і куди він пішов — «чекає замовлення» чи «замовлено <коли>».
+   Графік угорі — скільки дисків за день, по матеріалах; клік — лише цей день. */
+const D = {mat: 'all', st: 'all', q: '', day: null, shown: 3};
+const dayKey = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+function byDay(list){
+  const m = new Map();
+  list.forEach(d => { const k = dayKey(d.at); if (!m.has(k)) m.set(k, {k, date: new Date(d.at.getFullYear(), d.at.getMonth(), d.at.getDate()), ds: []}); m.get(k).ds.push(d); });
+  return [...m.values()];
+}
+const matSplit = ds => MAT_ORDER.map(mat => [mat, ds.filter(d => d.mat === mat).length]).filter(([, n]) => n);
+
+function renderD(){
+  const all = [...ALL].sort((a, b) => b.at - a.at);
+  const matOk = d => D.mat === 'all' || d.mat === D.mat;
+  const stOk = d => D.st === 'all' || (D.st === 'wait' ? !d.orderId : !!d.orderId);
+  const q = D.q.trim().toLowerCase();
+  const qOk = d => !q || (d.key + ' ' + bare(d.file)).toLowerCase().includes(q);
+  const base = all.filter(d => matOk(d) && stOk(d) && qOk(d));
+  const list = base.filter(d => !D.day || dayKey(d.at) === D.day);
+  const waitN = all.filter(d => !d.orderId).length;
+
+  document.getElementById('nDiscs').textContent = all.length;
+  const meta = `${discs(all.length)} з ${dm(all[all.length-1].at)} · ${waitN} чекають замовлення`;
+
+  const chip = (group, val, label) => `<button data-d${group}="${val}" aria-pressed="${D[group] === val}">${label}</button>`;
+  document.getElementById('dhFilters').innerHTML = `
+    <div class="seg tight" role="group" aria-label="Матеріал">${chip('mat','all','Усі')}${chip('mat','ZR','Цирконій')}${chip('mat','PMMA-PEEK','ПММА')}</div>
+    <div class="seg tight" role="group" aria-label="Статус">${chip('st','all','Будь-які')}${chip('st','wait','Чекають')}${chip('st','done','Замовлені')}</div>`;
+
+  // Графік: дні зліва направо, стек — цирконій знизу, ПММА зверху.
+  const days = byDay(base).sort((a, b) => a.date - b.date);
+  const max = Math.max(1, ...days.map(x => x.ds.length));
+  const scaleTop = Math.ceil(max / 4) * 4;
+  const picked = D.day && days.find(x => x.k === D.day);
+  document.getElementById('dhChart').innerHTML = `
+    <div class="chart-top">
+      <span class="lg"><i style="background:var(--zr-fill)"></i>Цирконій</span>
+      <span class="lg"><i style="background:var(--pmma-fill)"></i>ПММА · PEEK</span>
+      <span class="sp"></span>
+      <span>${D.day ? `Показано лише ${picked ? WD[picked.date.getDay()] + ' ' + dm(picked.date) : 'день'} · <button class="btn sm ghost" data-dday="">усі дні</button>` : `${meta} · клік по стовпчику — лише цей день`}</span>
+    </div>
+    <div class="bars" role="list" aria-label="Скільки дисків створено по днях">
+      ${days.map(x => {
+        const z = x.ds.filter(d => d.mat === 'ZR').length, p = x.ds.length - z;
+        const hPx = n => Math.round(n / scaleTop * 96);
+        return `<button class="bar-col${D.day === x.k ? ' on' : ''}" role="listitem" data-dday="${x.k}"
+            data-tip="${WD[x.date.getDay()]} ${dm(x.date)}|${x.ds.length}|${z}|${p}"
+            aria-label="${WD[x.date.getDay()]} ${dm(x.date)}: ${discs(x.ds.length)}, цирконій ${z}, ПММА ${p}">
+          <span class="plot"><span class="bv">${x.ds.length}</span>
+            <span class="stack">${p ? `<span class="sp_" style="height:${hPx(p)}px"></span>` : ''}${z ? `<span class="sz" style="height:${hPx(z)}px"></span>` : ''}</span></span>
+          <span class="bd"><b>${WD[x.date.getDay()]}</b>${dm(x.date)}</span>
+        </button>`;
+      }).join('') || '<span class="dim">Нічого не знайдено.</span>'}
+    </div>
+    <div class="tip" id="dhTip" hidden></div>`;
+
+  // Список: свіжі дні згори, по три дні за раз.
+  const groups = byDay(list).sort((a, b) => b.date - a.date);
+  const visible = D.day ? groups : groups.slice(0, D.shown);
+  document.getElementById('dhList').innerHTML = (visible.map(g => `
+    <div class="dl-day"><b>${WD[g.date.getDay()]} ${dm(g.date)}</b><span class="dim">${discs(g.ds.length)}</span>
+      <span class="sp"></span><span class="dim mono" style="font-size:12px">${matSplit(g.ds).map(([mat, n]) => `${MAT[mat].tag} ${n}`).join(' · ')}</span></div>
+    ${g.ds.map(d => { const o = orderOf(d); return `
+    <div class="dl-row ${MAT[d.mat].cls}">
+      <span class="mono dim">${hm(d.at)}</span>
+      <span class="mattag"><span class="matdot"></span>${MAT[d.mat].tag}</span>
+      ${posHtml(d, 1, d.raw || isMismatch(d))}
+      <span class="fn" title="${esc(bare(d.file))}">${esc(bare(d.file))}</span>
+      ${o ? `<span class="pill mute">замовлено ${o.at}</span>` : '<span class="pill wait">чекає замовлення</span>'}
+    </div>`; }).join('')}`).join('') || '<div class="dl-empty">Нічого не знайдено — змініть фільтр чи пошук.</div>') +
+    (!D.day && groups.length > D.shown ? `<div class="dl-more"><button class="btn sm" data-dmore>Показати ще ${plural(groups.length - D.shown, 'день', 'дні', 'днів')}</button></div>` : '');
+}
+const dh = document.querySelector('.dh');
+function showTab(tab){
+  dh.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === tab));
+  document.getElementById('tabOrders').hidden = tab !== 'orders';
+  document.getElementById('tabDiscs').hidden = tab !== 'discs';
+  document.getElementById('dhFilters').hidden = tab !== 'discs';
+  document.getElementById('dhQ').hidden = tab !== 'discs';
+}
+dh.addEventListener('click', e => {
+  const tb = e.target.closest('[data-tab]'); if (tb){ showTab(tb.dataset.tab); return; }
+  if (e.target.closest('[data-copytext]')) return;  // копіює глобальний обробник; рядок не розгортаємо
+  const cx = e.target.closest('[data-cancel]'); if (cx){ cancelOrder(cx.dataset.cancel); return; }
+  const row = e.target.closest('[data-otog]');
+  if (row){ const id = row.dataset.otog; OPEN.has(id) ? OPEN.delete(id) : OPEN.add(id); renderOrders(); return; }
+  const t = e.target.closest('[data-dmat],[data-dst],[data-dday],[data-dmore]'); if (!t) return;
+  if (t.dataset.dmat) D.mat = t.dataset.dmat;
+  else if (t.dataset.dst) D.st = t.dataset.dst;
+  else if (t.dataset.dday !== undefined) D.day = (t.dataset.dday && D.day !== t.dataset.dday) ? t.dataset.dday : null;
+  else if (t.dataset.dmore !== undefined) D.shown += 3;
+  renderD();
+});
+document.getElementById('dhQ').addEventListener('input', e => { D.q = e.target.value; renderD(); });
+dh.addEventListener('mouseover', e => {
+  const b = e.target.closest('.bar-col'), tip = document.getElementById('dhTip');
+  if (!b || !tip) return;
+  const [day, n, z, p] = b.dataset.tip.split('|');
+  tip.innerHTML = `<b>${day}</b> · ${discs(+n)}<br><span style="color:var(--zr)">■</span> Цирконій <b>${z}</b> &nbsp; <span style="color:var(--pmma)">■</span> ПММА <b>${p}</b>`;
+  const chart = document.getElementById('dhChart').getBoundingClientRect(), r = b.getBoundingClientRect();
+  tip.style.left = (r.left - chart.left + r.width / 2) + 'px';
+  tip.style.top = (r.top - chart.top + 6) + 'px';
+  tip.hidden = false;
+});
+dh.addEventListener('mouseout', e => {
+  if (e.target.closest('.bar-col') && !e.relatedTarget?.closest?.('.bar-col')) { const tip = document.getElementById('dhTip'); if (tip) tip.hidden = true; }
+});
+
+renderAll();
+</script>

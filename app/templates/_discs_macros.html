@@ -1,0 +1,32 @@
+{# Спільне для екрана «Нові диски»: відмінки, позиція диска, іконки. #}
+
+{% macro plural(n, one, few, many) -%}
+{{ n }} {{ one if n % 10 == 1 and n % 100 != 11 else (few if n % 10 in [2, 3, 4] and n % 100 not in [12, 13, 14] else many) }}
+{%- endmacro %}
+
+{% macro discs_word(n) -%}{{ plural(n, 'диск', 'диски', 'дисків') }}{%- endmacro %}
+
+{# Клас кольору матеріалу: цирконій — крижаний, ПММА — помаранчевий,
+   решта тек — нейтральний текст. #}
+{% macro mcls(group) -%}
+{{ 'dz-m-zr' if group == 'zr' else ('dz-m-pmma' if group == 'pmma' else 'dz-m-other') }}
+{%- endmacro %}
+
+{# Позиція одним рядком `mono-a2-25(х2)`: частини лише підфарбовані, у буфер
+   іде рівно цей текст (його складає сервер — `OrderLine.text`). «х» у
+   кількості — КИРИЛИЧНА (U+0445), як `cam_blanks.COUNT_MARK`. #}
+{% macro pos(p, count=1, warn=false) -%}
+{%- if p.raw -%}
+<span class="dz-pos is-raw{{ ' is-w' if warn }}">{{ p.key }}{% if count > 1 %}<span class="ct">(х{{ count }})</span>{% endif %}</span>
+{%- else -%}
+<span class="dz-pos{{ ' is-w' if warn }}"><span class="br">{{ p.brand }}</span>{% if p.shade %}<i>-</i><span class="sh">{{ p.shade }}</span>{% endif %}<i>-</i><span class="hh">{{ p.height }}</span>{% if count > 1 %}<span class="ct">(х{{ count }})</span>{% endif %}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro plane() -%}
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+{%- endmacro %}
+
+{% macro check() -%}
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+{%- endmacro %}

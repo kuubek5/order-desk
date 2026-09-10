@@ -1,0 +1,44 @@
+{# Нижня смуга «Нових дисків»: тека CAM і дії з нею. Раніше це був розділ
+   налаштувань «Заготовки»; переїхало сюди, бо шлях і «Перечитати» потрібні
+   там, де видно результат (рішення власника 10.09.26).
+
+   Крапка зелена ЛИШЕ з підтвердження: цей процес щойно прочитав теку саме
+   за цим шляхом (`cam_blanks.last_scan`). Заповнений шлях сам не зеленіє
+   (правило плит, CLAUDE.md §14). Смуга перечитується на подію `dz-footer`. #}
+<footer id="dz-footer" class="dz-folder" hx-get="/discs/footer" hx-trigger="dz-footer from:body" hx-swap="outerHTML">
+    {% if scan and scan.ok %}
+    <span class="dz-dot is-ok" aria-hidden="true"></span>
+    {% elif scan %}
+    <span class="dz-dot is-bad" aria-hidden="true"></span>
+    {% else %}
+    <span class="dz-dot" aria-hidden="true"></span>
+    {% endif %}
+    {% if blanks_path %}
+    <span>Тека CAM <code>{{ blanks_path }}</code></span>
+    {% if scan and scan.ok %}
+    <span>· перечитано {{ scan.at.strftime('%H:%M') }} · у теці {{ scan.present }}</span>
+    {% elif scan %}
+    <span class="dz-alarm-ink">· теки немає або вона недоступна ({{ scan.at.strftime('%H:%M') }})</span>
+    {% else %}
+    <span>· після запуску ще не читали — фоновий прохід раз на 5 хв</span>
+    {% endif %}
+    {% else %}
+    <span>Шлях до теки CAM не задано — нові диски не відстежуються.</span>
+    {% endif %}
+    <span class="dz-sp"></span>
+    <button type="button" class="dz-btn dz-sm dz-ghost"
+            hx-post="/discs/rescan" hx-target="#dz-work" hx-swap="outerHTML"
+            title="Прочитати теку зараз, не чекаючи фонового проходу">Перечитати</button>
+    <button type="button" class="dz-btn dz-sm dz-ghost"
+            hx-post="/discs/probe" hx-target="#dz-probe" hx-swap="innerHTML"
+            title="Прочитати теку й показати звіт, нічого не записуючи">Перевірити читання</button>
+    <button type="button" class="dz-btn dz-sm dz-ghost" data-dz-path-toggle
+            aria-expanded="false" aria-controls="dz-pathform">Шлях…</button>
+    <form id="dz-pathform" class="dz-pathform" method="post" action="/discs/path" hidden>
+        <label for="dz-path">Шлях до теки з дисками</label>
+        <input id="dz-path" name="cam_blanks_path" type="text" value="{{ blanks_path }}"
+               placeholder="C:\sum\dental\cam-bl" autocomplete="off" spellcheck="false">
+        <button type="submit" class="dz-btn dz-sm">Зберегти</button>
+        <p class="dz-hint">Усередині — тека матеріалу (<code>ZR</code>, <code>PMMA-PEEK</code>), у ній тека висоти (<code>12</code>, <code>18</code>…), у ній файли <code>.blk</code>. Порожнє поле вимикає стеження.</p>
+    </form>
+</footer>

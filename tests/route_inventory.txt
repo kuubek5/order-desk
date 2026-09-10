@@ -11,6 +11,12 @@ GET /clients/{client_id}
 GET /clients/{client_id}/pane
 GET /diag/perf
 GET /diag/perf.txt
+GET /discs
+GET /discs/all
+GET /discs/footer
+GET /discs/last
+GET /discs/orders
+GET /discs/work
 GET /feedback/images/{image_id}
 GET /feedback/inbox
 GET /furnaces
@@ -86,6 +92,12 @@ POST /clients/{client_id}
 POST /clients/{client_id}/folder
 POST /diag/perf/clear
 POST /diag/perf/client
+POST /discs/basket
+POST /discs/order
+POST /discs/orders/{order_id}/cancel
+POST /discs/path
+POST /discs/probe
+POST /discs/rescan
 POST /feedback
 POST /feedback/{feedback_id}/reopen
 POST /feedback/{feedback_id}/resolve
@@ -139,11 +151,6 @@ POST /settings
 POST /settings/backup/export
 POST /settings/backup/export-part
 POST /settings/backup/import
-POST /settings/blanks/ordered
-POST /settings/blanks/path
-POST /settings/blanks/probe
-POST /settings/blanks/rescan
-POST /settings/blanks/undo-order
 POST /settings/check-path
 POST /settings/feedback
 POST /settings/feedback/bind
@@ -151,6 +158,7 @@ POST /settings/feedback/invite
 POST /settings/feedback/invite/{invite_id}/revoke
 POST /settings/feedback/member/{member_id}/notify
 POST /settings/feedback/member/{member_id}/remove
+POST /settings/feedback/member/{member_id}/warehouse
 POST /settings/feedback/test
 POST /settings/furnaces
 POST /settings/furnaces/background

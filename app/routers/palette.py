@@ -62,6 +62,8 @@ COMMANDS: list[dict] = [
      "keywords": "furnaces pichky печі спікання синтеризація", "admin": False},
     {"label": "Верстати", "group": "Цех", "href": "/machines",
      "keywords": "machines verstaty фрезери imes icore", "admin": False},
+    {"label": "Нові диски", "group": "Цех", "href": "/discs",
+     "keywords": "discs dysky заготовки blk склад замовлення фрези cam", "admin": False},
     {"label": "Клієнти", "group": "Довідники", "href": "/clients",
      "keywords": "clients kliienty замовники", "admin": False},
     {"label": "Архів", "group": "Довідники", "href": "/archive",

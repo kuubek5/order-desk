@@ -590,62 +590,6 @@ def _slab_handout(ctx: dict) -> Slab:
 # Ключ розділу → як зібрати його плиту. Словник, а не тіло функції, бо плиту
 # треба вміти зібрати й ПООДИНЦІ: «Сповіщення» живуть тепер у кабінеті
 # (/account), і тягнути туди снапшоти печей заради однієї плити не варто.
-def _slab_blanks(ctx: dict) -> Slab:
-    """Заготовки: скільки дисків чекає замовлення комірниці.
-
-    Тон за тим самим правилом, що й усюди в цьому файлі: зелений лише з
-    ПІДТВЕРДЖЕННЯ. Заповнений шлях сам по собі не зеленіє — існування теки на
-    рендері ми не перевіряємо, бо це похід у файлову систему. Зелений
-    ставиться, коли прохід реально щось побачив.
-    """
-    configured = bool(ctx.get("blanks_path"))
-    # У контексті лежить СПИСОК рядків (його ж малює таблиця нижче), тут
-    # потрібне лише число.
-    pending_rows = ctx.get("blanks_pending")
-    pending = len(pending_rows) if pending_rows is not None else None
-    present = ctx.get("blanks_present")
-    mismatched = ctx.get("blanks_mismatched") or 0
-
-    if not configured:
-        tone, label = TONE_NONE, "не налаштовано"
-    elif present is None:
-        tone, label = TONE_NONE, "ще не читали теку"
-    elif present == 0:
-        # Шлях задано, а файлів нема: або тека порожня, або шлях не той.
-        # Це не «все гаразд», тому не зелений.
-        tone, label = TONE_WARN, "у теці нічого не знайдено"
-    else:
-        tone, label = TONE_OK, "тека читається"
-
-    meters = []
-    if pending is not None:
-        meters.append(
-            Meter(
-                k="До замовлення",
-                v=str(pending),
-                s=_pl(pending, "диск узято", "диски взято", "дисків узято")
-                + " після останнього замовлення",
-                tone=TONE_WARN if pending else TONE_NONE,
-            )
-        )
-    if present is not None:
-        meters.append(
-            Meter(k="Зараз у теці", v=str(present), s="файлів .blk", tone=tone)
-        )
-    if mismatched:
-        # Висота в назві не збіглася з текою — помилка розкладання. Мовчати
-        # про неї означало б прирівняти помилку до норми.
-        meters.append(
-            Meter(
-                k="Не на місці",
-                v=str(mismatched),
-                s="висота в назві ≠ тека",
-                tone=TONE_WARN,
-            )
-        )
-    return Slab(tone=tone, label=label, meters=meters)
-
-
 _SLAB_BUILDERS = {
     "state": lambda db, ctx: _slab_state(ctx),
     "notifications": lambda db, ctx: _slab_notifications(ctx),
@@ -660,7 +604,6 @@ _SLAB_BUILDERS = {
     "mail-filters": lambda db, ctx: _slab_mail_filters(ctx),
     "furnaces": _slab_furnaces,
     "machines": _slab_machines,
-    "blanks": lambda db, ctx: _slab_blanks(ctx),
     "handout": lambda db, ctx: _slab_handout(ctx),
     "update": lambda db, ctx: _slab_about(ctx),
 }

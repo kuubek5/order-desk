@@ -273,8 +273,7 @@ SETTINGS_SECTIONS = [
     "_settings_mail_filters.html",
     "_settings_furnace.html",
     "_settings_machines.html",
-    # Заготовки (08.09.26): тека дисків CAM і замовлення комірниці.
-    "_settings_blanks.html",
+    # «Заготовки» прибрано 10.09.26 — окремий екран «Нові диски» (/discs).
     "_settings_handout.html",
     "_settings_about.html",
 ]

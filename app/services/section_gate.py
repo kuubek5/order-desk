@@ -77,6 +77,7 @@ SECTIONS: dict[str, dict[str, str]] = {
     "shift": {"title": "Зміна", "path": "/shift", "default": OPEN},
     "furnaces": {"title": "Пічки", "path": "/furnaces", "default": OPEN},
     "machines": {"title": "Верстати", "path": "/machines", "default": OPEN},
+    "discs": {"title": "Нові диски", "path": "/discs", "default": OPEN},
     "clients": {"title": "Клієнти", "path": "/clients", "default": OPEN},
     "archive": {"title": "Архів", "path": "/archive", "default": OPEN},
     "journal": {"title": "Журнал дій", "path": "/journal", "default": OPEN},
