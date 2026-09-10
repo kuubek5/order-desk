@@ -48,6 +48,7 @@
         {% for row in flat_rows %}
         {% set order = row.order %}
         {% set issued_by = row.issued_by %}
+        {% set client_label = row.client_label %}
         <div class="flatrow">
             {# Клієнт підписаний при кожній роботі: без картки навколо це
                єдине, що каже, чия це коронка. #}
@@ -155,6 +156,7 @@
                 <div class="works">
                     {% for order in group.orders %}
                     {% set issued_by = group.issued_by %}
+                    {% set client_label = group.client_label %}
                     {% include "_handout_work_row.html" %}
                     {% endfor %}
                 </div>

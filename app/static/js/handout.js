@@ -130,6 +130,57 @@ document.body.addEventListener("htmx:afterSettle", (event) => {
   if (!event.target || event.target.id !== "handout-list") return;
   restoreHandoutCollapsed();
   applyHandoutFilter();
+  applyHandoutLooking();
+});
+
+// ── «Кого я шукаю»: підсвітка роботи, чиї файли відкрито в прев'ю ────────
+// Прохання власника 10.09.26: відкрив теку в прев'ю, звірив форму, пішов до
+// лотка — і вже не памʼятаєш, якого клієнта шукав. Тож рядок роботи і її
+// клієнт (картка, рядок плаского списку, пункт покажчика дня) лишаються
+// підсвіченими і ПІСЛЯ закриття прев'ю — доки не відкриєш інші файли або не
+// поставиш цій роботі галочку «знайдено».
+//
+// Ключ — id роботи (`data-order` на `.wrow`), а не DOM-вузол: список свапають
+// і галочка, і пульс, тож старий вузол зникає, і підсвітку ставимо заново
+// після settle (з тієї ж причини, що й згортання карток вище). У памʼяті
+// сторінки, без сховища: після перезавантаження шукати вже нікого.
+let handoutLookingOrder = null;
+
+function applyHandoutLooking() {
+  document.querySelectorAll(".is-looking").forEach((el) => el.classList.remove("is-looking"));
+  if (!handoutLookingOrder) return;
+  const row = document.querySelector(
+    '#handout-list .wrow[data-order="' + handoutLookingOrder + '"]'
+  );
+  // Знайдено — пошук закінчено; зникла зі списку — підсвічувати нічого.
+  if (!row || row.classList.contains("found")) {
+    handoutLookingOrder = null;
+    return;
+  }
+  const flat = row.closest(".flatrow");
+  if (flat) {
+    // У пласкому списку рядок роботи і є рядком клієнта — підсвічуємо його
+    // цілком, разом з іменем.
+    flat.classList.add("is-looking");
+    return;
+  }
+  row.classList.add("is-looking");
+  const card = row.closest(".ccard");
+  if (!card) return;
+  card.classList.add("is-looking");
+  const nav = document.querySelector('.daynav a[href="#' + card.id + '"]');
+  if (nav) nav.classList.add("is-looking");
+}
+
+// Та сама подія, що відкриває прев'ю (stl-preview.js). Прев'ю не чіпаємо:
+// воно своє, а ми лише запамʼятовуємо, звідки його відкрили.
+document.addEventListener("click", (event) => {
+  const trigger = event.target.closest("#handout-list [data-stl-preview-token]");
+  if (!trigger) return;
+  const row = trigger.closest(".wrow[data-order]");
+  if (!row) return;
+  handoutLookingOrder = row.dataset.order;
+  applyHandoutLooking();
 });
 // ── QC-чеклист перед «знайдено» (опційний, вимкнений за замовчуванням) ──
 //

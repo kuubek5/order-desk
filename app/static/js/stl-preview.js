@@ -155,12 +155,28 @@
     camera: null,
     mesh: null,
     panelEl: null,
+    titleEl: null,
     canvasEl: null,
     statusEl: null,
     filesEl: null,
     folderBtnEl: null,
     open: false,
   };
+
+  const DEFAULT_TITLE = "STL прев'ю";
+
+  // Підпис у шапці — з тригера (`data-stl-preview-label`), якщо він є. Його
+  // ставить видача: розгорнута панель закриває весь екран, і оператор,
+  // дивлячись на модель, забував, чию коронку шукає в лотку. Без підпису —
+  // нейтральна назва, щоб підпис попереднього відкриття не «переїхав» на
+  // чужу теку (черга, паспорт роботи підпису не мають).
+  function applyTitle(triggerEl) {
+    if (!state.titleEl) return;
+    const label = (triggerEl.dataset.stlPreviewLabel || "").trim();
+    state.titleEl.textContent = label || DEFAULT_TITLE;
+    state.titleEl.title = label;
+    state.titleEl.classList.toggle("has-label", Boolean(label));
+  }
 
   function geoKey(token, filename) {
     return `${token} ${filename}`;
@@ -179,8 +195,9 @@
     head.className = "stl-panel-head";
     const title = document.createElement("span");
     title.className = "stl-panel-title mono";
-    title.textContent = "STL прев'ю";
+    title.textContent = DEFAULT_TITLE;
     head.appendChild(title);
+    state.titleEl = title;
     // Розгортання на весь екран. CLAUDE.md §2 і §9.4 називають STL-прев'ю
     // ГОЛОВНИМ інструментом звірки — оператор порівнює форму коронки з лотка
     // з моделлю, «зазвичай у повноекранному режимі». На 300×240 сусідні
@@ -729,6 +746,7 @@
     state.folderUri = folderUri;
     state.files = [];
     state.activeIndex = -1;
+    applyTitle(triggerEl);
 
     if (state.folderBtnEl) {
       if (folderUri) {

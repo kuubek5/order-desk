@@ -344,6 +344,25 @@
   color: var(--ink-2);
 }
 
+/* Підпис із видачі — чию коронку шукаємо (stl-preview.js, applyTitle). Не
+   моно: це ім'я клієнта, а не ідентифікатор; довге обрізається, повне — у
+   підказці. На повному екрані більший, бо читається з відстані до лотка. */
+.stl-panel-title.has-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: var(--fs-3);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+.stl-panel.is-max .stl-panel-title.has-label {
+  font-size: var(--fs-5);
+}
+
 .stl-panel-close {
   display: flex;
   align-items: center;
