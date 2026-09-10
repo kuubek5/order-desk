@@ -101,3 +101,94 @@ def test_every_variant_has_art_and_copy():
     for key, copy in sg.VARIANTS.items():
         assert (arts / f"{key}.jpg").is_file(), key
         assert copy["chip"] and copy["title"] and copy["sub"], key
+
+
+# ── Реєстр на всі екрани (10.09.26) ─────────────────────────────────────────
+# Прохання власника: адмін має вміти зачинити БУДЬ-ЯКУ сторінку для решти.
+# Механізм був готовий, але в реєстрі стояв один розділ (`stats`).
+
+
+def test_new_sections_default_to_open():
+    """Дефолт — це стан на щойно оновленому застосунку, де адмін ще нічого не
+    чіпав. Арт у дефолті означав би, що оновлення САМО зачинило екран усім
+    операторам, нікого не спитавши. `stats` лишається винятком історично."""
+    db = _db()
+    closed_by_default = [
+        key for key in sg.SECTIONS if sg.section_state(db, key) != sg.OPEN
+    ]
+    assert closed_by_default == ["stats"]
+
+
+def test_registry_covers_every_operator_screen():
+    """Знімок складу: розділ додають/прибирають СВІДОМО, як у route_inventory.
+
+    `/journal/sync` і `/feedback/inbox` сюди не входять — вони й так лише для
+    адміна; `/account` теж, бо це власний кабінет (зачинивши його, людину
+    позбавили б способу змінити свій пароль)."""
+    assert set(sg.SECTIONS) == {
+        "queue", "mail", "handout", "shift", "furnaces", "machines",
+        "clients", "archive", "journal", "stats", "vyrobitok", "settings",
+    }
+    for key, meta in sg.SECTIONS.items():
+        assert meta["path"].startswith("/"), key
+        assert meta["title"], key
+        assert meta["default"] == sg.OPEN or meta["default"] in sg.VARIANTS, key
+
+
+def test_every_section_path_is_unique():
+    paths = [meta["path"] for meta in sg.SECTIONS.values()]
+    assert len(paths) == len(set(paths))
+
+
+def test_closed_sections_lists_only_the_closed_ones():
+    db = _db()
+    assert list(sg.closed_sections(db)) == ["stats"]      # дефолт реєстру
+    sg.set_section_state(db, "furnaces", "shutter")
+    sg.set_section_state(db, "stats", sg.OPEN)
+    assert sg.closed_sections(db) == {"furnaces": "shutter"}
+
+
+def test_admin_is_never_blocked_on_any_section():
+    db = _db()
+    adm = _user(db, "адмін")
+    for key in sg.SECTIONS:
+        sg.set_section_state(db, key, "shutter")
+        assert sg.blocked_for(db, adm, key) is None, key
+
+
+def test_closing_every_section_blocks_the_operator_everywhere():
+    db = _db()
+    op = _user(db, "оператор")
+    for key in sg.SECTIONS:
+        sg.set_section_state(db, key, "shutter")
+        assert sg.blocked_for(db, op, key) == "shutter", key
+
+
+def test_section_keys_pass_the_settings_guard():
+    """Ключі гейта пізнаються за префіксом (їх 24 на дванадцять розділів), але
+    чужий ключ має лишатись відхиленим."""
+    from app.settings_store import set_setting
+
+    db = _db()
+    for key in sg.SECTIONS:
+        sg.set_section_state(db, key, "mill")          # не кидає
+        sg.set_section_audience(db, key, ["оператор"])
+    with pytest.raises(ValueError):
+        set_setting(db, "section_not_a_real_prefix:queue", "mill")
+
+
+def test_slab_counts_closed_sections():
+    """Плита рахувала закриті через `getattr` по СЛОВНИКУ, тобто завжди нуль:
+    «усі відкриті» стояло й тоді, коли розділ був зачинений (10.09.26)."""
+    from app.services.settings_status import _slab_sections
+
+    db = _db()
+    sg.set_section_state(db, "furnaces", "shutter")
+    slab = _slab_sections({"sections_admin": sg.sections_admin(db)})
+    assert "закрито" in slab.label
+    closed_meter = next(m for m in slab.meters if m.k == "Закрито")
+    assert closed_meter.v == "2"          # furnaces + stats (дефолт реєстру)
+
+    sg.set_section_state(db, "furnaces", sg.OPEN)
+    sg.set_section_state(db, "stats", sg.OPEN)
+    assert _slab_sections({"sections_admin": sg.sections_admin(db)}).label == "усі відкриті"

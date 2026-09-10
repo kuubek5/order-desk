@@ -26,6 +26,7 @@ from app.shift_images import (
     resolve_image_file,
     save_image,
 )
+from app.routers.section_gate import blocked_response
 from app.routers.deps import get_current_user, login_redirect, get_db, templates, toast_response
 from app.services.shift import (
     KIND_INFO,
@@ -83,6 +84,12 @@ def get_shift(request: Request, partial: str = "", db: Session = Depends(get_db)
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+
+    # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
+    # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
+    blocked = blocked_response(request, db, user, "shift")
+    if blocked is not None:
+        return blocked
 
     context = _shift_context(request, db, user)
     # Звіт про місце — лише адміну й лише на повній сторінці: він обходить

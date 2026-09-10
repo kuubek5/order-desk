@@ -736,3 +736,18 @@ body.rail-collapsed .rail-kbd { display: none; }
 .rail-sync{padding:6px 12px;font-size:var(--fs-1);color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rail-sync .tl-sync{display:inline-flex;align-items:center;gap:6px}
 body.rail-collapsed .rail-sync{display:none}
+
+/* Рядок «Зачинено: …» у підвалі рейки. Бачить лише адмін і лише коли є що
+   показати (шаблон гейтить). Приглушений навмисно: це не тривога, а нагадування
+   про власне рішення — тривогою був би червоний. */
+.rail-closed{
+  display:flex;align-items:center;gap:8px;padding:7px 10px;margin:0 0 6px;
+  border-radius:8px;border:1px solid rgba(var(--warn-rgb), .3);
+  background:rgba(var(--warn-rgb), .08);color:var(--warn);
+  font-size:var(--fs-0);text-decoration:none;line-height:1.35;
+}
+.rail-closed:hover{border-color:rgba(var(--warn-rgb), .5);opacity:1}
+.rail-closed-icon{width:13px;height:13px;flex:0 0 13px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+/* Згорнута рейка показує лише замок — текст сховано разом з рештою підписів. */
+.rail-closed-txt{min-width:0;overflow:hidden;text-overflow:ellipsis}
+body.rail-collapsed .rail-closed-txt{display:none}

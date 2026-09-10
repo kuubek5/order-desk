@@ -30,6 +30,7 @@ from app.services.settings_status import build_slabs
 from app.models import AppSetting, EmailMessage, MailFilterCategory, MailFilterRule, Order, User
 from app.backup_mirror import mirror_status
 from app.monthly_backup import list_snapshots
+from app.routers.section_gate import blocked_response
 from app.routers.deps import (
     get_current_user,
     login_redirect,
@@ -188,6 +189,12 @@ def get_settings(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+
+    # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
+    # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
+    blocked = blocked_response(request, db, user, "settings")
+    if blocked is not None:
+        return blocked
     # Full page is reachable by any operator now — only the Шляхи папок card
     # (below, gated per-field via operator_editable) and the two path
     # HTMX checks are actually operator-facing; settings.html hides every

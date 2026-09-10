@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.requests import Request
 
 from app.models import Order
+from app.routers.section_gate import blocked_response
 from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.services.formatting import uk_month_label
 from app.order_folder import (
@@ -184,6 +185,12 @@ def get_archive(request: Request, month: str = "", date: str = "", db: Session =
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+
+    # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
+    # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
+    blocked = blocked_response(request, db, user, "archive")
+    if blocked is not None:
+        return blocked
 
     history, day_counts, month_counts, gone_ids = _load_history(db)
     months = _months_rail(day_counts, month_counts)

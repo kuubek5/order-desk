@@ -56,9 +56,45 @@ VARIANTS: dict[str, dict[str, str]] = {
 # змінив його через банер (тобто «щойно встановлений» застосунок уже закриває
 # розділ, без міграції даних). Новий розділ = рядок тут + ключ у
 # settings_store.PREFERENCE_KEYS + виклик гейта в його роуті.
+# ДЕФОЛТ НОВОГО РОЗДІЛУ — ЗАВЖДИ `OPEN`. Дефолт — це стан на щойно
+# встановленому застосунку й на оновленому, де адмін ще нічого не чіпав.
+# Поставити тут арт означає ЗАЧИНИТИ розділ усім операторам одразу після
+# оновлення, нікого не спитавши. `stats` лишається з `gauge` історично — він
+# таким і був до появи решти (09.09.26); решта відкрита, поки адмін не вирішить
+# інакше.
+#
+# Чого тут НЕМАЄ і чому. `/journal/sync` і `/feedback/inbox` уже видно лише
+# адміну — закривати їх від не-адмінів нема сенсу. `/account` — власний кабінет
+# (свій пароль, свої сповіщення); зачинити людині її ж кабінет означає
+# відібрати спосіб змінити пароль. `/login`, `/logout` і статика — очевидно.
 SECTIONS: dict[str, dict[str, str]] = {
+    # Черга — головний екран і місце, куди веде вхід. Закривати її можна:
+    # «зачинено на роботи» це реальний стан цеху, а не помилка. Адмін під
+    # блокатор не потрапляє ніколи, тож відкрити назад є кому.
+    "queue": {"title": "Черга", "path": "/", "default": OPEN},
+    "mail": {"title": "Нові з пошти", "path": "/mail", "default": OPEN},
+    "handout": {"title": "Ранкова видача", "path": "/handout", "default": OPEN},
+    "shift": {"title": "Зміна", "path": "/shift", "default": OPEN},
+    "furnaces": {"title": "Пічки", "path": "/furnaces", "default": OPEN},
+    "machines": {"title": "Верстати", "path": "/machines", "default": OPEN},
+    "clients": {"title": "Клієнти", "path": "/clients", "default": OPEN},
+    "archive": {"title": "Архів", "path": "/archive", "default": OPEN},
+    "journal": {"title": "Журнал дій", "path": "/journal", "default": OPEN},
     "stats": {"title": "Статистика", "path": "/stats", "default": "gauge"},
+    "vyrobitok": {"title": "Виробіток", "path": "/vyrobitok", "default": OPEN},
+    "settings": {"title": "Налаштування", "path": "/settings", "default": OPEN},
 }
+
+
+def closed_sections(db: Session) -> dict[str, str]:
+    """{розділ: стан} для тих, що зараз закриті. Для позначки в рейці адміну:
+    «яка сторінка зараз зачинена» має бути видно з будь-якого екрана, інакше
+    закритий півроку тому розділ знаходять лише за скаргою оператора."""
+    return {
+        section: state
+        for section in SECTIONS
+        if (state := section_state(db, section)) != OPEN
+    }
 
 
 def _key(section: str) -> str:

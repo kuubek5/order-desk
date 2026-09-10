@@ -36,6 +36,7 @@ from app.queue_filters import (
     count_client_groups_by_source,
     filter_client_groups_by_source,
 )
+from app.routers.section_gate import blocked_response
 from app.routers.deps import (
     SYNC_PAUSED_MSG,
     get_current_user,
@@ -453,6 +454,12 @@ def get_handout(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+
+    # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
+    # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
+    blocked = blocked_response(request, db, user, "handout")
+    if blocked is not None:
+        return blocked
     return templates.TemplateResponse(
         request, "handout.html", handout_context(request, user, source, day, db)
     )

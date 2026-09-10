@@ -404,6 +404,26 @@ def sync_state_uncached() -> dict | None:
         return None
 
 
+def closed_sections_uncached() -> list[str]:
+    """Назви розділів, зачинених адміністратором прямо зараз — для рейки.
+
+    Той самий патерн, що feedback_open_count: власна сесія, широкий except,
+    рядок у рейці не сміє завалити рендер. Потрібне, бо інакше «яка сторінка
+    зараз зачинена» видно лише в Налаштуваннях: закритий тиждень тому розділ
+    знаходять за скаргою оператора, а не самі."""
+    try:
+        from app.services.section_gate import SECTIONS, closed_sections
+
+        db = SessionLocal()
+        try:
+            return [SECTIONS[key]["title"] for key in closed_sections(db)]
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        logger.debug("closed_sections fell back to []", exc_info=True)
+        return []
+
+
 def feedback_open_count_uncached() -> int:
     """Скільки нових звернень зворотного зв'язку — для бейдра «Звернення» в рейці.
 
@@ -645,6 +665,11 @@ def sync_state() -> dict | None:
 def feedback_open_count() -> int:
     return _cached_global("feedback_open_count", feedback_open_count_uncached)
 
+
+def closed_sections_titles() -> list[str]:
+    return _cached_global("closed_sections", closed_sections_uncached)
+
+templates.env.globals["closed_sections_titles"] = closed_sections_titles
 templates.env.globals["perf_id"] = perf.current_request_id
 templates.env.globals["is_overdue"] = is_overdue
 templates.env.globals["material_color_css_class"] = material_color_css_class

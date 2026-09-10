@@ -26,6 +26,7 @@ from starlette.requests import Request
 from app import sync_control
 from app.business_day import business_today
 from app.auth import verify_password
+from app.routers.section_gate import blocked_response
 from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.services.attempt_limit import block_message, pin_limiter
 from app.sheet_sync_service import SheetSyncError, sync_google_sheets
@@ -115,6 +116,12 @@ def get_vyrobitok(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+
+    # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
+    # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
+    blocked = blocked_response(request, db, user, "vyrobitok")
+    if blocked is not None:
+        return blocked
 
     if _pin_required(request, db):
         return templates.TemplateResponse(

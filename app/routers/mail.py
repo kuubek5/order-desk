@@ -73,6 +73,7 @@ from app.queue_filters import (
     count_by_service_type,
     filter_emails_by_service_type,
 )
+from app.routers.section_gate import blocked_response
 from app.routers.deps import (
     get_current_user,
     login_redirect,
@@ -122,6 +123,12 @@ def get_mail(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+
+    # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
+    # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
+    blocked = blocked_response(request, db, user, "mail")
+    if blocked is not None:
+        return blocked
 
     # Validate independently — an unknown/stale value degrades to "all"
     # (show everything) rather than erroring, same pattern as the queue

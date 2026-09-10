@@ -222,12 +222,6 @@ CLEARABLE_SETTING_KEYS = {
 # Не секрет і не поле форми — внутрішній штамп, з якого рахується «скільки
 # днів простою надолужити» після ввімкнення (app/sheet_sync_service.py).
 PREFERENCE_KEYS = {
-    # Стан розділу для гейта «в розробці / тестується» (app/services/section_gate.py):
-    # "open" або назва арту-блокатора. Новий розділ = новий ключ тут + запис у
-    # SECTIONS там; без ключа set_setting відмовить.
-    "section_state:stats",
-    # Аудиторія блокатора: "*" (усі не-адміни) або перелік ролей через кому.
-    "section_audience:stats",
     "furnace_background",
     # Тека калібрувальних кадрів верстатів (Налаштування → Верстати). Порожнє
     # значення = типова тека застосунку, тому ключ ще й у CLEARABLE.
@@ -326,8 +320,21 @@ def get_all_settings(session: Session) -> dict[str, Optional[str]]:
     return {field.key: get_setting(session, field.key) for field in SETTING_FIELDS}
 
 
+# Ключі гейта розділів (app/services/section_gate.py): стан і аудиторія на
+# КОЖЕН керований розділ. Перелічувати їх поіменно тут довелось поки розділ був
+# один; на дванадцяти це двадцять чотири рядки, які треба тримати синхронними з
+# чужим реєстром — і рівно про це забувають. Тому ключ пізнається за
+# префіксом, а справжня перевірка «чи існує такий розділ» лишається там, де їй
+# і місце: `set_section_state`/`set_section_audience` звіряються з `SECTIONS`.
+_SECTION_KEY_PREFIXES = ("section_state:", "section_audience:")
+
+
+def _is_section_key(key: str) -> bool:
+    return key.startswith(_SECTION_KEY_PREFIXES)
+
+
 def set_setting(session: Session, key: str, value: str) -> None:
-    if key not in SETTING_KEYS:
+    if key not in SETTING_KEYS and not _is_section_key(key):
         raise ValueError(f"unknown setting key: {key}")
     row = session.get(AppSetting, key)
     encrypted = encrypt_value(value)

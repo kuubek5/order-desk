@@ -31,6 +31,7 @@ from app.order_folder import (
     attach_export_folder_uris,
     attach_job_code_folder_uris,
 )
+from app.routers.section_gate import blocked_response
 from app.routers.deps import (
     SYNC_PAUSED_MSG,
     attach_action_toast,
@@ -961,6 +962,12 @@ def get_journal(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+
+    # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
+    # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
+    blocked = blocked_response(request, db, user, "journal")
+    if blocked is not None:
+        return blocked
 
     query = (
         select(ActionLog)

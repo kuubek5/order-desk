@@ -247,6 +247,19 @@
                 <span class="rail-label">Вийти</span>
             </button>
         </form>
+        {# Які розділи зараз зачинені для операторів. Видно ЛИШЕ адміну і лише
+           коли є що показати. Без цього рядка стан «зачинено» видно тільки в
+           Налаштуваннях: закритий тиждень тому розділ знаходять за скаргою
+           оператора, а не самі. Клік веде туди, де це знімається. #}
+        {% if user.role == 'адмін' %}
+        {% set closed_titles = closed_sections_titles() %}
+        {% if closed_titles %}
+        <a href="/settings#sections" class="rail-closed" title="Ці розділи бачать лише адміністратори. Клік — керування доступом">
+            <svg class="rail-closed-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            <span class="rail-closed-txt">Зачинено: {{ closed_titles|join(', ') }}</span>
+        </a>
+        {% endif %}
+        {% endif %}
         <a href="/settings#update" class="rail-version mono text-muted" title="Версія застосунку — перевірити оновлення">v{{ app_version }}</a>
     </div>
 </div>

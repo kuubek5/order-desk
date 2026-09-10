@@ -23,6 +23,7 @@ from app.order_folder import (
     attach_export_folder_uris,
     attach_job_code_folder_uris,
 )
+from app.routers.section_gate import blocked_response
 from app.routers.deps import (
     get_current_user,
     is_loopback_request,
@@ -109,6 +110,12 @@ def get_queue(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+
+    # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
+    # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
+    blocked = blocked_response(request, db, user, "queue")
+    if blocked is not None:
+        return blocked
 
     view = build_queue_view(
         db,

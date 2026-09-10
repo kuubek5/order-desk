@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.furnace_ocr import EYE_CROPS
+from app.routers.section_gate import blocked_response
 from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.settings_store import get_furnace_background
 from app.services.furnace import (
@@ -84,6 +85,12 @@ def furnaces_page(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+
+    # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
+    # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
+    blocked = blocked_response(request, db, user, "furnaces")
+    if blocked is not None:
+        return blocked
     return templates.TemplateResponse(request, "furnaces.html", _context(request, db, user))
 
 

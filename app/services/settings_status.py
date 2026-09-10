@@ -337,7 +337,10 @@ def _slab_operators(ctx: dict) -> Slab:
 def _slab_sections(ctx: dict) -> Slab:
     rows = ctx.get("sections_admin") or []
     total = len(rows)
-    closed = sum(1 for s in rows if not getattr(s, "is_open", True))
+    # `sections_admin()` віддає СЛОВНИКИ, а не обʼєкти: `getattr(s, "is_open")`
+    # завжди повертав дефолт `True`, тож плита рахувала нуль закритих і писала
+    # «усі відкриті» навіть тоді, коли розділ був зачинений (знайдено 10.09.26).
+    closed = sum(1 for s in rows if not s.get("is_open", True))
     if closed:
         tone, label = TONE_WARN, f"{closed} {_pl(closed, 'розділ закрито', 'розділи закрито', 'розділів закрито')}"
     else:

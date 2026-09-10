@@ -11,7 +11,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7-2.6"/></svg>
             </div>
             <div class="box">
-                {{ slab('Блокування розділів', 'Закрий розділ, поки він у розробці чи на тестуванні: не-адміни побачать екран-блокатор, адмін — сам розділ із банером. «Відкрито для всіх» знімає блокування.', slabs['sections']) }}
+                {{ slab('Блокування розділів', 'Закрий будь-який екран для операторів — на час розробки, тестування чи просто «зачинено на роботи». Не-адміни побачать екран-блокатор, адмін — сам розділ. «Відкрито для всіх» знімає блокування.', slabs['sections']) }}
 
                 {% for sec in sections_admin %}
                 <form method="post" action="/settings/sections/{{ sec.section }}" class="secmgr">

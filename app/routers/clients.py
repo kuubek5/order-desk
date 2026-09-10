@@ -24,6 +24,7 @@ from app.client_profile import (
     summarize_client_orders,
 )
 from app.models import Client, ClientNameAlias, Order
+from app.routers.section_gate import blocked_response
 from app.routers.deps import get_current_user, login_redirect, get_db, templates
 from app.services.clients import (
     CLIENT_STATE_FILTERS,
@@ -120,6 +121,12 @@ def get_clients(
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+
+    # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
+    # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
+    blocked = blocked_response(request, db, user, "clients")
+    if blocked is not None:
+        return blocked
 
     _started = time.monotonic()
     named_orders = db.scalars(select(Order).where(Order.client_name.isnot(None))).all()

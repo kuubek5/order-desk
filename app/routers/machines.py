@@ -21,6 +21,7 @@ from starlette.requests import Request
 from app.machine_portraits import portrait_path
 from app.services import machine_link
 from app.settings_store import get_machine_calibration_path
+from app.routers.section_gate import blocked_response
 from app.routers.deps import get_current_user, login_redirect, get_db, is_loopback_request, templates
 from app.services.machines import (
     POLL_INTERVAL_SECONDS,
@@ -55,6 +56,12 @@ def machines_page(request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if user is None:
         return login_redirect(request)
+
+    # Розділ може бути зачинений адміністратором (Налаштування → Доступ до
+    # розділів): не-адмін бачить екран-блокатор, адмін — сам розділ.
+    blocked = blocked_response(request, db, user, "machines")
+    if blocked is not None:
+        return blocked
     return templates.TemplateResponse(request, "machines.html", _context(request, db, user))
 
 
