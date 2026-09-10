@@ -182,7 +182,7 @@ def build_queue_view(
 
     # Validate the optional column sort (queue.html thead, via
     # _sortable_th.html). Absent/invalid `sort` means "no explicit column
-    # sort" — the queue keeps its default urgency-based ordering below.
+    # sort" — the queue keeps its default sheet-order ordering below.
     if sort not in QUEUE_SORT_FIELDS:
         sort = ""
     if sort_dir not in ("asc", "desc"):
@@ -308,34 +308,21 @@ def build_queue_view(
 
     # Explicit, opt-in column sort (queue.html thead) applied last, on top
     # of whatever period/source/date/ready filtering produced above. With no
-    # `sort`, this is a no-op — the default urgency-based queue_sort_key
+    # `sort`, this is a no-op — the default sheet-order queue_sort_key
     # ordering from earlier is left completely untouched.
+    #
+    # Окремого «лабораторні нагору» тут більше нема (10.09.26): порядок
+    # таблиці вже ставить лаб-зону над клієнтською в межах дня, а підйом
+    # поверх нього на вкладці «Раніше» зганяв лабораторні УСІХ днів над
+    # клієнтськими, тобто ламав саме той порядок, який черга мусить повторювати.
     if sort:
         orders = sort_orders_by_column(orders, sort, sort_dir)
-
-    # Queue table visually separates lab-sheet rows from mail-sourced rows
-    # (queue.html: "Лабораторні роботи" / "Роботи з пошти") — mirrors both
-    # the real Google Sheet's own convention (lab rows in the main block,
-    # mail placeholder rows appended below, see append_mail_placeholder_row)
-    # and gives each source its own collapsible section. Splitting the
-    # already-filtered-and-sorted `orders` list preserves every filter/sort
-    # applied above; each sublist stays correctly ordered within itself.
-    # Mirror the sheet's own hierarchy in the neutral, unfiltered view: internal
-    # lab works (the main table region) above the наряд-less client/mail rows
-    # (the region below it) — the queue table renders this flat `orders` list, so
-    # the ordering has to happen here. Only when the operator hasn't narrowed or
-    # re-sorted anything (source=all, ready=all, no explicit column sort, no
-    # overdue shortcut), so a deliberate sort/filter still wins. Stable: the
-    # urgency order within each group is preserved, лаб rows just float on top.
-    if source == "all" and ready == "all" and not sort and not show_overdue:
-        orders.sort(key=lambda o: 0 if o.source == "lab" else 1)
 
     # Пришпилені — нагору. Останнім кроком, тобто поверх будь-якого фільтра чи
     # ручного сортування: набір «мої зараз» це те, що оператор ТРИМАЄ В РУКАХ,
     # і шукати його щоразу серед шестисот рядків — та сама робота, від якої
-    # шпилька мала звільнити. Сортування стабільне, тому всередині кожної
-    # групи порядок терміновості лишається незмінним, а поділ «лабораторія /
-    # пошта» нижче переживає це без змін.
+    # шпилька мала звільнити. Сортування стабільне, тому серед непришпилених
+    # порядок таблиці лишається незмінним.
     #
     # Правило стабільного порядку (CLAUDE.md §2) не порушується: воно про те,
     # що список не має рухатись САМ — фоновий полл цього порядку не міняє, бо
@@ -343,7 +330,7 @@ def build_queue_view(
     # свідоме клацання по шпильці.
     if my_focus:
         # Ключ — місце в наборі за часом пришпилення; непришпилені йдуть після
-        # всіх. Стабільне сортування зберігає порядок терміновості серед
+        # всіх. Стабільне сортування зберігає порядок таблиці серед
         # непришпилених, а серед пришпилених порядок задає сам набір.
         #
         # Це головне, що тримає рядки на місці: нова мітка стає В КІНЕЦЬ

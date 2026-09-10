@@ -652,23 +652,27 @@ def test_invalid_date_param_falls_back_to_period_bucketing(tmp_path, monkeypatch
         assert [o.id for o in context["orders"]] == [today_order.id]
 
 
-def test_omitting_sort_preserves_default_urgency_ordering(tmp_path, monkeypatch):
-    """Regression guard: the new opt-in `sort` param must not change the
-    default queue ordering when absent — same earliest-deadline-first
-    urgency ordering _queue_sort_key already guarantees (see
-    test_web_helpers.test_queue_sorts_earlier_deadline_first_for_same_day)."""
+def test_omitting_sort_keeps_sheet_row_order(tmp_path, monkeypatch):
+    """Без ручного сортування черга повторює Google Таблицю: рядок згори вниз,
+    лаб-зона над клієнтською. Рядки вставлено в базу навмисно впереміш і з
+    дедлайнами «навпаки» — ні порядок вставки, ні «Здати до» не мають права
+    переставити рядки."""
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         today_tab = business_today().strftime("%d.%m.%y")
-        later = Order(source="lab", sheet_tab=today_tab, due_time="16:00", material_color="я останній")
-        earlier = Order(source="lab", sheet_tab=today_tab, due_time="09:00", material_color="а перший")
-        db.add_all([later, earlier])
+        client_row = Order(source="sheet_client", sheet_tab=today_tab, row_number=60,
+                           due_time="09:00", client_name="Неда", quantity="1")
+        lab_row_3 = Order(source="lab", sheet_tab=today_tab, row_number=3,
+                          due_time="09:00", work_order_no="24003")
+        lab_row_1 = Order(source="lab", sheet_tab=today_tab, row_number=1,
+                          due_time="16:00", work_order_no="24001")
+        db.add_all([client_row, lab_row_3, lab_row_1])
         db.commit()
 
         context = _call_get_queue(db, user, monkeypatch, tmp_path)
 
-        assert [o.id for o in context["orders"]] == [earlier.id, later.id]
+        assert [o.id for o in context["orders"]] == [lab_row_1.id, lab_row_3.id, client_row.id]
         assert context["sort"] == ""
         assert context["sort_dir"] == "asc"
 

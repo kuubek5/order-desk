@@ -15,7 +15,6 @@ from app.models import Order, ReworkRecord, SyncLog
 from app.services.formatting import pluralize_uk
 from app.services.order_dates import order_date, parse_sheet_tab
 from app.stats import parse_int_safe
-from app.statuses import is_overdue
 
 DATE_STRIP_WINDOW = 3
 
@@ -28,7 +27,7 @@ RETENTION_DAYS = 30
 
 # Column headers the operator can click to sort the queue table (queue.html
 # thead, via _sortable_th.html). Explicit, opt-in — with no `sort` query
-# param the queue keeps its default urgency-based queue_sort_key ordering.
+# param the queue keeps its default sheet-order queue_sort_key ordering.
 QUEUE_SORT_FIELDS = ("material", "kind", "quantity")
 
 
@@ -62,10 +61,24 @@ def is_rush_comment(text: str | None) -> bool:
 
 
 def queue_sort_key(order: Order) -> tuple:
-    """Oldest overdue work first, then the earliest daily deadline."""
-    due_rank = {"09:00": 0, "14:00": 1, "16:00": 2}.get(order.due_time, 3)
-    overdue_rank = 0 if is_overdue(order.sheet_tab, order.status) else 1
-    return overdue_rank, order_date(order), due_rank, order.id
+    """Порядок черги за замовчуванням — той самий, що в Google Таблиці: день
+    (вкладка), далі рядок згори вниз.
+
+    Раніше ключ був «прострочені, потім ранній дедлайн, потім `order.id`», і
+    черга читалась інакше, ніж таблиця, з якою її звіряють щодня: дедлайни
+    «Здати до» лабораторія не враховує (CLAUDE.md §2), а `order.id` — це
+    порядок ВСТАВКИ в базу, не місце рядка. Лаб-зона в таблиці стоїть над
+    клієнтською, тож окремо піднімати лабораторні більше не треба.
+
+    Робота без позиції (лист, чий рядок у таблицю ще не записано) — внизу
+    свого дня: у таблиці такі рядки теж дописуються знизу. `order.id` лише
+    розвʼязує нічию."""
+    return (
+        order_date(order),
+        order.row_number is None,
+        order.row_number or 0,
+        order.id,
+    )
 
 
 def queue_column_sort_value(order: Order, sort: str) -> int | str | None:

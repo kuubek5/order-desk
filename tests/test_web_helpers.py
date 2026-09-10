@@ -101,16 +101,35 @@ def test_session_issued_before_the_field_existed_still_works():
     assert get_current_user(request, db) is user
 
 
-def test_queue_sorts_earlier_deadline_first_for_same_day():
-    base = {
-        "sheet_tab": "01.08.26",
-        "created_at": datetime(2026, 8, 1),
-        "status": "нове",
-    }
-    later = SimpleNamespace(**base, due_time="16:00", id=1)
-    earlier = SimpleNamespace(**base, due_time="09:00", id=2)
+def test_queue_follows_sheet_rows_not_deadline_or_insert_order():
+    """Черга за замовчуванням повторює таблицю: рядок згори вниз. Ні дедлайн
+    «Здати до» (лабораторія його не враховує), ні `id` (порядок вставки в
+    базу) не мають права переставити рядки."""
+    base = {"sheet_tab": "01.08.26", "created_at": datetime(2026, 8, 1), "status": "нове"}
+    row_5 = SimpleNamespace(**base, due_time="09:00", row_number=5, id=1)
+    row_2 = SimpleNamespace(**base, due_time="16:00", row_number=2, id=2)
 
-    assert sorted([later, earlier], key=_queue_sort_key) == [earlier, later]
+    assert sorted([row_5, row_2], key=_queue_sort_key) == [row_2, row_5]
+
+
+def test_queue_sheet_order_groups_by_day_first():
+    older = SimpleNamespace(sheet_tab="31.07.26", created_at=datetime(2026, 7, 31), row_number=40, id=2)
+    newer = SimpleNamespace(sheet_tab="01.08.26", created_at=datetime(2026, 8, 1), row_number=1, id=1)
+
+    assert sorted([newer, older], key=_queue_sort_key) == [older, newer]
+
+
+def test_queue_order_without_sheet_row_goes_last_in_its_day():
+    """Лист, чий рядок у таблицю ще не записано, у таблиці дописався б знизу —
+    отже й у черзі він унизу свого дня, а не вгорі (row_number None ≠ 0)."""
+    base = {"sheet_tab": "01.08.26", "created_at": datetime(2026, 8, 1)}
+    unplaced = SimpleNamespace(**base, row_number=None, id=1)
+    first_row = SimpleNamespace(**base, row_number=0, id=2)
+    later_row = SimpleNamespace(**base, row_number=70, id=3)
+
+    assert sorted([unplaced, later_row, first_row], key=_queue_sort_key) == [
+        first_row, later_row, unplaced,
+    ]
 
 
 def test_column_sort_value_quantity_parses_numeric_string():
