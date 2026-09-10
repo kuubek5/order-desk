@@ -25,7 +25,7 @@ import threading
 from threading import Lock
 from app.services.device_poll import DevicePoller
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional, cast
 
@@ -39,7 +39,10 @@ from app.services import machine_link
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
 from app.machine_portraits import portrait_version
 from app.machine_sisma import read_sisma, screen_is_sisma
+from app.machine_newgen_job import read_newgen_program
+from app.services.order_dates import order_date
 from app.machine_ocr import (
+    MillingProgram,
     missing_caption_digits,
     pick_milling_program,
     read_progress_percent,
@@ -1325,6 +1328,55 @@ def prune_machine_readings(db: Session, now: Optional[datetime] = None) -> int:
     return removed
 
 
+#: Наскільки день роботи може бути РАНІШЕ за дату прорахунку в назві
+#: програми. Робота з «Раніше» чекає прорахунку днями, тож вікно широке;
+#: ширшим за робочу чергу (30 днів) воно бути не мусить.
+SCREEN_PROGRAM_DAYS_BACK = 14
+
+
+def _program_from_screen(
+    db: Session, target: MachineTarget, frame: Optional[Image.Image]
+) -> Optional[MillingProgram]:
+    """Програма з екрана JOBS нового покоління — лише якщо вона є в черзі.
+
+    Друга умова не формальність. Читач екрана і так мовчить при найменшому
+    сумніві, але прочитаний Sum3D ID ще й мусить збігтися з реальною роботою:
+    незалежний другий сигнал, як дві ознаки статусу печі. Роботи, якої немає
+    в черзі, підсвітити все одно нема чого — а хибний збіг тоді неможливий.
+    Будь-яка несподіванка кадру означає «не прочитано», а не збій опитування."""
+    if frame is None:
+        return None
+    try:
+        program = read_newgen_program(frame)
+    except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
+        logger.exception("Назву програми з екрана верстата %s не прочитано", target.host)
+        return None
+    if program is None:
+        return None
+    # Sum3D ID — лише час доби (`HH-MM-SS`), і за місяці той самий час
+    # трапляється в різних роботах. Тому «є в базі» замало: робота мусить
+    # бути в РОБОЧІЙ черзі (не в архіві) і її день — поруч із датою з назви
+    # програми. Вікно широке назад (замовлення з «Раніше» прораховують через
+    # дні після появи рядка) і вузьке вперед (прорахувати раніше за появу
+    # рядка можна хіба на день).
+    try:
+        milled_on = date.fromisoformat(program.date)
+    except ValueError:
+        return None
+    candidates = db.scalars(
+        select(Order).where(Order.sum3d_id == program.sum3d_id, Order.archived_at.is_(None))
+    ).all()
+    near = [
+        o for o in candidates
+        if milled_on - timedelta(days=SCREEN_PROGRAM_DAYS_BACK) <= order_date(o) <= milled_on + timedelta(days=1)
+    ]
+    if not near:
+        logger.debug("Верстат %s: з екрана прочитано %s від %s, але такої роботи в черзі немає",
+                     target.key, program.sum3d_id, program.date)
+        return None
+    return program
+
+
 def poll_target(
     db: Session,
     target: MachineTarget,
@@ -1549,24 +1601,43 @@ def poll_target(
         if target.collect_calibration:
             collect_calibration_frame_timed(target.key, frame, calib_root)
 
-    # Що фрезерується — лише через агента (заголовок вікна). У VNC такого
-    # каналу немає, і вигадувати його з картинки ми не будемо.
+    # Що фрезерується. Два канали, обидва — точний текст або нічого:
+    #   1. заголовок вікна RemiCORE (лише агент);
+    #   2. рядок ▶ на екрані JOBS нового покоління (кадр) — там софт назву в
+    #      заголовок не пише зовсім (скарга власника 10.09.26).
+    # Другий канал питаємо, лише коли перший програми не дав. Прочитане з
+    # кадру приймається, тільки якщо такий Sum3D ID справді є в черзі: це
+    # незалежний другий сигнал, і саме він не дає підсвітити чужу роботу.
+    program = None
+    known = False  # чи маємо ми право переписати прив'язку цим кадром
     if target.is_agent:
         if titles is _NOT_FETCHED:
             # Одиничний виклик (ручне «Оновити» одного верстата) — читаємо самі.
             titles = _fetch_titles(target.host, target.port, target.agent_token)
         if titles is not None:  # агент відповів — довіряємо результату
+            known = True
             program = pick_milling_program(titles)
-            # Порожньо/немає програми = вікно закрилось → знімаємо прив'язку,
-            # інакше «фрезерується Кривовид» висіло б після завершення.
             with _states_lock:
-                state.iso_name = program.iso_name if program else None
-                state.sum3d_id = program.sum3d_id if program else None
-                state.program_at = now
                 state.titles_seen = [str(x)[:120] for x in titles[:12]]
         else:
             with _states_lock:
                 state.titles_seen = None
+    if program is None:
+        from_screen = _program_from_screen(db, target, frame)
+        if from_screen is not None:
+            program, known = from_screen, True
+        elif not target.is_agent:
+            # VNC: іншого каналу немає, свіжий кадр без програми = програми
+            # не видно. Агент, що не відповів, прив'язку не чіпає (ми не знаємо).
+            known = True
+    if known:
+        # Порожньо/немає програми = вікно закрилось чи екран уже інший →
+        # знімаємо прив'язку, інакше «фрезерується Кривовид» висіло б після
+        # завершення.
+        with _states_lock:
+            state.iso_name = program.iso_name if program else None
+            state.sum3d_id = program.sum3d_id if program else None
+            state.program_at = now
 
     # Історія: подія — цим же кадром, решта — раз на хвилину. Збій запису не
     # має валити опитування: кадр на екрані важливіший за рядок історії.
