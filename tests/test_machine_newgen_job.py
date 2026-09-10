@@ -29,16 +29,65 @@ FIX = Path(__file__).parent / "fixtures"
 FRAME_250I = FIX / "newgen_progress_30.png"
 FRAME_150I = FIX / "newgen_150i_38.png"
 
+# Кадри з цеху 10.09.26 (Tolik/Soc на 250i, Olejka на 150i). У перший же день
+# усі три давали «не прочитано»: «6» у «16» і «4» у «16-14» стояли в позиціях,
+# яких еталони не бачили, а крапку перед ISO на 150i (кругла, 4×4, заповнення
+# 0.75) відкидав поріг 0.8. Тут вони — контракт: знову перестануть читатись —
+# верстати знову мовчки згаснуть.
+SHOP_FRAMES = {
+    "newgen_250i_16-38-52.png": ("2026-09-10", "16-38-52"),
+    "newgen_250i_16-14-29.png": ("2026-09-10", "16-14-29"),
+    "newgen_150i_16-27-26.png": ("2026-09-10", "16-27-26"),
+}
+READABLE = {
+    FRAME_250I.name: ("2026-09-04", "12-57-22"),
+    "newgen_progress_0.png": ("2026-09-04", "12-57-22"),
+    FRAME_150I.name: ("2026-09-04", "14-19-00"),
+    **SHOP_FRAMES,
+}
+
 
 def _read(path):
     program = ng.read_newgen_program(Image.open(path))
     return (program.date, program.sum3d_id) if program else None
 
 
-def test_reads_the_running_program_on_both_machines():
-    assert _read(FRAME_250I) == ("2026-09-04", "12-57-22")
-    assert _read(FIX / "newgen_progress_0.png") == ("2026-09-04", "12-57-22")
-    assert _read(FRAME_150I) == ("2026-09-04", "14-19-00")
+@pytest.mark.parametrize("name, expected", READABLE.items())
+def test_reads_the_running_program_on_both_machines(name, expected):
+    assert _read(FIX / name) == expected
+
+
+def _templates_from(frames: dict[str, str]) -> dict[str, list]:
+    """Еталони лише з цих кадрів (назва як на екрані) — без файла еталонів."""
+    out: dict[str, list] = {}
+    for name, title in frames.items():
+        truth = title.replace("_", "")
+        glyphs = ng._name_glyphs(Image.open(FIX / name))
+        assert glyphs is not None and len(glyphs) == len(truth), name
+        for glyph, char in zip(glyphs, truth):
+            if char.isdigit():
+                out.setdefault(char, []).append(ng._normalise(glyph.bits))
+    return out
+
+
+def test_a_shop_frame_reads_with_templates_that_never_saw_it(monkeypatch):
+    """Навчене на кадрі читає сам кадр — це нічого не доводить. Тут 250i
+    «16-38-52» читається еталонами з ІНШИХ кадрів: «6» у «16» стоїть у тій
+    самій позиції й на сусідньому верстаті, тож один раз навчена — тримає."""
+    monkeypatch.setattr(ng, "load_newgen_glyphs", lambda: _templates_from({
+        FRAME_250I.name: "1_18-EMOTIONS-A1-X193_2026-09-04_12-57-22.ISO",
+        "newgen_250i_16-14-29.png": "ZR18_18-MONOLITH-A2-X38_2026-09-10_16-14-29.ISO",
+    }))
+    assert _read(FIX / "newgen_250i_16-38-52.png") == ("2026-09-10", "16-38-52")
+
+
+def test_the_round_dot_of_the_150i_is_a_dot():
+    """Крапка — за формою, без еталонів: перевіряємо саме форму, щоб навчені
+    з цього кадру цифри не прикривали її."""
+    glyphs = ng._name_glyphs(Image.open(FIX / "newgen_150i_16-27-26.png"))
+    dot = glyphs[-len(ng.TAIL):][ng.TAIL.index(".")]
+    assert dot.bits.mean() < 0.8, "кадр мав би нести саме ту круглу крапку"
+    assert ng._shape_class(dot) == "."
 
 
 def test_templates_from_one_machine_read_the_other(monkeypatch):
@@ -60,11 +109,20 @@ def test_templates_from_one_machine_read_the_other(monkeypatch):
 def test_every_other_screen_stays_silent():
     """Жоден кадр, що не є JOBS нового покоління, не дає читання: RemiCORE,
     SUMMARY, перевірка програми, SISMA, шпалери."""
-    others = [p for p in FIX.glob("*.png")
-              if p.name not in {FRAME_250I.name, FRAME_150I.name, "newgen_progress_0.png"}]
+    others = [p for p in FIX.glob("*.png") if p.name not in READABLE]
     assert others, "фікстури чужих екранів зникли — тест був би порожнім"
     for path in others:
         assert _read(path) is None, path.name
+        # І це не «відмова»: на чужому екрані читати нема чого, в лог — ні слова.
+        assert ng.read_newgen_program_explained(Image.open(path)) == (None, None), path.name
+
+
+def test_an_unread_jobs_screen_says_which_symbol_failed():
+    """Екран JOBS видно, а назву не взято — причина з номером символу, щоб
+    було видно, що донавчити (10.09.26 відмова була мовчазною)."""
+    program, why = ng.read_newgen_program_explained(_paint(FRAME_250I, (525, 305, 545, 330)))
+    assert program is None
+    assert why and "№" in why
 
 
 def _paint(path, box, colour=(66, 66, 66)):
@@ -102,10 +160,17 @@ def db():
 
 
 @pytest.fixture(autouse=True)
-def _clean_states(monkeypatch):
+def _clean_states(monkeypatch, tmp_path):
+    from app import log_throttle
+
     monkeypatch.setattr(ms, "_states", {})
     monkeypatch.setattr(ms, "save_frame", lambda *a, **k: None)
     monkeypatch.setattr(ms, "_store_machine_reading", lambda *a, **k: None)
+    # Невпізнаний екран відкладає кадр у frames_root() — не в справжню теку.
+    monkeypatch.setattr(ms, "frames_root", lambda: tmp_path)
+    log_throttle.reset_for_tests()
+    yield
+    log_throttle.reset_for_tests()
 
 
 def _agent():
@@ -138,6 +203,26 @@ def test_same_time_of_day_elsewhere_is_not_a_match(db, tab, archived, why):
     db.commit()
     state = ms.poll_target(db, _agent(), None, frame=Image.open(FRAME_250I), titles=[])
     assert state.sum3d_id is None, why
+
+
+def test_unread_jobs_screen_is_logged_once_and_its_frame_kept(db, tmp_path, caplog):
+    """Відмова на екрані JOBS — warning у лог і кадр у newgen_unread, але не
+    на кожен тік: опитування йде кожні кілька секунд цілими годинами."""
+    frame = _paint(FRAME_250I, (525, 305, 545, 330))
+    with caplog.at_level("WARNING", logger=ms.logger.name):
+        for _ in range(3):
+            ms.poll_target(db, _agent(), None, frame=frame, titles=[])
+    unread = [r for r in caplog.records if "назву програми не прочитано" in r.getMessage()]
+    assert len(unread) == 1, [r.getMessage() for r in caplog.records]
+    assert "№" in unread[0].getMessage()
+    assert (tmp_path / "newgen_unread" / f"{_agent().key}.png").exists()
+
+
+def test_other_screens_do_not_log_an_unread_name(db, tmp_path, caplog):
+    with caplog.at_level("WARNING", logger=ms.logger.name):
+        ms.poll_target(db, _agent(), None, frame=Image.open(FIX / "newgen_summary_done.png"), titles=[])
+    assert not [r for r in caplog.records if "назву програми не прочитано" in r.getMessage()]
+    assert not (tmp_path / "newgen_unread").exists()
 
 
 def test_title_program_wins_over_the_screen(db):

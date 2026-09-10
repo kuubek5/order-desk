@@ -217,15 +217,30 @@ def _shape_class(glyph: _Glyph) -> Optional[str]:
     h, w = glyph.bits.shape
     cap = glyph.cap
     fill = glyph.bits.mean()
-    if h <= cap * 0.25 and fill >= 0.8:
+    if h <= cap * 0.25:
         middle = glyph.top + h / 2
-        if w >= 1.5 * h and 0.3 * cap <= middle <= 0.7 * cap:
+        if fill >= 0.8 and w >= 1.5 * h and 0.3 * cap <= middle <= 0.7 * cap:
             return "-"
-        if w <= 2 * h and glyph.top + h >= cap * 0.85:
+        # Крапка кругла: у 150i вона 4×4 без кутів, тобто заповнення 0.75
+        # (бойовий кадр 10.09.26; у фікстурі було 0.81 — впритул до старого
+        # спільного з рискою порогу 0.8, і перший же кадр із цеху його
+        # переступив). Помилки тут не буде: позицію крапки задає TAIL, а дату
+        # й час навколо неї все одно перевіряють цифри.
+        if fill >= 0.65 and w <= 2 * h and glyph.top + h >= cap * 0.85:
             return "."
     if h >= cap * 0.9 and w <= cap * 0.25 and fill >= 0.8:
         return "I"
     return None
+
+
+def _ranked(glyph: _Glyph, templates: dict[str, list[np.ndarray]]) -> list[tuple[str, float]]:
+    """Цифри за відстанню до найближчого свого еталона, найближча перша."""
+    probe = _normalise(glyph.bits)
+    best = {
+        char: min(float(np.abs(probe - v).sum()) for v in variants)
+        for char, variants in templates.items()
+    }
+    return sorted(best.items(), key=lambda kv: kv[1])
 
 
 def _classify_digit(glyph: _Glyph, templates: dict[str, list[np.ndarray]]) -> Optional[str]:
@@ -233,11 +248,7 @@ def _classify_digit(glyph: _Glyph, templates: dict[str, list[np.ndarray]]) -> Op
     h, w = glyph.bits.shape
     if h < glyph.cap * 0.9 or not templates:
         return None
-    probe = _normalise(glyph.bits)
-    best: dict[str, float] = {}
-    for char, variants in templates.items():
-        best[char] = min(float(np.abs(probe - v).sum()) for v in variants)
-    ranked = sorted(best.items(), key=lambda kv: kv[1])
+    ranked = _ranked(glyph, templates)
     char, distance = ranked[0]
     if distance > MAX_DISTANCE:
         return None
@@ -250,35 +261,63 @@ def read_newgen_program(image: Image.Image) -> Optional[MillingProgram]:
     """Програма з рядка ▶ на екрані JOBS. None — якщо хоч щось не впевнено.
 
     Наявність Sum3D ID у черзі перевіряє викликач: тут бази немає."""
+    return read_newgen_program_explained(image)[0]
+
+
+def read_newgen_program_explained(
+    image: Image.Image,
+) -> tuple[Optional[MillingProgram], Optional[str]]:
+    """Те саме, що `read_newgen_program`, плюс ЧОМУ не прочитано.
+
+    Причина буває лише тоді, коли рядок ▶ на екрані Є, а назву не взято, —
+    тобто читач мав прочитати й не зміг. Інший екран (RemiCORE, SUMMARY,
+    шпалери) — це не відмова, а «тут нема чого читати»: причина None.
+
+    Навіщо (10.09.26): перший день у цеху всі три екрани JOBS давали «не
+    прочитано» без жодного сліду — одна цифра в новій позиції, одна крапка.
+    Мовчазна відмова виглядала як «фіча не працює», і причину можна було
+    дізнатись лише з кадру, привезеного з цеху. Тепер вона пишеться в лог
+    разом із номером символу — видно, що саме донавчити."""
     templates = load_newgen_glyphs()
     if not templates:
-        return None
+        return None, None
     glyphs = _name_glyphs(image)
-    if not glyphs or len(glyphs) < len(TAIL):
-        return None
+    # Короткий рядок біля кружка — не назва програми (SUMMARY теж має кружок
+    # і кілька слів поруч): читати нема чого, це не відмова.
+    if glyphs is None or len(glyphs) < len(TAIL):
+        return None, None
     tail = glyphs[-len(TAIL):]
     text = []
-    for glyph, want in zip(tail, TAIL):
+    for index, (glyph, want) in enumerate(zip(tail, TAIL)):
         if want == "?":
             text.append("?")
             continue
         if want == "#":
             got = _classify_digit(glyph, templates)
             if got is None or not got.isdigit():
-                return None
+                ranked = _ranked(glyph, templates)
+                near = ", ".join(f"{c}={d:.0f}" for c, d in ranked[:2])
+                return None, (
+                    f"цифру №{index + 1} хвоста не впізнано ({near}; треба ≤{MAX_DISTANCE:.0f} "
+                    f"і відрив ≥{MIN_MARGIN:.0f}) — донавчити: scripts/newgen_glyphs.py learn"
+                )
         else:
             got = _shape_class(glyph)
             if got != want:
-                return None
+                h, w = glyph.bits.shape
+                return None, (
+                    f"символ №{index + 1} хвоста мав бути «{want}», а форма {w}×{h}, "
+                    f"заповнення {glyph.bits.mean():.2f}"
+                )
         text.append(got)
     s = "".join(text)
     # ####-##-## ##-##-## .I??
     year, month, day = s[0:4], s[5:7], s[8:10]
     hour, minute, second = s[10:12], s[13:15], s[16:18]
     if not (2020 <= int(year) <= 2099 and 1 <= int(month) <= 12 and 1 <= int(day) <= 31):
-        return None
+        return None, f"прочитано неможливу дату {year}-{month}-{day}"
     if not (int(hour) < 24 and int(minute) < 60 and int(second) < 60):
-        return None
+        return None, f"прочитано неможливий час {hour}-{minute}-{second}"
     date = f"{year}-{month}-{day}"
     time = f"{hour}-{minute}-{second}"
-    return MillingProgram(iso_name=f"{date}_{time}.iso", sum3d_id=time, date=date)
+    return MillingProgram(iso_name=f"{date}_{time}.iso", sum3d_id=time, date=date), None

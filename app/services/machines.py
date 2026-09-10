@@ -39,7 +39,7 @@ from app.services import machine_link
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
 from app.machine_portraits import portrait_version
 from app.machine_sisma import read_sisma, screen_is_sisma
-from app.machine_newgen_job import read_newgen_program
+from app.machine_newgen_job import read_newgen_program_explained
 from app.services.order_dates import order_date
 from app.machine_ocr import (
     MillingProgram,
@@ -1347,12 +1347,15 @@ def _program_from_screen(
     if frame is None:
         return None
     try:
-        program = read_newgen_program(frame)
+        program, why = read_newgen_program_explained(frame)
     except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
         logger.exception("Назву програми з екрана верстата %s не прочитано", target.host)
         return None
     if program is None:
+        if why is not None:
+            _report_unread_screen(target, frame, why)
         return None
+    log_throttle.clear(f"machines.newgen_unread:{target.key}")
     # Sum3D ID — лише час доби (`HH-MM-SS`), і за місяці той самий час
     # трапляється в різних роботах. Тому «є в базі» замало: робота мусить
     # бути в РОБОЧІЙ черзі (не в архіві) і її день — поруч із датою з назви
@@ -1371,10 +1374,46 @@ def _program_from_screen(
         if milled_on - timedelta(days=SCREEN_PROGRAM_DAYS_BACK) <= order_date(o) <= milled_on + timedelta(days=1)
     ]
     if not near:
-        logger.debug("Верстат %s: з екрана прочитано %s від %s, але такої роботи в черзі немає",
-                     target.key, program.sum3d_id, program.date)
+        # Не DEBUG: у проді його не видно, а це єдиний слід того, що читання
+        # спрацювало й зупинилось саме на черзі (робота не з таблиці, інший день).
+        skipped = log_throttle.due(f"machines.newgen_not_queued:{target.key}:{program.sum3d_id}")
+        if skipped is not None:
+            logger.info("Верстат %s: з екрана прочитано %s від %s, але такої роботи в черзі немає%s",
+                        target.name, program.sum3d_id, program.date,
+                        f" (ще {skipped} разів відтоді)" if skipped else "")
         return None
     return program
+
+
+def _report_unread_screen(target: MachineTarget, frame: Image.Image, why: str) -> None:
+    """Екран JOBS видно, а назву не прочитано — сказати про це, не частіше
+    раза на годину на верстат, і відкласти кадр для донавчання.
+
+    Кадр лягає в `machine_frames/newgen_unread/<ключ>.png` (один на верстат,
+    найсвіжіший): звичайний кадр перезаписується кожні 15 с, і поки до нього
+    дійдуть руки, на екрані вже інша програма. Пишемо лише разом із логом —
+    тобто теж раз на годину, опитування диском не старимо."""
+    skipped = log_throttle.due(f"machines.newgen_unread:{target.key}")
+    if skipped is None:
+        return
+    saved = ""
+    try:
+        folder = frames_root() / "newgen_unread"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{target.key}.png"
+        tmp = path.with_suffix(f".{os.getpid()}.{threading.get_ident():x}.tmp")
+        try:
+            frame.save(tmp, format="PNG")
+            tmp.replace(path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
+        saved = f"; кадр: {path}"
+    except OSError as exc:
+        saved = f"; кадр не збережено: {exc}"
+    logger.warning("Верстат %s: екран JOBS видно, а назву програми не прочитано — %s%s%s",
+                   target.name, why, saved,
+                   f" (ще {skipped} разів відтоді)" if skipped else "")
 
 
 def poll_target(

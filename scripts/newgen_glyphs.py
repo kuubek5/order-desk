@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.machine_newgen_job import (  # noqa: E402
     NEWGEN_GLYPHS_PATH,
     _name_glyphs,
-    read_newgen_program,
+    read_newgen_program_explained,
 )
 
 GLYPHS_FILE = Path(__file__).resolve().parent.parent / NEWGEN_GLYPHS_PATH
@@ -68,9 +68,9 @@ def learn(frame: Path, name: str) -> int:
 
 
 def check(frame: Path) -> int:
-    program = read_newgen_program(Image.open(frame))
+    program, why = read_newgen_program_explained(Image.open(frame))
     if program is None:
-        print("не прочитано")
+        print(f"не прочитано: {why}" if why else "не прочитано: рядка ▶ на кадрі немає (не екран JOBS)")
         return 1
     print(f"дата {program.date} · Sum3D ID {program.sum3d_id}")
     return 0
