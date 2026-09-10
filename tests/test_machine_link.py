@@ -331,7 +331,10 @@ def test_silence_everywhere_names_both_explanations_not_one():
     assert "НЕ доводить" in doubt and "Загальнодоступна" in doubt
 
 
-def test_an_answering_port_moves_the_blame_to_the_firewall():
+def test_an_answering_port_names_both_the_dead_agent_and_the_firewall():
+    """ПК озвався, порт мовчить — це АБО мертвий агент, АБО брандмауер.
+    10.09.26 розбір впевнено винив брандмауер, а агент 150i/250i падав:
+    на порт без слухача брандмауер Windows мовчить, як на закритий."""
     rows = [{"port": 445, "result": machine_link.PROBE_REFUSED, "ms": 14}]
     ex = machine_link.explain(
         cause=machine_link.CAUSE_PORT_SILENT,
@@ -340,7 +343,9 @@ def test_an_answering_port_moves_the_blame_to_the_firewall():
         port=8765,
         probe_json=machine_link.dump_probe(rows),
     )
+    assert any("kmill-agent" in step for step in ex.actions)
     assert any("брандмауер" in step for step in ex.actions)
+    assert "не розрізнити" in " ".join(ex.doubt)
 
 
 def test_no_probe_at_all_admits_it_and_offers_the_checkbox():
@@ -362,8 +367,23 @@ def test_plain_mode_verdict_is_the_answer_not_a_contradiction():
         probe_verdict=verdict,
     )
     assert "невідомо" not in " ".join(ex.doubt)
-    assert any("профіль мережі" in step for step in ex.actions)
+    assert any("kmill-agent" in step for step in ex.actions)
     assert verdict not in ex.proof, "той самий факт удруге іншими словами"
+
+
+def test_a_verdict_written_before_the_rewording_is_still_recognised():
+    """Дослівний вирок із прод-журналу 10.09.26 — зі старим поясненням у
+    хвості. Звірка йде за головою, тож такі рядки не повертаються до «стук не
+    робився, невідомо» лише тому, що текст пояснення змінився."""
+    old = ("ПК 192.168.1.82 у мережі озивається — отже мовчить саме порт 8765: "
+           "брандмауер або профіль мережі на ПК верстата")
+    assert machine_link.answered_from_verdict(old, "192.168.1.82", 8765) is True
+    ex = machine_link.explain(
+        cause=machine_link.CAUSE_PORT_SILENT, error="", host="192.168.1.82",
+        port=8765, probe_verdict=old,
+    )
+    assert "невідомо" not in " ".join(ex.doubt)
+    assert old not in ex.proof, "стара неправда про брандмауер не має вертатись"
 
 
 def test_plain_mode_silent_verdict_names_both_explanations():
@@ -382,7 +402,7 @@ def test_a_late_plain_verdict_is_not_taken_as_proof():
         cause=machine_link.CAUSE_PORT_SILENT, error="", host=host, port=port,
         probe_verdict=service._note_from_answer(True, host, port), probe_late=True,
     )
-    assert not any("профіль мережі" in step for step in ex.actions)
+    assert not any("kmill-agent" in step for step in ex.actions)
     assert "невідомо" in " ".join(ex.doubt)
 
 
