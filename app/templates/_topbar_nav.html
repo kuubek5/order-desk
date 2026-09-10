@@ -145,11 +145,7 @@
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" class="duo"/><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
             <span class="rail-label">Пічки</span>
         </a>
-        {# Журнал зв'язку для адміна має власний пункт нижче, у «Системі». Оператор
-           того пункту не бачить і приходить у журнал кнопкою з екрана
-           «Верстати» — для нього підсвічується «Верстати», звідки він прийшов. #}
-        {% set machines_on = topbar_active == 'machines' or (topbar_active == 'machine-diag' and user.role != 'адмін') %}
-        <a href="/machines" class="rail-nav-item{% if machines_on %} is-active{% endif %}"{% if machines_on %} aria-current="page"{% endif %}>
+        <a href="/machines" class="rail-nav-item{% if topbar_active == 'machines' %} is-active{% endif %}"{% if topbar_active == 'machines' %} aria-current="page"{% endif %}>
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v6" class="duo"/><path d="M12 3v6"/><path d="M7 9h10v4a5 5 0 0 1-10 0z"/><path d="M12 18v3"/></svg>
             <span class="rail-label">Верстати</span>
         </a>
@@ -181,15 +177,6 @@
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h12l-3.2-3.2"/><path d="M20 15H8l3.2 3.2"/></svg>
             <span class="rail-label">Журнал синку</span>
             {{ sync_dot(nav_sync) }}
-        </a>
-        {# Журнал зв'язку з верстатами — та сама діагностика «після факту», що й
-           журнал синку, тож стоїть поруч. До 10.09.26 вхід був лише кнопкою в
-           шапці екрана «Верстати» й посиланням із «Що не так», і власник його
-           не знаходив. Лише адмін (той самий блок, що й журнал синку): кожна дія
-           з розбору — піти до ПК верстата. #}
-        <a href="/machines/diag" class="rail-nav-item{% if topbar_active == 'machine-diag' %} is-active{% endif %}"{% if topbar_active == 'machine-diag' %} aria-current="page"{% endif %}>
-            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>
-            <span class="rail-label">Журнал зв'язку</span>
         </a>
         {% endif %}
         <a href="/stats" class="rail-nav-item{% if topbar_active == 'stats' %} is-active{% endif %}"{% if topbar_active == 'stats' %} aria-current="page"{% endif %}>

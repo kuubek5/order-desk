@@ -117,7 +117,7 @@ def machines_diag(request: Request, days: int = 1, db: Session = Depends(get_db)
         {
             "request": request,
             "user": user,
-            "topbar_active": "machine-diag",
+            "topbar_active": "machines",
             "days": days,
             "edges": edges,
             "step_hours": days == 1,
