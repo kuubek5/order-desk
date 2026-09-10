@@ -76,6 +76,38 @@ document.addEventListener("click", async (event) => {
   }, 1400);
 });
 
+// «До замовлення» (заготовки з теки CAM): у буфер іде лише позначене
+// галочками. Кнопка копіювання — звичайний [data-copy] вище; тут лише
+// переписуємо її текст і лічильник при кожній зміні вибору. Делеговано на
+// document, бо розділ перемальовують кнопки «Перечитати»/«Замовлено»
+// (hx-swap), і прямі слухачі після свапу були б мертві.
+function syncBlanksCopy(scope) {
+  if (!scope) return;
+  const picked = Array.from(scope.querySelectorAll("[data-blanks-line]:checked")).map((box) => box.value);
+  const button = scope.querySelector("[data-blanks-copy]");
+  if (button) {
+    button.dataset.copy = picked.join("\n");
+    button.disabled = picked.length === 0;
+  }
+  const counter = scope.querySelector("[data-blanks-copy-count]");
+  if (counter) counter.textContent = String(picked.length);
+}
+
+document.addEventListener("change", (event) => {
+  const box = event.target.closest("[data-blanks-line]");
+  if (box) syncBlanksCopy(box.closest("[data-blanks-order]"));
+});
+
+document.addEventListener("click", (event) => {
+  const toggle = event.target.closest("[data-blanks-select]");
+  if (!toggle) return;
+  const scope = toggle.closest("[data-blanks-order]");
+  if (!scope) return;
+  const on = toggle.dataset.blanksSelect === "all";
+  scope.querySelectorAll("[data-blanks-line]").forEach((box) => { box.checked = on; });
+  syncBlanksCopy(scope);
+});
+
 // «Відкрити папку» на картці клієнта (видача). Кнопка лишається звичайним
 // <a href="file://...">, але ЗВИЧАЙНИЙ клік по ньому браузер зі сторінки на
 // http блокує мовчки — саме тому кнопка не робила нічого (бойовий випадок

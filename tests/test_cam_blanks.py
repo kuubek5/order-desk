@@ -25,6 +25,7 @@ from app.models import CamBlank
 from app.services.cam_blanks import (
     last_order_at,
     order_history,
+    order_lines,
     order_text,
     undo_last_order,
     mark_ordered,
@@ -210,8 +211,8 @@ def test_window_runs_from_the_order_mark_not_from_the_business_day(db, tmp_path)
 
 
 def test_order_text_matches_the_shape_the_storekeeper_reads():
-    """Формат списаний із реальних повідомлень власника: рядок = виробник і
-    колір, висоти через «+», кількість у дужках лише коли більше однієї."""
+    """Формат задав власник 10.09.26: «mono a3 18» — одна позиція на рядок,
+    малими літерами, кількість у дужках лише коли більше однієї."""
     now = datetime(2026, 9, 8, 17, 30)
     rows = [
         CamBlank(rel_path="a", brand="monolith", shade="a2", height=18, first_seen_at=now),
@@ -219,11 +220,27 @@ def test_order_text_matches_the_shape_the_storekeeper_reads():
         CamBlank(rel_path="c", brand="emotions", shade="a1", height=20, first_seen_at=now),
         CamBlank(rel_path="d", brand="pmma", shade="прозора", height=20, first_seen_at=now),
         CamBlank(rel_path="e", brand="pmma", shade="прозора", height=20, first_seen_at=now),
+        CamBlank(rel_path="f", brand="monolith", shade="a3-5", height=20, first_seen_at=now),
     ]
-    text = order_text(rows)
-    assert "Mono a2 18+25" in text
-    assert "Emo a1 20" in text
-    assert "Pmma прозора 20(2)" in text
+    lines = order_text(rows).splitlines()
+    assert sorted(lines) == sorted([
+        "mono a2 18", "mono a2 25", "emo a1 20", "pmma прозора 20(2)", "mono a3.5 20",
+    ])
+
+
+def test_order_lines_put_the_freshest_on_top_and_carry_their_dates():
+    """Свіжі згори (як і таблиця під списком), і в кожного рядка — коли саме
+    брали його диски: це видно поруч із галочкою, але в буфер не йде."""
+    early, mid, late = (datetime(2026, 9, 8, h, 0) for h in (9, 12, 18))
+    rows = [
+        CamBlank(rel_path="a", brand="zr", shade="a2", height=25, first_seen_at=early),
+        CamBlank(rel_path="b", brand="monolith", shade="a3", height=18, first_seen_at=mid),
+        CamBlank(rel_path="c", brand="zr", shade="a2", height=25, first_seen_at=late),
+    ]
+    lines = order_lines(rows)
+    assert [line.text for line in lines] == ["zr a2 25(2)", "mono a3 18"]
+    assert lines[0].taken == (late, early)
+    assert "18:00" not in order_text(rows), "дати в текст для комірниці не йдуть"
 
 
 def test_order_text_shows_unparsed_files_instead_of_hiding_them():
@@ -233,7 +250,7 @@ def test_order_text_shows_unparsed_files_instead_of_hiding_them():
         CamBlank(rel_path="zr/12/дивна.blk", file_name="дивна.blk", first_seen_at=now),
     ]
     text = order_text(rows)
-    assert "Mono a2 18" in text
+    assert "mono a2 18" in text
     assert "дивна.blk" in text, "нерозібраний файл — теж узятий диск, ховати не можна"
 
 
@@ -585,9 +602,60 @@ class TestRealNamesFromTheShop:
             for n in ("zr25_25-a2-x1.blk", "zr25_25-a2-x2.blk", "pmma25_20-a3-x7.blk")
         ]
         text = order_text(rows)
-        assert "Zr a2 25(2)" in text
-        assert "Pmma a3 20" in text
+        assert "zr a2 25(2)" in text
+        assert "pmma a3 20" in text
         assert ".blk" not in text, "у замовлення потрапили сирі імена файлів"
+
+    # Формат C — назви зі скріну робочого ПК 10.09.26. До цього розбору вони
+    # йшли комірниці сирими іменами файлів, а `A3-5` читалось як «zr, колір 5».
+    @pytest.mark.parametrize("name, expected", [
+        ("zr18_18-Monolith-A2-x37.blk", (18, "monolith", "a2", 37)),
+        ("zr20_20-Monolith-a3-5-x24.blk", (20, "monolith", "a3-5", 24)),
+        ("zr14_14-Monolith-A3-5-x40.blk", (14, "monolith", "a3-5", 40)),
+        ("zr18_18-Emotions-a1-x194.blk", (18, "emotions", "a1", 194)),
+        ("zr18_18-Monolith-C2-x81.blk", (18, "monolith", "c2", 81)),
+        ("zr14_14-Emotions-A3-x843PRO.blk", (14, "emotions", "a3", 843)),
+        ("zr14_14-s1-x80.blk", (14, "zr", "s1", 80)),
+        ("pmma25_25-pmmaProzrach-362.blk", (25, "pmma", "pmmaprozrach", 362)),
+        ("pmma16_16-a1-x89.blk", (16, "pmma", "a1", 89)),
+    ])
+    def test_names_with_a_brand_word(self, name, expected):
+        p = parse_blank_name(name)
+        assert (p.height, p.brand, p.shade, p.serial) == expected
+
+    def test_brand_word_names_read_as_the_owner_writes_them(self):
+        names = ("zr20_20-Monolith-a3-5-x24.blk", "zr18_18-Emotions-a1-x194.blk",
+                 "zr14_14-Emotions-A3-x843PRO.blk")
+        rows = [CamBlank(rel_path=n, file_name=n, first_seen_at=datetime(2026, 9, 8, 9, i))
+                for i, n in enumerate(names)]
+        assert sorted(order_text(rows).splitlines()) == ["emo a1 18", "emo a3 14", "mono a3.5 20"]
+
+    def test_history_rows_saved_by_the_old_parser_are_read_from_the_name(self):
+        """Поля в базі пише розбір, що був у момент появи диска. Замовлені до
+        навчання формату C рядки мають «zr / 5» — текст бере назву заново."""
+        n = "zr14_14-Monolith-A3-5-x40.blk"
+        row = CamBlank(rel_path=n, file_name=n, brand="zr", shade="5", height=None,
+                       first_seen_at=datetime(2026, 9, 8, 21, 24))
+        assert order_text([row]) == "mono a3.5 14"
+
+
+def test_sync_rereads_pending_rows_saved_by_the_old_parser(db, tmp_path):
+    """Незамовлені рядки перечитуються новим розбором: інакше таблиця на
+    екрані й прапорець «не на місці» лишились би зі старими полями."""
+    seed_baseline(db, tmp_path)
+    name = "zr14_14-Monolith-A3-5-x40.blk"
+    make_tree(tmp_path, {"zr/14": [name]})
+    sync_blanks(db, tmp_path)
+    row = db.scalars(select(CamBlank).where(CamBlank.file_name == name)).one()
+    row.brand, row.shade, row.height = "zr", "5", None   # як записав старий розбір
+    db.commit()
+
+    result = sync_blanks(db, tmp_path)
+
+    assert result.reparsed == 1
+    db.refresh(row)
+    assert (row.brand, row.shade, row.height) == ("monolith", "a3-5", 14)
+    assert sync_blanks(db, tmp_path).reparsed == 0, "другий прохід нічого не переписує"
 
 
 # ── Історія замовлень ───────────────────────────────────────────────────────
@@ -656,4 +724,4 @@ class TestOrderHistory:
         db.commit()
         mark_ordered(db, now=datetime(2026, 9, 8, 18, 0))
 
-        assert "Zr a2 25(2)" in order_history(db)[0].text
+        assert "zr a2 25(2)" in order_history(db)[0].text

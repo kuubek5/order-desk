@@ -79,15 +79,26 @@ _COMMIT_EVERY = 500
 # «Mono a2 25(3)», а купою сирих імен файлів. Фіча працювала наполовину, і
 # видно це стало лише на справжніх назвах.
 #
-# Розбираємо СПРАВА, бо саме хвіст стабільний: останній блок — номер, перед
-# ним — колір, решта — голова з матеріалом і висотою. Голова змінюється від
+# Формат C (скрін з робочого ПК, 10.09.26) — формат B зі СЛОВОМ ВИРОБНИКА
+# між головою і кольором, а колір і номер бувають складені:
+#
+#   zr18_18-Monolith-A2-x37        zr, висота 18, виробник monolith, колір a2
+#   zr20_20-Monolith-a3-5-x24      колір `a3-5` = A3.5 (крапку файлова назва
+#                                  не любить, тож CAM пише дефіс)
+#   zr14_14-Emotions-A3-x843PRO    хвіст номера з літерами
+#
+# Регулярка формату B брала тут голову `zr20_20-Monolith-a3`, колір `5`, і
+# висоти в такій голові не знаходила — у замовлення комірниці йшли сирі імена
+# файлів (08.09–10.09.26), а рядки з `A3-5` читались як «zr, колір 5».
+#
+# Розбираємо СПРАВА, бо саме хвіст стабільний: останній блок — номер, перший —
+# голова з матеріалом і висотою, між ними — колір (і, якщо блоків між ними
+# більше одного й перший із них — слово, — виробник). Голова змінюється від
 # машини до машини, хвіст — ні.
-_NAME_A_RE = re.compile(
-    r"^(?P<height>\d{1,3})\s*-\s*(?P<brand>[^-]+?)\s*-\s*(?P<shade>.+?)\s*-\s*[xX](?P<serial>\d+)$"
-)
-_NAME_B_RE = re.compile(
-    r"^(?P<head>.+?)\s*-\s*(?P<shade>[^-]+?)\s*-\s*[xX]?(?P<serial>\d+)$"
-)
+_SERIAL_RE = re.compile(r"^[xX]?(?P<serial>\d+)[A-Za-z]*$")
+# Слово виробника: лише літери, від трьох. Колір (`a2`, `s1`, `a3`) цю умову
+# не проходить, тож `zr25_25-a3-5-x10` лишається кольором `a3-5` без виробника.
+_BRAND_WORD_RE = re.compile(r"^[A-Za-zА-Яа-яІіЇїЄєҐґ]{3,}$")
 # Голова формату B: `zr25_25`, `D98_zr25_25`, `crco25_TRINIA_IVORY`.
 # Висота — останнє число після `_`.
 _HEAD_HEIGHT_RE = re.compile(r"_(?P<height>\d{1,3})$")
@@ -130,47 +141,44 @@ class ParsedBlank:
 
 
 def parse_blank_name(name: str) -> ParsedBlank:
-    """Назва файлу → висота, матеріал, колір, номер. Розуміє обидва формати.
+    """Назва файлу → висота, виробник, колір, номер. Розуміє формати A, B і C.
 
     Не розібралось — повертаємо порожній ParsedBlank, а не None: викликач
     однаково мусить порахувати файл, просто без структурованих полів.
 
-    `brand` для формату B — це КОД МАТЕРІАЛУ з назви (`zr`, `pmma`, `crco`,
-    `ti`), бо виробника ці назви не несуть узагалі. Для комірниці рядок
-    «Zr a2 25(3)» усе одно кращий за сире імʼя файлу, а справжній виробник
-    видно з теки матеріалу.
+    `brand` — виробник, якщо назва його несе (`monolith`, `emotions`), інакше
+    КОД МАТЕРІАЛУ з голови (`zr`, `pmma`, `crco`, `ti`). Для комірниці рядок
+    «zr a2 25» усе одно кращий за сире імʼя файлу.
     """
     stem = name[: -len(BLANK_EXT)] if name.lower().endswith(BLANK_EXT) else name
-    stem = stem.strip()
-
-    match = _NAME_A_RE.match(stem)
-    if match is not None:
-        try:
-            height = int(match.group("height"))
-            serial = int(match.group("serial"))
-        except ValueError:  # pragma: no cover — регулярка вже гарантує цифри
-            return ParsedBlank()
-        return ParsedBlank(
-            height=height,
-            brand=_clip(match.group("brand")),
-            shade=_clip(match.group("shade")),
-            serial=serial,
-        )
-
-    match = _NAME_B_RE.match(stem)
-    if match is None:
+    parts = [part.strip() for part in stem.strip().split("-")]
+    # Голова, хоч один блок кольору й номер. Порожній блок (`a--b`) — не наша
+    # конвенція, вгадувати не беремось.
+    if len(parts) < 3 or not all(parts):
         return ParsedBlank()
-    try:
-        serial = int(match.group("serial"))
-    except ValueError:  # pragma: no cover
+    serial_match = _SERIAL_RE.match(parts[-1])
+    if serial_match is None:
         return ParsedBlank()
-    head = match.group("head").strip()
-    height_match = _HEAD_HEIGHT_RE.search(head)
+
+    head, middle = parts[0], parts[1:-1]
+    brand_word = None
+    if len(middle) >= 2 and _BRAND_WORD_RE.match(middle[0]):
+        brand_word, middle = middle[0], middle[1:]
+
+    if head.isdigit():
+        # Формат A: голова — сама висота, матеріалу в ній немає.
+        height = int(head) if len(head) <= 3 else None
+        code = None
+    else:
+        height_match = _HEAD_HEIGHT_RE.search(head)
+        height = int(height_match.group("height")) if height_match else None
+        code = _head_code(head)
+
     return ParsedBlank(
-        height=int(height_match.group("height")) if height_match else None,
-        brand=_clip(_head_code(head)),
-        shade=_clip(match.group("shade")),
-        serial=serial,
+        height=height,
+        brand=_clip(brand_word or code),
+        shade=_clip("-".join(middle)),
+        serial=int(serial_match.group("serial")),
     )
 
 
@@ -379,6 +387,8 @@ class SyncBlanksResult:
     # теці ще до вмикання стеження. Ненульове буває рівно один раз — на
     # першому проході (див. sync_blanks).
     baseline: int = 0
+    # Незамовлені рядки, чиї поля переписано новішим розбором назви.
+    reparsed: int = 0
 
 
 def sync_blanks(db: Session, root: Path | str, *, now: Optional[datetime] = None) -> SyncBlanksResult:
@@ -429,6 +439,14 @@ def sync_blanks(db: Session, root: Path | str, *, now: Optional[datetime] = None
         key = item.rel_path.casefold()
         seen_paths.add(key)
         if key in alive:
+            # Поля розбору пишуться в момент появи диска. Коли розбір
+            # навчився новому формату, рядки, що вже чекають замовлення,
+            # лишились би з полями старого (08–10.09.26: «zr, колір 5» замість
+            # «monolith a3-5») — і в таблиці, і в прапорці «не на місці».
+            # Перечитуємо лише НЕЗАМОВЛЕНІ: їх одиниці-десятки, а замовлену
+            # історію текст однаково розбирає з назви заново (`_line_fields`).
+            if alive[key].ordered_at is None and _refresh_parsed(alive[key], item):
+                result.reparsed += 1
             continue
         db.add(
             CamBlank(
@@ -461,9 +479,26 @@ def sync_blanks(db: Session, root: Path | str, *, now: Optional[datetime] = None
             row.gone_at = now
             result.vanished += 1
 
-    if result.appeared or result.vanished or result.baseline:
+    if result.appeared or result.vanished or result.baseline or result.reparsed:
         db.commit()
     return result
+
+
+def _refresh_parsed(row: CamBlank, item: FoundBlank) -> bool:
+    """Переписати поля розбору, якщо поточний розбір дає інше. True — змінено."""
+    fresh = {
+        "height": item.parsed.height,
+        "brand": item.parsed.brand,
+        "shade": item.parsed.shade,
+        "serial": item.parsed.serial,
+        "height_mismatch": item.height_mismatch,
+    }
+    changed = False
+    for name, value in fresh.items():
+        if getattr(row, name) != value:
+            setattr(row, name, value)
+            changed = True
+    return changed
 
 
 def pending_blanks(db: Session) -> list[CamBlank]:
@@ -588,8 +623,11 @@ class PastOrder:
     is_latest: bool = False
 
 
-def order_history(db: Session, *, limit: int = 12) -> list[PastOrder]:
+def order_history(db: Session, *, limit: int = 30) -> list[PastOrder]:
     """Минулі замовлення, найновіші згори.
+
+    30, а не 12 (10.09.26): історія тепер згорнута під списком і місця на
+    екрані не забирає, а питають її саме про давнє — «коли замовляли?».
 
     Навіщо. Кнопка «Замовлено» досі була дією без сліду: натиснув — список
     спорожнів, і що саме пішло комірниці, вже ніде не подивитись. Питання
@@ -656,51 +694,93 @@ def last_order_at(db: Session) -> Optional[datetime]:
 
 
 # ── Текст для комірниці ─────────────────────────────────────────────────────
-# Формат списаний з реальних повідомлень власника (Viber, чат з комірницею):
+# Формат задав власник 10.09.26:
 #
-#   Mono a2-18+25
-#   Mono a3.5 18+20+25
-#   Прозора пмма 20(3)+25(3)
+#   mono a3 18
+#   emo a2 16
+#   zr a2 25(2)
 #
-# Рядок = виробник + колір; ВИСОТИ через «+» (по одному диску кожної);
-# кількість у дужках лише коли їх більше однієї. Це читає людина, яка звикла
-# саме до такого вигляду, тож формат має бути їй ВПІЗНАВАНИЙ, а не «правильний».
+# Рядок = виробник, колір, висота — ОДНА позиція на рядок, малими літерами;
+# кількість у дужках лише коли однакових дисків більше одного. Раніше висоти
+# склеювались через «+» в один рядок («Mono a2 18+25»): тоді з нього не можна
+# було вибрати, що саме копіювати, — а тепер список копіюється вибірково.
+# Свіжі позиції згори, як і таблиця під списком.
 
 
 def _brand_label(brand: Optional[str]) -> str:
-    """Виробник так, як його пише оператор: `monolith` → `Mono`, `emo` → `Emo`."""
+    """Виробник так, як його пише оператор: `monolith` → `mono`, `emotions` → `emo`."""
     if not brand:
         return "?"
     lowered = brand.strip().lower()
     if lowered.startswith("mono"):
-        return "Mono"
+        return "mono"
     if lowered.startswith("emo"):
-        return "Emo"
-    return lowered.capitalize()
+        return "emo"
+    return lowered
+
+
+def shade_label(shade: Optional[str]) -> str:
+    """Колір так, як його пишуть люди: `a3-5` → `a3.5` (дефіс — лише з
+    файлової назви, де крапка небажана)."""
+    cleaned = (shade or "").strip().lower()
+    return re.sub(r"^([a-d])(\d)-(\d)$", r"\1\2.\3", cleaned)
+
+
+@dataclass(frozen=True)
+class OrderLine:
+    """Один рядок замовлення — те, що оператор бачить із галочкою і копіює."""
+
+    text: str
+    count: int
+    # Коли брали диски цього рядка, найсвіжіші першими.
+    taken: tuple[datetime, ...]
+
+
+def _line_fields(row: CamBlank) -> tuple[Optional[int], Optional[str], Optional[str]]:
+    """Висота, виробник, колір — з НАЗВИ файлу поточним розбором.
+
+    Поля в базі пишуться в момент появи диска, тобто тим розбором, що був
+    тоді. Історія замовлень, зроблених до того, як розбір навчився формату C,
+    інакше так і лишилась би з «zr 5 14» замість «mono a3.5 14». Рядок без
+    назви (або з назвою, що не розбирається) — беремо збережені поля.
+    """
+    if row.file_name:
+        parsed = parse_blank_name(row.file_name)
+        if parsed.height is not None and parsed.brand:
+            return parsed.height, parsed.brand, parsed.shade
+    return row.height, row.brand, row.shade
+
+
+def order_lines(rows: Iterable[CamBlank]) -> list[OrderLine]:
+    """Рядки замовлення, свіжі згори.
+
+    Нерозібрані файли не ховаємо: вони теж узяті диски. Кожен іде окремим
+    рядком сирою назвою, щоб оператор вирішив сам.
+    """
+    groups: dict[str, list[datetime]] = {}
+    for row in rows:
+        height, brand, shade = _line_fields(row)
+        if height is None or not brand:
+            text = row.file_name or row.rel_path
+        else:
+            text = " ".join(p for p in (_brand_label(brand), shade_label(shade), str(height)) if p)
+        groups.setdefault(text, []).append(row.first_seen_at)
+
+    lines = []
+    for text, stamps in groups.items():
+        taken = tuple(sorted((s for s in stamps if s is not None), reverse=True))
+        count = len(stamps)
+        lines.append(OrderLine(
+            text=f"{text}({count})" if count > 1 else text,
+            count=count,
+            taken=taken,
+        ))
+    # Свіжі згори; нічия — за текстом, щоб порядок не стрибав між рендерами.
+    lines.sort(key=lambda line: line.text)
+    lines.sort(key=lambda line: line.taken[0] if line.taken else datetime.min, reverse=True)
+    return lines
 
 
 def order_text(rows: Iterable[CamBlank]) -> str:
-    """Готовий текст замовлення — той, що йде в буфер обміну.
-
-    Нерозібрані файли не ховаємо: вони теж узяті диски. Йдуть окремими
-    рядками сирою назвою, щоб оператор вирішив сам.
-    """
-    groups: dict[tuple[str, str], list[int]] = {}
-    unparsed: list[str] = []
-    for row in rows:
-        if row.height is None or not row.brand:
-            unparsed.append(row.file_name or row.rel_path)
-            continue
-        key = (_brand_label(row.brand), (row.shade or "").strip())
-        groups.setdefault(key, []).append(row.height)
-
-    lines: list[str] = []
-    for (brand, shade), heights in groups.items():
-        parts: list[str] = []
-        for height in sorted(set(heights)):
-            count = heights.count(height)
-            parts.append(f"{height}({count})" if count > 1 else str(height))
-        head = f"{brand} {shade}".strip()
-        lines.append(f"{head} {'+'.join(parts)}")
-    lines.extend(unparsed)
-    return "\n".join(lines)
+    """Готовий текст замовлення — той, що йде в буфер обміну."""
+    return "\n".join(line.text for line in order_lines(rows))

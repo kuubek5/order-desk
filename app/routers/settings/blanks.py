@@ -24,8 +24,10 @@ from app.services.cam_blanks import (
     mark_ordered,
     pileup_note,
     probe_blanks,
+    order_lines,
     order_text,
     pending_blanks,
+    shade_label,
     sync_blanks,
 )
 from app.services.settings_nav import can_edit
@@ -68,7 +70,11 @@ def blanks_context(db: Session, *, error: str | None = None) -> dict:
     return {
         "blanks_path": path,
         "blanks_pending": pending,
+        # Таблиця під списком — свіжі згори, як і самі рядки замовлення.
+        "blanks_pending_newest": sorted(pending, key=lambda row: (row.first_seen_at, row.id), reverse=True),
+        "blanks_lines": order_lines(pending),
         "blanks_text": order_text(pending),
+        "blanks_shade_label": shade_label,
         "blanks_present": present,
         "blanks_mismatched": mismatched,
         "blanks_mismatched_rows": mismatched_rows,

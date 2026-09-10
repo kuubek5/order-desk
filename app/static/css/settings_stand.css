@@ -465,6 +465,32 @@
 
    Найновіше замовлення виділене краєм: воно єдине, яке можна скасувати, і
    око має знаходити його без читання. */
+/* Згортка історії: заголовок — сам перемикач. Стрілка своя, бо системний
+   маркер <summary> у різних браузерах різний і стоїть не на лінії з h3. */
+.bh-fold > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+.bh-fold > summary::-webkit-details-marker { display: none; }
+.bh-fold > summary::before {
+  content: "▸";
+  color: var(--ink-3);
+  transition: transform .15s ease;
+}
+.bh-fold[open] > summary::before { transform: rotate(90deg); }
+.bh-fold > summary h3 { margin: 0; }
+.bh-fold > summary .bh-summary {
+  font-family: var(--font-mono);
+  font-size: var(--fs-0);
+  color: var(--ink-3);
+}
+.bh-fold[open] > summary { margin-bottom: 10px; }
+@media (prefers-reduced-motion: reduce) {
+  .bh-fold > summary::before { transition: none; }
+}
 .blanks-history-list {
   list-style: none;
   margin: 0;
