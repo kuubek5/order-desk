@@ -112,7 +112,7 @@ def test_button_edits_the_same_message_not_a_new_one():
     assert [a.method for a in actions] == ["answerCallbackQuery", "editMessageText"]
     edit = actions[1].payload
     assert edit["message_id"] == 42
-    assert "Роботи сьогодні" in edit["text"]
+    assert "Роботи · сьогодні" in edit["text"]
     # Під не-головним видом є дорога назад.
     buttons = [b["callback_data"] for row in edit["reply_markup"]["inline_keyboard"] for b in row]
     assert "v:home" in buttons and "v:orders" in buttons
@@ -177,7 +177,7 @@ def test_orders_view_counts_readiness_like_the_queue_chips():
         text = bot.orders_text(db)
 
     assert "5 робіт, 11 од." in text
-    lab, clients = text.split("<b>Клієнти</b>")
+    lab, clients = text.split("<b>Файли (клієнти)</b>")
     assert "<b>Лабораторія</b> — 3 роботи, 6 од." in lab
     assert "можна брати: <b>1</b>" in lab and "в роботі: 1" in lab and "не готово: 1" in lab
     assert "2 роботи, 5 од." in clients
@@ -874,3 +874,82 @@ def test_settings_revoke_kills_the_link(app_db):  # noqa: F811
     client.post(f"/settings/feedback/invite/{invite_id}/revoke", {})
     with session_factory() as db:
         assert bot.handle_update(db, _stranger_start("700", code)) == []
+
+
+# ── Два меню: власник-адмін і учасник-оператор ──────────────────────────────
+
+
+def _member(db, chat="700"):
+    from app.models import TelegramMember
+
+    db.add(TelegramMember(chat_id=chat, joined_at=T0))
+    db.commit()
+
+
+def _buttons(payload):
+    return [b["callback_data"] for row in payload["reply_markup"]["inline_keyboard"] for b in row]
+
+
+def test_operator_sees_only_furnaces_and_sisma():
+    with _session() as db:
+        _member(db)
+        payload = bot.handle_update(db, _message("700", "меню"))[0].payload
+    views = {b for b in _buttons(payload) if b.startswith("v:")}
+    assert views == {"v:furnaces", "v:sisma", "v:home"}
+    assert "Сьогодні" not in payload["text"] and "Верстати" not in payload["text"]
+    assert "Пічки" in payload["text"]
+
+
+def test_operator_cannot_open_admin_view_with_forged_button():
+    """callback_data приходить від клієнта: підроблене «v:orders» від
+    оператора не відкриває цифр робіт."""
+    with _session() as db:
+        _member(db)
+        for forged in ("v:orders", "v:handout_y", "v:machines", "n:orders"):
+            actions = bot.handle_update(db, _press("700", forged))
+            assert [a.method for a in actions] == ["answerCallbackQuery"], forged
+
+
+def test_admin_has_day_switch_on_orders_and_handout():
+    with _session() as db:
+        actions = bot.handle_update(db, _press(CHAT, "v:orders_y"))
+    edit = actions[1].payload
+    assert "Роботи · вчора" in edit["text"]
+    texts = [b["text"] for row in edit["reply_markup"]["inline_keyboard"] for b in row]
+    assert "✓ Вчора" in texts and "Сьогодні" in texts
+    assert {"v:orders", "v:handout", "v:machines"} <= set(_buttons(edit))
+
+
+def test_yesterday_counts_only_yesterday():
+    with _session() as db:
+        yesterday = (business_today() - timedelta(days=1)).strftime("%d.%m.%y")
+        db.add(Order(source="lab", job_code="P:/y", quantity="4", sheet_tab=yesterday, status="нове"))
+        _order(db, source="lab", job_code="P:/t", quantity="1")
+        db.commit()
+        assert "1 робота, 4 од." in bot.orders_yesterday_text(db)
+        assert "1 робота, 1 од." in bot.orders_text(db)
+
+
+def test_handout_day_counts_like_the_handout_header():
+    yesterday = (business_today() - timedelta(days=1)).strftime("%d.%m.%y")
+    older = (business_today() - timedelta(days=4)).strftime("%d.%m.%y")
+    with _session() as db:
+        for client, qty, status in (
+            ("Клініка А", "2", "видано"),
+            ("Клініка А", "1", "знайдено при видачі"),
+            ("Клініка Б", "3", "відфрезеровано"),
+        ):
+            db.add(Order(source="email", client_name=client, quantity=qty, sheet_tab=yesterday, status=status))
+        # Безіменний рядок таблиці — окрема група «Без імені», як на екрані.
+        db.add(Order(source="sheet_client", quantity="1", sheet_tab=yesterday, status="нове"))
+        # Лабораторні не видаються клієнтам — поза видачею.
+        db.add(Order(source="lab", quantity="5", sheet_tab=yesterday, status="нове"))
+        db.add(Order(source="email", client_name="Стара", quantity="1", sheet_tab=older, status="нове"))
+        db.commit()
+        stats = bot.handout_day(db, -1)
+        text = bot.handout_yesterday_text(db)
+    assert (stats.clients, stats.clients_done) == (3, 1)
+    assert (stats.works, stats.works_done) == (4, 2)
+    assert (stats.units, stats.units_done) == (7, 3)
+    assert "Клієнтів видано: <b>1</b> з 3" in text and "Ще чекає: <b>2 роботи</b>" in text
+    assert "раніших" not in text  # старий хвіст свідомо не показуємо

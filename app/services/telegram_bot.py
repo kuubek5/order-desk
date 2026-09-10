@@ -42,7 +42,7 @@ import secrets
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
@@ -202,14 +202,36 @@ def outbox_summary(db: Session) -> dict:
 
 # ── Текст ──────────────────────────────────────────────────────────────────
 
-VIEWS = ("home", "furnaces", "orders", "machines", "sisma")
+# Два меню (рішення власника 10.09.26): власник — адмін і бачить усе;
+# учасник — оператор: пічки й Sisma, бо саме про них його будять сповіщення,
+# а цифри робіт і видачі — управлінська картина власника. Адмін лише один.
+ADMIN_VIEWS = (
+    "home", "furnaces", "machines", "sisma",
+    "orders", "orders_y", "handout", "handout_y",
+)
+OPERATOR_VIEWS = ("home", "furnaces", "sisma")
+VIEWS = ADMIN_VIEWS  # усі відомі види
 _VIEW_TITLE = {
     "home": "",
     "furnaces": "🔥 Пічки",
-    "orders": "🧾 Роботи сьогодні",
+    "orders": "🧾 Роботи · сьогодні",
+    "orders_y": "🧾 Роботи · вчора",
+    "handout": "📦 Видача · сьогодні",
+    "handout_y": "📦 Видача · вчора",
     "machines": "⚙️ Верстати",
     "sisma": "🖨 Sisma",
 }
+# Вид із вибором дня → (той самий вид сьогодні, вчора).
+_DAY_PAIRS = {
+    "orders": ("orders", "orders_y"),
+    "orders_y": ("orders", "orders_y"),
+    "handout": ("handout", "handout_y"),
+    "handout_y": ("handout", "handout_y"),
+}
+
+
+def views_for(admin: bool) -> tuple[str, ...]:
+    return ADMIN_VIEWS if admin else OPERATOR_VIEWS
 
 
 def _e(value: Any) -> str:
@@ -307,36 +329,44 @@ def _furnaces_summary(db: Session) -> str:
 # ── Роботи ──────────────────────────────────────────────────────────────────
 
 
-def _today_orders(db: Session) -> list[Order]:
-    """Вкладка «Сьогодні» черги — той самий набір, що в `build_queue_view`:
-    живі роботи, робоча дата = сьогодні. Готовність — ті самі предикати
+def _day_of(offset: int) -> date:
+    """Робочий день: 0 — сьогодні, -1 — вчора (межа доби з business_day)."""
+    return business_today() + timedelta(days=offset)
+
+
+def _orders_of_day(db: Session, day: date) -> list[Order]:
+    """Вкладка дня черги — той самий набір, що в `build_queue_view`: живі
+    роботи з цією робочою датою. Готовність — ті самі предикати
     (`app/queue_filters.py`), тож числа збігаються з чіпами на екрані."""
     from app.services.order_dates import order_date
 
-    today = business_today()
     rows = db.scalars(
         select(Order)
         .options(selectinload(Order.rework_records))
         .where(Order.archived_at.is_(None))
     ).all()
-    return [order for order in rows if order_date(order) == today]
+    return [order for order in rows if order_date(order) == day]
 
 
-def orders_text(db: Session) -> str:
+def _today_orders(db: Session) -> list[Order]:
+    return _orders_of_day(db, _day_of(0))
+
+
+def _orders_text_for(db: Session, offset: int) -> str:
     from app.queue_filters import CLIENT_SOURCES, count_by_readiness
     from app.services.queue_view import sum_units
 
-    orders = _today_orders(db)
-    day = business_today()
+    day = _day_of(offset)
+    orders = _orders_of_day(db, day)
     head = f"Робочий день {day.strftime('%d.%m')}"
     if not orders:
-        return f"{head}: робіт ще немає."
+        return f"{head}: робіт немає."
     lab = [o for o in orders if o.source == "lab"]
     clients = [o for o in orders if o.source in CLIENT_SOURCES]
     lines = [f"{head} · {_works(len(orders))}, {sum_units(orders)} од."]
     for title, group, with_not_ready in (
         ("Лабораторія", lab, True),
-        ("Клієнти", clients, False),
+        ("Файли (клієнти)", clients, False),
     ):
         if not group:
             lines.append(f"\n<b>{title}</b> — немає")
@@ -352,6 +382,14 @@ def orders_text(db: Session) -> str:
     return "\n".join(lines)
 
 
+def orders_text(db: Session) -> str:
+    return _orders_text_for(db, 0)
+
+
+def orders_yesterday_text(db: Session) -> str:
+    return _orders_text_for(db, -1)
+
+
 def _orders_summary(db: Session) -> str:
     from app.queue_filters import count_by_readiness
 
@@ -360,6 +398,86 @@ def _orders_summary(db: Session) -> str:
         return "🧾 Сьогодні: робіт ще немає"
     counts = count_by_readiness(orders)
     return f"🧾 Сьогодні: {_works(len(orders))} · можна брати {counts['can_take']}"
+
+
+# ── Видача ──────────────────────────────────────────────────────────────────
+
+_ISSUED = ("видано", "знайдено при видачі")
+
+
+@dataclass(frozen=True)
+class HandoutDay:
+    clients: int
+    clients_done: int
+    works: int
+    works_done: int
+    units: int
+    units_done: int
+
+
+def handout_day(db: Session, offset: int) -> HandoutDay:
+    """Видача дня тими самими правилами, що екран «Видача»: множина —
+    `handout_eligible_orders` (клієнтські, живі, видані ЛИШАЮТЬСЯ в ній),
+    видано — статуси «видано» / «знайдено при видачі», клієнт — за ключем
+    групи картки (`handout_group_key`, зокрема «Без імені»). Клієнт
+    «готовий», коли видано всі його роботи цього дня.
+
+    Хвоста «з раніших днів не видано» тут свідомо НЕМАЄ: на живій базі він
+    дав 453 роботи — старі дні, де видачу не відмічали в CRM. На телефоні
+    таке число читається як тривога, якої, можливо, немає (10.09.26)."""
+    from app.services.handout import handout_eligible_orders, handout_group_key
+    from app.services.order_dates import parse_sheet_tab
+    from app.services.clients import quantity_units
+
+    today = _day_of(0)
+    day = _day_of(offset)
+    eligible = handout_eligible_orders(db, today)
+    orders = [o for o in eligible if parse_sheet_tab(o.sheet_tab) == day]
+    done = [o for o in orders if o.status in _ISSUED]
+    groups: dict[str, list[Order]] = {}
+    for order in orders:
+        groups.setdefault(handout_group_key(order), []).append(order)
+    return HandoutDay(
+        clients=len(groups),
+        clients_done=sum(1 for g in groups.values() if all(o.status in _ISSUED for o in g)),
+        works=len(orders),
+        works_done=len(done),
+        units=sum(quantity_units(o.quantity) for o in orders),
+        units_done=sum(quantity_units(o.quantity) for o in done),
+    )
+
+
+def _handout_text_for(db: Session, offset: int) -> str:
+    stats = handout_day(db, offset)
+    head = f"Робочий день {_day_of(offset).strftime('%d.%m')}"
+    if not stats.works:
+        lines = [f"{head}: клієнтських робіт немає."]
+    else:
+        lines = [
+            head,
+            "",
+            f"Клієнтів видано: <b>{stats.clients_done}</b> з {stats.clients}",
+            f"Робіт видано: <b>{stats.works_done}</b> з {stats.works}",
+            f"Одиниць видано: {stats.units_done} з {stats.units}",
+        ]
+        waiting = stats.works - stats.works_done
+        lines.append(f"Ще чекає: <b>{_works(waiting)}</b>" if waiting else "Усе видано ✅")
+    return "\n".join(lines)
+
+
+def handout_text(db: Session) -> str:
+    return _handout_text_for(db, 0)
+
+
+def handout_yesterday_text(db: Session) -> str:
+    return _handout_text_for(db, -1)
+
+
+def _handout_summary(db: Session) -> str:
+    stats = handout_day(db, -1)
+    if not stats.works:
+        return ""
+    return f"📦 Видача за вчора: {stats.clients_done} з {stats.clients} кл."
 
 
 # ── Верстати ────────────────────────────────────────────────────────────────
@@ -492,6 +610,9 @@ def _sisma_summary(db: Session) -> str:
 _BODIES: dict[str, Callable[[Session], str]] = {
     "furnaces": furnaces_text,
     "orders": orders_text,
+    "orders_y": orders_yesterday_text,
+    "handout": handout_text,
+    "handout_y": handout_yesterday_text,
     "machines": machines_text,
     "sisma": sisma_text,
 }
@@ -508,41 +629,53 @@ def _safe(fn: Callable[[Session], str], db: Session, what: str) -> str:
         return f"{what}: не вдалось прочитати (подробиці в лозі KuubMill)"
 
 
-def home_text(db: Session) -> str:
-    lines = [
-        _safe(_furnaces_summary, db, "Пічки"),
-        _safe(_orders_summary, db, "Роботи"),
-        _safe(_machines_summary, db, "Верстати"),
-        _safe(_sisma_summary, db, "Sisma"),
-    ]
+def home_text(db: Session, admin: bool = True) -> str:
+    if not admin:
+        lines = [_safe(_furnaces_summary, db, "Пічки"), _safe(_sisma_summary, db, "Sisma")]
+    else:
+        lines = [
+            _safe(_furnaces_summary, db, "Пічки"),
+            _safe(_orders_summary, db, "Роботи"),
+            _safe(_handout_summary, db, "Видача"),
+            _safe(_machines_summary, db, "Верстати"),
+            _safe(_sisma_summary, db, "Sisma"),
+        ]
     return "\n".join(line for line in lines if line)
 
 
-def render(db: Session, view: str, now: Optional[datetime] = None) -> str:
-    """Текст відповіді меню (parse_mode=HTML), з шапкою й підписом часу."""
-    if view not in VIEWS:
+def render(db: Session, view: str, now: Optional[datetime] = None, admin: bool = True) -> str:
+    """Текст відповіді меню (parse_mode=HTML), з шапкою й підписом часу.
+    Вид, закритий для ролі, стає головним — а не чужим текстом."""
+    if view not in views_for(admin):
         view = "home"
     now = now or business_now()
     title = _VIEW_TITLE[view]
     head = f"<b>{KMILL_PREFIX}</b>" + (f" · {title}" if title else "")
-    body = home_text(db) if view == "home" else _safe(_BODIES[view], db, title)
+    body = home_text(db, admin) if view == "home" else _safe(_BODIES[view], db, title)
     return f"{head}\n\n{body}\n\n{_footer(now)}"
 
 
-def keyboard(view: str, notify: bool = True) -> dict:
-    rows = [
-        [
-            {"text": "🔥 Пічки", "callback_data": "v:furnaces"},
-            {"text": "🧾 Роботи", "callback_data": "v:orders"},
-        ],
-        [
-            {"text": "⚙️ Верстати", "callback_data": "v:machines"},
-            {"text": "🖨 Sisma", "callback_data": "v:sisma"},
-        ],
-    ]
-    last = [{"text": "🔄 Оновити", "callback_data": f"v:{view}"}]
+def keyboard(view: str, notify: bool = True, admin: bool = True) -> dict:
+    def button(text: str, target: str) -> dict:
+        return {"text": text, "callback_data": f"v:{target}"}
+
+    if admin:
+        rows = [
+            [button("🔥 Пічки", "furnaces"), button("⚙️ Верстати", "machines"), button("🖨 Sisma", "sisma")],
+            [button("🧾 Роботи", "orders"), button("📦 Видача", "handout")],
+        ]
+    else:
+        rows = [[button("🔥 Пічки", "furnaces"), button("🖨 Sisma", "sisma")]]
+    pair = _DAY_PAIRS.get(view) if admin else None
+    if pair:
+        today_view, yesterday_view = pair
+        rows.append([
+            button(("✓ " if view == today_view else "") + "Сьогодні", today_view),
+            button(("✓ " if view == yesterday_view else "") + "Вчора", yesterday_view),
+        ])
+    last = [button("🔄 Оновити", view)]
     if view != "home":
-        last.append({"text": "🏠 Меню", "callback_data": "v:home"})
+        last.append(button("🏠 Меню", "home"))
     rows.append(last)
     # Кожен сам вирішує, чи будити його сповіщеннями: логісту пічки о 03:00
     # ні до чого, а просити власника вимкнути — зайвий крок.
@@ -725,9 +858,18 @@ def _chat_of(update: dict) -> tuple[Optional[str], Optional[str]]:
 
 
 def _menu_payload(
-    db: Session, chat_id: str, view: str, notify: bool, now: Optional[datetime], *, lead: str = ""
+    db: Session,
+    chat_id: str,
+    view: str,
+    notify: bool,
+    now: Optional[datetime],
+    *,
+    admin: bool,
+    lead: str = "",
 ) -> dict:
-    text = render(db, view, now)
+    if view not in views_for(admin):
+        view = "home"
+    text = render(db, view, now, admin=admin)
     if lead:
         text = f"{lead}\n\n{text}"
     return {
@@ -735,7 +877,7 @@ def _menu_payload(
         "text": text,
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
-        "reply_markup": keyboard(view, notify),
+        "reply_markup": keyboard(view, notify, admin=admin),
     }
 
 
@@ -769,7 +911,13 @@ def handle_update(
         answer = Action("answerCallbackQuery", {"callback_query_id": query.get("id")})
         message = query.get("message") or {}
         kind, _, view = data.partition(":")
-        if kind not in ("v", "n") or view not in VIEWS or message.get("message_id") is None:
+        # Вид, закритий для ролі, не відкривається навіть підробленою
+        # кнопкою: callback_data приходить від клієнта, і вірити їй не можна.
+        if (
+            kind not in ("v", "n")
+            or view not in views_for(who.is_owner)
+            or message.get("message_id") is None
+        ):
             return [answer]
         notify = who.notify
         if kind == "n":
@@ -777,7 +925,7 @@ def handle_update(
             set_notify(db, who, notify)
             db.commit()
             answer.payload["text"] = "Сповіщення увімкнено" if notify else "Сповіщення вимкнено"
-        payload = _menu_payload(db, update_chat, view, notify, now)
+        payload = _menu_payload(db, update_chat, view, notify, now, admin=who.is_owner)
         payload["message_id"] = message["message_id"]
         return [answer, Action("editMessageText", payload)]
 
@@ -799,7 +947,12 @@ def handle_update(
         _notify_owner_of_join(db, member, local_now)
         db.commit()
         lead = "Доступ до бота KuubMill відкрито. Кнопки нижче; 🔔 вимикає сповіщення."
-        return [Action("sendMessage", _menu_payload(db, update_chat, "home", True, now, lead=lead))]
+        return [
+            Action(
+                "sendMessage",
+                _menu_payload(db, update_chat, "home", True, now, admin=False, lead=lead),
+            )
+        ]
 
     if not who.is_owner:
         member = db.get(TelegramMember, who.member_id)
@@ -810,7 +963,12 @@ def handle_update(
             db.commit()
     # Будь-який текст (зокрема /start і /menu) — головне меню новим
     # повідомленням. Окремих команд не заводимо: меню — це і є інтерфейс.
-    return [Action("sendMessage", _menu_payload(db, update_chat, "home", who.notify, now))]
+    return [
+        Action(
+            "sendMessage",
+            _menu_payload(db, update_chat, "home", who.notify, now, admin=who.is_owner),
+        )
+    ]
 
 
 def _notify_owner_of_join(db: Session, member: TelegramMember, now: datetime) -> None:
