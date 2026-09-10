@@ -81,24 +81,88 @@ document.addEventListener("click", async (event) => {
 // переписуємо її текст і лічильник при кожній зміні вибору. Делеговано на
 // document, бо розділ перемальовують кнопки «Перечитати»/«Замовлено»
 // (hx-swap), і прямі слухачі після свапу були б мертві.
+//
+// Рядки розкладені по днях, тож та сама позиція з двох днів — два рядки. У
+// буфер вона йде ОДНИМ: кількості зводяться за data-item («zr a2 25(2)»).
+// Сховане фільтром (день чи тека матеріалу) не копіюється — у буфер іде рівно
+// те, що видно позначеним.
+function blanksLineVisible(box) {
+  const li = box.closest("li");
+  const day = box.closest(".blanks-day");
+  return !(li && li.hidden) && !(day && day.hidden);
+}
+
 function syncBlanksCopy(scope) {
   if (!scope) return;
-  const picked = Array.from(scope.querySelectorAll("[data-blanks-line]:checked")).map((box) => box.value);
+  const totals = new Map();
+  scope.querySelectorAll("[data-blanks-line]").forEach((box) => {
+    if (!box.checked || !blanksLineVisible(box)) return;
+    const item = box.dataset.item || box.value;
+    totals.set(item, (totals.get(item) || 0) + (Number(box.dataset.count) || 1));
+  });
+  const lines = Array.from(totals, ([item, n]) => (n > 1 ? `${item}(${n})` : item));
   const button = scope.querySelector("[data-blanks-copy]");
   if (button) {
-    button.dataset.copy = picked.join("\n");
-    button.disabled = picked.length === 0;
+    button.dataset.copy = lines.join("\n");
+    button.disabled = lines.length === 0;
   }
   const counter = scope.querySelector("[data-blanks-copy-count]");
-  if (counter) counter.textContent = String(picked.length);
+  if (counter) counter.textContent = String(lines.length);
+  // Галочка дня показує стан своїх рядків: усі / жодного / частина.
+  scope.querySelectorAll(".blanks-day").forEach((day) => {
+    const head = day.querySelector("[data-blanks-day]");
+    if (!head) return;
+    const boxes = Array.from(day.querySelectorAll("[data-blanks-line]"));
+    const on = boxes.filter((box) => box.checked).length;
+    head.checked = on > 0 && on === boxes.length;
+    head.indeterminate = on > 0 && on < boxes.length;
+  });
+}
+
+function applyBlanksFilter(scope) {
+  const off = (attr) => new Set(
+    Array.from(scope.querySelectorAll(`[${attr}][aria-pressed="false"]`), (chip) => chip.getAttribute(attr))
+  );
+  const days = off("data-bf-day");
+  const mats = off("data-bf-mat");
+  let shown = 0;
+  scope.querySelectorAll(".blanks-day").forEach((day) => {
+    let left = 0;
+    day.querySelectorAll("li[data-mat]").forEach((li) => {
+      li.hidden = days.has(day.dataset.day) || mats.has(li.dataset.mat);
+      if (!li.hidden) left += 1;
+    });
+    day.hidden = left === 0;
+    shown += left;
+  });
+  scope.querySelectorAll(".blanks-table tbody tr[data-day]").forEach((tr) => {
+    tr.hidden = days.has(tr.dataset.day) || mats.has(tr.dataset.mat);
+  });
+  const empty = scope.querySelector("[data-bf-empty]");
+  if (empty) empty.hidden = shown > 0;
+  syncBlanksCopy(scope);
 }
 
 document.addEventListener("change", (event) => {
   const box = event.target.closest("[data-blanks-line]");
   if (box) syncBlanksCopy(box.closest("[data-blanks-order]"));
+  const dayBox = event.target.closest("[data-blanks-day]");
+  if (dayBox) {
+    dayBox.closest(".blanks-day").querySelectorAll("[data-blanks-line]").forEach((line) => {
+      line.checked = dayBox.checked;
+    });
+    syncBlanksCopy(dayBox.closest("[data-blanks-order]"));
+  }
 });
 
 document.addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-bf-day], [data-bf-mat]");
+  if (chip) {
+    const scope = chip.closest("[data-blanks-order]");
+    chip.setAttribute("aria-pressed", chip.getAttribute("aria-pressed") === "false" ? "true" : "false");
+    if (scope) applyBlanksFilter(scope);
+    return;
+  }
   const toggle = event.target.closest("[data-blanks-select]");
   if (!toggle) return;
   const scope = toggle.closest("[data-blanks-order]");

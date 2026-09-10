@@ -41,7 +41,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from time import monotonic
 from typing import Iterable, Optional
@@ -734,6 +734,32 @@ class OrderLine:
     count: int
     # Коли брали диски цього рядка, найсвіжіші першими.
     taken: tuple[datetime, ...]
+    # Позиція БЕЗ кількості («zr a2 25»). Той самий диск, узятий у два різні
+    # дні, стоїть двома рядками (по дню кожен), а в буфер має піти одним —
+    # екран зводить їх саме за цим ключем.
+    item: str = ""
+    # Тека матеріалу (`ZR`, `PMMA-PEEK`) — для фільтра «сховати матеріал».
+    material: str = ""
+
+
+@dataclass(frozen=True)
+class OrderDay:
+    """Дисків, узятих за один календарний день, — з рядками замовлення."""
+
+    day: date
+    lines: tuple[OrderLine, ...]
+    count: int
+
+    @property
+    def key(self) -> str:
+        return self.day.strftime("%d.%m.%y")
+
+    @property
+    def weekday(self) -> str:
+        return _WEEKDAYS_UK[self.day.weekday()]
+
+
+_WEEKDAYS_UK = ("пн", "вт", "ср", "чт", "пт", "сб", "нд")
 
 
 def _line_fields(row: CamBlank) -> tuple[Optional[int], Optional[str], Optional[str]]:
@@ -758,6 +784,7 @@ def order_lines(rows: Iterable[CamBlank]) -> list[OrderLine]:
     рядком сирою назвою, щоб оператор вирішив сам.
     """
     groups: dict[str, list[datetime]] = {}
+    materials: dict[str, str] = {}
     for row in rows:
         height, brand, shade = _line_fields(row)
         if height is None or not brand:
@@ -765,6 +792,7 @@ def order_lines(rows: Iterable[CamBlank]) -> list[OrderLine]:
         else:
             text = " ".join(p for p in (_brand_label(brand), shade_label(shade), str(height)) if p)
         groups.setdefault(text, []).append(row.first_seen_at)
+        materials.setdefault(text, (row.material_dir or "").strip())
 
     lines = []
     for text, stamps in groups.items():
@@ -774,6 +802,8 @@ def order_lines(rows: Iterable[CamBlank]) -> list[OrderLine]:
             text=f"{text}({count})" if count > 1 else text,
             count=count,
             taken=taken,
+            item=text,
+            material=materials[text],
         ))
     # Свіжі згори; нічия — за текстом, щоб порядок не стрибав між рендерами.
     lines.sort(key=lambda line: line.text)
@@ -784,3 +814,29 @@ def order_lines(rows: Iterable[CamBlank]) -> list[OrderLine]:
 def order_text(rows: Iterable[CamBlank]) -> str:
     """Готовий текст замовлення — той, що йде в буфер обміну."""
     return "\n".join(line.text for line in order_lines(rows))
+
+
+def order_days(rows: Iterable[CamBlank]) -> list[OrderDay]:
+    """Рядки замовлення, розкладені по днях, коли диски взяли. Свіжі дні згори.
+
+    Навіщо (власник, 10.09.26): знімати галочки зручніше цілим днем — «вчорашнє
+    вже замовили телефоном». День КАЛЕНДАРНИЙ, не робоча доба: поруч із рядком
+    стоїть час, і заголовок дня мусить з ним сходитись — нічний диск о 01:09
+    лежить у наступному дні, як і написано на годиннику.
+    """
+    by_day: dict[date, list[CamBlank]] = {}
+    for row in rows:
+        by_day.setdefault(row.first_seen_at.date(), []).append(row)
+    return [
+        OrderDay(day=day, lines=tuple(order_lines(day_rows)), count=len(day_rows))
+        for day, day_rows in sorted(by_day.items(), reverse=True)
+    ]
+
+
+def material_counts(rows: Iterable[CamBlank]) -> list[tuple[str, int]]:
+    """Теки матеріалів серед узятих дисків і скільки в кожній — для фільтра."""
+    counts: dict[str, int] = {}
+    for row in rows:
+        name = (row.material_dir or "").strip()
+        counts[name] = counts.get(name, 0) + 1
+    return sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))

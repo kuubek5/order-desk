@@ -24,6 +24,8 @@ from app.services.cam_blanks import (
     mark_ordered,
     pileup_note,
     probe_blanks,
+    material_counts,
+    order_days,
     order_lines,
     order_text,
     pending_blanks,
@@ -73,6 +75,10 @@ def blanks_context(db: Session, *, error: str | None = None) -> dict:
         # Таблиця під списком — свіжі згори, як і самі рядки замовлення.
         "blanks_pending_newest": sorted(pending, key=lambda row: (row.first_seen_at, row.id), reverse=True),
         "blanks_lines": order_lines(pending),
+        # Той самий список по днях (галочка на весь день) і теки матеріалів
+        # для фільтра «сховати/показати».
+        "blanks_days": order_days(pending),
+        "blanks_materials": material_counts(pending),
         "blanks_text": order_text(pending),
         "blanks_shade_label": shade_label,
         "blanks_present": present,

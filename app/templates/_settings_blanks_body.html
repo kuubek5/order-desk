@@ -100,10 +100,35 @@
            простирадло на сотню позицій. #}
         <p class="settings-help stand-note">{{ blanks_pileup }}</p>
         {% endif %}
-        {# Рядок = одна позиція («mono a3 18»), свіжі згори. Галочка — чи йде
-           рядок у буфер. Дати в буфер НЕ йдуть: комірниці потрібен лише
-           перелік. Слухач змін — app.js (глобальний), бо розділ рендериться і
-           на /settings, і фрагментом після кнопок. #}
+        {# Фільтр — що ПОКАЗАТИ (дні, теки матеріалів); галочки — що КОПІЮВАТИ.
+           Сховане в буфер не йде: копіюється рівно те, що видно позначеним.
+           Фільтр діє і на список, і на таблицю під ним. Стан фільтра живе в
+           сторінці: після «Перечитати» все знову видно — свідомо, щоб
+           забутий фільтр не сховав новий диск. #}
+        <div class="blanks-filter" role="group" aria-label="Показати взяті диски">
+            <span class="bf-label">Дні</span>
+            {% for day in blanks_days %}
+            <button type="button" class="bf-chip" data-bf-day="{{ day.key }}" aria-pressed="true"
+                    title="Сховати чи показати диски за {{ day.day.strftime('%d.%m') }}">
+                {{ day.day.strftime('%d.%m') }} <span class="n">{{ day.count }}</span>
+            </button>
+            {% endfor %}
+            {% if blanks_materials|length > 1 %}
+            <span class="bf-label">Матеріал</span>
+            {% for name, n in blanks_materials %}
+            <button type="button" class="bf-chip" data-bf-mat="{{ name }}" aria-pressed="true"
+                    title="Сховати чи показати {{ name or 'без теки' }}">
+                {{ name or '—' }} <span class="n">{{ n }}</span>
+            </button>
+            {% endfor %}
+            {% endif %}
+        </div>
+
+        {# Рядок = одна позиція («mono a3 18»), розкладені по днях, свіжі
+           згори. Галочка дня знімає/ставить увесь день. Та сама позиція з двох
+           днів — два рядки, але в буфер іде ОДНИМ («zr a2 25(2)», зводить
+           app.js за data-item). Дати в буфер НЕ йдуть. Слухачі — app.js
+           (глобальний), бо розділ рендериться і на /settings, і фрагментом. #}
         <div class="blanks-lines-bar">
             <button type="button" class="settings-secondary-button" data-copy="{{ blanks_text }}"
                     data-blanks-copy title="Скопіювати позначені рядки для комірниці">
@@ -112,21 +137,38 @@
             <button type="button" class="settings-secondary-button bl-mini" data-blanks-select="all">Усі</button>
             <button type="button" class="settings-secondary-button bl-mini" data-blanks-select="none">Жодного</button>
         </div>
-        <ul class="blanks-lines">
-            {% for line in blanks_lines %}
-            <li>
-                <label class="blanks-line">
-                    <input type="checkbox" checked data-blanks-line value="{{ line.text }}">
-                    <span class="bl-text mono">{{ line.text }}</span>
-                    <span class="bl-when mono">
-                        {%- for when in line.taken -%}
-                        {{ when.strftime('%d.%m %H:%M') }}{% if not loop.last %}, {% endif %}
-                        {%- endfor -%}
-                    </span>
+        <div class="blanks-days">
+            {% for day in blanks_days %}
+            <section class="blanks-day" data-day="{{ day.key }}">
+                <label class="blanks-day-head">
+                    <input type="checkbox" checked data-blanks-day>
+                    <b class="mono">{{ day.day.strftime('%d.%m') }}</b>
+                    <span class="bd-wd">{{ day.weekday }}</span>
+                    <span class="bd-n">{{ day.count }}
+                        {{- ' диск' if day.count % 10 == 1 and day.count % 100 != 11
+                            else (' диски' if day.count % 10 in [2,3,4] and day.count % 100 not in [12,13,14]
+                            else ' дисків') }}</span>
                 </label>
-            </li>
+                <ul class="blanks-lines">
+                    {% for line in day.lines %}
+                    <li data-mat="{{ line.material }}">
+                        <label class="blanks-line">
+                            <input type="checkbox" checked data-blanks-line
+                                   data-item="{{ line.item }}" data-count="{{ line.count }}" value="{{ line.text }}">
+                            <span class="bl-text mono">{{ line.text }}</span>
+                            <span class="bl-when mono">
+                                {%- for when in line.taken -%}
+                                {{ when.strftime('%H:%M') }}{% if not loop.last %}, {% endif %}
+                                {%- endfor -%}
+                            </span>
+                        </label>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </section>
             {% endfor %}
-        </ul>
+        </div>
+        <p class="settings-help bf-empty" data-bf-empty hidden>Усе сховано фільтром — натисніть день чи матеріал, щоб показати.</p>
 
         {# Таблиця скролиться У СВОЄМУ контейнері: сім колонок із назвами
            файлів легко переростають панель, а горизонтальний скрол усієї
@@ -138,7 +180,7 @@
                 </thead>
                 <tbody>
                     {% for row in blanks_pending_newest %}
-                    <tr{% if row.height_mismatch %} class="is-mismatch" title="Висота в назві не збігається з текою — диск лежить не там"{% endif %}>
+                    <tr data-day="{{ row.first_seen_at.strftime('%d.%m.%y') }}" data-mat="{{ (row.material_dir or '').strip() }}"{% if row.height_mismatch %} class="is-mismatch" title="Висота в назві не збігається з текою — диск лежить не там"{% endif %}>
                         <td class="mono">{{ row.first_seen_at.strftime('%d.%m %H:%M') }}</td>
                         <td>{{ row.material_dir }}</td>
                         <td>{{ row.brand or '—' }}</td>

@@ -846,13 +846,82 @@ main.setv2.scon {
   margin: 0 0 8px;
 }
 .blanks-lines-bar .bl-mini { padding: 3px 9px; font-size: var(--fs-0); }
-.blanks-lines {
-  list-style: none;
+
+/* Фільтр «що показати»: чіпи днів і тек матеріалів. Натиснутий (показано) —
+   звичайний чіп; вимкнений — приглушений і закреслений, як знятий рядок
+   списку: та сама мова «цього зараз не видно / не піде». */
+.blanks-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+.blanks-filter .bf-label {
+  font-size: var(--fs-0);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-right: 2px;
+}
+.blanks-filter .bf-label + .bf-chip { margin-left: 0; }
+.blanks-filter .bf-chip ~ .bf-label { margin-left: 10px; }
+.bf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: var(--radius-chip, 999px);
+  border: 1px solid var(--line-2);
+  background: var(--raise);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-1);
+  cursor: pointer;
+}
+.bf-chip .n { font-family: var(--font-mono); font-size: var(--fs-0); color: var(--ink-3); }
+.bf-chip:hover { border-color: var(--control-edge, var(--line-2)); }
+.bf-chip[aria-pressed="false"] {
+  background: transparent;
+  color: var(--ink-3);
+  text-decoration: line-through;
+  border-style: dashed;
+}
+
+/* День — заголовок із галочкою (знімає/ставить увесь день) над своїми
+   рядками. Дні йдуть одним блоком; межа між ними — тонка лінія. */
+.blanks-days {
   margin: 0 0 12px;
-  padding: 4px 0;
   border-radius: var(--r-ctl);
   background: var(--well);
   border: 1px solid var(--line);
+  overflow: hidden;
+}
+.blanks-day[hidden],
+.blanks-lines li[hidden],
+.blanks-table tr[hidden],
+.bf-empty[hidden] { display: none; }
+.blanks-day + .blanks-day { border-top: 1px solid var(--line); }
+/* Подвійний клас — щоб перебити `.settings-field label` (див. .blanks-line). */
+.blanks-days .blanks-day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 13px 3px;
+  font-size: var(--fs-1);
+  font-weight: 400;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.blanks-day-head input { margin: 0; align-self: center; accent-color: var(--accent); }
+.blanks-day-head b { color: var(--ink); font-size: var(--fs-2); }
+.blanks-day-head .bd-wd { color: var(--ink-3); }
+.blanks-day-head .bd-n { margin-left: auto; font-size: var(--fs-0); color: var(--ink-3); }
+.blanks-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
 }
 /* Подвійний клас — не прикраса: `.settings-field label` (settings.css) робить
    кожен вкладений <label> блоком жирного приглушеного тексту і за
@@ -861,7 +930,8 @@ main.setv2.scon {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 4px 13px;
+  /* Зліва — під галочку дня: рядки читаються як вкладені в свій день. */
+  padding: 4px 13px 4px 33px;
   font-size: var(--fs-2);
   font-weight: 400;
   cursor: pointer;

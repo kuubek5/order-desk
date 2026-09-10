@@ -24,6 +24,8 @@ from app.db import Base
 from app.models import CamBlank
 from app.services.cam_blanks import (
     last_order_at,
+    material_counts,
+    order_days,
     order_history,
     order_lines,
     order_text,
@@ -241,6 +243,30 @@ def test_order_lines_put_the_freshest_on_top_and_carry_their_dates():
     assert [line.text for line in lines] == ["zr a2 25(2)", "mono a3 18"]
     assert lines[0].taken == (late, early)
     assert "18:00" not in order_text(rows), "дати в текст для комірниці не йдуть"
+
+
+def test_order_days_split_by_calendar_day_freshest_first():
+    """Галочка на весь день (власник, 10.09.26). День календарний: нічний
+    диск о 01:09 — уже наступний день, як і написано поруч на годиннику.
+    Та сама позиція з двох днів — по рядку в кожному дні, з ключем `item`,
+    за яким екран зводить їх в один рядок буфера."""
+    rows = [
+        CamBlank(rel_path="a", brand="zr", shade="a2", height=25, material_dir="ZR",
+                 first_seen_at=datetime(2026, 9, 8, 22, 12)),
+        CamBlank(rel_path="b", brand="zr", shade="a2", height=25, material_dir="ZR",
+                 first_seen_at=datetime(2026, 9, 9, 1, 9)),
+        CamBlank(rel_path="c", brand="pmma", shade="a1", height=16, material_dir="PMMA-PEEK",
+                 first_seen_at=datetime(2026, 9, 9, 2, 7)),
+    ]
+    days = order_days(rows)
+
+    assert [d.key for d in days] == ["09.09.26", "08.09.26"]
+    assert days[0].weekday == "ср" and days[0].count == 2
+    assert [(ln.text, ln.item, ln.material) for ln in days[0].lines] == [
+        ("pmma a1 16", "pmma a1 16", "PMMA-PEEK"), ("zr a2 25", "zr a2 25", "ZR"),
+    ]
+    assert [ln.item for ln in days[1].lines] == ["zr a2 25"]
+    assert material_counts(rows) == [("ZR", 2), ("PMMA-PEEK", 1)]
 
 
 def test_order_text_shows_unparsed_files_instead_of_hiding_them():
