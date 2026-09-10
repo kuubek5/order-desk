@@ -1328,6 +1328,9 @@ class TelegramOutbox(Base):
     gave_up_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True
     )
+    # Кому. Рядок на кожного адресата: один недосяжний учасник не тримає
+    # чергу решти. NULL — власник (рядки, створені до появи учасників).
+    chat_id: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
 
 
 class TelegramWatch(Base):
@@ -1351,3 +1354,63 @@ class TelegramWatch(Base):
     state: Mapped[str] = mapped_column(String(20), default="")
     since_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
     seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+
+
+class TelegramMember(Base):
+    """Людина, якій власник дав доступ до бота (крім самого власника).
+
+    Приходить лише за одноразовим запрошенням (`TelegramInvite`): власник
+    створює посилання в налаштуваннях, людина відкриває його й тисне Start.
+    Сам написати боту й «попроситись» не можна — сторонньому бот мовчить, бо
+    відповідь «доступу немає» вже розповідає, що бот живий і чий він.
+
+    Власник сюди НЕ пишеться: він — `telegram_chat_id` у налаштуваннях, і
+    лише йому йдуть звернення зворотного зв'язку.
+    """
+
+    __tablename__ = "telegram_members"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Id приватного чату = id користувача Telegram, однаковий для будь-якого бота.
+    chat_id: Mapped[str] = mapped_column(String(40), unique=True)
+    # Ім'я й нік із Telegram — знімком, оновлюється, коли людина пише боту.
+    name: Mapped[str] = mapped_column(String(200), default="")
+    username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # «Для кого» — підпис, який власник дав запрошенню. Telegram-ім'я буває
+    # будь-яким («🌸»), а в списку треба впізнати людину.
+    label: Mapped[str] = mapped_column(String(120), default="")
+    # Сповіщення про пічки/Sisma. Людина вимикає їх сама кнопкою 🔔 у боті.
+    notify: Mapped[bool] = mapped_column(default=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+    invited_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+
+
+class TelegramInvite(Base):
+    """Одноразове запрошення до бота: посилання `t.me/<бот>?start=<code>`.
+
+    Код — 128 біт випадковості, діє до `expires_at` і гаситься першим же
+    використанням. Посилання, переслане далі, після цього нікого не впустить.
+    """
+
+    __tablename__ = "telegram_invites"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True)
+    label: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+    created_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    used_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    used_by_chat: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )

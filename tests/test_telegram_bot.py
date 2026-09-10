@@ -38,6 +38,16 @@ def _database():
     return engine
 
 
+def _session():
+    """Сесія на свіжій базі, де власник бота — CHAT (як після «Прив'язати чат»)."""
+    from app.settings_store import set_setting
+
+    db = Session(_database())
+    set_setting(db, "telegram_chat_id", CHAT)
+    db.commit()
+    return db
+
+
 @pytest.fixture(autouse=True)
 def _clean_state():
     bot.reset_for_tests()
@@ -78,13 +88,13 @@ def _press(chat_id, data="v:furnaces", *, message_id=42):
 def test_foreign_chat_gets_no_answer_at_all():
     """Сторонній, що знайшов бота, не дізнається навіть, що бот живий:
     ні меню, ні «доступу немає», ні answerCallbackQuery на кнопку."""
-    with Session(_database()) as db:
+    with _session() as db:
         assert bot.handle_update(db, _message("999"), chat_id=CHAT) == []
         assert bot.handle_update(db, _press("999"), chat_id=CHAT) == []
 
 
 def test_any_text_from_owner_sends_the_menu_as_a_new_message():
-    with Session(_database()) as db:
+    with _session() as db:
         actions = bot.handle_update(db, _message(CHAT, "привіт"), chat_id=CHAT)
     assert [a.method for a in actions] == ["sendMessage"]
     payload = actions[0].payload
@@ -97,7 +107,7 @@ def test_any_text_from_owner_sends_the_menu_as_a_new_message():
 
 
 def test_button_edits_the_same_message_not_a_new_one():
-    with Session(_database()) as db:
+    with _session() as db:
         actions = bot.handle_update(db, _press(CHAT, "v:orders", message_id=42), chat_id=CHAT)
     assert [a.method for a in actions] == ["answerCallbackQuery", "editMessageText"]
     edit = actions[1].payload
@@ -109,7 +119,7 @@ def test_button_edits_the_same_message_not_a_new_one():
 
 
 def test_unknown_button_only_stops_the_spinner():
-    with Session(_database()) as db:
+    with _session() as db:
         actions = bot.handle_update(db, _press(CHAT, "rm -rf"), chat_id=CHAT)
     assert [a.method for a in actions] == ["answerCallbackQuery"]
 
@@ -117,19 +127,19 @@ def test_unknown_button_only_stops_the_spinner():
 def test_old_message_after_downtime_gets_no_menu():
     """ПК стояв уночі, Рома писав — вранці на нього не падає пачка меню."""
     old = int((datetime.now() - timedelta(hours=2)).timestamp())
-    with Session(_database()) as db:
+    with _session() as db:
         assert bot.handle_update(db, _message(CHAT, date=old), chat_id=CHAT) == []
 
 
 def test_private_chat_is_remembered_for_binding_even_if_foreign():
     """«Прив'язати чат», поки слухач працює, бере останній приватний чат."""
-    with Session(_database()) as db:
+    with _session() as db:
         bot.handle_update(db, _message("777"), chat_id=CHAT)
     assert bot.last_private_chat() == "777"
 
 
 def test_group_chat_is_not_remembered_for_binding():
-    with Session(_database()) as db:
+    with _session() as db:
         bot.handle_update(db, _message("-100", chat_type="group"), chat_id=CHAT)
     assert bot.last_private_chat() is None
 
@@ -152,7 +162,7 @@ def _order(db, **fields):
 
 
 def test_orders_view_counts_readiness_like_the_queue_chips():
-    with Session(_database()) as db:
+    with _session() as db:
         _order(db, source="lab", job_code="P:/a", quantity="2")  # можна брати
         _order(db, source="lab", job_code="P:/b", sum3d_id="12-01-45", quantity="3")  # в роботі
         _order(db, source="lab", quantity="1")  # не готово
@@ -192,7 +202,7 @@ def test_one_broken_source_does_not_kill_the_menu(monkeypatch):
         raise RuntimeError("впало")
 
     monkeypatch.setattr(bot, "_furnaces_summary", boom)
-    with Session(_database()) as db:
+    with _session() as db:
         text = bot.render(db, "home")
     assert "Пічки: не вдалось прочитати" in text
     assert "Сьогодні" in text  # решта меню на місці
@@ -212,14 +222,14 @@ T0 = datetime(2026, 9, 10, 17, 0, 0)
 
 
 def test_first_observation_is_a_baseline_not_news():
-    with Session(_database()) as db:
+    with _session() as db:
         assert bot.observe(db, "furnace:x", "RUN", T0) is None
         db.commit()
         assert db.get(TelegramWatch, "furnace:x").state == "RUN"
 
 
 def test_new_state_needs_two_frames_apart():
-    with Session(_database()) as db:
+    with _session() as db:
         bot.observe(db, "k", "WAIT", T0)
         assert bot.observe(db, "k", "RUN", T0 + timedelta(seconds=6)) is None
         # Другий кадр, але надто близько — ще не підтверджено.
@@ -231,7 +241,7 @@ def test_new_state_needs_two_frames_apart():
 
 
 def test_single_frame_flicker_is_not_a_transition():
-    with Session(_database()) as db:
+    with _session() as db:
         bot.observe(db, "k", "WAIT", T0)
         bot.observe(db, "k", "RUN", T0 + timedelta(seconds=6))
         assert bot.observe(db, "k", "WAIT", T0 + timedelta(seconds=12)) is None
@@ -242,7 +252,7 @@ def test_single_frame_flicker_is_not_a_transition():
 def test_long_gap_rebaselines_silently():
     """Застосунок стояв годину: коли піч закрилась — невідомо, і «закрилась»
     про цикл, що йде давно, було б неправдою. Мовчимо."""
-    with Session(_database()) as db:
+    with _session() as db:
         bot.observe(db, "k", "WAIT", T0)
         later = T0 + timedelta(hours=1)
         assert bot.observe(db, "k", "RUN", later) is None
@@ -284,7 +294,7 @@ def test_furnace_close_and_open_on_real_frames(monkeypatch, tmp_path):
     голосування статусу, captured_at, has_data — усе справжнє."""
     monkeypatch.setattr(furnace_service, "frames_root", lambda: tmp_path)
     base = datetime.now().replace(microsecond=0)
-    with Session(_database()) as db:
+    with _session() as db:
         db.add(Furnace(name="Піч 1", host="192.168.1.76", port=5900, enabled=True,
                        sort_order=0, created_at=base))
         db.commit()
@@ -320,7 +330,7 @@ def test_unreadable_furnace_frame_is_not_an_observation(monkeypatch, tmp_path):
     """Кадр, з якого статус не проголосувався, не рухає стан нікуди."""
     monkeypatch.setattr(furnace_service, "frames_root", lambda: tmp_path)
     base = datetime.now().replace(microsecond=0)
-    with Session(_database()) as db:
+    with _session() as db:
         db.add(Furnace(name="Піч 1", host="192.168.1.76", port=5900, enabled=True,
                        sort_order=0, created_at=base))
         db.commit()
@@ -358,7 +368,7 @@ def test_sisma_print_finished_on_real_frames(monkeypatch):
     frames = []
     monkeypatch.setattr(machine_service, "snapshot", lambda _db: frames)
     base = datetime.now().replace(microsecond=0)
-    with Session(_database()) as db:
+    with _session() as db:
         def tick(seconds, name):
             frames[:] = [_sisma_card(name, base + timedelta(seconds=seconds))]
             return bot.watch_tick(db, base + timedelta(seconds=seconds))
@@ -380,7 +390,7 @@ def test_sisma_report_after_idle_is_not_a_finish(monkeypatch):
     frames = []
     monkeypatch.setattr(machine_service, "snapshot", lambda _db: frames)
     base = datetime.now().replace(microsecond=0)
-    with Session(_database()) as db:
+    with _session() as db:
         for seconds, name in ((0, "sisma_idle"), (12, "sisma_report_dialog"), (24, "sisma_report_dialog")):
             frames[:] = [_sisma_card(name, base + timedelta(seconds=seconds))]
             assert bot.watch_tick(db, base + timedelta(seconds=seconds)) == 0
@@ -395,34 +405,34 @@ def _queue(db, key="k1", *, now=T0, ttl=timedelta(hours=1)):
 
 
 def test_same_event_is_queued_once():
-    with Session(_database()) as db:
+    with _session() as db:
         _queue(db)
         assert bot.enqueue(db, dedup_key="k1", kind="x", text="y", now=T0, ttl=timedelta(hours=1)) is False
 
 
 def test_outbox_delivers_and_marks_sent():
     sent = []
-    with Session(_database()) as db:
+    with _session() as db:
         _queue(db)
-        assert bot.flush_outbox(db, lambda text: sent.append(text) or ApiResult(True, 200), T0) == 1
+        assert bot.flush_outbox(db, lambda chat, text: sent.append(text) or ApiResult(True, 200), T0) == 1
         row = db.scalars(select(TelegramOutbox)).one()
         assert row.sent_at == T0 and row.attempts == 1
         # Відправлене вдруге не йде.
-        assert bot.flush_outbox(db, lambda text: sent.append(text) or ApiResult(True, 200), T0) == 0
+        assert bot.flush_outbox(db, lambda chat, text: sent.append(text) or ApiResult(True, 200), T0) == 0
     assert sent == ["t"]
 
 
 def test_failed_send_waits_and_then_retries():
-    with Session(_database()) as db:
+    with _session() as db:
         _queue(db)
         fail = ApiResult(False, 502, None, "HTTP 502 Bad Gateway")
-        assert bot.flush_outbox(db, lambda _t: fail, T0) == 0
+        assert bot.flush_outbox(db, lambda _c, _t: fail, T0) == 0
         row = db.scalars(select(TelegramOutbox)).one()
         assert row.last_error == "HTTP 502 Bad Gateway"
         assert row.next_attempt_at == T0 + timedelta(seconds=30)
 
         calls = []
-        ok = lambda t: calls.append(t) or ApiResult(True, 200)  # noqa: E731
+        ok = lambda _c, t: calls.append(t) or ApiResult(True, 200)  # noqa: E731
         assert bot.flush_outbox(db, ok, T0 + timedelta(seconds=10)) == 0  # ще рано
         assert calls == []
         assert bot.flush_outbox(db, ok, T0 + timedelta(seconds=31)) == 1
@@ -432,11 +442,11 @@ def test_failed_send_waits_and_then_retries():
 def test_network_down_stops_the_batch():
     calls = []
 
-    def down(text):
+    def down(chat, text):
         calls.append(text)
         return ApiResult(False, None, None, "мережа: timeout")
 
-    with Session(_database()) as db:
+    with _session() as db:
         _queue(db, "a")
         _queue(db, "b")
         bot.flush_outbox(db, down, T0)
@@ -444,27 +454,27 @@ def test_network_down_stops_the_batch():
 
 
 def test_stale_message_is_written_off_not_sent():
-    with Session(_database()) as db:
+    with _session() as db:
         _queue(db, ttl=timedelta(hours=1))
         called = []
-        bot.flush_outbox(db, lambda t: called.append(t) or ApiResult(True, 200), T0 + timedelta(hours=2))
+        bot.flush_outbox(db, lambda _c, t: called.append(t) or ApiResult(True, 200), T0 + timedelta(hours=2))
         row = db.scalars(select(TelegramOutbox)).one()
     assert called == []
     assert row.gave_up_at is not None and "прострочено" in row.last_error
 
 
 def test_outbox_summary_shows_failures():
-    with Session(_database()) as db:
+    with _session() as db:
         _queue(db)
-        bot.flush_outbox(db, lambda _t: ApiResult(False, 403, None, "HTTP 403 Forbidden"), T0)
+        bot.flush_outbox(db, lambda _c, _t: ApiResult(False, 502, None, "HTTP 502 Bad Gateway"), T0)
         summary = bot.outbox_summary(db)
     assert summary["pending"] == 1
-    assert summary["last_error"] == "HTTP 403 Forbidden"
+    assert summary["last_error"] == "HTTP 502 Bad Gateway"
 
 
 def test_outbound_tick_is_silent_when_bot_disabled(monkeypatch):
     monkeypatch.setattr(tg, "_new_session", lambda: pytest.fail("мережа при вимкненому боті"))
-    with Session(_database()) as db:
+    with _session() as db:
         _queue(db)
         bot.outbound_tick(db, flush_feedback=False, now=T0)
         assert db.scalars(select(TelegramOutbox)).one().sent_at is None
@@ -488,7 +498,7 @@ def test_outbound_tick_sends_when_enabled(monkeypatch):
             pass
 
     monkeypatch.setattr(tg, "_new_session", lambda: FakeSession())
-    with Session(_database()) as db:
+    with _session() as db:
         _enable_bot(db)
         _queue(db, now=datetime.now())
         bot.outbound_tick(db, flush_feedback=False)
@@ -592,7 +602,7 @@ def test_settings_save_toggles_the_bot(app_db):  # noqa: F811
 
 
 def test_prune_keeps_pending_and_fresh_rows():
-    with Session(_database()) as db:
+    with _session() as db:
         _queue(db, "old-sent")
         _queue(db, "pending")
         _queue(db, "fresh-sent")
@@ -622,7 +632,7 @@ class _InstantEvent:
 
 
 def test_offset_belongs_to_the_bot_not_to_the_setting():
-    with Session(_database()) as db:
+    with _session() as db:
         bot._save_offset(db, "111:AAA", 500)
         assert bot._load_offset(db, "111:AAA") == 500
         # Новий бот: чужий offset = жодного (інакше 500 сховав би його
@@ -694,3 +704,173 @@ def test_listener_answers_owner_then_survives_token_change(monkeypatch):
     assert {b for b, m, _ in calls if m == "getWebhookInfo"} == {"123", "777"}
     with factory() as db:
         assert bot._load_offset(db, "777:NEW") == 6
+
+
+# ── Учасники й запрошення ───────────────────────────────────────────────────
+
+
+def _stranger_start(chat_id, code, *, first="Оля", username="olya_log"):
+    update = _message(chat_id, f"/start {code}")
+    update["message"]["from"] = {"id": int(chat_id), "first_name": first, "username": username}
+    return update
+
+
+def test_invite_link_lets_exactly_one_person_in():
+    from app.models import TelegramMember
+
+    with _session() as db:
+        invite = bot.new_invite(db, label="Оля, логіст")
+        db.commit()
+        actions = bot.handle_update(db, _stranger_start("700", invite.code))
+        assert [a.method for a in actions] == ["sendMessage"]
+        assert "Доступ до бота KuubMill відкрито" in actions[0].payload["text"]
+        member = db.scalars(select(TelegramMember)).one()
+        assert (member.chat_id, member.name, member.username, member.label) == ("700", "Оля", "olya_log", "Оля, логіст")
+        assert invite.used_by_chat == "700"
+        # Власник дізнається, хто зайшов, — посилання могли переслати.
+        joined = db.scalars(select(TelegramOutbox).where(TelegramOutbox.kind == "member_joined")).one()
+        assert joined.chat_id == CHAT and "Оля, логіст" in joined.text
+
+        # Те саме посилання, переслане далі, нікого більше не впускає.
+        assert bot.handle_update(db, _stranger_start("701", invite.code)) == []
+        assert db.scalars(select(TelegramMember)).all() == [member]
+
+
+def test_bad_expired_or_revoked_code_gets_silence():
+    with _session() as db:
+        expired = bot.new_invite(db, now=datetime.now() - timedelta(days=2))
+        revoked = bot.new_invite(db)
+        revoked.revoked_at = datetime.now()
+        db.commit()
+        for code in ("nonsense", expired.code, revoked.code):
+            assert bot.handle_update(db, _stranger_start("702", code)) == []
+        assert bot.find_recipient(db, "702") is None
+
+
+def test_member_uses_the_menu_and_mutes_himself():
+    with _session() as db:
+        invite = bot.new_invite(db)
+        db.commit()
+        bot.handle_update(db, _stranger_start("700", invite.code))
+        menu = bot.handle_update(db, _message("700", "меню"))
+        assert menu[0].payload["chat_id"] == "700"
+
+        actions = bot.handle_update(db, _press("700", "n:furnaces"))
+        assert actions[0].payload["text"] == "Сповіщення вимкнено"
+        buttons = [b["text"] for row in actions[1].payload["reply_markup"]["inline_keyboard"] for b in row]
+        assert "🔕 Сповіщення: ні" in buttons
+        assert "Пічки" in actions[1].payload["text"]  # лишились на тому ж виді
+        assert bot.find_recipient(db, "700").notify is False
+
+
+def test_owner_bell_lives_in_settings():
+    with _session() as db:
+        bot.handle_update(db, _press(CHAT, "n:home"))
+        assert bot.owner_notify(db) is False
+        bot.handle_update(db, _press(CHAT, "n:home"))
+        assert bot.owner_notify(db) is True
+
+
+def test_event_goes_to_everyone_who_did_not_mute():
+    from app.models import TelegramMember
+
+    with _session() as db:
+        for chat, notify in (("700", True), ("701", False)):
+            db.add(TelegramMember(chat_id=chat, joined_at=T0, notify=notify))
+        db.commit()
+        rows = bot.broadcast(db, event_key="furnace:x:WAIT>RUN:1", kind="furnace_closed",
+                             text="t", now=T0, ttl=timedelta(hours=1))
+        db.commit()
+        chats = sorted(r.chat_id for r in db.scalars(select(TelegramOutbox)))
+    assert rows == 2 and chats == [CHAT, "700"]
+
+
+def test_removed_member_loses_access_and_pending_messages():
+    from app.models import TelegramMember
+
+    with _session() as db:
+        member = TelegramMember(chat_id="700", joined_at=T0)
+        db.add(member)
+        db.commit()
+        bot.broadcast(db, event_key="e1", kind="k", text="t", now=T0, ttl=timedelta(hours=1))
+        db.commit()
+        db.delete(member)
+        db.commit()
+        sent = []
+        bot.flush_outbox(db, lambda chat, text: sent.append(chat) or ApiResult(True, 200), T0)
+        gone = db.scalars(select(TelegramOutbox).where(TelegramOutbox.chat_id == "700")).one()
+        assert sent == [CHAT]
+        assert gone.gave_up_at is not None and "адресата прибрано" in gone.last_error
+        assert bot.handle_update(db, _message("700", "меню")) == []
+
+
+def test_blocked_bot_is_written_off_at_once():
+    """403 «bot was blocked by the user» не лікується повтором."""
+    with _session() as db:
+        _queue(db)
+        blocked = ApiResult(False, 403, None, "HTTP 403 Forbidden: bot was blocked by the user")
+        bot.flush_outbox(db, lambda _c, _t: blocked, T0)
+        row = db.scalars(select(TelegramOutbox)).one()
+    assert row.gave_up_at is not None and row.next_attempt_at is None
+
+
+def test_rows_waiting_for_retry_do_not_block_the_batch():
+    with _session() as db:
+        for n in range(bot.OUTBOX_BATCH + 5):
+            _queue(db, f"wait-{n}", ttl=timedelta(hours=5))
+        for row in db.scalars(select(TelegramOutbox)):
+            row.next_attempt_at = T0 + timedelta(minutes=10)
+        db.commit()
+        _queue(db, "due", ttl=timedelta(hours=5))
+        sent = []
+        bot.flush_outbox(db, lambda _c, text: sent.append(text) or ApiResult(True, 200), T0)
+        due = db.scalars(select(TelegramOutbox).where(TelegramOutbox.dedup_key == "due")).one()
+    assert len(sent) == 1 and due.sent_at is not None
+
+
+def test_settings_invite_flow_end_to_end(app_db):  # noqa: F811
+    """Справжні роути й шаблон: створити посилання → воно на екрані з
+    кнопкою копіювання → людина заходить → вона в списку → прибрати."""
+    app, session_factory = app_db
+    with session_factory() as db:
+        _enable_bot(db)
+    bot._usernames["123"] = "kmill_test_bot"
+    client = MiniClient(app)
+    client.login(*ADMIN)
+
+    status, _, _ = client.post("/settings/feedback/invite", {"label": "Оля"})
+    assert status == 303
+    _, _, html = client.get("/settings/feedback")
+    section = html.split('id="bot-members"', 1)[1]
+    assert "Запрошення для «Оля»" in section
+    assert 'data-copy="https://t.me/kmill_test_bot?start=' in section
+
+    with session_factory() as db:
+        code = bot.active_invites(db)[0].code
+        bot.handle_update(db, _stranger_start("700", code, first="Ольга"))
+        member_id = bot.list_members(db)[0].id
+    _, _, html = client.get("/settings/feedback")
+    section = html.split('id="bot-members"', 1)[1]
+    assert "<b>Оля</b>" in section and "@olya_log" in section
+    assert "Запрошення для" not in section  # використане зникло зі списку
+
+    client.post(f"/settings/feedback/member/{member_id}/notify", {})
+    with session_factory() as db:
+        assert bot.find_recipient(db, "700").notify is False
+    client.post(f"/settings/feedback/member/{member_id}/remove", {})
+    with session_factory() as db:
+        assert bot.find_recipient(db, "700") is None
+
+
+def test_settings_revoke_kills_the_link(app_db):  # noqa: F811
+    app, session_factory = app_db
+    with session_factory() as db:
+        _enable_bot(db)
+        invite = bot.new_invite(db)
+        db.commit()
+        invite_id, code = invite.id, invite.code
+    client = MiniClient(app)
+    client.login(*ADMIN)
+    client.post(f"/settings/feedback/invite/{invite_id}/revoke", {})
+    with session_factory() as db:
+        assert bot.handle_update(db, _stranger_start("700", code)) == []

@@ -1,6 +1,6 @@
 """Звʼязок із розробником: Telegram-бот для скарг і побажань."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
@@ -12,7 +12,8 @@ router = APIRouter()
 
 
 # ── Telegram-пуш форми зворотного зв'язку ──────────────────────────────────
-# Бот уже є (VARTAAIR) — сюди вводять лише його токен і прив'язують chat_id.
+# Окремий бот KuubMill (10.09.26: у спільного бота вхідні забирала інша
+# програма) — сюди вводять лише його токен і прив'язують chat_id.
 # Секрет (токен) зберігається зашифровано, як решта секретів (CLAUDE.md §7);
 # порожнє поле токена означає «не міняти» — так само, як для пароля пошти.
 
@@ -25,6 +26,8 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
     from app.services import telegram_bot
 
     flash = request.session.pop("feedback_settings_flash", None)
+    # Лише з пам'яті: відкриття сторінки не має ходити в Telegram.
+    username = telegram_bot.bot_username(db)
     return templates.TemplateResponse(
         request,
         "settings_feedback.html",
@@ -38,6 +41,15 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
             "bot_enabled": (get_setting(db, "telegram_bot_enabled") or "") == "1",
             "bot_status": telegram_bot.status_snapshot(),
             "bot_outbox": telegram_bot.outbox_summary(db),
+            "owner_notify": telegram_bot.owner_notify(db),
+            "members": [
+                {"m": m, "title": telegram_bot.member_title(m)} for m in telegram_bot.list_members(db)
+            ],
+            "invites": [
+                {"i": i, "link": telegram_bot.invite_link(username, i.code)}
+                for i in telegram_bot.active_invites(db)
+            ],
+            "bot_username": username,
             "flash": flash,
         },
     )
@@ -116,7 +128,7 @@ def test_feedback_push(request: Request, db: Session = Depends(get_db)):
             "text": telegram_bot.render(db, "home"),
             "parse_mode": "HTML",
             "disable_web_page_preview": True,
-            "reply_markup": telegram_bot.keyboard("home"),
+            "reply_markup": telegram_bot.keyboard("home", telegram_bot.owner_notify(db)),
         }
     else:
         payload = {"chat_id": chat_id, "text": f"{KMILL_PREFIX}: тестове повідомлення ✓"}
@@ -135,3 +147,77 @@ def test_feedback_push(request: Request, db: Session = Depends(get_db)):
         "message": "Надіслано — перевірте Telegram." if ok else f"Не вдалось: {err}",
     }
     return RedirectResponse("/settings/feedback", status_code=303)
+
+
+# ── Учасники бота ──────────────────────────────────────────────────────────
+# Людина приходить лише за одноразовим посиланням, яке створює адмін.
+# Звичайні `def`, не async: «Запросити» може спитати Telegram про ім'я бота
+# (getMe), а мережевий виклик на event loop заморозив би весь застосунок.
+
+
+def _flash(request: Request, kind: str, message: str) -> RedirectResponse:
+    request.session["feedback_settings_flash"] = {"kind": kind, "message": message}
+    return RedirectResponse("/settings/feedback#bot-members", status_code=303)
+
+
+@router.post("/settings/feedback/invite")
+def create_bot_invite(request: Request, label: str = Form(""), db: Session = Depends(get_db)):
+    user = require_settings_admin(request, db)
+    from app.services import telegram_bot
+
+    telegram_bot.new_invite(db, label=label, created_by_id=getattr(user, "id", None))
+    db.commit()
+    if telegram_bot.bot_username(db, fetch=True) is None:
+        return _flash(
+            request, "error",
+            "Запрошення створено, але Telegram не назвав ім'я бота — посилання з'явиться, "
+            "щойно бот відповість (перевірте токен і зв'язок).",
+        )
+    return _flash(
+        request, "success",
+        "Посилання готове — скопіюйте нижче й надішліть людині. Одноразове, діє 24 год.",
+    )
+
+
+@router.post("/settings/feedback/invite/{invite_id}/revoke")
+def revoke_bot_invite(request: Request, invite_id: int, db: Session = Depends(get_db)):
+    require_settings_admin(request, db)
+    from datetime import datetime
+
+    from app.models import TelegramInvite
+
+    invite = db.get(TelegramInvite, invite_id)
+    if invite is not None and invite.used_at is None:
+        invite.revoked_at = datetime.now()
+        db.commit()
+    return _flash(request, "success", "Запрошення скасовано — посилання більше не діє.")
+
+
+@router.post("/settings/feedback/member/{member_id}/remove")
+def remove_bot_member(request: Request, member_id: int, db: Session = Depends(get_db)):
+    require_settings_admin(request, db)
+    from app.models import TelegramMember
+    from app.services import telegram_bot
+
+    member = db.get(TelegramMember, member_id)
+    if member is None:
+        return _flash(request, "error", "Такого учасника вже немає.")
+    title = telegram_bot.member_title(member)
+    db.delete(member)
+    db.commit()
+    return _flash(request, "success", f"{title}: доступ до бота закрито.")
+
+
+@router.post("/settings/feedback/member/{member_id}/notify")
+def toggle_bot_member_notify(request: Request, member_id: int, db: Session = Depends(get_db)):
+    require_settings_admin(request, db)
+    from app.models import TelegramMember
+    from app.services import telegram_bot
+
+    member = db.get(TelegramMember, member_id)
+    if member is None:
+        return _flash(request, "error", "Такого учасника вже немає.")
+    member.notify = not member.notify
+    db.commit()
+    state = "увімкнено" if member.notify else "вимкнено"
+    return _flash(request, "success", f"{telegram_bot.member_title(member)}: сповіщення {state}.")

@@ -186,7 +186,7 @@ SECRET_SETTING_KEYS = {
     "google_service_account_json",
     "google_oauth_client_json",
     "google_oauth_refresh_token",
-    # Токен бота VARTAAIR: ним хто завгодно шле від імені бота. У контекст
+    # Токен Telegram-бота: ним хто завгодно шле від імені бота. У контекст
     # Jinja не потрапляє — екран показує лише ознаку «збережено».
     "telegram_bot_token",
 }
@@ -247,6 +247,8 @@ PREFERENCE_KEYS = {
     # кнопок не виконались удруге.
     "telegram_bot_enabled",
     "telegram_bot_offset",
+    # "0" — власник вимкнув собі сповіщення кнопкою 🔔 у боті; порожньо — увімкнено.
+    "telegram_owner_notify",
     # ПІН розділу «Виробіток»: один код на розділ, тримається до кінця сесії.
     # Порожньо/не задано = розділ відкритий будь-якому оператору, що ввійшов.
     "vyrobitok_pin",

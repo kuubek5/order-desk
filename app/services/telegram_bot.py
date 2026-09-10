@@ -1,7 +1,8 @@
 """Двосторонній Telegram-бот KuubMill: меню стану цеху й сповіщення.
 
-Бриф — TELEGRAM_BOT_BRIEF.md (10.09.26). Бот — наявний VARTAAIR, отримувач —
-лише приватний чат власника (`telegram_chat_id`). Сюди ж ходить форма
+Бриф — TELEGRAM_BOT_BRIEF.md (10.09.26). Бот — окремий бот KuubMill. Ним
+користуються власник (`telegram_chat_id`) і учасники, що прийшли за
+одноразовим запрошенням (`TelegramMember`). Сюди ж ходить форма
 зворотного зв'язку, але в неї своя черга (`Feedback.telegram_*`, бо там
 скріншоти); спільний тут ВІДПРАВНИК — один воркер, що говорить з Telegram.
 
@@ -37,6 +38,7 @@ from __future__ import annotations
 
 import html
 import logging
+import secrets
 import threading
 import time
 from dataclasses import dataclass, field
@@ -49,7 +51,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import log_throttle
 from app.business_day import business_now, business_today
-from app.models import Order, TelegramOutbox, TelegramWatch
+from app.models import Order, TelegramInvite, TelegramMember, TelegramOutbox, TelegramWatch
 from app.services import telegram
 from app.services.telegram import KMILL_PREFIX, ApiResult
 from app.settings_store import get_setting, set_setting
@@ -70,6 +72,41 @@ def _bot_id(token: str) -> str:
     """Числовий id бота — частина токена ДО двокрапки. Публічна (її видно в
     посиланні на бота), на відміну від решти токена."""
     return token.split(":", 1)[0]
+
+
+# Ім'я бота (@username) за його id — для посилань-запрошень. Публічне, у
+# пам'яті процесу: слухач дізнається його getMe на старті, а екран
+# налаштувань не мусить ходити в мережу на кожне відкриття.
+_usernames: dict[str, str] = {}
+
+
+def _remember_username(session, token: str) -> Optional[str]:
+    result = telegram.api_call(session, token, "getMe")
+    if result.ok and isinstance(result.result, dict) and result.result.get("username"):
+        _usernames[_bot_id(token)] = str(result.result["username"])
+    return _usernames.get(_bot_id(token))
+
+
+def bot_username(db: Session, *, fetch: bool = False) -> Optional[str]:
+    """@username поточного бота. `fetch=True` — спитати Telegram, якщо в
+    пам'яті ще немає (дія адміна «Запросити»); без нього — лише пам'ять."""
+    token = telegram.get_bot_token(db)
+    if not token:
+        return None
+    known = _usernames.get(_bot_id(token))
+    if known or not fetch:
+        return known
+    try:
+        session = telegram._new_session()
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        return _remember_username(session, token)
+    finally:
+        try:
+            session.close()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _load_offset(db: Session, token: str) -> Optional[int]:
@@ -492,7 +529,7 @@ def render(db: Session, view: str, now: Optional[datetime] = None) -> str:
     return f"{head}\n\n{body}\n\n{_footer(now)}"
 
 
-def keyboard(view: str) -> dict:
+def keyboard(view: str, notify: bool = True) -> dict:
     rows = [
         [
             {"text": "🔥 Пічки", "callback_data": "v:furnaces"},
@@ -507,7 +544,158 @@ def keyboard(view: str) -> dict:
     if view != "home":
         last.append({"text": "🏠 Меню", "callback_data": "v:home"})
     rows.append(last)
+    # Кожен сам вирішує, чи будити його сповіщеннями: логісту пічки о 03:00
+    # ні до чого, а просити власника вимкнути — зайвий крок.
+    bell = "🔔 Сповіщення: так" if notify else "🔕 Сповіщення: ні"
+    rows.append([{"text": bell, "callback_data": f"n:{view}"}])
     return {"inline_keyboard": rows}
+
+
+# ── Хто користується ботом ──────────────────────────────────────────────────
+
+# «0» — власник вимкнув собі сповіщення кнопкою 🔔; порожньо — увімкнено.
+OWNER_NOTIFY_KEY = "telegram_owner_notify"
+INVITE_TTL = timedelta(hours=24)
+
+
+@dataclass(frozen=True)
+class Recipient:
+    chat_id: str
+    notify: bool
+    member_id: Optional[int] = None  # None — власник
+
+    @property
+    def is_owner(self) -> bool:
+        return self.member_id is None
+
+
+def owner_notify(db: Session) -> bool:
+    return (get_setting(db, OWNER_NOTIFY_KEY) or "") != "0"
+
+
+def recipients(db: Session) -> list[Recipient]:
+    """Власник (`telegram_chat_id`) і всі учасники — ті, кому бот відповідає."""
+    owner = telegram.get_chat_id(db)
+    out = [Recipient(owner, owner_notify(db))] if owner else []
+    for member in db.scalars(select(TelegramMember).order_by(TelegramMember.id)):
+        if member.chat_id != owner:
+            out.append(Recipient(member.chat_id, bool(member.notify), member.id))
+    return out
+
+
+def find_recipient(db: Session, chat_id: Optional[str]) -> Optional[Recipient]:
+    if not chat_id:
+        return None
+    return next((r for r in recipients(db) if r.chat_id == chat_id), None)
+
+
+def set_notify(db: Session, recipient: Recipient, notify: bool) -> None:
+    """Нічого не комітить."""
+    if recipient.is_owner:
+        set_setting(db, OWNER_NOTIFY_KEY, "" if notify else "0")
+    else:
+        member = db.get(TelegramMember, recipient.member_id)
+        if member is not None:
+            member.notify = notify
+
+
+def new_invite(
+    db: Session,
+    *,
+    label: str = "",
+    created_by_id: Optional[int] = None,
+    now: Optional[datetime] = None,
+) -> TelegramInvite:
+    """Одноразове запрошення. 128 біт випадковості: код не вгадати, а
+    Telegram пропускає в `start` лише [A-Za-z0-9_-] до 64 символів —
+    `token_urlsafe` саме з цього алфавіту. Нічого не комітить."""
+    now = now or datetime.now()
+    invite = TelegramInvite(
+        code=secrets.token_urlsafe(16),
+        label=(label or "").strip()[:120],
+        created_at=now,
+        expires_at=now + INVITE_TTL,
+        created_by_id=created_by_id,
+    )
+    db.add(invite)
+    return invite
+
+
+def active_invites(db: Session, now: Optional[datetime] = None) -> list[TelegramInvite]:
+    now = now or datetime.now()
+    return list(
+        db.scalars(
+            select(TelegramInvite)
+            .where(
+                TelegramInvite.used_at.is_(None),
+                TelegramInvite.revoked_at.is_(None),
+                TelegramInvite.expires_at > now,
+            )
+            .order_by(TelegramInvite.id.desc())
+        )
+    )
+
+
+def list_members(db: Session) -> list[TelegramMember]:
+    return list(db.scalars(select(TelegramMember).order_by(TelegramMember.joined_at)))
+
+
+def invite_link(username: Optional[str], code: str) -> Optional[str]:
+    return f"https://t.me/{username}?start={code}" if username else None
+
+
+def _display_name(sender: dict) -> str:
+    parts = [sender.get("first_name") or "", sender.get("last_name") or ""]
+    return " ".join(p for p in parts if p).strip()[:200]
+
+
+def member_title(member: TelegramMember) -> str:
+    """Як назвати людину в списку й у сповіщенні власнику: підпис
+    запрошення, інакше ім'я з Telegram, інакше нік."""
+    if member.label:
+        return member.label
+    if member.name:
+        return member.name
+    return f"@{member.username}" if member.username else member.chat_id
+
+
+def _start_code(text: str) -> Optional[str]:
+    """`/start <код>` (з посилання-запрошення) → код. Інакше None."""
+    parts = (text or "").strip().split(maxsplit=1)
+    if len(parts) == 2 and parts[0].split("@", 1)[0] == "/start":
+        return parts[1].strip() or None
+    return None
+
+
+def redeem_invite(
+    db: Session, code: str, chat_id: str, sender: dict, now: datetime
+) -> Optional[TelegramMember]:
+    """Погасити запрошення й записати учасника. None — коду немає, його
+    використано, скасовано чи прострочено. Нічого не комітить."""
+    invite = db.scalars(select(TelegramInvite).where(TelegramInvite.code == code)).first()
+    if (
+        invite is None
+        or invite.used_at is not None
+        or invite.revoked_at is not None
+        or invite.expires_at <= now
+    ):
+        return None
+    member = db.scalars(select(TelegramMember).where(TelegramMember.chat_id == chat_id)).first()
+    if member is None:
+        member = TelegramMember(
+            chat_id=chat_id,
+            name=_display_name(sender),
+            username=(sender.get("username") or None),
+            label=invite.label,
+            notify=True,
+            joined_at=now,
+            invited_by_id=invite.created_by_id,
+            last_seen_at=now,
+        )
+        db.add(member)
+    invite.used_at = now
+    invite.used_by_chat = chat_id
+    return member
 
 
 # ── Розбір оновлень ─────────────────────────────────────────────────────────
@@ -536,63 +724,112 @@ def _chat_of(update: dict) -> tuple[Optional[str], Optional[str]]:
     return (str(chat_id) if chat_id is not None else None, chat.get("type"))
 
 
+def _menu_payload(
+    db: Session, chat_id: str, view: str, notify: bool, now: Optional[datetime], *, lead: str = ""
+) -> dict:
+    text = render(db, view, now)
+    if lead:
+        text = f"{lead}\n\n{text}"
+    return {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+        "reply_markup": keyboard(view, notify),
+    }
+
+
 def handle_update(
-    db: Session, update: dict, *, chat_id: str, now: Optional[datetime] = None
+    db: Session, update: dict, *, chat_id: Optional[str] = None, now: Optional[datetime] = None
 ) -> list[Action]:
     """Що відповісти на одне оновлення. Нічого не шле сам — повертає дії.
 
+    Доступ мають власник і учасники (`recipients`) — вирішує база, а не
+    параметр `chat_id` (лишився для сумісності викликів і нічого не
+    розширює).
+
     Чужий чат → порожній список, БЕЗ відповіді й без `answerCallbackQuery`:
-    мовчання — єдина відповідь, що нічого не розповідає стороннім."""
+    мовчання — єдина відповідь, що нічого не розповідає стороннім. Виняток
+    один — `/start <код>` із дійсного запрошення."""
+    del chat_id
     update_chat, chat_type = _chat_of(update)
     if update_chat is not None and chat_type == "private":
         _set_status(last_private_chat=update_chat)
-    if update_chat is None or update_chat != str(chat_id):
+    if update_chat is None or chat_type != "private":
         return []
+    moment = now or business_now()
+    local_now = datetime.now()
+    who = find_recipient(db, update_chat)
 
     query = update.get("callback_query")
     if query is not None:
+        if who is None:
+            return []
         data = str(query.get("data") or "")
         answer = Action("answerCallbackQuery", {"callback_query_id": query.get("id")})
-        view = data[2:] if data.startswith("v:") else ""
         message = query.get("message") or {}
-        if view not in VIEWS or message.get("message_id") is None:
+        kind, _, view = data.partition(":")
+        if kind not in ("v", "n") or view not in VIEWS or message.get("message_id") is None:
             return [answer]
-        return [
-            answer,
-            Action(
-                "editMessageText",
-                {
-                    "chat_id": chat_id,
-                    "message_id": message["message_id"],
-                    "text": render(db, view, now),
-                    "parse_mode": "HTML",
-                    "disable_web_page_preview": True,
-                    "reply_markup": keyboard(view),
-                },
-            ),
-        ]
+        notify = who.notify
+        if kind == "n":
+            notify = not who.notify
+            set_notify(db, who, notify)
+            db.commit()
+            answer.payload["text"] = "Сповіщення увімкнено" if notify else "Сповіщення вимкнено"
+        payload = _menu_payload(db, update_chat, view, notify, now)
+        payload["message_id"] = message["message_id"]
+        return [answer, Action("editMessageText", payload)]
 
     message = update.get("message")
     if message is None:
         return []  # редагування старого повідомлення тощо — не запит
     sent = message.get("date")
-    moment = now or business_now()
     if isinstance(sent, (int, float)) and moment.timestamp() - sent > STALE_MESSAGE_SECONDS:
         return []
+    sender = message.get("from") or {}
+
+    if who is None:
+        code = _start_code(message.get("text") or "")
+        if code is None:
+            return []
+        member = redeem_invite(db, code, update_chat, sender, local_now)
+        if member is None:
+            return []  # невідомий, використаний чи прострочений код — мовчання
+        _notify_owner_of_join(db, member, local_now)
+        db.commit()
+        lead = "Доступ до бота KuubMill відкрито. Кнопки нижче; 🔔 вимикає сповіщення."
+        return [Action("sendMessage", _menu_payload(db, update_chat, "home", True, now, lead=lead))]
+
+    if not who.is_owner:
+        member = db.get(TelegramMember, who.member_id)
+        if member is not None:
+            member.last_seen_at = local_now
+            member.name = _display_name(sender) or member.name
+            member.username = sender.get("username") or member.username
+            db.commit()
     # Будь-який текст (зокрема /start і /menu) — головне меню новим
     # повідомленням. Окремих команд не заводимо: меню — це і є інтерфейс.
-    return [
-        Action(
-            "sendMessage",
-            {
-                "chat_id": chat_id,
-                "text": render(db, "home", now),
-                "parse_mode": "HTML",
-                "disable_web_page_preview": True,
-                "reply_markup": keyboard("home"),
-            },
-        )
-    ]
+    return [Action("sendMessage", _menu_payload(db, update_chat, "home", who.notify, now))]
+
+
+def _notify_owner_of_join(db: Session, member: TelegramMember, now: datetime) -> None:
+    """Власник має знати, хто щойно зайшов: посилання могли переслати далі,
+    і перший, хто його відкрив, — не обов'язково той, кому його давали."""
+    owner = telegram.get_chat_id(db)
+    if not owner:
+        return
+    who = _e(member_title(member))
+    extra = f" (@{_e(member.username)})" if member.username else ""
+    enqueue(
+        db,
+        dedup_key=f"join:{member.chat_id}:{now:%Y%m%d%H%M%S}",
+        kind="member_joined",
+        text=f"{KMILL_PREFIX} · 👤 До бота приєднався: <b>{who}</b>{extra}.",
+        now=now,
+        ttl=timedelta(days=2),
+        chat_id=owner,
+    )
 
 
 def _benign_failure(action: Action, result: ApiResult) -> bool:
@@ -701,9 +938,17 @@ def _sisma_state(card) -> Optional[str]:
 
 
 def enqueue(
-    db: Session, *, dedup_key: str, kind: str, text: str, now: datetime, ttl: timedelta
+    db: Session,
+    *,
+    dedup_key: str,
+    kind: str,
+    text: str,
+    now: datetime,
+    ttl: timedelta,
+    chat_id: Optional[str] = None,
 ) -> bool:
     """Поставити повідомлення в чергу. False — таке вже є (той самий ключ).
+    `chat_id` None — власнику.
 
     Перевірка SELECT-ом, а не ловлею IntegrityError: відкат зніс би разом із
     дублем і оновлення TelegramWatch у тій самій транзакції."""
@@ -719,9 +964,33 @@ def enqueue(
             created_at=now,
             expires_at=now + ttl,
             attempts=0,
+            chat_id=chat_id,
         )
     )
     return True
+
+
+def broadcast(
+    db: Session, *, event_key: str, kind: str, text: str, now: datetime, ttl: timedelta
+) -> int:
+    """Подія → по рядку черги кожному, хто не вимкнув собі 🔔. Окремі рядки,
+    а не один на всіх: недосяжний учасник не тримає доставку решті, і
+    повтор іде лише тому, кому не дійшло. Повертає, скільки рядків лягло."""
+    queued = 0
+    for recipient in recipients(db):
+        if not recipient.notify:
+            continue
+        if enqueue(
+            db,
+            dedup_key=f"{event_key}@{recipient.chat_id}",
+            kind=kind,
+            text=text,
+            now=now,
+            ttl=ttl,
+            chat_id=recipient.chat_id,
+        ):
+            queued += 1
+    return queued
 
 
 def _dedup_key(transition: Transition) -> str:
@@ -730,12 +999,17 @@ def _dedup_key(transition: Transition) -> str:
 
 def watch_tick(db: Session, now: Optional[datetime] = None) -> int:
     """Один прохід по печах і принтеру: спостереження → переходи → черга.
-    Повертає, скільки повідомлень поставлено. Нічого не комітить."""
+    Повертає, скільки ПОДІЙ сталось (не рядків: рядок на кожного адресата).
+    Нічого не комітить.
+
+    Перехід фіксується в TelegramWatch навіть тоді, коли слати нікому
+    (усі вимкнули 🔔): інакше, увімкнувши дзвіночок, людина отримала б
+    новину про давно минуле."""
     from app.services.furnace import STATUS_RUN, STATUS_WAIT, snapshot as furnace_snapshot
     from app.services.machines import snapshot as machine_snapshot
 
     now = now or datetime.now()
-    queued = 0
+    events = 0
 
     for card in furnace_snapshot(db):
         state = card.state
@@ -752,8 +1026,8 @@ def watch_tick(db: Session, now: Optional[datetime] = None) -> int:
         if message is None:
             continue
         kind, text, ttl = message
-        if enqueue(db, dedup_key=_dedup_key(transition), kind=kind, text=text, now=now, ttl=ttl):
-            queued += 1
+        events += 1
+        broadcast(db, event_key=_dedup_key(transition), kind=kind, text=text, now=now, ttl=ttl)
 
     for printer in machine_snapshot(db):
         if not printer.is_sisma_machine:
@@ -765,17 +1039,17 @@ def watch_tick(db: Session, now: Optional[datetime] = None) -> int:
         if transition is None or not (transition.old == "run" and transition.new == "done"):
             continue
         text = f"{KMILL_PREFIX} · 🖨 <b>{_e(printer.target.name)}</b>: друк закінчився."
-        if enqueue(
+        events += 1
+        broadcast(
             db,
-            dedup_key=_dedup_key(transition),
+            event_key=_dedup_key(transition),
             kind="sisma_done",
             text=text,
             now=now,
             ttl=timedelta(hours=6),
-        ):
-            queued += 1
+        )
 
-    return queued
+    return events
 
 
 # ── Черга відправки ─────────────────────────────────────────────────────────
@@ -791,32 +1065,65 @@ def _backoff(attempts: int) -> timedelta:
     return timedelta(seconds=min(30 * (2 ** max(attempts - 1, 0)), 15 * 60))
 
 
+def _give_up(row: TelegramOutbox, now: datetime, reason: str) -> None:
+    row.gave_up_at = now
+    row.last_error = (((row.last_error + " · ") if row.last_error else "") + reason)[:300]
+
+
+def _hopeless(result: ApiResult) -> bool:
+    """Відповіді, після яких повтор нічого не змінить: людина заблокувала
+    бота або чату не існує. Повторювати їх годинами — лише шум у черзі."""
+    text = (result.error or "").lower()
+    if result.status == 403:
+        return True
+    return result.status == 400 and "chat not found" in text
+
+
 def flush_outbox(
     db: Session,
-    send: Callable[[str], ApiResult],
+    send: Callable[[str, str], ApiResult],
     now: Optional[datetime] = None,
 ) -> int:
-    """Донести все, що чекає. `send(text)` — один sendMessage. Комітить після
-    КОЖНОГО рядка: падіння посеред пачки не має відправити вже відправлене
-    вдруге. Повертає скільки відправлено."""
+    """Донести все, що чекає. `send(chat_id, text)` — один sendMessage.
+    Комітить після КОЖНОГО рядка: падіння посеред пачки не має відправити
+    вже відправлене вдруге. Повертає скільки відправлено."""
     now = now or datetime.now()
+    owner = telegram.get_chat_id(db)
+    allowed = {r.chat_id for r in recipients(db)}
+
+    # Прострочене списуємо окремо й до вибірки: інакше рядки, що чекають
+    # повтору, займали б місця в пачці й тримали чергу всіх інших.
+    for row in db.scalars(
+        select(TelegramOutbox).where(
+            TelegramOutbox.sent_at.is_(None),
+            TelegramOutbox.gave_up_at.is_(None),
+            TelegramOutbox.expires_at.is_not(None),
+            TelegramOutbox.expires_at < now,
+        )
+    ):
+        _give_up(row, now, "прострочено")
+    db.commit()
+
     rows = db.scalars(
         select(TelegramOutbox)
-        .where(TelegramOutbox.sent_at.is_(None), TelegramOutbox.gave_up_at.is_(None))
+        .where(
+            TelegramOutbox.sent_at.is_(None),
+            TelegramOutbox.gave_up_at.is_(None),
+            (TelegramOutbox.next_attempt_at.is_(None)) | (TelegramOutbox.next_attempt_at <= now),
+        )
         .order_by(TelegramOutbox.id)
         .limit(OUTBOX_BATCH)
     ).all()
     sent = 0
     for row in rows:
-        if row.expires_at is not None and now > row.expires_at:
-            row.gave_up_at = now
-            row.last_error = ((row.last_error + " · ") if row.last_error else "") + "прострочено"
-            row.last_error = row.last_error[:300]
+        chat = row.chat_id or owner
+        if not chat or chat not in allowed:
+            # Учасника прибрали (або власника перев'язали) — його черга
+            # нікому не належить.
+            _give_up(row, now, "адресата прибрано")
             db.commit()
             continue
-        if row.next_attempt_at is not None and now < row.next_attempt_at:
-            continue
-        result = send(row.text)
+        result = send(chat, row.text)
         row.attempts = (row.attempts or 0) + 1
         if result.ok:
             row.sent_at = now
@@ -826,6 +1133,10 @@ def flush_outbox(
             db.commit()
             continue
         row.last_error = (result.error or "невідома помилка")[:300]
+        if _hopeless(result):
+            _give_up(row, now, "не доставити")
+            db.commit()
+            continue
         row.next_attempt_at = now + _backoff(row.attempts)
         db.commit()
         if result.status is None:
@@ -932,6 +1243,7 @@ def inbound_worker(stop_event: threading.Event) -> None:
                 if err is None:
                     webhook_checked_for = _bot_id(token)
                     _set_status(webhook_host=None)
+                    _remember_username(session, token)
 
             if offset is None:
                 # Перший запуск цього бота: усе, що накопичилось до нас, — не
@@ -1041,7 +1353,7 @@ def outbound_tick(db: Session, *, flush_feedback: bool, now: Optional[datetime] 
     if token and chat_id and bot_enabled(db):
         session_box: list = []
 
-        def send(text: str) -> ApiResult:
+        def send(chat: str, text: str) -> ApiResult:
             if not session_box:
                 session_box.append(telegram._new_session())
             return telegram.api_call(
@@ -1049,7 +1361,7 @@ def outbound_tick(db: Session, *, flush_feedback: bool, now: Optional[datetime] 
                 token,
                 "sendMessage",
                 {
-                    "chat_id": chat_id,
+                    "chat_id": chat,
                     "text": text,
                     "parse_mode": "HTML",
                     "disable_web_page_preview": True,
@@ -1106,6 +1418,7 @@ def outbound_worker(stop_event: threading.Event) -> None:
 
 def reset_for_tests() -> None:
     global _status
+    _usernames.clear()
     with _pending_lock:
         _pending.clear()
     with _status_lock:

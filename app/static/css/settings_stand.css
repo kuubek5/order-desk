@@ -545,3 +545,19 @@
   max-height: 7.5em;
   overflow-y: auto;
 }
+
+/* ── учасники Telegram-бота (/settings/feedback) ─────────────────────────── */
+/* Рядки — ті самі .stand-drow, що в інших реєстрах; тут лише кнопки-форми
+   в ряд без власних відступів і довге посилання, що не розпирає картку. */
+.scon .stand-members .stand-drow { padding-left: 0; padding-right: 0; flex-wrap: wrap; }
+.scon .stand-members .stand-drow > form { margin: 0; flex: none; }
+.scon .stand-members .stand-drow .settings-secondary-button { margin: 0; }
+.scon .stand-members-link { word-break: break-all; }
+.scon .stand-members-invite {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 6px;
+}
+.scon .stand-members-invite .login-glow { flex: 1; min-width: 0; }
+.scon .stand-members-invite .settings-secondary-button { margin: 0; flex: none; }

@@ -147,6 +147,10 @@ POST /settings/blanks/undo-order
 POST /settings/check-path
 POST /settings/feedback
 POST /settings/feedback/bind
+POST /settings/feedback/invite
+POST /settings/feedback/invite/{invite_id}/revoke
+POST /settings/feedback/member/{member_id}/notify
+POST /settings/feedback/member/{member_id}/remove
 POST /settings/feedback/test
 POST /settings/furnaces
 POST /settings/furnaces/background

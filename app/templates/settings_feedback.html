@@ -43,7 +43,7 @@
                 <div class="stand-cells">
                     <div class="stand-cell w4">
                         <h3>Telegram-пуш</h3>
-                        <p class="settings-help">Запис у базу працює завжди — цей вимикач лише про сповіщення в Telegram через бота VARTAAIR.</p>
+                        <p class="settings-help">Запис у базу працює завжди — цей вимикач лише про сповіщення в Telegram через бота.</p>
                         <form method="post" action="/settings/feedback">
                             <label class="settings-backup-confirm stand-toggle">
                                 <input type="checkbox" name="feedback_telegram_enabled" value="1" {{ 'checked' if push_enabled else '' }}>
@@ -55,7 +55,7 @@
                             </label>
 
                             <div class="settings-field">
-                                <label for="tg-token">Токен бота VARTAAIR{% if token_saved %} <span class="text-muted">— збережено</span>{% endif %}</label>
+                                <label for="tg-token">Токен бота{% if token_saved %} <span class="text-muted">— збережено</span>{% endif %}</label>
                                 <div class="login-glow"><div class="login-input-wrap">
                                     <input class="login-input" type="password" id="tg-token" name="telegram_bot_token"
                                            placeholder="{{ '••••••••  (залиш порожнім — не міняти)' if token_saved else '123456:AA...' }}"
@@ -85,7 +85,7 @@
                        на пів екрана кожна не було за чим. #}
                     <div class="stand-cell w2">
                         <h3>Перевірка зв'язку</h3>
-                        <p class="settings-help">Бот не може написати першим, поки з ним не почали діалог. Порядок: збережи токен → відкрий <b>VARTAAIR</b> у Telegram і натисни <b>Start</b> → «Прив'язати чат»: chat_id підставиться сам.</p>
+                        <p class="settings-help">Бот не може написати першим, поки з ним не почали діалог. Порядок: збережи токен → відкрий бота в Telegram і натисни <b>Start</b> → «Прив'язати чат»: chat_id підставиться сам.</p>
                         <form method="post" action="/settings/feedback/bind">
                             <button type="submit" class="settings-secondary-button">Прив'язати чат</button>
                         </form>
@@ -121,14 +121,63 @@
                             {% if st.webhook_host %}
                             <p class="stand-note">На боті стоїть вебхук ({{ st.webhook_host }}), тож Telegram віддає натискання туди, а не KuubMill. Чужий вебхук KuubMill не знімає сам — це зламало б той сервіс. Зняти може власник бота (метод deleteWebhook); перевіряємо знову раз на 5 хв.</p>
                             {% elif st.conflict %}
-                            <p class="stand-note">Telegram відповідає 409: бота вже опитує інша програма, і повідомлення з чату забирає вона. Це або друга копія KuubMill з увімкненим ботом (dev і робоча одночасно — лишіть бота в одній), або інша програма з тим самим токеном (так було з VARTAAIR 10.09.26: вхідні забирав хтось поза KuubMill). Надійно — окремий бот для KuubMill: @BotFather → /newbot, новий токен сюди.</p>
+                            <p class="stand-note">Telegram відповідає 409: бота вже опитує інша програма, і повідомлення з чату забирає вона. Це або друга копія KuubMill з увімкненим ботом (dev і робоча одночасно — лишіть бота в одній), або інша програма з тим самим токеном. Надійно — окремий бот для KuubMill: @BotFather → /newbot, новий токен сюди.</p>
                             {% elif st.error %}
                             <p class="stand-note">Остання помилка: {{ st.error }}</p>
                             {% endif %}
                             {% if st.last_ok_at %}<p class="stand-note">Останнє опитування Telegram: <span class="mono">{{ st.last_ok_at.strftime('%H:%M:%S') }}</span>{% if st.last_update_at %} · останній запит із чату: <span class="mono">{{ st.last_update_at.strftime('%H:%M') }}</span>{% endif %}</p>{% endif %}
                             <p class="stand-note">Черга сповіщень: {{ bot_outbox.pending }} чекає{% if bot_outbox.last_sent_at %} · останнє надіслано <span class="mono">{{ bot_outbox.last_sent_at.strftime('%d.%m %H:%M') }}</span>{% endif %}{% if bot_outbox.last_error %} · остання невдача: {{ bot_outbox.last_error }}{% endif %}</p>
                         {% endif %}
-                        <p class="settings-help">Напишіть боту будь-що — у відповідь прийде меню: пічки, роботи сьогодні, верстати, Sisma. Кнопка переписує те саме повідомлення, чат не засипає. Сповіщення бот шле сам: пічка закрилась, цикл завершено — можна відкривати, Sisma закінчила друк. Відповідає лише на прив'язаний чат; решті — мовчить. Бот живе, поки працює KuubMill на цьому ПК.</p>
+                        <p class="settings-help">Напишіть боту будь-що — у відповідь прийде меню: пічки, роботи сьогодні, верстати, Sisma. Кнопка переписує те саме повідомлення, чат не засипає. Сповіщення бот шле сам: пічка закрилась, цикл завершено — можна відкривати, Sisma закінчила друк. Відповідає лише вам і учасникам нижче; решті — мовчить. Бот живе, поки працює KuubMill на цьому ПК.</p>
+                    </div>
+
+                    {# Учасники. Прийти можна лише за одноразовим посиланням звідси:
+                       сторонньому бот мовчить, і «попроситись» у нього нема як. #}
+                    <div class="stand-cell w6 stand-members" id="bot-members">
+                        <h3>Учасники бота</h3>
+                        <p class="settings-help">Хто, крім вас, бачить меню й отримує сповіщення. Створіть посилання, надішліть людині будь-яким месенджером — вона відкриває його, тисне <b>Start</b>, і вона в боті. Посилання одноразове й діє 24 год; вам прийде повідомлення, хто саме приєднався. Сповіщення кожен вмикає й вимикає сам кнопкою 🔔 у боті. Звернення зворотного зв'язку йдуть лише вам.</p>
+                        {% if not bot_enabled %}<p class="stand-note">Бот зараз вимкнено — посилання спрацює, коли його ввімкнете вище.</p>{% endif %}
+
+                        <div class="stand-drow">
+                            <div class="stand-dtext">
+                                <b>Ви (власник)</b>
+                                <p>chat <span class="mono">{{ chat_id or '—' }}</span> · сповіщення: {{ 'так' if owner_notify else 'ні' }}</p>
+                            </div>
+                        </div>
+                        {% for row in members %}{% set m = row.m %}
+                        <div class="stand-drow">
+                            <div class="stand-dtext">
+                                <b>{{ row.title }}</b>
+                                <p>{% if m.label and m.name %}{{ m.name }} · {% endif %}{% if m.username %}@{{ m.username }} · {% endif %}з {{ m.joined_at.strftime('%d.%m.%y') }}{% if m.last_seen_at %} · останній запит <span class="mono">{{ m.last_seen_at.strftime('%d.%m %H:%M') }}</span>{% endif %}</p>
+                            </div>
+                            <form method="post" action="/settings/feedback/member/{{ m.id }}/notify">
+                                <button type="submit" class="settings-secondary-button" title="Перемкнути сповіщення цій людині">{{ '🔔 сповіщення: так' if m.notify else '🔕 сповіщення: ні' }}</button>
+                            </form>
+                            <form method="post" action="/settings/feedback/member/{{ m.id }}/remove">
+                                <button type="submit" class="settings-secondary-button">Прибрати</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                        {% for row in invites %}{% set i = row.i %}
+                        <div class="stand-drow">
+                            <div class="stand-dtext">
+                                <b>Запрошення{% if i.label %} для «{{ i.label }}»{% endif %} — ще не використане</b>
+                                <p>{% if row.link %}<span class="mono stand-members-link">{{ row.link }}</span>{% else %}посилання з'явиться, щойно бот відповість{% endif %} · діє до <span class="mono">{{ i.expires_at.strftime('%d.%m %H:%M') }}</span></p>
+                            </div>
+                            {% if row.link %}<button type="button" class="settings-secondary-button" data-copy="{{ row.link }}" title="Скопіювати посилання">Скопіювати</button>{% endif %}
+                            <form method="post" action="/settings/feedback/invite/{{ i.id }}/revoke">
+                                <button type="submit" class="settings-secondary-button">Скасувати</button>
+                            </form>
+                        </div>
+                        {% endfor %}
+
+                        <form method="post" action="/settings/feedback/invite" class="stand-members-invite">
+                            <div class="login-glow"><div class="login-input-wrap">
+                                <input class="login-input" type="text" name="label" maxlength="120"
+                                       placeholder="Для кого (напр. «Оля, логіст») — необов'язково" autocomplete="off">
+                            </div></div>
+                            <button type="submit" class="settings-secondary-button">Створити посилання</button>
+                        </form>
                     </div>
                 </div>
             </div>

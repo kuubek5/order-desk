@@ -63,6 +63,8 @@ from app.models import (
     ShiftNoteImage,
     StatusEvent,
     SyncLog,
+    TelegramInvite,
+    TelegramMember,
     TelegramOutbox,
     TelegramWatch,
     User,
@@ -139,6 +141,11 @@ _TABLE_MODELS: list[Any] = [
     # «пічка закрилась»; невідправлене давно прострочене й не піде.
     TelegramOutbox,
     TelegramWatch,
+    # Учасники бота (FK на users — тому після User). Переїзд на новий ПК без
+    # них мовчки відрізав би всіх, кого власник запросив. Запрошення — разом:
+    # невикористане посилання після переїзду має діяти так само.
+    TelegramMember,
+    TelegramInvite,
     # Роботи й усе, що на них посилається.
     Order,
     EmailMessage,
