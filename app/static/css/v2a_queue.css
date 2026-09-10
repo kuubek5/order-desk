@@ -618,6 +618,13 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
    overflow) та anti-flash у base.html. Кнопка-перемикач у стані «увімк». */
 body.qside-collapsed .q2 .side-panel{display:none}
 body.qside-collapsed .q2 .worklayout{gap:0}
+/* Секцію чи всю панель сховано тумблером у шестерні (hidden_widgets). Явне
+   правило, бо варіанти секцій (side-sec-furnace тощо) можуть задати свій
+   display і перебити UA-стиль [hidden]. Уся панель схована — таблиця на всю
+   ширину, як і після кнопки згортання. */
+.q2 .side-sec[hidden],
+.q2 .side-panel[hidden]{display:none}
+.q2 .worklayout:has(> .side-panel[hidden]){gap:0}
 .q2 .qside-toggle.is-on{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .4);background:rgba(var(--accent-base-rgb), .12)}
 .q2 .side-sec{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);overflow:hidden;flex:0 0 auto}
 .q2 .side-head{

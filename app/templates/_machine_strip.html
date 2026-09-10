@@ -13,7 +13,10 @@
    якої немає. Хибне число гірше за жодне: без свіжого відсотка — «—». #}
 {% set _mstrip = ui_prefs(request).machine_strip or 'segments' %}
 {% set machine_cards = ordered_machine_cards(request, machine_cards) %}
-{% set _shown = machine_cards and _mstrip != 'off' %}
+{# Сховати можна двома шляхами: вигляд «off» у кабінеті або тумблер
+   «Верстати» в шестерні черги (hidden_widgets). Обгортка з поллом лишається
+   в обох випадках — інакше увімкнути назад без перезавантаження не вийшло б. #}
+{% set _shown = machine_cards and _mstrip != 'off' and 'machines' not in hidden_widgets(request) %}
 <div id="machine-strip"
      class="mstrip{% if not _shown %} is-empty{% endif %}"
      data-variant="{{ _mstrip }}"

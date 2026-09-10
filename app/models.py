@@ -101,6 +101,11 @@ class User(Base):
     queue_load_metrics: Mapped[str] = mapped_column(
         String(20), default="crm,pc,ram", server_default="crm,pc,ram"
     )
+    # Які віджети черги СХОВАНО (шестерня вигляду, 10.09.26): CSV із
+    # machines/sisma (шапка) і side-<секція> (бокова панель). Зберігаємо саме
+    # сховані, а не показані: порожньо = усе видно, тож наявні акаунти й новий
+    # віджет, доданий пізніше, нічого не втрачають.
+    queue_hidden_widgets: Mapped[str] = mapped_column(String(120), default="", server_default="")
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now()

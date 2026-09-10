@@ -1076,6 +1076,60 @@ document.addEventListener("click", (event) => {
     .catch(() => {});
 });
 
+// Віджети черги в шестерні вигляду: шапка (Верстати / Sisma) і секції бокової
+// панелі (side-<секція>). Вимкнення ховає ОДРАЗУ, не чекаючи мережі.
+// Шапка після збереження перемальовується з сервера — він вирішує, що
+// показати, і полл далі тримає те саме рішення. Секції бокової панелі сервер
+// малює завжди (схованими — з `hidden`), тож тут їх лише показуємо/ховаємо.
+const HEADER_WIDGET_HOSTS = {
+  machines: { url: "/machines/strip", target: "#machine-strip" },
+  sisma: { url: "/machines/sisma", target: "#sisma-strip" },
+  // Секції з власним поллом: полл, що вилетів ДО збереження, повернув би
+  // старий стан — тож після збереження перемальовуємо їх явно.
+  "side-furnace": { url: "/furnaces/side", target: "#furnace-side" },
+  "side-machine": { url: "/machines/side", target: "#machine-side" },
+};
+
+function applySideWidget(key, on) {
+  const sec = document.querySelector(`.side-panel .side-sec[data-sec="${key.slice(5)}"]`);
+  if (sec) sec.hidden = !on;
+  const panel = document.querySelector("[data-side-panel]");
+  if (panel) panel.hidden = !panel.querySelector(".side-sec:not([hidden])");
+}
+
+document.addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-header-widget]");
+  if (!chip) return;
+  const nowOn = chip.getAttribute("aria-pressed") !== "true";
+  chip.setAttribute("aria-pressed", String(nowOn));
+  if (chip.dataset.headerWidget.startsWith("side-")) applySideWidget(chip.dataset.headerWidget, nowOn);
+  const host = HEADER_WIDGET_HOSTS[chip.dataset.headerWidget];
+  const el = host && document.querySelector(host.target);
+  if (el && !nowOn) el.hidden = true;
+  const hidden = Array.from(document.querySelectorAll("[data-header-widget]"))
+    .filter((c) => c.getAttribute("aria-pressed") !== "true")
+    .map((c) => c.dataset.headerWidget);
+  fetch("/account/header-widgets", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ hidden: hidden.join(",") }).toString(),
+    credentials: "same-origin",
+  })
+    .then((r) => {
+      if (r.status === 401) { window.location.href = "/login"; return; }
+      if (!r.ok) {
+        if (window.showToast) window.showToast("Не вдалось зберегти віджети", "error");
+        return;
+      }
+      if (window.htmx && host && document.querySelector(host.target)) {
+        window.htmx.ajax("GET", host.url, { target: host.target, swap: "outerHTML" });
+      }
+    })
+    .catch(() => {
+      if (window.showToast) window.showToast("Не вдалось зберегти віджети", "error");
+    });
+});
+
 // ── Повернення з невдалого додавання роботи (аудит 05.09.26, крок 2.4) ──
 // Окремої сторінки «додати роботу» більше немає: /orders/new редіректить сюди
 // з `?add=1`, а помилка приходить у `add_error`. Розгортаємо ту саму inline-

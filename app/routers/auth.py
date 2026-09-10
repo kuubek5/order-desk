@@ -25,7 +25,12 @@ from app.license import (
     verify_license_key,
 )
 from app.models import User
-from app.services.widget_order import clean_load_metrics, clean_side_order, clean_strip_order
+from app.services.widget_order import (
+    clean_hidden_widgets,
+    clean_load_metrics,
+    clean_side_order,
+    clean_strip_order,
+)
 from app.services.settings_status import build_slab
 from app.routers.deps import UI_SESSION_KEY, get_current_user, login_redirect, get_db, templates
 from app.services.look_prefs import (
@@ -458,6 +463,21 @@ async def post_account_load_widget(
     if user is None:
         return Response(status_code=401)
     user.queue_load_metrics = clean_load_metrics(metrics)
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.post("/account/header-widgets", status_code=204)
+async def post_account_header_widgets(
+    request: Request, hidden: str = Form(""), db: Session = Depends(get_db)
+):
+    """Які віджети черги сховати (шестерня вигляду): CSV із machines/sisma
+    (шапка) і side-<секція> (бокова панель). Порожньо = усе видно. Чуже
+    відсіюється, як і в load-widget: невідомий ключ не має ламати збереження."""
+    user = get_current_user(request, db)
+    if user is None:
+        return Response(status_code=401)
+    user.queue_hidden_widgets = clean_hidden_widgets(hidden)
     db.commit()
     return Response(status_code=204)
 

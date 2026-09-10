@@ -100,7 +100,8 @@
                                     ('code', 'Технічний код', 'Без коробки, моноширинний — 800 / 500 / A3.5 читаються як коди виробника')],
                         mat_style=_up.queue_mat_style,
                         pad_default=8, reset_event='queue-look-reset',
-                        col_edit=true, title='Вигляд черги', load_shown=load_metrics(request)) }}
+                        col_edit=true, title='Вигляд черги', load_shown=load_metrics(request),
+                        widgets_hidden=hidden_widgets(request)) }}
         </div>
         {# Жива стрічка навантаження — другим рядком під кнопками, праворуч
            (D1). Повна ширина через flex-basis:100%, тому переноситься на свій
@@ -249,8 +250,15 @@
             {% include "_queue_rows.html" %}
         </section>
 
-        <aside class="side-panel" aria-label="Довідкові панелі">
-            <section class="side-sec" data-open="false" data-sec="mail" style="order:{{ side_order_index(request, 'mail') }}">
+        {# Секцію можна сховати тумблером у шестерні (hidden_widgets, ключ
+           side-<секція>). Сховану секцію сервер УСЕ ОДНО малює, лише з
+           `hidden`: увімкнення назад тоді миттєве, без походу на сервер, а
+           полли пічок і верстатів не губляться. Сховано всі — ховається й
+           сама панель, і таблиця бере всю ширину (як кнопка згортання). #}
+        {% set _hw = hidden_widgets(request) %}
+        <aside class="side-panel" aria-label="Довідкові панелі" data-side-panel
+               {% if ['side-mail', 'side-furnace', 'side-machine', 'side-sync', 'side-handout'] | reject('in', _hw) | list | length == 0 %}hidden{% endif %}>
+            <section class="side-sec" data-open="false" data-sec="mail" style="order:{{ side_order_index(request, 'mail') }}"{% if 'side-mail' in _hw %} hidden{% endif %}>
                 <button class="side-head" type="button" data-side-toggle aria-expanded="false">
                     <svg class="side-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
                     Пошта на тріаж
@@ -285,7 +293,7 @@
                пічок — власний полл, обгортка завжди, дані з одного джерела. #}
             {% include "_machine_side.html" %}
 
-            <section class="side-sec" data-open="false" data-sec="sync" style="order:{{ side_order_index(request, 'sync') }}">
+            <section class="side-sec" data-open="false" data-sec="sync" style="order:{{ side_order_index(request, 'sync') }}"{% if 'side-sync' in _hw %} hidden{% endif %}>
                 <button class="side-head" type="button" data-side-toggle aria-expanded="false">
                     <svg class="side-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16M15 4v16"/></svg>
                     Google Таблиця
@@ -344,7 +352,7 @@
                 </div>
             </section>
 
-            <section class="side-sec" data-open="false" data-sec="handout" style="order:{{ side_order_index(request, 'handout') }}">
+            <section class="side-sec" data-open="false" data-sec="handout" style="order:{{ side_order_index(request, 'handout') }}"{% if 'side-handout' in _hw %} hidden{% endif %}>
                 <button class="side-head" type="button" data-side-toggle aria-expanded="false">
                     <svg class="side-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8 12 4l9 4-9 4Z"/><path d="M3 8v8l9 4 9-4V8"/></svg>
                     Ранкова видача

@@ -14,17 +14,19 @@
 
    Обгортка віддається ЗАВЖДИ, навіть без принтерів — інакше елемент зник би
    з DOM разом зі своїм поллом і більше не повернувся б без перезавантаження
-   сторінки. #}
+   сторінки. Тумблер «Sisma» в шестерні черги (hidden_widgets) ховає вміст,
+   але не обгортку — з тієї самої причини. #}
+{% set _sisma_cards = sisma_cards if 'sisma' not in hidden_widgets(request) else [] %}
 <div id="sisma-strip"
-     class="sw-wrap{% if not sisma_cards %} is-empty{% endif %}"
+     class="sw-wrap{% if not _sisma_cards %} is-empty{% endif %}"
      hx-get="/machines/sisma"
      hx-trigger="every 15s[!document.hidden]"
      hx-target="this"
      hx-swap="outerHTML"
      hx-disinherit="*"
-     {% if not sisma_cards %}hidden{% endif %}
+     {% if not _sisma_cards %}hidden{% endif %}
      aria-label="3D-друк">
-{% for card in sisma_cards %}
+{% for card in _sisma_cards %}
     {% set state = 'off' if card.has_problem else ('done' if card.is_completed else ('run' if card.layers else 'idle')) %}
     <div class="sw-unit is-{{ state }}">
         <button type="button" class="sw-chip" data-sisma-toggle

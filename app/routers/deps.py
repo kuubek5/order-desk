@@ -521,6 +521,8 @@ def ui_prefs(request: Request) -> dict:
         # Показники стрічки навантаження (шестерня вигляду). "" тут — це
         # дефолт «усі три», бо анонім/збій не має ховати віджет.
         "load_metrics": "crm,pc,ram",
+        # Сховані віджети шапки черги (шестерня вигляду): "" = усе видно.
+        "hidden_widgets": "",
     }
     mirrored = False
     try:
@@ -551,6 +553,7 @@ def ui_prefs(request: Request) -> dict:
                         "side_order": user.queue_side_order or "",
                         "strip_order": user.queue_strip_order or "",
                         "load_metrics": user.queue_load_metrics if user.queue_load_metrics is not None else "crm,pc,ram",
+                        "hidden_widgets": user.queue_hidden_widgets or "",
                     }
                     mirrored = True
             finally:
@@ -729,7 +732,7 @@ def ordered_machine_cards(request, cards):
 
 templates.env.globals["side_order_index"] = side_order_index
 templates.env.globals["ordered_machine_cards"] = ordered_machine_cards
-from app.services.widget_order import load_metrics_set  # noqa: E402
+from app.services.widget_order import hidden_widgets_set, load_metrics_set  # noqa: E402
 
 
 def load_metrics(request) -> set:
@@ -737,7 +740,15 @@ def load_metrics(request) -> set:
     return load_metrics_set(ui_prefs(request).get("load_metrics"))
 
 
+def hidden_widgets(request) -> set:
+    """Які віджети шапки черги оператор сховав (machines / sisma).
+    Читають самі фрагменти віджетів, тож полл кожного віджета теж його
+    слухається — інакше сховане поверталось би на першому ж тіку."""
+    return hidden_widgets_set(ui_prefs(request).get("hidden_widgets"))
+
+
 templates.env.globals["load_metrics"] = load_metrics
+templates.env.globals["hidden_widgets"] = hidden_widgets
 templates.env.globals["is_rush_comment"] = is_rush_comment
 templates.env.globals["is_approval_pending_comment"] = is_approval_pending_comment
 templates.env.globals["static_ver"] = static_ver

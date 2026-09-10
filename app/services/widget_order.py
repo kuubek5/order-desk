@@ -96,3 +96,27 @@ def load_metrics_set(raw: str | None) -> set[str]:
     if raw is None:
         return set(LOAD_METRICS)
     return {c.strip() for c in str(raw).split(",") if c.strip() in LOAD_METRICS}
+
+
+#: Віджети шапки черги, які можна сховати в шестерні: смуга верстатів і
+#: принтер Sisma. Ключ — те, що летить з кнопки й лежить на акаунті.
+HEADER_WIDGETS = ("machines", "sisma")
+
+#: Секції бокової панелі, які можна сховати, — `side-` + ключ `data-sec`.
+#: Префікс, бо «machines» (смуга в шапці) і «machine» (секція збоку) — різні
+#: віджети, і голий ключ секції легко сплутати з ключем шапки.
+SIDE_WIDGETS = tuple(f"side-{key}" for key in SIDE_SECTIONS)
+
+HIDEABLE_WIDGETS = HEADER_WIDGETS + SIDE_WIDGETS
+
+
+def clean_hidden_widgets(raw: str | None) -> str:
+    """CSV СХОВАНИХ віджетів → лише відомі ключі, у сталому порядку.
+    Порожньо (і None) = усе видно — канон, який нічого не ховає."""
+    chosen = {c.strip() for c in str(raw or "").split(",") if c.strip()}
+    return ",".join(key for key in HIDEABLE_WIDGETS if key in chosen)
+
+
+def hidden_widgets_set(raw: str | None) -> set[str]:
+    """Множина схованих віджетів для шаблону."""
+    return set(clean_hidden_widgets(raw).split(",")) - {""}

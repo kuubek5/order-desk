@@ -72,6 +72,7 @@ GET /vyrobitok
 GET /wrong
 MOUNT /static
 POST /account/appearance
+POST /account/header-widgets
 POST /account/initial
 POST /account/layout
 POST /account/load-widget

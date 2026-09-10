@@ -25,7 +25,8 @@
 #}
 {% macro lookgear(scope, host, pad, step, width=None, width_target='', pad_probe='', presets=[],
                   density='', mat_styles=[], mat_style='', pad_default=6,
-                  reset_event='', col_edit=false, title='Вигляд списку', load_shown=none) %}
+                  reset_event='', col_edit=false, title='Вигляд списку', load_shown=none,
+                  widgets_hidden=none) %}
 <div class="lookgear" data-look-gear data-look-scope="{{ scope }}"
      data-look-host="{{ host }}"
      data-pad="{{ pad }}" data-width="{{ width or 0 }}" data-step="{{ step or 2 }}"
@@ -143,6 +144,34 @@
                 {% for key, title in [('crm', 'CRM'), ('pc', 'ПК'), ('ram', 'ОЗП')] %}
                 <button type="button" class="loadtoggle" data-load-metric="{{ key }}"
                         aria-pressed="{{ 'true' if key in load_shown else 'false' }}">{{ title }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {# Віджети шапки: смуга верстатів і принтер Sisma. Вимкнений віджет не
+           малюється зовсім — лишається лише порожня обгортка з поллом, щоб
+           увімкнути назад без перезавантаження (queue.js смикає її одразу). #}
+        {% if widgets_hidden is not none %}
+        <div class="lookrow lookrow-full">
+            <span class="lookrow-name">Віджети в шапці</span>
+            <div class="loadtoggles" role="group" aria-label="Віджети в шапці черги">
+                {% for key, title in [('machines', 'Верстати'), ('sisma', 'Sisma')] %}
+                <button type="button" class="loadtoggle" data-header-widget="{{ key }}"
+                        aria-pressed="{{ 'false' if key in widgets_hidden else 'true' }}">{{ title }}</button>
+                {% endfor %}
+            </div>
+        </div>
+        {# Секції бокової панелі — той самий механізм і те саме поле на акаунті,
+           ключ `side-<секція>`. Сховано всі — ховається й панель, таблиця на
+           всю ширину. Порядок кнопок = порядок секцій за замовчуванням. #}
+        <div class="lookrow lookrow-full">
+            <span class="lookrow-name">Бокова панель</span>
+            <div class="loadtoggles" role="group" aria-label="Секції бокової панелі">
+                {% for key, title in [('side-mail', 'Пошта'), ('side-furnace', 'Пічки'),
+                                      ('side-machine', 'Верстати'), ('side-sync', 'Таблиця'),
+                                      ('side-handout', 'Видача')] %}
+                <button type="button" class="loadtoggle" data-header-widget="{{ key }}"
+                        aria-pressed="{{ 'false' if key in widgets_hidden else 'true' }}">{{ title }}</button>
                 {% endfor %}
             </div>
         </div>

@@ -75,7 +75,9 @@
 
 /* Перемикачі показників стрічки навантаження в шестерні. Стиль пресетів:
    тьмяні поза вибором, акцентні коли увімкнено. */
-.loadtoggles{display:flex;gap:6px}
+/* Перенос: рядок «Бокова панель» має п'ять кнопок, і в один ряд вони вилазили
+   за край шестерні — сторінка отримувала горизонтальну прокрутку (10.09.26). */
+.loadtoggles{display:flex;flex-wrap:wrap;gap:6px}
 .loadtoggle{font:inherit;font-size:var(--fs-1);padding:4px 12px;border-radius:999px;
   border:1px solid var(--line-2);background:var(--card);color:var(--ink-3);cursor:pointer;
   transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease,background var(--ui-speed) ease}
