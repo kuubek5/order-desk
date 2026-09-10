@@ -428,6 +428,20 @@
   .rail-settings .rail-nav-item.is-sub .rail-nav-icon { opacity: .7; }
   .rail-settings .rail-nav-item.is-sub.is-active { color: var(--accent-c); }
   body.rail-collapsed .rail-settings .rail-nav-item.is-sub { padding-left: 0; }
+  /* Згорнута рейка налаштувань: іконки мусять стояти на ОДНІЙ осі з логотипом.
+     Три речі зсували їх (виміряно 10.09.26 на 64px рейці, центр 32):
+     — `.rail-head.has-subs .rail-nav-item` лишав місце під каретку (30px
+       справа) і специфічніший за скидання нижче — пункти з вкладками (Мій
+       акаунт, Google Таблиця, Пошта) стояли на 15px лівіше за сусідів;
+     — смуга прокрутки .rail-settings (10px) з'їдала праву сторону, і вся
+       колонка іконок сідала на 5–6px ліворуч від логотипа; прокрутка
+       колесом лишається, ховаємо лише смугу;
+     — «‹ Меню» притиснуте до лівого краю (align-self), бо в розгорнутій
+       рейці воно стоїть над підписами. */
+  body.rail-collapsed .rail-head.has-subs .rail-nav-item { padding-right: 0; }
+  body.rail-collapsed .rail-settings { scrollbar-width: none; }
+  body.rail-collapsed .rail-settings::-webkit-scrollbar { display: none; }
+  body.rail-collapsed .rail-settings-back { align-self: center; }
 
   /* ---- Collapsed rail (icons only) ---- */
   body.rail-collapsed:has(.topbar-user) {
@@ -516,6 +530,11 @@ body.rail-collapsed .rail-kbd { display: none; }
 
   body.rail-collapsed .rail-foot {
     flex-direction: column;
+    /* Без переносу: у колонці з wrap ширину рядка задає найширший елемент —
+       номер версії (53px) при 31px вмісту, — і «Вийти» та замок центрувались
+       по ньому, тобто на 10px правіше за вісь рейки. В один рядок центр —
+       це центр рейки, а довша версія виступає рівно в обидва боки. */
+    flex-wrap: nowrap;
     gap: var(--space-2);
   }
 
