@@ -57,7 +57,7 @@
     </div>
 
     <div class="dsec">
-        <div class="dlabel">Коментар для CAM-оператора</div>
+        <div class="dlabel">Коментар для CAM-оператора{% if is_approval_pending_comment(order.cam_comment) %} <span class="approval-badge">на погодженні</span>{% endif %}</div>
         {% if order.cam_comment %}
         <div class="camtext{% if is_rush_comment(order.cam_comment) %} rush{% elif '!!' in order.cam_comment %} attn{% endif %}">{{ order.cam_comment }}</div>
         {% else %}

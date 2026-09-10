@@ -118,6 +118,15 @@
             на швидку
         </span>
         {% endif %}
+        {% if is_approval_pending_comment(order.cam_comment) %}
+        {# Технік ще погоджує роботу з лікарем. Той самий канал, що «на швидку»
+           (чіп біля ідентичності), бо коментар у своїй колонці обрізається.
+           Дописане в таблиці «погоджено» знімає плашку на наступному синку. #}
+        <span class="approval-badge" title="Робота на погодженні: {{ order.cam_comment }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10M7 21h10"/><path d="M8 3c0 5 8 5 8 9s-8 4-8 9" /><path d="M16 3c0 5-8 5-8 9s8 4 8 9"/><path d="M10 19h4l-2-2.5z" class="duo"/></svg>
+            на погодженні
+        </span>
+        {% endif %}
         {% if order.status == 'проблема' %}
         <span class="badge problem">проблема</span>
         {% elif order.status == 'переробка' and not _rework %}

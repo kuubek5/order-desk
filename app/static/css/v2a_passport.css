@@ -29,6 +29,8 @@ main.passport2{max-width:760px;margin:0 auto;padding:20px}
 
 .passport2 .dsec{margin:18px 0}
 .passport2 .dsec .dlabel{font-size:var(--fs-0);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:8px}
+/* Чіп у підписі розділу — той самий, що в рядку черги, без капсу підпису. */
+.passport2 .dsec .dlabel .approval-badge{text-transform:none;letter-spacing:normal}
 .passport2 .kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;font-size:var(--fs-2);color:var(--ink-2)}
 .passport2 .kv+.kv{border-top:1px solid var(--card-2)}
 .passport2 .kv b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:var(--fs-1)}

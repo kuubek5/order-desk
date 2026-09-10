@@ -396,6 +396,7 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
 .q2 td.order-id{flex-wrap:nowrap}
 .q2 td.order-id:has(.rework-badge),
 .q2 td.order-id:has(.rush-badge),
+.q2 td.order-id:has(.approval-badge),
 .q2 td.order-id:has(.badge.chg),
 .q2 td.order-id:has(.badge.problem),
 .q2 td.order-id:has(.badge.redo){flex-wrap:wrap}

@@ -5,6 +5,7 @@ No Request, no Response — everything here takes plain orders/dates and returns
 plain values, so the same rules are testable (and reusable) without HTTP.
 """
 
+import re
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
@@ -58,6 +59,40 @@ def is_rush_comment(text: str | None) -> bool:
         return False
     lowered = text.casefold()
     return any(stem in lowered for stem in RUSH_STEMS)
+
+
+# «На погодженні» — технік скинув роботу, але форму ще погоджує з лікарем.
+# Корінь «погодж» тут НЕ годиться, бо в реальних коментарях (база 10.09.26)
+# він несе ДВА протилежні значення:
+#   чекає  — «погодження Маньо», «На погоджені Дарда/Маньо», «погодження до завтра»;
+#   готово — «погоджено», «погоджен, швидка», «Погоджували платформу з лікарем».
+# Корінь позначив би «на погодженні» саме ті роботи, які вже можна фрезерувати, —
+# та сама інверсія сигналу, що колись була з «!!» замість «на швидку».
+# Тому порядок перевірок: пряме «не погоджено» → явне «погоджено» (дописане
+# поверх «погодження …», знімає плашку) → іменник «погодження» чи «на погодж…».
+# Іменник має подвійне «нн» (погодження/погодженні), дієприкметник — одне
+# (погоджено/погоджені), і саме це їх розрізняє; «на погоджені» з одруківкою
+# ловить окрема гілка «на …».
+_APPROVAL_NEGATED = re.compile(r"\bне\s*(?:по|уз)годж|\bне\s*согласов")
+_APPROVAL_DONE = re.compile(
+    r"\b(?:по|уз)годжен[оа]?\b|\bпогоди(?:ли|в|ла)\b|\bсогласован[оа]?\b"
+    r"|(?:по|уз)годженн\w*\s+(?:отриман|є\b)"
+)
+_APPROVAL_PENDING = re.compile(
+    r"(?:по|уз)годженн|\bна\s+(?:по|уз)годж|\bна\s+согласов|согласовани[еяию]"
+)
+
+
+def is_approval_pending_comment(text: str | None) -> bool:
+    """Чи пише технік, що робота ще на погодженні з лікарем."""
+    if not text:
+        return False
+    lowered = text.casefold()
+    if _APPROVAL_NEGATED.search(lowered):
+        return True
+    if _APPROVAL_DONE.search(lowered):
+        return False
+    return bool(_APPROVAL_PENDING.search(lowered))
 
 
 def queue_sort_key(order: Order) -> tuple:

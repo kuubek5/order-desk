@@ -209,6 +209,36 @@
   fill: currentColor;
   stroke: none;
 }
+/* «На погодженні» — технік ще погоджує форму з лікарем. Та сама геометрія,
+   що в .rush-badge; власний колір (--hold), бо це не терміновість, а
+   очікування на когось поза цехом. */
+.approval-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 1px 8px 1px 6px;
+  border-radius: var(--radius-chip, 999px);
+  font-size: var(--fs-0);
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--hold-ink);
+  background: rgba(var(--hold-rgb), 0.14);
+  border: 1px solid rgba(var(--hold-rgb), 0.38);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.approval-badge svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.approval-badge svg .duo { fill: currentColor; stroke: none; opacity: .5; }
 
 .rework-badge {
   display: inline-flex;
@@ -707,7 +737,7 @@
 
 /* Day-strip: paged 7-at-a-time list of the calendar days that actually
    have order data (Order.sheet_tab). Lives inside the "Період" rail-group,
-   right below the Сьогодні/Вчора/Завтра/Раніше items, as one cohesive
+   right below the Вчора/Сьогодні/Завтра/Раніше items, as one cohesive
    section rather than its own separately-labeled group. */
 .rail-period-dates {
   margin-top: var(--space-2);

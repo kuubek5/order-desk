@@ -59,6 +59,8 @@
   --ok-rgb: 168, 224, 138;
   --alarm-ink: #ffc4b6;
   --warn-ink: #ffd9a8;
+  --hold-rgb: 196, 161, 255;
+  --hold-ink: #e6d9ff;
 
   --focus-glow: inset 0 0 18px -12px rgba(255, 180, 84, 0.9);
   --focus-border: rgba(255, 180, 84, 0.45);
