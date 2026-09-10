@@ -51,6 +51,7 @@ GET /settings/changelog
 GET /settings/feedback
 GET /settings/materials
 GET /settings/materials/probe
+GET /settings/report.txt
 GET /settings/sheets/download-all
 GET /settings/sheets/download-month/{month}
 GET /settings/sheets/download/{filename}

@@ -751,8 +751,13 @@ def test_selfcheck_abandons_a_probe_that_exceeds_the_deadline(monkeypatch):
     point of SELFCHECK_STEP_DEADLINE_SECONDS (mirrors the mail-sync watchdog)."""
     import threading
 
+    from app.services import selfcheck as selfcheck_mod
+
     release = threading.Event()
-    monkeypatch.setattr(settings_connections_mod, "SELFCHECK_STEP_DEADLINE_SECONDS", 0.2)
+    # Проби переїхали в `app/services/selfcheck.py` (10.09.26) — підміна мусить
+    # влучати ТУДИ. Залишена на роутері, вона мовчки стала б no-op, і тест
+    # лишався б зеленим, нічого не перевіряючи (CLAUDE.md §14).
+    monkeypatch.setattr(selfcheck_mod, "STEP_DEADLINE_SECONDS", 0.2)
 
     def _hang(*args, **kwargs):
         release.wait(10)
@@ -807,13 +812,13 @@ def test_selfcheck_export_row_actually_probes_writing(tmp_path, monkeypatch):
             return {"state": "warning", "message": "Папку знайдено, але немає прав на запис"}
         return {"state": "success", "message": "Папку знайдено"}
 
+    from app.services import selfcheck as selfcheck_mod
+
     monkeypatch.setattr(overview_mod, "check_path_status", spy)
-    monkeypatch.setattr(
-        settings_connections_mod, "get_export_folder_path", lambda _db: str(folder)
-    )
-    monkeypatch.setattr(
-        settings_connections_mod, "get_technician_files_path", lambda _db: str(folder)
-    )
+    # Ті самі підміни, що були на роутері, — але за новою адресою: конфіг для
+    # проб читає сервіс (10.09.26).
+    monkeypatch.setattr(selfcheck_mod, "get_export_folder_path", lambda _db: str(folder))
+    monkeypatch.setattr(selfcheck_mod, "get_technician_files_path", lambda _db: str(folder))
 
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:

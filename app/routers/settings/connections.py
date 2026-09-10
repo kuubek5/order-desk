@@ -9,35 +9,35 @@ import json
 import logging
 import socket
 import ssl
-from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from imap_tools import MailBox
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 from app.__version__ import VERSION
-from app.config import DB_PATH
-from app.db import SessionLocal
 from app.google_oauth import OAuthFlowError, parse_client_config, run_authorization_flow
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
-from app.monthly_backup import list_snapshots
 from app.routers.deps import get_current_user, get_db, is_loopback_request, templates
+from app.services.support_report import (
+    build_report as build_support_report,
+    report_filename as support_report_filename,
+)
+from app.services.selfcheck import (
+    build_steps as build_selfcheck_steps,
+    run_steps as run_selfcheck_steps,
+)
 from app.services.undo import log_action
 from app.services.config_state import (
-    imap_configured,
     sheets_access_error_message,
     sheets_configured,
 )
 from app.settings_store import (
-    get_export_folder_path,
     get_google_oauth_client_json,
     get_imap_login,
     get_imap_password,
-    get_technician_files_path,
     set_setting,
 )
 from app.sheets import measure_sheet_weight, open_spreadsheet, reset_sheets_cache
-from app.update_check import get_known_update
 from app.services.settings_nav import can_edit
 from .common import require_settings_admin, require_settings_edit
 
@@ -291,7 +291,6 @@ def disconnect_google_oauth(request: Request, db: Session = Depends(get_db)):
 # an IMAP/Sheets call indefinitely, and here that would stall a threadpool
 # worker with the UI showing a spinner forever. Past the deadline the probe is
 # abandoned (its thread is left to die on its own) and reported as a failure.
-SELFCHECK_STEP_DEADLINE_SECONDS = 20
 
 
 @router.post("/settings/sheet-weight", response_class=HTMLResponse)
@@ -346,25 +345,17 @@ def settings_sheet_weight(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/settings/selfcheck")
 def settings_selfcheck(request: Request, db: Session = Depends(get_db)):
-    """"Стан системи" self-check — streams NDJSON, one line per probe, as each
-    one finishes: {key, name, ok, warn, detail, ms}, then a final
-    {done, passed, total, version}.
+    """"Стан системи" self-check — стрім NDJSON: маніфест кроків, далі рядок на
+    кожну пробу {key, name, ok, warn, detail, ms}, наприкінці {done, passed,
+    total, version}.
 
-    Streaming rather than one batched JSON so the UI's progression is real: the
-    row lights up when its probe actually starts and settles when it actually
-    returns. Reuses the exact probes behind the individual «Перевірити» buttons,
-    so green here means green there. Nothing is mutated and no secret ever
-    leaves — only задано / не задано and the same classified messages those
-    buttons show. Admin + loopback only, like the other settings mutations.
-
-    Every config value is read from the DB up front: the generator body runs
-    after the request's session would otherwise be torn down, so it must not
-    touch `db`.
+    Стрім, а не один пакет: рядок засвічується тоді, коли проба справді
+    почалась, і гасне, коли справді повернулась. Самі проби живуть у
+    `app/services/selfcheck.py` — той самий набір використовує «Звіт для
+    розробника», тож зелене тут і зелене там не можуть розійтись. Нічого не
+    змінюється, жоден секрет не виходить. Лише адмін і лише з цього ПК.
     """
     import json as _json
-    import shutil
-    import time as _time
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FTimeout
 
     # Локальний імпорт: `overview` і `connections` збирає в один роутер
     # `settings/__init__.py`, і імпорт на рівні модуля замкнув би коло.
@@ -372,137 +363,73 @@ def settings_selfcheck(request: Request, db: Session = Depends(get_db)):
 
     require_settings_admin(request, db)
 
-    sheets_ready = sheets_configured(db)
-    imap_ready = imap_configured(db)
-    imap_login = get_imap_login(db)
-    imap_password = get_imap_password(db)
-    export_path = get_export_folder_path(db)
-    technician_path = get_technician_files_path(db)
-
-    def _sheets():
-        if not sheets_ready:
-            return False, False, "не налаштовано — ID або JSON-ключ порожні"
-        # open_spreadsheet() without a session falls back to the *env* sheet id,
-        # not the one saved through this screen — so it needs a real session.
-        # The request's own is gone by the time the generator body runs, hence a
-        # short-lived session this probe owns and closes (same shape as
-        # run_sync_owned_session, minus the watchdog-zombie case).
-        probe_db = SessionLocal()
-        try:
-            spreadsheet = open_spreadsheet(db=probe_db)
-            n = len(spreadsheet.worksheets())
-        finally:
-            probe_db.close()
-        return True, False, f"доступ підтверджено · {n} вкладок"
-
-    def _imap():
-        if not imap_ready:
-            return False, False, "не налаштовано — логін або пароль порожні"
-        res = _probe_imap_login(imap_login, imap_password)
-        return res["state"] == "success", False, res["message"]
-
-    def _folder(path_str, *, needs_write: bool):
-        """Та сама проба, що й за кнопкою «Перевірити» біля поля шляху.
-
-        Тут була власна коротка перевірка (`exists` + `is_dir`), і рядок
-        «Папка export доступна на запис» ставав зеленим, жодного разу нічого
-        туди не записавши. Права на мережеву шару видно лише спробою: читання
-        може працювати, а збереження — ні, і дізнатись про це в момент
-        прийняття листа — найгірший варіант.
-
-        Для теки робіт техніків запис не потрібен — звідти лише читають, тож
-        пробу не робимо (ревʼю 07.09.26, C.9)."""
-        p = (path_str or "").strip()
-        if not p:
-            return False, False, "шлях не задано"
-        result = check_path_status(p, write_probe=needs_write)
-        state, message = result["state"], result["message"]
-        if state == "success":
-            return True, False, message
-        if state == "warning":
-            # Тека є, але писати нікуди. Для export це зламана функція, а не
-            # попередження: саме туди їдуть вкладення прийнятих листів.
-            return not needs_write, True, message
-        return False, False, message
-
-    def _disk():
-        usage = shutil.disk_usage(Path(DB_PATH).parent)
-        free_gb = usage.free / (1024 ** 3)
-        if free_gb < 2:
-            return False, False, f"вільно лише {free_gb:.1f} ГБ (потрібно ≥2 ГБ)"
-        return True, free_gb < 10, f"вільно {free_gb:.1f} ГБ"
-
-    def _backup():
-        snaps = list_snapshots(DB_PATH)
-        if not snaps:
-            return True, True, "жодної автоматичної копії ще немає"
-        newest = max(s.stat().st_mtime for s in snaps)
-        age_days = (_time.time() - newest) / 86400
-        return True, age_days > 40, f"остання копія {age_days:.0f} дн. тому"
-
-    def _update():
-        rel = get_known_update()
-        if rel:
-            return True, True, f"доступне оновлення v{rel.version}"
-        return True, False, "встановлена версія найновіша"
-
-    steps = [
-        ("sheets", "Доступ до Google Таблиці", _sheets),
-        ("imap", "IMAP-зʼєднання зі скринькою", _imap),
-        ("export", "Папка export доступна на запис", lambda: _folder(export_path, needs_write=True)),
-        ("technician", "Папка робіт техніків", lambda: _folder(technician_path, needs_write=False)),
-        ("disk", "Місце на диску (потрібно ≥2 ГБ)", _disk),
-        ("backup", "Резервна копія свіжа", _backup),
-        ("update", "Наявність оновлення", _update),
-    ]
+    steps = build_selfcheck_steps(
+        db, check_path=check_path_status, probe_imap=_probe_imap_login
+    )
 
     def _stream():
         passed = 0
-        # Manifest first: the UI renders every row (dimmed, named) up front, so
-        # the operator sees what is about to be checked instead of rows
-        # appearing anonymously one at a time.
+        # Маніфест першим: UI малює всі рядки (притемненими, з назвами) одразу,
+        # інакше вони зʼявлялись би анонімно по одному.
         yield _json.dumps(
-            {"steps": [{"key": k, "name": n} for k, n, _ in steps]}, ensure_ascii=False
+            {"steps": [{"key": s.key, "name": s.name} for s in steps]}, ensure_ascii=False
         ) + "\n"
-        # daemon threads: an abandoned probe must never hold up shutdown
-        pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="selfcheck")
-        try:
-            for key, name, fn in steps:
-                t0 = _time.perf_counter()
-                try:
-                    ok, warn, detail = pool.submit(fn).result(
-                        timeout=SELFCHECK_STEP_DEADLINE_SECONDS
-                    )
-                except _FTimeout:
-                    logger.warning("selfcheck step %s exceeded deadline", key)
-                    ok, warn, detail = False, False, (
-                        f"немає відповіді понад {SELFCHECK_STEP_DEADLINE_SECONDS} с — перевірку скасовано"
-                    )
-                    # The wedged worker owns this pool's only thread; give the
-                    # remaining steps a fresh one instead of queueing behind it.
-                    pool.shutdown(wait=False)
-                    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="selfcheck")
-                except Exception:
-                    logger.warning("selfcheck step %s failed", key, exc_info=True)
-                    ok, warn, detail = False, False, "перевірка не виконалась"
-                ms = int((_time.perf_counter() - t0) * 1000)
-                if ok:
-                    passed += 1
-                yield _json.dumps(
-                    {"key": key, "name": name, "ok": ok, "warn": warn, "detail": detail, "ms": ms},
-                    ensure_ascii=False,
-                ) + "\n"
+        for res in run_selfcheck_steps(steps):
+            if res.ok:
+                passed += 1
             yield _json.dumps(
-                {"done": True, "passed": passed, "total": len(steps), "version": VERSION},
+                {
+                    "key": res.key, "name": res.name, "ok": res.ok,
+                    "warn": res.warn, "detail": res.detail, "ms": res.ms,
+                },
                 ensure_ascii=False,
             ) + "\n"
-        finally:
-            pool.shutdown(wait=False)
+        yield _json.dumps(
+            {"done": True, "passed": passed, "total": len(steps), "version": VERSION},
+            ensure_ascii=False,
+        ) + "\n"
 
     return StreamingResponse(
         _stream(),
         media_type="application/x-ndjson",
-        # Chunks must reach the browser as they are produced, not buffered into
-        # one response — otherwise the streaming is pointless.
+        # Шматки мусять доїжджати в браузер у міру появи, а не збиратись в одну
+        # відповідь — інакше стрім не має сенсу.
         headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/settings/report.txt")
+def settings_support_report(request: Request, db: Session = Depends(get_db)):
+    """«Звіт для розробника» одним текстовим файлом.
+
+    Навіщо роут, а не кнопка «скопіювати». Звіт довгий (налаштування, база,
+    два журнали, хвіст лога), і буфер обміну для нього — не той посуд: у
+    месенджер його вставляють ФАЙЛОМ, а не стіною тексту. Тому `Content-
+    Disposition: attachment` і людська назва з датою.
+
+    Самоперевірка виконується ТУТ і йде в звіт: без неї найчастіші поломки
+    (немає доступу до Google, мовчить пошта, недосяжна тека export) лишились
+    би без відповіді, і тиждень пішов би на уточнення. Ті самі проби, що за
+    кнопкою «Запустити самоперевірку» — код один (`app/services/selfcheck.py`).
+
+    Тільки читає. Лише адмін і лише з цього ПК — як решта дій у налаштуваннях.
+    """
+    from .overview import check_path_status
+
+    require_settings_admin(request, db)
+
+    steps = build_selfcheck_steps(
+        db, check_path=check_path_status, probe_imap=_probe_imap_login
+    )
+    results = list(run_selfcheck_steps(steps))
+    text = build_support_report(db, selfcheck_results=results)
+    name = support_report_filename()
+    logger.info("Зібрано звіт для розробника (%d проб)", len(results))
+    return Response(
+        content=text,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+        },
     )

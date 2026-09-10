@@ -857,3 +857,9 @@ main.setv2.scon {
 .blanks-table tr.is-mismatch td { background: rgba(var(--warn-rgb), .10); }
 .blanks-table tr.is-mismatch td:first-child { box-shadow: inset 2px 0 0 var(--warn); }
 .blanks-table .dim { color: var(--ink-3); }
+
+/* Блок «Звіт для розробника» на екрані «Стан системи». Стоїть під
+   самоперевіркою і виглядає так само — це сусідні інструменти одного роду,
+   і різне оформлення читалось би як різна важливість. */
+.scon-report{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.scon-report a.settings-submit{text-decoration:none;display:inline-flex;align-items:center}
