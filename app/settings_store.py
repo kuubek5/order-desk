@@ -240,6 +240,13 @@ PREFERENCE_KEYS = {
     "telegram_bot_token",
     "telegram_chat_id",
     "feedback_telegram_enabled",
+    # Двосторонній бот (app/services/telegram_bot.py): той самий токен і чат.
+    # telegram_bot_enabled: "1"/"" — меню й сповіщення про пічки/Sisma.
+    # telegram_bot_offset: не поле форми, а штамп long polling — id наступного
+    # непрочитаного оновлення. У базі, щоб після рестарту старі натискання
+    # кнопок не виконались удруге.
+    "telegram_bot_enabled",
+    "telegram_bot_offset",
     # ПІН розділу «Виробіток»: один код на розділ, тримається до кінця сесії.
     # Порожньо/не задано = розділ відкритий будь-якому оператору, що ввійшов.
     "vyrobitok_pin",

@@ -63,6 +63,8 @@ from app.models import (
     ShiftNoteImage,
     StatusEvent,
     SyncLog,
+    TelegramOutbox,
+    TelegramWatch,
     User,
     VyrobitokCell,
     VyrobitokDay,
@@ -131,6 +133,12 @@ _TABLE_MODELS: list[Any] = [
     VyrobitokMonth,
     VyrobitokCell,
     VyrobitokDay,
+    # Telegram-бот. Черга сповіщень — журнал доставки (що й коли пішло Ромі,
+    # що не дійшло). Пам'ять переходів після відновлення безпечна: `seen_at`
+    # старий, тож перший кадр на новому ПК стає тихою точкою відліку, а не
+    # «пічка закрилась»; невідправлене давно прострочене й не піде.
+    TelegramOutbox,
+    TelegramWatch,
     # Роботи й усе, що на них посилається.
     Order,
     EmailMessage,

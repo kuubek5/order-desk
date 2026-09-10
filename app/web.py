@@ -505,30 +505,24 @@ def _sheet_backup_worker(stop_event: Event) -> None:
         stop_event.wait(hours * 3600)
 
 
-# ── Ретрай Telegram-пуша зворотного зв'язку ─────────────────────────────────
-# Звернення завжди в базі; пуш — окремий крок. Якщо мережа лягла на момент
-# створення (у цеху TLS-проксі рве зовнішні з'єднання), тут дошлемо. Дешевий
-# COUNT + вихід, коли слати нема чого або пуш вимкнено.
-FEEDBACK_RETRY_INITIAL_DELAY_SECONDS = 45.0
-FEEDBACK_RETRY_INTERVAL_SECONDS = 120.0
+# ── Telegram: бот VARTAAIR ──────────────────────────────────────────────────
+# Два потоки, логіка обох — у app/services/telegram_bot.py:
+#   • слухач — long polling меню (лише коли бот увімкнено);
+#   • відправник — ЄДИНИЙ, хто шле в Telegram: сповіщення про пічки/Sisma з
+#     черги TelegramOutbox і ретрай звернень зворотного зв'язку (раніше в
+#     них був окремий воркер; тепер відправник один, черги — кожна своя).
 
 
-def _feedback_retry_tick() -> None:
-    from app.services.feedback import flush_pending_pushes
+def _telegram_inbound_worker(stop_event: Event) -> None:
+    from app.services.telegram_bot import inbound_worker
 
-    with SessionLocal() as db:
-        try:
-            flush_pending_pushes(db)
-        except Exception:
-            logger.exception("feedback push retry tick failed")
+    inbound_worker(stop_event)
 
 
-def _feedback_push_retry_worker(stop_event: Event) -> None:
-    if stop_event.wait(FEEDBACK_RETRY_INITIAL_DELAY_SECONDS):
-        return
-    while not stop_event.is_set():
-        _feedback_retry_tick()
-        stop_event.wait(FEEDBACK_RETRY_INTERVAL_SECONDS)
+def _telegram_outbound_worker(stop_event: Event) -> None:
+    from app.services.telegram_bot import outbound_worker
+
+    outbound_worker(stop_event)
 
 
 # ── Печі спікання ───────────────────────────────────────────────────────────
@@ -879,7 +873,8 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("order-desk-shift-images-prune", _shift_images_prune_worker),
         _BackgroundWorker("order-desk-furnace", _furnace_worker),
         _BackgroundWorker("order-desk-machines", _machine_worker),
-        _BackgroundWorker("kuubmill-feedback-retry", _feedback_push_retry_worker),
+        _BackgroundWorker("kuubmill-telegram-out", _telegram_outbound_worker),
+        _BackgroundWorker("kuubmill-telegram-in", _telegram_inbound_worker),
         _BackgroundWorker("kuubmill-system-load", _system_load_worker),
         _BackgroundWorker("kuubmill-cam-blanks", _blanks_worker),
         _BackgroundWorker("kuubmill-vyrobitok-freeze", _vyrobitok_freeze_worker),

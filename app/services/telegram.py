@@ -14,7 +14,9 @@ legacy renegotiation, і звичайна сесія requests його рве �
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -66,8 +68,14 @@ def _new_session():
     return new_legacy_session()
 
 
+# Префікс кожного повідомлення KuubMill. У тому ж приватному чаті VARTAAIR шле
+# APK-збірки іншого проєкту — без помітної мітки повідомлення цеху губились би
+# між ними.
+KMILL_PREFIX = "🏭 KMill"
+
+
 def _build_caption(feedback: Feedback) -> str:
-    head = _KIND_LABEL.get(feedback.kind, feedback.kind)
+    head = f"{KMILL_PREFIX} · " + _KIND_LABEL.get(feedback.kind, feedback.kind)
     if feedback.severity:
         head += f" · {_SEVERITY_LABEL.get(feedback.severity, feedback.severity)}"
     lines = [head, ""]
@@ -184,6 +192,38 @@ def _check(resp) -> tuple[bool, str | None]:
     return False, f"HTTP {resp.status_code} {detail}".strip()
 
 
+@dataclass(frozen=True)
+class ApiResult:
+    """Відповідь Bot API одним об'єктом. `error` уже без токена."""
+
+    ok: bool
+    status: int | None = None
+    result: Any = None
+    error: str | None = None
+
+
+def api_call(
+    session, token: str, method: str, payload: dict | None = None, *, timeout=_TIMEOUT
+) -> ApiResult:
+    """Будь-який метод Bot API з JSON-тілом (потрібне для reply_markup).
+
+    Не піднімає винятків: мережа й сміття у відповіді згортаються в `error`,
+    і всі тексти помилок проходять крізь `_net_error` — токен у лог не йде."""
+    url = _API.format(token=token, method=method)
+    try:
+        resp = session.post(url, json=payload or {}, timeout=timeout)
+    except Exception as exc:  # noqa: BLE001
+        return ApiResult(False, None, None, _net_error(exc, token))
+    try:
+        body = resp.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    if resp.status_code == 200 and body.get("ok"):
+        return ApiResult(True, 200, body.get("result"), None)
+    detail = str(body.get("description", "") or "").replace(token, "***")
+    return ApiResult(False, resp.status_code, None, f"HTTP {resp.status_code} {detail}".strip())
+
+
 def discover_chat_id(db: Session) -> tuple[str | None, str | None]:
     """Знайти chat_id останнього приватного чату, що написав боту (getUpdates).
 
@@ -193,6 +233,16 @@ def discover_chat_id(db: Session) -> tuple[str | None, str | None]:
     token = get_bot_token(db)
     if not token:
         return None, "спершу збережіть токен бота"
+    # Слухач бота вже тримає getUpdates: власний запит звідси або отримав би
+    # 409, або не побачив нічого (оновлення підтвердив слухач). Він пам'ятає
+    # останній приватний чат — беремо його.
+    from app.services import telegram_bot
+
+    if telegram_bot.listener_active():
+        chat_id = telegram_bot.last_private_chat()
+        if chat_id:
+            return chat_id, None
+        return None, "бот слухає, але вам ще не писали — напишіть боту /start і спробуйте ще раз"
     url = _API.format(token=token, method="getUpdates")
     try:
         session = _new_session()
@@ -220,6 +270,6 @@ def discover_chat_id(db: Session) -> tuple[str | None, str | None]:
         message = update.get("message") or update.get("edited_message") or {}
         chat = message.get("chat") or {}
         chat_id = chat.get("id")
-        if chat_id is not None:
+        if chat_id is not None and chat.get("type", "private") == "private":
             return str(chat_id), None
     return None, "не бачу повідомлень боту — напишіть боту /start і спробуйте ще раз"

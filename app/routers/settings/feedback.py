@@ -22,6 +22,8 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
     if isinstance(user, RedirectResponse):
         return user
 
+    from app.services import telegram_bot
+
     flash = request.session.pop("feedback_settings_flash", None)
     return templates.TemplateResponse(
         request,
@@ -33,6 +35,9 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
             "token_saved": bool((get_setting(db, "telegram_bot_token") or "").strip()),
             "chat_id": get_setting(db, "telegram_chat_id") or "",
             "push_enabled": (get_setting(db, "feedback_telegram_enabled") or "") == "1",
+            "bot_enabled": (get_setting(db, "telegram_bot_enabled") or "") == "1",
+            "bot_status": telegram_bot.status_snapshot(),
+            "bot_outbox": telegram_bot.outbox_summary(db),
             "flash": flash,
         },
     )
@@ -45,12 +50,14 @@ async def save_feedback_settings(request: Request, db: Session = Depends(get_db)
     token = (form.get("telegram_bot_token") or "").strip()
     chat_id = (form.get("telegram_chat_id") or "").strip()
     enabled = "1" if form.get("feedback_telegram_enabled") else ""
+    bot_enabled = "1" if form.get("telegram_bot_enabled") else ""
 
     # Порожній токен = не міняти (він рендериться порожнім навмисно, як пароль).
     if token:
         set_setting(db, "telegram_bot_token", token)
     set_setting(db, "telegram_chat_id", chat_id)
     set_setting(db, "feedback_telegram_enabled", enabled)
+    set_setting(db, "telegram_bot_enabled", bot_enabled)
     db.commit()
 
     request.session["feedback_settings_flash"] = {
@@ -86,9 +93,13 @@ def bind_feedback_chat(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/settings/feedback/test")
 def test_feedback_push(request: Request, db: Session = Depends(get_db)):
-    """Надіслати тестове повідомлення в Telegram — перевірити токен і chat_id."""
+    """Надіслати тестове повідомлення в Telegram — перевірити токен і chat_id.
+
+    Коли бот увімкнено, тестом іде саме головне меню з кнопками: це і
+    перевірка зв'язку, і перша точка входу — далі в чаті лише тиснути."""
     require_settings_admin(request, db)
-    from app.services.telegram import get_bot_token, get_chat_id, _new_session, _send_message
+    from app.services import telegram_bot
+    from app.services.telegram import KMILL_PREFIX, api_call, get_bot_token, get_chat_id, _new_session
 
     token = get_bot_token(db)
     chat_id = get_chat_id(db)
@@ -99,17 +110,25 @@ def test_feedback_push(request: Request, db: Session = Depends(get_db)):
         }
         return RedirectResponse("/settings/feedback", status_code=303)
 
+    if telegram_bot.bot_enabled(db):
+        payload = {
+            "chat_id": chat_id,
+            "text": telegram_bot.render(db, "home"),
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+            "reply_markup": telegram_bot.keyboard("home"),
+        }
+    else:
+        payload = {"chat_id": chat_id, "text": f"{KMILL_PREFIX}: тестове повідомлення ✓"}
     try:
         session = _new_session()
         try:
-            ok, err = _send_message(
-                session, token, chat_id,
-                "KuubMill: тестове повідомлення зворотного зв'язку ✓",
-            )
+            result = api_call(session, token, "sendMessage", payload)
+            ok, err = result.ok, result.error
         finally:
             session.close()
     except Exception as exc:  # noqa: BLE001
-        ok, err = False, str(exc)
+        ok, err = False, str(exc).replace(token, "***")
 
     request.session["feedback_settings_flash"] = {
         "kind": "success" if ok else "error",

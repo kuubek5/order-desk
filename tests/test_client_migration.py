@@ -111,6 +111,7 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
             "machine_readings",
             "cam_blanks",
             "machine_link_events",
+            "telegram_outbox", "telegram_watch",
         }
         assert tables_before - tables_after == set()
     finally:

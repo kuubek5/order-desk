@@ -1284,3 +1284,70 @@ class VyrobitokDay(Base):
     slm_frozen_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True
     )
+
+
+class TelegramOutbox(Base):
+    """Одне сповіщення бота, яке мусить дійти в Telegram.
+
+    База — правда, Telegram — best-effort: подія (пічка закрилась, Sisma
+    закінчила друк) спершу стає рядком тут, а фоновий відправник доносить його
+    з ретраєм. Збій мережі в момент події не губить повідомлення мовчки — той
+    самий принцип, що з Sum3D, який не дійшов у таблицю (10.09.26).
+
+    `dedup_key` унікальний: рестарт застосунку посеред переходу не шле
+    «закрилась» удруге, бо другий рядок із тим самим ключем просто не
+    вставиться. Звернення зворотного зв'язку сюди НЕ пишуться — у них свій
+    рядок `Feedback` зі скріншотами, і він уже є такою чергою; відправник
+    лише один.
+
+    Час локальний і без серверного дефолту — як у показаннях обладнання.
+    """
+
+    __tablename__ = "telegram_outbox"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dedup_key: Mapped[str] = mapped_column(String(200), unique=True)
+    kind: Mapped[str] = mapped_column(String(40), default="")
+    text: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    # Після цього моменту повідомлення вже не новина («пічка закрилась» через
+    # шість годин — шум), і відправник його списує, а не шле.
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True, index=True
+    )
+    attempts: Mapped[int] = mapped_column(default=0)
+    next_attempt_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    # Причина останньої невдачі — без токена (telegram._net_error). Або
+    # «прострочено», коли рядок списано за expires_at.
+    last_error: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    gave_up_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+
+
+class TelegramWatch(Base):
+    """Останній ПІДТВЕРДЖЕНИЙ стан пристрою, за яким бот стежить.
+
+    Сповіщення шлються на ПЕРЕХІД, а не на стан, і перехід треба пам'ятати
+    між рестартами: інакше кожен запуск застосунку бачив би «пічка працює» як
+    новину. Тут лежить, що бот бачив востаннє і коли, — перше спостереження
+    після старту звіряється з цим рядком, а не з порожньою пам'яттю.
+
+    `seen_at` — коли стан бачили востаннє. Якщо між ним і новим кадром
+    минуло забагато (застосунок стояв, піч мовчала), перехід не сповіщається:
+    ми не знаємо, коли він стався, а «закрилась» про цикл, що йде вже
+    годину, — хибне повідомлення.
+    """
+
+    __tablename__ = "telegram_watch"
+
+    # "furnace:<target.key>" або "sisma:<target.key>".
+    key: Mapped[str] = mapped_column(String(120), primary_key=True)
+    state: Mapped[str] = mapped_column(String(20), default="")
+    since_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))

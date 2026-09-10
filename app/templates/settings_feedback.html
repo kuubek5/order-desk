@@ -49,6 +49,10 @@
                                 <input type="checkbox" name="feedback_telegram_enabled" value="1" {{ 'checked' if push_enabled else '' }}>
                                 Слати звернення в Telegram
                             </label>
+                            <label class="settings-backup-confirm stand-toggle">
+                                <input type="checkbox" name="telegram_bot_enabled" value="1" {{ 'checked' if bot_enabled else '' }}>
+                                Бот: меню стану цеху й сповіщення про пічки та Sisma
+                            </label>
 
                             <div class="settings-field">
                                 <label for="tg-token">Токен бота VARTAAIR{% if token_saved %} <span class="text-muted">— збережено</span>{% endif %}</label>
@@ -89,6 +93,42 @@
                         <form method="post" action="/settings/feedback/test">
                             <button type="submit" class="settings-secondary-button">Надіслати тест</button>
                         </form>
+                        {% if bot_enabled %}<p class="settings-help">З увімкненим ботом тестом приходить саме меню з кнопками.</p>{% endif %}
+                    </div>
+
+                    {# Стан бота. Пігулка зеленіє лише від ПІДТВЕРДЖЕНОГО сигналу —
+                       останнього вдалого getUpdates цього запуску (правило плит,
+                       CLAUDE.md §14), а не від того, що вимикач стоїть. #}
+                    <div class="stand-cell w6">
+                        <h3>Бот: меню й сповіщення</h3>
+                        {% set st = bot_status %}
+                        <p>
+                        {% if not bot_enabled %}
+                            <span class="stand-state stand-state-none">вимкнено</span>
+                        {% elif st.webhook_host %}
+                            <span class="stand-state stand-state-warn">на боті стоїть вебхук</span>
+                        {% elif st.conflict %}
+                            <span class="stand-state stand-state-warn">бота слухає інша програма</span>
+                        {% elif st.listening %}
+                            <span class="stand-state stand-state-ok">слухає з {{ st.since.strftime('%H:%M') if st.since else '—' }}</span>
+                        {% elif st.error %}
+                            <span class="stand-state stand-state-warn">немає зв'язку з Telegram</span>
+                        {% else %}
+                            <span class="stand-state stand-state-none">запускається…</span>
+                        {% endif %}
+                        </p>
+                        {% if bot_enabled %}
+                            {% if st.webhook_host %}
+                            <p class="stand-note">На боті стоїть вебхук ({{ st.webhook_host }}), тож Telegram віддає натискання туди, а не KuubMill. Чужий вебхук KuubMill не знімає сам — це зламало б той сервіс. Зняти може власник бота (метод deleteWebhook); перевіряємо знову раз на 5 хв.</p>
+                            {% elif st.conflict %}
+                            <p class="stand-note">Telegram відповідає 409: бота вже опитує інший процес. Найчастіше це друга копія KuubMill з увімкненим ботом (dev і робоча одночасно) — лишіть бота ввімкненим лише в одній.</p>
+                            {% elif st.error %}
+                            <p class="stand-note">Остання помилка: {{ st.error }}</p>
+                            {% endif %}
+                            {% if st.last_ok_at %}<p class="stand-note">Останнє опитування Telegram: <span class="mono">{{ st.last_ok_at.strftime('%H:%M:%S') }}</span>{% if st.last_update_at %} · останній запит із чату: <span class="mono">{{ st.last_update_at.strftime('%H:%M') }}</span>{% endif %}</p>{% endif %}
+                            <p class="stand-note">Черга сповіщень: {{ bot_outbox.pending }} чекає{% if bot_outbox.last_sent_at %} · останнє надіслано <span class="mono">{{ bot_outbox.last_sent_at.strftime('%d.%m %H:%M') }}</span>{% endif %}{% if bot_outbox.last_error %} · остання невдача: {{ bot_outbox.last_error }}{% endif %}</p>
+                        {% endif %}
+                        <p class="settings-help">Напишіть боту будь-що — у відповідь прийде меню: пічки, роботи сьогодні, верстати, Sisma. Кнопка переписує те саме повідомлення, чат не засипає. Сповіщення бот шле сам: пічка закрилась, цикл завершено — можна відкривати, Sisma закінчила друк. Відповідає лише на прив'язаний чат; решті — мовчить. Бот живе, поки працює KuubMill на цьому ПК.</p>
                     </div>
                 </div>
             </div>
