@@ -44,6 +44,14 @@ begin
   Result := '';
 end;
 
+[Dirs]
+; Тека логу. Агент навмисно працює БЕЗ прав адміністратора (задача
+; LeastPrivilege), а в Program Files звичайний процес писати не може — тому лог
+; мовчав днями (150i, 05.09–10.09.26). Тут звичайні користувачі можуть писати;
+; права на саму теку програми НЕ розширюємо (exe звідти запускається й з правами
+; адміністратора). Агент шукає лог тут першим (main.go, logDirs).
+Name: "{commonappdata}\KMill Agent"; Permissions: users-modify
+
 [Files]
 Source: "kmill-agent.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "config.example.json"; DestDir: "{app}"; Flags: ignoreversion

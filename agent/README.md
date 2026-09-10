@@ -54,8 +54,10 @@ go mod tidy
 GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -H=windowsgui -X main.Version=0.1.0" -o kmill-agent.exe .
 ```
 
-`-H=windowsgui` ховає консоль (агент працює тихо; логи — у `kmill-agent.log`
-поряд з exe). Один статичний .exe, без cgo → крос-компілюється з будь-якої ОС.
+`-H=windowsgui` ховає консоль (агент працює тихо; лог — `kmill-agent.log` у
+`C:\ProgramData\KMill Agent\`, а якщо туди не можна — поряд з exe або в
+`%LOCALAPPDATA%\KMill Agent\`; справжній шлях агент пише першим рядком після
+старту). Один статичний .exe, без cgo → крос-компілюється з будь-якої ОС.
 
 ## Встановлення на верстат (один крок)
 

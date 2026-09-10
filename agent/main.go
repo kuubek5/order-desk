@@ -181,6 +181,65 @@ func exePath() string {
 	return p
 }
 
+// Куди насправді пишеться лог і що не вдалось по дорозі. Рядок «лог: …» іде
+// в сам лог уже ПІСЛЯ перевірки на дубль (runServe), щоб сторожова задача, яка
+// щохвилини піднімає зайвий екземпляр, не засмічувала його стартами.
+var (
+	logPathUsed     string
+	logOpenFailures []string
+)
+
+// logDirs — теки для логу в порядку спроби.
+//
+// Досі лог жив лише поруч з exe, тобто в Program Files. Але агент навмисно
+// працює БЕЗ прав адміністратора (задача автозапуску — LeastPrivilege), а
+// звичайний процес у Program Files писати не може, і помилку відкриття ніхто не
+// бачив. Лог писався лише після запуску інсталятором з правами — на 150i
+// останній рядок був 05.09.26 01:46 (падіння), далі п'ять днів тиші при живому
+// агенті, і ранкові обриви 10.09 не лишили жодного сліду.
+//
+//  1. %ProgramData%\KMill Agent — інсталятор дає звичайним користувачам право
+//     писати саме сюди ([Dirs] у installer.iss); один лог для всіх запусків.
+//  2. Тека exe — там, де лог був досі (елевейтед-запуск, портативна копія).
+//  3. %LOCALAPPDATA%\KMill Agent — останній рубіж: своя тека користувача
+//     доступна завжди, навіть якщо агента поставили без інсталятора.
+//
+// Права на Program Files навмисно НЕ розширюємо: exe звідти запускається й з
+// правами адміністратора, і відкрити туди запис означало б дати звичайному
+// користувачеві підмінити програму, яку потім запустить адмін.
+func logDirs() []string {
+	var dirs []string
+	if d := os.Getenv("ProgramData"); d != "" {
+		dirs = append(dirs, filepath.Join(d, "KMill Agent"))
+	}
+	dirs = append(dirs, exeDir())
+	if d := os.Getenv("LOCALAPPDATA"); d != "" {
+		dirs = append(dirs, filepath.Join(d, "KMill Agent"))
+	}
+	return dirs
+}
+
+// openLog відкриває лог у першій теці, де це вдається, з простою ротацією:
+// агент живе місяцями без нагляду, а затяжна проблема сипле рядки безперервно.
+// Одна попередня копія лишається — саме в ній буде початок проблеми.
+func openLog() (*os.File, string, []string) {
+	var failed []string
+	for _, dir := range logDirs() {
+		_ = os.MkdirAll(dir, 0755)
+		path := filepath.Join(dir, "kmill-agent.log")
+		if st, err := os.Stat(path); err == nil && st.Size() > maxLogBytes {
+			_ = os.Remove(path + ".1")
+			_ = os.Rename(path, path+".1")
+		}
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err == nil {
+			return f, path, failed
+		}
+		failed = append(failed, fmt.Sprintf("%s: %v", path, err))
+	}
+	return nil, "", failed
+}
+
 func main() {
 	cfgPath := flag.String("config", filepath.Join(exeDir(), "agent.json"), "path to agent.json")
 	serve := flag.Bool("serve", false, "run the background capture server (used by the scheduled task)")
@@ -191,23 +250,17 @@ func main() {
 	elevated := flag.Bool("elevated", false, "internal: set after relaunching with admin rights")
 	flag.Parse()
 
-	// Лог поруч з exe (реліз ховає консоль). З ПРОСТОЮ ротацією: агент живе
-	// місяцями без нагляду, а затяжна проблема (мережа рветься, сесія
-	// заблокована) сипле рядки безперервно. Без обмеження це поступово
-	// заповнює диск ПК верстата — того самого, на якому фрезерують.
-	// Одна попередня копія лишається: саме в ній буде початок проблеми.
-	logPath := filepath.Join(exeDir(), "kmill-agent.log")
-	if st, err := os.Stat(logPath); err == nil && st.Size() > maxLogBytes {
-		_ = os.Remove(logPath + ".1")
-		_ = os.Rename(logPath, logPath+".1")
-	}
-	if f, err := os.OpenFile(logPath,
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+	// Лог у файл (реліз ховає консоль) — у першій теці, де вдається писати,
+	// з ротацією (див. logDirs / openLog). Без обмеження розміру лог поступово
+	// заповнив би диск ПК верстата — того самого, на якому фрезерують.
+	if f, path, failed := openLog(); f != nil {
 		log.SetOutput(io.MultiWriter(os.Stderr, f))
 		// І аварійний вихід теж у файл: паніка Go пише напряму в stderr, а він
 		// у windowsgui-процесі веде в нікуди — тобто кожен крах агента досі був
 		// безслідним.
 		captureStderr(f)
+		logPathUsed = path
+		logOpenFailures = failed
 	}
 
 	if *install {
@@ -247,6 +300,22 @@ func runServe(cfgPath string) {
 			log.Printf("config error: 'token' not set in %s — чекаю", cfgPath)
 		}
 		time.Sleep(configWaitInterval)
+	}
+
+	// Зайвий екземпляр іде ТИХО — до першого рядка в лозі. Сторожова задача
+	// щохвилини піднімає агента наосліп (taskXML), і коли живий уже слухає,
+	// новий мусить просто зникнути. Досі дубль встигав записати «serving on» і
+	// «уже обслуговує живий агент — виходжу»; це не засмічувало лог лише тому,
+	// що лог узагалі не писався (див. logDirs). Перевірка після невдалого bind
+	// нижче лишається — вона ловить гонку двох одночасних стартів.
+	if healthyAgentOn(cfg.Bind) {
+		os.Exit(0)
+	}
+	if logPathUsed != "" {
+		log.Printf("лог: %s", logPathUsed)
+	}
+	for _, why := range logOpenFailures {
+		log.Printf("лог не відкрився: %s", why)
 	}
 
 	// Паніка в ОДНОМУ запиті не сміє вбивати процес: HTTP-сервер знімків і
@@ -743,6 +812,11 @@ func taskXML(exe string) string {
          і тоді верстат лежить до наступного логіну. Реальний випадок 04.09.26:
          агент помер о 20:54, піднявся лише о 21:24 руками, у логу самі старти
          без жодної помилки.
+         Раз на ХВИЛИНУ, а не на п'ять (10.09.26): з п'ятихвилинним сторожем
+         кожне падіння агента коштувало до п'яти хвилин тиші в CRM — саме такі
+         обриви бачили на 150i і 250i. Хвилина — найменший крок планувальника.
+         Зайвий старт нічого не коштує: дубль бачить живий /healthz і тихо
+         виходить, не пишучи в лог (runServe).
          Чому не RestartOnFailure: він воскрешає ЛИШЕ той процес, який запустив
          сам планувальник. Агента ж могли підняти ярлик, ключ реєстру або
          інсталятор — тоді задача про нього не знає взагалі.
@@ -752,7 +826,7 @@ func taskXML(exe string) string {
       <Enabled>true</Enabled>
       <StartBoundary>2026-01-01T00:00:00</StartBoundary>
       <Repetition>
-        <Interval>PT5M</Interval>
+        <Interval>PT1M</Interval>
         <StopAtDurationEnd>false</StopAtDurationEnd>
       </Repetition>
     </TimeTrigger>

@@ -86,7 +86,7 @@ try {
     if ($r.Content.Trim() -eq "ok") { Write-Host "Агент запущено й відповідає на порту $port." }
     else { Write-Host "Агент стартував, але /healthz відповів несподівано: $($r.Content)" }
 } catch {
-    Write-Host "УВАГА: агент не відповів на /healthz — перевір kmill-agent.log поряд з exe."
+    Write-Host "УВАГА: агент не відповів на /healthz — перевір kmill-agent.log у C:\ProgramData\KMill Agent (або поряд з exe)."
 }
 
 Write-Host ""
