@@ -846,6 +846,10 @@ main.setv2.scon {
   margin: 0 0 8px;
 }
 .blanks-lines-bar .bl-mini { padding: 3px 9px; font-size: var(--fs-0); }
+/* «Замовлено» — дія, що змінює список, а не помічник вибору: окремо, справа.
+   `.login-submit` сам по собі на всю ширину (форма входу). */
+.blanks-lines-bar .login-submit { width: auto; margin: 0 0 0 auto; }
+.blanks-lines-bar button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 
 /* Фільтр «що показати»: чіпи днів і тек матеріалів. Натиснутий (показано) —
    звичайний чіп; вимкнений — приглушений і закреслений, як знятий рядок

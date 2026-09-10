@@ -28,25 +28,31 @@
                 title="Прочитати теку й показати звіт, нічого не записуючи">
             Перевірити читання
         </button>
-        {% if blanks_pending %}
-        {# «Скопіювати для комірниці» переїхала до самого списку: копіюється
-           лише позначене галочками, і кнопка мусить стояти поруч із ними. #}
+        {# «Скопіювати для комірниці» і «Замовлено» переїхали до самого
+           списку: обидві беруть лише позначене галочками, і мусять стояти
+           поруч із ними. #}
+    </div>
+
+    {% if blanks_ordered %}
+    {# Щойно натиснуте «Замовлено». Відкат — тут же, одним кліком: після
+       часткового замовлення список не порожній, історія згорнута, і кнопка
+       «Скасувати» в ній була б захована (випадковий клік 08.09.26). #}
+    <p class="settings-help stand-note blanks-ordered-note">
+        Замовлено {{ blanks_ordered }}
+        {{- ' диск' if blanks_ordered % 10 == 1 and blanks_ordered % 100 != 11
+            else (' диски' if blanks_ordered % 10 in [2,3,4] and blanks_ordered % 100 not in [12,13,14]
+            else ' дисків') }}.
+        {%- if blanks_pending %} Решта лишилась у списку.{% endif %}
         {% if can_edit(user, 'blanks') %}
-        <button type="button" class="login-submit settings-submit"
-                hx-post="/settings/blanks/ordered" hx-target="#blanks-body" hx-swap="outerHTML"
-                title="Позначити, що це вже замовлено — відлік почнеться заново">
-            Замовлено ({{ blanks_pending|length }})
+        <button type="button" class="settings-secondary-button bh-mini bh-undo"
+                hx-post="/settings/blanks/undo-order"
+                hx-target="#blanks-body" hx-swap="outerHTML"
+                title="Повернути ці диски назад у список">
+            Скасувати
         </button>
         {% endif %}
-        {% endif %}
-
-        {# Скасування останнього «Замовлено» живе в «Історії замовлень» унизу,
-           на найновішому записі, підписаному часом. «Замовлено» миттєво
-           спорожняє список (випадковий клік 08.09.26) — і саме тоді історія
-           розгорнута сама, тож кнопка під рукою. Точку відліку (перший прохід
-           теки) відкат не чіпає — інакше в замовлення вивалилась би вся
-           історія теки. #}
-    </div>
+    </p>
+    {% endif %}
 
     {% if blanks_probe %}
     {# Звіт проби. Головне тут — НЕ РОЗІБРАНІ назви: саме вони кажуть, чи
@@ -91,8 +97,9 @@
         <h3>До замовлення</h3>
         <p class="settings-help">
             Узято після останнього замовлення. Відлік іде від кнопки «Замовлено»,
-            тому нічна зміна й вихідні враховані самі. Копіюється лише
-            позначене; поруч — коли диск створено.
+            тому нічна зміна й вихідні враховані самі. Копіюється й
+            замовляється лише позначене — зняте лишається в списку до
+            наступного разу; поруч — коли диск створено.
         </p>
         {% if blanks_pileup %}
         {# Не тривога й не блокування: оператор міг просто не замовляти три
@@ -136,6 +143,18 @@
             </button>
             <button type="button" class="settings-secondary-button bl-mini" data-blanks-select="all">Усі</button>
             <button type="button" class="settings-secondary-button bl-mini" data-blanks-select="none">Жодного</button>
+            {% if can_edit(user, 'blanks') %}
+            {# Замовляє рівно те, що видно позначеним (як і копіювання): id
+               дисків app.js збирає з галочок У МИТЬ КЛІКУ (htmx:configRequest),
+               а не з поля, яке браузер міг відновити після перезавантаження
+               неузгоджено з галочками. Без id сервер не замовляє нічого. #}
+            <button type="button" class="login-submit settings-submit" data-blanks-order-button
+                    hx-post="/settings/blanks/ordered"
+                    hx-target="#blanks-body" hx-swap="outerHTML"
+                    title="Позначити позначене замовленим — зняте лишиться в списку">
+                Замовлено (<span data-blanks-order-count>{{ blanks_pending|length }}</span>)
+            </button>
+            {% endif %}
         </div>
         <div class="blanks-days">
             {% for day in blanks_days %}
@@ -154,7 +173,8 @@
                     <li data-mat="{{ line.material }}">
                         <label class="blanks-line">
                             <input type="checkbox" checked data-blanks-line
-                                   data-item="{{ line.item }}" data-count="{{ line.count }}" value="{{ line.text }}">
+                                   data-item="{{ line.item }}" data-count="{{ line.count }}"
+                                   data-ids="{{ line.ids|join(',') }}" value="{{ line.text }}">
                             <span class="bl-text mono">{{ line.text }}</span>
                             <span class="bl-when mono">
                                 {%- for when in line.taken -%}
@@ -215,7 +235,7 @@
        удруге. Тому кнопка стоїть рівно на першому рядку. #}
     {% if blanks_history %}
     <div class="settings-field blanks-history">
-        <details class="bh-fold"{% if not blanks_pending %} open{% endif %}>
+        <details class="bh-fold"{% if not blanks_pending or blanks_ordered %} open{% endif %}>
             <summary>
                 <h3>Історія замовлень</h3>
                 <span class="bh-summary">{{ blanks_history|length }} · останнє {{ blanks_history[0].ordered_at.strftime('%d.%m %H:%M') }}</span>

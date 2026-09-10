@@ -88,6 +88,7 @@ def blanks_context(db: Session, *, error: str | None = None) -> dict:
         # Проба заповнюється лише своїм роутом; на звичайному рендері її нема.
         "blanks_probe": None,
         "blanks_note": None,
+        "blanks_ordered": None,
         # Підказка «схоже, забули замовити» — рахується з самого списку.
         "blanks_pileup": pileup_note(pending),
         # Коли натискали «Замовлено» востаннє. None — жодного разу, і тоді
@@ -99,11 +100,23 @@ def blanks_context(db: Session, *, error: str | None = None) -> dict:
     }
 
 
-def _body(request: Request, db: Session, *, error: str | None = None, probe=None, note: str | None = None) -> HTMLResponse:
+def _body(
+    request: Request,
+    db: Session,
+    *,
+    error: str | None = None,
+    probe=None,
+    note: str | None = None,
+    ordered: int | None = None,
+) -> HTMLResponse:
     user = get_current_user(request, db)
     ctx = blanks_context(db, error=error)
     ctx["blanks_probe"] = probe
     ctx["blanks_note"] = note
+    # Щойно натиснуте «Замовлено»: скільки пішло. Екран ставить поруч
+    # «Скасувати» — після часткового замовлення список не порожній, історія
+    # згорнута, і кнопка відкату інакше була б захована.
+    ctx["blanks_ordered"] = ordered
     return templates.TemplateResponse(
         request,
         "_settings_blanks_body.html",
@@ -155,17 +168,33 @@ def rescan_blanks(request: Request, db: Session = Depends(get_db)):
     return _body(request, db, note=note)
 
 
+def _parse_ids(raw: str) -> list[int]:
+    """`"12,13,40"` → `[12, 13, 40]`; сміття мовчки відкидається."""
+    return [int(part) for part in raw.split(",") if part.strip().isdigit()]
+
+
 @router.post("/settings/blanks/ordered")
-def blanks_ordered(request: Request, db: Session = Depends(get_db)):
-    """Позначити все як замовлене — з цієї миті починається нове вікно.
+def blanks_ordered(request: Request, ids: str = Form(""), db: Session = Depends(get_db)):
+    """Позначити замовленим те, що відмічено галочками, — решта лишається.
 
     Саме позначка, а не календар: комірниця йде о 18:00, далі диски бере
     нічна зміна, а у вихідні комірниці немає взагалі. Межа робочої доби
     (07:30) відрізала б рівно те, що взяли вночі.
+
+    `ids` збирає екран з видимих позначених рядків — те саме, що йде в буфер.
+    Порожнє поле означає «нічого не позначено», а НЕ «усе»: пусте значення
+    тут не можна тлумачити як «поля не було» (CLAUDE.md §14), інакше зняті
+    галочки замовили б увесь список.
     """
     require_settings_edit(request, db, SECTION)
-    mark_ordered(db)
-    return _body(request, db)
+    wanted = _parse_ids(ids)
+    if not wanted:
+        return _body(request, db, error="Нічого не позначено — поставте галочки на тому, що замовили.")
+    count = mark_ordered(db, ids=wanted)
+    if not count:
+        # Сторінка застаріла: ці диски вже замовив хтось інший (двоє операторів).
+        return _body(request, db, note="Ці диски вже позначені замовленими — список оновлено.")
+    return _body(request, db, ordered=count)
 
 
 @router.post("/settings/blanks/undo-order")

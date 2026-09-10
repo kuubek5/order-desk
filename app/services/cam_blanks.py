@@ -552,10 +552,31 @@ def pileup_note(rows: list[CamBlank]) -> Optional[str]:
     )
 
 
-def mark_ordered(db: Session, *, now: Optional[datetime] = None) -> int:
-    """Позначити все незамовлене як замовлене. Повертає скільки саме."""
+def mark_ordered(
+    db: Session,
+    *,
+    ids: Optional[Iterable[int]] = None,
+    now: Optional[datetime] = None,
+) -> int:
+    """Позначити незамовлене як замовлене. Повертає скільки саме.
+
+    `ids` — лише ці диски (те, що позначено галочками на екрані); решта
+    лишається в списку до наступного разу. Так замовляють частинами: цирконій
+    сьогодні, ПММА завтра, «вчорашнє вже замовили телефоном» (10.09.26). До
+    того кнопка брала весь список, хоч галочки на екрані й стояли — і
+    частина, яку не збирались замовляти, зникала зі списку разом з рештою.
+
+    Порожній `ids` — НЕ «усе»: не позначено нічого, то й не замовлено нічого.
+    `None` (жоден аргумент) — усе незамовлене, як і раніше.
+
+    Одне натискання = один час `ordered_at`, тож часткове замовлення — окрема
+    пачка в історії, і `undo_last_order` повертає рівно її.
+    """
     now = now or datetime.now()
     rows = pending_blanks(db)
+    if ids is not None:
+        wanted = set(ids)
+        rows = [row for row in rows if row.id in wanted]
     for row in rows:
         row.ordered_at = now
     if rows:
@@ -740,6 +761,9 @@ class OrderLine:
     item: str = ""
     # Тека матеріалу (`ZR`, `PMMA-PEEK`) — для фільтра «сховати матеріал».
     material: str = ""
+    # Диски цього рядка. «Замовлено» позначає рівно те, що відмічено
+    # галочками, а галочка стоїть на рядку, не на диску.
+    ids: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -785,6 +809,7 @@ def order_lines(rows: Iterable[CamBlank]) -> list[OrderLine]:
     """
     groups: dict[str, list[datetime]] = {}
     materials: dict[str, str] = {}
+    ids: dict[str, list[int]] = {}
     for row in rows:
         height, brand, shade = _line_fields(row)
         if height is None or not brand:
@@ -793,6 +818,7 @@ def order_lines(rows: Iterable[CamBlank]) -> list[OrderLine]:
             text = " ".join(p for p in (_brand_label(brand), shade_label(shade), str(height)) if p)
         groups.setdefault(text, []).append(row.first_seen_at)
         materials.setdefault(text, (row.material_dir or "").strip())
+        ids.setdefault(text, []).append(row.id)
 
     lines = []
     for text, stamps in groups.items():
@@ -804,6 +830,7 @@ def order_lines(rows: Iterable[CamBlank]) -> list[OrderLine]:
             taken=taken,
             item=text,
             material=materials[text],
+            ids=tuple(ids[text]),
         ))
     # Свіжі згори; нічия — за текстом, щоб порядок не стрибав між рендерами.
     lines.sort(key=lambda line: line.text)

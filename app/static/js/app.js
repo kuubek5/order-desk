@@ -76,8 +76,8 @@ document.addEventListener("click", async (event) => {
   }, 1400);
 });
 
-// «До замовлення» (заготовки з теки CAM): у буфер іде лише позначене
-// галочками. Кнопка копіювання — звичайний [data-copy] вище; тут лише
+// «До замовлення» (заготовки з теки CAM): у буфер і в «Замовлено» іде лише
+// позначене галочками. Кнопка копіювання — звичайний [data-copy] вище; тут лише
 // переписуємо її текст і лічильник при кожній зміні вибору. Делеговано на
 // document, бо розділ перемальовують кнопки «Перечитати»/«Замовлено»
 // (hx-swap), і прямі слухачі після свапу були б мертві.
@@ -92,6 +92,14 @@ function blanksLineVisible(box) {
   return !(li && li.hidden) && !(day && day.hidden);
 }
 
+function blanksCheckedIds(scope) {
+  const ids = [];
+  scope.querySelectorAll("[data-blanks-line]").forEach((box) => {
+    if (box.checked && blanksLineVisible(box) && box.dataset.ids) ids.push(...box.dataset.ids.split(","));
+  });
+  return ids;
+}
+
 function syncBlanksCopy(scope) {
   if (!scope) return;
   const totals = new Map();
@@ -100,6 +108,7 @@ function syncBlanksCopy(scope) {
     const item = box.dataset.item || box.value;
     totals.set(item, (totals.get(item) || 0) + (Number(box.dataset.count) || 1));
   });
+  const ids = blanksCheckedIds(scope);
   const lines = Array.from(totals, ([item, n]) => (n > 1 ? `${item}(${n})` : item));
   const button = scope.querySelector("[data-blanks-copy]");
   if (button) {
@@ -108,6 +117,12 @@ function syncBlanksCopy(scope) {
   }
   const counter = scope.querySelector("[data-blanks-copy-count]");
   if (counter) counter.textContent = String(lines.length);
+  // «Замовлено» бере ті самі диски, що пішли в буфер (самі id — у
+  // htmx:configRequest нижче). Решта лишається в списку до наступного разу.
+  const orderButton = scope.querySelector("[data-blanks-order-button]");
+  if (orderButton) orderButton.disabled = ids.length === 0;
+  const orderCount = scope.querySelector("[data-blanks-order-count]");
+  if (orderCount) orderCount.textContent = String(ids.length);
   // Галочка дня показує стан своїх рядків: усі / жодного / частина.
   scope.querySelectorAll(".blanks-day").forEach((day) => {
     const head = day.querySelector("[data-blanks-day]");
@@ -171,6 +186,24 @@ document.addEventListener("click", (event) => {
   scope.querySelectorAll("[data-blanks-line]").forEach((box) => { box.checked = on; });
   syncBlanksCopy(scope);
 });
+
+// id для «Замовлено» — з галочок у мить кліку, не з рендеру: браузер після
+// перезавантаження може відновити зняті галочки, і тоді замовилось би те,
+// чого на екрані не позначено. Порожній список сервер читає як «нічого».
+document.addEventListener("htmx:configRequest", (event) => {
+  const button = event.detail.elt;
+  if (!button || !button.matches || !button.matches("[data-blanks-order-button]")) return;
+  const scope = button.closest("[data-blanks-order]");
+  event.detail.parameters.ids = scope ? blanksCheckedIds(scope).join(",") : "";
+});
+
+// Лічильники й текст буфера — під фактичний стан галочок і після
+// перезавантаження (відновлені браузером галочки), і після свапу розділу.
+function syncAllBlanks() {
+  document.querySelectorAll("[data-blanks-order]").forEach(syncBlanksCopy);
+}
+document.addEventListener("DOMContentLoaded", syncAllBlanks);
+document.addEventListener("htmx:afterSettle", syncAllBlanks);
 
 // «Відкрити папку» на картці клієнта (видача). Кнопка лишається звичайним
 // <a href="file://...">, але ЗВИЧАЙНИЙ клік по ньому браузер зі сторінки на
