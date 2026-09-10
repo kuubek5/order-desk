@@ -184,15 +184,19 @@ def _orders_context(db: Session, limit: int = disc_orders.HISTORY_PAGE) -> dict:
     }
 
 
-def _all_context(db: Session, **filters) -> dict:
-    clean = {
-        "mat": filters.get("mat") or "all",
-        "st": filters.get("st") if filters.get("st") in ("all", "wait", "done") else "all",
-        "q": (filters.get("q") or "")[:80],
-        "day": filters.get("day") or "",
-        "shown": max(disc_orders.DAYS_STEP, min(int(filters.get("shown") or 0), 400)),
+def _all_context(
+    db: Session, *, mat: str = "all", st: str = "all", q: str = "", day: str = "", shown: int = 0
+) -> dict:
+    mat = mat or "all"
+    st = st if st in ("all", "wait", "done") else "all"
+    q = (q or "")[:80]
+    day = day or ""
+    shown = max(disc_orders.DAYS_STEP, min(int(shown or 0), 400))
+    return {
+        "journal": disc_orders.journal(db, mat=mat, st=st, q=q, day=day, shown=shown),
+        "jf": {"mat": mat, "st": st, "q": q, "day": day, "shown": shown},
+        "oob": True,
     }
-    return {"journal": disc_orders.journal(db, **clean), "jf": clean, "oob": True}
 
 
 def _footer_context(db: Session) -> dict:

@@ -95,9 +95,10 @@ class BurRow:
 def burs_rows() -> list[BurRow]:
     rows = []
     for group in BURS_TEMPLATE:
-        parsed = [_BUR_RE.match(line) for line in group]
-        labels = {f"{m['head']} {m['mat']}" for m in parsed if m}
-        if all(parsed) and len(labels) == 1:
+        matches = [_BUR_RE.match(line) for line in group]
+        parsed = [m for m in matches if m is not None]
+        labels = {f"{m['head']} {m['mat']}" for m in parsed}
+        if len(parsed) == len(group) and len(labels) == 1:
             rows.append(BurRow(label=labels.pop(), chips=tuple((m["size"], line) for m, line in zip(parsed, group))))
         else:
             rows.append(BurRow(label="", chips=tuple((line, line) for line in group)))
@@ -269,7 +270,8 @@ def _deliveries(db: Session, orders: list[CamBlankOrder]) -> dict[int, Delivery]
         for row in db.scalars(
             select(TelegramOutbox).where(TelegramOutbox.edit_of_id.in_(all_original_ids))
         ):
-            edits_by_original[row.edit_of_id] = row
+            if row.edit_of_id is not None:
+                edits_by_original[row.edit_of_id] = row
 
     out: dict[int, Delivery] = {}
     for order in orders:
@@ -309,7 +311,7 @@ def _deliveries(db: Session, orders: list[CamBlankOrder]) -> dict[int, Delivery]
                     cancel = "failed"
         out[order.id] = Delivery(
             state=state,
-            at=max((row.sent_at for row in sent), default=None),
+            at=max((row.sent_at for row in sent if row.sent_at is not None), default=None),
             error=error,
             cancel=cancel,
         )
@@ -338,13 +340,13 @@ class OrderView:
         return self.cancelled_at is not None
 
 
-def _names(db: Session, ids: set[int]) -> dict[int, str]:
-    ids.discard(None)  # type: ignore[arg-type]
-    if not ids:
+def _names(db: Session, ids: set[Optional[int]]) -> dict[int, str]:
+    wanted = {i for i in ids if i is not None}
+    if not wanted:
         return {}
     return {
         user.id: (user.full_name or user.username)
-        for user in db.scalars(select(User).where(User.id.in_(ids)))
+        for user in db.scalars(select(User).where(User.id.in_(wanted)))
     }
 
 
