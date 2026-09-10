@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Де ця робота — KuubMill{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/furnaces.css?v={{ static_ver('css/furnaces.css') }}">
+<link rel="stylesheet" href="/static/css/order_trace.css?v={{ static_ver('css/order_trace.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'trace' %}
+{% include "_topbar_nav.html" %}
+
+{# «Робота є в таблиці, а в черзі її нема» — найчастіше питання цеху, на яке
+   досі відповідали руками. Кроки йдуть у порядку СПРАВЖНЬОГО шляху роботи
+   (рядок у таблиці → застосунок → черга), щоб було видно не лише де вона, а
+   й на якому кроці загубилась. #}
+<main class="furnaces tracev">
+    <div class="fu-bar">
+        <div>
+            <h1>Де ця робота?</h1>
+            <p class="fu-sub">Проходить увесь шлях наряду й каже, на якому кроці він загубився · нічого не змінює</p>
+        </div>
+    </div>
+
+    <form class="trace-form" method="get" action="/trace">
+        <input class="trace-input mono" type="text" name="q" value="{{ q }}"
+               placeholder="Номер наряду, Sum3D ID, клієнт або технік"
+               autocomplete="off" autofocus>
+        <button class="trace-go" type="submit">Знайти</button>
+    </form>
+    <p class="trace-hint">
+        Шукає і в застосунку, і в збережених копіях вкладок Google Таблиці —
+        тому відповідає навіть тоді, коли роботи в черзі немає.
+    </p>
+
+    {% if result %}
+    <div class="trace-verdict">{{ result.verdict }}</div>
+
+    <ol class="trace-steps">
+        {% for step in result.steps %}
+        <li class="st-{% if step.ok is none %}unknown{% elif step.ok %}ok{% else %}bad{% endif %}">
+            <span class="trace-step-title">{{ step.title }}</span>
+            {% if step.detail %}<span class="trace-step-detail">{{ step.detail }}</span>{% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+
+    {% if result.actions %}
+    <div class="trace-actions">
+        <h2>Що робити</h2>
+        <ol>{% for a in result.actions %}<li>{{ a }}</li>{% endfor %}</ol>
+    </div>
+    {% endif %}
+
+    {% if result.orders %}
+    <section class="trace-sec">
+        <h2>Знайдено в застосунку</h2>
+        <table class="trace-table">
+            <thead>
+                <tr><th>Наряд / клієнт</th><th>День</th><th>Статус</th><th>Джерело</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for o in result.orders %}
+                <tr{% if o.archived_at %} class="is-archived"{% endif %}>
+                    <td class="mono">{{ o.work_order_no or o.client_name or ('#' ~ o.id) }}</td>
+                    <td class="mono">{{ order_date(o).strftime('%d.%m.%y') }}</td>
+                    <td>{{ o.status }}{% if o.archived_at %} · в архіві{% endif %}</td>
+                    <td>{{ o.source }}</td>
+                    <td><a class="trace-open" href="/orders/{{ o.id }}">Паспорт →</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+    {% endif %}
+
+    {% if result.sheet_hits %}
+    <section class="trace-sec">
+        <h2>Знайдено в копіях таблиці</h2>
+        {# Копія могла бути знята кілька хвилин тому — кажемо про це прямо.
+           Мовчання перетворило б «за копією» на «в таблиці», а це різні
+           твердження, і саме на такій підміні розбір іде хибним шляхом. #}
+        <p class="trace-note">
+            Це не жива таблиця, а збережена копія
+            {%- if result.snapshot_taken_at %} (найсвіжіша знята
+            {{ result.snapshot_taken_at[8:10] }}.{{ result.snapshot_taken_at[5:7] }}
+            о {{ result.snapshot_taken_at[11:16] }}){% endif %}.
+            Рядок, доданий після цього, тут ще не видно.
+        </p>
+        <table class="trace-table">
+            <thead>
+                <tr>
+                    <th>Вкладка</th><th>Рядок</th><th>Наряд</th><th>К-сть</th>
+                    <th>Колір</th><th>Вид</th><th>Технік</th><th>Sum3D</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in result.sheet_hits %}
+                <tr>
+                    <td class="mono">{{ h.tab }}{% if h.disappeared_at %} <span class="trace-gone">зникла</span>{% endif %}</td>
+                    <td class="mono">{{ h.row_number }}</td>
+                    <td class="mono">{{ h.work_order or '—' }}</td>
+                    <td class="mono">{{ h.quantity or '—' }}</td>
+                    <td>{{ h.color or '—' }}</td>
+                    <td>{{ h.kind or '—' }}</td>
+                    <td>{{ h.technician or '—' }}</td>
+                    <td class="mono">{{ h.sum3d or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+    {% endif %}
+
+    <p class="trace-foot">
+        Не зрозуміло? Налаштування → Стан системи → <b>«Зібрати звіт»</b> —
+        і надішліть файл розробнику разом із цим номером наряду.
+    </p>
+    {% endif %}
+</main>
+{% endblock %}

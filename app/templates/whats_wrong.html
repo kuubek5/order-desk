@@ -25,6 +25,9 @@
             <p class="fu-sub">Проблеми, які застосунок помітив сам · нічого не запускає й не міняє</p>
         </div>
         <div class="wrong-windows" role="group" aria-label="За який час">
+            {# Найчастіше питання цеху приходить не як «щось не так», а як
+               «де робота 30150» — тож вхід у розслідування стоїть тут, поруч. #}
+            <a class="wrong-win" href="/trace">Де ця робота?</a>
             {% for value, label in windows.items() %}
             <a class="wrong-win{% if hours == value %} on{% endif %}" href="/wrong?hours={{ value }}">{{ label }}</a>
             {% endfor %}

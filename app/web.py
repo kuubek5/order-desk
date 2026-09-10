@@ -89,6 +89,7 @@ from app.routers.machines import router as machines_router
 from app.routers.feedback import router as feedback_router
 from app.routers.diag import router as diag_router
 from app.routers.sync_journal import router as sync_journal_router
+from app.routers.order_trace import router as order_trace_router
 from app.routers.whats_wrong import router as whats_wrong_router
 from app.routers.palette import router as palette_router
 from app.services.furnace import (
@@ -1245,5 +1246,9 @@ app.include_router(sync_journal_router)
 # нічого не записує: друга правда про ту саму подію рано чи пізно
 # розійшлась би з першою.
 app.include_router(whats_wrong_router)
+# «Де ця робота?» — розслідування по наряду. Читає базу і ЛОКАЛЬНІ копії
+# вкладок (app/sheet_backup.py), тому відповідає навіть тоді, коли
+# роботи в базі немає, і не витрачає квоту Google.
+app.include_router(order_trace_router)
 # Палітра команд (Ctrl+K): перелік екранів під роль + швидкий пошук робіт.
 app.include_router(palette_router)

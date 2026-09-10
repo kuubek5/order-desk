@@ -67,6 +67,7 @@ GET /stl-preview/{token}
 GET /stl-preview/{token}/{filename}
 GET /sum3d/tray
 GET /system/load
+GET /trace
 GET /vyrobitok
 GET /wrong
 MOUNT /static
