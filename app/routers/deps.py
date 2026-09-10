@@ -404,6 +404,27 @@ def sync_state_uncached() -> dict | None:
         return None
 
 
+def wrong_count_uncached() -> int:
+    """Скільки проблем застосунок бачить просто зараз — для позначки в рейці.
+
+    Той самий патерн, що feedback_open_count: власна сесія, широкий except,
+    бейдж не сміє завалити рендер. Попередження сюди не рахуються (див.
+    `whats_wrong.count`): рейка мусить світитись тоді, коли щось справді не
+    працює, інакше на неї перестануть дивитись.
+    """
+    try:
+        from app.services.whats_wrong import count
+
+        db = SessionLocal()
+        try:
+            return count(db)
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        logger.debug("wrong_count fell back to 0", exc_info=True)
+        return 0
+
+
 def closed_sections_uncached() -> list[str]:
     """Назви розділів, зачинених адміністратором прямо зараз — для рейки.
 
@@ -669,7 +690,12 @@ def feedback_open_count() -> int:
 def closed_sections_titles() -> list[str]:
     return _cached_global("closed_sections", closed_sections_uncached)
 
+
+def wrong_count() -> int:
+    return _cached_global("wrong_count", wrong_count_uncached)
+
 templates.env.globals["closed_sections_titles"] = closed_sections_titles
+templates.env.globals["wrong_count"] = wrong_count
 templates.env.globals["perf_id"] = perf.current_request_id
 templates.env.globals["is_overdue"] = is_overdue
 templates.env.globals["material_color_css_class"] = material_color_css_class

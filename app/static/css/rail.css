@@ -751,3 +751,20 @@ body.rail-collapsed .rail-sync{display:none}
 /* Згорнута рейка показує лише замок — текст сховано разом з рештою підписів. */
 .rail-closed-txt{min-width:0;overflow:hidden;text-overflow:ellipsis}
 body.rail-collapsed .rail-closed-txt{display:none}
+
+/* «Що не так» у підвалі рейки. З'являється лише коли є проблеми — постійний
+   пункт, який показує нуль, перестають помічати. Колір тривоги, а не
+   попередження: сюди рахуються тільки «стоп» і «проблема». */
+.rail-wrong{
+  display:flex;align-items:center;gap:8px;padding:8px 10px;margin:0 0 6px;
+  border-radius:8px;border:1px solid rgba(var(--alarm-rgb), .38);
+  background:rgba(var(--alarm-rgb), .1);color:var(--alarm);
+  font-size:var(--fs-1);font-weight:500;text-decoration:none;line-height:1.3;
+}
+.rail-wrong:hover{border-color:rgba(var(--alarm-rgb), .6);opacity:1}
+.rail-wrong.is-active{background:rgba(var(--alarm-rgb), .18)}
+.rail-wrong-icon{width:15px;height:15px;flex:0 0 15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.rail-wrong-txt{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rail-wrong-n{margin-left:auto;font-size:var(--fs-0)}
+body.rail-collapsed .rail-wrong-txt,
+body.rail-collapsed .rail-wrong-n{display:none}

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Що не так — KuubMill{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/furnaces.css?v={{ static_ver('css/furnaces.css') }}">
+<link rel="stylesheet" href="/static/css/whats_wrong.css?v={{ static_ver('css/whats_wrong.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'wrong' %}
+{% include "_topbar_nav.html" %}
+
+{# Проблеми застосунку людською мовою. Формат картки той самий, що в журналі
+   обривів верстатів: що сталось → що це означає → що робити. Він себе
+   виправдав, і другий формат для тієї самої задачі був би просто другою
+   мовою в одному застосунку.
+
+   Полла тут немає свідомо: екран відкривають, щоб прочитати й піти робити, а
+   картки, що перестрибують під рукою, читати неможливо. #}
+<main class="furnaces wrongv">
+    <div class="fu-bar">
+        <div>
+            <h1>Що не так</h1>
+            <p class="fu-sub">Проблеми, які застосунок помітив сам · нічого не запускає й не міняє</p>
+        </div>
+        <div class="wrong-windows" role="group" aria-label="За який час">
+            {% for value, label in windows.items() %}
+            <a class="wrong-win{% if hours == value %} on{% endif %}" href="/wrong?hours={{ value }}">{{ label }}</a>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% if not problems %}
+    <div class="wrong-clear">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        <div>
+            <strong>Проблем не знайдено</strong>
+            <p>За обраний час синхронізація, пошта й верстати не скаржились.
+               Якщо щось усе одно поводиться дивно — Налаштування → Стан системи
+               → «Запустити самоперевірку», а тоді «Зібрати звіт».</p>
+        </div>
+    </div>
+    {% endif %}
+
+    {% for p in problems %}
+    <article class="wrong-case lvl-{{ p.level }}">
+        <header>
+            <span class="wrong-lvl">
+                {%- if p.level == stop_level %}СТОП{% elif p.level == problem_level %}Проблема{% else %}Увага{% endif -%}
+            </span>
+            <span class="wrong-when mono">
+                {%- if p.at %}{{ p.at.strftime('%d.%m %H:%M') }}{% else %}зараз{% endif -%}
+            </span>
+            {% if p.times > 1 %}
+            {# Скільки разів це повторилось. Один раз і сорок разів поспіль —
+               різні історії, і сорок однакових карток замість цього рядка
+               зробили б екран нечитабельним. #}
+            <span class="wrong-times mono">повторилось {{ p.times }} р.</span>
+            {% endif %}
+        </header>
+
+        <h2>{{ p.title }}</h2>
+        <p class="wrong-means">{{ p.means }}</p>
+
+        {% if p.actions %}
+        <ol class="wrong-actions">
+            {% for step in p.actions %}<li>{{ step }}</li>{% endfor %}
+        </ol>
+        {% endif %}
+
+        <div class="wrong-foot">
+            {% if p.link %}<a class="wrong-link" href="{{ p.link }}">{{ p.link_text }} →</a>{% endif %}
+            {% if p.raw %}
+            <details class="wrong-raw">
+                <summary>Технічні подробиці</summary>
+                <p class="mono">{{ p.raw }}</p>
+            </details>
+            {% endif %}
+        </div>
+    </article>
+    {% endfor %}
+
+    {% if problems %}
+    <p class="wrong-hint">
+        Не зрозуміло, що робити? Налаштування → Стан системи → <b>«Зібрати звіт»</b>
+        і надішліть файл розробнику — у ньому вже є все, що для цього потрібно.
+    </p>
+    {% endif %}
+</main>
+{% endblock %}

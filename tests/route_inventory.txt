@@ -68,6 +68,7 @@ GET /stl-preview/{token}/{filename}
 GET /sum3d/tray
 GET /system/load
 GET /vyrobitok
+GET /wrong
 MOUNT /static
 POST /account/appearance
 POST /account/initial

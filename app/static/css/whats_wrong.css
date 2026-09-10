@@ -1,0 +1,72 @@
+/* whats_wrong.css — екран «Що не так» (/wrong).
+   Підключається лише цим екраном (block extra_head), у base.html його немає,
+   тож у спільний каскад він не втручається. Усе скоуплено під `.wrongv`. */
+
+.wrongv .wrong-windows{display:flex;flex-wrap:wrap;gap:6px}
+.wrongv .wrong-win{
+  display:inline-flex;align-items:center;height:32px;padding:0 13px;border-radius:999px;
+  border:1px solid var(--line);background:var(--field);color:var(--ink-2);
+  font-size:var(--fs-2);font-weight:500;text-decoration:none;
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,color var(--ui-speed) ease;
+}
+.wrongv .wrong-win:hover{color:var(--ink);border-color:var(--line-2);opacity:1}
+.wrongv .wrong-win.on{background:rgba(var(--accent-base-rgb), .16);border-color:rgba(var(--accent-rgb), .42);color:var(--accent-c)}
+
+/* Порожній стан — не сірий прочерк, а відповідь: «перевірено, чисто», і що
+   робити далі, якщо все одно дивно. Мовчазна порожня сторінка читалась би як
+   «екран не працює». */
+.wrongv .wrong-clear{
+  display:flex;gap:14px;align-items:flex-start;margin-top:22px;padding:18px 20px;
+  border:1px solid rgba(var(--accent-rgb), .3);border-radius:var(--r-card);
+  background:rgba(var(--accent-base-rgb), .07);
+}
+.wrongv .wrong-clear svg{width:22px;height:22px;flex:0 0 22px;stroke:var(--accent-c);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;margin-top:2px}
+.wrongv .wrong-clear strong{font-size:var(--fs-3);color:var(--ink)}
+.wrongv .wrong-clear p{margin:6px 0 0;font-size:var(--fs-2);color:var(--ink-2);line-height:1.5;max-width:70ch}
+
+/* ── Картка проблеми ──────────────────────────────────────────────────────
+   Ліва смуга кольором рівня — єдиний кольоровий сигнал на картці. Заливати
+   всю картку не можна: тоді «стоп» і «увага» відрізнялись би відтінком фону,
+   і на екрані з п'ятьма картками це читалось би як шум, а не як порядок. */
+.wrongv .wrong-case{
+  position:relative;margin-top:14px;padding:15px 18px 15px 22px;
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
+  box-shadow:var(--glow);
+}
+.wrongv .wrong-case::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:4px;
+  border-radius:var(--r-card) 0 0 var(--r-card);background:var(--line-2);
+}
+.wrongv .wrong-case.lvl-stop::before{background:var(--alarm)}
+.wrongv .wrong-case.lvl-problem::before{background:var(--warn)}
+.wrongv .wrong-case.lvl-warn::before{background:var(--accent)}
+
+.wrongv .wrong-case > header{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:7px}
+.wrongv .wrong-lvl{
+  font-size:var(--fs-0);letter-spacing:.1em;text-transform:uppercase;font-weight:700;
+  padding:2px 8px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-2);
+}
+.wrongv .lvl-stop .wrong-lvl{border-color:rgba(var(--alarm-rgb), .5);background:rgba(var(--alarm-rgb), .14);color:var(--alarm)}
+.wrongv .lvl-problem .wrong-lvl{border-color:rgba(var(--warn-rgb), .45);background:rgba(var(--warn-rgb), .12);color:var(--warn)}
+.wrongv .lvl-warn .wrong-lvl{border-color:rgba(var(--accent-rgb), .4);background:rgba(var(--accent-base-rgb), .1);color:var(--accent-c)}
+.wrongv .wrong-when{font-size:var(--fs-1);color:var(--ink-3)}
+.wrongv .wrong-times{margin-left:auto;font-size:var(--fs-0);color:var(--ink-3)}
+
+.wrongv .wrong-case > h2{font-family:var(--font-head);font-size:var(--fs-4);font-weight:600;margin:0 0 8px;letter-spacing:-.005em;line-height:1.25}
+/* «Що це означає» — найважливіший рядок картки: саме він каже, чи можна не
+   звертати уваги до завтра. Тому звичайним розміром тексту, не дрібним. */
+.wrongv .wrong-means{margin:0 0 12px;font-size:var(--fs-2);color:var(--ink);line-height:1.55;max-width:78ch}
+.wrongv .wrong-actions{margin:0 0 12px;padding-left:20px;font-size:var(--fs-2);color:var(--ink-2);line-height:1.55;max-width:78ch}
+.wrongv .wrong-actions li{margin-bottom:6px}
+.wrongv .wrong-actions li::marker{color:var(--accent-c);font-weight:600}
+
+.wrongv .wrong-foot{display:flex;flex-wrap:wrap;align-items:center;gap:16px}
+.wrongv .wrong-link{font-size:var(--fs-2);color:var(--accent-c);text-decoration:none}
+.wrongv .wrong-link:hover{text-decoration:underline;opacity:1}
+.wrongv .wrong-raw{font-size:var(--fs-1);color:var(--ink-3)}
+.wrongv .wrong-raw summary{cursor:pointer;color:var(--ink-3)}
+.wrongv .wrong-raw summary:hover{color:var(--ink-2)}
+.wrongv .wrong-raw p{margin:8px 0 0;word-break:break-word;line-height:1.45;max-width:90ch}
+.wrongv .mono{font-family:var(--font-mono);font-variant-ligatures:none}
+
+.wrongv .wrong-hint{margin:20px 0 0;font-size:var(--fs-1);color:var(--ink-3);line-height:1.5;max-width:78ch}
