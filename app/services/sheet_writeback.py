@@ -161,6 +161,19 @@ def write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | Non
     """
     if not fields or order.source not in ("lab", "sheet_client") or not order.sheet_tab:
         return None
+    error = _write_sheet_fields(db, order, fields)
+    if "sum3d_id" in fields:
+        # Позначка «Sum3D ще не в таблиці» ставиться й знімається ЛИШЕ тут:
+        # роут, фоновий повтор і скасування пишуть Sum3D через цю функцію.
+        # Не дійшло — тримаємо значення, щоб синк не стер його порожньою L.
+        # Очищення (порожній ID), що не дійшло, не тримаємо: у таблиці лишився
+        # старий ID, і синк поверне його — оператор побачить, що не очистилось.
+        order.sum3d_pending = order.sum3d_id if (error and order.sum3d_id) else None
+    return error
+
+
+def _write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | None:
+    """Тіло `write_sheet_fields`: запис і рядок у журналі синку."""
     try:
         worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
         if worksheet is None:
@@ -331,6 +344,61 @@ def write_sheet_fields_warm(order_id: int, fields: set[str]) -> str | None:
         error = write_sheet_fields(bg, order, fields)
         bg.commit()
         return error
+
+
+# Той самий недійшлий Sum3D повторюємо не частіше за це: причина відмови
+# («рядок не звірено», мережа) минає за хвилини, а тік синку — кожні секунди.
+PENDING_SUM3D_RETRY_SECONDS = 120.0
+# Скільки повторів ставити в чергу пулу за один виклик: пул один на всі записи,
+# і живі правки оператора не мусять стояти за пачкою повторів.
+PENDING_SUM3D_RETRY_BATCH = 5
+_pending_sum3d_attempts: dict[int, float] = {}
+
+
+def retry_pending_sum3d(db: Session, *, now: float | None = None) -> int:
+    """Поставити в пул повторний запис Sum3D, що не дійшов у таблицю.
+
+    Позначку `Order.sum3d_pending` ставить `write_sheet_fields`, коли запис
+    не підтвердився; вона ж і знімається там, коли повтор дійде. Сама пауза
+    синку стоїть у `submit_sheet_write`. Повертає, скільки поставлено.
+
+    Синк таблиці сам нічого не пише — і це не виняток: повтор пише рівно те,
+    що оператор уже ввів і база вже тримає, тим самим записом, що й роут.
+    """
+    from time import monotonic
+
+    from sqlalchemy import select
+
+    from app.sheets import quota_is_tight
+
+    if sync_control.is_paused() or quota_is_tight():
+        return 0
+    now = monotonic() if now is None else now
+    pending = db.execute(
+        select(Order.id, Order.calculated_raw).where(
+            Order.sum3d_pending.is_not(None),
+            Order.sum3d_pending == Order.sum3d_id,
+            Order.archived_at.is_(None),
+        ).order_by(Order.id)
+    ).all()
+    alive = {order_id for order_id, _ in pending}
+    for stale in [key for key in _pending_sum3d_attempts if key not in alive]:
+        _pending_sum3d_attempts.pop(stale, None)
+    submitted = 0
+    for order_id, calculated in pending:
+        last = _pending_sum3d_attempts.get(order_id)
+        if last is not None and now - last < PENDING_SUM3D_RETRY_SECONDS:
+            continue
+        _pending_sum3d_attempts[order_id] = now
+        fields = {"sum3d_id", "calculated_raw"} if calculated else {"sum3d_id"}
+        submit_sheet_write(write_sheet_fields_warm, order_id, fields)
+        submitted += 1
+        if submitted >= PENDING_SUM3D_RETRY_BATCH:
+            break
+    if submitted:
+        logger.info("Повторний запис Sum3D у таблицю: поставлено %d (чекають усього %d)",
+                    submitted, len(pending))
+    return submitted
 
 
 def write_calculated_cell_warm(order_id: int, value: str) -> str | None:

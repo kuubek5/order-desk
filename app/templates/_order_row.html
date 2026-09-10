@@ -285,8 +285,14 @@
         {# ПЕРЕНЕСЕНО з прихованої комірки «Статус» СЮДИ: провалився запис саме
            цього значення в таблицю, тож попередження має стояти біля нього, а
            не в комірці, якої не видно. #}
-        {% if sync_error %}
-        <span class="sync-warning" title="Не записано в Google Таблицю: {{ sync_error }}">
+        {# Друга гілка — СТІЙКЕ попередження: `sync_error` живе лише у відповіді
+           на сам запис, і 15-с полл його прибирав, хоча ID так і не дійшов у
+           таблицю (10.09.26). Позначка в базі тримається, доки повтор не
+           допише ID або таблиця не скаже своє — див. Order.sum3d_pending. #}
+        {% set _sum3d_pending = not _rework and order.sum3d_pending and order.sum3d_pending == order.sum3d_id %}
+        {% if sync_error or _sum3d_pending %}
+        <span class="sync-warning{% if _sum3d_pending %} is-sum3d-pending{% endif %}"
+              title="{% if sync_error %}Не записано в Google Таблицю: {{ sync_error }}{% if _sum3d_pending %}. {% endif %}{% endif %}{% if _sum3d_pending %}Sum3D ще не в таблиці — програма дописує його сама кожні 2 хв, а доти синк його не зітре{% endif %}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
         </span>
         {% endif %}

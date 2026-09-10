@@ -134,6 +134,13 @@ class Order(Base):
     # про опак не сказано нічого; 0 = сказано, що опаку немає.
     opak_units: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     sum3d_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # Sum3D ID, який оператор ввів у черзі, а запис у таблицю НЕ підтвердився
+    # (рядок не звірено, мережа, квота). Поки значення тут дорівнює sum3d_id:
+    # синк не стирає sum3d_id порожньою колонкою L, фоновий повтор дописує його
+    # в таблицю, рядок черги показує «не в таблиці». Без цього порожня L —
+    # тобто наш недійшлий запис — стирала ID при наступному синку мовчки
+    # (10.09.26: одна з трьох робіт «не записалась»). NULL — розбіжності нема.
+    sum3d_pending: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     calculated_raw: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     milled_raw: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     last_milled_date: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)

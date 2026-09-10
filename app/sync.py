@@ -188,6 +188,12 @@ _ALL_ROW_FIELDS = (
 )
 
 
+# Поля, які порожня клітинка НЕ стирає, поки Sum3D оператора чекає на запис у
+# таблицю (Order.sum3d_pending): сам ID (L) і літера «Прорахував» (M) — роут
+# пише їх одним записом, тож і не доходять вони разом.
+_PENDING_SUM3D_FIELDS = frozenset({"sum3d_id", "calculated_raw"})
+
+
 def _reset_order_for_new_work(order: Order, *, source: str, status: str) -> None:
     """Strip a revived order back to a blank slate for the new work in its row.
 
@@ -201,6 +207,8 @@ def _reset_order_for_new_work(order: Order, *, source: str, status: str) -> None
     order.material_id = None
     order.sheet_changed_at = None
     order.sheet_changed_fields = None
+    # Недійшлий Sum3D стосувався СТАРОЇ роботи — у новій його бути не може.
+    order.sum3d_pending = None
     for field in _ALL_ROW_FIELDS:
         setattr(order, field, None)
 
@@ -973,8 +981,16 @@ def sync_tab(
             result.agreed_rows += 1
 
         sheet_comment = _new_sheet_comment(existing.cam_comment, row.cam_comment)
+        # Sum3D, що ще не дійшов у таблицю (див. Order.sum3d_pending). Порожня
+        # L тут означає «наш запис не доїхав», а не «роботу повернули в чергу»:
+        # повернути можна лише те, що в таблиці БУЛО, а цього ID там не було
+        # ніколи. Тому порожні L і M його не стирають. Непорожня L — хтось
+        # вписав своє або наш повтор дійшов: таблиця знову головна.
+        awaiting_sheet = bool(existing.sum3d_pending) and existing.sum3d_pending == existing.sum3d_id
         edited: list[str] = []
         for field, value in fields.items():
+            if awaiting_sheet and not value and field in _PENDING_SUM3D_FIELDS:
+                continue
             if getattr(existing, field) != value:
                 # First import of a field the row simply did not have yet (the
                 # technician filling in the шлях later, us reading a column for
@@ -994,6 +1010,14 @@ def sync_tab(
                 changed = True
                 if was_filled and field in TECHNICIAN_EDITED_FIELDS:
                     edited.append(TECHNICIAN_EDITED_FIELDS[field])
+
+        # Позначка знімається, щойно таблиця сказала своє: у L стоїть ID (наш
+        # дійшов або хтось вписав інший — тоді цикл вище вже взяв його), або
+        # позначка застаріла (ID у базі змінився мимо запису). Порожня L при
+        # живій позначці — лишаємо: це і є випадок, від якого вона захищає.
+        if existing.sum3d_pending and (fields.get("sum3d_id") or not awaiting_sheet):
+            existing.sum3d_pending = None
+            changed = True
 
         if edited:
             # Keep any still-undismissed change visible: the operator must see
