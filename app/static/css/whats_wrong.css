@@ -25,21 +25,24 @@
 .wrongv .wrong-clear p{margin:6px 0 0;font-size:var(--fs-2);color:var(--ink-2);line-height:1.5;max-width:70ch}
 
 /* ── Картка проблеми ──────────────────────────────────────────────────────
-   Ліва смуга кольором рівня — єдиний кольоровий сигнал на картці. Заливати
-   всю картку не можна: тоді «стоп» і «увага» відрізнялись би відтінком фону,
-   і на екрані з п'ятьма картками це читалось би як шум, а не як порядок. */
+   Рівень несе ЧІП у шапці — словом («СТОП», «Проблема», «Увага») і кольором.
+   Тут була ще й товста кольорова смуга зліва; прибрана свідомо: вона
+   повторювала рівно той самий сигнал удруге, а два канали на одну
+   інформацію — не наголос, а шум. Плюс смуга розрізняла картки лише
+   кольором, тобто гірше за слово.
+
+   Периферійна помітність лишається за рахунок ТОНУ МЕЖІ самої картки:
+   краєм ока видно, що серед сірих карток є червона, а точне значення
+   читається з чіпа. Заливати фон не можна — на екрані з п'ятьма картками
+   різні відтінки фону читаються як хаос. */
 .wrongv .wrong-case{
-  position:relative;margin-top:14px;padding:15px 18px 15px 22px;
+  margin-top:14px;padding:15px 18px;
   background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
   box-shadow:var(--glow);
 }
-.wrongv .wrong-case::before{
-  content:"";position:absolute;left:0;top:0;bottom:0;width:4px;
-  border-radius:var(--r-card) 0 0 var(--r-card);background:var(--line-2);
-}
-.wrongv .wrong-case.lvl-stop::before{background:var(--alarm)}
-.wrongv .wrong-case.lvl-problem::before{background:var(--warn)}
-.wrongv .wrong-case.lvl-warn::before{background:var(--accent)}
+.wrongv .wrong-case.lvl-stop{border-color:rgba(var(--alarm-rgb), .38)}
+.wrongv .wrong-case.lvl-problem{border-color:rgba(var(--warn-rgb), .32)}
+.wrongv .wrong-case.lvl-warn{border-color:rgba(var(--accent-rgb), .28)}
 
 .wrongv .wrong-case > header{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:7px}
 .wrongv .wrong-lvl{
