@@ -42,18 +42,26 @@ def _request(prefs: dict | None = None):
 def _cards():
     now = datetime(2026, 9, 3, 12, 0, 0)
 
-    def card(name, host, percent=None, error=None, frame=True):
+    def card(name, host, percent=None, error=None, frame=True,
+             iso=None, reads_percent=None):
         target = MachineTarget(name=name, host=host)
         state = MachineState(target=target, frame_at=now if frame else None,
                              percent=percent, percent_at=now, error=error,
+                             iso_name=iso,
                              fail_streak=99 if error else 0)
-        return MachineCard(target=target, state=state, now=now)
+        return MachineCard(target=target, state=state, now=now,
+                           reads_percent=reads_percent)
 
     return [
         card("350i L", "10.0.0.1", percent=43),
         card("250i", "10.0.0.2"),                       # стоїть
         card("450i", "10.0.0.3", error="немає зв'язку"),
         card("650i", "10.0.0.4", frame=False),          # чекаємо кадр
+        # Програма завантажена, смуги відсотка не видно — «запуск».
+        card("150i", "10.0.0.5", iso="2026-09-03_12-00-00.iso"),
+        # Екран цього верстата застосунок читати не навчений: історія є,
+        # відсотка від нього не було жодного разу.
+        card("150 Olejka", "10.0.0.6", reads_percent=False),
     ]
 
 
@@ -154,5 +162,103 @@ def test_side_tiles_carry_idle_and_wait_states():
                       machine_summary={"total": 4, "running": 1, "broken": 1})
     assert "ms-tile is-run" in html
     assert "ms-tile is-idle" in html
-    assert "ms-tile is-offline" in html
+    # `is-off`, а не `is-offline`: клас плитки тепер — це ключ стану
+    # (`MachineCard.state_key`), спільний для всіх віджетів. `is-offline`
+    # лишився за віджетом пічок, і перейменування там зачепило б чужий екран.
+    assert "ms-tile is-off" in html
     assert "ms-tile is-wait" in html
+    # Два стани, яких плитка не розрізняла: «запуск» виглядав як зупинений
+    # (клас рахувався окремо від підпису), а «екран не читається» взагалі не
+    # існувало — верстат, чий екран ми не вміємо читати, підписувався
+    # «програма не йде», хоч міг фрезерувати (скарга на 150-й).
+    assert "ms-tile is-busy" in html
+    assert "ms-tile is-unreadable" in html
+
+
+# ── Один стан на всі віджети (10.09.26) ────────────────────────────────────
+# Три віджети рахували стан трьома різними виразами, і той самий верстат у ту
+# саму секунду читався як «запуск» у смузі над чергою й «стоїть» у бічній
+# панелі. Причина скарги власника на 150-й: `has_program` додали 04.09.26, але
+# доїхало воно лише в один із трьох.
+
+
+def _all_widgets(cards):
+    """Розмітка всіх трьох віджетів на ОДНОМУ наборі карток."""
+    summary = {"total": len(cards), "running": 1, "broken": 1}
+    return {
+        "strip": templates.env.get_template("_machine_strip.html").render(
+            request=_request(), machine_cards=cards, machine_summary=summary
+        ),
+        "side": templates.env.get_template("_machine_side.html").render(
+            request=None, machine_cards=cards, machine_summary=summary
+        ),
+        "cards": templates.env.get_template("_machine_cards.html").render(
+            request=_request(), cards=cards, calibration=None, poll_seconds=5
+        ),
+    }
+
+
+def test_the_state_is_computed_in_exactly_one_place():
+    """Жоден шаблон верстатів не сміє рахувати стан сам.
+
+    Саме на скопійованому виразі й розійшлись віджети: у `_machine_strip.html`
+    той самий тернарник стояв двічі, у решті — власними варіантами.
+    """
+    for name in ("_machine_strip.html", "_machine_side.html", "_machine_cards.html"):
+        text = (ROOT / "app/templates" / name).read_text(encoding="utf-8")
+        body = "\n".join(
+            line for line in text.splitlines() if not line.lstrip().startswith("{#")
+        )
+        assert "card.has_program" not in body, name
+        assert "card.is_validating" not in body, name
+        assert "card.is_completed" not in body, name
+
+
+def test_a_starting_machine_is_never_shown_as_stopped():
+    """150-й: програма завантажена, смуги відсотка не видно.
+
+    Плитка діставала клас зупиненого верстата й одночасно підписувала себе
+    «запуск» — вигляд суперечив власному тексту.
+    """
+    card = [c for c in _cards() if c.target.name == "150i"]
+    assert card and card[0].state_key == "busy"
+
+    html = _all_widgets(card)
+
+    assert "is-idle" not in html["side"], "плитка «запуску» виглядає зупиненою"
+    assert "is-unreadable" not in html["side"]
+    assert 'class="mch busy"' in html["strip"]
+    assert "is-run" in html["cards"], "картка «запуску» не світиться"
+
+
+def test_a_machine_whose_screen_we_cannot_read_does_not_claim_it_is_idle():
+    """«Програма не йде» — це твердження, а не спостереження. Для верстата,
+    чий екран застосунок читати не навчений, воно може бути прямою неправдою:
+    той якраз фрезерує (скарга на 150 Olejka, 10.09.26)."""
+    card = [c for c in _cards() if c.target.name == "150 Olejka"]
+    assert card and card[0].state_key == "unreadable"
+    assert "не читається" in card[0].state_word
+
+    html = _all_widgets(card)
+
+    assert "програма не йде" not in html["side"]
+    assert "Калібр" in html["side"], "підказка не веде туди, де це лікується"
+
+
+def test_widgets_agree_on_every_card():
+    """Головне: один набір карток — один набір станів у всіх трьох віджетах."""
+    cards = _cards()
+    html = _all_widgets(cards)
+
+    for card in cards:
+        key = card.state_key
+        assert f'class="mch {key}"' in html["strip"], f"{card.target.name}: смуга"
+        assert f'ms-tile is-{key}' in html["side"], f"{card.target.name}: панель"
+
+
+def test_an_unknown_readability_stays_on_the_cautious_answer():
+    """Верстат, доданий учора, ще нічого не встиг дати — і звинувачувати його
+    в нечитабельному екрані не можна. Немає історії — лишаємось на «стоїть»."""
+    card = [c for c in _cards() if c.target.name == "250i"][0]
+    assert card.reads_percent is None
+    assert card.state_key == "idle"

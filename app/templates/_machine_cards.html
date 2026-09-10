@@ -16,7 +16,12 @@
 {% if cards and _mode != 'frame' %}
 <div class="mc-grid">
     {% for card in cards %}
-    <article class="mc-card{% if card.has_problem %} is-offline{% elif card.percent is not none %} is-run{% endif %}">
+    {# Клас картки — з того самого стану, що й пілюля нижче. Раніше картка
+       світилась лише на відсоток, тож верстат у стані «запуск» (програма вже
+       пішла, смуги ще не видно) виглядав так само, як зупинений. Імена класів
+       лишились свої: `.is-offline` тут спільний із віджетом пічок, і
+       перейменування зачепило б чужий екран. #}
+    <article class="mc-card{% if card.state_key == 'off' %} is-offline{% elif card.state_key in ('run', 'busy') %} is-run{% endif %}">
         {# Фото САМОГО верстата з Налаштувань має старшинство; без нього — дефолт
            моделі (350i / 350i loader / 250i / 250i dry за назвою). #}
         <div class="mc-port" data-model="{{ card.model_key }}"{% if card.portrait_url %} style="background-image:url('{{ card.portrait_url }}')"{% endif %}>
@@ -26,25 +31,31 @@
                     <b>{{ card.target.name }}</b>
                     <span>{{ card.target.host }}{% if card.target.port != 5900 %}:{{ card.target.port }}{% endif %}</span>
                 </div>
-                {% if card.has_problem %}
+                {# Порядок і слова — з `MachineCard.state_key` / `state_word`,
+                   тобто ті самі, що в смузі над чергою й у бічній панелі.
+                   Тут стояв четвертий власний ланцюжок умов, і саме він
+                   плутав «кадр є» з «програма йде»: пілюля «на зв'язку»
+                   світилась однаково і коли верстат стояв, і коли він щойно
+                   стартував. #}
+                {% if card.state_key == 'off' %}
                 <span class="fu-pill is-offline">немає зв'язку</span>
-                {% elif card.is_completed %}
+                {% elif card.state_key == 'done' %}
                 {# «Готово» старше за відсоток — див. _machine_side.html. #}
                 <span class="fu-pill is-done">готово · зняти</span>
-                {% elif card.percent is not none %}
+                {% elif card.state_key == 'run' %}
                 <span class="mc-bigpct mc-pct" aria-label="Виконано {{ card.percent }} відсотків">{{ card.percent }}<u>%</u></span>
-                {% elif card.is_validating %}
+                {% elif card.state_key == 'check' %}
                 {# Екран VALIDATE JOBS: верстат перевіряє програму перед
                    стартом. Своя смуга з власним відсотком там є, але вона
                    рахує ПЕРЕВІРКУ, не фрезерування — числа звідти не беремо
                    свідомо, беремо слово. #}
                 <span class="fu-pill is-run">перевірка програми</span>
-                {% elif card.has_frame and not card.stale %}
-                <span class="fu-pill is-run">на зв'язку</span>
-                {% elif card.has_frame %}
+                {% elif card.state_key == 'busy' %}
+                <span class="fu-pill is-run">{{ card.state_word }}</span>
+                {% elif card.stale %}
                 <span class="fu-pill is-unknown">кадр застарів</span>
                 {% else %}
-                <span class="fu-pill is-wait">чекаємо кадр</span>
+                <span class="fu-pill is-wait">{{ card.state_word }}</span>
                 {% endif %}
             </div>
         </div>

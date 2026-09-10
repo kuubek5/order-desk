@@ -345,8 +345,15 @@ html[data-machine-art="none"] .ms-tile>*{text-shadow:none}
    стоїть / чекаємо кадр — притишено (арт «холоне» разом із верстатом);
    без зв'язку — тривожний шар БЕЗ приглушення (приглушити = «менш важливо»). */
 .ms-tile::before{content:"";position:absolute;inset:0;z-index:0;background:rgba(8,11,15,.18)}
-.ms-tile.is-idle::before,.ms-tile.is-wait::before{background:rgba(8,11,15,.5);backdrop-filter:saturate(.3) brightness(.8)}
-.ms-tile.is-offline::before{background:linear-gradient(100deg,rgba(46,13,8,.5),rgba(24,12,10,.8))}
+/* Притемнені стани — ті, у яких верстат нічого не робить АБО ми цього не
+   знаємо: «стоїть», «чекаємо кадр», «екран не читається». «Запуск»
+   (is-busy) сюди НЕ входить свідомо: програма вже пішла, просто
+   відсотка ще не видно, і притемнювати такий верстат означало б
+   показувати його зупиненим (скарга на 150-й).
+   Ключі класів = `MachineCard.state_key`, один набір на всі віджети. */
+.ms-tile.is-idle::before,.ms-tile.is-wait::before,
+.ms-tile.is-unreadable::before{background:rgba(8,11,15,.5);backdrop-filter:saturate(.3) brightness(.8)}
+.ms-tile.is-off::before{background:linear-gradient(100deg,rgba(46,13,8,.5),rgba(24,12,10,.8))}
 .ms-tile:hover::before{background:rgba(var(--accent-rgb), .08)}
 .ms-tile>*{position:relative;z-index:var(--z-base)}
 .ms-name{grid-area:name;font-size:var(--fs-0);font-weight:500;color:var(--ink-2);letter-spacing:.02em;
@@ -391,7 +398,7 @@ html[data-machine-art="none"] .ms-tile>*{text-shadow:none}
 .ms-what,.ms-note{grid-area:what;font-size:var(--fs-0);color:var(--ink-3);white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,.7)}
 .ms-what.dim{color:var(--ink-3)}
-.ms-tile.is-offline .ms-note,.ms-tile.is-offline .ms-name{color:var(--alarm-ink)}
+.ms-tile.is-off .ms-note,.ms-tile.is-off .ms-name{color:var(--alarm-ink)}
 .ms-bar{grid-area:bar;height:3px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:6px}
 .ms-bar > i{display:block;height:100%;border-radius:999px;background:var(--accent);
   box-shadow:0 0 6px rgba(var(--accent-rgb), .6);transition:width .5s cubic-bezier(.4,0,.2,1)}
@@ -463,7 +470,9 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 .mch b{font-weight:500;color:var(--ink)}
 .mch i{font-style:normal;font-family:var(--font-mono);font-variant-numeric:tabular-nums;color:var(--accent-c);font-weight:600}
 .mch i u{text-decoration:none;font-size:var(--fs-0);color:var(--ink-3);font-weight:400;margin-left:1px}
-.mch.idle i,.mch.wait i{color:var(--ink-3);font-weight:400}
+/* Притемнені стани — де верстат нічого не робить АБО ми цього не знаємо.
+   «busy» (запуск) сюди не входить: програма вже пішла. */
+.mch.idle i,.mch.wait i,.mch.unreadable i{color:var(--ink-3);font-weight:400}
 .mch.run{border-color:rgba(var(--accent-rgb), .35)}
 .mch.off{border-color:rgba(var(--alarm-rgb), .5)}
 .mch.off i{color:var(--alarm)}
@@ -492,13 +501,13 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 .mch .ring .bg{stroke:rgba(255,255,255,.1)}
 .mch .ring .fg{stroke:var(--accent-b);stroke-linecap:round}
 .mch.off .ring .fg{stroke:var(--alarm);stroke-dasharray:3 2;stroke-dashoffset:0}
-.mch.idle .ring .fg,.mch.wait .ring .fg{stroke:transparent}
+.mch.idle .ring .fg,.mch.wait .ring .fg,.mch.unreadable .ring .fg{stroke:transparent}
 /* Тікер: один моноширинний рядок, без чіпів. */
 .mstrip-ticker{font-family:var(--font-mono);font-size:var(--fs-1);font-variant-numeric:tabular-nums;white-space:nowrap}
 .tk{color:var(--ink-2);text-decoration:none}
 .tk b{font-weight:500;color:var(--ink-2)}
 .tk i{font-style:normal;color:var(--accent-c);font-weight:700}
-.tk.idle i,.tk.wait i{color:var(--ink-3);font-weight:400}
+.tk.idle i,.tk.wait i,.tk.unreadable i{color:var(--ink-3);font-weight:400}
 .tk.off i{color:var(--alarm)}
 .tk.off b{color:var(--alarm-ink)}
 .tk:hover b{color:var(--ink)}
