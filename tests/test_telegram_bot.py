@@ -603,3 +603,94 @@ def test_prune_keeps_pending_and_fresh_rows():
         assert bot.prune_outbox(db, T0) == 1
         left = {row.dedup_key for row in db.scalars(select(TelegramOutbox))}
     assert left == {"pending", "fresh-sent"}
+
+
+# ── Цикл слухача з підробленим Telegram ─────────────────────────────────────
+
+
+class _InstantEvent:
+    """Event, чиє `wait` не спить: цикл слухача проганяється за мілісекунди."""
+
+    def __init__(self):
+        self.stopped = False
+
+    def is_set(self):
+        return self.stopped
+
+    def wait(self, _timeout=None):
+        return self.stopped
+
+
+def test_offset_belongs_to_the_bot_not_to_the_setting():
+    with Session(_database()) as db:
+        bot._save_offset(db, "111:AAA", 500)
+        assert bot._load_offset(db, "111:AAA") == 500
+        # Новий бот: чужий offset = жодного (інакше 500 сховав би його
+        # повідомлення з меншими номерами).
+        assert bot._load_offset(db, "222:BBB") is None
+
+
+def test_listener_answers_owner_then_survives_token_change(monkeypatch):
+    engine = _database()
+
+    def factory():
+        return Session(engine, expire_on_commit=False)
+
+    with factory() as db:
+        _enable_bot(db)  # токен 123:ABC
+        bot._save_offset(db, "123:ABC", 100)
+
+    stop = _InstantEvent()
+    calls: list[tuple[str, str, dict]] = []
+    script = {
+        # Бот 123: одне повідомлення від Роми й одне від стороннього.
+        ("123", "getUpdates"): [
+            ApiResult(True, 200, [
+                dict(_message(CHAT, "меню"), update_id=100),
+                dict(_message("999", "hi"), update_id=101),
+            ]),
+        ],
+        # Бот 777 (новий токен): хвіст, що накопичився до нас, — пропустити.
+        ("777", "getUpdates"): [
+            ApiResult(True, 200, [dict(_message(CHAT, "старе"), update_id=5)]),
+        ],
+    }
+
+    def fake_call(session, token, method, payload=None, *, timeout=None):
+        bot_id = token.split(":")[0]
+        calls.append((bot_id, method, payload or {}))
+        if method == "getWebhookInfo":
+            return ApiResult(True, 200, {"url": ""})
+        queue = script.get((bot_id, method))
+        if queue:
+            result = queue.pop(0)
+            if bot_id == "123" and not queue:
+                # Після першої пачки власник міняє токен у налаштуваннях.
+                from app.settings_store import set_setting
+
+                with factory() as db:
+                    set_setting(db, "telegram_bot_token", "777:NEW")
+                    db.commit()
+            return result
+        if bot_id == "777" and method == "getUpdates":
+            stop.stopped = True  # другий бот уже слухає — досить
+        return ApiResult(True, 200, [] if method == "getUpdates" else {})
+
+    monkeypatch.setattr(bot, "_session_factory", lambda: factory)
+    monkeypatch.setattr(tg, "_new_session", lambda: object())
+    monkeypatch.setattr(tg, "api_call", fake_call)
+
+    bot.inbound_worker(stop)
+
+    sent = [(b, p) for b, m, p in calls if m == "sendMessage"]
+    # Рівно одне меню — Ромі, через старий бот. Сторонньому — нічого, а
+    # хвіст нового бота («старе») не виконано.
+    assert len(sent) == 1 and sent[0][0] == "123" and sent[0][1]["chat_id"] == CHAT
+    polls_123 = [p for b, m, p in calls if b == "123" and m == "getUpdates"]
+    assert polls_123[0]["offset"] == 100
+    first_777 = [p for b, m, p in calls if b == "777" and m == "getUpdates"][0]
+    assert first_777["offset"] == -1
+    # Вебхук перевірено для КОЖНОГО бота, а не раз на процес.
+    assert {b for b, m, _ in calls if m == "getWebhookInfo"} == {"123", "777"}
+    with factory() as db:
+        assert bot._load_offset(db, "777:NEW") == 6

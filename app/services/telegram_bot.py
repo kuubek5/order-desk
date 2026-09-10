@@ -66,16 +66,29 @@ def bot_enabled(db: Session) -> bool:
     return bool(telegram.get_bot_token(db)) and bool(telegram.get_chat_id(db))
 
 
-def _load_offset(db: Session) -> Optional[int]:
+def _bot_id(token: str) -> str:
+    """Числовий id бота — частина токена ДО двокрапки. Публічна (її видно в
+    посиланні на бота), на відміну від решти токена."""
+    return token.split(":", 1)[0]
+
+
+def _load_offset(db: Session, token: str) -> Optional[int]:
+    """Offset ЦЬОГО бота. Номери оновлень у кожного бота свої: offset,
+    успадкований від попереднього токена, або сховав би всі нові
+    повідомлення (якщо він більший), або виконав би старі. Тому він
+    зберігається як `<id бота>:<offset>`, і чужий = відсутній."""
     raw = (get_setting(db, "telegram_bot_offset") or "").strip()
+    owner, _, value = raw.partition(":")
+    if not value or owner != _bot_id(token):
+        return None
     try:
-        return int(raw) if raw else None
+        return int(value)
     except ValueError:
         return None
 
 
-def _save_offset(db: Session, offset: int) -> None:
-    set_setting(db, "telegram_bot_offset", str(offset))
+def _save_offset(db: Session, token: str, offset: int) -> None:
+    set_setting(db, "telegram_bot_offset", f"{_bot_id(token)}:{offset}")
     db.commit()
 
 
@@ -890,23 +903,25 @@ def inbound_worker(stop_event: threading.Event) -> None:
     """Слухач меню: long polling getUpdates, поки бот увімкнено."""
     SessionLocal = _session_factory()
     session = None
-    webhook_checked = False
+    # Для якого бота вебхук уже перевірено. Id, а не прапорець: токен міняють
+    # у налаштуваннях на ходу, і в нового бота вебхук може стояти свій.
+    webhook_checked_for: Optional[str] = None
     if stop_event.wait(5):
         return
     while not stop_event.is_set():
         try:
             with SessionLocal() as db:
                 enabled, token, chat_id = _read_config(db)
-                offset = _load_offset(db)
+                offset = _load_offset(db, token) if token else None
             if not (enabled and token and chat_id):
                 _set_status(listening=False, since=None, conflict=False, webhook_host=None, error=None)
-                webhook_checked = False
+                webhook_checked_for = None
                 stop_event.wait(DISABLED_RECHECK_SECONDS)
                 continue
             if session is None:
                 session = telegram._new_session()
 
-            if not webhook_checked:
+            if webhook_checked_for != _bot_id(token):
                 host, err = _webhook_host(session, token)
                 if host is not None:
                     # Чужий вебхук мовчки НЕ знімаємо: хтось його поставив, і
@@ -915,20 +930,26 @@ def inbound_worker(stop_event: threading.Event) -> None:
                     stop_event.wait(WEBHOOK_RECHECK_SECONDS)
                     continue
                 if err is None:
-                    webhook_checked = True
+                    webhook_checked_for = _bot_id(token)
                     _set_status(webhook_host=None)
 
             if offset is None:
-                # Перший запуск: усе, що накопичилось до нас, — не запит до
-                # KuubMill. offset=-1 підтверджує хвіст, нічого не виконуючи.
+                # Перший запуск цього бота: усе, що накопичилось до нас, — не
+                # запит до KuubMill. offset=-1 підтверджує хвіст, нічого не
+                # виконуючи. Лише чат запам'ятовуємо — щоб «Прив'язати чат»
+                # спрацював із тим /start, яке людина вже надіслала.
                 result = telegram.api_call(
                     session, token, "getUpdates", {"offset": -1, "timeout": 0}
                 )
                 if result.ok:
                     updates = result.result or []
+                    for update in updates:
+                        update_chat, chat_type = _chat_of(update)
+                        if update_chat is not None and chat_type == "private":
+                            _set_status(last_private_chat=update_chat)
                     last = max((u.get("update_id", 0) for u in updates), default=-1)
                     with SessionLocal() as db:
-                        _save_offset(db, last + 1 if last >= 0 else 0)
+                        _save_offset(db, token, last + 1 if last >= 0 else 0)
                     continue
 
             else:
@@ -945,7 +966,7 @@ def inbound_worker(stop_event: threading.Event) -> None:
 
             if not result.ok:
                 if result.status == 409:
-                    webhook_checked = False
+                    webhook_checked_for = None
                     _set_status(listening=False, conflict=True, error=result.error)
                     _log_throttled("409", "telegram-бот: 409 — бота вже слухає інший процес")
                     stop_event.wait(CONFLICT_RECHECK_SECONDS)
@@ -979,7 +1000,7 @@ def inbound_worker(stop_event: threading.Event) -> None:
             # саме натискання після рестарту не повториться. Пропущене меню
             # дешевше за подвійне.
             with SessionLocal() as db:
-                _save_offset(db, new_offset)
+                _save_offset(db, token, new_offset)
                 for update in updates:
                     try:
                         actions = handle_update(db, update, chat_id=chat_id)
