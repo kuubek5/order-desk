@@ -31,8 +31,8 @@
     <div class="fgroup">
     <span class="flabel">Період</span>
     <div class="seg">
-        <a href="/?period=today&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and period == 'today' and not selected_date %}is-active{% endif %}">Сьогодні <span class="n">{{ counts.today }}</span></a>
         <a href="/?period=yesterday&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and period == 'yesterday' and not selected_date %}is-active{% endif %}">Вчора <span class="n">{{ counts.yesterday }}</span></a>
+        <a href="/?period=today&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and period == 'today' and not selected_date %}is-active{% endif %}">Сьогодні <span class="n">{{ counts.today }}</span></a>
         <a href="/?period=tomorrow&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and period == 'tomorrow' and not selected_date %}is-active{% endif %}">Завтра <span class="n">{{ counts.tomorrow }}</span></a>
         <a href="/?period=earlier&ready={{ ready }}&source={{ source }}" class="{% if not show_overdue and period == 'earlier' and not selected_date %}is-active{% endif %}">Раніше <span class="n">{{ counts.earlier }}</span></a>
     </div>
