@@ -108,8 +108,15 @@ jobs:
       # `agent-latest`: екран «Налаштування → Верстати» посилається саме на
       # нього, тож посилання не треба міняти з кожною збіркою. Артефакти
       # Actions для цього не годяться — вони вимагають входу в GitHub.
+      #
+      # З master І з тегів релізів `v*`. Досі лише з master, а релізи давно
+      # йдуть з іншої гілки — і посилання в CRM тижнями віддавало агента без
+      # виправлень (10.09.26: власник поставив з нього збірку 7dfb561 від 08.09,
+      # у якій агент падав раз на ~3 год). Тег релізу тригерить цей workflow
+      # завжди (фільтр `paths` на теги не діє), тож агент за посиланням тепер
+      # оновлюється разом із кожним релізом CRM.
       - name: Publish to releases repo (stable link)
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
