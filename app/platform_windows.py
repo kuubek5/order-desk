@@ -119,35 +119,86 @@ def _titles_this_folder(title: str, target: str) -> bool:
     return not tail.isalnum()
 
 
-_INSIST_SHOWN_SECONDS = 3.0
-_INSIST_CALM_TICKS = 4
+_INSIST_SHOWN_SECONDS = 4.0
+_INSIST_CALM_TICKS = 7
+
+_SW_SHOW = 5
+_SW_RESTORE = 9
+_HWND_TOPMOST = -1
+_HWND_NOTOPMOST = -2
+_SWP_NOSIZE_NOMOVE_SHOW = 0x0001 | 0x0002 | 0x0040  # NOSIZE | NOMOVE | SHOWWINDOW
 
 
-def _insist_window_shown(user32, hwnd) -> bool:
-    """Розгортати вікно, доки воно не лишиться розгорнутим.
+def _same_window(a, b) -> bool:
+    # `GetForegroundWindow` без restype повертає знаковий c_int, а дескриптор
+    # з EnumWindows — беззнаковий; значущі в HWND лише нижні 32 біти.
+    return bool(a) and bool(b) and (int(a) & 0xFFFFFFFF) == (int(b) & 0xFFFFFFFF)
+
+
+def _bring_to_front(user32, kernel32, hwnd) -> bool:
+    """Розгорнути вікно й винести його НАД браузером. Повертає, чи воно
+    тепер на передньому плані.
+
+    Сервер — фоновий процес, і Windows не дає йому забрати передній план у
+    браузера, де оператор щойно клацнув: `SetForegroundWindow` мовчки не
+    спрацьовує, вікно лишається ЗА розгорнутим браузером, а на панелі задач
+    блимає кнопка. Для оператора це те саме «відкрилось згорнутим» (скарга
+    11.09.26) — і попередня версія в цьому випадку не робила нічого, бо
+    реагувала лише на справді згорнуте вікно (`IsIconic`).
+
+    Тому два кроки:
+    1. `AttachThreadInput` до потоку вікна, яке зараз на передньому плані:
+       на час виклику ми ділимо з ним стан вводу, і `SetForegroundWindow`
+       дозволено. Без імітації натискань — браузер не отримує жодної клавіші.
+    2. Якщо все одно не вийшло — хоча б z-порядок: TOPMOST і одразу
+       NOTOPMOST ставить вікно поверх усіх звичайних, не лишаючи його
+       «завжди зверху». Вікно видно, навіть коли фокус лишився в браузері."""
+    user32.ShowWindow(hwnd, _SW_RESTORE if user32.IsIconic(hwnd) else _SW_SHOW)
+    foreground = user32.GetForegroundWindow()
+    if _same_window(foreground, hwnd):
+        return True
+    ours = kernel32.GetCurrentThreadId()
+    theirs = user32.GetWindowThreadProcessId(foreground, None) if foreground else 0
+    attached = bool(theirs and theirs != ours and user32.AttachThreadInput(ours, theirs, True))
+    try:
+        user32.BringWindowToTop(hwnd)
+        user32.SetForegroundWindow(hwnd)
+    finally:
+        if attached:
+            user32.AttachThreadInput(ours, theirs, False)
+    if _same_window(user32.GetForegroundWindow(), hwnd):
+        return True
+    user32.SetWindowPos(hwnd, _HWND_TOPMOST, 0, 0, 0, 0, _SWP_NOSIZE_NOMOVE_SHOW)
+    user32.SetWindowPos(hwnd, _HWND_NOTOPMOST, 0, 0, 0, 0, _SWP_NOSIZE_NOMOVE_SHOW)
+    user32.SwitchToThisWindow(hwnd, True)
+    return _same_window(user32.GetForegroundWindow(), hwnd)
+
+
+def _insist_window_shown(user32, kernel32, hwnd) -> tuple[bool, bool]:
+    """Підняти вікно й стежити, щоб воно не згорнулось назад.
 
     Одного `SW_RESTORE` не досить, і це не здогад: у бойовому логу 28.08.26
     стоїть «Провідник піднято (нове вікно)», а оператор бачив згорнуте вікно.
     Провідник застосовує збережене положення ВЖЕ ПІСЛЯ створення вікна, тож
     ми виграємо гонку й одразу програємо її — він згортає вікно назад.
 
-    Тому наполягаємо: поки вікно згорнуте — розгортаємо знову, і виходимо
-    лише коли воно кілька перевірок поспіль лишилось розгорнутим. Повертаємо
-    підсумковий стан, щоб у лог ішов ФАКТ, а не намір."""
+    Тому наперед виносимо один раз (далі фокус не відбираємо: оператор міг
+    уже клацнути деінде), а згорнуте розгортаємо знову щоразу, і виходимо
+    лише коли воно ~1 с поспіль лишилось розгорнутим. Повертаємо підсумковий
+    стан (розгорнуте, на передньому плані), щоб у лог ішов ФАКТ, а не намір."""
+    front = _bring_to_front(user32, kernel32, hwnd)
     deadline = time.monotonic() + _INSIST_SHOWN_SECONDS
     calm = 0
     while time.monotonic() < deadline:
+        time.sleep(0.15)
         if user32.IsIconic(hwnd):
-            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-            user32.SwitchToThisWindow(hwnd, True)
-            user32.SetForegroundWindow(hwnd)
+            front = _bring_to_front(user32, kernel32, hwnd)
             calm = 0
         else:
             calm += 1
             if calm >= _INSIST_CALM_TICKS:
                 break
-        time.sleep(0.15)
-    return not bool(user32.IsIconic(hwnd))
+    return not bool(user32.IsIconic(hwnd)), front
 
 
 def _raise_explorer_window(
@@ -181,6 +232,7 @@ def _raise_explorer_window(
         import ctypes
 
         user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
         known = set(before or ())
         deadline = time.monotonic() + timeout
         while True:
@@ -193,9 +245,10 @@ def _raise_explorer_window(
                         hwnd, how = candidate, "наявне вікно за заголовком"
                         break
             if hwnd is not None:
-                shown = _insist_window_shown(user32, hwnd)
+                shown, front = _insist_window_shown(user32, kernel32, hwnd)
                 logger.info(
-                    "Провідник піднято (%s, згорнуте=%s): %s", how, not shown, folder
+                    "Провідник піднято (%s, згорнуте=%s, наперед=%s): %s",
+                    how, not shown, front, folder,
                 )
                 return
             if time.monotonic() >= deadline:
