@@ -445,7 +445,8 @@ class TestRestoreErasedRow:
         (payload,), _ = ws.batch_update.call_args
         assert payload[0]["range"] == "A13:K13"
         # Хвіст добивається порожніми: інакше в K лишився б старий вміст.
-        assert payload[0]["values"][0][:4] == ["1", "24122", "2", "моно а3"]
+        # Кількість — числом (11.09.26: текст «2» сума таблиці пропускала).
+        assert payload[0]["values"][0][:4] == ["1", "24122", 2, "моно а3"]
         assert len(payload[0]["values"][0]) == 11
 
     def test_occupied_row_is_never_overwritten(self):

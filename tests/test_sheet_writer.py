@@ -38,7 +38,8 @@ def _written(fake_ws):
         c0 = uc["range"]["startColumnIndex"]
         for row in uc["rows"]:
             for i, cell in enumerate(row["values"]):
-                out[(r0 + 1, c0 + 1 + i)] = cell["userEnteredValue"]["stringValue"]
+                value = cell["userEnteredValue"]
+                out[(r0 + 1, c0 + 1 + i)] = value["stringValue"] if "stringValue" in value else str(value["numberValue"])
     return out
 
 
@@ -999,3 +1000,34 @@ class TestManualAddDoesNotOverwriteALiveRow:
             )
 
         fake_ws.spreadsheet.batch_update.assert_not_called()
+
+
+
+def test_quantity_goes_to_the_sheet_as_a_number_ids_stay_text():
+    """11.09.26: рядки, додані з CRM, клали кількість текстом «2» — сума
+    Google Таблиці її пропускала (вкладка 10.09: 81 замість 104). Кількість —
+    число; наряд і Sum3D — текст (`12-01-45` інакше стало б датою)."""
+    from app.sheet_writer import COL_QUANTITY, COL_SUM3D_ID, COL_WORK_ORDER_NO, _grid_write_requests
+
+    requests = _grid_write_requests(
+        1, [60], [{"quantity": "8", "material_color": "emo a3", "e_value": "Vision",
+                   "work_order_no": "24122", "sum3d_id": "22-09-11"}],
+        paint_blue=False, first=60, last=60,
+    )
+    cells = {}
+    for req in requests:
+        uc = req["updateCells"]
+        for i, cell in enumerate(uc["rows"][0]["values"]):
+            cells[uc["range"]["startColumnIndex"] + 1 + i] = cell["userEnteredValue"]
+    assert cells[COL_QUANTITY] == {"numberValue": 8}
+    assert cells[COL_WORK_ORDER_NO] == {"stringValue": "24122"}
+    assert cells[COL_SUM3D_ID] == {"stringValue": "22-09-11"}
+
+
+def test_non_numeric_quantity_stays_as_typed():
+    from app.sheet_writer import sheet_quantity
+
+    assert sheet_quantity(" 25 ") == 25
+    assert sheet_quantity("2-3") == "2-3"
+    assert sheet_quantity("") == ""
+    assert sheet_quantity(None) is None

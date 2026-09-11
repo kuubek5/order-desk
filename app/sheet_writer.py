@@ -519,7 +519,7 @@ def restore_order_row(worksheet: gspread.Worksheet, order: Order) -> None:
 
     values = {
         COL_WORK_ORDER_NO: order.work_order_no,
-        COL_QUANTITY: order.quantity,
+        COL_QUANTITY: sheet_quantity(order.quantity),
         COL_MATERIAL_COLOR: order.material_color,
         # Column E carries the work type for a lab row and the CLIENT NAME for a
         # наряд-less client row — the same split _identity_cell relies on.
@@ -569,8 +569,9 @@ def restore_erased_row(
     if occupied:
         raise RowOccupiedError(f"рядок {row} уже зайнято")
 
-    trimmed = list(values[:11])
+    trimmed: list = list(values[:11])
     trimmed += [""] * (11 - len(trimmed))
+    trimmed[COL_QUANTITY - 1] = sheet_quantity(trimmed[COL_QUANTITY - 1])
     # batch_update, а не `update`: у gspread 6 порядок аргументів `update`
     # змінився, а тут той самий виклик, що вже вживає `restore_order_row`.
     call_with_retry(
@@ -749,6 +750,26 @@ def _grid_write_requests(
     return requests
 
 
+def sheet_quantity(value):
+    """Кількість у таблицю — ЧИСЛОМ, якщо це самі цифри.
+
+    Google Таблиця рахує суму лише по клітинках-числах; кількість, записана
+    текстом «2», у суму внизу праворуч і в формули не потрапляє — мовчки
+    (11.09.26: у вкладці 10.09 сума показувала 81 з 104 одиниць цирконію,
+    бо рядки, додані з CRM, лягли текстом). Решта полів лишається текстом
+    свідомо: Sum3D `12-01-45` таблиця інакше прочитала б як дату."""
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return value
+
+
+def _cell_value(col: int, value: str) -> dict:
+    number = sheet_quantity(value) if col == COL_QUANTITY else value
+    if isinstance(number, int):
+        return {"numberValue": number}
+    return {"stringValue": value}
+
+
 def _update_cells_run(sheet_id: int, row_number: int, run: list[int], cells: dict[int, str]) -> dict:
     return {
         "updateCells": {
@@ -757,7 +778,7 @@ def _update_cells_run(sheet_id: int, row_number: int, run: list[int], cells: dic
                 "startRowIndex": row_number - 1, "endRowIndex": row_number,
                 "startColumnIndex": run[0] - 1, "endColumnIndex": run[-1],
             },
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": cells[c]}} for c in run]}],
+            "rows": [{"values": [{"userEnteredValue": _cell_value(c, cells[c])} for c in run]}],
             "fields": "userEnteredValue",
         }
     }
