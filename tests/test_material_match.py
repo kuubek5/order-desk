@@ -95,3 +95,31 @@ class TestWordsAndShadesSplit:
     def test_a_row_without_a_shade_matches_on_the_name_alone(self):
         assert materials_match("тит", "Титан")
         assert not materials_match("тит", "Емоушн")
+
+
+class TestFolderNamesTheKindOfWorkNotTheMaterial:
+    """Бойовий випадок 10.09.26 (Oleksandr): партія за 10.09 мала теку
+    «Повна анатомія колір А3» (кирилична «А»), рядок таблиці — `mono a3`.
+    Тека не збігалась, і видача відкривала партію за 09.09."""
+
+    def test_work_kind_and_shade_only_folder_matches_on_the_shade(self):
+        assert materials_match("mono a3", "Повна анатомія колір А3")
+        assert materials_match("emo a2", "повна анатомія колір A2")
+
+    def test_the_shade_still_decides(self):
+        assert not materials_match("mono a3", "Повна анатомія колір А3.5")
+        assert not materials_match("mono a2", "Повна анатомія колір А3")
+
+    def test_a_folder_that_names_another_material_still_blocks(self):
+        assert not materials_match("mono a3", "Emotions A3 повна анатомія")
+
+    def test_work_kind_words_alone_never_create_a_match(self):
+        assert not materials_match("mono", "Повна анатомія")
+        assert not materials_match("mono a3", "A3")
+
+
+class TestCyrillicShadeLetter:
+    def test_cyrillic_a_is_the_same_shade_as_latin(self):
+        assert materials_match("mono a3", "Monolith А3")
+        assert materials_match("mono c2", "mono С2")
+        assert not materials_match("mono a3", "Monolith В3")

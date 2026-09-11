@@ -1024,6 +1024,29 @@ class TestOneBatchPerRow:
         picked = entries_for_material("mono a3.5", entries, date(2026, 8, 27))
         assert [e.created_at.hour for e in picked] == [8, 12]
 
+    def test_oleksandr_10_09_opens_the_10th_not_the_9th(self):
+        """Бойовий випадок 10.09.26, партії з цехового ПК як є (Get-ChildItem
+        \\\\Systems\\Export\\Oleksandr). Робота `mono a3` за 10.09; партія
+        283 за 10.09 названа «Повна анатомія колір А3» (кирилична «А») — і
+        видача відкривала 282 за 09.09, бо тека «без mono» не збігалась."""
+        from datetime import datetime
+
+        entries = [
+            self._entry("Повна анатомія колір А3", datetime(2026, 9, 10, 13, 36)),
+            self._entry("mono a2", datetime(2026, 9, 9, 13, 29)),
+            self._entry("mono a3", datetime(2026, 9, 9, 13, 29)),
+            self._entry("mono a3,5", datetime(2026, 9, 8, 17, 36)),
+            self._entry("mono a3", datetime(2026, 9, 7, 20, 47)),
+            self._entry("mono c3", datetime(2026, 9, 7, 20, 47)),
+        ]
+        picked = entries_for_material("mono a3", entries, date(2026, 9, 10))
+        assert [(e.material_color_folder_name, e.created_at.day) for e in picked] == [
+            ("Повна анатомія колір А3", 10)
+        ]
+        # А робота `mono a3` за 09.09 як і раніше бере свою 282-гу.
+        picked = entries_for_material("mono a3", entries, date(2026, 9, 9))
+        assert [(e.material_color_folder_name, e.created_at.day) for e in picked] == [("mono a3", 9)]
+
     def test_files_uploaded_the_next_day_are_not_lost(self):
         """Партії раніше за роботу немає — беремо найранішу пізнішу, інакше
         рядок лишився б зовсім без теки."""

@@ -43,9 +43,28 @@ NOISE_WORDS = frozenset({
     "шт", "од",
 })
 
+# Слова, якими тека називає ВИД РОБОТИ, а не матеріал: «Повна анатомія колір
+# А3». Бойовий випадок 10.09.26 (Oleksandr): клієнт назвав теку так, у ній
+# немає ні «mono», ні іншої назви матеріалу — і рядок `mono a3` її не бачив,
+# а видача відкривала позавчорашню партію з `mono a3`. Якщо тека, крім
+# відтінку, несе ЛИШЕ такі слова, вона матеріалу не заперечує — збіг вирішує
+# відтінок. Самі по собі ці слова збігу не створюють (як і NOISE_WORDS).
+WORK_KIND_WORDS = frozenset({
+    "повна", "повний", "повне", "полная", "полный", "full",
+    "анатомія", "анатомия", "анатомічна", "анатомічний", "анатомическая", "anatomy", "anatomic",
+    "колір", "кольору", "цвет", "цвета", "color", "colour",
+    "коронка", "коронки", "коронок", "crown", "crowns",
+    "каркас", "каркаси", "frame",
+    "міст", "мост", "bridge",
+})
+
 # Відтінок: `a3`, `a3.5`, `b1`, кирилицею `а3` — і те саме з пробілом (`a 3,5`),
 # яке склеюється раніше.
-_SHADE_RE = re.compile(r"^[a-dабвгд](?:\d(?:\.\d)?)$")
+_SHADE_RE = re.compile(r"^[a-dабвгдс](?:\d(?:\.\d)?)$")
+# Кирилична літера відтінку, що ВИГЛЯДАЄ як латинська: людина набирає «А3» на
+# українській розкладці, і для порівняння це мусить бути той самий `a3`, що в
+# таблиці (Oleksandr 10.09.26: тека «…колір А3» з кириличною «А»).
+_CYRILLIC_SHADE = str.maketrans({"а": "a", "в": "b", "с": "c", "д": "d"})
 # Кодові кольори виробника (CLAUDE.md §3: `500` = A1 опак, `800` = A2 опак).
 _CODE_RE = re.compile(r"^\d{3,4}$")
 _NUMBER_RE = re.compile(r"^\d(?:\.\d)?$")
@@ -79,7 +98,7 @@ def _tokens(text: str | None) -> list[str]:
             continue
         merged.append(token)
         index += 1
-    return merged
+    return [t[0].translate(_CYRILLIC_SHADE) + t[1:] if _SHADE_RE.match(t) else t for t in merged]
 
 
 def shades(text: str | None) -> set[str]:
@@ -127,4 +146,9 @@ def materials_match(sheet_material: str | None, folder_name: str | None) -> bool
 
     if not sheet_words:
         return bool(sheet_shades & folder_shades)
+    # Тека називає лише вид роботи й відтінок («Повна анатомія колір А3»):
+    # матеріалу вона не заперечує, тож збігається за відтінком. Це кандидат,
+    # а не прив'язка — остаточно вирішує оператор по STL (CLAUDE.md §2).
+    if sheet_shades and folder_words and folder_words <= WORK_KIND_WORDS:
+        return True
     return all(_word_covered(word, folder_words) for word in sheet_words)
