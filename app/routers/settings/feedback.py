@@ -23,7 +23,7 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
     if isinstance(user, RedirectResponse):
         return user
 
-    from app.services import telegram_bot
+    from app.services import furnace_board, telegram_bot
 
     flash = request.session.pop("feedback_settings_flash", None)
     # Лише з пам'яті: відкриття сторінки не має ходити в Telegram.
@@ -51,6 +51,10 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
             ],
             "bot_username": username,
             "logistics_chat": telegram_bot.logistics_chat(db) or "",
+            "board_enabled": furnace_board.board_enabled(db),
+            "board_links": furnace_board.board_links(db),
+            "board_status": furnace_board.status_snapshot(),
+            "board_port": furnace_board.BOARD_PORT,
             "flash": flash,
         },
     )
@@ -301,6 +305,47 @@ def send_logistics_report_now(request: Request, db: Session = Depends(get_db)):
     db.commit()
     telegram_bot.wake_outbound()
     return _logistics_flash(request, "success", "Звіт по пічках поставлено у відправку — прийде за кілька секунд.")
+
+
+# ── Табло пічок для логістів (порт 8010, мережа цеху) ─────────────────────
+
+
+def _board_flash(request: Request, kind: str, message: str) -> RedirectResponse:
+    request.session["feedback_settings_flash"] = {"kind": kind, "message": message}
+    return RedirectResponse("/settings/feedback#furnace-board", status_code=303)
+
+
+@router.post("/settings/feedback/board/toggle")
+def toggle_furnace_board(request: Request, db: Session = Depends(get_db)):
+    """Увімкнути/вимкнути табло. Вимкнене не слухає порт узагалі; сторож
+    табло (web.py) відкриває чи закриває його за кілька секунд."""
+    require_settings_admin(request, db)
+    from app.services import furnace_board
+
+    on = not furnace_board.board_enabled(db)
+    if on and not furnace_board.board_token(db):
+        furnace_board.regenerate_token(db)
+    set_setting(db, furnace_board.BOARD_ENABLED_KEY, "1" if on else "")
+    db.commit()
+    if on:
+        return _board_flash(
+            request, "success",
+            f"Табло вмикається на порту {furnace_board.BOARD_PORT} — посилання нижче. Якщо Windows "
+            "спитає про доступ до мережі, дозвольте «Приватні мережі».",
+        )
+    return _board_flash(request, "success", "Табло вимкнено — порт закрито, посилання не працює.")
+
+
+@router.post("/settings/feedback/board/regenerate")
+def regenerate_furnace_board_link(request: Request, db: Session = Depends(get_db)):
+    """Нове посилання; старе одразу перестає працювати (напр. якщо його
+    переслали не тим людям)."""
+    require_settings_admin(request, db)
+    from app.services import furnace_board
+
+    furnace_board.regenerate_token(db)
+    db.commit()
+    return _board_flash(request, "success", "Нове посилання готове — старе більше не відкривається.")
 
 
 @router.post("/settings/feedback/member/{member_id}/warehouse")

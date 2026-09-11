@@ -530,6 +530,19 @@ def _telegram_outbound_worker(stop_event: Event) -> None:
     outbound_worker(stop_event)
 
 
+# ── Табло пічок для логістів ───────────────────────────────────────────────
+# Окремий маленький веб-застосунок на порту 8010 у мережі цеху, лише перегляд
+# (app/services/furnace_board.py). Сторож тримає його ввімкненим рівно тоді,
+# коли його ввімкнено в налаштуваннях.
+
+
+def _furnace_board_worker(stop_event: Event) -> None:
+    from app.routers.furnace_board import create_board_app
+    from app.services.furnace_board import board_worker
+
+    board_worker(stop_event, create_board_app)
+
+
 # ── Печі спікання ───────────────────────────────────────────────────────────
 # Кадр табло раз на кілька секунд. Це ЧИТАННЯ і тільки читання: у застосунку
 # немає коду, який шле печі байт вводу (див. app/furnace_vnc.py). Керування
@@ -891,6 +904,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("order-desk-machines", _machine_worker),
         _BackgroundWorker("kuubmill-telegram-out", _telegram_outbound_worker),
         _BackgroundWorker("kuubmill-telegram-in", _telegram_inbound_worker),
+        _BackgroundWorker("kuubmill-furnace-board", _furnace_board_worker),
         _BackgroundWorker("kuubmill-system-load", _system_load_worker),
         _BackgroundWorker("kuubmill-cam-blanks", _blanks_worker),
         _BackgroundWorker("kuubmill-vyrobitok-freeze", _vyrobitok_freeze_worker),

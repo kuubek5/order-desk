@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="uk" data-theme="forge">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Пічки — табло KuubMill (мокап)</title>
+<link rel="stylesheet" href="/static/css/fonts.css">
+<link rel="stylesheet" href="/static/css/tokens.css">
+<link rel="stylesheet" href="/static/css/theme-forge.css">
+<style>
+/* Табло пічок для логістів — МОКАП (11.09.26), дані вигадані.
+   Стиль — бічний віджет печей: фото розжарених коронок, «вікна», число, що
+   світиться. Лише температура і час відкриття (рішення власника). */
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:#0c0906;color:var(--ink);font:15px/1.45 var(--font-body)}
+.board{max-width:1500px;margin:0 auto;padding:clamp(14px,2.4vw,28px);display:flex;flex-direction:column;gap:clamp(14px,2vw,22px)}
+
+/* ── Шапка ── */
+.bh{display:flex;align-items:flex-end;gap:14px 24px;flex-wrap:wrap}
+.bh-brand{display:flex;align-items:center;gap:10px;color:var(--accent-c)}
+.bh-brand svg{width:26px;height:26px}
+.bh-title{margin:0;font-family:var(--font-head);font-weight:800;letter-spacing:-.01em;font-size:clamp(22px,3vw,34px);color:var(--ink)}
+.bh-sub{margin:2px 0 0;color:var(--ink-2);font-size:var(--fs-2)}
+.bh-sp{flex:1}
+.bh-clock{text-align:right}
+.bh-clock b{display:block;font:700 clamp(28px,4vw,46px)/1 var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink);letter-spacing:-.02em}
+.bh-clock span{color:var(--ink-2);font-size:var(--fs-1)}
+
+/* Найближча — головна відповідь на «коли?» одним рядком над картками. */
+.next{display:flex;align-items:center;gap:12px 18px;flex-wrap:wrap;padding:14px 18px;border-radius:14px;
+  background:linear-gradient(90deg,rgba(var(--accent-rgb),.16),rgba(var(--accent-rgb),.04));border:1px solid rgba(var(--accent-rgb),.35)}
+.next-k{font-size:var(--fs-1);letter-spacing:.1em;text-transform:uppercase;color:var(--accent-c)}
+.next-v{font:700 clamp(20px,2.6vw,28px) var(--font-head);color:var(--ink)}
+.next-v b{font-family:var(--font-mono);color:var(--accent-c);text-shadow:0 0 18px rgba(var(--accent-rgb),.45)}
+.next-in{color:var(--ink-2);font-size:var(--fs-2)}
+
+/* ── Картки ── */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:clamp(12px,1.6vw,18px)}
+.fc{position:relative;isolation:isolate;overflow:hidden;border-radius:18px;min-height:clamp(230px,26vw,290px);
+  display:flex;flex-direction:column;padding:clamp(16px,1.8vw,22px);border:1px solid rgba(255,255,255,.08);
+  background:#14100a center/cover no-repeat;box-shadow:0 18px 40px -26px rgba(0,0,0,.9)}
+/* Кадр печі: працює — жар коронок; вільна — холодна відкрита піч; збій —
+   приглушено, з тривожною рамкою. Скрим тримає читабельність над фото. */
+.fc.run{background-image:url("/static/img/furnace-crowns.jpg");background-position:40% 55%;border-color:rgba(var(--accent-rgb),.5)}
+.fc.idle{background-image:url("/static/img/furnace-bg-open.jpg");background-position:78% 60%}
+.fc.bad{background-image:url("/static/img/furnace-bg-closed.jpg");background-position:78% 50%;border-color:rgba(var(--alarm-rgb),.55)}
+.fc::after{content:"";position:absolute;inset:0;z-index:-1;
+  background:linear-gradient(180deg,rgba(10,7,4,.78) 0%,rgba(10,7,4,.25) 38%,rgba(8,5,3,.9) 100%)}
+.fc.idle::after{background:linear-gradient(180deg,rgba(9,9,14,.80) 0%,rgba(9,9,14,.55) 40%,rgba(8,8,12,.92) 100%)}
+.fc.bad::after{background:linear-gradient(180deg,rgba(40,12,8,.75) 0%,rgba(20,10,8,.8) 50%,rgba(16,8,6,.95) 100%)}
+.fc-top{display:flex;align-items:center;gap:10px}
+.fc-name{font:700 clamp(18px,1.8vw,22px) var(--font-head);color:var(--ink);text-shadow:0 1px 8px rgba(0,0,0,.8)}
+.pill{margin-left:auto;display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;font-size:var(--fs-1);font-weight:600;
+  background:rgba(0,0,0,.45);backdrop-filter:blur(4px);white-space:nowrap}
+.pill.run{color:var(--accent-c)}
+.pill.run::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:pulse 2s ease-in-out infinite}
+.pill.idle{color:#cfd6e4}
+.pill.bad{color:var(--alarm-ink)}
+@keyframes pulse{50%{opacity:.35}}
+
+.fc-temp{margin-top:auto;display:flex;align-items:baseline;gap:6px}
+.fc-temp b{font:700 clamp(46px,5.4vw,68px)/1 var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:-.03em;color:var(--ink)}
+.fc.run .fc-temp b{color:var(--accent-c);text-shadow:0 0 26px rgba(var(--accent-rgb),.55)}
+.fc-temp span{font:600 clamp(20px,2vw,26px) var(--font-mono);color:var(--ink-2)}
+.fc-temp.none b{font-size:clamp(28px,3vw,36px);color:var(--ink-3)}
+.fc-open{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.12);display:flex;align-items:baseline;gap:8px 12px;flex-wrap:wrap}
+.fc-open-k{font-size:var(--fs-1);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2)}
+.fc-open-v{font:700 clamp(22px,2.3vw,30px) var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+.fc-open-v small{font:600 .6em var(--font-body);color:var(--accent-c);margin-right:4px;text-transform:uppercase;letter-spacing:.06em}
+.fc-left{margin-left:auto;font-size:var(--fs-2);color:var(--ink-2);font-variant-numeric:tabular-nums}
+.fc-note{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.12);font-size:var(--fs-2);color:var(--ink-2)}
+.fc.bad .fc-note{color:var(--alarm-ink)}
+
+/* Іскри над жаром — лише на працюючій. */
+.sparks{position:absolute;inset:0;z-index:-1;pointer-events:none}
+.sparks i{position:absolute;bottom:30%;width:3px;height:3px;border-radius:50%;background:rgba(var(--accent-rgb),.95);opacity:0;animation:fly 4s linear infinite}
+.sparks i:nth-child(1){left:18%;animation-delay:-.7s}.sparks i:nth-child(2){left:30%;animation-delay:-2.1s}
+.sparks i:nth-child(3){left:44%;animation-delay:-3.3s}.sparks i:nth-child(4){left:57%;animation-delay:-1.4s}
+@keyframes fly{0%{transform:translateY(0);opacity:0}12%{opacity:.9}100%{transform:translate(12px,-90px);opacity:0}}
+@media (prefers-reduced-motion:reduce){.sparks{display:none}.pill.run::before{animation:none}}
+
+.foot{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:space-between;color:var(--ink-3);font-size:var(--fs-1)}
+.foot b{color:var(--ink-2);font-family:var(--font-mono);font-weight:500}
+
+/* Мокап: підпис, що це макет. */
+.mock-note{align-self:flex-start;padding:4px 10px;border-radius:8px;background:rgba(159,208,255,.1);color:#9fd0ff;font-size:12px}
+
+@media (max-width:560px){
+  .bh-clock{text-align:left;width:100%}
+  .fc{min-height:210px}
+  .fc-left{margin-left:0;width:100%}
+}
+</style>
+</head>
+<body>
+<main class="board">
+  <span class="mock-note">Мокап табло для логістів · дані вигадані · час живий</span>
+
+  <header class="bh">
+    <div>
+      <div class="bh-brand">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
+        <h1 class="bh-title">Пічки</h1>
+      </div>
+      <p class="bh-sub">KuubMill · фрезерний центр · оновлюється саме</p>
+    </div>
+    <span class="bh-sp"></span>
+    <div class="bh-clock"><b id="clock">17:42</b><span id="date">чт 10.09 · Київ</span></div>
+  </header>
+
+  <section class="next" aria-label="Найближча піч">
+    <span class="next-k">Найближча відкриється</span>
+    <span class="next-v"><b id="next-at">23:40</b> — Піч 2</span>
+    <span class="next-in" id="next-in">через 5 год 58 хв</span>
+  </section>
+
+  <section class="grid" aria-label="Пічки">
+    <article class="fc run" data-done="2026-09-11T03:15:00">
+      <div class="sparks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="fc-top"><span class="fc-name">Піч 1</span><span class="pill run">працює</span></div>
+      <div class="fc-temp"><b>1380</b><span>°C</span></div>
+      <div class="fc-open"><span class="fc-open-k">відкриється</span><span class="fc-open-v"><small>завтра</small>03:15</span><span class="fc-left" data-left>ще 9 год 33 хв</span></div>
+    </article>
+
+    <article class="fc run" data-done="2026-09-10T23:40:00">
+      <div class="sparks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="fc-top"><span class="fc-name">Піч 2</span><span class="pill run">працює</span></div>
+      <div class="fc-temp"><b>860</b><span>°C</span></div>
+      <div class="fc-open"><span class="fc-open-k">відкриється</span><span class="fc-open-v">23:40</span><span class="fc-left" data-left>ще 5 год 58 хв</span></div>
+    </article>
+
+    <article class="fc idle">
+      <div class="fc-top"><span class="fc-name">Піч 3</span><span class="pill idle">вільна</span></div>
+      <div class="fc-temp"><b>42</b><span>°C</span></div>
+      <div class="fc-note">Можна завантажувати</div>
+    </article>
+
+    <article class="fc bad">
+      <div class="fc-top"><span class="fc-name">Допоміжна</span><span class="pill bad">немає даних</span></div>
+      <div class="fc-temp none"><b>—</b></div>
+      <div class="fc-note">Табло не читається — число не вгадуємо</div>
+    </article>
+  </section>
+
+  <footer class="foot">
+    <span>Час київський · дані з табло станом на <b id="asof">17:41</b></span>
+    <span>Лише перегляд · KuubMill на ПК цеху</span>
+  </footer>
+</main>
+<script>
+/* Мокап: годинник і залишок «ще …» ідуть наживо від вигаданого «зараз»
+   (чт 10.09 17:42), щоб було видно, як табло поводиться на стіні. */
+(function(){
+  const start = Date.now(), base = new Date(2026, 8, 10, 17, 42, 0).getTime();
+  const pad = n => String(n).padStart(2, "0");
+  const left = ms => { const m = Math.max(0, Math.round(ms / 60000)); const h = Math.floor(m / 60); return (h ? h + " год " : "") + (m % 60) + " хв"; };
+  function tick(){
+    const now = new Date(base + (Date.now() - start));
+    document.getElementById("clock").textContent = pad(now.getHours()) + ":" + pad(now.getMinutes());
+    document.querySelectorAll(".fc[data-done]").forEach(card => {
+      const done = new Date(card.dataset.done).getTime();
+      const el = card.querySelector("[data-left]");
+      if (el) el.textContent = "ще " + left(done - now.getTime());
+    });
+    document.getElementById("next-in").textContent = "через " + left(new Date("2026-09-10T23:40:00").getTime() - now.getTime());
+  }
+  tick(); setInterval(tick, 5000);
+})();
+</script>
+</body>
+</html>

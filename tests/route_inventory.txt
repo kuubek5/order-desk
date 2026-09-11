@@ -154,6 +154,8 @@ POST /settings/backup/import
 POST /settings/check-path
 POST /settings/feedback
 POST /settings/feedback/bind
+POST /settings/feedback/board/regenerate
+POST /settings/feedback/board/toggle
 POST /settings/feedback/invite
 POST /settings/feedback/invite/{invite_id}/revoke
 POST /settings/feedback/logistics

@@ -188,6 +188,47 @@
                         </form>
                     </div>
 
+                    {# Табло пічок для логістів — окремий вхід у мережі цеху (порт
+                       {{ board_port }}), лише перегляд. Статус — з самого сервера
+                       табло (слухає / порт зайнятий), не з того, що вимикач стоїть. #}
+                    {% set bs = board_status %}
+                    <div class="stand-cell w6 stand-members" id="furnace-board">
+                        <h3>Табло пічок для логістів</h3>
+                        <p>
+                        {% if not board_enabled %}
+                            <span class="stand-state stand-state-none">вимкнено</span>
+                        {% elif bs.listening %}
+                            <span class="stand-state stand-state-ok">працює з {{ bs.since.strftime('%H:%M') if bs.since else '—' }}</span>
+                        {% elif bs.error %}
+                            <span class="stand-state stand-state-warn">{{ bs.error }}</span>
+                        {% else %}
+                            <span class="stand-state stand-state-none">вмикається…</span>
+                        {% endif %}
+                        </p>
+                        <p class="settings-help">Сторінка в мережі цеху: картки печей, температура і коли відкриється (за Києвом), сама оновлюється кожні 30 с. Відкривається з будь-якого ПК чи телефона в тій самій мережі за посиланням нижче. Там немає нічого, крім печей: ні черги, ні входу в KuubMill, нічого не можна змінити.</p>
+                        {% if board_enabled %}
+                        {% for link in board_links %}
+                        <div class="stand-drow">
+                            <div class="stand-dtext"><p><span class="mono stand-members-link">{{ link }}</span></p></div>
+                            <button type="button" class="settings-secondary-button" data-copy="{{ link }}" title="Скопіювати посилання">Скопіювати</button>
+                        </div>
+                        {% else %}
+                        <p class="stand-note">Не вдалось визначити адресу цього ПК у мережі — перевірте мережеве підключення.</p>
+                        {% endfor %}
+                        <p class="stand-note">Якщо посилання не відкривається з іншого ПК: при першому ввімкненні Windows питає, чи дозволити KuubMill доступ до мережі — потрібно «Приватні мережі». Змінити посилання — старе одразу перестане працювати.</p>
+                        {% endif %}
+                        <div class="stand-drow">
+                            <form method="post" action="/settings/feedback/board/toggle">
+                                <button type="submit" class="settings-secondary-button">{{ 'Вимкнути табло' if board_enabled else 'Увімкнути табло' }}</button>
+                            </form>
+                            {% if board_enabled %}
+                            <form method="post" action="/settings/feedback/board/regenerate">
+                                <button type="submit" class="settings-secondary-button">Змінити посилання</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+
                     {# Чат логістів: сюди йде ЛИШЕ звіт по пічках — щоранку о 08:00 і на
                        «/pechi» час відкриття (рішення власника 11.09.26). #}
                     {% set st = bot_status %}

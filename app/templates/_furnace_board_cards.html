@@ -1,0 +1,41 @@
+{# Живий шматок табло пічок (furnace_board.html): смуга «найближча» і картки.
+   Сторінка перечитує його сама раз на 30 с (скрипт у furnace_board.html).
+   Лише температура і час відкриття (рішення власника 11.09.26). Табло печі
+   не прочиталось — «немає даних», а не старе число. #}
+<div id="fb-live" data-server-now="{{ (view.now.timestamp() * 1000)|int }}" data-as-of="{{ view.as_of }}">
+    {% if view.nearest_at %}
+    <section class="next" aria-label="Найближча піч">
+        <span class="next-k">Найближча відкриється</span>
+        <span class="next-v">{% if view.nearest_day %}<small>{{ view.nearest_day }}</small> {% endif %}<b>{{ view.nearest_at }}</b> — {{ view.nearest_name }}</span>
+        <span class="next-in" data-left-to="{{ view.nearest_iso }}" data-prefix="через "></span>
+    </section>
+    {% endif %}
+
+    <section class="grid" aria-label="Пічки">
+        {% for c in view.cards %}
+        <article class="fc {{ c.kind }}">
+            {% if c.kind == 'run' %}<div class="sparks" aria-hidden="true"><i></i><i></i><i></i><i></i></div>{% endif %}
+            <div class="fc-top">
+                <span class="fc-name">{{ c.name }}</span>
+                <span class="pill {{ c.kind }}">{{ {'run': 'працює', 'idle': 'вільна', 'bad': 'немає даних'}[c.kind] }}</span>
+            </div>
+            {% if c.temp is not none %}
+            <div class="fc-temp"><b>{{ c.temp }}</b><span>°C</span></div>
+            {% else %}
+            <div class="fc-temp none"><b>—</b></div>
+            {% endif %}
+            {% if c.kind == 'run' and c.open_at %}
+            <div class="fc-open">
+                <span class="fc-open-k">відкриється</span>
+                <span class="fc-open-v">{% if c.open_day %}<small>{{ c.open_day }}</small>{% endif %}{{ c.open_at }}</span>
+                <span class="fc-left" data-left-to="{{ c.done_iso }}" data-prefix="ще ">ще {{ c.remaining }}</span>
+            </div>
+            {% elif c.note %}
+            <div class="fc-note">{{ c.note }}</div>
+            {% endif %}
+        </article>
+        {% else %}
+        <p class="empty">Печей не налаштовано або з них ще немає жодного кадру.</p>
+        {% endfor %}
+    </section>
+</div>
