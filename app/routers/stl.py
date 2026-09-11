@@ -41,7 +41,7 @@ def list_stl_preview_files(request: Request, token: str, db: Session = Depends(g
     return {"files": list_stl_files(folder)}
 
 
-@router.get("/stl-preview/{token}/{filename}")
+@router.get("/stl-preview/{token}/{filename:path}")
 def get_stl_preview_file(
     request: Request, token: str, filename: str, db: Session = Depends(get_db)
 ):
@@ -49,8 +49,12 @@ def get_stl_preview_file(
 
     `folder` is re-derived from `token` on every call (never cached from the
     list call above) and `filename` is re-validated against that folder by
-    `resolve_stl_file` — no path separators, `.stl` extension only, must
-    resolve to an existing regular file directly inside `folder`.
+    `resolve_stl_file` — `.stl` extension only, `/` only between plain
+    segments of a subfolder (`Іваненко/crown.stl`, 11.09.26), no `..`, no
+    backslash, no link hop, must resolve to an existing regular file inside
+    `folder`. `:path` — бо браузер шле `Іваненко%2Fcrown.stl`, а Starlette
+    розкодовує `%2F` у `/` ще до маршрутизації: без `:path` такий запит
+    не збігся б із маршрутом і дав 404.
     """
     if get_current_user(request, db) is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")

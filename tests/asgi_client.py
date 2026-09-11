@@ -13,7 +13,7 @@ Lifespan НЕ запускається навмисно: інакше підня
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, unquote, urlencode, urlsplit
 
 
 class MiniClient:
@@ -55,8 +55,12 @@ class MiniClient:
             "http_version": "1.1",
             "method": method,
             "scheme": "http",
-            "path": split.path,
-            "raw_path": split.path.encode(),
+            # Як uvicorn: `path` — РОЗКОДОВАНИЙ (`%2F` → `/`, кирилиця як є),
+            # `raw_path` — байти запиту як прийшли. Без цього маршрут
+            # `{filename:path}` бачив би `%2F` і тест казав би 404 там, де
+            # справжній сервер відповідає 200 (11.09.26, прев'ю з підтек).
+            "path": unquote(split.path),
+            "raw_path": quote(split.path, safe="/%:@!$&'()*+,;=-._~").encode("ascii"),
             "query_string": split.query.encode(),
             "root_path": "",
             "headers": headers,

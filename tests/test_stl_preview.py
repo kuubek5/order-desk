@@ -11,6 +11,7 @@ import base64
 import pytest
 
 from app import stl_preview
+from tests.test_settings_slabs_render import ADMIN, app_db  # noqa: F401 — фікстура
 from app.stl_preview import (
     build_preview_token,
     list_stl_files,
@@ -327,3 +328,115 @@ class TestLexicalTokenStaysSafe:
             assert sp.resolve_preview_folder(db, token) is None, (
                 "роут віддав теку, якої вже немає — перевірка диском на видачі зникла"
             )
+
+
+# --- підтеки (власник 11.09.26) ---------------------------------------------
+# «export\клієнт\11.09.26\mono a3» з підтеками: розпакований архів, «по
+# пацієнтах». Прев'ю бачило лише файли просто в теці — тека знаходилась, а
+# прев'ю було порожнім.
+
+
+def _tree(tmp_path):
+    folder = tmp_path / "export" / "Клієнт" / "11.09.26" / "mono a3"
+    (folder / "Іваненко").mkdir(parents=True)
+    (folder / "Петренко" / "scan").mkdir(parents=True)
+    (folder / "a" / "b" / "c").mkdir(parents=True)
+    (folder / "__MACOSX").mkdir()
+    (folder / "top.stl").write_bytes(b"top")
+    (folder / "Іваненко" / "crown_16.stl").write_bytes(b"ivanenko")
+    (folder / "Петренко" / "crown_21.STL").write_bytes(b"x")
+    (folder / "Петренко" / "scan" / "jaw.stl").write_bytes(b"x")
+    (folder / "a" / "b" / "c" / "too_deep.stl").write_bytes(b"x")
+    (folder / "__MACOSX" / "._crown.stl").write_bytes(b"x")
+    (folder / "Іваненко" / "notes.txt").write_bytes(b"x")
+    return folder
+
+
+def test_subfolders_are_listed_after_the_direct_files(tmp_path):
+    folder = _tree(tmp_path)
+    assert list_stl_files(folder) == [
+        "top.stl",
+        "Іваненко/crown_16.stl",
+        "Петренко/crown_21.STL",
+        "Петренко/scan/jaw.stl",
+    ], "плоскі — першими; глибше 2 рівнів і __MACOSX — ні"
+
+
+def test_flat_folder_lists_exactly_as_before(tmp_path):
+    folder = tmp_path / "material"
+    (folder / "empty_sub").mkdir(parents=True)
+    for name in ("b.STL", "a.stl", "c.stl"):
+        (folder / name).write_bytes(b"x")
+    assert list_stl_files(folder) == ["a.stl", "b.STL", "c.stl"]
+
+
+def test_subfolder_file_resolves_and_escapes_do_not(tmp_path):
+    folder = _tree(tmp_path)
+    assert resolve_stl_file(folder, "Іваненко/crown_16.stl") == (folder / "Іваненко" / "crown_16.stl").resolve()
+    assert resolve_stl_file(folder, "Петренко/scan/jaw.stl") is not None
+    (tmp_path / "export" / "secret.stl").write_bytes(b"x")
+    for bad in (
+        "a/b/c/too_deep.stl",          # глибше дозволеного
+        "Іваненко/../top.stl",         # `..` усередині
+        "../../secret.stl",
+        "Іваненко\crown_16.stl",      # зворотна риска
+        "/Іваненко/crown_16.stl",      # абсолютний
+        "C:/Windows/win.stl",
+        "Іваненко//crown_16.stl",      # порожній сегмент
+        "Іваненко/notes.txt",
+        "Іваненко",
+    ):
+        assert resolve_stl_file(folder, bad) is None, bad
+
+
+def test_junction_subfolder_is_neither_listed_nor_served(tmp_path):
+    import os
+
+    folder = _tree(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "leak.stl").write_bytes(b"x")
+    link = folder / "link"
+    try:
+        if os.name == "nt":
+            import _winapi
+
+            _winapi.CreateJunction(str(outside), str(link))
+        else:
+            link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("не вдалось створити junction/symlink")
+    assert not any(name.startswith("link/") for name in list_stl_files(folder))
+    assert resolve_stl_file(folder, "link/leak.stl") is None
+
+
+def test_the_whole_story_through_the_real_routes(tmp_path, monkeypatch, app_db):  # noqa: F811
+    """Симуляція 11.09.26 від токена до байтів — справжній застосунок, вхід,
+    маршрути /stl-preview. Браузер кодує `/` в імені як %2F."""
+    from urllib.parse import quote
+
+    import app.stl_preview as stl_preview
+    from app.stl_preview import build_preview_token
+    from tests.asgi_client import MiniClient
+
+    folder = _tree(tmp_path)
+    export_root = tmp_path / "export"
+    monkeypatch.setitem(stl_preview._ROOT_RESOLVERS, "export", lambda db: str(export_root))
+    token = build_preview_token(folder, {"export": str(export_root)})
+    assert token
+
+    app, _factory = app_db
+    client = MiniClient(app)
+    client.login(*ADMIN)
+
+    status, _, body = client.get(f"/stl-preview/{token}")
+    assert status == 200
+    assert "Іваненко/crown_16.stl" in body and "top.stl" in body
+
+    # Як шле stl-render-core.js: encodeURIComponent(filename).
+    status, _, body = client.get(f"/stl-preview/{token}/{quote('Іваненко/crown_16.stl', safe='')}")
+    assert status == 200 and body == "ivanenko"
+    status, _, body = client.get(f"/stl-preview/{token}/top.stl")
+    assert status == 200 and body == "top", "плоский файл — як і раніше"
+    for bad in ("..%2F..%2Fsecret.stl", quote("Іваненко/../top.stl", safe=""), "a%2Fb%2Fc%2Ftoo_deep.stl"):
+        assert client.get(f"/stl-preview/{token}/{bad}")[0] == 404, bad

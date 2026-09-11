@@ -28,6 +28,8 @@ segment/symlink/resolve checks below all pass.
 """
 
 import base64
+import os
+import stat as stat_module
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -311,33 +313,98 @@ def resolve_preview_folder(db: Session, token: str) -> Path | None:
     return resolved_folder
 
 
-def list_stl_files(folder: Path) -> list[str]:
-    """Return sorted `.stl` filenames directly inside `folder` (non-recursive)."""
+# Скільки рівнів підтек прев'ю переглядає під текою роботи. Файли в теці
+# матеріалу бувають розкладені по підтеках — розпакований архів, «по
+# пацієнтах» (власник 11.09.26: «export\клієнт	.09.26\mono a3» з
+# підтеками). Глибина обмежена свідомо: `export` — мережева шара, кожна
+# підтека — окремий round-trip.
+STL_SUBFOLDER_DEPTH = 2
+STL_LIST_LIMIT = 300
+# Службові теки архіваторів: `__MACOSX` з архіву, зробленого на Mac, несе
+# `._crown.stl`-двійники, які не є моделями.
+_SKIP_DIRS = frozenset({"__macosx"})
+_REPARSE_POINT = getattr(stat_module, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+
+
+def _entry_is_link(entry: os.DirEntry) -> bool:
+    """Symlink АБО будь-яка точка підключення Windows (junction).
+
+    `Path.is_junction` зʼявився лише в Python 3.12, а KuubMill зібрано на
+    3.11 — `_is_link` junction там не бачить (тест 11.09.26 це й показав:
+    підтека-junction потрапляла в список). Атрибут REPARSE_POINT приходить
+    разом зі списком теки (scandir), тож перевірка не коштує звернення."""
+    if entry.is_symlink():
+        return True
     try:
-        entries = list(Path(folder).iterdir())
-    except (OSError, PermissionError):
-        return []
-    names = [
-        entry.name
-        for entry in entries
-        if entry.is_file() and entry.suffix.lower() == STL_EXTENSION
-    ]
-    return sorted(names)
+        attributes = getattr(entry.stat(follow_symlinks=False), "st_file_attributes", 0)
+    except OSError:
+        return True
+    return bool(attributes & _REPARSE_POINT)
+
+
+def list_stl_files(folder: Path) -> list[str]:
+    """`.stl` у теці й у її підтеках до `STL_SUBFOLDER_DEPTH` рівнів.
+
+    Файли просто в теці — ПЕРШИМИ і в тому самому порядку, що й раніше: для
+    плоскої теки список байт-у-байт той самий, що до підтримки підтек. Далі
+    файли підтек як `Іваненко/crown_16.stl` (роздільник `/`), теки за
+    абеткою. Підтеки-посилання (symlink / junction) не відвідуються взагалі —
+    `resolve_stl_file` їх однаково не віддав би."""
+    direct: list[str] = []
+    nested: list[str] = []
+
+    def walk(current: Path, prefix: str, depth: int) -> None:
+        try:
+            with os.scandir(current) as it:
+                entries = list(it)
+        except (OSError, PermissionError):
+            return
+        files: list[str] = []
+        dirs: list[str] = []
+        for entry in entries:
+            try:
+                if entry.is_file() and Path(entry.name).suffix.lower() == STL_EXTENSION:
+                    files.append(entry.name)
+                elif (
+                    depth < STL_SUBFOLDER_DEPTH
+                    and entry.name.lower() not in _SKIP_DIRS
+                    and not _entry_is_link(entry)
+                    and entry.is_dir(follow_symlinks=False)
+                ):
+                    dirs.append(entry.name)
+            except OSError:
+                continue
+        (nested if prefix else direct).extend(prefix + name for name in sorted(files))
+        for name in sorted(dirs):
+            if len(direct) + len(nested) >= STL_LIST_LIMIT:
+                return
+            walk(current / name, f"{prefix}{name}/", depth + 1)
+
+    walk(Path(folder), "", 0)
+    return (direct + nested)[:STL_LIST_LIMIT]
 
 
 def resolve_stl_file(folder: Path, filename: str) -> Path | None:
-    """Validate `filename` is a plain `.stl` file directly inside `folder`.
+    """Validate `filename` is a plain `.stl` file inside `folder` — directly or
+    in a subfolder up to `STL_SUBFOLDER_DEPTH` levels (`Іваненко/crown.stl`).
 
-    Rejects path separators, traversal segments, non-`.stl` extensions, and
-    anything that doesn't resolve to an existing regular file whose parent is
-    exactly `folder` (defense in depth even though `folder` itself was
+    `filename` round-trips through the browser, so it is untrusted. Rejects
+    backslashes, drive/`:` segments, empty/`.`/`..` segments, non-`.stl`
+    extensions, any symlink/junction hop on the way (every segment is
+    checked, not just the last), paths deeper than allowed, and anything that
+    doesn't resolve to an existing regular file that stays under `folder` at
+    exactly that depth (defense in depth even though `folder` itself was
     already validated by `resolve_preview_folder`).
     """
-    if not filename or "/" in filename or "\\" in filename:
+    if not filename or "\\" in filename:
         return None
-    if filename in (".", ".."):
+    parts = filename.split("/")
+    if len(parts) > STL_SUBFOLDER_DEPTH + 1:
         return None
-    if Path(filename).suffix.lower() != STL_EXTENSION:
+    for part in parts:
+        if part in ("", ".", "..") or ":" in part or Path(part).is_absolute():
+            return None
+    if Path(parts[-1]).suffix.lower() != STL_EXTENSION:
         return None
 
     folder = Path(folder)
@@ -348,15 +415,16 @@ def resolve_stl_file(folder: Path, filename: str) -> Path | None:
     except (OSError, RuntimeError):
         return None
 
-    candidate = folder / filename
+    candidate = _walk_without_links(folder, parts)
+    if candidate is None:
+        return None
     try:
-        if _is_link(candidate):
-            return None
         resolved_candidate = candidate.resolve(strict=True)
-    except (OSError, RuntimeError):
+        relative = resolved_candidate.relative_to(resolved_folder)
+    except (OSError, RuntimeError, ValueError):
         return None
 
-    if resolved_candidate.parent != resolved_folder:
+    if len(relative.parts) != len(parts):
         return None
     if not resolved_candidate.is_file():
         return None

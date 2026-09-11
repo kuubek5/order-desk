@@ -70,7 +70,7 @@ GET /shift/card
 GET /shift/images/{image_id}
 GET /stats
 GET /stl-preview/{token}
-GET /stl-preview/{token}/{filename}
+GET /stl-preview/{token}/{filename:path}
 GET /sum3d/tray
 GET /system/load
 GET /trace

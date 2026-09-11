@@ -676,3 +676,14 @@ class TestBatchWithoutMaterialFolder:
         (batch / "crown.stl").write_text("x")
         (entry,) = scan_export_client_latest(tmp_path, "Client")
         assert entry.material_color_folder_name == "Новая папка (12)"
+
+
+def test_material_folder_counts_its_subfolders(tmp_path):
+    """Прев'ю бачить моделі в підтеках (11.09.26), тож підказка на теці не
+    має казати «0 файл.» — сканер рахує підтеки з того самого scandir."""
+    mat = tmp_path / "Client" / "11.09.26" / "mono a3"
+    (mat / "Іваненко").mkdir(parents=True)
+    (mat / "Петренко").mkdir()
+    (mat / "Іваненко" / "crown.stl").write_text("x")
+    (entry,) = scan_export_folder(tmp_path)
+    assert entry.files == [] and entry.subfolders == 2

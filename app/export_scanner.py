@@ -45,6 +45,12 @@ class ExportEntry:
     """Full path to the level-3 (material-color) folder.
     Kept for later use (e.g., building a 'copy path' button), not used by scanning logic."""
 
+    subfolders: int = 0
+    """Скільки підтек у теці матеріалу. Файли в них сканер не рахує (кожна
+    підтека — ще один round-trip на шару), але прев'ю їх показує (до 2
+    рівнів, `stl_preview.list_stl_files`) — тож «0 файл.» на теці з
+    підтеками брехало б. Береться з того самого scandir, що й files."""
+
 
 def scan_export_folder(root: Path, not_before: datetime | None = None) -> list[ExportEntry]:
     """Scan the export folder tree and return a flat list of ExportEntry objects.
@@ -165,10 +171,13 @@ def _batch_entries(client_folder_name: str, batch, created_at: datetime) -> list
             continue
 
         files_list = []
+        subfolders = 0
         for f in _dir_entries(material.path):
             try:
                 if f.is_file():
                     files_list.append(f.name)
+                elif f.is_dir():
+                    subfolders += 1
             except OSError:
                 continue
 
@@ -180,6 +189,7 @@ def _batch_entries(client_folder_name: str, batch, created_at: datetime) -> list
                 material_color_folder_name=material.name,
                 files=files_list,
                 folder_path=Path(material.path),
+                subfolders=subfolders,
             )
         )
     # Лише коли підтек немає зовсім: файл поруч із теками матеріалу — це

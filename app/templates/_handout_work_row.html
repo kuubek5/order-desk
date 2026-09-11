@@ -102,7 +102,7 @@ title="Видано в CRM{% if issued_by.get(order.id) %}: {{ issued_by[order.i
            на модель, забував, чию коронку шукає в лотку. #}
         {% for entry in order.export_matches %}
         <a href="{{ entry.folder_uri }}" class="wfolder" {% if entry.preview_token %}data-stl-preview-token="{{ entry.preview_token }}" data-stl-preview-label="{{ client_label }} · {{ order.material_color or '—' }} · {{ order.quantity or '—' }} од."{% endif %}
-           title="{{ entry.material_color_folder_name }} · {{ entry.created_at.strftime('%d.%m %H:%M') }} · {{ entry.files|length }} файл. — прев'ю / відкрити">
+           title="{{ entry.material_color_folder_name }} · {{ entry.created_at.strftime('%d.%m %H:%M') }} · {% if entry.files %}{{ entry.files|length }} файл.{% elif entry.subfolders %}файли в підтеках ({{ entry.subfolders }}){% else %}0 файл.{% endif %} — прев'ю / відкрити">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z" class="duo"/><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
             {# Партія з іншого дня, ніж сама робота (файли дозалили
                раніше/пізніше) — тоді час без дати брехав би, що це
