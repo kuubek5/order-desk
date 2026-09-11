@@ -1757,15 +1757,19 @@ def test_queue_hands_the_add_form_the_day_the_period_tab_shows(period, offset_da
     period tabs do not — the form read only the date-strip value, so from
     «Завтра» it posted an empty tab and the write fell back to today.
     """
-    from datetime import timedelta
-
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         request = _request(user.id)
         html = queue_router_mod.get_queue(request=request, db=db, period=period).body.decode()
 
-    expected = (business_today() + timedelta(days=offset_days)).strftime("%d.%m.%y")
+    # Вкладки, а не календар: у вихідні вкладок немає (власник 11.09.26), тож
+    # «Завтра» в п'ятницю — понеділок, «Вчора» в понеділок — п'ятниця.
+    from app.business_day import business_tab_today, next_tab_day, prev_tab_day
+
+    tab_today = business_tab_today()
+    expected_day = {0: tab_today, -1: prev_tab_day(tab_today), 1: next_tab_day(tab_today)}[offset_days]
+    expected = expected_day.strftime("%d.%m.%y")
     assert f'name="target_tab" value="{expected}"' in html
 
 

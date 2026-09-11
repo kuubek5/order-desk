@@ -88,6 +88,43 @@ def business_today(now: datetime | None = None) -> date:
     return business_date_of(now or business_now())
 
 
+# ── Вкладка дня: вихідні пишуть у п'ятницю ──────────────────────────────────
+# Цех працює в суботу й неділю, а офіс, техніки й логісти — ні, і вкладок за
+# сб/нд у таблиці НЕМАЄ: роботи вихідних і прийняті тоді листи пишуть у
+# вкладку п'ятниці (власник 11.09.26). Тож «сьогоднішня вкладка» в суботу —
+# п'ятнична, а «вчора» в понеділок — теж п'ятниця, не порожня неділя. Робоча
+# ДАТА (`business_today`) при цьому лишається справжньою: вона про годинник,
+# а ці функції — про те, у яку вкладку лягає день.
+
+
+def tab_day(day: date) -> date:
+    """Вкладка, у яку пишуть цей день: субота й неділя → п'ятниця."""
+    if day.weekday() >= 5:
+        return day - timedelta(days=day.weekday() - 4)
+    return day
+
+
+def prev_tab_day(day: date) -> date:
+    """Попередня вкладка перед вкладкою `day` (у понеділок — п'ятниця)."""
+    previous = tab_day(day) - timedelta(days=1)
+    while previous.weekday() >= 5:
+        previous -= timedelta(days=1)
+    return previous
+
+
+def next_tab_day(day: date) -> date:
+    """Наступна вкладка після вкладки `day` (у п'ятницю — понеділок)."""
+    following = tab_day(day) + timedelta(days=1)
+    while following.weekday() >= 5:
+        following += timedelta(days=1)
+    return following
+
+
+def business_tab_today(now: datetime | None = None) -> date:
+    """Вкладка, у яку пишуть ЗАРАЗ (у вихідні — п'ятнична)."""
+    return tab_day(business_today(now))
+
+
 def utc_now() -> datetime:
     """UTC-час без часового поясу — заміна `datetime.utcnow()`.
 

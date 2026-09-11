@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app import sync_control
 from app import log_throttle
-from app.business_day import business_today, canonical_tab_title, utc_now
+from app.business_day import business_today, canonical_tab_title, prev_tab_day, next_tab_day, tab_day, utc_now
 from app.db import SessionLocal
 from app.models import Order, SyncLog
 from app.parser import HEADER_ROWS, header_mismatches, parse_rows, unimported_work_rows
@@ -551,6 +551,17 @@ def _report_unimported_rows(session: Session, tab: str, raw: list[list[str]]) ->
     )
 
 
+def _weekend_on_friday_tab(today: date, dated_titles: set[str]) -> bool:
+    """Субота чи неділя, а вкладка п'ятниці є — отже, сьогоднішньої вкладки
+    законно немає: у вихідні цех працює, але роботи пишуть у п'ятницю
+    (власник 11.09.26). Без цього «Що не так» щовихідних показував би
+    аварію «синхронізація не бачить сьогоднішньої вкладки»."""
+    if today.weekday() < 5:
+        return False
+    friday = today - timedelta(days=today.weekday() - 4)
+    return tab_name_for(friday) in dated_titles
+
+
 def _report_missing_today(
     session: Session, today: date, dated_titles: set[str], raw_titles: list[str]
 ) -> None:
@@ -562,7 +573,7 @@ def _report_missing_today(
     листинг, не щохвилини: лабораторія законно створює вкладку пізніше.
     """
     global _missing_today_reported
-    if not raw_titles or tab_name_for(today) in dated_titles:
+    if not raw_titles or tab_name_for(today) in dated_titles or _weekend_on_friday_tab(today, dated_titles):
         _missing_today_reported = None
         return
     snapshot = tuple(raw_titles)
@@ -898,9 +909,11 @@ def sync_google_sheets(
                 # видаляє свідомо, тож її зникнення з більш ніж
                 # _VANISHED_TAB_MIN_ORDERS роботами — завжди «тримати й
                 # питати», незалежно від частки.
-                work_today = business_today()
-                window_lo = work_today - timedelta(days=1)
-                window_hi = work_today + timedelta(days=1)
+                # Вікно — вкладки (вихідні живуть у п'ятниці, власник 11.09.26):
+                # у неділю п'ятнична вкладка мусить лишатись «робочим вікном».
+                work_today = tab_day(business_today())
+                window_lo = prev_tab_day(work_today)
+                window_hi = next_tab_day(work_today)
                 window_tab_gone = any(
                     count > _VANISHED_TAB_MIN_ORDERS
                     and (tab_date := _parse_tab_date(tab)) is not None
@@ -1099,7 +1112,10 @@ def sync_hot_tab(
     try:
         _configuration(session)
         spreadsheet = open_spreadsheet(db=session)
-        base_day = today or business_today()
+        # Вкладка, а не дата: у суботу й неділю пишуть у п'ятничну (власник
+        # 11.09.26) — інакше вихідними гаряча смуга шукала б неіснуючу вкладку,
+        # а в неділю п'ятниця випадала б і з «учора».
+        base_day = tab_day(today or business_today())
         # `neighbours=False` — вузький тік: ТІЛЬКИ сьогоднішня вкладка.
         # Нова робота зʼявляється лише в ній, а вчора й переглянуті дні
         # потрібні видачі, де секунди нічого не вирішують. Один тік коштує
@@ -1107,7 +1123,7 @@ def sync_hot_tab(
         # у гальмо квоти (див. SYNC_SPEED_PRESETS, ключ "wide").
         hot_days = [base_day]
         if neighbours:
-            hot_days.append(base_day - timedelta(days=1))
+            hot_days.append(prev_tab_day(base_day))
             for extra in sorted(extra_days or ()):
                 if extra not in hot_days:
                     hot_days.append(extra)

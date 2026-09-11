@@ -2251,3 +2251,17 @@ def test_two_archived_look_alike_works_are_not_guessed_between():
         assert result.created == 1, "неоднозначність → нова робота, без угадування"
         archived = [o for o in session.scalars(select(Order)) if o.archived_at is not None]
         assert len(archived) == 2, "старі не стерто — вони лишились в Архіві"
+
+
+def test_weekend_without_its_own_tab_is_not_an_alarm():
+    """У вихідні вкладку не створюють — роботи пишуть у п'ятницю (власник
+    11.09.26). «Сьогоднішньої немає» у суботу при живій п'ятниці — норма."""
+    from datetime import date as _date
+
+    from app.sheet_sync_service import _weekend_on_friday_tab
+
+    tabs = {"10.09.26", "11.09.26"}
+    assert _weekend_on_friday_tab(_date(2026, 9, 12), tabs)        # сб, п'ятниця є
+    assert _weekend_on_friday_tab(_date(2026, 9, 13), tabs)        # нд
+    assert not _weekend_on_friday_tab(_date(2026, 9, 12), {"10.09.26"}), "п'ятниці нема — це вже проблема"
+    assert not _weekend_on_friday_tab(_date(2026, 9, 14), tabs), "у понеділок вкладка потрібна своя"

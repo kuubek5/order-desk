@@ -485,6 +485,10 @@ def queue_logistics_report(db: Session, now: Optional[datetime] = None, *, force
     now = now or business_now()
     day = now.strftime("%Y-%m-%d")
     if not force:
+        # Логісти в суботу й неділю не працюють (власник 11.09.26); «/pechi»
+        # на запит і далі відповідає в будь-який день.
+        if now.weekday() >= 5:
+            return False
         if not (LOGISTICS_REPORT_AT <= now.time() < LOGISTICS_REPORT_UNTIL):
             return False
         if (get_setting(db, LOGISTICS_SENT_KEY) or "") == day:

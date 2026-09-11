@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session, selectinload
 from app import perf
 
 from app import sync_control
-from app.business_day import business_today
+from app.business_day import business_tab_today, business_today, next_tab_day, prev_tab_day
 from app.mail_sync_service import is_mail_sync_running
 from app.models import EmailMessage, Order
 from app.order_folder import (
@@ -222,10 +222,13 @@ def build_queue_view(
     _sql_seconds = time.monotonic() - _t_sql
     perf.add("sql", _sql_seconds)
 
-    # Define date boundaries
-    today = business_today()
-    yesterday = today - timedelta(days=1)
-    tomorrow = today + timedelta(days=1)
+    # Define date boundaries. Це ВКЛАДКИ, а не календар: у суботу й неділю
+    # вкладок немає, роботи вихідних пишуть у п'ятницю (власник 11.09.26), тож
+    # «Сьогодні» у вихідні — п'ятниця, «Вчора» в понеділок — п'ятниця, а
+    # «Завтра» в п'ятницю — понеділок.
+    today = business_tab_today()
+    yesterday = prev_tab_day(today)
+    tomorrow = next_tab_day(today)
 
     # Working space = active orders within the retention window. Archived orders
     # (removed from Google or explicitly archived) and orders older than
@@ -233,7 +236,8 @@ def build_queue_view(
     # and are reachable on the Archive screen. Done in Python (not SQL) because
     # the business date is derived from sheet_tab, not a stored column, and the
     # order set is small (tens per day, a few thousand total).
-    retention_cutoff = today - timedelta(days=RETENTION_DAYS)
+    # Вікно retention — від справжньої робочої дати, не від вкладки.
+    retention_cutoff = business_today() - timedelta(days=RETENTION_DAYS)
     all_orders = [
         o
         for o in all_orders
@@ -454,9 +458,9 @@ def build_queue_view(
     if selected_date is not None:
         viewed_day = selected_date
     elif period == "yesterday":
-        viewed_day = today - timedelta(days=1)
+        viewed_day = yesterday
     elif period == "tomorrow":
-        viewed_day = today + timedelta(days=1)
+        viewed_day = tomorrow
     elif period == "today" and not show_overdue:
         viewed_day = today
     else:

@@ -1174,3 +1174,18 @@ def test_a_foreign_group_is_silent_but_remembered_for_binding():
         assert bot.handle_update(db, _group_message("/pechi", chat="-100999")) == []
     status = bot.status_snapshot()
     assert (status.last_group_chat, status.last_group_title) == ("-100999", "Логісти")
+
+
+def test_no_morning_report_on_saturday_and_sunday(monkeypatch):
+    """Логісти у вихідні не працюють (власник 11.09.26) — о 08:00 суботи й
+    неділі звіту немає; «/pechi» і «Надіслати зараз» працюють як завжди."""
+    from app.settings_store import set_setting
+
+    monkeypatch.setattr(bot, "_logistics_cards", lambda db: [])
+    with _session() as db:
+        set_setting(db, bot.LOGISTICS_KEY, GROUP)
+        db.commit()
+        assert bot.queue_logistics_report(db, datetime(2026, 9, 12, 8, 1)) is False   # сб
+        assert bot.queue_logistics_report(db, datetime(2026, 9, 13, 8, 1)) is False   # нд
+        assert bot.queue_logistics_report(db, datetime(2026, 9, 14, 8, 1)) is True    # пн
+        assert bot.queue_logistics_report(db, datetime(2026, 9, 13, 12, 0), force=True) is True

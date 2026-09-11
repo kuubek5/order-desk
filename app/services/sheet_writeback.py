@@ -18,7 +18,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from app import sync_control
-from app.business_day import business_today
+from app.business_day import business_today, tab_day
 from app.db import engine
 from app.models import Comment, Order, SyncLog
 from app.parser import HEADER_ROWS
@@ -144,7 +144,8 @@ def warm_sheet_writeback() -> None:
             # business_today(), не date.today(): о 02:00 нічний оператор веде ще
             # ВЧОРАШНІЙ день, і прогрівати треба його вкладку — інакше перша ж
             # правка вночі платить ~40 с холодного відкриття (аудит, синк LOW).
-            get_worksheet_by_name(ss, business_today().strftime("%d.%m.%y"))
+            # Вкладка, а не дата: у вихідні пишуть у п'ятничну (власник 11.09.26).
+            get_worksheet_by_name(ss, tab_day(business_today()).strftime("%d.%m.%y"))
     except Exception:
         logger.info("Sheet write-back warmup skipped (sheet not ready)")
 

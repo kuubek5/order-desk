@@ -66,6 +66,9 @@ def is_overdue(sheet_tab: str | None, status: str) -> bool:
     # РОБОЧА дата, не календарна: о 00:30 нічна зміна ще на вчорашньому дні, і
     # календарна північ помічала б усі вчорашні роботи простроченими просто
     # тому, що годинник цокнув (див. app/business_day.py).
-    from app.business_day import business_today
+    # І порівняння з ВКЛАДКОЮ, а не з датою: у суботу й неділю роботи пишуть у
+    # п'ятничну вкладку (власник 11.09.26) — без цього вся п'ятниця разом із
+    # роботами вихідних горіла б «простроченою» два дні поспіль.
+    from app.business_day import business_tab_today
 
-    return order_date < business_today()
+    return order_date < business_tab_today()

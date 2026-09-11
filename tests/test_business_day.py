@@ -200,3 +200,34 @@ def test_utc_from_the_db_is_shown_in_kyiv_time():
     assert utc_to_business(datetime(2026, 1, 10, 6, 0)) == datetime(2026, 1, 10, 8, 0)
     # Межа доби для фільтра журналу: «08.09 за Києвом» починається о 21:00 UTC 07.09.
     assert business_to_utc(datetime(2026, 9, 8)) == datetime(2026, 9, 7, 21, 0)
+
+
+# ── Вкладка дня: вихідні пишуть у п'ятницю (власник 11.09.26) ──────────────
+
+
+def test_weekend_days_live_in_the_friday_tab():
+    from datetime import date as _d
+
+    from app.business_day import next_tab_day, prev_tab_day, tab_day
+
+    fri, sat, sun, mon = _d(2026, 9, 11), _d(2026, 9, 12), _d(2026, 9, 13), _d(2026, 9, 14)
+    assert tab_day(sat) == fri and tab_day(sun) == fri and tab_day(mon) == mon
+    assert prev_tab_day(mon) == fri, "«Вчора» в понеділок — п'ятниця, не порожня неділя"
+    assert next_tab_day(fri) == mon, "«Завтра» в п'ятницю — понеділок"
+    assert prev_tab_day(sat) == _d(2026, 9, 10), "у суботу «сьогодні» — п'ятниця, «вчора» — четвер"
+    assert next_tab_day(sun) == mon
+
+
+def test_friday_work_is_not_overdue_on_the_weekend(monkeypatch):
+    """Без цього вся п'ятниця разом із роботами вихідних горіла б червоним
+    два дні поспіль."""
+    from datetime import date as _d
+
+    import app.business_day as bd
+    from app.statuses import is_overdue
+
+    monkeypatch.setattr(bd, "business_today", lambda now=None: _d(2026, 9, 12))  # субота
+    assert not is_overdue("11.09.26", "нове")
+    assert is_overdue("10.09.26", "нове")
+    monkeypatch.setattr(bd, "business_today", lambda now=None: _d(2026, 9, 14))  # понеділок
+    assert is_overdue("11.09.26", "нове")
