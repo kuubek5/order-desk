@@ -205,7 +205,10 @@ _SYNONYMS: dict[str, frozenset[str]] = {
     "wax": frozenset({"wax", "visk", "vosk"}),
     "tit": frozenset({"tit", "titan", "ti"}),
     "kapa": frozenset({"kapa", "splint", "miorelaks"}),
-    "tr": frozenset({"tr", "trans", "translucent", "transliucent", "transliucent"}),
+    "tr": frozenset({"tr", "trans", "translucent", "transliucent"}),
+    # HIPC (ПММА-композит): у таблиці пишуть і `hips` (Поліщук, 11.09.26 —
+    # тека «Hipc колір A3» не знаходилась).
+    "hipc": frozenset({"hipc", "hips", "hipk"}),
 }
 # Сімейства без відтінку: «титан корея» в таблиці й `tit` у теці — та сама
 # робота з титану, хоч слова «корея» тека й не каже (41 рядок таблиці не

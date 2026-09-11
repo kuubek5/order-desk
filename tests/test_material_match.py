@@ -239,3 +239,11 @@ class TestRealFolderNames2026_09_11:
         assert not materials_match("emo a2", "Monolith A2")
         assert not materials_match("mono a2", "Emotions A2")
         assert not materials_match("tit", "mono a3")
+
+
+    def test_hipc_written_as_hips(self):
+        """Поліщук 11.09.26: рядок `hips a3`, тека «Hipc колір A3»."""
+        assert materials_match("hips a3", "Hipc колір A3")
+        assert materials_match("hipc a2", "hips a2")
+        assert not materials_match("hips a3", "Hipc колір A2")
+        assert not materials_match("hips a3", "pmma a3")
