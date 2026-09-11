@@ -255,13 +255,28 @@ def board_worker(stop_event: threading.Event, app_factory) -> None:
             retry_at = time.monotonic() + 60
         if wanted and not running and time.monotonic() >= retry_at:
             retry_at = 0.0
-            config = uvicorn.Config(
-                app_factory(), host="0.0.0.0", port=BOARD_PORT,
-                lifespan="off", log_level="warning", access_log=False,
-            )
-            # Сервер живе в НЕ головному потоці. Сигнали uvicorn (0.52) тоді
-            # сам не чіпає — `capture_signals` перевіряє головний потік.
-            server = uvicorn.Server(config)
+            try:
+                # `log_config=None` — обов'язково, як у головного сервера
+                # (`windows_launcher`). Збірка без консолі має `sys.stdout =
+                # None`, і стандартний конфіг логів uvicorn падає на
+                # `sys.stdout.isatty()` ще в конструкторі Config: у 0.15.5
+                # табло через це не відкрило порт жодного разу (11.09.26,
+                # ERR_CONNECTION_REFUSED), а на dev із консоллю все працювало.
+                # До того ж той конфіг переписав би файловий лог KuubMill.
+                config = uvicorn.Config(
+                    app_factory(), host="0.0.0.0", port=BOARD_PORT,
+                    lifespan="off", log_level="warning", access_log=False,
+                    log_config=None,
+                )
+                # Сервер живе в НЕ головному потоці. Сигнали uvicorn (0.52)
+                # тоді сам не чіпає — `capture_signals` перевіряє головний потік.
+                server = uvicorn.Server(config)
+            except Exception as exc:  # noqa: BLE001 — сторож табло не має падати
+                logger.exception("Табло пічок: не вдалось підготувати сервер")
+                _set_status(listening=False, error=f"не запустилось: {str(exc)[:160]}")
+                retry_at = time.monotonic() + 60
+                stop_event.wait(5)
+                continue
             thread = threading.Thread(target=_serve, args=(server,), name="kuubmill-furnace-board-http", daemon=True)
             thread.start()
         elif not wanted and running and server is not None and thread is not None:

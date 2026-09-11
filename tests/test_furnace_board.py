@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import socket
+import sys
 import threading
 import time
 import urllib.error
@@ -123,11 +124,19 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def test_switch_really_opens_and_closes_the_port(app_db, monkeypatch):  # noqa: F811
-    """Перехід, а не стан: увімкнули — порт відповідає, вимкнули — закрився."""
+@pytest.mark.parametrize("no_console", [False, True], ids=["console", "frozen-no-console"])
+def test_switch_really_opens_and_closes_the_port(app_db, monkeypatch, no_console):  # noqa: F811
+    """Перехід, а не стан: увімкнули — порт відповідає, вимкнули — закрився.
+
+    `frozen-no-console` — умови встановленого KuubMill.exe (console=False у
+    spec): `sys.stdout`/`sys.stderr` = None. У 0.15.5 саме тут табло не
+    відкрило порт жодного разу, а тест із консоллю був зелений."""
     from app.routers.furnace_board import create_board_app
     from app.settings_store import set_setting
 
+    if no_console:
+        monkeypatch.setattr(sys, "stdout", None)
+        monkeypatch.setattr(sys, "stderr", None)
     _, factory = app_db
     token = _enable(factory)
     port = _free_port()
