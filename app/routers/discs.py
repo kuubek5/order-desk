@@ -121,7 +121,7 @@ def _live_context(db: Session, *, pending, selected, note: str, now: datetime) -
 def _work_context(
     db: Session,
     *,
-    off: set[int],
+    on: set[int],
     note: str = "",
     notice: Optional[str] = None,
     error: Optional[str] = None,
@@ -130,13 +130,16 @@ def _work_context(
     now = now or datetime.now()
     pending = pending_blanks(db)
     groups = shift_groups(pending, now=now)
-    selected = [row for row in pending if row.id not in off]
+    # Обране — лише те, що людина позначила (власник 11.09.26: галочки за
+    # замовчуванням зняті). Новий диск, що зʼявився під час роботи, теж
+    # приходить без галочки — тому памʼятаємо ОБРАНЕ, а не зняте.
+    selected = [row for row in pending if row.id in on]
     warehouse = telegram_bot.warehouse_members(db)
     latest = disc_orders.latest_active(db)
     ctx = {
         "pending": pending,
         "shift_groups": groups,
-        "off_ids": off,
+        "on_ids": on,
         "scopes": _scopes(pending, groups),
         "note": note,
         "fresh": disc_orders.fresh_order(db, now=now),
@@ -160,7 +163,7 @@ def _work_context(
 
 def _page_context(request: Request, db: Session, user) -> dict:
     now = datetime.now()
-    ctx = _work_context(db, off=set(), now=now)
+    ctx = _work_context(db, on=set(), now=now)
     ctx.update(_orders_context(db))
     ctx.update(_all_context(db))
     ctx.update(_footer_context(db))
@@ -257,13 +260,13 @@ def get_discs(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/discs/work", response_class=HTMLResponse)
-def get_discs_work(request: Request, off: str = "", note: str = "", db: Session = Depends(get_db)):
+def get_discs_work(request: Request, on: str = "", note: str = "", db: Session = Depends(get_db)):
     """Ліва колонка + кошик — на подію `dz-work-refresh` (скасування з тоста).
-    `off` — зняті галочки, `note` — недописане: оновлення не має їх губити."""
+    `on` — позначені диски, `note` — недописане: оновлення не має їх губити."""
     user, stop = _gate(request, db)
     if stop is not None:
         return stop
-    return _render(request, "_discs_work.html", _work_context(db, off=set(_ids(off)), note=note))
+    return _render(request, "_discs_work.html", _work_context(db, on=set(_ids(on)), note=note))
 
 
 @router.post("/discs/basket", response_class=HTMLResponse)
@@ -291,7 +294,7 @@ def post_discs_basket(
 def post_discs_order(
     request: Request,
     ids: str = Form(""),
-    off: str = Form(""),
+    on: str = Form(""),
     note: str = Form(""),
     via: str = Form(disc_orders.VIA_MANUAL),
     db: Session = Depends(get_db),
@@ -300,18 +303,18 @@ def post_discs_order(
 
     Один клік без підтверджень; «Скасувати» — одразу в тості й під кнопками.
     `ids` екран збирає з галочок У МИТЬ КЛІКУ (htmx:configRequest). Порожнє
-    поле — «нічого не позначено», а не «усе» (CLAUDE.md §14). `off` — зняті
-    галочки: якщо замовлення не вийшло, екран мусить лишитись як був."""
+    поле — «нічого не позначено», а не «усе» (CLAUDE.md §14). `on` —
+    позначені: якщо замовлення не вийшло, екран мусить лишитись як був."""
     user, stop = _gate(request, db)
     if stop is not None:
         return stop
-    keep = set(_ids(off))
+    keep = set(_ids(on))
     if via == disc_orders.VIA_TELEGRAM:
         blocker = telegram_bot.warehouse_blocker(db)
         if blocker:
             return _render(
                 request, "_discs_work.html",
-                _work_context(db, off=keep, note=note, error=blocker),
+                _work_context(db, on=keep, note=note, error=blocker),
                 triggers={"toast": _toast(blocker, "error")},
             )
     now = datetime.now()
@@ -327,7 +330,7 @@ def post_discs_order(
             message = "Нічого не позначено — ні дисків, ні дописаного."
         return _render(
             request, "_discs_work.html",
-            _work_context(db, off=keep, note=note, error=message),
+            _work_context(db, on=keep, note=note, error=message),
             triggers={"toast": _toast(message, "warning")},
         )
     db.commit()
@@ -346,7 +349,7 @@ def post_discs_order(
         message = f"Позначено замовленим ({what}), без відправки."
     return _render(
         request, "_discs_work.html",
-        _work_context(db, off=set(), now=now),
+        _work_context(db, on=set(), now=now),
         triggers={
             "toast": _toast(message, undo=f"/discs/orders/{order.id}/cancel"),
             "dz-changed": True,
@@ -358,7 +361,7 @@ def post_discs_order(
 def post_discs_cancel(
     request: Request,
     order_id: int,
-    off: str = Form(""),
+    on: str = Form(""),
     note: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -391,7 +394,7 @@ def post_discs_cancel(
     if request.headers.get("HX-Target") == "dz-work":
         return _render(
             request, "_discs_work.html",
-            _work_context(db, off=set(_ids(off)), note=note),
+            _work_context(db, on=set(_ids(on)), note=note),
             triggers=triggers,
         )
     triggers["dz-work-refresh"] = True
@@ -444,7 +447,7 @@ def get_discs_last(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/discs/rescan", response_class=HTMLResponse)
 def post_discs_rescan(
-    request: Request, off: str = Form(""), note: str = Form(""), db: Session = Depends(get_db)
+    request: Request, on: str = Form(""), note: str = Form(""), db: Session = Depends(get_db)
 ):
     """Перечитати теку зараз. Звичайний `def` — похід у файлову систему на
     event loop пускати не можна: FastAPI віддасть його у threadpool."""
@@ -452,11 +455,11 @@ def post_discs_rescan(
     if stop is not None:
         return stop
     path = _path(db)
-    keep = set(_ids(off))
+    keep = set(_ids(on))
     if not path:
         message = "Шлях до теки CAM не задано — натисніть «Шлях…» унизу."
         return _render(
-            request, "_discs_work.html", _work_context(db, off=keep, note=note, error=message),
+            request, "_discs_work.html", _work_context(db, on=keep, note=note, error=message),
             triggers={"toast": _toast(message, "warning"), "dz-footer": True},
         )
     try:
@@ -464,14 +467,14 @@ def post_discs_rescan(
     except OSError as exc:
         message = f"Теку не вдалось прочитати: {exc}"
         return _render(
-            request, "_discs_work.html", _work_context(db, off=keep, note=note, error=message),
+            request, "_discs_work.html", _work_context(db, on=keep, note=note, error=message),
             triggers={"toast": _toast(message, "error"), "dz-footer": True},
         )
     notice = None
     if result.missing:
         message = f"Теки «{path}» немає або вона недоступна — нічого не змінено."
         return _render(
-            request, "_discs_work.html", _work_context(db, off=keep, note=note, error=message),
+            request, "_discs_work.html", _work_context(db, on=keep, note=note, error=message),
             triggers={"toast": _toast(message, "error"), "dz-footer": True},
         )
     if result.baseline:
@@ -487,7 +490,7 @@ def post_discs_rescan(
     else:
         message = "Теку перечитано — нових дисків немає."
     return _render(
-        request, "_discs_work.html", _work_context(db, off=keep, note=note, notice=notice),
+        request, "_discs_work.html", _work_context(db, on=keep, note=note, notice=notice),
         triggers={"toast": _toast(message, "success"), "dz-changed": True, "dz-footer": True},
     )
 

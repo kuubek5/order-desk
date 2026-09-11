@@ -430,6 +430,25 @@ class TestScreen:
         assert "комірни" not in html.lower(), "слово «комірниця» прибрано з інтерфейсу"
         assert "Нові диски" in html
 
+    def test_nothing_is_ticked_until_the_operator_ticks_it(self, app_db):  # noqa: F811
+        """Власник 11.09.26: галочки за замовчуванням зняті. Сторінка — без
+        жодної, кошик порожній; позначене переживає оновлення зони, а решта
+        (зокрема новий диск) лишається непозначеною."""
+        import re
+
+        app, factory = app_db
+        ids = _seed_app(factory)
+        client = _client(app)
+        _, _, html = client.get("/discs")
+        assert re.search(r'data-dz-id="\d+"\s+checked', html) is None
+        assert "is-on" not in html
+        assert re.search(r'data-dz-shift="[^"]+"\s+checked', html) is None
+
+        picked = ids["PMMA/20/c"]
+        _, _, frag = client.get(f"/discs/work?on={picked}")
+        assert f'data-dz-id="{picked}" checked' in frag
+        assert len(re.findall(r'data-dz-id="\d+" checked', frag)) == 1
+
     def test_operator_orders_and_the_page_offers_cancel(self, app_db):  # noqa: F811
         app, factory = app_db
         ids = _seed_app(factory)
@@ -449,7 +468,7 @@ class TestScreen:
             assert (order.disc_count, order.note, order.created_by_id is not None) == (1, "6*2.5 zr", True)
 
         status, headers, html = client.post(
-            f"/discs/orders/{order.id}/cancel", {"off": "", "note": ""},
+            f"/discs/orders/{order.id}/cancel", {"on": "", "note": ""},
             headers={"HX-Request": "true", "HX-Target": "dz-work"},
         )
         assert status == 200

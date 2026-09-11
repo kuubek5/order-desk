@@ -1,8 +1,11 @@
 {# Робоча зона «Нових дисків»: ліворуч незамовлені диски по змінах, праворуч
    кошик замовлення на склад. Свапається цілком після замовлення, скасування
    й перечитування теки, а на подію `dz-work-refresh` (скасування з тоста)
-   перечитує себе сама. discs.js додає до кожного такого запиту зняті
-   галочки (`off`) і недописане (`note`) — оновлення не має їх губити.
+   перечитує себе сама. discs.js додає до кожного такого запиту позначені
+   диски (`on`) і недописане (`note`) — оновлення не має їх губити.
+
+   Галочки за замовчуванням зняті (власник 11.09.26): замовляють лише
+   позначене.
 
    Рядок диска: галочка · час · мітка матеріалу · позиція · файл · позначка
    проблеми. Галочка зміни — уся зміна. Порядок — свіжі згори, як і в мокапі. #}
@@ -15,7 +18,7 @@
         {% if pileup %}<p class="dz-note">{{ pileup }}</p>{% endif %}
 
         {% for g in shift_groups %}
-        {% set on_count = g.rows|rejectattr('id', 'in', off_ids)|list|length %}
+        {% set on_count = g.rows|selectattr('id', 'in', on_ids)|list|length %}
         <section class="dz-shift" data-dz-shiftbox="{{ g.shift.key }}">
             <label class="dz-shift-head">
                 <input type="checkbox" data-dz-shift="{{ g.shift.key }}"
@@ -30,9 +33,9 @@
             </label>
             {% for row in g.rows %}
             {% set p = disc_pos(row) %}
-            {% set off = row.id in off_ids %}
+            {% set off = row.id not in on_ids %}
             {% set file = bare(row.file_name or row.rel_path) %}
-            <label class="dz-disc {{ mcls(p.group) }}{% if off %} is-off{% endif %}{% if needs_look(row) %} is-warn{% endif %}">
+            <label class="dz-disc {{ mcls(p.group) }}{% if not off %} is-on{% endif %}{% if needs_look(row) %} is-warn{% endif %}">
                 <input type="checkbox" data-dz-id="{{ row.id }}" {% if not off %}checked{% endif %}>
                 <span class="dz-t dz-mono">{{ row.first_seen_at.strftime('%H:%M') }}</span>
                 <span class="dz-mattag"><span class="dz-matdot" aria-hidden="true"></span>{{ p.tag }}</span>

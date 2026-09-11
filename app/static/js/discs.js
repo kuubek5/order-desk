@@ -8,7 +8,7 @@
 //   * галочки дисків і змін, кнопки обсягу — лише ВИГЛЯД і вибір; що з них
 //     вийде (групи, текст, прев'ю, кнопки) складає СЕРВЕР (POST /discs/basket)
 //     — у буфер, у Telegram і в історію йде текст з одного джерела;
-//   * дії, що свапають #dz-work, отримують від нас `off` (зняті галочки) і
+//   * дії, що свапають #dz-work, отримують від нас `on` (позначені диски) і
 //     `note` (недописане), а «Надіслати»/«Замовлено» — ще й `ids` позначеного
 //     У МИТЬ КЛІКУ (не з рендеру: браузер міг відновити галочки інакше).
 (function () {
@@ -21,16 +21,15 @@
   function work() { return document.getElementById("dz-work"); }
   function boxes() { return $$("[data-dz-id]", work() || document.createElement("div")); }
   function checkedIds() { return boxes().filter((b) => b.checked).map((b) => b.dataset.dzId); }
-  function offIds() { return boxes().filter((b) => !b.checked).map((b) => b.dataset.dzId); }
   function noteValue() { const n = $("[data-dz-note]"); return n ? n.value : ""; }
 
-  // ── Вигляд вибору: закреслення, галочка зміни, кнопки обсягу ──────────────
+  // ── Вигляд вибору: підсвітка, галочка зміни, кнопки обсягу ────────────────
   function syncSelection() {
     const root = work();
     if (!root) return;
     boxes().forEach((box) => {
       const row = box.closest(".dz-disc");
-      if (row) row.classList.toggle("is-off", !box.checked);
+      if (row) row.classList.toggle("is-on", box.checked);
     });
     $$("[data-dz-shift]", root).forEach((head) => {
       const section = head.closest("[data-dz-shiftbox]");
@@ -316,7 +315,7 @@
     const touchesWork = (target && target.id === "dz-work") || (elt && elt.id === "dz-work");
     if (!touchesWork) return;
     const params = event.detail.parameters;
-    if (params.off === undefined) params.off = offIds().join(",");
+    if (params.on === undefined) params.on = checkedIds().join(",");
     if (params.note === undefined) params.note = noteValue();
     if (elt && elt.matches && elt.matches("[data-dz-order]")) params.ids = checkedIds().join(",");
   });
@@ -336,7 +335,7 @@
     syncSelection();
     // Браузер міг відновити галочки після «Назад» — кошик має відповідати
     // тому, що видно, а не рендеру.
-    if (boxes().some((b) => !b.checked) || noteValue()) refreshLive(0);
+    if (boxes().some((b) => b.checked) || noteValue()) refreshLive(0);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

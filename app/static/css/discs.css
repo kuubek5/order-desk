@@ -101,7 +101,11 @@ main.dz{max-width:1320px;margin:0 auto;padding:18px 20px 48px;display:flex;flex-
 .dz-disc-main{display:flex;align-items:center;gap:12px;min-width:0}
 .dz-fn{font:var(--fs-1) var(--font-mono);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .dz-t{color:var(--ink-2)}
-.dz-disc.is-off .dz-pos,.dz-disc.is-off .dz-t{opacity:.45;text-decoration:line-through;text-decoration-color:rgba(var(--accent-soft-rgb),.35)}
+/* Галочки за замовчуванням зняті (11.09.26): незнятий рядок — звичайний,
+   позначений — підсвічений. Закреслення знятого прибрано, інакше
+   весь список за замовчуванням виглядав би закресленим. */
+.dz-disc.is-on{background:rgba(var(--accent-rgb),.07)}
+.dz-disc.is-on:hover{background:rgba(var(--accent-rgb),.11)}
 .dz-disc.is-warn{box-shadow:inset 3px 0 0 var(--alarm)}
 
 /* Кошик прилипає: під час гортання довгого списку дія лишається під рукою. */
