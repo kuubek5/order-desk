@@ -1054,6 +1054,27 @@ class TestOneBatchPerRow:
         picked = entries_for_material("mono a3", entries, date(2026, 9, 9))
         assert [(e.material_color_folder_name, e.created_at.day) for e in picked] == [("mono a3", 9)]
 
+    def test_11_09_folders_named_by_people_are_found(self):
+        """Бойові випадки 11.09.26 зі скриншотів: партії за день роботи
+        лежали, а рядок казав «за 11.09 теки немає» (Shehera) або мовчав
+        (Лагус) — назви тек порівнювач не впізнавав."""
+        from datetime import datetime
+
+        from app.services.handout import stale_folder_day
+
+        shehera = [
+            self._entry("Фрезернути капу", datetime(2026, 9, 11, 10, 44)),
+            self._entry("Фрезернути капу SEC", datetime(2026, 9, 11, 10, 44)),
+            self._entry("kappa", datetime(2026, 8, 6, 10, 17)),
+        ]
+        picked = entries_for_material("kappa", shehera, date(2026, 9, 11))
+        assert [e.material_color_folder_name for e in picked] == ["Фрезернути капу", "Фрезернути капу SEC"]
+        assert stale_folder_day("kappa", shehera, date(2026, 9, 11)) is None
+
+        lagus = [self._entry("Циркон емоушен a2", datetime(2026, 9, 11, 13, 45))]
+        picked = entries_for_material("emo a2", lagus, date(2026, 9, 11))
+        assert [e.material_color_folder_name for e in picked] == ["Циркон емоушен a2"]
+
     def test_only_older_batches_show_nothing_and_say_so(self):
         """Рішення власника 11.09.26: партія, старша за день роботи, — майже
         завжди чужа попередня робота. Хибна тека гірша за жодну: рядок без

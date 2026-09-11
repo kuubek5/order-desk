@@ -644,3 +644,35 @@ def test_concurrent_misses_scan_the_share_once():
 
     assert len(calls) == 1, f"шару обійшли {len(calls)} разів замість одного"
     assert all(r == ["один", "два"] for r in results)
+
+
+class TestBatchWithoutMaterialFolder:
+    """Список з робочого ПК 11.09.26: 42 партії за 60 днів, де файли лежать
+    просто в партії («Новая папка (N)», `kappa`, `pmma a1`). Видача їх не
+    бачила — сканер чекав рівно трьох рівнів."""
+
+    def test_loose_files_make_the_batch_its_own_material_folder(self, tmp_path):
+        batch = tmp_path / "Client" / "kappa"
+        batch.mkdir(parents=True)
+        (batch / "splint.stl").write_text("x")
+        (batch / "Thumbs.db").write_text("x")
+
+        (entry,) = scan_export_folder(tmp_path)
+        assert entry.material_color_folder_name == "kappa"
+        assert entry.files == ["splint.stl"]
+        assert entry.folder_path == batch
+
+    def test_only_system_files_is_not_a_folder(self, tmp_path):
+        batch = tmp_path / "Client" / "Новая папка (3)"
+        batch.mkdir(parents=True)
+        (batch / "desktop.ini").write_text("x")
+        assert scan_export_folder(tmp_path) == []
+
+    def test_latest_scan_sees_loose_batches_too(self, tmp_path):
+        from app.export_scanner import scan_export_client_latest
+
+        batch = tmp_path / "Client" / "Новая папка (12)"
+        batch.mkdir(parents=True)
+        (batch / "crown.stl").write_text("x")
+        (entry,) = scan_export_client_latest(tmp_path, "Client")
+        assert entry.material_color_folder_name == "Новая папка (12)"

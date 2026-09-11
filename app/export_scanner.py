@@ -138,31 +138,64 @@ def scan_export_client(
         if not_before is not None and created_at < not_before:
             continue
 
-        for material in _dir_entries(batch.path):
+        entries.extend(_batch_entries(client_folder_name, batch, created_at))
+    return entries
+
+
+_SYSTEM_FILES = frozenset({"thumbs.db", "desktop.ini", ".ds_store"})
+
+
+def _batch_entries(client_folder_name: str, batch, created_at: datetime) -> list[ExportEntry]:
+    """Теки матеріалу однієї партії.
+
+    Партія, де файли лежать ПРОСТО в ній, без жодної теки матеріалу, — теж запис: тека
+    матеріалу тоді сама партія, а її назва — назва матеріалу (`kappa`,
+    `pmma a1`) або нічого не каже («Новая папка (12)» — тоді це кандидат для
+    будь-якої роботи клієнта того дня, `material_match._GENERIC_FOLDER_RE`).
+    Список 11.09.26: 42 такі партії за 60 днів, і видача не бачила жодної."""
+    entries: list[ExportEntry] = []
+    loose: list[str] = []
+    for material in _dir_entries(batch.path):
+        try:
+            if not material.is_dir():
+                if material.is_file():
+                    loose.append(material.name)
+                continue
+        except OSError:
+            continue
+
+        files_list = []
+        for f in _dir_entries(material.path):
             try:
-                if not material.is_dir():
-                    continue
+                if f.is_file():
+                    files_list.append(f.name)
             except OSError:
                 continue
 
-            files_list = []
-            for f in _dir_entries(material.path):
-                try:
-                    if f.is_file():
-                        files_list.append(f.name)
-                except OSError:
-                    continue
-
-            entries.append(
-                ExportEntry(
-                    client_folder_name=client_folder_name,
-                    batch_folder_name=batch.name,
-                    created_at=created_at,
-                    material_color_folder_name=material.name,
-                    files=files_list,
-                    folder_path=Path(material.path),
-                )
+        entries.append(
+            ExportEntry(
+                client_folder_name=client_folder_name,
+                batch_folder_name=batch.name,
+                created_at=created_at,
+                material_color_folder_name=material.name,
+                files=files_list,
+                folder_path=Path(material.path),
             )
+        )
+    # Лише коли підтек немає зовсім: файл поруч із теками матеріалу — це
+    # випадковість (лист, `Thumbs.db`), а не окрема тека.
+    loose = [name for name in loose if name.lower() not in _SYSTEM_FILES]
+    if loose and not entries:
+        entries.append(
+            ExportEntry(
+                client_folder_name=client_folder_name,
+                batch_folder_name=batch.name,
+                created_at=created_at,
+                material_color_folder_name=batch.name,
+                files=loose,
+                folder_path=Path(batch.path),
+            )
+        )
     return entries
 
 
@@ -194,29 +227,7 @@ def scan_export_client_latest(
 
     entries: list[ExportEntry] = []
     for created_at, batch in batches[:count]:
-        for material in _dir_entries(batch.path):
-            try:
-                if not material.is_dir():
-                    continue
-            except OSError:
-                continue
-            files_list = []
-            for f in _dir_entries(material.path):
-                try:
-                    if f.is_file():
-                        files_list.append(f.name)
-                except OSError:
-                    continue
-            entries.append(
-                ExportEntry(
-                    client_folder_name=client_folder_name,
-                    batch_folder_name=batch.name,
-                    created_at=created_at,
-                    material_color_folder_name=material.name,
-                    files=files_list,
-                    folder_path=Path(material.path),
-                )
-            )
+        entries.extend(_batch_entries(client_folder_name, batch, created_at))
     entries.sort(key=lambda e: e.created_at)
     return entries
 
