@@ -133,6 +133,61 @@ document.body.addEventListener("htmx:afterSettle", (event) => {
   applyHandoutLooking();
 });
 
+// ── Покажчик дня: клік веде до клієнта ───────────────────────────────────
+// Прохання власника 11.09.26: права панель «День 10.09» має працювати як
+// навігація. Посилання `#handout-client-N` вело лише до КАРТКИ, а в режимі
+// «рядки» (порядок таблиці) карток немає — клік нічого не робив. Тепер:
+//   * картки — прокрутка до картки клієнта;
+//   * рядки — до першого НЕзнайденого рядка цього клієнта; повторний клік по
+//     тому самому клієнту веде до наступного його рядка (у таблиці роботи
+//     одного клієнта стоять урозкид).
+// Ціль коротко підсвічується, щоб око знайшло її після прокрутки.
+let handoutNavCursor = { nav: null, index: -1 };
+
+function flashHandoutTarget(elements) {
+  elements.forEach((el) => {
+    // Таймер попереднього кліку не має зняти підсвітку нового: швидкий
+    // повторний клік по тому самому клієнту інакше гасив би її на пів дороги.
+    window.clearTimeout(el._navHitTimer);
+    el.classList.remove("nav-hit");
+    // Перезапуск анімації на тому самому елементі.
+    void el.offsetWidth;
+    el.classList.add("nav-hit");
+    el._navHitTimer = window.setTimeout(() => el.classList.remove("nav-hit"), 1600);
+  });
+}
+
+function scrollHandoutTo(el, block) {
+  const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block });
+}
+
+document.addEventListener("click", (event) => {
+  const link = event.target.closest(".daynav a[data-nav]");
+  if (!link) return;
+  const nav = link.dataset.nav;
+  const card = document.getElementById("handout-client-" + nav);
+  if (card && !card.hidden) {
+    event.preventDefault();
+    scrollHandoutTo(card, "start");
+    flashHandoutTarget([card]);
+    return;
+  }
+  const rows = Array.from(document.querySelectorAll('#handout-list .flatrow[data-nav="' + nav + '"]'));
+  if (!rows.length) return;
+  event.preventDefault();
+  let index;
+  if (handoutNavCursor.nav === nav) {
+    index = (handoutNavCursor.index + 1) % rows.length;
+  } else {
+    index = rows.findIndex((row) => !row.querySelector(".wrow.found"));
+    if (index < 0) index = 0;
+  }
+  handoutNavCursor = { nav, index };
+  scrollHandoutTo(rows[index], "center");
+  flashHandoutTarget(rows);
+});
+
 // ── «Кого я шукаю»: підсвітка роботи, чиї файли відкрито в прев'ю ────────
 // Прохання власника 10.09.26: відкрив теку в прев'ю, звірив форму, пішов до
 // лотка — і вже не памʼятаєш, якого клієнта шукав. Тож рядок роботи і її

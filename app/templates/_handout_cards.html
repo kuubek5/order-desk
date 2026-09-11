@@ -22,8 +22,10 @@
                підказка з'являється тільки під мишкою, тож із клавіатури і для
                читалки екрана покажчик мовчав. Число дублює смужку текстом, а
                `aria-current` каже, де оператор зараз. #}
+            {# data-nav — номер клієнта: у картках веде до картки, у пласкому
+               режимі (карток немає) — до його рядків; обробник у handout.js. #}
             <a class="dni{% if g.all_found %} done{% elif g.is_current %} cur{% endif %}"
-               href="#handout-client-{{ g.position }}"
+               href="#handout-client-{{ g.position }}" data-nav="{{ g.position }}"
                {% if g.is_current %}aria-current="true"{% endif %}
                title="{{ g.client_label }} — {{ nfound }} з {{ ntotal }} знайдено">
                 <span class="dni-n mono">{{ g.position }}</span>
@@ -49,7 +51,7 @@
         {% set order = row.order %}
         {% set issued_by = row.issued_by %}
         {% set client_label = row.client_label %}
-        <div class="flatrow">
+        <div class="flatrow" data-nav="{{ row.position }}">
             {# Клієнт підписаний при кожній роботі: без картки навколо це
                єдине, що каже, чия це коронка. #}
             <span class="flatclient" title="{{ row.client_label }}">{{ row.client_label }}</span>

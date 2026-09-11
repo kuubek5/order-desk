@@ -346,6 +346,9 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
                 "client_name": group["client_name"],
                 "client_label": group["client_label"],
                 "issued_by": group["issued_by"],
+                # Номер клієнта в покажчику дня: клік по ньому в пласкому
+                # режимі веде до рядків саме цього клієнта (handout.js).
+                "position": group["position"],
             })
     flat_rows.sort(key=lambda row: sheet_order_key(row["order"]))
 
