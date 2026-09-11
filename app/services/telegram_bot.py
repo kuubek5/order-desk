@@ -43,6 +43,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from datetime import time as dt_time
 from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
@@ -151,6 +152,10 @@ class BotStatus:
     # поки слухач працює (getUpdates із налаштувань тоді або конфліктує,
     # або нічого не бачить — оновлення вже підтвердив слухач).
     last_private_chat: Optional[str] = None
+    # Остання ГРУПА, у якій хтось звернувся до бота (напр. /pechi), — підказка
+    # для поля «Чат логістів»: id групи з мінусом ніде в Telegram не видно.
+    last_group_chat: Optional[str] = None
+    last_group_title: Optional[str] = None
 
 
 _status = BotStatus()
@@ -303,6 +308,201 @@ def furnaces_text(db: Session) -> str:
             return "Чекаємо перший кадр із печей…"
         return "Печей не налаштовано (Налаштування → Печі спікання)."
     return "\n".join(_furnace_line(card) for card in cards)
+
+
+# ── Звіт по пічках для логістів ─────────────────────────────────────────────
+# Рішення власника 11.09.26: окремий чат (зазвичай група логістів, id з
+# мінусом у полі «Чат логістів»). Туди йде ЛИШЕ це: повний звіт щоранку о
+# 08:00 і на запит «/pechi» — коли відкриються пічки. Сповіщення «закрилась /
+# можна відкривати», меню, роботи, видача — ні.
+#
+# Час — київський: логісти звіряють його з годинником, а не з ПК цеху.
+
+LOGISTICS_KEY = "telegram_logistics_chat_id"
+LOGISTICS_SENT_KEY = "telegram_logistics_sent"
+LOGISTICS_REPORT_AT = dt_time(8, 0)
+# Після цього часу ранковий звіт за сьогодні вже не шлемо: застосунок,
+# увімкнений о 14:00, не має слати «ранковий» звіт посеред дня.
+LOGISTICS_REPORT_UNTIL = dt_time(10, 0)
+LOGISTICS_KIND = "furnace_report"
+_LOGISTICS_COMMANDS = ("/pechi", "/pichky", "/furnaces", "/open", "/vidkryttia")
+_LOGISTICS_WORDS = ("пічки", "печі", "піч", "коли відкриється", "коли відкриються")
+_WEEKDAYS = ("пн", "вт", "ср", "чт", "пт", "сб", "нд")
+
+
+def logistics_chat(db: Session) -> Optional[str]:
+    value = (get_setting(db, LOGISTICS_KEY) or "").strip()
+    return value or None
+
+
+def _kyiv(moment: Optional[datetime]) -> Optional[datetime]:
+    """Наївний час ПК → київський (як `FurnaceState.done_at`)."""
+    from app.business_day import BUSINESS_TIMEZONE
+
+    if moment is None or BUSINESS_TIMEZONE is None:
+        return moment
+    if moment.tzinfo is None:
+        moment = moment.astimezone()
+    return moment.astimezone(BUSINESS_TIMEZONE)
+
+
+def _open_when(done_at: datetime, now: datetime) -> str:
+    """«о 23:40», «завтра о 03:15» — щоб нічну й ранкову закладку не плутали."""
+    day = done_at.date()
+    if day == now.date():
+        return f"о {done_at:%H:%M}"
+    if day == (now + timedelta(days=1)).date():
+        return f"завтра о {done_at:%H:%M}"
+    return f"{done_at:%d.%m} о {done_at:%H:%M}"
+
+
+def _logistics_cards(db: Session):
+    from app.services.furnace import strip_cards
+
+    return strip_cards(db)
+
+
+def _nearest(cards, now: datetime) -> Optional[str]:
+    running = [
+        (card.state.done_at, card.target.name)
+        for card in cards
+        if card.is_running and not card.has_problem and card.state and card.state.done_at
+    ]
+    if not running:
+        return None
+    done_at, name = min(running, key=lambda pair: pair[0])
+    return f"Найближча відкриється {_open_when(done_at, now)} — {_e(name)}."
+
+
+def _data_as_of(cards) -> Optional[str]:
+    """Час НАЙСТАРІШОГО кадру серед показаних: чесна межа свіжості звіту."""
+    stamps = [
+        _kyiv(card.state.captured_at)
+        for card in cards
+        if card.has_data and card.state and card.state.captured_at
+    ]
+    real = [s for s in stamps if s is not None]
+    return min(real).strftime("%H:%M") if real else None
+
+
+def furnace_report_text(db: Session, now: Optional[datetime] = None) -> str:
+    """Повний ранковий звіт: стан, температура, коли відкриється (Київ).
+
+    Число з табло, що не прочиталось, не вгадуємо: нема температури — нема
+    й рядка з нею («хибне число гірше за жодне», CLAUDE.md §14)."""
+    now = now or business_now()
+    cards = _logistics_cards(db)
+    head = f"<b>{KMILL_PREFIX}</b> · 🔥 Пічки · {_WEEKDAYS[now.weekday()]} {now:%d.%m, %H:%M}"
+    if not cards:
+        return f"{head}\n\nДаних із печей ще немає."
+    lines = []
+    for card in cards:
+        name = f"<b>{_e(card.target.name)}</b>"
+        state = card.state
+        temp = f" · {state.temp_c}°" if state and state.temp_c is not None else ""
+        if card.has_problem:
+            lines.append(f"{name} — ⚠️ {_e(_clip(card.problem_text, 80))}")
+        elif card.is_running:
+            line = f"{name} — 🔥 працює{temp}"
+            if state and state.done_at:
+                line += f"\n   відкриється {_open_when(state.done_at, now)} (ще {_e(state.remaining_text)})"
+            else:
+                line += "\n   час відкриття з табло не прочитано"
+            lines.append(line)
+        elif card.is_idle:
+            lines.append(f"{name} — ✅ вільна{temp}")
+        else:
+            lines.append(f"{name} — ❔ табло не читається")
+    parts = [head, "", "\n".join(lines)]
+    nearest = _nearest(cards, now)
+    if nearest:
+        parts += ["", nearest]
+    as_of = _data_as_of(cards)
+    parts.append("<i>Час київський" + (f" · дані з табло станом на {as_of}" if as_of else "") + "</i>")
+    return "\n".join(parts)
+
+
+def furnace_open_times_text(db: Session, now: Optional[datetime] = None) -> str:
+    """Відповідь на «/pechi» у чаті логістів — ЛИШЕ коли відкриються."""
+    now = now or business_now()
+    cards = _logistics_cards(db)
+    head = f"<b>{KMILL_PREFIX}</b> · 🔥 Коли відкриються пічки · {now:%H:%M}"
+    if not cards:
+        return f"{head}\n\nДаних із печей ще немає."
+    lines = []
+    for card in cards:
+        name = f"<b>{_e(card.target.name)}</b>"
+        state = card.state
+        if card.has_problem:
+            lines.append(f"{name} — ⚠️ немає даних")
+        elif card.is_running and state and state.done_at:
+            lines.append(f"{name} — {_open_when(state.done_at, now)}")
+        elif card.is_running:
+            lines.append(f"{name} — працює, час не прочитано")
+        elif card.is_idle:
+            lines.append(f"{name} — вільна")
+        else:
+            lines.append(f"{name} — табло не читається")
+    return f"{head}\n\n" + "\n".join(lines) + "\n<i>Час київський</i>"
+
+
+def _is_logistics_request(text: str) -> bool:
+    word = " ".join((text or "").strip().lower().split())
+    if word.startswith("/"):
+        return word.split()[0].split("@", 1)[0] in _LOGISTICS_COMMANDS
+    return word in _LOGISTICS_WORDS
+
+
+def _logistics_reply(db: Session, update: dict, chat: str, now: Optional[datetime]) -> list[Action]:
+    """Чат логістів: на запит — час відкриття, на решту — мовчання (група
+    говорить про своє, бот не має встрявати в кожне повідомлення)."""
+    message = update.get("message")
+    if message is None:
+        return []
+    sent = message.get("date")
+    moment = now or business_now()
+    if isinstance(sent, (int, float)) and moment.timestamp() - sent > STALE_MESSAGE_SECONDS:
+        return []
+    if not _is_logistics_request(message.get("text") or ""):
+        return []
+    return [Action("sendMessage", {
+        "chat_id": chat,
+        "text": furnace_open_times_text(db, now),
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    })]
+
+
+def queue_logistics_report(db: Session, now: Optional[datetime] = None, *, force: bool = False) -> bool:
+    """Поставити звіт по пічках у чергу для чату логістів. Нічого не комітить.
+
+    Без `force` — лише ранковий: з 08:00 до 10:00 і раз на день (штамп дня в
+    налаштуваннях, щоб рестарт о 08:05 не слав удруге). `force` — кнопка
+    «Надіслати зараз» у налаштуваннях."""
+    chat = logistics_chat(db)
+    if not chat:
+        return False
+    now = now or business_now()
+    day = now.strftime("%Y-%m-%d")
+    if not force:
+        if not (LOGISTICS_REPORT_AT <= now.time() < LOGISTICS_REPORT_UNTIL):
+            return False
+        if (get_setting(db, LOGISTICS_SENT_KEY) or "") == day:
+            return False
+    key = f"furnace-report:{day}@{chat}" if not force else f"furnace-report:{now:%Y%m%d%H%M%S}@{chat}"
+    queued = enqueue(
+        db,
+        dedup_key=key,
+        kind=LOGISTICS_KIND,
+        text=furnace_report_text(db, now),
+        now=datetime.now(),
+        # Ранковий звіт, що не дійшов до 10:00, уже не ранковий.
+        ttl=timedelta(hours=2),
+        chat_id=chat,
+    )
+    if not force:
+        set_setting(db, LOGISTICS_SENT_KEY, day)
+    return queued
 
 
 def _furnaces_summary(db: Session) -> str:
@@ -1076,6 +1276,14 @@ def handle_update(
     update_chat, chat_type = _chat_of(update)
     if update_chat is not None and chat_type == "private":
         _set_status(last_private_chat=update_chat)
+    if update_chat is not None and chat_type in ("group", "supergroup"):
+        group = (update.get("message") or {}).get("chat") or {}
+        _set_status(last_group_chat=update_chat, last_group_title=str(group.get("title") or "")[:80])
+    # Чат логістів: лише «/pechi» → час відкриття. Власник чи учасник, чий
+    # приватний чат випадково вписали сюди, меню не втрачає.
+    logistics = logistics_chat(db) if update_chat is not None else None
+    if logistics and update_chat == logistics and find_recipient(db, update_chat) is None:
+        return _logistics_reply(db, update, update_chat, now)
     if update_chat is None or chat_type != "private":
         return []
     moment = now or business_now()
@@ -1572,6 +1780,10 @@ def flush_outbox(
     now = now or datetime.now()
     owner = telegram.get_chat_id(db)
     allowed = {r.chat_id for r in recipients(db)}
+    # Чат логістів — не учасник, але адресат звіту по пічках.
+    logistics = logistics_chat(db)
+    if logistics:
+        allowed.add(logistics)
 
     # Прострочене списуємо окремо й до вибірки: інакше рядки, що чекають
     # повтору, займали б місця в пачці й тримали чергу всіх інших.
@@ -1862,6 +2074,12 @@ def outbound_tick(db: Session, *, flush_feedback: bool, now: Optional[datetime] 
         except Exception:  # noqa: BLE001
             db.rollback()
             logger.exception("telegram-бот: збій спостереження за пічками/Sisma")
+        try:
+            queue_logistics_report(db)
+            db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
+            logger.exception("telegram-бот: збій ранкового звіту по пічках")
 
     token = telegram.get_bot_token(db)
     chat_id = telegram.get_chat_id(db)

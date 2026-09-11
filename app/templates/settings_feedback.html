@@ -187,6 +187,36 @@
                             <button type="submit" class="settings-secondary-button">Створити посилання</button>
                         </form>
                     </div>
+
+                    {# Чат логістів: сюди йде ЛИШЕ звіт по пічках — щоранку о 08:00 і на
+                       «/pechi» час відкриття (рішення власника 11.09.26). #}
+                    {% set st = bot_status %}
+                    <div class="stand-cell w6 stand-members" id="bot-logistics">
+                        <h3>Чат логістів: звіт по пічках</h3>
+                        <p class="settings-help">Щоранку о <b>08:00</b> (за Києвом) бот надсилає сюди звіт: яка піч працює, температура з табло і о котрій відкриється. Будь-хто в чаті може написати <b>/pechi</b> — бот відповість, коли відкриються пічки. Більше нічого в цей чат не йде: ні меню, ні робіт, ні сповіщень.</p>
+                        <p class="settings-help">Як підключити групу: додайте бота в групу логістів → напишіть там <b>/pechi</b> → натисніть «Прив'язати групу». Або вставте id вручну (у групи він починається з мінуса).</p>
+                        <form method="post" action="/settings/feedback/logistics" class="stand-members-invite">
+                            <div class="login-glow"><div class="login-input-wrap">
+                                <input class="login-input mono" type="text" name="logistics_chat_id" maxlength="40"
+                                       value="{{ logistics_chat }}" placeholder="-1001234567890" autocomplete="off">
+                            </div></div>
+                            <button type="submit" class="settings-secondary-button">Зберегти</button>
+                        </form>
+                        <div class="stand-drow">
+                            <div class="stand-dtext">
+                                <b>{% if logistics_chat %}Звіт іде в чат <span class="mono">{{ logistics_chat }}</span>{% else %}Чат не вказано — звіт вимкнено{% endif %}</b>
+                                <p>{% if st.last_group_chat %}Остання група, що писала боту: {{ st.last_group_title or '—' }} · <span class="mono">{{ st.last_group_chat }}</span>{% else %}Бот ще не бачив жодної групи з моменту запуску.{% endif %}</p>
+                            </div>
+                            <form method="post" action="/settings/feedback/logistics/bind">
+                                <button type="submit" class="settings-secondary-button">Прив'язати групу</button>
+                            </form>
+                            {% if logistics_chat %}
+                            <form method="post" action="/settings/feedback/logistics/test">
+                                <button type="submit" class="settings-secondary-button">Надіслати зараз</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

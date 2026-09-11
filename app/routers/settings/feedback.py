@@ -50,6 +50,7 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
                 for i in telegram_bot.active_invites(db)
             ],
             "bot_username": username,
+            "logistics_chat": telegram_bot.logistics_chat(db) or "",
             "flash": flash,
         },
     )
@@ -233,6 +234,73 @@ def toggle_bot_member_notify(request: Request, member_id: int, db: Session = Dep
     db.commit()
     state = "увімкнено" if member.notify else "вимкнено"
     return _flash(request, "success", f"{telegram_bot.member_title(member)}: сповіщення {state}.")
+
+
+# ── Чат логістів ───────────────────────────────────────────────────────────
+# Туди йде лише звіт по пічках: щоранку о 08:00 і на «/pechi» — час
+# відкриття (рішення власника 11.09.26).
+
+
+def _logistics_flash(request: Request, kind: str, message: str) -> RedirectResponse:
+    request.session["feedback_settings_flash"] = {"kind": kind, "message": message}
+    return RedirectResponse("/settings/feedback#bot-logistics", status_code=303)
+
+
+@router.post("/settings/feedback/logistics")
+def save_logistics_chat(request: Request, logistics_chat_id: str = Form(""), db: Session = Depends(get_db)):
+    """Зберегти id чату логістів. Порожнє — вимкнути звіт."""
+    require_settings_admin(request, db)
+    from app.services import telegram_bot
+
+    value = logistics_chat_id.strip()
+    if value and not value.lstrip("-").isdigit():
+        return _logistics_flash(
+            request, "error",
+            "Id чату — це число (у групи з мінусом на початку, напр. -1001234567890).",
+        )
+    set_setting(db, telegram_bot.LOGISTICS_KEY, value)
+    db.commit()
+    if not value:
+        return _logistics_flash(request, "success", "Чат логістів прибрано — звіт по пічках вимкнено.")
+    return _logistics_flash(
+        request, "success",
+        "Збережено. Звіт по пічках піде туди щоранку о 08:00; «Надіслати зараз» — перевірити одразу.",
+    )
+
+
+@router.post("/settings/feedback/logistics/bind")
+def bind_logistics_chat(request: Request, db: Session = Depends(get_db)):
+    """Взяти id групи, де востаннє звернулись до бота (напр. /pechi)."""
+    require_settings_admin(request, db)
+    from app.services import telegram_bot
+
+    status = telegram_bot.status_snapshot()
+    if not status.last_group_chat:
+        return _logistics_flash(
+            request, "error",
+            "Бот ще не бачив жодної групи. Додайте бота в групу логістів, напишіть там "
+            "/pechi і натисніть ще раз (бот має бути увімкнений).",
+        )
+    set_setting(db, telegram_bot.LOGISTICS_KEY, status.last_group_chat)
+    db.commit()
+    title = f"«{status.last_group_title}» " if status.last_group_title else ""
+    return _logistics_flash(request, "success", f"Прив'язано групу {title}({status.last_group_chat}).")
+
+
+@router.post("/settings/feedback/logistics/test")
+def send_logistics_report_now(request: Request, db: Session = Depends(get_db)):
+    """Поставити звіт по пічках у чергу зараз — побачити, як він виглядає."""
+    require_settings_admin(request, db)
+    from app.services import telegram_bot
+
+    if not telegram_bot.logistics_chat(db):
+        return _logistics_flash(request, "error", "Спершу вкажіть чат логістів.")
+    if not telegram_bot.bot_enabled(db):
+        return _logistics_flash(request, "error", "Бот вимкнено — увімкніть його вище, інакше звіт не піде.")
+    telegram_bot.queue_logistics_report(db, force=True)
+    db.commit()
+    telegram_bot.wake_outbound()
+    return _logistics_flash(request, "success", "Звіт по пічках поставлено у відправку — прийде за кілька секунд.")
 
 
 @router.post("/settings/feedback/member/{member_id}/warehouse")

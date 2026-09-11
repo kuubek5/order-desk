@@ -156,6 +156,9 @@ POST /settings/feedback
 POST /settings/feedback/bind
 POST /settings/feedback/invite
 POST /settings/feedback/invite/{invite_id}/revoke
+POST /settings/feedback/logistics
+POST /settings/feedback/logistics/bind
+POST /settings/feedback/logistics/test
 POST /settings/feedback/member/{member_id}/notify
 POST /settings/feedback/member/{member_id}/remove
 POST /settings/feedback/member/{member_id}/warehouse

@@ -1061,3 +1061,116 @@ def test_second_press_while_building_does_not_start_another(monkeypatch):
         bot._report_lock.release()
         bot.set_report_builder(None)
     assert bot.start_report(CHAT) is None, "без зареєстрованого збирача — чесне «недоступно»"
+
+
+# ── Чат логістів: звіт по пічках ────────────────────────────────────────────
+# Рішення власника 11.09.26: щоранку о 08:00 повний звіт (стан, температура,
+# коли відкриється — за Києвом), на «/pechi» — лише час відкриття. Більше в
+# цей чат не йде нічого.
+
+from types import SimpleNamespace  # noqa: E402
+
+GROUP = "-1001234567890"
+
+
+def _card(name, *, running=False, idle=False, problem=None, temp=None, done_at=None, remaining="", captured=None):
+    state = SimpleNamespace(temp_c=temp, done_at=done_at, remaining_text=remaining, captured_at=captured)
+    return SimpleNamespace(
+        target=SimpleNamespace(name=name), state=state, is_running=running, is_idle=idle,
+        has_problem=problem is not None, problem_text=problem or "", has_data=problem is None,
+    )
+
+
+def _cards(now):
+    return [
+        _card("Піч 1", running=True, temp=1380, done_at=now.replace(hour=3, minute=15) + timedelta(days=1),
+              remaining="9 год 33 хв", captured=now.replace(tzinfo=None) - timedelta(minutes=2)),
+        _card("Піч 2", running=True, temp=860, done_at=now.replace(hour=23, minute=40),
+              remaining="5 год 58 хв", captured=now.replace(tzinfo=None) - timedelta(minutes=1)),
+        _card("Піч 3", idle=True, temp=42, captured=now.replace(tzinfo=None)),
+        _card("Допоміжна", problem="немає зв'язку"),
+    ]
+
+
+NOW_EVENING = datetime(2026, 9, 10, 17, 42)
+
+
+def test_full_report_names_state_temperature_and_opening_in_kyiv_time(monkeypatch):
+    monkeypatch.setattr(bot, "_logistics_cards", lambda db: _cards(NOW_EVENING))
+    with _session() as db:
+        text = bot.furnace_report_text(db, NOW_EVENING)
+    assert "🔥 Пічки · чт 10.09, 17:42" in text
+    assert "<b>Піч 1</b> — 🔥 працює · 1380°\n   відкриється завтра о 03:15 (ще 9 год 33 хв)" in text
+    assert "<b>Піч 2</b> — 🔥 працює · 860°\n   відкриється о 23:40" in text
+    assert "<b>Піч 3</b> — ✅ вільна · 42°" in text
+    assert "<b>Допоміжна</b> — ⚠️ немає зв'язку" in text
+    assert "Найближча відкриється о 23:40 — Піч 2." in text
+    assert "Час київський" in text
+
+
+def test_unread_temperature_is_not_invented(monkeypatch):
+    monkeypatch.setattr(bot, "_logistics_cards", lambda db: [_card("Піч 1", idle=True, temp=None)])
+    with _session() as db:
+        text = bot.furnace_report_text(db, NOW_EVENING)
+    assert "<b>Піч 1</b> — ✅ вільна\n" in text or text.rstrip().endswith("</i>")
+    assert "°" not in text
+
+
+def test_morning_report_goes_once_between_8_and_10(monkeypatch):
+    from app.settings_store import set_setting
+
+    monkeypatch.setattr(bot, "_logistics_cards", lambda db: _cards(NOW_EVENING))
+    with _session() as db:
+        set_setting(db, bot.LOGISTICS_KEY, GROUP)
+        db.commit()
+        assert bot.queue_logistics_report(db, datetime(2026, 9, 11, 7, 59)) is False, "до 08:00 — ні"
+        assert bot.queue_logistics_report(db, datetime(2026, 9, 11, 8, 0, 20)) is True
+        db.commit()
+        assert bot.queue_logistics_report(db, datetime(2026, 9, 11, 8, 5)) is False, "рестарт о 08:05 не шле вдруге"
+        assert bot.queue_logistics_report(db, datetime(2026, 9, 12, 11, 0)) is False, "увімкнули о 11:00 — ранковий не шлемо"
+        rows = db.scalars(select(TelegramOutbox)).all()
+    assert [(r.chat_id, r.kind) for r in rows] == [(GROUP, bot.LOGISTICS_KIND)]
+
+
+def test_logistics_chat_is_a_valid_recipient_for_the_outbox(monkeypatch):
+    from app.settings_store import set_setting
+
+    monkeypatch.setattr(bot, "_logistics_cards", lambda db: [])
+    with _session() as db:
+        set_setting(db, bot.LOGISTICS_KEY, GROUP)
+        db.commit()
+        bot.queue_logistics_report(db, force=True)
+        db.commit()
+        sent = []
+        bot.flush_outbox(db, lambda chat, text: sent.append(chat) or ApiResult(True, 200), datetime.now())
+    assert sent == [GROUP], "звіт не має списуватись як «адресата прибрано»"
+
+
+def _group_message(text, chat=GROUP):
+    update = _message("1", text)
+    update["message"]["chat"] = {"id": int(chat), "type": "supergroup", "title": "Логісти"}
+    return update
+
+
+def test_pechi_in_the_logistics_group_answers_only_opening_times(monkeypatch):
+    from app.settings_store import set_setting
+
+    monkeypatch.setattr(bot, "_logistics_cards", lambda db: _cards(NOW_EVENING))
+    with _session() as db:
+        set_setting(db, bot.LOGISTICS_KEY, GROUP)
+        db.commit()
+        [action] = bot.handle_update(db, _group_message("/pechi@KuubMillBot"), now=NOW_EVENING)
+        assert action.payload["chat_id"] == GROUP
+        text = action.payload["text"]
+        assert "Коли відкриються пічки" in text
+        assert "<b>Піч 1</b> — завтра о 03:15" in text and "<b>Піч 3</b> — вільна" in text
+        assert "°" not in text, "на запит — лише час відкриття, без температур"
+        assert "reply_markup" not in action.payload
+        assert bot.handle_update(db, _group_message("а коли машина?"), now=NOW_EVENING) == [], "решта розмов — мовчання"
+
+
+def test_a_foreign_group_is_silent_but_remembered_for_binding():
+    with _session() as db:
+        assert bot.handle_update(db, _group_message("/pechi", chat="-100999")) == []
+    status = bot.status_snapshot()
+    assert (status.last_group_chat, status.last_group_title) == ("-100999", "Логісти")
