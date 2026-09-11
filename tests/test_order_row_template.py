@@ -187,3 +187,17 @@ def test_material_stripe_does_not_disturb_the_state_classes():
     assert 'data-mat="mat-ti"' in html
     assert "queue-row-overdue" in html
     assert "queue-row-changed" in html
+
+
+def test_approval_pending_paints_the_path_id_like_the_badge():
+    """Власник 11.09.26: робота на погодженні — шлях-ID у колонці «Номер
+    роботи» тим самим кольором, що й плашка, бо саме його оператор копіює в
+    Sum3D. Погоджена робота — звичайний шлях."""
+    html = _render(_order(cam_comment="На погодженні Дарда"))
+    assert 'class="approval-badge"' in html
+    assert "job-code-link copy-button is-hold" in html
+    assert "НА ПОГОДЖЕННІ" in html
+
+    html = _render(_order(cam_comment="погоджено, швидка"))
+    assert "is-hold" not in html
+    assert 'class="approval-badge"' not in html

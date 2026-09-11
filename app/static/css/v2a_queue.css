@@ -499,6 +499,12 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
   background:rgba(var(--accent-base-rgb), .16);
 }
 .q2 .job-code-link:hover{background:rgba(var(--accent-base-rgb), .12);border-color:rgba(var(--accent-rgb), .3);color:var(--accent-c)}
+/* Робота на погодженні (власник 11.09.26): шлях-ID тим самим фіолетом, що й
+   плашка «на погодженні» (--hold), — оператор бачить «не брати» саме там,
+   де копіює шлях у Sum3D. Підтвердження копіювання лишається зеленим. */
+.q2 .job-code-link.is-hold{color:var(--hold-ink);background:rgba(var(--hold-rgb), .14);border-color:rgba(var(--hold-rgb), .38)}
+.q2 .job-code-link.is-hold:hover{color:var(--hold-ink);background:rgba(var(--hold-rgb), .22);border-color:rgba(var(--hold-rgb), .55)}
+.q2 .job-code-link.is-hold.copy-success{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .55);background:rgba(var(--accent-base-rgb), .16)}
 .q2 .job-code-found-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent-b);margin-left:5px;vertical-align:middle}
 /* Clickable STL-preview icon for lab jobs (replaces the passive found-dot when
    the folder resolved). Subtle by default, teal on hover — matches folder-link. */

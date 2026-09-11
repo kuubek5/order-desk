@@ -20,6 +20,11 @@
    техніка чи імені техніка — це поля лабораторного процесу. Для них порожні
    клітинки лишаємо просто пустими, без «—» (щоб не читалось як «бракує даних»). #}
 {% set _is_client = order.source in ('email', 'sheet_client') %}
+{# Робота на погодженні з лікарем. Один прапорець на рядок: ним фарбується і
+   плашка біля наряду, і шлях-ID у колонці «Номер роботи» — саме його
+   оператор копіює в Sum3D, тож сигнал «не брати» мусить стояти й там
+   (власник 11.09.26). #}
+{% set _hold = is_approval_pending_comment(order.cam_comment) %}
 {# Смуга матеріалу на краю рядка. Клас береться з ТОГО САМОГО джерела, що й
    ключ маркування (material_badge → каталог матеріалів), тому смуга й чип
    фізично не можуть розійтись. Цирконій свідомо без смуги — правило живе в
@@ -118,7 +123,7 @@
             на швидку
         </span>
         {% endif %}
-        {% if is_approval_pending_comment(order.cam_comment) %}
+        {% if _hold %}
         {# Технік ще погоджує роботу з лікарем. Той самий канал, що «на швидку»
            (чіп біля ідентичності), бо коментар у своїй колонці обрізається.
            Дописане в таблиці «погоджено» знімає плашку на наступному синку. #}
@@ -204,7 +209,7 @@
     </td>
     <td class="job-code">
         {% if order.job_code %}
-            <button type="button" class="mono job-code-link copy-button" data-copy="{{ order.job_code }}" {% if order.job_code_folder_uri %}data-folder-uri="{{ order.job_code_folder_uri }}"{% endif %} {% if order.job_code_folder_preview_token %}data-stl-preview-token="{{ order.job_code_folder_preview_token }}"{% endif %} title="{{ order.job_code }}&#10;Клік — скопіювати шлях-ID для Sum3D{% if order.job_code_folder_uri %}; подвійний клік — відкрити папку{% endif %}">{{ order.job_code }}</button>
+            <button type="button" class="mono job-code-link copy-button{% if _hold %} is-hold{% endif %}" data-copy="{{ order.job_code }}" {% if order.job_code_folder_uri %}data-folder-uri="{{ order.job_code_folder_uri }}"{% endif %} {% if order.job_code_folder_preview_token %}data-stl-preview-token="{{ order.job_code_folder_preview_token }}"{% endif %} title="{% if _hold %}Робота НА ПОГОДЖЕННІ з лікарем — не брати, поки не погоджено.&#10;{% endif %}{{ order.job_code }}&#10;Клік — скопіювати шлях-ID для Sum3D{% if order.job_code_folder_uri %}; подвійний клік — відкрити папку{% endif %}">{{ order.job_code }}</button>
             {% if order.job_code_folder_preview_token %}
             {# Clickable STL-preview trigger for lab jobs. The наряд button next
                to it copies the path (data-copy) and is excluded from preview,
