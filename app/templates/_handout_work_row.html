@@ -111,6 +111,25 @@ title="Видано в CRM{% if issued_by.get(order.id) %}: {{ issued_by[order.i
         </a>
         {% endfor %}
     </div>
+    {% elif order.export_stale_day %}
+    {# Теки за день роботи немає — є лише старіші з тим самим кольором. Їх НЕ
+       показуємо: партія, старша за день роботи, майже завжди чужа попередня
+       робота (Oleksandr 10.09.26 — відкривали 09.09 як відповідь). Замість
+       хибної теки — чесна позначка й тека клієнта, щоб знайти вручну. #}
+    <div class="wopen">
+        {% set miss_title = 'Теки «' ~ (order.material_color or '—') ~ '» за ' ~ order.sheet_tab[:5] ~ ' не знайдено; остання — ' ~ order.export_stale_day.strftime('%d.%m') ~ ' (найімовірніше, інша робота). Відкрити теку клієнта й знайти вручну' %}
+        {% if order.export_client_uri %}
+        <a href="{{ order.export_client_uri }}" class="wfolder wfolder-miss"
+           data-folder-uri="{{ order.export_client_uri }}"
+           {% if order.export_client_token %}data-open-folder-token="{{ order.export_client_token }}"{% endif %}
+           title="{{ miss_title }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h7l2 2h9v10H3z"/><path d="M3 7V5h7l2 2"/></svg>
+            <span class="wfolder-t">за {{ order.sheet_tab[:5] }} теки немає</span>
+        </a>
+        {% else %}
+        <span class="wfolder wfolder-miss" title="{{ miss_title }}"><span class="wfolder-t">за {{ order.sheet_tab[:5] }} теки немає</span></span>
+        {% endif %}
+    </div>
     {% endif %}
 </div>
 

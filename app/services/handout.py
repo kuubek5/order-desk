@@ -15,7 +15,7 @@ from pathlib import Path
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.business_day import business_today
+from app.business_day import business_date_of, business_today
 from app.client_matcher import (
     match_client_name,
     match_client_name_cached,
@@ -55,11 +55,68 @@ def entries_for_material(material_color: str | None, entries: list, work_day=Non
     клієнт замовляє `mono a3.5` мало не щодня, тож під однією роботою
     з'являлось по чотири теки з різних днів (скриншот 28.08.26: «робота одна,
     а папок багато»). Прив'язки «рядок ↔ тека» в шляху немає (CLAUDE.md §4:
-    ні наряду, ні Sum3D ID), але дата партії є, і робота не могла лежати в
-    партії, скачаній ПІСЛЯ неї. Тож беремо одну партію — найближчу з тих, що
-    не пізніші за день роботи, а якщо таких немає (файли дозалили наступного
-    дня) — найранішу пізнішу. Кілька тек лишається тільки тоді, коли вони
-    справді з одного дня; вибір між ними за оператором, як і був."""
+    ні наряду, ні Sum3D ID), але дата партії є.
+
+    Беремо партію ТОГО САМОГО робочого дня, а якщо її немає (файли дозалили
+    пізніше) — найранішу пізнішу. СТАРІШІ партії не показуємо зовсім
+    (рішення власника 11.09.26). Рядок у таблиці з'являється того дня, коли
+    прийняли лист чи технік здав роботу, — тоді ж створюється і партія; тож
+    партія, старша за день роботи, майже завжди ЧУЖА, попередня робота того
+    самого кольору. Бойовий випадок Oleksandr 10.09.26: під `mono a3` за 10.09
+    висіла тека за 09.09, і її відкривали як відповідь. Хибна тека гірша за
+    жодну — рядок натомість каже «теки за день немає» (`stale_folder_day`).
+
+    Дні — РОБОЧІ (межа 07:30), з обох боків: тека, створена о 01:00, належить
+    нічній зміні попереднього дня, як і вкладка, у яку тоді пишуть рядок.
+    Кілька тек лишається тільки тоді, коли вони справді з одного дня; вибір
+    між ними за оператором, як і був."""
+    matched = _material_matches(material_color, entries)
+    if work_day is None or not matched:
+        return matched
+
+    # Вкладка п'ятниці охоплює й вихідні: у суботу й неділю цех працює, а
+    # роботи (і прийняті листи) пишуть у п'ятничну вкладку (власник 11.09.26).
+    covered = covered_days(work_day)
+    in_tab = [e for e in matched if _batch_day(e) in covered]
+    if in_tab:
+        return in_tab
+    later = sorted({d for d in (_batch_day(e) for e in matched) if d > covered[-1]})
+    if not later:
+        return []
+    return [e for e in matched if _batch_day(e) == later[0]]
+
+
+def covered_days(work_day) -> list:
+    """Робочі дні, що належать вкладці `work_day`: сам день і вихідні одразу
+    за ним. Вкладок за суботу й неділю в таблиці немає — роботи вихідних
+    пишуть у п'ятницю, тож п'ятниця = пт + сб + нд."""
+    days = [work_day]
+    following = work_day + timedelta(days=1)
+    while following.weekday() >= 5:
+        days.append(following)
+        following += timedelta(days=1)
+    return days
+
+
+def stale_folder_day(material_color: str | None, entries: list, work_day=None):
+    """Робочий день найсвіжішої партії з тим самим матеріалом, якщо ВСІ такі
+    партії старші за день роботи (і тому не показуються). None — інакше.
+
+    Для рядка «теки за 10.09 немає»: оператор має бачити, що тека не
+    загубилась у програми, а її справді немає за цей день, — і відкрити теку
+    клієнта, щоб знайти вручну."""
+    if work_day is None:
+        return None
+    matched = _material_matches(material_color, entries)
+    if not matched:
+        return None
+    days = {_batch_day(e) for e in matched}
+    if any(day >= work_day for day in days):
+        return None
+    return max(days)
+
+
+def _material_matches(material_color: str | None, entries: list) -> list:
     if not material_color or not material_color.strip():
         return []
     matched = [
@@ -67,13 +124,12 @@ def entries_for_material(material_color: str | None, entries: list, work_day=Non
         if materials_match(material_color, e.material_color_folder_name)
     ]
     matched.sort(key=lambda e: e.created_at)
-    if work_day is None or not matched:
-        return matched
+    return matched
 
-    batch_days = sorted({e.created_at.date() for e in matched})
-    not_after = [d for d in batch_days if d <= work_day]
-    chosen = not_after[-1] if not_after else batch_days[0]
-    return [e for e in matched if e.created_at.date() == chosen]
+
+def _batch_day(entry):
+    """Робоча дата партії (межа доби 07:30), як у вкладок таблиці."""
+    return business_date_of(entry.created_at)
 
 
 # Ключ групи для робіт БЕЗ імені клієнта.

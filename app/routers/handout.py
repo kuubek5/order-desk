@@ -64,6 +64,7 @@ from app.services.handout import (
     matched_folders,
     scan_export_for_clients,
     scan_export_latest_for_clients,
+    stale_folder_day,
 )
 from app.services.handout_qc import HANDOUT_QC_ITEMS, qc_checklist_enabled
 from app.services.order_dates import parse_sheet_tab, sheet_order_key
@@ -79,6 +80,26 @@ from app.stl_preview import build_preview_token_lexical, validate_preview_roots
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _client_folder_link(match, export_root, preview_roots, validated_roots):
+    """(file://-посилання, токен /open-folder) теки клієнта або (None, None).
+
+    Тека клієнта береться з самого ЗІСТАВЛЕННЯ, а не з знайдених партій:
+    клієнт із прив'язаною текою, але без свіжих партій, інакше отримував би
+    заклик «Прив'язати папку» (бойовий випадок 28.08.26).
+
+    Токен, а не лише file://-посилання: браузер МОВЧКИ блокує перехід на
+    file:// зі сторінки на http, тому кнопка «Відкрити папку» досі не робила
+    нічого (бойовий випадок 28.08.26). Провідник відкриває сервер через
+    /open-folder, як це вже роблять прев'ю і черга."""
+    if not match.matched_folder_name:
+        return None, None
+    client_folder = export_root / match.matched_folder_name
+    return (
+        folder_to_file_uri(client_folder),
+        build_preview_token_lexical(client_folder, preview_roots, validated_roots),
+    )
 
 
 def handout_context(request: Request, user, source: str, day: str, db: Session) -> dict:
@@ -236,10 +257,23 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
         # "нова папка"), so this is an ASSIST, not an exact bind — when several
         # works share a material the same folders show under each, and the
         # operator picks by eye (Sum3D ID + STL preview are their anchor).
+        client_folder_uri, client_folder_token = _client_folder_link(
+            match, _export_root, _preview_roots, _validated_roots
+        )
         for order in group_orders:
+            work_day = parse_sheet_tab(order.sheet_tab)
             order.export_matches = entries_for_material(
-                order.material_color, export_entries, parse_sheet_tab(order.sheet_tab)
+                order.material_color, export_entries, work_day
             )
+            # Теки за день роботи немає, є лише старіші з тим самим кольором —
+            # їх НЕ показуємо (хибна тека гірша за жодну), а рядок каже про
+            # це й дає одним кліком теку клієнта (рішення власника 11.09.26).
+            order.export_stale_day = (
+                None if order.export_matches
+                else stale_folder_day(order.material_color, export_entries, work_day)
+            )
+            order.export_client_uri = client_folder_uri
+            order.export_client_token = client_folder_token
         # Теки, чий матеріал не збігся з жодним рядком, раніше показувались
         # окремим підвалом «Інші папки». Прибрано на прохання оператора
         # (28.08.26): на ранковій видачі це шум — звіряють коронку з STL за
@@ -270,19 +304,8 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
         # Раніше вона залежала від `export_entries`, тож клієнт із прив'язаною
         # текою, але без свіжих партій, отримував заклик «Прив'язати папку» —
         # екран казав «не прив'язано» там, де насправді «немає свіжих партій»
-        # (бойовий випадок 28.08.26).
-        client_folder_uri = None
-        client_folder_token = None
-        if match.matched_folder_name:
-            client_folder = _export_root / match.matched_folder_name
-            client_folder_uri = folder_to_file_uri(client_folder)
-            # Токен, а не лише file://-посилання: браузер МОВЧКИ блокує перехід
-            # на file:// зі сторінки на http, тому кнопка «Відкрити папку» досі
-            # не робила нічого (бойовий випадок 28.08.26). Провідник відкриває
-            # сервер через /open-folder, як це вже роблять прев'ю і черга.
-            client_folder_token = build_preview_token_lexical(
-                client_folder, _preview_roots, _validated_roots
-            )
+        # (бойовий випадок 28.08.26). Рахується вище (`_client_folder_link`),
+        # бо тепер нею користується й рядок «теки за день немає».
         client_groups.append(
             {
                 "issued_by": issued_by,

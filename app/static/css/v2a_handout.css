@@ -474,3 +474,11 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
   .ccard.nav-hit,
   .flatrow.nav-hit { animation: none; box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .9); }
 }
+
+/* «За 10.09 теки немає» (11.09.26): замість старішої, найімовірніше чужої
+   теки — чесна позначка, що відкриває теку клієнта. Колір попередження, не
+   тривоги: тека не зламалась, її просто треба знайти руками. Пунктир — щоб
+   не читалась як звичайний чип теки. */
+.handoutv2 .wfolder.wfolder-miss{border-style:dashed;border-color:rgba(var(--warn-rgb), .55);background:rgba(var(--warn-rgb), .08)}
+.handoutv2 .wfolder.wfolder-miss .wfolder-t{color:var(--warn-ink)}
+.handoutv2 .wfolder.wfolder-miss svg{stroke:var(--warn-ink)}

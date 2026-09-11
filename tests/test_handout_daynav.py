@@ -62,3 +62,35 @@ def test_cards_view_keeps_the_card_anchor(app_db):  # noqa: F811
     _seed(factory, flow="")
     html = _page(app)
     assert 'id="handout-client-1"' in html and 'data-nav="1"' in html
+
+
+def test_row_with_only_older_folders_says_so_and_offers_the_client_folder(app_db, monkeypatch, tmp_path):  # noqa: F811
+    """Oleksandr 10.09.26: під `mono a3` за 10.09 висіла тека 09.09 — і її
+    відкривали. Тепер стара тека не показується, рядок каже «за 10.09 теки
+    немає» і відкриває теку клієнта."""
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    import app.web as web
+    from app.routers import handout as handout_router_mod
+    from app.services import handout as handout_service
+
+    app, factory = app_db
+    with factory() as db:
+        user = db.scalars(select(User).where(User.username == OPERATOR[0])).one()
+        user.handout_layout = "nav"
+        db.add(Order(source="sheet_client", sheet_tab=TAB, row_number=7, client_name="Oleksandr",
+                     material_color="mono a3", quantity="1", status="відфрезеровано"))
+        db.commit()
+    folder = tmp_path / "Oleksandr" / "Новая папка (282)" / "mono a3"
+    folder.mkdir(parents=True)
+    old = SimpleNamespace(client_folder_name="Oleksandr", batch_folder_name="Новая папка (282)",
+                          material_color_folder_name="mono a3", created_at=datetime(2026, 9, 9, 13, 29),
+                          files=["a.stl"], folder_path=folder)
+    monkeypatch.setattr(handout_router_mod, "get_export_folder_path", lambda db: str(tmp_path))
+    monkeypatch.setattr(web, "list_export_client_names_cached", lambda root: ["Oleksandr"])
+    monkeypatch.setattr(handout_service, "scan_export_client_cached", lambda root, f, nb: [old])
+    html = _page(app)
+    assert "за 10.09 теки немає" in html
+    assert "wfolder-miss" in html and "data-open-folder-token" in html
+    assert "09.09 13:29" not in html, "стара тека як «своя» не показується"

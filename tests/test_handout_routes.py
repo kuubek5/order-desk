@@ -908,14 +908,18 @@ class TestClientFolderOpens:
         engine = _database()
         with Session(engine, expire_on_commit=False) as db:
             user = _user(db)
-            db.add(_client_order(client_name="Pavlenko", status="нове"))
+            order = _client_order(client_name="Pavlenko", status="нове")
+            db.add(order)
             db.commit()
 
+            # Партія того самого робочого дня, що й вкладка роботи: старіші
+            # з 11.09.26 не показуються (див. entries_for_material).
+            work_day = datetime.strptime(order.sheet_tab, "%d.%m.%y")
             entry = SimpleNamespace(
                 client_folder_name="Pavlenko",
                 batch_folder_name="26.08.26",
                 material_color_folder_name="Emotions A3 опаковий всередині",
-                created_at=datetime(2026, 8, 26, 10, 16),
+                created_at=work_day.replace(hour=10, minute=16),
                 files=["a.stl"],
                 folder_path=material_folder,
             )
@@ -959,11 +963,14 @@ class TestClientFolderOpens:
             db.add(order)
             db.commit()
 
+            # Партія того самого робочого дня, що й вкладка роботи: старіші
+            # з 11.09.26 не показуються (див. entries_for_material).
+            work_day = datetime.strptime(order.sheet_tab, "%d.%m.%y")
             entry = SimpleNamespace(
                 client_folder_name="Pavlenko",
                 batch_folder_name="26.08.26",
                 material_color_folder_name="Emotions A3 опаковий всередині",
-                created_at=datetime(2026, 8, 26, 10, 16),
+                created_at=work_day.replace(hour=10, minute=16),
                 files=["a.stl"],
                 folder_path=material_folder,
             )
@@ -1046,6 +1053,57 @@ class TestOneBatchPerRow:
         # А робота `mono a3` за 09.09 як і раніше бере свою 282-гу.
         picked = entries_for_material("mono a3", entries, date(2026, 9, 9))
         assert [(e.material_color_folder_name, e.created_at.day) for e in picked] == [("mono a3", 9)]
+
+    def test_only_older_batches_show_nothing_and_say_so(self):
+        """Рішення власника 11.09.26: партія, старша за день роботи, — майже
+        завжди чужа попередня робота. Хибна тека гірша за жодну: рядок без
+        теки, а `stale_folder_day` каже, від якого дня найсвіжіша стара."""
+        from datetime import datetime
+
+        from app.services.handout import stale_folder_day
+
+        entries = [
+            self._entry("mono a3", datetime(2026, 9, 9, 13, 29)),
+            self._entry("mono a3", datetime(2026, 9, 7, 20, 47)),
+        ]
+        assert entries_for_material("mono a3", entries, date(2026, 9, 10)) == []
+        assert stale_folder_day("mono a3", entries, date(2026, 9, 10)) == date(2026, 9, 9)
+        # Є тека за день — «теки немає» не кажемо.
+        assert stale_folder_day("mono a3", entries, date(2026, 9, 9)) is None
+        # Жодної теки цього кольору — теж мовчимо: це не «тільки старі».
+        assert stale_folder_day("mono a2", entries, date(2026, 9, 10)) is None
+
+    def test_friday_tab_covers_the_weekend(self):
+        """Власник 11.09.26: у вихідні цех працює, а роботи й прийняті листи
+        пишуть у вкладку П'ЯТНИЦІ. Тож партія суботи чи неділі — «того самого
+        дня» для п'ятничної роботи, а не «пізніша»."""
+        from datetime import datetime
+
+        from app.services.handout import stale_folder_day
+
+        friday = date(2026, 9, 11)
+        entries = [
+            self._entry("mono a3", datetime(2026, 9, 11, 15, 0)),   # пт
+            self._entry("mono a3", datetime(2026, 9, 12, 10, 0)),   # сб
+            self._entry("mono a3", datetime(2026, 9, 14, 9, 0)),    # пн — вже інша вкладка
+        ]
+        picked = entries_for_material("mono a3", entries, friday)
+        assert [e.created_at.day for e in picked] == [11, 12]
+        # Лише субота — теж «своя» для п'ятниці.
+        assert [e.created_at.day for e in entries_for_material("mono a3", entries[1:2], friday)] == [12]
+        # А для понеділка субота — старша: не показуємо, кажемо «теки немає».
+        assert entries_for_material("mono a3", entries[1:2], date(2026, 9, 14)) == []
+        assert stale_folder_day("mono a3", entries[1:2], date(2026, 9, 14)) == date(2026, 9, 12)
+
+    def test_night_batch_belongs_to_the_business_day_of_its_shift(self):
+        """Тека о 01:00 10.09 — нічна зміна 09.09 (межа доби 07:30), як і
+        вкладка, у яку тоді пишуть рядок. Календарна дата відкинула б її
+        для роботи 09.09 як «наступного дня», а для 10.09 — підсунула б."""
+        from datetime import datetime
+
+        entries = [self._entry("mono a3", datetime(2026, 9, 10, 1, 5))]
+        assert [e.created_at.hour for e in entries_for_material("mono a3", entries, date(2026, 9, 9))] == [1]
+        assert entries_for_material("mono a3", entries, date(2026, 9, 10)) == []
 
     def test_files_uploaded_the_next_day_are_not_lost(self):
         """Партії раніше за роботу немає — беремо найранішу пізнішу, інакше
@@ -1260,8 +1318,12 @@ class TestBoundClientWithoutFreshBatches:
         assert ctx["unbound_count"] == 0
 
     def test_the_latest_batches_are_used_when_the_window_is_empty(self, monkeypatch, tmp_path):
-        """Файли скачали задовго до фрезерування — робота однаково має знайти
-        свою теку, а не лишитись ні з чим."""
+        """Файли скачали задовго до фрезерування. Запасний шлях (найновіші
+        партії) і далі знаходить теку клієнта, АЛЕ з 11.09.26 партію, старшу
+        за день роботи, рядок не показує як «свою» (рішення власника: така
+        партія майже завжди чужа попередня робота, хибна тека гірша за
+        жодну). Замість неї — «теки за день немає» з датою останньої і
+        кнопкою теки клієнта: робота не лишається ні з чим."""
         from datetime import datetime
 
         material = tmp_path / "Клієнт" / "01.07.26" / "pmma kappa"
@@ -1296,8 +1358,10 @@ class TestBoundClientWithoutFreshBatches:
             )
             ctx = handout_router_mod.get_handout(request=_request(user.id), day="", db=db)
 
-        matched = ctx["client_groups"][0]["orders"][0].export_matches
-        assert [e.batch_folder_name for e in matched] == ["01.07.26"]
+        row = ctx["client_groups"][0]["orders"][0]
+        assert row.export_matches == []
+        assert row.export_stale_day == date(2026, 7, 1)
+        assert row.export_client_uri, "тека клієнта — одним кліком з позначки"
 
 
 def test_today_is_available_but_not_the_default_day():
