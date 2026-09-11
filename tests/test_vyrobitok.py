@@ -185,6 +185,34 @@ def test_manual_columns_have_no_edited_marker():
     cell = next(r for r in grid.rows if r["dayn"] == 5)["cells"]["disks"]
     assert cell["num"] == 7
     assert cell["edited"] is False  # ручна колонка — не «виправлення CRM»
+    # …але число вписала людина, і екран мусить це показати (власник 11.09.26).
+    assert cell["by_hand"] is True
+    empty = next(r for r in grid.rows if r["dayn"] == 6)["cells"]["disks"]
+    assert empty["by_hand"] is False
+
+
+def test_operator_numbers_are_marked_on_screen_and_materials_tinted():
+    """Власник 11.09.26: легенда обіцяла відрізнити «порахувала CRM» від
+    «вписав оператор», а опаки й підкови виглядали однаково з CRM. Плюс
+    цифри ПММА / СЛМ / Ti — у кольорі свого матеріалу."""
+    import app.web as web
+    from app.services.vyrobitok import HUE
+
+    db = _db()
+    _materials(db)
+    set_cell(db, date(2026, 8, 5), "opak2", 17)
+    set_cell(db, date(2026, 8, 5), "lab_zr", 99)
+    grid = compute_month(db, 2026, 8)
+    html = web.templates.get_template("_vyrobitok_body.html").render(
+        grid=grid, material_cols=[("zr", "ZRO"), ("pmma", "PMMA"), ("wax", "WAX"), ("slm", "SLM"), ("ti", "TI")],
+        opak_people=["Денис", "Костя", "Стас", "Вадим", "Рома"], hue=HUE,
+    )
+    assert html.count("cellin edited") == 2, "і правка CRM, і число опаку"
+    assert 'title="Вписав оператор"' in html
+    assert "Система порахувала" in html
+    assert f'class=" tint" style="--h:{HUE["pmma"]}"' in html
+    assert f'class="g-mail tint" style="--h:{HUE["ti"]}"' in html
+    assert f'style="--h:{HUE["zr"]}"><input' not in html, "цирконій без відтінку"
 
 
 def test_auto_snapshot_survives_archiving():

@@ -186,9 +186,21 @@
 .cellin:hover { border-color: var(--line-2); }
 .cellin:focus { border-color: var(--accent); background: var(--field); opacity: 1; }
 .cellin::placeholder { color: var(--ink-3); }
-/* Виправлене людиною: підкреслення кольором акценту. Не заливка — заливка
-   сперечалася б із підкладками блоків. */
-.cellin.edited { box-shadow: inset 0 -2px 0 rgba(var(--accent-rgb), .65); font-weight: 600; }
+/* Колір матеріалу в цифрах (власник 11.09.26): ПММА — ледь помаранчевий, СЛМ —
+   ледь сірий, Ti — ледь зелений. Той самий колір, що в смужці над заголовком,
+   але НАПОЛОВИНУ змішаний з основним чорнилом — читається як число, а не як
+   декор. Порожні клітинки (zero) не фарбуються. */
+.vt td.tint .cellin:not(.zero),
+.vt tfoot td.tint { color: color-mix(in srgb, rgb(var(--h)) 58%, var(--ink)); }
+/* Вписав людина (by_hand): і правка числа CRM, і число в ручній колонці.
+   Тонкого підкреслення на темному тлі ніхто не бачив (власник 11.09.26), тож
+   тепер колір акценту + легка підкладка + рамка. Сильніше за колір матеріалу. */
+.vt .cellin.edited,
+.vt td.tint .cellin.edited {
+  color: var(--accent-c); font-weight: 700;
+  background: rgba(var(--accent-rgb), .13);
+  border-color: rgba(var(--accent-rgb), .5);
+}
 
 .vt-legend {
   display: flex; gap: 18px; align-items: center; flex-wrap: wrap; margin-top: 10px;
@@ -199,7 +211,7 @@
   display: inline-block; width: 26px; height: 16px; border-radius: 5px;
   background: var(--field); border: 1px solid var(--line-2);
 }
-.vt-legend i.ed { box-shadow: inset 0 -2px 0 rgba(var(--accent-rgb), .65); }
+.vt-legend i.ed { background: rgba(var(--accent-rgb), .13); border-color: rgba(var(--accent-rgb), .5); }
 .vt-legend i.td { background: rgba(255, 180, 84, .06); border-color: rgba(var(--accent-rgb), .28); }
 
 /* ── Підсумок і гроші ──────────────────────────────────────────────────────

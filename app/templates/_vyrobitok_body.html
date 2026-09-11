@@ -11,6 +11,7 @@
 <p class="vt-flash">{{ day_sync_note }}</p>
 {% endif %}
 {% set g = grid %}
+{% set tinted_cols = ('pmma', 'slm', 'ti') %}
 {% set m = g.money %}
 
 <div class="vt-holder">
@@ -48,14 +49,17 @@
       </tr>
     </thead>
     <tbody>
-      {# Одна клітинка-поле. cls — клас групи (заливка-поверхня). #}
-      {% macro cell(row, col_key, cls) %}
+      {# Одна клітинка-поле. cls — клас групи (заливка-поверхня); tint — колір
+         матеріалу для цифр (ПММА, СЛМ, Ti — власник 11.09.26), той самий, що в
+         смужці над заголовком. `edited` — вписав оператор (by_hand): у
+         колонках CRM підказка ще й каже, скільки порахувала система. #}
+      {% macro cell(row, col_key, cls, tint='') %}
       {% set c = row.cells[col_key] %}
-      <td class="{{ cls }}">
-        <input class="cellin{% if not c.num %} zero{% endif %}{% if c.edited %} edited{% endif %}"
+      <td class="{{ cls }}{% if tint %} tint{% endif %}"{% if tint %} style="--h:{{ tint }}"{% endif %}>
+        <input class="cellin{% if not c.num %} zero{% endif %}{% if c.by_hand %} edited{% endif %}"
                inputmode="numeric"
                value="{{ c.num if c.num else '' }}"
-               {% if c.edited %}data-auto="{{ c.auto }}" title="система порахувала {{ c.auto }}"{% endif %}
+               {% if c.edited %}data-auto="{{ c.auto }}" title="Вписав оператор. Система порахувала {{ c.auto }} — стерти число, щоб повернути"{% elif c.by_hand %}title="Вписав оператор"{% endif %}
                hx-post="/vyrobitok/cell" hx-trigger="change" hx-target="#vyrobitok-body"
                hx-swap="outerHTML" name="value"
                hx-vals='{"day": "{{ row.date }}", "col_key": "{{ col_key }}"}'>
@@ -81,9 +85,9 @@
                   hx-post="/vyrobitok/day-sync" hx-target="#vyrobitok-body" hx-swap="outerHTML"
                   hx-vals='{"day": "{{ row.date }}"}' hx-indicator="this">⟳</button>
         </td>
-        {% for key, label in material_cols %}{{ cell(row, 'lab_' ~ key, '') }}{% endfor %}
+        {% for key, label in material_cols %}{{ cell(row, 'lab_' ~ key, '', hue[key] if key in tinted_cols else '') }}{% endfor %}
         <td class="gap"></td>
-        {% for key, label in material_cols %}{{ cell(row, 'mail_' ~ key, 'g-mail') }}{% endfor %}
+        {% for key, label in material_cols %}{{ cell(row, 'mail_' ~ key, 'g-mail', hue[key] if key in tinted_cols else '') }}{% endfor %}
         <td class="gap"></td>
         {{ cell(row, 'pidkovy', 'g-pid') }}
         <td class="gap"></td>
@@ -97,9 +101,9 @@
     <tfoot>
       <tr>
         <td class="day">Σ</td>
-        {% for key, label in material_cols %}<td>{{ g.totals['lab_' ~ key] }}</td>{% endfor %}
+        {% for key, label in material_cols %}<td{% if key in tinted_cols %} class="tint" style="--h:{{ hue[key] }}"{% endif %}>{{ g.totals['lab_' ~ key] }}</td>{% endfor %}
         <td class="gap"></td>
-        {% for key, label in material_cols %}<td class="g-mail">{{ g.totals['mail_' ~ key] }}</td>{% endfor %}
+        {% for key, label in material_cols %}<td class="g-mail{% if key in tinted_cols %} tint{% endif %}"{% if key in tinted_cols %} style="--h:{{ hue[key] }}"{% endif %}>{{ g.totals['mail_' ~ key] }}</td>{% endfor %}
         <td class="gap"></td>
         <td class="g-pid">{{ g.totals.pidkovy }}</td>
         <td class="gap"></td>
@@ -114,7 +118,7 @@
 <div class="vt-legend">
   <span><i class="td"></i>сьогодні — рядок, у який вводять</span>
   <span><i></i>порахувала CRM</span>
-  <span><i class="ed"></i>виправив оператор — наведіть, щоб побачити авто-значення</span>
+  <span><i class="ed"></i>вписав оператор — у колонках CRM наведіть, щоб побачити, що порахувала система</span>
 </div>
 
 <details class="vt-opreport"><summary>Звіт по опаках за місяць</summary>

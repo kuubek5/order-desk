@@ -449,12 +449,16 @@ def compute_month(
                 "num": num,
                 "auto": eff_auto,
                 "edited": override is not None,
+                "by_hand": override is not None,
             }
         override = cell.override_value if cell is not None else None
         num = override if override is not None else 0
         # Ручні колонки не мають «авто», тому й не бувають «виправленими» —
-        # мітка правки означає «CRM порахувала одне, ти вписав інше».
-        return {"num": num, "auto": None, "edited": False}
+        # «edited» означає «CRM порахувала одне, ти вписав інше». Але число
+        # тут вписала людина, і на екрані це мусить бути видно так само, як
+        # правку (власник 11.09.26: опаки виглядали як пораховані CRM) —
+        # для цього окрема ознака `by_hand`.
+        return {"num": num, "auto": None, "edited": False, "by_hand": override is not None}
 
     rows: list[dict] = []
     for dayn in range(1, days_in_month + 1):
