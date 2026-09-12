@@ -23,10 +23,14 @@ main.sinb{max-width:1180px;margin:0 auto;padding:18px 20px 48px;display:flex;fle
 .sinb-bar-ico{color:var(--accent);flex:none}
 
 /* Контракт фічі. Виглядає як записка, а не як помилка: це не тривога, це
-   пояснення, чому підпис нічого не вмикає. */
+   пояснення, чому підпис нічого не вмикає. Акцент — тонким `inset box-shadow`
+   по всьому контуру, як у кабінеті (`account.css`), а НЕ товстою смугою
+   ліворуч: бічна смуга-«ярлик» тут і чужа каскаду (§14: край рядка черги —
+   теж inset, не border-left), і читається як універсальний шаблон. */
 .sinb-contract{display:flex;gap:10px;align-items:flex-start;margin:16px 18px 0;padding:11px 14px;
-  border:1px solid var(--line-2);border-left:3px solid var(--accent);border-radius:10px;
-  background:var(--card-2);color:var(--ink-2);font-size:var(--fs-1);line-height:1.5}
+  border-radius:10px;background:var(--accent-well);
+  box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .28);
+  color:var(--ink-2);font-size:var(--fs-1);line-height:1.5}
 .sinb-contract b{color:var(--ink)}
 .sinb-contract svg{width:18px;height:18px;flex:none;margin-top:1px;color:var(--accent);
   fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
