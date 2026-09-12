@@ -8,11 +8,14 @@
 незнайомий діалог — до розбору не доживав ніколи.
 
 **Дублі — умова існування фічі, не оптимізація.** Кадр раз на 6 с = 600 на
-годину на пристрій, тобто гігабайти за добу. Тому рядок тут — на ВІДПЕЧАТОК:
-хеш зменшеної чорно-білої копії, на якій цифри зникають, а розкладка
-лишається. «Той самий екран з іншим відсотком» дублем не вважається помилково
-— він і є дубль. Повтор лише збільшує лічильник, і навіть це не частіше раза
-на хвилину.
+годину на пристрій, тобто гігабайти за добу. Тому рядок тут — на ЕКРАН, і
+тотожність екранів визначає СЕРЕДНЯ різниця мініатюр із порогом
+`NOVELTY_THRESHOLD` (свій на вид пристрою), а НЕ хеш: хеш ламається від зміни
+в кілька пікселів, а на екрані постійно міняються годинник, відсоток і назва
+програми. `fingerprint` лишається коротким імʼям файлу й унікальністю рядка.
+Порівнюємо лише в межах ОДНІЄЇ причини — інакше піч, у якої панель завжди та
+сама, злипалась би в один рядок назавжди. Повтор лише збільшує лічильник, і
+навіть це не частіше раза на хвилину.
 
 **Захоплення не має гальмувати опитування.** Відпечаток рахується з УЖЕ
 розібраного кадру, а диск і база чіпаються лише на НОВОМУ відпечатку. Урок зі
@@ -62,10 +65,18 @@ MAX_PER_DEVICE = 20
 # лишається.
 FINGERPRINT_SIZE = (64, 48)
 # Середня різниця яскравості (0..255), нижче якої кадри вважаємо ОДНИМ екраном.
-# Число не своє: 6.0 підібрано на 130 бойових кадрах SISMA у відборі
-# калібрувальних кадрів (`machines.CALIBRATION_NOVELTY_THRESHOLD`) — простій і
-# друк розходяться на 10.2, сусідні кадри одного стану — на частки одиниці.
-NOVELTY_THRESHOLD = 6.0
+# Поріг СВІЙ на вид пристрою, бо екрани різні за природою:
+#
+# * верстат — 6.0, число не своє: підібране на 130 бойових кадрах SISMA у
+#   відборі калібрувальних кадрів (`machines.CALIBRATION_NOVELTY_THRESHOLD`);
+#   простій і друк розходяться на 10.2, сусідні кадри одного стану — на частки
+#   одиниці;
+# * піч — 1.0, зміряно на 14 цехових кадрах: та сама панель із іншими числами
+#   дає ≤0.77, RUN проти WAIT — 1.45, інша панель — 2.5 і більше. Спільний
+#   поріг 6.0 злипав ВСІ кадри печі в один рядок (найбільша різниця між будь-
+#   якими двома — 3.54), тобто скринька для печей була мертва з народження.
+NOVELTY_THRESHOLD: dict[str, float] = {KIND_FURNACE: 1.0, KIND_MACHINE: 6.0}
+DEFAULT_NOVELTY_THRESHOLD = 6.0
 # Як часто повтор відомого екрана чіпає базу. Без цього кожен кадр давав би
 # UPDATE на пристрій кожні 6 секунд.
 TOUCH_EVERY_SECONDS = 60.0
@@ -89,10 +100,12 @@ REASON_PRIORITY = tuple(REASONS)
 _lock = threading.Lock()
 # id рядка → коли востаннє чіпали базу (monotonic).
 _touched: dict[int, float] = {}
-# Ключ пристрою → {id рядка: підпис}. Тримаємо в памʼяті, щоб не читати теку й
-# базу на кожному кадрі; перший доступ підіймає з бази (рядків щонайбільше
-# MAX_PER_DEVICE). Той самий прийом, що в `machines._known_signatures`.
-_known: dict[str, dict[int, tuple[int, ...]]] = {}
+# Ключ пристрою → {id рядка: (підпис, причина)}. Тримаємо в памʼяті, щоб не
+# читати теку й базу на кожному кадрі; перший доступ підіймає з бази (рядків
+# щонайбільше MAX_PER_DEVICE). Той самий прийом, що в
+# `machines._known_signatures`. Причина лежить поруч із підписом, бо порівняння
+# йде лише в межах однієї причини — див. `note`.
+_known: dict[str, dict[int, tuple[tuple[int, ...], str]]] = {}
 # Скільки відпечатків витіснено з пристрою — для лога, бо стеля не має
 # спрацьовувати тихо.
 _evicted: dict[str, int] = {}
@@ -184,7 +197,7 @@ def _write(path: Path, image) -> None:
         raise
 
 
-def _load_known(db: Session, key: str) -> dict[int, tuple[int, ...]]:
+def _load_known(db: Session, key: str) -> dict[int, tuple[tuple[int, ...], str]]:
     """Підписи екранів цього пристрою — з памʼяті, а при першому доступі з бази.
 
     Читається ОДИН раз на процес: далі словник підтримується записами й
@@ -195,30 +208,36 @@ def _load_known(db: Session, key: str) -> dict[int, tuple[int, ...]]:
         cached = _known.get(key)
     if cached is not None:
         return cached
-    loaded: dict[int, tuple[int, ...]] = {}
+    loaded: dict[int, tuple[tuple[int, ...], str]] = {}
     for row in db.scalars(
         select(ScreenPuzzle).where(ScreenPuzzle.device_key == key)
     ).all():
         sig = unpack(row.signature)
         if sig:
-            loaded[row.id] = sig
+            loaded[row.id] = (sig, row.reason)
     with _lock:
         _known[key] = loaded
     return loaded
 
 
-def _evict_if_full(db: Session, kind: str, key: str) -> None:
-    """Звільнити місце, якщо скринька пристрою повна.
+def _evict_if_full(db: Session, kind: str, key: str) -> list[ScreenPuzzle]:
+    """Звільнити місце, якщо скринька пристрою повна. Повертає жертв.
 
     Порядок жертв: спершу позначене «неважливо» (людина вже сказала, що це не
     цікаво), далі найрідше бачене, далі найдавніше. Вік сам по собі про
     цінність нічого не каже — рідкісний екран тим і цінний, що старий.
+
+    Рядки лише позначаються на видалення; ФАЙЛИ й памʼять процесу чіпає
+    викликач ПІСЛЯ коміту. Інакше виняток між `unlink` і `commit` (а він тут
+    реальний: далі йде запис двох PNG) лишав би рядок у базі вже без картинки,
+    а памʼять процесу — без його підпису, тобто той екран більше ніколи не
+    впізнавався б і при цьому не мав би кадру.
     """
     total = db.scalar(
         select(func.count()).select_from(ScreenPuzzle).where(ScreenPuzzle.device_key == key)
     ) or 0
     if total < MAX_PER_DEVICE:
-        return
+        return []
     victims = db.scalars(
         select(ScreenPuzzle)
         .where(ScreenPuzzle.device_key == key)
@@ -230,12 +249,20 @@ def _evict_if_full(db: Session, kind: str, key: str) -> None:
         .limit(total - MAX_PER_DEVICE + 1)
     ).all()
     for victim in victims:
+        db.delete(victim)
+    return list(victims)
+
+
+def _forget_evicted(key: str, victims: list[ScreenPuzzle]) -> None:
+    """Прибрати за витісненими — уже після коміту."""
+    for victim in victims:
         _drop_files(victim)
         with _lock:
             _known.get(key, {}).pop(victim.id, None)
             _touched.pop(victim.id, None)
-        db.delete(victim)
         _evicted[key] = _evicted.get(key, 0) + 1
+    if not victims:
+        return
     skipped = log_throttle.due(f"screen_inbox.evicted:{key}")
     if skipped is not None:
         logger.info(
@@ -281,14 +308,25 @@ def note(
         sig = signature(frame)
         moment = time.monotonic()
 
-        known = _load_known(db, key)
+        # Порівнюємо лише з рядками ТІЄЇ САМОЇ причини. Для печей це не
+        # дрібниця, а умова існування фічі: панель печі завжди та сама, і всі
+        # її кадри лежать у межах 0.8 один від одного (виміряно на 14 цехових
+        # кадрах: розкид усередині панелі ≤0.77, RUN проти WAIT 1.45). Без
+        # розділення за причиною ВСЯ піч злипалась би в один рядок назавжди —
+        # і кнопка «це неважливо» на ньому глушила б піч цілком.
+        known = {
+            row_id: sigs
+            for row_id, (sigs, row_reason) in _load_known(db, key).items()
+            if row_reason == reason
+        }
+        limit = NOVELTY_THRESHOLD.get(kind, DEFAULT_NOVELTY_THRESHOLD)
         nearest_id, nearest = None, None
         for row_id, other in known.items():
             gap = distance(sig, other)
             if nearest is None or gap < nearest:
                 nearest_id, nearest = row_id, gap
 
-        if nearest_id is not None and nearest is not None and nearest <= NOVELTY_THRESHOLD:
+        if nearest_id is not None and nearest is not None and nearest <= limit:
             # Такий екран уже є. Лічильник чіпаємо не частіше раза на хвилину:
             # кадр знімається раз на 6 с, і без цього кожен пристрій давав би
             # UPDATE десять разів на хвилину до кінця дня.
@@ -312,10 +350,12 @@ def note(
             return existing.id
 
         mark = fingerprint(frame)
-        _evict_if_full(db, kind, key)
+        victims = _evict_if_full(db, kind, key)
         where = folder(kind, key)
-        frame_file = f"{mark}.png"
-        zone_file: Optional[str] = f"{mark}-zone.png" if zone_crop is not None else None
+        # Причина в імені файлу: два рядки одного кадру (різні причини) інакше
+        # ділили б один PNG, і витіснення одного лишало б другий без картинки.
+        frame_file = f"{mark}-{reason}.png"
+        zone_file: Optional[str] = f"{mark}-{reason}-zone.png" if zone_crop is not None else None
         _write(where / frame_file, _shrunk(frame))
         if zone_crop is not None and zone_file is not None:
             # Виріз — у РІДНОМУ масштабі: на ньому вчать еталон, а зменшена
@@ -340,8 +380,11 @@ def note(
         )
         db.add(puzzle)
         db.commit()
+        # Лише тепер, коли рядок точно в базі: файли витіснених і памʼять
+        # процесу міняються ПІСЛЯ коміту (див. `_evict_if_full`).
+        _forget_evicted(key, victims)
         with _lock:
-            _known.setdefault(key, {})[puzzle.id] = sig
+            _known.setdefault(key, {})[puzzle.id] = (sig, reason)
             _touched[puzzle.id] = moment
         logger.info(
             "Новий незрозумілий екран %s (%s): %s — %s",
@@ -349,7 +392,19 @@ def note(
         )
         return puzzle.id
     except Exception:  # noqa: BLE001 — скринька не має права валити опитування
-        logger.debug("Кадр загадки не відкладено (%s)", key, exc_info=True)
+        # WARNING, а не DEBUG: у проді рівень лога INFO
+        # (`windows_launcher.py`), тож debug-рядка не існує взагалі — скринька
+        # мовчки переставала працювати б, а на екрані це виглядало як «нічого
+        # незрозумілого не траплялось». Глушник — бо причина (немає місця,
+        # тека лише для читання) тримається годинами, а прохід сюди раз на 6 с.
+        skipped = log_throttle.due(f"screen_inbox.failed:{key}")
+        if skipped is not None:
+            logger.warning(
+                "Кадр незрозумілого екрана %s не відкладено%s",
+                key,
+                f" (від минулого разу ще {skipped} кадрів)" if skipped else "",
+                exc_info=True,
+            )
         try:
             db.rollback()
         except Exception:  # noqa: BLE001

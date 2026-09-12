@@ -210,6 +210,14 @@ _ENCRYPTED_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 
+# Скільки таблиць додано ПІСЛЯ того, як копії почали нести прапорець `partial`.
+# Потрібне лише для файлів БЕЗ прапорця (формат до нього): у них склад таблиць
+# менший за нинішній не тому, що копія часткова, а тому, що тих таблиць тоді
+# ще не було. Число росте разом із `_TABLE_MODELS` — і саме тому воно тут,
+# поруч зі списком, а не зашите в логіку відновлення.
+_NEW_SINCE_FLAG = 1  # screen_puzzles (12.09.26)
+
+
 def _row_to_dict(obj: Any) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for col in sa_inspect(obj).mapper.column_attrs:
@@ -406,11 +414,22 @@ def restore_backup(session: Session, file_bytes: bytes, password: str) -> dict[s
     # «поверни те, що зникло», і не має права зачепити роботи, зроблені після
     # неї. Тому і видалення, і вставка йдуть тільки по таблицях із файлу
     # (07.09.26).
-    partial = bool(envelope.get("partial")) or (
-        # Старіший файл прапорця не має — впізнаємо частковість за складом:
-        # у повній копії таблиці всі.
-        set(tables) != {model.__tablename__ for model in _TABLE_MODELS}
-    )
+    if "partial" in envelope:
+        # Файл сам каже, який він. Довіряти саме прапорцю, а не складу таблиць:
+        # інакше КОЖНА повна копія, зроблена попередньою збіркою, ставала б
+        # «частковою» щоразу, коли ми додаємо нову таблицю (12.09.26 такою
+        # таблицею стала `screen_puzzles`). Наслідок був мовчазний і найгірший
+        # з можливих: повне відновлення на новому ПК пропускало б секрети —
+        # гілка `if not partial` нижче переписує `app_settings`, — тобто копія
+        # переставала робити рівно те, заради чого існує.
+        partial = bool(envelope["partial"])
+    else:
+        # Старіший файл прапорця не має — впізнаємо частковість за складом.
+        # Таблиця, якої в тій збірці ще не існувало, тут працює проти нас, тож
+        # порівнюємо з тим, що файл МІГ мати: повна копія несе всі таблиці,
+        # відомі ЙОМУ, а нових не знає.
+        known = {model.__tablename__ for model in _TABLE_MODELS}
+        partial = bool(set(tables) - known) or len(set(tables)) < len(known) - _NEW_SINCE_FLAG
     touched = [model for model in _TABLE_MODELS if model.__tablename__ in tables]
     if not partial:
         touched = list(_TABLE_MODELS)

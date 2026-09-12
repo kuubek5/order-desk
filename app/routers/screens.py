@@ -55,13 +55,30 @@ def _puzzle(db: Session, puzzle_id: int) -> ScreenPuzzle:
     return puzzle
 
 
+def _image_flags(puzzle: ScreenPuzzle) -> dict:
+    """Чи є файл кадру/вирізу НА ДИСКУ — рахує роутер, не шаблон.
+
+    `app/backup.py` свідомо копіює рядок `screen_puzzles`, а не сам файл
+    кадру («рядок без картинки далі показує причину, подробиці й підпис»),
+    тож після відновлення на новому ПК файлу може не бути, хоча
+    `frame_file`/`zone_file` у рядку заповнені. Перевірка файлової системи —
+    ОДНА на рядок тут, а не циклом по всіх рядках усередині шаблону.
+    """
+    return {
+        "has_frame": screen_inbox.image_path(puzzle, "frame") is not None,
+        "has_zone": screen_inbox.image_path(puzzle, "zone") is not None,
+    }
+
+
 def _board(request: Request, db: Session, user, show_dismissed: bool) -> dict:
     """Контекст лічильників і списку — один на сторінку й на фрагмент."""
+    puzzles = screen_inbox.listing(db, include_dismissed=show_dismissed)
     return {
         "request": request,
         "user": user,
         "topbar_active": "screens",
-        "puzzles": screen_inbox.listing(db, include_dismissed=show_dismissed),
+        "puzzles": puzzles,
+        "image_flags": {p.id: _image_flags(p) for p in puzzles},
         "counts": screen_inbox.counts(db),
         "reasons": screen_inbox.REASONS,
         "kind_word": _kind_word,
@@ -85,6 +102,7 @@ def _row(request: Request, puzzle: ScreenPuzzle, db: Session, *, saved: bool, sh
             "p": puzzle,
             "reasons": screen_inbox.REASONS,
             "kind_word": _kind_word,
+            "image_flags": {puzzle.id: _image_flags(puzzle)},
             "counts": screen_inbox.counts(db),
             "oob_counts": True,
             "saved": saved,

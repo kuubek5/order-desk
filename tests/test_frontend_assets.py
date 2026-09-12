@@ -348,9 +348,9 @@ BASE_HTML_STYLESHEETS = [
     "/static/css/element-styles.css",
     "/static/css/lookgear.css",
     "/static/css/feedback.css",
-    # Скринька невідомих екранів: власний префікс `sinb-`, нічого не
-    # перевизначає — місце в каскаді некритичне.
-    "/static/css/screen_inbox.css",
+    # screen_inbox.css свідомо НЕ тут: файл вантажиться лише екраном
+    # «Невідомі екрани» через extra_head у screens.html (як discs.css і
+    # furnaces.css), а не на кожній сторінці застосунку.
 ]
 
 

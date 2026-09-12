@@ -208,9 +208,22 @@ def frame(db: Session, args: dict) -> dict[str, Any]:
     """Найсвіжіший кадр пристрою картинкою — весь або виріз названої зони."""
     from PIL import Image
 
-    puzzle_id = args.get("puzzle")
-    if puzzle_id:
-        return _puzzle_frame(db, int(puzzle_id), str(args.get("part") or "frame"))
+    # `is not None`, а не істинність: id 0 не буває, але «задано нуль» і «не
+    # задано» — різні речі, і мовчки вважати їх однаковими означає відповідати
+    # не на те питання. Голий int() тут стояти не може: схема оголошує integer,
+    # але аргументи інструмента нічим не перевіряються (`routers/mcp.py`
+    # передає їх як є), тож `{"puzzle": "абв"}` валив інструмент у -32603
+    # «інструмент упав» замість зрозумілої відмови.
+    raw_puzzle = args.get("puzzle")
+    if raw_puzzle is not None and raw_puzzle != "":
+        try:
+            puzzle_id = int(raw_puzzle)
+        except (TypeError, ValueError):
+            return {
+                "помилка": f"`puzzle` мусить бути числом (id загадки), а не {raw_puzzle!r}",
+                "підказка": "Список загадок із їхніми id — kmill_screens.",
+            }
+        return _puzzle_frame(db, puzzle_id, str(args.get("part") or "frame"))
 
     key = str(args.get("key") or "").strip()
     zone_name = str(args.get("zone") or "").strip()

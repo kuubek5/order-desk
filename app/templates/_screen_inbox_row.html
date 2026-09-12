@@ -36,20 +36,37 @@
         · востаннє {{ p.last_seen_at.strftime('%d.%m.%y %H:%M') }}
     </p>
 
+    {# `image_flags` рахує роутер (`screens._image_flags`) з файлової системи,
+       ОДИН раз на рядок — не тут циклом. Копія бази (`app/backup.py`) свідомо
+       не тягне самі файли кадрів, тож після відновлення рядок може лишитись
+       без картинки: тоді замість зламаної картинки — тиха записка. #}
+    {%- set flags = image_flags.get(p.id, {}) %}
     <div class="sinb-shots">
         {# loading="lazy": у скриньці до 20 кадрів на пристрій, і тягнути їх
            усі одразу немає причини — рядки читають згори вниз. #}
+        {% if flags.get('has_frame') %}
         <figure class="sinb-shot">
             <a href="/screens/{{ p.id }}/frame.png" target="_blank" rel="noopener" title="Відкрити кадр окремо">
                 <img src="/screens/{{ p.id }}/frame.png" alt="Кадр екрана «{{ p.device_name or p.device_key }}»" loading="lazy">
             </a>
             <figcaption>увесь екран</figcaption>
         </figure>
-        {% if p.zone_file %}
+        {% else %}
+        <figure class="sinb-shot">
+            <p class="sinb-noimg">кадр не зберігся — рядок із копії</p>
+            <figcaption>увесь екран</figcaption>
+        </figure>
+        {% endif %}
+        {% if flags.get('has_zone') %}
         <figure class="sinb-shot sinb-zoneshot">
             <a href="/screens/{{ p.id }}/zone.png" target="_blank" rel="noopener" title="Відкрити виріз окремо">
                 <img src="/screens/{{ p.id }}/zone.png" alt="Виріз зони, якої читач не зрозумів" loading="lazy">
             </a>
+            <figcaption>виріз зони · рідний масштаб</figcaption>
+        </figure>
+        {% elif p.zone_file %}
+        <figure class="sinb-shot sinb-zoneshot">
+            <p class="sinb-noimg">виріз не зберігся — рядок із копії</p>
             <figcaption>виріз зони · рідний масштаб</figcaption>
         </figure>
         {% endif %}

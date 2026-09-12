@@ -1,10 +1,11 @@
 
 import base64
+import json
 from datetime import datetime
 
 import pytest
 from cryptography.fernet import Fernet
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -352,3 +353,51 @@ def test_device_passwords_survive_a_move_to_another_machine():
     assert decrypt_value(furnace.password_encrypted) == "піч-пароль"
     assert decrypt_value(machine.password_encrypted) == "верстат-пароль"
     assert decrypt_value(machine.agent_token_encrypted) == "токен-агента"
+
+
+def _strip_table(raw: bytes, password: str, table: str) -> bytes:
+    """Зробити з копії таку, якою її записала б ПОПЕРЕДНЯ збірка: без нової таблиці.
+
+    Розпаковуємо, викидаємо таблицю з даних і з перелічника, пакуємо назад тим
+    самим ключем. Це найчесніший спосіб відтворити файл, що вже лежить у Роми
+    на диску, не тримаючи в репозиторії бінарного артефакту.
+    """
+    envelope = json.loads(raw)
+    key = _derive_key(password, base64.b64decode(envelope["salt"]))
+    data = json.loads(Fernet(key).decrypt(envelope["payload"].encode("ascii")))
+    data["tables"].pop(table, None)
+    envelope["manifest"].pop(table, None)
+    data["manifest"] = envelope["manifest"]
+    envelope["payload"] = Fernet(key).encrypt(json.dumps(data).encode("utf-8")).decode("ascii")
+    return json.dumps(envelope).encode("utf-8")
+
+
+def test_a_full_backup_from_an_older_build_still_restores_the_secrets():
+    """Копія, зроблена ДО появи нової таблиці, лишається ПОВНОЮ.
+
+    Частковість визначалась порівнянням складу таблиць із нинішнім списком
+    моделей. Варто було додати таблицю (12.09.26 — `screen_puzzles`), як КОЖНА
+    вже зроблена повна копія ставала «частковою», а гілка повного відновлення
+    (та, що переписує `app_settings`) мовчки пропускалась: переїзд на новий ПК
+    привозив роботи без жодного секрета. Тепер віримо прапорцю `partial` у
+    самому файлі.
+    """
+    engine = _database()
+    with Session(engine) as db:
+        _seed(db)
+        set_setting(db, "imap_login", "phantom@ukr.net")
+        raw = create_backup(db, "pw-12345678")
+
+    older = _strip_table(raw, "pw-12345678", "screen_puzzles")
+    assert json.loads(older)["partial"] is False
+
+    fresh = _database()
+    with Session(fresh) as db:
+        db.add(AppSetting(key="imap_login", value_encrypted="чуже значення"))
+        db.commit()
+        counts = restore_backup(db, older, "pw-12345678")
+
+        assert "app_settings" in counts, "повне відновлення пропустило секрети"
+        restored = db.scalar(select(AppSetting).where(AppSetting.key == "imap_login"))
+        assert restored is not None
+        assert decrypt_value(restored.value_encrypted) == "phantom@ukr.net"

@@ -91,6 +91,14 @@ main.sinb{max-width:1180px;margin:0 auto;padding:18px 20px 48px;display:flex;fle
    саме на цих пікселях учать еталон символу. */
 .sinb-zoneshot img{width:auto;max-width:340px;image-rendering:pixelated}
 .sinb-shot figcaption{font-size:var(--fs-0);color:var(--ink-3);letter-spacing:.02em}
+/* Копія бази (`app/backup.py`) свідомо не тягне файли кадрів — лише рядок
+   `screen_puzzles`. Коли файлу немає (відновлення на новому ПК), замість
+   зламаної картинки — тиха записка того самого розміру, що звичайний кадр. */
+.sinb-noimg{margin:0;width:340px;max-width:100%;min-height:130px;display:flex;
+  align-items:center;justify-content:center;text-align:center;padding:10px;
+  border:1px dashed var(--line-2);border-radius:10px;background:var(--well);
+  color:var(--ink-3);font-size:var(--fs-1);line-height:1.4}
+.sinb-zoneshot .sinb-noimg{width:auto;max-width:340px;min-height:80px}
 
 /* ── Підпис ── */
 .sinb-say{margin-top:2px;display:flex;flex-direction:column;gap:6px}

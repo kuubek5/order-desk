@@ -139,6 +139,45 @@ def _fresh_log_throttle():
     log_throttle.reset_for_tests()
 
 
+@pytest.fixture(autouse=True)
+def _screen_inbox_in_tmp(tmp_path, monkeypatch):
+    """Скринька невідомих екранів пише PNG на ДИСК і памʼятає екрани на ПРОЦЕС.
+
+    Дві біди в одному місці, тому й фікстура одна.
+
+    **Пише в репозиторій.** `app/services/screen_inbox.root()` бере теку з
+    модульного імені `DATA_DIR` (`from app.config import DATA_DIR`), тобто в
+    тесті без підміни кадр лягає в `D:\\KuubDesk\\screen_puzzles\\…`. Свій root
+    підміняли лише `test_screen_inbox.py` і `test_screens_routes.py`, а
+    `screen_inbox.note(...)` кличуть `furnace.poll_target` і
+    `machines.poll_target` — тобто будь-який сусідній файл про опитування тихо
+    засівав робоче дерево справжніми ключами пристроїв із dev-бази
+    (`screen_puzzles/furnace/192.168.1.76/*.png` після повного прогону). Тека в
+    gitignore, тож `git status` цього НЕ показував.
+
+    **І тече станом між файлами.** `_known` / `_touched` / `_evicted` живуть на
+    процес: ключ пристрою, засвічений одним файлом, робить той самий екран
+    «уже відомим» для наступного — і тест, який чекає рядка у скриньці, бачить
+    порожньо. Падіння тоді залежить від порядку файлів, а не від коду.
+
+    `app.config.DATA_DIR` — НЕ та мішень: модуль тримає власне імʼя, і підміна
+    конфіга тут мовчазний no-op. Тому одразу ж перевіряємо, що `root()` справді
+    приїхав у tmp_path: перенос коду не має права зробити цю фікстуру порожньою.
+
+    Файли, які ставлять СВІЙ root (`monkeypatch.setattr(screen_inbox, "root",
+    …)`), від цього не страждають — їхня підміна лягає пізніше й виграє.
+    """
+    from app.services import screen_inbox
+
+    monkeypatch.setattr(screen_inbox, "DATA_DIR", tmp_path)
+    assert tmp_path in screen_inbox.root().parents, (
+        "патч DATA_DIR не влучив у screen_inbox.root() — кадри поїдуть у репозиторій"
+    )
+    screen_inbox.reset_state_for_tests()
+    yield
+    screen_inbox.reset_state_for_tests()
+
+
 @pytest.fixture
 def weekday_clock(monkeypatch):
     """Пін годинника на БУДНІЙ день — для тестів, що самі будують назву вкладки.

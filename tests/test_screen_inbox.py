@@ -282,7 +282,10 @@ def test_the_same_layout_with_other_digits_is_the_same_screen(db_session, clock)
         draw.text((200 + x, 300), "88:31:07", fill=(255, 255, 255))
     # Хеш на такій парі РОЗХОДИТЬСЯ — і це нормально, він лише імʼя файлу.
     assert si.fingerprint(plain) != si.fingerprint(with_digits)
-    assert si.distance(si.signature(plain), si.signature(with_digits)) <= si.NOVELTY_THRESHOLD
+    assert (
+        si.distance(si.signature(plain), si.signature(with_digits))
+        <= si.NOVELTY_THRESHOLD[si.KIND_MACHINE]
+    )
 
     first = si.note(db_session, kind=si.KIND_MACHINE, key="m1", name="A", frame=plain,
                     reason="layout_unknown")
@@ -528,7 +531,8 @@ def test_real_frames_of_one_screen_stay_one_screen(left, right):
     """Цехові кадри однієї розкладки — один екран, попри інші цифри на ньому."""
     with Image.open(REAL / left) as a, Image.open(REAL / right) as b:
         gap = si.distance(si.signature(a.convert("RGB")), si.signature(b.convert("RGB")))
-    assert gap <= si.NOVELTY_THRESHOLD, f"{left} і {right} розійшлись на {gap:.2f}"
+    limit = si.NOVELTY_THRESHOLD[si.KIND_MACHINE]
+    assert gap <= limit, f"{left} і {right} розійшлись на {gap:.2f} (поріг {limit})"
 
 
 @pytest.mark.parametrize("left,right", OTHER_SCREEN)
@@ -536,7 +540,8 @@ def test_real_frames_of_different_screens_stay_apart(left, right):
     """І навпаки: різні екрани не мають злипатись — інакше поріг просто глухий."""
     with Image.open(REAL / left) as a, Image.open(REAL / right) as b:
         gap = si.distance(si.signature(a.convert("RGB")), si.signature(b.convert("RGB")))
-    assert gap > si.NOVELTY_THRESHOLD, f"{left} і {right} злились ({gap:.2f})"
+    limit = si.NOVELTY_THRESHOLD[si.KIND_MACHINE]
+    assert gap > limit, f"{left} і {right} злились ({gap:.2f}, поріг {limit})"
 
 
 def test_two_real_frames_of_one_screen_make_one_row(db_session, clock):
