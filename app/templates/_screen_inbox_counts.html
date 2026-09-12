@@ -1,0 +1,26 @@
+{# Лічильники скриньки + перемикач показу відкладених.
+
+   Приїжджають і окремо, слідом за підписаним рядком (`hx-swap-oob`): підпис
+   міняє «без підпису N», і залишити це число старим означало б показувати
+   неправду рівно там, де людина щойно щось зробила. #}
+<div id="sinb-counts" class="sinb-counts"{% if oob_counts %} hx-swap-oob="true"{% endif %}>
+    <span class="sinb-pill{% if counts['без_підпису'] %} sinb-hot{% endif %}">
+        без підпису <b class="sinb-mono">{{ counts['без_підпису'] }}</b>
+    </span>
+    <span class="sinb-pill sinb-mute">усього <b class="sinb-mono">{{ counts['всього'] }}</b></span>
+    {% if counts['неважливих'] %}
+    <span class="sinb-pill sinb-mute">неважливих <b class="sinb-mono">{{ counts['неважливих'] }}</b></span>
+    {% endif %}
+    <span class="sinb-sp"></span>
+    {% if show_dismissed %}
+    <button type="button" class="sinb-btn sinb-sm"
+            hx-get="/screens/board" hx-target="#sinb-board" hx-swap="outerHTML">
+        Сховати неважливі
+    </button>
+    {% else %}
+    <button type="button" class="sinb-btn sinb-sm"
+            hx-get="/screens/board?dismissed=1" hx-target="#sinb-board" hx-swap="outerHTML">
+        Показати неважливі{% if counts['неважливих'] %} ({{ counts['неважливих'] }}){% endif %}
+    </button>
+    {% endif %}
+</div>

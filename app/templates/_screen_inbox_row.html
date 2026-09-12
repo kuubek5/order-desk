@@ -1,0 +1,93 @@
+{# Одна загадка: що за пристрій, чого читач не зрозумів, як це виглядало — і
+   поле підпису.
+
+   Малюється з ДВОХ місць: зі списку дошки і як відповідь на збереження
+   підпису (тоді ще й `saved`/`oob_counts`). Правити — тут, в одному місці.
+
+   Кадр і виріз зони — різні картинки за призначенням: повний кадр відповідає
+   на «що взагалі було на екрані», виріз зони лежить у РІДНОМУ масштабі, бо
+   саме з нього роблять еталон символу. #}
+<article id="sinb-row-{{ p.id }}" class="sinb-row{% if p.dismissed %} is-off{% endif %}{% if p.label %} is-labeled{% endif %}">
+
+    <header class="sinb-head">
+        <span class="sinb-kind sinb-kind-{{ p.kind }}">{{ kind_word(p.kind) }}</span>
+        <b class="sinb-dev">{{ p.device_name or p.device_key }}</b>
+        <code class="sinb-key sinb-mono">{{ p.device_key }}</code>
+        <span class="sinb-sp"></span>
+        {% if p.dismissed %}<span class="sinb-pill sinb-mute">неважливо</span>{% endif %}
+        {# «раз / рази / разів»: число тут читають очима, і «бачено 2 разів»
+           збиває більше, ніж здається. #}
+        {%- set n = p.seen_count -%}
+        {%- if n % 10 == 1 and n % 100 != 11 %}{% set word = 'раз' %}
+        {%- elif n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14) %}{% set word = 'рази' %}
+        {%- else %}{% set word = 'разів' %}{% endif %}
+        <span class="sinb-pill sinb-mute" title="Один рядок — один екран (відпечаток {{ p.fingerprint }})">
+            бачено <b class="sinb-mono">{{ n }}</b> {{ word }}
+        </span>
+    </header>
+
+    <p class="sinb-why">
+        <span class="sinb-reason">{{ reasons.get(p.reason, p.reason) }}</span>
+        {% if p.detail %}<span class="sinb-detail sinb-mono">{{ p.detail }}</span>{% endif %}
+    </p>
+
+    <p class="sinb-when sinb-mono">
+        уперше {{ p.first_seen_at.strftime('%d.%m.%y %H:%M') }}
+        · востаннє {{ p.last_seen_at.strftime('%d.%m.%y %H:%M') }}
+    </p>
+
+    <div class="sinb-shots">
+        {# loading="lazy": у скриньці до 20 кадрів на пристрій, і тягнути їх
+           усі одразу немає причини — рядки читають згори вниз. #}
+        <figure class="sinb-shot">
+            <a href="/screens/{{ p.id }}/frame.png" target="_blank" rel="noopener" title="Відкрити кадр окремо">
+                <img src="/screens/{{ p.id }}/frame.png" alt="Кадр екрана «{{ p.device_name or p.device_key }}»" loading="lazy">
+            </a>
+            <figcaption>увесь екран</figcaption>
+        </figure>
+        {% if p.zone_file %}
+        <figure class="sinb-shot sinb-zoneshot">
+            <a href="/screens/{{ p.id }}/zone.png" target="_blank" rel="noopener" title="Відкрити виріз окремо">
+                <img src="/screens/{{ p.id }}/zone.png" alt="Виріз зони, якої читач не зрозумів" loading="lazy">
+            </a>
+            <figcaption>виріз зони · рідний масштаб</figcaption>
+        </figure>
+        {% endif %}
+    </div>
+
+    {# Підпис. Порожнє поле тут однозначне: і пропущене, і стерте означають
+       «підпису більше немає» — другого сенсу, який довелося б розрізняти
+       власним словом (§14), у цій формі немає. #}
+    <form class="sinb-say" hx-post="/screens/{{ p.id }}/label"
+          hx-target="#sinb-row-{{ p.id }}" hx-swap="outerHTML">
+        <input type="hidden" name="show" value="{{ '1' if show_dismissed else '0' }}">
+        <label class="sinb-label" for="sinb-say-{{ p.id }}">Що це за екран? Одним рядком — розробнику</label>
+        <div class="sinb-sayline">
+            <input class="sinb-input" id="sinb-say-{{ p.id }}" type="text" name="label"
+                   value="{{ p.label }}" maxlength="300" autocomplete="off"
+                   placeholder="напр. екран помилки після відкриття дверцят">
+            <button type="submit" class="sinb-btn sinb-main">Зберегти підпис</button>
+        </div>
+        {% if saved %}
+        <p class="sinb-flash" role="status">Збережено. Застосунок від цього нічого не навчився — рядок чекає розробника.</p>
+        {% elif p.label %}
+        <p class="sinb-note" role="status">Підписано{% if p.labeled_at %} {{ p.labeled_at.strftime('%d.%m.%y %H:%M') }}{% endif %} · чекає розробника</p>
+        {% endif %}
+    </form>
+
+    {# Кнопка «неважливо» — ОКРЕМА форма і поза формою підпису: вкладені <form>
+       браузер мовчки викидає, і кнопка нічого б не робила. #}
+    <form class="sinb-offform" hx-post="/screens/{{ p.id }}/dismiss"
+          hx-target="#sinb-board" hx-swap="outerHTML">
+        <input type="hidden" name="dismissed" value="{{ 'off' if p.dismissed else 'on' }}">
+        <input type="hidden" name="show" value="{{ '1' if show_dismissed else '0' }}">
+        <button type="submit" class="sinb-btn sinb-ghost">
+            {% if p.dismissed %}Повернути в скриньку{% else %}Це неважливо{% endif %}
+        </button>
+    </form>
+
+</article>
+{# Лічильники — ОКРЕМИМ верхнім елементом відповіді, а не всередині картки:
+   htmx шукає hx-swap-oob лише серед елементів верхнього рівня фрагмента, і
+   вкладений сюди блок мовчки приїхав би всередину рядка. #}
+{% if oob_counts %}{% include "_screen_inbox_counts.html" %}{% endif %}

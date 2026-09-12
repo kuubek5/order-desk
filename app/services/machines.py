@@ -39,6 +39,7 @@ from app.services import machine_link
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
 from app.machine_portraits import portrait_version
 from app.machine_sisma import read_sisma, screen_is_sisma
+from app.services import screen_inbox
 from app.machine_newgen_job import read_newgen_program_explained
 from app.services.order_dates import order_date
 from app.machine_ocr import (
@@ -1364,6 +1365,19 @@ def _program_from_screen(
     if program is None:
         if why is not None:
             _report_unread_screen(target, frame, why)
+            # Той самий кадр — у скриньку невідомих екранів. Лог глушиться до
+            # раза на годину й тоне серед решти рядків; скринька тримає ОДИН
+            # запис на екран із лічильником, і саме з неї беруться кадри для
+            # донавчання шрифту.
+            screen_inbox.note(
+                db,
+                kind=screen_inbox.KIND_MACHINE,
+                key=target.key,
+                name=target.name,
+                frame=frame,
+                reason="newgen_unread",
+                detail=why,
+            )
         return None
     log_throttle.clear(f"machines.newgen_unread:{target.key}")
     # Sum3D ID — лише час доби (`HH-MM-SS`), і за місяці той самий час
@@ -1679,6 +1693,29 @@ def poll_target(
             # VNC: іншого каналу немає, свіжий кадр без програми = програми
             # не видно. Агент, що не відповів, прив'язку не чіпає (ми не знаємо).
             known = True
+    if (
+        frame is not None
+        and percent is None
+        and sisma is None
+        and not completed
+        and not validating
+        and program is None
+    ):
+        # З кадру не знялось НІЧОГО: ні смуги RemiCORE, ні екрана SISMA, ні
+        # SUMMARY, ні назви програми. Це не обовʼязково поломка — так виглядає
+        # і робочий стіл, — але саме такі екрани й треба один раз побачити й
+        # назвати. Дублі бере на себе відпечаток, а «це неважливо» знімає
+        # питання назавжди.
+        screen_inbox.note(
+            db,
+            kind=screen_inbox.KIND_MACHINE,
+            key=target.key,
+            name=target.name,
+            frame=frame,
+            reason="layout_unknown",
+            detail="кадр є, але ні смуги прогресу, ні SISMA, ні SUMMARY, ні назви програми",
+        )
+
     if known:
         # Порожньо/немає програми = вікно закрилось чи екран уже інший →
         # знімаємо прив'язку, інакше «фрезерується Кривовид» висіло б після

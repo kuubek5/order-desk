@@ -1,0 +1,120 @@
+/* «Невідомі екрани» (screens.html + _screen_inbox_*.html).
+
+   Усі класи з префіксом `sinb-`: CSS тут глобальний, порядок <link> у
+   base.html Є каскадом, і збіг імені з чужим екраном ламав би його мовчки
+   (CLAUDE.md §15). Файл підключається ЛИШЕ цим екраном через `extra_head` —
+   так само, як discs.css і furnaces.css; у base.html лежать тільки спільні
+   шари.
+
+   Кольори — виключно токенами (tokens.css + theme-forge.css): жодного
+   літерального кольору, інакше екран не поїде за темою. Акцент тут лише на
+   тому, що чекає людини (число «без підпису», кнопка збереження) — картки
+   самі мусять лишатись спокійними, бо головне на них картинка. */
+
+main.sinb{max-width:1180px;margin:0 auto;padding:18px 20px 48px;display:flex;flex-direction:column;gap:14px}
+.sinb .sinb-mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.sinb .sinb-sp{flex:1}
+
+/* ── Рамка екрана ── */
+.sinb-frame{border:1px solid var(--line-2);border-radius:16px;background:var(--bg);overflow:hidden}
+.sinb-bar{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--bg-rail)}
+.sinb-bar h1{margin:0;font-family:var(--font-head);font-size:var(--fs-5);font-weight:800;letter-spacing:-.01em;color:var(--ink)}
+.sinb-bar .sinb-sub{margin:2px 0 0;font-size:var(--fs-1);color:var(--ink-2)}
+.sinb-bar-ico{color:var(--accent);flex:none}
+
+/* Контракт фічі. Виглядає як записка, а не як помилка: це не тривога, це
+   пояснення, чому підпис нічого не вмикає. */
+.sinb-contract{display:flex;gap:10px;align-items:flex-start;margin:16px 18px 0;padding:11px 14px;
+  border:1px solid var(--line-2);border-left:3px solid var(--accent);border-radius:10px;
+  background:var(--card-2);color:var(--ink-2);font-size:var(--fs-1);line-height:1.5}
+.sinb-contract b{color:var(--ink)}
+.sinb-contract svg{width:18px;height:18px;flex:none;margin-top:1px;color:var(--accent);
+  fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+
+/* ── Лічильники ── */
+.sinb-board{padding:16px 18px 20px;display:flex;flex-direction:column;gap:14px}
+.sinb-counts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sinb-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:99px;
+  font:600 var(--fs-1) var(--font-body);white-space:nowrap;background:var(--card-3);color:var(--ink-2)}
+.sinb-pill.sinb-hot{background:rgba(var(--accent-rgb),.12);color:var(--accent)}
+.sinb-pill b{color:inherit}
+
+/* ── Кнопки ── */
+.sinb .sinb-btn{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:9px;
+  border:1px solid var(--line-2);background:var(--card-2);color:var(--ink);cursor:pointer;
+  font:500 var(--fs-2) var(--font-body);white-space:nowrap;transition:border-color .15s,background-color .15s}
+.sinb .sinb-btn:hover{border-color:var(--accent-ink)}
+.sinb .sinb-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sinb .sinb-btn.sinb-sm{padding:4px 9px;font-size:var(--fs-1);border-radius:7px}
+.sinb .sinb-btn.sinb-ghost{background:transparent;color:var(--ink-2)}
+.sinb .sinb-btn.sinb-ghost:hover{color:var(--ink)}
+.sinb .sinb-btn.sinb-main{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700}
+.sinb .sinb-btn.sinb-main:hover{background:var(--accent-b);border-color:var(--accent-b)}
+
+/* ── Картка загадки ── */
+.sinb-row{border:1px solid var(--line-2);border-radius:14px;background:var(--card);
+  padding:14px 16px;display:flex;flex-direction:column;gap:9px;position:relative}
+/* Відкладене «неважливо» лишається читабельним, але явно тихішим: воно ще
+   рахує, як часто таке буває, просто вже не просить уваги. */
+.sinb-row.is-off{opacity:.62;border-style:dashed}
+/* Підписане не ховається (підпис — відповідь, а не закриття справи), але
+   краєм видно, що на цей рядок уже відповіли. */
+.sinb-row.is-labeled{box-shadow:inset 3px 0 0 0 var(--ok)}
+
+.sinb-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.sinb-dev{font-family:var(--font-head);font-size:var(--fs-3);font-weight:700;color:var(--ink)}
+.sinb-key{font-family:var(--font-mono);font-size:var(--fs-1);color:var(--ink-3);
+  background:var(--card-2);padding:1px 6px;border-radius:5px}
+.sinb-kind{padding:2px 8px;border-radius:99px;font:700 var(--fs-0) var(--font-body);
+  text-transform:uppercase;letter-spacing:.04em;background:var(--card-3);color:var(--ink-2)}
+.sinb-kind-furnace{background:rgba(var(--alarm-rgb),.14);color:var(--alarm-ink)}
+.sinb-kind-machine{background:rgba(var(--accent-rgb),.14);color:var(--accent)}
+
+.sinb-why{margin:0;display:flex;gap:9px;flex-wrap:wrap;align-items:baseline}
+.sinb-reason{font-size:var(--fs-2);font-weight:600;color:var(--ink)}
+.sinb-detail{font-size:var(--fs-1);color:var(--ink-2);background:var(--card-2);
+  padding:1px 7px;border-radius:6px;word-break:break-word}
+.sinb-when{margin:0;font-size:var(--fs-1);color:var(--ink-3)}
+
+/* ── Картинки ── */
+.sinb-shots{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}
+.sinb-shot{margin:0;display:flex;flex-direction:column;gap:5px}
+.sinb-shot a{display:block;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;
+  background:var(--well);line-height:0;transition:border-color .15s}
+.sinb-shot a:hover{border-color:var(--accent)}
+.sinb-shot img{display:block;max-width:100%;width:340px;height:auto}
+/* Виріз зони маленький і в рідному масштабі — розтягувати його не можна:
+   саме на цих пікселях учать еталон символу. */
+.sinb-zoneshot img{width:auto;max-width:340px;image-rendering:pixelated}
+.sinb-shot figcaption{font-size:var(--fs-0);color:var(--ink-3);letter-spacing:.02em}
+
+/* ── Підпис ── */
+.sinb-say{margin-top:2px;display:flex;flex-direction:column;gap:6px}
+.sinb-label{font-size:var(--fs-1);color:var(--ink-2)}
+.sinb-sayline{display:flex;gap:8px;flex-wrap:wrap}
+.sinb-input{flex:1;min-width:220px;padding:8px 11px;border-radius:9px;border:1px solid var(--line-2);
+  background:var(--field);color:var(--ink);font:400 var(--fs-2) var(--font-body)}
+.sinb-input::placeholder{color:var(--ink-3)}
+.sinb-input:focus{outline:none;border-color:var(--accent)}
+/* Видимий слід дії: тост зникає, а рядок під полем лишається — саме він
+   відповідає на «то збереглось чи ні?» через хвилину. */
+.sinb-flash{margin:0;font-size:var(--fs-1);color:var(--ok)}
+.sinb-note{margin:0;font-size:var(--fs-1);color:var(--ink-3)}
+
+/* «Це неважливо» стоїть унизу картки й тихою кнопкою: це відмова від рядка, а
+   не головна дія над ним, і поруч із полем підпису вона б із ним змагалась.
+   Абсолютного позиціювання свідомо немає — у шапці картки лежать пігулки, і
+   кнопка поверх них накривала б число «бачено N разів». */
+.sinb-offform{margin:2px 0 0}
+
+/* ── Порожній стан ── */
+.sinb-clear{display:flex;gap:12px;align-items:flex-start;padding:18px;border-radius:14px;
+  border:1px solid var(--line);background:var(--card-2)}
+.sinb-clear svg{width:22px;height:22px;flex:none;color:var(--ok);fill:none;stroke:currentColor;
+  stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.sinb-clear strong{display:block;font-family:var(--font-head);font-size:var(--fs-3);color:var(--ink)}
+.sinb-clear p{margin:4px 0 0;font-size:var(--fs-1);color:var(--ink-2);line-height:1.5;max-width:62ch}
+
+@media (max-width:720px){
+  .sinb-shot img{width:100%}
+}

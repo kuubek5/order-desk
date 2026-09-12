@@ -155,6 +155,14 @@
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="7" rx="8" ry="3" class="duo"/><ellipse cx="12" cy="7" rx="8" ry="3"/><path d="M4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>
             <span class="rail-label">Нові диски</span>
         </a>
+        {# Невідомі екрани — одразу за обладнанням, бо читають їх саме з печей
+           і верстатів. Підпис звідси нічого не вмикає: це повідомлення
+           розробнику (SCREEN_INBOX_BRIEF.md), і на самому екрані так і
+           написано. #}
+        <a href="/screens" class="rail-nav-item{% if topbar_active == 'screens' %} is-active{% endif %}"{% if topbar_active == 'screens' %} aria-current="page"{% endif %}>
+            <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4" width="19" height="13" rx="2" class="duo"/><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M9.5 10.5h1.5M14.5 8v5"/></svg>
+            <span class="rail-label">Невідомі екрани</span>
+        </a>
         <a href="/clients" class="rail-nav-item{% if topbar_active == 'clients' %} is-active{% endif %}"{% if topbar_active == 'clients' %} aria-current="page"{% endif %}>
             <svg class="rail-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" class="duo"/><circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.2 3-5 6-5s5.4 1.8 6 5"/><path d="M16 6.2A3.2 3.2 0 0 1 16 14"/><path d="M18 19c-.3-1.7-1-3-2-3.9"/></svg>
             <span class="rail-label">Клієнти</span>

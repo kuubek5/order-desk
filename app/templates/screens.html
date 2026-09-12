@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{# «Скринька невідомих екранів» — кадри, яких читач печей і верстатів не
+   зрозумів, і одне поле підпису на кожен.
+
+   Головне, що мусить бути видно з першого погляду: підпис НІЧОГО не вмикає.
+   Це повідомлення розробнику, а не налаштування розпізнавання — тому рядок
+   про це стоїть у шапці, а не в довідці.
+
+   Своїх скриптів екран не має свідомо: усе робить HTMX атрибутами (одна
+   кнопка — одна дія, без проміжних станів у браузері). Стилі —
+   static/css/screen_inbox.css, усі класи з префіксом `sinb-`. #}
+
+{% block title %}Невідомі екрани — KuubMill{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/screen_inbox.css?v={{ static_ver('css/screen_inbox.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'screens' %}
+{% include "_topbar_nav.html" %}
+
+<main class="sinb">
+    <div class="sinb-frame">
+        <div class="sinb-bar">
+            <svg class="sinb-bar-ico" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M9 10.5h2M15 8v5"/></svg>
+            <div>
+                <h1>Невідомі екрани</h1>
+                <p class="sinb-sub">Кадри, яких читач печей і верстатів не зрозумів</p>
+            </div>
+        </div>
+
+        {# Контракт фічі одним абзацом. Без нього екран читається як «розмітка
+           для навчання», і людина чекатиме, що після підпису число саме
+           з'явиться. Воно не з'явиться — зону, еталон чи правило статусу з
+           підпису роблять у коді, з тестом на тому ж кадрі. #}
+        <p class="sinb-contract">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.5"/></svg>
+            <span><b>Підпис нічого не вмикає й не вимикає.</b> Застосунок із нього
+            не вчиться: це повідомлення розробнику — щоб він зробив зону, еталон
+            або правило статусу в коді й з тестом на цьому ж кадрі. Пишіть
+            людською мовою: «екран помилки після відкриття», «тут нічого
+            важливого».</span>
+        </p>
+
+        {% include "_screen_inbox_board.html" %}
+    </div>
+</main>
+{% endblock %}

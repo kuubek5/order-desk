@@ -60,6 +60,7 @@ from app.models import (
     OrderFocus,
     ReworkRecord,
     SavedQueueView,
+    ScreenPuzzle,
     ShiftNote,
     ShiftNoteImage,
     StatusEvent,
@@ -159,6 +160,14 @@ _TABLE_MODELS: list[Any] = [
     ReworkRecord,
     OrderFocus,
     SavedQueueView,
+    # Скринька невідомих екранів (FK на users — тому після User). Картинки
+    # кадрів у копію НЕ їдуть, як і решта кадрів печей і верстатів: це робочий
+    # кеш. А рядки їдуть, бо в них лежить те, чого більше ніде немає — підпис
+    # людини («це екран помилки», «тут нічого важливого») і лічильник «бачено
+    # N разів». Переїзд на новий ПК без них знищив би саме людську роботу, а не
+    # кеш; рядок без картинки далі показує причину, подробиці й підпис — так
+    # само, як записка зміни без прибраного фото.
+    ScreenPuzzle,
     # Зміна і звернення.
     ShiftNote,
     ShiftNoteImage,

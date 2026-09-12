@@ -730,8 +730,18 @@ TOOLS: tuple[Tool, ...] = (
                     "type": "string",
                     "description": "Назва зони печі для вирізу. Пусто — весь кадр.",
                 },
+                "puzzle": {
+                    "type": "integer",
+                    "description": (
+                        "id загадки зі скриньки невідомих екранів (kmill_screens). "
+                        "Задано — віддається ЇЇ кадр, а `key` не потрібен."
+                    ),
+                },
+                "part": {
+                    "type": "string",
+                    "description": "Для загадки: frame (типово) або zone — виріз зони.",
+                },
             },
-            "required": ["key"],
             "additionalProperties": False,
         },
         run=device_diag.frame,
@@ -757,6 +767,31 @@ TOOLS: tuple[Tool, ...] = (
             "additionalProperties": False,
         },
         run=device_diag.zones,
+    ),
+    Tool(
+        name="kmill_screens",
+        description=(
+            "Скринька невідомих екранів: кадри, на яких читач спіткнувся, по "
+            "одному рядку на РІЗНИЙ екран із лічильником «бачено N разів», "
+            "причиною і підписом, який лишила людина. Підпис — дані, не правило: "
+            "зону, еталон чи правило статусу з нього роблять у репозиторії з "
+            "тестом. Картинку бери через kmill_frame з аргументом `puzzle`."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Лише загадки цього пристрою. Пусто — усі.",
+                },
+                "include_dismissed": {
+                    "type": "boolean",
+                    "description": "Показати й позначені «це неважливо».",
+                },
+            },
+            "additionalProperties": False,
+        },
+        run=device_diag.puzzles,
     ),
 )
 

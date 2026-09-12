@@ -34,7 +34,8 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from app import furnace_ocr
-from app.services import furnace, machines
+from app.models import ScreenPuzzle
+from app.services import furnace, machines, screen_inbox
 
 # Скільки байтів картинки віддаємо щонайбільше. Кадр верстата буває 271 КБ, а
 # base64 додає третину; межа з запасом, і все, що більше, ЗМЕНШУЄТЬСЯ, а не
@@ -204,6 +205,10 @@ def frame(db: Session, args: dict) -> dict[str, Any]:
     """Найсвіжіший кадр пристрою картинкою — весь або виріз названої зони."""
     from PIL import Image
 
+    puzzle_id = args.get("puzzle")
+    if puzzle_id:
+        return _puzzle_frame(db, int(puzzle_id), str(args.get("part") or "frame"))
+
     key = str(args.get("key") or "").strip()
     zone_name = str(args.get("zone") or "").strip()
     kind, target, path = _resolve(db, key)
@@ -347,3 +352,56 @@ def zones(db: Session, args: dict) -> dict[str, Any]:
         }
     )
     return head
+
+
+def _puzzle_frame(db: Session, puzzle_id: int, part: str) -> dict[str, Any]:
+    """Кадр загадки зі скриньки невідомих екранів.
+
+    Окремий шлях, а не «ще один пристрій»: у скриньці лежить ІСТОРІЯ (по
+    одному кадру на кожен різний екран), тоді як `kmill_frame` за ключем
+    завжди віддає найсвіжіший кадр і нічого іншого не знає.
+    """
+    from PIL import Image
+
+    puzzle = db.get(ScreenPuzzle, puzzle_id)
+    if puzzle is None:
+        return {"помилка": f"загадки {puzzle_id} немає"}
+    path = screen_inbox.image_path(puzzle, "zone" if part == "zone" else "frame")
+    if path is None:
+        return {
+            "загадка": screen_inbox.as_dict(puzzle),
+            "помилка": (
+                "вирізу зони в цієї загадки немає" if part == "zone"
+                else "файл кадру не знайдено (витіснений або прибраний)"
+            ),
+        }
+    note: list[str] = []
+    with Image.open(path) as opened:
+        image = opened.convert("RGB")
+    return {
+        "загадка": screen_inbox.as_dict(puzzle),
+        "показано": "виріз зони" if part == "zone" else "кадр (зменшена копія)",
+        "розмір": f"{image.size[0]}×{image.size[1]}",
+        "примітки": note,
+        "_image": _encode(image, note),
+    }
+
+
+def puzzles(db: Session, args: Optional[dict] = None) -> dict[str, Any]:
+    """Скринька невідомих екранів: що читач не зрозумів і що на це сказав Рома."""
+    args = args or {}
+    key = str(args.get("key") or "").strip()
+    include_dismissed = bool(args.get("include_dismissed"))
+    rows = screen_inbox.listing(db, include_dismissed=include_dismissed)
+    if key:
+        rows = [row for row in rows if row.device_key == key]
+    return {
+        "лічильники": screen_inbox.counts(db),
+        "загадки": [screen_inbox.as_dict(row) for row in rows],
+        "підказка": (
+            "Картинку загадки бери через kmill_frame з аргументом `puzzle` "
+            "(і `part=\"zone\"` для вирізу зони). Підпис людини — ДАНІ: зону, "
+            "еталон чи правило статусу з нього роблять у репозиторії з тестом, "
+            "а не через цей інструмент."
+        ),
+    }

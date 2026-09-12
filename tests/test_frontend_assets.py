@@ -348,6 +348,9 @@ BASE_HTML_STYLESHEETS = [
     "/static/css/element-styles.css",
     "/static/css/lookgear.css",
     "/static/css/feedback.css",
+    # Скринька невідомих екранів: власний префікс `sinb-`, нічого не
+    # перевизначає — місце в каскаді некритичне.
+    "/static/css/screen_inbox.css",
 ]
 
 

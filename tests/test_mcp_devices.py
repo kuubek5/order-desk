@@ -328,10 +328,13 @@ def test_zones_explain_every_empty_field_instead_of_guessing(bench):
     assert data["як_рахується_статус"]
 
 
-def test_tools_list_offers_all_nine_tools(bench):
-    """Інструмент, не оголошений у `tools/list`, для клієнта не існує."""
+def test_tools_list_offers_the_device_tools(bench):
+    """Інструмент, не оголошений у `tools/list`, для клієнта не існує.
+
+    Числа тут навмисно немає: набір інструментів росте, а тест мусить ловити
+    «оголошено не те», а не «додали ще один».
+    """
     _, body = _call(bench.client, "tools/list")
     names = {tool["name"] for tool in _json(body)["result"]["tools"]}
-    assert {"kmill_devices", "kmill_frame", "kmill_zones"} <= names
+    assert {"kmill_devices", "kmill_frame", "kmill_zones", "kmill_screens"} <= names
     assert names == set(mcp_tools.TOOLS_BY_NAME)
-    assert len(names) == 9

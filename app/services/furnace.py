@@ -43,11 +43,13 @@ from app.furnace_ocr import (
     STATUS_RUN,
     STATUS_UNKNOWN,
     STATUS_WAIT,
+    ZONES,
     format_remaining,
     read_panel,
 )
 from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
 from app.models import Furnace, FurnaceReading
+from app.services import screen_inbox
 from app.services.order_dates import BUSINESS_TIMEZONE
 from app.crypto import decrypt_value
 from app.settings_store import get_furnace_vnc_password
@@ -420,6 +422,80 @@ def grab(
         return None, f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
 
 
+def _puzzle_of(reading: Optional[PanelReading]) -> Optional[tuple[str, str, Optional[str]]]:
+    """Що саме читач не зрозумів на цьому кадрі: (причина, пояснення, зона).
+
+    Одна загадка на кадр (`screen_inbox.pick_reason`): чужий екран провалює всі
+    зони одразу, і чотири рядки на один випадок забили б скриньку швидше, ніж
+    вона встигне бути корисною. Порожньо — кадр прочитано повністю.
+    """
+    if reading is None:
+        return ("layout_unknown", "табло не прочиталось зовсім (виняток на розборі)", None)
+    if reading.warnings:
+        return ("layout_unknown", "; ".join(reading.warnings), None)
+
+    found: dict[str, tuple[str, Optional[str]]] = {}
+    if reading.status == STATUS_UNKNOWN:
+        votes = ", ".join(f"{name}={value or '—'}" for name, value in reading.signals.items())
+        found["status_split"] = (f"голоси статусу: {votes}", "status")
+    # `read` — не `field`: `field` тут уже зайняте імпортом dataclasses, і
+    # цикл мовчки затінив би його для всього модуля.
+    for name, read in reading.fields.items():
+        if read.text is not None:
+            continue
+        zone = ZONES.get(name)
+        title = zone.title if zone else name
+        if read.clipped:
+            found.setdefault("zone_clipped", (f"зона «{title}»: {read.raw or '—'}", name))
+        elif read.unknown:
+            found.setdefault(
+                "glyph_unknown",
+                (f"зона «{title}»: {read.unknown} символ(ів) без еталона, сире {read.raw!r}", name),
+            )
+        elif read.raw:
+            found.setdefault(
+                "pattern_mismatch",
+                (f"зона «{title}»: {read.raw!r} не тієї форми", name),
+            )
+    reason = screen_inbox.pick_reason(found)
+    if reason is None:
+        return None
+    detail, zone_name = found[reason]
+    return (reason, detail, zone_name)
+
+
+def _note_puzzle(
+    db: Session, target: FurnaceTarget, image: Image.Image, reading: Optional[PanelReading]
+) -> None:
+    """Відкласти кадр у скриньку, якщо читач на ньому спіткнувся.
+
+    Викликається з КОЖНОГО тіку, тому вся вартість — один відпечаток зі вже
+    знятого кадру: диск і база чіпаються лише на новому екрані
+    (`screen_inbox.note`). Виняток сюди не проходить — скринька не має права
+    зупинити опитування печі.
+    """
+    puzzle = _puzzle_of(reading)
+    if puzzle is None:
+        return
+    reason, detail, zone_name = puzzle
+    crop = None
+    if zone_name and zone_name in ZONES:
+        try:
+            crop = image.convert("RGB").crop(ZONES[zone_name].rect)
+        except Exception:  # noqa: BLE001 — виріз не критичний, кадр важливіший
+            crop = None
+    screen_inbox.note(
+        db,
+        kind=screen_inbox.KIND_FURNACE,
+        key=target.key,
+        name=target.name,
+        frame=image,
+        reason=reason,
+        detail=detail,
+        zone_crop=crop,
+    )
+
+
 def poll_target(
     db: Session,
     target: FurnaceTarget,
@@ -477,6 +553,8 @@ def poll_target(
         # Кадр не записався (немає місця, тека лише для читання) — числа все
         # одно живі, тому це не привід гасити піч на екрані.
         logger.exception("Кадр печі %s не збережено", target.host)
+
+    _note_puzzle(db, target, image, reading)
 
     should_store = _should_store(state, reading, now) if reading is not None else False
     if should_store:

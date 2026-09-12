@@ -48,6 +48,8 @@ order_desk.db.bak_*
 # Залишки від перейменування бази й тимчасові копії
 *.db.stray-*
 machine_frames/
+# Кадри скриньки невідомих екранів — робочі дані машини, як і кадри вище.
+screen_puzzles/
 
 # бекап caveman-compress (CLAUDE.md), не комітити
 CLAUDE.md.original.md

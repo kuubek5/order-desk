@@ -85,6 +85,7 @@ from app.routers.vyrobitok import router as vyrobitok_router
 from app.routers.stl import router as stl_router
 from app.routers.shift import router as shift_router
 from app.routers.discs import router as discs_router
+from app.routers.screens import router as screens_router
 from app.routers.furnace import router as furnace_router
 from app.routers.machines import router as machines_router
 from app.routers.feedback import router as feedback_router
@@ -1293,6 +1294,9 @@ app.include_router(machines_router)
 # «Нові диски» — узяті з архіву диски й замовлення на склад (замінив
 # розділ налаштувань «Заготовки», 10.09.26).
 app.include_router(discs_router)
+# Скринька невідомих екранів — кадри, на яких читач печей і верстатів
+# спіткнувся, і рядок-підпис від людини до них.
+app.include_router(screens_router)
 # Форма зворотного зв'язку — приймання звернень + адмін-стрічка «Вхідні».
 app.include_router(feedback_router)
 # Діагностика швидкодії. Middleware вимірювання пропускає /diag/, щоб екран

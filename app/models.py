@@ -1479,3 +1479,79 @@ class TelegramInvite(Base):
     revoked_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=False), nullable=True
     )
+
+
+class ScreenPuzzle(Base):
+    """Кадр, якого зчитувач не зрозумів, — і чекає одного рядка від людини.
+
+    **Навіщо.** Читач екранів мовчить при найменшому сумніві (цифра або
+    збігається з еталоном піксель-у-піксель, або поле порожнє), і це
+    правильно. Але мовчання нікуди не веде: щоб порожнє поле колись
+    заповнилось, треба знати, ЯКИЙ це був екран, — а кадр на диску лежить
+    рівно один на пристрій і перезаписується кожні кілька секунд. До цієї
+    таблиці рідкісний екран (аварія о третій ночі, незнайомий діалог) не
+    доживав ніколи.
+
+    **Один рядок на ВІДПЕЧАТОК, а не на кадр.** Кадр знімається раз на 6 с —
+    600 на годину на пристрій, тобто гігабайти за добу. Відпечаток — хеш
+    зменшеної чорно-білої копії: цифри на ній зникають, розкладка лишається,
+    тож «той самий екран з іншим відсотком» дублем НЕ вважається помилково.
+    Повтор лише збільшує `seen_count` і зсуває `last_seen_at`.
+
+    **Підпис — дані, а не правило.** `label` нічого не вмикає й не вимикає:
+    зону, еталон чи правило статусу з нього роблю я, у репозиторії й з тестом
+    на тому ж кадрі. Один кривий еталон псує читання назовсім, і видно це не
+    одразу — тому шлях «розмітив на екрані, застосунок навчився» свідомо
+    закритий.
+
+    `dismissed` — «це неважливо, не питай більше». Рядок лишається з
+    лічильником (він відповідає на «як часто таке буває»), але першим іде на
+    витіснення, коли скринька пристрою повна.
+
+    Назва пристрою зберігається ЗНІМКОМ: пічку перейменують або приберуть, а
+    загадка мусить лишатись зрозумілою.
+    """
+
+    __tablename__ = "screen_puzzles"
+    __table_args__ = (
+        # Той самий екран того самого пристрою — один рядок. Унікальність у
+        # схемі, а не лише в коді: захоплення йде з фонових потоків опитування,
+        # і двоє можуть принести один відпечаток одночасно.
+        UniqueConstraint("device_key", "fingerprint", name="uq_screen_puzzle_device_fp"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # "furnace" | "machine" — від виду залежить, чим кадр розбирати.
+    kind: Mapped[str] = mapped_column(String(16), index=True)
+    device_key: Mapped[str] = mapped_column(String(64), index=True)
+    device_name: Mapped[str] = mapped_column(String(120), default="")
+    # Коротке імʼя екрана: файл на диску й унікальність рядка. Тотожність
+    # екранів воно НЕ вирішує — див. `signature`.
+    fingerprint: Mapped[str] = mapped_column(String(32), index=True)
+    # Мініатюра кадру (64×48 відтінків сірого) у base64. Саме за нею
+    # вирішується «це той самий екран»: порівняння за СЕРЕДНЬОЮ різницею з
+    # порогом, а не за рівністю. Хеш тут не годиться — на екрані постійно
+    # міняються годинник, відсоток і назва програми, і кожен кадр ставав би
+    # новим рядком (виміряно на цехових кадрах 250i: два кадри того самого
+    # екрана JOBS розходяться на 73 рівні).
+    signature: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # Код причини (`screen_inbox.REASONS`), за яким відповідь і групується.
+    reason: Mapped[str] = mapped_column(String(32), index=True)
+    # Те саме людською: сирий рядок, назва зони, номер символу — усе, що читач
+    # знав у момент відмови.
+    detail: Mapped[str] = mapped_column(Text, default="")
+    # Імена файлів у теці скриньки, не повні шляхи: теку задає налаштування, і
+    # повний шлях у базі протух би після переїзду на інший ПК.
+    frame_file: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    zone_file: Mapped[Optional[str]] = mapped_column(String(160), nullable=True)
+    seen_count: Mapped[int] = mapped_column(default=1)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), index=True)
+    label: Mapped[str] = mapped_column(Text, default="")
+    labeled_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    labeled_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    dismissed: Mapped[bool] = mapped_column(default=False)

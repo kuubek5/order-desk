@@ -50,6 +50,10 @@ GET /orders/new
 GET /orders/{order_id}
 GET /palette/commands
 GET /palette/search
+GET /screens
+GET /screens/board
+GET /screens/{puzzle_id}/frame.png
+GET /screens/{puzzle_id}/zone.png
 GET /search
 GET /settings
 GET /settings/backup/files.zip
@@ -148,6 +152,8 @@ POST /orders/{order_id}/sum3d-id
 POST /orders/{order_id}/unissue
 POST /orders/{order_id}/unmark-found
 POST /register
+POST /screens/{puzzle_id}/dismiss
+POST /screens/{puzzle_id}/label
 POST /settings
 POST /settings/backup/export
 POST /settings/backup/export-part
