@@ -30,6 +30,10 @@ from app.services.queue_view import (
     clamp_rows_limit,
 )
 
+pytestmark = pytest.mark.usefixtures("weekday_clock")
+"""Годинник на будній день: тести тут будують назву вкладки самі, а у
+вихідні цех пише у вкладку п'ятниці (див. фікстуру в conftest.py)."""
+
 
 @pytest.fixture()
 def db():

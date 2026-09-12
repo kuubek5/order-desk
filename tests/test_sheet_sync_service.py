@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.business_day import business_today
+from app.business_day import business_tab_today, business_today, prev_tab_day
 from app.db import Base
 from app.models import Order, SyncLog
 from app.sheet_sync_service import (
@@ -23,6 +23,10 @@ from app.sheet_sync_service import (
     sync_sheets_background,
 )
 from app.sheets import reset_sheets_cache
+
+pytestmark = pytest.mark.usefixtures("weekday_clock")
+"""Годинник на будній день: тести тут будують назву вкладки самі, а у
+вихідні цех пише у вкладку п'ятниці (див. фікстуру в conftest.py)."""
 
 
 def make_session():
@@ -401,9 +405,13 @@ def test_sync_hot_tab_reads_today_and_yesterday_by_name(monkeypatch):
     # the full sync pays for.
     configured(monkeypatch)
     reset_sheets_cache()
-    today = business_today()
+    # «Вчора» тут — ПОПЕРЕДНЯ ВКЛАДКА, а не календарне вчора: у понеділок цех
+    # читає п'ятничну (вихідні пишуть у неї, CLAUDE.md §4). Синк саме так і
+    # робить (`prev_tab_day`), тож тест мусить питати те саме — інакше він
+    # червоніє щопонеділка при правильному застосунку.
+    today = business_tab_today()
     today_ws = worksheet(today, "700")
-    yesterday_ws = worksheet(today - timedelta(days=1), "701")
+    yesterday_ws = worksheet(prev_tab_day(today), "701")
     by_name = {today_ws.title: today_ws, yesterday_ws.title: yesterday_ws}
     spreadsheet = Mock()
     spreadsheet.worksheet.side_effect = lambda name: by_name[name]

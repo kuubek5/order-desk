@@ -35,6 +35,12 @@ from app.sheets import (
     reset_api_call_counter,
 )
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("weekday_clock")
+"""Годинник на будній день: тести тут будують назву вкладки самі, а у
+вихідні цех пише у вкладку п'ятниці (див. фікстуру в conftest.py)."""
+
 # Ці ж копії вкладок лежать у backups/sheets — справжні заголовки лабораторії,
 # з їхніми одруківками («Вид работи», «Номер работи»).
 REAL_HEADER = [

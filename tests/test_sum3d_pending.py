@@ -29,6 +29,10 @@ from tests.asgi_client import MiniClient
 from tests.test_settings_slabs_render import ADMIN, app_db  # noqa: F401 — фікстура
 from tests.test_sync import make_row, make_session
 
+pytestmark = pytest.mark.usefixtures("weekday_clock")
+"""Годинник на будній день: тести тут будують назву вкладки самі, а у
+вихідні цех пише у вкладку п'ятниці (див. фікстуру в conftest.py)."""
+
 
 def _pending_order(session, *, sum3d="16-27-26", letter="М") -> Order:
     """Робота «в роботі» за базою, а в таблиці L і M ще порожні."""

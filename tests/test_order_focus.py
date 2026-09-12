@@ -23,6 +23,10 @@ from app.routers import queue as queue_router
 from app.models import Order, OrderFocus, User
 from app.services.focus import clear_all, count, focused_ids, release, toggle
 
+pytestmark = pytest.mark.usefixtures("weekday_clock")
+"""Годинник на будній день: тести тут будують назву вкладки самі, а у
+вихідні цех пише у вкладку п'ятниці (див. фікстуру в conftest.py)."""
+
 
 def _database():
     engine = create_engine("sqlite://", poolclass=StaticPool)

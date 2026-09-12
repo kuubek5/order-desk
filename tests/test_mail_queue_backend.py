@@ -25,18 +25,24 @@ from app.db import Base
 from app.models import Attachment, EmailMessage, Order, User
 from app.parser import HEADER_ROWS
 
+from timepin import pinned_today
+
+pytestmark = pytest.mark.usefixtures("weekday_clock")
+"""Годинник на будній день: тести тут будують назву вкладки самі, а у
+вихідні цех пише у вкладку п'ятниці (див. фікстуру в conftest.py)."""
+
 # Вкладка «свіжий день у межах вікна черги». Рахується від СЬОГОДНІ, а не
 # вписана руками. Раніше в цих тестах стояло жорстке RECENT_TAB — і 08.09.26
 # воно САМЕ випало за RETENTION_DAYS=30 (app/services/queue.py): роботи стали
 # архівними, чотири тести почервоніли без жодної правки коду. Дата в тесті, що
 # мусить лишатися «недавньою», зобов'язана рахуватись від сьогодні.
-RECENT_DAY = business_today() - timedelta(days=3)
+RECENT_DAY = pinned_today() - timedelta(days=3)
 RECENT_TAB = RECENT_DAY.strftime("%d.%m.%y")
 
 
 def _recent_day(days_ago: int):
     """Сусідній день у тому ж вікні — теж від сьогодні, не з календаря."""
-    return business_today() - timedelta(days=days_ago)
+    return pinned_today() - timedelta(days=days_ago)
 
 
 def _recent_tab(days_ago: int) -> str:
