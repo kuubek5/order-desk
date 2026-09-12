@@ -215,16 +215,26 @@ def _remote_db():
 
 
 def _presented_token(request: Request) -> str:
-    """Токен із `Authorization: Bearer …` або з `X-Token`.
+    """Токен із `Authorization: Bearer …`, з `X-Token` або з `?t=` в адресі.
 
-    Два місця, бо клієнти різні: MCP-клієнт Claude Code шле `Authorization`,
-    а ручна перевірка з `curl`/браузера простіше робиться заголовком `X-Token`.
-    Порівнює їх `mcp_gateway.token_matches` (там `compare_digest`).
+    Три місця, бо клієнти різні, і третє — не примха, а спрощення для власника.
+    MCP-клієнт шле `Authorization`; ручна перевірка з `curl` простіше робиться
+    через `X-Token`; а `?t=` дозволяє екрану налаштувань показати ОДИН готовий
+    рядок, який достатньо скопіювати й передати — замість «ось адреса, ось
+    окремо токен, підстав його в заголовок». Рівно так уже живе посилання табло
+    печей (`furnace_board.board_links`).
+
+    Ціна зрозуміла: адреса з токеном лишає слід в історії браузера й у журналах
+    проксі. Для нашого випадку вона мала — слухач стоїть у приватному тунелі,
+    access-лог вимкнений, а токен дає лише читання й гаситься кнопкою.
     """
     header = (request.headers.get("authorization") or "").strip()
     if header[:7].lower() == "bearer ":
         return header[7:].strip()
-    return (request.headers.get("x-token") or "").strip()
+    in_header = (request.headers.get("x-token") or "").strip()
+    if in_header:
+        return in_header
+    return (request.query_params.get("t") or "").strip()
 
 
 def create_mcp_app() -> FastAPI:

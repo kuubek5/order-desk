@@ -97,6 +97,28 @@ def test_x_token_header_works_the_same(app_db, monkeypatch):  # noqa: F811
     assert {t["name"] for t in _json(body)["result"]["tools"]}
 
 
+def test_token_in_the_address_works_too(app_db, monkeypatch):  # noqa: F811
+    """`?t=` — те, що робить рядок на екрані налаштувань ОДНИМ.
+
+    Власник копіює `http://…:8011/mcp?t=…` і передає як є; складати адресу з
+    токеном руками не треба (`mcp_gateway.connect_links`). Якщо ця гілка
+    відвалиться, екран і далі показуватиме гарний рядок, який нікуди не
+    підключається — тому вона тут."""
+    _, factory = app_db
+    token = _enable(factory)
+    client = _remote(monkeypatch, factory)
+    status, _, body = client.post_json(
+        f"/mcp?t={token}", {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+    )
+    assert status == 200, body
+    assert "kmill_queue" in {tool["name"] for tool in _json(body)["result"]["tools"]}
+
+    status, _, body = client.post_json(
+        f"/mcp?t={WRONG}", {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+    )
+    assert status == 401, body
+
+
 def test_a_live_token_is_refused_while_the_switch_is_off(app_db, monkeypatch):  # noqa: F811
     """Порт закриває сторож, але до пʼяти секунд після «вимкнув» він ще живий —
     і в ці секунди вимкнений доступ мусить бути вимкненим (як у табло печей)."""

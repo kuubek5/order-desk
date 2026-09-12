@@ -397,25 +397,43 @@ def test_mcp_toggle_requires_admin(app_db):
     assert status == 403, status
 
 
-def test_mcp_token_shown_once_then_gone(app_db):
-    """Доказ для CLAUDE.md §14 «Секрети»: свіжий токен летить у саме один
-    рендер після POST — другий GET тіеї сторінки його вже не показує,
-    а сам токен ніде більше в контексті не зберігається (робить той самий
-    `request.session.pop`, що й для звичайного `settings_flash`)."""
+def test_mcp_gives_one_ready_line_and_reissue_replaces_it(app_db):
+    """Екран мусить віддавати ГОТОВИЙ рядок «адреса + токен», і при перевипуску
+    старий рядок мусить зникати.
+
+    Чому не «показати токен один раз»: перший варіант саме так і робив, і це
+    означало «запиши зараз, бо більше не побачиш» плюс складання адреси з
+    токеном руками. Власник сказав «намудрено» — тож рядок видимий щоразу
+    (екран і так лише для адміна й лише з цього компʼютера), а межу тримає
+    кнопка перевипуску: цей тест доводить саме її, бо мертвий старий рядок —
+    єдине, що тут справді захищає."""
     from tests.asgi_client import MiniClient
 
-    app, _ = app_db
+    from app.services import mcp_gateway
+
+    app, session_factory = app_db
     client = MiniClient(app)
     status, _, _ = client.login(*ADMIN)
     assert status in (200, 302, 303), status
 
-    status, _, body = client.post("/settings/mcp/token", {})
+    status, _, _ = client.post("/settings/mcp/token", {})
     assert status == 303, status
+    with session_factory() as db:
+        first = mcp_gateway.gateway_token(db)
+        links = mcp_gateway.connect_links(db)
 
-    status, _, after_redirect = client.get("/settings")
+    status, _, page = client.get("/settings")
     assert status == 200
-    assert "mcp-new-token" in after_redirect, "токен не показано на найближчому рендері"
+    assert first and first in page, "готового рядка з токеном на сторінці немає"
+    for link in links:
+        assert link in page, f"рядок {link} не показано"
+        assert link.startswith("http://") and f":{mcp_gateway.GATEWAY_PORT}/mcp?t=" in link
 
-    status, _, second_load = client.get("/settings")
-    assert status == 200
-    assert "mcp-new-token" not in second_load, "токен показався вдруге, хоча мав звістися лише один раз"
+    status, _, _ = client.post("/settings/mcp/token", {})
+    assert status == 303, status
+    status, _, after = client.get("/settings")
+    with session_factory() as db:
+        second = mcp_gateway.gateway_token(db)
+    assert second != first, "перевипуск не змінив токен"
+    assert first not in after, "старий токен усе ще на сторінці"
+    assert second in after

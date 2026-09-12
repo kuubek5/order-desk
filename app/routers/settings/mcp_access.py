@@ -8,11 +8,12 @@
 loopback (ця дія керує МАШИНОЮ — відкриває порт назовні), редирект на
 `/settings#mcp` із флеш-повідомленням.
 
-Токен — секрет (CLAUDE.md §14 «Секрети»): у Jinja-контекст він не потрапляє
-НІКОЛИ, крім одного винятку — щойно випущений токен їде у флеш-сесію
-(`request.session["settings_flash"]`), `overview.get_settings` читає його
-ОДИН раз (`session.pop`) і показує на найближчому рендері. Перезавантаження
-сторінки другий раз токена вже не покаже — сесія його не тримає.
+Токен сам по собі екран не показує — показує ГОТОВИЙ рядок «адреса + токен»
+(`mcp_gateway.connect_links`), який лишається скопіювати й передати. Перший
+варіант показував токен рівно один раз і окремо від адреси; на практиці це
+означало «запиши зараз, бо більше не побачиш», а власник мусив зліпити рядок
+сам. Чому видимий щоразу — у докстрінзі `connect_links`: екран і так лише для
+адміна й лише з цього компʼютера, рівно як посилання табло печей.
 """
 
 from __future__ import annotations
@@ -29,13 +30,8 @@ from .common import require_settings_admin
 router = APIRouter()
 
 
-def _flash(request: Request, kind: str, message: str, *, token: str | None = None) -> RedirectResponse:
-    payload = {"kind": kind, "message": message}
-    if token:
-        # Лише цей один флеш несе сире значення — overview.get_settings його
-        # pop'ає і більше ніде не зберігає (див. докстрінг файлу).
-        payload["token"] = token
-    request.session["settings_flash"] = payload
+def _flash(request: Request, kind: str, message: str) -> RedirectResponse:
+    request.session["settings_flash"] = {"kind": kind, "message": message}
     return RedirectResponse("/settings#mcp", status_code=303)
 
 
@@ -49,19 +45,16 @@ def toggle_mcp_gateway(request: Request, db: Session = Depends(get_db)):
     from app.services import mcp_gateway
 
     on = not mcp_gateway.gateway_enabled(db)
-    new_token = None
     if on and not mcp_gateway.has_token(db):
-        new_token = mcp_gateway.regenerate_token(db)
+        mcp_gateway.regenerate_token(db)
     set_setting(db, mcp_gateway.ENABLED_KEY, "1" if on else "")
     db.commit()
     if on:
         message = (
-            f"Доступ вмикається на порту {mcp_gateway.GATEWAY_PORT}. Перевірте, що брандмауер "
-            "Windows пускає вхідні TCP на цей порт: інтерфейс WireGuard зазвичай класифікується "
-            "як «Загальнодоступна» мережа, і правило лише для «Приватної» мовчки нічого не "
-            "дозволить (саме ця пастка вже коштувала місяць хибного діагнозу обривів верстатів)."
+            f"Доступ вмикається на порту {mcp_gateway.GATEWAY_PORT}. Рядок для передачі — нижче; "
+            "якщо запит ззовні не доходить, лишилась команда брандмауера (вона там же)."
         )
-        return _flash(request, "success", message, token=new_token)
+        return _flash(request, "success", message)
     return _flash(request, "success", "Доступ вимкнено — порт закрито повністю, жоден запит ззовні не пройде.")
 
 
@@ -72,6 +65,8 @@ def regenerate_mcp_token(request: Request, db: Session = Depends(get_db)):
     require_settings_admin(request, db)
     from app.services import mcp_gateway
 
-    token = mcp_gateway.regenerate_token(db)
+    mcp_gateway.regenerate_token(db)
     db.commit()
-    return _flash(request, "success", "Новий токен готовий — старий більше не працює.", token=token)
+    return _flash(
+        request, "success", "Новий рядок готовий — старий більше не працює, передай новий."
+    )

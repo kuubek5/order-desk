@@ -400,11 +400,10 @@ def get_settings(
     context["mcp_addresses"] = mcp_gateway.gateway_addresses()
     context["mcp_status"] = mcp_gateway.status_snapshot()
     context["mcp_port"] = mcp_gateway.GATEWAY_PORT
-    # Токен показуємо РІВНО один раз — одразу після того, як його випустили.
-    # Флеш-сесія вже попʼята вище (`settings_flash`); якщо в ній лежить
-    # токен, він летить у контекст ЦЬОГО рендера й більше ніде не
-    # зберігається (CLAUDE.md §14 «Секрети»).
-    context["mcp_new_token"] = (settings_flash or {}).get("token")
+    # Готовий рядок «адреса + токен» — щоб передати доступ одним копіюванням,
+    # а не складати його з двох половин (див. `connect_links`).
+    context["mcp_links"] = mcp_gateway.connect_links(db)
+    context["mcp_firewall_command"] = mcp_gateway.firewall_command()
 
     # Плити стану розділів (макет «Стенд»). Рахуються ПІСЛЯ контексту й з
     # нього ж: жодного власного джерела правди — інакше плита й тіло

@@ -27,43 +27,42 @@
                 </p>
 
                 <p class="settings-help stand-note">
-                    ⚠ Брандмауер Windows має окремо пускати вхідні TCP на порт {{ mcp_port }}. Інтерфейс
-                    WireGuard Windows майже завжди класифікує як «Загальнодоступна» мережа — правило,
-                    написане лише для «Приватної», нічого не заблокує, але й НІЧОГО не дозволить, мовчки.
-                    Саме ця пастка вже коштувала місяць хибного діагнозу обривів верстатів (CLAUDE.md §14,
-                    «Верстати — обрив зв'язку»): мовчання порту й мертвий брандмайстер-профіль виглядають
-                    однаково ззовні.
-                </p>
-                <p class="settings-help stand-note">
                     ⚠ Вимкнений перемикач закриває порт ПОВНІСТЮ — не «забороняє», а фізично перестає
                     слухати мережу за кілька секунд. Увімкнути назад можна будь-коли.
                 </p>
 
-                {% if mcp_new_token %}
-                <div class="stand-cell w6" id="mcp-new-token">
-                    <h3>Новий токен — запишіть зараз</h3>
-                    <p class="settings-help">Показується РІВНО один раз. Перезавантажиш сторінку — і його вже
-                        ніде не побачити, лише перевипустити заново (старий одразу перестане працювати).</p>
-                    <div class="stand-drow">
-                        <div class="stand-dtext"><p><span class="mono stand-members-link">{{ mcp_new_token }}</span></p></div>
-                        <button type="button" class="settings-secondary-button" data-copy="{{ mcp_new_token }}" title="Скопіювати токен">Скопіювати</button>
-                    </div>
-                </div>
-                {% endif %}
-
                 <div class="stand-cells">
                 <div class="stand-cell w6">
-                    <h3>Адреси цього ПК</h3>
-                    {% if mcp_addresses %}
-                    {% for addr in mcp_addresses %}
+                    <h3>Рядок для передачі</h3>
+                    <p class="settings-help">
+                        Скопіюй і надішли — у ньому вже є і адреса, і токен, складати нічого не треба.
+                        Якщо рядків кілька, потрібен той, чия адреса збігається з адресою тунелю
+                        (поле <span class="mono">Addresses</span> у програмі WireGuard).
+                    </p>
+                    {% if mcp_links %}
+                    {% for link in mcp_links %}
                     <div class="stand-drow">
-                        <div class="stand-dtext"><p><span class="mono stand-members-link">http://{{ addr }}:{{ mcp_port }}/mcp</span></p></div>
-                        <button type="button" class="settings-secondary-button" data-copy="http://{{ addr }}:{{ mcp_port }}/mcp" title="Скопіювати адресу">Скопіювати</button>
+                        <div class="stand-dtext"><p><span class="mono stand-members-link">{{ link }}</span></p></div>
+                        <button type="button" class="settings-secondary-button" data-copy="{{ link }}" title="Скопіювати рядок">Скопіювати</button>
                     </div>
                     {% endfor %}
+                    {% elif not mcp_has_token %}
+                    <p class="stand-note">Спершу увімкни доступ — токен створиться сам, і рядок з'явиться тут.</p>
                     {% else %}
-                    <p class="stand-note">Не вдалось визначити жодної мережевої адреси цього ПК — перевірте підключення (тунель WireGuard мусить бути піднятий).</p>
+                    <p class="stand-note">Не вдалось визначити жодної мережевої адреси цього ПК — перевір підключення (тунель WireGuard мусить бути піднятий).</p>
                     {% endif %}
+
+                    <h3>Брандмауер — один раз</h3>
+                    <p class="settings-help">
+                        Запусти цю команду в PowerShell від імені адміністратора — вона пускає вхідні на
+                        порт {{ mcp_port }} у всіх профілях мережі. «У всіх» тут суттєво: інтерфейс
+                        WireGuard Windows майже завжди вважається «Загальнодоступною» мережею, і правило
+                        лише для «Приватної» мовчки не працювало б.
+                    </p>
+                    <div class="stand-drow">
+                        <div class="stand-dtext"><p><span class="mono stand-members-link">{{ mcp_firewall_command }}</span></p></div>
+                        <button type="button" class="settings-secondary-button" data-copy="{{ mcp_firewall_command }}" title="Скопіювати команду">Скопіювати</button>
+                    </div>
                     <p class="settings-help">
                         {% set ms = mcp_status %}
                         {% if not mcp_enabled %}
@@ -83,7 +82,7 @@
                         <span class="connection-state {% if mcp_has_token %}connection-state-ready{% endif %}">{% if mcp_has_token %}задано{% else %}не задано{% endif %}</span>
                     </h3>
                     <div class="settings-field">
-                        <p class="settings-help">Перевипуск одразу вимикає старий токен — усі, кому він був переданий, втрачають доступ.</p>
+                        <p class="settings-help">Перевипуск одразу вимикає старий токен — усі, кому рядок був переданий, втрачають доступ. Новий рядок з'явиться вище.</p>
                         <form method="post" action="/settings/mcp/token">
                             <button type="submit" class="settings-secondary-button">{% if mcp_has_token %}Перевипустити токен{% else %}Створити токен{% endif %}</button>
                         </form>
