@@ -68,3 +68,12 @@ def resource_path(relative: str) -> Path:
     source_root = Path(__file__).resolve().parents[1]
     bundle_root = Path(getattr(sys, "_MEIPASS", source_root))
     return bundle_root / relative
+
+# Формат рядка лога — ОДНЕ місце на застосунок.
+#
+# Його читає не лише людина: `app/services/mcp_tools.py` розбирає час і
+# лічильник запитів до Google саме з цих рядків, а `scripts/quota_report.ps1`
+# — тим самим регулярним виразом. Формат, змінений «косметично» в одному
+# місці, тихо зламав би обидва прилади, тож тест квоти пише пробний рядок
+# ЦИМ форматтером, а не вигаданим текстом.
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"

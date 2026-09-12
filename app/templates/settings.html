@@ -76,6 +76,7 @@
         {% if can_see(user, 'machines') %}{% include "_settings_machines.html" %}{% endif %}
         {% if can_see(user, 'handout') %}{% include "_settings_handout.html" %}{% endif %}
         {% if can_see(user, 'update') %}{% include "_settings_about.html" %}{% endif %}
+        {% if can_see(user, 'mcp') %}{% include "_settings_mcp.html" %}{% endif %}
     </div>
 
     {# Джерело правди для палітри Ctrl+K: те саме меню, що в рейці, плюс

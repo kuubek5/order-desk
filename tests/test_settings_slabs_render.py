@@ -354,3 +354,68 @@ def test_stale_journal_entry_is_not_shown_as_fresh_activity(app_db):
         db.commit()
         fresh = _last_sync_log(db)
         assert fresh is not None and fresh.status == "ok"
+
+
+# ── Доступ по мережі (/mcp): адмін-only секція ─────────────────────────
+
+
+def test_admin_gets_the_mcp_section_operator_does_not(app_db):
+    """Форма і кнопки /settings/mcp/* — лише адміну: це безпекове
+    налаштування (відкриває порт у мережу), і `roles=ADMIN_ONLY` у
+    settings_nav.py ховає його взагалі з екрана оператора, а не лише з меню."""
+    app, _ = app_db
+    as_admin = _open_settings(app, ADMIN)
+    as_operator = _open_settings(app, OPERATOR)
+
+    assert 'data-sec="mcp"' in as_admin
+    assert '/settings/mcp/toggle' in as_admin
+    assert '/settings/mcp/token' in as_admin
+
+    assert 'data-sec="mcp"' not in as_operator
+    assert '/settings/mcp/toggle' not in as_operator
+    assert '/settings/mcp/token' not in as_operator
+    assert _tone(as_operator, "mcp") is None
+
+
+def test_mcp_disabled_by_default_is_grey_not_green(app_db):
+    """Порожня база: перемикач вимкнений, токена немає — сірий, не зелений."""
+    app, _ = app_db
+    html = _open_settings(app)
+    assert _tone(html, "mcp") == "none"
+
+
+def test_mcp_toggle_requires_admin(app_db):
+    """Оператор не може відкрити доступ за саморобним POST, навіть якщо
+    форма йому взагалі не віддається."""
+    from tests.asgi_client import MiniClient
+
+    app, _ = app_db
+    client = MiniClient(app)
+    status, _, _ = client.login(*OPERATOR)
+    assert status in (200, 302, 303), status
+    status, _, _ = client.post("/settings/mcp/toggle", {})
+    assert status == 403, status
+
+
+def test_mcp_token_shown_once_then_gone(app_db):
+    """Доказ для CLAUDE.md §14 «Секрети»: свіжий токен летить у саме один
+    рендер після POST — другий GET тіеї сторінки його вже не показує,
+    а сам токен ніде більше в контексті не зберігається (робить той самий
+    `request.session.pop`, що й для звичайного `settings_flash`)."""
+    from tests.asgi_client import MiniClient
+
+    app, _ = app_db
+    client = MiniClient(app)
+    status, _, _ = client.login(*ADMIN)
+    assert status in (200, 302, 303), status
+
+    status, _, body = client.post("/settings/mcp/token", {})
+    assert status == 303, status
+
+    status, _, after_redirect = client.get("/settings")
+    assert status == 200
+    assert "mcp-new-token" in after_redirect, "токен не показано на найближчому рендері"
+
+    status, _, second_load = client.get("/settings")
+    assert status == 200
+    assert "mcp-new-token" not in second_load, "токен показався вдруге, хоча мав звістися лише один раз"

@@ -276,6 +276,7 @@ SETTINGS_SECTIONS = [
     # «Заготовки» прибрано 10.09.26 — окремий екран «Нові диски» (/discs).
     "_settings_handout.html",
     "_settings_about.html",
+    "_settings_mcp.html",
 ]
 
 # Партіали, які більше не включаються з settings.html напряму, бо стали

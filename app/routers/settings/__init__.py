@@ -33,6 +33,7 @@ from . import (
     feedback,
     handout,
     materials,
+    mcp_access,
     notifications,
     overview,
     sections,
@@ -89,6 +90,7 @@ from .materials import (
     set_recognition_default_material,
     toggle_mail_download_all,
 )
+from .mcp_access import regenerate_mcp_token, toggle_mcp_gateway
 from .notifications import api_notify_state, save_notification_prefs
 from .overview import check_path_status, check_settings_path, get_settings, post_settings
 from .handout import save_handout_qc
@@ -129,6 +131,9 @@ __all__ = [
     "remove_material_alias",
     "set_recognition_default_material",
     "toggle_mail_download_all",
+    # mcp_access
+    "regenerate_mcp_token",
+    "toggle_mcp_gateway",
     # devices
     "add_furnace",
     "add_machine",
@@ -187,6 +192,7 @@ for _module in (
     overview,
     connections,
     materials,
+    mcp_access,
     devices,
     notifications,
     backup,

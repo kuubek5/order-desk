@@ -20,6 +20,7 @@ from app.services.settings_status import (
     _slab_backup,
     _slab_imap,
     _slab_machines,
+    _slab_mcp,
     _slab_operators,
     _slab_paths,
     _slab_sheets,
@@ -217,3 +218,55 @@ def test_backup_without_any_snapshot_stays_warning():
         _backup_ctx(snaps=0, mirror={"dir": r"\srvackup", "last_ok": "2026-09-08T07:30:00", "last_error": ""})
     )
     assert slab.tone == TONE_WARN
+
+
+# ── Доступ по мережі (/mcp): тон = слухач, не перемикач і не токен ─────
+
+
+def _mcp_ctx(*, enabled=False, listening=False, error=None, has_token=False):
+    return {
+        "mcp_enabled": enabled,
+        "mcp_status": SimpleNamespace(listening=listening, error=error, since=None),
+        "mcp_has_token": has_token,
+        "mcp_port": 8011,
+    }
+
+
+def test_mcp_off_is_grey_even_with_a_token_saved():
+    """Вимкнено = сірий — і заданий токен цього не змінює, бо порт закритий."""
+    slab = _slab_mcp(_mcp_ctx(enabled=False, has_token=True))
+    assert slab.tone == TONE_NONE
+    assert slab.label == "вимкнено"
+
+
+def test_mcp_listening_is_green():
+    slab = _slab_mcp(_mcp_ctx(enabled=True, listening=True, has_token=True))
+    assert slab.tone == TONE_OK
+
+
+def test_mcp_enabled_with_error_is_warn_not_alarm():
+    """Мовчання порту саме по собі не доводить аварії (урок верстатів,
+    CLAUDE.md §14) — тому тут жовте, а не червоне."""
+    slab = _slab_mcp(_mcp_ctx(enabled=True, listening=False, error="не вдалось відкрити порт", has_token=True))
+    assert slab.tone == TONE_WARN
+
+
+def test_mcp_enabled_but_not_yet_listening_and_no_error_is_grey():
+    """Щойно увімкнули, сторож ще не встиг підняти порт — не зелений і не
+    жовтий, бо жодного підтвердженого сигналу (ok чи проблема) ще немає."""
+    slab = _slab_mcp(_mcp_ctx(enabled=True, listening=False, error=None, has_token=True))
+    assert slab.tone == TONE_NONE
+    assert slab.label == "вмикається…"
+
+
+def test_mcp_token_meter_is_never_green_merely_for_existing():
+    """Сам факт задай токена нічого не каже про те, чи слухач працює — тон
+    метрики «TOKEN» лишається нейтральним в обох випадках."""
+    with_token = _slab_mcp(_mcp_ctx(enabled=True, listening=True, has_token=True))
+    without_token = _slab_mcp(_mcp_ctx(enabled=True, listening=True, has_token=False))
+    token_meter_with = next(m for m in with_token.meters if m.k == "Токен")
+    token_meter_without = next(m for m in without_token.meters if m.k == "Токен")
+    assert token_meter_with.tone != TONE_OK
+    assert token_meter_without.tone != TONE_OK
+    assert token_meter_with.v == "задано"
+    assert token_meter_without.v == "не задано"

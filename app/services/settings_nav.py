@@ -286,6 +286,13 @@ NAV: tuple = (
                 roles=ADMIN_ONLY,
                 keywords=("ключ", "термін", "активація"),
             ),
+            NavItem(
+                key="mcp",
+                title="Доступ по мережі",
+                href="/settings#mcp",
+                roles=ADMIN_ONLY,
+                keywords=("mcp", "wireguard", "токен", "віддалений доступ", "8011", "тунель"),
+            ),
         ),
     ),
 )

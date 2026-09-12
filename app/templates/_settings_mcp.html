@@ -1,0 +1,104 @@
+{% from "_settings_slab.html" import slab %}
+        {# ── Доступ по мережі (/mcp, порт 8011) ───────────────────────────
+           Окремий, крихітний слухач поруч із головним застосунком — той
+           самий прийом, що в табло печей (app/services/furnace_board.py,
+           app/services/mcp_gateway.py). Головна CRM лишається на 127.0.0.1;
+           цей слухач віддає ЛИШЕ читання стану цеху (POST /mcp) і пускає
+           домашній ПК власника через тунель WireGuard. Межа доступу — токен,
+           не loopback: сенс слухача саме в тому, щоб пустити запит з іншої
+           машини.
+
+           Гейт розділу — через реєстр меню (`app/services/settings_nav.py`,
+           `roles=ADMIN_ONLY`): це безпекове налаштування, оператору тут
+           нема чого робити, і він цей розділ навіть не бачить. #}
+        <div class="wizard-step scon-sec stand-sec" data-sec="mcp">
+            <div class="num" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3 7.5-7 9-4-1.5-7-4-7-9V6z" class="duo"/><path d="M12 3l7 3v6c0 5-3 7.5-7 9-4-1.5-7-4-7-9V6z"/><circle cx="12" cy="11" r="1.6"/></svg>
+            </div>
+            <div class="box">
+                {{ slab('Доступ по мережі', 'Домашній ПК власника читає стан цеху через тунель WireGuard — без цього перемикача запит звідти нікуди не дійде.', slabs['mcp']) }}
+
+                <p class="settings-help">
+                    Перемикач відкриває ОКРЕМИЙ, крихітний порт (<span class="mono">{{ mcp_port }}</span>),
+                    у якому немає нічого, крім читання стану: ні сторінок, ні входу, ні статики, ні можливості
+                    щось змінити. Головна CRM тим часом лишається на <span class="mono">127.0.0.1</span> і
+                    жодного перезапуску не потребує. Доступ захищає токен нижче — вкрадений токен дає
+                    прочитати стан цеху, але не дає змінити в ньому нічого.
+                </p>
+
+                <p class="settings-help stand-note">
+                    ⚠ Брандмауер Windows має окремо пускати вхідні TCP на порт {{ mcp_port }}. Інтерфейс
+                    WireGuard Windows майже завжди класифікує як «Загальнодоступна» мережа — правило,
+                    написане лише для «Приватної», нічого не заблокує, але й НІЧОГО не дозволить, мовчки.
+                    Саме ця пастка вже коштувала місяць хибного діагнозу обривів верстатів (CLAUDE.md §14,
+                    «Верстати — обрив зв'язку»): мовчання порту й мертвий брандмайстер-профіль виглядають
+                    однаково ззовні.
+                </p>
+                <p class="settings-help stand-note">
+                    ⚠ Вимкнений перемикач закриває порт ПОВНІСТЮ — не «забороняє», а фізично перестає
+                    слухати мережу за кілька секунд. Увімкнути назад можна будь-коли.
+                </p>
+
+                {% if mcp_new_token %}
+                <div class="stand-cell w6" id="mcp-new-token">
+                    <h3>Новий токен — запишіть зараз</h3>
+                    <p class="settings-help">Показується РІВНО один раз. Перезавантажиш сторінку — і його вже
+                        ніде не побачити, лише перевипустити заново (старий одразу перестане працювати).</p>
+                    <div class="stand-drow">
+                        <div class="stand-dtext"><p><span class="mono stand-members-link">{{ mcp_new_token }}</span></p></div>
+                        <button type="button" class="settings-secondary-button" data-copy="{{ mcp_new_token }}" title="Скопіювати токен">Скопіювати</button>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="stand-cells">
+                <div class="stand-cell w6">
+                    <h3>Адреси цього ПК</h3>
+                    {% if mcp_addresses %}
+                    {% for addr in mcp_addresses %}
+                    <div class="stand-drow">
+                        <div class="stand-dtext"><p><span class="mono stand-members-link">http://{{ addr }}:{{ mcp_port }}/mcp</span></p></div>
+                        <button type="button" class="settings-secondary-button" data-copy="http://{{ addr }}:{{ mcp_port }}/mcp" title="Скопіювати адресу">Скопіювати</button>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <p class="stand-note">Не вдалось визначити жодної мережевої адреси цього ПК — перевірте підключення (тунель WireGuard мусить бути піднятий).</p>
+                    {% endif %}
+                    <p class="settings-help">
+                        {% set ms = mcp_status %}
+                        {% if not mcp_enabled %}
+                            <span class="stand-state stand-state-none">вимкнено — порт закрито</span>
+                        {% elif ms and ms.listening %}
+                            <span class="stand-state stand-state-ok">слухає{% if ms.since %} з {{ ms.since.strftime('%H:%M') }}{% endif %}</span>
+                        {% elif ms and ms.error %}
+                            <span class="stand-state stand-state-warn">{{ ms.error }}</span>
+                        {% else %}
+                            <span class="stand-state stand-state-none">вмикається…</span>
+                        {% endif %}
+                    </p>
+                </div>
+
+                <div class="stand-cell w3">
+                    <h3>Токен доступу
+                        <span class="connection-state {% if mcp_has_token %}connection-state-ready{% endif %}">{% if mcp_has_token %}задано{% else %}не задано{% endif %}</span>
+                    </h3>
+                    <div class="settings-field">
+                        <p class="settings-help">Перевипуск одразу вимикає старий токен — усі, кому він був переданий, втрачають доступ.</p>
+                        <form method="post" action="/settings/mcp/token">
+                            <button type="submit" class="settings-secondary-button">{% if mcp_has_token %}Перевипустити токен{% else %}Створити токен{% endif %}</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="stand-cell w3">
+                    <h3>Перемикач</h3>
+                    <div class="settings-field">
+                        <p class="settings-help">Увімкнення без токена створює його одразу.</p>
+                        <form method="post" action="/settings/mcp/toggle">
+                            <button type="submit" class="settings-secondary-button">{{ 'Вимкнути доступ' if mcp_enabled else 'Увімкнути доступ' }}</button>
+                        </form>
+                    </div>
+                </div>
+                </div>
+            </div>
+        </div>

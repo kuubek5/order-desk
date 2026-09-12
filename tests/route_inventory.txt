@@ -132,6 +132,7 @@ POST /mail/{email_id}/reject
 POST /mail/{email_id}/restore
 POST /mail/{email_id}/unfilter
 POST /mail/{email_id}/wizard
+POST /mcp
 POST /open-folder
 POST /orders/focus/clear
 POST /orders/new
@@ -188,6 +189,8 @@ POST /settings/materials/add
 POST /settings/materials/alias/add
 POST /settings/materials/alias/{alias_id}/delete
 POST /settings/materials/reclassify
+POST /settings/mcp/toggle
+POST /settings/mcp/token
 POST /settings/notifications
 POST /settings/recognition/default-material
 POST /settings/sections/{section}

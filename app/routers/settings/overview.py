@@ -390,6 +390,22 @@ def get_settings(
         ),
     }
 
+    # Доступ по мережі (`/mcp`, порт 8011) — окремий слухач, app/services/mcp_gateway.py.
+    # Лінивий імпорт, як і решта сусідніх сервісів (furnace_board у feedback.py):
+    # модуль не тягнемо на рівень пакета.
+    from app.services import mcp_gateway
+
+    context["mcp_enabled"] = mcp_gateway.gateway_enabled(db)
+    context["mcp_has_token"] = mcp_gateway.has_token(db)
+    context["mcp_addresses"] = mcp_gateway.gateway_addresses()
+    context["mcp_status"] = mcp_gateway.status_snapshot()
+    context["mcp_port"] = mcp_gateway.GATEWAY_PORT
+    # Токен показуємо РІВНО один раз — одразу після того, як його випустили.
+    # Флеш-сесія вже попʼята вище (`settings_flash`); якщо в ній лежить
+    # токен, він летить у контекст ЦЬОГО рендера й більше ніде не
+    # зберігається (CLAUDE.md §14 «Секрети»).
+    context["mcp_new_token"] = (settings_flash or {}).get("token")
+
     # Плити стану розділів (макет «Стенд»). Рахуються ПІСЛЯ контексту й з
     # нього ж: жодного власного джерела правди — інакше плита й тіло
     # розділу показували б різні числа (урок смуги печей).

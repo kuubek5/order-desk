@@ -570,6 +570,55 @@ def _slab_about(ctx: dict) -> Slab:
     return Slab(tone=TONE_NONE, label=f"v{version}", meters=meters)
 
 
+def _slab_mcp(ctx: dict) -> Slab:
+    """Доступ по мережі (`/mcp`, порт 8011): той самий прийом, що в табло
+    печей — тон бере СЛУХАЧА, не перемикач і не «токен заданий».
+
+    Вимкнено → сірий (порт фізично закритий, питання «чи працює» не стоїть).
+    Увімкнено й слухає → зелений (підтверджений сигнал, `status.error is
+    None`). Увімкнено, але є `status.error` → жовте «проблема», не червоне:
+    як на пічках, мовчання порту саме по собі не доводить катастрофу (див.
+    CLAUDE.md §14 «Верстати — обрив зв'язку»). Увімкнено й ще не встигло
+    підняти порт (щойно перемкнули, ні сигналу, ні помилки) → сірий
+    «вмикається», не зелений і не жовтий.
+
+    Токен — ЛИШЕ ознака «задано / не задано», тон завжди нейтральний: сам
+    факт існування токена нічого не каже про те, чи слухач працює, а зелений
+    тут читався б як «захищено», хоча захист — у слухачі, не в рядку БД.
+    """
+    on = bool(ctx.get("mcp_enabled"))
+    status = ctx.get("mcp_status")
+    listening = bool(getattr(status, "listening", False))
+    error = getattr(status, "error", None) if status else None
+
+    if not on:
+        tone, label = TONE_NONE, "вимкнено"
+    elif listening:
+        tone, label = TONE_OK, "слухає"
+    elif error:
+        tone, label = TONE_WARN, "проблема з портом"
+    else:
+        tone, label = TONE_NONE, "вмикається…"
+
+    meters = [
+        Meter(k="Перемикач", v="увімкнено" if on else "вимкнено", s=f"порт {ctx.get('mcp_port', '—')}", tone=tone),
+        Meter(
+            k="Слухач",
+            v="працює" if listening else ("помилка" if error else "не відповідає"),
+            s=(error or "")[:60] if error else "",
+            tone=TONE_OK if listening else (TONE_WARN if (on and error) else TONE_NONE),
+        ),
+        # Тон навмисно НЕ TONE_OK навіть коли токен задано (правило файлу).
+        Meter(
+            k="Токен",
+            v="задано" if ctx.get("mcp_has_token") else "не задано",
+            s="читання стану цеху з іншого ПК",
+            tone=TONE_NONE,
+        ),
+    ]
+    return Slab(tone=tone, label=label, meters=meters)
+
+
 def _slab_handout(ctx: dict) -> Slab:
     """Видача: правила процесу. Увімкнений чеклист — факт, а не «зелено»:
     плита не має підтвердженого сигналу, тож тон завжди нейтральний."""
@@ -606,6 +655,7 @@ _SLAB_BUILDERS = {
     "machines": _slab_machines,
     "handout": lambda db, ctx: _slab_handout(ctx),
     "update": lambda db, ctx: _slab_about(ctx),
+    "mcp": lambda db, ctx: _slab_mcp(ctx),
 }
 
 

@@ -13,6 +13,7 @@ Lifespan НЕ запускається навмисно: інакше підня
 from __future__ import annotations
 
 import asyncio
+import json
 from urllib.parse import quote, unquote, urlencode, urlsplit
 
 
@@ -27,13 +28,26 @@ class MiniClient:
     def post(self, path: str, data: dict | None = None, headers: dict | None = None):
         return self._run("POST", path, data or {}, headers)
 
+    def post_json(self, path: str, payload, headers: dict | None = None):
+        """POST із тілом JSON — для `/mcp`, який говорить JSON-RPC, а не формами."""
+        return asyncio.run(
+            self._call("POST", path, None, headers, json_body=json.dumps(payload).encode())
+        )
+
     def login(self, username: str, password: str):
         return self.post("/login", {"username": username, "password": password})
 
     def _run(self, method: str, path: str, data: dict | None, extra: dict | None = None):
         return asyncio.run(self._call(method, path, data, extra))
 
-    async def _call(self, method: str, path: str, data: dict | None, extra: dict | None = None):
+    async def _call(
+        self,
+        method: str,
+        path: str,
+        data: dict | None,
+        extra: dict | None = None,
+        json_body: bytes | None = None,
+    ):
         split = urlsplit(path)
         body = b""
         # client=127.0.0.1: частина роутів свідомо працює лише «за цим ПК»
@@ -44,7 +58,11 @@ class MiniClient:
         if self.cookies:
             jar = "; ".join(f"{k}={v}" for k, v in self.cookies.items())
             headers.append((b"cookie", jar.encode()))
-        if data is not None:
+        if json_body is not None:
+            body = json_body
+            headers.append((b"content-type", b"application/json"))
+            headers.append((b"content-length", str(len(body)).encode()))
+        elif data is not None:
             body = urlencode(data).encode()
             headers.append((b"content-type", b"application/x-www-form-urlencoded"))
             headers.append((b"content-length", str(len(body)).encode()))

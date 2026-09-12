@@ -89,6 +89,7 @@ from app.routers.furnace import router as furnace_router
 from app.routers.machines import router as machines_router
 from app.routers.feedback import router as feedback_router
 from app.routers.diag import router as diag_router
+from app.routers.mcp import router as mcp_router
 from app.routers.sync_journal import router as sync_journal_router
 from app.routers.order_trace import router as order_trace_router
 from app.routers.whats_wrong import router as whats_wrong_router
@@ -543,6 +544,20 @@ def _furnace_board_worker(stop_event: Event) -> None:
     board_worker(stop_event, create_board_app)
 
 
+# ── Доступ до /mcp по мережі ────────────────────────────────────────────────
+# Ще один окремий слухач (порт 8011), у якому є лише `POST /mcp` і нічого
+# більше (app/services/mcp_gateway.py). Потрібен, щоб запит прийшов з ІНШОЇ
+# машини через тунель, а головна CRM лишилась на 127.0.0.1: межа там токен, а
+# не loopback. Вимкнено або токен не заданий — порт не слухається взагалі.
+
+
+def _mcp_gateway_worker(stop_event: Event) -> None:
+    from app.routers.mcp import create_mcp_app
+    from app.services.mcp_gateway import gateway_worker
+
+    gateway_worker(stop_event, create_mcp_app)
+
+
 # ── Печі спікання ───────────────────────────────────────────────────────────
 # Кадр табло раз на кілька секунд. Це ЧИТАННЯ і тільки читання: у застосунку
 # немає коду, який шле печі байт вводу (див. app/furnace_vnc.py). Керування
@@ -905,6 +920,7 @@ async def lifespan(_: FastAPI):
         _BackgroundWorker("kuubmill-telegram-out", _telegram_outbound_worker),
         _BackgroundWorker("kuubmill-telegram-in", _telegram_inbound_worker),
         _BackgroundWorker("kuubmill-furnace-board", _furnace_board_worker),
+        _BackgroundWorker("kuubmill-mcp-gateway", _mcp_gateway_worker),
         _BackgroundWorker("kuubmill-system-load", _system_load_worker),
         _BackgroundWorker("kuubmill-cam-blanks", _blanks_worker),
         _BackgroundWorker("kuubmill-vyrobitok-freeze", _vyrobitok_freeze_worker),
@@ -1293,5 +1309,9 @@ app.include_router(whats_wrong_router)
 # вкладок (app/sheet_backup.py), тому відповідає навіть тоді, коли
 # роботи в базі немає, і не витрачає квоту Google.
 app.include_router(order_trace_router)
+# MCP по HTTP (`POST /mcp`) — структурований зріз стану для Claude Code на
+# ЦІЙ машині. Лише читання, лише loopback; сесії оператора немає свідомо
+# (див. app/routers/mcp.py).
+app.include_router(mcp_router)
 # Палітра команд (Ctrl+K): перелік екранів під роль + швидкий пошук робіт.
 app.include_router(palette_router)

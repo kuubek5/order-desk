@@ -208,6 +208,7 @@ def test_non_admin_sees_only_open_sections(user):
     assert "operators" not in visible, "розділ «Оператори» лишається адмінським"
     assert "sections" not in visible, "«Блокування розділів» лишається адмінським"
     assert "license" not in visible and "backup" not in visible
+    assert "mcp" not in visible, "«Доступ по мережі» — безпекове, лишається адмінським"
     # Рішення власника 06.09.26: цех бачить і редагує свої джерела й обладнання.
     assert {"sheets", "imap", "paths", "furnaces", "machines"} <= visible
 
@@ -291,6 +292,7 @@ NAV_SNAPSHOT = {
     "feedback": ("service", "адмін", "адмін"),
     "perf": ("service", "адмін", "адмін"),
     "license": ("service", "адмін", "адмін"),
+    "mcp": ("service", "адмін", "адмін"),
 }
 
 

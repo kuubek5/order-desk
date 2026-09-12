@@ -11,7 +11,7 @@ import time
 import urllib.request
 import webbrowser
 
-from app.runtime import data_dir, resource_path
+from app.runtime import LOG_FORMAT, data_dir, resource_path
 
 APP_URL = "http://127.0.0.1:8000"
 MUTEX_NAME = "Local\\KuubMillStandalone"
@@ -112,7 +112,7 @@ def _configure_logging() -> None:
         backupCount=5,
         encoding="utf-8",
     )
-    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.handlers.clear()
