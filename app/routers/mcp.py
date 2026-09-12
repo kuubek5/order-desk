@@ -143,7 +143,11 @@ def handle_rpc(payload: Any, db: Session) -> Response:
 
     method = str(payload.get("method") or "")
     request_id = payload.get("id")
-    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    raw_params = payload.get("params")
+    # Тип фіксується ТУТ, а не перевіряється на кожному використанні: `params`
+    # читають чотири гілки нижче, і «перевірив, потім узяв удруге» — це два
+    # різні читання того самого поля.
+    params: dict[Any, Any] = raw_params if isinstance(raw_params, dict) else {}
 
     # Нотифікації (`notifications/initialized` і подібні) відповіді не мають.
     if method.startswith("notifications/"):
@@ -179,7 +183,8 @@ def handle_rpc(payload: Any, db: Session) -> Response:
                 _ERR_INVALID_PARAMS,
                 f"інструмента «{name}» немає. Доступні: {', '.join(sorted(TOOLS_BY_NAME))}",
             )
-        args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+        raw_args = params.get("arguments")
+        args: dict[Any, Any] = raw_args if isinstance(raw_args, dict) else {}
         try:
             return _tool_result(request_id, tool.run(db, args))
         except ToolError as exc:

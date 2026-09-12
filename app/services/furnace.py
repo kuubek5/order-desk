@@ -357,6 +357,16 @@ def _should_store(state: FurnaceState, reading: PanelReading, now: datetime) -> 
     return previous.temp_c != reading.temp_c
 
 
+def _raw_of(reading: PanelReading, zone: str) -> Optional[str]:
+    """Сирий рядок зони або None. Одне читання поля, не два.
+
+    Було `reading.fields.get(x).raw if reading.fields.get(x) else None` — два
+    окремі пошуки в словнику, між якими перевірка нічого не гарантує.
+    """
+    read = reading.fields.get(zone)
+    return read.raw if read is not None else None
+
+
 def _store(db: Session, target: FurnaceTarget, reading: PanelReading, now: datetime) -> None:
     db.add(
         FurnaceReading(
@@ -372,10 +382,8 @@ def _store(db: Session, target: FurnaceTarget, reading: PanelReading, now: datet
             # часом доби — тобто стовпчик історії був беззмістовний.
             elapsed_seconds=reading.step_seconds,
             command=reading.command,
-            raw_temp=(reading.fields.get("temp").raw if reading.fields.get("temp") else None),
-            raw_remaining=(
-                reading.fields.get("remaining").raw if reading.fields.get("remaining") else None
-            ),
+            raw_temp=_raw_of(reading, "temp"),
+            raw_remaining=_raw_of(reading, "remaining"),
         )
     )
     db.commit()

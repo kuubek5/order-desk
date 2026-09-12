@@ -123,20 +123,23 @@ def devices(db: Session, args: Optional[dict] = None) -> dict[str, Any]:
     states = machines.states_snapshot()
     mills = []
     for target in machines.configured_targets(db):
-        state = states.get(target.key)
+        # Своє імʼя, а не повторне використання `state` з циклу печей: стани
+        # верстата й печі — різні типи з різними полями, і спільна змінна
+        # ховала б помилку до першого звернення до поля, якого немає.
+        mill = states.get(target.key)
         mills.append(
             {
                 "ключ": target.key,
                 "назва": target.name,
                 "адреса": f"{target.host}:{target.port}",
                 "спосіб": "агент" if target.is_agent else "VNC",
-                "відсоток": state.percent if state else None,
-                "завершено": bool(state and state.completed),
-                "перевірка_програми": bool(state and state.validating),
-                "sum3d_id": state.sum3d_id if state else None,
-                "програма": state.iso_name if state else None,
-                "помилка": state.error if state else None,
-                "невдач_поспіль": state.fail_streak if state else None,
+                "відсоток": mill.percent if mill else None,
+                "завершено": bool(mill and mill.completed),
+                "перевірка_програми": bool(mill and mill.validating),
+                "sum3d_id": mill.sum3d_id if mill else None,
+                "програма": mill.iso_name if mill else None,
+                "помилка": mill.error if mill else None,
+                "невдач_поспіль": mill.fail_streak if mill else None,
                 "кадр": _file_facts(machines.frame_path(target.key)),
             }
         )
@@ -153,7 +156,7 @@ def devices(db: Session, args: Optional[dict] = None) -> dict[str, Any]:
     }
 
 
-def _resolve(db: Session, key: str) -> tuple[Optional[str], Optional[Any], Optional[Path]]:
+def _resolve(db: Session, key: str) -> tuple[Optional[str], Any, Optional[Path]]:
     """Ключ → (вид пристрою, ціль, шлях до кадру). Невідомий ключ — усе None."""
     target = _furnace_targets(db).get(key)
     if target is not None:
@@ -215,7 +218,7 @@ def frame(db: Session, args: dict) -> dict[str, Any]:
     if kind is None:
         return _unknown_key(db, key)
     facts = _file_facts(path)
-    if not facts["є"]:
+    if path is None or not facts["є"]:
         return _no_frame(key, kind, target)
 
     note: list[str] = []
@@ -299,7 +302,7 @@ def zones(db: Session, args: dict) -> dict[str, Any]:
     if kind is None:
         return _unknown_key(db, key)
     facts = _file_facts(path)
-    if not facts["є"]:
+    if path is None or not facts["є"]:
         return _no_frame(key, kind, target)
 
     with Image.open(path) as opened:

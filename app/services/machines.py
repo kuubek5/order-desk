@@ -358,7 +358,7 @@ _calib_lock = threading.Lock()
 
 def _frame_signature(frame: "Image.Image") -> tuple[int, ...]:
     """Мініатюра кадру як плаский підпис яскравості."""
-    small = frame.convert("L").resize(CALIBRATION_SIGNATURE_SIZE, Image.BILINEAR)
+    small = frame.convert("L").resize(CALIBRATION_SIGNATURE_SIZE, Image.Resampling.BILINEAR)
     return tuple(small.tobytes())
 
 

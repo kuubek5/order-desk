@@ -114,7 +114,7 @@ def folder(kind: str, key: str) -> Path:
 
 def signature(frame) -> tuple[int, ...]:
     """Мініатюра кадру як плаский підпис яскравості."""
-    small = frame.convert("L").resize(FINGERPRINT_SIZE, Image.BILINEAR)
+    small = frame.convert("L").resize(FINGERPRINT_SIZE, Image.Resampling.BILINEAR)
     return tuple(small.tobytes())
 
 
@@ -288,7 +288,7 @@ def note(
             if nearest is None or gap < nearest:
                 nearest_id, nearest = row_id, gap
 
-        if nearest is not None and nearest <= NOVELTY_THRESHOLD:
+        if nearest_id is not None and nearest is not None and nearest <= NOVELTY_THRESHOLD:
             # Такий екран уже є. Лічильник чіпаємо не частіше раза на хвилину:
             # кадр знімається раз на 6 с, і без цього кожен пристрій давав би
             # UPDATE десять разів на хвилину до кінця дня.
@@ -315,9 +315,9 @@ def note(
         _evict_if_full(db, kind, key)
         where = folder(kind, key)
         frame_file = f"{mark}.png"
-        zone_file = f"{mark}-zone.png" if zone_crop is not None else None
+        zone_file: Optional[str] = f"{mark}-zone.png" if zone_crop is not None else None
         _write(where / frame_file, _shrunk(frame))
-        if zone_crop is not None:
+        if zone_crop is not None and zone_file is not None:
             # Виріз — у РІДНОМУ масштабі: на ньому вчать еталон, а зменшена
             # копія растрового шрифту перетворює навчання на вгадування.
             _write(where / zone_file, zone_crop.convert("RGB"))
