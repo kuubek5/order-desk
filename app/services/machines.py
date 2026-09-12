@@ -254,6 +254,16 @@ _states: dict[str, MachineState] = {}
 _states_lock = threading.Lock()
 
 
+def states_snapshot() -> dict[str, MachineState]:
+    """Копія станів верстатів під локом — для читачів поза модулем.
+
+    Стан пише фоновий воркер, а читають HTTP-потік і MCP; без копії під локом
+    читач ходив би по словнику, який у цю мить міняють.
+    """
+    with _states_lock:
+        return dict(_states)
+
+
 def list_machines(db: Session, *, only_enabled: bool = False) -> list[Machine]:
     """Верстати з таблиці, у порядку оператора (як пічки)."""
     query = select(Machine).order_by(Machine.sort_order, Machine.id)

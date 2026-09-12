@@ -85,13 +85,28 @@ def _tool_text(payload: dict) -> str:
     return text
 
 
+# Ключ, під яким інструмент віддає КАРТИНКУ. Вона не може їхати як звичайне
+# поле відповіді: base64 кадру важить сотні кілобайтів, а `structuredContent`
+# ще й дублюється текстом — той самий кадр поїхав би тричі. Тому картинка
+# виймається з корисного навантаження й стає окремим блоком `image`, як велить
+# специфікація, а в тексті лишається все інше — вік кадру, шлях, розмір.
+_IMAGE_KEY = "_image"
+
+
 def _tool_result(request_id: Any, payload: dict) -> JSONResponse:
+    image = payload.pop(_IMAGE_KEY, None) if isinstance(payload, dict) else None
+    content: list[dict] = [{"type": "text", "text": _tool_text(payload)}]
+    if isinstance(image, dict) and image.get("data"):
+        content.append(
+            {
+                "type": "image",
+                "data": image["data"],
+                "mimeType": image.get("mimeType", "image/png"),
+            }
+        )
     return _result(
         request_id,
-        {
-            "content": [{"type": "text", "text": _tool_text(payload)}],
-            "structuredContent": payload,
-        },
+        {"content": content, "structuredContent": payload},
     )
 
 

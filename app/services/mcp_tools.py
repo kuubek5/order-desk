@@ -47,6 +47,7 @@ from app.business_day import (
 )
 from app.config import DATA_DIR, DB_PATH
 from app.models import ActionLog, Comment, Order, StatusEvent, SyncLog
+from app.services import device_diag
 from app.services.order_dates import parse_sheet_tab
 
 logger = logging.getLogger(__name__)
@@ -697,6 +698,65 @@ TOOLS: tuple[Tool, ...] = (
             "additionalProperties": False,
         },
         run=tool_log,
+    ),
+    Tool(
+        name="kmill_devices",
+        description=(
+            "Печі й верстати: статус, що прочиталось з екрана, помилка звʼязку, "
+            "а головне — ВІК найсвіжішого кадру й де він лежить. Плюс кадри "
+            "«екран JOBS видно, а назву не прочитано». Звідси починається розбір "
+            "будь-якого «піч не показує температуру» чи «верстат не бачить роботу»."
+        ),
+        schema={"type": "object", "properties": {}, "additionalProperties": False},
+        run=device_diag.devices,
+    ),
+    Tool(
+        name="kmill_frame",
+        description=(
+            "Сам кадр пристрою картинкою — весь або виріз названої зони печі "
+            "(temp, status, step, command, clock, remaining, button). Кадр лише "
+            "найсвіжіший: історії не існує, на пристрій зберігається один файл. "
+            "Потрібен, коли треба ПОБАЧИТИ, що написано на табло, а не повірити "
+            "на слово."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Ключ пристрою зі списку kmill_devices (зазвичай адреса).",
+                },
+                "zone": {
+                    "type": "string",
+                    "description": "Назва зони печі для вирізу. Пусто — весь кадр.",
+                },
+            },
+            "required": ["key"],
+            "additionalProperties": False,
+        },
+        run=device_diag.frame,
+    ),
+    Tool(
+        name="kmill_zones",
+        description=(
+            "Розбір найсвіжішого кадру: що читається в кожній зоні, сирий рядок "
+            "із «?» замість невпізнаних символів, і ЧОМУ поле лишилось порожнім — "
+            "обрізано зоною, немає еталона чи не той шаблон. Для верстатів — "
+            "чому не прочитано назву програми з екрана JOBS. Еталони через MCP "
+            "не додаються: навчання лишається скриптом із тестом."
+        ),
+        schema={
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Ключ пристрою зі списку kmill_devices.",
+                }
+            },
+            "required": ["key"],
+            "additionalProperties": False,
+        },
+        run=device_diag.zones,
     ),
 )
 
