@@ -25,11 +25,9 @@ body{background:#0c0906;color:var(--ink);font:15px/1.45 var(--font-body)}
 .bh-brand{display:flex;align-items:center;gap:10px;color:var(--accent-c)}
 .bh-brand svg{width:26px;height:26px}
 .bh-title{margin:0;font-family:var(--font-head);font-weight:800;letter-spacing:-.01em;font-size:clamp(22px,3vw,34px);color:var(--ink)}
-.bh-sub{margin:2px 0 0;color:var(--ink-2);font-size:var(--fs-2)}
 .bh-sp{flex:1}
 .bh-clock{text-align:right}
 .bh-clock b{display:block;font:700 clamp(28px,4vw,46px)/1 var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink);letter-spacing:-.02em}
-.bh-clock span{color:var(--ink-2);font-size:var(--fs-1)}
 
 /* Найближча — головна відповідь на «коли?» одним рядком над картками. */
 .next{display:flex;align-items:center;gap:12px 18px;flex-wrap:wrap;padding:14px 18px;border-radius:14px;
@@ -84,10 +82,6 @@ body{background:#0c0906;color:var(--ink);font:15px/1.45 var(--font-body)}
 @keyframes fly{0%{transform:translateY(0);opacity:0}12%{opacity:.9}100%{transform:translate(12px,-90px);opacity:0}}
 @media (prefers-reduced-motion:reduce){.sparks{display:none}.pill.run::before{animation:none}}
 
-.foot{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:space-between;color:var(--ink-3);font-size:var(--fs-1)}
-.foot b{color:var(--ink-2);font-family:var(--font-mono);font-weight:500}
-
-
 @media (max-width:560px){
   .bh-clock{text-align:left;width:100%}
   .fc{min-height:210px}
@@ -104,26 +98,22 @@ body{background:#0c0906;color:var(--ink);font:15px/1.45 var(--font-body)}
 </head>
 <body>
 <main class="board">
+    {# На екрані лишаються тільки назва табло, час і самі печі: підзаголовок,
+       дата й підписи внизу нічого логістові не додавали (рішення власника
+       13.09.26). Плашка про обрив звʼязку — не оформлення, а попередження,
+       що числа застаріли, тому лишається. #}
     <header class="bh">
-        <div>
-            <div class="bh-brand">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
-                <h1 class="bh-title">Пічки</h1>
-            </div>
-            <p class="bh-sub">KuubMill · фрезерний центр · оновлюється саме</p>
+        <div class="bh-brand">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8"/></svg>
+            <h1 class="bh-title">Пічки</h1>
         </div>
         <span class="bh-sp"></span>
-        <div class="bh-clock"><b id="fb-clock">{{ view.now.strftime('%H:%M') }}</b><span>{{ view.date_label }} · Київ</span></div>
+        <div class="bh-clock"><b id="fb-clock">{{ view.now.strftime('%H:%M') }}</b></div>
     </header>
 
     <p class="lost" id="fb-lost" role="alert" hidden>Немає звʼязку з KuubMill — числа нижче можуть бути застарілими.</p>
 
     {% include "_furnace_board_cards.html" %}
-
-    <footer class="foot">
-        <span>Час київський{% if view.as_of %} · дані з табло станом на <b id="fb-asof">{{ view.as_of }}</b>{% endif %}</span>
-        <span>Лише перегляд · KuubMill на ПК цеху</span>
-    </footer>
 </main>
 <script>
 /* Годинник і «ще …» ідуть за часом СЕРВЕРА (київським), а не цього ПК: у
@@ -143,9 +133,6 @@ body{background:#0c0906;color:var(--ink);font:15px/1.45 var(--font-body)}
     const live = document.getElementById("fb-live");
     const serverNow = live && Number(live.dataset.serverNow);
     if (serverNow) offset = serverNow - Date.now();
-    const asOf = live && live.dataset.asOf;
-    const asOfEl = document.getElementById("fb-asof");
-    if (asOfEl && asOf) asOfEl.textContent = asOf;
   }
   function tick() {
     const now = Date.now() + offset;
