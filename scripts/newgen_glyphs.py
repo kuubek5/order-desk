@@ -31,8 +31,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.machine_newgen_job import (  # noqa: E402
     NEWGEN_GLYPHS_PATH,
     _name_glyphs,
+    glyphs_from_name_row,
     read_newgen_program_explained,
 )
+
+
+def _glyphs(frame: Path):
+    """Символи з кадру АБО з уже вирізаного рядка назви.
+
+    Виріз (`kmill_frame puzzle=N part="zone"`) — це те, що реально доїжджає з
+    цеху: сам кадр скринька й MCP віддають зменшеним до 640, а на 640 рядок
+    назви не сегментується взагалі. Тому вчити майже завжди доводиться саме з
+    вирізу, і скрипт мусить його приймати без окремої команди."""
+    image = Image.open(frame)
+    return _name_glyphs(image) or glyphs_from_name_row(image)
 
 GLYPHS_FILE = Path(__file__).resolve().parent.parent / NEWGEN_GLYPHS_PATH
 
@@ -42,9 +54,9 @@ def _rows(bits) -> list[str]:
 
 
 def learn(frame: Path, name: str) -> int:
-    glyphs = _name_glyphs(Image.open(frame))
+    glyphs = _glyphs(frame)
     if not glyphs:
-        print("На кадрі не знайдено рядка ▶ з назвою програми.")
+        print("Ні рядка ▶ з назвою програми, ні вирізу рядка на цьому файлі не знайдено.")
         return 1
     truth = name.replace("_", "").replace(" ", "")
     if len(glyphs) != len(truth):
