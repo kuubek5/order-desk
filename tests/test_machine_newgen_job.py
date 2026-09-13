@@ -246,3 +246,55 @@ def test_silent_agent_and_unreadable_screen_keep_the_last_binding(db):
     state = ms.poll_target(db, _agent(), None, frame=Image.open(FIX / "newgen_summary_done.png"),
                            titles=[])
     assert state.sum3d_id is None
+
+
+def test_name_row_crop_is_what_makes_learning_over_the_wire_possible():
+    """Виріз рядка назви — у РІДНОМУ масштабі, і саме він рятує донавчання.
+
+    Скринька невідомих екранів стискає кадр до 640 по довшій стороні, і MCP
+    віддає таку саму копію. Тобто єдине, що доїжджає з цеху, — 640. А на 640
+    рядок назви не сегментується ВЗАГАЛІ: жодного гліфа, тобто вчити шрифт із
+    того, що ми можемо дістати, було неможливо — рівно та петля, заради якої
+    скриньку й заводили.
+
+    Виріз важить копійки, лишається в рідному масштабі й береться ТІЄЮ САМОЮ
+    геометрією, що й читання, — інакше вчили б одне, а звіряли інше.
+    """
+    full = Image.open(FRAME_250I).convert("RGB")
+
+    # На повному кадрі рядок читається, і виріз його накриває.
+    assert ng._name_glyphs(full)
+    crop = ng.name_row_crop(full)
+    assert crop is not None
+    box = ng._name_box(full)
+    assert crop.size == (box[2] - box[0], box[3] - box[1])
+    # Рідний масштаб: висота смужки — десятки пікселів, а не одиниці.
+    assert crop.size[1] >= 50
+
+    # А ось те, чому виріз узагалі потрібен.
+    shrunk = full.resize((640, 400))
+    assert ng._name_glyphs(shrunk) is None
+
+
+def test_unreadable_screen_puts_the_native_crop_into_the_inbox(db, monkeypatch):
+    """Кадр, на якому цифра не впізналась, лишає у скриньці ОБИДВА: зменшений
+    кадр (щоб людина побачила екран) і виріз рядка в рідному масштабі (щоб було
+    з чого вчити шрифт)."""
+    from app.services import screen_inbox
+
+    seen = {}
+
+    def fake_note(db, **kw):
+        seen.update(kw)
+        return 1
+
+    monkeypatch.setattr(screen_inbox, "note", fake_note)
+    # Ламаємо розпізнавання одного символу, лишаючи екран самим собою.
+    monkeypatch.setattr(ng, "MIN_MARGIN", 10_000.0)
+
+    ms._program_from_screen(db, _agent(), Image.open(FRAME_250I).convert("RGB"))
+
+    assert seen.get("reason") == "newgen_unread"
+    crop = seen.get("zone_crop")
+    assert crop is not None, "виріз рядка назви мусить їхати у скриньку"
+    assert crop.size[1] >= 50, "виріз мусить бути в рідному масштабі"

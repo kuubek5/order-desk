@@ -40,7 +40,10 @@ from app.furnace_vnc import DEFAULT_PORT, FurnaceVncError, capture
 from app.machine_portraits import portrait_version
 from app.machine_sisma import read_sisma, screen_is_sisma
 from app.services import screen_inbox
-from app.machine_newgen_job import read_newgen_program_explained
+from app.machine_newgen_job import (
+    name_row_crop as read_newgen_name_row,
+    read_newgen_program_explained,
+)
 from app.services.order_dates import order_date
 from app.machine_ocr import (
     MillingProgram,
@@ -1384,6 +1387,20 @@ def _program_from_screen(
             # раза на годину й тоне серед решти рядків; скринька тримає ОДИН
             # запис на екран із лічильником, і саме з неї беруться кадри для
             # донавчання шрифту.
+            #
+            # Разом із кадром кладемо ВИРІЗ рядка назви — у рідному масштабі.
+            # Сам кадр скринька стискає до 640 по довшій стороні, а на 640 рядок
+            # назви не сегментується взагалі (0 гліфів, виміряно 13.09.26), тобто
+            # донавчити шрифт із того, що доїжджає по мережі, було НЕМОЖЛИВО —
+            # рівно та петля, заради якої скриньку й заводили. Виріз важить
+            # копійки й лишається читабельним. Та сама причина, що у вирізів зон
+            # печей: зменшена копія растрового шрифту перетворює навчання на
+            # вгадування.
+            try:
+                crop = read_newgen_name_row(frame)
+            except Exception:  # noqa: BLE001 — виріз це зручність, не робота
+                logger.exception("Виріз рядка назви верстата %s не зроблено", target.host)
+                crop = None
             screen_inbox.note(
                 db,
                 kind=screen_inbox.KIND_MACHINE,
@@ -1392,6 +1409,7 @@ def _program_from_screen(
                 frame=frame,
                 reason="newgen_unread",
                 detail=why,
+                zone_crop=crop,
             )
         return None
     log_throttle.clear(f"machines.newgen_unread:{target.key}")
