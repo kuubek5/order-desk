@@ -717,6 +717,41 @@ def test_validating_is_a_state_of_the_fresh_frame_only():
     assert service.MachineCard(target=target, state=broken, now=now).is_validating is False
 
 
+def test_known_idle_screen_says_stands_not_unreadable():
+    """Відомий екран простою (SELECT JOBS, WINDOWS UPDATES) = «стоїть» напевно.
+
+    Рішення власника 13.09.26. Без цього сигналу верстат нового покоління, за
+    яким ми ще не бачили відсотка (`reads_percent=False`), на порожньому виборі
+    файлу показував би «не читається» — хоч ми чудово бачимо, що він просто
+    стоїть. Читається лише зі СВІЖОГО кадру, як і решта станів.
+    """
+    from types import SimpleNamespace
+
+    now = datetime(2026, 9, 13, 12, 0)
+    target = SimpleNamespace(key="k", name="250i", host="h", port=8765,
+                             portrait_model="", machine_id=1)
+
+    idle = service.MachineState(target=target, frame_at=now, idle_known=True)
+    # reads_percent=False (жодного відсотка в історії) — і все одно «стоїть».
+    card = service.MachineCard(target=target, state=idle, now=now, reads_percent=False)
+    assert card.is_idle_known is True
+    assert card.state_key == "idle"
+
+    # Той самий верстат БЕЗ відомого екрана простою — «не читається».
+    blank = service.MachineState(target=target, frame_at=now)
+    unread = service.MachineCard(target=target, state=blank, now=now, reads_percent=False)
+    assert unread.state_key == "unreadable"
+
+    # Протухлий кадр «стоїть» не дає — як і решта станів.
+    stale = service.MachineState(
+        target=target,
+        frame_at=now - timedelta(seconds=service.STALE_AFTER_SECONDS + 1),
+        idle_known=True,
+    )
+    assert service.MachineCard(target=target, state=stale, now=now,
+                               reads_percent=False).is_idle_known is False
+
+
 def test_done_beats_percent_in_the_strip():
     """У чіпі стрічки «готово» мусить бути СТАРШИМ за число: верстат, що стоїть
     на сотні, оператору треба знімати, а не читати «100%»."""

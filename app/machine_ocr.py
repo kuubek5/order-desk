@@ -1007,10 +1007,29 @@ def find_newgen_progress(image: Image.Image, masks: "_FrameMasks | None" = None)
 # менша (стан, а не число), а згладжування шрифту між машинами може дати
 # кілька різних пікселів. 3% від 735 чорнильних пікселів — це ~22 пікселі,
 # тобто менше за одну літеру: випадкове слово так не збігається.
-SUMMARY_BAND = (0.05, 0.11)
-SUMMARY_HALF_WIDTH = 200
-SUMMARY_INK = 150
-SUMMARY_MAX_MISMATCH = 0.03
+# Смуга, де стоїть відцентрований заголовок екрана (частками висоти кадру), і
+# півширина кропу ЧАСТКОЮ ширини (а не в абсолютних пікселях). Абсолютний кроп
+# був прив'язаний до 1920×1200: на кадрі іншого розміру (скринька невідомих і
+# MCP віддають зменшену копію 640×400) той самий заголовок займав іншу частку, а
+# довгий («WINDOWS UPDATES AVAILABLE») ще й обрізався — і еталон, знятий із 640,
+# ніколи не збігався з живим 1920. Частка ловить той самий вміст на будь-якому
+# масштабі (перевірено 13.09.26: SUMMARY на 640 і 1920, 150i і 250i).
+TITLE_BAND = (0.05, 0.11)
+TITLE_HALF_FRAC = 0.32
+TITLE_INK = 150
+# Спільна сітка, до якої зводиться заголовок перед порівнянням (висота, ширина).
+TITLE_NORM = (24, 220)
+# Заголовок збігається з еталоном, коли ВОДНОЧАС: пропорції (ширина/висота)
+# близькі й нормалізовані бітмапи схожі. Обидва бар'єри потрібні — самі
+# пропорції пускають чужий блок близької форми (RemiCORE-заставка мала ту саму
+# пропорцію, що SUMMARY), а сама відстань не відсіює довгий заголовок. Пороги з
+# виміру 13.09.26 на 20 бойових кадрах + 4 зразках: свої збіги ≤0.20, найближчий
+# чужий ≥0.34 (RemiCORE-заставка 0.60). Поріг посередині з запасом на обидва боки.
+TITLE_ASPECT_TOL = 1.15
+TITLE_DIST_MAX = 0.30
+
+# Історична назва порогу чорнила — на неї спирається `scripts/machine_screens.py`.
+SUMMARY_INK = TITLE_INK
 
 
 @_cache_only_success
@@ -1029,76 +1048,124 @@ def load_screen_templates() -> dict:
 
 
 def _title_mask(image: Image.Image) -> Optional[tuple[int, int, list[int]]]:
-    """Маска відцентрованого заголовка: (ширина, висота, біти рядками)."""
+    """Маска відцентрованого заголовка: (ширина, висота, біти рядками).
+
+    Той самий рушій знімає й еталон (`scripts/machine_screens.py learn`), і кадр
+    для звірки — розійтись їм нема як. Кроп ЧАСТКОВИЙ (див. TITLE_HALF_FRAC), тож
+    заголовок ловиться однаково на будь-якому масштабі кадру."""
     width, height = image.size
     if width < 400 or height < 200:
         return None
     import numpy as np
 
     cx = width // 2
-    y0, y1 = int(height * SUMMARY_BAND[0]), int(height * SUMMARY_BAND[1])
-    x0, x1 = max(0, cx - SUMMARY_HALF_WIDTH), min(width, cx + SUMMARY_HALF_WIDTH)
-    # Ріжемо ДО перетворення, а не після. Заголовок займає ~400×70 px, а кадр —
-    # 1920×1200: переганяти в масив увесь кадр заради смуги в 1 % його площі
-    # коштувало 16 мс, і платилось це двічі за опитування (SUMMARY + перевірка).
+    y0, y1 = int(height * TITLE_BAND[0]), int(height * TITLE_BAND[1])
+    x0, x1 = max(0, int(cx - width * TITLE_HALF_FRAC)), min(width, int(cx + width * TITLE_HALF_FRAC))
+    # Ріжемо ДО перетворення, а не після: переганяти цілий кадр у масив заради
+    # смуги в кілька % його площі — зайва робота на кожному тіку кожного верстата.
     r, g, b = _rgb_planes(image.crop((x0, y0, x1, y1)))
-    # Чорнило заголовка — світлий піксель у всіх трьох каналах (той самий
-    # предикат `min(p) >= SUMMARY_INK`, лише на всю смугу одразу).
-    ink = np.minimum(np.minimum(r, g), b) >= SUMMARY_INK
+    # Чорнило заголовка — світлий піксель у всіх трьох каналах.
+    ink = np.minimum(np.minimum(r, g), b) >= TITLE_INK
     if not ink.any():
         return None
     rows = np.flatnonzero(ink.any(axis=1))
     cols = np.flatnonzero(ink.any(axis=0))
-    by0, by1 = y0 + int(rows[0]), y0 + int(rows[-1])
-    bx0, bx1 = x0 + int(cols[0]), x0 + int(cols[-1])
     box = ink[rows[0]:rows[-1] + 1, cols[0]:cols[-1] + 1]
     bits = box.astype(np.uint8).ravel().tolist()
-    return bx1 - bx0 + 1, by1 - by0 + 1, bits
+    return int(cols[-1] - cols[0] + 1), int(rows[-1] - rows[0] + 1), bits
 
 
-def _screen_title_is(image: Image.Image, key: str) -> bool:
-    """Чи заголовок кадру збігається з еталоном `key`.
-
-    Один рушій на всі екрани: еталони знімаються тією ж `_title_mask`
-    (`scripts/machine_screens.py learn`), тож розійтись знімку й звірці нема як.
-    Габарити маски відсіюють чужий заголовок ще до порівняння бітів — саме тому
-    «JOBS» (71×20) не має шансу зійтись ані з «SUMMARY» (143×20), ані з
-    «VALIDATE JOBS» (214×20).
-    """
-    return _title_matches(_title_mask(image), key)
+def _norm_grid(box):
+    """Бітмапу заголовка звести до спільної сітки TITLE_NORM (як цифри newgen)."""
+    import numpy as np
+    im = Image.fromarray(box.astype(np.uint8) * 255).resize(
+        (TITLE_NORM[1], TITLE_NORM[0]), Image.BILINEAR
+    )
+    return np.asarray(im, dtype=np.float32) / 255.0
 
 
-def _title_matches(got, key: str) -> bool:
-    """Порівняння вже знятої маски заголовка з еталоном `key`."""
-    tpl = load_screen_templates().get(key)
-    if not tpl:
-        return False
-    if got is None:
-        return False
-    w, h, bits = got
-    if w != tpl["w"] or h != tpl["h"]:
-        return False
-    raw = base64.b64decode(tpl["bits"])
-    want = [(raw[i // 8] >> (7 - i % 8)) & 1 for i in range(w * h)]
-    mismatch = sum(1 for a, b in zip(bits, want) if a != b)
-    ink = max(1, sum(want))
-    return mismatch <= ink * SUMMARY_MAX_MISMATCH
+def _feature_from_bits(w: int, h: int, bits) -> tuple:
+    """(нормалізована сітка, пропорція ширина/висота) з розгорнутих бітів."""
+    import numpy as np
+    box = np.asarray(bits, dtype=bool).reshape(h, w)
+    return _norm_grid(box), w / h
 
 
-def screen_states(image: Image.Image) -> tuple[bool, bool]:
-    """(завершено, перевіряє) — обидва екрани за ОДИН розбір заголовка.
-
-    Опитування питає обидва про той самий кадр, а маска заголовка в них спільна.
-    Двома окремими викликами вона будувалась двічі — на кадрі 1920×1200 це
-    зайві мілісекунди на кожному тіку кожного верстата.
-    """
+def _title_feature(image: Image.Image) -> Optional[tuple]:
+    """Ознака заголовка кадру: (нормалізована сітка, пропорція) або None."""
     got = _title_mask(image)
-    return _title_matches(got, "summary"), _title_matches(got, "validate")
+    if got is None:
+        return None
+    return _feature_from_bits(*got)
+
+
+def _template_feature(tpl: dict) -> tuple:
+    """Та сама ознака, але з еталона в json (`w`, `h`, base64-біти)."""
+    w, h = int(tpl["w"]), int(tpl["h"])
+    raw = base64.b64decode(tpl["bits"])
+    bits = [(raw[i // 8] >> (7 - i % 8)) & 1 for i in range(w * h)]
+    return _feature_from_bits(w, h, bits)
+
+
+# Логічне значення кожного заголовка. Кілька ключів МОЖУТЬ означати одне (напр.
+# `select_jobs` і `windows_updates` → `idle`), але один екран на різних верстатах
+# уже НЕ потребує окремих ключів: матчер масштаб-незалежний, тож єдиний `summary`
+# збігається і на 250i, і на 150i (шрифт більший — скарга власника 13.09.26).
+#
+# `idle` — верстат СТОЇТЬ, і ми це ЗНАЄМО, а не просто «нічого не прочитали».
+# Порожній вибір файлу (SELECT JOBS) і вікно оновлень Windows — рішення власника
+# 13.09.26: для цеху вікно Windows Updates не «проблема», а «станок стоїть».
+# Без цих ключів такі екрани щоразу падали в скриньку невідомих (`layout_unknown`)
+# і, на верстаті без історії відсотка, малювали «не читається» замість «стоїть».
+SCREEN_MEANING = {
+    "summary": "done",
+    "validate": "check",
+    "select_jobs": "idle",
+    "windows_updates": "idle",
+}
+
+
+def match_screen(image: Image.Image) -> Optional[str]:
+    """Ключ еталона, з яким збігся заголовок кадру, або None.
+
+    Ознаку заголовка (нормалізована сітка + пропорція) будуємо ОДИН раз і
+    звіряємо з усіма еталонами: збіг — коли пропорція близька (в межах
+    TITLE_ASPECT_TOL) І нормалізовані бітмапи схожі (відстань ≤ TITLE_DIST_MAX).
+    Обидва бар'єри потрібні (див. константи). З кількох, що пройшли, беремо
+    НАЙБЛИЖЧИЙ. Один розбір кадру на всі екрани: на 1920×1200 кожен зайвий розбір
+    коштує мілісекунди на кожному тіку кожного верстата."""
+    import numpy as np
+    feat = _title_feature(image)
+    if feat is None:
+        return None
+    best: Optional[tuple[str, float]] = None
+    for key, tpl in load_screen_templates().items():
+        try:
+            tf = _template_feature(tpl)
+        except (KeyError, ValueError):  # binascii.Error підклас ValueError
+            continue
+        ratio = max(feat[1], tf[1]) / min(feat[1], tf[1])
+        if ratio > TITLE_ASPECT_TOL:
+            continue
+        distance = float(np.abs(feat[0] - tf[0]).mean())
+        if distance <= TITLE_DIST_MAX and (best is None or distance < best[1]):
+            best = (key, distance)
+    return best[0] if best else None
+
+
+def screen_meaning(image: Image.Image) -> Optional[str]:
+    """Що означає екран верстата: 'done' | 'check' | 'idle' | None.
+
+    None — заголовок не збігся з жодним відомим екраном (робочий JOBS зі смугою,
+    RemiCORE, шпалери): тут нема чого казати про стан за заголовком, читають
+    інші сигнали (відсоток, назва програми)."""
+    key = match_screen(image)
+    return SCREEN_MEANING.get(key) if key is not None else None
 
 
 def screen_is_completed(image: Image.Image) -> bool:
     """Чи це екран SUMMARY — тобто програма щойно завершилась."""
-    return _screen_title_is(image, "summary")
+    return screen_meaning(image) == "done"
 
 
 def screen_is_validating(image: Image.Image) -> bool:
@@ -1113,4 +1180,12 @@ def screen_is_validating(image: Image.Image) -> bool:
     Тому екран називаємо словом: «перевірка». Стан короткий (секунди), але
     чесний — на відміну від «—», яке в цьому інтерфейсі означає «стоїть».
     """
-    return _screen_title_is(image, "validate")
+    return screen_meaning(image) == "check"
+
+
+def screen_is_idle(image: Image.Image) -> bool:
+    """Чи це відомий екран простою (SELECT JOBS, WINDOWS UPDATES) — верстат
+    СТОЇТЬ, і ми це знаємо. На відміну від «нічого не прочитали», це позитивний
+    сигнал: він і знімає такий кадр зі скриньки невідомих, і дає «стоїть»
+    замість «не читається» на верстаті без історії відсотка."""
+    return screen_meaning(image) == "idle"

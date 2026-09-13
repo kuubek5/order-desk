@@ -734,6 +734,73 @@ def test_summary_detector_is_silent_on_every_other_screen():
         assert screen_is_completed(_newgen(name)) is False, name
 
 
+# ── Реєстр значень екранів: масштаб-незалежне розпізнавання заголовка ─────────
+# Матчер порівнює НЕ піксель-у-піксель, а нормалізований до спільного розміру
+# заголовок + пропорцію — тож еталон, знятий із ЗМЕНшеної копії 640×400 (саме
+# такі віддають скринька невідомих і MCP), збігається з живим кадром 1920×1200,
+# і навпаки. Без цього петля «скринька → навчання» була мертва: навчити можна
+# лише з того, що дістанеш (640), а порівнювалось воно з продом (1920).
+
+
+def test_idle_and_done_screens_are_recognized():
+    """Три idle-екрани → «стоїть», SUMMARY → «завершено», VALIDATE → «перевірка».
+
+    Еталони select_jobs/windows_updates зняті зі зменшених 640×400 зразків, а
+    перевіряються тут на тих самих кадрах; summary/validate — з бойових 1920.
+    """
+    from app import machine_ocr
+
+    assert machine_ocr.screen_is_idle(_newgen("newgen_select_jobs.png")) is True
+    assert machine_ocr.screen_is_idle(_newgen("newgen_windows_updates.png")) is True
+    assert machine_ocr.screen_meaning(_newgen("newgen_summary_done.png")) == "done"
+    assert machine_ocr.screen_meaning(_newgen("newgen_validate_56.png")) == "check"
+
+
+def test_matcher_is_scale_and_model_tolerant():
+    """Той самий екран упізнається на іншому масштабі й на іншому верстаті.
+
+    `newgen_150i_summary.png` — зменшений 640×400 зразок SUMMARY з іншого
+    верстата (150i), а еталон `summary` знято з бойового 1920 кадру 250i. Обидва
+    мусять дати «завершено». Плюс пряма перевірка масштабу: бойовий кадр,
+    зменшений до 640, лишається тим самим екраном.
+    """
+    from app import machine_ocr
+
+    assert machine_ocr.screen_meaning(_newgen("newgen_150i_summary.png")) == "done"
+
+    full = _newgen("newgen_summary_done.png")
+    small = full.resize((640, 400))
+    assert machine_ocr.match_screen(small) == "summary"
+
+
+def test_matcher_is_silent_on_every_other_screen():
+    """Жоден чужий кадр не сміє впіймати idle/done/check.
+
+    Сюди входять робочий JOBS зі смугою (обидва покоління), RemiCORE (зокрема
+    заставка й портрет, що мають ту саму ПРОПОРЦІЮ, що SUMMARY — їх відсікає вже
+    відстань бітмапи, 0.60 проти ≤0.20 у своїх) і SISMA. Хибний «завершено»
+    відправив би оператора знімати недофрезеровану роботу.
+    """
+    from app import machine_ocr
+
+    for name in (
+        "newgen_progress_0.png", "newgen_progress_30.png", "newgen_150i_38.png",
+        "newgen_150i_16-27-26.png", "newgen_250i_16-14-29.png",
+        "remicore_bar_100.png", "remicore_caption_72.png", "remicore_portrait_8.png",
+        "remicore_wallpaper_blob.png", "remicore_titan_14.png",
+        "sisma_idle.png", "sisma_printing_250.png", "sisma_report_dialog.png",
+    ):
+        assert machine_ocr.match_screen(_newgen(name)) is None, name
+
+
+def test_no_templates_means_no_reading(monkeypatch):
+    """Немає еталонів — детектор мовчить (ще не навчено, а не поломка)."""
+    from app import machine_ocr
+
+    monkeypatch.setattr(machine_ocr, "load_screen_templates", lambda: {})
+    assert machine_ocr.screen_meaning(_newgen("newgen_summary_done.png")) is None
+
+
 def test_blue_blob_on_non_white_track_is_not_a_full_bar():
     """Синя пляма поруч із НЕ-білим тлом не сміє читатись як 100%.
 
