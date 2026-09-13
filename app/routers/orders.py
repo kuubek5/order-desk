@@ -8,6 +8,7 @@
 
 import json
 import logging
+from concurrent.futures import TimeoutError as FuturesTimeout
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, HTTPException
@@ -43,6 +44,7 @@ from app.routers.deps import (
     toast_response,
 )
 from app.services.manual_add import (
+    WriteStillRunning,
     create_manual_batch,
     normalize_target_tab,
     normalize_work_type,
@@ -432,10 +434,21 @@ def create_manual_order(
         результату лишається тут, у HTTP-шарі: сервіс не має знати ні про пул,
         ні про таймаути запиту.
         """
-        return submit_sheet_write(
+        # Скільки тримаємо оператора. Це НЕ дедлайн запису: задача пулу після
+        # цього живе далі (див. WriteStillRunning).
+        _MANUAL_ADD_WAIT_SECONDS = 120
+        future = submit_sheet_write(
             append_manual_rows_warm, day, works,
             paint_blue=paint_blue, placement=placement, target_tab=target_tab,
-        ).result(timeout=120)
+        )
+        try:
+            return future.result(timeout=_MANUAL_ADD_WAIT_SECONDS)
+        except FuturesTimeout as exc:
+            # Перестати ЧЕКАТИ — не те саме, що скасувати: задача пулу добігає
+            # сама. Тому окремий тип, а не загальна помилка: сервіс мусить
+            # сказати операторові «перевірте таблицю», а не «не вдалося»
+            # (див. WriteStillRunning).
+            raise WriteStillRunning() from exc
 
     # Позначка «зараз додаю» на ОБИДВА кроки: запис у таблицю і коміт у базу.
     # Між ними є щілина, і фоновий синк, влучивши в неї, створює свою копію тієї

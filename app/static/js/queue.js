@@ -1135,9 +1135,85 @@ document.addEventListener("click", (event) => {
 // з `?add=1`, а помилка приходить у `add_error`. Розгортаємо ту саму inline-
 // форму, показуємо текст у ній і прибираємо параметри з адреси, щоб
 // перезавантаження сторінки не показало ту саму помилку вдруге.
+// Чернетка форми додавання. Сервер повертає лише текст помилки — самі поля
+// (клієнт, матеріал, кількість) у редіректі не їдуть і їхати не мусять: це
+// адресний рядок та історія браузера, не місце для імен клієнтів. Тому
+// набране тримаємо в браузері й повертаємо, коли прийшла помилка.
+//
+// Доти обрив мережі на дві хвилини означав, що партію з десяти рядків оператор
+// набирає ЗАНОВО — на екрані, де він і так поспішає.
+const ADDWORK_DRAFT_KEY = "od-addwork-draft";
+// Стеля рядків на сервері — MAX_MANUAL_ROWS; тут вона ж, як запобіжник від
+// нескінченного циклу дорощування, якщо кнопка раптом перестане додавати рядок.
+const ADDWORK_MAX_ROWS = 30;
+
+function addworkRowValues(row) {
+  const values = {};
+  row.querySelectorAll("input[name]").forEach((el) => { values[el.name] = el.value; });
+  return values;
+}
+
+function saveAddworkDraft(form) {
+  try {
+    const rows = [...form.querySelectorAll("[data-addwork-row]")].map(addworkRowValues);
+    const typeInput = form.querySelector("[data-addwork-typeinput]");
+    sessionStorage.setItem(ADDWORK_DRAFT_KEY, JSON.stringify({
+      type: typeInput ? typeInput.value : "client",
+      rows,
+    }));
+  } catch (e) {
+    // Приватний режим або заборонене сховище — чернетки просто не буде.
+    // Втратити її неприємно, але зламати через це саме додавання не можна.
+  }
+}
+
+function clearAddworkDraft() {
+  try { sessionStorage.removeItem(ADDWORK_DRAFT_KEY); } catch (e) { /* див. вище */ }
+}
+
+function restoreAddworkDraft(form) {
+  let draft = null;
+  try {
+    draft = JSON.parse(sessionStorage.getItem(ADDWORK_DRAFT_KEY) || "null");
+  } catch (e) { return; }
+  if (!draft || !Array.isArray(draft.rows) || draft.rows.length === 0) return;
+
+  // Рядки дорощуємо ТІЄЮ САМОЮ кнопкою, що й оператор: клонування рядка, режим
+  // «клієнт/лабораторія» і перемальовування хрестиків живуть у її обробнику, і
+  // друга копія цієї логіки розійшлася б із ним на першій же правці.
+  const addBtn = form.querySelector("[data-addwork-addrow]");
+  let guard = 0;
+  while (
+    addBtn
+    && form.querySelectorAll("[data-addwork-row]").length < draft.rows.length
+    && guard++ < ADDWORK_MAX_ROWS
+  ) {
+    addBtn.click();
+  }
+
+  const rows = form.querySelectorAll("[data-addwork-row]");
+  draft.rows.forEach((values, i) => {
+    const row = rows[i];
+    if (!row || !values) return;
+    row.querySelectorAll("input[name]").forEach((el) => {
+      if (Object.prototype.hasOwnProperty.call(values, el.name)) el.value = values[el.name];
+    });
+  });
+}
+
+// Зберігаємо на САБМІТІ, а не на кожному натисканні клавіші: чернетка потрібна
+// рівно для одного випадку — сторінка перезавантажилась через помилку.
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest && event.target.closest("[data-addwork]");
+  if (form) saveAddworkDraft(form);
+});
+
 function openAddworkFromQuery() {
   const params = new URLSearchParams(window.location.search);
-  if (params.get("add") !== "1") return;
+  // Будь-яке звичайне завантаження сторінки — зокрема повернення після
+  // УСПІШНОГО додавання — чернетку прибирає. Інакше вона спливла б наступного
+  // разу і оператор додав би те саме вдруге.
+  if (params.get("add") !== "1") { clearAddworkDraft(); return; }
   const form = document.querySelector("[data-addwork]");
   if (!form) return;
 
@@ -1147,6 +1223,10 @@ function openAddworkFromQuery() {
 
   const type = params.get("add_type");
   if (type === "client" || type === "lab") applyAddworkType(form, type);
+
+  // ПІСЛЯ applyAddworkType: він вмикає/вимикає поля під режим, і чернетка має
+  // лягти у вже правильний набір рядків.
+  restoreAddworkDraft(form);
 
   const message = params.get("add_error");
   const box = form.querySelector("[data-addwork-error]");

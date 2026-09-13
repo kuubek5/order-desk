@@ -51,6 +51,22 @@ MANUAL_ADD_DEDUP_SECONDS = 30.0
 _recent_manual_adds: dict[int, tuple[str, float]] = {}
 
 
+class WriteStillRunning(Exception):
+    """Таблиця не відповіла у відведений час, але запис НЕ скасовано.
+
+    Пул запису — звичайний `ThreadPoolExecutor`, і `.result(timeout=…)` лише
+    перестає ЧЕКАТИ: задача, що вже виконується, добігає до кінця. Найгірший
+    випадок одного звернення до Google — чотири спроби по (10 с на зʼєднання +
+    60 с на відповідь) плюс паузи, тобто близько 287 с, а таких звернень у
+    додаванні чотири. Очікування ж триває 120 с — тобто на поганому звʼязку
+    «не дочекались» настає РАНІШЕ, ніж запис справді провалився.
+
+    Доти обидва випадки зливались в одне «Не вдалося записати в таблицю».
+    Оператор вірив, набирав заново — і обидва записи лягали. Два рядки в
+    таблиці, дві роботи в черзі після синку, коронка фрезерується двічі.
+    """
+
+
 @dataclass(frozen=True)
 class ManualBatchResult:
     """Що сталося з партією: або текст помилки для оператора, або створене.
@@ -157,6 +173,27 @@ def _collect_works(
     return works, None
 
 
+def _log_failure(db: Session, message: str) -> None:
+    """Слід у Журналі синку про невдале ручне додавання.
+
+    Доти успіх писав рядок, а невдача — ні: зник тост, і по роботі, якої
+    оператор не додав, не лишалось нічого видимого з інтерфейсу. Власний
+    `try`: журнал не має права завалити відповідь операторові.
+    """
+    try:
+        db.add(SyncLog(
+            direction="db_to_sheet", status="error",
+            message=f"ручне додавання: {message}",
+        ))
+        db.commit()
+    except Exception:
+        logger.exception("Не вдалося записати невдале ручне додавання в журнал")
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("Відкат після невдалого запису в журнал теж не вдався")
+
+
 def _is_duplicate_submit(user_id: int, fingerprint: str, now_ts: float) -> bool:
     """Та сама партія від того самого оператора у вікні = повтор, не намір."""
     last = _recent_manual_adds.get(user_id)
@@ -261,8 +298,19 @@ def create_manual_batch(
             placement=("lab" if is_lab else "client"),
             target_tab=target_tab,
         )
+    except WriteStillRunning:
+        # НЕ «не вдалося»: запис може ще пройти, і саме тому просимо ПЕРЕВІРИТИ
+        # таблицю, а не додавати вдруге. Слово «зачекайте» тут важливіше за
+        # слово «помилка»: помилка штовхає повторити, і саме це давало дублі.
+        logger.warning("Manual order sheet write did not answer in time")
+        _log_failure(db, "таблиця не відповіла вчасно; запис лишився в черзі")
+        return ManualBatchResult(error=(
+            "Таблиця не відповіла вчасно. Запис ЩЕ В ЧЕРЗІ й, найімовірніше, "
+            "пройде — перевірте таблицю, перш ніж додавати роботу вдруге."
+        ))
     except Exception as exc:  # noqa: BLE001 — surface any sheet failure to the operator
         logger.exception("Manual order sheet write failed")
+        _log_failure(db, f"запис не пройшов: {exc}")
         return ManualBatchResult(error=f"Не вдалося записати в таблицю: {exc}")
     if isinstance(result, str):
         # Пул відмовився писати (пауза) — сюди практично не доходить, бо гейт
