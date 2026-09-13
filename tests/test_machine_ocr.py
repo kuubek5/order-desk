@@ -773,13 +773,32 @@ def test_matcher_is_scale_and_model_tolerant():
     assert machine_ocr.match_screen(small) == "summary"
 
 
+def test_template_learned_from_a_shrunken_copy_matches_the_live_frame():
+    """Головна теза перевірки, на БОЙОВИХ кадрах повного розміру.
+
+    `select_jobs` навчено зі ЗМЕНшеної копії 640×400 — саме таку віддають
+    скринька невідомих (`_shrunk`) і MCP. `newgen_select_jobs_full.png` — той
+    самий екран, знятий у РІДНОМУ розмірі 1920×1200, тобто рівно те, що бачить
+    опитування в цеху. Доки ці двоє не зустрічались, петля «побачив у скриньці →
+    навчив» була мертва: навчити можна було лише з 640, а звірялось із 1920.
+
+    Другий кадр — SUMMARY на 150i у повному розмірі. Стара піксельна звірка його
+    не впізнавала (шрифт 150i більший за 250i, з якого знято еталон), і верстат
+    754 рази поспіль показував «стоїть» замість «завершено».
+    """
+    from app import machine_ocr
+
+    assert machine_ocr.screen_meaning(_newgen("newgen_select_jobs_full.png")) == "idle"
+    assert machine_ocr.screen_meaning(_newgen("newgen_150i_summary_full.png")) == "done"
+
+
 def test_matcher_is_silent_on_every_other_screen():
     """Жоден чужий кадр не сміє впіймати idle/done/check.
 
     Сюди входять робочий JOBS зі смугою (обидва покоління), RemiCORE (зокрема
     заставка й портрет, що мають ту саму ПРОПОРЦІЮ, що SUMMARY — їх відсікає вже
-    відстань бітмапи, 0.60 проти ≤0.20 у своїх) і SISMA. Хибний «завершено»
-    відправив би оператора знімати недофрезеровану роботу.
+    відстань бітмапи, 0.60 проти ≤0.20 у своїх), SISMA й обидва екрани помилки.
+    Хибний «завершено» відправив би оператора знімати недофрезеровану роботу.
     """
     from app import machine_ocr
 
@@ -789,8 +808,61 @@ def test_matcher_is_silent_on_every_other_screen():
         "remicore_bar_100.png", "remicore_caption_72.png", "remicore_portrait_8.png",
         "remicore_wallpaper_blob.png", "remicore_titan_14.png",
         "sisma_idle.png", "sisma_printing_250.png", "sisma_report_dialog.png",
+        "newgen_error_modal.png", "remicore_error_dialog.png",
     ):
         assert machine_ocr.match_screen(_newgen(name)) is None, name
+
+
+# ── Помилка на екрані ────────────────────────────────────────────────────────
+
+
+def test_error_banner_is_read_on_the_real_modal():
+    """Бойовий кадр 150i з модалкою помилки («tool T14 … too long»).
+
+    Текст не читаємо свідомо — він щоразу інший, а потрібен лише факт (вимога
+    власника 13.09.26).
+    """
+    from app.machine_ocr import screen_has_error_banner
+
+    assert screen_has_error_banner(_newgen("newgen_error_modal.png")) is True
+
+
+def test_error_banner_is_silent_on_every_healthy_frame():
+    """Хибна помилка жене оператора до справного верстата — тому тиша всюди.
+
+    Окремо про `remicore_error_dialog.png`: там ЧЕРВОНОГО багато, і рядок сітки
+    інструментів дає 0.36 ширини — більше за поріг ширини. Банером він не стає
+    лише завдяки ТОВЩИНІ (0.023 проти потрібних 0.04). Саме цей кадр і підняв
+    поріг: без нього верстат із кількома простроченими фрезами показував би
+    «помилка» щохвилини. Свою помилку RemiCORE віддає іншим каналом — заголовком
+    вікна, див. тест нижче.
+    """
+    import glob
+    from pathlib import Path
+
+    from app.machine_ocr import screen_has_error_banner
+
+    for path in sorted(glob.glob(str(Path(__file__).parent / "fixtures" / "*.png"))):
+        name = Path(path).name
+        if name == "newgen_error_modal.png":
+            continue
+        assert screen_has_error_banner(_newgen(name)) is False, name
+
+
+def test_error_window_title_is_the_remicore_channel():
+    """RemiCORE показує помилку звичайним вікном ОС — беремо слово, не пікселі.
+
+    Рівність, а не входження: «Error log viewer» помилкою не є, інакше будь-яке
+    вікно з цим словом у назві зупиняло б верстат на екрані. Мовчання агента
+    (None) — це «не знаємо», а не «помилки немає».
+    """
+    from app.machine_ocr import titles_have_error
+
+    assert titles_have_error(["Remote - Finish180 Crown 5X inside Crown5.iso", "Error"]) is True
+    assert titles_have_error(["Remote - Finish180 Crown 5X inside Crown5.iso"]) is False
+    assert titles_have_error(["Error log viewer"]) is False
+    assert titles_have_error(None) is False
+    assert titles_have_error([]) is False
 
 
 def test_no_templates_means_no_reading(monkeypatch):

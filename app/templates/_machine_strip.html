@@ -42,7 +42,7 @@
         {%- for card in machine_cards -%}
         {%- set st = card.state_key -%}
         {%- if not loop.first %}<span class="tksep" aria-hidden="true">·</span>{% endif -%}
-        <a class="tk {{ st }}" data-mid="{{ card.target.machine_id or '' }}" href="/machines" title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% endif %}"><b>{{ card.target.name }}</b> <i>{% if st == 'done' %}✓{% elif st == 'run' %}{{ card.percent }}{% elif st == 'check' %}⋯{% else %}—{% endif %}</i></a>
+        <a class="tk {{ st }}" data-mid="{{ card.target.machine_id or '' }}" href="/machines" title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% elif st == 'fault' %} — {{ card.state_note }}{% endif %}"><b>{{ card.target.name }}</b> <i>{% if st == 'fault' %}!{% elif st == 'done' %}✓{% elif st == 'run' %}{{ card.percent }}{% elif st == 'check' %}⋯{% else %}—{% endif %}</i></a>
         {%- endfor -%}
     </span>
     {% else %}
@@ -53,7 +53,11 @@
        верстат читався як «запуск» в одному місці й «стоїть» в іншому. #}
     {% set st = card.state_key %}
     <a class="mch {{ st }}" data-mid="{{ card.target.machine_id or '' }}" href="/machines" style="--w:{{ card.percent or 0 }}%"
-       title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% elif card.order %} — {{ card.order.work_order_no or card.order.client_name }}{% elif card.sum3d_id %} — {{ card.sum3d_id }}{% elif card.state_note %} — {{ card.state_note }}{% endif %}">
+       {# Помилка стоїть у підказці ПЕРЕД роботою: у чіпі для неї є лише «!»,
+          а знати, що саме не так, оператор мусить не відходячи від черги.
+          Далі по ланцюжку її перекрив би наряд — верстат із помилкою майже
+          завжди має завантажену програму. #}
+       title="{{ card.target.name }}{% if card.has_problem %} — {{ card.problem_text }}{% elif st == 'fault' %} — {{ card.state_note }}{% elif card.order %} — {{ card.order.work_order_no or card.order.client_name }}{% elif card.sum3d_id %} — {{ card.sum3d_id }}{% elif card.state_note %} — {{ card.state_note }}{% endif %}">
         {% if _mstrip == 'ring' %}
         {# r=6.5 → довжина кола 40.84; зсув = невиконана частка #}
         <svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="bg" cx="8" cy="8" r="6.5"/><circle class="fg" cx="8" cy="8" r="6.5" stroke-dasharray="40.84" stroke-dashoffset="{{ '%.2f'|format(40.84 * (1 - (card.percent or 0) / 100)) }}"/></svg>
@@ -63,7 +67,7 @@
    і слово в цій комірці налазило на назву верстата: «250i-Toli готово»
    (скарга 04.09.26). Галочка займає місце цифри, читається миттєво й здалеку,
    а повне пояснення лишається в підказці чіпа й у бічній панелі, де є місце. #}
-<i class="mono">{% if st == 'done' %}<b class="mch-done" aria-label="програма завершена">✓</b>{% elif st == 'run' %}{{ card.percent }}<u>%</u>{% elif st == 'check' %}<b class="mch-check" aria-label="перевірка програми">⋯</b>{% else %}—{% endif %}</i>
+<i class="mono">{% if st == 'fault' %}<b class="mch-fault" aria-label="верстат показує помилку">!</b>{% elif st == 'done' %}<b class="mch-done" aria-label="програма завершена">✓</b>{% elif st == 'run' %}{{ card.percent }}<u>%</u>{% elif st == 'check' %}<b class="mch-check" aria-label="перевірка програми">⋯</b>{% else %}—{% endif %}</i>
         {% if _mstrip == 'edge' %}<em class="mch-edge" aria-hidden="true"></em>{% endif %}
         {% if _mstrip == 'segments' %}
         {% set lit = ((card.percent or 0) / 10)|round|int %}

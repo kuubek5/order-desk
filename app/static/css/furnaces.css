@@ -354,6 +354,11 @@ html[data-machine-art="none"] .ms-tile>*{text-shadow:none}
 .ms-tile.is-idle::before,.ms-tile.is-wait::before,
 .ms-tile.is-unreadable::before{background:rgba(8,11,15,.5);backdrop-filter:saturate(.3) brightness(.8)}
 .ms-tile.is-off::before{background:linear-gradient(100deg,rgba(46,13,8,.5),rgba(24,12,10,.8))}
+/* «Помилка» — тривожна, але НЕ «немає зв'язку»: верстат живий і чекає людину,
+   тому шар теплий (warn), а не червоний (alarm), і без приглушення — на
+   відміну від «стоїть», тут є що робити. Різні кольори в двох тривожних
+   станах і є повідомленням: червоне = йти нема сенсу, тепле = йти негайно. */
+.ms-tile.is-fault::before{background:linear-gradient(100deg,rgba(var(--warn-rgb), .22),rgba(var(--warn-rgb), .4))}
 .ms-tile:hover::before{background:rgba(var(--accent-rgb), .08)}
 .ms-tile>*{position:relative;z-index:var(--z-base)}
 .ms-name{grid-area:name;font-size:var(--fs-0);font-weight:500;color:var(--ink-2);letter-spacing:.02em;
@@ -378,6 +383,12 @@ html[data-machine-art="none"] .ms-tile>*{text-shadow:none}
 .ms-pct.is-done{font-family:inherit;font-size:var(--fs-0);font-weight:600;
   letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;
   color:var(--ok);text-shadow:none}
+/* «помилка» — слово в комірці числа, тому кегль той самий, що в «готово» й
+   «запуск»: вони міряються одне з одним. Колір — попереджувальний, і повна
+   яскравість: серед «—» та відсотків це єдине, що вимагає йти до верстата. */
+.ms-pct.is-fault{font-family:inherit;font-size:var(--fs-0);font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;
+  color:var(--warn);text-shadow:none}
 .mch.done i{color:var(--ok);font-weight:600}
 .mch.done{border-color:rgba(var(--ok-rgb), .35)}
 .mch-done{font-weight:700;font-family:inherit;font-size:var(--fs-2);line-height:1}
@@ -399,6 +410,7 @@ html[data-machine-art="none"] .ms-tile>*{text-shadow:none}
   text-overflow:ellipsis;text-shadow:0 1px 4px rgba(0,0,0,.7)}
 .ms-what.dim{color:var(--ink-3)}
 .ms-tile.is-off .ms-note,.ms-tile.is-off .ms-name{color:var(--alarm-ink)}
+.ms-tile.is-fault .ms-note,.ms-tile.is-fault .ms-name{color:var(--warn-ink)}
 .ms-bar{grid-area:bar;height:3px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden;margin-top:6px}
 .ms-bar > i{display:block;height:100%;border-radius:999px;background:var(--accent);
   box-shadow:0 0 6px rgba(var(--accent-rgb), .6);transition:width .5s cubic-bezier(.4,0,.2,1)}
@@ -477,6 +489,15 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 .mch.off{border-color:rgba(var(--alarm-rgb), .5)}
 .mch.off i{color:var(--alarm)}
 .mch.off b{color:var(--alarm-ink)}
+/* «!» замість числа — з тієї ж причини, що «✓» у «готово»: чіп розрахований
+   під двоцифрове число, і слово налазило б на назву верстата. Теплий колір
+   відрізняє помилку від обриву звʼязку, який поруч стоїть червоним. */
+.mch.fault{border-color:rgba(var(--warn-rgb), .55)}
+.mch.fault i,.tk.fault i{color:var(--warn)}
+.mch.fault b,.tk.fault b{color:var(--warn-ink)}
+.mch-fault{font-weight:700;font-family:inherit;font-size:var(--fs-2);line-height:1}
+.mch.fault .segs s{background:rgba(var(--warn-rgb), .25)}
+.mch.fault .ring .fg{stroke:var(--warn);stroke-dasharray:3 2;stroke-dashoffset:0}
 .mch:hover{border-color:var(--control-edge)}
 /* Сегменти (дефолт): десять по 10 %. */
 .mstrip[data-variant="segments"] .mch{flex-direction:column;align-items:flex-start;gap:2px;padding:4px 9px 5px}
@@ -552,6 +573,10 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
   display:flex;flex-direction:column;transition:border-color var(--ui-speed) ease}
 .machines .mc-card.is-run{border-color:var(--accent-d)}
 .machines .mc-card.is-offline{border-color:rgba(var(--alarm-rgb), .35)}
+/* Портрет при помилці НЕ знебарвлюємо (на відміну від `.is-offline`):
+   приглушене фото читається як «цього верстата зараз немає», а він є — і саме
+   його чекають. Сигналом лишається край картки й пілюля. */
+.machines .mc-card.is-fault{border-color:rgba(var(--warn-rgb), .55)}
 .machines .mc-port{position:relative;aspect-ratio:3/2;background:#0c1015 center/cover no-repeat;isolation:isolate}
 /* Дефолти за моделлю — з реальних фото цеху (04.09.26). Інлайновий
    background-image з фото самого верстата перебиває їх, бо стоїть у style. */
@@ -572,6 +597,9 @@ body.machine-side-open .q2 .side-sec-machine .chev{transform:rotate(180deg)}
 .machines .mc-bigpct u{text-decoration:none;font-size:var(--fs-2);color:var(--ink-3);font-weight:400;margin-left:1px}
 .machines .mc-cap .fu-pill{flex:none;text-shadow:none;backdrop-filter:blur(3px)}
 .machines .fu-pill.is-wait{color:var(--ink-3);border-color:var(--line-2);background:rgba(0,0,0,.35)}
+/* Помилка — залита пілюля, а не контурна: поверх портрета контур губиться, а
+   це єдиний стан на цьому екрані, який кличе оператора до верстата негайно. */
+.machines .fu-pill.is-fault{color:var(--warn-ink);border-color:var(--warn);background:rgba(var(--warn-rgb), .16);font-weight:600}
 .machines .mc-body{padding:12px 14px 12px;display:flex;flex-direction:column;gap:8px}
 .machines .mc-body .mc-bar{margin:0 0 2px}
 .machines .mc-body .mc-prog{margin:0}

@@ -47,7 +47,9 @@ from app.machine_ocr import (
     missing_caption_digits,
     pick_milling_program,
     read_progress_percent,
+    screen_has_error_banner,
     screen_meaning,
+    titles_have_error,
 )
 from app.models import Machine, MachineLinkEvent, MachineReading, Order, ReworkRecord
 from app.services.furnace import (  # ті самі правила адреси й формат тривалості
@@ -188,6 +190,13 @@ class MachineState:
     # на верстаті, за яким ми ще не бачили відсотка, і знімає такий кадр зі
     # скриньки невідомих екранів.
     idle_known: bool = False
+    # На екрані ПОМИЛКА (зламана фреза, задовгий інструмент, кінцевик). Це НЕ
+    # `error` нижче: той — про обрив зв'язку, а тут верстат якраз на зв'язку й
+    # сам каже, що став. Текст помилки свідомо не читаємо (вимога власника
+    # 13.09.26: важливий лише факт). Два канали, бо два покоління показують її
+    # по-різному: червоний банер модалки (нове покоління) і вікно з заголовком
+    # «Error» (RemiCORE) — див. machine_ocr.
+    fault: bool = False
     # Скільки опитувань поспіль не вдалось. Нуль = останнє було успішним.
     fail_streak: int = 0
     # Вирок перевірки досяжності, знятий У МОМЕНТ обриву: винен порт чи мережа.
@@ -1576,6 +1585,13 @@ def poll_target(
         completed = meaning == "done"
         validating = meaning == "check"
         idle_known = meaning == "idle"
+    # Помилка на екрані — з ТОГО САМОГО кадру й тією ж лійкою. Другий її канал
+    # (заголовок вікна RemiCORE) додається нижче, коли заголовки вже прочитані.
+    try:
+        fault = screen_has_error_banner(frame)
+    except Exception:  # noqa: BLE001 — читання кадру не має валити опитування
+        logger.exception("Банер помилки верстата %s не прочитано", target.host)
+        fault = False
     if validating:
         percent = None
 
@@ -1617,6 +1633,7 @@ def poll_target(
         state.completed = completed
         state.validating = validating
         state.idle_known = idle_known
+        state.fault = fault
         # Поля SISMA пишемо ЗАВЖДИ (навіть None): та сама причина, що з
         # відсотком — інакше після завершення роботи на екрані залипли б
         # старі шари й старий час кінця, і картка показувала б давно знятий
@@ -1693,8 +1710,15 @@ def poll_target(
         if titles is not None:  # агент відповів — довіряємо результату
             known = True
             program = pick_milling_program(titles)
+            # ДРУГИЙ канал помилки. RemiCORE показує її звичайним вікном ОС із
+            # заголовком «Error», і слово в заголовку надійніше за будь-який
+            # розбір картинки: на тому екрані червоний — норма (смуги
+            # прострочення інструментів), тож банер там шукати не можна.
+            # Домішуємо, а не перезаписуємо: у кадру свій голос.
             with _states_lock:
                 state.titles_seen = [str(x)[:120] for x in titles[:12]]
+                if titles_have_error(titles):
+                    state.fault = True
         else:
             with _states_lock:
                 state.titles_seen = None
@@ -1713,6 +1737,7 @@ def poll_target(
         and not completed
         and not validating
         and not idle_known
+        and not fault
         and program is None
     ):
         # З кадру не знялось НІЧОГО: ні смуги RemiCORE, ні екрана SISMA, ні
@@ -2148,6 +2173,18 @@ class MachineCard:
         return self.state.idle_known
 
     @property
+    def is_fault(self) -> bool:
+        """На екрані верстата діалог помилки (фреза, інструмент, кінцевик).
+
+        Свіжість — як у решти станів: помилка з протухлого кадру означала б
+        «колись була», а оператор прочитав би її як «є зараз» і побіг би до
+        верстата, який давно працює. `has_problem` (обрив) теж знімає її: коли
+        верстата не чути, ми не знаємо, що в нього на екрані."""
+        if not self.state or self.stale or self.has_problem:
+            return False
+        return self.state.fault
+
+    @property
     def has_program(self) -> bool:
         """Чи завантажена програма на верстаті — за заголовком вікна RemiCORE
         (`...ім'я.iso`), який агент читає НЕЗАЛЕЖНО від того, яку вкладку
@@ -2180,6 +2217,11 @@ class MachineCard:
         """
         if self.has_problem:
             return "off"
+        # Помилка — ВИЩЕ за «завершено» й за відсоток: верстат із зупиненою
+        # програмою може водночас показувати старий відсоток чи навіть підсумок,
+        # а піти до нього треба саме через помилку (вимога власника 13.09.26).
+        if self.is_fault:
+            return "fault"
         if self.is_completed:
             return "done"
         if self.percent is not None:
@@ -2206,6 +2248,7 @@ class MachineCard:
         """Коротке слово для плитки. Для «run» слова немає — там число."""
         return {
             "off": "немає зв'язку",
+            "fault": "помилка",
             "done": "завершено",
             "check": "перевірка",
             "busy": "запуск",
@@ -2220,6 +2263,7 @@ class MachineCard:
         if self.state_key == "off":
             return self.problem_text
         return {
+            "fault": "верстат показує помилку · підійдіть",
             "done": "програма завершена · зняти",
             "check": "перевіряє програму перед стартом",
             "busy": "програма пішла · відсотка ще не видно",

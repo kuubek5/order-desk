@@ -175,6 +175,56 @@ def test_side_tiles_carry_idle_and_wait_states():
     assert "ms-tile is-unreadable" in html
 
 
+class _FaultCard(MachineCard):
+    """Картка в стані «помилка» — з живої картки, підмінено лише стан.
+
+    Що робить верстат «помилкою» (діалог на екрані), вирішує
+    `MachineCard.state_key`, і це перевіряється в `tests/test_machines.py`.
+    Тут же питання інше й суто UI-шне: КОЖЕН з трьох віджетів мусить мати для
+    цього ключа власну гілку. Тому підміняємо лише три властивості стану, а
+    решту картки лишаємо справжньою — інакше тест перевіряв би свій власний
+    об'єкт, а не розмітку.
+    """
+
+    @property
+    def state_key(self) -> str:
+        return "fault"
+
+    @property
+    def state_word(self) -> str:
+        return "помилка"
+
+    @property
+    def state_note(self) -> str:
+        return "верстат показує помилку · підійдіть"
+
+
+def _fault_card():
+    src = [c for c in _cards() if c.target.name == "150i"][0]
+    return _FaultCard(target=src.target, state=src.state, now=src.now,
+                      reads_percent=src.reads_percent)
+
+
+def test_every_widget_has_its_own_branch_for_a_machine_showing_an_error():
+    """Верстат НА ЗВ'ЯЗКУ, але з діалогом помилки на екрані.
+
+    Без власної гілки він провалювався б у «інакше» кожного віджета й читався
+    як «стоїть»: програма справді не йде — але не тому, що робота скінчилась,
+    а тому, що верстат чекає людину. Різниця тут і є всією користю стану.
+    """
+    html = _all_widgets([_fault_card()])
+
+    assert "ms-tile is-fault" in html["side"]
+    assert "помилка" in html["side"]
+    assert 'class="mch fault"' in html["strip"]
+    assert "mc-card is-fault" in html["cards"]
+    assert "fu-pill is-fault" in html["cards"]
+    # Тривога — не «немає зв'язку»: зв'язок є, і злиття цих двох станів в один
+    # вигляд відправило б оператора лагодити мережу замість верстата.
+    assert "is-offline" not in html["cards"]
+    assert "немає зв'язку" not in html["side"]
+
+
 # ── Один стан на всі віджети (10.09.26) ────────────────────────────────────
 # Три віджети рахували стан трьома різними виразами, і той самий верстат у ту
 # саму секунду читався як «запуск» у смузі над чергою й «стоїть» у бічній

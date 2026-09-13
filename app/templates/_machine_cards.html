@@ -21,7 +21,11 @@
        пішла, смуги ще не видно) виглядав так само, як зупинений. Імена класів
        лишились свої: `.is-offline` тут спільний із віджетом пічок, і
        перейменування зачепило б чужий екран. #}
-    <article class="mc-card{% if card.state_key == 'off' %} is-offline{% elif card.state_key in ('run', 'busy') %} is-run{% endif %}">
+    {# `is-fault` — власний клас, а не `is-offline`: зовні вони обидва тривожні,
+       але означають протилежне за дією. «Немає зв'язку» — верстат мовчить і йти
+       до нього нема сенсу, поки не полагодили мережу; «помилка» — верстат живий
+       і чекає людину саме зараз. Однаковий вигляд злив би ці два випадки. #}
+    <article class="mc-card{% if card.state_key == 'off' %} is-offline{% elif card.state_key == 'fault' %} is-fault{% elif card.state_key in ('run', 'busy') %} is-run{% endif %}">
         {# Фото САМОГО верстата з Налаштувань має старшинство; без нього — дефолт
            моделі (350i / 350i loader / 250i / 250i dry за назвою). #}
         <div class="mc-port" data-model="{{ card.model_key }}"{% if card.portrait_url %} style="background-image:url('{{ card.portrait_url }}')"{% endif %}>
@@ -39,6 +43,11 @@
                    стартував. #}
                 {% if card.state_key == 'off' %}
                 <span class="fu-pill is-offline">немає зв'язку</span>
+                {% elif card.state_key == 'fault' %}
+                {# Що саме зламалось, не кажемо: текст діалогу не читаємо, а
+                   вигадане пояснення тут гірше за коротке «помилка» — оператор
+                   однаково мусить підійти й подивитись на екран сам. #}
+                <span class="fu-pill is-fault">{{ card.state_word }} · підійдіть</span>
                 {% elif card.state_key == 'done' %}
                 {# «Готово» старше за відсоток — див. _machine_side.html. #}
                 <span class="fu-pill is-done">готово · зняти</span>

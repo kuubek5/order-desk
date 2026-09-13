@@ -752,6 +752,50 @@ def test_known_idle_screen_says_stands_not_unreadable():
                                reads_percent=False).is_idle_known is False
 
 
+def test_error_on_screen_outranks_a_finished_program():
+    """Помилка на екрані важливіша за «завершено» й за відсоток.
+
+    Вимога власника 13.09.26: коли зламалась фреза, до верстата треба йти саме
+    через це. Верстат при цьому цілком може показувати старий відсоток або
+    підсумок попередньої програми, тож якби «помилка» стояла нижче, вона
+    сховалась би за ними — і сигнал, заради якого все робилось, зник би.
+
+    Обрив зв'язку її все-таки перекриває: коли верстата не чути, ми не знаємо,
+    що в нього на екрані, а «помилка» з протухлого кадру — та сама неправда, що
+    й старий відсоток.
+    """
+    from types import SimpleNamespace
+
+    now = datetime(2026, 9, 13, 12, 0)
+    target = SimpleNamespace(key="k", name="150i", host="h", port=8765,
+                             portrait_model="", machine_id=1)
+
+    broken = service.MachineState(
+        target=target, frame_at=now, fault=True,
+        percent=100, percent_at=now, percent_changed_at=now - timedelta(hours=1),
+        completed=True,
+    )
+    card = service.MachineCard(target=target, state=broken, now=now)
+    assert card.is_fault is True
+    assert card.state_key == "fault"
+    assert card.state_word == "помилка"
+
+    stale = service.MachineState(
+        target=target,
+        frame_at=now - timedelta(seconds=service.STALE_AFTER_SECONDS + 1),
+        fault=True,
+    )
+    assert service.MachineCard(target=target, state=stale, now=now).is_fault is False
+
+    offline = service.MachineState(
+        target=target, frame_at=now, fault=True,
+        fail_streak=service.PROBLEM_AFTER_FAILURES, error="немає звʼязку",
+    )
+    offline_card = service.MachineCard(target=target, state=offline, now=now)
+    assert offline_card.is_fault is False
+    assert offline_card.state_key == "off"
+
+
 def test_done_beats_percent_in_the_strip():
     """У чіпі стрічки «готово» мусить бути СТАРШИМ за число: верстат, що стоїть
     на сотні, оператору треба знімати, а не читати «100%»."""
