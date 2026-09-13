@@ -196,7 +196,7 @@ class _FaultCard(MachineCard):
 
     @property
     def state_note(self) -> str:
-        return "верстат показує помилку · підійдіть"
+        return "на екрані повідомлення про помилку"
 
 
 def _fault_card():
