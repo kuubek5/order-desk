@@ -682,6 +682,22 @@ def _next_lab_row(worksheet: gspread.Worksheet, lab_start: int, lab_end: int) ->
 # Pending-client blue fill (RGB 0..1). Clearing it means the work was issued.
 _BLUE = {"red": 0.2901961, "green": 0.5254902, "blue": 0.9098039}
 
+# Заливка клітинки «Колір роботи» (D) за РОДИНОЮ матеріалу — так її ставлять
+# рукою в таблиці: рядок лишається синім (а синій, і тільки він, є сигналом
+# видачі — CLAUDE.md §2), а матеріал видно кольором однієї клітинки. Тому
+# заливка вузька, на одну клітинку, і накладається ПІСЛЯ синього A:K.
+#
+# Цирконій свідомо БЕЗ заливки: він — більшість рядків, синій має просвічувати
+# (та сама логіка, що в черзі, де цирконію смуги на краю рядка немає). СЛМ і
+# віск теж без заливки — в таблиці такої домовленості не бачив, вигадувати
+# колір за лабораторію не можна.
+_ORANGE = {"red": 1.0, "green": 0.6, "blue": 0.0}   # #FF9900
+_GREEN = {"red": 0.0, "green": 1.0, "blue": 0.0}    # #00FF00
+_MATERIAL_FILLS = {
+    "ПММА": _ORANGE,
+    "Титан": _GREEN,
+}
+
 
 def _row_value_map(work: dict) -> dict[int, str]:
     """1-indexed column → value for one work row. Quantity/material/вид|name are
@@ -748,6 +764,27 @@ def _grid_write_requests(
                     "startColumnIndex": 0, "endColumnIndex": COL_CAM_COMMENT,  # A:K
                 },
                 "cell": {"userEnteredFormat": {"backgroundColor": _BLUE}},
+                "fields": "userEnteredFormat.backgroundColor",
+            }
+        })
+
+    # Колір матеріалу — ОСТАННІМ: синій вище накриває весь A:K, зокрема D, тож
+    # заливка родини мусить лягти поверх нього, інакше її не видно. Родину
+    # кладе викликач у "material_family" (він має каталог матеріалів; тут БД
+    # немає) — те саме джерело, що й чіп матеріалу в черзі.
+    for row_number, work in zip(rows, works):
+        fill = _MATERIAL_FILLS.get((work.get("material_family") or "").strip())
+        if fill is None:
+            continue
+        requests.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": row_number - 1, "endRowIndex": row_number,
+                    "startColumnIndex": COL_MATERIAL_COLOR - 1,
+                    "endColumnIndex": COL_MATERIAL_COLOR,  # лише D
+                },
+                "cell": {"userEnteredFormat": {"backgroundColor": fill}},
                 "fields": "userEnteredFormat.backgroundColor",
             }
         })

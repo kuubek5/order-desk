@@ -238,6 +238,22 @@ def create_manual_batch(
     if _is_duplicate_submit(user.id, fingerprint, now_ts):
         return ManualBatchResult(duplicate=True)
 
+    # Каталог матеріалів потрібен ДО запису: клітинка «Колір роботи» в таблиці
+    # фарбується за РОДИНОЮ матеріалу, отже родину треба знати вже на момент
+    # запису. Ті самі рядки аліасів нижче класифікують Order-и — один прохід і
+    # одне джерело правди з чіпом матеріалу в черзі (`kappa` → ПММА,
+    # `tit` → Титан, `моно`/`емо`/`800` → Цирконій).
+    ensure_seeded(db)
+    alias_rows = load_alias_rows(db)
+    name_by_id = material_id_by_name(db)
+    family_by_id = {mid: name for name, mid in name_by_id.items()}
+    for work in works:
+        material_id = resolve_material_id(work.get("material_color"), alias_rows, name_by_id)
+        work["material_id"] = material_id
+        # Матеріал може не розпізнатись (нове написання) — тоді родини немає й
+        # клітинка лишається без заливки, а не фарбується навмання.
+        work["material_family"] = family_by_id.get(material_id, "") if material_id else ""
+
     try:
         result = write_rows(
             business_today(), works,
@@ -258,9 +274,6 @@ def create_manual_batch(
         )
     tab, note_rows = result
 
-    ensure_seeded(db)
-    alias_rows = load_alias_rows(db)
-    name_by_id = material_id_by_name(db)
     created_ids: list[int] = []
     for work, note_row in zip(works, note_rows):
         calc = work.get("calculated") or None
@@ -292,7 +305,8 @@ def create_manual_batch(
                 opak_units=opak_units(work.get("cam_comment")),
                 status=STATUS_CALCULATED if calc else STATUS_NEW,
             )
-        order.material_id = resolve_material_id(order.material_color, alias_rows, name_by_id)
+        # Родину вже визначили перед записом у таблицю — повторно не рахуємо.
+        order.material_id = work.get("material_id")
         db.add(order)
         db.flush()
         db.add(StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username))
