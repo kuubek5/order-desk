@@ -321,9 +321,12 @@ def _set_row_fills(
     Scoped to the name cell on purpose (user decision 16.08.26): marking a work
     found/issued must recolour only where the client name is, not the whole
     row, so other people's per-cell notes and colours in that row are left
-    untouched. The sync still reads the pending flag from column C, so this
-    narrower clear never flips a row to "issued" on its own — the portal status
-    stays authoritative."""
+    untouched.
+
+    Синк читає заливку з ТІЄЇ САМОЇ колонки E (`sheet_colors._FILL_COLUMN_LETTER`)
+    — писати в одну клітинку, а читати з іншої вже пробували: код фарбував E, а
+    дивився в C, яка не мінялась, і весь ланцюг був сліпий. Мінятимеш колонку
+    тут — міняй і там, інакше асиметрія повернеться."""
     if not rows:
         return
     requests = [

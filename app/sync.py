@@ -772,6 +772,16 @@ def sync_tab(
             #     видача показує його інакше, ніж власне натиснуте «Видати».
             fill = row_fills.get(row.row_number, "blue") if row_fills is not None else "blue"
             issued = row_fills is not None and fill not in ("blue", "grey")
+            # Таблиця вже показує те, чого домагався портал — розбіжності
+            # більше немає, позначку знімаємо. Дзеркало того, як синк знімає
+            # sum3d_pending, побачивши ID у колонці L.
+            #
+            # Сіре тут рахується згодою для «синього»: сіре — власна позначка
+            # лабораторії, і воно, як і синє, означає «не видано». Інакше повтор
+            # затирав би чужий сірий мазок своїм синім щодві хвилини.
+            if existing is not None and existing.fill_pending and row_fills is not None:
+                if (fill in ("blue", "grey")) == (existing.fill_pending == "blue"):
+                    existing.fill_pending = None
             if existing is not None and existing.issue_locked:
                 # Замок — ТИМЧАСОВИЙ, а не довічний. Він потрібен рівно на час
                 # між зняттям галочки в CRM і моментом, коли наше перефарбування

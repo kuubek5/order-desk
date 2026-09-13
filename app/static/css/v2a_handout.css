@@ -482,3 +482,11 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .wfolder.wfolder-miss{border-style:dashed;border-color:rgba(var(--warn-rgb), .55);background:rgba(var(--warn-rgb), .08)}
 .handoutv2 .wfolder.wfolder-miss .wfolder-t{color:var(--warn-ink)}
 .handoutv2 .wfolder.wfolder-miss svg{stroke:var(--warn-ink)}
+
+/* Заливка рядка ще не доїхала в таблицю. Клас спільний з чергою
+   (order_detail.css задає колір і курсор), але там він розрахований на
+   вертикальний блок паспорта — у щільному рядку видачі його верхній відступ
+   збиває базову лінію поруч із кількістю. Тому лише геометрія, без кольору:
+   тон попередження лишається один на весь застосунок. */
+.handoutv2 .wrow .sync-warning{margin-top:0;vertical-align:middle}
+.handoutv2 .wrow .sync-warning svg{width:14px;height:14px}

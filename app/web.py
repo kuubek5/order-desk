@@ -125,6 +125,7 @@ from app.services.handout import (
     scan_export_latest_for_clients as _scan_export_latest_for_clients,
 )
 from app.services.sheet_writeback import (
+    retry_pending_fills,
     retry_pending_sum3d,
     sheet_writeback_pool as _sheet_writeback_pool,
     warm_sheet_writeback as _warm_sheet_writeback,
@@ -268,6 +269,20 @@ def _retry_pending_sum3d_tick(db: Session) -> None:
         logger.exception("Повторний запис Sum3D у таблицю не поставлено")
 
 
+def _retry_pending_fills_tick(db: Session) -> None:
+    """Домалювати в таблиці заливку рядка, що не дійшла (Order.fill_pending).
+
+    Поруч із повтором Sum3D і з тієї самої причини: тік синку вже знає про
+    паузу, а записи однаково йдуть на єдиний воркер write-back. Збій повтору не
+    має зупиняти синк."""
+    if not _sheets_configured(db):
+        return
+    try:
+        retry_pending_fills(db)
+    except Exception:
+        logger.exception("Повторне фарбування рядків не поставлено")
+
+
 def _sheet_sync_worker(stop_event: Event) -> None:
     """Poll Google Sheets without occupying the web request loop or delaying
     shutdown — same shape as _mail_sync_worker above. Table rows are entered
@@ -323,6 +338,7 @@ def _sheet_sync_worker(stop_event: Event) -> None:
                     if wide:
                         next_wide = monotonic() + speed.get("wide", speed["hot"])
                 _retry_pending_sum3d_tick(db)
+                _retry_pending_fills_tick(db)
         except Exception:
             logger.exception("Unexpected background sheet sync failure")
             _record_sync_heartbeat(

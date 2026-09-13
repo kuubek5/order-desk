@@ -402,6 +402,62 @@ def retry_pending_sum3d(db: Session, *, now: float | None = None) -> int:
     return submitted
 
 
+# Ті самі межі, що для Sum3D, і з тієї самої причини: причина відмови (мережа,
+# «рядок не звірено») минає за хвилини, а тік синку — за секунди.
+PENDING_FILL_RETRY_SECONDS = 120.0
+PENDING_FILL_RETRY_BATCH = 5
+_pending_fill_attempts: dict[int, float] = {}
+
+
+def retry_pending_fills(db: Session, *, now: float | None = None) -> int:
+    """Поставити в пул повторне фарбування рядків, що не доїхало в таблицю.
+
+    Позначку `Order.fill_pending` ставить і знімає `set_client_row_fill_background`
+    (група — через `_apply_fill_pending`); тут лише вибір, кого повторити.
+    Повертає, скільки поставлено.
+
+    Чому повтор безпечний, на відміну від дозапису рядка: пофарбувати клітинку
+    в той самий колір двічі — те саме, що один раз. Дописати рядок двічі — два
+    рядки. Саме ідемпотентність і дозволяє повторювати це без звірки «а чи не
+    пройшло воно вже».
+
+    Позиція рядка звіряється всередині (`resolve_order_row`), тож повтор не
+    може пофарбувати чужу роботу, якщо рядки тим часом зсунулись.
+    """
+    from time import monotonic
+
+    from sqlalchemy import select
+
+    from app.sheets import quota_is_tight
+
+    if sync_control.is_paused() or quota_is_tight():
+        return 0
+    now = monotonic() if now is None else now
+    pending = db.execute(
+        select(Order.id, Order.fill_pending).where(
+            Order.fill_pending.is_not(None),
+            Order.archived_at.is_(None),
+        ).order_by(Order.id)
+    ).all()
+    alive = {order_id for order_id, _ in pending}
+    for stale in [key for key in _pending_fill_attempts if key not in alive]:
+        _pending_fill_attempts.pop(stale, None)
+    submitted = 0
+    for order_id, wanted in pending:
+        last = _pending_fill_attempts.get(order_id)
+        if last is not None and now - last < PENDING_FILL_RETRY_SECONDS:
+            continue
+        _pending_fill_attempts[order_id] = now
+        set_client_row_fill_background(order_id, blue=(wanted == "blue"))
+        submitted += 1
+        if submitted >= PENDING_FILL_RETRY_BATCH:
+            break
+    if submitted:
+        logger.info("Повторне фарбування рядків: поставлено %d (чекають усього %d)",
+                    submitted, len(pending))
+    return submitted
+
+
 def write_calculated_cell_warm(order_id: int, value: str) -> str | None:
     """`write_calculated_cell` на воркері — див. `write_sheet_fields_warm`."""
     with writeback_session() as bg:
@@ -525,9 +581,11 @@ def set_client_row_fill_background(order_id: int, *, blue: bool) -> None:
     видачі клацає галочки одну за одною, тож ця затримка діставалась йому
     десятки разів за ранок.
 
-    Заливка — дзеркало стану, а не сам стан: джерело правди в базі, і втрачений
-    мазок самолікується наступною точковою правкою (та сама логіка, що в
-    write_sheet_fields_background)."""
+    Заливка — дзеркало стану, а не сам стан: джерело правди в базі. Але
+    «самолікується наступною точковою правкою» працює лише доти, доки та правка
+    буде: у виданої роботи наступної правки НЕМАЄ, і втрачений мазок лишався
+    назавжди. Тому невдача тепер лишає слід — `Order.fill_pending` — і фоновий
+    повтор (`retry_pending_fills`) домальовує заливку, коли зв'язок повернувся."""
     def worker() -> None:
         try:
             with writeback_session() as bg:
@@ -535,6 +593,12 @@ def set_client_row_fill_background(order_id: int, *, blue: bool) -> None:
                 if order is None:
                     return
                 error = set_client_row_fill(bg, order, blue=blue)
+                # Позначка ставиться й знімається ЛИШЕ тут: і роут видачі, і
+                # фоновий повтор фарбують рядок через цю функцію, тож стан не
+                # може розійтися між ними. Записуємо саме БАЖАНУ заливку, а не
+                # прапорець: наступна дія оператора перезапише її своєю, і
+                # повтор ніколи не поставить застарілий колір.
+                order.fill_pending = ("blue" if blue else "clear") if error else None
                 if error:
                     logger.warning(
                         "Заливку рядка для роботи %s не оновлено: %s", order_id, error
@@ -633,14 +697,18 @@ def clear_group_fills_background(order_ids: list[int]) -> None:
     власним пошуком рядка — та сама арифметика, що вже одного разу заморозила
     видачу на дві хвилини (синк C-2). Тут таблиця відкривається один раз.
 
-    Заливка — дзеркало стану, а не сам стан: статуси вже закомічені, і
-    втрачений мазок самолікується наступною точковою правкою, тож помилки
-    лише логуються.
+    Заливка — дзеркало стану, а не сам стан: статуси вже закомічені. Але
+    невдачу більше не ковтаємо: кожна не знята заливка лишає `fill_pending`, і
+    фоновий повтор доводить її до таблиці (див. `set_client_row_fill_background`
+    — там та сама межа й той самий сенс позначки).
     """
     if not order_ids:
         return
 
     def worker() -> None:
+        # Доки не доведено протилежне, вважаємо кожен рядок НЕ знятим: краще
+        # зайвий повтор (фарбування ідемпотентне), ніж мовчки лишене синє.
+        unresolved = set(order_ids)
         try:
             with writeback_session() as bg:
                 fill_rows: list[tuple[int, int]] = []
@@ -653,6 +721,9 @@ def clear_group_fills_background(order_ids: list[int]) -> None:
                         or not order.sheet_tab
                         or order.row_number is None
                     ):
+                        # Рядка в таблиці немає взагалі — знімати нічого, і
+                        # повторювати теж нічого.
+                        unresolved.discard(order_id)
                         continue
                     if spreadsheet is None:
                         spreadsheet = open_spreadsheet(db=bg)
@@ -670,13 +741,48 @@ def clear_group_fills_background(order_ids: list[int]) -> None:
                         )
                         continue
                     fill_rows.append((worksheet.id, row))
+                    unresolved.discard(order_id)
                 if fill_rows and spreadsheet is not None:
+                    # Пакетна правка або проходить уся, або кидає — тому
+                    # знімаємо позначку лише ПІСЛЯ неї.
                     clear_row_fills(spreadsheet, fill_rows)
+                _apply_fill_pending(bg, order_ids, unresolved, "clear")
                 bg.commit()
         except Exception:
             logger.exception("Фонове зняття заливки групи не вдалося")
+            # Сесія вище вже відкотилась — позначку ставимо своєю. Без цього
+            # найгірший випадок (обрив на пакетній правці) лишався б німим саме
+            # тоді, коли синього в таблиці лишилось найбільше.
+            _remember_failed_fills(order_ids, "clear")
 
     submit_sheet_write(worker)
+
+
+def _apply_fill_pending(
+    db: Session, order_ids: list[int], unresolved: set[int], value: str
+) -> None:
+    """Проставити/зняти позначку розбіжності заливки для групи в ОДНІЙ сесії."""
+    for order_id in order_ids:
+        order = db.get(Order, order_id)
+        if order is None:
+            continue
+        order.fill_pending = value if order_id in unresolved else None
+
+
+def _remember_failed_fills(order_ids: list[int], value: str) -> None:
+    """Позначити групу як незафарбовану, коли основна сесія вже мертва.
+
+    Власна сесія і власний `try`: це шлях аварії, і впасти тут означало б
+    втратити єдиний слід про те, що заливка не доїхала."""
+    try:
+        with writeback_session() as bg:
+            for order_id in order_ids:
+                order = bg.get(Order, order_id)
+                if order is not None and order.source == "sheet_client":
+                    order.fill_pending = value
+            bg.commit()
+    except Exception:
+        logger.exception("Не вдалося запам'ятати незняту заливку групи")
 
 
 def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:

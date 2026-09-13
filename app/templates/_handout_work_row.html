@@ -87,6 +87,17 @@ title="Видано в CRM{% if issued_by.get(order.id) %}: {{ issued_by[order.i
             {% include "_matpair.html" %}
             <span class="wqty">{{ order.quantity or '—' }} <em>од.</em></span>
             {% if not selected_day and order.sheet_tab %}<span class="wday">{{ order.sheet_tab[:5] }}</span>{% endif %}
+            {# Заливка рядка не доїхала в таблицю. Доти цей збій був НІМИЙ: у
+               CRM робота видана, у таблиці лишилось синє — а видачу вся
+               лабораторія читає саме по синьому, тож робота виглядала
+               невиданою. Клас той самий, що в черзі (`Order.sum3d_pending`):
+               однакова біда має однакове обличчя. #}
+            {% if order.fill_pending %}
+            <span class="sync-warning is-fill-pending"
+                  title="{% if order.fill_pending == 'clear' %}Синю заливку рядка ще не знято в таблиці{% else %}Синю заливку рядка ще не повернуто в таблицю{% endif %} — програма домальовує її сама кожні 2 хв. У CRM стан уже правильний.">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+            </span>
+            {% endif %}
         </div>
     </div>
     <a href="/orders/{{ order.id }}" class="wsum mono" title="Паспорт роботи — перевірити, як фрезерувалось">
