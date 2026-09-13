@@ -697,6 +697,10 @@ def _row_value_map(work: dict) -> dict[int, str]:
         (COL_JOB_CODE, work.get("job_code")),
         (COL_TECHNICIAN, work.get("technician_name")),
         (COL_SUM3D_ID, work.get("sum3d_id")),
+        # Літера оператора у «Прорахував» (М) — лише коли є Sum3D: ввід Sum3D
+        # і є момент «я це прорахував» (дзеркало set_sum3d_id). Кладе її
+        # викликач у ключ "calculated", тут — суто запис у клітинку.
+        (COL_CALCULATED, work.get("calculated")),
         # Опак пишеться в коментар для CAM — так його вписують рукою, і так
         # його рахують за зміну, дивлячись у одну колонку.
         (COL_CAM_COMMENT, work.get("cam_comment")),

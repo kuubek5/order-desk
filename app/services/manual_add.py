@@ -21,7 +21,7 @@ from typing import Callable
 
 from sqlalchemy.orm import Session
 
-from app.statuses import STATUS_ACCEPTED, STATUS_NEW
+from app.statuses import STATUS_ACCEPTED, STATUS_CALCULATED, STATUS_NEW
 from app.business_day import business_today
 from app.material_catalog import (
     ensure_seeded,
@@ -221,6 +221,16 @@ def create_manual_batch(
     if error is not None:
         return ManualBatchResult(error=error)
 
+    # Ввід Sum3D руками = момент «я це прорахував», тож штампуємо літеру
+    # оператора в «Прорахував» (М) — так само, як `set_sum3d_id` у черзі
+    # (routers/orders.py). Лише коли літера в оператора задана і в рядку є
+    # Sum3D; без літери Sum3D пишеться, а М лишається порожнім.
+    stamp = (user.sheet_initial or "").strip() or None
+    if stamp:
+        for work in works:
+            if work.get("sum3d_id"):
+                work["calculated"] = stamp
+
     # Захист від подвійного сабміту стоїть ПЕРЕД записом: інакше F5 дописав би
     # у таблицю ту саму партію вдруге, і оператор побачив би дублі рядків.
     fingerprint = repr((("lab" if is_lab else "client"), works))
@@ -253,16 +263,23 @@ def create_manual_batch(
     name_by_id = material_id_by_name(db)
     created_ids: list[int] = []
     for work, note_row in zip(works, note_rows):
+        calc = work.get("calculated") or None
         if work["source"] == "lab":
+            # Літера в М = маркер «прораховано», тож і статус ведемо туди
+            # (дзеркало set_sum3d_id); без літери — колишня поведінка.
+            status = (
+                STATUS_CALCULATED if calc
+                else (STATUS_ACCEPTED if work["sum3d_id"] else STATUS_NEW)
+            )
             order = Order(
                 source="lab", sheet_tab=tab, row_number=note_row - HEADER_ROWS,
                 work_order_no=work["work_order_no"] or None, kind=work["kind"] or None,
                 material_color=work["material_color"] or None, quantity=work["quantity"] or None,
                 job_code=work["job_code"] or None, technician_name=work["technician_name"] or None,
-                sum3d_id=work["sum3d_id"] or None,
+                sum3d_id=work["sum3d_id"] or None, calculated_raw=calc,
                 cam_comment=work.get("cam_comment") or None,
                 opak_units=opak_units(work.get("cam_comment")),
-                status=STATUS_ACCEPTED if work["sum3d_id"] else STATUS_NEW,
+                status=status,
             )
         else:
             order = Order(
@@ -270,9 +287,10 @@ def create_manual_batch(
                 client_name=work["client_name"], material_color=work["material_color"] or None,
                 quantity=work["quantity"] or None, job_code=work["job_code"] or None,
                 technician_name=work["technician_name"] or None,
-                sum3d_id=work["sum3d_id"] or None,
+                sum3d_id=work["sum3d_id"] or None, calculated_raw=calc,
                 cam_comment=work.get("cam_comment") or None,
-                opak_units=opak_units(work.get("cam_comment")), status="нове",
+                opak_units=opak_units(work.get("cam_comment")),
+                status=STATUS_CALCULATED if calc else STATUS_NEW,
             )
         order.material_id = resolve_material_id(order.material_color, alias_rows, name_by_id)
         db.add(order)
