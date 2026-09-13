@@ -18,6 +18,7 @@ from app.models import Order, User
 from app.services.manual_add import create_manual_batch
 from app.sheet_writer import (
     COL_MATERIAL_COLOR,
+    _CYAN,
     _GREEN,
     _ORANGE,
     _grid_write_requests,
@@ -80,10 +81,16 @@ def test_material_fill_is_applied_after_the_blue_row():
     assert blue_at < mat_at
 
 
-def test_unknown_material_gets_no_invented_colour():
-    """Родину, про яку домовленості в таблиці немає, не фарбуємо."""
+def test_wax_cell_is_turquoise():
     req = _grid_write_requests(
-        1, [60], [_work("wax", "Віск")], paint_blue=False, first=60, last=60)
+        1, [60], [_work("wax", "Віск")], paint_blue=True, first=60, last=60)
+    assert (COL_MATERIAL_COLOR - 1, COL_MATERIAL_COLOR, _CYAN) in _fills(req)
+
+
+def test_unknown_material_gets_no_invented_colour():
+    """Родину, про яку домовленості в таблиці немає (СЛМ), не фарбуємо."""
+    req = _grid_write_requests(
+        1, [60], [_work("slm", "СЛМ")], paint_blue=False, first=60, last=60)
     assert _fills(req) == []
 
 
