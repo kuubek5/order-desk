@@ -354,3 +354,33 @@ def test_learning_from_the_crop_is_the_same_as_from_the_frame(name):
     for a, b in zip(from_frame, from_crop):
         assert a.cap == b.cap
         assert (a.bits == b.bits).all()
+
+
+def test_a_named_idle_screen_beats_a_percent_conjured_from_nothing(db):
+    """Верстат на екрані вибору файлу СТОЇТЬ, хоч геометрія й малює «0 %».
+
+    Бойовий кадр 150i-Olejka (14.09.26): екран SELECT JOBS із порожньою текою
+    завдань. Справжньої смуги там немає — `find_progress_bar` мовчить, — але
+    геометричний читач нового покоління знаходить «0 %» на порожньому місці. А
+    нуль це не None, тож стан ставав «фрезерує 0 %»: єдиний верстат, що висів
+    окремим станом, поки решта чесно показувала «завершено» (скарга власника).
+
+    Правило, яке це закриває: коли екран НАЗВАВ себе, його слово старше за
+    число з геометрії. На екрані вибору файлу програми немає взагалі — отже й
+    відсотка бути не може.
+    """
+    from app.machine_ocr import read_progress_percent, screen_meaning
+
+    frame = Image.open(FIX / "newgen_150i_select_jobs.png").convert("RGB")
+    # Те, з чого все почалось: екран упізнано, а число взялося з повітря.
+    assert screen_meaning(frame) == "idle"
+    assert read_progress_percent(frame) == 0
+
+    state = ms.poll_target(db, _agent(), None, frame=frame, titles=[])
+    assert state.idle_known is True
+    assert state.percent is None, "слово екрана мусить відкинути вигадане число"
+
+    card = ms.MachineCard(target=state.target, state=state, now=state.frame_at,
+                          reads_percent=True)
+    assert card.state_key == "idle"
+    assert card.state_word == "стоїть"
