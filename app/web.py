@@ -43,6 +43,7 @@ from app.backup_mirror import mirror_snapshot
 from app.monthly_backup import ensure_monthly_snapshot
 from app.export_scanner import list_export_client_names_cached
 from app import sync_control
+from app.services import outage_journal
 from app.sync_control import (
     MAIL_SYNC_INITIAL_DELAY_SECONDS,
     MAIL_SYNC_INTERVAL_SECONDS,
@@ -183,8 +184,10 @@ def _mail_sync_tick(db: Session) -> None:
     except MailSyncError as exc:
         logger.warning("Background mail sync failed: %s", exc)
         _record_sync_heartbeat("mail", status="error", error_message=str(exc))
+        outage_journal.note_failure(db, kind="mail", message=str(exc))
         return
     _record_sync_heartbeat("mail", status="ok")
+    outage_journal.note_recovery(db, kind="mail")
 
 
 def _mail_sync_worker(stop_event: Event) -> None:
@@ -218,8 +221,13 @@ def _sheet_sync_tick(db: Session) -> None:
     except SheetSyncError as exc:
         logger.warning("Background sheet sync failed: %s", exc)
         _record_sync_heartbeat("sheet", status="error", error_message=str(exc))
+        # Пульс зеленіє на першому ж успіху, тож без цього сліду від обриву не
+        # лишалось нічого: журнал порожній, і питання «що не доїхало вночі»
+        # відповіді не мало.
+        outage_journal.note_failure(db, kind="sheet", message=str(exc))
         return
     _record_sync_heartbeat("sheet", status="ok")
+    outage_journal.note_recovery(db, kind="sheet")
 
 
 def _sheet_hot_tick(db: Session, *, neighbours: bool = True) -> None:
