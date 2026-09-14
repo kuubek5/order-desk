@@ -86,8 +86,10 @@ def test_first_work_does_not_jump_between_refreshes():
     «Верстати» це байдуже, бо він показує всі. Табло показує ПЕРШУ, тому
     порядок тут фіксується сам.
     """
-    a = _order("Ортос", "pmma A2", "2"); a.id = 7
-    b = _order("Дента Люкс", "mono A3", "6"); b.id = 3
+    a = _order("Ортос", "pmma A2", "2")
+    a.id = 7
+    b = _order("Дента Люкс", "mono A3", "6")
+    b.id = 3
     straight = _view([_card("A", "run", percent=1, sum3d="X", orders=[a, b])])
     flipped = _view([_card("A", "run", percent=1, sum3d="X", orders=[b, a])])
     assert straight.machines[0].client == flipped.machines[0].client == "Дента Люкс"
