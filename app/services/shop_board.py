@@ -63,6 +63,9 @@ class ShopMachine:
     is_sisma: bool = False
     layer: Optional[int] = None
     layers_total: Optional[int] = None
+    # Коли машина обіцяє закінчити — ЇЇ прогноз із екрана, не наша оцінка.
+    ends_at: str = ""
+    left_text: str = ""
 
     @property
     def sisma_percent(self) -> Optional[int]:
@@ -134,7 +137,13 @@ def _work_of(card) -> tuple[str, str, str]:
     # хоча на верстаті нічого не змінилось.
     orders.sort(key=lambda o: (getattr(o, "id", 0) or 0))
     first = orders[0]
+    # Клієнт є не в кожної роботи: у лабораторних його немає взагалі, там
+    # робота впізнається НОМЕРОМ НАРЯДУ. Той самий порядок, що на екрані
+    # «Верстати». Без запасного варіанта рядок лишався порожнім, і на
+    # телевізорі було видно лише матеріал (скарга з цеху 14.09.26).
     client = (getattr(first, "client_name", "") or "").strip()
+    if not client:
+        client = (getattr(first, "work_order_no", "") or "").strip()
     bits = [
         (getattr(first, "material_color", "") or "").strip(),
         (getattr(first, "quantity", "") or "").strip(),
@@ -195,6 +204,12 @@ def _sisma(card, token: str) -> ShopMachine:
     layers = card.layers
     if layers:
         item.layer, item.layers_total = layers
+    # Час кінця друку — прогноз САМОЇ машини (`ends_at`), тому й показуємо
+    # його як є. Свій ми б не порахували: швидкість шару не стала.
+    ends = getattr(card, "ends_at", None)
+    if ends is not None:
+        item.ends_at = ends.strftime("%H:%M")
+    item.left_text = (getattr(card, "left_text", "") or "").strip()
     return item
 
 

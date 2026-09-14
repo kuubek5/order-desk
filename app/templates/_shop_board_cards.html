@@ -66,6 +66,13 @@
           {% if s.layer and s.layers_total %}
             <span class="lay">{{ s.layer }}</span>
             <span class="of">з {{ s.layers_total }} шарів</span>
+            {# Час кінця — прогноз самої машини; показуємо, лише коли вона
+               його дала, бо свого ми не рахуємо. Без «лишилось N хв»: у
+               плитці воно не вміщалось і обрізало саме час, а порахувати
+               залишок можна й з годинника на цьому ж екрані. #}
+            {% if s.ends_at %}
+              <span class="ends">завершить о <b>{{ s.ends_at }}</b></span>
+            {% endif %}
             <span class="pc">{{ s.sisma_percent }}<small>%</small></span>
           {% else %}
             <span class="nd">{{ s.note or "шар не прочитано" }}</span>
@@ -82,7 +89,7 @@
         <b>{% if view.nearest_day %}<small>{{ view.nearest_day }}</small>{% endif %}{{ view.nearest_at }}</b>
         <span>{{ view.nearest_name }}{% if view.nearest_iso %} · <span data-left-to="{{ view.nearest_iso }}" data-prefix="через ">—</span>{% endif %}</span>
       {% else %}
-        <b>—</b><span>жодна не пікає</span>
+        <b>—</b><span>жодна не спікає</span>
       {% endif %}
     </div>
     <div class="furn-cells">

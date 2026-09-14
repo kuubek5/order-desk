@@ -36,7 +36,7 @@ def _card(name, state_key, *, percent=None, sum3d=None, orders=(), sisma=False,
 
 def _order(client=None, material=None, quantity=None, kind=None):
     return SimpleNamespace(id=0, client_name=client, material_color=material,
-                           quantity=quantity, kind=kind)
+                           quantity=quantity, kind=kind, work_order_no=None)
 
 
 def _view(cards):
@@ -93,6 +93,38 @@ def test_first_work_does_not_jump_between_refreshes():
     straight = _view([_card("A", "run", percent=1, sum3d="X", orders=[a, b])])
     flipped = _view([_card("A", "run", percent=1, sum3d="X", orders=[b, a])])
     assert straight.machines[0].client == flipped.machines[0].client == "Дента Люкс"
+
+
+def test_lab_work_falls_back_to_the_order_number():
+    """У лабораторних робіт клієнта немає — там робота впізнається нарядом.
+
+    Без запасного варіанта рядок лишався порожнім, і на телевізорі було
+    видно лише матеріал (скарга з цеху 14.09.26).
+    """
+    lab = _order(None, "mono A3", "6", "анатомія")
+    lab.work_order_no = "24122"
+    view = _view([_card("A", "run", percent=10, sum3d="X", orders=[lab])])
+    assert view.machines[0].client == "24122"
+
+    client = _order("Дента Люкс", "mono A3", "6")
+    client.work_order_no = "24122"
+    view = _view([_card("A", "run", percent=10, sum3d="X", orders=[client])])
+    assert view.machines[0].client == "Дента Люкс", "ім'я клієнта має перевагу"
+
+
+def test_printer_shows_the_end_time_the_machine_promised():
+    """Час кінця друку — прогноз САМОЇ машини; свого ми не рахуємо."""
+    card = _card("SISMA", "run", sisma=True, layers=(412, 780))
+    card.ends_at = datetime(2026, 9, 14, 20, 58)
+    card.left_text = "лишилось 3 год 55 хв"
+    view = _view([card])
+    assert view.sisma.ends_at == "20:58"
+    assert view.sisma.left_text == "лишилось 3 год 55 хв"
+
+
+def test_printer_without_a_forecast_says_nothing():
+    view = _view([_card("SISMA", "run", sisma=True, layers=(412, 780))])
+    assert view.sisma.ends_at == "", "вигаданий час кінця гірший за жоден"
 
 
 def test_machine_without_queue_match_has_no_invented_work():
