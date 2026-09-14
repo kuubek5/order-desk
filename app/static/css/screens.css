@@ -812,6 +812,12 @@ body.rail-collapsed .rail-sync-dot {
    білий, текст чорний, бо це той самий документ, який лягає в лоток поруч із
    коронкою. */
 @media print {
+  /* Друк — світлий, тож нативне оформлення теж мусить стати світлим: на
+     :root стоїть `color-scheme: dark` заради темних смуг прокрутки
+     (base.css), а воно фарбує ще й контроли й полотно. */
+  :root {
+    color-scheme: light;
+  }
   body {
     background: #fff !important;
     color: #000 !important;

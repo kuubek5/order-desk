@@ -403,12 +403,21 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
 .q2 td.order-id:has(.approval-badge),
 .q2 td.order-id:has(.badge.chg),
 .q2 td.order-id:has(.badge.problem),
+.q2 td.order-id:has(.badge.milling),
 .q2 td.order-id:has(.badge.redo){flex-wrap:wrap}
 /* Бейдж «змінено» лишає місце кошику праворуч: на 100% ширини кошик
    отримував ЦІЛИЙ третій рядок під свої 22px, і рядок ріс до 96px замість
    ~70px (виміряно на 30 рядках). Тепер попередження і видалення діляться
    одним рядком, а текст бейджа вкорочується трикрапкою — повний перелік
    змінених полів лишається в title. */
+/* Чіп «фрезерується на 350i · 68%» — той самий запобіжник, що й у бейджа
+   «змінено» нижче, і з тієї ж причини. Він оголошений `white-space:nowrap`
+   (queue.css) і без стелі не стискався взагалі: у вузькій колонці наряду
+   вилазив за комірку й малювався ПОВЕРХ числа в «Кількості» — на кадрі з
+   цеху крізь напис «350i-Boris» просвічувала цифра. Тепер переноситься
+   (правило вище) або вкорочується трикрапкою; повна назва лишається
+   в title. */
+.q2 td.order-id .badge.milling{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .q2 td.order-id .chg-form{max-width:calc(100% - 30px)}
 .q2 td.order-id .badge.chg{max-width:100%;overflow:hidden}
 .q2 td.order-id .badge.chg span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
