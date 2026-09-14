@@ -562,6 +562,18 @@ document.addEventListener("click", (event) => {
   const LS_MODE = "layoutEditMode";
   const LS_WIDTHS = "queueColWidths";
   const MIN_COL = 60;
+  // Перша колонка («Наряд / Клієнт») має власний, значно більший мінімум.
+  // У ній живуть шпилька, крапка стану, бейдж джерела, саме імʼя, чіпи
+  // («змінено», «переробка», «фрезерується») і кошик. Поки комірка була
+  // flex-контейнером, надто вузька колонка нічим не загрожувала: вміст
+  // просто вилазив за межі й малювався поверх «Кількості» (вада 0.19.4).
+  // Тепер комірка чесно тримає ширину стовпця — і надто вузька колонка
+  // замість напливу дає перенос: рядок із чіпом виростав з 43px до 121px,
+  // тобто екран умощував утричі менше робіт. 260px — та сама виміряна
+  // величина, що стоїть мінімумом у CSS (v2a_queue.css): при ній нічого не
+  // налазить і висота рядків лишається проєктною.
+  const MIN_FIRST_COL = 260;
+  const minFor = (index) => (index === 0 ? MIN_FIRST_COL : MIN_COL);
 
   // Через KMStore: він додає префікс kuubmill:v1: і сам переживає приватний
   // режим (див. storage.js). Локальні обгортки лишаються — решта файлу вже
@@ -609,7 +621,7 @@ document.addEventListener("click", (event) => {
     const factor = (avail && sum > avail) ? avail / sum : 1;
     table.style.tableLayout = "fixed";
     cells.forEach((th, i) => {
-      if (map[i]) th.style.width = Math.max(MIN_COL, Math.round(map[i] * factor)) + "px";
+      if (map[i]) th.style.width = Math.max(minFor(i), Math.round(map[i] * factor)) + "px";
     });
   }
   // Перед першим перетягуванням фіксуємо поточні (auto) ширини всіх стовпців,
@@ -649,6 +661,7 @@ document.addEventListener("click", (event) => {
     drag = {
       grip: grip,
       th: th,
+      index: headCells().indexOf(th),
       startX: event.clientX,
       startW: parseInt(th.style.width, 10) || Math.round(th.getBoundingClientRect().width),
     };
@@ -659,7 +672,7 @@ document.addEventListener("click", (event) => {
   }
   function onPointerMove(event) {
     if (!drag) return;
-    const w = Math.max(MIN_COL, drag.startW + (event.clientX - drag.startX));
+    const w = Math.max(minFor(drag.index), drag.startW + (event.clientX - drag.startX));
     drag.th.style.width = w + "px";
   }
   function onPointerUp() {
