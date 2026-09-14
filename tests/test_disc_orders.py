@@ -529,16 +529,11 @@ class TestScreen:
         assert 'data-sec="blanks"' not in html
 
 
-def test_bot_settings_offer_the_logistics_chat_and_save_it(app_db):  # noqa: F811
-    """Поле «Чат логістів» справді на сторінці й справді зберігається."""
-    app, factory = app_db
-    client = _client(app, ADMIN)
-    status, _, html = client.get("/settings/feedback")
-    assert status == 200 and 'id="bot-logistics"' in html and "/pechi" in html
-    status, headers, _ = client.post("/settings/feedback/logistics", {"logistics_chat_id": "-1001234567890"})
-    assert status == 303
-    with factory() as s:
-        assert bot.logistics_chat(s) == "-1001234567890"
-    status, _, _ = client.post("/settings/feedback/logistics", {"logistics_chat_id": "група"})
-    with factory() as s:
-        assert bot.logistics_chat(s) == "-1001234567890", "не число — не зберігаємо"
+def test_bot_settings_no_longer_offer_a_logistics_chat(app_db):  # noqa: F811
+    """Звіт по пічках у чат логістів прибрано (власник 14.09.26): логісти
+    дивляться живе табло (порт 8010), тож поля чату в налаштуваннях немає."""
+    app, _factory = app_db
+    status, _, html = _client(app, ADMIN).get("/settings/feedback")
+    assert status == 200
+    assert 'id="bot-logistics"' not in html and "/settings/feedback/logistics" not in html
+    assert "Табло пічок для логістів" in html, "живе табло лишається"
