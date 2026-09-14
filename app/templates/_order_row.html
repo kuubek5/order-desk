@@ -47,156 +47,167 @@
        колонки нема (рядок лишається 9-колонковим). #}
     {% if show_source %}<td class="src-tab"><a class="src-tab-link mono" href="/?date={{ order.sheet_tab }}" title="Відкрити чергу за цей день">{{ order.sheet_tab or '—' }}</a></td>{% endif %}
     <td class="order-id">
-        {# Шпилька «беру зараз». Один клік — і робота в моєму наборі; фільтр
-           «Мої зараз» лишає в таблиці тільки їх. Порядок рядків при цьому НЕ
-           міняється: під рукою оператора нічого не має стрибати. #}
-        <form class="focus-form" hx-post="/orders/{{ order.id }}/focus"
-              hx-target="closest tr" hx-swap="outerHTML">
-            <button type="submit" class="focus-btn{% if _focused %} on{% endif %}"
-                    title="{% if _focused %}Прибрати з «мої зараз»{% else %}Взяти в «мої зараз»{% endif %}"
-                    aria-pressed="{{ 'true' if _focused else 'false' }}">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z" class="duo"/><path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg>
-            </button>
-        </form>
-        <span class="sdot" aria-hidden="true" style="{% if _dc[1] %}background:transparent;box-shadow:inset 0 0 0 1.6px {{ _dc[0] }}{% else %}background:{{ _dc[0] }}{% endif %}"></span>
-        {% if order.source == 'email' %}
-        <span class="source-badge source-badge-email src" title="Надійшло з пошти">Пошта</span>
-        {% elif order.source == 'sheet_client' %}
-        <span class="source-badge source-badge-client src" title="Клієнт, внесений у таблицю без наряду">Клієнт</span>
-        {% endif %}
-        <a href="/orders/{{ order.id }}" class="ordbtn" data-order-detail="{{ order.id }}" title="{% if order.source in ('email', 'sheet_client') %}{{ order.client_name or 'Без імені клієнта' }}{% else %}{{ order.work_order_no or '—' }}{% endif %}">{% if order.source in ('email', 'sheet_client') %}{{ order.client_name or 'Без імені клієнта' }}{% else %}{{ order.work_order_no or '—' }}{% endif %}</a>
-        {% if _rework %}
-        <span class="rework-badge" title="Переробка{% if _rework.occurrence %} · {{ _rework.occurrence }}-й раз{% endif %}{% if _rework.blame %} · причина: {{ _rework.blame }}{% endif %}{% if _rework.blame_quantity %} · браку: {{ _rework.blame_quantity }}{% endif %}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
-            переробка{% if _rework.blame %} · {{ _rework.blame }}{% endif %}
-        </span>
-        {% endif %}
-        {# ПЕРЕНЕСЕНО з комірки «Статус» — з тієї ж причини, що й кнопка
-           видалення нижче: td.status{display:none}, і разом з нею зникало
-           попередження «технік змінив роботу». Фон рядка при цьому
-           малювався (правило на > td), тобто оператор бачив червоний рядок
-           без жодного пояснення І без можливості зняти позначку — кнопка
-           change-seen існує ЛИШЕ тут, більше в жодному шаблоні.
-           Коментар у sync.py називає фрезерування зміненої роботи браком,
-           тож цей сигнал не має права бути невидимим. #}
-        {% if _changed %}
-        <form class="chg-form"
-              hx-post="/orders/{{ order.id }}/change-seen"
-              hx-target="#order-row-{{ order.id }}"
-              hx-swap="outerHTML">
-            <button type="submit" class="badge chg{% if _changed_taken %} chg-taken{% endif %}"
-                    title="Технік змінив у таблиці: {{ order.sheet_changed_fields or '—' }}. Натисніть, щоб прибрати позначку.">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
-                <span>{% if _changed_taken %}змінено після взяття{% else %}змінено{% endif %} {{ order.sheet_changed_at.strftime('%H:%M') }} · {{ order.sheet_changed_fields or '—' }}</span>
-            </button>
-        </form>
-        {% endif %}
-        {# ЗАРАЗ ФРЕЗЕРУЄТЬСЯ: зв'язка з верстатом за Sum3D ID (ім'я .iso із
-           заголовка RemiCORE). `milling is defined` — бо рядок рендериться і
-           з місць, які цього набору не знають (пошук, картка): там він просто
-           не малюється, а не падає. #}
-        {% set _mill = (milling.get(order.sum3d_id) if (milling is defined and milling and order.sum3d_id) else None) %}
-        {% if _mill %}
-        {# `stalled` — відсоток не змінюється понад 5 хв. Бойові кадри
-           03.09.26: верстат чесно показував 81% шість хвилин, бо СТОЯВ
-           (подача 0, шпиндель 0, інструмент у помилці) — а оператор прочитав
-           це як «CRM залипла» і пішов шукати баг. Число лишається на місці,
-           поруч зʼявляється пауза: те саме читання, але видно, що воно не
-           рухається. #}
-        <span class="badge milling{% if _mill.stalled %} stalled{% endif %}"
-              title="{% if _mill.stalled %}Верстат {{ _mill.machine }}: відсоток не змінюється понад 5 хв — програму зупинено або призупинено{% else %}Фрезерується на верстаті {{ _mill.machine }}{% endif %}{% if _mill.percent is not none %} · виконано {{ _mill.percent }}%{% endif %}">
-            {% if _mill.stalled %}
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12"/><path d="M15 6v12"/></svg>
-            {% else %}
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v6"/><path d="M9 8h6l-1.5 9h-3z" class="duo"/><path d="M9 8h6l-1.5 9h-3z"/><path d="M12 17v5"/></svg>
+        {# Власний блок, а не flex на самій <td>. `display:flex` знімає з
+           комірки роль table-cell, і вона перестає слухатись ширини
+           стовпця: при збережених ширинах (перетягування колонок вмикає
+           table-layout:fixed) вміст вилазив за межі й імʼя клієнта
+           малювалось ПОВЕРХ числа в «Кількості» — 63 рядки з 63 у
+           відтворенні 14.09.26. Тепер <td> лишається звичайною коміркою
+           й тримає ширину стовпця, а всім розкладом керує .oid усередині;
+           його діти справді стискаються, тож довге імʼя вкорочується
+           трикрапкою замість того, щоб лізти на сусіда. #}
+        <div class="oid">
+            {# Шпилька «беру зараз». Один клік — і робота в моєму наборі; фільтр
+               «Мої зараз» лишає в таблиці тільки їх. Порядок рядків при цьому НЕ
+               міняється: під рукою оператора нічого не має стрибати. #}
+            <form class="focus-form" hx-post="/orders/{{ order.id }}/focus"
+                  hx-target="closest tr" hx-swap="outerHTML">
+                <button type="submit" class="focus-btn{% if _focused %} on{% endif %}"
+                        title="{% if _focused %}Прибрати з «мої зараз»{% else %}Взяти в «мої зараз»{% endif %}"
+                        aria-pressed="{{ 'true' if _focused else 'false' }}">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z" class="duo"/><path d="M12 17v5"/><path d="M9 3h6l-1 6 3 3v2H7v-2l3-3z"/></svg>
+                </button>
+            </form>
+            <span class="sdot" aria-hidden="true" style="{% if _dc[1] %}background:transparent;box-shadow:inset 0 0 0 1.6px {{ _dc[0] }}{% else %}background:{{ _dc[0] }}{% endif %}"></span>
+            {% if order.source == 'email' %}
+            <span class="source-badge source-badge-email src" title="Надійшло з пошти">Пошта</span>
+            {% elif order.source == 'sheet_client' %}
+            <span class="source-badge source-badge-client src" title="Клієнт, внесений у таблицю без наряду">Клієнт</span>
             {% endif %}
-            {{ _mill.machine }}{% if _mill.percent is not none %} · {{ _mill.percent }}%{% endif %}
-        </span>
-        {% endif %}
-        {% if is_rush_comment(order.cam_comment) %}
-        {# «На швидку» — єдиний писаний сигнал терміновості для лабораторної
-           роботи (CLAUDE.md §2). Стоїть чіпом біля ідентичності рядка, а не
-           кольором тексту в колонці коментаря: та колонка обрізається
-           трикрапкою, тобто саме на довгому коментарі сигнал і зникав. #}
-        <span class="rush-badge" title="Технік просить швидку програму: {{ order.cam_comment }}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h8l-1 8 10-12h-8z" class="duo"/><path d="M13 2 3 14h8l-1 8 10-12h-8z"/></svg>
-            на швидку
-        </span>
-        {% endif %}
-        {% if _hold %}
-        {# Технік ще погоджує роботу з лікарем. Той самий канал, що «на швидку»
-           (чіп біля ідентичності), бо коментар у своїй колонці обрізається.
-           Дописане в таблиці «погоджено» знімає плашку на наступному синку. #}
-        <span class="approval-badge" title="Робота на погодженні: {{ order.cam_comment }}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10M7 21h10"/><path d="M8 3c0 5 8 5 8 9s-8 4-8 9" /><path d="M16 3c0 5-8 5-8 9s8 4 8 9"/><path d="M10 19h4l-2-2.5z" class="duo"/></svg>
-            на погодженні
-        </span>
-        {% endif %}
-        {% if order.status == 'проблема' %}
-        <span class="badge problem">проблема</span>
-        {% elif order.status == 'переробка' and not _rework %}
-        {# Статус «переробка» без активного запису ReworkRecord — тоді
-           .rework-badge вище не рендериться, і без цього бейджа стан зник би
-           з рядка зовсім. Коли запис є, показуємо лише .rework-badge: два
-           бейджі про одне й те саме — шум. #}
-        <span class="badge redo">переробка</span>
-        {% endif %}
-        {# Статус — ДІЄЮ РЯДКА (аудит 05.09.26, UX 1.7). Колонку статусу
-           приховано на прохання власника, і разом із нею зі списку зник
-           єдиний спосіб поставити «проблема» чи «переробка»: доводилось
-           відкривати картку роботи, тобто йти зі списку й повертатись —
-           проти правила «один клік на дію». Меню лежить біля кнопки
-           видалення, зʼявляється так само на наведення й не додає рядку
-           жодного нового кольору (сигнальні канали не чіпаємо). #}
-        {% if not row_locked %}
-        <details class="rowmenu">
-            <summary class="rowmenu-btn" title="Статус роботи" aria-label="Змінити статус">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
-            </summary>
-            <div class="rowmenu-pop" role="menu">
-                <span class="rowmenu-h">Статус</span>
-                {% for s in statuses %}
-                <button type="button" role="menuitem"
-                        class="rowmenu-item{% if s == order.status %} on{% endif %}"
-                        hx-post="/orders/{{ order.id }}/status"
-                        hx-vals='{"status": "{{ s }}"}'
-                        hx-target="#order-row-{{ order.id }}"
-                        hx-swap="outerHTML">{{ s }}</button>
-                {% endfor %}
-            </div>
-        </details>
-        {% endif %}
-        {# ПЕРЕНЕСЕНО з комірки «Статус» у комірку наряду: колонку статусу
-           тимчасово приховано (td.status{display:none}), і разом з нею зникала
-           ЦЯ кнопка — getClientRects() порожній, видалити рядок було
-           неможливо взагалі. Тут вона біля ідентичності рядка й видима.
-           Delete straight from the queue — same action as the work card, one
-           click closer. Destructive, so it stays quiet until the row is hovered
-           or the button focused, and always asks first.
-           hx-swap="none" on purpose: HTMX fires the server's HX-Trigger toast on
-           THIS form, so swapping the row away as the response would detach it
-           first and the toast would never reach the listener on <body>. The row
-           is dropped here instead, once the request is known to have succeeded —
-           the day tab, filters and scroll all stay untouched. #}
-        {% if not row_locked %}
-        <form class="row-delete-form"
-              hx-post="/orders/{{ order.id }}/delete"
-              hx-vals='{"inline": "1"}'
-              hx-swap="none"
-              hx-on::after-request="if(event.detail.successful){var r=this.closest('tr');if(r)r.remove();}"
-              hx-confirm="Видалити «{{ order.work_order_no or order.client_name or 'роботу' }}» з черги? Рядок у таблиці буде очищено, історія лишиться в Архіві.">
-            <button type="submit" class="row-delete" aria-label="Видалити роботу з черги"
-                    title="Видалити роботу з черги">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-            </button>
-        </form>
-        {% else %}
-        <span class="badge arch" title="Робота в архіві — лише перегляд">архів</span>
-        {% endif %}
-        {# Secondary client line only for internal lab works (наряд is the
-           identity, client shown below it). For email/client rows the client
-           name IS the identity above, so repeating it here is redundant. #}
-        {% if order.source not in ('email', 'sheet_client') and order.client_name %}<div class="rowclient" title="{{ order.client_name }}">{{ order.client_name }}</div>{% endif %}
+            <a href="/orders/{{ order.id }}" class="ordbtn" data-order-detail="{{ order.id }}" title="{% if order.source in ('email', 'sheet_client') %}{{ order.client_name or 'Без імені клієнта' }}{% else %}{{ order.work_order_no or '—' }}{% endif %}">{% if order.source in ('email', 'sheet_client') %}{{ order.client_name or 'Без імені клієнта' }}{% else %}{{ order.work_order_no or '—' }}{% endif %}</a>
+            {% if _rework %}
+            <span class="rework-badge" title="Переробка{% if _rework.occurrence %} · {{ _rework.occurrence }}-й раз{% endif %}{% if _rework.blame %} · причина: {{ _rework.blame }}{% endif %}{% if _rework.blame_quantity %} · браку: {{ _rework.blame_quantity }}{% endif %}">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+                переробка{% if _rework.blame %} · {{ _rework.blame }}{% endif %}
+            </span>
+            {% endif %}
+            {# ПЕРЕНЕСЕНО з комірки «Статус» — з тієї ж причини, що й кнопка
+               видалення нижче: td.status{display:none}, і разом з нею зникало
+               попередження «технік змінив роботу». Фон рядка при цьому
+               малювався (правило на > td), тобто оператор бачив червоний рядок
+               без жодного пояснення І без можливості зняти позначку — кнопка
+               change-seen існує ЛИШЕ тут, більше в жодному шаблоні.
+               Коментар у sync.py називає фрезерування зміненої роботи браком,
+               тож цей сигнал не має права бути невидимим. #}
+            {% if _changed %}
+            <form class="chg-form"
+                  hx-post="/orders/{{ order.id }}/change-seen"
+                  hx-target="#order-row-{{ order.id }}"
+                  hx-swap="outerHTML">
+                <button type="submit" class="badge chg{% if _changed_taken %} chg-taken{% endif %}"
+                        title="Технік змінив у таблиці: {{ order.sheet_changed_fields or '—' }}. Натисніть, щоб прибрати позначку.">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" class="duo"/><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+                    <span>{% if _changed_taken %}змінено після взяття{% else %}змінено{% endif %} {{ order.sheet_changed_at.strftime('%H:%M') }} · {{ order.sheet_changed_fields or '—' }}</span>
+                </button>
+            </form>
+            {% endif %}
+            {# ЗАРАЗ ФРЕЗЕРУЄТЬСЯ: зв'язка з верстатом за Sum3D ID (ім'я .iso із
+               заголовка RemiCORE). `milling is defined` — бо рядок рендериться і
+               з місць, які цього набору не знають (пошук, картка): там він просто
+               не малюється, а не падає. #}
+            {% set _mill = (milling.get(order.sum3d_id) if (milling is defined and milling and order.sum3d_id) else None) %}
+            {% if _mill %}
+            {# `stalled` — відсоток не змінюється понад 5 хв. Бойові кадри
+               03.09.26: верстат чесно показував 81% шість хвилин, бо СТОЯВ
+               (подача 0, шпиндель 0, інструмент у помилці) — а оператор прочитав
+               це як «CRM залипла» і пішов шукати баг. Число лишається на місці,
+               поруч зʼявляється пауза: те саме читання, але видно, що воно не
+               рухається. #}
+            <span class="badge milling{% if _mill.stalled %} stalled{% endif %}"
+                  title="{% if _mill.stalled %}Верстат {{ _mill.machine }}: відсоток не змінюється понад 5 хв — програму зупинено або призупинено{% else %}Фрезерується на верстаті {{ _mill.machine }}{% endif %}{% if _mill.percent is not none %} · виконано {{ _mill.percent }}%{% endif %}">
+                {% if _mill.stalled %}
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12"/><path d="M15 6v12"/></svg>
+                {% else %}
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v6"/><path d="M9 8h6l-1.5 9h-3z" class="duo"/><path d="M9 8h6l-1.5 9h-3z"/><path d="M12 17v5"/></svg>
+                {% endif %}
+                {{ _mill.machine }}{% if _mill.percent is not none %} · {{ _mill.percent }}%{% endif %}
+            </span>
+            {% endif %}
+            {% if is_rush_comment(order.cam_comment) %}
+            {# «На швидку» — єдиний писаний сигнал терміновості для лабораторної
+               роботи (CLAUDE.md §2). Стоїть чіпом біля ідентичності рядка, а не
+               кольором тексту в колонці коментаря: та колонка обрізається
+               трикрапкою, тобто саме на довгому коментарі сигнал і зникав. #}
+            <span class="rush-badge" title="Технік просить швидку програму: {{ order.cam_comment }}">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h8l-1 8 10-12h-8z" class="duo"/><path d="M13 2 3 14h8l-1 8 10-12h-8z"/></svg>
+                на швидку
+            </span>
+            {% endif %}
+            {% if _hold %}
+            {# Технік ще погоджує роботу з лікарем. Той самий канал, що «на швидку»
+               (чіп біля ідентичності), бо коментар у своїй колонці обрізається.
+               Дописане в таблиці «погоджено» знімає плашку на наступному синку. #}
+            <span class="approval-badge" title="Робота на погодженні: {{ order.cam_comment }}">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10M7 21h10"/><path d="M8 3c0 5 8 5 8 9s-8 4-8 9" /><path d="M16 3c0 5-8 5-8 9s8 4 8 9"/><path d="M10 19h4l-2-2.5z" class="duo"/></svg>
+                на погодженні
+            </span>
+            {% endif %}
+            {% if order.status == 'проблема' %}
+            <span class="badge problem">проблема</span>
+            {% elif order.status == 'переробка' and not _rework %}
+            {# Статус «переробка» без активного запису ReworkRecord — тоді
+               .rework-badge вище не рендериться, і без цього бейджа стан зник би
+               з рядка зовсім. Коли запис є, показуємо лише .rework-badge: два
+               бейджі про одне й те саме — шум. #}
+            <span class="badge redo">переробка</span>
+            {% endif %}
+            {# Статус — ДІЄЮ РЯДКА (аудит 05.09.26, UX 1.7). Колонку статусу
+               приховано на прохання власника, і разом із нею зі списку зник
+               єдиний спосіб поставити «проблема» чи «переробка»: доводилось
+               відкривати картку роботи, тобто йти зі списку й повертатись —
+               проти правила «один клік на дію». Меню лежить біля кнопки
+               видалення, зʼявляється так само на наведення й не додає рядку
+               жодного нового кольору (сигнальні канали не чіпаємо). #}
+            {% if not row_locked %}
+            <details class="rowmenu">
+                <summary class="rowmenu-btn" title="Статус роботи" aria-label="Змінити статус">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+                </summary>
+                <div class="rowmenu-pop" role="menu">
+                    <span class="rowmenu-h">Статус</span>
+                    {% for s in statuses %}
+                    <button type="button" role="menuitem"
+                            class="rowmenu-item{% if s == order.status %} on{% endif %}"
+                            hx-post="/orders/{{ order.id }}/status"
+                            hx-vals='{"status": "{{ s }}"}'
+                            hx-target="#order-row-{{ order.id }}"
+                            hx-swap="outerHTML">{{ s }}</button>
+                    {% endfor %}
+                </div>
+            </details>
+            {% endif %}
+            {# ПЕРЕНЕСЕНО з комірки «Статус» у комірку наряду: колонку статусу
+               тимчасово приховано (td.status{display:none}), і разом з нею зникала
+               ЦЯ кнопка — getClientRects() порожній, видалити рядок було
+               неможливо взагалі. Тут вона біля ідентичності рядка й видима.
+               Delete straight from the queue — same action as the work card, one
+               click closer. Destructive, so it stays quiet until the row is hovered
+               or the button focused, and always asks first.
+               hx-swap="none" on purpose: HTMX fires the server's HX-Trigger toast on
+               THIS form, so swapping the row away as the response would detach it
+               first and the toast would never reach the listener on <body>. The row
+               is dropped here instead, once the request is known to have succeeded —
+               the day tab, filters and scroll all stay untouched. #}
+            {% if not row_locked %}
+            <form class="row-delete-form"
+                  hx-post="/orders/{{ order.id }}/delete"
+                  hx-vals='{"inline": "1"}'
+                  hx-swap="none"
+                  hx-on::after-request="if(event.detail.successful){var r=this.closest('tr');if(r)r.remove();}"
+                  hx-confirm="Видалити «{{ order.work_order_no or order.client_name or 'роботу' }}» з черги? Рядок у таблиці буде очищено, історія лишиться в Архіві.">
+                <button type="submit" class="row-delete" aria-label="Видалити роботу з черги"
+                        title="Видалити роботу з черги">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                </button>
+            </form>
+            {% else %}
+            <span class="badge arch" title="Робота в архіві — лише перегляд">архів</span>
+            {% endif %}
+            {# Secondary client line only for internal lab works (наряд is the
+               identity, client shown below it). For email/client rows the client
+               name IS the identity above, so repeating it here is redundant. #}
+            {% if order.source not in ('email', 'sheet_client') and order.client_name %}<div class="rowclient" title="{{ order.client_name }}">{{ order.client_name }}</div>{% endif %}
+        </div>
     </td>
     <td class="quantity">{{ order.quantity or '—' }}</td>
     <td class="material-cell">{% include "_matpair.html" %}</td>
