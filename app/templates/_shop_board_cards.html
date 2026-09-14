@@ -71,8 +71,13 @@
                 aria-label="Розріз SLM-камери: подача порошку, платформа, збірник надлишку"></canvas>
         <div class="sis-foot">
           {% if s.layer and s.layers_total %}
+            {# Слова обгорнуті окремо, а число лишається В СЕРЕДИНІ `.of`
+               навмисно: анімація SLM читає з цієї плитки і поточний шар, і
+               загальну кількість (`shop_board_slm.js::progress` бере цифри
+               з `.of`). Винести число в інший елемент означало б мовчки
+               посадити висоту спеченого блоку на нуль. #}
             <span class="lay">{{ s.layer }}</span>
-            <span class="of">з {{ s.layers_total }} шарів</span>
+            <span class="of"><i>з</i> <b>{{ s.layers_total }}</b> <i>шарів</i></span>
             {# Час кінця — прогноз самої машини; показуємо, лише коли вона
                його дала, бо свого ми не рахуємо. Без «лишилось N хв»: у
                плитці воно не вміщалось і обрізало саме час, а порахувати
@@ -102,6 +107,8 @@
     <div class="furn-cells">
       {% for f in view.furnaces %}
         <div class="fc {{ f.kind }}">
+          {# Іскри — лише над піччю в роботі: канал стану, не оздоба. #}
+          {% if f.kind == 'run' %}<span class="fc-sparks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>{% endif %}
           <div class="fc-n">{{ f.name }}<em>{% if f.kind == 'run' %}RUN{% elif f.kind == 'idle' %}WAIT{% else %}—{% endif %}</em></div>
           <div class="fc-t">{% if f.temp is not none %}{{ f.temp }}<small>°C</small>{% else %}—{% endif %}</div>
           <div class="fc-o">
