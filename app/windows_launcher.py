@@ -185,6 +185,48 @@ def _confirm_quit() -> bool:
     return ctypes.windll.user32.MessageBoxW(0, text, "KuubMill", flags) == 6  # IDYES
 
 
+def make_quit_handler(stop, *, confirm=None, spawn=None):
+    """Обробник пункту «Вийти» для трею.
+
+    Чому не просто виклик діалогу в обробнику. Пункт меню pystray виконується
+    НА ТОМУ Ж потоці, де крутиться цикл повідомлень трею, а `MessageBoxW`
+    модальний: поки він відкритий, іконка перестає відповідати — виглядає як
+    зависання. Гірше: у модального вікна власний цикл повідомлень, тож клік по
+    треї доходить ще раз, і зʼявляється ДРУГИЙ діалог поверх першого (кадр із
+    цеху 15.09.26 — саме два). Тому питаємо на окремому потоці, а цикл трею
+    лишається живим.
+
+    `asking` закриває повторний вхід: доки відповіді немає, нові кліки
+    ігноруються, а не плодять вікна.
+
+    `confirm`/`spawn` підмінюються в тестах — інакше перевірити це можна лише
+    руками на робочому столі.
+    """
+    ask = confirm or _confirm_quit
+    state = {"asking": False}
+
+    def run_in_thread(fn):
+        threading.Thread(target=fn, name="kuubmill-quit-confirm", daemon=True).start()
+
+    start = spawn or run_in_thread
+
+    def _quit(_icon=None, _item=None) -> None:
+        if state["asking"]:
+            return
+        state["asking"] = True
+
+        def ask_and_stop() -> None:
+            try:
+                if ask():
+                    stop()
+            finally:
+                state["asking"] = False
+
+        start(ask_and_stop)
+
+    return _quit
+
+
 def relaunch_command(pid: int, exe: str, args: list[str]) -> list[str]:
     """Команда, що чекає виходу ЦЬОГО процесу й запускає застосунок знову.
 
@@ -351,15 +393,17 @@ def _run_server_with_tray(server, tray_holder: dict) -> None:
                 def _is_paused(_item=None) -> bool:
                     return sync_control.is_paused()
 
-                def _quit(_icon=None, _item=None) -> None:
-                    # Один клік у треї гасив усе БЕЗ підтвердження — а з
-                    # «Роботою з інших ПК» це вимикає ще й колегу за іншим
-                    # ПК (ROADMAP #26). Питаємо один раз, називаємо наслідок.
-                    if not _confirm_quit():
-                        return
+                # Один клік у треї гасив усе БЕЗ підтвердження — а з
+                # «Роботою з інших ПК» це вимикає ще й колегу за іншим ПК
+                # (ROADMAP #26). Питаємо один раз, називаємо наслідок; чому
+                # питання йде окремим потоком — у docstring make_quit_handler.
+                def _stop_everything() -> None:
                     server.should_exit = True
-                    if icon is not None:
-                        icon.stop()
+                    tray = tray_holder.get("icon")
+                    if tray is not None:
+                        tray.stop()
+
+                _quit = make_quit_handler(_stop_everything)
 
                 menu = pystray.Menu(
                     pystray.MenuItem("Відкрити KuubMill", _open, default=True),
