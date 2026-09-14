@@ -444,12 +444,19 @@ def move_machine(
     for position, item in enumerate(items):
         item.sort_order = position
     index = next((i for i, item in enumerate(items) if item.id == machine_id), None)
-    swap_with = index - 1 if direction == "up" else index + 1
-    if index is not None and 0 <= swap_with < len(items):
-        items[index].sort_order, items[swap_with].sort_order = (
-            items[swap_with].sort_order,
-            items[index].sort_order,
-        )
+    # Перевірка на None мусить стояти ПЕРЕД арифметикою, а не поруч із нею:
+    # `index - 1` порахувалось би раніше за `index is not None` і впало б
+    # TypeError. Ловиться це лише коли верстата немає в переліку — а він
+    # знайшовся вище за id, тож `list_machines` мусив би його відфільтрувати.
+    # Сьогодні не фільтрує; завтра фільтр додадуть — і кнопка порядку
+    # відповість 500 замість того, щоб тихо нічого не зробити.
+    if index is not None:
+        swap_with = index - 1 if direction == "up" else index + 1
+        if 0 <= swap_with < len(items):
+            items[index].sort_order, items[swap_with].sort_order = (
+                items[swap_with].sort_order,
+                items[index].sort_order,
+            )
     db.commit()
     return RedirectResponse("/settings#machines", status_code=303)
 
