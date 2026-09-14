@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+{# Табло цеху для телевізора — окремий застосунок на порту 8010
+   (app/routers/furnace_board.py). Самодостатня сторінка: не base.html, без
+   меню й сесії. Живий шматок (_shop_board_cards.html) перечитується сам.
+
+   Тема — та сама `forge`, що на табло печей: обидва екрани висять в одному
+   цеху, і різні палітри читались би як різні системи. Шрифти проєктні й
+   self-hosted: на цеховому ПК може не бути інтернету, а шрифт із мережі
+   мовчки підмінився б системним і зламав розкладку. #}
+<html lang="uk" data-theme="forge">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Цех — KuubMill</title>
+<link rel="stylesheet" href="/static/css/fonts.css">
+<link rel="stylesheet" href="/static/css/tokens.css">
+<link rel="stylesheet" href="/static/css/theme-forge.css">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden}
+body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
+.board{height:100vh;display:flex;flex-direction:column}
+
+/* ── Шапка: лише годинник (рішення власника 14.09.26) ── */
+.bh{flex:0 0 auto;display:flex;align-items:center;padding:.6vh 1.4vw .2vh}
+.bh .sp{flex:1}
+.bh b{font:600 clamp(28px,3.4vw,58px)/1.1 var(--font-mono);font-variant-numeric:tabular-nums;
+  letter-spacing:-.01em}
+
+/* ── Сітка верстатів ── */
+/* Рядки РІВНОЇ висоти: без цього перший ряд тиснувся під короткі картки,
+   а другий розтягувався під довгі, і сітка переставала читатись як сітка. */
+.mgrid{flex:1;display:grid;grid-template-columns:repeat(var(--cols,5),1fr);
+  grid-auto-rows:1fr;gap:.9vh .7vw;padding:0 .7vw .9vh;min-height:0}
+/* Колір картки — через змінну: вуаль над фото мусить згасати рівно в той
+   самий тон, інакше на вільному верстаті видно шов між ними. */
+.mc{--cell:#171008;position:relative;overflow:hidden;min-width:0;display:flex;
+  flex-direction:column;padding:1.4vh 1.1vw 1.2vh;
+  border:1px solid rgba(255,255,255,.09);border-radius:6px;background:var(--cell)}
+/* Кутові насічки — характер приладової панелі й другий канал стану. */
+.mc::before,.mc::after{content:"";position:absolute;width:13px;height:13px;z-index:2;
+  border-color:rgba(255,255,255,.14);border-style:solid;pointer-events:none}
+.mc::before{top:6px;left:6px;border-width:2px 0 0 2px}
+.mc::after{bottom:6px;right:6px;border-width:0 2px 2px 0}
+.mc.t-run{border-color:rgba(var(--accent-rgb),.34)}
+.mc.t-run::before,.mc.t-run::after{border-color:rgba(var(--accent-rgb),.55)}
+.mc.t-bad{border-color:rgba(var(--alarm-rgb),.5)}
+.mc.t-bad::before,.mc.t-bad::after{border-color:rgba(var(--alarm-rgb),.7)}
+/* Завершено — програма готова, треба зняти. Єдиний стан, що просить людину
+   сам: тому контур дихає, а не просто фарбується. */
+.mc.t-done{border-color:rgba(var(--accent-rgb),.75)}
+.mc.t-done::before,.mc.t-done::after{border-color:var(--accent-c)}
+/* Фон у всіх карток ОДИН: різницю стану вже несуть межа, насічки й слово,
+   а окремий відтінок під фото давав видимий шов на краю вуалі. */
+
+/* Фото верстата — обличчя картки; вуаль тримає текст читабельним. */
+.mc-port{position:absolute;inset:0;z-index:0;overflow:hidden}
+.mc-port i{position:absolute;inset:0;display:block;background-size:cover;
+  background-position:center;opacity:.62;
+  filter:sepia(.62) saturate(1.3) brightness(.86) contrast(1.05)}
+/* Значення тут — той самий #171008 у rgba, БЕЗ color-mix: версію браузера
+   на міні-ПК біля телевізора ніхто не гарантує, а непідтримана функція
+   прибрала б вуаль цілком і лишила текст просто на фото. */
+.mc-port::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,#171008 6%,rgba(23,16,8,.95) 32%,
+      rgba(23,16,8,.62) 56%,rgba(23,16,8,.3) 82%,rgba(23,16,8,.5) 100%),
+    linear-gradient(180deg,rgba(23,16,8,.34) 0,rgba(23,16,8,.12) 32%,
+      rgba(23,16,8,.86) 82%,rgba(23,16,8,.95) 100%)}
+.mc>*:not(.mc-port){position:relative;z-index:1}
+
+.mc-top{display:flex;align-items:center;gap:.6vw;min-width:0}
+.mc-top b{font:700 clamp(17px,1.75vw,34px)/1.1 var(--font-head);letter-spacing:-.02em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.mc-top .sub{font-size:clamp(11px,.95vw,18px);color:var(--ink-3)}
+.mc-top em{font-style:normal;margin-left:auto;display:flex;align-items:center;gap:.45vw;
+  font:600 clamp(9px,.72vw,14px) var(--font-mono);letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-3);white-space:nowrap}
+.mc.t-run .mc-top em{color:var(--accent-c)}
+.mc.t-done .mc-top em{color:var(--accent-c)}
+.mc.t-bad .mc-top em{color:var(--alarm-ink)}
+
+/* Шестерня крутиться лише тоді, коли верстат справді фрезерує. */
+.gear{width:clamp(18px,1.9vw,38px);height:clamp(18px,1.9vw,38px);flex:0 0 auto;
+  color:currentColor;display:none}
+.mc.t-run .gear,.mc.t-busy .gear,.mc.t-done .gear{display:block}
+.gear svg{display:block;width:100%;height:100%;animation:turn 3.4s linear infinite}
+.mc:not(.t-run) .gear svg{animation-play-state:paused}
+@keyframes turn{to{transform:rotate(360deg)}}
+
+.mc-cl{margin-top:1vh;font:600 clamp(14px,1.4vw,28px)/1.18 var(--font-body);color:#cbbfae;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mc-mat{margin-top:.3vh;font-size:clamp(12px,1.2vw,24px);line-height:1.2;color:#8d8272;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mc-note{margin-top:1vh;font-size:clamp(12px,1.15vw,23px);line-height:1.25;color:#9a8f7e}
+.mc.t-bad .mc-note{color:var(--alarm-ink);font-weight:600}
+.mc-id{flex:1;display:flex;align-items:center;gap:.6vw;font-family:var(--font-mono);
+  font-size:clamp(15px,1.6vw,32px);color:#9d9282;font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em;white-space:nowrap;overflow:hidden;min-width:0}
+.mc-id em{font-style:normal;font-size:clamp(9px,.75vw,15px);color:var(--ink-3);
+  letter-spacing:.14em;text-transform:uppercase;font-family:var(--font-body)}
+
+.mc-bot{margin-top:auto;display:flex;align-items:flex-end;gap:.7vw;min-width:0}
+.bar{flex:1;min-width:0;height:clamp(12px,1.2vh,26px);background:#0a0704;padding:2px;
+  border:1px solid rgba(255,255,255,.1);position:relative;overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(180deg,#ffd489,var(--accent))}
+.bar::after{content:"";position:absolute;inset:2px;pointer-events:none;
+  background:repeating-linear-gradient(90deg,rgba(0,0,0,0) 0 calc(5% - 3px),#0a0704 calc(5% - 3px) 5%)}
+.pc{font:600 clamp(22px,2.9vw,58px)/.95 var(--font-mono);font-variant-numeric:tabular-nums;
+  color:var(--accent-c);letter-spacing:-.03em}
+.pc small{font-size:.46em;color:rgba(var(--accent-rgb),.6);margin-left:.14em}
+/* Пояснення переноситься, а не обрізається: «програма пішла · відсотка ще…»
+   уривається саме на тому слові, заради якого його й читають. */
+.nd{font-family:var(--font-mono);font-size:clamp(10px,.85vw,17px);color:var(--ink-3);
+  border:1px solid rgba(255,255,255,.1);padding:.4vh .5vw;line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* ── Плитка SLM-принтера ── */
+.mc.sis{padding:1.2vh 0 1vh}
+.mc.sis .mc-top{padding:0 1.1vw}
+.slm-canvas{display:block;width:100%;flex:1;min-height:0;margin-top:.8vh;background:#0a0704}
+.sis-foot{display:flex;align-items:flex-end;gap:.6vw;padding:.7vh 1.1vw 0;
+  font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.sis-foot .lay{font:600 clamp(18px,2vw,40px)/.95 var(--font-mono);color:var(--ink)}
+.sis-foot .of{font-size:clamp(10px,.85vw,17px);color:var(--ink-3);padding-bottom:.2em}
+.sis-foot .pc{margin-left:auto}
+
+/* ── Печі: тепла зона, відділена від холодних верстатів ── */
+.furn{flex:0 0 auto;display:flex;border-top:3px solid rgba(var(--accent-rgb),.55);
+  background:linear-gradient(180deg,#241706,#180f05);
+  box-shadow:inset 0 14px 30px -18px rgba(var(--accent-rgb),.5)}
+.furn-lead{padding:1.1vh 1.4vw;min-width:19vw;display:flex;flex-direction:column;
+  justify-content:center;border-right:1px solid rgba(var(--accent-rgb),.22);
+  background:linear-gradient(120deg,rgba(var(--accent-rgb),.2),transparent 76%)}
+.furn-lead i{font-style:normal;display:flex;align-items:center;gap:.5vw;
+  font-size:clamp(9px,.78vw,15px);letter-spacing:.15em;text-transform:uppercase;
+  color:var(--accent-c)}
+.furn-lead i b{font:700 clamp(12px,1.05vw,21px) var(--font-head);letter-spacing:.2em}
+.furn-lead i s{text-decoration:none;opacity:.5}
+.furn-lead>b{font:600 clamp(26px,3vw,60px)/1.1 var(--font-mono);font-variant-numeric:tabular-nums;
+  letter-spacing:-.02em}
+.furn-lead>b small{font:600 .42em var(--font-body);color:var(--accent-c);
+  text-transform:uppercase;letter-spacing:.06em;margin-right:.3em}
+.furn-lead>span{font-size:clamp(10px,.9vw,18px);color:var(--ink-3)}
+.furn-cells{flex:1;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:1px;
+  background:rgba(var(--accent-rgb),.14)}
+.fc{background:#1d1206;padding:1vh 1.1vw;display:flex;flex-direction:column;gap:.2vh;min-width:0}
+.fc.run{background:linear-gradient(180deg,rgba(var(--accent-rgb),.1),transparent 70%),#211506}
+.fc-n{display:flex;align-items:baseline;gap:.5vw;font:600 clamp(13px,1.15vw,23px) var(--font-head)}
+.fc-n em{font-style:normal;margin-left:auto;font:600 clamp(8px,.62vw,12px) var(--font-mono);
+  letter-spacing:.12em;color:var(--ink-3)}
+.fc.run .fc-n em{color:var(--accent-c)}
+.fc-t{font:600 clamp(20px,2.1vw,42px)/1.1 var(--font-mono);font-variant-numeric:tabular-nums}
+.fc.run .fc-t{color:#ffd489}
+.fc-t small{font-size:.42em;color:var(--ink-3);font-weight:400}
+.fc-o{font-family:var(--font-mono);font-size:clamp(10px,.88vw,18px);color:var(--ink-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fc-o b{color:var(--ink)}
+
+.ft{flex:0 0 auto;display:flex;align-items:center;gap:1.2vw;padding:.5vh 1.4vw;
+  border-top:1px solid rgba(var(--accent-rgb),.16);background:#140d05;
+  font-family:var(--font-mono);font-size:clamp(9px,.78vw,16px);color:var(--ink-3)}
+.ft .rt{margin-left:auto}
+.ft .dot{width:9px;height:9px;background:var(--accent);flex:0 0 auto}
+.lost{margin:0 .7vw .6vh;padding:.7vh 1vw;border:1px solid rgba(var(--alarm-rgb),.5);
+  background:rgba(var(--alarm-rgb),.12);color:var(--alarm-ink);
+  font-size:clamp(11px,1vw,20px)}
+.lost[hidden]{display:none}
+#shop-live{flex:1;display:flex;flex-direction:column;min-height:0}
+
+@media (prefers-reduced-motion:no-preference){
+  .ft .dot{animation:beat 2.8s ease-in-out infinite}
+  @keyframes beat{0%,100%{opacity:1}50%{opacity:.3}}
+  .mc.t-done{animation:callme 2.4s ease-in-out infinite}
+  @keyframes callme{50%{border-color:rgba(var(--accent-rgb),.28)}}
+}
+@media (prefers-reduced-motion:reduce){.gear svg{animation:none}}
+</style>
+</head>
+<body>
+<main class="board">
+  <header class="bh"><span class="sp"></span><b id="shop-clock">{{ view.now.strftime('%H:%M') }}</b></header>
+
+  <p class="lost" id="shop-lost" role="alert" hidden>Немає звʼязку з KuubMill — числа нижче можуть бути застарілими.</p>
+
+  {% include "_shop_board_cards.html" %}
+
+  <footer class="ft">
+    <span class="dot"></span><span id="shop-stamp">{{ view.now.strftime('%H:%M:%S') }}</span>
+    <span>·</span><span>дані з екранів обладнання, лише перегляд</span>
+    <span class="rt">порожнє поле = число не прочитано</span>
+  </footer>
+</main>
+<script>
+/* Годинник іде за часом СЕРВЕРА (київським), а не цього ПК: у телевізора
+   годинник може бути збитий. Картки перечитуються раз на {{ refresh }} с;
+   обрив зв'язку — чесна плашка, а не застиглі числа як живі.
+
+   Полотно SLM при свапі ПЕРЕНОСИТЬСЯ зі старого фрагмента в новий: якби
+   воно створювалось заново, друк «починався б спочатку» кожні пів хвилини. */
+(function () {
+  "use strict";
+  const REFRESH = {{ refresh }} * 1000;
+  let offset = 0;
+  const pad = (n) => String(n).padStart(2, "0");
+  const left = (ms) => {
+    const m = Math.max(0, Math.round(ms / 60000));
+    const h = Math.floor(m / 60);
+    return (h ? h + " год " : "") + (m % 60) + " хв";
+  };
+
+  function syncOffset() {
+    const live = document.getElementById("shop-live");
+    const serverNow = live && Number(live.dataset.serverNow);
+    if (serverNow) offset = serverNow - Date.now();
+  }
+  function tick() {
+    const now = Date.now() + offset;
+    const kyiv = new Date(new Date(now).toLocaleString("en-US", { timeZone: "Europe/Kyiv" }));
+    document.getElementById("shop-clock").textContent = pad(kyiv.getHours()) + ":" + pad(kyiv.getMinutes());
+    document.querySelectorAll("[data-left-to]").forEach((el) => {
+      const to = Date.parse(el.dataset.leftTo);
+      if (!Number.isNaN(to)) el.textContent = (el.dataset.prefix || "") + left(to - now);
+    });
+  }
+
+  async function refresh() {
+    try {
+      const resp = await fetch(location.pathname.replace(/\/$/, "") + "/cards", { cache: "no-store" });
+      if (!resp.ok) throw new Error(resp.status);
+      const html = await resp.text();
+      const live = document.getElementById("shop-live");
+      const canvas = document.getElementById("slm");
+      if (live) live.outerHTML = html;
+      // Повернути ЖИВЕ полотно на місце свіжого, ще не мальованого.
+      const fresh = document.getElementById("slm");
+      if (canvas && fresh && fresh !== canvas) fresh.replaceWith(canvas);
+      document.getElementById("shop-lost").hidden = true;
+      const stamp = document.getElementById("shop-stamp");
+      const now = new Date(Date.now() + offset);
+      const kyiv = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Kyiv" }));
+      if (stamp) stamp.textContent = pad(kyiv.getHours()) + ":" + pad(kyiv.getMinutes()) + ":" + pad(kyiv.getSeconds());
+      syncOffset();
+      tick();
+    } catch (_e) {
+      document.getElementById("shop-lost").hidden = false;
+    }
+  }
+
+  syncOffset();
+  tick();
+  setInterval(tick, 20000);
+  setInterval(refresh, REFRESH);
+})();
+</script>
+<script src="/static/js/shop_board_slm.js" defer></script>
+</body>
+</html>

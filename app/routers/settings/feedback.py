@@ -23,7 +23,7 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
     if isinstance(user, RedirectResponse):
         return user
 
-    from app.services import furnace_board, telegram_bot
+    from app.services import furnace_board, shop_board, telegram_bot
 
     flash = request.session.pop("feedback_settings_flash", None)
     # Лише з пам'яті: відкриття сторінки не має ходити в Telegram.
@@ -52,6 +52,7 @@ def get_feedback_settings(request: Request, db: Session = Depends(get_db)):
             "bot_username": username,
             "board_enabled": furnace_board.board_enabled(db),
             "board_links": furnace_board.board_links(db),
+            "shop_links": shop_board.shop_links(db),
             "board_status": furnace_board.status_snapshot(),
             "board_port": furnace_board.BOARD_PORT,
             "flash": flash,

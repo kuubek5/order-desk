@@ -1,0 +1,102 @@
+{# Живий шматок табло цеху: верстати, принтер і печі. Перечитується сам
+   (див. shop_board.html). Полотно SLM-анімації всередині плитки SISMA
+   при свапі ПЕРЕНОСИТЬСЯ, а не створюється заново — інакше друк
+   «починався б спочатку» кожні пів хвилини. #}
+<div id="shop-live"
+     data-server-now="{{ (view.now.timestamp() * 1000)|int }}"
+     style="--cols:{{ view.columns }}">
+
+  <div class="mgrid">
+    {% for m in view.machines %}
+      <div class="mc t-{{ m.tone }}">
+        {% if m.portrait %}<div class="mc-port"><i style="background-image:url('{{ m.portrait }}')"></i></div>{% endif %}
+        <div class="mc-top">
+          <b>{{ m.name }}</b>
+          <em>
+            <span class="gear" aria-hidden="true"><svg viewBox="0 0 32 32" fill="currentColor">
+              <rect x="13.2" y="0.5" width="5.6" height="31" rx="1.6"></rect>
+              <rect x="13.2" y="0.5" width="5.6" height="31" rx="1.6" transform="rotate(45 16 16)"></rect>
+              <rect x="13.2" y="0.5" width="5.6" height="31" rx="1.6" transform="rotate(90 16 16)"></rect>
+              <rect x="13.2" y="0.5" width="5.6" height="31" rx="1.6" transform="rotate(135 16 16)"></rect>
+              <circle cx="16" cy="16" r="10"></circle>
+              <circle cx="16" cy="16" r="4" fill="#12181e"></circle>
+            </svg></span>
+            {# «фрезерує» лише там, де це справді так: для стану `run` слова
+               в системі немає (там число), а порожнє слово невідомого стану
+               інакше теж читалось би як «фрезерує». #}
+            {{ m.word if m.word else ("фрезерує" if m.tone == "run" else "—") }}
+          </em>
+        </div>
+
+        {# Робота з черги, якщо вона знайшлась за Sum3D; інакше — пояснення
+           стану. Нота показується РІВНО один раз: доти вона стояла і тут, і
+           в нижньому рядку, і картка виглядала як помилка рендера. #}
+        {% set has_work = m.client or m.material %}
+        {% if has_work %}
+          <div class="mc-cl">{{ m.client or "—" }}</div>
+          <div class="mc-mat">{{ m.material }}{% if m.extra %} · {{ m.extra }}{% endif %}</div>
+        {% elif m.note %}
+          <div class="mc-note">{{ m.note }}</div>
+        {% endif %}
+
+        <div class="mc-id">
+          {% if m.sum3d %}<em>sum3d</em>{{ m.sum3d }}{% endif %}
+        </div>
+
+        <div class="mc-bot">
+          {% if m.percent is not none %}
+            <div class="bar"><i style="width:{{ m.percent }}%"></i></div>
+            <span class="pc">{{ m.percent }}<small>%</small></span>
+          {% elif has_work and m.note %}
+            <span class="nd">{{ m.note }}</span>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+
+    {% if view.sisma %}
+      {% set s = view.sisma %}
+      <div class="mc sis t-{{ s.tone }}">
+        <div class="mc-top"><b>{{ s.name }}</b><span class="sub">SLM</span>
+          <em>{{ s.word or "друкує" }}</em></div>
+        {# Сюди JS повертає живе полотно після кожного оновлення. #}
+        <canvas id="slm" class="slm-canvas"
+                aria-label="Розріз SLM-камери: подача порошку, платформа, збірник надлишку"></canvas>
+        <div class="sis-foot">
+          {% if s.layer and s.layers_total %}
+            <span class="lay">{{ s.layer }}</span>
+            <span class="of">з {{ s.layers_total }} шарів</span>
+            <span class="pc">{{ s.sisma_percent }}<small>%</small></span>
+          {% else %}
+            <span class="nd">{{ s.note or "шар не прочитано" }}</span>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="furn">
+    <div class="furn-lead">
+      <i><b>ПЕЧІ</b><s>·</s>{% if view.nearest_at %}найближча відкриється{% else %}усі вільні{% endif %}</i>
+      {% if view.nearest_at %}
+        <b>{% if view.nearest_day %}<small>{{ view.nearest_day }}</small>{% endif %}{{ view.nearest_at }}</b>
+        <span>{{ view.nearest_name }}{% if view.nearest_iso %} · <span data-left-to="{{ view.nearest_iso }}" data-prefix="через ">—</span>{% endif %}</span>
+      {% else %}
+        <b>—</b><span>жодна не пікає</span>
+      {% endif %}
+    </div>
+    <div class="furn-cells">
+      {% for f in view.furnaces %}
+        <div class="fc {{ f.kind }}">
+          <div class="fc-n">{{ f.name }}<em>{% if f.kind == 'run' %}RUN{% elif f.kind == 'idle' %}WAIT{% else %}—{% endif %}</em></div>
+          <div class="fc-t">{% if f.temp is not none %}{{ f.temp }}<small>°C</small>{% else %}—{% endif %}</div>
+          <div class="fc-o">
+            {% if f.open_at %}відкриється <b>{% if f.open_day %}{{ f.open_day }} {% endif %}{{ f.open_at }}</b>
+            {% elif f.note %}<span class="nd">{{ f.note }}</span>
+            {% else %}вільна{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>

@@ -215,6 +215,13 @@
                         {% else %}
                         <p class="stand-note">Не вдалось визначити адресу цього ПК у мережі — перевірте мережеве підключення.</p>
                         {% endfor %}
+                        <p class="settings-help">Друга сторінка за тим самим посиланням — <b>табло цеху на телевізор</b>: верстати з роботами й відсотком, SLM-принтер і ті самі печі внизу. Печі для логістів лишаються за адресою вище, нічого перевідкривати не треба.</p>
+                        {% for link in shop_links %}
+                        <div class="stand-drow">
+                            <div class="stand-dtext"><p><span class="mono stand-members-link">{{ link }}</span></p></div>
+                            <button type="button" class="settings-secondary-button" data-copy="{{ link }}" title="Скопіювати посилання">Скопіювати</button>
+                        </div>
+                        {% endfor %}
                         <p class="stand-note">Якщо посилання не відкривається з іншого ПК: при першому ввімкненні Windows питає, чи дозволити KuubMill доступ до мережі — потрібно «Приватні мережі». Змінити посилання — старе одразу перестане працювати.</p>
                         {% endif %}
                         <div class="stand-drow">
