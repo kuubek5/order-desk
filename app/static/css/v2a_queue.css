@@ -308,7 +308,15 @@ body.layout-edit .q2 table.qtable thead th .colgrip:hover,
 body.layout-edit .q2 table.qtable thead th .colgrip.is-dragging{
   border-right-color:var(--accent-b);
 }
-.q2 table.qtable tbody td{padding:var(--queue-density-pad,8px) 8px;border-bottom:1px solid var(--raise-2);font-size:var(--queue-density-font,13px);vertical-align:middle;white-space:nowrap}
+/* vertical-align:top, а не middle. Рядок росте вдвічі, щойно в комірці
+   наряду переноситься чіп («фрезерується на 350i», «переробка», «змінено»).
+   При середньому вирівнюванні число в «Кількості» лишалось у ЦЕНТРІ такого
+   рядка — виміряно: наряд на 18px від верху, число на 46px, тобто цифра
+   висіла окремо під нарядом і читалась як підпис до чіпа (кадр із цеху
+   14.09.26). Тепер усі комірки починаються з першого рядка: число стоїть
+   поруч із нарядом (18 проти 18), а чіп звисає під ними. На звичайному
+   однорядковому рядку зсув 2px — непомітно. */
+.q2 table.qtable tbody td{padding:var(--queue-density-pad,8px) 8px;border-bottom:1px solid var(--raise-2);font-size:var(--queue-density-font,13px);vertical-align:top;white-space:nowrap}
 /* ТИМЧАСОВО приховано на прохання: колонка «Статус» у черзі. DOM лишається
    (td/th на місці — регрес-тести шаблону рядка не ламаються, зміна статусу й
    видалення рядка ще працюють, просто не показані). Повернути — прибрати ці два
@@ -377,7 +385,10 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
    вилазив за праву межу на 82px — кнопка видалення фізично опинялась поза
    своєю коміркою. flex-wrap робить це рядком чіпів, що переноситься, а не
    переповненням; align-items тримає базову лінію рівною, коли чіпів немає. */
-.q2 td.order-id{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;align-content:center}
+/* align-content:flex-start — пара до vertical-align:top вище. `align-items`
+   лишається center: він тримає рівну базову лінію ВСЕРЕДИНІ рядка чіпів,
+   а align-content керує тим, де стоять самі рядки, коли їх два. */
+.q2 td.order-id{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;align-content:flex-start}
 /* Проміжками у flex-комірці володіє ТІЛЬКИ gap. Старі inline-марджини
    (.sdot 7px, .source-badge 7+8px) у попередньому інлайновому розкладі були
    єдиним проміжком, а тут додаються ЗВЕРХУ до gap: виміряно 28.08.26 —
