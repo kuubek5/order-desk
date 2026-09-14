@@ -297,3 +297,69 @@ def test_machine_headline_keeps_its_capitals():
     found = _find(whats_wrong.collect(db), "350i")
 
     assert "ПК" in found.title
+
+
+# ── Мовчання журналу ≠ мовчання синхронізації ───────────────────────────────
+
+
+def test_sync_silence_keeps_quiet_while_the_fast_lane_is_reading(monkeypatch):
+    """Журнал — аудит, і швидка смуга (`_sheet_hot_tick`, кожні ~15 с) рядка в
+    нього свідомо не пише. Тому мовчання журналу саме по собі нічого не
+    доводить, і поки пульс каже «щойно читали успішно», тривоги бути не має.
+
+    Бойовий випадок 15.09.26: екран показував «Синхронізація мовчить 2 год
+    40 хв» тієї ж хвилини, коли в лозі стояло `Hot-tab sync ...: updated 1`,
+    а черга наповнювалась. Хибна тривога на екрані тривог знецінює весь екран.
+    """
+    from app import sync_heartbeat
+
+    db = _db()
+    _sync(db, "sheet_to_db", "ok", "trigger background", minutes_ago=160)
+
+    # Пульс живий: останній УСПІХ щойно. Годинник пульсу локальний, не UTC.
+    monkeypatch.setitem(
+        sync_heartbeat.heartbeats,
+        "sheet",
+        sync_heartbeat.SyncHeartbeat(
+            last_attempt_at=datetime.now(),
+            last_success_at=datetime.now() - timedelta(minutes=1),
+            status="ok",
+        ),
+    )
+    assert _find(whats_wrong.collect(db), "мовчить") is None
+
+
+def test_sync_silence_still_fires_when_the_fast_lane_is_dead_too(monkeypatch):
+    """Зворотний бік: пульс теж давно без успіху — тоді мовчання журналу
+    справжнє, і тривога мусить бути."""
+    from app import sync_heartbeat
+
+    db = _db()
+    _sync(db, "sheet_to_db", "ok", "trigger background", minutes_ago=160)
+    monkeypatch.setitem(
+        sync_heartbeat.heartbeats,
+        "sheet",
+        sync_heartbeat.SyncHeartbeat(
+            last_attempt_at=datetime.now(),
+            last_success_at=datetime.now() - timedelta(minutes=160),
+            status="error",
+        ),
+    )
+    found = _find(whats_wrong.collect(db), "мовчить")
+    assert found is not None
+    assert found.actions
+
+
+def test_sync_silence_falls_back_to_the_journal_after_a_restart(monkeypatch):
+    """Пульс живе лише в памʼяті процесу й рестарт не переживає. Поки успіху
+    ще не було, єдине джерело — журнал, і поводимось як раніше."""
+    from app import sync_heartbeat
+
+    db = _db()
+    _sync(db, "sheet_to_db", "ok", "trigger background", minutes_ago=160)
+    monkeypatch.setitem(
+        sync_heartbeat.heartbeats,
+        "sheet",
+        sync_heartbeat.SyncHeartbeat(),
+    )
+    assert _find(whats_wrong.collect(db), "мовчить") is not None

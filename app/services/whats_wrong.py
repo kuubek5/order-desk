@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 
 from app.business_day import utc_now, utc_to_business
 from app.models import MachineLinkEvent, SyncLog
+from app import sync_heartbeat
 from app.services import machine_link
 
 
@@ -246,6 +247,25 @@ def _sync_silence(db: Session) -> Optional[Problem]:
     quiet_minutes = (utc_now().replace(tzinfo=None) - last_ok).total_seconds() / 60
     if quiet_minutes < SYNC_SILENCE_MINUTES:
         return None
+
+    # Журнал — АУДИТ, а не пульс. Швидка смуга (`app/web.py::_sheet_hot_tick`)
+    # читає вкладку дня кожні ~15 с і рядка в журнал свідомо НЕ пише — саме про
+    # це каже докстрінг `app/sync_heartbeat.py`: «мовчання там неоднозначне».
+    # Без цієї перевірки екран «Що не так» показував «Синхронізація мовчить
+    # 2 год 40 хв» о тій самій хвилині, коли читання відбувалось і в лозі
+    # стояло `Hot-tab sync ...: updated 1` (цех, 15.09.26). Хибна тривога на
+    # екрані тривог гірша за відсутню: після неї перестають вірити всьому
+    # екрану.
+    #
+    # Годинники різні й змішувати їх не можна: `SyncLog.occurred_at` — UTC
+    # (CLAUDE.md §14), пульс — локальний `datetime.now()`.
+    beat = sync_heartbeat.heartbeats.get("sheet")
+    beat_success = getattr(beat, "last_success_at", None)
+    if beat_success is not None:
+        beat_quiet = (datetime.now() - beat_success).total_seconds() / 60
+        if beat_quiet < SYNC_SILENCE_MINUTES:
+            return None
+
     when = utc_to_business(last_ok)
     return Problem(
         at=when,
