@@ -21,7 +21,7 @@ main.dz{max-width:1320px;margin:0 auto;padding:18px 20px 48px;display:flex;flex-
 /* ── Рамка екрана ── */
 .dz-frame{border:1px solid var(--line-2);border-radius:16px;background:var(--bg);overflow:hidden}
 .dz-bar{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--bg-rail);flex-wrap:wrap}
-.dz-bar h1{margin:0;font-family:var(--font-head);font-size:var(--fs-5);font-weight:800;letter-spacing:-.01em;color:var(--ink)}
+.dz-bar h1{margin:0;font-family:var(--font-head);font-size:var(--fs-6);font-weight:800;letter-spacing:-.01em;color:var(--ink)}
 .dz-bar-ico{color:var(--accent)}
 .dz-body{padding:18px;display:flex;flex-direction:column;gap:22px}
 
@@ -74,7 +74,7 @@ main.dz{max-width:1320px;margin:0 auto;padding:18px 20px 48px;display:flex;flex-
 .dz-seg.dz-tight > label > span{padding:4px 10px;font-size:var(--fs-2)}
 
 /* ── Позиція диска: mono-a2-25(х2) одним рядком, частини підфарбовані ── */
-.dz-pos{display:inline-flex;align-items:baseline;font:600 var(--fs-3) var(--font-mono);white-space:nowrap;color:var(--ink)}
+.dz-pos{display:inline-flex;align-items:baseline;font:600 var(--fs-4) var(--font-mono);white-space:nowrap;color:var(--ink)}
 .dz-pos .br{color:var(--accent-ink);font-weight:500}
 .dz-pos i{font-style:normal;color:var(--line-2);padding:0 1px}
 .dz-pos .sh{color:var(--mc);font-weight:700}
@@ -94,13 +94,16 @@ main.dz{max-width:1320px;margin:0 auto;padding:18px 20px 48px;display:flex;flex-
 
 .dz-shift{border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
 .dz-shift-head{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--card-2);border-bottom:1px solid var(--line);cursor:pointer;flex-wrap:wrap}
-.dz-shift-head b{font-size:var(--fs-3);color:var(--ink)}
+.dz-shift-head b{font-family:var(--font-head);font-size:var(--fs-4);font-weight:700;letter-spacing:-.01em;color:var(--ink)}
+/* Усе, що не назва зміни, — супровід: дата, тривалість, «13 дисків». Один
+   тихий розмір на всі, інакше в шапці три різні кегля й жоден не головний. */
+.dz-shift-head > span:not(.dz-pill){font-size:var(--fs-1)}
 .dz-disc{display:grid;grid-template-columns:auto 44px 52px minmax(0,1fr) auto;align-items:center;gap:10px;padding:7px 14px;border-top:1px solid var(--line);cursor:pointer}
 .dz-shift-head + .dz-disc{border-top:0}
 .dz-disc:hover{background:var(--card-2)}
 .dz-disc-main{display:flex;align-items:center;gap:12px;min-width:0}
-.dz-fn{font:var(--fs-1) var(--font-mono);color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.dz-t{color:var(--ink-2)}
+.dz-fn{margin-left:auto;padding-left:14px;font:var(--fs-0) var(--font-mono);color:var(--ink-3);opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.dz-t{font-size:var(--fs-1);color:var(--ink-2)}
 /* Галочки за замовчуванням зняті (11.09.26): незнятий рядок — звичайний,
    позначений — підсвічений. Закреслення знятого прибрано, інакше
    весь список за замовчуванням виглядав би закресленим. */
@@ -111,7 +114,7 @@ main.dz{max-width:1320px;margin:0 auto;padding:18px 20px 48px;display:flex;flex-
 /* Кошик прилипає: під час гортання довгого списку дія лишається під рукою. */
 .dz-basket{position:sticky;top:12px;display:flex;flex-direction:column;gap:14px;padding:16px;border:1px solid var(--line-2);border-radius:12px;background:var(--card)}
 .dz-bk-head{display:flex;align-items:center;gap:10px}
-.dz-bk-head h2{margin:0;font-family:var(--font-head);font-size:var(--fs-4);font-weight:700;color:var(--ink)}
+.dz-bk-head h2{margin:0;font-family:var(--font-head);font-size:var(--fs-5);font-weight:700;letter-spacing:-.01em;color:var(--ink)}
 .dz-rchip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;background:rgba(var(--tg-rgb),.1);color:var(--tg-ink);font-size:var(--fs-1);font-weight:600;cursor:help;white-space:nowrap}
 .dz-rchip.is-off{background:var(--card-3);color:var(--ink-2);text-decoration:line-through;text-decoration-color:rgba(var(--accent-soft-rgb),.4)}
 .dz-sumline{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:var(--fs-2);color:var(--accent-ink)}
@@ -128,7 +131,7 @@ main.dz{max-width:1320px;margin:0 auto;padding:18px 20px 48px;display:flex;flex-
 
 /* Дописане — остання група в самій картці замовлення. */
 .dz-m-extra textarea{display:block;width:100%;box-sizing:border-box;background:transparent;border:1px dashed var(--line-2);border-radius:7px;padding:7px 9px;
-  color:var(--ink);font:600 var(--fs-3)/1.55 var(--font-mono);resize:vertical;min-height:40px}
+  color:var(--ink);font:600 var(--fs-4)/1.5 var(--font-mono);resize:vertical;min-height:44px}
 .dz-m-extra textarea::placeholder{color:var(--ink-2);font-weight:400}
 .dz-m-extra textarea:focus{outline:none;border-style:solid;border-color:rgba(var(--accent-rgb),.6)}
 .dz-quick{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-top:7px;font-size:var(--fs-1);color:var(--ink-2)}
@@ -189,7 +192,7 @@ main.dz{max-width:1320px;margin:0 auto;padding:18px 20px 48px;display:flex;flex-
 .dz-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .dz-tabs .n{font:500 var(--fs-1) var(--font-mono);color:var(--accent);margin-left:6px}
 .dz-filter{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.dz-q{background:var(--bg-rail);border:1px solid var(--line-2);border-radius:9px;padding:6px 10px;color:var(--ink);font:var(--fs-2) var(--font-mono);width:210px}
+.dz-q{background:var(--bg-rail);border:1px solid var(--line-2);border-radius:9px;padding:6px 10px;color:var(--ink);font:var(--fs-3) var(--font-mono);width:210px}
 .dz-q::placeholder{color:var(--ink-2);font-family:var(--font-body)}
 .dz-q:focus{outline:none;border-color:rgba(var(--accent-rgb),.6)}
 
@@ -242,7 +245,7 @@ main.dz{max-width:1320px;margin:0 auto;padding:18px 20px 48px;display:flex;flex-
 .dz-dl{display:flex;flex-direction:column}
 .dz-dl-day{display:flex;align-items:center;gap:10px;padding:9px 16px;background:var(--card-2);border-top:1px solid var(--line);font-size:var(--fs-2)}
 .dz-dl > .dz-dl-day:first-child{border-top:0}
-.dz-dl-day b{font-weight:700;color:var(--ink)}
+.dz-dl-day b{font-family:var(--font-head);font-size:var(--fs-3);font-weight:700;color:var(--ink)}
 .dz-dl-row{display:grid;grid-template-columns:44px 52px minmax(150px,auto) minmax(0,1fr) auto;align-items:center;gap:12px;padding:6px 16px;border-top:1px solid var(--line)}
 .dz-dl-row:hover{background:var(--card-2)}
 
@@ -254,7 +257,7 @@ main.dz{max-width:1320px;margin:0 auto;padding:18px 20px 48px;display:flex;flex-
 .dz-alarm-ink{color:var(--alarm-ink)}
 .dz-pathform{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;flex-basis:100%;padding-top:6px}
 .dz-pathform label{color:var(--accent-ink)}
-.dz-pathform input{flex:1 1 320px;background:var(--field);border:1px solid var(--line-2);border-radius:8px;padding:6px 10px;color:var(--ink);font:var(--fs-2) var(--font-mono)}
+.dz-pathform input{flex:1 1 320px;background:var(--field);border:1px solid var(--line-2);border-radius:8px;padding:6px 10px;color:var(--ink);font:var(--fs-3) var(--font-mono)}
 .dz-pathform input:focus{outline:none;border-color:rgba(var(--accent-rgb),.6)}
 .dz-pathform .dz-hint{flex-basis:100%}
 .dz-probe-slot:empty{display:none}
