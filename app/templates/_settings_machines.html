@@ -19,12 +19,16 @@
                 {% if machines %}
                 <table class="fu-table">
                     <thead>
-                        <tr><th title="Портрет для картки на екрані «Верстати»: модель або своє фото">Портрет</th><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th title="Збирати кадри для калібрування читача відсотка">Калібр.</th><th title="Детальний журнал зв'язку: на кожному обриві стукати в порти ПК і зберігати покроковий доказ">Діагн.</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
+                        <tr><th title="Портрет для картки на екрані «Верстати»: модель або своє фото">Портрет</th><th title="Порядок на табло цеху й у віджеті">№</th><th>Назва</th><th>IP-адреса</th><th>Порт</th><th>Стежити</th><th title="Показувати картку на табло цеху (телевізор). Не зупиняє стеження за верстатом">Табло</th><th title="Збирати кадри для калібрування читача відсотка">Калібр.</th><th title="Детальний журнал зв'язку: на кожному обриві стукати в порти ПК і зберігати покроковий доказ">Діагн.</th><th>Токен агента</th><th>Пароль VNC</th><th></th></tr>
                     </thead>
                     <tbody>
                     {% for machine in machines %}
                     <tr>
                         <form method="post" action="/settings/machines/{{ machine.id }}" id="machine-{{ machine.id }}"></form>
+                        <form method="post" action="/settings/machines/{{ machine.id }}/move" id="machine-up-{{ machine.id }}">
+                            <input type="hidden" name="direction" value="up"></form>
+                        <form method="post" action="/settings/machines/{{ machine.id }}/move" id="machine-down-{{ machine.id }}">
+                            <input type="hidden" name="direction" value="down"></form>
                         <form method="post" action="/settings/machines/{{ machine.id }}/delete" id="machine-del-{{ machine.id }}"
                               onsubmit="return confirm('Видалити верстат «{{ machine.name }}» з переліку?')"></form>
                         {# Фото на конкретний верстат (04.09.26): натиснув мініатюру →
@@ -64,12 +68,31 @@
                                 {% endfor %}
                             </select>
                         </td>
+                        <td class="fu-col-mid">
+                            {# Стрілки міняють верстат місцями з сусідом. Порядок один
+                               на всі екрани: перелік, віджет і табло цеху. #}
+                            <span class="fu-move">
+                                <button type="submit" form="machine-up-{{ machine.id }}" class="fu-move-btn"
+                                        {% if loop.first %}disabled{% endif %}
+                                        title="Вище" aria-label="Підняти верстат {{ machine.name }}">▲</button>
+                                <button type="submit" form="machine-down-{{ machine.id }}" class="fu-move-btn"
+                                        {% if loop.last %}disabled{% endif %}
+                                        title="Нижче" aria-label="Опустити верстат {{ machine.name }}">▼</button>
+                            </span>
+                        </td>
                         <td><input form="machine-{{ machine.id }}" class="login-input" name="name" value="{{ machine.name }}" maxlength="80" required></td>
                         <td><input form="machine-{{ machine.id }}" class="login-input mono" name="host" value="{{ machine.host }}" maxlength="60" required></td>
                         <td><input form="machine-{{ machine.id }}" class="login-input mono fu-col-port" name="port" value="{{ machine.port }}" inputmode="numeric"></td>
                         <td class="fu-col-mid">
                             <input form="machine-{{ machine.id }}" type="checkbox" name="enabled" value="1" {% if machine.enabled %}checked{% endif %}
                                    aria-label="Стежити за верстатом {{ machine.name }}">
+                        </td>
+                        <td class="fu-col-mid">
+                            {# Місце на телевізорі, а не «на ремонті»: зняти цю галочку
+                               означає прибрати картку з табло цеху, при цьому кадри,
+                               історія й обриви звʼязку збираються далі. #}
+                            <input form="machine-{{ machine.id }}" type="checkbox" name="show_on_board" value="1" {% if machine.show_on_board %}checked{% endif %}
+                                   aria-label="Показувати верстат {{ machine.name }} на табло цеху">
                         </td>
                         <td class="fu-col-mid">
                             {# Ручний збір калібрувальних кадрів: увімкни на час калібрування

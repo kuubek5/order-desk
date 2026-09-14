@@ -958,6 +958,15 @@ main.setv2.setv2-narrow{max-width:30rem;padding:var(--space-6) var(--space-4)}
 .setv2 .fu-table .mono{font-family:var(--font-mono)}
 .setv2 .fu-col-port{max-width:84px}
 .setv2 .fu-col-mid{text-align:center;width:1%;padding-left:6px;padding-right:14px}
+/* Стрілки порядку верстатів. Вузькі й без рамки — це службова дія поруч із
+   даними рядка, а не кнопка рівня «Зберегти». */
+.setv2 .fu-move{display:inline-flex;flex-direction:column;gap:2px;line-height:1}
+.setv2 .fu-move-btn{appearance:none;background:transparent;border:1px solid transparent;
+  border-radius:5px;color:var(--ink-2);font-size:var(--fs-3);line-height:1;padding:3px 8px;
+  cursor:pointer}
+.setv2 .fu-move-btn:hover:not(:disabled){color:var(--ink);border-color:var(--line)}
+.setv2 .fu-move-btn:disabled{opacity:.28;cursor:default}
+.setv2 .fu-move-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .setv2 .fu-col-mid input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent);cursor:pointer;vertical-align:middle}
 /* Кнопки в одному рядку. `display:flex` на самій комірці ламає табличну
    розкладку, а форма видалення — блок, тому без цього хрестик з'їжджав під

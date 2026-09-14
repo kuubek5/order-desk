@@ -361,6 +361,7 @@ def update_machine(
     collect_calibration: str = Form(""),
     diagnose_link: str = Form(""),
     portrait_model: str = Form(""),
+    show_on_board: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Змінити верстат. Порожній пароль/токен = не міняти; `-` = стерти
@@ -408,11 +409,48 @@ def update_machine(
     # Невідомий ключ = «авто» (здогад за назвою), а не помилка: форма шле лише
     # свої чотири варіанти, чужий може прийти хіба зі старої вкладки.
     machine.portrait_model = portrait_model if portrait_model in machines_service.MACHINE_MODEL_KEYS else ""
+    # Місце на телевізорі, а не «на ремонті»: `enabled` вище зупиняє саме
+    # опитування, а цей прапорець лише прибирає картку з табло цеху.
+    machine.show_on_board = show_on_board == "1"
     db.commit()
     request.session["settings_flash"] = {
         "kind": "success",
         "message": f"Верстат «{machine.name}» збережено.",
     }
+    return RedirectResponse("/settings#machines", status_code=303)
+
+
+@router.post("/settings/machines/{machine_id}/move")
+def move_machine(
+    request: Request,
+    machine_id: int,
+    direction: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Пересунути верстат у переліку — він же порядок на табло й у віджеті.
+
+    Міняємось місцями з сусідом, а не правимо число руками: у наявних рядках
+    `sort_order` цілком може повторюватись (усі нулі в старих базах), і
+    «мінус один» тоді нічого б не змінив. Перед обміном увесь перелік
+    перенумеровується за поточним порядком — після цього сусід завжди один
+    і однозначний.
+    """
+    require_settings_edit(request, db, "machines")
+    machine = db.get(Machine, machine_id)
+    if machine is None:
+        raise HTTPException(status_code=404, detail="верстат не знайдено")
+
+    items = machines_service.list_machines(db)
+    for position, item in enumerate(items):
+        item.sort_order = position
+    index = next((i for i, item in enumerate(items) if item.id == machine_id), None)
+    swap_with = index - 1 if direction == "up" else index + 1
+    if index is not None and 0 <= swap_with < len(items):
+        items[index].sort_order, items[swap_with].sort_order = (
+            items[swap_with].sort_order,
+            items[index].sort_order,
+        )
+    db.commit()
     return RedirectResponse("/settings#machines", status_code=303)
 
 

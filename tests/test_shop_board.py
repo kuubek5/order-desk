@@ -27,7 +27,8 @@ def _card(name, state_key, *, percent=None, sum3d=None, orders=(), sisma=False,
           layers=None, word="", note="", machine_id=None):
     return SimpleNamespace(
         key=name,
-        target=SimpleNamespace(name=name, machine_id=machine_id, portrait_model=""),
+        target=SimpleNamespace(name=name, machine_id=machine_id, portrait_model="",
+                               show_on_board=True),
         state_key=state_key, state_word=word, state_note=note,
         percent=percent, sum3d_id=sum3d, orders=list(orders),
         is_sisma_machine=sisma, layers=layers,
@@ -202,6 +203,32 @@ def test_model_defaults_are_actually_served_by_the_board():
         assert (img_dir / name).exists(), f"{name} немає на диску"
 
 
+def test_machine_hidden_from_the_board_is_still_watched():
+    """Галочка «Табло» — про місце на екрані, не про стеження.
+
+    `enabled` означає «на ремонті» й зупиняє опитування; сплутати їх
+    означало б разом із карткою втратити історію й обриви звʼязку.
+    """
+    shown = _card("A", "run", percent=10)
+    hidden = _card("B", "run", percent=20)
+    hidden.target.show_on_board = False
+    view = _view([shown, hidden])
+    assert [m.name for m in view.machines] == ["A"]
+
+
+def test_printer_can_be_hidden_too():
+    printer = _card("SISMA", "run", sisma=True, layers=(1, 2))
+    printer.target.show_on_board = False
+    assert _view([printer]).sisma is None
+
+
+def test_board_keeps_the_order_it_was_given():
+    """Порядок карток — той, у якому їх віддав `snapshot()`, тобто
+    `sort_order` із Налаштувань. Табло нічого не пересортовує саме."""
+    view = _view([_card(n, "run") for n in ("В", "А", "Б")])
+    assert [m.name for m in view.machines] == ["В", "А", "Б"]
+
+
 def test_grid_columns_follow_the_number_of_machines():
     """Сітка рахується від кількості: у цеху то дев'ять верстатів, то десять."""
     assert _view([_card(str(i), "run") for i in range(10)]).columns == 5
@@ -269,6 +296,84 @@ def test_shop_page_really_renders(app_db, monkeypatch):  # noqa: F811
     # Полотно анімації віддається, а решта теки js — ні.
     assert board.get("/static/js/shop_board_slm.js")[0] == 200
     assert board.get("/static/js/app.js")[0] == 404
+
+
+def test_moving_a_machine_reorders_the_list(app_db):  # noqa: F811
+    """Стрілки міняють верстат місцями з сусідом — і на рівних `sort_order`.
+
+    У старих базах усі рядки мають нуль, тож «мінус один» нічого б не
+    змінив. Роут спершу перенумеровує перелік за поточним порядком, і лише
+    потім міняє двох місцями.
+    """
+    from datetime import datetime as dt
+
+    from app.models import Machine
+    from app.services import machines as machines_mod
+
+    app, factory = app_db
+    with factory() as db:
+        for name in ("А", "Б", "В"):
+            db.add(Machine(name=name, host=f"10.0.0.{len(name) + ord(name) % 20}",
+                           port=5900, sort_order=0, created_at=dt(2026, 9, 15)))
+        db.commit()
+        ids = {m.name: m.id for m in machines_mod.list_machines(db)}
+
+    def order():
+        with factory() as db:
+            return [m.name for m in machines_mod.list_machines(db)]
+
+    client = MiniClient(app)
+    client.login(*ADMIN)
+    assert client.post(f"/settings/machines/{ids['В']}/move", {"direction": "up"})[0] == 303
+    assert order() == ["А", "В", "Б"], "рівні sort_order не завадили обміну"
+
+    client.post(f"/settings/machines/{ids['А']}/move", {"direction": "down"})
+    assert order() == ["В", "А", "Б"]
+
+    # Край переліку — не помилка й не перестановка по колу.
+    first = order()[0]
+    with factory() as db:
+        top = next(m.id for m in machines_mod.list_machines(db) if m.name == first)
+    assert client.post(f"/settings/machines/{top}/move", {"direction": "up"})[0] == 303
+    assert order()[0] == first, "верхній верстат лишився вгорі"
+
+
+def test_new_machine_appears_on_the_board_at_the_end(app_db):  # noqa: F811
+    """Доданий верстат одразу видно на табло, і він стає ОСТАННІМ.
+
+    Два місця, де це могло тихо зламатись: новий рядок мусить отримати
+    `show_on_board=True` за замовчуванням (інакше верстат є, а на
+    телевізорі його нема й ніхто не розуміє чому), і `sort_order` більший
+    за наявні — інакше він уклинився б у середину вже звиклого порядку.
+    """
+    from datetime import datetime as dt
+
+    from app.models import Machine
+    from app.services import machines as machines_mod
+
+    app, factory = app_db
+    with factory() as db:
+        for i, name in enumerate(("А", "Б")):
+            db.add(Machine(name=name, host=f"10.1.0.{i + 1}", port=5900,
+                           sort_order=i, created_at=dt(2026, 9, 15)))
+        db.commit()
+
+    client = MiniClient(app)
+    client.login(*ADMIN)
+    status, _, _ = client.post("/settings/machines", {
+        "name": "Новий", "host": "10.1.0.9", "port": "5900",
+        "password": "", "agent_token": "", "portrait_model": "",
+    })
+    assert status == 303
+
+    with factory() as db:
+        items = machines_mod.list_machines(db)
+        assert [m.name for m in items] == ["А", "Б", "Новий"], "новий став у кінець"
+        added = items[-1]
+        assert added.show_on_board is True, "новий верстат має бути видно на табло"
+        # Той самий шлях, яким табло читає верстати.
+        target = machines_mod.target_of(added)
+        assert target.show_on_board is True
 
 
 def test_settings_page_shows_the_shop_link(app_db):  # noqa: F811

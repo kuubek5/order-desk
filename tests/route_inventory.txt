@@ -184,6 +184,7 @@ POST /settings/machines/calibration-path
 POST /settings/machines/password
 POST /settings/machines/{machine_id}
 POST /settings/machines/{machine_id}/delete
+POST /settings/machines/{machine_id}/move
 POST /settings/machines/{machine_id}/portrait
 POST /settings/machines/{machine_id}/portrait/delete
 POST /settings/mail-download/toggle

@@ -150,6 +150,9 @@ class MachineTarget:
     collect_calibration: bool = False
     # Детальний журнал зв'язку саме для цього верстата (див. Machine.diagnose_link).
     diagnose_link: bool = False
+    # Чи показувати на табло цеху. Дефолт True, щоб ціль без рядка в базі
+    # (тести, разові виклики) поводилась як звичайний верстат.
+    show_on_board: bool = True
 
     @property
     def key(self) -> str:
@@ -315,6 +318,7 @@ def target_of(machine: Machine) -> MachineTarget:
         diagnose_link=bool(getattr(machine, "diagnose_link", False)),
         machine_id=machine.id,
         portrait_model=getattr(machine, "portrait_model", "") or "",
+        show_on_board=bool(getattr(machine, "show_on_board", True)),
     )
 
 

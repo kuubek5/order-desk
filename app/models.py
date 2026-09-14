@@ -1007,6 +1007,14 @@ class Machine(Base):
     # (350i / 350i-loader / 250i / 250i-dry), "" = вгадати за назвою.
     # Обирається в Налаштуваннях; має старшинство над здогадом.
     portrait_model: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    # Чи показувати верстат на табло цеху (телевізор, /t/<token>/shop).
+    # НЕ те саме, що `enabled`: той означає «на ремонті» і зупиняє опитування
+    # разом з історією та обривами звʼязку. Тут інше — верстат працює, система
+    # за ним стежить, але місця на телевізорі йому не треба (власник 15.09.26).
+    show_on_board: Mapped[bool] = mapped_column(default=True, server_default="1")
+    # Порядок у переліку, у віджеті й на табло — задає оператор стрілками в
+    # Налаштуваннях: верстати стоять у цеху у відомому йому порядку, а
+    # сортування за id чи назвою його ламає.
     sort_order: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))
 
