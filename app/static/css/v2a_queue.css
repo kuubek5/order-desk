@@ -443,6 +443,26 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
    більше сама. */
 .q2 table.qtable th:first-child,
 .q2 table.qtable td.order-id{min-width:260px}
+/* ...але на вузькому екрані та сама колонка не має зʼїдати все. Виміряно на
+   півекрані (960px): при 675px видимих вона забирала 439px, тобто 65% заради
+   пʼятизначного номера, і поруч влізало лише півтори колонки.
+
+   Значення стелі підібране ВИМІРЮВАННЯМ, не на око: вужча колонка додає
+   переносів у комірці, і список росте вгору. Прогін по 100 рядках на 960px:
+
+     стеля  видимих колонок  висота списку
+     немає        2              6449
+     420px        3              6689
+     430px        2              6678
+     280px        3              8308
+
+   420px — єдине значення, що додає колонку майже без плати висотою (+4%).
+   Дрібніша стеля колонки вже не додає, а список роздуває на чверть.
+   На повному екрані стеля не діє — там колонка бере скільки треба. */
+@media (max-width:1300px){
+  .q2 table.qtable th:first-child,
+  .q2 table.qtable td.order-id{max-width:420px}
+}
 .q2 .ordbtn{display:inline-block;max-width:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .q2 tr.queue-row-overdue .sdot{box-shadow:0 0 0 3px rgba(var(--alarm-rgb), .22)}
 .q2 .ordbtn{font-family:var(--font-mono);font-size:var(--fs-2);font-weight:500;color:var(--ink);letter-spacing:-.01em;text-decoration:none}

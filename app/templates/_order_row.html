@@ -213,7 +213,7 @@
     <td class="material-cell">{% include "_matpair.html" %}</td>
     <td class="kind-cell">
         {% if order.kind %}
-            <a href="/orders/{{ order.id }}" class="kindbtn" data-order-detail="{{ order.id }}">{{ order.kind }}</a>
+            <a href="/orders/{{ order.id }}" class="kindbtn" data-order-detail="{{ order.id }}" title="{{ order.kind }}">{{ order.kind }}</a>
         {% elif not _is_client %}
             <span class="text-muted">—</span>
         {% endif %}
