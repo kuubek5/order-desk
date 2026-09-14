@@ -30,7 +30,11 @@ from app.routers import screens as screens_router_mod
 from app.services import screen_inbox
 from tests.asgi_client import MiniClient
 
-USER = ("screensop", "Scr33n-Op-1")
+# Скринька — адмінський екран (рішення власника 15.09.26), тож «свій»
+# користувач у тестах функціональності саме адмін. Оператор лишається поруч
+# рівно для перевірок відмови.
+USER = ("screensadmin", "Scr33n-Adm-1")
+OPERATOR = ("screensop", "Scr33n-Op-1")
 
 
 @pytest.fixture(autouse=True)
@@ -115,6 +119,14 @@ def app_db(monkeypatch):
             User(
                 username=USER[0],
                 password_hash=hash_password(USER[1]),
+                full_name="Адмін",
+                role="адмін",
+            )
+        )
+        db.add(
+            User(
+                username=OPERATOR[0],
+                password_hash=hash_password(OPERATOR[1]),
                 full_name="Оператор",
                 role="оператор",
             )
@@ -246,8 +258,13 @@ def test_dismiss_off_returns_row_to_the_default_board(app_db):
 # ── Картинки: шлях береться з рядка бази, не з адреси ──────────────────────
 
 
-def _image_user(db) -> User:
-    user = User(username="imgop", password_hash="unused", full_name="Оп", role="оператор")
+def _image_user(db, role: str = "адмін") -> User:
+    """Кадри скриньки бачить лише адмін (15.09.26) — типово він і в тестах.
+    Оператор створюється тим самим помічником для перевірок відмови."""
+    suffix = "adm" if role == "адмін" else "op"
+    user = User(
+        username=f"img{suffix}", password_hash="unused", full_name="Хто", role=role
+    )
     db.add(user)
     db.commit()
     return user
@@ -331,3 +348,84 @@ def test_zone_png_without_session_is_401(image_db):
             request=_image_request(None), puzzle_id=puzzle_id, db=image_db
         )
     assert exc.value.status_code == 401
+
+
+# ── Доступ: лише адміністратор ─────────────────────────────────────────────
+
+
+def _login_as(app, who) -> MiniClient:
+    client = MiniClient(app)
+    status, _, _ = client.login(*who)
+    assert status in (200, 302, 303), status
+    return client
+
+
+def test_operator_gets_403_on_every_screens_route(app_db):
+    """Рішення власника 15.09.26: скринька невідомих екранів — адмінський
+    екран. Роутів шість, і перевіряються ВСІ: закрити сторінку й лишити
+    відкритою дошку або картинку означає не закрити нічого — адресу видно в
+    історії браузера, а дошка віддає той самий вміст.
+    """
+    app, session_factory = app_db
+    with session_factory() as db:
+        puzzle_id = _note(db, name="Піч 3")
+
+    client = _login_as(app, OPERATOR)
+    for path in (
+        "/screens",
+        "/screens/board",
+        f"/screens/{puzzle_id}/frame.png",
+        f"/screens/{puzzle_id}/zone.png",
+    ):
+        status, _, _ = client.get(path)
+        assert status == 403, f"{path} віддав {status}"
+
+    status, _, _ = client.post(f"/screens/{puzzle_id}/label", {"label": "JOBS"})
+    assert status == 403
+    status, _, _ = client.post(f"/screens/{puzzle_id}/dismiss", {"dismissed": "on"})
+    assert status == 403
+
+
+def test_operator_cannot_change_anything_through_the_closed_routes(app_db):
+    """Відмова мусить бути ДО дії, а не після неї: 403 при вже збереженому
+    підписі був би гіршим за відкритий екран."""
+    app, session_factory = app_db
+    with session_factory() as db:
+        puzzle_id = _note(db, name="Піч 3")
+
+    client = _login_as(app, OPERATOR)
+    client.post(f"/screens/{puzzle_id}/label", {"label": "JOBS"})
+    client.post(f"/screens/{puzzle_id}/dismiss", {"dismissed": "on"})
+
+    with session_factory() as db:
+        puzzle = db.get(ScreenPuzzle, puzzle_id)
+        assert puzzle.label in (None, ""), "підпис не мав зберегтись"
+        assert not puzzle.dismissed, "«неважливо» не мало проставитись"
+
+
+def test_admin_still_sees_the_board(app_db):
+    app, session_factory = app_db
+    with session_factory() as db:
+        _note(db, name="Піч 3")
+
+    status, _, html = _login_as(app, USER).get("/screens")
+    assert status == 200
+    assert "Піч 3" in html
+
+
+def test_rail_and_palette_hide_the_screen_from_an_operator(app_db):
+    """Закритий роут без прибраного пункту меню — це кнопка, що віддає
+    помилку. Рейку й палітру Ctrl+K тримаємо в тому самому стані, що й гейт."""
+    app, _ = app_db
+
+    operator = _login_as(app, OPERATOR)
+    _, _, queue_html = operator.get("/")
+    assert "Невідомі екрани" not in queue_html
+
+    status, _, palette = operator.get("/palette/commands")
+    assert status == 200
+    assert "Невідомі екрани" not in palette
+
+    admin = _login_as(app, USER)
+    _, _, admin_html = admin.get("/")
+    assert "Невідомі екрани" in admin_html

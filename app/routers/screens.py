@@ -35,6 +35,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
+from starlette.responses import Response
 
 from app.models import ScreenPuzzle
 from app.routers.deps import get_current_user, get_db, login_redirect, templates
@@ -68,6 +69,27 @@ def _image_flags(puzzle: ScreenPuzzle) -> dict:
         "has_frame": screen_inbox.image_path(puzzle, "frame") is not None,
         "has_zone": screen_inbox.image_path(puzzle, "zone") is not None,
     }
+
+
+def _require_admin(request: Request, db: Session):
+    """Скринька невідомих екранів — лише для адміністратора (рішення власника
+    15.09.26).
+
+    Чому окремий помічник, а не рядок у кожному роуті: роутів шість (сторінка,
+    дошка, два зображення, підпис, «неважливо»), і гейт, розписаний копіями,
+    рано чи пізно розійдеться — саме так уже розходився гейт адміна по
+    застосунку (див. `deps.require_admin`, аудит 05.09.26). Повертає або
+    користувача, або готову відповідь, яку викликач мусить віддати.
+
+    Ролі тут НЕ через реєстр `settings_nav`: то реєстр РОЗДІЛІВ налаштувань,
+    а це окремий екран у рейці.
+    """
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    if user.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
+    return user
 
 
 def _board(request: Request, db: Session, user, show_dismissed: bool) -> dict:
@@ -126,9 +148,9 @@ def _toast(response, message: str, kind: str = "success"):
 
 @router.get("/screens", response_class=HTMLResponse)
 def screens_page(request: Request, dismissed: int = 0, db: Session = Depends(get_db)):
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
+    user = _require_admin(request, db)
+    if isinstance(user, Response):
+        return user
     return templates.TemplateResponse(
         request, "screens.html", _board(request, db, user, bool(dismissed))
     )
@@ -137,9 +159,9 @@ def screens_page(request: Request, dismissed: int = 0, db: Session = Depends(get
 @router.get("/screens/board", response_class=HTMLResponse)
 def screens_board(request: Request, dismissed: int = 0, db: Session = Depends(get_db)):
     """Дошка окремо — перемикач «показати неважливі» і відповідь на дію."""
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
+    user = _require_admin(request, db)
+    if isinstance(user, Response):
+        return user
     return templates.TemplateResponse(
         request, "_screen_inbox_board.html", _board(request, db, user, bool(dismissed))
     )
@@ -155,8 +177,11 @@ def _image(request: Request, db: Session, puzzle_id: int, which: str) -> FileRes
     беруться з самого рядка (`screen_inbox.image_path`). Тому написане в
     адресному рядку нікуди, крім скриньки, не веде.
     """
-    if get_current_user(request, db) is None:
+    viewer = get_current_user(request, db)
+    if viewer is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
+    if viewer.role != "адмін":
+        raise HTTPException(status_code=403, detail="лише для адміністратора")
     path = screen_inbox.image_path(_puzzle(db, puzzle_id), which)
     if path is None:
         raise HTTPException(status_code=404, detail="картинки немає")
@@ -193,9 +218,9 @@ def screen_label(
     більше немає, і сервіс так само знімає `labeled_at`. Другого сенсу, який
     треба було б розрізняти, у цій формі немає.
     """
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
+    user = _require_admin(request, db)
+    if isinstance(user, Response):
+        return user
     puzzle = _puzzle(db, puzzle_id)
     screen_inbox.set_label(db, puzzle.id, label, user_id=user.id)
     saved = bool(puzzle.label)
@@ -219,9 +244,9 @@ def screen_dismiss(
     таке буває», і саме частота колись може перетворити «неважливо» на
     «розберись». Але при переповненні скриньки він іде першим.
     """
-    user = get_current_user(request, db)
-    if user is None:
-        return login_redirect(request)
+    user = _require_admin(request, db)
+    if isinstance(user, Response):
+        return user
     puzzle = _puzzle(db, puzzle_id)
     off = dismissed not in ("on", "1", "true")
     screen_inbox.set_dismissed(db, puzzle.id, not off)

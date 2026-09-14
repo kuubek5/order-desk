@@ -66,7 +66,7 @@ COMMANDS: list[dict] = [
      "keywords": "discs dysky заготовки blk склад замовлення фрези cam", "admin": False},
     {"label": "Невідомі екрани", "group": "Цех", "href": "/screens",
      "keywords": "screens ekrany загадки кадри розпізнавання печі верстати skrynka",
-     "admin": False},
+     "admin": True},
     {"label": "Клієнти", "group": "Довідники", "href": "/clients",
      "keywords": "clients kliienty замовники", "admin": False},
     {"label": "Архів", "group": "Довідники", "href": "/archive",
