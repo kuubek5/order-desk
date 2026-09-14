@@ -9,12 +9,18 @@ app/stl_preview.py), а зіпсований токен дає 404, а не до
 import logging
 
 from fastapi import APIRouter, Depends, Form, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from app.platform_windows import open_folder_in_explorer
-from app.routers.deps import get_current_user, get_db, is_loopback_request
+from app.routers.deps import (
+    TRUSTED_ONLY_DETAIL,
+    get_current_user,
+    get_db,
+    is_trusted_request,
+    open_folder_response,
+)
 from app.stl_preview import list_stl_files, resolve_preview_folder, resolve_stl_file
 
 logger = logging.getLogger(__name__)
@@ -70,30 +76,27 @@ def get_stl_preview_file(
     return FileResponse(file_path, media_type="model/stl")
 
 
-@router.post("/open-folder", status_code=204)
+@router.post("/open-folder")
 def open_preview_folder(request: Request, token: str = Form(...), db: Session = Depends(get_db)):
     """Open a work's resolved folder in Windows Explorer from a preview token.
 
     A browser can't act on a file:// link from an http page (it's silently
     blocked), so the "Відкрити папку" button in the STL panel and the queue's
     double-click both POST the opaque preview token here instead. Same safety
-    envelope as /mail/{id}/open-folder: authenticated, loopback-only, and the
-    token is re-resolved server-side to a trusted directory (never a raw path
-    from the client — see app/stl_preview.py)."""
+    envelope as /mail/{id}/open-folder: authenticated, and the token is
+    re-resolved server-side to a trusted directory (never a raw path from the
+    client — see app/stl_preview.py). Explorer opens only on the server PC;
+    a trusted network client gets the path back instead (`open_folder_response`)."""
     if get_current_user(request, db) is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    # Гейт адреси ДО розбору токена: чужій адресі не кажемо навіть, чи існує тека.
+    if not is_trusted_request(request, db):
+        raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
 
     folder = resolve_preview_folder(db, token)
     if folder is None:
         raise HTTPException(status_code=404, detail="папку не знайдено")
 
-    try:
-        open_folder_in_explorer(folder)
-    except NotImplementedError:
-        raise HTTPException(status_code=501, detail="відкриття папки підтримується лише у Windows")
-    except OSError:
-        logger.exception("Could not open preview folder")
-        raise HTTPException(status_code=500, detail="не вдалося відкрити папку")
-    return Response(status_code=204)
+    return open_folder_response(
+        request, db, folder, opener=open_folder_in_explorer, log_label="stl preview"
+    )

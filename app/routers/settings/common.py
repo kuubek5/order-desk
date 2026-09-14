@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
-from app.routers.deps import get_current_user, is_loopback_request, require_admin
+from app.routers.deps import get_current_user, is_trusted_request, TRUSTED_ONLY_DETAIL, require_admin
 from app.services.settings_nav import can_edit
 
 
@@ -42,6 +42,6 @@ def require_settings_edit(request: Request, db: Session, key: str, *, loopback: 
         raise HTTPException(status_code=401, detail="увійдіть в систему")
     if not can_edit(user, key):
         raise HTTPException(status_code=403, detail="розділ доступний лише адміністратору")
-    if loopback and not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    if loopback and not is_trusted_request(request, db):
+        raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
     return user

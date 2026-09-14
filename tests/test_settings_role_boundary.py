@@ -384,7 +384,7 @@ def test_post_settings_refuses_a_remote_request():
                 db=db,
             ))
     assert exc.value.status_code == 403
-    assert "цьому комп" in exc.value.detail
+    assert "цього комп" in exc.value.detail
 
 
 def test_post_settings_still_works_from_the_machine_itself():

@@ -280,11 +280,12 @@ document.addEventListener("dblclick", (event) => {
   // where there's no token (kept for any legacy folder link).
   const token = button.dataset.stlPreviewToken || "";
   if (token) {
-    fetch("/open-folder", {
-      method: "POST",
-      body: new URLSearchParams({ token: token }),
-      credentials: "same-origin",
-    }).catch(() => {});
+    // З іншого ПК цеху помічник копіює шлях замість відкриття (app.js).
+    window
+      .openFolderOrCopy("/open-folder", new URLSearchParams({ token: token }))
+      .catch(() => {
+        if (window.showToast) window.showToast("Не вдалося відкрити теку", "error");
+      });
     return;
   }
 

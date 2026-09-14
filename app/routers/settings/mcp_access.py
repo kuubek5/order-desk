@@ -58,6 +58,50 @@ def toggle_mcp_gateway(request: Request, db: Session = Depends(get_db)):
     return _flash(request, "success", "Доступ вимкнено — порт закрито повністю, жоден запит ззовні не пройде.")
 
 
+@router.post("/settings/network/toggle")
+def toggle_network_access(request: Request, db: Session = Depends(get_db)):
+    """Увімкнути/вимкнути «Робота з інших ПК» (головний застосунок на
+    `0.0.0.0:8000`, `app/services/network_access.py`).
+
+    На відміну від MCP, окремого слухача тут нема: адресу головного
+    `uvicorn` лаунчер вибирає РАЗ на старті, тож перемикач набуває чинності
+    лише після перезапуску — і роут його чесно робить сам, коли є кому
+    (`request_restart`; у dev без лаунчера — ні, тоді кажемо перезапустити
+    руками). Форма шле `X-Requested-With: fetch` — тоді відповідь JSON, і
+    оверлей у браузері чекає на `/health`, як при оновленні; без JS — флеш
+    і редирект, як у решти перемикачів.
+    """
+    require_settings_admin(request, db)
+    from app.services import network_access
+
+    on = not network_access.access_enabled(db)
+    set_setting(db, network_access.ENABLED_KEY, "1" if on else "")
+    db.commit()
+
+    pending = network_access.restart_pending(db)
+    restarting = pending and network_access.request_restart()
+    if on and restarting:
+        message = (
+            f"Доступ вмикається: застосунок перезапускається й слухатиме порт {network_access.APP_PORT} "
+            "у мережі цеху. Адреси для інших ПК і команда брандмауера — нижче."
+        )
+    elif on:
+        message = (
+            f"Доступ увімкнено, але набуде чинності після перезапуску застосунку — "
+            f"перезапусти його руками (порт {network_access.APP_PORT})."
+        )
+    elif restarting:
+        message = "Доступ вимикається: застосунок перезапускається й слухатиме лише цей ПК."
+    else:
+        message = "Доступ вимкнено — набуде чинності після перезапуску застосунку."
+
+    if request.headers.get("X-Requested-With") == "fetch":
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse({"enabled": on, "restarting": bool(restarting), "message": message})
+    return _flash(request, "success", message)
+
+
 @router.post("/settings/mcp/token")
 def regenerate_mcp_token(request: Request, db: Session = Depends(get_db)):
     """Новий токен; старий одразу перестає працювати — той самий контракт,

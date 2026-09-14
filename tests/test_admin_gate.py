@@ -158,7 +158,24 @@ class TestRequireAdmin:
         with pytest.raises(HTTPException) as exc:
             deps.require_admin(self._request(1, host="192.168.88.20"), None)
         assert exc.value.status_code == 403
-        assert "цьому комп" in exc.value.detail
+        assert "цього комп" in exc.value.detail
+
+    def test_admin_over_the_network_passes_when_network_access_is_on(self, monkeypatch):
+        """«Робота з інших ПК» увімкнено → приватна адреса проходить той самий
+        гейт; публічна — ні, навіть з перемикачем (network_access)."""
+        from fastapi import HTTPException
+        from types import SimpleNamespace
+
+        from app.services import network_access
+
+        admin = SimpleNamespace(role="адмін")
+        monkeypatch.setattr(deps, "get_current_user", lambda request, db: admin)
+        monkeypatch.setattr(network_access, "access_enabled", lambda db: True)
+        db = object()
+        assert deps.require_admin(self._request(1, host="192.168.88.20"), db) is admin
+        with pytest.raises(HTTPException) as exc:
+            deps.require_admin(self._request(1, host="8.8.8.8"), db)
+        assert exc.value.status_code == 403
 
     def test_admin_over_the_network_passes_when_loopback_is_waived(self, monkeypatch):
         from types import SimpleNamespace

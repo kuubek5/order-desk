@@ -22,7 +22,7 @@ from app.machine_portraits import portrait_path
 from app.services import machine_link
 from app.settings_store import get_machine_calibration_path
 from app.routers.section_gate import blocked_response
-from app.routers.deps import get_current_user, login_redirect, get_db, is_loopback_request, templates
+from app.routers.deps import get_current_user, login_redirect, get_db, is_trusted_request, TRUSTED_ONLY_DETAIL, templates
 from app.services.machines import (
     POLL_INTERVAL_SECONDS,
     calibration_status,
@@ -252,8 +252,8 @@ def machines_calibration_zip(request: Request, db: Session = Depends(get_db)):
         return login_redirect(request)
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    if not is_trusted_request(request, db):
+        raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
     data = calibration_zip_bytes(get_machine_calibration_path(db))
     return Response(
         content=data,

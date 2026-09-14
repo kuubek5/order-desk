@@ -18,9 +18,12 @@ from urllib.parse import quote, unquote, urlencode, urlsplit
 
 
 class MiniClient:
-    def __init__(self, app):
+    def __init__(self, app, client_host: str = "127.0.0.1"):
         self.app = app
         self.cookies: dict[str, str] = {}
+        # Адреса клієнта в scope. Типово петля (частина роутів працює лише
+        # «за цим ПК»); тести «Роботи з інших ПК» підставляють 192.168.x.
+        self.client_host = client_host
 
     def get(self, path: str, headers: dict | None = None):
         return self._run("GET", path, None, headers)
@@ -82,7 +85,7 @@ class MiniClient:
             "query_string": split.query.encode(),
             "root_path": "",
             "headers": headers,
-            "client": ("127.0.0.1", 51000),
+            "client": (self.client_host, 51000),
             "server": ("127.0.0.1", 8000),
         }
 

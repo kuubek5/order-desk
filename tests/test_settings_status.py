@@ -270,3 +270,23 @@ def test_mcp_token_meter_is_never_green_merely_for_existing():
     assert token_meter_without.tone != TONE_OK
     assert token_meter_with.v == "задано"
     assert token_meter_without.v == "не задано"
+
+
+def test_network_access_green_only_when_listener_really_bound():
+    """«Інші ПК»: зелений — лише підтверджений сигнал лаунчера (слухач на
+    0.0.0.0), а не «перемикач увімкнено»; перемикач змінили без перезапуску
+    → жовте, і воно перекриває тон усієї плити."""
+    on_but_unknown = _slab_mcp({**_mcp_ctx(), "network_enabled": True})
+    meter = next(m for m in on_but_unknown.meters if m.k == "Інші ПК")
+    assert meter.tone == TONE_NONE and meter.v == "увімкнено"
+
+    listening = _slab_mcp({**_mcp_ctx(), "network_enabled": True, "network_listening": True})
+    meter = next(m for m in listening.meters if m.k == "Інші ПК")
+    assert meter.tone == TONE_OK
+    assert listening.tone == TONE_OK
+
+    pending = _slab_mcp(
+        {**_mcp_ctx(enabled=True, listening=True), "network_enabled": True, "network_restart_pending": True}
+    )
+    assert pending.tone == TONE_WARN
+    assert pending.label == "чекає перезапуску"

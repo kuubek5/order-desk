@@ -124,6 +124,55 @@ def is_loopback_request(request: Request) -> bool:
         return False
 
 
+TRUSTED_ONLY_DETAIL = "дія доступна лише з цього комп'ютера або з ПК цеху, коли увімкнено «Робота з інших ПК»"
+
+
+def is_trusted_request(request: Request, db: Session) -> bool:
+    """Чи довіряємо адресі запиту для дій із секретами й керуванням.
+
+    Loopback — завжди. Інший ПК — лише коли в Налаштуваннях увімкнено
+    «Робота з інших ПК» І адреса приватна (`app/services/network_access.py`).
+    Це гейт для ПРИВІЛЕЙОВАНИХ дій (налаштування, секрети, масові операції):
+    власник вирішив 12.09.26, що адмін править їх із будь-якого ПК цеху.
+    Дії, які відкривають щось на робочому столі САМОГО сервера («Відкрити
+    теку»), лишаються на `is_loopback_request` — з іншого ПК Провідник
+    сервера не видно, там замість відмови віддається шлях.
+    """
+    from app.services.network_access import is_trusted_request as _trusted
+
+    return _trusted(request, db)
+
+
+def open_folder_response(request: Request, db: Session, folder, *, opener, log_label: str) -> Response:
+    """Одна відповідь на «Відкрити теку» для всіх роутів (STL, лист).
+
+    З цього ПК — відкриває Провідник, `{"opened": true}`. З іншого ПК цеху
+    (перемикач «Робота з інших ПК» увімкнено) Провідник сервера відкрити не
+    можна, тож замість 403 віддається ШЛЯХ, і браузер копіює його в буфер
+    (`openFolderOrCopy` в `app/static/js/app.js`). Чужа адреса — 403, як і
+    було. Шлях віддається таким, яким його знає сервер: у цеху всі теки
+    мережеві (UNC або та сама літера диска), тож він відкривається і там.
+
+    `opener` передає РОУТ (свій імпорт `open_folder_in_explorer`): тести
+    підміняють його в модулі роута, і лінивий імпорт тут зробив би підміну
+    мовчазним no-op — Провідник відкривався б насправді (CLAUDE.md §14).
+    """
+    from fastapi.responses import JSONResponse
+
+    if not is_loopback_request(request):
+        if not is_trusted_request(request, db):
+            raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
+        return JSONResponse({"opened": False, "path": str(folder)})
+    try:
+        opener(folder)
+    except NotImplementedError:
+        raise HTTPException(status_code=501, detail="відкриття папки підтримується лише у Windows")
+    except OSError:
+        logging.getLogger(__name__).exception("Could not open folder (%s)", log_label)
+        raise HTTPException(status_code=500, detail="не вдалося відкрити папку")
+    return JSONResponse({"opened": True})
+
+
 def require_admin(request: Request, db: Session, *, loopback: bool = True) -> User:
     """Один гейт «це адмін» на весь застосунок (аудит 05.09.26, крок 2.7).
 
@@ -134,9 +183,10 @@ def require_admin(request: Request, db: Session, *, loopback: bool = True) -> Us
     `loopback=False` замість того, щоб губитись між файлами.
 
     `loopback=True` (типово) — дія керує САМОЮ машиною або її секретами:
-    оновлення, паролі пристроїв, шляхи, бекапи, діагностика. Такі речі мають
-    сенс лише за фізичним ПК, тож мережевий клієнт відсікається навіть із
-    валідною сесією адміна.
+    оновлення, паролі пристроїв, шляхи, бекапи, діагностика. Такі речі
+    доступні з цього ПК завжди, а з іншого ПК цеху — лише коли увімкнено
+    «Робота з інших ПК» (`is_trusted_request`; рішення власника 12.09.26).
+    Назва параметра лишилась історичною: на неї спираються ~30 роутів.
 
     Кидає 401, якщо не ввійшов, і 403 у решті випадків — той самий контракт,
     що був у `require_settings_admin`.
@@ -146,8 +196,8 @@ def require_admin(request: Request, db: Session, *, loopback: bool = True) -> Us
         raise HTTPException(status_code=401, detail="увійдіть в систему")
     if user.role != "адмін":
         raise HTTPException(status_code=403, detail="лише для адміністратора")
-    if loopback and not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    if loopback and not is_trusted_request(request, db):
+        raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
     return user
 
 

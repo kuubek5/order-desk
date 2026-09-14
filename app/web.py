@@ -992,7 +992,10 @@ app.add_middleware(
     # HTMX mutation to any page in the operator's browser — tests/test_security_hardening.py
     # guards this value on purpose.
     same_site="strict",
-    https_only=False,  # Loopback-only HTTP; no network listener is opened.
+    # HTTP без TLS — і на петлі, і в мережі цеху («Робота з інших ПК»,
+    # app/services/network_access.py): власник свідомо відкинув самопідписаний
+    # сертифікат (12.09.26). Кука з `Secure` по http не поставилась би взагалі.
+    https_only=False,
     max_age=8 * 60 * 60,
 )
 

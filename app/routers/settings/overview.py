@@ -34,7 +34,7 @@ from app.routers.deps import (
     get_current_user,
     login_redirect,
     get_db,
-    is_loopback_request,
+    is_trusted_request, TRUSTED_ONLY_DETAIL,
     templates,
     toast_response,
 )
@@ -405,6 +405,20 @@ def get_settings(
     context["mcp_links"] = mcp_gateway.connect_links(db)
     context["mcp_firewall_command"] = mcp_gateway.firewall_command()
 
+    # Робота з інших ПК (головний застосунок на 0.0.0.0:8000) —
+    # app/services/network_access.py. Той самий розділ «Доступ по мережі».
+    from app.services import network_access
+
+    context["network_enabled"] = network_access.access_enabled(db)
+    context["network_bound_host"] = network_access.bound_host()
+    context["network_listening"] = network_access.network_listening()
+    context["network_restart_pending"] = network_access.restart_pending(db)
+    context["network_can_restart"] = network_access.can_restart()
+    context["network_port"] = network_access.APP_PORT
+    context["network_links"] = network_access.app_links()
+    context["network_firewall_command"] = network_access.firewall_command()
+    context["network_firewall_remove_command"] = network_access.firewall_remove_command()
+
     # Плити стану розділів (макет «Стенд»). Рахуються ПІСЛЯ контексту й з
     # нього ж: жодного власного джерела правди — інакше плита й тіло
     # розділу показували б різні числа (урок смуги печей).
@@ -428,8 +442,8 @@ async def post_settings(request: Request, db: Session = Depends(get_db)):
     # (ревʼю 07.09.26, K.4). Права на КОЖНЕ поле лишаються польовими, нижче:
     # роут і далі відкритий операторові, тож у сторожі гейтів він лишається
     # у списку винятків — тут додано саме loopback, не роль.
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    if not is_trusted_request(request, db):
+        raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
     is_admin = user.role == "адмін"
 
     form = await request.form()
@@ -557,8 +571,8 @@ def check_settings_path(
     # налаштування, а запис у будь-яку мережеву шару, куди дістає служба
     # KuubMill (audit 05.09.26, security M-1). Право на розділ таку дію не
     # покриває — тому тут стоїть роль, а не can_edit.
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    if not is_trusted_request(request, db):
+        raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
 
     if kind == "sum3d":
         raw_path = sum3d_projects_path

@@ -213,10 +213,10 @@
                     </button>
                     {% endif %}
                     {% if on_disk_count %}
+                    {# Не htmx, а data-open-folder-url: обробник у app.js з іншого
+                       ПК цеху копіює шлях замість відкриття Провідника. #}
                     <button type="button" class="btn accent-outline"
-                            hx-post="/mail/{{ email.id }}/open-folder"
-                            hx-swap="none"
-                            hx-on::after-request="if(event.detail.successful){showToast('Відкрито папку у Провіднику','success')}else{showToast('Не вдалося відкрити папку зі скачаними файлами','error')}">
+                            data-open-folder-url="/mail/{{ email.id }}/open-folder">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z" class="duo"/><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L10 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1Z"/></svg>
                         Відкрити папку у Провіднику
                     </button>

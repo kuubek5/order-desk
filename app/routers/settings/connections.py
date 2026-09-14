@@ -17,7 +17,7 @@ from starlette.requests import Request
 from app.__version__ import VERSION
 from app.google_oauth import OAuthFlowError, parse_client_config, run_authorization_flow
 from app.mail_reader import IMAP_HOST, IMAP_TIMEOUT_SECONDS
-from app.routers.deps import get_current_user, get_db, is_loopback_request, templates
+from app.routers.deps import get_current_user, get_db, is_trusted_request, TRUSTED_ONLY_DETAIL, templates
 from app.services.support_report import (
     build_report as build_support_report,
     report_filename as support_report_filename,
@@ -127,8 +127,8 @@ async def save_imap_settings(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="увійдіть в систему")
     if not can_edit(user, "imap"):
         raise HTTPException(status_code=403, detail="розділ доступний лише адміністратору")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    if not is_trusted_request(request, db):
+        raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
 
     form = await request.form()
     login = (form.get("imap_login") or "").strip()
@@ -175,8 +175,8 @@ def test_imap_connection(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="увійдіть в систему")
     if not can_edit(user, "imap"):
         raise HTTPException(status_code=403, detail="розділ доступний лише адміністратору")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    if not is_trusted_request(request, db):
+        raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
 
     result = _probe_imap_login(get_imap_login(db), get_imap_password(db))
     toast_kind = "success" if result["state"] == "success" else "error"
@@ -205,8 +205,8 @@ def test_sheets_connection(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="увійдіть в систему")
     if not can_edit(user, "sheets"):
         raise HTTPException(status_code=403, detail="розділ доступний лише адміністратору")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    if not is_trusted_request(request, db):
+        raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
 
     if not sheets_configured(db):
         result = {

@@ -6,6 +6,8 @@ from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 import socket
+import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -133,11 +135,123 @@ def _show_startup_error() -> None:
 
 
 def _ensure_port_available() -> None:
+    # Проба лише на петлі, хоч слухати можемо й 0.0.0.0: Windows не дає
+    # прив'язати 127.0.0.1:8000, коли хтось уже тримає 0.0.0.0:8000, тож
+    # конфлікт видно в обох випадках, а база (де лежить перемикач) на цей
+    # момент ще не мігрована.
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         try:
             probe.bind(("127.0.0.1", 8000))
         except OSError as exc:
             raise RuntimeError("Локальний порт 8000 уже зайнятий іншою програмою") from exc
+
+
+def _startup_host() -> str:
+    """Адреса для `uvicorn` за перемикачем «Робота з інших ПК»
+    (`app/services/network_access.py`). Читається РАЗ, після міграцій. Будь-яка
+    невдача читання = петля: помилка в базі не має відкривати порт у мережу."""
+    from app.services.network_access import LOOPBACK_HOST, desired_host
+
+    try:
+        from app.db import SessionLocal
+
+        with SessionLocal() as db:
+            return desired_host(db)
+    except Exception:
+        logging.exception("Не вдалося прочитати перемикач «Робота з інших ПК» — слухаю лише петлю")
+        return LOOPBACK_HOST
+
+
+def _confirm_quit() -> bool:
+    """Діалог «Вийти?» з треєм. Без робочого столу (тести, CI) — так."""
+    if os.name != "nt" or os.environ.get("KUUBMILL_NONINTERACTIVE"):
+        return True
+    import ctypes
+
+    text = (
+        "Вийти з KuubMill?\n\n"
+        "Застосунок зупиниться: синхронізація таблиці, пошта, печі й верстати "
+        "перестануть оновлюватись, а відкриті екрани перестануть відповідати."
+    )
+    try:
+        from app.services.network_access import network_listening
+
+        if network_listening():
+            text += "\n\nУвімкнено «Робота з інших ПК»: колеги за іншими ПК теж втратять доступ."
+    except Exception:
+        pass
+    # MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST
+    flags = 0x4 | 0x30 | 0x100 | 0x10000 | 0x40000
+    return ctypes.windll.user32.MessageBoxW(0, text, "KuubMill", flags) == 6  # IDYES
+
+
+def relaunch_command(pid: int, exe: str, args: list[str]) -> list[str]:
+    """Команда, що чекає виходу ЦЬОГО процесу й запускає застосунок знову.
+
+    Окремим процесом PowerShell, бо сам себе процес перезапустити не може:
+    мʼютекс єдиного екземпляра й порт 8000 звільняються лише після виходу.
+    Чекаємо не довше 60 с — якщо старий процес завис, новий не піднімаємо
+    поверх нього (два екземпляри гірші за жоден).
+    """
+    quoted_args = " ".join("'" + a.replace("'", "''") + "'" for a in args)
+    start = f"Start-Process -FilePath '{exe}'"
+    if quoted_args:
+        start += f" -ArgumentList {quoted_args}"
+    script = (
+        f"$p = Get-Process -Id {pid} -ErrorAction SilentlyContinue; "
+        f"if ($p) {{ $p.WaitForExit(60000) | Out-Null; if (-not $p.HasExited) {{ exit 1 }} }}; "
+        f"{start}"
+    )
+    return ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", script]
+
+
+def _spawn_relauncher() -> None:
+    frozen = bool(getattr(sys, "frozen", False))
+    exe = sys.executable
+    # Пакований білд: сам exe, без аргументів (--open-browser тут зайвий —
+    # оверлей у браузері сам перезавантажить сторінку). Dev-лаунчер: той самий
+    # інтерпретатор із тими самими аргументами.
+    args = [] if frozen else list(sys.argv)
+    command = relaunch_command(os.getpid(), exe, args)
+    spawn_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
+        subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+    )
+    subprocess.Popen(
+        command,
+        creationflags=spawn_flags,
+        close_fds=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def _install_restarter(server, tray_holder: dict) -> None:
+    """Реєструє в `network_access` функцію «перезапуститись»: пауза, щоб
+    відповідь роута встигла піти, далі сторож-перезапускач і зупинка сервера
+    з треєм — рівно те, що робить «Вийти»."""
+    from app.services.network_access import register_restarter
+
+    def _restart_later() -> None:
+        time.sleep(1.5)
+        try:
+            _spawn_relauncher()
+        except Exception:
+            logging.exception("Не вдалося запустити перезапускач — зупинки не буде")
+            return
+        logging.info("Перезапуск застосунку на запит із налаштувань")
+        server.should_exit = True
+        icon = tray_holder.get("icon")
+        if icon is not None:
+            try:
+                icon.stop()
+            except Exception:
+                logging.exception("Tray icon stop failed on restart")
+
+    def _restart() -> None:
+        threading.Thread(target=_restart_later, name="kuubmill-restart", daemon=True).start()
+
+    register_restarter(_restart)
 
 
 def _open_browser_when_ready() -> None:
@@ -238,6 +352,11 @@ def _run_server_with_tray(server, tray_holder: dict) -> None:
                     return sync_control.is_paused()
 
                 def _quit(_icon=None, _item=None) -> None:
+                    # Один клік у треї гасив усе БЕЗ підтвердження — а з
+                    # «Роботою з інших ПК» це вимикає ще й колегу за іншим
+                    # ПК (ROADMAP #26). Питаємо один раз, називаємо наслідок.
+                    if not _confirm_quit():
+                        return
                     server.should_exit = True
                     if icon is not None:
                         icon.stop()
@@ -309,10 +428,16 @@ def main() -> int:
         os.environ["KUUBMILL_SCHEMA_MANAGED"] = "1"
         from app.web import app
         import uvicorn
+        from app.services.network_access import set_bound_host
 
+        # 127.0.0.1 або 0.0.0.0 — за перемикачем «Робота з інших ПК». Адреса
+        # береться РАЗ: перемикач у налаштуваннях перезапускає застосунок.
+        host = _startup_host()
+        set_bound_host(host)
+        logging.info("KuubMill слухає %s:8000", host)
         config = uvicorn.Config(
             app,
-            host="127.0.0.1",
+            host=host,
             port=8000,
             access_log=False,
             log_config=None,
@@ -328,6 +453,7 @@ def main() -> int:
         # The tray icon (if available) needs the main thread for its Windows
         # message loop, so it holds a reference to the icon to stop on shutdown.
         tray_holder: dict = {}
+        _install_restarter(server, tray_holder)
 
         def watch_shutdown() -> None:
             if os.name != "nt" or not _shutdown_event_handle:

@@ -67,18 +67,20 @@ from app.order_folder import (
     attach_email_preview_tokens,
     resolve_email_attachment_folder,
 )
-from app.platform_windows import open_folder_in_explorer
 from app.queue_filters import (
     SERVICE_TYPE_FILTERS,
     count_by_service_type,
     filter_emails_by_service_type,
 )
 from app.routers.section_gate import blocked_response
+from app.platform_windows import open_folder_in_explorer
 from app.routers.deps import (
+    TRUSTED_ONLY_DETAIL,
     get_current_user,
+    is_trusted_request,
     login_redirect,
     get_db,
-    is_loopback_request,
+    open_folder_response,
     templates,
 )
 from app.sender_memory import list_sender_memories, lookup_sender
@@ -819,7 +821,7 @@ def _wizard_context(
     return ctx
 
 
-@router.post("/mail/{email_id}/open-folder", status_code=204)
+@router.post("/mail/{email_id}/open-folder")
 def open_mail_folder(
     request: Request,
     email_id: int,
@@ -828,8 +830,9 @@ def open_mail_folder(
     user = get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=401, detail="увійдіть в систему")
-    if not is_loopback_request(request):
-        raise HTTPException(status_code=403, detail="дія доступна лише на цьому комп'ютері")
+    # Гейт адреси ДО пошуку листа: чужій адресі не кажемо навіть, чи він існує.
+    if not is_trusted_request(request, db):
+        raise HTTPException(status_code=403, detail=TRUSTED_ONLY_DETAIL)
 
     email = db.scalar(
         select(EmailMessage)
@@ -846,14 +849,9 @@ def open_mail_folder(
     if folder is None:
         raise HTTPException(status_code=404, detail="папку вкладень не знайдено")
 
-    try:
-        open_folder_in_explorer(folder)
-    except NotImplementedError:
-        raise HTTPException(status_code=501, detail="відкриття папки підтримується лише у Windows")
-    except OSError:
-        logger.exception("Could not open attachment folder for email %s", email_id)
-        raise HTTPException(status_code=500, detail="не вдалося відкрити папку")
-    return Response(status_code=204)
+    return open_folder_response(
+        request, db, folder, opener=open_folder_in_explorer, log_label=f"mail {email_id}"
+    )
 
 
 @router.post("/mail/{email_id}/download-attachments", response_class=HTMLResponse)

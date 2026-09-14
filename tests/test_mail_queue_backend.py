@@ -233,7 +233,8 @@ def test_open_preview_folder_opens_token_path(tmp_path, monkeypatch):
         user = _user(db)
         response = stl_router_mod.open_preview_folder(request=_request(user.id), token=token, db=db)
 
-    assert response.status_code == 204
+    assert response.status_code == 200
+    assert response.body == b'{"opened":true}'
     assert opened == [folder.resolve()]
 
 
@@ -850,7 +851,8 @@ def test_open_mail_folder_opens_safe_db_path_and_returns_no_content(tmp_path, mo
             request=_request(user.id), email_id=email.id, db=db
         )
 
-    assert response.status_code == 204
+    assert response.status_code == 200
+    assert response.body == b'{"opened":true}'
     assert opened == [folder.resolve()]
 
 

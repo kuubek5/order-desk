@@ -46,16 +46,13 @@
   }
 })();
 
-document.addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-copy]");
-  if (!button) return;
-
-  const value = button.dataset.copy || "";
-  if (!value) return;
-
-  const originalTitle = button.title;
+// Копіювання в буфер з запасним `execCommand`: `navigator.clipboard` живе
+// лише в захищеному контексті (https або localhost), а з іншого ПК цеху
+// сторінка відкрита по http://192.168… — там лишається лише старий шлях.
+window.copyTextToClipboard = async function copyTextToClipboard(value) {
   try {
     await navigator.clipboard.writeText(value);
+    return true;
   } catch (_error) {
     const input = document.createElement("textarea");
     input.value = value;
@@ -64,9 +61,52 @@ document.addEventListener("click", async (event) => {
     input.style.opacity = "0";
     document.body.appendChild(input);
     input.select();
-    document.execCommand("copy");
+    let ok = false;
+    try {
+      ok = document.execCommand("copy");
+    } catch (_e) {
+      ok = false;
+    }
     input.remove();
+    return ok;
   }
+};
+
+// «Відкрити теку» з будь-якого екрана — один помічник на всі чотири кнопки
+// (картка клієнта на видачі, подвійний клік у черзі, панель STL, лист).
+// Сервер відкриває Провідник лише на ПК-сервері; з іншого ПК цеху він
+// віддає {opened:false, path} — тоді шлях копіюється в буфер, і тост каже,
+// куди його вставити. Повертає "opened" | "copied", кидає при відмові.
+window.openFolderOrCopy = async function openFolderOrCopy(url, body) {
+  const response = await fetch(url, { method: "POST", body, credentials: "same-origin" });
+  if (!response.ok) throw new Error(String(response.status));
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch (_error) {
+    payload = null;
+  }
+  if (!payload || payload.opened || !payload.path) return "opened";
+  await window.copyTextToClipboard(payload.path);
+  if (window.showToast) {
+    window.showToast(
+      "Ти на іншому ПК — Провідник сервера звідси не відкрити. Шлях скопійовано, встав його в адресний рядок Провідника: " +
+        payload.path,
+      "success"
+    );
+  }
+  return "copied";
+};
+
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-copy]");
+  if (!button) return;
+
+  const value = button.dataset.copy || "";
+  if (!value) return;
+
+  const originalTitle = button.title;
+  await window.copyTextToClipboard(value);
 
   button.title = "Скопійовано";
   button.classList.add("copy-success");
@@ -84,22 +124,26 @@ document.addEventListener("click", async (event) => {
 //
 // Мовчазна кнопка — гірше за зламану: якщо не вийшло, оператор мусить це
 // бачити, а не гадати, чи він узагалі влучив.
+//
+// Той самий обробник тягне й `[data-open-folder-url]` (кнопка листа в
+// тріажі): там теки нема в токені, роут свій — `/mail/{id}/open-folder`.
 document.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-open-folder-token]");
+  const button = event.target.closest("[data-open-folder-token], [data-open-folder-url]");
   if (!button) return;
 
   event.preventDefault();
   const token = button.dataset.openFolderToken || "";
-  if (!token) return;
+  const url = button.dataset.openFolderUrl || (token ? "/open-folder" : "");
+  if (!url) return;
+  const body = token ? new URLSearchParams({ token: token }) : new URLSearchParams();
 
   button.classList.add("is-opening");
-  fetch("/open-folder", {
-    method: "POST",
-    body: new URLSearchParams({ token: token }),
-    credentials: "same-origin",
-  })
-    .then((response) => {
-      if (!response.ok) throw new Error(String(response.status));
+  window
+    .openFolderOrCopy(url, body)
+    .then((result) => {
+      if (result === "opened" && button.dataset.openFolderUrl && window.showToast) {
+        window.showToast("Відкрито папку у Провіднику", "success");
+      }
     })
     .catch(() => {
       if (window.showToast) {
@@ -301,6 +345,62 @@ document.addEventListener("click", (event) => {
   }
 
   window.showUpdateOverlay = showUpdateOverlay;
+
+  // Той самий оверлей для звичайного перезапуску (перемикач «Робота з інших
+  // ПК»): без вигаданих стадій і без опитування стану інсталятора — лише
+  // health-полл, який перезавантажить сторінку, коли застосунок підніметься.
+  function showRestartOverlay(title) {
+    const overlay = document.getElementById("update-overlay");
+    if (!overlay || shown) return;
+    shown = true;
+    const titleEl = overlay.querySelector(".update-title");
+    const statusEl = document.getElementById("update-status");
+    if (titleEl) titleEl.textContent = title || "Перезапуск застосунку";
+    if (statusEl) statusEl.textContent = "Перезапуск… за мить сторінка оновиться";
+    overlay.hidden = false;
+    overlay.setAttribute("aria-hidden", "false");
+    void overlay.offsetWidth;
+    overlay.classList.add("is-shown");
+    startHealthReloadPoll();
+  }
+  window.showRestartOverlay = showRestartOverlay;
+
+  document.addEventListener("submit", (event) => {
+    const form = event.target.closest("form.network-toggle");
+    if (!form) return;
+    event.preventDefault();
+
+    const enabling = !form.dataset.enabled;
+    const busy = parseInt(form.dataset.busy || "0", 10) || 0;
+    const who = busy > 1 ? ` Зараз працюють ще ${busy - 1} — їхню роботу обірве на ≈10 с.` : "";
+    const question = enabling
+      ? "Увімкнути доступ з інших ПК? Застосунок перезапуститься." + who
+      : "Вимкнути доступ з інших ПК? Застосунок перезапуститься, і всі, хто зайшов з інших ПК, втратять доступ." + who;
+    if (!window.confirm(question)) return;
+
+    const button = form.querySelector('button[type="submit"]');
+    if (button) button.disabled = true;
+
+    fetch(form.action, {
+      method: "POST",
+      headers: { "X-Requested-With": "fetch" },
+      credentials: "same-origin",
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((state) => {
+        if (state.restarting) {
+          showRestartOverlay("Перезапуск застосунку");
+          return;
+        }
+        if (button) button.disabled = false;
+        if (window.showToast) window.showToast(state.message || "Збережено", "success");
+        window.setTimeout(() => window.location.reload(), 1200);
+      })
+      .catch(() => {
+        if (button) button.disabled = false;
+        if (window.showToast) window.showToast("Не вдалося змінити доступ", "error");
+      });
+  });
 
   document.addEventListener("submit", (event) => {
     const form = event.target.closest('form[action="/settings/update/install"]');

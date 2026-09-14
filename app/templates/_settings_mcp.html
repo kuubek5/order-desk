@@ -16,8 +16,83 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 5-3 7.5-7 9-4-1.5-7-4-7-9V6z" class="duo"/><path d="M12 3l7 3v6c0 5-3 7.5-7 9-4-1.5-7-4-7-9V6z"/><circle cx="12" cy="11" r="1.6"/></svg>
             </div>
             <div class="box">
-                {{ slab('Доступ по мережі', 'Домашній ПК власника читає стан цеху через тунель WireGuard — без цього перемикача запит звідти нікуди не дійде.', slabs['mcp']) }}
+                {{ slab('Доступ по мережі', 'Робота з інших ПК цеху (порт ' ~ network_port ~ ') і читання стану з дому через тунель WireGuard (порт ' ~ mcp_port ~ ').', slabs['mcp']) }}
 
+                {# ── Робота з інших ПК (головний застосунок, порт 8000) ──────
+                   app/services/network_access.py. Одна копія програми — тут,
+                   решта ПК цеху відкривають адресу в браузері. Адресу головного
+                   uvicorn лаунчер обирає раз на старті, тому перемикач
+                   перезапускає застосунок (оверлей і опитування /health — ті
+                   самі, що при оновленні, app.js). #}
+                <h3>Робота з інших ПК</h3>
+                <p class="settings-help">
+                    Одна програма, багато браузерів: другий операторський ПК, або адмін, що править
+                    налаштування, поки за цим ПК працює оператор. Кожен входить під своїм акаунтом і
+                    нікому не заважає. Копія програми лишається ОДНА — на іншому ПК нічого не
+                    встановлюють, лише відкривають адресу нижче.
+                </p>
+                <p class="settings-help stand-note">
+                    ⚠ Звʼязок іде по <span class="mono">http</span> без шифрування — пароль входу й секрети
+                    з екрана налаштувань видно в мережі цеху. Тому правило брандмауера нижче лише для
+                    приватного профілю, а адреси з чужої мережі застосунок не пускає навіть із паролем.
+                    Перемикач ПЕРЕЗАПУСКАЄ застосунок (≈10 с): усі, хто зараз працює, побачать паузу.
+                </p>
+
+                <div class="stand-cells">
+                <div class="stand-cell w6">
+                    <h3>Адреса для інших ПК</h3>
+                    {% if network_links %}
+                    {% for link in network_links %}
+                    <div class="stand-drow">
+                        <div class="stand-dtext"><p><span class="mono stand-members-link">{{ link }}</span></p></div>
+                        <button type="button" class="settings-secondary-button" data-copy="{{ link }}" title="Скопіювати адресу">Скопіювати</button>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <p class="stand-note">Не вдалось визначити мережевої адреси цього ПК — перевір підключення.</p>
+                    {% endif %}
+                    <p class="settings-help">
+                        {% if network_restart_pending %}
+                            <span class="stand-state stand-state-warn">чекає перезапуску застосунку</span>
+                        {% elif network_listening %}
+                            <span class="stand-state stand-state-ok">слухає мережу цеху</span>
+                        {% elif network_bound_host %}
+                            <span class="stand-state stand-state-none">лише цей ПК ({{ network_bound_host }})</span>
+                        {% else %}
+                            <span class="stand-state stand-state-none">адреса слухача невідома (dev-запуск без лаунчера)</span>
+                        {% endif %}
+                    </p>
+
+                    <h3>Брандмауер — один раз</h3>
+                    <p class="settings-help">
+                        PowerShell від імені адміністратора. Правило лише для приватного й доменного
+                        профілів: у «Загальнодоступну» мережу порт {{ network_port }} не відкривається.
+                    </p>
+                    <div class="stand-drow">
+                        <div class="stand-dtext"><p><span class="mono stand-members-link">{{ network_firewall_command }}</span></p></div>
+                        <button type="button" class="settings-secondary-button" data-copy="{{ network_firewall_command }}" title="Скопіювати команду">Скопіювати</button>
+                    </div>
+                    <p class="settings-help">Вимкнув назавжди — прибери й правило:</p>
+                    <div class="stand-drow">
+                        <div class="stand-dtext"><p><span class="mono stand-members-link">{{ network_firewall_remove_command }}</span></p></div>
+                        <button type="button" class="settings-secondary-button" data-copy="{{ network_firewall_remove_command }}" title="Скопіювати команду">Скопіювати</button>
+                    </div>
+                </div>
+
+                <div class="stand-cell w3">
+                    <h3>Перемикач</h3>
+                    <div class="settings-field">
+                        <p class="settings-help">
+                            {% if network_can_restart %}Застосунок перезапуститься сам.{% else %}Перезапуск — руками (dev).{% endif %}
+                        </p>
+                        <form method="post" action="/settings/network/toggle" class="network-toggle" data-busy="{{ busy_operators() }}" data-enabled="{{ '1' if network_enabled else '' }}">
+                            <button type="submit" class="settings-secondary-button">{{ 'Вимкнути доступ з інших ПК' if network_enabled else 'Увімкнути доступ з інших ПК' }}</button>
+                        </form>
+                    </div>
+                </div>
+                </div>
+
+                <h3>Читання стану з дому (MCP)</h3>
                 <p class="settings-help">
                     Перемикач відкриває ОКРЕМИЙ, крихітний порт (<span class="mono">{{ mcp_port }}</span>),
                     у якому немає нічого, крім читання стану: ні сторінок, ні входу, ні статики, ні можливості

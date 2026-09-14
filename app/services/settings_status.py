@@ -592,16 +592,44 @@ def _slab_mcp(ctx: dict) -> Slab:
     error = getattr(status, "error", None) if status else None
 
     if not on:
-        tone, label = TONE_NONE, "вимкнено"
+        mcp_tone, mcp_label = TONE_NONE, "вимкнено"
     elif listening:
-        tone, label = TONE_OK, "слухає"
+        mcp_tone, mcp_label = TONE_OK, "слухає"
     elif error:
-        tone, label = TONE_WARN, "проблема з портом"
+        mcp_tone, mcp_label = TONE_WARN, "проблема з портом"
     else:
-        tone, label = TONE_NONE, "вмикається…"
+        mcp_tone, mcp_label = TONE_NONE, "вмикається…"
+
+    # Робота з інших ПК (головний застосунок, порт 8000). Зелений — лише коли
+    # лаунчер РЕАЛЬНО підняв слухача на 0.0.0.0 (`network_listening`), не
+    # «перемикач увімкнено». Перемикач змінили, а сервер ще на старій адресі
+    # → жовте «чекає перезапуску», і воно ж перекриває тон усієї плити.
+    net_on = bool(ctx.get("network_enabled"))
+    net_listening = bool(ctx.get("network_listening"))
+    net_pending = bool(ctx.get("network_restart_pending"))
+    if net_pending:
+        net_tone, net_value = TONE_WARN, "чекає перезапуску"
+    elif net_listening:
+        net_tone, net_value = TONE_OK, "слухає мережу"
+    elif net_on:
+        net_tone, net_value = TONE_NONE, "увімкнено"
+    else:
+        net_tone, net_value = TONE_NONE, "вимкнено"
+
+    # Тон плити — гірший із двох; підпис — того, хто цей тон дав, а коли обидва
+    # спокійні, першим словом іде «інші ПК» (це щоденна функція, MCP — рідкісна).
+    if net_pending:
+        tone, label = TONE_WARN, "чекає перезапуску"
+    elif mcp_tone == TONE_WARN:
+        tone, label = mcp_tone, mcp_label
+    elif net_listening:
+        tone, label = TONE_OK, "інші ПК: слухає"
+    else:
+        tone, label = mcp_tone, mcp_label
 
     meters = [
-        Meter(k="Перемикач", v="увімкнено" if on else "вимкнено", s=f"порт {ctx.get('mcp_port', '—')}", tone=tone),
+        Meter(k="Інші ПК", v=net_value, s=f"порт {ctx.get('network_port', '—')}", tone=net_tone),
+        Meter(k="MCP", v="увімкнено" if on else "вимкнено", s=f"порт {ctx.get('mcp_port', '—')}", tone=mcp_tone),
         Meter(
             k="Слухач",
             v="працює" if listening else ("помилка" if error else "не відповідає"),

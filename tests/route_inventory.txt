@@ -194,6 +194,7 @@ POST /settings/materials/alias/{alias_id}/delete
 POST /settings/materials/reclassify
 POST /settings/mcp/toggle
 POST /settings/mcp/token
+POST /settings/network/toggle
 POST /settings/notifications
 POST /settings/recognition/default-material
 POST /settings/sections/{section}
