@@ -418,3 +418,47 @@ document.body.addEventListener("htmx:beforeRequest", (event) => {
     delete hit.row.dataset.foundWas;
   });
 });
+
+// ── Кнопка «догори» ────────────────────────────────────────────────────
+// Список видачі буває на кілька екранів, і повернення до шапки (день, пошук,
+// лічильники) коштувало гортання (прохання власника 15.09.26).
+//
+// Поріг 400px, а не нуль: кнопка, що висить на короткому списку, лише закриває
+// рядки. Слухач пасивний і через rAF — скрол тут іде під час пошуку коронки в
+// лотку, і смикати layout на кожному тіку не можна.
+const HANDOUT_TOP_AFTER = 400;
+let handoutTopTicking = false;
+
+function handoutScroller() {
+  return document.scrollingElement || document.documentElement;
+}
+
+function syncHandoutTop() {
+  handoutTopTicking = false;
+  const btn = document.getElementById("handout-top");
+  if (!btn) return;
+  btn.classList.toggle("is-on", handoutScroller().scrollTop > HANDOUT_TOP_AFTER);
+}
+
+function queueHandoutTopSync() {
+  if (handoutTopTicking) return;
+  handoutTopTicking = true;
+  window.requestAnimationFrame(syncHandoutTop);
+}
+
+if (document.getElementById("handout-top") || document.querySelector(".handoutv2")) {
+  window.addEventListener("scroll", queueHandoutTopSync, { passive: true });
+  window.addEventListener("resize", queueHandoutTopSync, { passive: true });
+  document.addEventListener("DOMContentLoaded", syncHandoutTop);
+  syncHandoutTop();
+}
+
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest("#handout-top");
+  if (!btn) return;
+  const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Лише прокрутка, без фокусу в пошук: після повернення вгору оператор може
+  // натиснути пробіл, щоб гортати далі, — у сфокусованому полі це був би
+  // пробіл у фільтрі, і список мовчки спорожнів би.
+  window.scrollTo({ top: 0, behavior: smooth ? "smooth" : "auto" });
+});

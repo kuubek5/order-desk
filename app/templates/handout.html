@@ -153,6 +153,16 @@
           hx-target="#handout-list"
           hx-swap="outerHTML"></span>
     {% include "_handout_cards.html" %}
+
+    {# Кнопка «догори». Список видачі буває на кілька екранів: оператор іде ним
+       згори вниз, а повертатись до шапки (день, пошук, лічильники) доводилось
+       гортанням (прохання власника 15.09.26). Живе ПОЗА `#handout-list`, який
+       свапає пульс кожні 15 с, — усередині вона зникала б разом із фрагментом
+       і з'являлась знову. #}
+    <button type="button" class="htop" id="handout-top"
+            aria-label="Догори" title="Догори">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V6M6 12l6-6 6 6"/></svg>
+    </button>
     {% if handout_qc %}{% include "_handout_qc.html" %}{% endif %}
 </main>
 {% endblock %}

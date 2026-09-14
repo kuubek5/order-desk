@@ -499,3 +499,26 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
    тон попередження лишається один на весь застосунок. */
 .handoutv2 .wrow .sync-warning{margin-top:0;vertical-align:middle}
 .handoutv2 .wrow .sync-warning svg{width:14px;height:14px}
+
+
+/* ── Кнопка «догори» ────────────────────────────────────────────────────
+   Плаваюча кнопка над маячком зворотного зв'язку (той сидить на 18/18 і має
+   38px — тому bottom:66px, щоб вони не накривали одна одну). z нижчий за
+   панель прев'ю (`.stl-panel`, --z-strip): відкрите прев'ю мусить лишатись
+   зверху.
+   Ховаємо видимістю, а не `hidden`: `display:none` зриває перехід, і кнопка
+   б'є в око різкою появою посеред списку. */
+.handoutv2 .htop{
+  position:fixed;right:18px;bottom:66px;z-index:var(--z-popover);
+  width:38px;height:38px;border-radius:50%;
+  display:grid;place-items:center;cursor:pointer;padding:0;
+  color:var(--ink-2);background:var(--card);border:1px solid var(--line);
+  box-shadow:var(--sh-pop);
+  opacity:0;visibility:hidden;pointer-events:none;transform:translateY(6px);
+  transition:opacity .16s ease,transform .16s ease,color .16s ease,border-color .16s ease;
+}
+.handoutv2 .htop.is-on{opacity:1;visibility:visible;pointer-events:auto;transform:translateY(0)}
+.handoutv2 .htop:hover{color:var(--accent);border-color:var(--accent)}
+.handoutv2 .htop:active{transform:translateY(1px)}
+.handoutv2 .htop svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+@media (prefers-reduced-motion:reduce){.handoutv2 .htop{transition:none}}
