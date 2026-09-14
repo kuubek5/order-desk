@@ -87,15 +87,81 @@ window.openFolderOrCopy = async function openFolderOrCopy(url, body) {
     payload = null;
   }
   if (!payload || payload.opened || !payload.path) return "opened";
-  await window.copyTextToClipboard(payload.path);
-  if (window.showToast) {
-    window.showToast(
-      "Ти на іншому ПК — Провідник сервера звідси не відкрити. Шлях скопійовано, встав його в адресний рядок Провідника: " +
-        payload.path,
-      "success"
-    );
+  const copied = await window.copyTextToClipboard(payload.path);
+  if (copied) {
+    if (window.showToast) {
+      window.showToast(
+        "Провідник сервера звідси не відкрити. Шлях скопійовано, встав його в адресний рядок Провідника: " +
+          payload.path,
+        "success"
+      );
+    }
+    return "copied";
   }
-  return "copied";
+  window.showFolderPathPanel(payload.path);
+  return "shown";
+};
+
+// Шлях до теки, коли скопіювати НЕ вдалось.
+//
+// На мережевій адресі (http://192.168…) браузер вважає сторінку незахищеною
+// і `navigator.clipboard` там просто НЕМАЄ — перевірено 14.09.26 у справжньому
+// браузері на другому ПК. Лишається старий `execCommand("copy")`, а він
+// вимагає «свіжого» кліку, і після відповіді сервера може вже не спрацювати.
+// Тоді шлях треба ПОКАЗАТИ: виділеним, щоб вистачило Ctrl+C, і з кнопкою,
+// чий власний клік і є той свіжий клік. Мовчазна обіцянка «скопійовано» при
+// порожньому буфері — гірша за зайве вікно: оператор вставляє старе.
+window.showFolderPathPanel = function showFolderPathPanel(path) {
+  const old = document.getElementById("folder-path-panel");
+  if (old) old.remove();
+
+  const wrap = document.createElement("div");
+  wrap.id = "folder-path-panel";
+  wrap.className = "fpath";
+  wrap.setAttribute("role", "dialog");
+  wrap.setAttribute("aria-modal", "true");
+  wrap.setAttribute("aria-label", "Шлях до теки");
+  wrap.innerHTML =
+    '<div class="fpath-card">' +
+    '<div class="fpath-title">Провідник сервера звідси не відкрити</div>' +
+    '<p class="fpath-note">Ти працюєш з іншого ПК. Скопіюй шлях і встав його в адресний рядок Провідника.</p>' +
+    '<input class="fpath-input mono" readonly>' +
+    '<div class="fpath-actions">' +
+    '<button type="button" class="fpath-copy">Скопіювати</button>' +
+    '<button type="button" class="fpath-close">Закрити</button>' +
+    "</div>" +
+    "</div>";
+
+  const input = wrap.querySelector(".fpath-input");
+  input.value = path;
+
+  const onKey = (event) => {
+    if (event.key === "Escape") close();
+  };
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    wrap.remove();
+  }
+  wrap.querySelector(".fpath-close").addEventListener("click", close);
+  wrap.addEventListener("click", (event) => {
+    if (event.target === wrap) close();
+  });
+  document.addEventListener("keydown", onKey);
+
+  const copyBtn = wrap.querySelector(".fpath-copy");
+  copyBtn.addEventListener("click", async () => {
+    input.focus();
+    input.select();
+    const ok = await window.copyTextToClipboard(path);
+    copyBtn.textContent = ok ? "Скопійовано" : "Не вийшло — Ctrl+C";
+    window.setTimeout(() => {
+      copyBtn.textContent = "Скопіювати";
+    }, 1800);
+  });
+
+  document.body.appendChild(wrap);
+  input.focus();
+  input.select();
 };
 
 document.addEventListener("click", async (event) => {
