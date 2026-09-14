@@ -69,15 +69,44 @@ def test_unknown_state_falls_back_to_calm():
     assert view.machines[0].tone == "calm"
 
 
-def test_several_works_on_one_sum3d_show_the_first_and_say_so():
+def test_two_works_on_one_sum3d_are_both_named():
+    """Дві роботи на один Sum3D називаються ОБИДВІ, а не «перша + 1».
+
+    Доти другий клієнт лишався безіменним саме на екрані, куди дивляться,
+    щоб зрозуміти, чия це заготовка (власник 15.09.26).
+    """
     view = _view([_card("A", "run", percent=10, sum3d="12-01-45", orders=[
         _order("Дента Люкс", "mono A3", "6", "анатомія"),
         _order("Ортос", "pmma A2", "2"),
     ])])
     m = view.machines[0]
-    assert m.client == "Дента Люкс"
-    assert m.material == "mono A3 · 6 · анатомія"
-    assert m.extra == "ще 1", "друга робота не зникає й не змішується з першою"
+    assert [(w.name, w.material) for w in m.works] == [
+        ("Дента Люкс", "mono A3 · 6 · анатомія"),
+        ("Ортос", "pmma A2 · 2"),
+    ]
+    assert m.extra == "", "дві роботи вміщаються поіменно — рахувати нічого"
+    assert (m.client, m.material) == ("Дента Люкс", "mono A3 · 6 · анатомія")
+
+
+def test_third_work_is_counted_not_named():
+    """Третя вже не вміщається — за нею «ще N», а не вигаданий спільний клієнт."""
+    view = _view([_card("A", "run", percent=10, sum3d="12-01-45", orders=[
+        _order("Дента Люкс", "mono A3", "6"),
+        _order("Ортос", "pmma A2", "2"),
+        _order("Смайл", "tit", "1"),
+        _order("Люмі", "wax", "4"),
+    ])])
+    m = view.machines[0]
+    assert [w.name for w in m.works] == ["Дента Люкс", "Ортос"]
+    assert m.extra == "ще 2"
+
+
+def test_work_without_a_name_and_material_is_not_a_line():
+    """Порожня робота не має робити картку «роботою»: доти вона малювала «—»
+    замість пояснення стану."""
+    view = _view([_card("A", "run", percent=10, sum3d="X",
+                        orders=[_order(None, None, None)])])
+    assert view.machines[0].works == []
 
 
 def test_first_work_does_not_jump_between_refreshes():
@@ -94,6 +123,7 @@ def test_first_work_does_not_jump_between_refreshes():
     straight = _view([_card("A", "run", percent=1, sum3d="X", orders=[a, b])])
     flipped = _view([_card("A", "run", percent=1, sum3d="X", orders=[b, a])])
     assert straight.machines[0].client == flipped.machines[0].client == "Дента Люкс"
+    assert [w.name for w in straight.machines[0].works] ==            [w.name for w in flipped.machines[0].works], "і порядок обох імен теж"
 
 
 def test_lab_work_falls_back_to_the_order_number():
@@ -131,7 +161,7 @@ def test_printer_without_a_forecast_says_nothing():
 def test_machine_without_queue_match_has_no_invented_work():
     view = _view([_card("A", "run", percent=10, sum3d="12-01-45")])
     m = view.machines[0]
-    assert (m.client, m.material, m.extra) == ("", "", "")
+    assert (m.client, m.material, m.extra, m.works) == ("", "", "", [])
     assert m.sum3d == "12-01-45", "ID показуємо навіть без пари в черзі"
 
 

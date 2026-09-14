@@ -21,6 +21,9 @@
   var DPR = 1.5;
 
   // Зерно порошку генерується ОДИН раз: інакше воно «кипить» на кожному кадрі.
+  // І малюється теж один раз — у власний шар (`grainLayer`): 1400 крапок під
+  // `clip()` шість разів на кадр коштували на цій машині 0.38 мс, а на міні-ПК
+  // біля телевізора відсікання — найдорожча операція canvas, яка там і є.
   var GRAIN = [];
   for (var i = 0; i < 1400; i++) {
     GRAIN.push({
@@ -47,6 +50,26 @@
     return Math.max(0, Math.min(1, layer / total));
   }
 
+  // Шар зерна перемальовується лише коли змінився розмір полотна: `u`
+  // однозначно виводиться з (w, h), тож ключа з двох чисел досить.
+  var GRAIN_CV = null, grainW = 0, grainH = 0;
+  function grainLayer(w, h, u) {
+    if (GRAIN_CV && grainW === w && grainH === h) return GRAIN_CV;
+    GRAIN_CV = GRAIN_CV || document.createElement("canvas");
+    GRAIN_CV.width = w; GRAIN_CV.height = h;
+    grainW = w; grainH = h;
+    var g2 = GRAIN_CV.getContext("2d");
+    g2.clearRect(0, 0, w, h);
+    for (var i = 0; i < GRAIN.length; i++) {
+      var g = GRAIN[i];
+      g2.globalAlpha = g.a;
+      g2.fillStyle = g.r > 0.6 ? "#ffffff" : "#000000";
+      g2.fillRect(g.x * w, g.y * h, g.r * 5 * u + 1, g.r * 5 * u + 1);
+    }
+    g2.globalAlpha = 1;
+    return GRAIN_CV;
+  }
+
   function draw(ctx, w, h) {
     var ph = PHASES[phase][0];
     var k = phaseT / PHASES[phase][1];
@@ -65,18 +88,17 @@
     var BUILD = { x: w * 0.315, w: w * 0.370, d: BUILD_D };
     var OVER = { x: w * 0.780, w: w * 0.165, d: SIDE_D };
 
+    // Шар зерна той самий для всього полотна, тож із нього просто беруть
+    // потрібний прямокутник. Прозорість крапки вже впечена в шар, а `alpha`
+    // множить її зверху — картинка та сама, що й при поштучному малюванні.
+    var layer = grainLayer(w, h, u);
     function grain(x, y, ww, hh, alpha) {
-      ctx.save();
-      ctx.beginPath(); ctx.rect(x, y, ww, hh); ctx.clip();
-      for (var i = 0; i < GRAIN.length; i++) {
-        var g = GRAIN[i], gx = g.x * w, gy = g.y * h;
-        if (gx > x - 3 && gx < x + ww + 3 && gy > y - 3 && gy < y + hh + 3) {
-          ctx.globalAlpha = g.a * alpha;
-          ctx.fillStyle = g.r > 0.6 ? "#ffffff" : "#000000";
-          ctx.fillRect(gx, gy, g.r * 5 * u + 1, g.r * 5 * u + 1);
-        }
-      }
-      ctx.globalAlpha = 1; ctx.restore();
+      var sx = Math.max(0, x), sy = Math.max(0, y);
+      var sw = Math.min(w, x + ww) - sx, sh = Math.min(h, y + hh) - sy;
+      if (sw <= 0.5 || sh <= 0.5) return;
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(layer, sx, sy, sw, sh, sx, sy, sw, sh);
+      ctx.globalAlpha = 1;
     }
     // Порошок теплий, пісочний — щоб холодний сталевий метал не зливався з ним.
     function powder(x, y, ww, hh, lit) {
@@ -197,6 +219,9 @@
     ctx.fillStyle = "#98aebd"; ctx.fillRect(rx - 7 * u, FLOOR - 14 * u, 14 * u, 14 * u);
 
     if (ph === "laser") {
+      // П'ять проходів за фазу. Уповільнення вдвічі пробували 15.09.26 —
+      // власник повернув швидкість назад: повільний промінь читається як
+      // млява машина, а це головна ознака, що принтер працює.
       var hatch = 0.5 - 0.5 * Math.cos(k * Math.PI * 10);
       var lx = BUILD.x + BUILD.w * (0.06 + hatch * 0.88);
       ctx.save();
@@ -247,6 +272,9 @@
 
   var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // Малюємо КОЖЕН кадр, який дає браузер. Обмеження в 60 кадрів/с пробували
+  // 15.09.26 й прибрали: на цеховому телевізорі 60 Гц воно не давало нічого
+  // (rAF там і так 60), а на швидшому екрані лише різало плавність.
   function frame(ms) {
     if (!still && !document.hidden) {
       phaseT += Math.min(0.05, (ms - (last || ms)) / 1000);

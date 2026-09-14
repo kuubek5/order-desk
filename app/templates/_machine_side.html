@@ -15,6 +15,30 @@
    Відсотка немає (верстат стоїть, кадр протух, немає зв'язку) — пишемо «—», а
    не старе число: показувати протухлий відсоток як поточний і є те «хибне
    число», якого ми уникаємо (принцип пічок). #}
+{# Що фрезерується — до ДВОХ імен, далі «+N».
+
+   Раніше плитка називала першу роботу й дописувала «+1», і другий клієнт
+   лишався безіменним саме там, де питають «чия це заготовка» (власник
+   15.09.26). Один проєкт Sum3D цілком може містити кілька робіт, тож дві
+   називаємо поіменно, а решту — числом: вигадувати спільне ім'я для трьох
+   різних робіт не можна.
+
+   Порядок фіксуємо за `id`: `snapshot()` збирає роботи двома проходами
+   (звичайні й переробки) і без сортування — без цього ім'я стрибало б між
+   оновленнями, хоча на верстаті нічого не змінилось.
+
+   Макрос, а не три копії розмітки: ці рядки вже стояли в трьох гілках
+   (`done`, `run`, `check`), і правити довелося б у всіх трьох. #}
+{% macro what(card) -%}
+  {%- set names = [] -%}
+  {%- for o in card.orders|sort(attribute='id') -%}
+    {%- set n = ((o.work_order_no or o.client_name) or '')|trim -%}
+    {%- if n and n not in names -%}{{- names.append(n) or '' -}}{%- endif -%}
+  {%- endfor -%}
+  <span class="ms-what">{{ names[:2]|join(' · ') or 'робота' }}
+    {%- if names|length > 2 %} <b class="ms-more">+{{ names|length - 2 }}</b>{% endif -%}
+  </span>
+{%- endmacro %}
 <section class="side-sec side-sec-machine" data-sec="machine"
          style="order:{{ side_order_index(request, 'machine') }}"
          id="machine-side"
@@ -75,7 +99,7 @@
                    стоїть, уже не «фрезерує 100%», його треба знімати. #}
                 <span class="ms-pct is-done">готово</span>
                 {% if card.orders %}
-                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}{% if card.orders|length > 1 %} <b class="ms-more">+{{ card.orders|length - 1 }}</b>{% endif %}</span>
+                {{ what(card) }}
                 {% elif card.sum3d_id %}
                 <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
                 {% else %}
@@ -90,9 +114,9 @@
                 {% if card.orders %}
                 {# Що фрезерується — наряд/клієнт із черги (зв'язка за Sum3D ID
                    із заголовка вікна RemiCORE). Плитка вузька, тож при кількох
-                   роботах показуємо першу й «+N»: повний перелік — на екрані
-                   «Верстати», де є місце. #}
-                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}{% if card.orders|length > 1 %} <b class="ms-more">+{{ card.orders|length - 1 }}</b>{% endif %}</span>
+                   роботах показуємо дві й «+N» (макрос `what` угорі файла):
+                   повний перелік — на екрані «Верстати», де є місце. #}
+                {{ what(card) }}
                 {% elif card.sum3d_id %}
                 <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
                 {% endif %}
@@ -113,7 +137,7 @@
                    його як збій, а не як стан; слово зрозуміліше за псевдочисло. #}
                 <span class="ms-pct dim is-start">{{ card.state_word }}</span>
                 {% if card.orders %}
-                <span class="ms-what">{{ card.order.work_order_no or card.order.client_name }}{% if card.orders|length > 1 %} <b class="ms-more">+{{ card.orders|length - 1 }}</b>{% endif %}</span>
+                {{ what(card) }}
                 {% elif card.sum3d_id %}
                 <span class="ms-what mono dim">{{ card.sum3d_id }}</span>
                 {% else %}

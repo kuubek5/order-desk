@@ -43,6 +43,26 @@ _TONES = {
 }
 
 
+# Скільки робіт картка називає ПОІМЕННО. Дві, не одна: один проєкт Sum3D
+# часто ділять дві роботи, і «перша + ще 1» лишало другого клієнта безіменним
+# саме на екрані, куди дивляться, щоб зрозуміти, чия це заготовка (рішення
+# власника 15.09.26). Третя й далі не вміщаються — за ними «ще N».
+MAX_NAMED_WORKS = 2
+
+
+@dataclass
+class ShopWork:
+    """Одна робота в картці: імʼя (клієнт або наряд) і матеріал.
+
+    Окремий тип, а не два рядки в `ShopMachine`, бо матеріал належить СВОЇЙ
+    роботі: показати матеріал першої під іменем другої — та сама вигадка, що
+    й спільний клієнт для трьох різних робіт.
+    """
+
+    name: str = ""
+    material: str = ""
+
+
 @dataclass
 class ShopMachine:
     """Один верстат на табло. Усе вже готове до показу — шаблон не рахує."""
@@ -55,9 +75,8 @@ class ShopMachine:
     note: str = ""                   # пояснення під словом
     percent: Optional[int] = None
     sum3d: str = ""
-    client: str = ""
-    material: str = ""
-    extra: str = ""                  # «ще 2 роботи» — коли Sum3D ділять кілька
+    works: list = field(default_factory=list)   # до MAX_NAMED_WORKS штук
+    extra: str = ""                  # «ще 2» — роботи, що не вмістились
     portrait: str = ""               # адреса фото верстата, якщо воно є
     # SLM-принтер: шар N з M — числа з екрана машини, не оцінка.
     is_sisma: bool = False
@@ -66,6 +85,15 @@ class ShopMachine:
     # Коли машина обіцяє закінчити — ЇЇ прогноз із екрана, не наша оцінка.
     ends_at: str = ""
     left_text: str = ""
+
+    @property
+    def client(self) -> str:
+        """Імʼя першої роботи. Лишається заради місць, які знають про одну."""
+        return self.works[0].name if self.works else ""
+
+    @property
+    def material(self) -> str:
+        return self.works[0].material if self.works else ""
 
     @property
     def sisma_percent(self) -> Optional[int]:
@@ -120,38 +148,47 @@ def shop_links(db: Session) -> list[str]:
     ]
 
 
-def _work_of(card) -> tuple[str, str, str]:
-    """Клієнт, матеріал і «ще N» для картки.
+def _works_of(card) -> tuple[list[ShopWork], str]:
+    """Роботи картки: до `MAX_NAMED_WORKS` поіменно і «ще N» за рештою.
 
     Один проєкт Sum3D може містити кілька робіт (див. `MachineCard.orders`).
-    Табло показує першу й чесно каже, що вона не одна, — вигадувати спільного
-    клієнта для трьох різних робіт не можна.
+    Раніше табло називало ПЕРШУ, а решту рахувало числом — і на екрані, куди
+    дивляться, щоб зрозуміти, чия це заготовка, другий клієнт лишався
+    безіменним. Тепер називаємо дві; вигадувати спільного клієнта для трьох
+    різних робіт так само не можна, тож із третьої йде «ще N».
     """
     orders = list(getattr(card, "orders", None) or [])
     if not orders:
-        return "", "", ""
+        return [], ""
     # Порядок ФІКСУЄМО за id. `snapshot()` збирає роботи двома проходами
     # (звичайні й переробки) і без сортування, бо екран «Верстати» показує
-    # їх усі — там черговість байдужа. Тут показується ПЕРША, і без цього
-    # рядка ім'я клієнта на телевізорі могло б мінятись між оновленнями,
-    # хоча на верстаті нічого не змінилось.
+    # їх усі — там черговість байдужа. Тут показуються ПЕРШІ дві, і без цього
+    # рядка імена на телевізорі могли б мінятись між оновленнями, хоча на
+    # верстаті нічого не змінилось.
     orders.sort(key=lambda o: (getattr(o, "id", 0) or 0))
-    first = orders[0]
-    # Клієнт є не в кожної роботи: у лабораторних його немає взагалі, там
-    # робота впізнається НОМЕРОМ НАРЯДУ. Той самий порядок, що на екрані
-    # «Верстати». Без запасного варіанта рядок лишався порожнім, і на
-    # телевізорі було видно лише матеріал (скарга з цеху 14.09.26).
-    client = (getattr(first, "client_name", "") or "").strip()
-    if not client:
-        client = (getattr(first, "work_order_no", "") or "").strip()
-    bits = [
-        (getattr(first, "material_color", "") or "").strip(),
-        (getattr(first, "quantity", "") or "").strip(),
-        (getattr(first, "kind", "") or "").strip(),
-    ]
-    material = " · ".join(b for b in bits if b)
-    extra = f"ще {len(orders) - 1}" if len(orders) > 1 else ""
-    return client, material, extra
+    works: list[ShopWork] = []
+    for order in orders:
+        # Клієнт є не в кожної роботи: у лабораторних його немає взагалі, там
+        # робота впізнається НОМЕРОМ НАРЯДУ. Той самий порядок, що на екрані
+        # «Верстати». Без запасного варіанта рядок лишався порожнім, і на
+        # телевізорі було видно лише матеріал (скарга з цеху 14.09.26).
+        name = (getattr(order, "client_name", "") or "").strip()
+        if not name:
+            name = (getattr(order, "work_order_no", "") or "").strip()
+        bits = [
+            (getattr(order, "material_color", "") or "").strip(),
+            (getattr(order, "quantity", "") or "").strip(),
+            (getattr(order, "kind", "") or "").strip(),
+        ]
+        material = " · ".join(b for b in bits if b)
+        # Робота без імені Й без матеріалу не рядок, а порожнє місце: колись
+        # вона робила `has_work` істинним, і картка малювала «—» замість
+        # пояснення стану.
+        if name or material:
+            works.append(ShopWork(name=name, material=material))
+    shown = works[:MAX_NAMED_WORKS]
+    rest = len(works) - len(shown)
+    return shown, (f"ще {rest}" if rest else "")
 
 
 def _portrait_of(card, token: str) -> str:
@@ -194,7 +231,7 @@ def _machine(card, token: str) -> ShopMachine:
         sum3d=card.sum3d_id or "",
         portrait=_portrait_of(card, token),
     )
-    item.client, item.material, item.extra = _work_of(card)
+    item.works, item.extra = _works_of(card)
     return item
 
 

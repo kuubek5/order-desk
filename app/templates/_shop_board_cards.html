@@ -31,10 +31,17 @@
         {# Робота з черги, якщо вона знайшлась за Sum3D; інакше — пояснення
            стану. Нота показується РІВНО один раз: доти вона стояла і тут, і
            в нижньому рядку, і картка виглядала як помилка рендера. #}
-        {% set has_work = m.client or m.material %}
+        {% set has_work = m.works %}
         {% if has_work %}
-          <div class="mc-cl">{{ m.client or "—" }}</div>
-          <div class="mc-mat">{{ m.material }}{% if m.extra %} · {{ m.extra }}{% endif %}</div>
+          {% for wk in m.works %}
+            {# Імʼя другої роботи НЕ повторюємо, коли клієнт той самий: два
+               однакові рядки з'їдали б місце, заради якого другу назву й
+               виводять. Матеріал при цьому лишається свій у кожної. #}
+            {% if loop.first or wk.name != m.works[loop.index0 - 1].name %}
+              <div class="mc-cl">{{ wk.name or "—" }}</div>
+            {% endif %}
+            <div class="mc-mat">{{ wk.material }}{% if loop.last and m.extra %} · {{ m.extra }}{% endif %}</div>
+          {% endfor %}
         {% elif m.note %}
           <div class="mc-note">{{ m.note }}</div>
         {% endif %}
