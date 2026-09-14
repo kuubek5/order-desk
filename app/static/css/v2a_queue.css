@@ -34,7 +34,11 @@ main.q2{
 @media (prefers-reduced-motion: reduce){
   .q2 .live .beacon,.mailv2 .live .beacon{animation:none}
 }
-.q2 .head-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+/* Кнопки шапки мусять ПЕРЕНОСИТИСЬ. Сама .q2-topbar має flex-wrap, але
+   всередині цієї групи його не було, тож ряд кнопок лишався однією
+   нерозривною смугою ~755px і на півекрані (960px) виїжджав за край,
+   тягнучи горизонтальну прокрутку всієї сторінки. */
+.q2 .head-actions{margin-left:auto;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:center;min-width:0}
 
 .q2 .btn{
   display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 12px;border-radius:var(--r-ctl);

@@ -168,14 +168,23 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .fbtn.is-opening{opacity:.55;pointer-events:none}
 .handoutv2 .dayrest{font-size:var(--fs-1);color:var(--ink-3);text-decoration:none;padding:4px 9px;border:1px dashed var(--line-2);border-radius:999px}
 .handoutv2 .dayrest:hover{color:var(--ink);border-color:var(--control-edge)}
-.handoutv2 .dayall{position:relative}
+/* Не relative: тоді якорем списку днів стає вся смуга .hbar (вона вже
+   position:relative), і right:0 прив'язує його до ПРАВОГО КРАЮ СМУГИ, а не
+   до чіпа. Інакше край списку ходить разом із чіпом: на широкому екрані
+   виїжджав праворуч за екран, а після прив'язки до чіпа справа — ліворуч
+   за нуль, щойно смуга переносилась і чіп ставав першим (перевірено на
+   1920/1280/960/768/560). Смуга ж завжди в межах сторінки. */
+.handoutv2 .dayall{position:static}
 .handoutv2 .dayall summary{list-style:none;cursor:pointer;font-size:var(--fs-1);color:var(--ink-3);padding:4px 9px;border:1px solid var(--line);border-radius:999px}
 .handoutv2 .dayall summary::-webkit-details-marker{display:none}
 .handoutv2 .dayall summary:hover{color:var(--ink);border-color:var(--line-2)}
 .handoutv2 .dayall[open] summary{color:var(--accent-c);border-color:rgba(var(--accent-rgb), .4)}
+/* Прив'язка ПРАВИМ краєм смуги (.hbar), не лівим краєм чіпа: з left:0
+   список шириною 290px виїжджав за правий край екрана, щойно вікно вужче за
+   повний монітор (перевірено на 960px). Чому саме смуга — коментар вище. */
 .handoutv2 .dayall-pop{
-  position:absolute;top:calc(100% + 6px);left:0;z-index:var(--z-dropdown);display:flex;flex-wrap:wrap;gap:4px;
-  width:290px;max-height:210px;overflow:auto;padding:9px;background:var(--card);
+  position:absolute;top:calc(100% + 6px);right:0;z-index:var(--z-dropdown);display:flex;flex-wrap:wrap;gap:4px;
+  width:290px;max-width:calc(100vw - 32px);max-height:210px;overflow:auto;padding:9px;background:var(--card);
   border:1px solid var(--line-2);border-radius:var(--r-card);box-shadow:0 18px 40px -18px rgba(0,0,0,.8);
 }
 .handoutv2 .hspine{flex:1;min-width:90px;max-width:220px;height:4px;background:var(--field);border:1px solid var(--line);border-radius:2px;overflow:hidden}

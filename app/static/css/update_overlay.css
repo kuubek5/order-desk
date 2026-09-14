@@ -300,7 +300,10 @@ main.arch{max-width:1180px;margin:0 auto;padding:18px 20px}
 .arch-month.on .am-spark i{opacity:1}
 
 /* Права панель — одна цілісна колонка (календар і таблиця однакової ширини) */
-.arch-detail{min-height:360px;max-width:820px}
+/* min-width:0 — щоб колонка 1fr справді стискалась. Без нього елемент сітки
+   не звужується менше за свій min-content, і на півекрані права панель
+   вилазила за межі сітки (вимірено: сітка 940, панель 971). */
+.arch-detail{min-height:360px;max-width:820px;min-width:0}
 .arch-dhead{display:flex;align-items:baseline;gap:10px;margin:2px 0 12px}
 .arch-dhead h2{font-family:var(--font-head);font-size:var(--fs-5);font-weight:600;margin:0}
 .arch-dhead .cnt{font-size:var(--fs-2);color:var(--ink-3)}

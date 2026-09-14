@@ -26,7 +26,7 @@ main.mailv2{max-width:1720px;margin:0 auto;padding:18px 20px}
 /* The ONE live signal kept in motion on this screen (see .newdot above for
    why the other two were made static): it says "the 2-minute poll is alive". */
 .mailv2 .live .beacon{width:6px;height:6px;border-radius:50%;background:var(--accent-b);box-shadow:0 0 0 0 rgba(var(--accent-rgb), .55);animation:q2beacon var(--beacon-duration) ease-out infinite}
-.mailv2 .head-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.mailv2 .head-actions{margin-left:auto;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:center;min-width:0}
 .mailv2 .btn{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;border-radius:var(--r-ctl);border:1px solid var(--control-edge);background:var(--card);color:var(--ink);font-size:var(--fs-2);font-weight:500;cursor:pointer;text-decoration:none;transition:border-color var(--ui-speed) ease,background var(--ui-speed) ease,color var(--ui-speed) ease}
 .mailv2 .btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .mailv2 .btn:hover{background:var(--card-2);border-color:var(--line-2);opacity:1}
