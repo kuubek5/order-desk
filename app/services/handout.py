@@ -87,10 +87,33 @@ def entries_for_material(material_color: str | None, entries: list, work_day=Non
 
 
 def covered_days(work_day) -> list:
-    """Робочі дні, що належать вкладці `work_day`: сам день і вихідні одразу
-    за ним. Вкладок за суботу й неділю в таблиці немає — роботи вихідних
-    пишуть у п'ятницю, тож п'ятниця = пт + сб + нд."""
-    days = [work_day]
+    """Робочі дні, що належать вкладці `work_day`: сам день і дні БЕЗ власної
+    вкладки поруч із ним — вихідні одразу за ним і одразу перед ним.
+
+    Вкладок за суботу й неділю в таблиці немає, а цех у вихідні працює. Тому
+    п'ятниця = пт + сб + нд (власник 11.09.26) — і рівно з тієї ж причини
+    понеділок = сб + нд + пн: файли, скачані у вихідні, чекають на вкладку, і
+    вона може виявитись як п'ятничною, так і понеділковою — залежно від того,
+    коли рядок насправді з'явився.
+
+    Бойовий випадок 14.09.26 (Oleksandr, дві роботи `mono a3.5` і `mono a4`):
+    тека `Новая папка (285)` і обидві теки матеріалів створені в НЕДІЛЮ
+    13.09 о 16:29, робота стоїть у вкладці понеділка 14.09, а Sum3D ID
+    `16-29-49` — через 19 секунд після теки, тобто тека безумовно їхня.
+    Правило «старіші партії не показуємо» рахувало неділю старшою за
+    понеділок, і обидва рядки казали «за 14.09 теки немає» — прев'ю не було
+    що відкривати.
+
+    Назад беремо ЛИШЕ дні без власної вкладки. Звичайне «вчора» (пн для вт)
+    сюди не потрапляє: у нього є свої рядки, і тека того дня — майже завжди
+    чужа попередня робота того самого кольору (рішення 11.09.26)."""
+    preceding = []
+    earlier = work_day - timedelta(days=1)
+    while earlier.weekday() >= 5:
+        preceding.append(earlier)
+        earlier -= timedelta(days=1)
+    days = list(reversed(preceding))
+    days.append(work_day)
     following = work_day + timedelta(days=1)
     while following.weekday() >= 5:
         days.append(following)
@@ -110,8 +133,13 @@ def stale_folder_day(material_color: str | None, entries: list, work_day=None):
     matched = _material_matches(material_color, entries)
     if not matched:
         return None
+    # Межа — НАЙРАНІШИЙ покритий день, а не сам день роботи: для понеділка
+    # вкладка покриває ще й вихідні (`covered_days`), і субота з неділею тут
+    # не «старіші», а свої. Інакше рядок казав би «теки немає» саме тоді,
+    # коли `entries_for_material` теку вже показав.
+    earliest = covered_days(work_day)[0]
     days = {_batch_day(e) for e in matched}
-    if any(day >= work_day for day in days):
+    if any(day >= earliest for day in days):
         return None
     return max(days)
 
