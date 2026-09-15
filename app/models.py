@@ -1594,3 +1594,42 @@ class ScreenPuzzle(Base):
         ForeignKey("users.id"), nullable=True
     )
     dismissed: Mapped[bool] = mapped_column(default=False)
+
+
+class MachineMemory(Base):
+    """Те, що застосунок знав про верстат до перезапуску.
+
+    Стан верстата живе в памʼяті процесу (`machines._states`), і це правильно:
+    там кадри, лічильники невдач, історія обривів — робочий кеш. Але два
+    значення з нього переживати рестарт МУСЯТЬ, бо інакше застосунок після
+    кожного оновлення пів хвилини каже неправду:
+
+      * `percent_changed_at` — відколи смуга стоїть на тому самому числі.
+        «Завершено» на старших верстатах дає саме витримка 120 с на сотні, і
+        обнулений відлік означав, що всі завершені верстати дві хвилини
+        показують «фрезерує 100 %» (скарга з цеху 15.09.26, фото о 03:41 —
+        через 1 хв 15 с після оновлення 0.20.7);
+      * `last_sum3d_id` — остання бачена програма, якою завершений верстат
+        називає щойно зняту роботу. Після рестарту картка лишалась безіменною.
+
+    Ключ — `MachineTarget.key` (адреса), а не `machines.id`: стан прив'язаний
+    до ФІЗИЧНОГО ПК верстата, і цілі без рядка в базі (тести, разові виклики)
+    мають працювати так само.
+
+    `saved_at` — не оздоба, а межа довіри: за довгу перерву верстат міг
+    відпрацювати ще одну програму, і тоді ні число, ні назва вже не наші.
+    Дивись `machines.MEMORY_MAX_GAP_SECONDS`.
+    """
+
+    __tablename__ = "machine_memory"
+
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    percent: Mapped[Optional[int]] = mapped_column(nullable=True)
+    percent_changed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    last_sum3d_id: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    last_program_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )
+    saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=False))

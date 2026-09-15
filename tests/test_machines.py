@@ -1075,3 +1075,164 @@ def test_recovery_clears_the_verdict(monkeypatch, tmp_path):
     state = service.poll_target(None, target, None, frame=frame)
 
     assert state.reach_note is None
+
+
+# ── Памʼять верстата через перезапис застосунку (15.09.26) ──────────────────
+#
+# Скарга з цеху: після оновлення 0.20.7 усі завершені верстати дві хвилини
+# показували «фрезерує 100 %», а один — «завершено» без назви роботи. Причина
+# не в табло: стан жив лише в памʼяті процесу, і рестарт обнуляв і відлік
+# витримки на сотні, і останню бачену програму.
+
+
+def _memory_target(host="10.0.0.9"):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(key=f"{host}-8765", name="350i", host=host, port=8765,
+                           portrait_model="", machine_id=1, agent_token="t",
+                           is_agent=True, collect_calibration=False,
+                           diagnose_link=False, show_on_board=True, password=None)
+
+
+def _write_memory(session, key, *, percent, changed_at, saved_at, last_sum3d=None):
+    from app.models import MachineMemory
+
+    session.add(MachineMemory(
+        key=key, percent=percent, percent_changed_at=changed_at,
+        last_sum3d_id=last_sum3d, last_program_at=changed_at, saved_at=saved_at,
+    ))
+    session.commit()
+
+
+def test_memory_survives_a_restart_when_the_frame_confirms_the_same_percent():
+    """Верстат, який до рестарту вже стояв на сотні, лишається завершеним.
+
+    Саме цього бракувало: відлік 120 с починався заново, і на телевізорі всі
+    завершені верстати дві хвилини «фрезерували 100 %»."""
+    service.reset_state_for_tests()
+    engine = _database()
+    now = datetime(2026, 9, 15, 3, 42)
+    with Session(engine) as session:
+        target = _memory_target()
+        _write_memory(session, target.key, percent=100,
+                      changed_at=now - timedelta(minutes=40),
+                      saved_at=now - timedelta(seconds=30))
+        state = service.MachineState(target=target)
+        service._load_memory(session, state, now)
+        assert service._changed_at_for(state, 100, now) == now - timedelta(minutes=40)
+
+    card = service.MachineCard(target=target, state=state, now=now)
+    state.frame_at = now
+    state.percent = 100
+    state.percent_changed_at = now - timedelta(minutes=40)
+    assert card.is_completed is True, "витримка на сотні не має починатись заново"
+
+
+def test_memory_is_dropped_when_the_fresh_frame_shows_another_number():
+    """Поки нас не було, смуга зрушила — памʼять про сотню більше не наша."""
+    service.reset_state_for_tests()
+    engine = _database()
+    now = datetime(2026, 9, 15, 3, 42)
+    with Session(engine) as session:
+        target = _memory_target("10.0.0.10")
+        _write_memory(session, target.key, percent=100,
+                      changed_at=now - timedelta(minutes=40),
+                      saved_at=now - timedelta(seconds=30))
+        state = service.MachineState(target=target)
+        service._load_memory(session, state, now)
+        assert service._changed_at_for(state, 42, now) == now, "інше число — відлік з нуля"
+
+
+def test_memory_expires_after_a_long_outage():
+    """За чверть години верстат міг відпрацювати ще одну програму — тоді ні
+    число, ні назва роботи вже не наші, і вигадувати їх не можна."""
+    service.reset_state_for_tests()
+    engine = _database()
+    now = datetime(2026, 9, 15, 3, 42)
+    with Session(engine) as session:
+        target = _memory_target("10.0.0.11")
+        _write_memory(session, target.key, percent=100,
+                      changed_at=now - timedelta(hours=5),
+                      saved_at=now - timedelta(hours=4), last_sum3d="12-01-45")
+        state = service.MachineState(target=target)
+        service._load_memory(session, state, now)
+        assert state.last_sum3d_id is None, "стара назва роботи не воскресає"
+        assert service._changed_at_for(state, 100, now) == now
+
+
+def test_memory_does_not_claim_completion_before_the_first_frame():
+    """Памʼять не має права сказати «завершено» до того, як ми глянули на
+    верстат: без кадру ми не знаємо нічого, і сотня з бази — вигадка."""
+    service.reset_state_for_tests()
+    engine = _database()
+    now = datetime(2026, 9, 15, 3, 42)
+    with Session(engine) as session:
+        target = _memory_target("10.0.0.12")
+        _write_memory(session, target.key, percent=100,
+                      changed_at=now - timedelta(minutes=40),
+                      saved_at=now - timedelta(seconds=30))
+        state = service.MachineState(target=target)
+        service._load_memory(session, state, now)
+
+    card = service.MachineCard(target=target, state=state, now=now)
+    assert card.state_key == "wait", "кадру ще не було — жодного стану не вигадуємо"
+    assert card.is_completed is False
+
+
+def test_last_program_comes_back_after_a_short_restart():
+    """Завершений верстат називає роботу й після оновлення застосунку."""
+    service.reset_state_for_tests()
+    engine = _database()
+    now = datetime(2026, 9, 15, 3, 42)
+    with Session(engine) as session:
+        target = _memory_target("10.0.0.13")
+        _write_memory(session, target.key, percent=None, changed_at=None,
+                      saved_at=now - timedelta(seconds=20), last_sum3d="23-54-06")
+        state = service.MachineState(target=target)
+        service._load_memory(session, state, now)
+    assert state.last_sum3d_id == "23-54-06"
+
+
+def test_full_circle_poll_save_restart_restore(tmp_path, monkeypatch):
+    """Повне коло на справжньому опитуванні: верстат дійшов до сотні, застосунок
+    перезапустився, верстат лишився завершеним.
+
+    Тести вище перевіряють шматки окремо, а розійтись вони можуть саме на стику:
+    записуємо одне поле, а читаємо інше (цим уже обпікались на підмінах після
+    переносу коду). Тут перевіряється те, на що скаржився цех.
+    """
+    service.reset_state_for_tests()
+    monkeypatch.setattr(service, "frames_root", lambda: tmp_path)
+    monkeypatch.setattr(service, "read_progress_percent", lambda frame: 100)
+    monkeypatch.setattr(service, "screen_is_sisma", lambda frame: False)
+    engine = _database()
+    target = service.MachineTarget(name="350i", host="10.0.0.20", port=8765,
+                                   agent_token="t")
+    frame = _frame()
+    started = datetime(2026, 9, 15, 3, 0)
+
+    with Session(engine) as session:
+        service.poll_target(session, target, None, now=started, frame=frame)
+        # Через три хвилини число те саме — витримка набралась, памʼять у базі.
+        later = started + timedelta(minutes=3)
+        state = service.poll_target(session, target, None, now=later, frame=frame)
+        assert state.percent == 100
+        assert state.percent_changed_at == started
+        card = service.MachineCard(target=target, state=state, now=later)
+        assert card.state_key == "done"
+
+        from app.models import MachineMemory
+
+        row = session.get(MachineMemory, target.key)
+        assert row is not None and row.percent == 100
+        assert row.percent_changed_at == started
+
+        # ── РЕСТАРТ: памʼять процесу зникає, база лишається ──
+        service.reset_state_for_tests()
+        after_restart = later + timedelta(seconds=40)
+        state = service.poll_target(session, target, None, now=after_restart, frame=frame)
+        card = service.MachineCard(target=target, state=state, now=after_restart)
+        assert state.percent_changed_at == started, "мітку взято з бази, не з нуля"
+        assert card.state_key == "done", (
+            "саме тут цех бачив «фрезерує 100 %» дві хвилини після оновлення"
+        )

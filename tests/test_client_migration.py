@@ -98,8 +98,12 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
         # tally (monthly settings + cells), 0047 its per-day freeze; 0053 adds
         # the milling-machine readings (the furnaces got theirs back at 0025 —
         # the machine side was display-only until now); 0055 adds the machine
-        # link-outage journal; 0061 adds the unknown-screen inbox. All purely
-        # additive — nothing that existed at 0003 is dropped.
+        # link-outage journal; 0061 adds the unknown-screen inbox; 0065 adds the
+        # machine memory that outlives an app restart — how long the progress bar
+        # has held its number and the last program seen. Both lived only in
+        # process memory, so every update made finished machines claim
+        # «фрезерує 100 %» for two minutes. All purely additive — nothing that
+        # existed at 0003 is dropped.
         assert tables_after - tables_before == {
             "clients", "materials", "material_aliases",
             "mail_filter_rules", "mail_filter_categories", "client_sender_memory",
@@ -114,6 +118,7 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
             "telegram_outbox", "telegram_watch",
             "telegram_members", "telegram_invites",
             "screen_puzzles",
+            "machine_memory",
         }
         assert tables_before - tables_after == set()
     finally:

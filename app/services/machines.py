@@ -125,6 +125,12 @@ PROBLEM_AFTER_FAILURES = 3
 # Скільки відсоток мусить простояти на 100, щоб це вважалось «завершено».
 # Див. MachineCard.is_completed: витримка проти блимання галочкою.
 COMPLETED_AFTER_SECONDS = 120.0
+# Скільки застосунок може бути вимкненим, щоб памʼять про верстат (`MachineMemory`)
+# ще вважалась правдою. Перезапуск на оновленні триває секунди, ручний — хвилини;
+# за чверть години верстат уже міг відпрацювати іншу програму, і тоді ні
+# «відсоток стоїть відтоді», ні «остання робота» більше не наші. Довший строк
+# зробив би памʼять тим самим хибним числом, від якого вона рятує.
+MEMORY_MAX_GAP_SECONDS = 900.0
 # Скільки останніх обривів памʼятаємо на верстат. Десяти вистачає, щоб побачити
 # закономірність («рветься щогодини» / «один раз уночі»), і вони нічого не
 # важать для памʼяті.
@@ -284,6 +290,14 @@ class MachineState:
 
 
 _states: dict[str, MachineState] = {}
+# Прочитане з `MachineMemory` і ЩЕ НЕ прийняте: відсоток звідти приймається
+# лише тоді, коли свіжий кадр дасть те саме число. Інакше застосунок сказав би
+# «завершено» ще до того, як уперше глянув на верстат, — тобто рівно те
+# вигадування, якого тут не можна.
+_pending_memory: dict[str, dict] = {}
+# Що вже лежить у базі — щоб не комітити ті самі чотири значення кожні шість
+# секунд на кожен верстат.
+_saved_memory: dict[str, tuple] = {}
 _states_lock = threading.Lock()
 
 
@@ -1488,6 +1502,79 @@ def _report_unread_screen(target: MachineTarget, frame: Image.Image, why: str) -
                    f" (ще {skipped} разів відтоді)" if skipped else "")
 
 
+def _load_memory(db: Session, state: "MachineState", now: datetime) -> None:
+    """Підняти з бази те, що ми знали про цей верстат до перезапуску.
+
+    Відсоток кладеться В ОЧІКУВАННЯ (`_pending_memory`), а не в стан: його
+    мітку часу можна прийняти лише тоді, коли свіжий кадр підтвердить те саме
+    число. Остання програма приймається одразу — вона показується лише в стані
+    «завершено», а той без свіжого кадру не настає.
+    """
+    # Разові виклики й частина тестів ходять сюди без сесії — памʼять
+    # тоді просто не працює, а не падає.
+    if db is None:
+        return
+    from app.models import MachineMemory
+
+    try:
+        row = db.get(MachineMemory, state.target.key)
+    except Exception:  # noqa: BLE001 — памʼять не має валити опитування
+        logger.exception("Памʼять верстата %s не прочиталась", state.target.key)
+        return
+    if row is None or row.saved_at is None:
+        return
+    if (now - row.saved_at).total_seconds() > MEMORY_MAX_GAP_SECONDS:
+        # Перерва задовга: за неї верстат міг відпрацювати іншу програму.
+        return
+    if row.percent is not None and row.percent_changed_at is not None:
+        _pending_memory[state.target.key] = {
+            "percent": row.percent,
+            "percent_changed_at": row.percent_changed_at,
+        }
+    if row.last_sum3d_id:
+        state.last_sum3d_id = row.last_sum3d_id
+        state.last_program_at = row.last_program_at
+
+
+def _changed_at_for(state: "MachineState", percent: Optional[int], now: datetime) -> datetime:
+    """Відколи відсоток стоїть на цьому числі — з поправкою на памʼять.
+
+    Памʼять приймається ЛИШЕ коли свіжий кадр дав те саме число: тоді мітка
+    справді описує цей самий стан. Розійшлось — памʼять викидаємо, бо відсоток
+    змінився, поки ми не дивились.
+    """
+    pending = _pending_memory.pop(state.target.key, None)
+    if pending and percent is not None and pending["percent"] == percent:
+        return pending["percent_changed_at"]
+    return now
+
+
+def _save_memory(db: Session, state: "MachineState", now: datetime) -> None:
+    """Записати памʼять, коли є що записувати. Помилка тут не валить опитування:
+    кадр на екрані важливіший за рядок памʼяті (той самий принцип, що з історією
+    обривів)."""
+    # Разові виклики й частина тестів ходять сюди без сесії — памʼять
+    # тоді просто не працює, а не падає.
+    if db is None:
+        return
+    from app.models import MachineMemory
+
+    try:
+        row = db.get(MachineMemory, state.target.key)
+        if row is None:
+            row = MachineMemory(key=state.target.key)
+            db.add(row)
+        row.percent = state.percent
+        row.percent_changed_at = state.percent_changed_at
+        row.last_sum3d_id = state.last_sum3d_id
+        row.last_program_at = state.last_program_at
+        row.saved_at = now
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.exception("Памʼять верстата %s не збереглась", state.target.key)
+
+
 def poll_target(
     db: Session,
     target: MachineTarget,
@@ -1509,8 +1596,11 @@ def poll_target(
     не можна — ми не знаємо, а не «нічого не фрезерується»."""
     now = now or datetime.now()
     with _states_lock:
+        fresh = target.key not in _states
         state = _states.setdefault(target.key, MachineState(target=target))
         state.target = target
+    if fresh:
+        _load_memory(db, state, now)
 
     if frame is None and error is None:
         frame, error = _grab_machine_frame(target, password)
@@ -1669,7 +1759,11 @@ def poll_target(
         state.last_ok_at = now
         state.polls_ok += 1
         if percent != state.percent or state.percent_changed_at is None:
-            state.percent_changed_at = now
+            state.percent_changed_at = _changed_at_for(state, percent, now)
+        else:
+            # Число те саме — памʼять уже нічого не додасть, але тримати її
+            # далі не можна: на наступній зміні вона б «воскресила» стару мітку.
+            _pending_memory.pop(target.key, None)
         state.percent = percent
         state.percent_at = now
         state.completed = completed
@@ -1811,6 +1905,13 @@ def poll_target(
             if program and program.sum3d_id:
                 state.last_sum3d_id = program.sum3d_id
                 state.last_program_at = now
+
+    # Памʼять пишемо лише КОЛИ ЩОСЬ ЗМІНИЛОСЬ: те саме число кожні шість
+    # секунд на кожен верстат — це коміт на порожньому місці.
+    snapshot_now = (state.percent, state.percent_changed_at, state.last_sum3d_id)
+    if _saved_memory.get(target.key) != snapshot_now:
+        _saved_memory[target.key] = snapshot_now
+        _save_memory(db, state, now)
 
     # Історія: подія — цим же кадром, решта — раз на хвилину. Збій запису не
     # має валити опитування: кадр на екрані важливіший за рядок історії.
@@ -2794,6 +2895,8 @@ def day_timeline(key: str, *, now: Optional[datetime] = None, hours: int = HISTO
 def reset_state_for_tests() -> None:
     with _states_lock:
         _states.clear()
+    _pending_memory.clear()
+    _saved_memory.clear()
     with _history_lock:
         _history.clear()
 
