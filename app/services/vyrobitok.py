@@ -41,12 +41,12 @@ import calendar
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.business_day import business_now, business_today
+from app.business_day import business_now, business_today, next_tab_day
 from app.models import Order, VyrobitokCell, VyrobitokDay, VyrobitokMonth
 from app.services.order_dates import order_date, order_date_of
 from app.stats import parse_int_safe
@@ -254,13 +254,26 @@ def slm_is_frozen(db: Session, day: date) -> bool:
 def _due_freezes(day: date, today: date, now: datetime) -> tuple[bool, bool]:
     """(роботи, СЛМ) — що з цього для дня `day` вже має бути заморожене.
 
-    Роботи — щойно робоча доба перегорнулась. СЛМ — о 18:00 наступної робочої
-    доби (а якщо застосунок стояв і доба вже не наступна — просто час настав).
+    Відлік іде від НАСТУПНОЇ ВКЛАДКИ, а не від наступного календарного дня, і
+    це не дрібниця. Вкладок за суботу й неділю в таблиці немає: цех у вихідні
+    працює, а рядки лягають у п'ятничну вкладку (CLAUDE.md §4). Стара умова
+    «день + 1» закривала п'ятницю вже в суботу о 18:00 — усе, що дописували в
+    суботу ввечері й у неділю, не рахувалось НІКОЛИ, і не через збій, а за
+    побудовою. Бойовий випадок 15.09.26: у вкладці 11.09.26 стоять групи СЛМ
+    з підписами «12.09.2026», і в «Виробітку» за 11-те порожньо.
+
+    `next_tab_day` перестрибує вихідні, тож для п'ятниці закриття настає в
+    понеділок, а для звичайного дня — наступного ранку, як і було.
+
+    Роботи — щойно вкладка перестала наповнюватись. СЛМ — о 18:00 того ж дня
+    (його дописують і правлять ще пів дня після кінця доби). Якщо застосунок
+    стояв і день давно минув, обидва просто настали.
     """
-    orders_due = day < today
-    if day >= today:
+    close_day = next_tab_day(day)
+    orders_due = today >= close_day
+    if today < close_day:
         slm_due = False
-    elif day == today - timedelta(days=1):
+    elif today == close_day:
         slm_due = now.hour >= SLM_FREEZE_HOUR
     else:
         slm_due = True

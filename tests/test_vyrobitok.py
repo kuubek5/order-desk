@@ -5,7 +5,7 @@
 підков (одиниці входять у цирконій, оплата вдвічі).
 """
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from sqlalchemy import create_engine
@@ -14,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db import Base
 from app.models import Material, Order, VyrobitokCell
+from app.services import vyrobitok
 from app.services.vyrobitok import compute_month, save_month_settings, set_cell
 
 
@@ -828,3 +829,39 @@ def test_failed_day_sync_keeps_manual_edits(monkeypatch):
     row = next(r for r in grid.rows if r["dayn"] == 5)
     assert row["cells"]["lab_zr"]["num"] == 11       # правка ціла
     assert row["cells"]["lab_zr"]["edited"] is True
+
+
+# ── Заморозка й вихідні (15.09.26) ──────────────────────────────────────────
+
+
+def _due_for(day, today, hour):
+    """(роботи, слм) для пари днів — дати явні, годинника не питаємо."""
+    return vyrobitok._due_freezes(day, today, datetime(today.year, today.month, today.day, hour))
+
+
+def test_friday_stays_open_through_the_weekend():
+    """Вкладка пʼятниці наповнюється ще й у суботу та неділю — і не має права
+    закритись раніше.
+
+    Бойовий випадок 15.09.26: у вкладці 11.09.26 стоять групи СЛМ, підписані
+    «12.09.2026», а в «Виробітку» за 11-те порожньо. Стара умова закривала
+    пʼятницю вже в суботу о 18:00, тож усе дописане у вихідні не рахувалось
+    ніколи — не через збій, а за побудовою.
+    """
+    friday, saturday = date(2026, 9, 11), date(2026, 9, 12)
+    sunday, monday = date(2026, 9, 13), date(2026, 9, 14)
+
+    assert _due_for(friday, friday, 20) == (False, False), "у саму пʼятницю ще рано"
+    assert _due_for(friday, saturday, 20) == (False, False), "субота пише в цю ж вкладку"
+    assert _due_for(friday, sunday, 20) == (False, False), "неділя теж"
+    assert _due_for(friday, monday, 17) == (True, False), "роботи закрились, СЛМ ще ні"
+    assert _due_for(friday, monday, 18) == (True, True), "о 18:00 понеділка закрито все"
+
+
+def test_ordinary_day_closes_next_morning_as_before():
+    """Будні не зачеплені: четвер закривається в пʼятницю, як і закривався."""
+    thursday, friday = date(2026, 9, 10), date(2026, 9, 11)
+
+    assert _due_for(thursday, thursday, 20) == (False, False)
+    assert _due_for(thursday, friday, 17) == (True, False), "роботи — щойно вкладка змінилась"
+    assert _due_for(thursday, friday, 18) == (True, True), "СЛМ — о 18:00"
