@@ -1236,3 +1236,42 @@ def test_full_circle_poll_save_restart_restore(tmp_path, monkeypatch):
         assert card.state_key == "done", (
             "саме тут цех бачив «фрезерує 100 %» дві хвилини після оновлення"
         )
+
+
+def test_widget_header_counts_the_same_state_the_tiles_show():
+    """Підсумок у шапці й підпис на плитці мусять казати одне.
+
+    Скарга з цеху 15.09.26: шапка писала «2 фрезерує», і одним із двох був
+    верстат, чия ж плитка поруч казала «програма не йде». Причина — власний
+    предикат `percent < 100` замість спільного стану: нуль на верстаті без
+    завантаженої програми під нього підпадав.
+    """
+    stopped = _card_at(0, 30)                       # нуль без програми — стоїть
+    assert stopped.state_key == "idle"
+    assert stopped.is_running is False, "у підсумок такий верстат не йде"
+
+    starting = _card_at(0, 30)
+    starting.state.sum3d_id = "12-01-45"            # нуль на щойно запущеній
+    assert starting.state_key == "run"
+    assert starting.is_running is True
+
+    milling = _card_at(37, 10)
+    assert milling.is_running is True
+
+    finished = _card_at(100, service.COMPLETED_AFTER_SECONDS + 1)
+    assert finished.state_key == "done"
+    assert finished.is_running is False, "завершений верстат не «фрезерує»"
+
+
+def test_every_state_has_one_wording_everywhere():
+    """Слово стану живе в одному місці — `state_word`.
+
+    Віджет у бічній панелі писав «готово» там, де решта екранів каже
+    «завершено», і той самий верстат читався як два різні стани.
+    """
+    side = (Path(__file__).parent.parent / "app" / "templates"
+            / "_machine_side.html").read_text(encoding="utf-8")
+    for word in ("готово", "перевірка", "стоїть", "запуск", "не читається"):
+        assert f">{word}<" not in side, (
+            f"слово стану «{word}» зашите в шаблон — беріть `card.state_word`"
+        )
