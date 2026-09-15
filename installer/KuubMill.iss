@@ -26,6 +26,13 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
 SetupIconFile=..\assets\kuubmill.ico
+; Оформлення майстра. Inno читає ЛИШЕ BMP — PNG чи JPEG компілятор не приймає,
+; і промах тихий: збірка падає аж на етапі компіляції інсталятора.
+; Список через кому — Inno сам бере потрібний файл під DPI екрана (100/125/150/200 %).
+; Кадр: розжарені коронки в печі — той самий світ, що арт `furnace-crowns.jpg`
+; у віджеті печей і на табло цеху, щоб інсталятор і застосунок були однією рукою.
+WizardImageFile=..\assets\wizard-image-164x314.bmp,..\assets\wizard-image-192x386.bmp,..\assets\wizard-image-246x459.bmp,..\assets\wizard-image-328x628.bmp
+WizardSmallImageFile=..\assets\wizard-small-55x58.bmp,..\assets\wizard-small-64x68.bmp,..\assets\wizard-small-83x80.bmp,..\assets\wizard-small-110x116.bmp
 
 [Files]
 Source: "{#BuildRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
