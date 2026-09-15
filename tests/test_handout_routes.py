@@ -1112,11 +1112,12 @@ class TestOneBatchPerRow:
         assert [e.created_at.day for e in picked] == [11, 12]
         # Лише субота — теж «своя» для п'ятниці.
         assert [e.created_at.day for e in entries_for_material("mono a3", entries[1:2], friday)] == [12]
-        # І для ПОНЕДІЛКА субота своя теж: власної вкладки в неї немає, тож
-        # рядок вихідних міг лягти як у п'ятницю, так і в понеділок
-        # (див. test_monday_tab_covers_the_weekend_before_it).
-        assert [e.created_at.day for e in entries_for_material("mono a3", entries[1:2], date(2026, 9, 14))] == [12]
-        assert stale_folder_day("mono a3", entries[1:2], date(2026, 9, 14)) is None
+        # А для ПОНЕДІЛКА субота вже задалеко: вона покрита пʼятничною
+        # вкладкою вперед, а тут стоїть на два дні позаду — у постійного
+        # клієнта того самого кольору це майже напевно попередня робота
+        # (власник 15.09.26, Кривовид: «12 число це давно було»).
+        assert entries_for_material("mono a3", entries[1:2], date(2026, 9, 14)) == []
+        assert stale_folder_day("mono a3", entries[1:2], date(2026, 9, 14)) == date(2026, 9, 12)
         # А от четвер для п'ятниці — старший: у нього є СВОЯ вкладка, і його
         # тека майже завжди чужа попередня робота (правило 11.09.26).
         thursday_batch = [self._entry("mono a3", datetime(2026, 9, 10, 15, 0))]
@@ -1142,6 +1143,11 @@ class TestOneBatchPerRow:
         assert [e.created_at.day for e in entries_for_material("mono a3.5", sunday_batch, monday)] == [13]
         assert [e.created_at.day for e in entries_for_material("mono a4", sunday_batch, monday)] == [13]
         assert stale_folder_day("mono a3.5", sunday_batch, monday) is None
+        # Рівно ОДИН день назад: субота для понеділка — це вже позавчора, і
+        # такі теки на екрані виявились чужими (власник 15.09.26).
+        saturday_batch = [self._entry("mono a3.5", datetime(2026, 9, 12, 10, 11))]
+        assert entries_for_material("mono a3.5", saturday_batch, monday) == []
+        assert stale_folder_day("mono a3.5", saturday_batch, monday) == date(2026, 9, 12)
         # Правило 11.09.26 лишається для буднів: у понеділка є своя вкладка,
         # тож для вівторка понеділкова тека — чужа попередня робота.
         monday_batch = [self._entry("mono a3", datetime(2026, 9, 14, 10, 0))]
