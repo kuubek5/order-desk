@@ -260,28 +260,59 @@
     }
   }
 
+  // Повертає true, лише якщо справді намалювало. Це не дрібниця: поки плитка
+  // не отримала висоту (перший кадр після свапу, вузька комірка), малювати
+  // нема на чому, і зупинений друк інакше запамʼятав би ПОРОЖНЄ полотно як
+  // намальоване й не перемалював би його ніколи.
   function paint() {
     // Полотно переносять між оновленнями, тому щоразу шукаємо його наново.
     var cv = document.getElementById("slm");
-    if (!cv) return;
+    if (!cv) return false;
     var w = Math.round(cv.clientWidth * DPR), h = Math.round(cv.clientHeight * DPR);
-    if (w < 8 || h < 8) return;
+    if (w < 8 || h < 8) return false;
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
     draw(cv.getContext("2d"), w, h);
+    return true;
   }
 
   var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // Чи машина ДРУКУЄ просто зараз. Прапорець ставить сервер на плитці; читаємо
+  // його щокадру, бо живий шматок табло свапається раз на 30 с і плитка щоразу
+  // нова (полотно при цьому переносять, а плитку — ні).
+  function printing() {
+    var tile = document.querySelector(".mc.sis");
+    return !!(tile && tile.dataset.printing === "1");
+  }
+
   // Малюємо КОЖЕН кадр, який дає браузер. Обмеження в 60 кадрів/с пробували
   // 15.09.26 й прибрали: на цеховому телевізорі 60 Гц воно не давало нічого
   // (rAF там і так 60), а на швидшому екрані лише різало плавність.
+  var frozenAt = "";
   function frame(ms) {
-    if (!still && !document.hidden) {
+    var live = printing();
+    if (live && !still && !document.hidden) {
       phaseT += Math.min(0.05, (ms - (last || ms)) / 1000);
       if (phaseT >= PHASES[phase][1]) { phaseT = 0; phase = (phase + 1) % PHASES.length; }
     }
     last = ms;
-    paint();
+    if (live) {
+      frozenAt = "";
+      paint();
+    } else {
+      // Машина стоїть. Фазу скидаємо в початкову НЕ з косметики: застигнути
+      // могло і на «laser», а нерухомий промінь над платформою читається як
+      // живий друк — саме та брехня, від якої зупинка й рятує.
+      phase = 0;
+      phaseT = 0;
+      // І перемальовуємо лише коли є що змінити: цілодобове полотно з нерухомою
+      // картинкою не має гріти процесор міні-ПК біля телевізора.
+      var cv = document.getElementById("slm");
+      var sig = cv ? cv.clientWidth + "x" + cv.clientHeight + ":" + progress() : "";
+      if (sig !== frozenAt && paint()) {
+        frozenAt = sig;
+      }
+    }
     requestAnimationFrame(frame);
   }
 
