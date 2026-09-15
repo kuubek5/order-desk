@@ -33,12 +33,38 @@ BACKUP_KEEP = 5
 
 
 def backup_database(db_file: Path, backup_dir: Path) -> Path | None:
-    """Копія бази перед небезпечною дією. None — копіювати нічого."""
+    """Копія бази перед небезпечною дією. None — копіювати нічого.
+
+    Знімається через `VACUUM INTO`, а не копіюванням файлу, і це головне тут.
+    База працює в режимі WAL: свіжі транзакції лежать у `kuubmill.db-wal` і
+    переїжджають у сам `.db` лише на контрольній точці. Копіювання файлу бере
+    той `.db`, тобто стан на момент останньої контрольної точки — виміряно на
+    робочій базі 15.09.26: `.db` о 01:34, а `.db-wal` 2.4 МБ о 06:03, тобто
+    пів доби роботи повз копію.
+
+    Ціна помилки тут максимальна: це страхова копія ПЕРЕД МІГРАЦІЄЮ, і дістають
+    її саме тоді, коли міграція щось зіпсувала. `VACUUM INTO` йде через SQLite,
+    бачить WAL і пише узгоджений файл — так само, як копія перед оновленням
+    (`app/pre_update_backup.py`), яка це вміла від початку.
+    """
     if not db_file.is_file() or db_file.stat().st_size == 0:
         return None
     backup_dir.mkdir(parents=True, exist_ok=True)
     destination = backup_dir / f"kuubmill_{datetime.now():%Y%m%d_%H%M%S}.db"
-    shutil.copy2(db_file, destination)
+    try:
+        connection = sqlite3.connect(str(db_file))
+        try:
+            # Шлях наш, не користувацький, але подвоєння лапки лишаємо: тека
+            # встановлення буває екзотичною.
+            connection.execute("VACUUM INTO ?", (str(destination),))
+        finally:
+            connection.close()
+    except sqlite3.Error:
+        # Не вдалось через SQLite (файл зайнятий, нема місця) — краще копія
+        # файлу, ніж жодної: вона гірша за узгоджену, але не гірша за порожнечу.
+        logger.warning("VACUUM INTO не вдався, копіюю файл бази як є", exc_info=True)
+        destination.unlink(missing_ok=True)
+        shutil.copy2(db_file, destination)
     # Ротація бачить і копії зі старим префіксом — інакше вони лишились би на
     # диску назавжди, поза лічильником «тримаємо останні п'ять».
     # Сортування за ЧАСОМ, не за іменем: два різні префікси роблять порядок

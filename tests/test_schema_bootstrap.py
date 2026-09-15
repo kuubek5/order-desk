@@ -155,3 +155,37 @@ def test_unknown_unversioned_schema_refuses_to_start(tmp_path):
 
     with pytest.raises(RuntimeError):
         ensure_schema(db_path, tmp_path / "backups")
+
+
+def test_backup_before_migration_takes_the_wal_along(tmp_path):
+    """Страхова копія перед міграцією мусить нести СВІЖІ транзакції.
+
+    База працює в режимі WAL: записи лежать у `*.db-wal` і переїжджають у сам
+    `.db` лише на контрольній точці. Копіювання файлу брало б стан на момент
+    останньої такої точки — на робочій базі 15.09.26 це означало `.db` о 01:34
+    проти `.db-wal` 2.4 МБ о 06:03, тобто пів доби роботи повз копію.
+
+    Ціна помилки тут максимальна: цю копію дістають саме тоді, коли міграція
+    щось зіпсувала.
+    """
+    import sqlite3
+
+    from app.schema import backup_database
+
+    db_file = tmp_path / "kuubmill.db"
+    keeper = sqlite3.connect(db_file)
+    keeper.execute("PRAGMA journal_mode=WAL")
+    keeper.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+    keeper.executemany("INSERT INTO t (v) VALUES (?)", [(f"рядок {i}",) for i in range(200)])
+    keeper.commit()
+    # Зʼєднання лишається ВІДКРИТИМ: саме так живе застосунок, і саме тому
+    # контрольна точка ще не сталась, а дані сидять у WAL.
+    assert (tmp_path / "kuubmill.db-wal").stat().st_size > 0, "WAL порожній — тест нічого не перевіряє"
+
+    copy = backup_database(db_file, tmp_path / "backups")
+    assert copy is not None
+
+    with sqlite3.connect(copy) as check:
+        rows = check.execute("SELECT COUNT(*) FROM t").fetchone()[0]
+    keeper.close()
+    assert rows == 200, f"у копії {rows} рядків замість 200 — WAL не поїхав"
