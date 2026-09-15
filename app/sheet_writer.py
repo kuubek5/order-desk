@@ -406,7 +406,13 @@ def clear_placeholder_row(worksheet: gspread.Worksheet, row: int) -> None:
     call_with_retry(lambda: worksheet.spreadsheet.batch_update({"requests": [request]}))
 
 
-def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[str]) -> bool:
+def write_order_fields(
+    worksheet: gspread.Worksheet,
+    order: Order,
+    fields: set[str],
+    *,
+    erase: frozenset[str] | set[str] = frozenset(),
+) -> bool:
     """Записати поля роботи в її рядок. `False` — запис ПРОПУЩЕНО.
 
     Повертає ознаку навмисно: пропуск (рядок не підтверджено) виглядав для
@@ -414,6 +420,14 @@ def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[s
     що саме цей запис у таблицю не дійшов (знахідка живого тесту 06.09.26, S.8).
     Дані при цьому в безпеці — чужий рядок не чіпається, — бракувало лише
     сигналу.
+
+    `erase` — поля, які оператор стирає НАВМИСНО. Маркерні поля (`calculated_raw`,
+    `milled_raw`) за замовчуванням не затираються: їх могли вписати в таблицю
+    руками після нашого знімка, і тоді чуже значення важливіше за наше. Але
+    «очистити Sum3D» — це не знімок, а пряма дія людини, і без цього винятку
+    вона мовчки не робила б нічого: guard прочитав би живу літеру й ще й повернув
+    би її назад у базу (перевірено наживо 15.09.26 — колонка М лишалась «ЦЦ»
+    після очищення ID).
     """
     row = _resolve_row(worksheet, order)
     if row is None:
@@ -436,7 +450,7 @@ def write_order_fields(worksheet: gspread.Worksheet, order: Order, fields: set[s
         # Status markers are generated from the last DB snapshot, but staff may
         # have filled the shared sheet since that snapshot. Preserve the live
         # value and bring it back into the ORM object instead of overwriting it.
-        if field in STATUS_MARKER_FIELDS:
+        if field in STATUS_MARKER_FIELDS and field not in erase:
             a1 = gspread.utils.rowcol_to_a1(row, col)
             cell = call_with_retry(lambda a1=a1: worksheet.acell(a1))
             live_value = (cell.value or "").strip()

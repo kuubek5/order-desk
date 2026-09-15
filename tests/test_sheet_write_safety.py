@@ -73,7 +73,7 @@ class TestWritesLeaveTheEventLoop:
 
         threads: list[str] = []
 
-        def spy(db, order, fields):
+        def spy(db, order, fields, erase=frozenset()):
             threads.append(threading.current_thread().name)
             return None
 

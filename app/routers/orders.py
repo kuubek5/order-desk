@@ -56,6 +56,7 @@ from app.services.sheet_writeback import (
     append_manual_rows_warm,
     await_on_writeback,
     clear_sheet_row_background,
+    order_writes_to_sheet,
     submit_sheet_write,
     write_calculated_cell_warm,
     write_rework_sum3d_fields_warm,
@@ -73,7 +74,7 @@ from app.services.undo import (
 )
 from app.sheet_writer import apply_status_markers
 from app.services.order_path import build_path as build_order_path
-from app.statuses import STATUSES, STATUS_ACCEPTED, STATUS_NEW
+from app.statuses import STATUSES, STATUS_ACCEPTED, STATUS_CALCULATED, STATUS_NEW
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,41 @@ def _row_context(request: Request, db: Session, order, sync_error) -> dict:
         "sync_error": sync_error,
         "focused_ids": focused_ids(db, user),
     }
+
+
+def _status_before_sum3d(db: Session, order: Order) -> str | None:
+    """Статус, який робота мала ДО того, як оператор вписав Sum3D.
+
+    Береться зі знімка «до» останньої дії Sum3D у журналі — того самого, яким
+    користується «Крок назад». Свого поля під це заводити не треба: знімок уже
+    пишеться на кожну таку дію.
+
+    Шукається не просто остання дія Sum3D, а остання, у знімку якої статус ЩЕ НЕ
+    «прораховано» — тобто та, що роботу туди й підняла. Брати буквально останню
+    не можна: оператор часто спершу вписує ID, потім виправляє одруківку в ньому,
+    і в знімку ДРУГОЇ дії статус уже «прораховано». Тоді відкат порівнював
+    «прораховано» з «прораховано», вирішував, що міняти нічого, і статус
+    залишався висіти при порожній таблиці.
+
+    Повертає None, коли доказу немає (роботу імпортували з таблиці, журнал
+    підчистили). Тоді статус НЕ чіпаємо: «нове» тут було б здогадкою, а робота,
+    прийнята з пошти, мала «прийнято» — і здогадка тихо стерла б цей факт.
+    """
+    entries = db.execute(
+        select(ActionLog)
+        .where(ActionLog.order_id == order.id, ActionLog.action_type == "sum3d")
+        .order_by(ActionLog.id.desc())
+    ).scalars().all()
+    for entry in entries:
+        if not entry.old_value:
+            continue
+        try:
+            previous = json.loads(entry.old_value).get("status")
+        except (ValueError, TypeError):
+            continue
+        if isinstance(previous, str) and previous and previous != STATUS_CALCULATED:
+            return previous
+    return None
 
 
 @router.post("/orders/{order_id}/sum3d-id", response_class=HTMLResponse)
@@ -152,12 +188,40 @@ async def set_sum3d_id(
         rework.sum3d_id = value
         if stamp:
             rework.calculated_raw = stamp
+        elif not value:
+            # Очищення ID повертає переробку в «не прораховано», тож літера
+            # оператора в колонці Х лишатись не має — інакше в таблиці висить
+            # «прорахував», а прораховувати вже нічого.
+            rework.calculated_raw = None
         after = {"rework.sum3d_id": rework.sum3d_id, "rework.calculated_raw": rework.calculated_raw}
         note = f"Sum3D переробки → {value}" if value else "Sum3D переробки очищено"
         undo_field = "rework.sum3d_id"
     else:
         order.sum3d_id = value
         write_fields = {"sum3d_id"}
+        # Те саме для звичайної роботи: стерли ID — стираємо й літеру в колонці М.
+        # `erase` обовʼязковий, бо calculated_raw маркерне поле: без нього запис
+        # прочитав би живу літеру, ЗБЕРІГ її і ще й повернув у базу.
+        erase_fields: set[str] = set()
+        if not value and order.calculated_raw:
+            order.calculated_raw = None
+            write_fields.add("calculated_raw")
+            erase_fields.add("calculated_raw")
+        # Вписаний ID — це і є момент «прораховано», тож стертий ID мусить
+        # забрати статус назад разом із літерою. Інакше в черзі лишалась робота,
+        # у якої в таблиці порожньо, фільтр каже «можна брати», а крапка статусу
+        # каже «прораховано» — і жодне з трьох тверджень не пояснює інші два.
+        # Повертаємо РІВНО той статус, що був (з журналу), і лише коли робота
+        # відтоді нікуди не рушила: «відфрезеровано» чи «проблема» відкочувати
+        # не наша справа.
+        if not value and order.status == STATUS_CALCULATED:
+            previous = _status_before_sum3d(db, order)
+            if previous and previous != order.status:
+                order.status = previous
+                db.add(StatusEvent(
+                    order_id=order.id, operator_id=user.id,
+                    status=previous, actor=user.username,
+                ))
         if stamp:
             order.calculated_raw = stamp
             write_fields.add("calculated_raw")
@@ -193,21 +257,41 @@ async def set_sum3d_id(
     # збережені значення власною сесією, а `await` тримає застосунок живим,
     # поки Google відповідає (аудит 05.09.26, синк C-2).
     if rework is not None:
+        # На очищенні передаємо порожній рядок, а не None: None означає «колонку
+        # Х не чіпати», а нам треба саме стерти літеру разом з ID.
+        letter = stamp if value else ""
         sync_error = await await_on_writeback(
-            write_rework_sum3d_fields_warm, order.id, value or "", stamp
+            write_rework_sum3d_fields_warm, order.id, value or "", letter
         )
     else:
-        sync_error = await await_on_writeback(write_sheet_fields_warm, order.id, write_fields)
+        sync_error = await await_on_writeback(
+            write_sheet_fields_warm, order.id, write_fields, erase_fields
+        )
     db.refresh(order)
 
     attach_export_folder_uris(db, [order])
     attach_job_code_folder_uris(db, [order])
 
-    response = templates.TemplateResponse(
-        request, "_order_row.html", _row_context(request, db, order, sync_error)
-    )
+    # Успіх мусить називати таблицю так само прямо, як її називає помилка.
+    # Доти тост казав лише «Sum3D → 12-01-45», і оператор не міг відрізнити
+    # «портал зберіг» від «спільна таблиця прийняла» — а саме друге тут і є
+    # ставкою: той рядок читає весь цех. Для роботи З ПОШТИ рядка в таблиці
+    # немає взагалі, тож там фраза була б неправдою: предикат спільний із самим
+    # записом (order_writes_to_sheet), щоб вони не розійшлись.
+    wrote_to_sheet = sync_error is None and order_writes_to_sheet(order)
+    if wrote_to_sheet:
+        # Очищення теж «записується», але сказати треба те, що сталось із
+        # таблицею очима оператора: клітинка спорожніла.
+        toast_note = f"{note} · {'записано в таблицю' if value else 'стерто в таблиці'}"
+    else:
+        toast_note = note
+    context = _row_context(request, db, order, sync_error)
+    # Прапорець живе рівно один рендер — саме цієї відповіді. Полл через 15 с
+    # перемалює рядок без нього, тож підсвітка не повторюється щотіку.
+    context["sum3d_confirmed"] = wrote_to_sheet and bool(value)
+    response = templates.TemplateResponse(request, "_order_row.html", context)
     if sync_error is None:
-        attach_action_toast(response, log_entry, note)
+        attach_action_toast(response, log_entry, toast_note)
     else:
         attach_sync_error_toast(response, note, sync_error)
     return response

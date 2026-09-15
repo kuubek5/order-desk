@@ -104,7 +104,7 @@ class TestWriteSetsAndClearsTheFlag:
     def sheet(self, monkeypatch):
         state = SimpleNamespace(written=True, calls=0)
 
-        def write(ws, order, fields):
+        def write(ws, order, fields, *, erase=frozenset()):
             state.calls += 1
             return state.written
 
@@ -127,7 +127,7 @@ class TestWriteSetsAndClearsTheFlag:
             assert order.sum3d_pending == "16-27-26"
 
     def test_network_error_leaves_the_id_pending(self, monkeypatch, sheet):
-        def boom(ws, order, fields):
+        def boom(ws, order, fields, *, erase=frozenset()):
             raise OSError("proxy reset")
 
         monkeypatch.setattr(wb, "write_order_fields", boom)

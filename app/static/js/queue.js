@@ -294,21 +294,6 @@ document.addEventListener("dblclick", (event) => {
   window.location.href = uri;
 });
 
-// Collapsible section headers ("Лабораторні роботи" / "Роботи з пошти",
-// queue.html): is-collapsed class + aria-expanded + CSS grid-template-rows
-// transition (see .queue-group-* rules). Both start expanded, so first click
-// only ever removes is-collapsed.
-document.addEventListener("click", (event) => {
-  const toggle = event.target.closest("[data-queue-group-toggle]");
-  if (!toggle) return;
-
-  const section = toggle.closest(".queue-group");
-  if (!section) return;
-
-  const collapsed = section.classList.toggle("is-collapsed");
-  toggle.setAttribute("aria-expanded", String(!collapsed));
-});
-
 // v2a sync sweep (queue.html .queue-panel > .sweep). When the operator kicks
 // off a Google Sheets sync, the neon strip sweeps across the queue for as long
 // as the real POST /sheets/sync is in flight, then the page reloads so the
@@ -550,7 +535,16 @@ document.addEventListener("click", (event) => {
   });
 
   decorate();
-  document.body.addEventListener("htmx:afterSettle", decorate);
+  // Тільки свої своп-и. Раніше висіло на КОЖНОМУ htmx:afterSettle, а на екрані
+  // черги десять незалежних полів (3с індикатор синку, 4с смуга навантаження,
+  // 10с верстати ×2, 15с рядки/банер/SISMA/лоток, 30с печі, 60с зміна), і
+  // кожен із них ганяв querySelectorAll по всіх .side-sec заради чужої заміни.
+  document.body.addEventListener("htmx:afterSettle", (event) => {
+    const t = event.target;
+    if (!t || !t.querySelector) return;
+    if (t.matches && t.matches(SEL)) return void decorate();
+    if (t.querySelector(SEL)) decorate();
+  });
 })();
 
 // ---------------------------------------------------------------------------
@@ -737,6 +731,7 @@ document.addEventListener("click", (event) => {
     if (event.target && event.target.id === "queue-rows") applySavedWidths();
   });
 })();
+
 
 // Мікроанімації черги (задача 3). Новий рядок після HTMX-свапу статусу/Sum3D
 // коротко флешить (підтвердження зміни); прострочені/нові рядки при першому

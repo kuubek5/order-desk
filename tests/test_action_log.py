@@ -823,7 +823,7 @@ def test_undo_commits_before_the_sheet_write_reads_the_value():
     engine = _database()
     seen = {}
 
-    def fake_write(db, order, fields):
+    def fake_write(db, order, fields, erase=frozenset()):
         seen["cam_comment"] = order.cam_comment
         return None
 

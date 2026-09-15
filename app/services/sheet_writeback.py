@@ -150,8 +150,8 @@ def warm_sheet_writeback() -> None:
         logger.info("Sheet write-back warmup skipped (sheet not ready)")
 
 
-def write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | None:
-    """Write explicit portal changes and record the outcome without hiding it.
+def order_writes_to_sheet(order: Order) -> bool:
+    """Чи є в цієї роботи рядок у Google Таблиці, тобто чи взагалі туди пишемо.
 
     Being an actual sheet row is the real gate, not sheet_tab truthiness: IMAP
     "email" orders now also carry a sheet_tab-shaped business date (set at
@@ -159,10 +159,26 @@ def write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | Non
     table orders, but they were never a row in the shared spreadsheet and must
     never trigger a write there. Both "lab" work rows and "sheet_client" client
     rows ARE real sheet rows (matched back by row_number), so both write back.
+
+    Окремий предикат, бо цю саму правду мусить знати ще й роут: він пише
+    операторові «записано в таблицю», і для роботи з пошти це було б неправдою —
+    там рядка в таблиці немає, а запис «успішний» рівно тому, що його не було.
     """
-    if not fields or order.source not in ("lab", "sheet_client") or not order.sheet_tab:
+    return order.source in ("lab", "sheet_client") and bool(order.sheet_tab)
+
+
+def write_sheet_fields(
+    db: Session, order: Order, fields: set[str],
+    erase: frozenset[str] | set[str] = frozenset(),
+) -> str | None:
+    """Write explicit portal changes and record the outcome without hiding it.
+
+    `erase` — поля, які оператор стирає навмисно; проходить далі без змін,
+    сенс описаний у `sheet_writer.write_order_fields`.
+    """
+    if not fields or not order_writes_to_sheet(order):
         return None
-    error = _write_sheet_fields(db, order, fields)
+    error = _write_sheet_fields(db, order, fields, erase)
     if "sum3d_id" in fields:
         # Позначка «Sum3D ще не в таблиці» ставиться й знімається ЛИШЕ тут:
         # роут, фоновий повтор і скасування пишуть Sum3D через цю функцію.
@@ -173,13 +189,16 @@ def write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | Non
     return error
 
 
-def _write_sheet_fields(db: Session, order: Order, fields: set[str]) -> str | None:
+def _write_sheet_fields(
+    db: Session, order: Order, fields: set[str],
+    erase: frozenset[str] | set[str] = frozenset(),
+) -> str | None:
     """Тіло `write_sheet_fields`: запис і рядок у журналі синку."""
     try:
         worksheet = get_worksheet_by_name(open_spreadsheet(db=db), order.sheet_tab)
         if worksheet is None:
             raise RuntimeError(f"вкладку '{order.sheet_tab}' не знайдено")
-        written = write_order_fields(worksheet, order, fields)
+        written = write_order_fields(worksheet, order, fields, erase=erase)
         if not written:
             # Пропуск ≠ успіх. Рядок не підтверджено (зсунувся неоднозначно або
             # перевірочне читання впало), тож ми свідомо НЕ писали — але доти
@@ -334,7 +353,10 @@ async def await_on_writeback(fn, *args) -> str | None:
         return str(exc) or "запис у таблицю не вдався"
 
 
-def write_sheet_fields_warm(order_id: int, fields: set[str]) -> str | None:
+def write_sheet_fields_warm(
+    order_id: int, fields: set[str],
+    erase: frozenset[str] | set[str] = frozenset(),
+) -> str | None:
     """`write_sheet_fields` на воркері: власна сесія (сесії SQLAlchemy не
     потоко-безпечні), значення читаються з БД, тож викликач мусить спершу
     закомітити свої зміни."""
@@ -342,7 +364,7 @@ def write_sheet_fields_warm(order_id: int, fields: set[str]) -> str | None:
         order = bg.get(Order, order_id)
         if order is None:
             return None
-        error = write_sheet_fields(bg, order, fields)
+        error = write_sheet_fields(bg, order, fields, erase)
         bg.commit()
         return error
 

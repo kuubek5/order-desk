@@ -14,9 +14,16 @@
    унікальні класи. Значення/анімації взято 1:1 з мокапу.
    ========================================================================== */
 
+/* height, а не min-height. Черга — це колонка, де прокручується РІВНО один
+   блок (.tablewrap), і саме на ньому тримається липка шапка таблиці. При
+   min-height колонка вільно росла вище вікна, прокручувалась сторінка, а не
+   .tablewrap, і `position:sticky` не мав до чого липнути: шапка їхала за екран
+   назавжди (виміряно 15.09.26 на 1600×900: thTop 419 → −581 при scrollY
+   0 → 1000). Разом із нею мовчки не працювало й збереження внутрішнього
+   скролу при 15-секундному полі. */
 main.q2{
   max-width:none;margin:0;padding:16px 20px 16px;
-  display:flex;flex-direction:column;gap:0;min-height:100vh;
+  display:flex;flex-direction:column;gap:0;height:100vh;
 }
 .q2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}
 .q2 .tnum{font-variant-numeric:tabular-nums}
@@ -257,8 +264,11 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .date-strip .nav-off{color:var(--ink-3);opacity:.3;font-size:var(--fs-4);background:none;border:none}
 
 .q2 .worklayout{flex:1;min-height:0;display:flex;gap:12px;align-items:stretch}
+/* min-height:0 обов'язковий на КОЖНІЙ ланці до .tablewrap: типове для флексу
+   `min-height:auto` не дає елементу стиснутись менше за вміст, тобто менше за
+   всю таблицю, і висота вікна до неї просто не доходить. */
 .q2 .queue-panel{
-  flex:1;min-width:0;display:flex;flex-direction:column;position:relative;overflow:hidden;
+  flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;position:relative;overflow:hidden;
   background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--glow);
   animation:q2fade-slide var(--enter-duration,.32s) ease both;
 }
@@ -283,7 +293,18 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .search:focus-within .search-kbd{color:var(--ink-2);border-color:var(--line-2)}
 .q2 .search:focus-within{border-color:rgba(var(--accent-rgb), .45);box-shadow:inset 0 0 18px -12px rgba(var(--accent-rgb), .9)}
 
-.q2 .tablewrap{overflow:auto;flex:1;min-height:0;max-height:calc(100vh - 250px);scrollbar-width:thin}
+/* #queue-rows — обгортка, яку свапає полл; вона теж ланка ланцюга висоти.
+   Без flex:1 і min-height:0 таблиця лишалась на повний зріст, і вікно її не
+   обмежувало. Раніше цей же ланцюг розтягували лише під порожній стан
+   (`#queue-rows:has(.queue-empty-live)` у queue_table.css) — тепер він
+   потрібен завжди, і той частковий випадок став зайвим. */
+.q2 .queue-panel > #queue-rows{flex:1;min-height:0;display:flex;flex-direction:column}
+/* Висоту дає флекс-колонка, а не константа: смуга над таблицею змінна (банер
+   зникнення, смуга верстатів, ряди фільтрів), а нижче 1650px під таблицю ще
+   спускається бічна панель. Стара `calc(100vh - 250px)` була правильною рівно
+   на одній ширині, і нижче 1650px її знімали зовсім. min-height — підлога:
+   якщо шапка роздулась, таблиця не має права стиснутись у нуль. */
+.q2 .tablewrap{overflow:auto;flex:1;min-height:140px;scrollbar-width:thin}
 .q2 table.qtable{border-collapse:separate;border-spacing:0;width:100%;min-width:1120px}
 .q2 table.qtable thead th{
   position:sticky;top:0;z-index:var(--z-raised);background:var(--mid);border-bottom:1px solid var(--line-2);
@@ -472,12 +493,10 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
   border:1px solid rgba(var(--accent-rgb), .32);color:var(--accent-c);background:rgba(var(--accent-base-rgb), .1);margin-left:7px;
 }
 .q2 .rowclient{font-size:var(--fs-1);color:var(--ink-2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-/* Client rows entered in the sheet without a наряд (blue-filled by the lab) —
-   a soft blue that echoes that sheet convention, distinct from the teal email
-   badge and the material chips. */
-.q2 .source-badge-client.src{border-color:rgba(96,165,250,.42);color:#93c5fd;background:rgba(96,165,250,.13)}
-.q2 tr.queue-row-client{background:rgba(96,165,250,.06)}
-.q2 tr.queue-row-client:hover{background:rgba(96,165,250,.1)}
+/* Клієнтський рядок і його чіп фарбує ОДИН блок нижче (пошук «Джерела
+   різняться правилами видачі»). Тут раніше стояв синій варіант — той самий
+   селектор і слабша специфічність, тобто мертвий код: на екран він не
+   потрапляв жодного разу, але читався як діюче рішення. */
 .q2 .cam{max-width:220px;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2);font-size:var(--fs-2);white-space:nowrap}
 /* «!!» у коментарі — це «увага/блокер» («Чекаємо Скани!!!!»), а НЕ
    терміновість: терміновість тепер несе окремий чіп .rush-badge за словом
@@ -573,6 +592,17 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
 /* Плейсхолдер лишався сірим кольором браузера rgb(117,117,117) = 3.87:1. */
 .q2 .sum3d-input::placeholder{color:var(--ink-3);opacity:1}
 .q2 .sum3d-input:focus{border-color:rgba(var(--accent-rgb), .45)}
+/* Підтвердження, що ID долетів у спільну Google Таблицю. Малюємо рівно один
+   раз — клас приходить тільки з відповіді на збереження, а полл через 15 с
+   віддає рядок без нього. Своя анімація, а не спільна q2status-flash: та
+   заливає ВЕСЬ рядок, тобто відповідала б «щось у рядку змінилось», а сказати
+   треба вужче — «оцей ID тепер у таблиці». Тривалість — той самий токен, що й
+   у решти підтверджень екрана. */
+@keyframes q2sum3d-written{
+  0%{border-color:var(--ok, var(--accent-c));box-shadow:0 0 0 2px rgba(var(--accent-base-rgb), .3)}
+  100%{border-color:var(--control-edge,var(--line));box-shadow:0 0 0 0 transparent}
+}
+.q2 .sum3d-input.is-written{animation:q2sum3d-written var(--flash-duration,.9s) ease-out}
 .q2 .sum3d-clear{width:22px;height:26px;flex:0 0 22px;border:0;background:none;cursor:pointer;
   color:var(--ink-3);font-size:var(--fs-1);line-height:1;border-radius:6px;padding:0;opacity:0;
   display:inline-flex;align-items:center;justify-content:center;transition:opacity .12s ease,color .12s,background .12s}
@@ -633,10 +663,44 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
    display) so it is reachable by keyboard, and always visible where there is
    no hover to reveal it (touch). */
 .q2 .row-delete-form{display:inline-flex;vertical-align:middle;margin-left:5px}
-.q2 .row-delete{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:6px;background:none;color:var(--ink-3);cursor:pointer;opacity:0;transition:opacity .12s ease,color .12s ease,background .12s ease}
+/* opacity:0 БЕЗ pointer-events:none — це була пастка: кнопка лишалась
+   клікабельною, хоча її не видно, і сиділа впритул до номера наряду, який
+   клікають, щоб відкрити паспорт. #queue-rows цілком підмінюється кожні 15с,
+   тож якщо під нерухомим курсором рядки зсунулись, «клік по наряду»
+   приземлявся на видалення сусідньої роботи. Розмір НЕ збільшуємо свідомо:
+   решті рядкових кнопок хіт-зону розширено псевдоелементом, але саме тут
+   більша ціль означала б більше випадкових видалень. */
+.q2 .row-delete{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:6px;background:none;color:var(--ink-3);cursor:pointer;opacity:0;pointer-events:none;transition:opacity .12s ease,color .12s ease,background .12s ease}
 .q2 .row-delete svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.q2 .queue-row:hover .row-delete{opacity:1}
-.q2 .row-delete:focus-visible{opacity:1;outline:2px solid var(--control-edge);outline-offset:1px}
+.q2 .queue-row:hover .row-delete{opacity:1;pointer-events:auto}
+.q2 .row-delete:focus-visible{opacity:1;pointer-events:auto;outline:2px solid var(--control-edge);outline-offset:1px}
+/* Сенсорний екран hover не дає взагалі, тож там кнопку треба показати й
+   лишити робочою — інакше вона стала б недосяжною (так уже зроблено для
+   .sum3d-clear нижче). */
+@media (hover:none){.q2 .row-delete{opacity:.55;pointer-events:auto}}
+
+/* Хіт-зона рядкових кнопок — до 24×24 (WCAG 2.5.8), але ЧЕРЕЗ псевдоелемент,
+   а не через розмір самої кнопки. Причина суто цехова: висота рядка тут —
+   ресурс. Побільшена кнопка підняла б кожен із 36 рядків, і оператор виграв би
+   в точності, а програв у кількості видимих робіт. Псевдоелемент не займає
+   місця в потоці, тож геометрія рядка не змінюється на жоден піксель.
+   Розширення в КОЖНОМУ випадку менше за власний відступ до сусіда, щоб зони не
+   налазили одна на одну (іконка теки 15px має відступ 6px, розширюємо на 4.5). */
+.q2 .focus-btn,
+.q2 .rowmenu-btn,
+.q2 .sum3d-clear,
+.q2 .folder-link,
+.q2 .job-code-preview{position:relative}
+.q2 .focus-btn::after,
+.q2 .rowmenu-btn::after,
+.q2 .sum3d-clear::after,
+.q2 .folder-link::after,
+.q2 .job-code-preview::after{content:"";position:absolute;z-index:1}
+.q2 .focus-btn::after{inset:-2px}
+.q2 .rowmenu-btn::after{inset:-1px}
+.q2 .sum3d-clear::after{inset:0 -1px}
+.q2 .folder-link::after{inset:-4.5px}
+.q2 .job-code-preview::after{inset:-3px}
 .q2 .row-delete:hover{color:var(--alarm);background:rgba(var(--alarm-rgb), .14)}
 @media (hover:none){.q2 .row-delete{opacity:.55}}
 
@@ -807,7 +871,62 @@ body.qside-collapsed .q2 .worklayout{gap:0}
   .q2 .worklayout{flex-direction:column}
   .q2 .side-panel{flex:0 0 auto;width:100%;flex-direction:row;flex-wrap:wrap}
   .q2 .side-sec{flex:1 1 260px}
-  .q2 .tablewrap{max-height:none}
+}
+/* Півекрана (власник, 15.09.26: частина операторів тримає браузер на половину
+   монітора — на 1920 це 960px). Дев'ять колонок туди не вміщуються жодним
+   стисканням, тож дві найменш потрібні для ДІЇ ховаються: «Технік» і
+   «Оператор» відповідають на питання «хто», а не «що робити далі», і обидва
+   видно в паспорті роботи. Лишається все, чим роботу беруть: наряд, кількість,
+   матеріал, вид, шлях, коментар і Sum3D ID.
+   Ховаємо і td, і th — інакше зсунеться вся шапка. */
+/* Знімається РАНІШЕ, ніж ховаються стовпці, і це не збіг. `min-width:1120px`
+   розпирає таблицю сама по собі, скільки б не важили стовпці, а таблиці
+   дістається ширина вікна МІНУС ліва рейка (203px) і поля — тобто на вікні
+   1280 це вже близько 1050. Поки межа стояла разом із рештою на 1100px, на
+   1280 лишалось 120px прокрутки при дев'яти видимих стовпцях: підігнати їх
+   було нічим, бо підлога трималась на таблиці. */
+/* Вузькі вікна. Дві сходинки, і обидві — чистий CSS.
+   Таблиці дістається ширина вікна МІНУС ліва рейка і поля, тож «вузько»
+   починається набагато раніше за ширину екрана: на вікні 1280 під таблицю
+   лишається близько 1050.
+
+   Спершу я зробив це підгонкою на JavaScript — міряв стовпці й виставляв
+   пікселі. Воно тричі зламалось на рівному місці (найгірше: розгорнув вікно з
+   півекрана — таблиця лишалась стиснутою назавжди, бо спостерігач висів на
+   вузлі, який полл підміняє щоп'ятнадцять секунд). Межі в CSS дають той самий
+   результат і не мають станів, які можна не скинути. */
+@media (max-width:1400px){
+  /* Жорстка підлога таблиці розпирає контейнер сама по собі, скільки б не
+     важили стовпці — без цього решта марна. */
+  .q2 table.qtable{min-width:0}
+  /* Межі ставляться на th І td одночасно. Тільки на td їх замало: при
+     автоматичному розкладі ширину стовпця тримає найширша комірка, а
+     заголовок власної межі не мав — і колонка лишалась старої ширини
+     (перевірено: «Наряд» тримався на 278px при max-width:260 на td). */
+  .q2 table.qtable th.col-order,
+  .q2 table.qtable td.order-id{min-width:190px;max-width:210px}
+  .q2 table.qtable th.col-qty,
+  .q2 table.qtable td.quantity{max-width:64px}
+  .q2 table.qtable th.col-material,
+  .q2 table.qtable td.material-cell{max-width:120px}
+  .q2 table.qtable th.col-kind,
+  .q2 table.qtable td.kind-cell{max-width:96px}
+  .q2 table.qtable th.col-path,
+  .q2 table.qtable td.job-code{max-width:140px}
+  .q2 table.qtable th.col-comment,
+  .q2 table.qtable td.cam,
+  .q2 table.qtable td.comment-cell{max-width:110px}
+}
+/* Півекрана (власник, 15.09.26: частина операторів тримає браузер на половину
+   монітора — на 1920 це 960px). Навіть стиснуті, дев'ять стовпців туди не
+   вміщуються, тож два найменш потрібні для ДІЇ ховаються: «Технік» і
+   «Оператор» відповідають на питання «хто», а не «що робити далі», і обидва
+   видно в паспорті роботи. Лишається все, чим роботу беруть. */
+@media (max-width:1100px){
+  .q2 table.qtable td.technician,
+  .q2 table.qtable th.col-tech,
+  .q2 table.qtable td.calc-op,
+  .q2 table.qtable th.col-op{display:none}
 }
 @media (max-width:560px){
   .q2 .statusline{flex-direction:column;align-items:stretch}
@@ -819,6 +938,9 @@ body.qside-collapsed .q2 .worklayout{gap:0}
   body.layout-edit .q2 .layout-controls{animation:none}
   .q2 .queue-panel{animation:none}
   .q2 table.qtable tbody tr.row-flash{animation:none}
+  /* Без анімації підтвердження лишається статичною рамкою на цей один рендер —
+     сигнал не зникає, зникає лише рух. */
+  .q2 .sum3d-input.is-written{animation:none;border-color:var(--ok, var(--accent-c))}
   .q2 .filters .seg a,.q2 .pill,.q2 .fchip{transition:none}
 }
 
@@ -1030,6 +1152,12 @@ body.qside-collapsed .q2 .worklayout{gap:0}
   color:var(--sig);font-family:var(--font-mono);font-size:var(--fs-0);letter-spacing:.05em;text-transform:uppercase}
 .q2 .s3t-id{border:0;background:var(--card-2);color:var(--ink);font-family:var(--font-mono);
   font-size:var(--fs-2);font-weight:600;padding:0 9px;width:86px;outline:none}
+/* `outline:none` тут стоїть свідомо (поле вбудоване в пігулку лотка й власна
+   рамка розривала б її), але без заміни воно робило поле невидимим з
+   клавіатури: специфічність .q2 .s3t-id б'є базовий input:focus-visible у
+   base.css, а власного правила фокуса не було. Кільце всередину — не ламає
+   геометрію пігулки. */
+.q2 .s3t-id:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--accent)}
 .q2 .s3t-copy{border:0;border-left:1px solid var(--line-2);background:rgba(var(--sig-rgb),.14);
   color:var(--sig);padding:0 10px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;
   font:inherit;font-size:var(--fs-1);font-weight:600}
@@ -1059,6 +1187,8 @@ body.sum3d-panel-open .q2 .s3t-panel{display:flex}
   color:var(--ink-3);border-right:1px solid var(--line)}
 .q2 .s3t-rid{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);
   font-family:var(--font-mono);font-size:var(--fs-2);font-weight:600;padding:6px 8px;outline:none}
+/* Те саме, що й для .s3t-id вище: заміна замість голого outline:none. */
+.q2 .s3t-rid:focus-visible{outline:none;box-shadow:inset 0 0 0 2px var(--accent)}
 .q2 .s3t-rcopy{border:0;border-left:1px solid var(--line);background:rgba(var(--sig-rgb),.13);
   color:var(--sig);padding:0 10px;cursor:pointer;display:flex;align-items:center}
 .q2 .s3t-rcopy svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.7;

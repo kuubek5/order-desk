@@ -16,14 +16,14 @@
            стоїть ІМ'Я КЛІЄНТА, а не номер наряду (див. _order_row.html) — і
            клієнтських робіт більшість: ~62 із 92 на день (§2). Підпис «Наряд»
            не збігався з умістом у двох третинах рядків. #}
-        <th>Наряд / Клієнт{{ _grip }}</th>
+        <th class="col-order">Наряд / Клієнт{{ _grip }}</th>
         <th class="col-qty">{{ sortcol.th('quantity', 'Кількість') }}{{ _grip }}</th>
-        <th>{{ sortcol.th('material', 'Матеріал / Колір') }}{{ _grip }}</th>
-        <th>{{ sortcol.th('kind', 'Вид роботи') }}{{ _grip }}</th>
-        <th>Шлях{{ _grip }}</th>
-        <th>Технік{{ _grip }}</th>
-        <th>Коментар{{ _grip }}</th>
-        <th>Sum3D ID{{ _grip }}</th>
+        <th class="col-material">{{ sortcol.th('material', 'Матеріал / Колір') }}{{ _grip }}</th>
+        <th class="col-kind">{{ sortcol.th('kind', 'Вид роботи') }}{{ _grip }}</th>
+        <th class="col-path">Шлях{{ _grip }}</th>
+        <th class="col-tech">Технік{{ _grip }}</th>
+        <th class="col-comment">Коментар{{ _grip }}</th>
+        <th class="col-sum3d">Sum3D ID{{ _grip }}</th>
         <th class="col-op">Оператор{{ _grip }}</th>
         <th class="col-status">Статус{{ _grip }}</th>
     </tr>
