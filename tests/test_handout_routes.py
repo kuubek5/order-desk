@@ -13,7 +13,7 @@ import pytest
 
 from conftest import run_route
 from fastapi import HTTPException
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -1732,3 +1732,91 @@ def test_the_nameless_group_keeps_the_sheet_order_of_the_day(monkeypatch):
 
     labels = [g["client_label"] for g in ctx["client_groups"]]
     assert labels == ["Aaa", "Без імені", "Zzz"]
+
+
+class TestTwoOperatorsCountTogether:
+    """Двоє операторів шукають коронки в ОДНОМУ лотку — і кожен тисне свій «+1».
+
+    Реальний ранок видачі: рядок таблиці несе кілька коронок, пічки розклали їх
+    по різних закладках, біля лотка стоять двоє. Лічильник рухався читанням
+    значення в Python і записом назад, тож обидва бачили нуль і обидва писали
+    одиницю: знайдена коронка зникала, рядок НІКОЛИ не набирав повноти, а отже
+    синя заливка в таблиці не знімалась — для всієї лабораторії робота
+    лишалась невиданою (відтворено двома сеансами на стенді 15.09.26).
+
+    Перевірка НЕ через потоки: миготливий тест гірший за жодного. Береться те
+    саме, що робить гонка, але детерміновано — сусідній сеанс змінює лічильник
+    ПІСЛЯ того, як наш уже завантажив роботу в памʼять.
+    """
+
+    def _work(self, db, quantity="5", status="нове"):
+        order = _client_order(status=status, row_number=71, sheet_tab=YESTERDAY)
+        order.quantity = quantity
+        db.add(order)
+        db.commit()
+        return order
+
+    def test_the_other_operators_unit_is_not_overwritten(self):
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            order = self._work(db)
+
+            # Наш сеанс уже тримає роботу в памʼяті з порожнім лічильником…
+            assert order.found_units is None
+            # …а сусідній оператор тим часом відмітив три одиниці.
+            with Session(engine) as other:
+                other.execute(
+                    update(Order).where(Order.id == order.id).values(found_units=3)
+                )
+                other.commit()
+
+            result = handout_service.bump_found_units(db, user, order, 1)
+
+            db.expire_all()
+            fresh = db.get(Order, order.id)
+            assert fresh.found_units == 4, (
+                "наш «+1» мав лягти поверх чужих трьох, а не затерти їх"
+            )
+            assert result.found == 4
+            assert fresh.status == "нове", "до повноти ще одна одиниця"
+
+    def test_completeness_is_claimed_once(self):
+        """Останню одиницю закриває ОДИН перехід — не дві однакові події."""
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            order = self._work(db, quantity="2")
+
+            handout_service.bump_found_units(db, user, order, 1)
+            handout_service.bump_found_units(db, user, order, 1)
+            db.expire_all()
+            fresh = db.get(Order, order.id)
+            assert fresh.status == "знайдено при видачі"
+            events = db.scalars(
+                select(StatusEvent).where(
+                    StatusEvent.order_id == order.id,
+                    StatusEvent.status == "знайдено при видачі",
+                )
+            ).all()
+            assert len(events) == 1, f"подій про повноту {len(events)}, а має бути одна"
+
+    def test_step_back_from_completeness_counts_from_the_total(self):
+        """«−1» із повноти йде від УСІХ одиниць, навіть коли колонка порожня.
+
+        Робота, закрита галочкою ще до появи лічильника, несе порожнє поле й
+        статус «знайдено при видачі». Якби база рахунку була не статус-залежна,
+        «мінус один» пішов би від нуля — і замість «4 з 5» вийшло б «порожньо».
+        """
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            order = self._work(db, status="знайдено при видачі")
+            assert order.found_units is None
+
+            handout_service.bump_found_units(db, user, order, -1)
+
+            db.expire_all()
+            fresh = db.get(Order, order.id)
+            assert fresh.found_units == 4, "мало лишитись 4 з 5"
+            assert fresh.status != "знайдено при видачі", "повнота мала знятись"

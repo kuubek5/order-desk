@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import or_, select
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.business_day import business_date_of, business_today
@@ -535,27 +535,60 @@ def bump_found_units(db: Session, user, order: Order, delta: int) -> "UnitsResul
         return None
 
     was_complete = order.status == STATUS_FOUND
-    current = found_units(order)
-    new_value = max(0, min(total, current + delta))
-    if new_value == current:
-        return UnitsResult(found=current, total=total)
+
+    # Лічильник рухається ОДНИМ атомарним UPDATE, а не читанням-зміною-записом.
+    # Двоє операторів шукають коронки в одному лотку й тиснуть свій «+1» в одну
+    # мить; на читанні-записі обидва бачили нуль і обидва писали одиницю —
+    # знайдена коронка зникала, рядок ніколи не набирав повноти, і синя заливка
+    # в таблиці не знімалась, тобто для всієї лабораторії робота лишалась
+    # невиданою (відтворено двома сеансами 15.09.26: два «+1» дали found=1).
+    # Той самий прийом, що з `rule.hits` — рахує база, не Python.
+    #
+    # База рахунку СТАТУС-ЗАЛЕЖНА, як і `found_units()`: у завершеної роботи
+    # колонка буває порожня (її закрили галочкою до появи лічильника), і голий
+    # `coalesce(found_units, 0)` зламав би повернення з повноти — «мінус один»
+    # від total пішов би від нуля.
+    base = case((Order.status == STATUS_FOUND, total), else_=func.coalesce(Order.found_units, 0))
+    moved = func.max(0, func.min(total, base + delta))
+    # Межу перевіряє САМ запит: інакше «нічого не змінилось» довелося б
+    # визначати за прочитаним раніше числом, тобто знову за застарілим.
+    guard = base < total if delta > 0 else base > 0
+    row = db.execute(
+        update(Order)
+        .where(Order.id == order.id, guard)
+        .values(found_units=func.nullif(moved, 0))
+        .returning(Order.found_units)
+        .execution_options(synchronize_session=False)
+    ).first()
+    # Стан у сесії застарів після прямого UPDATE — інакше наступний flush
+    # повернув би на місце старе число.
+    db.expire(order, ["found_units", "status"])
+    if row is None:
+        return UnitsResult(found=found_units(order), total=total)
+    new_value = row[0] or 0
 
     result = UnitsResult(found=new_value, total=total)
     if new_value >= total:
-        order.found_units = total
         if not was_complete:
-            order.status = STATUS_FOUND
-            db.add(
-                StatusEvent(
-                    order_id=order.id,
-                    operator_id=user.id,
-                    status=order.status,
-                    actor=user.username,
+            # Перехід виборює ОДИН запит: без цієї умови двоє операторів
+            # дописали б у хронологію дві однакові події «знайдено при видачі».
+            if db.execute(
+                update(Order)
+                .where(Order.id == order.id, Order.status != STATUS_FOUND)
+                .values(status=STATUS_FOUND)
+                .execution_options(synchronize_session=False)
+            ).rowcount:
+                db.expire(order, ["status"])
+                db.add(
+                    StatusEvent(
+                        order_id=order.id,
+                        operator_id=user.id,
+                        status=STATUS_FOUND,
+                        actor=user.username,
+                    )
                 )
-            )
-            result.completed = True
+                result.completed = True
     else:
-        order.found_units = new_value or None
         if was_complete:
             # Той самий поворот, що в `unmark_found`: ПОПЕРЕДНІЙ статус, а не
             # «нове» — робота на видачі за визначенням уже відфрезерована.
@@ -567,16 +600,25 @@ def bump_found_units(db: Session, user, order: Order, delta: int) -> "UnitsResul
                 )
                 .order_by(StatusEvent.id.desc())
             ).first()
-            order.status = previous.status if previous else "відфрезеровано"
-            db.add(
-                StatusEvent(
-                    order_id=order.id,
-                    operator_id=user.id,
-                    status=order.status,
-                    actor=user.username,
+            back_to = previous.status if previous else "відфрезеровано"
+            # Так само один виборений перехід: двоє, що зняли по одиниці з
+            # повної роботи, інакше вернули б статус двічі й двічі це записали.
+            if db.execute(
+                update(Order)
+                .where(Order.id == order.id, Order.status == STATUS_FOUND)
+                .values(status=back_to)
+                .execution_options(synchronize_session=False)
+            ).rowcount:
+                db.expire(order, ["status"])
+                db.add(
+                    StatusEvent(
+                        order_id=order.id,
+                        operator_id=user.id,
+                        status=back_to,
+                        actor=user.username,
+                    )
                 )
-            )
-            result.reopened = True
+                result.reopened = True
     db.commit()
     return result
 
