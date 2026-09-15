@@ -94,6 +94,20 @@
                         перевірте · {{ group.issued_from_sheet|length }}
                     </span>
                     {% endif %}
+                    {# Схоже написання того самого клієнта стоїть окремою
+                       карткою. Не зливаємо (рішення власника 15.09.26):
+                       «Ковальчук» може бути й іншою людиною, а зліплені
+                       автоматично картки — це чужа коронка в чужому пакеті.
+                       Тому просто звʼязок: клік веде до сусідньої картки, щоб
+                       роботи однієї людини не губились у різних кінцях
+                       екрана. #}
+                    {% for same in group.similar %}
+                    <a class="samename" href="#handout-client-{{ same.position }}" data-nav="{{ same.position }}"
+                       title="Схоже написання того самого клієнта — перейти до картки «{{ same.name }}»">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+                        {{ same.name }}
+                    </a>
+                    {% endfor %}
                 </h2>
                 <span class="cstat mono">{{ group.works_count }} {% if group.works_count == 1 %}робота{% elif group.works_count < 5 %}роботи{% else %}робіт{% endif %}{% if group.units_total %} · {{ group.units_total }} од.{% endif %}</span>
                 <div class="right">

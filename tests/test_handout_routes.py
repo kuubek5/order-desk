@@ -1265,6 +1265,199 @@ class TestMarkFoundIsInstant:
         assert seen_status == {"dirty": False}
 
 
+class TestSimilarClientNames:
+    """«Ковальчук» і «Яна Ковальчук» — той самий клієнт, записаний по-різному.
+
+    Бойовий випадок 15.09.26: у таблиці це рядки 93 і 98, на видачі — дві
+    картки в різних кінцях екрана, і власник шукав, «чому частина робіт є, а
+    частини немає». Картки свідомо НЕ зливаються (його ж рішення): «Ковальчук»
+    може виявитись іншою людиною, а зліплені автоматично картки означали б
+    чужу коронку в чужому пакеті. Тому — звʼязок."""
+
+    def test_the_same_client_written_two_ways_is_linked(self):
+        links = handout_service.similar_group_names(
+            ["Ковальчук", "Яна Ковальчук", "Басараб"]
+        )
+        assert links["Ковальчук"] == ["Яна Ковальчук"]
+        assert links["Яна Ковальчук"] == ["Ковальчук"]
+        assert "Басараб" not in links, "звʼязок показуємо лише там, де він є"
+
+    def test_a_prefix_word_does_not_make_a_pair(self):
+        """«Стоматологія Ритченка» — той самий клієнт; «R» і «Роман
+        Островский» — ні, хоча одне входить в інше. Саме тому мало самої
+        схожості: потрібне спільне СЛОВО завдовжки хоча б чотири букви."""
+        links = handout_service.similar_group_names(
+            ["Ритченка", "Стоматологія Ритченка", "R", "Роман Островский", "Vision", "Vivcharyk"]
+        )
+        assert links["Ритченка"] == ["Стоматологія Ритченка"]
+        assert "R" not in links
+        assert "Роман Островский" not in links
+        assert "Vision" not in links, "різні клієнти з похожим початком не злипаються"
+
+    def test_nameless_group_never_links(self):
+        """Група «Без імені» — не клієнт, а підказка дописати імʼя в таблицю.
+        Звʼязок від неї вів би до випадкової картки."""
+        from app.services.handout import NAMELESS_CLIENT_KEY
+
+        links = handout_service.similar_group_names([NAMELESS_CLIENT_KEY, "Ковальчук"])
+        assert links == {}
+
+
+class TestPartlyFoundUnits:
+    """«Знайдено 2 з 3»: частина одиниць однієї роботи.
+
+    Рядок таблиці несе кілька коронок, а пічки розкладають їх по різних
+    закладках (CLAUDE.md §2), тож «двох знайшов, третьої ще немає» — норма
+    ранкової видачі. Досі галочка була все-або-нічого і залишок жив у голові
+    оператора (прохання власника 15.09.26)."""
+
+    def _three(self, db, status="нове"):
+        order = _client_order(status=status, row_number=98, sheet_tab=YESTERDAY)
+        order.quantity = "3"
+        db.add(order)
+        db.commit()
+        return db.scalar(select(Order))
+
+    def test_partial_click_does_not_touch_the_sheet(self, monkeypatch):
+        """Головне правило. Синя заливка — сигнал видачі для ВСІЄЇ лабораторії;
+        зняти її, поки третя коронка ще не знайдена, означає сказати логістам і
+        техніку «робота закрита», і хвіст загубиться."""
+        engine = _database()
+        queued = []
+        monkeypatch.setattr(
+            handout_router_mod, "set_client_row_fill_background",
+            lambda order_id, *, blue: queued.append((order_id, blue)),
+        )
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            order = self._three(db)
+
+            run_route(handout_router_mod.bump_units(
+                request=_request(user.id), order_id=order.id,
+                delta=1, source="all", day=YESTERDAY, db=db,
+            ))
+            db.refresh(order)
+            assert order.found_units == 1
+            assert order.status == "нове", "часткова відмітка не закриває роботу"
+            assert queued == [], "у таблицю на частковості не пишемо"
+
+    def test_last_unit_closes_the_work_and_clears_the_fill(self, monkeypatch):
+        """Дійшли до M — те саме, що галочка: статус, запис в історію і знята
+        заливка. Інакше оператор, який рахував одиницями, мусив би ще й
+        натиснути галочку, а робота двічі змінювала б стан."""
+        engine = _database()
+        queued = []
+        monkeypatch.setattr(
+            handout_router_mod, "set_client_row_fill_background",
+            lambda order_id, *, blue: queued.append((order_id, blue)),
+        )
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            order = self._three(db)
+            for _ in range(3):
+                run_route(handout_router_mod.bump_units(
+                    request=_request(user.id), order_id=order.id,
+                    delta=1, source="all", day=YESTERDAY, db=db,
+                ))
+            db.refresh(order)
+            assert order.status == "знайдено при видачі"
+            assert queued == [(order.id, False)], "заливку знімаємо РАЗ, на останній одиниці"
+            events = db.scalars(select(StatusEvent).where(StatusEvent.order_id == order.id)).all()
+            assert [e.status for e in events] == ["знайдено при видачі"]
+
+    def test_step_back_from_full_returns_the_blue_fill(self, monkeypatch):
+        """Помилився на останній — робота знову відкрита, і в таблиці мусить
+        повернутись синє. Порожня заливка під ненайденою коронкою читається
+        всією лабораторією як «видано»."""
+        engine = _database()
+        queued = []
+        monkeypatch.setattr(
+            handout_router_mod, "set_client_row_fill_background",
+            lambda order_id, *, blue: queued.append((order_id, blue)),
+        )
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            order = self._three(db, status="відфрезеровано")
+            run_route(handout_router_mod.mark_found(
+                request=_request(user.id), order_id=order.id,
+                source="all", day=YESTERDAY, db=db,
+            ))
+            queued.clear()
+
+            run_route(handout_router_mod.bump_units(
+                request=_request(user.id), order_id=order.id,
+                delta=-1, source="all", day=YESTERDAY, db=db,
+            ))
+            db.refresh(order)
+            assert order.found_units == 2
+            assert order.status == "відфрезеровано", "вертаємо ПОПЕРЕДНІЙ статус, не «нове»"
+            assert queued == [(order.id, True)]
+
+    def test_issued_work_is_not_counted(self, monkeypatch):
+        """Видану роботу лічильник не чіпає: її повертає «зняти видано»
+        (`unissue`), і мовчки переписати виданий стан кліком по плюсу не можна."""
+        engine = _database()
+        queued = []
+        monkeypatch.setattr(
+            handout_router_mod, "set_client_row_fill_background",
+            lambda order_id, *, blue: queued.append((order_id, blue)),
+        )
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            order = self._three(db, status="видано")
+
+            run_route(handout_router_mod.bump_units(
+                request=_request(user.id), order_id=order.id,
+                delta=-1, source="all", day=YESTERDAY, db=db,
+            ))
+            db.refresh(order)
+            assert order.status == "видано"
+            assert order.found_units is None
+            assert queued == []
+
+    def test_unmark_clears_the_counter(self, monkeypatch):
+        """Знята галочка означає «нічого не знайдено». Лишений лічильник
+        показав би рядок як «3 з 3» — тобто майже закритий."""
+        engine = _database()
+        monkeypatch.setattr(
+            handout_router_mod, "set_client_row_fill_background",
+            lambda order_id, *, blue: None,
+        )
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            order = self._three(db, status="відфрезеровано")
+            run_route(handout_router_mod.bump_units(
+                request=_request(user.id), order_id=order.id,
+                delta=1, source="all", day=YESTERDAY, db=db,
+            ))
+            run_route(handout_router_mod.mark_found(
+                request=_request(user.id), order_id=order.id,
+                source="all", day=YESTERDAY, db=db,
+            ))
+            db.refresh(order)
+            assert order.found_units is None, "повнота живе в статусі, не в лічильнику"
+
+            run_route(handout_router_mod.unmark_found(
+                request=_request(user.id), order_id=order.id,
+                source="all", day=YESTERDAY, db=db,
+            ))
+            db.refresh(order)
+            assert order.found_units is None
+
+    def test_single_unit_work_has_nothing_to_count(self, monkeypatch):
+        """Одна одиниця — лічильника немає зовсім: там працює сама галочка, і
+        зайвий плюс на кожному рядку був би шумом на весь екран."""
+        engine = _database()
+        with Session(engine, expire_on_commit=False) as db:
+            user = _user(db)
+            db.add(_client_order(status="нове", row_number=93, sheet_tab=YESTERDAY))
+            db.commit()
+            order = db.scalar(select(Order))
+            assert handout_service.bump_found_units(db, user, order, 1) is None
+            assert order.found_units is None
+            assert order.status == "нове"
+
+
 class TestScrollStaysPut:
     """Відмітка «знайдено» не має перезавантажувати сторінку.
 

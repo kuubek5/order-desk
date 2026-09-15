@@ -522,3 +522,39 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .htop:active{transform:translateY(1px)}
 .handoutv2 .htop svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 @media (prefers-reduced-motion:reduce){.handoutv2 .htop{transition:none}}
+
+/* ── Лічильник одиниць «знайдено N з M» ─────────────────────────────────
+   Живе поруч із кількістю й поки нічого не знайдено складається з самого
+   тихого «+»: таких рядків на екрані десятки, і постійне «0 з 3» під кожним
+   було б шумом. Щойно знайдено хоч одну — лічильник загоряється бурштином,
+   бо це вже НЕЗАКРИТИЙ хвіст, який завтра шукатимуть. */
+.handoutv2 .wunits{display:inline-flex;align-items:center;gap:3px;margin-left:6px;vertical-align:middle}
+.handoutv2 .wunits form{display:inline-flex}
+.handoutv2 .wu-step{
+  width:18px;height:18px;line-height:1;padding:0;border-radius:5px;cursor:pointer;
+  display:grid;place-items:center;font-size:13px;font-weight:700;
+  color:var(--ink-3);background:transparent;border:1px solid var(--raise-2);
+  transition:color .12s ease,border-color .12s ease,background .12s ease;
+}
+.handoutv2 .wu-step:hover{color:var(--accent);border-color:var(--accent);background:var(--field)}
+.handoutv2 .wu-n{
+  font-size:var(--fs-0);font-weight:600;color:var(--accent);padding:0 3px;white-space:nowrap;
+}
+.handoutv2 .wu-n i{font-style:normal;color:var(--ink-3);margin:0 4px;font-weight:400}
+.handoutv2 .wunits.on .wu-step{color:var(--ink-2)}
+
+/* ── «Схоже написання» в шапці картки ───────────────────────────────────
+   Тиха підказка, а не дія: картки клієнтів свідомо не зливаються, тож це
+   лише місток до сусідньої картки. Тому колір «другого плану» й тонка межа —
+   поруч із іменем клієнта воно не має змагатись із самим іменем. */
+.handoutv2 .samename{
+  display:inline-flex;align-items:center;gap:4px;margin-left:8px;
+  padding:1px 7px 1px 5px;border-radius:99px;
+  font-size:var(--fs-0);font-weight:500;letter-spacing:0;
+  color:var(--ink-3);background:var(--field);border:1px solid var(--raise-2);
+  text-decoration:none;vertical-align:middle;white-space:nowrap;max-width:220px;
+  overflow:hidden;text-overflow:ellipsis;
+  transition:color .12s ease,border-color .12s ease;
+}
+.handoutv2 .samename:hover{color:var(--accent);border-color:var(--accent)}
+.handoutv2 .samename svg{width:12px;height:12px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}

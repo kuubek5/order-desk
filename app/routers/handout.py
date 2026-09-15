@@ -53,7 +53,9 @@ from app.services.handout import (
     handout_group_key,
     handout_day_totals,
     HANDOUT_ALL_DAYS,
+    bump_found_units,
     entries_for_material,
+    found_units,
     handout_client_matches,
     handout_day_options,
     handout_eligible_orders,
@@ -64,7 +66,9 @@ from app.services.handout import (
     matched_folders,
     scan_export_for_clients,
     scan_export_latest_for_clients,
+    similar_group_names,
     stale_folder_day,
+    work_units,
 )
 from app.services.handout_qc import HANDOUT_QC_ITEMS, qc_checklist_enabled
 from app.services.order_dates import parse_sheet_tab, sheet_order_key
@@ -261,6 +265,11 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             match, _export_root, _preview_roots, _validated_roots
         )
         for order in group_orders:
+            # Лічильник одиниць рахуємо ТУТ, а не в шаблоні: обидва режими
+            # списку малюють один партіал (`_handout_work_row.html`), і
+            # кількість — вільний текст, який треба розібрати однаково.
+            order.units_total = work_units(order)
+            order.units_found = found_units(order)
             work_day = parse_sheet_tab(order.sheet_tab)
             order.export_matches = entries_for_material(
                 order.material_color, export_entries, work_day
@@ -354,6 +363,19 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
         group["is_current"] = not group["all_found"] and not current_marked
         if group["is_current"]:
             current_marked = True
+
+    # Схожі написання одного клієнта. Картки НЕ зливаємо (рішення власника
+    # 15.09.26) — лише кажемо, що поруч є «Яна Ковальчук», і ведемо туди:
+    # роботи однієї людини інакше лежать у двох місцях екрана, і частина
+    # губиться з очей. Рахуємо ПІСЛЯ нумерації, бо посилання адресує позицію.
+    _similar = similar_group_names([g["client_name"] for g in client_groups])
+    _position_of = {g["client_name"]: g["position"] for g in client_groups}
+    for group in client_groups:
+        group["similar"] = [
+            {"name": name, "position": _position_of[name]}
+            for name in _similar.get(group["client_name"], [])
+            if name in _position_of
+        ]
 
     # Плаский режим: ті самі роботи, але суцільним списком у порядку рядків
     # таблиці. Групи лишаються джерелом — так плаский список успадковує все,
@@ -585,6 +607,9 @@ def mark_found(
         raise HTTPException(status_code=404, detail="order not found")
 
     order.status = "знайдено при видачі"
+    # Проміжний лічильник одиниць більше ні до чого: повноту несе СТАТУС, а
+    # лишений тут недорахунок показав би закриту роботу як «2 з 3».
+    order.found_units = None
     db.add(
         StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username)
     )
@@ -600,6 +625,44 @@ def mark_found(
     # HTMX-клік підмінює лише список карток — сторінка не перезавантажується,
     # тож скрол лишається там, де оператор його поставив. Редірект лишається
     # для звичайної форми (без JS) і для прямих переходів.
+    if request.headers.get("HX-Request"):
+        return handout_cards_response(request, user, source, day, db)
+    return RedirectResponse(handout_back_url(source, day), status_code=303)
+
+
+@router.post("/orders/{order_id}/found-units")
+# Звичайний `def`, не `async def` — як і решта роутів видачі: обробник
+# перебудовує екран, а той ходить по мережевій шарі (див. коментар до
+# `mark_found`). Сторож — tests/test_event_loop_hygiene.py.
+def bump_units(
+    request: Request,
+    order_id: int,
+    delta: int = Form(1),
+    source: str = Form("all"),
+    day: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """«Знайдено N з M»: одна одиниця роботи за клік.
+
+    Уся логіка — в `handout.bump_found_units`; тут лишається рівно те, що
+    роут і мусить робити: хто питає, що відповісти й коли писати в таблицю.
+    Запис у таблицю йде ЛИШЕ на переході повноти: часткова відмітка синю
+    заливку не чіпає (§2 — заливка це сигнал видачі для всієї лабораторії)."""
+    user = get_current_user(request, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="увійдіть в систему")
+
+    order = db.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="order not found")
+
+    result = bump_found_units(db, user, order, 1 if delta >= 0 else -1)
+    if result is not None and not sync_control.is_paused():
+        if result.completed:
+            set_client_row_fill_background(order.id, blue=False)
+        elif result.reopened:
+            set_client_row_fill_background(order.id, blue=True)
+
     if request.headers.get("HX-Request"):
         return handout_cards_response(request, user, source, day, db)
     return RedirectResponse(handout_back_url(source, day), status_code=303)
@@ -639,6 +702,9 @@ def unmark_found(
         .order_by(StatusEvent.id.desc())
     ).first()
     order.status = previous.status if previous else "відфрезеровано"
+    # Знята галочка означає «нічого не знайдено», а не «знайдено всі, але
+    # статус інший»: інакше рядок одразу показав би лічильник «3 з 3».
+    order.found_units = None
     db.add(
         StatusEvent(order_id=order.id, operator_id=user.id, status=order.status, actor=user.username)
     )
@@ -764,6 +830,9 @@ def unissue_order(
     order.status = previous.status if previous else "відфрезеровано"
     order.issue_locked = True
     order.issued_source = None
+    # Робота повертається в чергу видачі цілою: лічильник одиниць рахує
+    # ПОТОЧНИЙ пошук у лотку, а не те, що колись вважалось виданим.
+    order.found_units = None
     db.add(StatusEvent(
         order_id=order.id, operator_id=user.id, status=order.status, actor=user.username,
         note="скасовано хибне «видано» з таблиці",

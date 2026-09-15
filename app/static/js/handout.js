@@ -163,7 +163,10 @@ function scrollHandoutTo(el, block) {
 }
 
 document.addEventListener("click", (event) => {
-  const link = event.target.closest(".daynav a[data-nav]");
+  // Той самий перехід обслуговує ДВА джерела: покажчик дня й посилання
+  // «схоже написання» в шапці картки — обидва адресують картку за позицією,
+  // і другий обробник розійшовся б із першим на першій же правці.
+  const link = event.target.closest(".daynav a[data-nav], a.samename[data-nav]");
   if (!link) return;
   const nav = link.dataset.nav;
   const card = document.getElementById("handout-client-" + nav);

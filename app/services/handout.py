@@ -419,6 +419,163 @@ ISSUE_GROUP_ISSUED = "issued"
 """Статуси проставлено й закомічено; лишається запис у таблицю."""
 
 
+#: Наскільки схожими мають бути два написання, щоб запропонувати звʼязок.
+#: Той самий поріг, що й у зіставленні з теками (`client_matcher`) — це не
+#: «схожі люди», а «та сама людина, записана інакше».
+SIMILAR_NAME_THRESHOLD = 90.0
+
+#: Найкоротше спільне слово, яке ще щось доводить. Без цієї умови «R» і
+#: «Роман Островский» злипались би на самому входженні рядка, а на екрані
+#: видачі хибна підказка «це той самий» дорожча за відсутню: за нею йде чужа
+#: коронка в чужому пакеті.
+SIMILAR_MIN_TOKEN = 4
+
+
+def _name_tokens(name: str) -> set:
+    return {t for t in name.lower().replace(".", " ").replace(",", " ").split() if t}
+
+
+def similar_group_names(names) -> dict:
+    """Пари карток видачі, які, найпевніше, той САМИЙ клієнт.
+
+    Оператор записує клієнта як доведеться: «Ковальчук» і «Яна Ковальчук»,
+    «Ритченка» і «Стоматологія Ритченка» — у таблиці це різні рядки, а на
+    видачі різні картки, тож роботи однієї людини лежать у двох місцях екрана
+    й частина губиться з очей (бойовий випадок 15.09.26, Ковальчук).
+
+    Картки свідомо НЕ зливаються (рішення власника 15.09.26): «Ковальчук» може
+    бути й іншою людиною, а зліплені автоматично картки означали б чужу
+    коронку в чужому пакеті. Тут лише ЗВʼЯЗОК — кожна картка каже, що поруч є
+    схоже імʼя, і веде до нього.
+
+    Умов дві, і потрібні обидві: висока схожість за словами (порядок слів не
+    важить — «Яна Ковальчук» проти «Ковальчук») І спільне слово завдовжки хоча
+    б `SIMILAR_MIN_TOKEN`. Друга умова відсікає однобуквені й куці імена, які
+    «входять» у будь-що."""
+    from rapidfuzz import fuzz
+
+    real = [n for n in names if n and n != NAMELESS_CLIENT_KEY]
+    tokens = {n: _name_tokens(n) for n in real}
+    links: dict = {n: [] for n in real}
+    for i, first in enumerate(real):
+        for second in real[i + 1:]:
+            shared = {
+                t for t in tokens[first] & tokens[second] if len(t) >= SIMILAR_MIN_TOKEN
+            }
+            if not shared:
+                continue
+            if fuzz.token_set_ratio(first.lower(), second.lower()) < SIMILAR_NAME_THRESHOLD:
+                continue
+            links[first].append(second)
+            links[second].append(first)
+    return {name: found for name, found in links.items() if found}
+
+
+@dataclass
+class UnitsResult:
+    """Чим скінчився клік по лічильнику одиниць."""
+
+    found: int
+    total: int
+    #: Знайдено ВСЕ — роботу щойно закрито, заливку в таблиці треба зняти.
+    completed: bool = False
+    #: Була закрита, стала частковою — заливку треба повернути.
+    reopened: bool = False
+
+
+def work_units(order: Order) -> int:
+    """Скільки одиниць у роботі за коміркою кількості (вільний текст)."""
+    return quantity_units(order.quantity)
+
+
+def found_units(order: Order) -> int:
+    """Скільки одиниць уже знайдено, з поправкою на статус.
+
+    Поле порожнє у двох РІЗНИХ станах — «ще нічого не знайшли» і «знайшли все
+    ще до появи лічильника». Розрізняє їх статус: він лишається джерелом
+    правди про повноту, а поле — лише про проміжок."""
+    if order.status in (STATUS_FOUND, STATUS_ISSUED):
+        return work_units(order)
+    value = order.found_units or 0
+    return max(0, min(value, work_units(order)))
+
+
+def is_partly_found(order: Order) -> bool:
+    """Знайдено частину одиниць — рядок показує лічильник, а не просто галочку."""
+    total = work_units(order)
+    return total > 1 and 0 < found_units(order) < total
+
+
+def bump_found_units(db: Session, user, order: Order, delta: int) -> "UnitsResult | None":
+    """Посунути лічильник «знайдено N з M» на одну одиницю.
+
+    Навіщо взагалі. Рядок таблиці несе кілька коронок, а пічки розкладають їх
+    по різних закладках, тож «двох знайшов, третьої ще немає» — норма ранкової
+    видачі (§2). Досі це не мало де записатись: галочка все-або-нічого, і
+    залишок жив у голові оператора.
+
+    Три правила живуть тут, а не в роуті:
+
+    * дійшли до M — робота стає «знайдено при видачі» рівно так, як від
+      галочки, і кличний код знімає синю заливку;
+    * впали нижче M із закритої — статус вертається (як в `unmark_found`), а
+      заливку кличний код малює назад: у таблиці не має лишитись знята
+      заливка під ненайденою коронкою;
+    * робота «видано» не рухається зовсім — її повертає `unissue`.
+
+    `None` — рахувати нічого (одна одиниця чи порожня кількість) або робота
+    вже видана; кличний код тоді не пише в таблицю."""
+    total = work_units(order)
+    if total <= 1 or order.status == STATUS_ISSUED:
+        return None
+
+    was_complete = order.status == STATUS_FOUND
+    current = found_units(order)
+    new_value = max(0, min(total, current + delta))
+    if new_value == current:
+        return UnitsResult(found=current, total=total)
+
+    result = UnitsResult(found=new_value, total=total)
+    if new_value >= total:
+        order.found_units = total
+        if not was_complete:
+            order.status = STATUS_FOUND
+            db.add(
+                StatusEvent(
+                    order_id=order.id,
+                    operator_id=user.id,
+                    status=order.status,
+                    actor=user.username,
+                )
+            )
+            result.completed = True
+    else:
+        order.found_units = new_value or None
+        if was_complete:
+            # Той самий поворот, що в `unmark_found`: ПОПЕРЕДНІЙ статус, а не
+            # «нове» — робота на видачі за визначенням уже відфрезерована.
+            previous = db.scalars(
+                select(StatusEvent)
+                .where(
+                    StatusEvent.order_id == order.id,
+                    StatusEvent.status != STATUS_FOUND,
+                )
+                .order_by(StatusEvent.id.desc())
+            ).first()
+            order.status = previous.status if previous else "відфрезеровано"
+            db.add(
+                StatusEvent(
+                    order_id=order.id,
+                    operator_id=user.id,
+                    status=order.status,
+                    actor=user.username,
+                )
+            )
+            result.reopened = True
+    db.commit()
+    return result
+
+
 @dataclass(frozen=True)
 class IssueGroupResult:
     """Що зробила видача групи і що лишилось дописати в таблицю.

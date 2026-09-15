@@ -145,6 +145,7 @@ POST /orders/{order_id}/change-seen
 POST /orders/{order_id}/comments
 POST /orders/{order_id}/delete
 POST /orders/{order_id}/focus
+POST /orders/{order_id}/found-units
 POST /orders/{order_id}/mark-found
 POST /orders/{order_id}/operator
 POST /orders/{order_id}/status

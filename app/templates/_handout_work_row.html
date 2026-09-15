@@ -86,6 +86,46 @@ title="Видано в CRM{% if issued_by.get(order.id) %}: {{ issued_by[order.i
         <div class="top">
             {% include "_matpair.html" %}
             <span class="wqty">{{ order.quantity or '—' }} <em>од.</em></span>
+            {# Лічильник «знайдено N з M». Рядок таблиці несе кілька коронок, а
+               пічки розкладають їх по різних закладках (§2), тож «двох знайшов,
+               третьої ще немає» — норма ранкової видачі, якій досі не було де
+               записатись.
+
+               Показуємо ЛИШЕ там, де є що рахувати: одиниць більше однієї й
+               робота ще не видана. Поки нічого не знайдено, видно самий тихий
+               «+1» — на екрані таких рядків десятки, і постійне «0 з 3» під
+               кожним було б шумом, а не сигналом.
+
+               Часткова відмітка НЕ чіпає синю заливку в таблиці: заливка —
+               сигнал видачі для всієї лабораторії, і зняти її з ненайденою
+               коронкою означає сказати логістам «робота закрита». #}
+            {% if (order.units_total or 0) > 1 and order.status != 'видано' %}
+            {% set found = order.units_found or 0 %}
+            <span class="wunits{% if found %} on{% endif %}">
+                {% if found %}
+                <form method="post" action="/orders/{{ order.id }}/found-units"
+                      hx-post="/orders/{{ order.id }}/found-units"
+                      hx-target="#handout-list" hx-swap="outerHTML">
+                    <input type="hidden" name="source" value="{{ source }}">
+                    <input type="hidden" name="day" value="{{ day_param }}">
+                    <input type="hidden" name="delta" value="-1">
+                    <button type="submit" class="wu-step" title="Помилився: одиницею менше">−</button>
+                </form>
+                <span class="wu-n mono" title="Знайдено {{ found }} з {{ order.units_total }} одиниць">{{ found }}<i>з</i>{{ order.units_total }}</span>
+                {% endif %}
+                {% if found < order.units_total %}
+                <form method="post" action="/orders/{{ order.id }}/found-units"
+                      hx-post="/orders/{{ order.id }}/found-units"
+                      hx-target="#handout-list" hx-swap="outerHTML">
+                    <input type="hidden" name="source" value="{{ source }}">
+                    <input type="hidden" name="day" value="{{ day_param }}">
+                    <input type="hidden" name="delta" value="1">
+                    <button type="submit" class="wu-step add"
+                            title="Знайдено ще одну одиницю з {{ order.units_total }}{% if found + 1 == order.units_total %} — остання, робота закриється{% endif %}">+</button>
+                </form>
+                {% endif %}
+            </span>
+            {% endif %}
             {% if not selected_day and order.sheet_tab %}<span class="wday">{{ order.sheet_tab[:5] }}</span>{% endif %}
             {# Заливка рядка не доїхала в таблицю. Доти цей збій був НІМИЙ: у
                CRM робота видана, у таблиці лишилось синє — а видачу вся
