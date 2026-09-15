@@ -532,7 +532,7 @@ main.handoutv2{max-width:1440px;margin:0 auto;padding:18px 20px}
 .handoutv2 .wunits form{display:inline-flex}
 .handoutv2 .wu-step{
   width:18px;height:18px;line-height:1;padding:0;border-radius:5px;cursor:pointer;
-  display:grid;place-items:center;font-size:13px;font-weight:700;
+  display:grid;place-items:center;font-size:var(--fs-2);font-weight:700;
   color:var(--ink-3);background:transparent;border:1px solid var(--raise-2);
   transition:color .12s ease,border-color .12s ease,background .12s ease;
 }
