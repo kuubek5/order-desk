@@ -96,6 +96,15 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 .mc:not(.t-run) .gear svg{animation-play-state:paused}
 @keyframes turn{to{transform:rotate(360deg)}}
 
+/* Блок робіт стискається першим і ріжеться по СВОЇЙ межі. Без цього при
+   тісній сітці (13 карток у три ряди) другий клієнт налізав на рядок Sum3D —
+   картка виглядала як помилка рендера, а не як брак місця. */
+.mc-work{min-height:0;flex:0 1 auto;overflow:hidden}
+/* Підпис «остання робота» — той самий регістр і трекінг, що в інших
+   службових підписів картки (`sum3d`), щоб його не читали як назву. */
+.mc-last{margin-top:1vh;font:600 clamp(9px,.72vw,14px) var(--font-mono);
+  letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.mc-last+.mc-cl{margin-top:.2vh}
 .mc-cl{margin-top:1vh;font:600 clamp(14px,1.4vw,28px)/1.18 var(--font-body);color:#cbbfae;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mc-mat{margin-top:.3vh;font-size:clamp(12px,1.2vw,24px);line-height:1.2;color:#8d8272;
@@ -107,6 +116,10 @@ body{background:#0d0a06;color:var(--ink);font:16px/1.4 var(--font-body)}
 .mc.t-bad .mc-note{color:var(--alarm-ink);font-weight:600}
 /* Sum3D стоїть НИЖЧЕ середини картки (`flex-end`): вгорі його притискало
    до тексту роботи, і два різні за призначенням блоки зливались в один. */
+/* НЕ додавати сюди `min-height:0`: на тісній картці комірка стиснулась би
+   нижче за власний текст, і `overflow:hidden` розрізав би Sum3D навпіл —
+   цифри виглядали як закреслені (спіймано на 13 картках 15.09.26). Стискатись
+   має `.mc-work`, а не рядок ідентифікатора. */
 .mc-id{flex:1;display:flex;align-items:flex-end;padding-bottom:.9vh;gap:.6vw;
   font-family:var(--font-mono);font-size:clamp(15px,1.6vw,32px);color:#9d9282;
   font-variant-numeric:tabular-nums;letter-spacing:-.02em;white-space:nowrap;

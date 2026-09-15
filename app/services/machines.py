@@ -257,6 +257,17 @@ class MachineState:
     # «заголовки є, але .iso серед них немає» — а це різні причини й різні
     # виправлення. Тримаємо кілька останніх, обрізаних: показуємо адміну.
     titles_seen: Optional[list[str]] = None
+    # ОСТАННЯ програма, яку ми бачили на цьому верстаті, — не стирається,
+    # коли вона зникає з екрана. Потрібна рівно для стану «завершено»: на
+    # верстатах нового покоління екран SUMMARY назви програми не несе, тож
+    # `sum3d_id` вище обнуляється, і щойно відфрезерувана робота зникала з
+    # картки. На RemiCORE .iso лишається в заголовку вікна й після кінця, тож
+    # два завершені верстати виглядали як різні системи (скарга з цеху
+    # 15.09.26). Живе в памʼяті процесу: після рестарту застосунку верстат,
+    # що вже стоїть завершеним, знову буде без назви — це чесно, ми справді
+    # більше не знаємо, що на ньому було.
+    last_sum3d_id: Optional[str] = None
+    last_program_at: Optional[datetime] = None
     # ── SLM-принтер SISMA (окремий тип екрана, 06.09.26) ────────────────────
     # У нього немає ні смуги RemiCORE, ні .iso в заголовку — зате він пише
     # точні числа: шар N з M і власний прогноз кінця роботи. Поля окремі, а не
@@ -1795,6 +1806,11 @@ def poll_target(
             state.iso_name = program.iso_name if program else None
             state.sum3d_id = program.sum3d_id if program else None
             state.program_at = now
+            # «Остання бачена» НЕ стирається разом із поточною: саме нею
+            # завершений верстат називає щойно зняту роботу.
+            if program and program.sum3d_id:
+                state.last_sum3d_id = program.sum3d_id
+                state.last_program_at = now
 
     # Історія: подія — цим же кадром, решта — раз на хвилину. Збій запису не
     # має валити опитування: кадр на екрані важливіший за рядок історії.
@@ -1934,6 +1950,11 @@ class MachineCard:
     # 04.09.26. Раніше код у цьому випадку свідомо не вгадував і не показував
     # НІЧОГО, хоч правильна відповідь — показати всі.
     orders: list = field(default_factory=list)
+    # Роботи ОСТАННЬОЇ баченої програми — лише для завершеного верстата, коли
+    # поточної програми на екрані вже немає. Окремий список, а не домішування
+    # в `orders`: «фрезерується зараз» і «щойно відфрезеровано» — різні
+    # твердження, і жоден віджет не має права переплутати їх мовчки.
+    last_orders: list = field(default_factory=list)
     # ЧОМУ пари немає. «немає в черзі» одним написом покривало три різні
     # причини — не знайдено взагалі, знайдено в кількох роботах (не вгадуємо),
     # знайдено лише серед архівних. Оператор бачив однакове й не міг зрозуміти,
@@ -2088,6 +2109,21 @@ class MachineCard:
         if not (self.state and self.state.sum3d_id):
             return None
         return None if (self.stale or self.has_problem) else self.state.sum3d_id
+
+    @property
+    def last_sum3d_id(self) -> Optional[str]:
+        """Sum3D роботи, яку верстат щойно ДОфрезерував.
+
+        Віддається лише коли (1) програма завершена, (2) поточної на екрані
+        вже немає і (3) зв'язок є. Поза станом «завершено» це була б стара
+        назва на живому верстаті — рівно те «хибне число», якого ми уникаємо
+        скрізь: оператор прочитав би її як поточну роботу.
+        """
+        if not (self.state and self.state.last_sum3d_id):
+            return None
+        if self.has_problem or self.sum3d_id:
+            return None
+        return self.state.last_sum3d_id if self.state_key == "done" else None
 
     @property
     def iso_name(self) -> Optional[str]:
@@ -2255,8 +2291,16 @@ class MachineCard:
             return "fault"
         if self.is_completed:
             return "done"
-        if self.percent is not None:
+        if self.percent is not None and (self.percent > 0 or self.has_program):
             return "run"
+        # НУЛЬ без програми — це не робота. Смуга RemiCORE скидається в нуль,
+        # коли програма закінчилась і вікно закрилось, і верстат, який щойно
+        # доробив, показував крутну шестерню з написом «фрезерує 0 %» (скарга
+        # з цеху 15.09.26). Нуль НА ПОЧАТКУ програми лишається «фрезерує»:
+        # тоді на екрані є назва програми (.iso у заголовку або Sum3D), і
+        # `has_program` це бачить. Обидві умови потрібні саме разом — самий
+        # лише нуль збрехав би на щойно запущеній роботі, а сама лише
+        # відсутність назви — на верстаті, чий заголовок ми не читаємо.
         if self.is_validating:
             return "check"
         if not self.has_frame:
@@ -2472,6 +2516,9 @@ def snapshot(db: Session) -> list[MachineCard]:
     # Зв'язка «верстат ↔ наряд»: ОДИН запит на всі картки (не N+1). Шукаємо
     # серед НЕархівних робіт — програма на верстаті завжди з робочого вікна.
     wanted = {c.sum3d_id for c in cards if c.sum3d_id}
+    # «Остання робота» завершеного верстата шукається ТИМ САМИМ запитом —
+    # окремий коштував би ще один похід у базу на кожному тіку.
+    wanted |= {c.last_sum3d_id for c in cards if c.last_sum3d_id}
     if wanted:
         by_id: dict[str, list[Order]] = {}
 
@@ -2522,6 +2569,9 @@ def snapshot(db: Session) -> list[MachineCard]:
             }
 
         for card in cards:
+            last_id = card.last_sum3d_id
+            if last_id:
+                card.last_orders = by_id.get(last_id, [])
             if not card.sum3d_id:
                 continue
             card.orders = by_id.get(card.sum3d_id, [])

@@ -77,6 +77,9 @@ class ShopMachine:
     sum3d: str = ""
     works: list = field(default_factory=list)   # до MAX_NAMED_WORKS штук
     extra: str = ""                  # «ще 2» — роботи, що не вмістились
+    # Роботи в `works` — не поточні, а ЩОЙНО ЗНЯТІ. Шаблон мусить це підписати:
+    # без підпису завершений верстат виглядав би так само, як працюючий.
+    works_are_last: bool = False
     portrait: str = ""               # адреса фото верстата, якщо воно є
     # SLM-принтер: шар N з M — числа з екрана машини, не оцінка.
     is_sisma: bool = False
@@ -148,7 +151,7 @@ def shop_links(db: Session) -> list[str]:
     ]
 
 
-def _works_of(card) -> tuple[list[ShopWork], str]:
+def _works_of(card, *, last: bool = False) -> tuple[list[ShopWork], str]:
     """Роботи картки: до `MAX_NAMED_WORKS` поіменно і «ще N» за рештою.
 
     Один проєкт Sum3D може містити кілька робіт (див. `MachineCard.orders`).
@@ -157,7 +160,8 @@ def _works_of(card) -> tuple[list[ShopWork], str]:
     безіменним. Тепер називаємо дві; вигадувати спільного клієнта для трьох
     різних робіт так само не можна, тож із третьої йде «ще N».
     """
-    orders = list(getattr(card, "orders", None) or [])
+    field_name = "last_orders" if last else "orders"
+    orders = list(getattr(card, field_name, None) or [])
     if not orders:
         return [], ""
     # Порядок ФІКСУЄМО за id. `snapshot()` збирає роботи двома проходами
@@ -232,6 +236,15 @@ def _machine(card, token: str) -> ShopMachine:
         portrait=_portrait_of(card, token),
     )
     item.works, item.extra = _works_of(card)
+    if not item.works:
+        # Верстат щойно доробив, а програма вже зникла з екрана (на новому
+        # поколінні SUMMARY назви не несе). Тоді картка називає ОСТАННЮ роботу
+        # — інакше два завершені верстати в одному ряду виглядають як різні
+        # системи: один із нарядом, другий порожній (скарга з цеху 15.09.26).
+        # `last_sum3d_id` сам віддається лише в стані «завершено», тож стара
+        # назва не може залипнути на живому верстаті.
+        item.works, item.extra = _works_of(card, last=True)
+        item.works_are_last = bool(item.works)
     return item
 
 

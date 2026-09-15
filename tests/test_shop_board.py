@@ -24,13 +24,14 @@ NOW = datetime(2026, 9, 14, 14, 22)
 
 
 def _card(name, state_key, *, percent=None, sum3d=None, orders=(), sisma=False,
-          layers=None, word="", note="", machine_id=None):
+          layers=None, word="", note="", machine_id=None, last_orders=()):
     return SimpleNamespace(
         key=name,
         target=SimpleNamespace(name=name, machine_id=machine_id, portrait_model="",
                                show_on_board=True),
         state_key=state_key, state_word=word, state_note=note,
         percent=percent, sum3d_id=sum3d, orders=list(orders),
+        last_orders=list(last_orders),
         is_sisma_machine=sisma, layers=layers,
     )
 
@@ -107,6 +108,32 @@ def test_work_without_a_name_and_material_is_not_a_line():
     view = _view([_card("A", "run", percent=10, sum3d="X",
                         orders=[_order(None, None, None)])])
     assert view.machines[0].works == []
+
+
+def test_finished_machine_shows_the_work_it_just_milled():
+    """Два завершені верстати в одному ряду мусять виглядати однаково.
+
+    На RemiCORE назва програми лишається в заголовку й після кінця, а екран
+    SUMMARY нового покоління її не несе — і там картка лишалась порожньою
+    (скарга з цеху 15.09.26). Тепер вона називає останню роботу, але ЗАВЖДИ
+    підписану: без підпису це читалось би як робота, що йде просто зараз.
+    """
+    view = _view([_card("A", "done", word="завершено",
+                        note="програма завершена · зняти",
+                        last_orders=[_order("Дента Люкс", "mono A3", "6", "анатомія")])])
+    m = view.machines[0]
+    assert [w.name for w in m.works] == ["Дента Люкс"]
+    assert m.works_are_last is True, "щойно знята робота мусить бути підписана"
+
+
+def test_current_work_wins_over_the_last_one():
+    """Поки програма на екрані є — показуємо саме її, без підпису «остання»."""
+    view = _view([_card("A", "run", percent=40, sum3d="X",
+                        orders=[_order("Ортос", "pmma A2", "2")],
+                        last_orders=[_order("Дента Люкс", "mono A3", "6")])])
+    m = view.machines[0]
+    assert [w.name for w in m.works] == ["Ортос"]
+    assert m.works_are_last is False
 
 
 def test_first_work_does_not_jump_between_refreshes():

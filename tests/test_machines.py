@@ -666,6 +666,47 @@ def _card_at(percent, changed_ago_seconds, now=None, completed=False):
     return service.MachineCard(target=state.target, state=state, now=now)
 
 
+def test_zero_percent_without_a_program_is_not_milling():
+    """Скарга з цеху 15.09.26: 250i-Tolik доробив, смуга скинулась у нуль — і
+    картка крутила шестерню з написом «фрезерує 0 %».
+
+    Нуль сам по собі нічого не каже: на початку програми він теж нуль. Різницю
+    робить назва програми на екрані — коли робота йде, вона там є."""
+    idle = _card_at(0, 30)
+    assert idle.state_key == "idle", "нуль без програми — верстат стоїть"
+
+    running = _card_at(0, 30)
+    running.state.iso_name = "2026-09-15_12-01-45.iso"
+    running.state.sum3d_id = "12-01-45"
+    assert running.state_key == "run", "нуль на щойно запущеній програмі — робота"
+
+    assert _card_at(1, 30).state_key == "run", "один відсоток — уже робота"
+
+
+def test_finished_machine_names_the_work_it_just_milled():
+    """Два завершені верстати виглядали як різні системи: RemiCORE тримає .iso
+    у заголовку й після кінця, а екран SUMMARY нового покоління назви не несе
+    — і там картка лишалась порожньою (скарга з цеху 15.09.26)."""
+    card = _card_at(100, service.COMPLETED_AFTER_SECONDS + 1, completed=True)
+    card.state.sum3d_id = None          # програма вже зникла з екрана
+    card.state.last_sum3d_id = "12-01-45"
+    assert card.state_key == "done"
+    assert card.last_sum3d_id == "12-01-45"
+
+    # На ЖИВОМУ верстаті стара назва не має права зʼявитись — інакше оператор
+    # прочитає її як поточну роботу.
+    running = _card_at(40, 10)
+    running.state.last_sum3d_id = "12-01-45"
+    assert running.state_key == "run"
+    assert running.last_sum3d_id is None
+
+    # І поки поточна програма на екрані є — показуємо саме її.
+    both = _card_at(100, service.COMPLETED_AFTER_SECONDS + 1, completed=True)
+    both.state.sum3d_id = "23-54-06"
+    both.state.last_sum3d_id = "12-01-45"
+    assert both.last_sum3d_id is None
+
+
 def test_hundred_percent_becomes_done_only_after_a_hold():
     """Скарга власника 06.09.26: галочку «завершено» бачив ОДИН верстат із
     чотирьох — той, у якого новий UI з екраном SUMMARY. Решта доходили до 100%
