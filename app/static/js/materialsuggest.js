@@ -167,19 +167,27 @@
         e.preventDefault();
         return;
       }
-      // Expand when the shortcut match is UNIQUE. Uniqueness is about the
-      // shortcut, not the whole list: the server marks the sole expandable
-      // option with data-expand="1", and frecency suggestions sit alongside it.
-      // Gate on the count of expandables, not ul.children.length — otherwise a
-      // single shortcut never expands once any frecency row keeps it company
-      // (which is almost always). Ambiguous/none → let Tab move focus.
+      // Unique shortcut → expand its WORD (keep the typed colour). Uniqueness is
+      // about the shortcut, not the whole list: the server marks the sole
+      // expandable option data-expand="1", frecency rows sit alongside it.
       var expandables = ul.querySelectorAll('.ms-opt[data-expand="1"]');
       if (expandables.length === 1) {
         choose(input, expandables[0]);
         e.preventDefault();
-      } else {
-        close(input);
+        return;
       }
+      // Otherwise Tab takes the TOP suggestion when it's a full spelling
+      // (frecency) — the material with the colour already typed, or any client
+      // (clients have no shortcuts). A shortcut sitting at the top WITHOUT
+      // data-expand means the shortcut match is ambiguous, so we don't guess and
+      // let Tab move focus instead.
+      var first = ul.firstElementChild;
+      if (first && first.getAttribute("data-kind") !== "shortcut") {
+        choose(input, first);
+        e.preventDefault();
+        return;
+      }
+      close(input);
     }
   });
 
