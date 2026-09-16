@@ -109,18 +109,48 @@ def invalidate_cache() -> None:
         _cache_built_at = 0.0
 
 
+def _apply_merges(session: Session, entries: list[_Entry]) -> list[_Entry]:
+    """Звести варіанти-дублікати до канону, обраного власником (ClientMerge):
+    варіант показується як канон, а їхні лічильники складаються в один кластер."""
+    from app.services.client_merge import merge_map
+
+    mmap = merge_map(session)
+    if not mmap:
+        return entries
+    canon_key = {match_key(name): name for name in mmap.values()}
+
+    collapsed: dict[str, _Entry] = {}
+    for entry in entries:
+        key, text = entry.key, entry.text
+        if key in mmap:  # це варіант → стає каноном
+            text = mmap[key]
+            key = match_key(text)
+        elif key in canon_key:  # це вже канон — тримаємо його написання
+            text = canon_key[key]
+        acc = collapsed.get(key)
+        if acc is None:
+            collapsed[key] = _Entry(key=key, text=text, c30=entry.c30, c90=entry.c90)
+        else:
+            acc.c30 += entry.c30
+            acc.c90 += entry.c90
+            if key in canon_key:
+                acc.text = canon_key[key]
+    return list(collapsed.values())
+
+
 def suggest_clients(
     session: Session, q: str, *, limit: int = _DEFAULT_LIMIT
 ) -> list[Suggestion]:
     """Frecency-ranked client names matching `q` (substring on the fold/layout
     keys). Long tail → incremental search: the daily client rises, last July's
-    one-off sinks."""
+    one-off sinks. Confirmed duplicates collapse to their canonical name."""
     qkeys = match_keys(q)
     if not qkeys:
         return []
 
+    entries = _apply_merges(session, _entries(session))
     scored: list[tuple[float, _Entry]] = []
-    for entry in _entries(session):
+    for entry in entries:
         if not any(k in entry.key for k in qkeys):
             continue
         prefix_bonus = 5 if any(entry.key.startswith(k) for k in qkeys) else 0

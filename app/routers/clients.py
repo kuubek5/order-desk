@@ -32,6 +32,7 @@ from app.services.clients import (
     ensure_client_profiles,
     quantity_units,
 )
+from app.services.client_merge import find_candidates, record_merge, record_skip
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +210,64 @@ def get_clients(
             **pane,
         },
     )
+
+
+@router.get("/clients/duplicates", response_class=HTMLResponse)
+def get_client_duplicates(request: Request, db: Session = Depends(get_db)):
+    """Екран: можливі дублікати клієнтів (rapidfuzz), рішення по кожній парі —
+    злити (обрати канон) або «не дублі». Без автомату (крок 5 SUGGEST_BRIEF).
+    Зведення діє в підказках і на екрані клієнтів, видачу не чіпає."""
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    blocked = blocked_response(request, db, user, "clients")
+    if blocked is not None:
+        return blocked
+
+    candidates = find_candidates(db)
+    return templates.TemplateResponse(
+        request,
+        "clients_duplicates.html",
+        {
+            "user": user,
+            "candidates": candidates,
+            "flash": request.query_params.get("flash"),
+        },
+    )
+
+
+@router.post("/clients/duplicates/merge")
+def merge_client_duplicate(
+    request: Request,
+    canonical_name: str = Form(...),
+    variant_name: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    if blocked_response(request, db, user, "clients") is not None:
+        raise HTTPException(status_code=403, detail="розділ недоступний")
+    record_merge(db, canonical_name, variant_name)
+    db.commit()
+    return RedirectResponse("/clients/duplicates?flash=merged", status_code=303)
+
+
+@router.post("/clients/duplicates/skip")
+def skip_client_duplicate(
+    request: Request,
+    name_a: str = Form(...),
+    name_b: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    if blocked_response(request, db, user, "clients") is not None:
+        raise HTTPException(status_code=403, detail="розділ недоступний")
+    record_skip(db, name_a, name_b)
+    db.commit()
+    return RedirectResponse("/clients/duplicates?flash=skipped", status_code=303)
 
 
 @router.post("/clients", response_class=HTMLResponse)

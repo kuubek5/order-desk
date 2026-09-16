@@ -454,6 +454,33 @@ class Client(Base):
     )
 
 
+class ClientMerge(Base):
+    """Рішення власника по парі схожих імен клієнтів: злити (`merge`) чи «не
+    дублі» (`skip`). НЕ те саме, що ClientNameAlias (та мапить ім'я → теку в
+    export). Тут — зведення різних написань ОДНОГО клієнта до канону: у
+    підказках і на екрані клієнтів варіант показується як канон. Видачу свідомо
+    НЕ чіпає (там ім'я = фізичне групування коронок, рішення власника 16.09.26).
+
+    Пара ідентифікується парою нормалізованих ключів (`a_key` < `b_key`), тож
+    одне рішення на пару й «не дублі» не вертається. Для `merge` `variant_*` —
+    написання, що програло, `canonical_name` — обране власником головне."""
+
+    __tablename__ = "client_merges"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    a_key: Mapped[str] = mapped_column(String(200), index=True)
+    b_key: Mapped[str] = mapped_column(String(200), index=True)
+    kind: Mapped[str] = mapped_column(String(10))  # "merge" | "skip"
+    variant_key: Mapped[str] = mapped_column(String(200), default="")
+    variant_name: Mapped[str] = mapped_column(String(200), default="")
+    canonical_name: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now()
+    )
+
+    __table_args__ = (UniqueConstraint("a_key", "b_key", name="uq_client_merge_pair"),)
+
+
 class SyncLog(Base):
     __tablename__ = "sync_logs"
 

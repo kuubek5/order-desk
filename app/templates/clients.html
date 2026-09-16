@@ -60,6 +60,9 @@
                 <button type="submit" class="cp-save">Додати</button>
             </form>
         </details>
+
+        {# Розбір можливих дублікатів — окремий екран, рішення по кожній парі. #}
+        <a href="/clients/duplicates" class="cl-dups">Можливі дублікати</a>
     </div>
 
     {% if error %}<div class="settings-alert settings-alert-error">{{ error }}</div>{% endif %}

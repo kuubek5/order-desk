@@ -161,3 +161,30 @@ main.clientsv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;fle
 .clientsv2 .settings-success p{margin:0}
 /* Підтвердження збереження контактів — усередині свапнутого фрагмента. */
 .clientsv2 .cp-saved{margin:0;font-size:var(--fs-1);color:var(--accent-c)}
+
+/* ── Можливі дублікати клієнтів (/clients/duplicates) ─────────────────────── */
+.cdup{max-width:900px;margin:0 auto;padding:0 16px}
+.cdup-head{margin:16px 0}
+.cdup-back{color:var(--ink-3);text-decoration:none;font-size:var(--fs-0)}
+.cdup-back:hover{color:var(--ink)}
+.cdup-head h1{margin:4px 0;font-family:var(--font-head);font-size:var(--fs-4,1.6rem)}
+.cdup-head p{color:var(--ink-2);max-width:64ch}
+.cdup-flash{margin:8px 0;padding:8px 12px;border-radius:8px;background:rgba(var(--accent-rgb),0.14);color:var(--accent)}
+.cdup-list{list-style:none;margin:12px 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.cdup-row{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-card,12px);background:var(--card)}
+.cdup-pair{display:flex;align-items:center;gap:12px;min-width:0;flex:1 1 auto}
+.cdup-name{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.cdup-n{padding:0 6px;font-size:var(--fs-0);font-weight:400;color:var(--ink-3);
+  border-radius:999px;background:rgba(var(--accent-rgb),0.12)}
+.cdup-vs{flex:0 0 auto;color:var(--ink-3);font-variant-numeric:tabular-nums;font-size:var(--fs-0)}
+.cdup-actions{display:flex;gap:6px;flex-wrap:wrap}
+.cdup-btn{padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--field,transparent);
+  color:var(--ink);cursor:pointer;font-size:var(--fs-0)}
+.cdup-btn:hover{border-color:var(--accent);color:var(--accent)}
+.cdup-skip{color:var(--ink-3)}
+.cdup-skip:hover{border-color:var(--ink-3);color:var(--ink)}
+.cdup-empty{color:var(--ink-2);margin:24px 0}
+.cl-dups{margin-left:auto;color:var(--ink-2);text-decoration:none;font-size:var(--fs-0);
+  padding:6px 10px;border:1px solid var(--line);border-radius:8px}
+.cl-dups:hover{color:var(--accent);border-color:var(--accent)}

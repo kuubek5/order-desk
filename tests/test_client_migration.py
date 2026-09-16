@@ -103,8 +103,9 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
         # has held its number and the last program seen. Both lived only in
         # process memory, so every update made finished machines claim
         # «фрезерує 100 %» for two minutes; 0066 adds the material typing
-        # shortcuts (`мл → mono`) for the manual add-work form. All purely
-        # additive — nothing that existed at 0003 is dropped.
+        # shortcuts (`мл → mono`); 0067 adds the client duplicate-merge decisions
+        # for the manual add-work form. All purely additive — nothing that
+        # existed at 0003 is dropped.
         assert tables_after - tables_before == {
             "clients", "materials", "material_aliases",
             "mail_filter_rules", "mail_filter_categories", "client_sender_memory",
@@ -121,6 +122,7 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
             "screen_puzzles",
             "machine_memory",
             "material_shortcuts",
+            "client_merges",
         }
         assert tables_before - tables_after == set()
     finally:

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Дублікати клієнтів — KuubMill{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="/static/css/clients.css?v={{ static_ver('css/clients.css') }}">
+{% endblock %}
+
+{% block content %}
+{% set topbar_active = 'clients' %}
+{% include "_topbar_nav.html" %}
+
+<main class="setv2 cdup">
+    <header class="cdup-head">
+        <a href="/clients" class="cdup-back">← Клієнти</a>
+        <h1>Можливі дублікати</h1>
+        <p>Пари схожих імен, що можуть бути одним клієнтом. Обери головне
+           написання й «Злити», або познач «Не дублі». Зведення діє в підказках
+           і на екрані клієнтів; видачу коронок воно НЕ чіпає.</p>
+    </header>
+
+    {% if flash == 'merged' %}
+    <div class="cdup-flash" role="status">Злито.</div>
+    {% elif flash == 'skipped' %}
+    <div class="cdup-flash" role="status">Позначено «не дублі».</div>
+    {% endif %}
+
+    {% if candidates %}
+    <ul class="cdup-list">
+        {% for c in candidates %}
+        <li class="cdup-row">
+            <div class="cdup-pair">
+                <span class="cdup-name">{{ c.a_name }}<span class="cdup-n">{{ c.a_count }}</span></span>
+                <span class="cdup-vs" title="схожість {{ c.score }}%">≈{{ c.score }}</span>
+                <span class="cdup-name">{{ c.b_name }}<span class="cdup-n">{{ c.b_count }}</span></span>
+            </div>
+            <div class="cdup-actions">
+                <form method="post" action="/clients/duplicates/merge">
+                    <input type="hidden" name="canonical_name" value="{{ c.a_name }}">
+                    <input type="hidden" name="variant_name" value="{{ c.b_name }}">
+                    <button type="submit" class="cdup-btn" title="«{{ c.b_name }}» → «{{ c.a_name }}»">
+                        Канон «{{ c.a_name }}»
+                    </button>
+                </form>
+                <form method="post" action="/clients/duplicates/merge">
+                    <input type="hidden" name="canonical_name" value="{{ c.b_name }}">
+                    <input type="hidden" name="variant_name" value="{{ c.a_name }}">
+                    <button type="submit" class="cdup-btn" title="«{{ c.a_name }}» → «{{ c.b_name }}»">
+                        Канон «{{ c.b_name }}»
+                    </button>
+                </form>
+                <form method="post" action="/clients/duplicates/skip">
+                    <input type="hidden" name="name_a" value="{{ c.a_name }}">
+                    <input type="hidden" name="name_b" value="{{ c.b_name }}">
+                    <button type="submit" class="cdup-btn cdup-skip">Не дублі</button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="cdup-empty">Можливих дублікатів не знайдено.</p>
+    {% endif %}
+</main>
+{% endblock %}
