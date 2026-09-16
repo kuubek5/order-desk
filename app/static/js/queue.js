@@ -78,15 +78,27 @@ document.addEventListener("htmx:afterSettle", (event) => {
 // long technician comment is readable and editable, collapse back to one line
 // on blur. Enter saves (blurs → the form's hx-trigger=change fires), Shift+Enter
 // inserts a newline. All delegated on document so it survives the 15s poll swap.
+// rAF-throttle: набір шле подію input на КОЖНУ клавішу, а auto-size робить
+// forced reflow (height:auto → read scrollHeight → write height). Раніше це
+// бігло синхронно на кожне натискання; тепер коалесимо в один кадр — при
+// бурсті клавіш висота перераховується раз, а не N разів (перф-аудит 16.09.26).
+let _commentRaf = 0;
 function growComment(el) {
-  // Force wrapping here (not only via CSS :focus) so the height math is
-  // reliable even before :focus paints, then size to the wrapped content.
-  el.style.whiteSpace = "pre-wrap";
-  el.style.height = "auto";
-  el.style.height = el.scrollHeight + "px";
+  if (_commentRaf) cancelAnimationFrame(_commentRaf);
+  _commentRaf = requestAnimationFrame(() => {
+    _commentRaf = 0;
+    // Force wrapping here (not only via CSS :focus) so the height math is
+    // reliable even before :focus paints, then size to the wrapped content.
+    el.style.whiteSpace = "pre-wrap";
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  });
 }
 
 function collapseComment(el) {
+  // Скасувати відкладений grow, інакше кадр після blur знову роздув би поле,
+  // яке щойно згорнули (Enter зберігає через blur).
+  if (_commentRaf) { cancelAnimationFrame(_commentRaf); _commentRaf = 0; }
   el.style.whiteSpace = "";
   el.style.height = "";
 }
@@ -529,24 +541,46 @@ document.addEventListener("click", (event) => {
     document.querySelectorAll(SEL).forEach((card) => card.classList.add("spotlight"));
   }
 
-  document.addEventListener("mousemove", (e) => {
-    const card = e.target.closest && e.target.closest(SEL);
-    if (!card) return;
-    const r = card.getBoundingClientRect();
+  // Раніше кожен рух миші по всій сторінці читав getBoundingClientRect плитки й
+  // писав 4 CSS-змінні СИНХРОННО — layout read упереміж із write щокадру, цілий
+  // робочий день (перф-аудит 16.09.26). Тепер: (1) прямокутник кешуємо на вході
+  // в плитку (mouseover), тож під час руху геометрію НЕ читаємо; (2) запис
+  // коалесимо в один requestAnimationFrame. Прокрутка/резайз/своп плиток
+  // скидають кеш — плитка могла зсунутись.
+  let hovered = null; // плитка під курсором
+  let rect = null;    // її кешований прямокутник
+  let lastEvt = null; // остання подія руху для кадру
+  let ticking = false;
+
+  function invalidate() { rect = null; }
+
+  function flush() {
+    ticking = false;
+    const card = hovered;
+    const e = lastEvt;
+    if (!card || !e) return;
+    if (!rect) rect = card.getBoundingClientRect();
     // Схлопнута плитка (пічка без показань, верстат поза мережею) має розмір
-    // 0×0, і нахил перетворився б на ділення на нуль — у стиль летіло б
-    // «NaNdeg». Делегування ловить і такі плитки, тож перевірка тут потрібна.
-    if (!r.width || !r.height) return;
-    const x = e.clientX - r.left;
-    const y = e.clientY - r.top;
+    // 0×0, і нахил перетворився б на ділення на нуль — «NaNdeg» у стиль.
+    if (!rect.width || !rect.height) return;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     card.style.setProperty("--mx", x + "px");
     card.style.setProperty("--my", y + "px");
     if (!reduce) {
-      const px = x / r.width - 0.5; // -0.5 … 0.5
-      const py = y / r.height - 0.5;
+      const px = x / rect.width - 0.5; // -0.5 … 0.5
+      const py = y / rect.height - 0.5;
       card.style.setProperty("--ry", (px * MAX_TILT).toFixed(2) + "deg");
       card.style.setProperty("--rx", (-py * MAX_TILT).toFixed(2) + "deg");
     }
+  }
+
+  document.addEventListener("mousemove", (e) => {
+    const card = e.target.closest && e.target.closest(SEL);
+    if (!card) { hovered = null; rect = null; return; }
+    if (card !== hovered) { hovered = card; rect = null; } // новий вхід → перечитати геометрію
+    lastEvt = e;
+    if (!ticking) { ticking = true; requestAnimationFrame(flush); }
   });
 
   // mouseleave не спливає, тому вихід ловимо через mouseout: курсор пішов з
@@ -558,7 +592,12 @@ document.addEventListener("click", (event) => {
     if (to && card.contains(to)) return;
     card.style.setProperty("--rx", "0deg");
     card.style.setProperty("--ry", "0deg");
+    if (card === hovered) { hovered = null; rect = null; }
   });
+
+  // Кешований прямокутник застаріває, коли плитка зсувається під курсором.
+  window.addEventListener("scroll", invalidate, { passive: true });
+  window.addEventListener("resize", invalidate);
 
   decorate();
   // Тільки свої своп-и. Раніше висіло на КОЖНОМУ htmx:afterSettle, а на екрані
@@ -568,8 +607,8 @@ document.addEventListener("click", (event) => {
   document.body.addEventListener("htmx:afterSettle", (event) => {
     const t = event.target;
     if (!t || !t.querySelector) return;
-    if (t.matches && t.matches(SEL)) return void decorate();
-    if (t.querySelector(SEL)) decorate();
+    if (t.matches && t.matches(SEL)) { invalidate(); return void decorate(); }
+    if (t.querySelector(SEL)) { invalidate(); decorate(); }
   });
 })();
 

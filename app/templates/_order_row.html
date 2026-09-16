@@ -41,6 +41,18 @@
    Рядок мусив поводитись так само (аудит 05.09.26, UX 1.7): показуємо ті самі
    значення, але без полів і без дій. #}
 {% set row_locked = order.archived_at is defined and order.archived_at %}
+{# Чи фрезерується зараз — зв'язка з верстатом за Sum3D ID. Обчислюємо ТУТ (а не
+   всередині .oid, як було), бо від наявності цього чіпа теж залежить, чи
+   переноситься комірка наряду. `milling is defined` — рядок рендериться і з
+   місць без цього набору (пошук, картка): там просто None. #}
+{% set _mill = (milling.get(order.sum3d_id) if (milling is defined and milling and order.sum3d_id) else None) %}
+{# Чи є в комірці наряду бейдж-сигнал (переробка / змінено / фрезерується / на
+   швидку / погодження / проблема). Є → .oid переноситься на новий рядок; нема →
+   лишається в один рядок, а ім'я вкорочується трикрапкою. Раніше це вирішували
+   сім :has() у CSS, які браузер переоцінював по КОЖНОМУ рядку на кожен своп
+   таблиці; тепер прапорець ставить сервер класом .wrap (перф-аудит 16.09.26).
+   Той самий набір сигналів, що й у знятих :has() — звіряти при зміні бейджів. #}
+{% set _oid_wrap = _rework or _changed or _mill or _hold or is_rush_comment(order.cam_comment) or order.status in ('проблема', 'переробка') %}
 <tr{% if _matrow %} data-mat="{{ _matrow.cls }}"{% endif %} class="queue-row{% if _focused %} queue-row-focus{% endif %} {% if _changed %}queue-row-changed{% endif %} {% if _changed_taken %}queue-row-changed-taken{% endif %} {% if is_overdue(order.sheet_tab, order.status) %}queue-row-overdue{% endif %} {% if order.source == 'email' %}queue-row-email{% endif %} {% if order.source == 'sheet_client' %}queue-row-client{% endif %} {% if _rework %}queue-row-rework{% endif %}" id="order-row-{{ order.id }}">
     {# Джерело рядка — вкладка (день) Google-таблиці, де його знайдено. Показуємо
        лише у пошуку (show_source), де результати охоплюють усі дні; у черзі
@@ -56,7 +68,7 @@
            й тримає ширину стовпця, а всім розкладом керує .oid усередині;
            його діти справді стискаються, тож довге імʼя вкорочується
            трикрапкою замість того, щоб лізти на сусіда. #}
-        <div class="oid">
+        <div class="oid{% if _oid_wrap %} wrap{% endif %}">
             {# Шпилька «беру зараз». Один клік — і робота в моєму наборі; фільтр
                «Мої зараз» лишає в таблиці тільки їх. Порядок рядків при цьому НЕ
                міняється: під рукою оператора нічого не має стрибати. #}
@@ -104,8 +116,8 @@
             {# ЗАРАЗ ФРЕЗЕРУЄТЬСЯ: зв'язка з верстатом за Sum3D ID (ім'я .iso із
                заголовка RemiCORE). `milling is defined` — бо рядок рендериться і
                з місць, які цього набору не знають (пошук, картка): там він просто
-               не малюється, а не падає. #}
-            {% set _mill = (milling.get(order.sum3d_id) if (milling is defined and milling and order.sum3d_id) else None) %}
+               не малюється, а не падає. `_mill` обчислено вгорі партіалу (від
+               нього залежить і перенос комірки .oid.wrap). #}
             {% if _mill %}
             {# `stalled` — відсоток не змінюється понад 5 хв. Бойові кадри
                03.09.26: верстат чесно показував 81% шість хвилин, бо СТОЯВ
