@@ -787,3 +787,101 @@ body.rail-collapsed .rail-closed-txt{display:none}
 .rail-wrong-n{margin-left:auto;font-size:var(--fs-0)}
 body.rail-collapsed .rail-wrong-txt,
 body.rail-collapsed .rail-wrong-n{display:none}
+
+/* ── Вузьке вікно (<721px) ─────────────────────────────────────────────
+   Уся геометрія рейки жила ЛИШЕ в `@media (min-width:721px)`. Нижче цього
+   рейка не мала СВОЇХ правил (лишався тільки базовий `display:flex` рядком),
+   тож SVG-іконки й логотип малювались дефолтним intrinsic-розміром — на весь
+   екран, усе в потоці зверху, а черга опинялась під ними й губилась.
+   Раніше тут мав стояти окремий стек-медіазапит (див. коментар на початку
+   файлу), але його в проєкті немає — цей блок його відновлює.
+
+   Рішення: та сама компактна іконкова колонка, що й згорнутий режим на
+   десктопі, лише застосована завжди при вузькому вікні. Підписи ховаємо
+   візуально, але лишаємо в дереві доступності (як `body.rail-collapsed`). */
+@media (max-width: 720px) {
+  body:has(.topbar-user) { padding-left: 56px; }
+
+  .topbar-user {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: 56px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-1);
+    background-color: var(--color-card-bg);
+    border-right: 1px solid var(--color-card-border);
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 40;
+  }
+
+  .rail-top { flex-direction: column; align-items: center; gap: var(--space-2); }
+  .rail-brand { justify-content: center; padding: 0; }
+  .rail-brand-mark { width: 26px; height: 26px; flex: 0 0 26px; color: var(--accent-b); }
+  .rail-brand-text { display: none; }
+  /* Немає куди згортати вже вузьку рейку — кнопку прибираємо. */
+  .rail-collapse { display: none; }
+
+  .rail-nav-group { display: flex; flex-direction: column; gap: var(--space-1); }
+  .rail-nav-item {
+    justify-content: center;
+    padding: var(--space-2) 0;
+    border-radius: var(--radius-input);
+    color: var(--color-text-muted);
+    position: relative;
+  }
+  .rail-nav-item.is-active {
+    color: var(--color-success, var(--accent-c));
+    box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+  .rail-nav-icon {
+    width: 20px; height: 20px; flex: 0 0 20px;
+    fill: none; stroke: currentColor; stroke-width: 1.7;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  /* Підпис — з екрана геть, у дереві доступності лишається (єдина назва пункту). */
+  .rail-label {
+    position: absolute; width: 1px; height: 1px;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+  }
+
+  .rail-foot {
+    margin-top: auto;
+    display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-card-border);
+  }
+  .rail-foot-user, .rail-version, .rail-update-notice,
+  .rail-closed-txt, .rail-wrong-txt, .rail-wrong-n { display: none; }
+  .rail-sync { display: none; }
+  .rail-logout { display: inline-flex; align-items: center; justify-content: center; }
+  .rail-logout .rail-label { display: none; }
+  .rail-logout-icon {
+    width: 18px; height: 18px;
+    fill: none; stroke: currentColor; stroke-width: 1.7;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+
+  /* Числові бейджі (пошта / зміна) лишаються поверх іконки. */
+  .mail-nav-count {
+    position: absolute; top: 2px; right: 6px; margin-left: 0;
+    min-width: .9rem; height: .9rem; padding: 0 .2rem;
+  }
+
+  /* Drill-in меню налаштувань на вузькому — ті самі іконки розділів,
+     підписи й каретки ховаємо, вкладки згорнуті. */
+  .rail-settings { display: flex; flex-direction: column; gap: 3px; overflow-y: auto; min-height: 0; }
+  .rail-settings-head, .rail-settings-group { display: none; }
+  .rail-settings-back { justify-content: center; padding: 6px 0; }
+  .rail-settings-back .rail-label { display: none; }
+  .rail-settings-back svg {
+    width: 18px; height: 18px;
+    fill: none; stroke: currentColor; stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .rail-sub-caret, .rail-subs { display: none; }
+  .rail-head.has-subs .rail-nav-item { padding-right: 0; }
+  .rail-settings .rail-nav-item.is-sub { padding-left: 0; }
+}
