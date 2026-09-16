@@ -187,3 +187,29 @@ def test_shortcuts_table_fragment_renders():
     assert "/settings/materials/shortcut/1/delete" in html
     assert 'action="/settings/materials/shortcut/add"' in html
     assert "is-unknown" in html  # нерозпізнане написання підсвічене
+
+
+def test_shortcut_hidden_once_material_word_typed_in_full():
+    """«emo a2» — оператор уже дописав слово; скорочення `емо→emo` там нічого
+    не змінить (перше слово вже «emo»). Тоді перший рядок — frecency «emo a2»,
+    а не голе «emo» (власник 16.09.26)."""
+    invalidate_cache()
+    with make_session() as session:
+        ensure_seeded(session)
+        add_shortcut(session, "емо", "emo")
+        add_orders(session, {"emo a2": 5})
+        invalidate_cache()
+        items = suggest_materials(session, "emo a2")
+        assert all(it.kind != "shortcut" for it in items), "no-op скорочення сховане"
+        assert items and items[0].text == "emo a2"
+
+
+def test_cyrillic_shortcut_still_shown_with_colour():
+    """`емо a2` кирилицею — розгортання в латинське «emo» ЩЕ змінює поле
+    (алфавіт), тож скорочення лишається з Tab."""
+    invalidate_cache()
+    with make_session() as session:
+        ensure_seeded(session)
+        add_shortcut(session, "емо", "emo")
+        items = suggest_materials(session, "емо a2")
+        assert any(it.kind == "shortcut" and it.text == "emo" for it in items)

@@ -195,9 +195,21 @@ def suggest_materials(
     # shortcut is a prefix of the query (already typed it, colour follows). Tab
     # may expand ONLY when exactly one shortcut matches — an ambiguous shortcut
     # must never rewrite the field under the operator's hand.
+    #
+    # A shortcut expands ONLY the first word (the material), so once the operator
+    # has already typed that word out in full, the shortcut is a no-op — it would
+    # replace the word with itself and just re-state what's on screen. Drop it
+    # then: after «emo a2» the operator wants the frecency row «emo a2», not a
+    # first suggestion offering the bare material «emo» (owner 16.09.26). The
+    # test is on the RAW first token, not the fold key, so a Cyrillic shortcut
+    # typed toward a Latin canon (`емо` → `emo`) still counts as a real change.
+    first_token = q.strip().split()[0] if q.strip() else ""
     shortcut_rows = list_shortcuts(session)
     shortcut_matches = [
-        row for row in shortcut_rows if row.key.startswith(qk) or qk.startswith(row.key)
+        row
+        for row in shortcut_rows
+        if (row.key.startswith(qk) or qk.startswith(row.key))
+        and row.expansion.strip().casefold() != first_token.casefold()
     ]
     unique_expand = len(shortcut_matches) == 1
 
