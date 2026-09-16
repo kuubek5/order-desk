@@ -11,7 +11,7 @@
     {% set d = o.delivery %}
     <div class="dz-ol-row{% if o.cancelled %} is-cx{% endif %}" data-dz-orow="{{ o.id }}">
         <button type="button" class="dz-ol-tog" data-dz-otog="{{ o.id }}" aria-expanded="false"
-                aria-controls="dz-otext-{{ o.id }}" title="Показати текст замовлення">›</button>
+                aria-controls="dz-otext-{{ o.id }}" aria-label="Показати текст замовлення" title="Показати текст замовлення">›</button>
         <span class="dz-ol-at dz-mono">{{ o.created_at.strftime('%d.%m %H:%M') }}</span>
         <span class="dz-ol-what">{{ discs_word(o.count) if o.count else 'лише дописане' }}{% if o.has_note and o.count %}<span class="dz-tagn">+ дописане</span>{% endif %}</span>
         <span class="dz-ol-lab" title="{{ o.label }}">{{ o.label }}</span>
