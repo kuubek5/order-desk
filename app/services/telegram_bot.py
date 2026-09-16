@@ -346,7 +346,7 @@ def _orders_of_day(db: Session, day: date) -> list[Order]:
 
     rows = db.scalars(
         select(Order)
-        .options(selectinload(Order.rework_records))
+        .options(selectinload(Order.rework_records), selectinload(Order.material))
         .where(Order.archived_at.is_(None))
     ).all()
     return [order for order in rows if order_date(order) == day]
@@ -356,18 +356,74 @@ def _today_orders(db: Session) -> list[Order]:
     return _orders_of_day(db, _day_of(0))
 
 
+#: Значок на матеріал. Матеріал у цеху — це диск, який купують і списують,
+#: тож у звіті він мусить впізнаватись з одного погляду, як пічка чи верстат.
+_MATERIAL_ICON = {
+    "Цирконій": "🦷",
+    "ПММА": "◻️",
+    "СЛМ": "🖨",
+    "Титан": "🔩",
+    "Віск": "🕯",
+    "Не матеріал": "▫️",
+}
+_UNKNOWN_MATERIAL = "Без категорії"
+
+
+def _material_breakdown(orders: list[Order]) -> list[tuple[str, int, int]]:
+    """Скільки одиниць і робіт у кожному матеріалі — (назва, одиниці, роботи).
+
+    Власник 15.09.26: «відсортувати циркон від пмма». Це не косметика:
+    цирконій іде в пічку й рахується дисками, ПММА видається одразу після
+    фрезерування, і спільна цифра «106 робіт» не каже ні про закладку печей,
+    ні про списання дисків.
+
+    Категорія береться з `Order.material` (її проставляє класифікатор при
+    імпорті), а не рахується наново: у боті мусять стояти ті самі числа, що на
+    екранах. Нерозпізнане не ховаємо — воно окремим рядком, бо це прямий натяк
+    дописати аліас у Налаштуваннях, а не привід загубити одиниці.
+
+    Порядок — власний порядок каталогу (`Material.sort_order`: цирконій, ПММА,
+    СЛМ, титан, віск), щоб рядки не стрибали з дня на день услід за обсягом.
+    Нерозпізнане завжди останнє."""
+    from app.services.queue_view import sum_units
+
+    groups: dict[str, list[Order]] = {}
+    order_by_name: dict[str, int] = {}
+    for order in orders:
+        material = order.material
+        name = material.name if material else _UNKNOWN_MATERIAL
+        groups.setdefault(name, []).append(order)
+        if material is not None:
+            order_by_name[name] = material.sort_order
+    rows = [(name, sum_units(group), len(group)) for name, group in groups.items()]
+    rows.sort(key=lambda row: (order_by_name.get(row[0], 10_000), row[0]))
+    return rows
+
+
 def _orders_text_for(db: Session, offset: int) -> str:
     from app.queue_filters import CLIENT_SOURCES, count_by_readiness
     from app.services.queue_view import sum_units
 
     day = _day_of(offset)
     orders = _orders_of_day(db, day)
-    head = f"Робочий день {day.strftime('%d.%m')}"
+    head = f"<b>Робочий день {day.strftime('%d.%m')}</b>"
     if not orders:
-        return f"{head}: робіт немає."
+        return f"{head}\nРобіт немає."
+
+    lines = [f"{head}\n{_works(len(orders))} · <b>{sum_units(orders)}</b> од."]
+
+    # Матеріали ПЕРЕД джерелами: власник дивиться сюди, щоб зрозуміти, чим
+    # завантажені печі й скільки дисків піде, а не скільки рядків у таблиці.
+    # Один-єдиний матеріал розкладати нема сенсу — він і так у шапці.
+    breakdown = _material_breakdown(orders)
+    if len(breakdown) > 1:
+        lines.append("\n<b>Матеріали</b>")
+        for name, units, works in breakdown:
+            icon = _MATERIAL_ICON.get(name, "❔")
+            lines.append(f"{icon} {_e(name)} · <b>{units}</b> од. · {works} роб.")
+
     lab = [o for o in orders if o.source == "lab"]
     clients = [o for o in orders if o.source in CLIENT_SOURCES]
-    lines = [f"{head} · {_works(len(orders))}, {sum_units(orders)} од."]
     for title, group, with_not_ready in (
         ("Лабораторія", lab, True),
         ("Файли (клієнти)", clients, False),
@@ -376,7 +432,7 @@ def _orders_text_for(db: Session, offset: int) -> str:
             lines.append(f"\n<b>{title}</b> — немає")
             continue
         counts = count_by_readiness(group)
-        lines.append(f"\n<b>{title}</b> — {_works(len(group))}, {sum_units(group)} од.")
+        lines.append(f"\n<b>{title}</b> · {_works(len(group))} · {sum_units(group)} од.")
         lines.append(f"   можна брати: <b>{counts['can_take']}</b>")
         lines.append(f"   в роботі: {counts['in_work']}")
         # Клієнтські роботи «не готовими» не бувають: файли прийшли з листом

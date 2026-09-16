@@ -176,14 +176,64 @@ def test_orders_view_counts_readiness_like_the_queue_chips():
         db.commit()
         text = bot.orders_text(db)
 
-    assert "5 робіт, 11 од." in text
+    assert "5 робіт · <b>11</b> од." in text
     lab, clients = text.split("<b>Файли (клієнти)</b>")
-    assert "<b>Лабораторія</b> — 3 роботи, 6 од." in lab
+    assert "<b>Лабораторія</b> · 3 роботи · 6 од." in lab
     assert "можна брати: <b>1</b>" in lab and "в роботі: 1" in lab and "не готово: 1" in lab
-    assert "2 роботи, 5 од." in clients
+    assert "2 роботи · 5 од." in clients
     assert "можна брати: <b>1</b>" in clients and "в роботі: 1" in clients
     # Клієнтські «не готовими» не бувають — вічного нуля немає.
     assert "не готово" not in clients
+
+
+def test_orders_view_splits_zirconia_from_pmma():
+    """Власник 15.09.26: «відсортувати циркон від пмма».
+
+    Цирконій іде в пічку й рахується дисками, ПММА видається одразу після
+    фрезерування — спільна цифра «93 роботи» не каже ні про закладку печей, ні
+    про списання дисків. Порядок рядків — каталожний (`Material.sort_order`), а
+    не за обсягом: інакше рядки стрибали б із дня на день, і око щоразу
+    шукало б потрібний заново."""
+    from app.material_catalog import ensure_seeded, material_id_by_name
+
+    with _session() as db:
+        ensure_seeded(db)
+        by_name = material_id_by_name(db)
+        _order(db, source="lab", job_code="P:/z", quantity="7", material_color="mono a3",
+               material_id=by_name["Цирконій"])
+        _order(db, source="lab", job_code="P:/p", quantity="4", material_color="pmma a2",
+               material_id=by_name["ПММА"])
+        _order(db, source="lab", job_code="P:/t", quantity="2", material_color="tit",
+               material_id=by_name["Титан"])
+        # Матеріал, якого класифікатор не впізнав, ховати не можна: це натяк
+        # дописати аліас, і його одиниці однаково входять у підсумок.
+        _order(db, source="lab", job_code="P:/x", quantity="1", material_color="щось нове")
+        db.commit()
+        text = bot.orders_text(db)
+
+    assert "4 роботи · <b>14</b> од." in text
+    materials = text.split("<b>Матеріали</b>")[1].split("<b>Лабораторія</b>")[0]
+    rows = [line for line in materials.splitlines() if line.strip()]
+    assert rows == [
+        "🦷 Цирконій · <b>7</b> од. · 1 роб.",
+        "◻️ ПММА · <b>4</b> од. · 1 роб.",
+        "🔩 Титан · <b>2</b> од. · 1 роб.",
+        "❔ Без категорії · <b>1</b> од. · 1 роб.",
+    ]
+
+
+def test_single_material_day_has_no_breakdown():
+    """Розклад із одного рядка повторював би шапку. Зайвий заголовок на
+    телефоні коштує екрана, а не рядка."""
+    with _session() as db:
+        from app.material_catalog import ensure_seeded, material_id_by_name
+
+        ensure_seeded(db)
+        by_name = material_id_by_name(db)
+        _order(db, source="lab", job_code="P:/z", quantity="3", material_color="mono a3",
+               material_id=by_name["Цирконій"])
+        db.commit()
+        assert "<b>Матеріали</b>" not in bot.orders_text(db)
 
 
 def test_client_name_is_escaped_for_html():
@@ -926,8 +976,8 @@ def test_yesterday_counts_only_yesterday():
         db.add(Order(source="lab", job_code="P:/y", quantity="4", sheet_tab=yesterday, status="нове"))
         _order(db, source="lab", job_code="P:/t", quantity="1")
         db.commit()
-        assert "1 робота, 4 од." in bot.orders_yesterday_text(db)
-        assert "1 робота, 1 од." in bot.orders_text(db)
+        assert "1 робота · <b>4</b> од." in bot.orders_yesterday_text(db)
+        assert "1 робота · <b>1</b> од." in bot.orders_text(db)
 
 
 def test_handout_day_counts_like_the_handout_header():
