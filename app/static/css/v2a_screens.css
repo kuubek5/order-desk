@@ -49,14 +49,23 @@ main.worldv2.search-wide{max-width:none}
 .neworder .addwork-seg button.is-active{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb), .34)}
 /* Inline «+ Додати» toggle in the queue card-head + expandable add-work form */
 .q2 .card-head .right{display:flex;align-items:center;gap:8px}
-.q2 .addwork-toggle{height:30px;padding:0 12px;border-radius:999px;display:inline-flex;align-items:center;gap:6px;
-  border:1px solid rgba(var(--accent-rgb), .42);background:rgba(var(--accent-base-rgb), .15);color:var(--accent-c);
-  font-size:var(--fs-2);font-weight:500;cursor:pointer;transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease}
-.q2 .addwork-toggle svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
-.q2 .addwork-toggle:hover{background:rgba(var(--accent-base-rgb), .24);border-color:var(--accent)}
+/* Крок «Додати», не коміт: тінт (§1127 v2a_queue.css), у тому ж світі
+   «Machined bezel» — верхній блиск + легка фаска, при натиску западає. Амбер
+   лишається в тексті й межі (ідентичність «додати»), рельєф — у тінях. */
+.q2 .addwork-toggle{height:32px;padding:0 15px 0 13px;border-radius:999px;display:inline-flex;align-items:center;gap:7px;
+  border:1px solid rgba(var(--accent-rgb), .5);background:rgba(var(--accent-base-rgb), .15);color:var(--accent-c);
+  font-size:var(--fs-2);font-weight:600;letter-spacing:.005em;cursor:pointer;
+  box-shadow:inset 0 1px 0 rgba(255,246,230,.12), 0 1px 2px rgba(0,0,0,.35);
+  transition:background var(--ui-speed) ease,border-color var(--ui-speed) ease,box-shadow var(--ui-speed) ease}
+.q2 .addwork-toggle svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round}
+.q2 .addwork-toggle:hover{background:rgba(var(--accent-base-rgb), .24);border-color:var(--accent);box-shadow:inset 0 1px 0 rgba(255,246,230,.14), 0 2px 5px -1px rgba(0,0,0,.45)}
+.q2 .addwork-toggle:active{transform:translateY(1px);box-shadow:inset 0 2px 3px rgba(13,17,23,.5)}
 .q2 .addwork-toggle[aria-expanded="true"]{background:rgba(var(--accent-base-rgb), .24)}
-.q2 .addwork{display:flex;flex-direction:column;align-items:stretch;gap:10px;padding:12px 16px;margin:0 0 2px;
-  border-top:1px solid var(--line);background:rgba(96,165,250,.05)}
+/* Форма розкриття. Тінт зведено до accent (був синій rgba(96,165,250) під
+   бурштиновими кнопками — різнобій). Групування: режим і поля близько, дія
+   відсунута нижче. */
+.q2 .addwork{display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:14px 16px 16px;margin:0 0 2px;
+  border-top:1px solid var(--line);background:rgba(var(--accent-base-rgb), .045)}
 .q2 .addwork[hidden]{display:none}
 .q2 .addwork-rows{display:flex;flex-direction:column;gap:8px}
 .q2 .addwork-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -64,10 +73,11 @@ main.worldv2.search-wide{max-width:none}
    (аудит 05.09.26, крок 2.4). */
 .q2 .addwork-error{margin:0 0 10px;padding:9px 12px;border-radius:var(--r-ctl);border:1px solid rgba(var(--danger-rgb,217,83,79),.5);background:rgba(var(--danger-rgb,217,83,79),.12);color:var(--ink);font-size:var(--fs-2)}
 .q2 .addwork-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.q2 .addwork-addrow{height:34px;padding:0 13px;border-radius:8px;border:1px dashed var(--line-2);background:none;
+.q2 .addwork-addrow{height:36px;padding:0 14px;border-radius:9px;border:1px dashed var(--line-2);background:none;
   color:var(--ink-2);font:inherit;font-size:var(--fs-2);cursor:pointer;white-space:nowrap;
   transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .q2 .addwork-addrow:hover{color:var(--ink);border-color:var(--accent)}
+.q2 .addwork-addrow:active{transform:translateY(1px);box-shadow:inset 0 2px 3px rgba(13,17,23,.45)}
 .q2 .addwork-removerow{flex:0 0 auto;width:30px;height:34px;border-radius:8px;border:1px solid var(--line);background:none;
   color:var(--ink-3);cursor:pointer;font-size:var(--fs-2);transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .q2 .addwork-removerow:hover{color:#fca5a5;border-color:rgba(var(--alarm-rgb), .5)}
@@ -85,12 +95,20 @@ main.worldv2.search-wide{max-width:none}
   transition:border-color var(--ui-speed) ease}
 .q2 .addwork-input:focus{border-color:var(--focus-border);background:var(--well)}
 .q2 .addwork-input::placeholder{color:var(--ink-3)}
-.q2 .addwork-qty{flex:0 0 90px;min-width:0}
+/* 90px обрізало найдовший плейсхолдер «Опак, к-сть» до «Опак, к-ст» — розширено
+   так, щоб усі три вузькі поля вміщали свій підпис. */
+.q2 .addwork-qty{flex:0 0 104px;min-width:0}
+/* Головна дія-коміт у стилі «Machined bezel» (той самий світ, що treatment-a):
+   залита бурштином (.apex у v2a_queue.css), а тактильність дають ІНСЕТ-тіні —
+   верхній блиск + нижня темна фаска + легке підняття — без градієнта. Натиск
+   западає всередину. Заливку/колір лишаємо на .apex; тут форма й рельєф. */
 .q2 .addwork-submit{display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  height:34px;padding:0 15px;border-radius:8px;border:1px solid rgba(var(--accent-rgb), .42);
-  background:rgba(var(--accent-base-rgb), .15);color:var(--accent-c);font-size:var(--fs-2);font-weight:500;cursor:pointer;white-space:nowrap;
-  transition:background var(--ui-speed) ease}
-.q2 .addwork-submit:hover{background:rgba(var(--accent-base-rgb), .24)}
+  height:36px;padding:0 20px;border-radius:9px;border:1px solid rgba(var(--accent-rgb), .42);
+  background:rgba(var(--accent-base-rgb), .15);color:var(--accent-c);font-size:var(--fs-2);font-weight:600;letter-spacing:.005em;cursor:pointer;white-space:nowrap;
+  box-shadow:inset 0 1px 0 rgba(255,246,230,.4), inset 0 -2px 3px rgba(90,52,8,.4), 0 1px 2px rgba(0,0,0,.4);
+  transition:background var(--ui-speed) ease,box-shadow var(--ui-speed) ease,transform var(--ui-speed) ease}
+.q2 .addwork-submit:hover{background:rgba(var(--accent-base-rgb), .24);box-shadow:inset 0 1px 0 rgba(255,246,230,.5), inset 0 -2px 3px rgba(90,52,8,.4), 0 2px 5px -1px rgba(0,0,0,.45)}
+.q2 .addwork-submit:active{transform:translateY(1px);box-shadow:inset 0 2px 4px rgba(90,52,8,.55)}
 .q2 .addwork-submit.is-loading{cursor:progress}
 /* Themed "milling cutter" spinner — hidden until the button is submitting. */
 .mill-spin{width:15px;height:15px;flex:0 0 auto;display:none;transform-origin:50% 50%}
@@ -98,9 +116,10 @@ main.worldv2.search-wide{max-width:none}
 .is-loading .addwork-submit-label{opacity:.85}
 @keyframes mill-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.is-loading .mill-spin{animation:none}}
-.q2 .addwork-cancel{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:none;
+.q2 .addwork-cancel{width:36px;height:36px;border-radius:9px;border:1px solid var(--line);background:none;
   color:var(--ink-3);cursor:pointer;font-size:var(--fs-2);transition:color var(--ui-speed) ease,border-color var(--ui-speed) ease}
 .q2 .addwork-cancel:hover{color:var(--ink);border-color:var(--line-2)}
+.q2 .addwork-cancel:active{transform:translateY(1px);box-shadow:inset 0 2px 3px rgba(13,17,23,.45)}
 main.worldv2.search-wide .search-container{max-width:none}
 main.worldv2.search-wide .search-form{max-width:900px}
 .worldv2 .mono{font-family:var(--font-mono);font-variant-ligatures:none}
