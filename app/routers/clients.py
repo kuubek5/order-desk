@@ -243,6 +243,10 @@ def get_client_duplicates(request: Request, db: Session = Depends(get_db)):
             "user": user,
             "candidates": candidates,
             "folder_candidates": folder_candidates,
+            # Ручний режим: усі теки для списку вибору + наявні групи (перегляд і
+            # «розбити»), щоб зчепити пару, яку rapidfuzz не запропонував.
+            "folder_all": sorted(folder_names),
+            "folder_groups": folder_merge_svc.list_groups(db),
             "flash": request.query_params.get("flash"),
         },
     )
@@ -280,6 +284,18 @@ def skip_folder_duplicate(
     folder_merge_svc.record_skip(db, name_a, name_b)
     db.commit()
     return RedirectResponse("/clients/duplicates?flash=folder_skipped", status_code=303)
+
+
+@router.post("/clients/duplicates/folder-unmerge")
+def unmerge_folder_group(request: Request, name: str = Form(...), db: Session = Depends(get_db)):
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    if blocked_response(request, db, user, "clients") is not None:
+        raise HTTPException(status_code=403, detail="розділ недоступний")
+    folder_merge_svc.record_unmerge(db, name)
+    db.commit()
+    return RedirectResponse("/clients/duplicates?flash=folder_unmerged", status_code=303)
 
 
 @router.post("/clients/duplicates/merge")

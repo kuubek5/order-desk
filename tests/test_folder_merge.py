@@ -63,3 +63,29 @@ def test_skip_does_not_group():
         assert frozenset(("Ніколаєв", "Іван Ніколаєв")) not in _pairs(
             find_candidates(session, ["Ніколаєв", "Іван Ніколаєв"])
         )
+
+
+def test_manual_merge_and_list_groups():
+    """Ручне зчеплення двох геть різних назв (rapidfuzz їх не запропонує)."""
+    from app.services.folder_merge import list_groups
+
+    with make_session() as session:
+        record_merge(session, "Ніколаєв", "Стоматологія на Сонячній")
+        session.commit()
+        groups = list_groups(session)
+        assert groups == [["Ніколаєв", "Стоматологія на Сонячній"]]
+        assert folder_sibling_map(session)["Ніколаєв"] == ["Стоматологія на Сонячній"]
+
+
+def test_unmerge_splits_the_group():
+    from app.services.folder_merge import record_unmerge, list_groups
+
+    with make_session() as session:
+        record_merge(session, "A", "B")
+        record_merge(session, "B", "C")
+        session.commit()
+        assert len(list_groups(session)) == 1
+        record_unmerge(session, "B")  # розбити всю групу через будь-якого члена
+        session.commit()
+        assert list_groups(session) == []
+        assert folder_sibling_map(session) == {}

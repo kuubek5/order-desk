@@ -27,6 +27,8 @@
     <div class="cdup-flash" role="status">Теки об'єднано — видача читатиме обидві.</div>
     {% elif flash == 'folder_skipped' %}
     <div class="cdup-flash" role="status">Теки позначено як різні.</div>
+    {% elif flash == 'folder_unmerged' %}
+    <div class="cdup-flash" role="status">Групу тек розбито.</div>
     {% endif %}
 
     <h2 class="cdup-sec">Імена в черзі</h2>
@@ -70,6 +72,34 @@
 
     <h2 class="cdup-sec">Теки в export</h2>
     <p class="cdup-secnote">Дві папки на одного клієнта («Ніколаєв» і «Іван Ніколаєв») — робота розсипається по обох. Об'єднай, і видача читатиме обидві теки як одного клієнта. Файли на диску не рухаються.</p>
+
+    {# Ручний режим: зчепити будь-які дві теки, навіть коли rapidfuzz їх не
+       запропонував (назви геть різні). Список — усі теки в export. #}
+    <form method="post" action="/clients/duplicates/folder-merge" class="cdup-manual">
+        <input class="cdup-inp" type="text" name="name_a" list="cdup-folders" placeholder="тека 1" required autocomplete="off">
+        <span class="cdup-plus" aria-hidden="true">+</span>
+        <input class="cdup-inp" type="text" name="name_b" list="cdup-folders" placeholder="тека 2" required autocomplete="off">
+        <button type="submit" class="cdup-btn">Об'єднати вручну</button>
+    </form>
+    <datalist id="cdup-folders">
+        {% for name in folder_all %}<option value="{{ name }}">{% endfor %}
+    </datalist>
+
+    {% if folder_groups %}
+    <div class="cdup-groups">
+        <h3 class="cdup-groups-h">Об'єднані теки</h3>
+        {% for group in folder_groups %}
+        <div class="cdup-group">
+            <span class="cdup-group-names mono">{{ group|join(' + ') }}</span>
+            <form method="post" action="/clients/duplicates/folder-unmerge">
+                <input type="hidden" name="name" value="{{ group[0] }}">
+                <button type="submit" class="cdup-btn cdup-skip" title="Розчепити ці теки">Розбити</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     {% if folder_candidates %}
     <ul class="cdup-list">
         {% for c in folder_candidates %}

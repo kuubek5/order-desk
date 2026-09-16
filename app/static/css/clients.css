@@ -190,3 +190,11 @@ main.clientsv2{max-width:1440px;margin:0 auto;padding:18px 20px;display:flex;fle
 .cl-dups:hover{color:var(--accent);border-color:var(--accent)}
 .cdup-sec{margin:24px 0 2px;font-family:var(--font-head);font-size:var(--fs-2)}
 .cdup-secnote{margin:0 0 10px;color:var(--ink-2);max-width:64ch;font-size:var(--fs-0)}
+.cdup-manual{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0}
+.cdup-inp{flex:0 1 16rem;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--field,transparent);color:var(--ink)}
+.cdup-plus{color:var(--ink-3)}
+.cdup-groups{margin:12px 0}
+.cdup-groups-h{margin:0 0 6px;font-size:var(--fs-1);color:var(--ink-2)}
+.cdup-group{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:6px 10px;border:1px dashed var(--line);border-radius:8px;margin-bottom:6px}
+.cdup-group-names{color:var(--ink)}

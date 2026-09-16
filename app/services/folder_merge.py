@@ -104,6 +104,34 @@ def record_skip(session: Session, name_a: str, name_b: str) -> None:
     session.flush()
 
 
+def record_unmerge(session: Session, name: str) -> None:
+    """Розбити групу, до якої належить `name`: видалити всі підтверджені
+    злиття між її членами. Рішення «не дублі» (skip) не чіпаємо."""
+    name = (name or "").strip()
+    if not name:
+        return
+    group = set(folder_sibling_map(session).get(name, [])) | {name}
+    keys = {match_key(n) for n in group}
+    for row in session.execute(select(FolderMerge).where(FolderMerge.kind == "merge")).scalars():
+        if row.a_key in keys and row.b_key in keys:
+            session.delete(row)
+    session.flush()
+
+
+def list_groups(session: Session) -> list[list[str]]:
+    """Наявні групи злитих тек — по одному переліку імен на групу."""
+    sib = folder_sibling_map(session)
+    seen: set[str] = set()
+    groups: list[list[str]] = []
+    for name in sorted(sib):
+        if name in seen:
+            continue
+        members = sorted({name, *sib[name]})
+        seen.update(members)
+        groups.append(members)
+    return groups
+
+
 def folder_sibling_map(session: Session) -> dict[str, list[str]]:
     """{назва теки: інші теки її групи}. Групи — звʼязні компоненти над
     підтвердженими злиттями (транзитивно). Порожньо, якщо злиттів немає."""

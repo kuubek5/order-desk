@@ -97,6 +97,7 @@ POST /actions/{action_id}/undo
 POST /clients
 POST /clients/duplicates/folder-merge
 POST /clients/duplicates/folder-skip
+POST /clients/duplicates/folder-unmerge
 POST /clients/duplicates/merge
 POST /clients/duplicates/skip
 POST /clients/{client_id}
