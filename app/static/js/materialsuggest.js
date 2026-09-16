@@ -176,16 +176,19 @@
         e.preventDefault();
         return;
       }
-      // Otherwise Tab takes the TOP suggestion when it's a full spelling
-      // (frecency) — the material with the colour already typed, or any client
-      // (clients have no shortcuts). A shortcut sitting at the top WITHOUT
-      // data-expand means the shortcut match is ambiguous, so we don't guess and
-      // let Tab move focus instead.
-      var first = ul.firstElementChild;
-      if (first && first.getAttribute("data-kind") !== "shortcut") {
-        choose(input, first);
-        e.preventDefault();
-        return;
+      // Otherwise Tab takes the top FULL spelling (frecency): the first option
+      // that isn't a shortcut. Leading shortcut rows may sit above it when the
+      // shortcut match is ambiguous (no data-expand) — we skip past them rather
+      // than guess which shortcut to expand, but still accept the best full
+      // suggestion below. Works for materials with the colour typed and for
+      // clients (which have no shortcuts at all).
+      var opts = ul.children;
+      for (var i = 0; i < opts.length; i++) {
+        if (opts[i].getAttribute("data-kind") !== "shortcut") {
+          choose(input, opts[i]);
+          e.preventDefault();
+          return;
+        }
       }
       close(input);
     }

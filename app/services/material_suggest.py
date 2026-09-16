@@ -274,7 +274,18 @@ def suggest_materials(
         if any(row.key.startswith(k) or k.startswith(row.key) for k in qkeys)
         and row.expansion.strip().casefold() != first_token.casefold()
     ]
-    unique_expand = len(shortcut_matches) == 1
+    # Який рядок Tab розгортає. ТОЧНИЙ збіг ключа виграє навіть коли інші
+    # скорочення мають його за префікс: `ma3` = `mono a3`, хоча поруч `ma35` =
+    # `mono a3,5`. Без цього кожне скорочення з довшим сусідом ставало
+    # «неоднозначним» і Tab не розгортав нічого (скарга 16.09.26). Інакше —
+    # звичне правило: розгортаємо, лише коли збіг єдиний.
+    exact = [row for row in shortcut_matches if row.key in qkeys]
+    if len(exact) == 1:
+        expand_row = exact[0]
+    elif len(shortcut_matches) == 1:
+        expand_row = shortcut_matches[0]
+    else:
+        expand_row = None
 
     suggestions: list[Suggestion] = []
     seen: set[str] = set()
@@ -288,7 +299,7 @@ def suggest_materials(
                 badge=badge_for_name(id_to_name.get(mid)) if mid is not None else None,
                 material_id=mid,
                 shortcut=row.shortcut,
-                is_expand=unique_expand,
+                is_expand=row is expand_row,
             )
         )
         seen.add(text_key)

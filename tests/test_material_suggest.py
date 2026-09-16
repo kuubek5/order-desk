@@ -90,15 +90,30 @@ def test_shortcut_expands_when_unique_and_carries_badge():
         assert top.badge == "Zr"  # `mono` розпізнається як Цирконій
 
 
-def test_two_shortcuts_same_prefix_do_not_expand():
+def test_ambiguous_prefix_does_not_expand():
     invalidate_cache()
     with make_session() as session:
         ensure_seeded(session)
         add_shortcut(session, "ма", "mono a3")
         add_shortcut(session, "маб", "mono a3.5")
-        items = suggest_materials(session, "ма")
+        # «м» — префікс обох, точний збіг жодного → Tab не розгортає.
+        items = suggest_materials(session, "м")
         assert len(items) >= 2
         assert all(it.is_expand is False for it in items), "двозначність → Tab не розгортає"
+
+
+def test_exact_shortcut_key_expands_despite_longer_neighbor():
+    """`ma3` = `mono a3` розгортається, хоча поруч `ma35` = `mono a3,5`
+    (скарга 16.09.26: точний збіг ключа мусить вигравати над сусідом-префіксом)."""
+    invalidate_cache()
+    with make_session() as session:
+        ensure_seeded(session)
+        add_shortcut(session, "ma3", "mono a3")
+        add_shortcut(session, "ma35", "mono a3.5")
+        items = suggest_materials(session, "ma3")
+        expandable = [it for it in items if it.is_expand]
+        assert len(expandable) == 1
+        assert expandable[0].text == "mono a3"
 
 
 def test_frecency_ranks_by_frequency_and_recognizes_material():
