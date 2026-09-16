@@ -110,6 +110,14 @@ main.worldv2.search-wide{max-width:none}
 .q2 .addwork-submit:hover{background:rgba(var(--accent-base-rgb), .24);box-shadow:inset 0 1px 0 rgba(255,246,230,.5), inset 0 -2px 3px rgba(90,52,8,.4), 0 2px 5px -1px rgba(0,0,0,.45)}
 .q2 .addwork-submit:active{transform:translateY(1px);box-shadow:inset 0 2px 4px rgba(90,52,8,.55)}
 .q2 .addwork-submit.is-loading{cursor:progress}
+/* Обгортка спінера (.mill-wrap) резервувала місце ЗЛІВА від напису ЗАВЖДИ, а не
+   лише під час запису: порожня — 7px через flex-gap, а з вибраною темою лоадера
+   (element-styles.css) ще й width:16–34px. Через це «Додати в чергу і таблицю»
+   стояв не по центру й тиснувся до правого краю. Ховаємо обгортку, поки кнопка
+   не в стані запису — напис центрується; :not(.is-loading) дає специфічність,
+   вищу за правило теми лоадера. Кнопка одразу навігує, тож поява спінера при
+   записі зсуву не лишає. */
+.q2 .addwork-submit:not(.is-loading) .mill-wrap{display:none}
 /* Themed "milling cutter" spinner — hidden until the button is submitting. */
 .mill-spin{width:15px;height:15px;flex:0 0 auto;display:none;transform-origin:50% 50%}
 .is-loading .mill-spin{display:inline-block;animation:mill-spin .75s linear infinite}
