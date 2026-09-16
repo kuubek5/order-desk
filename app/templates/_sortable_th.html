@@ -5,11 +5,22 @@
    day-strip pager already follows in _queue_sidebar.html, and only swaps
    sort/dir. Clicking a column that isn't currently sorted sorts it
    ascending; clicking the already-active column toggles asc<->desc. #}
+{# Клік по заголовку раніше вів звичайним `href` — тобто ПОВНЕ перезавантаження
+   сторінки: перемальовувались меню, фільтри, панелі й таблиця разом, і це
+   читалось як моргання. Тепер клік свапає ЛИШЕ #queue-rows через той самий
+   `partial=rows`, що й 15с-полл, тож перемальовується сама таблиця, а не весь
+   екран. `hx-push-url` тримає адресу й кнопку «назад» у синхроні; `href`
+   лишається справжнім (Ctrl-клік, без JS, індексація) — при звичайному кліку
+   htmx його перехоплює. Скрол .tablewrap зберігає той самий обробник app.js,
+   що й на поллі (htmx:beforeSwap/afterSwap на #queue-rows). #}
 {% macro th(field, label) %}
 {% set is_active = sort == field %}
 {% set next_dir = 'desc' if (is_active and sort_dir == 'asc') else 'asc' %}
 {% set date_value = selected_date.strftime('%d.%m.%y') if selected_date else '' %}
-<a class="th-sort {% if is_active %}th-sort-active{% endif %}" href="/?period={{ period }}&ready={{ ready }}&source={{ source }}&date={{ date_value }}&date_page={{ date_page }}&sort={{ field }}&dir={{ next_dir }}" title="Сортувати за «{{ label }}»">
+{% set sort_url = '/?period=' ~ period ~ '&ready=' ~ ready ~ '&source=' ~ source ~ '&date=' ~ date_value ~ '&date_page=' ~ date_page ~ '&sort=' ~ field ~ '&dir=' ~ next_dir %}
+<a class="th-sort {% if is_active %}th-sort-active{% endif %}" href="{{ sort_url }}"
+   hx-get="{{ sort_url }}&partial=rows" hx-target="#queue-rows" hx-swap="outerHTML transition:true" hx-push-url="{{ sort_url }}"
+   title="Сортувати за «{{ label }}»">
     <span>{{ label }}</span>{% if is_active %}<span class="th-sort-icon" aria-hidden="true">{% if sort_dir == 'asc' %}&#9650;{% else %}&#9660;{% endif %}</span>{% endif %}
 </a>
 {% endmacro %}
