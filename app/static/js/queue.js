@@ -409,6 +409,15 @@ function highlightOrderRow(orderId, { scroll = true } = {}) {
 }
 
 document.addEventListener("click", (event) => {
+  // Меню статусу рядка — нативний <details class="rowmenu">. Нативний details
+  // закривається лише повторним кліком по кнопці, а не кліком назовні, тож він
+  // «залипав» відкритим. Закриваємо будь-який відкритий, якщо клік стався поза
+  // ним (клік по його ж кнопці/пункту всередині — contains → лишається). Обробник
+  // на document, тому переживає 15с-свап #queue-rows без переприв'язки.
+  document.querySelectorAll("details.rowmenu[open]").forEach((d) => {
+    if (!d.contains(event.target)) d.removeAttribute("open");
+  });
+
   const toggle = event.target.closest("[data-acthist-toggle]");
   if (toggle) {
     const box = toggle.closest("[data-acthist]");
@@ -450,7 +459,10 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeActionHistory();
+  if (event.key === "Escape") {
+    closeActionHistory();
+    document.querySelectorAll("details.rowmenu[open]").forEach((d) => d.removeAttribute("open"));
+  }
 });
 
 // Arriving from a cross-day jump: ?focus=<id> put the right tab on screen, now
