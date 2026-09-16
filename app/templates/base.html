@@ -63,6 +63,9 @@
        порядку тегів, і файл, який оголошує спільне, має йти першим. #}
     <script src="/static/js/palette.js?v={{ static_ver('js/palette.js') }}" defer></script>
     <script src="/static/js/queue.js?v={{ static_ver('js/queue.js') }}" defer></script>
+    {# Комбобокс підказок матеріалу для форми «Додати роботу». Делегований, тож
+       поза чергою — no-op; іде після queue.js, що клонує рядки форми. #}
+    <script src="/static/js/materialsuggest.js?v={{ static_ver('js/materialsuggest.js') }}" defer></script>
     <script src="/static/js/mail.js?v={{ static_ver('js/mail.js') }}" defer></script>
     {# Шестерня «вигляд списку» — спільна для черги і тріажу. Після queue.js:
        скидання вигляду шле подію, яку queue.js слухає, щоб забути ще й

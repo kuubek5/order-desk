@@ -16,10 +16,21 @@ from app.material_catalog import (
     MaterialCatalogError,
     add_alias,
     add_material,
+    add_shortcut,
     backfill_orders,
     delete_alias,
+    delete_shortcut,
     ensure_seeded,
     list_materials,
+    list_shortcuts,
+    load_alias_rows,
+    material_id_by_name,
+    resolve_material_id,
+)
+from app.services.material_suggest import (
+    badge_for_name,
+    invalidate_cache as invalidate_suggest_cache,
+    usage_for_expansion,
 )
 from app.services.materials_console import (
     load_colour_rows,
@@ -72,11 +83,32 @@ def get_materials_settings(
         selected = materials[0]
     rules = measure_rules(list(selected.aliases), colours) if selected else []
 
+    # Скорочення — плоский, наскрізний список (не прив'язаний до категорії):
+    # `мл → mono`. Бейдж і «вжито» рахуються тут, щоб адмін бачив, якому
+    # написанню давати коротше скорочення, і одразу ловив нерозпізнане.
+    alias_rows = load_alias_rows(db)
+    name_to_id = material_id_by_name(db)
+    id_to_name = {mid: name for name, mid in name_to_id.items()}
+    shortcut_views = []
+    for row in list_shortcuts(db):
+        mid = resolve_material_id(row.expansion, alias_rows, name_to_id)
+        shortcut_views.append(
+            {
+                "id": row.id,
+                "shortcut": row.shortcut,
+                "expansion": row.expansion,
+                "used": usage_for_expansion(db, row.expansion),
+                "badge": badge_for_name(id_to_name.get(mid)) if mid is not None else None,
+                "recognized": mid is not None,
+            }
+        )
+
     return templates.TemplateResponse(
         request,
         "settings_materials.html",
         {
             "page_title": "Бібліотека матеріалів",
+            "shortcuts": shortcut_views,
             "user": user,
             "materials": materials,
             "material_views": views,
@@ -182,6 +214,36 @@ def create_material(
     except MaterialCatalogError as exc:
         db.rollback()
         request.session["materials_flash"] = {"kind": "error", "message": str(exc)}
+    return RedirectResponse("/settings/materials", status_code=303)
+
+
+@router.post("/settings/materials/shortcut/add")
+def create_material_shortcut(
+    request: Request,
+    shortcut: str = Form(...),
+    expansion: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    require_settings_edit(request, db, "materials")
+    try:
+        add_shortcut(db, shortcut, expansion)
+        db.commit()
+        # «Вжито» на екрані читається з frecency-кешу — скинути, щоб новий рядок
+        # одразу показав своє число, а не чекав TTL.
+        invalidate_suggest_cache()
+        request.session["materials_flash"] = {"kind": "success", "message": "Скорочення додано."}
+    except MaterialCatalogError as exc:
+        db.rollback()
+        request.session["materials_flash"] = {"kind": "error", "message": str(exc)}
+    return RedirectResponse("/settings/materials", status_code=303)
+
+
+@router.post("/settings/materials/shortcut/{shortcut_id}/delete")
+def remove_material_shortcut(shortcut_id: int, request: Request, db: Session = Depends(get_db)):
+    require_settings_edit(request, db, "materials")
+    delete_shortcut(db, shortcut_id)
+    db.commit()
+    request.session["materials_flash"] = {"kind": "success", "message": "Скорочення видалено."}
     return RedirectResponse("/settings/materials", status_code=303)
 
 

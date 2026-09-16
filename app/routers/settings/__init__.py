@@ -82,11 +82,13 @@ from .feedback import (
 from .materials import (
     add_material_alias,
     create_material,
+    create_material_shortcut,
     get_materials_settings,
     probe_material_alias,
     prune_mail_spool,
     reclassify_materials,
     remove_material_alias,
+    remove_material_shortcut,
     set_recognition_default_material,
     toggle_mail_download_all,
 )
@@ -124,11 +126,13 @@ __all__ = [
     # materials
     "add_material_alias",
     "create_material",
+    "create_material_shortcut",
     "get_materials_settings",
     "probe_material_alias",
     "prune_mail_spool",
     "reclassify_materials",
     "remove_material_alias",
+    "remove_material_shortcut",
     "set_recognition_default_material",
     "toggle_mail_download_all",
     # mcp_access

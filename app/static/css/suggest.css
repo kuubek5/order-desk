@@ -1,0 +1,92 @@
+/* Комбобокс підказок матеріалу у формі «Додати роботу» (materialsuggest.js).
+   Обгортка позиціонує випадаючий список під полем; поле лишається звичайним
+   .addwork-input, тож у рядку форми воно поводиться як раніше. */
+
+.ms-field {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ms-field > .addwork-input {
+  width: 100%;
+}
+
+.ms-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 15rem;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card, 12px);
+  box-shadow: var(--raise-2, 0 12px 30px rgba(0, 0, 0, 0.35));
+}
+.ms-list[hidden] {
+  display: none;
+}
+
+.ms-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-chip, 8px);
+  cursor: pointer;
+  color: var(--ink);
+}
+.ms-opt.is-active,
+.ms-opt:hover {
+  background: rgba(var(--accent-rgb), 0.14);
+}
+
+.ms-chip {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  font-size: var(--fs-0, 0.72rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip, 8px);
+  color: var(--ink-2);
+  background: var(--field, transparent);
+}
+
+.ms-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ms-badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  font-size: var(--fs-0, 0.72rem);
+  font-family: var(--font-mono);
+  border-radius: var(--radius-chip, 8px);
+  background: rgba(var(--accent-rgb), 0.18);
+  color: var(--accent);
+}
+.ms-badge.is-unknown {
+  background: rgba(var(--warn-rgb), 0.18);
+  color: var(--warn-ink, var(--warn));
+}
+
+.ms-right {
+  flex: 0 0 auto;
+  font-size: var(--fs-0, 0.72rem);
+  color: var(--ink-3);
+}
+.ms-right kbd {
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink-2);
+}

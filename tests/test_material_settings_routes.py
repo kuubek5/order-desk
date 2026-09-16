@@ -133,3 +133,42 @@ def test_non_loopback_is_forbidden():
         with pytest.raises(HTTPException) as exc:
             settings_router_mod.reclassify_materials(_request(admin.id, host="10.0.0.5"), db=db)
         assert exc.value.status_code == 403
+
+
+def test_add_and_delete_shortcut():
+    from app.material_catalog import list_shortcuts
+
+    with _db() as db:
+        admin = _admin(db)
+        ensure_seeded(db)
+        req = _request(admin.id)
+
+        resp = settings_router_mod.create_material_shortcut(
+            req, shortcut="мл", expansion="mono", db=db
+        )
+        assert resp.status_code == 303
+        assert req.session["materials_flash"]["kind"] == "success"
+        rows = list_shortcuts(db)
+        assert len(rows) == 1 and rows[0].expansion == "mono"
+
+        # Дубль (той самий ключ через латиницю) — помилка, не другий рядок.
+        req2 = _request(admin.id)
+        settings_router_mod.create_material_shortcut(req2, shortcut="ml", expansion="monolit", db=db)
+        assert req2.session["materials_flash"]["kind"] == "error"
+        assert len(list_shortcuts(db)) == 1
+
+        # Видалення.
+        sid = rows[0].id
+        settings_router_mod.remove_material_shortcut(sid, _request(admin.id), db=db)
+        assert list_shortcuts(db) == []
+
+
+def test_shortcut_add_forbidden_off_loopback():
+    with _db() as db:
+        admin = _admin(db)
+        ensure_seeded(db)
+        with pytest.raises(HTTPException) as exc:
+            settings_router_mod.create_material_shortcut(
+                _request(admin.id, host="10.0.0.5"), shortcut="мл", expansion="mono", db=db
+            )
+        assert exc.value.status_code == 403

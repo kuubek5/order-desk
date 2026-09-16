@@ -12,6 +12,8 @@
    показувався у двох місцях одного екрана, і панель праворуч виявилась
    зручнішою — вона згортається й не займає смугу над таблицею. #}
 <link rel="stylesheet" href="/static/css/furnaces.css?v={{ static_ver('css/furnaces.css') }}">
+{# Комбобокс підказок матеріалу у формі «Додати роботу». #}
+<link rel="stylesheet" href="/static/css/suggest.css?v={{ static_ver('css/suggest.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -220,8 +222,16 @@
                         {# Lab mode (hidden+disabled by default so it isn't submitted) #}
                         <input type="text" name="work_order_no" placeholder="Номер наряду" aria-label="Номер наряду" class="addwork-input addwork-qty" data-addwork-lab hidden disabled>
                         <input type="text" name="kind" placeholder="Вид роботи" aria-label="Вид роботи" class="addwork-input" data-addwork-lab hidden disabled>
-                        {# Common #}
-                        <input type="text" name="material_color" placeholder="Матеріал / колір (mono a3…)" aria-label="Матеріал і колір" class="addwork-input">
+                        {# Common. Матеріал — комбобокс із підказками й розгортанням
+                           скорочень (materialsuggest.js). Обгортка потрібна для
+                           абсолютного позиціювання випадаючого списку; форма
+                           стоїть ВИЩЕ #queue-rows, тож полл її не свапає — див.
+                           SUGGEST_BRIEF §4. Поле лишається вільним текстом. #}
+                        <div class="ms-field" data-matsuggest>
+                            <input type="text" name="material_color" placeholder="Матеріал / колір (mono a3…)" aria-label="Матеріал і колір" class="addwork-input"
+                                   role="combobox" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" autocomplete="off" data-matsuggest-input>
+                            <ul class="ms-list" role="listbox" aria-label="Підказки матеріалу" hidden data-matsuggest-list></ul>
+                        </div>
                         <input type="text" name="quantity" placeholder="К-сть" aria-label="Кількість одиниць" class="addwork-input addwork-qty" inputmode="numeric">
                         {# Технік і шлях роботи — суто лабораторні: клієнтський рядок
                            пише адміністратор, і в нього цих даних просто немає. #}

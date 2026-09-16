@@ -414,6 +414,23 @@ class MaterialAlias(Base):
     material: Mapped["Material"] = relationship("Material", back_populates="aliases")
 
 
+class MaterialShortcut(Base):
+    """A typing shortcut expanding to a canonical material spelling, e.g.
+    `мл` → `mono`. DATA, not code: the admin adds/edits these on the material
+    library screen (owner decision 15.09.26). Only the material WORD is
+    shortened — the colour is typed as-is, so 15 rows cover 150 material+colour
+    combinations. `key` is the fold-for-match form of `shortcut` (see
+    material_classifier.match_key) and carries the uniqueness constraint: a
+    shortcut must be unambiguous or Tab can't safely expand it."""
+
+    __tablename__ = "material_shortcuts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    shortcut: Mapped[str] = mapped_column(String(50))
+    key: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    expansion: Mapped[str] = mapped_column(String(100))
+
+
 class Client(Base):
     """A client profile the operator maintains directly (contact info, notes).
 

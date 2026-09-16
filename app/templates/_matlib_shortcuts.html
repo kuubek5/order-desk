@@ -1,0 +1,47 @@
+{# Скорочення матеріалів: плоский наскрізний список `написання | скорочення |
+   вжито | ✎`. Не прив'язані до категорії зліва — скорочення дає канонічне
+   СЛОВО матеріалу (mono), колір оператор пише як є. Колонка «вжито» підказує,
+   якому написанню давати коротше скорочення; «?» замість бейджа — написання,
+   якого класифікатор не впізнав (те саме, що material_id NULL у черзі). #}
+<section class="ml-shortcuts" aria-labelledby="ml-shortcuts-h">
+    <h2 id="ml-shortcuts-h">Скорочення для ручного вводу</h2>
+    <p>Оператор пише скорочення в полі матеріалу й тисне Tab — воно
+       розгортається в канонічне написання. Скорочується лише слово матеріалу
+       (<span class="mono">мл → mono</span>), колір лишається як набрано.</p>
+
+    {% if shortcuts %}
+    <table class="ml-sc-table">
+        <thead>
+            <tr><th>Написання</th><th>Скорочення</th><th class="ml-sc-num">Вжито</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for s in shortcuts %}
+            <tr class="{{ 'is-unknown' if not s.recognized }}">
+                <td class="mono">
+                    {{ s.expansion }}
+                    {% if s.badge %}<span class="ml-sc-badge">{{ s.badge }}</span>
+                    {% else %}<span class="ml-sc-badge is-unknown" title="Матеріал не розпізнано">?</span>{% endif %}
+                </td>
+                <td class="mono ml-sc-key">{{ s.shortcut }}</td>
+                <td class="ml-sc-num">{{ s.used }}</td>
+                <td class="ml-sc-act">
+                    <form method="post" action="/settings/materials/shortcut/{{ s.id }}/delete">
+                        <button type="submit" class="ml-sc-del" aria-label="Видалити скорочення" title="Видалити">✕</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="ml-sc-empty">Скорочень ще немає. Додайте перше — наприклад
+       <span class="mono">мл → mono</span>.</p>
+    {% endif %}
+
+    <form method="post" action="/settings/materials/shortcut/add" class="ml-sc-add">
+        <input class="ml-inp mono" type="text" name="shortcut" placeholder="скорочення (мл)" required maxlength="50">
+        <span class="ml-sc-arrow" aria-hidden="true">→</span>
+        <input class="ml-inp mono" type="text" name="expansion" placeholder="написання (mono)" required maxlength="100">
+        <button type="submit" class="ml-btn ml-btn-apex">Додати скорочення</button>
+    </form>
+</section>

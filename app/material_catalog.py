@@ -17,9 +17,10 @@ from app.material_classifier import (
     SEED_ALIASES,
     SEED_MATERIALS,
     classify_material,
+    match_key,
     normalize_material,
 )
-from app.models import Material, MaterialAlias, Order
+from app.models import Material, MaterialAlias, MaterialShortcut, Order
 
 VALID_MATCH_TYPES = ("contains", "token")
 
@@ -158,6 +159,56 @@ def add_material(session: Session, name: str, *, is_production: bool = True) -> 
     session.add(material)
     session.flush()
     return material
+
+
+def list_shortcuts(session: Session) -> list[MaterialShortcut]:
+    """All material typing shortcuts, shortest key first (a shorter key is the
+    scarcer, more valuable one — that ordering also drives the library table)."""
+    return list(
+        session.execute(
+            select(MaterialShortcut).order_by(
+                func.length(MaterialShortcut.key), MaterialShortcut.key
+            )
+        ).scalars()
+    )
+
+
+def add_shortcut(session: Session, shortcut: str, expansion: str) -> MaterialShortcut:
+    """Add one shortcut→expansion after validating. Raises MaterialCatalogError
+    on empty input or a duplicate key. Uniqueness is on the fold-for-match key,
+    not the raw text: `мл` and `ml` are the same shortcut for the operator, and
+    a duplicate would make Tab ambiguous (which the whole feature forbids)."""
+    short_clean = (shortcut or "").strip()
+    expansion_clean = (expansion or "").strip()
+    if not short_clean:
+        raise MaterialCatalogError("Порожнє скорочення.")
+    if not expansion_clean:
+        raise MaterialCatalogError("Порожнє написання.")
+    if len(short_clean) > 50:
+        raise MaterialCatalogError("Скорочення задовге.")
+    if len(expansion_clean) > 100:
+        raise MaterialCatalogError("Написання задовге.")
+    key = match_key(short_clean)
+    if not key:
+        raise MaterialCatalogError("Скорочення порожнє після нормалізації.")
+    existing = session.scalar(
+        select(MaterialShortcut).where(MaterialShortcut.key == key)
+    )
+    if existing is not None:
+        raise MaterialCatalogError(
+            f"Скорочення «{short_clean}» вже зайняте (→ {existing.expansion})."
+        )
+    row = MaterialShortcut(shortcut=short_clean, key=key, expansion=expansion_clean)
+    session.add(row)
+    session.flush()
+    return row
+
+
+def delete_shortcut(session: Session, shortcut_id: int) -> None:
+    row = session.get(MaterialShortcut, shortcut_id)
+    if row is not None:
+        session.delete(row)
+        session.flush()
 
 
 def backfill_orders(session: Session, *, only_unresolved: bool = True) -> int:

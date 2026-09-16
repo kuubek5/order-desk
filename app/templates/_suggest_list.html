@@ -1,0 +1,25 @@
+{# Options for the material combobox (WAI-ARIA combobox 1.2). The listbox <ul>
+   lives in queue.html; this fragment is only its <li role="option"> children,
+   swapped in on keyup. Empty query → empty fragment, and materialsuggest.js
+   collapses the listbox. Ids are assigned by the controller after swap so they
+   stay unique across the several add-work rows. #}
+{% for it in items %}
+<li class="ms-opt{{ ' is-shortcut' if it.kind == 'shortcut' }}{{ ' is-unknown' if not it.badge }}"
+    role="option"
+    data-value="{{ it.text }}"
+    data-kind="{{ it.kind }}"
+    {% if it.shortcut %}data-shortcut="{{ it.shortcut }}"{% endif %}
+    {% if it.is_expand %}data-expand="1"{% endif %}>
+  {% if it.shortcut %}<span class="ms-chip mono">{{ it.shortcut }}</span>{% endif %}
+  <span class="ms-text mono">{{ it.text }}</span>
+  {% if it.badge %}
+  <span class="ms-badge" title="Розпізнано">{{ it.badge }}</span>
+  {% else %}
+  <span class="ms-badge is-unknown" title="Матеріал не розпізнано">?</span>
+  {% endif %}
+  <span class="ms-right">
+    {% if it.is_expand %}<kbd>Tab</kbd>
+    {% elif it.count %}{{ it.count }} робіт{% endif %}
+  </span>
+</li>
+{% endfor %}

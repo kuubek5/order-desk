@@ -74,6 +74,7 @@ from app.material_catalog import (
 from app.runtime import data_dir, resource_path
 from app.routers.auth import router as auth_router
 from app.routers.clients import router as clients_router
+from app.routers.suggest import router as suggest_router
 from app.routers.handout import HANDOUT_DAY_WINDOW
 from app.routers.handout import router as handout_router
 from app.routers.settings import router as settings_router
@@ -1299,6 +1300,10 @@ app.include_router(vyrobitok_router)
 
 # Екран «Клієнти» живе в app/routers/clients.py.
 app.include_router(clients_router)
+
+
+# Підказки матеріалу/клієнта для форми «Додати роботу» (HTMX-фрагменти).
+app.include_router(suggest_router)
 
 
 # Налаштування (адмін) живуть у пакеті app/routers/settings/ — по модулю на

@@ -56,6 +56,7 @@ from app.models import (
     MailFilterRule,
     Material,
     MaterialAlias,
+    MaterialShortcut,
     Order,
     OrderFocus,
     ReworkRecord,
@@ -111,6 +112,9 @@ _TABLE_MODELS: list[Any] = [
     Client,
     Material,
     MaterialAlias,
+    # Скорочення матеріалів для ручного вводу (`мл → mono`). Дані власника, не
+    # код — переїзд на новий ПК без них стер би зібраний набір скорочень.
+    MaterialShortcut,
     MailFilterCategory,
     MailFilterRule,
     Furnace,
@@ -215,7 +219,7 @@ _ENCRYPTED_COLUMNS: dict[str, tuple[str, ...]] = {
 # менший за нинішній не тому, що копія часткова, а тому, що тих таблиць тоді
 # ще не було. Число росте разом із `_TABLE_MODELS` — і саме тому воно тут,
 # поруч зі списком, а не зашите в логіку відновлення.
-_NEW_SINCE_FLAG = 1  # screen_puzzles (12.09.26)
+_NEW_SINCE_FLAG = 2  # material_shortcuts (16.09.26)
 
 
 def _row_to_dict(obj: Any) -> dict[str, Any]:

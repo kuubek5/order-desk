@@ -195,6 +195,20 @@ document.addEventListener("click", (event) => {
     const rows = rowsBox.querySelectorAll("[data-addwork-row]");
     const clone = rows[rows.length - 1].cloneNode(true);
     clone.querySelectorAll("input").forEach((el) => { el.value = ""; });
+    // Скинути стан комбобокса матеріалу на клоні: список несе застарілі опції й
+    // (найгірше) той самий id, а два однакові id ламають aria-activedescendant.
+    // Порожня форма — closed combobox, id присвоїть materialsuggest.js при
+    // першому запиті.
+    clone.querySelectorAll("[data-matsuggest-list]").forEach((ul) => {
+      ul.innerHTML = "";
+      ul.hidden = true;
+      ul.removeAttribute("id");
+    });
+    clone.querySelectorAll("[data-matsuggest-input]").forEach((inp) => {
+      inp.setAttribute("aria-expanded", "false");
+      inp.removeAttribute("aria-controls");
+      inp.removeAttribute("aria-activedescendant");
+    });
     rowsBox.appendChild(clone);
     const type = form.querySelector("[data-addwork-typeinput]").value;
     applyAddworkType(form, type);

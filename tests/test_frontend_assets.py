@@ -55,6 +55,7 @@ BASE_HTML_SCRIPTS = [
     # стоїть вище за своїх споживачів. Свідома зміна від 06.09.26, крок 3.3.
     "/static/js/palette.js",
     "/static/js/queue.js",
+    "/static/js/materialsuggest.js",
     "/static/js/mail.js",
     "/static/js/lookgear.js",
     "/static/js/widgetedit.js",

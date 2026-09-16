@@ -172,6 +172,33 @@ def normalize_material(raw: str | None) -> str:
     return s
 
 
+# Cyrillic → Latin fold used ONLY as a match key (suggestions/shortcuts), never
+# for stored or displayed canon. normalize_material() deliberately leaves
+# homoglyphs alone, so `моно А3` and `mono a3` are different strings there; here
+# we collapse the visually-identical and common-transliteration letters so the
+# two spellings land in the same suggestion cluster and a shortcut typed in
+# either alphabet still matches. Single-char (1:1) only — that is what maketrans
+# needs and what keeps the key length stable. Same rule as CLAUDE.md §4
+# (кирилична А/В/С = латинська), extended to the letters these short
+# material+shade strings actually use.
+_MATCH_FOLD = str.maketrans(
+    {
+        "а": "a", "б": "b", "в": "b", "г": "g", "ґ": "g", "д": "d",
+        "е": "e", "є": "e", "з": "z", "и": "i", "і": "i", "ї": "i",
+        "й": "i", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o",
+        "п": "p", "р": "p", "с": "c", "т": "t", "у": "y", "ф": "f",
+        "х": "x", "ц": "c", "ь": "",
+    }
+)
+
+
+def match_key(raw: str | None) -> str:
+    """Fold `raw` to a cross-alphabet comparison key: normalize, then map the
+    Cyrillic letters these strings use onto their Latin lookalikes. For matching
+    only — the value shown to the operator stays the original spelling."""
+    return normalize_material(raw).translate(_MATCH_FOLD)
+
+
 def classify_material(
     raw: str | None,
     aliases: list[AliasRow] | None = None,
