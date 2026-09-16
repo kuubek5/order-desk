@@ -279,3 +279,27 @@ def test_update_shortcut_edits_and_guards_uniqueness():
         # не можна зайняти ключ іншого рядка
         with pytest.raises(MaterialCatalogError):
             update_shortcut(session, a.id, "пм", "mono a3")
+
+
+# ── забута розкладка ─────────────────────────────────────────────────────────
+
+
+def test_match_keys_maps_wrong_keyboard_layout():
+    """`ьщтщ ф3` на ЙЦУКЕН — це `mono a3` на QWERTY."""
+    from app.material_classifier import match_keys
+
+    assert "mono a3" in match_keys("ьщтщ ф3")
+    assert "mono a3" in match_keys("моно а3")   # гомогліфний шлях теж лишається
+    assert "mono a3" in match_keys("mono a3")   # латиниця — без змін
+
+
+def test_suggest_finds_material_typed_in_wrong_layout():
+    """Оператор забув переключити розкладку: `ьщтщ ф3` має знайти `mono a3`."""
+    invalidate_cache()
+    with make_session() as session:
+        ensure_seeded(session)
+        add_orders(session, {"mono a3": 6, "pmma a2": 3})
+        invalidate_cache()
+        items = suggest_materials(session, "ьщтщ ф3")
+        assert items and items[0].text == "mono a3"
+        assert items[0].kind == "frecency"   # повна заміна, не word-only

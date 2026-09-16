@@ -199,6 +199,41 @@ def match_key(raw: str | None) -> str:
     return normalize_material(raw).translate(_MATCH_FOLD)
 
 
+# Забута розкладка: ЙЦУКЕН → QWERTY за ФІЗИЧНОЮ клавішею. Оператор хотів набрати
+# латиницею, але лишився на кирилиці, і `mono a3` вийшло як `ьщтщ ф3`. Це НЕ те
+# саме, що гомогліфний фолд (`моно`→`mono` за виглядом): тут кирилиця — випадкове
+# сміття, і зводиться вона не за виглядом, а за позицією клавіші (ь стоїть там,
+# де m). Тому окрема мапа й окремий ключ, а не розширення _MATCH_FOLD. Літери в
+# нижньому регістрі — normalize_material уже опустив регістр. Українські й
+# російські специфічні (і/ы, є/э, ї/ъ) ведуть на ту саму клавішу.
+_KEYBOARD_LAYOUT = str.maketrans(
+    {
+        "й": "q", "ц": "w", "у": "e", "к": "r", "е": "t", "н": "y", "г": "u",
+        "ш": "i", "щ": "o", "з": "p", "х": "[", "ъ": "]", "ї": "]",
+        "ф": "a", "ы": "s", "і": "s", "в": "d", "а": "f", "п": "g", "р": "h",
+        "о": "j", "л": "k", "д": "l", "ж": ";", "э": "'", "є": "'",
+        "я": "z", "ч": "x", "с": "c", "м": "v", "и": "b", "т": "n", "ь": "m",
+        "б": ",", "ю": ".", "ґ": "\\",
+    }
+)
+
+
+def swap_keyboard_layout(raw: str | None) -> str:
+    """Reinterpret a normalized string as if typed on the Latin layout, mapping
+    each Cyrillic letter to the QWERTY key at its physical position."""
+    return normalize_material(raw).translate(_KEYBOARD_LAYOUT)
+
+
+def match_keys(raw: str | None) -> list[str]:
+    """Comparison keys for a QUERY: the homoglyph key AND the keyboard-layout key
+    (`ьщтщ ф3` → `mono a3`). Deduped, empties dropped. The right one wins the
+    substring test; the wrong one is gibberish that matches nothing."""
+    base = normalize_material(raw)
+    direct = base.translate(_MATCH_FOLD)
+    swapped = base.translate(_KEYBOARD_LAYOUT).translate(_MATCH_FOLD)
+    return [k for k in dict.fromkeys((direct, swapped)) if k]
+
+
 def classify_material(
     raw: str | None,
     aliases: list[AliasRow] | None = None,

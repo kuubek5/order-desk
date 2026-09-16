@@ -40,7 +40,7 @@ from app.material_catalog import (
     material_id_by_name,
     resolve_material_id,
 )
-from app.material_classifier import match_key
+from app.material_classifier import match_key, match_keys
 from app.models import Material, Order
 
 # Short badge per material category. Kept here (a display concern) rather than in
@@ -242,8 +242,10 @@ def suggest_materials(
     session: Session, q: str, *, limit: int = _DEFAULT_LIMIT
 ) -> list[Suggestion]:
     """Rank shortcut expansions and frecency spellings for query `q`."""
-    qk = match_key(q)
-    if not qk:
+    # Кілька ключів запиту: гомогліфний + розкладко-своп (забута розкладка,
+    # `ьщтщ ф3` → `mono a3`). Збіг за БУДЬ-ЯКИМ.
+    qkeys = match_keys(q)
+    if not qkeys:
         return []
 
     ensure_seeded(session)
@@ -269,7 +271,7 @@ def suggest_materials(
     shortcut_matches = [
         row
         for row in shortcut_rows
-        if (row.key.startswith(qk) or qk.startswith(row.key))
+        if any(row.key.startswith(k) or k.startswith(row.key) for k in qkeys)
         and row.expansion.strip().casefold() != first_token.casefold()
     ]
     unique_expand = len(shortcut_matches) == 1
@@ -294,9 +296,9 @@ def suggest_materials(
     # ── Frecency ───────────────────────────────────────────────────────────
     scored: list[tuple[float, _Entry]] = []
     for entry in _frecency_entries(session):
-        if qk not in entry.key:
+        if not any(k in entry.key for k in qkeys):
             continue
-        prefix_bonus = 5 if entry.key.startswith(qk) else 0
+        prefix_bonus = 5 if any(entry.key.startswith(k) for k in qkeys) else 0
         score = entry.c90 + 2 * entry.c30 + prefix_bonus
         scored.append((score, entry))
     scored.sort(key=lambda pair: (-pair[0], pair[1].text))
