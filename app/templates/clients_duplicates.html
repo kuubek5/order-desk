@@ -20,11 +20,17 @@
     </header>
 
     {% if flash == 'merged' %}
-    <div class="cdup-flash" role="status">Злито.</div>
+    <div class="cdup-flash" role="status">Імена злито.</div>
     {% elif flash == 'skipped' %}
     <div class="cdup-flash" role="status">Позначено «не дублі».</div>
+    {% elif flash == 'folder_merged' %}
+    <div class="cdup-flash" role="status">Теки об'єднано — видача читатиме обидві.</div>
+    {% elif flash == 'folder_skipped' %}
+    <div class="cdup-flash" role="status">Теки позначено як різні.</div>
     {% endif %}
 
+    <h2 class="cdup-sec">Імена в черзі</h2>
+    <p class="cdup-secnote">Різні написання одного клієнта. Обери головне й «Злити». Діє в підказках і на екрані клієнтів.</p>
     {% if candidates %}
     <ul class="cdup-list">
         {% for c in candidates %}
@@ -59,7 +65,37 @@
         {% endfor %}
     </ul>
     {% else %}
-    <p class="cdup-empty">Можливих дублікатів не знайдено.</p>
+    <p class="cdup-empty">Можливих дублікатів імен не знайдено.</p>
+    {% endif %}
+
+    <h2 class="cdup-sec">Теки в export</h2>
+    <p class="cdup-secnote">Дві папки на одного клієнта («Ніколаєв» і «Іван Ніколаєв») — робота розсипається по обох. Об'єднай, і видача читатиме обидві теки як одного клієнта. Файли на диску не рухаються.</p>
+    {% if folder_candidates %}
+    <ul class="cdup-list">
+        {% for c in folder_candidates %}
+        <li class="cdup-row">
+            <div class="cdup-pair">
+                <span class="cdup-name mono">{{ c.a_name }}</span>
+                <span class="cdup-vs" title="схожість {{ c.score }}%">≈{{ c.score }}</span>
+                <span class="cdup-name mono">{{ c.b_name }}</span>
+            </div>
+            <div class="cdup-actions">
+                <form method="post" action="/clients/duplicates/folder-merge">
+                    <input type="hidden" name="name_a" value="{{ c.a_name }}">
+                    <input type="hidden" name="name_b" value="{{ c.b_name }}">
+                    <button type="submit" class="cdup-btn">Один клієнт — об'єднати</button>
+                </form>
+                <form method="post" action="/clients/duplicates/folder-skip">
+                    <input type="hidden" name="name_a" value="{{ c.a_name }}">
+                    <input type="hidden" name="name_b" value="{{ c.b_name }}">
+                    <button type="submit" class="cdup-btn cdup-skip">Різні</button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="cdup-empty">Схожих тек не знайдено.</p>
     {% endif %}
 </main>
 {% endblock %}

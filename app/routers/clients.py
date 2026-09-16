@@ -8,6 +8,7 @@
 
 import logging
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -33,6 +34,9 @@ from app.services.clients import (
     quantity_units,
 )
 from app.services.client_merge import find_candidates, record_merge, record_skip
+from app.services import folder_merge as folder_merge_svc
+from app.export_scanner import list_export_client_names_cached
+from app.settings_store import get_export_folder_path
 
 logger = logging.getLogger(__name__)
 
@@ -225,15 +229,57 @@ def get_client_duplicates(request: Request, db: Session = Depends(get_db)):
         return blocked
 
     candidates = find_candidates(db)
+    # Теки на диску — для розбору дублікатів ТЕК (дві папки на одного клієнта).
+    # Порожній/недоступний шлях export → просто немає кандидатів-тек.
+    try:
+        folder_names = list_export_client_names_cached(Path(get_export_folder_path(db)))
+    except OSError:
+        folder_names = []
+    folder_candidates = folder_merge_svc.find_candidates(db, folder_names)
     return templates.TemplateResponse(
         request,
         "clients_duplicates.html",
         {
             "user": user,
             "candidates": candidates,
+            "folder_candidates": folder_candidates,
             "flash": request.query_params.get("flash"),
         },
     )
+
+
+@router.post("/clients/duplicates/folder-merge")
+def merge_folder_duplicate(
+    request: Request,
+    name_a: str = Form(...),
+    name_b: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    if blocked_response(request, db, user, "clients") is not None:
+        raise HTTPException(status_code=403, detail="розділ недоступний")
+    folder_merge_svc.record_merge(db, name_a, name_b)
+    db.commit()
+    return RedirectResponse("/clients/duplicates?flash=folder_merged", status_code=303)
+
+
+@router.post("/clients/duplicates/folder-skip")
+def skip_folder_duplicate(
+    request: Request,
+    name_a: str = Form(...),
+    name_b: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user(request, db)
+    if user is None:
+        return login_redirect(request)
+    if blocked_response(request, db, user, "clients") is not None:
+        raise HTTPException(status_code=403, detail="розділ недоступний")
+    folder_merge_svc.record_skip(db, name_a, name_b)
+    db.commit()
+    return RedirectResponse("/clients/duplicates?flash=folder_skipped", status_code=303)
 
 
 @router.post("/clients/duplicates/merge")

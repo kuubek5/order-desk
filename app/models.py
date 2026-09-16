@@ -481,6 +481,29 @@ class ClientMerge(Base):
     __table_args__ = (UniqueConstraint("a_key", "b_key", name="uq_client_merge_pair"),)
 
 
+class FolderMerge(Base):
+    """Рішення власника по парі схожих ТЕК в export: одна це папка одного клієнта
+    («Ніколаєв» і «Іван Ніколаєв») чи «не дублі». На відміну від ClientMerge (то
+    імена в черзі), тут — фізичні теки на диску. Видача читає теки однієї групи
+    РАЗОМ, тож розсипана по двох теках робота знову збирається в одного клієнта.
+    Канону не треба — це просто «ці теки = один клієнт»; групи складаються
+    транзитивно (A-B, B-C → {A,B,C}). Файли на диску не рухаємо."""
+
+    __tablename__ = "folder_merges"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    a_key: Mapped[str] = mapped_column(String(200), index=True)
+    b_key: Mapped[str] = mapped_column(String(200), index=True)
+    kind: Mapped[str] = mapped_column(String(10))  # "merge" | "skip"
+    a_name: Mapped[str] = mapped_column(String(200), default="")
+    b_name: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), server_default=func.now()
+    )
+
+    __table_args__ = (UniqueConstraint("a_key", "b_key", name="uq_folder_merge_pair"),)
+
+
 class SyncLog(Base):
     __tablename__ = "sync_logs"
 

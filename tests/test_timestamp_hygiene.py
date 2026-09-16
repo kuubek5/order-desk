@@ -28,7 +28,7 @@ from pathlib import Path
 
 # Скільки колонок з UTC-дефолтом є ЗАРАЗ. Число не «правильне», воно
 # зафіксоване: нове має падати, старе — доживати до свідомої міграції.
-KNOWN_UTC_DEFAULT_COLUMNS = 21  # +client_merges.created_at (16.09.26), як Client.created_at
+KNOWN_UTC_DEFAULT_COLUMNS = 22  # +client_merges, +folder_merges created_at (16.09.26)
 
 
 def _models_source() -> str:

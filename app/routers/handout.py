@@ -28,7 +28,10 @@ from app.client_matcher import match_client_name
 from app.export_scanner import (
     cache_counters as export_cache_counters,
     list_export_client_names_cached,
+    scan_export_client_cached,
+    scan_export_client_latest_cached,
 )
+from app.services.folder_merge import folder_sibling_map
 from app.models import Client, Order, StatusEvent
 from app.order_folder import folder_to_file_uri
 from app.queue_filters import (
@@ -220,6 +223,31 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             latest = scan_export_latest_for_clients(_export_root, _empty)
         for name, entries_ in latest.items():
             scanned[name] = entries_
+
+    # Мультитека: коли оператори зберегли одного клієнта під кількома назвами
+    # тек («Ніколаєв» і «Іван Ніколаєв»), робота розсипається по обох, і видача
+    # бачила лише зіставлену одну. Тут клієнт, чия тека злита з іншими
+    # (folder_merges, підтверджено власником), ДОДАТКОВО читає теки-сестри й
+    # обʼєднує партії. Суто додавально: коронок БІЛЬШЕ, ніколи не менше; фільтр
+    # за днем/матеріалом (entries_for_material) лишається той самий, просто по
+    # ширшому набору. Файли на диску не чіпаємо — це лише читання (крок C+B,
+    # рішення власника 16.09.26).
+    _siblings = folder_sibling_map(db)
+    if _siblings:
+        for name, folder in _folders.items():
+            extras = _siblings.get((folder or "").strip())
+            if not extras:
+                continue
+            seen_paths = {e.folder_path for e in scanned.get(name, [])}
+            for extra in extras:
+                more = scan_export_client_cached(_export_root, extra, _not_before)
+                if not more:
+                    more = scan_export_client_latest_cached(_export_root, extra)
+                for entry in more:
+                    if entry.folder_path in seen_paths:
+                        continue
+                    seen_paths.add(entry.folder_path)
+                    scanned.setdefault(name, []).append(entry)
 
     # Корінь і його перевірка — ОДИН раз на весь екран, не на кожну партію.
     # Раніше в цьому циклі стояли get_export_folder_path(db) (запит до бази з

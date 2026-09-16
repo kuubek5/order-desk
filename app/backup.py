@@ -55,6 +55,7 @@ from app.models import (
     MailFilterCategory,
     MailFilterRule,
     ClientMerge,
+    FolderMerge,
     Material,
     MaterialAlias,
     MaterialShortcut,
@@ -114,6 +115,8 @@ _TABLE_MODELS: list[Any] = [
     # Рішення власника по дублях клієнтів (злити / не дублі). Дані власника —
     # переїзд без них повернув би вже розібрані пари назад у «можливі дублі».
     ClientMerge,
+    # Рішення власника по дублях ТЕК в export (та сама причина).
+    FolderMerge,
     Material,
     MaterialAlias,
     # Скорочення матеріалів для ручного вводу (`мл → mono`). Дані власника, не
@@ -223,7 +226,7 @@ _ENCRYPTED_COLUMNS: dict[str, tuple[str, ...]] = {
 # менший за нинішній не тому, що копія часткова, а тому, що тих таблиць тоді
 # ще не було. Число росте разом із `_TABLE_MODELS` — і саме тому воно тут,
 # поруч зі списком, а не зашите в логіку відновлення.
-_NEW_SINCE_FLAG = 3  # client_merges (16.09.26)
+_NEW_SINCE_FLAG = 4  # folder_merges (16.09.26)
 
 
 def _row_to_dict(obj: Any) -> dict[str, Any]:
