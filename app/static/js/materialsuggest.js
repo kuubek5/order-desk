@@ -161,10 +161,15 @@
         e.preventDefault();
         return;
       }
-      // Unique shortcut match → expand; ambiguous → do nothing, Tab moves focus.
-      var expandable = ul.querySelector('.ms-opt[data-expand="1"]');
-      if (expandable && ul.children.length === 1) {
-        choose(input, expandable);
+      // Expand when the shortcut match is UNIQUE. Uniqueness is about the
+      // shortcut, not the whole list: the server marks the sole expandable
+      // option with data-expand="1", and frecency suggestions sit alongside it.
+      // Gate on the count of expandables, not ul.children.length — otherwise a
+      // single shortcut never expands once any frecency row keeps it company
+      // (which is almost always). Ambiguous/none → let Tab move focus.
+      var expandables = ul.querySelectorAll('.ms-opt[data-expand="1"]');
+      if (expandables.length === 1) {
+        choose(input, expandables[0]);
         e.preventDefault();
       } else {
         close(input);
