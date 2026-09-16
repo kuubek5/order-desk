@@ -348,6 +348,26 @@ def build_queue_view(
     # зріз нижче стосується лише того, скільки рядків їде в HTML.
     rows_total = len(orders)
     total_units = sum_units(orders)
+
+    # Ширина колонки «Наряд / Клієнт» не має стрибати при сортуванні. Таблиця —
+    # table-layout:auto, тож ширина стовпця = найширша ВИДИМА комірка, а `limit`
+    # нижче міняє склад видимих рядків: сортування виштовхує найдовше ім'я
+    # клієнта то в вікно, то за нього, і стовпець сіпається, тягнучи решту.
+    # Резервуємо ширину найдовшого імені за ВЕСЬ відфільтрований набір (ДО
+    # зрізу) — невидима лінійка в заголовку (_queue_table_head.html) тримає її
+    # завжди, тож склад видимих рядків на ширину більше не впливає. Імена НЕ
+    # ріжуться (рішення власника, коментар у v2a_queue.css біля min-width:260).
+    def _order_cell_label(o) -> str:
+        if o.source in ("email", "sheet_client"):
+            return o.client_name or "Без імені клієнта"
+        # Лаб-рядок: під нарядом стоїть другий рядок з іменем клієнта (.rowclient),
+        # він теж може бути найширшим у колонці.
+        return o.client_name or ""
+
+    widest_order_label = max(
+        (_order_cell_label(o) for o in orders), key=len, default=""
+    )
+
     rows_limit = clamp_rows_limit(limit)
     if rows_total > rows_limit:
         orders = orders[:rows_limit]
@@ -479,6 +499,9 @@ def build_queue_view(
             "orders": orders,
             "orders_lab": orders_lab,
             "orders_email": orders_email,
+            # Найдовше ім'я в колонці «Наряд/Клієнт» — резерв ширини стовпця,
+            # щоб він не стрибав при сортуванні (див. розрахунок вище).
+            "widest_order_label": widest_order_label,
             # Sum of units across the currently-filtered view (period/source/
             # ready/date/overdue all already applied to `orders`). Only cleanly
             # numeric quantities count; ranges/blanks are skipped rather than
@@ -608,6 +631,12 @@ def build_queue_view(
     # counts, KPIs) refreshes on a full navigation or a manual sync.
     if partial == "rows":
         return QueueView("_queue_rows.html", context)
+
+    # Зміна фільтра (boosted-запит смуги; роут ставить partial="filters"):
+    # легкий фрагмент — #queue-rows + OOB смуга фільтрів і лічильники, БЕЗ
+    # важких віджетів. Дає швидке перемикання вкладок замість повної сторінки.
+    if partial == "filters":
+        return QueueView("_queue_filter_swap.html", context)
 
     # Моно-лоток Sum3D — лише для повного рендера (у шапці, поза #queue-rows).
     context["sum3d_projects"] = _s3

@@ -26,15 +26,7 @@
     <div class="q2-topbar">
         <div>
             <h1>{{ page_title }}</h1>
-            <div class="topbar-live">
-                <span class="live"><span class="beacon" aria-hidden="true"></span>{{ rows_total if rows_total is defined else orders|length }} у вигляді</span>
-                <span class="sep" aria-hidden="true"></span>
-                <span>{{ total_units }} <span class="tl-unit">од.</span></span>
-                <span class="sep" aria-hidden="true"></span>
-                <span>пошта: <b>{{ sync_status.mail.label }}</b></span>
-                <span class="sep" aria-hidden="true"></span>
-                {% include "_sync_indicator.html" %}
-            </div>
+            <div class="topbar-live" id="queue-live">{% include "_queue_livebar.html" %}</div>
         </div>
         <div class="head-actions">
             {# Один вхід у пошук на весь застосунок. Поле лишається СПРАВЖНЬОЮ
@@ -169,9 +161,7 @@
             <div class="sweep" aria-hidden="true"><i></i></div>
             <div class="card-head">
                 <h2 id="queue-title">Черга</h2>
-                <span class="meta">
-                    {% set _n = rows_total if rows_total is defined else orders|length %}{% if show_overdue %}прострочені: {{ _n }}{% else %}{{ _n }} робіт{% endif %}
-                </span>
+                <span class="meta" id="queue-meta">{% include "_queue_meta.html" %}</span>
                 <div class="right">
                     <button type="button" class="addwork-toggle" data-addwork-toggle aria-expanded="false"
                             title="Додати роботу клієнта вручну">

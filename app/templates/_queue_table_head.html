@@ -16,7 +16,13 @@
            стоїть ІМ'Я КЛІЄНТА, а не номер наряду (див. _order_row.html) — і
            клієнтських робіт більшість: ~62 із 92 на день (§2). Підпис «Наряд»
            не збігався з умістом у двох третинах рядків. #}
-        <th class="col-order">Наряд / Клієнт{{ _grip }}</th>
+        {# Невидима лінійка резервує ширину найдовшого імені клієнта за весь
+           день (widest_order_label з queue_view). Без неї стовпець = найширша
+           ВИДИМА комірка, і сортування, що міняє склад видимих рядків, сіпало
+           б ширину. Шрифт/відступ дублюють клієнтську комірку (моно + 107px
+           на шпильку+крапку+чіп), тому резерв точний; height:0+visibility:hidden
+           не додають ані висоти, ані видимого сліду. #}
+        <th class="col-order">Наряд / Клієнт{% if widest_order_label %}<span class="col-order-sizer" aria-hidden="true">{{ widest_order_label }}</span>{% endif %}{{ _grip }}</th>
         <th class="col-qty">{{ sortcol.th('quantity', 'Кількість') }}{{ _grip }}</th>
         <th class="col-material">{{ sortcol.th('material', 'Матеріал / Колір') }}{{ _grip }}</th>
         <th class="col-kind">{{ sortcol.th('kind', 'Вид роботи') }}{{ _grip }}</th>

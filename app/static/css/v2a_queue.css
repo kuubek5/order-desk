@@ -29,10 +29,10 @@ main.q2{
 .q2 .tnum{font-variant-numeric:tabular-nums}
 
 .q2 .q2-topbar{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:12px}
-.q2 .q2-topbar h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 4px}
-.q2 .topbar-live{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:var(--fs-1);color:var(--ink-2)}
+.q2 .q2-topbar h1{font-family:var(--font-head);font-size:var(--size-h1);font-weight:600;letter-spacing:var(--ls-head);margin:0 0 7px}
+.q2 .topbar-live{display:flex;flex-wrap:wrap;align-items:center;gap:6px 15px;font-size:var(--fs-1);color:var(--ink-2)}
 .q2 .topbar-live b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-size:var(--fs-1)}
-.q2 .topbar-live .sep{width:1px;height:10px;background:var(--line-2)}
+.q2 .topbar-live .sep{width:1px;height:9px;background:var(--line-2)}
 .q2 .topbar-live .tl-unit{color:var(--ink-3)}
 .q2 .live{display:inline-flex;align-items:center;gap:7px}
 .q2 .live .beacon{width:6px;height:6px;border-radius:50%;background:var(--accent-b);box-shadow:0 0 0 0 rgba(var(--accent-rgb), .55);animation:q2beacon var(--beacon-duration) ease-out infinite}
@@ -254,14 +254,28 @@ body.layout-edit .q2 .layout-controls{display:flex;animation:q2fade-slide var(--
 .q2 .date-strip a.is-active{background:rgba(var(--accent-base-rgb), .16);color:var(--accent-c)}
 /* Nav arrows ‹ › — small but clearly the "pager", tinted in the accent so they
    read as controls, not dates. Bolder glyph + accent fill on hover. */
+/* Стрілки-пейджер ‹ › ЗАКРІПЛЕНІ по краях смуги (position:sticky). Смуга
+   скролиться всередині (overflow-x), і на тісному рядку (пів-екрана 24"/27" з
+   повним місяцем дат) стрілка раніше з'їжджала під край і різалась навпіл, а
+   дати ховались «на другу сторінку». Тепер стрілки завжди повністю видимі й
+   клікабельні, дати скроляться ПІД ними — тому фон стрілки мусить бути
+   НЕПРОЗОРИМ (суцільний card + акцентний тон інсет-тінню), інакше дата
+   просвічувала б крізь стрілку. */
 .q2 .date-strip a.nav-arrow{
   color:var(--accent-c);font-size:var(--fs-4);font-weight:700;line-height:1;
-  background:rgba(var(--accent-base-rgb), .12);border:1px solid rgba(var(--accent-rgb), .30);
+  background:var(--card);box-shadow:inset 0 0 0 999px rgba(var(--accent-base-rgb), .12);
+  border:1px solid rgba(var(--accent-rgb), .30);
+  position:sticky;z-index:2;
 }
 .q2 .date-strip a.nav-arrow:hover{
-  color:var(--bg);background:var(--accent-b);border-color:var(--accent-b);opacity:1;
+  color:var(--bg);background:var(--accent-b);box-shadow:none;border-color:var(--accent-b);opacity:1;
 }
-.q2 .date-strip .nav-off{color:var(--ink-3);opacity:.3;font-size:var(--fs-4);background:none;border:none}
+.q2 .date-strip .nav-off{
+  color:var(--ink-3);opacity:.45;font-size:var(--fs-4);background:var(--card);border:none;
+  position:sticky;z-index:2;
+}
+.q2 .date-strip > :first-child{left:1px}
+.q2 .date-strip > :last-child{right:1px}
 
 .q2 .worklayout{flex:1;min-height:0;display:flex;gap:12px;align-items:stretch}
 /* min-height:0 обов'язковий на КОЖНІЙ ланці до .tablewrap: типове для флексу
@@ -485,6 +499,32 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
   .q2 table.qtable td.order-id{max-width:420px}
 }
 .q2 .ordbtn{display:inline-block;max-width:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+/* Невидима лінійка резерву ширини колонки «Наряд/Клієнт» (див.
+   _queue_table_head.html + queue_view.widest_order_label). Шрифт ТОЧНО як у
+   .ordbtn (моно, fs-2, 500, -.01em) — інакше резерв не збігся б із реальним
+   іменем. padding-left емулює шпильку+крапку+чіп зліва від імені в клієнтській
+   комірці. height:0 + visibility:hidden: додає ширину колонці, але НЕ висоту
+   заголовку й нічого не малює. Стеля колонки (max-width:420 на ≤1300px)
+   лишається — на вузькому лінійка не роздуває колонку за межу, таблиця й далі
+   скролиться вбік.
+   padding-left = ПОСТІЙНИЙ overhead комірки (не залежить від довжини імені):
+   шпилька + крапка стану + чіп «Клієнт» зліва + кнопка видалення (займає
+   ширину завжди, лише opacity:0 до hover) + праве падіння. Виміряно 157px
+   (реальна комірка 434 − ширина імені 277), беремо 160 із запасом, щоб колонка
+   була рівно ≥ найширшої комірки й ніколи не коротшала. */
+.q2 th.col-order .col-order-sizer{
+  display:block;height:0;overflow:hidden;visibility:hidden;pointer-events:none;
+  white-space:nowrap;padding-left:160px;
+  font-family:var(--font-mono);font-size:var(--fs-2);font-weight:500;letter-spacing:-.01em;
+}
+/* Кросфейд таблиці при фільтрі/сортуванні (View Transitions, transition:true на
+   тих кліках). КОРОТКИЙ навмисно: дефолтні ~250мс гейтили швидке перемикання
+   вкладок — оператор скаржився на «повільність». 120мс читається як плавність,
+   але не стоїть на дорозі. Полл анімації не має. */
+::view-transition-old(root),::view-transition-new(root){animation-duration:120ms}
+@media (prefers-reduced-motion:reduce){
+  ::view-transition-old(root),::view-transition-new(root){animation:none}
+}
 .q2 tr.queue-row-overdue .sdot{box-shadow:0 0 0 3px rgba(var(--alarm-rgb), .22)}
 .q2 .ordbtn{font-family:var(--font-mono);font-size:var(--fs-2);font-weight:500;color:var(--ink);letter-spacing:-.01em;text-decoration:none}
 .q2 .ordbtn:hover{color:var(--accent-c);opacity:1}
@@ -773,6 +813,14 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 .q2 .side-body{padding:0 var(--queue-density-card-pad,13px) var(--queue-density-card-pad,13px);border-top:1px solid var(--line)}
 .q2 .side-sec[data-open="false"] .side-body{display:none}
 .q2 .side-sec[data-open="true"] .side-body{padding-top:11px}
+/* Розкриття секції — не різкий снап. Шеврон уже обертався плавно, а тіло
+   вискакувало миттєво; тепер вміст м'яко з'їжджає вниз на місце (той самий
+   q2fade-slide, що й вхід рядків). Закриття лишається миттєвим — display:none
+   не анімується, та й exit має бути швидшим за вхід.
+   ВАЖЛИВО: лише секції БЕЗ власного поллу. Печі (data-sec=furnace, 30с) і
+   верстати (machine, 10с) роблять hx-swap=outerHTML: якщо анімувати їх, fade
+   перезапускався б на КОЖНОМУ тіку — миготіння (§14). Тому явно виключені. */
+.q2 .side-sec[data-open="true"]:not([data-sec="furnace"]):not([data-sec="machine"]) .side-body{animation:q2fade-slide .2s ease both}
 
 /* Spotlight cards (inspired by KokonutUI spotlight-cards, reimplemented in our
    vanilla stack): a teal radial glow follows the cursor, the border lifts, and
@@ -789,6 +837,7 @@ body.qside-collapsed .q2 .worklayout{gap:0}
 @media (prefers-reduced-motion:reduce){
   .q2 .side-sec.spotlight{transform:none}
   .q2 .side-sec::before{transition:none}
+  .q2 .side-sec[data-open="true"]:not([data-sec="furnace"]):not([data-sec="machine"]) .side-body{animation:none}
 }
 .q2 .state{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border-radius:10px;margin-bottom:11px}
 .q2 .state svg{width:17px;height:17px;flex:0 0 17px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}

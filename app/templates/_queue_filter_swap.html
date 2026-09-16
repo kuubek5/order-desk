@@ -1,0 +1,12 @@
+{# Легка відповідь на зміну фільтра (роут: partial=filters, коли прийшов
+   boosted-запит смуги фільтрів). Клієнт бере #queue-rows як головну ціль
+   (hx-select), решта — OOB: смуга фільтрів (активний чіп + лічильники),
+   «N у вигляді» та «N робіт». Важких віджетів (печі, верстати, sisma, зміна,
+   sum3d-лоток) тут НЕМАЄ — саме заради швидкості перемикання вкладок.
+   Іконки папок не скануємо (queue_view пропускає скан для цього partial):
+   свіжий #queue-rows має hx-trigger="load" і сам дотягне їх наступним тіком,
+   як і при звичайному завантаженні сторінки. #}
+{% include "_queue_rows.html" %}
+{% with queue_oob = true %}{% include "_queue_sidebar.html" %}{% endwith %}
+<div class="topbar-live" id="queue-live" hx-swap-oob="true">{% include "_queue_livebar.html" %}</div>
+<span class="meta" id="queue-meta" hx-swap-oob="true">{% include "_queue_meta.html" %}</span>

@@ -1,0 +1,12 @@
+{# Вміст живого рядка під заголовком черги (кількість у вигляді, одиниці,
+   стан пошти й синку). Винесено окремо, бо його оновлюють ДВА місця з одним
+   змістом: сама сторінка (queue.html) і легкий свап фільтрів
+   (_queue_filter_swap.html, OOB) — щоб «N у вигляді» не лишалось застарілим
+   після зміни фільтра. Одне джерело правди. #}
+<span class="live"><span class="beacon" aria-hidden="true"></span>{{ rows_total if rows_total is defined else orders|length }} у вигляді</span>
+<span class="sep" aria-hidden="true"></span>
+<span>{{ total_units }} <span class="tl-unit">од.</span></span>
+<span class="sep" aria-hidden="true"></span>
+<span>пошта: <b>{{ sync_status.mail.label }}</b></span>
+<span class="sep" aria-hidden="true"></span>
+{% include "_sync_indicator.html" %}

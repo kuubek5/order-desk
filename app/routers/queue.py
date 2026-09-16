@@ -117,6 +117,17 @@ def get_queue(
     if blocked is not None:
         return blocked
 
+    # Зміна фільтра приходить як boosted-запит смуги (_queue_sidebar, hx-boost):
+    # віддаємо ЛЕГКИЙ фрагмент (partial="filters") — #queue-rows + OOB смуга й
+    # лічильники, без важких віджетів, — щоб перемикання вкладок було швидким.
+    # Сортування/полл/«показати ще» шлють partial="rows" явно й сюди не падають.
+    # `request` у прямих викликах get_queue з тестів — легка заглушка без
+    # `.headers` (див. коментар про date_param вище), тому доступ через getattr.
+    _headers = getattr(request, "headers", None)
+    effective_partial = partial
+    if not partial and _headers is not None and _headers.get("hx-boosted") == "true":
+        effective_partial = "filters"
+
     view = build_queue_view(
         db,
         user,
@@ -129,7 +140,7 @@ def get_queue(
         date_page=date_page,
         sort=sort,
         sort_dir=sort_dir,
-        partial=partial,
+        partial=effective_partial,
         focus=focus,
         limit=limit,
     )
@@ -138,7 +149,10 @@ def get_queue(
     # тобто на HTTP-рівні, і сервіс про неї не знає. Знімаємо їх ЛИШЕ на
     # повному рендері: 15-секундний полл (partial="rows") зʼїв би повідомлення
     # раніше, ніж оператор дійшов би до сторінки, на якій воно має з'явитись.
-    if partial != "rows":
+    # Флеші знімаємо ЛИШЕ на повному рендері. Полл (partial="rows") зʼїв би їх
+    # раніше часу; легкий свап фільтрів (partial="filters") — теж не повна
+    # сторінка, тож флеш має дочекатись справжнього переходу.
+    if not effective_partial:
         view.context["sync_flash"] = request.session.pop("sync_flash", None)
         view.context["toast_flash"] = request.session.pop("toast_flash", None)
 
