@@ -36,6 +36,8 @@ export/
 
 # Impeccable design-hook dedup cache (machine-local)
 .impeccable/hook.cache.json
+# Impeccable design-hook critique артефакти — тимчасові, не в історію
+.impeccable/critique/
 
 # Design references & session artefacts (big binaries / local-only)
 screens/
