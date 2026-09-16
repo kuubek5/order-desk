@@ -30,6 +30,19 @@
     <div class="ml-flash {{ 'is-error' if flash.kind == 'error' else 'is-ok' }}" role="status">{{ flash.message }}</div>
     {% endif %}
 
+    {# Дві вкладки: правила розпізнавання (двопанельна консоль) і скорочення для
+       ручного вводу. Розвели, щоб не заважали одне одному. Це посилання (без JS
+       перемикають перезавантаженням, з JS — миттєво, matlib.js), тож стан
+       переживає редірект форм: скорочення повертають на ?tab=shortcuts. #}
+    <nav class="ml-tabs" aria-label="Розділи бібліотеки">
+        <a class="ml-tab {{ 'is-on' if active_tab != 'shortcuts' }}" data-mattab="recognition"
+           href="/settings/materials">Розпізнавання</a>
+        <a class="ml-tab {{ 'is-on' if active_tab == 'shortcuts' }}" data-mattab="shortcuts"
+           href="/settings/materials?tab=shortcuts">Скорочення
+           {% if shortcuts %}<span class="ml-tab-n">{{ shortcuts|length }}</span>{% endif %}</a>
+    </nav>
+
+    <div class="ml-pane {{ 'is-on' if active_tab != 'shortcuts' }}" data-mattab-pane="recognition">
     {# ── Пошта ──────────────────────────────────────────────────────────────
        Переїхало з окремого екрана «Розпізнавання пошти» (аудит 05.09.26, крок
        2.5). Той екран був перехідником: два посилання плюс ОДИН справжній
@@ -110,7 +123,14 @@
         {% include "_matlib_detail.html" %}
         {% endif %}
     </div>
+    </div>{# /pane recognition #}
 
+    <div class="ml-pane {{ 'is-on' if active_tab == 'shortcuts' }}" data-mattab-pane="shortcuts">
     {% include "_matlib_shortcuts.html" %}
+    </div>
 </main>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/matlib.js?v={{ static_ver('js/matlib.js') }}" defer></script>
 {% endblock %}

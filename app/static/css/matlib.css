@@ -236,6 +236,20 @@
   .ml-rules{max-height:60vh}
 }
 
+/* ── Вкладки сторінки: Розпізнавання / Скорочення ─────────────────────────
+   Розведено, щоб консоль правил і скорочення не заважали одне одному. */
+.ml-tabs{display:flex;gap:4px;margin-bottom:var(--space-3,16px);border-bottom:1px solid var(--line)}
+.ml-tab{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;color:var(--ink-2);
+  text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px;font-weight:600}
+.ml-tab:hover{color:var(--ink)}
+.ml-tab.is-on{color:var(--ink);border-bottom-color:var(--accent)}
+.ml-tab-n{padding:0 7px;font-size:var(--fs-0);font-variant-numeric:tabular-nums;
+  border-radius:999px;background:rgba(var(--accent-rgb),0.18);color:var(--accent)}
+.ml-pane{display:none}
+.ml-pane.is-on{display:block}
+/* У власній вкладці скорочення не потребують відбивки від консолі. */
+.ml-pane .ml-shortcuts{margin-top:0;padding-top:0;border-top:none}
+
 /* ── Скорочення для ручного вводу ─────────────────────────────────────────
    Наскрізний список під двопанельною консоллю, кожен рядок редагується на
    місці (grid, не table: рядок — це <form>, а form у tbody невалідний). */

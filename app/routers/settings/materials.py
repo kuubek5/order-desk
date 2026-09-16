@@ -54,10 +54,17 @@ from .common import require_settings_edit
 
 router = APIRouter()
 
+# Форми скорочень редіректять сюди, щоб адмін лишався на вкладці «Скорочення»,
+# а не стрибав назад на «Розпізнавання» після кожної правки.
+_SHORTCUTS_TAB = "/settings/materials?tab=shortcuts"
+
 
 @router.get("/settings/materials", response_class=HTMLResponse)
 def get_materials_settings(
-    request: Request, m: int | None = None, db: Session = Depends(get_db)
+    request: Request,
+    m: int | None = None,
+    tab: str = "recognition",
+    db: Session = Depends(get_db),
 ):
     """Екран: консоль бібліотеки матеріалів (адмін).
 
@@ -111,6 +118,9 @@ def get_materials_settings(
         {
             "page_title": "Бібліотека матеріалів",
             "shortcuts": shortcut_views,
+            # Вкладка: «Розпізнавання» (правила) чи «Скорочення». Форми
+            # скорочень редіректять із ?tab=shortcuts, щоб адмін лишався тут.
+            "active_tab": "shortcuts" if tab == "shortcuts" else "recognition",
             "user": user,
             "materials": materials,
             "material_views": views,
@@ -237,7 +247,7 @@ def create_material_shortcut(
     except MaterialCatalogError as exc:
         db.rollback()
         request.session["materials_flash"] = {"kind": "error", "message": str(exc)}
-    return RedirectResponse("/settings/materials", status_code=303)
+    return RedirectResponse(_SHORTCUTS_TAB, status_code=303)
 
 
 @router.post("/settings/materials/shortcut/{shortcut_id}/edit")
@@ -257,7 +267,7 @@ def edit_material_shortcut(
     except MaterialCatalogError as exc:
         db.rollback()
         request.session["materials_flash"] = {"kind": "error", "message": str(exc)}
-    return RedirectResponse("/settings/materials", status_code=303)
+    return RedirectResponse(_SHORTCUTS_TAB, status_code=303)
 
 
 @router.post("/settings/materials/shortcut/{shortcut_id}/delete")
@@ -266,7 +276,7 @@ def remove_material_shortcut(shortcut_id: int, request: Request, db: Session = D
     delete_shortcut(db, shortcut_id)
     db.commit()
     request.session["materials_flash"] = {"kind": "success", "message": "Скорочення видалено."}
-    return RedirectResponse("/settings/materials", status_code=303)
+    return RedirectResponse(_SHORTCUTS_TAB, status_code=303)
 
 
 @router.post("/settings/materials/shortcut/autofill")
@@ -279,7 +289,7 @@ def autofill_material_shortcuts(request: Request, db: Session = Depends(get_db))
     if skipped:
         msg += f" Пропущено {skipped} (колізія скорочення — додайте руками)."
     request.session["materials_flash"] = {"kind": "success", "message": msg}
-    return RedirectResponse("/settings/materials", status_code=303)
+    return RedirectResponse(_SHORTCUTS_TAB, status_code=303)
 
 
 @router.post("/settings/materials/reclassify")
