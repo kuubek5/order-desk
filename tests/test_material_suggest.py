@@ -303,3 +303,22 @@ def test_suggest_finds_material_typed_in_wrong_layout():
         items = suggest_materials(session, "ьщтщ ф3")
         assert items and items[0].text == "mono a3"
         assert items[0].kind == "frecency"   # повна заміна, не word-only
+
+
+def test_match_keys_maps_reverse_layout_latin_to_cyrillic():
+    """`nbnfy` на QWERTY — це `титан` на ЙЦУКЕН (згорнуто до `titan`)."""
+    from app.material_classifier import match_keys
+
+    assert "titan" in match_keys("nbnfy")
+
+
+def test_suggest_finds_cyrillic_material_typed_in_latin_layout():
+    """Забув переключити НА кирилицю: `nbnfy` має знайти написання «титан»."""
+    invalidate_cache()
+    with make_session() as session:
+        ensure_seeded(session)
+        add_orders(session, {"титан": 5, "mono a3": 3})
+        invalidate_cache()
+        items = suggest_materials(session, "nbnfy")
+        assert items and any("титан" in it.text or it.text == "титан" for it in items)
+        assert items[0].kind == "frecency"

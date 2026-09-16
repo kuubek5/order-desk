@@ -218,6 +218,22 @@ _KEYBOARD_LAYOUT = str.maketrans(
 )
 
 
+# Зворотний бік забутої розкладки: QWERTY → ЙЦУКЕН. Оператор хотів кирилицю,
+# але лишився на латиниці, і `титан` вийшло як `nbnfy`. Мапа за фізичною
+# клавішею у другий бік; після неї — гомогліфний фолд, щоб кирилиця з бази
+# (`титан`, `віск`) впізналась. Дублі клавіш зводимо до українського варіанта
+# (s→і, а не ы). Пунктуацію не відображаємо назад — набирають літери.
+_KEYBOARD_LAYOUT_REVERSE = str.maketrans(
+    {
+        "q": "й", "w": "ц", "e": "у", "r": "к", "t": "е", "y": "н", "u": "г",
+        "i": "ш", "o": "щ", "p": "з",
+        "a": "ф", "s": "і", "d": "в", "f": "а", "g": "п", "h": "р", "j": "о",
+        "k": "л", "l": "д",
+        "z": "я", "x": "ч", "c": "с", "v": "м", "b": "и", "n": "т", "m": "ь",
+    }
+)
+
+
 def swap_keyboard_layout(raw: str | None) -> str:
     """Reinterpret a normalized string as if typed on the Latin layout, mapping
     each Cyrillic letter to the QWERTY key at its physical position."""
@@ -225,13 +241,20 @@ def swap_keyboard_layout(raw: str | None) -> str:
 
 
 def match_keys(raw: str | None) -> list[str]:
-    """Comparison keys for a QUERY: the homoglyph key AND the keyboard-layout key
-    (`ьщтщ ф3` → `mono a3`). Deduped, empties dropped. The right one wins the
-    substring test; the wrong one is gibberish that matches nothing."""
+    """Comparison keys for a QUERY, folded so the right spelling matches whatever
+    the operator actually typed:
+
+      * direct homoglyph key — `моно а3` → `mono a3`;
+      * Cyrillic layout → Latin — `ьщтщ ф3` (ЙЦУКЕН, meant Latin) → `mono a3`;
+      * Latin layout → Cyrillic — `nbnfy` (QWERTY, meant Cyrillic) → `титан` → `titan`.
+
+    Deduped, empties dropped. The intended key wins the substring test; the two
+    wrong-layout keys are gibberish that matches nothing."""
     base = normalize_material(raw)
     direct = base.translate(_MATCH_FOLD)
-    swapped = base.translate(_KEYBOARD_LAYOUT).translate(_MATCH_FOLD)
-    return [k for k in dict.fromkeys((direct, swapped)) if k]
+    cyr_to_lat = base.translate(_KEYBOARD_LAYOUT).translate(_MATCH_FOLD)
+    lat_to_cyr = base.translate(_KEYBOARD_LAYOUT_REVERSE).translate(_MATCH_FOLD)
+    return [k for k in dict.fromkeys((direct, cyr_to_lat, lat_to_cyr)) if k]
 
 
 def classify_material(
