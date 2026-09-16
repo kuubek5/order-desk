@@ -81,8 +81,10 @@ from .feedback import (
 )
 from .materials import (
     add_material_alias,
+    autofill_material_shortcuts,
     create_material,
     create_material_shortcut,
+    edit_material_shortcut,
     get_materials_settings,
     probe_material_alias,
     prune_mail_spool,
@@ -125,8 +127,10 @@ __all__ = [
     "test_sheets_connection",
     # materials
     "add_material_alias",
+    "autofill_material_shortcuts",
     "create_material",
     "create_material_shortcut",
+    "edit_material_shortcut",
     "get_materials_settings",
     "probe_material_alias",
     "prune_mail_spool",

@@ -184,8 +184,11 @@ def test_shortcuts_table_fragment_renders():
     }
     html = _render("_matlib_shortcuts.html", ctx)
     assert "445" in html
-    assert "/settings/materials/shortcut/1/delete" in html
+    assert 'action="/settings/materials/shortcut/1/edit"' in html   # рядок = форма редагування
+    assert "/settings/materials/shortcut/1/delete" in html          # хрестик через formaction
+    assert 'action="/settings/materials/shortcut/autofill"' in html # кнопка «Заповнити з бази»
     assert 'action="/settings/materials/shortcut/add"' in html
+    assert 'value="mono"' in html and 'value="мл"' in html          # поля наповнені
     assert "is-unknown" in html  # нерозпізнане написання підсвічене
 
 
@@ -213,3 +216,66 @@ def test_cyrillic_shortcut_still_shown_with_colour():
         add_shortcut(session, "емо", "emo")
         items = suggest_materials(session, "емо a2")
         assert any(it.kind == "shortcut" and it.text == "emo" for it in items)
+
+
+# ── autofill ─────────────────────────────────────────────────────────────────
+
+
+def test_autofill_creates_shortcuts_for_all_recognized_variants():
+    """Кнопка «Заповнити з бази»: скорочення на всі розпізнані написання, що
+    трапляються ≥3 разів. Нерозпізнане й рідкісне — оминаємо."""
+    from app.services.material_suggest import autofill_shortcuts
+    from app.material_catalog import list_shortcuts
+
+    invalidate_cache()
+    with make_session() as session:
+        ensure_seeded(session)
+        add_orders(session, {"mono a3": 6, "mono a2": 5, "pmma a2": 4,
+                             "щось дике": 4, "mono a1": 1})
+        invalidate_cache()
+        added, skipped = autofill_shortcuts(session)
+        session.commit()
+        exps = {r.expansion for r in list_shortcuts(session)}
+        assert "mono a3" in exps and "mono a2" in exps and "pmma a2" in exps
+        assert "mono a1" not in exps      # рідкісне (1 раз) — пропущено
+        assert "щось дике" not in exps    # нерозпізнане — без бейджа, пропущено
+        assert added >= 3
+
+
+def test_autofill_is_idempotent_and_avoids_collisions():
+    """Повторний запуск нічого не дублює; різні написання з однаковим базовим
+    кодом отримують розширений код або чесно пропускаються."""
+    from app.services.material_suggest import autofill_shortcuts
+    from app.material_catalog import list_shortcuts, MaterialShortcut
+    from sqlalchemy import func, select as sa_select
+
+    invalidate_cache()
+    with make_session() as session:
+        ensure_seeded(session)
+        add_orders(session, {"mono a3": 6, "mono a2": 5})
+        invalidate_cache()
+        autofill_shortcuts(session)
+        session.commit()
+        n1 = session.scalar(sa_select(func.count(MaterialShortcut.id)))
+        added2, _ = autofill_shortcuts(session)
+        session.commit()
+        n2 = session.scalar(sa_select(func.count(MaterialShortcut.id)))
+        assert added2 == 0 and n1 == n2
+        keys = [r.key for r in list_shortcuts(session)]
+        assert len(keys) == len(set(keys))  # без колізій ключів
+
+
+def test_update_shortcut_edits_and_guards_uniqueness():
+    from app.material_catalog import add_shortcut, update_shortcut, list_shortcuts, MaterialCatalogError
+
+    with make_session() as session:
+        ensure_seeded(session)
+        a = add_shortcut(session, "мл", "mono")
+        add_shortcut(session, "пм", "pmma")
+        # правка написання й скорочення того самого рядка
+        update_shortcut(session, a.id, "мон", "mono a3")
+        row = next(r for r in list_shortcuts(session) if r.id == a.id)
+        assert row.shortcut == "мон" and row.expansion == "mono a3"
+        # не можна зайняти ключ іншого рядка
+        with pytest.raises(MaterialCatalogError):
+            update_shortcut(session, a.id, "пм", "mono a3")

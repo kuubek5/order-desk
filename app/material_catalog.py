@@ -204,6 +204,44 @@ def add_shortcut(session: Session, shortcut: str, expansion: str) -> MaterialSho
     return row
 
 
+def update_shortcut(
+    session: Session, shortcut_id: int, shortcut: str, expansion: str
+) -> MaterialShortcut:
+    """Edit one shortcut in place. Same validation as add_shortcut, but the
+    uniqueness check ignores the row itself (saving it unchanged mustn't clash
+    with its own key)."""
+    row = session.get(MaterialShortcut, shortcut_id)
+    if row is None:
+        raise MaterialCatalogError("Скорочення не знайдено.")
+    short_clean = (shortcut or "").strip()
+    expansion_clean = (expansion or "").strip()
+    if not short_clean:
+        raise MaterialCatalogError("Порожнє скорочення.")
+    if not expansion_clean:
+        raise MaterialCatalogError("Порожнє написання.")
+    if len(short_clean) > 50:
+        raise MaterialCatalogError("Скорочення задовге.")
+    if len(expansion_clean) > 100:
+        raise MaterialCatalogError("Написання задовге.")
+    key = match_key(short_clean)
+    if not key:
+        raise MaterialCatalogError("Скорочення порожнє після нормалізації.")
+    clash = session.scalar(
+        select(MaterialShortcut).where(
+            MaterialShortcut.key == key, MaterialShortcut.id != shortcut_id
+        )
+    )
+    if clash is not None:
+        raise MaterialCatalogError(
+            f"Скорочення «{short_clean}» вже зайняте (→ {clash.expansion})."
+        )
+    row.shortcut = short_clean
+    row.key = key
+    row.expansion = expansion_clean
+    session.flush()
+    return row
+
+
 def delete_shortcut(session: Session, shortcut_id: int) -> None:
     row = session.get(MaterialShortcut, shortcut_id)
     if row is not None:

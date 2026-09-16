@@ -1,41 +1,58 @@
-{# Скорочення матеріалів: плоский наскрізний список `написання | скорочення |
-   вжито | ✎`. Не прив'язані до категорії зліва — скорочення дає канонічне
-   СЛОВО матеріалу (mono), колір оператор пише як є. Колонка «вжито» підказує,
-   якому написанню давати коротше скорочення; «?» замість бейджа — написання,
-   якого класифікатор не впізнав (те саме, що material_id NULL у черзі). #}
+{# Скорочення матеріалів: наскрізний список `написання ← скорочення`, кожен
+   рядок редагується на місці. Скорочення розгортає слово матеріалу АБО повне
+   написання з кольором (mono a3) — колір після скорочення оператор лишає як є.
+   «Вжито» рахується з бази й підказує, якому написанню давати коротше
+   скорочення. «?» замість бейджа — написання, якого класифікатор не впізнав. #}
 <section class="ml-shortcuts" aria-labelledby="ml-shortcuts-h">
-    <h2 id="ml-shortcuts-h">Скорочення для ручного вводу</h2>
-    <p>Оператор пише скорочення в полі матеріалу й тисне Tab — воно
-       розгортається в канонічне написання. Скорочується лише слово матеріалу
-       (<span class="mono">мл → mono</span>), колір лишається як набрано.</p>
+    <div class="ml-sc-top">
+        <div>
+            <h2 id="ml-shortcuts-h">Скорочення для ручного вводу</h2>
+            <p>Оператор пише скорочення в полі матеріалу й тисне Tab — воно
+               розгортається в написання. Рядок редагується на місці; хрестик
+               видаляє.</p>
+        </div>
+        {# Авто-заповнення з бази: скорочення на всі наявні написання одним
+           рухом (mono a1/a2/a3…, emo…). Автомат, не руками. Що не влізло без
+           колізії — дозаводиться нижче формою. #}
+        <form method="post" action="/settings/materials/shortcut/autofill" class="ml-sc-fill">
+            <button type="submit" class="ml-btn" title="Завести скорочення на всі написання з бази">
+                Заповнити з бази
+            </button>
+        </form>
+    </div>
 
     {% if shortcuts %}
-    <table class="ml-sc-table">
-        <thead>
-            <tr><th>Написання</th><th>Скорочення</th><th class="ml-sc-num">Вжито</th><th></th></tr>
-        </thead>
-        <tbody>
-            {% for s in shortcuts %}
-            <tr class="{{ 'is-unknown' if not s.recognized }}">
-                <td class="mono">
-                    {{ s.expansion }}
-                    {% if s.badge %}<span class="ml-sc-badge">{{ s.badge }}</span>
-                    {% else %}<span class="ml-sc-badge is-unknown" title="Матеріал не розпізнано">?</span>{% endif %}
-                </td>
-                <td class="mono ml-sc-key">{{ s.shortcut }}</td>
-                <td class="ml-sc-num">{{ s.used }}</td>
-                <td class="ml-sc-act">
-                    <form method="post" action="/settings/materials/shortcut/{{ s.id }}/delete">
-                        <button type="submit" class="ml-sc-del" aria-label="Видалити скорочення" title="Видалити">✕</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="ml-sc-list">
+        <div class="ml-sc-head">
+            <span>Написання</span><span></span><span>Скорочення</span>
+            <span class="ml-sc-num">Вжито</span><span></span>
+        </div>
+        {% for s in shortcuts %}
+        {# Одна форма на рядок: кнопка «зберегти» шле на …/edit, хрестик через
+           formaction — на …/delete (поля редагування він ігнорує). #}
+        <form method="post" action="/settings/materials/shortcut/{{ s.id }}/edit"
+              class="ml-sc-row {{ 'is-unknown' if not s.recognized }}">
+            <span class="ml-sc-expwrap">
+                {% if s.badge %}<span class="ml-sc-badge">{{ s.badge }}</span>
+                {% else %}<span class="ml-sc-badge is-unknown" title="Матеріал не розпізнано">?</span>{% endif %}
+                <input class="ml-inp mono ml-sc-exp" type="text" name="expansion"
+                       value="{{ s.expansion }}" required maxlength="100" aria-label="Написання">
+            </span>
+            <span class="ml-sc-arrow" aria-hidden="true">←</span>
+            <input class="ml-inp mono ml-sc-key" type="text" name="shortcut"
+                   value="{{ s.shortcut }}" required maxlength="50" aria-label="Скорочення">
+            <span class="ml-sc-num">{{ s.used }}</span>
+            <span class="ml-sc-act">
+                <button type="submit" class="ml-sc-save" title="Зберегти" aria-label="Зберегти">✓</button>
+                <button type="submit" class="ml-sc-del" title="Видалити" aria-label="Видалити"
+                        formaction="/settings/materials/shortcut/{{ s.id }}/delete">✕</button>
+            </span>
+        </form>
+        {% endfor %}
+    </div>
     {% else %}
-    <p class="ml-sc-empty">Скорочень ще немає. Додайте перше — наприклад
-       <span class="mono">мл → mono</span>.</p>
+    <p class="ml-sc-empty">Скорочень ще немає. Натисни «Заповнити з бази» або
+       додай перше вручну — наприклад <span class="mono">мл → mono</span>.</p>
     {% endif %}
 
     <form method="post" action="/settings/materials/shortcut/add" class="ml-sc-add">

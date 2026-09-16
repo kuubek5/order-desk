@@ -172,3 +172,45 @@ def test_shortcut_add_forbidden_off_loopback():
                 _request(admin.id, host="10.0.0.5"), shortcut="мл", expansion="mono", db=db
             )
         assert exc.value.status_code == 403
+
+
+def test_edit_shortcut_route():
+    from app.material_catalog import add_shortcut, list_shortcuts
+
+    with _db() as db:
+        admin = _admin(db)
+        ensure_seeded(db)
+        row = add_shortcut(db, "мл", "mono")
+        db.commit()
+        resp = settings_router_mod.edit_material_shortcut(
+            row.id, _request(admin.id), shortcut="мл", expansion="mono a3", db=db
+        )
+        assert resp.status_code == 303
+        assert list_shortcuts(db)[0].expansion == "mono a3"
+
+
+def test_autofill_route_populates_and_gates_on_loopback():
+    from app.models import Order
+    from app.material_catalog import list_shortcuts
+
+    with _db() as db:
+        admin = _admin(db)
+        ensure_seeded(db)
+        for _ in range(4):
+            db.add(Order(source="lab", material_color="mono a3", status="нове"))
+        db.commit()
+        # backfill material_id so autofill sees a recognized variant
+        from app.material_catalog import backfill_orders
+        backfill_orders(db, only_unresolved=False)
+        db.commit()
+        from app.services.material_suggest import invalidate_cache
+        invalidate_cache()
+
+        resp = settings_router_mod.autofill_material_shortcuts(_request(admin.id), db=db)
+        assert resp.status_code == 303
+        assert any(r.expansion == "mono a3" for r in list_shortcuts(db))
+
+        # не з петлі — 403
+        with pytest.raises(HTTPException) as exc:
+            settings_router_mod.autofill_material_shortcuts(_request(admin.id, host="10.0.0.5"), db=db)
+        assert exc.value.status_code == 403

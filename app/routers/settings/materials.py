@@ -26,8 +26,10 @@ from app.material_catalog import (
     load_alias_rows,
     material_id_by_name,
     resolve_material_id,
+    update_shortcut,
 )
 from app.services.material_suggest import (
+    autofill_shortcuts,
     badge_for_name,
     invalidate_cache as invalidate_suggest_cache,
     usage_for_expansion,
@@ -238,12 +240,45 @@ def create_material_shortcut(
     return RedirectResponse("/settings/materials", status_code=303)
 
 
+@router.post("/settings/materials/shortcut/{shortcut_id}/edit")
+def edit_material_shortcut(
+    shortcut_id: int,
+    request: Request,
+    shortcut: str = Form(...),
+    expansion: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    require_settings_edit(request, db, "materials")
+    try:
+        update_shortcut(db, shortcut_id, shortcut, expansion)
+        db.commit()
+        invalidate_suggest_cache()
+        request.session["materials_flash"] = {"kind": "success", "message": "Скорочення змінено."}
+    except MaterialCatalogError as exc:
+        db.rollback()
+        request.session["materials_flash"] = {"kind": "error", "message": str(exc)}
+    return RedirectResponse("/settings/materials", status_code=303)
+
+
 @router.post("/settings/materials/shortcut/{shortcut_id}/delete")
 def remove_material_shortcut(shortcut_id: int, request: Request, db: Session = Depends(get_db)):
     require_settings_edit(request, db, "materials")
     delete_shortcut(db, shortcut_id)
     db.commit()
     request.session["materials_flash"] = {"kind": "success", "message": "Скорочення видалено."}
+    return RedirectResponse("/settings/materials", status_code=303)
+
+
+@router.post("/settings/materials/shortcut/autofill")
+def autofill_material_shortcuts(request: Request, db: Session = Depends(get_db)):
+    require_settings_edit(request, db, "materials")
+    added, skipped = autofill_shortcuts(db)
+    db.commit()
+    invalidate_suggest_cache()
+    msg = f"Заповнено з бази: додано {added}."
+    if skipped:
+        msg += f" Пропущено {skipped} (колізія скорочення — додайте руками)."
+    request.session["materials_flash"] = {"kind": "success", "message": msg}
     return RedirectResponse("/settings/materials", status_code=303)
 
 

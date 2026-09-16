@@ -21,6 +21,7 @@ The representative of each cluster is its most-frequent spelling.
 
 from __future__ import annotations
 
+import re
 import threading
 from collections import Counter
 from dataclasses import dataclass, field
@@ -31,6 +32,8 @@ from sqlalchemy.orm import Session
 
 from app.business_day import utc_now
 from app.material_catalog import (
+    MaterialCatalogError,
+    add_shortcut,
     ensure_seeded,
     list_shortcuts,
     load_alias_rows,
@@ -175,6 +178,64 @@ def usage_for_expansion(session: Session, expansion: str) -> int:
     if not ek:
         return 0
     return sum(e.c90 for e in _frecency_entries(session) if e.key.startswith(ek))
+
+
+#: Написання, що трапилось у базі рідше за це, вважаємо разовим/одруківкою й
+#: авто-скорочення на нього не заводимо — інакше 309 написань дали б стіну
+#: криптичних кодів. Власник дозаводить рідкісні руками.
+_AUTOFILL_MIN_COUNT = 3
+
+
+def _autoshort_candidates(expansion: str) -> list[str]:
+    """Кандидати на авто-скорочення: перша літера слова матеріалу + колір без
+    пробілів і розділювачів (`mono a3.5` → `ma35`), з розширенням початку слова
+    при колізії (`mo…`, `mon…`)."""
+    tokens = expansion.split()
+    if not tokens:
+        return []
+    head = tokens[0]
+    color = re.sub(r"[^0-9a-zа-яіїєґ]", "", "".join(tokens[1:]).lower())
+    return [head[:n].lower() + color for n in (1, 2, 3) if len(head) >= n]
+
+
+def autofill_shortcuts(
+    session: Session, *, min_count: int = _AUTOFILL_MIN_COUNT
+) -> tuple[int, int]:
+    """Завести скорочення на всі розпізнані написання з бази (mono a1/a2/a3…,
+    emo…, pmma…). Авто, не руками (власник 16.09.26). Пропускає нерозпізнане й
+    нематеріал (без бейджа), уже наявні написання й колізії скорочень; на
+    останні віддає розширений код або пропускає. Повертає (додано, пропущено).
+
+    Скидає frecency-кеш кличе викликач — «вжито» на екрані має врахувати нове."""
+    rows = list_shortcuts(session)
+    used_keys = {row.key for row in rows}
+    have_expansion = {match_key(row.expansion) for row in rows}
+
+    added = skipped = 0
+    for entry in sorted(_frecency_entries(session), key=lambda e: -e.c90):
+        if entry.badge is None:  # нерозпізнане або «Не матеріал» — не скорочуємо
+            continue
+        if entry.c90 < min_count:
+            continue
+        if match_key(entry.text) in have_expansion:
+            continue
+        placed = False
+        for cand in _autoshort_candidates(entry.text):
+            key = match_key(cand)
+            if not key or key in used_keys:
+                continue
+            try:
+                add_shortcut(session, cand, entry.text)
+            except MaterialCatalogError:
+                continue
+            used_keys.add(key)
+            have_expansion.add(match_key(entry.text))
+            added += 1
+            placed = True
+            break
+        if not placed:
+            skipped += 1
+    return added, skipped
 
 
 def suggest_materials(

@@ -237,23 +237,37 @@
 }
 
 /* ── Скорочення для ручного вводу ─────────────────────────────────────────
-   Плоский наскрізний список під двопанельною консоллю: написання ↔ скорочення,
-   «вжито» підказує, якому написанню давати коротше скорочення. */
+   Наскрізний список під двопанельною консоллю, кожен рядок редагується на
+   місці (grid, не table: рядок — це <form>, а form у tbody невалідний). */
 .ml-shortcuts{margin-top:var(--space-4,24px);padding-top:var(--space-3,16px);border-top:1px solid var(--line)}
 .ml-shortcuts h2{margin:0 0 4px;font-family:var(--font-head);font-size:var(--fs-3)}
-.ml-shortcuts>p{margin:0 0 var(--space-2,12px);color:var(--ink-2);max-width:60ch}
-.ml-sc-table{width:100%;border-collapse:collapse;margin-bottom:var(--space-2,12px)}
-.ml-sc-table th{text-align:left;font-weight:600;color:var(--ink-3);font-size:var(--fs-0);padding:4px 8px;border-bottom:1px solid var(--line)}
-.ml-sc-table td{padding:6px 8px;border-bottom:1px solid var(--line-2,var(--line))}
+.ml-shortcuts p{margin:0 0 var(--space-2,12px);color:var(--ink-2);max-width:60ch}
+.ml-sc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.ml-sc-fill{flex:0 0 auto}
+
+/* Спільна сітка для заголовка й рядків: написання | ← | скорочення | вжито | дії */
+.ml-sc-list{margin-bottom:var(--space-2,12px)}
+.ml-sc-head,.ml-sc-row{display:grid;grid-template-columns:minmax(12rem,1fr) auto minmax(7rem,12rem) 4rem auto;
+  align-items:center;gap:10px;padding:5px 6px}
+.ml-sc-head{color:var(--ink-3);font-size:var(--fs-0);border-bottom:1px solid var(--line)}
+.ml-sc-row{border-bottom:1px solid var(--line-2,var(--line))}
+.ml-sc-row.is-unknown{background:rgba(var(--warn-rgb),0.06);border-radius:8px}
 .ml-sc-num{text-align:right;color:var(--ink-2);font-variant-numeric:tabular-nums}
-.ml-sc-key{color:var(--ink)}
-.ml-sc-table tr.is-unknown td{background:rgba(var(--warn-rgb),0.06)}
-.ml-sc-badge{margin-left:6px;padding:1px 6px;font-family:var(--font-mono);font-size:var(--fs-0);border-radius:var(--radius-chip,8px);background:rgba(var(--accent-rgb),0.18);color:var(--accent)}
+
+.ml-sc-expwrap{display:flex;align-items:center;gap:6px;min-width:0}
+.ml-sc-exp{flex:1 1 auto;min-width:0}
+.ml-sc-key,.ml-sc-exp{width:100%}
+.ml-sc-badge{flex:0 0 auto;padding:1px 6px;font-family:var(--font-mono);font-size:var(--fs-0);border-radius:var(--radius-chip,8px);background:rgba(var(--accent-rgb),0.18);color:var(--accent)}
 .ml-sc-badge.is-unknown{background:rgba(var(--warn-rgb),0.18);color:var(--warn-ink,var(--warn))}
-.ml-sc-act{width:1%;white-space:nowrap;text-align:right}
-.ml-sc-del{border:none;background:none;cursor:pointer;color:var(--ink-3);font-size:var(--fs-1);line-height:1;padding:2px 6px;border-radius:6px}
-.ml-sc-del:hover{color:var(--alarm);background:rgba(var(--alarm-rgb),0.12)}
-.ml-sc-empty{color:var(--ink-2)}
-.ml-sc-add{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.ml-sc-add .ml-inp{flex:0 1 14rem}
 .ml-sc-arrow{color:var(--ink-3)}
+
+.ml-sc-act{display:flex;gap:2px;justify-content:flex-end}
+.ml-sc-save,.ml-sc-del{border:none;background:none;cursor:pointer;font-size:var(--fs-1);line-height:1;padding:3px 7px;border-radius:6px}
+.ml-sc-save{color:var(--accent)}
+.ml-sc-save:hover{background:rgba(var(--accent-rgb),0.14)}
+.ml-sc-del{color:var(--ink-3)}
+.ml-sc-del:hover{color:var(--alarm);background:rgba(var(--alarm-rgb),0.12)}
+
+.ml-sc-empty{color:var(--ink-2)}
+.ml-sc-add{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:var(--space-2,12px)}
+.ml-sc-add .ml-inp{flex:0 1 14rem}

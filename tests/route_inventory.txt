@@ -196,7 +196,9 @@ POST /settings/materials/alias/add
 POST /settings/materials/alias/{alias_id}/delete
 POST /settings/materials/reclassify
 POST /settings/materials/shortcut/add
+POST /settings/materials/shortcut/autofill
 POST /settings/materials/shortcut/{shortcut_id}/delete
+POST /settings/materials/shortcut/{shortcut_id}/edit
 POST /settings/mcp/toggle
 POST /settings/mcp/token
 POST /settings/network/toggle
