@@ -217,8 +217,16 @@
                    клієнтів або нарядів. Server skips fully-empty rows. #}
                 <div class="addwork-rows" data-addwork-rows>
                     <div class="addwork-row" data-addwork-row>
-                        {# Client mode #}
-                        <input type="text" name="client_name" placeholder="Імʼя клієнта" aria-label="Імʼя клієнта" class="addwork-input" data-addwork-client>
+                        {# Client mode. Комбобокс підказок клієнта (той самий
+                           materialsuggest.js, ендпоінт /suggest/client). data-addwork-client
+                           і на обгортці, і на полі: queue.js ховає/вимикає обидва в
+                           режимі «Лабораторія». #}
+                        <div class="ms-field" data-matsuggest data-suggest-url="/suggest/client" data-addwork-client>
+                            <input type="text" name="client_name" placeholder="Імʼя клієнта" aria-label="Імʼя клієнта" class="addwork-input"
+                                   role="combobox" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" autocomplete="off"
+                                   data-addwork-client data-matsuggest-input>
+                            <ul class="ms-list" role="listbox" aria-label="Підказки клієнта" hidden data-matsuggest-list></ul>
+                        </div>
                         {# Lab mode (hidden+disabled by default so it isn't submitted) #}
                         <input type="text" name="work_order_no" placeholder="Номер наряду" aria-label="Номер наряду" class="addwork-input addwork-qty" data-addwork-lab hidden disabled>
                         <input type="text" name="kind" placeholder="Вид роботи" aria-label="Вид роботи" class="addwork-input" data-addwork-lab hidden disabled>

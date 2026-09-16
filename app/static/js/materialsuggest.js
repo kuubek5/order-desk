@@ -25,6 +25,12 @@
       ? ul.parentElement.querySelector("[data-matsuggest-input]")
       : null;
   }
+  function endpointFor(input) {
+    // Поле матеріалу й поле клієнта ділять цей контролер; ендпоінт бере з
+    // обгортки [data-matsuggest], дефолт — матеріал.
+    var box = input.closest ? input.closest("[data-matsuggest]") : null;
+    return (box && box.getAttribute("data-suggest-url")) || "/suggest/material";
+  }
   function activeOpt(ul) {
     return ul.querySelector(".ms-opt.is-active");
   }
@@ -66,7 +72,7 @@
       close(input);
       return;
     }
-    fetch("/suggest/material?q=" + encodeURIComponent(q), {
+    fetch(endpointFor(input) + "?q=" + encodeURIComponent(q), {
       headers: { "HX-Request": "true" },
     })
       .then(function (res) {

@@ -75,6 +75,7 @@ GET /shift/images/{image_id}
 GET /stats
 GET /stl-preview/{token}
 GET /stl-preview/{token}/{filename:path}
+GET /suggest/client
 GET /suggest/material
 GET /sum3d/tray
 GET /system/load

@@ -11,11 +11,15 @@
     {% if it.shortcut %}data-shortcut="{{ it.shortcut }}"{% endif %}
     {% if it.is_expand %}data-expand="1"{% endif %}>
   {% if it.shortcut %}<span class="ms-chip mono">{{ it.shortcut }}</span>{% endif %}
-  <span class="ms-text mono">{{ it.text }}</span>
+  <span class="ms-text{{ ' mono' if field == 'material' }}">{{ it.text }}</span>
+  {# Бейдж категорії — лише для матеріалу; у клієнта категорії немає, тож і «?»
+     нерозпізнаного тут бути не повинно. #}
+  {% if field == 'material' %}
   {% if it.badge %}
   <span class="ms-badge" title="Розпізнано">{{ it.badge }}</span>
   {% else %}
   <span class="ms-badge is-unknown" title="Матеріал не розпізнано">?</span>
+  {% endif %}
   {% endif %}
   <span class="ms-right">
     {% if it.is_expand %}<kbd>Tab</kbd>

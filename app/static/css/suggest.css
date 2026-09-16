@@ -8,6 +8,11 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+/* display:flex переможе UA-правило [hidden]{display:none}; повертаємо приховування
+   для режиму «Лабораторія» (queue.js ставить hidden на обгортку поля клієнта). */
+.ms-field[hidden] {
+  display: none;
+}
 .ms-field > .addwork-input {
   width: 100%;
 }
