@@ -190,12 +190,17 @@ main.dz{max-width:1320px;margin:0 auto;padding:18px 20px 48px;display:flex;flex-
 /* ═════ Вкладки внизу ═════ */
 .dz-dh{border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
 .dz-dh-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:14px 16px;border-bottom:1px solid var(--line)}
-.dz-tabs{display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:11px;background:var(--bg-rail)}
-.dz-tabs button{border:0;background:transparent;padding:6px 14px;border-radius:8px;cursor:pointer;font:600 var(--fs-3) var(--font-body);color:var(--ink-2)}
-.dz-tabs button:hover{color:var(--accent-ink)}
-.dz-tabs button[aria-selected=true]{background:var(--card-3);color:var(--ink);box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.5)}
+/* Сегмент-контрол у машинному стилі: трек-колодязь, активна вкладка — піднята
+   «клавіша» (верхній блиск + мʼякий drop), а не тонке inset-кільце всередині
+   обведеного треку (доти краї двоїлись і вигляд був дешевий). Лічильник —
+   бейдж: бурштиновий на активній, тихий на неактивній. */
+.dz-tabs{display:flex;gap:3px;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--well)}
+.dz-tabs button{display:inline-flex;align-items:center;border:0;background:transparent;padding:6px 13px;border-radius:7px;cursor:pointer;font:600 var(--fs-3) var(--font-body);color:var(--ink-2);transition:background var(--ui-speed) ease,color var(--ui-speed) ease}
+.dz-tabs button:hover{background:var(--card-2);color:var(--accent-ink)}
+.dz-tabs button[aria-selected=true]{background:var(--card-3);color:var(--ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 1px 2px rgba(0,0,0,.35)}
 .dz-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.dz-tabs .n{font:500 var(--fs-1) var(--font-mono);color:var(--accent);margin-left:6px}
+.dz-tabs .n{margin-left:7px;padding:1px 7px;border-radius:6px;font:500 var(--fs-0) var(--font-mono);background:rgba(var(--accent-base-rgb),.15);color:var(--accent-c)}
+.dz-tabs button:not([aria-selected=true]) .n{background:var(--card-3);color:var(--ink-3)}
 .dz-filter{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .dz-q{background:var(--bg-rail);border:1px solid var(--line-2);border-radius:9px;padding:6px 10px;color:var(--ink);font:var(--fs-3) var(--font-mono);width:210px}
 .dz-q::placeholder{color:var(--ink-2);font-family:var(--font-body)}
