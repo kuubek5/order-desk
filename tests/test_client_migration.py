@@ -105,8 +105,10 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
         # «фрезерує 100 %» for two minutes; 0066 adds the material typing
         # shortcuts (`мл → mono`); 0067 adds the client duplicate-merge decisions
         # for the manual add-work form; 0068 adds the export-folder merge
-        # decisions (two folders = one client). All purely additive — nothing
-        # that existed at 0003 is dropped.
+        # decisions (two folders = one client); 0069 adds the «Що не так» mutes
+        # — a known cause (a dying network card) silenced for a set term so the
+        # alarm badge stays readable. All purely additive — nothing that existed
+        # at 0003 is dropped.
         assert tables_after - tables_before == {
             "clients", "materials", "material_aliases",
             "mail_filter_rules", "mail_filter_categories", "client_sender_memory",
@@ -123,6 +125,7 @@ def test_upgrade_from_0003_to_head_is_purely_additive(tmp_path, monkeypatch):
             "screen_puzzles",
             "machine_memory",
             "material_shortcuts",
+            "whats_wrong_mutes",
             "client_merges",
             "folder_merges",
         }

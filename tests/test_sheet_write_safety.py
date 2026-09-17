@@ -64,6 +64,13 @@ def _request(user_id):
 
 class TestWritesLeaveTheEventLoop:
     def test_sum3d_write_runs_on_the_writeback_worker(self, monkeypatch):
+        """Запис Sum3D не сміє відбуватись на event loop — ані тоді, ані тепер.
+
+        З 17.09.26 роут не чекає на таблицю: правка стає в пачку і летить із
+        воркера. Властивість, заради якої тест існує, від цього не змінилась —
+        змінився лише момент: злив пачки тут робимо самі, щоб не залежати від
+        вікна коалесценції.
+        """
         engine = _engine()
         Base.metadata.create_all(engine)
         monkeypatch.setattr(
@@ -73,11 +80,11 @@ class TestWritesLeaveTheEventLoop:
 
         threads: list[str] = []
 
-        def spy(db, order, fields, erase=frozenset()):
+        def spy(batch):
             threads.append(threading.current_thread().name)
             return None
 
-        monkeypatch.setattr(writeback, "write_sheet_fields", spy)
+        monkeypatch.setattr(writeback, "write_fields_bulk", spy)
         monkeypatch.setattr(orders_router_mod, "attach_export_folder_uris", lambda *a: None)
         monkeypatch.setattr(orders_router_mod, "attach_job_code_folder_uris", lambda *a: None)
         monkeypatch.setattr(
@@ -99,10 +106,12 @@ class TestWritesLeaveTheEventLoop:
                 )
 
             asyncio.run(drive())
+            writeback.flush_field_batch_now(timeout=10)
 
         assert threads, "запис у таблицю не відбувся"
         assert threads[0].startswith("sheet-writeback"), threads
         assert threads[0] != loop_thread
+
 
     def test_group_write_is_one_job_on_the_worker(self):
         """Раніше видача групи була циклом із відкриттям таблиці на event loop —

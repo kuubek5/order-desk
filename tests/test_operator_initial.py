@@ -163,17 +163,23 @@ def test_set_initial_is_admin_only():
 
 
 def _run_sum3d(db, user, order, value):
-    # Запис у таблицю тепер іде одним чокпоінтом `await_on_writeback(fn, ...)`
-    # на воркері write-back (аудит 05.09.26, синк C-2) — підміняємо саме його.
-    # Аргументи: (функція-воркер, order_id, …), тож поля лишились на індексі 2.
-    with patch.object(orders_router_mod, "await_on_writeback",
-                      new_callable=AsyncMock, return_value=None) as sheet, \
+    # Запис у таблицю з 17.09.26 не чекається: правка стає в пачку
+    # (`queue_sheet_fields`), і десяток ID підряд іде одним `batch_update`
+    # замість черги по 1–4 с на кожен. Аргументи тепер (order_id, поля,
+    # erase), тож набір полів переїхав з індексу 2 на 1.
+    #
+    # Переробка пише в інші колонки (W/X) і пачкою НЕ йде — там роут і далі
+    # чекає на `await_on_writeback`. Тому підміняємо обидві точки, а тест
+    # бере ту, яка стосується його випадку.
+    with patch.object(orders_router_mod, "queue_sheet_fields") as sheet, \
+         patch.object(orders_router_mod, "await_on_writeback",
+                      new_callable=AsyncMock, return_value=None) as rework_write, \
          patch.object(orders_router_mod, "attach_export_folder_uris"), \
          patch.object(orders_router_mod, "attach_job_code_folder_uris"), \
          patch.object(web.templates, "TemplateResponse", return_value=SimpleNamespace(headers={})):
         asyncio.run(orders_router_mod.set_sum3d_id(
             request=_request(user.id), order_id=order.id, sum3d_id=value, db=db))
-    return sheet, sheet
+    return sheet, rework_write
 
 
 def test_sum3d_entry_stamps_operator_letter_in_column_M():
@@ -187,7 +193,7 @@ def test_sum3d_entry_stamps_operator_letter_in_column_M():
         assert order.calculated_raw == "Р"       # letter written to М
         assert order.status == "прораховано"      # letter is the calc marker
         # sheet write carried both cells
-        assert ws.call_args[0][2] == {"sum3d_id", "calculated_raw"}
+        assert ws.call_args[0][1] == {"sum3d_id", "calculated_raw"}
         ev = db.scalars(select(StatusEvent).where(StatusEvent.status == "прораховано")).first()
         assert ev is not None and ev.operator_id == user.id  # real operator recorded
 
@@ -202,7 +208,7 @@ def test_sum3d_entry_without_a_letter_leaves_column_M_untouched():
         assert order.sum3d_id == "12-01-45"
         assert order.calculated_raw is None       # nothing stamped
         assert order.status == "прийнято"          # status not advanced
-        assert ws.call_args[0][2] == {"sum3d_id"}  # only the ID written
+        assert ws.call_args[0][1] == {"sum3d_id"}  # only the ID written
 
 
 def test_clearing_sum3d_does_not_stamp_a_letter():
@@ -214,7 +220,7 @@ def test_clearing_sum3d_does_not_stamp_a_letter():
         db.refresh(order)
         assert order.sum3d_id is None
         assert order.calculated_raw is None
-        assert ws.call_args[0][2] == {"sum3d_id"}
+        assert ws.call_args[0][1] == {"sum3d_id"}
 
 
 def test_rework_sum3d_stamps_letter_in_column_X():

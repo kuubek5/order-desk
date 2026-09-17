@@ -129,6 +129,7 @@ from app.services.handout import (
 from app.services.sheet_writeback import (
     retry_pending_fills,
     retry_pending_sum3d,
+    flush_field_batch_now,
     sheet_writeback_pool as _sheet_writeback_pool,
     warm_sheet_writeback as _warm_sheet_writeback,
 )
@@ -956,6 +957,14 @@ async def lifespan(_: FastAPI):
     try:
         yield
     finally:
+        # Дописати правки, що стоять у пачці (черга Sum3D). Без цього вони не
+        # губляться — позначка `sum3d_pending` тримає їх, і фоновий повтор
+        # допише при наступному запуску, — але чекати на перезапуск немає
+        # причин, коли запис триває частку секунди.
+        try:
+            flush_field_batch_now(timeout=10.0)
+        except Exception:
+            logger.exception("Пачку правок не дописано на вимкненні")
         for w in workers:
             w.stop()
 

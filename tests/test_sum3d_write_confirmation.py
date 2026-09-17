@@ -11,8 +11,14 @@ write-back, «рядок не підтверджено» не вважаєтьс
 HX-Trigger, і те, що клас долітає в РОЗМІТКУ рядка (шаблон уже одного разу
 коштував девʼяти днів тихих 500 — див. test_archive_render.py).
 
-Запис у Google тут не відбувається: підмінено `await_on_writeback` — єдину
-точку, через яку роут ходить у пул write-back. Підміна стоїть у просторі
+З 17.09.26 роут НЕ чекає на таблицю: правка стає в пачку (`queue_sheet_fields`),
+і оператор отримує рядок одразу — десяток ID підряд інакше шикувався в чергу по
+1–4 с на кожен. Через це змінився і сигнал: «записано в таблицю» в момент вводу
+було б вигадкою, тож тост каже «іде в таблицю», а правду тримає позначка
+`Order.sum3d_pending` у рядку — вона стоїть, доки таблиця не підтвердила.
+
+Запис у Google тут не відбувається: підмінено `queue_sheet_fields` — єдину
+точку, через яку роут ставить правку в пул write-back. Підміна стоїть у просторі
 `app.routers.orders`, бо саме звідти імʼя резолвиться в момент виклику (§14:
 після переносу коду monkeypatch мовчки стає no-op).
 """
@@ -64,23 +70,30 @@ def _toast(headers) -> dict:
     return json.loads(raw)["toast"]
 
 
-def _save_sum3d(app, order_id, sync_error=None):
+def _save_sum3d(app, order_id, seen=None):
     import app.routers.orders as orders
 
-    async def fake_writeback(fn, *args):
-        return sync_error
+    def fake_queue(order_id_, fields, erase=frozenset()):
+        if seen is not None:
+            seen["args"] = (order_id_, set(fields), set(erase))
 
-    original = orders.await_on_writeback
-    orders.await_on_writeback = fake_writeback
+    original = orders.queue_sheet_fields
+    orders.queue_sheet_fields = fake_queue
     try:
         client = MiniClient(app)
         client.login(*ADMIN)
         return client.post(f"/orders/{order_id}/sum3d-id", {"sum3d_id": "12-01-45"})
     finally:
-        orders.await_on_writeback = original
+        orders.queue_sheet_fields = original
 
 
 def test_success_toast_names_the_sheet(app_db):  # noqa: F811
+    """Тост мусить називати таблицю — і називати чесно те, що вже сталось.
+
+    Доти він казав «записано в таблицю», бо роут дочікувався підтвердження.
+    Тепер правка стає в пачку, тож у цю мить правда інша: «іде в таблицю», а
+    підтвердження несе позначка в рядку.
+    """
     app, session_factory = app_db
     order_id = _order(session_factory)
 
@@ -89,9 +102,14 @@ def test_success_toast_names_the_sheet(app_db):  # noqa: F811
     assert status == 200, status
     toast = _toast(headers)
     assert toast["kind"] == "success", toast
-    assert "записано в таблицю" in toast["message"], toast
+    assert "іде в таблицю" in toast["message"], toast
     assert "12-01-45" in toast["message"], toast
-    assert "is-written" in html, "поле Sum3D не позначене як підтверджене"
+    assert "is-written" not in html, "підтвердження до відповіді таблиці — вигадка"
+    assert "is-sum3d-pending" in html, "немає позначки «ще не в таблиці»"
+
+    with session_factory() as db:
+        order = db.get(Order, order_id)
+        assert order.sum3d_pending == "12-01-45", "позначку не поставлено ДО запису"
 
 
 def test_email_order_never_claims_a_sheet_row(app_db):  # noqa: F811
@@ -109,18 +127,23 @@ def test_email_order_never_claims_a_sheet_row(app_db):  # noqa: F811
     assert "is-written" not in html, "пошта не пише в таблицю — підтвердження зайве"
 
 
-def test_failed_write_says_so_and_does_not_confirm(app_db):  # noqa: F811
+def test_the_row_marks_the_id_as_not_yet_in_the_sheet(app_db):  # noqa: F811
+    """Сигнал про недоставлений запис переїхав із тосту в РЯДОК.
+
+    Роут більше не знає, чим скінчиться запис, — і не має вдавати, що знає.
+    Натомість позначка стоїть від самого початку й знімається лише тоді, коли
+    таблиця підтвердила (`write_fields_bulk`). Тобто «не доїхало» видно на
+    екрані скільки завгодно довго, а не одну мить у тості.
+    """
     app, session_factory = app_db
     order_id = _order(session_factory)
 
-    status, headers, html = _save_sum3d(
-        app, order_id, sync_error="рядок у таблиці не підтверджено — не записано"
-    )
+    status, _, html = _save_sum3d(app, order_id)
 
     assert status == 200, status
-    toast = _toast(headers)
-    assert toast["kind"] != "success", toast
-    assert "is-written" not in html, "невдалий запис не має підтверджуватись"
+    assert "is-sum3d-pending" in html, html[:400]
+    with session_factory() as db:
+        assert db.get(Order, order_id).sum3d_pending == "12-01-45"
 
 
 def _clear_sum3d(app, order_id):
@@ -128,19 +151,18 @@ def _clear_sum3d(app, order_id):
 
     seen: dict = {}
 
-    async def fake_writeback(fn, *args):
-        seen["fn"] = fn.__name__
-        seen["args"] = args
-        return None
+    def fake_queue(order_id_, fields, erase=frozenset()):
+        seen["fn"] = "queue_sheet_fields"
+        seen["args"] = (order_id_, set(fields), set(erase))
 
-    original = orders.await_on_writeback
-    orders.await_on_writeback = fake_writeback
+    original = orders.queue_sheet_fields
+    orders.queue_sheet_fields = fake_queue
     try:
         client = MiniClient(app)
         client.login(*ADMIN)
         return (*client.post(f"/orders/{order_id}/sum3d-id", {"sum3d_id": ""}), seen)
     finally:
-        orders.await_on_writeback = original
+        orders.queue_sheet_fields = original
 
 
 def test_clearing_sum3d_does_not_flash_a_confirmation(app_db):  # noqa: F811
@@ -153,7 +175,7 @@ def test_clearing_sum3d_does_not_flash_a_confirmation(app_db):  # noqa: F811
 
     assert status == 200, status
     assert "is-written" not in html
-    assert "стерто в таблиці" in _toast(headers)["message"], _toast(headers)
+    assert "стирається в таблиці" in _toast(headers)["message"], _toast(headers)
 
 
 def test_clearing_sum3d_also_erases_the_operator_letter(app_db):  # noqa: F811
@@ -173,7 +195,7 @@ def test_clearing_sum3d_also_erases_the_operator_letter(app_db):  # noqa: F811
     status, _, _, seen = _clear_sum3d(app, order_id)
 
     assert status == 200, status
-    assert seen["fn"] == "write_sheet_fields_warm", seen
+    assert seen["fn"] == "queue_sheet_fields", seen
     _, fields, erase = seen["args"]
     assert "calculated_raw" in fields, fields
     assert "calculated_raw" in erase, erase
@@ -188,18 +210,18 @@ def _set_then_clear(app, order_id):
     """Оператор вписав ID, потім стер — як і буває, коли взяв не ту роботу."""
     import app.routers.orders as orders
 
-    async def fake_writeback(fn, *args):
+    def fake_queue(order_id_, fields, erase=frozenset()):
         return None
 
-    original = orders.await_on_writeback
-    orders.await_on_writeback = fake_writeback
+    original = orders.queue_sheet_fields
+    orders.queue_sheet_fields = fake_queue
     try:
         client = MiniClient(app)
         client.login(*ADMIN)
         client.post(f"/orders/{order_id}/sum3d-id", {"sum3d_id": "12-01-45"})
         return client.post(f"/orders/{order_id}/sum3d-id", {"sum3d_id": ""})
     finally:
-        orders.await_on_writeback = original
+        orders.queue_sheet_fields = original
 
 
 def test_clearing_sum3d_returns_the_status_it_had_before(app_db):  # noqa: F811
@@ -261,7 +283,7 @@ def test_clearing_does_not_undo_a_status_that_moved_on(app_db):  # noqa: F811
             db.commit()
         client.post(f"/orders/{order_id}/sum3d-id", {"sum3d_id": ""})
     finally:
-        orders.await_on_writeback = original
+        orders.queue_sheet_fields = original
 
     with session_factory() as db:
         assert db.get(Order, order_id).status == "відфрезеровано"
@@ -276,22 +298,8 @@ def test_setting_sum3d_never_erases_a_hand_written_letter(app_db):  # noqa: F811
     app, session_factory = app_db
     order_id = _order(session_factory)
 
-    import app.routers.orders as orders
-
     seen: dict = {}
-
-    async def fake_writeback(fn, *args):
-        seen["args"] = args
-        return None
-
-    original = orders.await_on_writeback
-    orders.await_on_writeback = fake_writeback
-    try:
-        client = MiniClient(app)
-        client.login(*ADMIN)
-        client.post(f"/orders/{order_id}/sum3d-id", {"sum3d_id": "12-01-45"})
-    finally:
-        orders.await_on_writeback = original
+    _save_sum3d(app, order_id, seen)
 
     _, _, erase = seen["args"]
     assert not erase, erase
@@ -323,7 +331,7 @@ def test_editing_the_id_then_clearing_still_rolls_the_status_back(app_db):  # no
         client.post(f"/orders/{order_id}/sum3d-id", {"sum3d_id": "13-00-00"})
         client.post(f"/orders/{order_id}/sum3d-id", {"sum3d_id": ""})
     finally:
-        orders.await_on_writeback = original
+        orders.queue_sheet_fields = original
 
     with session_factory() as db:
         assert db.get(Order, order_id).status == "нове"

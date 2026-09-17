@@ -61,6 +61,7 @@ from app.services.sheet_writeback import (
     write_calculated_cell_warm,
     write_rework_sum3d_fields_warm,
     write_sheet_fields_background,
+    queue_sheet_fields,
     write_sheet_fields_warm,
 )
 from app.services.focus import clear_all as clear_focus, focused_ids, release as release_focus, toggle as toggle_focus
@@ -251,12 +252,30 @@ async def set_sum3d_id(
     # мітку не чіпаємо — робота знову «в руках».
     if value:
         release_focus(db, order, user)
+    # Позначка «Sum3D ще не в таблиці» ставиться ДО звернення в Google — і це
+    # не косметика. Доти вона зʼявлялась лише ПІСЛЯ невдалого запису, тож
+    # застосунок, убитий у ті 1–4 с, поки він чекав відповіді, лишав значення в
+    # базі без жодного сліду — а синк у таблицю сам не пише, і ID тихо не
+    # доїжджав. Тепер будь-яке падіння означає лише затримку: рядок показує
+    # «ще не в таблиці», синк не стирає значення порожньою колонкою, а фоновий
+    # повтор допише. Очищення (порожній ID) не тримаємо — там у таблиці лишився
+    # старий ID, і синк поверне його, тобто оператор побачить, що не вийшло.
+    if rework is None and value and order_writes_to_sheet(order):
+        order.sum3d_pending = value
     db.commit()
 
     # Таблиця — ПІСЛЯ коміту і НЕ на event loop: воркер write-back читає вже
-    # збережені значення власною сесією, а `await` тримає застосунок живим,
-    # поки Google відповідає (аудит 05.09.26, синк C-2).
+    # збережені значення власною сесією (аудит 05.09.26, синк C-2).
+    #
+    # Черга Sum3D НЕ чекає на Google: правка стає в пачку, і оператор отримує
+    # рядок одразу. Десяток ID підряд коштував 20 звернень і шикувався в чергу
+    # по 1–4 с на кожне (скарга власника 17.09.26); пачка бере 2 звернення на
+    # всі. Чесність сигналу не втрачена: доки таблиця не підтвердила, у рядку
+    # стоїть позначка «ще не в таблиці», і зникає вона лише після підтвердження.
+    sync_error = None
     if rework is not None:
+        # Переробка пише в інші колонки (W/X) і пачкою не йде: випадок рідкісний,
+        # а спільного пакетного шляху для них немає — чекаємо, як і чекали.
         # На очищенні передаємо порожній рядок, а не None: None означає «колонку
         # Х не чіпати», а нам треба саме стерти літеру разом з ID.
         letter = stamp if value else ""
@@ -264,9 +283,7 @@ async def set_sum3d_id(
             write_rework_sum3d_fields_warm, order.id, value or "", letter
         )
     else:
-        sync_error = await await_on_writeback(
-            write_sheet_fields_warm, order.id, write_fields, erase_fields
-        )
+        queue_sheet_fields(order.id, write_fields, erase_fields)
     db.refresh(order)
 
     attach_export_folder_uris(db, [order])
@@ -280,15 +297,27 @@ async def set_sum3d_id(
     # записом (order_writes_to_sheet), щоб вони не розійшлись.
     wrote_to_sheet = sync_error is None and order_writes_to_sheet(order)
     if wrote_to_sheet:
-        # Очищення теж «записується», але сказати треба те, що сталось із
-        # таблицею очима оператора: клітинка спорожніла.
-        toast_note = f"{note} · {'записано в таблицю' if value else 'стерто в таблиці'}"
+        # Слово мусить збігатися з тим, що насправді сталось. Переробку ми
+        # дочекались — там «записано»; звичайна робота щойно стала в пачку, і
+        # казати «записано» рано: за це відповідає позначка в рядку, яка зникне
+        # після підтвердження. Очищення описуємо очима оператора: клітинка
+        # спорожніла.
+        if rework is not None:
+            toast_note = f"{note} · {'записано в таблицю' if value else 'стерто в таблиці'}"
+        else:
+            toast_note = f"{note} · {'іде в таблицю' if value else 'стирається в таблиці'}"
     else:
         toast_note = note
     context = _row_context(request, db, order, sync_error)
     # Прапорець живе рівно один рендер — саме цієї відповіді. Полл через 15 с
     # перемалює рядок без нього, тож підсвітка не повторюється щотіку.
-    context["sum3d_confirmed"] = wrote_to_sheet and bool(value)
+    #
+    # Для звичайної роботи підтвердження тут БІЛЬШЕ НЕ БУВАЄ: запис щойно став
+    # у пачку, і казати «таблиця прийняла» в цю мить означало б вигадувати.
+    # Правду показує позначка «ще не в таблиці» — вона стоїть, доки таблиця не
+    # підтвердила, і зникає сама. Переробку ми дочекались, там підтвердження
+    # чесне.
+    context["sum3d_confirmed"] = wrote_to_sheet and bool(value) and rework is not None
     response = templates.TemplateResponse(request, "_order_row.html", context)
     if sync_error is None:
         attach_action_toast(response, log_entry, toast_note)

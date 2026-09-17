@@ -9,6 +9,8 @@
 """
 
 import asyncio
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from datetime import date, datetime
@@ -907,6 +909,156 @@ def issue_group_warm(field_map: dict[int, list[str]]) -> str | None:
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Failed to clear blue fill for a handout group")
                 error = error or str(exc)
+        bg.commit()
+    return error
+
+
+# ── Пачка правок черги (Sum3D і сусідні клітинки) ───────────────────────────
+#
+# Навіщо. Оператор вписує Sum3D десятку робіт підряд. Поодинці кожна правка
+# коштує ДВОХ звернень до Google (звірити позицію рядка + записати), а пул
+# один — тож правки шикувались у чергу й «фіксувались по одній» по 1–4 с
+# (скарга власника 17.09.26). Пакетний запис уже є й працює на видачі: позиції
+# всієї пачки звіряються одним читанням, поля пишуться одним `batch_update`.
+# Десять робіт коштують 2 звернення замість 20.
+#
+# Вікно коалесценції. Перша правка не летить одразу: воркер чекає частку
+# секунди, збираючи сусідні. Число мале навмисно — це затримка, яку оператор
+# не помічає (він уже отримав відповідь), але якої вистачає, щоб ввід «підряд»
+# склався в одну пачку.
+_FIELD_BATCH_WINDOW_SECONDS = 0.35
+_field_batch: dict[int, tuple[set[str], set[str]]] = {}
+_field_batch_lock = threading.Lock()
+_field_batch_scheduled = False
+
+
+def queue_sheet_fields(
+    order_id: int,
+    fields: set[str],
+    erase: frozenset[str] | set[str] = frozenset(),
+) -> None:
+    """Поставити правку в пачку й ОДРАЗУ повернутись.
+
+    Викликач мусить спершу закомітити базу (воркер читає збережені значення) і
+    поставити `Order.sum3d_pending` — доки таблиця не підтвердила, саме позначка
+    тримає правду: рядок у черзі показує «ще не в таблиці», синк не стирає
+    значення порожньою колонкою, а фоновий повтор допише, якщо пачка впаде.
+    """
+    global _field_batch_scheduled
+    if not fields:
+        return
+    with _field_batch_lock:
+        have_fields, have_erase = _field_batch.get(order_id, (set(), set()))
+        _field_batch[order_id] = (have_fields | set(fields), have_erase | set(erase))
+        if _field_batch_scheduled:
+            return
+        _field_batch_scheduled = True
+    submit_sheet_write(_flush_field_batch)
+
+
+def _flush_field_batch() -> str | None:
+    """Зібрати все, що накопичилось за вікно, і записати однією пачкою."""
+    global _field_batch_scheduled
+    time.sleep(_FIELD_BATCH_WINDOW_SECONDS)
+    with _field_batch_lock:
+        batch = dict(_field_batch)
+        _field_batch.clear()
+        _field_batch_scheduled = False
+    if not batch:
+        return None
+    return write_fields_bulk(batch)
+
+
+def flush_field_batch_now(timeout: float = 30.0) -> str | None:
+    """Дописати все, що стоїть у пачці, і дочекатись результату.
+
+    Потрібне у двох місцях: на ВИМКНЕННІ застосунку (інакше правки останніх
+    часток секунди чекали б наступного запуску — не втрата, але й не потрібна
+    затримка) і в тестах, яким треба детермінований момент запису.
+    """
+    future = submit_sheet_write(_flush_field_batch)
+    return future.result(timeout)
+
+
+def write_fields_bulk(batch: dict[int, tuple[set[str], set[str]]]) -> str | None:
+    """Записати поля кількох робіт пачками по вкладках.
+
+    Дзеркало `write_handout_group_fields` (S2.3) для правок черги: та сама
+    звірка позицій (`resolve_rows_bulk`) і той самий `batch_update`. Правила
+    звірки НЕ послаблені — рядок, який не підтвердився, пропускається, а не
+    пишеться навмання.
+
+    `Order.sum3d_pending` знімається лише там, де таблиця підтвердила запис;
+    на пропуску й на збої позначка лишається, і роботу підбирає фоновий повтор.
+    """
+    if not batch:
+        return None
+    error: str | None = None
+    with writeback_session() as bg:
+        by_tab: dict[str, list[tuple[Order, set[str], set[str]]]] = {}
+        for order_id, (fields, erase) in batch.items():
+            order = bg.get(Order, order_id)
+            if order is None or not order_writes_to_sheet(order):
+                continue
+            by_tab.setdefault(order.sheet_tab, []).append((order, set(fields), set(erase)))
+
+        spreadsheet = None
+        for sheet_tab, items in by_tab.items():
+            try:
+                if spreadsheet is None:
+                    spreadsheet = open_spreadsheet(db=bg)
+                worksheet = get_worksheet_by_name(spreadsheet, sheet_tab)
+                if worksheet is None:
+                    raise RuntimeError(f"вкладку '{sheet_tab}' не знайдено")
+                rows = resolve_rows_bulk(worksheet, [order for order, _, _ in items])
+            except Exception as exc:  # noqa: BLE001 — база вже зберегла правду
+                logger.exception("Пачка правок: вкладка %s недоступна", sheet_tab)
+                error = error or str(exc)
+                for order, fields, _ in items:
+                    _log_sync(bg, SyncLog(
+                        direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
+                        message=f"order {order.id}: {exc}",
+                    ))
+                continue
+
+            plan: list[tuple[Order, set[str], int]] = []
+            for order, fields, erase in items:
+                row = rows.get(order.id)
+                if row is None:
+                    # Пропуск ≠ успіх: позначка лишається, повтор спробує ще.
+                    _log_sync(bg, SyncLog(
+                        direction="db_to_sheet", sheet_tab=sheet_tab, status="skipped",
+                        message=(
+                            f"order {order.id}: {', '.join(sorted(fields))}: "
+                            "рядок у таблиці не підтверджено — не записано"
+                        ),
+                    ))
+                    error = error or f"робота {order.id}: рядок у таблиці не підтверджено"
+                    continue
+                plan.append((order, fields | erase, row))
+
+            if not plan:
+                continue
+            try:
+                write_order_fields_bulk(worksheet, plan)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Пачка правок: запис вкладки %s", sheet_tab)
+                error = error or str(exc)
+                for order, fields, _ in plan:
+                    _log_sync(bg, SyncLog(
+                        direction="db_to_sheet", sheet_tab=sheet_tab, status="error",
+                        message=f"order {order.id}: {exc}",
+                    ))
+            else:
+                for order, fields, _ in plan:
+                    if "sum3d_id" in fields:
+                        # Підтверджено таблицею — позначку знімаємо. Решта
+                        # випадків (пропуск, збій) лишає її навмисно.
+                        order.sum3d_pending = None
+                    _log_sync(bg, SyncLog(
+                        direction="db_to_sheet", sheet_tab=sheet_tab, status="ok",
+                        message=f"order {order.id}: {', '.join(sorted(fields))}",
+                    ))
         bg.commit()
     return error
 

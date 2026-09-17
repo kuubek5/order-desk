@@ -69,14 +69,33 @@ def test_the_same_screen_twice_does_not_grow_the_inbox(db_session, inbox, target
     assert len(db_session.scalars(select(ScreenPuzzle)).all()) == 1
 
 
+# Прямокутник зони «Команда» ДО правки 17.09.26: його ліва межа стояла рівно на
+# рамці поля, і читач бачив лінію як символ («?C0»). Саме це й ловили тести
+# нижче — справжнім кадром печі. Після правки той самий кадр читається чисто,
+# тож обрізання тепер відтворюємо навмисно: предмет охорони тут не вада зони, а
+# те, що ОБРІЗАНА зона доходить до скриньки з вирізом у рідному масштабі.
+CLIPPING_COMMAND_RECT = (281, 421, 402, 441)
+
+
+def _with_clipping_command_zone(monkeypatch):
+    from app import furnace_ocr
+
+    zone = furnace_ocr.ZONES["command"]
+    monkeypatch.setitem(
+        furnace_ocr.ZONES, "command",
+        furnace_ocr.Zone(CLIPPING_COMMAND_RECT, zone.ink, zone.title, zone.pattern),
+    )
+
+
 def test_a_clipped_zone_on_a_real_frame_reaches_the_inbox_with_its_crop(
-    db_session, inbox, target
+    db_session, inbox, target, monkeypatch
 ):
     """Справжній кадр печі: зона «Команда» обрізана — і це видно у скриньці.
 
     Разом із кадром лягає виріз зони в РІДНОМУ масштабі: саме з нього вчать
     еталон, а зменшена копія растрового шрифту зробила б навчання вгадуванням.
     """
+    _with_clipping_command_zone(monkeypatch)
     with Image.open(REAL_FRAME) as opened:
         frame = opened.convert("RGB")
     furnace.poll_target(db_session, target, password=None, frame=frame)
@@ -221,7 +240,9 @@ FURNACE_FRAMES = sorted((Path(__file__).resolve().parents[1] / "design" / "furna
 FURNACE_STATES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "furnace"
 
 
-def test_a_furnace_does_not_collapse_into_a_single_puzzle(db_session, inbox, target):
+def test_a_furnace_does_not_collapse_into_a_single_puzzle(
+    db_session, inbox, target, monkeypatch
+):
     """Піч: РІЗНІ відмови — різні рядки, а не один на всю піч назавжди.
 
     Перша версія брала спільний поріг несхожості з верстатів (6.0). На екрані
@@ -235,6 +256,7 @@ def test_a_furnace_does_not_collapse_into_a_single_puzzle(db_session, inbox, tar
     """
     from app import furnace_ocr
 
+    _with_clipping_command_zone(monkeypatch)
     with Image.open(REAL_FRAME) as opened:
         frame = opened.convert("RGB")
     real_read = furnace_ocr.read_panel
