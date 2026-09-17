@@ -49,6 +49,7 @@ from app.routers.deps import (
 )
 from app.services.clients import ensure_client_profiles, quantity_units
 from app.services.handout import (
+    day_fingerprint,
     ISSUE_GROUP_ISSUED,
     ISSUE_GROUP_NOTHING_FOUND,
     MARK_GROUP_DONE,
@@ -145,6 +146,12 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
         eligible = shown
     else:
         other_days_count = 0
+
+    # Відбиток дня для пульсу. Рахується САМЕ ТУТ, з того самого набору, що
+    # малюється: сторінка віддає його в атрибуті, картки — заголовком, пульс
+    # звіряє. Один збирач на три місця, щоб «змінилось» і «намальовано» не
+    # могли розійтись.
+    handout_fp = day_fingerprint(eligible)
 
     groups: dict[str, list[Order]] = {}
     for order in eligible:
@@ -525,6 +532,8 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
             # порожній рядок означав би «замовчування», а не «всі дні».
             "day_param": selected_day.strftime("%d.%m.%y") if selected_day else HANDOUT_ALL_DAYS,
             "other_days_count": other_days_count,
+            # Відбиток стану дня — для пульсу (див. handout.js).
+            "handout_fp": handout_fp,
             "prev_day": adjacent_handout_day(handout_days, selected_day, -1),
             "next_day": adjacent_handout_day(handout_days, selected_day, +1),
             "day_window": handout_day_window(handout_days, selected_day),
@@ -586,7 +595,12 @@ def handout_cards_response(request: Request, user, source: str, day: str, db: Se
     # і друга копія дала б дубльований id (див. коментар у _handout_cards.html).
     context = handout_context(request, user, source, day, db)
     context["oob_kpi"] = True
-    return templates.TemplateResponse(request, "_handout_cards.html", context)
+    response = templates.TemplateResponse(request, "_handout_cards.html", context)
+    # Свіжий відбиток — у ТІЙ САМІЙ відповіді, що й нові картки: інакше
+    # оператор, який щойно клацнув галочку, отримував би зайве оновлення
+    # списку наступним пульсом (його браузер памʼятав би стан до кліку).
+    response.headers["HX-Handout-Fp"] = context["handout_fp"]
+    return response
 
 
 HANDOUT_DAY_WINDOW = 3
@@ -783,11 +797,6 @@ def unmark_found(
     return RedirectResponse(handout_back_url(source, day), status_code=303)
 
 
-#: Останній відомий «відбиток» стану дня, на клієнта і день. Потрібен, щоб
-#: пульс міг сказати «змінилось» без жодного стану на стороні браузера.
-_handout_pulse: dict[tuple[int, str], str] = {}
-
-
 @router.get("/handout/cards", response_class=HTMLResponse)
 def get_handout_cards(
     request: Request,
@@ -810,6 +819,10 @@ def get_handout_cards(
 def handout_pulse(
     request: Request,
     day: str = "",
+    # Відбиток, який цей браузер бачив останнім (`handout.js`). Порожній — це
+    # перший пульс після завантаження: тоді лише віддаємо поточний, нічого не
+    # оновлюючи.
+    fp: str = "",
     db: Session = Depends(get_db),
 ):
     """Дешевий пульс екрана видачі. Робить рівно дві речі.
@@ -838,15 +851,18 @@ def handout_pulse(
     if selected_day is not None:
         eligible = [o for o in eligible if parse_sheet_tab(o.sheet_tab) == selected_day]
 
-    fingerprint = ";".join(
-        f"{o.id}:{o.status}" for o in sorted(eligible, key=lambda x: x.id)
-    )
-    key = (user.id, selected_day.isoformat() if selected_day else "all")
-    changed = _handout_pulse.get(key) is not None and _handout_pulse[key] != fingerprint
-    _handout_pulse[key] = fingerprint
+    fingerprint = day_fingerprint(eligible)
 
     response = Response(status_code=204)
-    if changed:
+    # Відбиток ЗАВЖДИ їде назад: браузер тримає його в себе й показує в
+    # наступному пульсі. Доти він жив на сервері, у словнику за (користувач,
+    # день) — і другий екран того самого оператора не оновлювався НІКОЛИ:
+    # перший пульс, який приходив після зміни, забирав її собі, лишав у
+    # словнику свіжий відбиток, і для другого браузера «нічого не змінилось»
+    # (скарга з цеху 17.09.26 про другий ПК). Стан екрана мусить жити в тому
+    # екрані, а не в спільній памʼяті процесу.
+    response.headers["HX-Handout-Fp"] = fingerprint
+    if fp and fp != fingerprint:
         response.headers["HX-Trigger"] = "refresh-handout"
     return response
 

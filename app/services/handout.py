@@ -7,6 +7,7 @@
 чекатиме.
 """
 
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -37,6 +38,27 @@ EXPORT_SCAN_WORKERS = 16
 
 HANDOUT_ALL_DAYS = "all"
 """Значення параметра `day`, що просить показати ВСІ дні одразу."""
+
+
+def day_fingerprint(orders) -> str:
+    """Короткий відбиток стану дня видачі: що змінилось — видно, що ні — ні.
+
+    Потрібен пульсу екрана (`/handout/pulse`): перемальовувати картки щопʼятнадцять
+    секунд не можна (обхід export по SMB ~2.7 с), тому спершу питаємо дешеве
+    «а чи взагалі щось змінилось».
+
+    Беремо статус І частковий лічильник: «знайдено 3 з 5» міняє саме
+    `found_units`, а статус лишається тим самим — на екрані другого оператора
+    такий крок інакше не зʼявлявся б зовсім.
+
+    Хеш, а не сам рядок: відбиток їде В ЗАПИТІ браузера (див. роут), а сотня
+    робіт дала б кілометровий query string.
+    """
+    raw = ";".join(
+        f"{o.id}:{o.status}:{o.found_units if o.found_units is not None else ''}"
+        for o in sorted(orders, key=lambda x: x.id)
+    )
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def entries_for_material(material_color: str | None, entries: list, work_day=None) -> list:

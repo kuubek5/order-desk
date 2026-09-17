@@ -993,6 +993,73 @@ class TestClientFolderOpens:
         ]
 
 
+class TestPulseTellsEveryScreen:
+    """Пульс видачі мусить оновлювати КОЖЕН відкритий екран, не перший-ліпший.
+
+    У цеху два оператори (0.19.0, другий ПК заходить по мережі). Відбиток
+    стану дня жив на СЕРВЕРІ, у словнику за (користувач, день): перший пульс
+    після зміни забирав її собі й лишав у словнику вже свіжий відбиток, тож
+    для другого браузера «нічого не змінилось», і його екран не оновлювався
+    до ручного перезавантаження (скарга з цеху 17.09.26).
+    """
+
+    def _screen(self, db, user, fp=""):
+        return run_route(handout_router_mod.handout_pulse(
+            _request(user.id), day="", fp=fp, db=db,
+        ))
+
+    def test_two_browsers_both_learn_about_a_change(self, monkeypatch):
+        engine = _database()
+        db = Session(engine)
+        user = _user(db)
+        order = _client_order(status="нове")
+        db.add(order)
+        db.commit()
+
+        # Обидва екрани відкрились і знають однаковий відбиток.
+        first = self._screen(db, user)
+        second = self._screen(db, user)
+        before = first.headers["HX-Handout-Fp"]
+        assert before == second.headers["HX-Handout-Fp"]
+        assert "HX-Trigger" not in first.headers, "перший пульс нічого не оновлює"
+
+        order.status = "знайдено при видачі"
+        db.commit()
+
+        one = self._screen(db, user, fp=before)
+        two = self._screen(db, user, fp=before)
+        assert one.headers.get("HX-Trigger") == "refresh-handout"
+        assert two.headers.get("HX-Trigger") == "refresh-handout", (
+            "другий екран лишився зі старим списком — саме це й бачив цех"
+        )
+        assert one.headers["HX-Handout-Fp"] != before
+
+    def test_a_screen_that_is_up_to_date_is_not_redrawn(self, monkeypatch):
+        """Перемальовування коштує обхід export по SMB — дарма його не смикаємо."""
+        engine = _database()
+        db = Session(engine)
+        user = _user(db)
+        db.add(_client_order(status="нове"))
+        db.commit()
+
+        current = self._screen(db, user).headers["HX-Handout-Fp"]
+        assert "HX-Trigger" not in self._screen(db, user, fp=current).headers
+
+    def test_partial_count_changes_the_fingerprint(self, monkeypatch):
+        """«Знайдено 3 з 5» міняє лише лічильник — сусідній екран мусить це бачити."""
+        engine = _database()
+        db = Session(engine)
+        user = _user(db)
+        order = _client_order(status="нове")
+        db.add(order)
+        db.commit()
+
+        before = self._screen(db, user).headers["HX-Handout-Fp"]
+        order.found_units = 3
+        db.commit()
+        assert self._screen(db, user, fp=before).headers.get("HX-Trigger") == "refresh-handout"
+
+
 class TestOneBatchPerRow:
     """Під рядком роботи мають бути теки ОДНІЄЇ партії, не всі за тиждень.
 
@@ -1175,7 +1242,7 @@ class TestOneBatchPerRow:
         assert [e.created_at.hour for e in entries_for_material("mono a3", entries, date(2026, 9, 10))] == [1]
 
     def test_krivovyd_17_09_night_folder_is_found(self):
-        """Бойовий випадок 17.09.26 зі скриншотів цеху, теки як на диску.
+        r"""Бойовий випадок 17.09.26 зі скриншотів цеху, теки як на диску.
 
         `\Systems\Export\Євген Кривовид\Новая папка (597)` створена о 04:54,
         усередині `mono a3` (04:48) і `mono a3.5` (04:55); `Новая папка (598)`

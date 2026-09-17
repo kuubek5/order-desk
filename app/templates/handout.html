@@ -144,6 +144,8 @@
        зʼявився: ознака перегляду згасає за 2 хвилини, синк перестає бачити
        день, і зняття синьої заливки не доїжджає ні в портал, ні назад. #}
     <span hidden
+          data-handout-pulse
+          data-fp="{{ handout_fp }}"
           hx-get="/handout/pulse?day={{ day_param }}"
           hx-trigger="every 15s"
           hx-swap="none"></span>
