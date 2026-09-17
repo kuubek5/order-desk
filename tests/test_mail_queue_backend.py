@@ -318,7 +318,10 @@ def test_create_manual_order_writes_client_row_and_creates_order(monkeypatch):
                "material_color": ["mono a3"], "quantity": ["2"]},
         )
         assert resp.status_code == 303
-        assert resp.headers["location"] == "/?source=client"
+        # Успіх додає ще `added_tab`/`added_rows` — з них черга робить тост
+        # «додано у 17.09.26, рядок 67» (рішення власника 17.09.26).
+        assert resp.headers["location"].startswith("/?source=client")
+        assert "added_tab=" in resp.headers["location"]
         assert cap["placement"] == "client"
 
         order = db.scalar(select(Order).where(Order.source == "sheet_client"))
@@ -340,7 +343,10 @@ def test_create_manual_lab_order_with_sum3d(monkeypatch):
                "material_color": ["mono a2"], "quantity": ["3"], "sum3d_id": ["10-19-48"]},
         )
         assert resp.status_code == 303
-        assert resp.headers["location"] == "/?source=lab"
+        # Успіх додає ще `added_tab`/`added_rows` — з них черга робить тост
+        # «додано у 17.09.26, рядок 67» (рішення власника 17.09.26).
+        assert resp.headers["location"].startswith("/?source=lab")
+        assert "added_tab=" in resp.headers["location"]
 
         order = db.scalar(select(Order).where(Order.source == "lab"))
         assert order.work_order_no == "24999"
@@ -370,7 +376,10 @@ def test_create_manual_lab_order_allows_missing_naryad(monkeypatch):
             **{**_empty_form(), "work_order_no": ["  "], "material_color": ["mono a2"]},
         )
         assert resp.status_code == 303
-        assert resp.headers["location"] == "/?source=lab"
+        # Успіх додає ще `added_tab`/`added_rows` — з них черга робить тост
+        # «додано у 17.09.26, рядок 67» (рішення власника 17.09.26).
+        assert resp.headers["location"].startswith("/?source=lab")
+        assert "added_tab=" in resp.headers["location"]
         order = db.scalar(select(Order).where(Order.source == "lab"))
         assert order is not None
         assert order.work_order_no is None  # blank наряд stored as NULL
@@ -426,7 +435,10 @@ def test_create_manual_order_multi_clients_one_push(monkeypatch):
                "quantity": ["1", "2", "3", ""]},
         )
         assert resp.status_code == 303
-        assert resp.headers["location"] == "/?source=client"
+        # Успіх додає ще `added_tab`/`added_rows` — з них черга робить тост
+        # «додано у 17.09.26, рядок 67» (рішення власника 17.09.26).
+        assert resp.headers["location"].startswith("/?source=client")
+        assert "added_tab=" in resp.headers["location"]
         # exactly three works passed to the writer (blank 4th row dropped)
         assert [w["client_name"] for w in cap["works"]] == ["Іван", "Петро", "Марія"]
         orders = db.scalars(
@@ -500,7 +512,10 @@ def test_create_manual_order_returns_to_the_submitting_view(monkeypatch):
             **{**_empty_form(), "client_name": ["Неда"], "material_color": ["mono b1"]},
         )
         assert resp.status_code == 303
-        assert resp.headers["location"] == "/?day=2026-08-25&source=client"
+        # Успіх додає ще `added_tab`/`added_rows` — з них черга робить тост
+        # «додано у 17.09.26, рядок 67» (рішення власника 17.09.26).
+        assert resp.headers["location"].startswith("/?day=2026-08-25&source=client")
+        assert "added_tab=" in resp.headers["location"]
 
 
 @pytest.mark.parametrize(
@@ -521,7 +536,10 @@ def test_create_manual_order_refuses_offsite_return_to(monkeypatch, hostile):
             **{**_empty_form(), "client_name": ["Неда"], "material_color": ["mono b1"]},
         )
         assert resp.status_code == 303
-        assert resp.headers["location"] == "/?source=client"
+        # Успіх додає ще `added_tab`/`added_rows` — з них черга робить тост
+        # «додано у 17.09.26, рядок 67» (рішення власника 17.09.26).
+        assert resp.headers["location"].startswith("/?source=client")
+        assert "added_tab=" in resp.headers["location"]
 
 
 def test_create_manual_order_double_submit_is_ignored(monkeypatch):

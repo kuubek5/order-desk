@@ -80,6 +80,11 @@ class ManualBatchResult:
     duplicate: bool = False
     tab: str | None = None
     created_ids: list[int] = field(default_factory=list)
+    # Номери рядків у таблиці, куди партія лягла. Потрібні операторові в тості
+    # («додано у 17.09.26, рядок 67»): 17.09.26 три роботи пішли у ВЧОРАШНЮ
+    # вкладку, і помітили це аж через півдня, бо екран казав лише «додано».
+    # Порожній список у `duplicate` — там і справді нічого не писали.
+    sheet_rows: list[int] = field(default_factory=list)
 
 
 def normalize_work_type(value: str | None) -> str:
@@ -383,4 +388,4 @@ def create_manual_batch(
     # мав би пройти, а не мовчки «зникнути» як дубль.
     _remember_submit(user.id, fingerprint, now_ts)
 
-    return ManualBatchResult(tab=tab, created_ids=created_ids)
+    return ManualBatchResult(tab=tab, created_ids=created_ids, sheet_rows=list(note_rows))

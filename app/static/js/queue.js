@@ -1321,10 +1321,42 @@ function openAddworkFromQuery() {
   );
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", openAddworkFromQuery);
-} else {
+// Успішне ручне додавання каже, КУДИ саме лягла робота. 17.09.26 три роботи
+// пішли у ВЧОРАШНЮ вкладку (форма тримала день із першого завантаження
+// сторінки), і помітили це аж через півдня — екран казав лише «додано».
+// Номер рядка заразом показує, коли два додавання лягли в те саме місце.
+// Окрема функція, а не гілка в openAddworkFromQuery: та виходить одразу, коли
+// в адресі немає `add=1`, а на УСПІХУ його там і немає.
+function showAddedToast() {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("added_tab");
+  const rows = (params.get("added_rows") || "").split(",").filter(Boolean);
+  if (!tab || !rows.length) return;
+  if (window.showToast) {
+    const word = rows.length === 1 ? "рядок" : "рядки";
+    window.showToast(
+      `Додано у вкладку ${tab}, ${word} ${rows.join(", ")}`, "success"
+    );
+  }
+  // Прибираємо з адреси, щоб F5 не показував той самий тост знову.
+  ["added_tab", "added_rows"].forEach((key) => params.delete(key));
+  const query = params.toString();
+  window.history.replaceState(
+    null, "", window.location.pathname + (query ? "?" + query : "")
+  );
+}
+
+function onQueueLoaded() {
+  // Тост ПЕРШИМ: openAddworkFromQuery переписує адресу, і його параметри
+  // зникли б, не показавшись.
+  showAddedToast();
   openAddworkFromQuery();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", onQueueLoaded);
+} else {
+  onQueueLoaded();
 }
 
 

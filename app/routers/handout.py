@@ -374,6 +374,39 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
     client_groups = filter_client_groups_by_source(client_groups, source)
     handout_flash = request.session.pop("handout_flash", None)
 
+    # Схожі написання одного клієнта ставимо ПОРУЧ (рішення власника 17.09.26).
+    # Картки й далі НЕ зливаються — «Ковальчук» може виявитись іншою людиною, і
+    # зліплені автоматично картки означали б чужу коронку в чужому пакеті
+    # (рішення 15.09.26, лишається чинним). Але лежати в різних кінцях екрана
+    # їм теж нема чого: власник побачив «Лагус» і «Дмитрий Лагус» окремо й
+    # спитав, чому клієнт дубльований.
+    #
+    # Порядок лишається порядком таблиці: обхід іде по вже відсортованому
+    # списку, і кластер стає на місце СВОЄЇ ПЕРШОЇ картки. Зв'язок транзитивний
+    # (А~Б, Б~В), тому обхід у ширину — інакше «В» лишилось би окремо. Правило
+    # «порядок списку фіксується на початку дня» не порушується: перестановка
+    # детермінована й від дій оператора не залежить.
+    _links = similar_group_names([g["client_name"] for g in client_groups])
+    if _links:
+        _by_name = {g["client_name"]: g for g in client_groups}
+        _placed: set[str] = set()
+        _ordered: list[dict] = []
+        for group in client_groups:
+            name = group["client_name"]
+            if name in _placed:
+                continue
+            queue = [name]
+            while queue:
+                current = queue.pop(0)
+                if current in _placed or current not in _by_name:
+                    continue
+                _placed.add(current)
+                _ordered.append(_by_name[current])
+                queue.extend(
+                    peer for peer in _links.get(current, []) if peer not in _placed
+                )
+        client_groups = _ordered
+
     # Queue position + per-client totals. The position is THE anchor of the
     # screen: the operator works strictly in the order the clients were milled
     # (which is the sheet order these groups are already sorted by), so it is
@@ -392,11 +425,11 @@ def handout_context(request: Request, user, source: str, day: str, db: Session) 
         if group["is_current"]:
             current_marked = True
 
-    # Схожі написання одного клієнта. Картки НЕ зливаємо (рішення власника
-    # 15.09.26) — лише кажемо, що поруч є «Яна Ковальчук», і ведемо туди:
-    # роботи однієї людини інакше лежать у двох місцях екрана, і частина
-    # губиться з очей. Рахуємо ПІСЛЯ нумерації, бо посилання адресує позицію.
-    _similar = similar_group_names([g["client_name"] for g in client_groups])
+    # Значок-зв'язок лишається й після перестановки вище: сусідня картка вже
+    # поруч, але сказати, що це та сама людина, все одно треба — інакше дві
+    # однакові назви поспіль виглядають як помилка. Рахуємо ПІСЛЯ нумерації,
+    # бо посилання адресує позицію.
+    _similar = _links
     _position_of = {g["client_name"]: g["position"] for g in client_groups}
     for group in client_groups:
         group["similar"] = [

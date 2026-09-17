@@ -550,7 +550,18 @@ def create_manual_order(
         return _back(result.error)
 
     # Повтор сабміту (F5) виглядає для оператора так само, як успіх: у таблицю
-    # й БД не пішло нічого, але «помилки» не сталось.
+    # й БД не пішло нічого, але «помилки» не сталось. Тому й тост тут не
+    # показуємо — `sheet_rows` у нього порожній.
+    #
+    # Успіх ГОВОРИТЬ, КУДИ ліг рядок: «додано у 17.09.26, рядок 67». 17.09.26
+    # три роботи пішли у ВЧОРАШНЮ вкладку, і помітили це через півдня — екран
+    # казав лише «додано» (рішення власника того ж дня). Номер рядка заразом
+    # показує, коли додавання переписало те саме місце двічі.
+    if result.tab and result.sheet_rows:
+        done = {"added_tab": result.tab,
+                "added_rows": ",".join(str(row) for row in result.sheet_rows)}
+        mark = "&" if "?" in target else "?"
+        return RedirectResponse(f"{target}{mark}{urlencode(done)}", status_code=303)
     return RedirectResponse(target, status_code=303)
 
 
