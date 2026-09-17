@@ -548,6 +548,66 @@ def latest_worksheet_on_or_before(
     return best_ws
 
 
+def _repair_padded_tab_title(
+    spreadsheet: gspread.Spreadsheet, worksheet: gspread.Worksheet
+) -> None:
+    """Прибрати «сміття» з назви вкладки просто в таблиці.
+
+    Пробіл на початку назви (« 17.09.26») ламає НЕ читання, а ЗАПИС: gspread
+    підставляє назву в діапазон A1 як є, і Google відмовляє —
+    `Unable to parse range: ' 17.09.26'!B60:E260`. Оператор бачить це на кнопці
+    «Додати в чергу і таблицю», але так само мовчки не доїжджають Sum3D,
+    галочки й коментарі: у ВСІХ записів діапазон будується з назви.
+
+    Канонізувати назву на нашому боці (`canonical_tab_title`) тут не досить —
+    у діапазон мусить піти рядок, який Google справді знає. Тому виправляємо
+    джерело: перейменування йде через `updateSheetProperties` по ID аркуша, а
+    не по назві, тож працює і зі зламаною назвою.
+
+    Три запобіжники:
+    * чіпаємо ЛИШЕ вкладки-дати (`дд.мм.рр` після канонізації) — вкладку, яку
+      людина свідомо назвала « Нотатки», перейменовувати не наша справа;
+    * якщо чиста назва вже зайнята іншою вкладкою, не чіпаємо нічого: Google
+      відхилив би дублікат, та й зливати два дні в один не можна;
+    * будь-яка помилка перейменування (акаунт лише «Читач», гонка) не має
+      валити виклик — читання ж працює.
+    """
+    from app.business_day import canonical_tab_title
+
+    title = worksheet.title
+    clean = canonical_tab_title(title)
+    if clean == title:
+        return
+    try:
+        datetime.strptime(clean, "%d.%m.%y")
+    except ValueError:
+        return
+    try:
+        others = call_with_retry(spreadsheet.worksheets)
+    except Exception:
+        return
+    if any(ws.id != worksheet.id and ws.title == clean for ws in others):
+        logger.warning(
+            "Вкладка %r має зайві пробіли, але назва %r уже зайнята іншою "
+            "вкладкою — не перейменовую, запис у цю вкладку працювати не буде",
+            title, clean,
+        )
+        return
+    try:
+        call_with_retry(lambda: worksheet.update_title(clean))
+    except Exception as exc:
+        logger.warning(
+            "Не вдалося виправити назву вкладки %r на %r: %s. Запис у цю "
+            "вкладку не працюватиме, поки назву не виправлять руками",
+            title, clean, exc,
+        )
+        return
+    logger.warning(
+        "Назву вкладки %r виправлено на %r: пробіли в назві ламають будь-який "
+        "запис у таблицю (Unable to parse range)", title, clean,
+    )
+
+
 def get_worksheet_by_name(spreadsheet: gspread.Spreadsheet, name: str) -> gspread.Worksheet | None:
     """Resolve a worksheet by tab name, caching the object per thread — the
     `spreadsheet.worksheet(name)` metadata fetch is another ~18s on the lab PC's
@@ -577,7 +637,12 @@ def get_worksheet_by_name(spreadsheet: gspread.Spreadsheet, name: str) -> gsprea
             if canonical_tab_title(candidate.title) == wanted:
                 worksheet = candidate
                 break
-        if worksheet is None:
-            return None
+    if worksheet is None:
+        return None
+    # Вкладку знайдено — поки вона в руках, лікуємо назву. Зайві пробіли в ній
+    # не заважають читанню (його канонізує `canonical_tab_title`), але ламають
+    # КОЖЕН запис, бо назва йде в діапазон A1 як є. Дешево: коли чистити нічого,
+    # функція виходить без жодного звернення до Google.
+    _repair_padded_tab_title(spreadsheet, worksheet)
     cache[name] = worksheet
     return worksheet
