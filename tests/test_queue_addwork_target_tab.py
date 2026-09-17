@@ -78,13 +78,20 @@ def test_switching_the_period_tab_moves_the_day_with_it(app_db):  # noqa: F811
     assert 'hx-swap-oob="true"' in partial, "день мусить їхати саме OOB"
 
 
-def test_earlier_sends_no_day_so_the_old_rule_applies(app_db):  # noqa: F811
-    """«Раніше» охоплює багато днів — одного дня в нього немає. Порожнє
-    значення тут НЕ недогляд: воно свідомо відкочує запис на давнє правило
-    «найновіша вкладка не пізніше сьогодні»."""
+def test_earlier_writes_into_todays_tab(app_db):  # noqa: F811
+    """«Раніше» охоплює багато днів — одного дня в нього немає, і форма раніше
+    їхала з порожнім значенням. Тоді запис падав на давнє правило «найновіша
+    вкладка не пізніше сьогодні», і робота могла лягти в чужий день: у вихідні
+    або коли сьогоднішньої вкладки ще не створили. Рішення власника 17.09.26 —
+    писати в СЬОГОДНІШНЮ вкладку, бо саме її оператор і має на увазі."""
     app, _factory = app_db
     client = _client(app)
 
+    status, _, today_page = client.get("/?period=today&source=all&ready=all")
+    assert status == 200
+    today_tab = _target_tab(today_page)
+
     status, _, html = client.get("/?period=earlier&source=all&ready=all")
     assert status == 200
-    assert _target_tab(html) == ""
+    assert _target_tab(html) == today_tab, "«Раніше» мусить писати в сьогоднішній день"
+    assert today_tab, "сьогоднішня вкладка не може бути порожньою"

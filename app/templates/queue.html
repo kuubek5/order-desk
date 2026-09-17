@@ -198,9 +198,11 @@
                 {# The day tab actually on screen. Without it the row is written to
                    today's tab whatever day the operator is looking at — adding
                    while on tomorrow's tab silently landed in today's. Covers both
-                   ways of choosing a day (date strip AND the Вчора/Завтра tabs);
-                   empty for «Раніше»/overdue, which span many days, and that
-                   keeps the old "newest tab ≤ today" rule. #}
+                   ways of choosing a day (date strip AND the Вчора/Завтра tabs).
+                   На «Раніше»/прострочених одного дня немає — там `addwork_tab`
+                   підставляє СЬОГОДНІШНЮ вкладку (рішення власника 17.09.26);
+                   давнє правило «найновіша вкладка ≤ сьогодні» лишилось лише
+                   запасним шляхом на сервері. #}
                 {# Значення мусить ЇХАТИ РАЗОМ із перемиканням вкладки. Смуга
                    фільтрів hx-boost'ить свої посилання й свапає лише
                    #queue-rows (див. _queue_sidebar.html), а форма лежить поза
@@ -209,7 +211,7 @@
                    сьогоднішню вкладку (скарга власника 17.09.26; у зворотний
                    бік — у вчорашню). Тому в поля є id, а
                    `_queue_filter_swap.html` шле його копію OOB. #}
-                <input type="hidden" id="addwork-target-tab" name="target_tab" value="{{ viewed_tab }}">
+                <input type="hidden" id="addwork-target-tab" name="target_tab" value="{{ addwork_tab }}">
                 {# One repeatable field-row per work. "+ ще" clones the last row
                    (app.js); all rows post as parallel lists → одним пушем кілька
                    клієнтів або нарядів. Server skips fully-empty rows. #}

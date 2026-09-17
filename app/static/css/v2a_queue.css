@@ -614,6 +614,13 @@ body.widget-edit .q2 .mstrip::before{content:"порядок віджетів: �
 .q2 .job-code-preview svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .q2 .job-code-preview:hover{color:var(--accent-c);background:rgba(var(--accent-base-rgb), .14)}
 .q2 .job-code-preview:focus-visible{outline:2px solid var(--accent-b);outline-offset:2px}
+/* Коли поруч стоїть кнопка прев'ю STL, шлях мусить лишити їй місце.
+   `.job-code-link` має `max-width:100%`, тобто займає комірку ЦІЛКОМ, а кнопка
+   прев'ю йде після нього — і виходила за правий край комірки, малюючись поверх
+   сусіднього стовпця (скарга власника 17.09.26: «де прев'ю?» — кубик стояв на
+   початку «Коментаря»). 23px — це сама кнопка: margin-left 5 + padding 2×2 +
+   svg 14. Через `:has()`, щоб рядки БЕЗ прев'ю не втрачали ширину шляху. */
+.q2 td.job-code:has(.job-code-preview) .job-code-link{max-width:calc(100% - 23px)}
 .q2 td.technician{font-size:var(--fs-2);color:var(--ink-2)}
 .q2 td.kind-cell{max-width:160px}
 .q2 .kindbtn{color:var(--ink-2);font-size:var(--fs-2);text-decoration:none;display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
@@ -973,14 +980,19 @@ body.qside-collapsed .q2 .worklayout{gap:0}
    половина — 1280, і там правило не вмикалось. Заміряно на 1245px із
    розгорнутою рейкою: стовпці просять 988px на 965 доступних, таблиця вилазить
    на 23px, і «Оператор» обрізає по краю вікна (скарга власника 17.09.26).
-   Поріг підняли до 1300 — з запасом, бо впритул воно перестає вилазити аж
-   на ~1270. Звільнені 153px авторозклад віддає «Виду роботи» й «Коментарю»,
-   які на цій ширині обрізались найгірше. */
+
+   У смузі 1100–1300 ховаємо ЛИШЕ «Оператора» (87px): цього досить, щоб
+   таблиця влізла (901 з 965), а «Технік» лишається — власник попросив його
+   назад того ж дня, і він справді потрібніший: питання «хто це моделював»
+   виникає прямо в черзі, а «хто прорахував» — уже в паспорті роботи.
+   Нижче 1100 місця нема й на нього, тож там ховаються обидва, як і було. */
 @media (max-width:1300px){
-  .q2 table.qtable td.technician,
-  .q2 table.qtable th.col-tech,
   .q2 table.qtable td.calc-op,
   .q2 table.qtable th.col-op{display:none}
+}
+@media (max-width:1100px){
+  .q2 table.qtable td.technician,
+  .q2 table.qtable th.col-tech{display:none}
 }
 @media (max-width:560px){
   .q2 .statusline{flex-direction:column;align-items:stretch}

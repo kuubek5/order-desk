@@ -1781,15 +1781,23 @@ def test_queue_hands_the_add_form_the_day_the_period_tab_shows(period, offset_da
     assert f'name="target_tab" value="{expected}"' in html
 
 
-def test_earlier_tab_leaves_the_target_day_empty():
-    """«Раніше» spans many days, so there is no single tab to target — the form
-    posts nothing and the write falls back to the newest tab ≤ today."""
+def test_earlier_tab_targets_today():
+    """«Раніше» охоплює багато днів, тож одного дня в нього немає.
+
+    Доти форма слала порожнє значення, і запис падав на давнє правило
+    «найновіша вкладка не пізніше сьогодні» — у вихідні або коли сьогоднішньої
+    вкладки ще не створили, робота лягала в чужий день. Рішення власника
+    17.09.26: писати в СЬОГОДНІШНЮ вкладку, бо саме її оператор і має на увазі.
+    """
+    from app.business_day import business_tab_today
+
     engine = _database()
     with Session(engine, expire_on_commit=False) as db:
         user = _user(db)
         html = queue_router_mod.get_queue(request=_request(user.id), db=db, period="earlier").body.decode()
 
-    assert 'name="target_tab" value=""' in html
+    expected = business_tab_today().strftime("%d.%m.%y")
+    assert f'name="target_tab" value="{expected}"' in html
 
 
 def test_sum_units_counts_only_clean_integers():

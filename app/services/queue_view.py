@@ -608,6 +608,16 @@ def build_queue_view(
                 else max(get_sync_speed()["screen"], QUEUE_SLOW_POLL_SECONDS)
             ),
             "viewed_tab": viewed_day.strftime("%d.%m.%y") if viewed_day else "",
+            # День, у який пише форма ручного додавання. Не те саме, що
+            # `viewed_tab`: там порожнє значення означає «оператор дивиться
+            # багато днів одразу» і живить гарячу смугу синку, а форма з
+            # порожнім днем падала на давнє правило «найновіша вкладка не
+            # пізніше сьогодні» — на «Раніше» робота могла піти в чужий день
+            # (рішення власника 17.09.26: писати в сьогоднішню).
+            "addwork_tab": (
+                viewed_day.strftime("%d.%m.%y") if viewed_day
+                else today.strftime("%d.%m.%y")
+            ),
             "sync_paused": sync_control.is_paused(),
             "focus_order_id": focus.strip() if focus.strip().isdigit() else "",
     }
