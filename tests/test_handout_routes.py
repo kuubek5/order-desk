@@ -1154,15 +1154,49 @@ class TestOneBatchPerRow:
         assert entries_for_material("mono a3", monday_batch, date(2026, 9, 15)) == []
         assert stale_folder_day("mono a3", monday_batch, date(2026, 9, 15)) == monday
 
-    def test_night_batch_belongs_to_the_business_day_of_its_shift(self):
-        """Тека о 01:00 10.09 — нічна зміна 09.09 (межа доби 07:30), як і
-        вкладка, у яку тоді пишуть рядок. Календарна дата відкинула б її
-        для роботи 09.09 як «наступного дня», а для 10.09 — підсунула б."""
+    def test_night_batch_serves_both_its_shift_and_its_calendar_date(self):
+        """Нічна тека належить ОБОМ дням, і це не послаблення правила.
+
+        О 01:00 робоча доба ще вчорашня (межа 07:30) — тому тека о 01:05
+        десятого лишається своєю для роботи за 09.09. Але цех уночі вже пише
+        рядки в НОВУ календарну вкладку: 17.09.26 рядки зʼявились о 01:55 і
+        02:07 (`kmill_order` 04-55-31 і 05-05-09), а їхні теки — о 04:48–04:55
+        того ж числа. За старим правилом партія виходила «старішою за день
+        роботи», і рядок казав «за 17.09 теки немає», хоча тека лежала в
+        `Новая папка (597)` поруч із тією, яку сусідній рядок відкривав.
+
+        Тому ніч дати вкладки теж своя. Час партії видно в самій плитці, і
+        вибір між двома теками одного дня, як і раніше, за оператором.
+        """
         from datetime import datetime
 
         entries = [self._entry("mono a3", datetime(2026, 9, 10, 1, 5))]
         assert [e.created_at.hour for e in entries_for_material("mono a3", entries, date(2026, 9, 9))] == [1]
-        assert entries_for_material("mono a3", entries, date(2026, 9, 10)) == []
+        assert [e.created_at.hour for e in entries_for_material("mono a3", entries, date(2026, 9, 10))] == [1]
+
+    def test_krivovyd_17_09_night_folder_is_found(self):
+        """Бойовий випадок 17.09.26 зі скриншотів цеху, теки як на диску.
+
+        `\Systems\Export\Євген Кривовид\Новая папка (597)` створена о 04:54,
+        усередині `mono a3` (04:48) і `mono a3.5` (04:55); `Новая папка (598)`
+        — о 12:25. Рядок `mono a3` знаходив партію 598 і показував «12:25», а
+        сусідній `mono a3.5` казав «за 17.09 теки немає» — хоча його тека
+        лежала в 597, створена в ту саму секунду, що й Sum3D ID 04-55-31.
+        """
+        from datetime import datetime
+
+        from app.services.handout import stale_folder_day
+
+        entries = [
+            self._entry("mono a3", datetime(2026, 9, 17, 4, 48)),
+            self._entry("mono a3.5", datetime(2026, 9, 17, 4, 55)),
+            self._entry("mono a3", datetime(2026, 9, 17, 12, 25)),
+        ]
+        day = date(2026, 9, 17)
+        assert [e.created_at.hour for e in entries_for_material("mono a3.5", entries, day)] == [4]
+        assert stale_folder_day("mono a3.5", entries, day) is None
+        # У `mono a3` партії дві — обидві лишаються, вибір за оператором.
+        assert [e.created_at.hour for e in entries_for_material("mono a3", entries, day)] == [4, 12]
 
     def test_files_uploaded_the_next_day_are_not_lost(self):
         """Партії раніше за роботу немає — беремо найранішу пізнішу, інакше

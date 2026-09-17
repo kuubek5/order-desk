@@ -77,7 +77,7 @@ def entries_for_material(material_color: str | None, entries: list, work_day=Non
     # Вкладка п'ятниці охоплює й вихідні: у суботу й неділю цех працює, а
     # роботи (і прийняті листи) пишуть у п'ятничну вкладку (власник 11.09.26).
     covered = covered_days(work_day)
-    in_tab = [e for e in matched if _batch_day(e) in covered]
+    in_tab = [e for e in matched if _entry_days(e) & set(covered)]
     if in_tab:
         return in_tab
     later = sorted({d for d in (_batch_day(e) for e in matched) if d > covered[-1]})
@@ -132,21 +132,22 @@ def stale_folder_day(material_color: str | None, entries: list, work_day=None):
 
     Для рядка «теки за 10.09 немає»: оператор має бачити, що тека не
     загубилась у програми, а її справді немає за цей день, — і відкрити теку
-    клієнта, щоб знайти вручну."""
+    клієнта, щоб знайти вручну.
+
+    Питання «чи є своя партія» тут НЕ розвʼязується вдруге: відповідь дає
+    `entries_for_material`. Доти правило стояло в двох місцях, і кожне
+    уточнення відбору треба було памʼятати переписати в обох — рівно та пара,
+    що мовчки розходиться (позначка «немає» під рядком, який теку показує).
+    """
     if work_day is None:
         return None
     matched = _material_matches(material_color, entries)
     if not matched:
         return None
-    # Межа — НАЙРАНІШИЙ покритий день, а не сам день роботи: для понеділка
-    # вкладка покриває ще й вихідні (`covered_days`), і субота з неділею тут
-    # не «старіші», а свої. Інакше рядок казав би «теки немає» саме тоді,
-    # коли `entries_for_material` теку вже показав.
-    earliest = covered_days(work_day)[0]
-    days = {_batch_day(e) for e in matched}
-    if any(day >= earliest for day in days):
+    if entries_for_material(material_color, entries, work_day):
         return None
-    return max(days)
+    # Лишились самі старіші (пізніші `entries_for_material` вже віддав би).
+    return max(_batch_day(e) for e in matched)
 
 
 def _material_matches(material_color: str | None, entries: list) -> list:
@@ -163,6 +164,26 @@ def _material_matches(material_color: str | None, entries: list) -> list:
 def _batch_day(entry):
     """Робоча дата партії (межа доби 07:30), як у вкладок таблиці."""
     return business_date_of(entry.created_at)
+
+
+def _entry_days(entry) -> set:
+    """Дні, до яких партія може належати: РОБОЧИЙ (межа 07:30) і КАЛЕНДАРНИЙ.
+
+    Уночі ці дві дати різні, і саме там правило ламалось. Бойовий випадок
+    17.09.26 (Кривовид `mono a3.5`, Тертычный `mono a4`): теки створені о
+    04:48–04:55 сімнадцятого, рядки зʼявились у вкладці 17.09 о 01:55 і 02:07
+    — цех уночі вже пише в НОВУ календарну дату, тоді як робоча доба до 07:30
+    ще вчорашня. Партія виходила «старішою за день роботи», рядок казав «за
+    17.09 теки немає», а тека лежала поруч із тією, яку сусідній рядок
+    відкривав (`Новая папка (597)`, той самий Sum3D 04-55-31 — секунда в
+    секунду з текою).
+
+    Захист від ЧУЖОЇ попередньої партії (рішення власника 11.09.26) від цього
+    не слабшає: вчорашня денна тека має і робочу, і календарну дату вчорашні,
+    тож під сьогоднішній рядок і далі не потрапляє. Додається рівно ніч самої
+    дати вкладки.
+    """
+    return {_batch_day(entry), entry.created_at.date()}
 
 
 # Ключ групи для робіт БЕЗ імені клієнта.
